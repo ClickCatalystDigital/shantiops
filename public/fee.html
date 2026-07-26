@@ -34,9 +34,10 @@
 
 * { box-sizing: border-box; }
 .doc { font-family: 'Plex Sans', ui-sans-serif, system-ui, sans-serif; color: var(--ink); background: var(--paper); line-height: 1.6; font-size: 15px; }
-.wrap { max-width: none; margin: 0; padding: 0; }
+.wrap { max-width: 720px; margin: 0 auto; padding: 3rem 1.5rem 4rem; }
 
 @page { size: A4; margin: 20mm 18mm; }
+@media print { .wrap { max-width: none; margin: 0; padding: 0; } }
 .pcard, .step, .note, .maint, tr, .sign { break-inside: avoid; page-break-inside: avoid; }
 .breakdown li.group { break-after: avoid; page-break-after: avoid; }
 h2 { break-after: avoid; page-break-after: avoid; }
