@@ -52,6 +52,9 @@ h1 { font-family: 'Plex Serif', ui-serif, Georgia, serif; font-weight: 600; font
 
 h2 { font-family: 'Plex Serif', ui-serif, Georgia, serif; font-weight: 600; font-size: 1.55rem; letter-spacing: -0.005em; margin: 0 0 1rem; text-wrap: balance; }
 p { margin: 0 0 1rem; max-width: 62ch; }
+ul.plain { margin: 0 0 1rem; padding-left: 1.15rem; }
+ul.plain li { margin-bottom: 0.5rem; font-size: 14px; max-width: 60ch; break-inside: avoid; page-break-inside: avoid; }
+ul.plain li::marker { color: var(--brass); }
 p.lede { font-size: 1.05rem; }
 strong { font-weight: 600; }
 
@@ -152,8 +155,24 @@ td.replaces { color: var(--steel); }
 
     <hr class="divider" />
 
+    <h2>Management Operation System</h2>
+    <p>A coordination layer sitting across both platforms — who's approved, who's doing
+    what, and when the next department picks up the baton. Included in Phase 1 at no
+    extra cost.</p>
+    <div class="pcard" style="margin:0.9rem 0;">
+      <span class="tag">Included, no additional cost</span>
+      <h3>Approvals &amp; department handoffs, coordinated</h3>
+      <p><strong>Onboarding approval system</strong> — already live: self-registration,
+      department-scoped approval hierarchy, and machine enrollment, fully audited.<br />
+      <strong>Department-wise notification system</strong> — in progress: when one
+      department finishes their part of an order, the next department is notified
+      automatically, so nothing sits waiting for someone to notice it's their turn.</p>
+    </div>
+
+    <hr class="divider" />
+
     <h2>What finishes Phase 1</h2>
-    <p>Phase 1 is complete once every department head and project manager is actually using the system day to day — logged in, machine set up, working from it instead of the old process. Alongside that, Phase 1 includes a short video walking through your cloud storage options, based on the questionnaire your team already completed.</p>
+    <p>Phase 1 is complete once every department head and project manager is actually using the system day to day — logged in, machine set up, working from it instead of the old process. Guided onboarding for every department is included at no extra cost, not billed separately. Alongside that, Phase 1 includes a short video walking through your cloud storage options, based on the questionnaire your team already completed.</p>
 
     <hr class="divider" />
 
@@ -166,23 +185,20 @@ td.replaces { color: var(--steel); }
         <li class="item"><span>Master BOM — shared bill of materials, department-scoped editing</span><span class="a">₹50,000</span></li>
         <li class="item"><span>QC test records — hydro test, radiography, certificates</span><span class="a">₹30,000</span></li>
         <li class="item"><span>Packing lists, generated automatically, with PDF export</span><span class="a">₹30,000</span></li>
-        <li class="item last"><span>Customer order-status portal</span><span class="a">₹20,000</span></li>
+        <li class="item"><span>Customer order-status portal</span><span class="a">₹20,000</span></li>
+        <li class="item last"><span>Ongoing refinement of each department's workflow, shaped by direct interviews with your team</span><span class="a" style="color:var(--steel);font-style:italic;">Included</span></li>
 
-        <li class="group"><span>Security platform</span><span class="a">₹1,80,000</span></li>
+        <li class="group"><span>Security platform</span><span class="a">₹2,61,000</span></li>
         <li class="item"><span>Device control — USB drives, CDs/DVDs, phones</span><span class="a">₹55,000</span></li>
-        <li class="item"><span>Website access control, set per site</span><span class="a">₹35,000</span></li>
-        <li class="item"><span>Manager approval system, two-factor verified</span><span class="a">₹40,000</span></li>
-        <li class="item"><span>Self-service employee onboarding</span><span class="a">₹30,000</span></li>
-        <li class="item last"><span>Full activity &amp; approval audit trail</span><span class="a">₹20,000</span></li>
+        <li class="item"><span>Chrome extension — built for website access control, set per site</span><span class="a">₹75,000</span></li>
+        <li class="item"><span>Manager approval system, two-factor verified</span><span class="a">₹45,000</span></li>
+        <li class="item"><span>Self-service employee onboarding</span><span class="a">₹36,000</span></li>
+        <li class="item"><span>Full activity &amp; approval audit trail</span><span class="a">₹25,000</span></li>
+        <li class="item last"><span>Continuous innovation &amp; security updates — regular patches to the Chrome extension and the wider system</span><span class="a">₹25,000</span></li>
 
         <li class="standalone"><span>Cloud storage recommendation (video + report)</span><span class="a">₹30,000</span></li>
 
-        <li class="group"><span>Onboarding, rollout &amp; interview refinements</span><span class="a">₹1,20,000</span></li>
-        <li class="item"><span>Guided onboarding — every department head + PM</span><span class="a">₹60,000</span></li>
-        <li class="item"><span>Incorporating feedback from the 8 department interviews</span><span class="a">₹40,000</span></li>
-        <li class="item last"><span>Final testing &amp; handover</span><span class="a">₹20,000</span></li>
-
-        <li class="total"><span>Phase 1 total</span><span class="a">₹5,15,000</span></li>
+        <li class="total"><span>Phase 1 total</span><span class="a">₹4,76,000</span></li>
       </ul>
 
       <div class="subhead" style="margin-top:1.4rem;">Payment schedule</div>
@@ -193,7 +209,7 @@ td.replaces { color: var(--steel); }
             <div class="label">Token amount, at kickoff</div>
             <div class="desc">Delivered alongside the cloud storage recommendation video.</div>
           </div>
-          <div class="amt">₹2,06,000<span class="pct">40%</span></div>
+          <div class="amt">₹1,90,400<span class="pct">40%</span></div>
         </div>
         <div class="step">
           <span class="idx">2</span>
@@ -201,14 +217,31 @@ td.replaces { color: var(--steel); }
             <div class="label">Balance, on completion</div>
             <div class="desc">Due once every department is onboarded and working from the system.</div>
           </div>
-          <div class="amt">₹3,09,000<span class="pct">60%</span></div>
+          <div class="amt">₹2,85,600<span class="pct">60%</span></div>
         </div>
       </div>
       <div class="maint">
-        <div class="label">Ongoing annual maintenance<span class="small">Hosting, security patching, bug fixes, support — billed once a year, separate from Phase 1.</span></div>
-        <div class="amt">₹1,28,750 <span style="font-size:0.75em;color:var(--steel);font-weight:400;">(₹10,729/mo)</span><span style="display:block;text-align:right;font-size:10.5px;color:var(--brass-deep);text-transform:uppercase;letter-spacing:.05em;margin-top:.15rem;">per year</span></div>
+        <div class="label">Ongoing annual maintenance<span class="small">Hosting, security patching, bug fixes, support — 15% of Phase 1, the industry-standard rate. Billed once a year, separate from Phase 1.</span></div>
+        <div class="amt">₹75,000 <span style="font-size:0.75em;color:var(--steel);font-weight:400;">(₹6,250/mo)</span><span style="display:block;text-align:right;font-size:10.5px;color:var(--brass-deep);text-transform:uppercase;letter-spacing:.05em;margin-top:.15rem;">per year</span></div>
       </div>
     </div>
+
+    <hr class="divider" />
+
+    <h2>Phase 2 — what's next <span style="font-family:'Plex Mono',monospace;font-size:11px;font-weight:400;color:var(--steel);text-transform:none;letter-spacing:0;">(not priced or scoped yet)</span></h2>
+    <p>Once Phase 1 is running day to day, the natural next steps for a company at this
+    scale:</p>
+    <ul class="plain">
+      <li><strong>Master data &amp; IT architecture</strong> — a proper data foundation
+      across every system you run, not just this one.</li>
+      <li><strong>Connected manufacturing</strong> — IoT monitoring tying your shop-floor
+      machinery directly into the system, live.</li>
+      <li><strong>ERP integration</strong> — connecting Shanti Ops to a full ERP instead
+      of standing alongside one.</li>
+    </ul>
+    <p style="color:var(--steel);font-size:13.5px;">Just naming where this goes next — nothing here is costed or committed to yet.</p>
+
+    <hr class="divider" />
 
     <div class="closing">
       <p>This is the first system I've built this way, start to finish, for one business — and I'd like it to be the first of many working together. Happy to walk through any part of this in person.</p>
