@@ -73,24 +73,32 @@ function WorkerCard({ row, date, projects }) {
   const router = useRouter();
   const [form, setForm] = useState(stateOf(row));
 
-  // Re-sync when the day changes, or the previous day's answers linger in this day's inputs.
-  useEffect(() => { setForm(stateOf(row)); }, [row.id, row.status, row.project_id, row.milestone_id, row.notes, date]);
+  // Re-sync only when the worker or the day changes — otherwise yesterday's answers linger in
+  // today's inputs. Deliberately NOT keyed on the individual fields: every select fires a save +
+  // router.refresh(), and re-seeding from the server on each one would clobber whatever the user
+  // is typing in the notes box at that moment. save() keeps local state correct in the meantime.
+  useEffect(() => { setForm(stateOf(row)); }, [row.id, date]);
 
   // Always POST the whole row: the upsert overwrites every column, so a partial body would wipe
   // whatever it omitted (see app/api/production/worker-days).
   async function save(next) {
-    setForm(next);
-    if (!next.status) return; // nothing to record until attendance is marked
+    // Absent means no work to record, and the server nulls those columns — mirror that locally so
+    // the form can't show values the DB doesn't have (we no longer re-seed from the server).
+    const cleaned = next.status === 'absent'
+      ? { ...next, project_id: '', milestone_id: '', notes: '' }
+      : next;
+    setForm(cleaned);
+    if (!cleaned.status) return; // nothing to record until attendance is marked
     try {
       await api('/api/production/worker-days', {
         method: 'POST',
         body: {
           worker_id: row.id,
           date,
-          status: next.status,
-          project_id: next.project_id ? Number(next.project_id) : null,
-          milestone_id: next.milestone_id ? Number(next.milestone_id) : null,
-          notes: next.notes || null,
+          status: cleaned.status,
+          project_id: cleaned.project_id ? Number(cleaned.project_id) : null,
+          milestone_id: cleaned.milestone_id ? Number(cleaned.milestone_id) : null,
+          notes: cleaned.notes || null,
         },
       });
       router.refresh();
@@ -198,24 +206,61 @@ function Roster({ workers }) {
             </TableHeader>
             <TableBody>
               {workers.map(w => (
-                <TableRow key={w.id} className={cn(!w.active && 'opacity-50')}>
-                  <TableCell className="font-medium">{w.name}</TableCell>
-                  <TableCell className="text-muted-foreground">{w.trade || '—'}</TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      {!w.active && <Badge variant="outline">Inactive</Badge>}
-                      <Button variant="ghost" size="sm" onClick={() => toggleActive(w)}>
-                        {w.active ? 'Deactivate' : 'Reactivate'}
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
+                <RosterRow key={w.id} w={w} router={router} onToggle={() => toggleActive(w)} />
               ))}
             </TableBody>
           </Table>
         </CardContent></Card>
       )}
     </div>
+  );
+}
+
+// Name and trade edit in place, saving on blur — a typo'd worker name is otherwise unfixable,
+// since workers are never deleted.
+function RosterRow({ w, router, onToggle }) {
+  const [edit, setEdit] = useState({ name: w.name, trade: w.trade || '' });
+  useEffect(() => { setEdit({ name: w.name, trade: w.trade || '' }); }, [w.id, w.name, w.trade]);
+
+  async function saveField(field) {
+    const value = edit[field].trim();
+    if (value === (w[field] || '')) return;              // untouched
+    if (field === 'name' && !value) {                     // don't let a name be blanked
+      setEdit(e => ({ ...e, name: w.name }));
+      return showToast('Name cannot be empty', 'error');
+    }
+    try {
+      await api(`/api/production/workers/${w.id}`, { method: 'PATCH', body: { [field]: value } });
+      router.refresh();
+    } catch (err) {
+      setEdit(e => ({ ...e, [field]: w[field] || '' }));  // roll back to the server's value
+      showToast(err.message, 'error');
+    }
+  }
+
+  return (
+    <TableRow className={cn(!w.active && 'opacity-50')}>
+      <TableCell>
+        <Input value={edit.name} aria-label={`Name for ${w.name}`}
+          className="h-8 border-transparent bg-transparent px-1 font-medium hover:border-input focus:border-input"
+          onChange={e => setEdit({ ...edit, name: e.target.value })}
+          onBlur={() => saveField('name')} />
+      </TableCell>
+      <TableCell>
+        <Input value={edit.trade} placeholder="—" aria-label={`Trade for ${w.name}`}
+          className="h-8 border-transparent bg-transparent px-1 text-muted-foreground hover:border-input focus:border-input"
+          onChange={e => setEdit({ ...edit, trade: e.target.value })}
+          onBlur={() => saveField('trade')} />
+      </TableCell>
+      <TableCell className="text-right">
+        <div className="flex items-center justify-end gap-2">
+          {!w.active && <Badge variant="outline">Inactive</Badge>}
+          <Button variant="ghost" size="sm" onClick={onToggle}>
+            {w.active ? 'Deactivate' : 'Reactivate'}
+          </Button>
+        </div>
+      </TableCell>
+    </TableRow>
   );
 }
 
