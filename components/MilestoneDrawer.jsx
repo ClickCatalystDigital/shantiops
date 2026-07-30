@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, showToast } from '@/lib/client';
+import { todayISO } from '@/lib/date';
 import { categoryOf, DEPARTMENTS, DELAY_CATEGORIES } from '@/lib/milestones';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
@@ -17,7 +18,10 @@ const STATUSES = ['pending', 'in_progress', 'done', 'blocked'];
 const FIELDS = ['assignee', 'department', 'status', 'planned_start', 'planned_end', 'actual_start',
   'actual_end', 'delay_category', 'delay_reason', 'vendor', 'po_no', 'material_ready', 'qc_ok', 'notes'];
 
-const today = () => new Date().toISOString().slice(0, 10);
+// IST, not UTC: a plain toISOString().slice(0,10) rolls the date over 5.5h early for the factory
+// (see lib/date.js). This matters here specifically — the Start/Close buttons send actual_start/
+// actual_end explicitly in the body, bypassing the server's own auto-stamp fallback.
+const today = todayISO;
 
 function Field({ label, children }) {
   return <div className="flex flex-col gap-1.5"><Label>{label}</Label>{children}</div>;

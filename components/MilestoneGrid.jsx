@@ -3,13 +3,16 @@
 // Bulk / spreadsheet edit mode for the whole project — power-user path for many rows at once.
 import { useState } from 'react';
 import { api, showToast } from '@/lib/client';
+import { todayISO } from '@/lib/date';
 import StatusBadge from './StatusBadge';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const STATUSES = ['pending', 'in_progress', 'done', 'blocked'];
-const today = () => new Date().toISOString().slice(0, 10);
+// IST, not UTC — see lib/date.js. This is the client-side mirror of the server's auto-stamp rule
+// (set the same day the drawer/server would), so it must use the same calendar-day definition.
+const today = todayISO;
 
 export default function MilestoneGrid({ milestones }) {
   const [rows, setRows] = useState(milestones);

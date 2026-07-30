@@ -6,7 +6,7 @@ import { usePathname, useSearchParams, useRouter } from 'next/navigation';
 import {
   SunIcon, MoonIcon, SettingsIcon, LogOutIcon, LayoutGridIcon, BarChart3Icon,
   LayoutDashboardIcon, FolderKanbanIcon, PackageIcon, ShieldCheckIcon, InfoIcon,
-  CalendarDaysIcon, HardHatIcon,
+  CalendarDaysIcon, HardHatIcon, TicketIcon,
 } from 'lucide-react';
 import { DEPARTMENTS } from '@/lib/milestones';
 import { cn } from '@/lib/utils';
@@ -16,6 +16,7 @@ import {
   DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent,
   DropdownMenuLabel,
 } from '@/components/ui/dropdown-menu';
+import NotificationBell from './NotificationBell';
 
 export default function Nav({ user }) {
   const pathname = usePathname();
@@ -40,6 +41,7 @@ export default function Nav({ user }) {
         { href: '/', label: 'Operations', icon: LayoutDashboardIcon },
         { href: '/projects', label: 'Projects', icon: FolderKanbanIcon },
         { href: '/approvals', label: 'Approvals', icon: ShieldCheckIcon },
+        { href: '/tickets', label: 'Tickets', icon: TicketIcon },
       ]
     : [
         ...(inProduction ? [{ href: '/production', label: 'Today', icon: CalendarDaysIcon }] : []),
@@ -47,6 +49,7 @@ export default function Nav({ user }) {
         { href: '/', label: 'Operations', icon: LayoutDashboardIcon },
         { href: '/projects', label: 'Projects', icon: FolderKanbanIcon },
         ...(inProduction ? [{ href: '/production/workers', label: 'Workers', icon: HardHatIcon }] : []),
+        { href: '/tickets', label: 'Tickets', icon: TicketIcon },
       ];
 
   const isActive = l => (l.dept ? pathname === '/' && activeDept === l.dept : pathname === l.href && !activeDept);
@@ -105,6 +108,7 @@ export default function Nav({ user }) {
           </nav>
 
           <div className="ml-auto flex items-center gap-1">
+            <NotificationBell />
             <Button asChild variant="ghost" size="icon-sm" aria-label="Help">
               <Link href="/help"><InfoIcon /></Link>
             </Button>
