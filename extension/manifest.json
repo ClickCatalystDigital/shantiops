@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
   "name": "Shanti Ops Browser Control",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Enforces the organization's website access policy via the local Shanti agent.",
   "permissions": ["declarativeNetRequest", "alarms"],
-  "host_permissions": ["http://127.0.0.1:47113/*"],
+  "host_permissions": ["http://127.0.0.1:47113/*", "<all_urls>"],
   "background": { "service_worker": "background.js" },
   "icons": {
     "16": "icons/icon16.png",
