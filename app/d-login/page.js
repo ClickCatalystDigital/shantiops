@@ -3,7 +3,7 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/client';
 import { Button } from '@/components/ui/button';
@@ -49,7 +49,50 @@ function labelize(username) {
     .join(' ');
 }
 
-export default function Login() {
+// ponytail: speed bump, not real security — just keeps this off department heads' radar if
+// they notice the URL. Anyone reading the bundle can find "dem" anyway.
+function DemoGate({ children }) {
+  const [unlocked, setUnlocked] = useState(false);
+  const [checked, setChecked] = useState(false);
+  const [pw, setPw] = useState('');
+  const [wrong, setWrong] = useState(false);
+
+  useEffect(() => {
+    setUnlocked(sessionStorage.getItem('d-login-ok') === '1');
+    setChecked(true);
+  }, []);
+
+  function submit(e) {
+    e.preventDefault();
+    if (pw === 'dem') {
+      sessionStorage.setItem('d-login-ok', '1');
+      setUnlocked(true);
+    } else {
+      setWrong(true);
+    }
+  }
+
+  if (!checked) return null;
+  if (unlocked) return children;
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-muted/40 to-background p-4">
+      <Card className="w-full max-w-sm shadow-lg">
+        <CardHeader className="items-center text-center"><h1 className="text-lg font-semibold">Password required</h1></CardHeader>
+        <CardContent>
+          <form onSubmit={submit} className="flex flex-col gap-4">
+            <Input type="password" autoFocus value={pw}
+              onChange={e => { setPw(e.target.value); setWrong(false); }} />
+            {wrong && <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">Incorrect password</p>}
+            <Button type="submit" className="w-full">Continue</Button>
+          </form>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function LoginContent() {
   const router = useRouter();
   const [form, setForm] = useState({ username: '', password: '' });
   const [error, setError] = useState('');
@@ -273,4 +316,8 @@ function RequestAccess() {
       </form>
     </CardContent>
   );
+}
+
+export default function Login() {
+  return <DemoGate><LoginContent /></DemoGate>;
 }
