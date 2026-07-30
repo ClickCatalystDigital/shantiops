@@ -11,7 +11,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { Loader2Icon, Users, Factory, UserCircle, KeyRound, CheckIcon, UserPlusIcon, Cloud } from 'lucide-react';
 import { DEPARTMENTS } from '@/lib/milestones';
 
@@ -228,7 +227,7 @@ function RequestAccess() {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState('');
-  const [f, setF] = useState({ display_name: '', username: '', password: '', role: 'operator', departments: [] });
+  const [f, setF] = useState({ display_name: '', username: '', password: '', departments: [] });
 
   function toggleDept(d) {
     setF(prev => ({
@@ -283,29 +282,17 @@ function RequestAccess() {
           <Label htmlFor="ra-password">Choose a password</Label>
           <Input id="ra-password" type="password" value={f.password} onChange={e => setF({ ...f, password: e.target.value })} required />
         </div>
-        <div className="flex flex-col gap-2">
-          <Label>Role</Label>
-          <Select value={f.role} onValueChange={v => setF({ ...f, role: v, departments: [] })}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="operator">Department Head</SelectItem>
-              <SelectItem value="manager">Project Manager</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        {f.role === 'operator' && (
-          <div className="flex flex-col gap-1.5">
-            <Label>Department(s)</Label>
-            <div className="flex flex-wrap gap-3">
-              {DEPARTMENTS.map(d => (
-                <label key={d} className="flex items-center gap-1.5 text-sm">
-                  <Checkbox checked={f.departments.includes(d)} onCheckedChange={() => toggleDept(d)} />
-                  {d}
-                </label>
-              ))}
-            </div>
+        <div className="flex flex-col gap-1.5">
+          <Label>Department(s)</Label>
+          <div className="flex flex-wrap gap-3">
+            {DEPARTMENTS.map(d => (
+              <label key={d} className="flex items-center gap-1.5 text-sm">
+                <Checkbox checked={f.departments.includes(d)} onCheckedChange={() => toggleDept(d)} />
+                {d}
+              </label>
+            ))}
           </div>
-        )}
+        </div>
         {error && <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>}
         <div className="flex gap-2">
           <Button type="submit" disabled={busy} className="flex-1">

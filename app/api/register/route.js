@@ -1,6 +1,8 @@
 // Public self-registration: creates a pending account that a manager/admin/executive must
-// approve (see PATCH /api/users/[id]) before it can log in. Never accepts admin/executive/customer
-// roles from this form — those are created internally.
+// approve (see PATCH /api/users/[id]) before it can log in. Always a department head — manager/
+// admin/executive/customer accounts are created internally, never through this form (see
+// Manmohan incident: self-registering as "Project Manager" got someone full PM access with no
+// device-setup gate).
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { execute, queryOne } from '@/lib/db';
@@ -16,15 +18,13 @@ export async function POST(req) {
   const username = String(b.username || '').trim();
   const password = String(b.password || '');
   const displayName = String(b.display_name || '').trim();
-  const role = b.role === 'manager' ? 'manager' : 'operator';
-  const departments = role === 'operator'
-    ? (Array.isArray(b.departments) ? b.departments.filter(d => DEPARTMENTS.includes(d)) : [])
-    : [];
+  const role = 'operator';
+  const departments = Array.isArray(b.departments) ? b.departments.filter(d => DEPARTMENTS.includes(d)) : [];
 
   if (!username || !password || !displayName) {
     return NextResponse.json({ error: 'Name, username, and password are required' }, { status: 400 });
   }
-  if (role === 'operator' && departments.length === 0) {
+  if (departments.length === 0) {
     return NextResponse.json({ error: 'Pick at least one department' }, { status: 400 });
   }
 
