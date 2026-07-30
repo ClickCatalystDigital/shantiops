@@ -18,7 +18,9 @@ export async function GET(req, { params }) {
   }
 
   const code = await ensureEnrollCode(machine.id);
-  const server_url = new URL(req.url).origin;
+  // req.url's origin reflects how Render's proxy forwards the request internally
+  // (localhost:$PORT), not the public domain — RENDER_EXTERNAL_URL is the real one.
+  const server_url = process.env.RENDER_EXTERNAL_URL || new URL(req.url).origin;
   const body = JSON.stringify({ server_url, enroll_code: code }, null, 2);
 
   return new NextResponse(body, {
