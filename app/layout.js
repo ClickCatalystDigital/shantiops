@@ -3,7 +3,7 @@ import Nav from '@/components/Nav';
 import DeviceSetupGate from '@/components/DeviceSetupGate';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { getSessionUser, isInternal, isHead, isDemoUser } from '@/lib/auth';
+import { getSessionUser, isInternal, needsDeviceEnrollment, isDemoUser } from '@/lib/auth';
 import { getMyMachine } from '@/lib/data';
 
 export const metadata = {
@@ -16,10 +16,12 @@ const themeInit = `(function(){try{var t=localStorage.getItem('theme');if(t)docu
 
 export default async function RootLayout({ children }) {
   const user = getSessionUser();
-  // Functional heads only (§ operator role) — PMs must be able to log in unblocked, since
-  // they're the ones who register a head's machine in the first place.
-  const machine = isHead(user) ? await getMyMachine(user.id) : null;
-  const needsDeviceSetup = isHead(user) && !isDemoUser(user) && !(machine?.enrolled_at || machine?.last_seen);
+  // Functional heads, plus any self-registered "Project Manager" account (see
+  // needsDeviceEnrollment) — the bootstrap admin/manager/executive seed accounts stay
+  // unblocked so someone can always register machines / approve people.
+  const gated = needsDeviceEnrollment(user);
+  const machine = gated ? await getMyMachine(user.id) : null;
+  const needsDeviceSetup = gated && !isDemoUser(user) && !(machine?.enrolled_at || machine?.last_seen);
 
   return (
     <html lang="en" suppressHydrationWarning>
