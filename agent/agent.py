@@ -28,6 +28,9 @@ if getattr(sys, "frozen", False):
     CONFIG_PATH = Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData")) / "ShantiAgent" / "config.json"
 else:
     CONFIG_PATH = Path(__file__).parent / "config.json"
+# The scheduled task runs this headless (no console, as SYSTEM) — without a file, a startup
+# crash (bad enroll code, blocked network, ...) leaves zero trace anywhere.
+LOG_PATH = CONFIG_PATH.parent / "agent.log"
 
 
 def load_config():
@@ -391,7 +394,9 @@ def main():
     parser.add_argument("--winselftest", action="store_true", help="real registry round-trip (Windows only)")
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s",
+                         handlers=[logging.FileHandler(LOG_PATH), logging.StreamHandler()])
 
     if args.selftest:
         selftest()
@@ -400,14 +405,18 @@ def main():
         winselftest()
         return
 
-    from backends import SimulatorBackend, WindowsBackend
-    from browser import BrowserGuard
-    config = ensure_token(load_config())
-    backend = SimulatorBackend() if args.simulate else WindowsBackend()
-    guard = BrowserGuard(config["server_url"], config["token"], __version__)
-    guard.start()   # localhost HTTP server for the browser extension
-    agent = Agent(backend, config["server_url"], config["token"], config.get("poll_seconds", 5),
-                  browser_guard=guard)
+    try:
+        from backends import SimulatorBackend, WindowsBackend
+        from browser import BrowserGuard
+        config = ensure_token(load_config())
+        backend = SimulatorBackend() if args.simulate else WindowsBackend()
+        guard = BrowserGuard(config["server_url"], config["token"], __version__)
+        guard.start()   # localhost HTTP server for the browser extension
+        agent = Agent(backend, config["server_url"], config["token"], config.get("poll_seconds", 5),
+                      browser_guard=guard)
+    except Exception:
+        log.exception("startup failed — see %s", LOG_PATH)
+        raise
     agent.run_forever()
 
 

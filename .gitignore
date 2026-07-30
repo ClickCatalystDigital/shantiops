@@ -13,3 +13,5 @@ agent/sim_events.txt
 agent/dist
 agent/build
 agent/Output
+agent/agent.log
+agent/config.json
