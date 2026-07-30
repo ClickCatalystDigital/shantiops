@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { queryOne } from '@/lib/db';
-import { signToken, COOKIE_OPTS } from '@/lib/auth';
+import { signToken, COOKIE_OPTS, postLoginHome } from '@/lib/auth';
 
 export async function POST(req) {
   const { username, password } = await req.json();
@@ -15,7 +15,10 @@ export async function POST(req) {
   if (user.pending) {
     return NextResponse.json({ error: 'Your account is awaiting approval' }, { status: 403 });
   }
-  const res = NextResponse.json({ ok: true, role: user.role });
+  // `home` so the client lands on the right tab directly — Production runs its day off the
+  // calendar, everyone else keeps '/'. postLoginHome reads users.departments, which signToken
+  // parses into the JWT, so it's the same source of truth the nav uses.
+  const res = NextResponse.json({ ok: true, role: user.role, home: postLoginHome(user) });
   res.cookies.set(COOKIE_OPTS.name, signToken(user), COOKIE_OPTS);
   return res;
 }

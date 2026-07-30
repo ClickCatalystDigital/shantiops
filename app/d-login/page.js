@@ -103,8 +103,8 @@ function LoginContent() {
     setBusy(true);
     setError('');
     try {
-      await api('/api/login', { method: 'POST', body: form });
-      router.push('/');
+      const { home } = await api('/api/login', { method: 'POST', body: form });
+      router.push(home || '/');
       router.refresh();
     } catch (err) {
       setError(err.message);

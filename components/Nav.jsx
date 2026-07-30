@@ -6,6 +6,7 @@ import { usePathname, useSearchParams, useRouter } from 'next/navigation';
 import {
   SunIcon, MoonIcon, SettingsIcon, LogOutIcon, LayoutGridIcon, BarChart3Icon,
   LayoutDashboardIcon, FolderKanbanIcon, PackageIcon, ShieldCheckIcon, InfoIcon,
+  CalendarDaysIcon, HardHatIcon,
 } from 'lucide-react';
 import { DEPARTMENTS } from '@/lib/milestones';
 import { cn } from '@/lib/utils';
@@ -28,6 +29,9 @@ export default function Nav({ user }) {
   // Departments the user can browse: PM → all; head → their granted list. Packing lives under Dispatch.
   const accessibleDepts = isPMUser ? DEPARTMENTS : departments;
   const activeDept = searchParams.get('dept');
+  // Production's own tabs — strictly its members. A PM has no departments, so never sees them;
+  // the pages enforce the same rule server-side via inDepartment() in lib/auth.
+  const inProduction = departments.includes('Production');
 
   // Primary tabs (top bar on desktop, bottom bar on mobile). No Packing tab — it's Dispatch-scoped.
   const LINKS = isPMUser
@@ -38,9 +42,11 @@ export default function Nav({ user }) {
         { href: '/approvals', label: 'Approvals', icon: ShieldCheckIcon },
       ]
     : [
+        ...(inProduction ? [{ href: '/production', label: 'Today', icon: CalendarDaysIcon }] : []),
         ...(departments.length > 1 ? departments.map(d => ({ href: `/?dept=${d}`, label: d, dept: d, icon: LayoutGridIcon })) : []),
         { href: '/', label: 'Operations', icon: LayoutDashboardIcon },
         { href: '/projects', label: 'Projects', icon: FolderKanbanIcon },
+        ...(inProduction ? [{ href: '/production/workers', label: 'Workers', icon: HardHatIcon }] : []),
       ];
 
   const isActive = l => (l.dept ? pathname === '/' && activeDept === l.dept : pathname === l.href && !activeDept);
