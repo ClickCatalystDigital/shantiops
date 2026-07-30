@@ -44,7 +44,7 @@ export default function Nav({ user }) {
         { href: '/tickets', label: 'Tickets', icon: TicketIcon },
       ]
     : [
-        ...(inProduction ? [{ href: '/production', label: 'Today', icon: CalendarDaysIcon }] : []),
+        ...(inProduction ? [{ href: '/production', label: 'Tasks', icon: CalendarDaysIcon }] : []),
         ...(departments.length > 1 ? departments.map(d => ({ href: `/?dept=${d}`, label: d, dept: d, icon: LayoutGridIcon })) : []),
         { href: '/', label: 'Operations', icon: LayoutDashboardIcon },
         { href: '/projects', label: 'Projects', icon: FolderKanbanIcon },
