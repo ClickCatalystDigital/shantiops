@@ -12,10 +12,16 @@ set of user accounts:
    blocks USB drives, CDs/DVDs, phones, and websites on employee machines until a manager approves,
    via the same dashboard.
 
-Everything in this file reflects the **current, working build** as of 2026-07-12 (post final
-pre-demo round: multi-project customer logins + "My Orders", role-aware `/help`, self-registration
-with an approval hierarchy + new `executive` role, the onboarding roster in Approvals → People, and
-extending the audit trail to the operations platform's core mutations — see §16).
+Everything in this file reflects the **current, working build** as of 2026-07-30 (post: QC test
+records — the first department-specific module built for QC instead of a generic milestone list
+(§5b); a self-service device-setup gate that blocks a functional head's login until their machine
+is enrolled, no admin file-relay needed (§2a); contextual "i" help popovers in Approvals reusing
+the `/help` content (§2b); the Chrome extension actually published and force-install wired (§14);
+and a `CardHeader`/`CardAction` layout bug fixed across five components — see §18 before adding a
+title-row action anywhere). Previous round: multi-project customer logins + "My Orders", role-aware
+`/help`, self-registration with an approval hierarchy + new `executive` role, the onboarding roster
+in Approvals → People, and extending the audit trail to the operations platform's core mutations —
+see §16.
 
 ---
 
@@ -100,8 +106,19 @@ approval category.
   Approve or Reject.
 - **Onboarding Roster** — closes the gap noted in the old §13: every internal person (not just
   already-enrolled machines) shows with a derived status — online / enrolled-offline / enroll-file-
-  sent / no machine yet — and admin/executive can register a machine + download its enroll file
-  right there, so approve → register → enroll-file is one screen instead of three.
+  sent / no machine yet — and admin/executive can register a machine, then get **both** an Enroll
+  file button and an Installer button (public GitHub release asset) right there. Neither downloads
+  anything for the employee — see the gate below for how they actually get set up.
+
+**Self-service device-setup gate** (`app/layout.js`, `components/DeviceSetupGate.jsx`): once a PM
+registers a functional head's machine, that head is on their own — the admin never sends files. The
+*next* time that head logs in, the root layout checks `lib/data.js`'s `getMyMachine()`; if their
+machine has no `enrolled_at` **and** no `last_seen`, the entire app is replaced with a blocking
+"Welcome to SB Ops" screen showing their Enroll file + Installer downloads and plain-language setup
+steps — no Nav, no other route reachable, just a logout escape hatch. It polls every 5s and unlocks
+itself the instant the agent's first check-in lands. Scoped to the `operator` role only — PMs are
+deliberately never gated, since they're the ones who have to register a head's machine in the first
+place; gating them too would be a lockout with no way out.
 
 ## 2b. Help — role-aware guide
 
@@ -117,6 +134,12 @@ The once-empty Engineering department view is now a real workspace: the **Master
 Engineering owns the item definitions, and Procurement / Stores / Production each edit only the
 columns their department owns. The Operations page shows BOM-owning heads a "Master BOM" card
 (projects with missing BOMs or open items) alongside the milestone attention list.
+
+**Contextual help, without leaving the page** (`components/InfoPopover.jsx`): Approvals → People
+(Onboarding Roster) and Approvals → Devices (Pending Approvals) each carry a small "i" button —
+`CardAction` in the card header — opening a popover with the exact walkthrough for that screen
+(onboarding steps, OTP approval steps), pulled from the *same* `PM_GUIDE` array `/help` renders.
+One content source, two places it surfaces; adding a step to the guide updates both automatically.
 
 ## 3. Operations view (daily execution)
 
@@ -233,6 +256,16 @@ The Dispatch department board: **Pending → Ready → Dispatched**. BOM-driven 
    SB-IBR-1018 layout (company header, buyer/invoice/DC block, item table, 7-day declaration,
    Stores/Production/QC/Management sign-off). A separate **Pending-list PDF** exports unpacked lines.
 
+## 5b. QC test records
+
+QC used to get nothing but the generic milestone list every other department gets — this closes
+that gap. A project-scoped, QC-owned log (`qc_records` table, `components/QcPanel.jsx`, rendered
+only on the QC department tab): test type (hydro test, radiography/NDE, material test certificate,
+or freeform), reference/cert number, inspector, test date, notes, and a pending/pass/fail result
+QC can flip inline. Whole-row department ownership like `packing_lists` — no field-level split
+like the BOM's, since no other department writes part of a QC record. Full CRUD
+(`app/api/qc-records/*`) gated to QC + PM, audited the same as everything else.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own
@@ -251,6 +284,7 @@ projects ──< milestones                         (flat — design → commiss
 projects ──< bom_items                           (the Master BOM — §5a)
 projects ──< bom_imports                         (one row per PMB upload: revision + the original .xlsx BLOB)
 projects ──< packing_lists ──< packing_items     (packing_items.bom_item_id → bom_items, reconciliation)
+projects ──< qc_records                          (§5b — QC-owned test log, one row per test)
 users (role + departments CSV + project_ids CSV [customer scoping, one-or-more] + pending flag)
 ```
 
@@ -272,8 +306,8 @@ Dependency graph / auto critical-path (`depends_on_key` column in place), an **a
 uploads (the PMB blob in §5a is the only stored file — there is still no general document store),
 barcode/QR validation at dispatch, email/WhatsApp notifications, and the §5a "deliberately not
 built" list (drawings/IBR document management, BOM release workflow, Excel export, in-app BOM
-authoring, supplier analytics). QC, Installation and Design still just get their milestone list;
-Procurement/Stores/Production now also get the Master BOM.
+authoring, supplier analytics). Installation and Design still just get their milestone list; QC now
+has its own test-record module (§5b); Procurement/Stores/Production have the Master BOM.
 
 ---
 
@@ -434,8 +468,10 @@ file download.
   (unlisted visibility is fine) — this is a manual, external step gated on Google's review (days).
   Once published, note the extension ID and set `#define ExtensionId "..."` in `installer.iss`,
   then tag a release — CI rebuilds the installer with the force-install registry keys now active.
-  **This step was not done as of this writing** — the extension currently only works loaded
-  unpacked (developer mode), which is test-grade, not enforced.
+  **Done** — published (`olhkhmeombmmgobcdmhojnngolecijcc`), wired into `installer.iss`, and built
+  into the `v1.2.1` GitHub Release with force-install active. Still only verified on macOS via
+  `--simulate` (agent) and unpacked-extension testing — the actual force-install / can't-be-disabled
+  behavior needs a real Windows machine to confirm, never yet done.
 - Full runbook: **[docs/SETUP.md](docs/SETUP.md)**.
 
 ## 15. Auto-update
@@ -516,6 +552,11 @@ hierarchy + audit trail was judged sufficient; revisit if that proves too light.
 - **UI: Tailwind CSS v4 + shadcn/ui** (radix primitives in `components/ui/`). Theme tokens (premium
   palette + status colors) live in `app/globals.css`; dark mode via the `[data-theme="dark"]` toggle
   in `components/Nav.jsx`. Toasts via `sonner` (`showToast` in `lib/client.js` wraps it).
+  **Gotcha, already hit once:** `CardHeader`'s base class is `display: grid`; a `className="flex-row
+  items-center justify-between"` override has zero effect (grid ignores flex properties), so a
+  trailing action silently stacks under the title instead of sitting beside it. Use `CardAction`
+  (already exported from `components/ui/card.jsx`, triggers a `grid-cols-[1fr_auto]` rule) for any
+  title-row action — don't reach for the flex override again.
 - **Responsive layout:** the content column is defined once — an unlayered `.container` rule in
   `app/globals.css` (centered, `max-width: 1760px`, fluid `clamp` padding) — so it's balanced on a
   1920 monitor (symmetric gutters) and comfortable on mobile. **Mobile is app-like:** desktop
@@ -537,18 +578,27 @@ hierarchy + audit trail was judged sufficient; revisit if that proves too light.
 `pmb.mjs` (PMB Excel parser + its `pmb-selfcheck.mjs`), `bom-fields.mjs` (BOM field ownership —
 pure data, importable client-side), `usb.js` (device approval domain logic, shared primitives),
 `browser.js` (domain normalize/match), `enroll.js` (enrollment codes + rate limit).
-`app/` — pages + API routes, including `api/agent/*` (Bearer-agent), `api/usb/*` and
-`api/browser/*` (session-cookie, PM-gated).
+`app/` — pages + API routes, including `api/agent/*` (Bearer-agent), `api/usb/*`, `api/browser/*`
+(session-cookie, PM-gated), and `api/qc-records/*` (§5b, QC + PM-gated). `app/layout.js` is also
+where the device-setup gate lives (see §2a) — every page renders through it.
 `components/` — nav, project/milestone/packing UI, settings forms, `DevicesPanel` /
-`BrowserPanel` / `PeoplePanel` / `TotpSetup` for the Approvals tab, `help-content.jsx` (the
-role-aware `/help` guide content — plain data, no CMS).
-`components/ui/` — shadcn primitives.
+`BrowserPanel` / `PeoplePanel` / `TotpSetup` for the Approvals tab, `QcPanel.jsx` (§5b),
+`DeviceSetupGate.jsx` (§2a), `InfoPopover.jsx` (§2b, contextual help), `help-content.jsx` (the
+role-aware `/help` guide content — plain data, no CMS, also feeds `InfoPopover`).
+`components/ui/` — shadcn primitives, including `popover.jsx` (added this round, same
+`radix-ui` unified-import pattern as the rest).
 `agent/` — the Python Windows agent, its Inno Setup installer, and its own
 [README](agent/README.md) (build/test commands, deeper technical detail than this file).
-`extension/` — the Chrome/Edge MV3 browser-policy extension.
+`extension/` — the Chrome/Edge MV3 browser-policy extension. Published — see §14.
 `docs/` — [SETUP.md](docs/SETUP.md) (go-live checklist/runbook),
 [v4-zoho-mail-brainstorm.md](docs/v4-zoho-mail-brainstorm.md) (future milestone framing),
-`Device-Agent-Install-Guide.docx` (non-technical employee install guide).
+[extension-onboarding-status.md](docs/extension-onboarding-status.md) (plain-language Windows
+onboarding steps, generic enough to hand to a PM), `Device-Agent-Install-Guide.docx` (non-technical
+employee install guide).
+`public/fee.html` — a **standalone, self-contained client pricing proposal**, unrelated to the app
+itself. Deliberately not linked from anywhere in the UI — reached only by typing the URL directly.
+Has its own embedded fonts/styling and doesn't share the app's design system. Don't delete it as
+"unused"; it's live business material.
 
 ## 20. Run
 
