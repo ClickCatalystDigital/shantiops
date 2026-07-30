@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { getSessionUser, isCustomer, isPM, roleHome } from '@/lib/auth';
+import { getSessionUser, isCustomer, isHead, isPM, roleHome } from '@/lib/auth';
 import { getUsbDashboard, getBrowserDashboard, getFunctionalHeads, getPeopleDashboard } from '@/lib/data';
 import PageHeader from '@/components/PageHeader';
 import DevicesPanel from '@/components/DevicesPanel';
@@ -16,7 +16,7 @@ function ComingSoon({ text }) {
 
 export default async function ApprovalsPage() {
   const user = getSessionUser();
-  if (isCustomer(user)) redirect(roleHome(user));
+  if (isCustomer(user) || isHead(user)) redirect(roleHome(user));
 
   const [data, browser] = await Promise.all([getUsbDashboard(user), getBrowserDashboard(user)]);
   const employees = isPM(user) ? await getFunctionalHeads() : null;

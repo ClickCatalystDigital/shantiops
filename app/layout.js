@@ -3,7 +3,7 @@ import Nav from '@/components/Nav';
 import DeviceSetupGate from '@/components/DeviceSetupGate';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { getSessionUser, isInternal, isHead } from '@/lib/auth';
+import { getSessionUser, isInternal, isHead, isDemoUser } from '@/lib/auth';
 import { getMyMachine } from '@/lib/data';
 
 export const metadata = {
@@ -19,7 +19,7 @@ export default async function RootLayout({ children }) {
   // Functional heads only (§ operator role) — PMs must be able to log in unblocked, since
   // they're the ones who register a head's machine in the first place.
   const machine = isHead(user) ? await getMyMachine(user.id) : null;
-  const needsDeviceSetup = isHead(user) && !(machine?.enrolled_at || machine?.last_seen);
+  const needsDeviceSetup = isHead(user) && !isDemoUser(user) && !(machine?.enrolled_at || machine?.last_seen);
 
   return (
     <html lang="en" suppressHydrationWarning>

@@ -1,4 +1,5 @@
-// app/login/page.js
+// app/login/page.js — production sign-in page. No demo picker here; see
+// app/d-login/page.js for the internal demo-account picker.
 
 'use client';
 
@@ -11,49 +12,14 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
-import { Loader2Icon, Users, Factory, UserCircle, KeyRound, CheckIcon, UserPlusIcon, Cloud } from 'lucide-react';
+import { Loader2Icon, UserPlusIcon } from 'lucide-react';
 import { DEPARTMENTS } from '@/lib/milestones';
-
-const DEMO_GROUPS = [
-  {
-    label: 'Demo Accounts',
-    icon: Users,
-    accounts: ['manager', 'executive'],
-  },
-  {
-    label: 'Department Heads',
-    icon: Factory,
-    accounts: [
-      'design_head',
-      'engg_head',
-      'procurement_head',
-      'stores_head',
-      'production_head',
-      'qc_head',
-      'dispatch_head',
-      'installation_head',
-    ],
-  },
-  {
-    label: 'Customers',
-    icon: UserCircle,
-    accounts: ['asian_brown', 'hkm_charitable', 'virchow_biotech'],
-  },
-];
-
-function labelize(username) {
-  return username
-    .split('_')
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' ');
-}
 
 export default function Login() {
   const router = useRouter();
   const [form, setForm] = useState({ username: '', password: '' });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [selected, setSelected] = useState('');
 
   async function submit(e) {
     e.preventDefault();
@@ -69,112 +35,49 @@ export default function Login() {
     }
   }
 
-  function fillDemo(username) {
-    setForm({ username, password: `${username}123` });
-    setSelected(username);
-    setError('');
-  }
-
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-muted/40 to-background p-4">
-      <div className="flex w-full max-w-4xl flex-col items-stretch justify-center gap-6 lg:flex-row">
-        {/* LOGIN CARD — unchanged */}
-        <Card className="w-full max-w-sm shadow-lg lg:mx-auto">
-          <CardHeader className="items-center text-center">
-            <div className="flex items-center justify-center gap-2">
-              <img
-                src="/logo.svg"
-                alt=""
-                aria-hidden
-                className="size-9 md:size-10"
-                onError={(e) => {
-                  e.currentTarget.style.display = "none";
-                }}
-              />
+      <Card className="w-full max-w-sm shadow-lg">
+        <CardHeader className="items-center text-center">
+          <div className="flex items-center justify-center gap-2">
+            <img
+              src="/logo.svg"
+              alt=""
+              aria-hidden
+              className="size-9 md:size-10"
+              onError={(e) => {
+                e.currentTarget.style.display = "none";
+              }}
+            />
 
-              <h1 className="text-2xl font-bold tracking-tight">
-                <span className="text-muted-foreground">SB</span><span className="text-primary">OPS</span>
-              </h1>
+            <h1 className="text-2xl font-bold tracking-tight">
+              <span className="text-muted-foreground">SB</span><span className="text-primary">OPS</span>
+            </h1>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={submit} className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="username">Username</Label>
+              <Input id="username" autoFocus value={form.username}
+                onChange={e => setForm({ ...form, username: e.target.value })} />
             </div>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={submit} className="flex flex-col gap-4">
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="username">Username</Label>
-                <Input id="username" autoFocus value={form.username}
-                  onChange={e => setForm({ ...form, username: e.target.value })} />
-              </div>
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="password">Password</Label>
-                <Input id="password" type="password" value={form.password}
-                  onChange={e => setForm({ ...form, password: e.target.value })} />
-              </div>
-              {error && (
-                <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>
-              )}
-              <Button type="submit" disabled={busy} className="w-full">
-                {busy && <Loader2Icon className="animate-spin" data-icon="inline-start" />}
-                {busy ? 'Signing in…' : 'Sign In'}
-              </Button>
-            </form>
-          </CardContent>
-          <RequestAccess />
-        </Card>
-
-        {/* DEMO ACCOUNTS PANEL */}
-        <Card className="w-full max-w-sm shadow-lg lg:mx-auto">
-          <CardHeader className="pb-2">
-            <div className="flex items-center gap-2">
-              <KeyRound className="size-4 text-muted-foreground" />
-              <h2 className="text-sm font-semibold tracking-tight">Demo Logins</h2>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="password">Password</Label>
+              <Input id="password" type="password" value={form.password}
+                onChange={e => setForm({ ...form, password: e.target.value })} />
             </div>
-            <p className="text-xs text-muted-foreground">
-              Tap a name to auto-fill the form on the left.
-            </p>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            {DEMO_GROUPS.map(({ label, icon: Icon, accounts }) => (
-              <div key={label} className="flex flex-col gap-2">
-                <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                  <Icon className="size-3.5" />
-                  <span>{label}</span>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  {accounts.map((username) => {
-                    const isSelected = selected === username;
-                    return (
-                      <button
-                        key={username}
-                        type="button"
-                        onClick={() => fillDemo(username)}
-                        className={`flex items-center justify-between gap-1 rounded-md border px-2.5 py-1.5 text-left text-xs font-medium transition-colors
-                          ${isSelected
-                            ? 'border-primary bg-primary/10 text-primary'
-                            : 'border-input bg-background hover:bg-muted'
-                          }`}
-                      >
-                        <span className="truncate">{labelize(username)}</span>
-                        {isSelected && <CheckIcon className="size-3.5 shrink-0" />}
-                      </button>
-                    );
-                  })}
-                  {label === 'Demo Accounts' && (
-                    <a
-                      href="/cloud-storage-pricing.html"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center justify-between gap-1 rounded-md border border-input bg-background px-2.5 py-1.5 text-left text-xs font-medium transition-colors hover:bg-muted"
-                    >
-                      <span className="truncate">Cloud Storage</span>
-                      <Cloud className="size-3.5 shrink-0" />
-                    </a>
-                  )}
-                </div>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      </div>
+            {error && (
+              <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>
+            )}
+            <Button type="submit" disabled={busy} className="w-full">
+              {busy && <Loader2Icon className="animate-spin" data-icon="inline-start" />}
+              {busy ? 'Signing in…' : 'Sign In'}
+            </Button>
+          </form>
+        </CardContent>
+        <RequestAccess />
+      </Card>
     </div>
   );
 }

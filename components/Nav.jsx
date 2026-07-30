@@ -41,7 +41,6 @@ export default function Nav({ user }) {
         ...(departments.length > 1 ? departments.map(d => ({ href: `/?dept=${d}`, label: d, dept: d, icon: LayoutGridIcon })) : []),
         { href: '/', label: 'Operations', icon: LayoutDashboardIcon },
         { href: '/projects', label: 'Projects', icon: FolderKanbanIcon },
-        { href: '/approvals', label: 'Approvals', icon: ShieldCheckIcon },
       ];
 
   const isActive = l => (l.dept ? pathname === '/' && activeDept === l.dept : pathname === l.href && !activeDept);
