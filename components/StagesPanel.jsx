@@ -10,7 +10,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, showToast } from '@/lib/client';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from './ui/tabs';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -42,13 +42,17 @@ export default function StagesPanel({
 
   return (
     <Card>
-      <CardHeader><CardTitle>Stages — {department}</CardTitle></CardHeader>
-      <CardContent>
-        <Tabs value={tab} onValueChange={setTab} className="flex-col gap-4">
-          <TabsList>
-            <TabsTrigger value="kanban">Kanban</TabsTrigger>
-            {canManage && <TabsTrigger value="manage">Manage</TabsTrigger>}
-          </TabsList>
+      <Tabs value={tab} onValueChange={setTab} className="contents">
+        <CardHeader>
+          <CardTitle>Stages — {department}</CardTitle>
+          <CardAction>
+            <TabsList>
+              <TabsTrigger value="kanban">Kanban</TabsTrigger>
+              {canManage && <TabsTrigger value="manage">Manage</TabsTrigger>}
+            </TabsList>
+          </CardAction>
+        </CardHeader>
+        <CardContent>
           <TabsContent value="kanban">
             <Kanban stages={stages} onMove={move} />
           </TabsContent>
@@ -58,8 +62,8 @@ export default function StagesPanel({
                 stageTemplates={stageTemplates} stageTemplateItems={stageTemplateItems} router={router} />
             </TabsContent>
           )}
-        </Tabs>
-      </CardContent>
+        </CardContent>
+      </Tabs>
     </Card>
   );
 }
