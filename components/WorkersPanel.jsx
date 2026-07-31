@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, showToast } from '@/lib/client';
+import { formatDate } from '@/lib/format';
+import { todayISO } from '@/lib/date';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,15 +23,19 @@ import { PlusIcon } from 'lucide-react';
 
 export default function WorkersPanel({ date, sheet, workers, projects }) {
   return (
-    <Tabs defaultValue="sheet" className="flex-col gap-4">
+    <Tabs defaultValue="home" className="flex-col gap-4">
       {/* flex-col + the border-b wrapper: the ui component's data-horizontal variant relies on a
           shadcn CSS import this repo doesn't use (same note as ProjectDepartmentTabs). */}
       <div className="overflow-x-auto border-b">
         <TabsList variant="line" className="w-max justify-start px-0">
+          <TabsTrigger value="home" className="flex-none px-3 py-2">Home</TabsTrigger>
           <TabsTrigger value="sheet" className="flex-none px-3 py-2">Daily sheet</TabsTrigger>
           <TabsTrigger value="roster" className="flex-none px-3 py-2">Workers roster</TabsTrigger>
         </TabsList>
       </div>
+      <TabsContent value="home">
+        <WorkersHome date={date} sheet={sheet} />
+      </TabsContent>
       <TabsContent value="sheet">
         <DailySheet date={date} rows={sheet} projects={projects} />
       </TabsContent>
@@ -37,6 +43,37 @@ export default function WorkersPanel({ date, sheet, workers, projects }) {
         <Roster workers={workers} />
       </TabsContent>
     </Tabs>
+  );
+}
+
+/* ---------------- Home ---------------- */
+
+// Headcount + today's attendance only — real numbers straight off the daily sheet, nothing
+// invented. No capacity/idle-time metrics: those need instrumentation this app doesn't have yet.
+function WorkersHome({ date, sheet }) {
+  const headcount = sheet.length;
+  const present = sheet.filter(r => r.status === 'present').length;
+  const half = sheet.filter(r => r.status === 'half').length;
+  const absent = sheet.filter(r => r.status === 'absent').length;
+  const unmarked = sheet.filter(r => !r.status).length;
+  const attendancePct = headcount ? Math.round(((present + half * 0.5) / headcount) * 100) : 0;
+  const attendanceLabel = date === todayISO() ? "Today's attendance" : `Attendance · ${formatDate(date)}`;
+
+  return (
+    <div className="grid gap-4 sm:grid-cols-2">
+      <Card><CardContent className="flex flex-col gap-1 py-6">
+        <span className="text-sm text-muted-foreground">Headcount</span>
+        <span className="text-3xl font-bold tnum">{headcount}</span>
+        <span className="text-xs text-muted-foreground">active workers</span>
+      </CardContent></Card>
+      <Card><CardContent className="flex flex-col gap-1 py-6">
+        <span className="text-sm text-muted-foreground">{attendanceLabel}</span>
+        <span className="text-3xl font-bold tnum">{headcount ? `${attendancePct}%` : '—'}</span>
+        <span className="text-xs text-muted-foreground tnum">
+          {present} present · {half} half day · {absent} absent · {unmarked} unmarked
+        </span>
+      </CardContent></Card>
+    </div>
   );
 }
 

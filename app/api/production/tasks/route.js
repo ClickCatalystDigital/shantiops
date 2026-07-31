@@ -1,15 +1,19 @@
-// Production's ad-hoc tasks — the ones on the Today calendar. Separate from milestones, which
-// are a fixed per-project template with no create path.
+// Ad-hoc tasks on the Tasks calendar — every department's own board now, not just Production's.
+// Separate from milestones, which are a fixed per-project template with no create path.
 import { NextResponse } from 'next/server';
 import { execute } from '@/lib/db';
-import { getSessionUser, requireDepartment } from '@/lib/auth';
+import { getSessionUser, isHead, headDepartments } from '@/lib/auth';
+import { DEPARTMENTS } from '@/lib/milestones';
 
 export async function POST(req) {
   const user = getSessionUser();
-  const denied = requireDepartment(user, 'Production');
-  if (denied) return denied;
-
   const b = await req.json();
+  // Head-only surface, same as the page gate (app/production/page.js) — PMs don't get a Tasks
+  // board, so canAccessDepartment (which lets them through) is deliberately not used here.
+  const department = isHead(user) && DEPARTMENTS.includes(b.department) && headDepartments(user).includes(b.department)
+    ? b.department : null;
+  if (!department) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+
   const title = String(b.title || '').trim();
   const dueDate = String(b.due_date || '').trim();
   if (!title) return NextResponse.json({ error: 'Task title is required' }, { status: 400 });
@@ -17,12 +21,12 @@ export async function POST(req) {
     return NextResponse.json({ error: 'A valid due date is required' }, { status: 400 });
   }
 
-  // department and created_by are server-set, never taken from the body. An unassigned task on a
-  // shared department board is one nobody owns, so it falls back to whoever created it.
+  // created_by is server-set, never taken from the body. An unassigned task on a shared
+  // department board is one nobody owns, so it falls back to whoever created it.
   const { lastId } = await execute(
     `INSERT INTO tasks (title, due_date, department, assigned_to, created_by)
-     VALUES (?, ?, 'Production', ?, ?)`,
-    [title, dueDate, String(b.assigned_to || '').trim() || user.username, user.username]
+     VALUES (?, ?, ?, ?, ?)`,
+    [title, dueDate, department, String(b.assigned_to || '').trim() || user.username, user.username]
   );
   return NextResponse.json({ id: Number(lastId) });
 }

@@ -30,16 +30,23 @@ const KIND_TONE = {
   request: 'bg-warning/10 text-warning ring-warning/20',
 };
 
-function RaiseTicketDialog({ department, projectId, router }) {
+function RaiseTicketDialog({ department, projectId, milestones, router }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [form, setForm] = useState({ kind: 'request', to_department: '', title: '', body: '', due_date: '' });
+  const [form, setForm] = useState({ kind: 'request', to_department: '', milestone_id: '', title: '', body: '', due_date: '' });
 
   function set(field) { return e => setForm(f => ({ ...f, [field]: e.target.value })); }
+
+  // Rework targets a specific milestone in the receiving department — only offerable when we're
+  // on a project (a milestone selector with no project to scope it to is meaningless), and its
+  // options narrow to whichever department the ticket is currently addressed to.
+  const canRework = !!projectId;
+  const reworkOptions = (milestones || []).filter(m => m.department === form.to_department);
 
   async function submit() {
     if (!form.title.trim()) return showToast('Title is required', 'error');
     if (!form.to_department) return showToast('Pick a department', 'error');
+    if (form.kind === 'rework' && !form.milestone_id) return showToast('Pick the milestone this rework is about', 'error');
     setBusy(true);
     try {
       await api('/api/tickets', {
@@ -47,7 +54,7 @@ function RaiseTicketDialog({ department, projectId, router }) {
         body: { ...form, from_department: department || undefined, project_id: projectId || undefined },
       });
       showToast('Ticket raised');
-      setForm({ kind: 'request', to_department: '', title: '', body: '', due_date: '' });
+      setForm({ kind: 'request', to_department: '', milestone_id: '', title: '', body: '', due_date: '' });
       setOpen(false);
       router.refresh();
     } catch (err) { showToast(err.message, 'error'); }
@@ -65,17 +72,19 @@ function RaiseTicketDialog({ department, projectId, router }) {
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
               <Label>Kind</Label>
-              <Select value={form.kind} onValueChange={v => setForm(f => ({ ...f, kind: v }))}>
+              <Select value={form.kind}
+                onValueChange={v => setForm(f => ({ ...f, kind: v, milestone_id: v === 'rework' ? f.milestone_id : '' }))}>
                 <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="request">Request</SelectItem>
-                  <SelectItem value="rework">Rework</SelectItem>
+                  {canRework && <SelectItem value="rework">Rework</SelectItem>}
                 </SelectContent>
               </Select>
             </div>
             <div className="flex flex-col gap-1.5">
               <Label>To department</Label>
-              <Select value={form.to_department} onValueChange={v => setForm(f => ({ ...f, to_department: v }))}>
+              <Select value={form.to_department}
+                onValueChange={v => setForm(f => ({ ...f, to_department: v, milestone_id: '' }))}>
                 <SelectTrigger className="w-full"><SelectValue placeholder="Choose…" /></SelectTrigger>
                 <SelectContent>
                   {DEPARTMENTS.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
@@ -83,6 +92,20 @@ function RaiseTicketDialog({ department, projectId, router }) {
               </Select>
             </div>
           </div>
+          {form.kind === 'rework' && (
+            <div className="flex flex-col gap-1.5">
+              <Label>Milestone</Label>
+              <Select value={form.milestone_id} disabled={!form.to_department}
+                onValueChange={v => setForm(f => ({ ...f, milestone_id: v }))}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder={form.to_department ? 'Which milestone?' : 'Pick a department first'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {reworkOptions.map(m => <SelectItem key={m.id} value={String(m.id)}>{m.milestone_label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div className="flex flex-col gap-1.5">
             <Label>Title</Label>
             <Input value={form.title} onChange={set('title')} placeholder="Short summary" />
@@ -105,7 +128,7 @@ function RaiseTicketDialog({ department, projectId, router }) {
 }
 
 export default function TicketsPanel({
-  tickets = [], department = null, projectId = null, canRaise = false, showDepartment = false,
+  tickets = [], department = null, projectId = null, milestones = [], canRaise = false, showDepartment = false,
   title = 'Tickets',
 }) {
   const router = useRouter();
@@ -123,7 +146,7 @@ export default function TicketsPanel({
       <CardHeader>
         <CardTitle>{title}</CardTitle>
         {canRaise && (
-          <CardAction><RaiseTicketDialog department={department} projectId={projectId} router={router} /></CardAction>
+          <CardAction><RaiseTicketDialog department={department} projectId={projectId} milestones={milestones} router={router} /></CardAction>
         )}
       </CardHeader>
       <CardContent className="flex flex-col divide-y">

@@ -1,9 +1,10 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { getMyWork, getBomWork } from '@/lib/data';
+import { getMyWork, getBomWork, getTickets, getStageBottlenecks, getWaitingList } from '@/lib/data';
 import { getSessionUser, isCustomer, isManager, isHead, headDepartments, canAccessDepartment, roleHome } from '@/lib/auth';
 import StatusBadge from '@/components/StatusBadge';
 import DispatchBoard from '@/components/DispatchBoard';
+import TicketsPanel from '@/components/TicketsPanel';
 import PageHeader from '@/components/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -29,7 +30,6 @@ export default async function Home({ searchParams }) {
   if (isHead(user) && headDepartments(user).length === 0) {
     return (
       <main className="container py-8">
-        <h1 className="mb-4 text-2xl font-bold tracking-tight">My Work</h1>
         <Card><CardContent className="py-10 text-center text-muted-foreground">
           No departments assigned yet — contact your PM.
         </CardContent></Card>
@@ -37,26 +37,42 @@ export default async function Home({ searchParams }) {
     );
   }
 
-  const deptFilter = searchParams?.dept || null;
+  // A ?dept= that this user has no business seeing (typed in, or linked from somewhere that
+  // shows a ticket touching a department they're not part of — e.g. the Tasks calendar) falls
+  // back to their own combined view instead of leaking that department's Waiting-on/tickets data.
+  const rawDeptFilter = searchParams?.dept || null;
+  const deptFilter = rawDeptFilter && canAccessDepartment(user, rawDeptFilter) ? rawDeptFilter : null;
   const manager = isManager(user);
+  // Tickets are department-scoped like the rest of Operations: whatever department(s) this view
+  // is currently showing. PMs get no ticket section here (cross-project oversight is deferred).
+  const deptsToShow = manager ? [] : (deptFilter ? [deptFilter] : headDepartments(user));
 
   // Dispatch department view = the packing board (§ "packing within department").
-  if (deptFilter === 'Dispatch' && canAccessDepartment(user, 'Dispatch')) {
+  if (deptFilter === 'Dispatch') {
+    const dispatchTickets = deptsToShow.length ? await getTickets({ department: 'Dispatch' }) : [];
     return (
       <main className="container flex flex-col gap-6 py-8">
         <PageHeader title="Packing &amp; Dispatch"
           description="Packing lists generated from each project's BOM — Pending → Ready → Dispatched." />
         <DispatchBoard />
+        {deptsToShow.length > 0 && <TicketsPanel department="Dispatch" tickets={dispatchTickets} canRaise />}
       </main>
     );
   }
 
   const groups = await getMyWork(user, deptFilter);
+  const ticketsByDept = deptsToShow.length
+    ? await Promise.all(deptsToShow.map(d => getTickets({ department: d })))
+    : [];
+  const bottlenecks = deptsToShow.includes('Production') ? await getStageBottlenecks('Production') : [];
+  const waitingByDept = deptsToShow.length
+    ? await Promise.all(deptsToShow.map(d => getWaitingList(d)))
+    : [];
   // Open Master-BOM work for BOM-owning departments (Engineering: missing BOMs; Procurement /
   // Stores / Production: items not yet closed). Fills the once-empty Engineering attention list.
   const bomWork = deptFilter && deptFilter !== 'Engineering' && !['Procurement', 'Stores', 'Production'].includes(deptFilter)
     ? [] : await getBomWork(user);
-  const title = deptFilter || (manager ? "Today's Factory" : 'My Work');
+  const title = deptFilter || (manager ? "Today's Factory" : null);
   const total = groups.reduce((a, g) => a + g.items.length, 0);
   const allItems = groups.flatMap(g => g.items);
   const chips = {
@@ -133,6 +149,52 @@ export default async function Home({ searchParams }) {
           ))}
         </div>
       )}
+
+      {bottlenecks.length > 0 && (
+        <Card>
+          <CardHeader className="py-4"><CardTitle className="text-base">Stuck in Production</CardTitle></CardHeader>
+          <CardContent className="flex flex-col divide-y pt-0">
+            {bottlenecks.map(b => (
+              <div key={b.label} className="flex items-center justify-between py-2.5 text-sm">
+                <span>{b.label}</span>
+                <span className="text-muted-foreground tnum">{b.count} project{b.count !== 1 ? 's' : ''}</span>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {deptsToShow.map((d, i) => {
+        const groups = Object.entries(waitingByDept[i]);
+        if (groups.length === 0) return null;
+        return (
+          <Card key={`waiting-${d}`}>
+            <CardHeader className="py-4"><CardTitle className="text-base">Waiting on — {d}</CardTitle></CardHeader>
+            <CardContent className="flex flex-col gap-3 pt-0">
+              {groups.map(([category, items]) => (
+                <div key={category}>
+                  <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    {category} · {items.length}
+                  </p>
+                  <div className="flex flex-col divide-y">
+                    {items.map(m => (
+                      <Link key={m.id} href={`/projects/${m.project_id}`}
+                        className="flex items-center gap-2 py-1.5 text-sm transition-colors hover:bg-muted/40 -mx-2 px-2 rounded">
+                        <span className="font-medium text-primary">{m.project_no}</span>
+                        <span className="truncate text-muted-foreground">{m.milestone_label}</span>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        );
+      })}
+
+      {deptsToShow.map((d, i) => (
+        <TicketsPanel key={d} title={d} department={d} canRaise tickets={ticketsByDept[i]} />
+      ))}
     </main>
   );
 }

@@ -36,8 +36,12 @@ otherwise it falls back to a local SQLite file. First run auto-seeds demo data.
 | `hkm_charitable` | `hkm_charitable123` | Customer — 3 orders (My Orders page) |
 | `virchow_biotech` | `virchow_biotech123` | Customer — 1 order |
 
-New accounts can self-register from the login page ("Request access") and need a manager/
-executive/admin approval before they can sign in — see SYSTEM.md §2a.
+New accounts can self-register from the login page ("Request access") as a **department head**
+(Project Manager accounts are created internally only) and need a manager/executive/admin approval
+before they can sign in — see SYSTEM.md §2a.
+
+The table above is the full demo-account picker at **`/d-login`** (password-gated, internal use —
+see SYSTEM.md §2c); `/login` itself is the plain sign-in page shown to real users.
 
 ## Other docs
 

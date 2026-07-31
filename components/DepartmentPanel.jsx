@@ -52,7 +52,7 @@ export default function DepartmentPanel({
 
       {/* Every department gets tickets, including Engineering/Stores who own no milestones —
           this is their home now instead of the old dead-end message. */}
-      <TicketsPanel department={department} projectId={projectId} tickets={deptTickets} canRaise={canRaiseTickets} />
+      <TicketsPanel department={department} projectId={projectId} milestones={milestones} tickets={deptTickets} canRaise={canRaiseTickets} />
     </div>
   );
 }

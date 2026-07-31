@@ -12,16 +12,23 @@ set of user accounts:
    blocks USB drives, CDs/DVDs, phones, and websites on employee machines until a manager approves,
    via the same dashboard.
 
-Everything in this file reflects the **current, working build** as of 2026-07-30 (post: QC test
-records — the first department-specific module built for QC instead of a generic milestone list
-(§5b); a self-service device-setup gate that blocks a functional head's login until their machine
-is enrolled, no admin file-relay needed (§2a); contextual "i" help popovers in Approvals reusing
-the `/help` content (§2b); the Chrome extension actually published and force-install wired (§14);
-and a `CardHeader`/`CardAction` layout bug fixed across five components — see §18 before adding a
-title-row action anywhere). Previous round: multi-project customer logins + "My Orders", role-aware
-`/help`, self-registration with an approval hierarchy + new `executive` role, the onboarding roster
-in Approvals → People, and extending the audit trail to the operations platform's core mutations —
-see §16.
+Everything in this file reflects the **current, working build** as of 2026-07-31 (post: a
+cross-department **Tickets + notification bell** system — automatic handoff tickets when a
+milestone closes, plus hand-raised rework/request tickets, an in-app bell with a subtle chime, and
+a Tickets tab + per-department panel (§3b); **Production's own Today calendar and Workers daily
+sheet**, a shop-floor view separate from the milestone tracker (§3a); the production **login page
+split** into a clean `/login` for real users and a password-gated `/d-login` demo picker, plus
+`DEMO_USERS` so demo accounts skip the device-setup gate (§2c); and self-registration **locked down
+to department heads only** — the "Project Manager" option is gone from both the form and the
+server (§2a)). Previous round: QC test records — the first department-specific module built for QC
+instead of a generic milestone list (§5b); a self-service device-setup gate that blocks a
+functional head's login until their machine is enrolled, no admin file-relay needed (§2a);
+contextual "i" help popovers in Approvals reusing the `/help` content (§2b); the Chrome extension
+actually published and force-install wired (§14); and a `CardHeader`/`CardAction` layout bug fixed
+across five components — see §18. Round before that: multi-project customer logins + "My Orders",
+role-aware `/help`, self-registration with an approval hierarchy + new `executive` role, the
+onboarding roster in Approvals → People, and extending the audit trail to the operations platform's
+core mutations — see §16.
 
 ---
 
@@ -91,8 +98,12 @@ all pre-approved (`pending: 0`).
 ## 2a. Onboarding & self-registration
 
 Anyone can request an account from the **login page** ("Request access") — no admin has to create
-it first. `POST /api/register` (public route) takes a display name, username, password, and either
-**Department Head** (+ which department(s)) or **Project Manager**; the row is inserted with
+it first. `POST /api/register` (public route) takes a display name, username, password, and one or
+more **departments**; the row is always created as a **department head** (`role: 'operator'`),
+never a PM. **Project Manager was removed as a self-registration option** — someone once
+self-registered as a PM, which grants full access with no device-setup gate at all. The form no
+longer offers the choice, and the server hardcodes `role = 'operator'` regardless of what's sent —
+PM accounts are created **internally only**, no public route makes one. The row is inserted with
 `pending = 1` and cannot log in (`/api/login` 403s with "awaiting approval") until approved.
 
 **Approval hierarchy** (`canApproveUser` in `lib/auth.js`): `admin`/`executive` approve anyone;
@@ -141,6 +152,20 @@ columns their department owns. The Operations page shows BOM-owning heads a "Mas
 (onboarding steps, OTP approval steps), pulled from the *same* `PM_GUIDE` array `/help` renders.
 One content source, two places it surfaces; adding a step to the guide updates both automatically.
 
+## 2c. Login pages & demo access
+
+`/login` is the plain production sign-in page — username/password + "Request access", nothing
+else. The full demo-account picker (tap a name to auto-fill, grouped by Demo/Heads/Customers) lives
+at **`/d-login`** instead, gated behind a throwaway password prompt (`app/d-login/page.js`'s
+`DemoGate` — `sessionStorage` + a fixed password). It's a speed bump, not real security — anyone
+reading the JS bundle can find it — but it keeps a wall of other people's demo credentials off the
+screen a real department head sees.
+
+**`DEMO_USERS`** (`lib/auth.js` `isDemoUser`, env-var CSV, e.g. `production_head,qc_head`) lets
+named accounts skip the device-setup gate (§2a) entirely, so a demo walkthrough never gets stuck on
+"your machine isn't registered yet." It's an env allowlist, not a DB column — unset it to remove
+the escape hatch completely.
+
 ## 3. Operations view (daily execution)
 
 - **Creating a project seeds its full milestone chain** (`createProjectMilestones` in `lib/db.js`,
@@ -186,6 +211,69 @@ The layout adapts to who's looking:
 `Not started` (gray) · `On track / In progress` (blue) · `Running late` (amber) · `Blocked` (red) ·
 `Closed` (green). Each milestone's colour merges its human status with its deadline automatically
 (`lib/sla.js`, `lib/delay.js`).
+
+## 3a. Production — Today calendar & Workers daily sheet
+
+Production runs its day off a calendar, not the milestone tracker, so it gets two tabs of its own
+(`components/Nav.jsx`, shown only to users `inDepartment(user, 'Production')` — a stricter check
+than `canAccessDepartment`, so a PM never sees these). Ported from the sibling project
+**savistar-ops**, adapted to this app's role model.
+
+- **Today** (`/production`, `components/ProductionToday.jsx`) — a month calendar merging two
+  sources per day: **milestones** whose `planned_end` falls that day (Production's own rows in the
+  existing `milestones` table) and **tasks** — a new lightweight `tasks` table
+  (`title, due_date, status, department, assigned_to`) for shop-floor to-dos that aren't part of
+  any project's milestone chain. Each day shows up to 3 pills + "+N more"; a "Today & overdue" rail
+  lists everything due today or late regardless of which day is selected. Tasks are created/closed
+  inline.
+- **Workers** (`/production/workers`, `components/WorkersPanel.jsx`) — a daily attendance +
+  work-assignment sheet for shop-floor workers who **never log in and have no `users` row**
+  (`workers` table: name, trade, department, never deleted, only deactivated). One row per worker
+  per day (`worker_days`, `UNIQUE(worker_id, date)`) — present/half/absent, optionally linked to a
+  project + milestone they worked on. The whole card saves as one idempotent upsert per worker per
+  day.
+- **Landing tab:** `roleHome`/`postLoginHome` (`lib/auth.js`) send a Production member to
+  `/production` after login instead of `/` — the only role-specific landing change; every other
+  role's post-login behavior is unchanged.
+
+## 3b. Tickets & notifications — cross-department handoff
+
+Closing a milestone used to leave the *next* department with no signal it was their turn, and
+Engineering/Stores (who own zero milestones — they work through the BOM) had no place in the
+handoff chain at all. This adds a Jira-lite ticket layer plus an in-app notification bell so
+nobody has to go looking.
+
+- **Automatic handoff:** closing the *last* milestone in a department's run (`lib/handoff.mjs`
+  `handoffTarget`, reading each project's own `milestones` rows ordered by `sort_order` — not the
+  static template, since a PM can reassign `department` per row) fires a `handoff` ticket to
+  whichever department the next milestone belongs to. Hooked into the **one** milestone write path
+  (`app/api/milestones/[id]/route.js` PATCH — both the drawer and the bulk-edit grid funnel through
+  it) by comparing before/after DB state, not the request body, so a bulk-grid edit that sends only
+  `actual_end` (no `status` field) still fires correctly. Idempotent via `tickets.source_key`
+  (`UNIQUE`, `INSERT OR IGNORE`) — reopening and reclosing a milestone never double-fires. A
+  notification failure never blocks the milestone save (wrapped in try/catch, logged as
+  `handoff_failed` in the audit trail).
+- **Hand-raised tickets:** any department can raise a `rework` (sent back) or `request` (direct
+  ask) ticket to any other department — this is how Engineering and Stores participate despite
+  owning no milestones. `POST /api/tickets`; `kind: 'handoff'` is rejected if a client sends it —
+  only the server ever creates those.
+- **Notifications** fan out one row per recipient (`notifications` table) to everyone in the
+  target department (`lib/tickets.js` `notifyDepartment`, matched via `parseDepartments` — PMs are
+  excluded by construction since their `departments` column is NULL, keeping oversight on
+  `/tickets` instead of training a PM to ignore a bell that fires on every project). The acting
+  user is excluded from their own notification.
+- **The bell** (`components/NotificationBell.jsx`, mounted in `Nav.jsx`) polls
+  `GET /api/notifications` every 20s with a plain `fetch` — deliberately not `router.refresh()`,
+  since Nav is mounted on every page and that would re-fetch every page's server data on a timer.
+  Chimes (`lib/beep.js`, WebAudio, no audio file committed) only when the unread count increases,
+  never on first load; the mute toggle persists to `localStorage.notifySound`.
+- **Two surfaces**, both reading the same `getTickets()` query: a top-level **Tickets** tab
+  (`/tickets`) for oversight — a PM sees every department in one list, a head sees one panel per
+  granted department — and a **Tickets card inside each department's project panel**
+  (`components/TicketsPanel.jsx`, wired into `DepartmentPanel.jsx`) where the work already lives.
+- **Deliberately deferred, not built yet:** overdue-ticket notifications and a mobile bottom-bar
+  fix for heads with several department tabs (Phase 2); showing tickets as a third source on the
+  Production Today calendar (Phase 3).
 
 ## 4. Executive view
 
@@ -285,6 +373,10 @@ projects ──< bom_items                           (the Master BOM — §5a)
 projects ──< bom_imports                         (one row per PMB upload: revision + the original .xlsx BLOB)
 projects ──< packing_lists ──< packing_items     (packing_items.bom_item_id → bom_items, reconciliation)
 projects ──< qc_records                          (§5b — QC-owned test log, one row per test)
+projects ──< tickets ──< notifications           (§3b — cross-department handoff; notifications fan out one row per recipient)
+milestones ──< tickets                           (optional link — a handoff ticket points at the milestone that triggered it)
+tasks                                            (§3a — Production's own to-dos, not tied to a project/milestone)
+workers ──< worker_days                          (§3a — shop-floor people with no users row; one attendance row per worker per day)
 users (role + departments CSV + project_ids CSV [customer scoping, one-or-more] + pending flag)
 ```
 
@@ -307,7 +399,9 @@ uploads (the PMB blob in §5a is the only stored file — there is still no gene
 barcode/QR validation at dispatch, email/WhatsApp notifications, and the §5a "deliberately not
 built" list (drawings/IBR document management, BOM release workflow, Excel export, in-app BOM
 authoring, supplier analytics). Installation and Design still just get their milestone list; QC now
-has its own test-record module (§5b); Procurement/Stores/Production have the Master BOM.
+has its own test-record module (§5b); Procurement/Stores/Production have the Master BOM. Tickets
+(§3b): overdue notifications and showing tickets on the Production Today calendar are scoped but
+not built (Phase 2/3).
 
 ---
 
@@ -577,14 +671,21 @@ hierarchy + audit trail was judged sufficient; revisit if that proves too light.
 `lib/` — db, auth, sla/delay engine, milestone taxonomy, data helpers, formatters, packing-pdf,
 `pmb.mjs` (PMB Excel parser + its `pmb-selfcheck.mjs`), `bom-fields.mjs` (BOM field ownership —
 pure data, importable client-side), `usb.js` (device approval domain logic, shared primitives),
-`browser.js` (domain normalize/match), `enroll.js` (enrollment codes + rate limit).
+`browser.js` (domain normalize/match), `enroll.js` (enrollment codes + rate limit), `date.js`
+(IST-pinned `todayISO`/`todayMonth`/`monthGridBounds` — see the IST gotcha in §18), `handoff.mjs` +
+`handoff.test.mjs` (§3b, the pure handoff rule + its `node --test`), `tickets.js` (§3b, ticket
+creation + notification fan-out), `beep.js` (§3b, WebAudio chime, no audio file).
 `app/` — pages + API routes, including `api/agent/*` (Bearer-agent), `api/usb/*`, `api/browser/*`
-(session-cookie, PM-gated), and `api/qc-records/*` (§5b, QC + PM-gated). `app/layout.js` is also
-where the device-setup gate lives (see §2a) — every page renders through it.
+(session-cookie, PM-gated), `api/qc-records/*` (§5b, QC + PM-gated), and `api/tickets/*` +
+`api/notifications` (§3b). `app/login/page.js` / `app/d-login/page.js` (§2c) are the production
+sign-in page and the gated demo picker; `app/production/*` (§3a, Today + Workers) and
+`app/tickets/*` (§3b) are gated by `inDepartment`/role checks, not raw route presence.
+`app/layout.js` is also where the device-setup gate lives (see §2a) — every page renders through it.
 `components/` — nav, project/milestone/packing UI, settings forms, `DevicesPanel` /
 `BrowserPanel` / `PeoplePanel` / `TotpSetup` for the Approvals tab, `QcPanel.jsx` (§5b),
 `DeviceSetupGate.jsx` (§2a), `InfoPopover.jsx` (§2b, contextual help), `help-content.jsx` (the
-role-aware `/help` guide content — plain data, no CMS, also feeds `InfoPopover`).
+role-aware `/help` guide content — plain data, no CMS, also feeds `InfoPopover`),
+`ProductionToday.jsx` / `WorkersPanel.jsx` (§3a), `NotificationBell.jsx` / `TicketsPanel.jsx` (§3b).
 `components/ui/` — shadcn primitives, including `popover.jsx` (added this round, same
 `radix-ui` unified-import pattern as the rest).
 `agent/` — the Python Windows agent, its Inno Setup installer, and its own

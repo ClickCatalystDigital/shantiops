@@ -2,7 +2,7 @@
 // never created here: they're server-generated only, from the milestones PATCH (lib/tickets.js
 // fireHandoff), so a client can never forge one.
 import { NextResponse } from 'next/server';
-import { execute } from '@/lib/db';
+import { execute, queryOne } from '@/lib/db';
 import { getSessionUser, isInternal, canAccessDepartment, headDepartments } from '@/lib/auth';
 import { DEPARTMENTS } from '@/lib/milestones';
 import { notifyDepartment } from '@/lib/tickets';
@@ -35,6 +35,19 @@ export async function POST(req) {
   const milestoneId = b.milestone_id ? Number(b.milestone_id) : null;
   const assignedTo = String(b.assigned_to || '').trim() || null;
   const body = String(b.body || '').trim() || null;
+
+  // A rework ticket must name the milestone it's about — resolving it later reopens exactly this
+  // milestone (app/api/tickets/[id]/route.js), so without a link there's nothing to reopen.
+  // Validated against the actual row, not trusted as a bare id: it must belong to this project and
+  // sit in the department the rework is addressed to.
+  if (kind === 'rework') {
+    if (!milestoneId) return NextResponse.json({ error: 'A milestone is required for rework' }, { status: 400 });
+    const milestone = await queryOne(
+      'SELECT id FROM milestones WHERE id = ? AND project_id = ? AND department = ?',
+      [milestoneId, projectId, toDept]
+    );
+    if (!milestone) return NextResponse.json({ error: 'Milestone does not match this project/department' }, { status: 400 });
+  }
 
   const { lastId } = await execute(
     `INSERT INTO tickets (kind, project_id, milestone_id, from_department, to_department,

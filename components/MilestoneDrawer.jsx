@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import StatusBadge from './StatusBadge';
 
 const STATUSES = ['pending', 'in_progress', 'done', 'blocked'];
 const FIELDS = ['assignee', 'department', 'status', 'planned_start', 'planned_end', 'actual_start',
@@ -118,7 +119,10 @@ export default function MilestoneDrawer({ milestone, head = false, onClose }) {
     <Sheet open onOpenChange={o => { if (!o) onClose(); }}>
       <SheetContent className="flex w-full flex-col gap-0 p-0 sm:max-w-md">
         <SheetHeader>
-          <SheetTitle>{milestone.milestone_label}</SheetTitle>
+          <div className="flex items-center gap-2">
+            <SheetTitle>{milestone.milestone_label}</SheetTitle>
+            <StatusBadge m={milestone} />
+          </div>
           <SheetDescription>{milestone.department} · {cat}</SheetDescription>
         </SheetHeader>
         {body}

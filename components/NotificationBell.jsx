@@ -67,23 +67,20 @@ export default function NotificationBell() {
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80 p-0">
-        <div className="flex items-center justify-between px-3 py-2.5">
-          <span className="text-sm font-medium">Notifications</span>
-          <div className="flex items-center gap-1">
-            <Button variant="ghost" size="icon-sm" aria-label={muted ? 'Unmute' : 'Mute'} onClick={toggleMute}>
-              {muted ? <BellOffIcon className="size-3.5" /> : <BellIcon className="size-3.5" />}
-            </Button>
-            {data.unread > 0 && (
-              <button onClick={markAllRead} className="text-xs text-primary hover:underline">Mark all read</button>
-            )}
-          </div>
+        <div className="flex items-center justify-end gap-1 px-3 py-2.5">
+          <Button variant="ghost" size="icon-sm" aria-label={muted ? 'Unmute' : 'Mute'} onClick={toggleMute}>
+            {muted ? <BellOffIcon className="size-3.5" /> : <BellIcon className="size-3.5" />}
+          </Button>
+          {data.unread > 0 && (
+            <button onClick={markAllRead} className="text-xs text-primary hover:underline">Mark all read</button>
+          )}
         </div>
         <div className="flex max-h-80 flex-col divide-y overflow-y-auto border-t">
           {data.items.length === 0 && (
             <p className="px-3 py-6 text-center text-sm text-muted-foreground">Nothing yet.</p>
           )}
           {data.items.map(n => (
-            <Link key={n.id} href={n.project_id ? `/projects/${n.project_id}` : '/tickets'}
+            <Link key={n.id} href={n.project_id ? `/projects/${n.project_id}` : '/notifications'}
               onClick={() => !n.read_at && markRead(n.id)}
               className={cn('flex items-start gap-2.5 px-3 py-2.5 text-left hover:bg-muted', !n.read_at && 'bg-accent/40')}>
               <div className="min-w-0 flex-1">
@@ -95,7 +92,7 @@ export default function NotificationBell() {
             </Link>
           ))}
         </div>
-        <Link href="/tickets" className="block px-3 py-2 text-center text-xs text-muted-foreground hover:bg-muted">
+        <Link href="/notifications" className="block px-3 py-2 text-center text-xs text-muted-foreground hover:bg-muted">
           View all
         </Link>
       </PopoverContent>
