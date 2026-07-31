@@ -10,6 +10,7 @@ import PackingPanel from './PackingPanel';
 import BomTable from './BomTable';
 import QcPanel from './QcPanel';
 import TicketsPanel from './TicketsPanel';
+import StagesPanel from './StagesPanel';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 
 const BOM_DEPARTMENTS = ['Procurement', 'Stores', 'Production'];
@@ -19,10 +20,12 @@ export default function DepartmentPanel({
   projectId, bom = [], pending = [], packingLists = [], canUploadBom = false, canPack = false,
   bomFields = [], bomImports = [], qcRecords = [], canEditQc = false,
   tasks = [], canRaiseTickets = false,
+  stages = [], stageTemplates = [], canManageStages = false,
 }) {
   const deptMs = milestones.filter(m => m.department === department);
   const showBom = BOM_DEPARTMENTS.includes(department) && bom.length > 0;
   const deptTasks = tasks.filter(t => t.department === department || t.from_department === department);
+  const deptStages = stages.filter(s => s.department === department);
 
   return (
     <div className="flex flex-col gap-6">
@@ -41,7 +44,13 @@ export default function DepartmentPanel({
         </Card>
       )}
 
-      {deptMs.length > 0 && <MilestoneBoard milestones={deptMs} head={head} />}
+      {deptMs.length > 0 && (
+        <>
+          <MilestoneBoard milestones={deptMs} head={head} />
+          <StagesPanel department={department} milestones={deptMs} stages={deptStages}
+            stageTemplates={stageTemplates} canManage={canManageStages} />
+        </>
+      )}
 
       {department === 'Dispatch' && (
         <PackingPanel projectId={projectId} pending={pending} packingLists={packingLists} canPack={canPack} />

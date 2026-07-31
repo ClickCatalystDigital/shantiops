@@ -1,5 +1,5 @@
 import { notFound, redirect } from 'next/navigation';
-import { getProjectDetail, getProjectBom, getProjectPackingLists, getBomRollup, getQcRecords, getProjectTasks } from '@/lib/data';
+import { getProjectDetail, getProjectBom, getProjectPackingLists, getBomRollup, getQcRecords, getProjectTasks, getProjectStages, getStageTemplates } from '@/lib/data';
 import { getSessionUser, isCustomer, isPM, isHead, headDepartments, canAccessDepartment, roleHome } from '@/lib/auth';
 import { DEPARTMENTS } from '@/lib/milestones';
 import { editableBomFields } from '@/lib/bom-fields.mjs';
@@ -24,6 +24,8 @@ export default async function ProjectDetail({ params }) {
   const bomRollup = await getBomRollup(params.id);
   const qcRecords = await getQcRecords(params.id);
   const tasks = await getProjectTasks(project.id);
+  const stages = await getProjectStages(project.id);
+  const stageTemplates = await getStageTemplates();
 
   const pm = isPM(user);
   const head = isHead(user);
@@ -45,6 +47,7 @@ export default async function ProjectDetail({ params }) {
     // is unconditionally true for every department, so a single flag matches the real permission
     // surface (no per-department map needed).
     tasks, canRaiseTickets: pm || head,
+    stages, stageTemplates, canManageStages: pm || head,
   };
 
   return (

@@ -13,18 +13,16 @@ set of user accounts:
    via the same dashboard.
 
 Everything in this file reflects the **current, working build** as of 2026-07-31. Most recent round:
-the standalone **`tickets` entity is gone** — collapsed into milestones + tasks + notifications (a
-cross-department signal now always fires a plain notification; the *state* lives on whichever real
-work object already existed — the receiving milestone for a handoff, a directly-reopened milestone
-for rework where one exists, or a `tasks` row for rework/requests aimed at Engineering/Stores, who
-own no milestones), verified every department's Tasks tab live (§3a/§3b); the Tasks nav tab is now
-labelled **"Home"** with no on-page header, and its rail is now called **"Tasks"**; and 5 demo
-accounts that had accidentally been granted multiple departments during earlier ad-hoc testing were
-reverted to one department each, matching README.md (§3a has the detail — this is what was producing
-extra, confusing nav tabs). Deeper history (the tickets-notification-bell round, the Tasks/Workers
-split, the login-page split, QC test records, multi-project customer logins, etc.) lives in `git log`
-now rather than repeated here — each is still documented in full in its own numbered section below,
-just not re-summarized at the top on every round.
+**Workflow Stages** (§3c) — a reusable, department-defined checklist layer *under* a milestone
+(Open → Current → Closed), generalized to every department and verified live end-to-end (add a
+stage, drag it across lanes, apply a template on a second project, auto-complete a milestone and
+watch the existing handoff notification fire downstream). This is the tagging layer §8 had parked,
+resolving whether Production's "7 named phases" are real or just prose — they can now be modeled as
+stages under Production's existing granular milestones, department by department, as each head
+actually defines them. Deeper history (the tickets-collapse round, the Tasks/Workers split, the
+login-page split, QC test records, multi-project customer logins, etc.) lives in `git log` now
+rather than repeated here — each is still documented in full in its own numbered section below, just
+not re-summarized at the top on every round.
 
 ---
 
@@ -362,6 +360,53 @@ milestone reopen — there's nothing to reopen.
   Closed swimlanes, auto-completing the milestone when all stages close) — discussed and scoped as a
   distinct follow-on, not started; see the plan notes from this session if picking it up.
 
+## 3c. Workflow Stages — a reusable checklist layer under a milestone
+
+Milestones stay the single workflow backbone (§3b) — Stages doesn't add a second hierarchy, it adds
+a finer-grained, optional layer *under* one milestone for departments whose real work inside a
+milestone has its own sub-steps. Lives on the project page, inside each department's
+`DepartmentPanel` (`components/StagesPanel.jsx`), next to that department's existing milestone list
+for **this one project** — deliberately not on the department-filtered Operations page.
+
+- **Two tabs, Kanban default.** **Kanban** pools every stage across **every milestone this
+  department owns on this project** into one Open/Current/Closed board — e.g. a Design head with
+  ~4 milestones on a project sees all of their stages together, each card labeled with which
+  milestone it belongs to. Drag-and-drop is native HTML5 DnD (`draggable` + `dragstart`/`dragover`/
+  `drop`) — no library added, none existed in the repo and none was needed. **Manage** picks one of
+  the department's own milestones on this project and edits just that milestone's own stage list
+  (add/remove) — it never edits the template directly (see below).
+- **Templates grow from usage, not a template-editor screen.** `stage_templates` (department,
+  milestone_key, label, sort_order) mirrors `MILESTONE_TEMPLATE`'s own precedent (`lib/milestones.js`
+  — a reusable definition copied onto real rows, edited independently after copying) but isn't a
+  hardcoded array: the **first** stage a head types against a (department, milestone_key) —
+  e.g. Design's `design` milestone, or `release_bom`, `release_drawings`, each tracked separately
+  since a department owns several distinct milestone types — becomes that type's default. Any other
+  milestone of the same type, this project's or another project's, can then **Apply template** to
+  bulk-copy it once (only offered when that milestone currently has zero stages). This is
+  copy-on-demand rather than copy-on-create: every already-running project's milestones predate this
+  feature, so there was nothing to auto-copy onto at project-creation time — Apply template is the
+  explicit, one-time catch-up action instead. `milestone_stages` (milestone_id → milestones, label,
+  sort_order, status) is the actual per-instance list; editing it (`POST`/`DELETE
+  /api/milestones/[id]/stages`) never writes back to the template except the implicit "first stage
+  sets the default" growth above (`INSERT OR IGNORE`, so a label the template already has is a
+  silent no-op, not a duplicate).
+- **Auto-complete.** `PATCH /api/milestones/[id]/stages/[stageId]` (status change, e.g. from a
+  Kanban drop) checks after every update whether every stage under that milestone is now Closed; if
+  so it stamps the milestone `status='done'` (+ `actual_start`/`actual_end` via `COALESCE`, same
+  auto-stamp precedent as the milestones route) and calls the **existing** `fireHandoff` — the same
+  handoff a manual Close fires, so downstream still gets notified. Guarded by the same `wasDone`
+  check the milestones PATCH route uses, so it never re-fires on a milestone that was already done.
+  Verified live: closing every stage under Design's last milestone (`release_drawings`) on SB-1018
+  auto-completed it and notified `procurement_head` with the same "Handoff from Design" notification
+  a manual close produces.
+- **`MilestoneDrawer`'s Start/Close are unchanged, deliberately** — they remain a manual override
+  available whether or not a milestone has stages, rather than being redesigned around stages. All
+  of the auto behavior above is additive, on the stage-status endpoint only; no drawer code needed
+  to change for a milestone that happens to have stages.
+- **Auth mirrors the milestones route**: a head may only touch a milestone in a department they're
+  granted (`canAccessDepartment`); a PM can touch any. Every write is audited (`stage_added`,
+  `stage_template_applied`, `stage_status_change`, `stage_removed`) via the shared `audit()`.
+
 ## 4. Executive view
 
 Order, top to bottom:
@@ -464,6 +509,8 @@ projects ──< tasks                               (§3a/§3b — every depart
 milestones ──< notifications                     (§3b — a handoff/reopen notification's milestone_id; notifications fan out one row per recipient)
 tasks ──< notifications                          (§3b — a cross-department task raise's task_id, the other notification link target)
 tickets                                          (§3b — dead, kept only for notifications.ticket_id FK + pre-collapse history; nothing reads/writes it)
+milestones ──< milestone_stages                  (§3c — one row per stage per milestone instance, status Open/Current/Closed)
+stage_templates                                  (§3c — department + milestone_key + label, reusable; grows from usage, not project-scoped)
 workers ──< worker_days                          (§3a — Production-only shop-floor people with no users row; one attendance row per worker per day)
 users (role + departments CSV + project_ids CSV [customer scoping, one-or-more] + pending flag)
 ```
@@ -499,19 +546,19 @@ has its own test-record module (§5b); Procurement/Stores/Production have the Ma
 **Cross-department signals (§3b), next up:** notify-the-original-raiser when their raised task is
 marked done, and overdue-task notifications — both named next, no new schema needed. After that,
 distinct and later: BOM-received / QC-fail as new notification triggers, once BOM and QC get
-refined; **Workflow Stages**, a reusable department-defined checklist layer under a milestone
-(discussed and scoped this session as a separate follow-on, not started — see the session's plan
-notes if picking it up). The old re-notify-on-redo-and-reclose limitation is **fixed** (§3b) — not
-listed here anymore.
+refined. The old re-notify-on-redo-and-reclose limitation is **fixed** (§3b) — not listed here
+anymore. **Workflow Stages is built** (§3c) — no longer listed here.
 
 **Also deferred:** a PM-oversight cross-department view for the Tasks calendar (§3a — PMs currently
 have no Tasks tab at all, same as before); the multi-department "combined heads" dashboard for
 Operations, deferred until a head actually running two-plus departments exists; an
-**Operations-tab departmental-view redesign** (separate, not yet scoped); and reorganizing
-Production's milestones around the department head's 7 named phases, or new dedicated Production
-quality/inspection/testing milestones — parked until it's confirmed whether those are genuinely
-distinct from QC's existing module, and whether the 7 phases are a real tagging layer over the
-existing granular stages or just plain-English description.
+**Operations-tab departmental-view redesign** (separate, not yet scoped); a template-editing screen
+for `stage_templates` (§3c — templates currently only grow from the first real use, no dedicated
+CRUD UI); and reorganizing Production's milestones into new dedicated Production
+quality/inspection/testing milestones (distinct from Stages, and from QC's existing module) — still
+parked, but the "is the 7-phase idea real" half of this is now answerable: Production can model it
+as Stages under its existing granular milestones the same way any other department would, no schema
+change needed, whenever `production_head` actually defines them.
 
 ---
 
@@ -789,7 +836,8 @@ longer creates any row besides the notification itself), `beep.js` (§3b, WebAud
 file).
 `app/` — pages + API routes, including `api/agent/*` (Bearer-agent), `api/usb/*`, `api/browser/*`
 (session-cookie, PM-gated), `api/qc-records/*` (§5b, QC + PM-gated), `api/milestones/[id]/reopen`
-(§3b, the send-back-for-rework endpoint), and `api/notifications`. `app/login/page.js` /
+(§3b, the send-back-for-rework endpoint), `api/milestones/[id]/stages` + `api/milestones/[id]/stages/
+[stageId]` (§3c, add/apply-template and status/delete), and `api/notifications`. `app/login/page.js` /
 `app/d-login/page.js` (§2c) are the production sign-in page and the gated demo picker;
 `app/production/*` (§3a, Tasks + Workers — route name is legacy, Tasks now works for every
 department, verified live) is gated by `isHead`/`headDepartments` (any department) except Workers,
@@ -803,7 +851,8 @@ calendar (§3a/§3b); `app/notifications/page.js` is the bell's "View all" desti
 role-aware `/help` guide content — plain data, no CMS, also feeds `InfoPopover`),
 `ProductionToday.jsx` / `WorkersPanel.jsx` (§3a), `NotificationBell.jsx` / `TicketsPanel.jsx` (§3b —
 `TicketsPanel.jsx` kept its name across the tickets collapse; it's the cross-department
-task/reopen panel now, not a literal tickets list).
+task/reopen panel now, not a literal tickets list), `StagesPanel.jsx` (§3c, the Kanban/Manage
+Stages card — native HTML5 drag-and-drop, no library).
 `components/ui/` — shadcn primitives, including `popover.jsx` (added this round, same
 `radix-ui` unified-import pattern as the rest).
 `agent/` — the Python Windows agent, its Inno Setup installer, and its own
