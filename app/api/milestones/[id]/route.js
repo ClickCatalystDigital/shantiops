@@ -3,7 +3,7 @@ import { execute, queryOne } from '@/lib/db';
 import { getSessionUser, isInternal, isHead, canAccessDepartment } from '@/lib/auth';
 import { audit } from '@/lib/usb';
 import { todayISO } from '@/lib/date';
-import { fireHandoff } from '@/lib/tickets';
+import { fireHandoff } from '@/lib/notify';
 
 // Whitelisted columns — never interpolate a client-supplied column name into SQL.
 const EDITABLE = ['assignee', 'department', 'planned_start', 'planned_end', 'actual_start', 'actual_end',

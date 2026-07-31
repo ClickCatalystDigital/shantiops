@@ -12,28 +12,19 @@ set of user accounts:
    blocks USB drives, CDs/DVDs, phones, and websites on employee machines until a manager approves,
    via the same dashboard.
 
-Everything in this file reflects the **current, working build** as of 2026-07-31 (post: **tickets
-now close the loop with the milestone tracker instead of just notifying about it** — resolving a
-`handoff` ticket stamps the receiving milestone's Start, resolving a `rework` ticket against an
-already-closed milestone reopens it and tells whoever it had already been handed off to that the
-work isn't finished anymore, every ticket status change is logged to the audit trail, and the
-**Tasks calendar (formerly Production-only) now works for every department** — tickets pill on it
-as a third source alongside tasks/milestones, with an open/resolved count strip — see §3a/§3b.
-Previous round: a cross-department **Tickets + notification bell** system — automatic handoff
-tickets when a milestone closes, plus hand-raised rework/request tickets, an in-app bell with a
-subtle chime; **Production's own Today calendar and Workers daily sheet**, a shop-floor view
-separate from the milestone tracker; the production **login page split** into a clean `/login` for
-real users and a password-gated `/d-login` demo picker, plus `DEMO_USERS` so demo accounts skip the
-device-setup gate (§2c); and self-registration **locked down to department heads only** — the
-"Project Manager" option is gone from both the form and the server (§2a). Round before that: QC
-test records — the first department-specific module built for QC instead of a generic milestone
-list (§5b); a self-service device-setup gate that blocks a functional head's login until their
-machine is enrolled, no admin file-relay needed (§2a); contextual "i" help popovers in Approvals
-reusing the `/help` content (§2b); the Chrome extension actually published and force-install wired
-(§14); and a `CardHeader`/`CardAction` layout bug fixed across five components — see §18. Round
-before that: multi-project customer logins + "My Orders", role-aware `/help`, self-registration
-with an approval hierarchy + new `executive` role, the onboarding roster in Approvals → People, and
-extending the audit trail to the operations platform's core mutations — see §16.
+Everything in this file reflects the **current, working build** as of 2026-07-31. Most recent round:
+the standalone **`tickets` entity is gone** — collapsed into milestones + tasks + notifications (a
+cross-department signal now always fires a plain notification; the *state* lives on whichever real
+work object already existed — the receiving milestone for a handoff, a directly-reopened milestone
+for rework where one exists, or a `tasks` row for rework/requests aimed at Engineering/Stores, who
+own no milestones), verified every department's Tasks tab live (§3a/§3b); the Tasks nav tab is now
+labelled **"Home"** with no on-page header, and its rail is now called **"Tasks"**; and 5 demo
+accounts that had accidentally been granted multiple departments during earlier ad-hoc testing were
+reverted to one department each, matching README.md (§3a has the detail — this is what was producing
+extra, confusing nav tabs). Deeper history (the tickets-notification-bell round, the Tasks/Workers
+split, the login-page split, QC test records, multi-project customer logins, etc.) lives in `git log`
+now rather than repeated here — each is still documented in full in its own numbered section below,
+just not re-summarized at the top on every round.
 
 ---
 
@@ -226,30 +217,53 @@ project **savistar-ops**). **Workers stays Production-specific** — a separate,
 `inDepartment(user, 'Production')` gate, unchanged, since it's a shop-floor attendance concept the
 other departments don't have.
 
-⚠️ **Verification gap, check first next session:** live testing covered Design, Engineering
-(combined multi-department view) and Production only. A grep for hardcoded `'Production'` across
-`Nav.jsx`, `ProductionToday.jsx`, `app/production/page.js`, and the `api/production/tasks/*` write
-path turned up none outside the intentional Workers/BOM/worker-sheet call sites — so the code
-*reads* generic — but Procurement, Stores, QC, Dispatch, and Installation were never actually opened
-in a browser as this feature. Confirm the Tasks tab renders and behaves correctly for those before
-trusting this section.
+**Verified across every department**, across two sessions: Design, Engineering, Production, then
+Procurement, Stores, QC, Dispatch, Installation — Tasks tab loads, Month/Week/Year all render, the
+To dos rail is correct, task creation is scoped to the right department, and Workers never appears
+outside Production.
+
+**Two bugs found and fixed while verifying** (both in `ProductionToday.jsx`'s task composer, both
+about department resolution going stale across a client-side nav):
+1. The composer resolved a new task's department from `newTask.department` state, seeded once from
+   `deptsToShow[0]` on mount. A multi-department head switching tabs (e.g. Procurement → Stores)
+   does a client-side nav that reuses the same mounted component, so that state stayed at whichever
+   department loaded first — and with one department shown the picker itself is hidden, so there
+   was no way to see or correct it. A task created from the Stores tab was silently saved under
+   Procurement. Fixed by resolving `combined ? newTask.department : deptsToShow[0]` at submit time
+   instead of trusting the stale state when the picker isn't rendered.
+2. (Found later, during the tickets→tasks collapse below) The cross-department raise endpoint
+   initially derived "is this your own board" from department-membership overlap
+   (`headDepartments(user).includes(department)`), which breaks the moment one person holds two
+   departments (a real case here — a head can be granted several) or is a PM (who holds none, by
+   construction). Fixed by using the presence of `from_department` in the request body as the
+   caller-intent signal instead of re-deriving it — see §3b.
+
+**Renamed and decluttered, same round:** the Nav tab for `/production` is now labelled **"Home"**
+(was "Tasks" — `components/Nav.jsx`), the page's own header/subheader ("Tasks" / "Tasks and
+milestones across your departments") is gone, and the To-dos rail is now titled **"Tasks"**
+(`components/ProductionToday.jsx`). Also: 5 demo head accounts (`design_head`, `engg_head`,
+`procurement_head`, `qc_head`, `dispatch_head`) had been manually granted 2–3 departments each on
+2026-07-12 (found via `usb_audit` — a 40-second manual-testing window, never reverted), which put
+extra per-department nav tabs and a confusing "same tab, different page depending on Home vs
+Operations" behavior in front of anyone using those logins. Reverted all 5 back to their single
+documented department (matching README.md) via `PATCH /api/users/[id]`, same endpoint the Access
+Matrix UI uses, so it's properly audited. The per-department nav-tab behavior itself
+(`components/Nav.jsx`'s `deptTabs`/`onTasks`) is unchanged — it was never buggy, just fed bad data.
 
 - **Tasks** (`/production`, `components/ProductionToday.jsx` — route name is legacy, the nav label
-  and page title both say "Tasks") — Month/Week/Year calendar merging **three** sources per day:
-  **milestones** (`planned_end`), **tasks** (a lightweight `tasks` table:
-  `title, due_date, status, department, assigned_to`, for to-dos not tied to any project's
-  milestone chain), and **tickets** (pilled on `due_date`, falling back to the day raised when
-  there's no due date — see §3b). `getDepartmentCalendar(departments, from, to)` in `lib/data.js`
-  takes an array so a multi-department head sees a **combined view by default**, narrowed to one
-  via the same `?dept=` nav-tab idiom Operations already uses (`deptFilter`/`deptsToShow` in
-  `app/production/page.js`, mirroring `app/page.js`). Combined-view pills prefix with
-  `[Department]`. A "To dos" rail lists open tasks and open tickets regardless of which day is
-  selected; an open/resolved ticket count strip sits under the calendar (open = live backlog,
-  unbounded by view; resolved = bounded to the visible Month/Week/Year range, reusing
-  `monthGridBounds`/`weekBounds`/`yearBounds` — no new range logic). PMs do **not** get this tab —
-  same exclusion as before, just keyed on "any granted department" instead of "Production
-  specifically"; a PM-oversight cross-department view is deferred (§8), same status as the combined
-  multi-department dashboard.
+  now says "Home", no on-page header) — Month/Week/Year calendar merging **two** sources per day:
+  **milestones** (`planned_end`) and **tasks** (`title, due_date, status, department, assigned_to,
+  from_department, project_id` — the last two added when tickets collapsed into this table, §3b).
+  `getDepartmentCalendar(departments, from, to)` in `lib/data.js` takes an array so a
+  multi-department head sees a **combined view by default**, narrowed to one via the same `?dept=`
+  nav-tab idiom Operations already uses (`deptFilter`/`deptsToShow` in `app/production/page.js`,
+  mirroring `app/page.js`). Combined-view pills prefix with `[Department]`. A **"Tasks" rail**
+  (renamed from "To dos") lists open tasks regardless of which day is selected — this now includes
+  cross-department-raised tasks for free, since those are just `tasks` rows with `department` set
+  to the target. PMs do **not**
+  get this tab — same exclusion as before, just keyed on "any granted department" instead of
+  "Production specifically"; a PM-oversight cross-department view is deferred (§8), same status as
+  the combined multi-department dashboard.
 - **Workers** (`/production/workers`, `components/WorkersPanel.jsx`, Production-only) — a **Home**
   sub-tab (headcount + today's attendance %, derived from props already on the page — no new query)
   alongside the daily attendance + work-assignment sheet for shop-floor workers who **never log in
@@ -260,77 +274,93 @@ trusting this section.
   `/production` after login instead of `/` — unchanged, deliberately not generalized to every
   department yet.
 
-## 3b. Tickets & notifications — cross-department handoff, now closing the loop
+## 3b. Cross-department signals — tickets collapsed into milestones + tasks + notifications
 
 Closing a milestone used to leave the *next* department with no signal it was their turn, and
 Engineering/Stores (who own zero milestones — they work through the BOM) had no place in the
-handoff chain at all. Tickets fixed the signal; a later round (this one) fixed the *loop* — until
-now, resolving a ticket never touched the milestone it was about, so the tracker could show
-"Closed" on a milestone that had actually been sent back for rework.
+handoff chain at all. Two earlier rounds fixed that with a standalone `tickets` entity — first the
+signal, then (resolving a ticket touching the milestone it was about) the loop. This round removed
+the entity itself: a `tickets` table sitting alongside `milestones` and `tasks` was a third workflow
+concept doing work the other two could do directly. The rule now:
 
-- **Automatic handoff:** closing the *last* milestone in a department's run (`lib/handoff.mjs`
-  `handoffTarget`, reading each project's own `milestones` rows ordered by `sort_order` — not the
-  static template, since a PM can reassign `department` per row) fires a `handoff` ticket to
-  whichever department the next milestone belongs to, with `tickets.milestone_id` pointing at that
-  **receiving** milestone. Hooked into the **one** milestone write path
-  (`app/api/milestones/[id]/route.js` PATCH — both the drawer and the bulk-edit grid funnel through
-  it) by comparing before/after DB state, not the request body. Idempotent via `tickets.source_key`
-  (`'handoff:<closed milestone id>'`, `UNIQUE`, `INSERT OR IGNORE`) — reopening and reclosing a
-  milestone never double-fires (see the reopen note below for the real consequence of this).
-- **Hand-raised tickets:** any department can raise a `rework` (sent back) or `request` (direct
-  ask) ticket to any other department. `POST /api/tickets`; `kind: 'handoff'` is rejected if a
-  client sends it — only the server ever creates those. A `rework` ticket **must** name the
-  milestone it's about (`components/TicketsPanel.jsx` — the selector only appears, and only offers
-  `rework` as a kind at all, when raised from a project context, since a milestone selector needs a
-  project to scope it to; the Operations-level ticket card has no project and so only offers
-  `request`). The server re-validates the milestone actually belongs to the named project and
-  department before accepting it.
-- **Resolving a ticket now has real side effects** (`app/api/tickets/[id]/route.js` PATCH,
-  previously a pure UPDATE with none):
-  - Every status transition is logged to the app's generic audit trail
-    (`lib/usb.js` `audit('ticket_status_change', ...)` — the table is named `usb_audit` but is
-    already reused app-wide, see §16).
-  - Resolving a **handoff** ticket stamps the receiving milestone's Start
-    (`status='in_progress', actual_start=today()`, same fields the drawer's own Start button
-    writes) — guarded so it's a no-op if someone already started it by hand. No re-derivation
-    needed: `ticket.milestone_id` already *is* the receiving milestone, captured at handoff-creation
-    time using the live per-project chain above.
-  - Resolving a **rework** ticket against a milestone that's already Closed **reopens** it —
-    `actual_end` cleared, `status='in_progress'`, and a new `milestones.reopened_at` timestamp
-    stamped so it reads honestly as "Reopened" everywhere `effectiveStatus()` renders a status label
-    (`lib/sla.js` — same severity tier as `in_progress`/`overdue`/etc., not a new status code, just
-    an honest label suffix). If that milestone had already fired its own handoff downstream
-    (`source_key = 'handoff:<this milestone id>'` still exists), the receiving department gets a
-    new notification: the work they were told was ready, isn't anymore.
-  - **Known limitation:** because `source_key` is `UNIQUE`, redoing the work and re-closing the
-    reopened milestone does **not** re-notify the downstream department a second time (the
-    `INSERT OR IGNORE` silently no-ops on the same key). Not fixed — flagged for whoever picks up
-    the "notify on resolution" / overdue-notification work next (see §8).
-- **Notifications** fan out one row per recipient (`notifications` table) to everyone in the
-  target department (`lib/tickets.js` `notifyDepartment`, matched via `parseDepartments` — PMs are
-  excluded by construction since their `departments` column is NULL). The acting user is excluded
-  from their own notification. Still **not** built: notifying the original raiser when their own
-  rework/request ticket is resolved, and overdue-ticket notifications — both explicitly next, not
-  part of this round (see §8).
+> Every cross-department event fires a **notification** (the signal). The **work object** carries
+> the state: the **milestone** where one exists, otherwise a **task**.
+
+Milestones stay the single workflow backbone — this didn't add a second stage hierarchy, it removed
+a layer that sat on top of the existing one. Only 6 of 8 departments own milestones (Production 59
+rows, Procurement 25, Design 20, Installation 10, Dispatch 6, QC 5 in the seed data; **Engineering
+and Stores own zero**, per §3a), which is why rework aimed at those two still needs a task, not a
+milestone reopen — there's nothing to reopen.
+
+- **Automatic handoff** (`lib/notify.js` `fireHandoff`, formerly `lib/tickets.js`): closing the
+  *last* milestone in a department's run (`lib/handoff.mjs` `handoffTarget`, reading each project's
+  own `milestones` rows ordered by `sort_order` — not the static template, since a PM can reassign
+  `department` per row, unchanged from before) fires a **notification only** — no row is created.
+  Idempotency moved from a `tickets.source_key` UNIQUE constraint onto the notification's own
+  `dedupe_key` (`'handoff:<closed milestone id>:<reopen_count>'`, `UNIQUE(user_id, dedupe_key)`) —
+  keying on `reopen_count` is what **fixes the old known limitation**: redoing the work and
+  re-closing a reopened milestone now fires a *new* dedupe key, so downstream gets notified again.
+  Confirmed live: closing, reopening, and re-closing the same milestone produced two independent
+  sets of handoff notifications (`handoff:<id>:0` then `handoff:<id>:1`).
+- **Sending a milestone back for rework** (`POST /api/milestones/[id]/reopen`) is now a single
+  direct action instead of "raise a ticket, then resolving it reopens the milestone as a side
+  effect": `isInternal(user)` only, **not** gated to the milestone's own department (the *other*
+  department is who calls this) — same permissiveness `POST /api/tickets` used to have. Requires a
+  `reason`; 404s if the milestone isn't actually closed yet (`actual_end IS NOT NULL OR
+  status='done'`). Clears `actual_end`, sets `status='in_progress'`, stamps `reopened_at` (already
+  existed, drives the "(Reopened)" label via `lib/sla.js` `effectiveStatus`) plus new
+  `reopen_reason`/`reopened_by`/`reopen_count` columns, logs `usb_audit` action
+  `milestone_reopened`, and notifies both the milestone's own department (the reason) and — if it
+  had already handed off downstream — that department too, via the same `handoffTarget` chain
+  lookup `fireHandoff` uses (not a stored department column; notifications don't carry one).
+  Verified live: `procurement_head`, who has **no access to Design's own milestone drawer**,
+  successfully reopened a Design milestone via the cross-department panel below — the actual
+  point of keeping that panel's reach broad rather than department-gated.
+- **Rework or a plain request aimed at a department that owns no milestone** (Engineering, Stores)
+  — or any other cross-department ask not tied to a specific milestone — is a **task**:
+  `POST /api/production/tasks`, which now does double duty as both the department's own Tasks-tab
+  composer (self-board, no signal) and the old ticket-raise endpoint (cross-department, fires a
+  notification). The two callers are told apart by whether the body carries `from_department` at
+  all — **not** by re-deriving "is this your own department" from `headDepartments` overlap, which
+  breaks the moment one person holds two departments or is a PM holding none (see the bug note in
+  §3a). When `from_department` is present it's validated via `canAccessDepartment` (true for a PM on
+  any department, true for a head only on their own granted ones — the exact rule `POST /api/tickets`
+  used); when absent, the caller must be an actual head of the target department. `tasks` gained
+  `from_department`/`project_id` columns to carry this.
+- **Notifications** fan out one row per recipient (`notifications` table) to everyone in the target
+  department (`lib/notify.js` `notifyDepartment`, matched via `parseDepartments` — PMs are excluded
+  by construction since their `departments` column is NULL). The acting user is excluded from their
+  own notification (`except`). A notification now points at `milestone_id` or `task_id` (both new
+  columns) instead of `ticket_id` — `getNotifications` (`lib/data.js`) resolves the bell's link
+  target via `COALESCE(m.project_id, tk.project_id)`, same flat output shape as before, so
+  `NotificationBell.jsx`/`NotificationsPanel.jsx` needed zero changes. Still **not** built: notifying
+  the original raiser when their own raised task is marked done, and overdue-task notifications —
+  both explicitly next, not part of this round (see §8).
 - **The bell** (`components/NotificationBell.jsx`, mounted in `Nav.jsx`) polls
   `GET /api/notifications` every 20s with a plain `fetch` — deliberately not `router.refresh()`,
   since Nav is mounted on every page and that would re-fetch every page's server data on a timer.
   Chimes (`lib/beep.js`, WebAudio, no audio file committed) only when the unread count increases,
-  never on first load; the mute toggle persists to `localStorage.notifySound`. No standalone
-  "Notifications" header in the popover; "View all" and the no-project fallback link to
-  `/notifications` (below), not a `/tickets` route (removed — see below).
-- **Three surfaces**, all reading `getTickets()` (or the calendar's date-bounded variant in
-  `getDepartmentCalendar`): a **Tickets card inside each department's project panel**
-  (`components/TicketsPanel.jsx`, wired into `DepartmentPanel.jsx`) where the work already lives; a
-  **department-scoped ticket section on Operations** (`app/page.js`, same `deptFilter`/`deptsToShow`
-  pattern as the rest of that page — the old standalone `/tickets` route is gone, deleted along with
-  its nav entry); and **ticket pills on the Tasks calendar** (§3a) which link back to the Operations
-  ticket section rather than opening any new detail UI. A full **`/notifications` page** (not in
-  nav, reachable only from the bell) lists the fuller history generically off `kind`/`title`/`body`
-  — no per-kind branching, so a future notification kind needs no UI change.
-- **Deliberately deferred, not built yet:** notify-the-raiser-on-resolution and overdue-ticket
+  never on first load; the mute toggle persists to `localStorage.notifySound`.
+- **Two surfaces now**, not three: a **cross-department card inside each department's project panel**
+  (`components/TicketsPanel.jsx` — kept its old name and most of its shape deliberately, a much
+  smaller diff than a rebuild; it lists that department's tasks in both directions — raised for it,
+  raised by it — and its "Raise" composer offers Reopen (project context only, closed milestones in
+  the target department) or Task) and the **same card, department-scoped, on Operations**
+  (`app/page.js`, same `deptFilter`/`deptsToShow` pattern as the rest of that page). Reopened
+  milestones don't get a duplicate row in this card — they already show "(Reopened)" inline on the
+  tracker. A full **`/notifications` page** (not in nav, reachable only from the bell) lists the
+  fuller history generically off `kind`/`title`/`body` — no per-kind branching, unchanged.
+- **The `tickets` table itself is not dropped** — `notifications.ticket_id` has an FK to it and the
+  handful of pre-collapse rows are real history (some deliberately seeded as test fixtures in
+  earlier rounds). Nothing reads or writes it anymore; a `ponytail:` comment in `lib/db.js` marks it
+  safe to `DROP TABLE` once nobody needs that history to make sense of old `usb_audit`
+  `ticket_status_change` entries.
+- **Deliberately deferred, not built yet:** notify-the-raiser-on-resolution and overdue-task
   notifications (next, see §8); a mobile bottom-bar fix for heads with several department tabs;
-  BOM-received / QC-fail as new notification triggers (blocked on BOM/QC refinement).
+  BOM-received / QC-fail as new notification triggers (blocked on BOM/QC refinement); **Workflow
+  Stages** — a reusable, department-defined checklist layer *under* a milestone (Open → Current →
+  Closed swimlanes, auto-completing the milestone when all stages close) — discussed and scoped as a
+  distinct follow-on, not started; see the plan notes from this session if picking it up.
 
 ## 4. Executive view
 
@@ -430,9 +460,10 @@ projects ──< bom_items                           (the Master BOM — §5a)
 projects ──< bom_imports                         (one row per PMB upload: revision + the original .xlsx BLOB)
 projects ──< packing_lists ──< packing_items     (packing_items.bom_item_id → bom_items, reconciliation)
 projects ──< qc_records                          (§5b — QC-owned test log, one row per test)
-projects ──< tickets ──< notifications           (§3b — cross-department handoff; notifications fan out one row per recipient)
-milestones ──< tickets                           (a handoff ticket's milestone_id is the receiving milestone; a rework ticket's is the one it reopens on resolve — §3b)
-tasks                                            (§3a — every department's own to-dos now, not tied to a project/milestone; department is a real per-row column, not a Production-only default)
+projects ──< tasks                               (§3a/§3b — every department's to-dos AND cross-department raises; project_id optional, null for Operations-level asks)
+milestones ──< notifications                     (§3b — a handoff/reopen notification's milestone_id; notifications fan out one row per recipient)
+tasks ──< notifications                          (§3b — a cross-department task raise's task_id, the other notification link target)
+tickets                                          (§3b — dead, kept only for notifications.ticket_id FK + pre-collapse history; nothing reads/writes it)
 workers ──< worker_days                          (§3a — Production-only shop-floor people with no users row; one attendance row per worker per day)
 users (role + departments CSV + project_ids CSV [customer scoping, one-or-more] + pending flag)
 ```
@@ -446,9 +477,14 @@ normalized, and rollups count nothing else.
 
 Milestones carry: assignee, department, planned/actual dates, status, delay category + reason,
 vendor/PO/material-ready/QC flags, notes, a **dormant `depends_on_key`** for a future
-dependency/critical-path layer, and **`reopened_at`** (§3b — set when a rework ticket reopens an
-already-closed milestone, cleared implicitly whenever `actual_end` is next set on re-close; added
-via the standing `addColumn()` migration helper in `lib/db.js`, not a one-off `ALTER TABLE`).
+dependency/critical-path layer, and **`reopened_at`/`reopen_reason`/`reopened_by`/`reopen_count`**
+(§3b — set by `POST /api/milestones/[id]/reopen` when a milestone that was already Closed is sent
+back; `reopen_count` feeds the notification `dedupe_key` so a redo-and-reclose cycle notifies
+downstream again, unlike the old ticket-based flow's `source_key` UNIQUE limitation; cleared
+implicitly whenever `actual_end` is next set on re-close except `reopen_count`, which only grows).
+`tasks` carries `from_department` (set only on a cross-department raise, null for a department's own
+board items — the signal `notifyDepartment` fires on) and `project_id` (optional context). All added
+via the standing `addColumn()` migration helper in `lib/db.js`, not one-off `ALTER TABLE`s.
 
 ## 8. Operations-platform deferred items
 
@@ -460,11 +496,13 @@ built" list (drawings/IBR document management, BOM release workflow, Excel expor
 authoring, supplier analytics). Installation and Design still just get their milestone list; QC now
 has its own test-record module (§5b); Procurement/Stores/Production have the Master BOM.
 
-**Tickets/notifications (§3b), next up:** notify-the-original-raiser when their rework/request
-ticket is resolved, and overdue-ticket notifications — both named next, no new schema needed. After
-that, distinct and later: BOM-received / QC-fail as new notification triggers, once BOM and QC get
-refined. Also not fixed: re-notifying a downstream department if a reopened milestone gets redone
-and re-closed (the `source_key` `UNIQUE` limitation, §3b).
+**Cross-department signals (§3b), next up:** notify-the-original-raiser when their raised task is
+marked done, and overdue-task notifications — both named next, no new schema needed. After that,
+distinct and later: BOM-received / QC-fail as new notification triggers, once BOM and QC get
+refined; **Workflow Stages**, a reusable department-defined checklist layer under a milestone
+(discussed and scoped this session as a separate follow-on, not started — see the session's plan
+notes if picking it up). The old re-notify-on-redo-and-reclose limitation is **fixed** (§3b) — not
+listed here anymore.
 
 **Also deferred:** a PM-oversight cross-department view for the Tasks calendar (§3a — PMs currently
 have no Tasks tab at all, same as before); the multi-department "combined heads" dashboard for
@@ -745,22 +783,27 @@ hierarchy + audit trail was judged sufficient; revisit if that proves too light.
 pure data, importable client-side), `usb.js` (device approval domain logic, shared primitives),
 `browser.js` (domain normalize/match), `enroll.js` (enrollment codes + rate limit), `date.js`
 (IST-pinned `todayISO`/`todayMonth`/`monthGridBounds` — see the IST gotcha in §18), `handoff.mjs` +
-`handoff.test.mjs` (§3b, the pure handoff rule + its `node --test`), `tickets.js` (§3b, ticket
-creation + notification fan-out), `beep.js` (§3b, WebAudio chime, no audio file).
+`handoff.test.mjs` (§3b, the pure handoff rule + its `node --test`, unchanged by the tickets
+collapse), `notify.js` (§3b, formerly `tickets.js` — notification fan-out + `fireHandoff`, no
+longer creates any row besides the notification itself), `beep.js` (§3b, WebAudio chime, no audio
+file).
 `app/` — pages + API routes, including `api/agent/*` (Bearer-agent), `api/usb/*`, `api/browser/*`
-(session-cookie, PM-gated), `api/qc-records/*` (§5b, QC + PM-gated), and `api/tickets/*` +
-`api/notifications` (§3b). `app/login/page.js` / `app/d-login/page.js` (§2c) are the production
-sign-in page and the gated demo picker; `app/production/*` (§3a, Tasks + Workers — route name is
-legacy, Tasks now works for every department) is gated by `isHead`/`headDepartments` (any
-department) except Workers, which stays `inDepartment(user, 'Production')`. There is no
-`app/tickets/*` anymore — tickets live inside `app/page.js` (Operations) and the Tasks calendar
-(§3a/§3b); `app/notifications/page.js` is the bell's "View all" destination, not in nav.
+(session-cookie, PM-gated), `api/qc-records/*` (§5b, QC + PM-gated), `api/milestones/[id]/reopen`
+(§3b, the send-back-for-rework endpoint), and `api/notifications`. `app/login/page.js` /
+`app/d-login/page.js` (§2c) are the production sign-in page and the gated demo picker;
+`app/production/*` (§3a, Tasks + Workers — route name is legacy, Tasks now works for every
+department, verified live) is gated by `isHead`/`headDepartments` (any department) except Workers,
+which stays `inDepartment(user, 'Production')`. There is no `app/tickets/*` — never was in this
+round's model either; cross-department tasks live inside `app/page.js` (Operations) and the Tasks
+calendar (§3a/§3b); `app/notifications/page.js` is the bell's "View all" destination, not in nav.
 `app/layout.js` is also where the device-setup gate lives (see §2a) — every page renders through it.
 `components/` — nav, project/milestone/packing UI, settings forms, `DevicesPanel` /
 `BrowserPanel` / `PeoplePanel` / `TotpSetup` for the Approvals tab, `QcPanel.jsx` (§5b),
 `DeviceSetupGate.jsx` (§2a), `InfoPopover.jsx` (§2b, contextual help), `help-content.jsx` (the
 role-aware `/help` guide content — plain data, no CMS, also feeds `InfoPopover`),
-`ProductionToday.jsx` / `WorkersPanel.jsx` (§3a), `NotificationBell.jsx` / `TicketsPanel.jsx` (§3b).
+`ProductionToday.jsx` / `WorkersPanel.jsx` (§3a), `NotificationBell.jsx` / `TicketsPanel.jsx` (§3b —
+`TicketsPanel.jsx` kept its name across the tickets collapse; it's the cross-department
+task/reopen panel now, not a literal tickets list).
 `components/ui/` — shadcn primitives, including `popover.jsx` (added this round, same
 `radix-ui` unified-import pattern as the rest).
 `agent/` — the Python Windows agent, its Inno Setup installer, and its own

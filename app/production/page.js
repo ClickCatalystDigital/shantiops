@@ -1,10 +1,9 @@
 import { redirect } from 'next/navigation';
 import { getSessionUser, isHead, headDepartments, roleHome } from '@/lib/auth';
 import {
-  getDepartmentCalendar, getOpenDepartmentTasks, getResolvedTicketCount, getTickets, getFunctionalHeads,
+  getDepartmentCalendar, getOpenDepartmentTasks, getFunctionalHeads,
 } from '@/lib/data';
 import { todayISO, todayMonth, monthGridBounds, weekBounds, yearBounds } from '@/lib/date';
-import PageHeader from '@/components/PageHeader';
 import ProductionToday from '@/components/ProductionToday';
 
 export const dynamic = 'force-dynamic';
@@ -29,23 +28,16 @@ export default async function ProductionTodayPage({ searchParams }) {
 
   const [from, to] = view === 'week' ? weekBounds(date) : view === 'year' ? yearBounds(year) : monthGridBounds(month);
 
-  const [events, openTasks, resolvedTicketCount, ticketsByDept, heads] = await Promise.all([
+  const [events, openTasks, heads] = await Promise.all([
     getDepartmentCalendar(deptsToShow, from, to),
     getOpenDepartmentTasks(deptsToShow, today),
-    getResolvedTicketCount(deptsToShow, from, to),
-    Promise.all(deptsToShow.map(d => getTickets({ department: d, status: 'open' }))),
     getFunctionalHeads(),
   ]);
-  // Unbounded-by-view open tickets for the "To dos" rail — same treatment openTasks already gets.
-  // A ticket between two of the head's own departments could surface from both queries; dedupe by id.
-  const openTickets = [...new Map(ticketsByDept.flat().map(t => [t.id, t])).values()];
   // Assignable = operators actually in one of the departments being shown. Picks up new heads automatically.
   const operators = heads.filter(o => o.active && o.departments.some(d => deptsToShow.includes(d)));
 
   return (
     <main className="container flex flex-col gap-6 py-8">
-      <PageHeader title="Tasks"
-        description={deptFilter ? `${deptFilter} tasks and milestones` : 'Tasks and milestones across your departments'} />
       <ProductionToday
         view={view}
         month={month}
@@ -56,8 +48,6 @@ export default async function ProductionTodayPage({ searchParams }) {
         deptsToShow={deptsToShow}
         events={events}
         openTasks={openTasks}
-        openTickets={openTickets}
-        resolvedTicketCount={resolvedTicketCount}
         operators={operators}
       />
     </main>

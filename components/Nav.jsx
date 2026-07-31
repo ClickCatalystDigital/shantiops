@@ -52,7 +52,7 @@ export default function Nav({ user }) {
         { href: '/approvals', label: 'Approvals', icon: ShieldCheckIcon },
       ]
     : [
-        ...(hasTasks ? [{ href: '/production', label: 'Tasks', icon: CalendarDaysIcon }] : []),
+        ...(hasTasks ? [{ href: '/production', label: 'Home', icon: CalendarDaysIcon }] : []),
         ...deptTabs,
         { href: '/', label: 'Operations', icon: LayoutDashboardIcon },
         { href: '/projects', label: 'Projects', icon: FolderKanbanIcon },

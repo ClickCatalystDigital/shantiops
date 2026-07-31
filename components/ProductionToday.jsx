@@ -18,27 +18,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectGroup, SelectItem,
 } from '@/components/ui/select';
-import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, FolderKanbanIcon, TicketIcon } from 'lucide-react';
-
-// Ticket status color reuses StatusBadge's actual palette (components/StatusBadge.jsx) rather than
-// inventing a new one: overdue -> danger, open-not-overdue -> info, done -> success.
-const TICKET_TONE = {
-  danger: { week: 'border-danger text-foreground', month: 'bg-danger/15 text-danger', icon: 'text-danger' },
-  info: { week: 'border-info text-foreground', month: 'bg-info/15 text-info', icon: 'text-info' },
-  success: { week: 'border-success text-foreground', month: 'bg-success/15 text-success', icon: 'text-success' },
-};
-function ticketToneKey(t, today) {
-  if (t.status === 'done') return 'success';
-  if (t.due_date && t.due_date < today) return 'danger';
-  return 'info';
-}
+import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, FolderKanbanIcon } from 'lucide-react';
 
 // The view + its cursor live in the URL (?view=&month=/date=/year=), not in state — this repo
 // reads on the server, so navigating re-renders with fresh data instead of us hand-rolling a
 // fetch layer. Each view keeps its own cursor param so switching views and back doesn't lose it.
 export default function ProductionToday({
-  view, month, date, year, today, deptFilter, deptsToShow, events, openTasks, openTickets,
-  resolvedTicketCount, operators,
+  view, month, date, year, today, deptFilter, deptsToShow, events, openTasks, operators,
 }) {
   const router = useRouter();
   const [dayOpen, setDayOpen] = useState(null);
@@ -55,15 +41,12 @@ export default function ProductionToday({
     const add = (date, item) => { if (date) (map[date] ||= []).push(item); };
     for (const t of events.tasks) add(t.date, { ...t, kind: 'task' });
     for (const m of events.milestones) add(m.date, { ...m, kind: 'milestone' });
-    for (const t of events.tickets) add(t.date, { ...t, kind: 'ticket' });
     return map;
   }, [events]);
 
-  // A combined multi-department view needs each pill to say which department it's from — the
-  // link's own department (tasks/milestones) or who owes the work (tickets, to_department).
+  // A combined multi-department view needs each pill to say which department it's from.
   function pillText(it) {
-    const dept = it.kind === 'ticket' ? it.to_department : it.department;
-    const prefix = combined && dept ? `[${dept}] ` : '';
+    const prefix = combined && it.department ? `[${it.department}] ` : '';
     return it.kind === 'milestone' ? `${prefix}${it.project_no} · ${it.title}` : `${prefix}${it.title}`;
   }
 
@@ -99,7 +82,11 @@ export default function ProductionToday({
   }, [view, date, month, year]);
 
   async function addTask() {
-    if (!newTask.title.trim() || !newTask.department) return;
+    // Single-dept view hides the picker, so newTask.department can be stale from a previous
+    // combined view (component stays mounted across a client-side dept-tab switch — its useState
+    // default only ran once, on first mount). Not combined -> always the one dept being shown.
+    const department = combined ? newTask.department : deptsToShow[0];
+    if (!newTask.title.trim() || !department) return;
     setBusy(true);
     try {
       await api('/api/production/tasks', {
@@ -107,7 +94,7 @@ export default function ProductionToday({
         body: {
           title: newTask.title,
           due_date: newTask.due_date,
-          department: newTask.department,
+          department,
           assigned_to: newTask.assigned_to || undefined,
         },
       });
@@ -213,8 +200,7 @@ export default function ProductionToday({
                       it.kind === 'task' && (it.status === 'done'
                         ? (isWeek ? 'border-muted-foreground/40 text-muted-foreground line-through' : 'bg-muted text-muted-foreground line-through')
                         : (isWeek ? 'border-primary text-foreground' : 'bg-primary/15 text-primary')),
-                      it.kind === 'milestone' && (isWeek ? 'border-amber-500 text-foreground' : 'bg-amber-500/15 text-amber-700 dark:text-amber-400'),
-                      it.kind === 'ticket' && TICKET_TONE[ticketToneKey(it, today)][isWeek ? 'week' : 'month'])}>
+                      it.kind === 'milestone' && (isWeek ? 'border-amber-500 text-foreground' : 'bg-amber-500/15 text-amber-700 dark:text-amber-400'))}>
                       {pillText(it)}
                     </span>
                   ))}
@@ -228,21 +214,16 @@ export default function ProductionToday({
           <div className="mt-2 flex flex-wrap gap-3 text-xs text-muted-foreground">
             <span className="flex items-center gap-1"><span className="size-2 rounded-full bg-primary" />Tasks</span>
             <span className="flex items-center gap-1"><span className="size-2 rounded-full bg-amber-500" />Milestones</span>
-            <span className="flex items-center gap-1"><span className="size-2 rounded-full bg-info" />Tickets</span>
           </div>
           </>
           )}
-          <div className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
-            <TicketIcon className="size-3" />
-            <span className="tnum">{openTickets.length} open · {resolvedTicketCount} resolved</span>
-          </div>
         </CardContent>
       </Card>
 
       {/* To dos */}
       <Card>
         <CardHeader>
-          <CardTitle>To dos</CardTitle>
+          <CardTitle>Tasks</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <div className="flex flex-wrap gap-2">
@@ -280,7 +261,7 @@ export default function ProductionToday({
             </Button>
           </div>
           <div className="flex flex-col gap-1">
-            {openTasks.length === 0 && openTickets.length === 0 && (
+            {openTasks.length === 0 && (
               <p className="py-4 text-center text-sm text-muted-foreground">All clear — nothing due.</p>
             )}
             {openTasks.map(t => {
@@ -295,26 +276,6 @@ export default function ProductionToday({
                     {overdue ? formatDate(t.due_date) : 'today'}
                   </span>
                 </div>
-              );
-            })}
-            {/* Unresolved tickets — the full backlog regardless of which day/view is selected, same
-                treatment openTasks already gets. Resolving one stays the Operations ticket card's
-                job (linked to below), not a new inline action here. */}
-            {openTickets.map(t => {
-              const overdue = t.due_date && t.due_date < today;
-              return (
-                <Link key={`ticket-${t.id}`} href={`/?dept=${t.to_department}`}
-                  className="flex items-center gap-2 rounded-md px-1 py-1.5 hover:bg-muted">
-                  <TicketIcon className={cn('size-3.5 shrink-0', overdue ? 'text-danger' : 'text-info')} />
-                  <span className="min-w-0 flex-1 truncate text-sm">{t.title}</span>
-                  <Badge variant="secondary" className="shrink-0">{t.to_department}</Badge>
-                  {t.due_date && (
-                    <span className={cn('shrink-0 text-xs tnum',
-                      overdue ? 'font-medium text-destructive' : 'text-muted-foreground')}>
-                      {formatDate(t.due_date)}
-                    </span>
-                  )}
-                </Link>
               );
             })}
           </div>
@@ -344,18 +305,6 @@ export default function ProductionToday({
                     <span className="min-w-0 flex-1 truncate">{it.title}</span>
                     <Link href={`/projects/${it.project_id}`} className="shrink-0 text-xs text-primary hover:underline">
                       {it.project_no}
-                    </Link>
-                  </>
-                )}
-                {it.kind === 'ticket' && (
-                  <>
-                    <TicketIcon className={cn('size-4 shrink-0', TICKET_TONE[ticketToneKey(it, today)].icon)} />
-                    <span className={cn('min-w-0 flex-1 truncate', it.status === 'done' && 'text-muted-foreground line-through')}>
-                      {it.title}
-                    </span>
-                    {/* Opens the ticket in the Operations card that already owns it — no new UI here. */}
-                    <Link href={`/?dept=${it.to_department}`} className="shrink-0 text-xs text-primary hover:underline">
-                      {it.to_department}
                     </Link>
                   </>
                 )}

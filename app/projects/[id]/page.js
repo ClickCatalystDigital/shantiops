@@ -1,5 +1,5 @@
 import { notFound, redirect } from 'next/navigation';
-import { getProjectDetail, getProjectBom, getProjectPackingLists, getBomRollup, getQcRecords, getTickets } from '@/lib/data';
+import { getProjectDetail, getProjectBom, getProjectPackingLists, getBomRollup, getQcRecords, getProjectTasks } from '@/lib/data';
 import { getSessionUser, isCustomer, isPM, isHead, headDepartments, canAccessDepartment, roleHome } from '@/lib/auth';
 import { DEPARTMENTS } from '@/lib/milestones';
 import { editableBomFields } from '@/lib/bom-fields.mjs';
@@ -23,7 +23,7 @@ export default async function ProjectDetail({ params }) {
   const packingLists = await getProjectPackingLists(params.id);
   const bomRollup = await getBomRollup(params.id);
   const qcRecords = await getQcRecords(params.id);
-  const tickets = await getTickets({ projectId: project.id });
+  const tasks = await getProjectTasks(project.id);
 
   const pm = isPM(user);
   const head = isHead(user);
@@ -44,7 +44,7 @@ export default async function ProjectDetail({ params }) {
     // milestones. A head only ever sees their own department's panel, and a PM's canAccessDepartment
     // is unconditionally true for every department, so a single flag matches the real permission
     // surface (no per-department map needed).
-    tickets, canRaiseTickets: pm || head,
+    tasks, canRaiseTickets: pm || head,
   };
 
   return (

@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { getMyWork, getBomWork, getTickets, getStageBottlenecks, getWaitingList } from '@/lib/data';
+import { getMyWork, getBomWork, getDepartmentTasks, getStageBottlenecks, getWaitingList } from '@/lib/data';
 import { getSessionUser, isCustomer, isManager, isHead, headDepartments, canAccessDepartment, roleHome } from '@/lib/auth';
 import StatusBadge from '@/components/StatusBadge';
 import DispatchBoard from '@/components/DispatchBoard';
@@ -38,31 +38,33 @@ export default async function Home({ searchParams }) {
   }
 
   // A ?dept= that this user has no business seeing (typed in, or linked from somewhere that
-  // shows a ticket touching a department they're not part of — e.g. the Tasks calendar) falls
-  // back to their own combined view instead of leaking that department's Waiting-on/tickets data.
+  // shows a task touching a department they're not part of — e.g. the Tasks calendar) falls
+  // back to their own combined view instead of leaking that department's Waiting-on/task data.
   const rawDeptFilter = searchParams?.dept || null;
   const deptFilter = rawDeptFilter && canAccessDepartment(user, rawDeptFilter) ? rawDeptFilter : null;
   const manager = isManager(user);
-  // Tickets are department-scoped like the rest of Operations: whatever department(s) this view
-  // is currently showing. PMs get no ticket section here (cross-project oversight is deferred).
+  // The cross-department task card is department-scoped like the rest of Operations: whatever
+  // department(s) this view is currently showing. PMs get no section here (deptsToShow is always
+  // [] for them) — their cross-department raise/oversight surface is the project page's
+  // all-departments tab strip instead (app/projects/[id]/page.js), which they always get.
   const deptsToShow = manager ? [] : (deptFilter ? [deptFilter] : headDepartments(user));
 
   // Dispatch department view = the packing board (§ "packing within department").
   if (deptFilter === 'Dispatch') {
-    const dispatchTickets = deptsToShow.length ? await getTickets({ department: 'Dispatch' }) : [];
+    const dispatchTasks = deptsToShow.length ? await getDepartmentTasks('Dispatch') : [];
     return (
       <main className="container flex flex-col gap-6 py-8">
         <PageHeader title="Packing &amp; Dispatch"
           description="Packing lists generated from each project's BOM — Pending → Ready → Dispatched." />
         <DispatchBoard />
-        {deptsToShow.length > 0 && <TicketsPanel department="Dispatch" tickets={dispatchTickets} canRaise />}
+        {deptsToShow.length > 0 && <TicketsPanel department="Dispatch" tasks={dispatchTasks} canRaise />}
       </main>
     );
   }
 
   const groups = await getMyWork(user, deptFilter);
-  const ticketsByDept = deptsToShow.length
-    ? await Promise.all(deptsToShow.map(d => getTickets({ department: d })))
+  const tasksByDept = deptsToShow.length
+    ? await Promise.all(deptsToShow.map(d => getDepartmentTasks(d)))
     : [];
   const bottlenecks = deptsToShow.includes('Production') ? await getStageBottlenecks('Production') : [];
   const waitingByDept = deptsToShow.length
@@ -193,7 +195,7 @@ export default async function Home({ searchParams }) {
       })}
 
       {deptsToShow.map((d, i) => (
-        <TicketsPanel key={d} title={d} department={d} canRaise tickets={ticketsByDept[i]} />
+        <TicketsPanel key={d} title={d} department={d} canRaise tasks={tasksByDept[i]} />
       ))}
     </main>
   );
