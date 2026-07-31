@@ -12,17 +12,23 @@ set of user accounts:
    blocks USB drives, CDs/DVDs, phones, and websites on employee machines until a manager approves,
    via the same dashboard.
 
-Everything in this file reflects the **current, working build** as of 2026-07-31. Most recent round:
+Everything in this file reflects the **current, working build** as of 2026-08-01. Most recent round:
 **Workflow Stages** (§3c) — a reusable, department-defined checklist layer *under* a milestone
-(Open → Current → Closed), generalized to every department and verified live end-to-end (add a
-stage, drag it across lanes, apply a template on a second project, auto-complete a milestone and
-watch the existing handoff notification fire downstream). This is the tagging layer §8 had parked,
-resolving whether Production's "7 named phases" are real or just prose — they can now be modeled as
-stages under Production's existing granular milestones, department by department, as each head
-actually defines them. Deeper history (the tickets-collapse round, the Tasks/Workers split, the
-login-page split, QC test records, multi-project customer logins, etc.) lives in `git log` now
-rather than repeated here — each is still documented in full in its own numbered section below, just
-not re-summarized at the top on every round.
+(Open → Current → Closed), generalized to every department. Went through two passes in the same
+session: a first cut where templates grew implicitly and only applied on demand, then a second pass
+adding what actually matters for real use — **named, multiple templates per milestone type** (e.g.
+"Standard" vs "Fast-track"), a real **Manage-tab editor** (rename/reorder/delete template items,
+not just grow-from-usage), and **auto-copying the default template the moment a project is
+created** (`createProjectMilestones`, the same choke point both `POST /api/projects` and the demo
+seed already went through). Verified live end-to-end: shape a milestone's stages, save them as a
+named default template, create a brand-new project and watch its matching milestone arrive with
+those stages already on it, drag cards across Kanban lanes, and auto-complete a milestone whose
+handoff notification fires downstream exactly as a manual Close would. This resolves the tagging
+layer §8 had parked — Production's "7 named phases" question — since any department can now define
+stages under its existing granular milestones. Deeper history (the tickets-collapse round, the
+Tasks/Workers split, the login-page split, QC test records, multi-project customer logins, etc.)
+lives in `git log` now rather than repeated here — each is still documented in full in its own
+numbered section below, just not re-summarized at the top on every round.
 
 ---
 
@@ -373,23 +379,30 @@ for **this one project** — deliberately not on the department-filtered Operati
   ~4 milestones on a project sees all of their stages together, each card labeled with which
   milestone it belongs to. Drag-and-drop is native HTML5 DnD (`draggable` + `dragstart`/`dragover`/
   `drop`) — no library added, none existed in the repo and none was needed. **Manage** picks one of
-  the department's own milestones on this project and edits just that milestone's own stage list
-  (add/remove) — it never edits the template directly (see below).
-- **Templates grow from usage, not a template-editor screen.** `stage_templates` (department,
-  milestone_key, label, sort_order) mirrors `MILESTONE_TEMPLATE`'s own precedent (`lib/milestones.js`
-  — a reusable definition copied onto real rows, edited independently after copying) but isn't a
-  hardcoded array: the **first** stage a head types against a (department, milestone_key) —
-  e.g. Design's `design` milestone, or `release_bom`, `release_drawings`, each tracked separately
-  since a department owns several distinct milestone types — becomes that type's default. Any other
-  milestone of the same type, this project's or another project's, can then **Apply template** to
-  bulk-copy it once (only offered when that milestone currently has zero stages). This is
-  copy-on-demand rather than copy-on-create: every already-running project's milestones predate this
-  feature, so there was nothing to auto-copy onto at project-creation time — Apply template is the
-  explicit, one-time catch-up action instead. `milestone_stages` (milestone_id → milestones, label,
-  sort_order, status) is the actual per-instance list; editing it (`POST`/`DELETE
-  /api/milestones/[id]/stages`) never writes back to the template except the implicit "first stage
-  sets the default" growth above (`INSERT OR IGNORE`, so a label the template already has is a
-  silent no-op, not a duplicate).
+  the department's own milestones on this project, shapes that milestone's own stage list, and
+  separately manages the reusable, **named** templates for that milestone type (see below) — editing
+  a template never touches any project's own instance list, and vice versa, except through an
+  explicit Save/Apply action.
+- **Named, multi-template model — a department can save several templates per (department,
+  milestone_key)** (e.g. "Standard" vs "Fast-track" for Design's `design` milestone), exactly one
+  marked **default**. `stage_templates` is the header row (department, milestone_key, name,
+  is_default); `stage_template_items` is its ordered stage list. The normal way a template is born:
+  shape a milestone's own stages first (add/remove/rename in "This milestone's stages"), then **Save
+  as template** — names it and copies the current list in one shot (`POST /api/stage-templates`).
+  From there the template is edited independently — rename it, **Set default**, rename/reorder
+  (↑/↓)/remove its items, or delete the whole template — via `PATCH`/`DELETE
+  /api/stage-templates/[id]` and `.../items/[itemId]`.
+- **The default auto-copies at project creation — this directly answers "when does a project get
+  its stages, and by which department": `createProjectMilestones` (`lib/db.js`), the single choke
+  point both `POST /api/projects` (a PM creating a real project) and the demo seed already call for
+  every one of the 8 departments' milestones at once, now also copies whichever `stage_templates` row
+  is `is_default` for each `(department, milestone_key)` it inserts — one lookup per milestone,
+  silently a no-op for a type with no default yet.** Verified live: after saving Design's "Standard
+  Design" template as the default, creating a brand-new project (`POST /api/projects`) produced a
+  Design milestone whose stages were already present, in the template's order, with zero manual
+  steps. A milestone that predates its type's template (or whose head wants a non-default template)
+  still gets **Apply template** in Manage — a dropdown of that type's templates, applied on demand,
+  guarded to milestones with zero stages so applying never merges into or clobbers an existing list.
 - **Auto-complete.** `PATCH /api/milestones/[id]/stages/[stageId]` (status change, e.g. from a
   Kanban drop) checks after every update whether every stage under that milestone is now Closed; if
   so it stamps the milestone `status='done'` (+ `actual_start`/`actual_end` via `COALESCE`, same
@@ -403,9 +416,12 @@ for **this one project** — deliberately not on the department-filtered Operati
   available whether or not a milestone has stages, rather than being redesigned around stages. All
   of the auto behavior above is additive, on the stage-status endpoint only; no drawer code needed
   to change for a milestone that happens to have stages.
-- **Auth mirrors the milestones route**: a head may only touch a milestone in a department they're
-  granted (`canAccessDepartment`); a PM can touch any. Every write is audited (`stage_added`,
-  `stage_template_applied`, `stage_status_change`, `stage_removed`) via the shared `audit()`.
+- **Auth mirrors the milestones route**: a head may only touch a milestone (or a template — scoped
+  by its own `department` column) in a department they're granted (`canAccessDepartment`); a PM can
+  touch any. Every write is audited (`stage_added`/`stage_renamed`/`stage_removed`/
+  `stage_status_change`/`stage_template_applied` for the instance side;
+  `stage_template_created`/`renamed`/`defaulted`/`deleted` and `stage_template_item_added`/
+  `renamed`/`removed` for the template side) via the shared `audit()`.
 
 ## 4. Executive view
 
@@ -510,7 +526,7 @@ milestones ──< notifications                     (§3b — a handoff/reopen 
 tasks ──< notifications                          (§3b — a cross-department task raise's task_id, the other notification link target)
 tickets                                          (§3b — dead, kept only for notifications.ticket_id FK + pre-collapse history; nothing reads/writes it)
 milestones ──< milestone_stages                  (§3c — one row per stage per milestone instance, status Open/Current/Closed)
-stage_templates                                  (§3c — department + milestone_key + label, reusable; grows from usage, not project-scoped)
+stage_templates ──< stage_template_items         (§3c — named, reusable per department + milestone_key; one is_default auto-copies at project creation)
 workers ──< worker_days                          (§3a — Production-only shop-floor people with no users row; one attendance row per worker per day)
 users (role + departments CSV + project_ids CSV [customer scoping, one-or-more] + pending flag)
 ```
@@ -551,14 +567,22 @@ anymore. **Workflow Stages is built** (§3c) — no longer listed here.
 
 **Also deferred:** a PM-oversight cross-department view for the Tasks calendar (§3a — PMs currently
 have no Tasks tab at all, same as before); the multi-department "combined heads" dashboard for
-Operations, deferred until a head actually running two-plus departments exists; an
-**Operations-tab departmental-view redesign** (separate, not yet scoped); a template-editing screen
-for `stage_templates` (§3c — templates currently only grow from the first real use, no dedicated
-CRUD UI); and reorganizing Production's milestones into new dedicated Production
-quality/inspection/testing milestones (distinct from Stages, and from QC's existing module) — still
-parked, but the "is the 7-phase idea real" half of this is now answerable: Production can model it
-as Stages under its existing granular milestones the same way any other department would, no schema
-change needed, whenever `production_head` actually defines them.
+Operations, deferred until a head actually running two-plus departments exists; and reorganizing
+Production's milestones into new dedicated Production quality/inspection/testing milestones
+(distinct from Stages, and from QC's existing module) — still parked, but the "is the 7-phase idea
+real" half of this is now answerable: Production can model it as Stages under its existing granular
+milestones the same way any other department would, no schema change needed, whenever
+`production_head` actually defines them. **Template editing is built** (§3c, named/multi-template
+model with a Manage-tab editor) — no longer listed here.
+
+**Operations-tab and project-page redesign — under discussion, not started:** both surfaces have
+accreted cards across several rounds (Master BOM, per-project attention lists, Stuck-in-Production,
+Waiting-on-per-department, and now Stages, all stacked on top of the milestone list on the project
+page; a similar stack on Operations) with no pass yet on which are department-level vs PM-level,
+which actually get used, and which should collapse or merge. `TicketsPanel.jsx`'s default title is
+still literally "Tickets" on the project page (department name on Operations) — confirmed still
+live, cosmetic only, the backing entity has been gone since §3b; worth fixing as part of this pass
+rather than in isolation.
 
 ---
 
@@ -837,7 +861,9 @@ file).
 `app/` — pages + API routes, including `api/agent/*` (Bearer-agent), `api/usb/*`, `api/browser/*`
 (session-cookie, PM-gated), `api/qc-records/*` (§5b, QC + PM-gated), `api/milestones/[id]/reopen`
 (§3b, the send-back-for-rework endpoint), `api/milestones/[id]/stages` + `api/milestones/[id]/stages/
-[stageId]` (§3c, add/apply-template and status/delete), and `api/notifications`. `app/login/page.js` /
+[stageId]` (§3c, add/apply-template and rename/status/delete on a milestone's own instance),
+`api/stage-templates/*` (§3c, the named-template CRUD — header + `.../items/*`), and
+`api/notifications`. `app/login/page.js` /
 `app/d-login/page.js` (§2c) are the production sign-in page and the gated demo picker;
 `app/production/*` (§3a, Tasks + Workers — route name is legacy, Tasks now works for every
 department, verified live) is gated by `isHead`/`headDepartments` (any department) except Workers,

@@ -26,6 +26,15 @@ export async function PATCH(req, { params }) {
   }
 
   const b = await req.json();
+
+  if ('label' in b) {
+    const label = String(b.label || '').trim();
+    if (!label) return NextResponse.json({ error: 'A stage name is required' }, { status: 400 });
+    await execute('UPDATE milestone_stages SET label = ? WHERE id = ?', [label, stage.id]);
+    await audit('stage_renamed', { actor: user.username, detail: `milestone ${m.id} stage ${stage.id}: ${stage.label} -> ${label}` });
+    return NextResponse.json({ ok: true });
+  }
+
   if (!STATUSES.includes(b.status)) return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
 
   await execute('UPDATE milestone_stages SET status = ? WHERE id = ?', [b.status, stage.id]);

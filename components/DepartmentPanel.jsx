@@ -20,12 +20,15 @@ export default function DepartmentPanel({
   projectId, bom = [], pending = [], packingLists = [], canUploadBom = false, canPack = false,
   bomFields = [], bomImports = [], qcRecords = [], canEditQc = false,
   tasks = [], canRaiseTickets = false,
-  stages = [], stageTemplates = [], canManageStages = false,
+  stages = [], stageTemplates = [], stageTemplateItems = [], canManageStages = false,
 }) {
   const deptMs = milestones.filter(m => m.department === department);
   const showBom = BOM_DEPARTMENTS.includes(department) && bom.length > 0;
   const deptTasks = tasks.filter(t => t.department === department || t.from_department === department);
   const deptStages = stages.filter(s => s.department === department);
+  const deptTemplates = stageTemplates.filter(t => t.department === department);
+  const deptTemplateIds = new Set(deptTemplates.map(t => t.id));
+  const deptTemplateItems = stageTemplateItems.filter(i => deptTemplateIds.has(i.template_id));
 
   return (
     <div className="flex flex-col gap-6">
@@ -48,7 +51,7 @@ export default function DepartmentPanel({
         <>
           <MilestoneBoard milestones={deptMs} head={head} />
           <StagesPanel department={department} milestones={deptMs} stages={deptStages}
-            stageTemplates={stageTemplates} canManage={canManageStages} />
+            stageTemplates={deptTemplates} stageTemplateItems={deptTemplateItems} canManage={canManageStages} />
         </>
       )}
 
