@@ -69,9 +69,9 @@ Procurement, **Stores** (owns the BOM's GRN/receipt columns — also no mileston
 
 | Login | Password | Role | Access |
 |-------|----------|------|--------|
-| `admin` | `admin123` | **PM** (`admin`) | Everything — all projects, all departments. Owns project creation. Only role that can register agent machines. |
-| `manager` | `manager123` | **PM** (`manager`) | Same as admin for the ops platform; both are "PM" — see `isPM()` in `lib/auth.js`. |
-| `executive` | `executive123` | **PM** (`executive`) | Same full surface as admin/manager, plus top of the approval hierarchy — approves Project Manager registrations that a `manager` cannot (see §2a). |
+| `admin` | `admin123` | **PM** (`admin`) | Everything — all projects, all departments. Owns project creation. |
+| `manager` | `manager123` | **PM** (`manager`) | Same as admin for the ops platform; both are "PM" — see `isPM()` in `lib/auth.js`. Cannot register agent machines (admin/executive only, `app/api/usb/machines/route.js`). |
+| `executive` | `executive123` | **PM** (`executive`) | Same full surface as admin/manager, plus top of the approval hierarchy — approves Project Manager registrations that a `manager` cannot (see §2a). Also, with `admin`, one of the two roles that can register agent machines. |
 | `design_head` | `design_head123` | **Functional Head** (`operator`) | Design department only (demo). |
 | `engg_head` | `engg_head123` | **Functional Head** (`operator`) | Engineering department only (demo) — owns the BOM item definitions. |
 | `procurement_head` | `procurement_head123` | **Functional Head** (`operator`) | Procurement department only (demo). |
@@ -827,6 +827,7 @@ cloud dashboard.
 **Approvals tab layout** (`app/approvals/page.js`, shadcn Tabs):
 - **Devices** (live) — USB/CD/phone requests, whitelist, machine roster.
 - **Browser** (live) — website policy, active grants, pending requests.
+- **People** (live, PM-only) — pending registrations + onboarding roster, `PeoplePanel.jsx` (§2a).
 - **Mail** (placeholder) — see §16 and `docs/v4-zoho-mail-brainstorm.md`.
 
 ## 10. Devices — USB, CD/DVD, phones
@@ -1103,8 +1104,8 @@ cancel-request against a BOM item gets raised, §5a), `StagesPanel.jsx` (§3c, t
 Stages card — native HTML5 drag-and-drop, no library), `ProcurementQueue.jsx` (§5a, Procurement's
 own Sourcing/PO-placed/In-transit worklist + cancel-requests accept action, mounted above the BOM
 table on their department panel only, with a link into the workspace below),
-`ProcurementWorkspace.jsx` (§5c, the `/procurement` page's 3-tab client component — Sourcing,
-Purchase orders, Suppliers).
+`ProcurementWorkspace.jsx` (§5c, the `/procurement` page's 5-tab client component — Sourcing,
+Selection, Purchase Orders, Status, Suppliers).
 `components/ui/` — shadcn primitives, including `popover.jsx` (added this round, same
 `radix-ui` unified-import pattern as the rest).
 `agent/` — the Python Windows agent, its Inno Setup installer, and its own
