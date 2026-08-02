@@ -52,20 +52,20 @@ export default async function ProjectDetail({ params }) {
 
   return (
     <main className="container flex flex-col gap-6 py-8">
-      {/* Row 1: identity/why-delayed beside Needs Attention — mirrors the Executive page's
-          Top Risks / Delayed Because layout. */}
-      <div className="grid items-start gap-6 lg:grid-cols-2">
-        <ProjectHeader project={project} health={health} blocker={blocker} />
-        <TodayBand milestones={attentionMilestones} />
-      </div>
-
-      {/* Row 2: same Milestone Tracker as the Executive dashboard, scoped to this one project —
-          shown to every internal role (heads get the full chain as read-only context). Full width
-          since the stage bar needs the room. */}
+      {/* Row 1: same Milestone Tracker as the Executive dashboard, scoped to this one project —
+          shown to every internal role (heads get the full chain as read-only context), now leading
+          the page instead of sitting below the identity row. Full width since the stage bar needs
+          the room. */}
       <PortfolioDelayTimeline projects={[{ ...project, milestones }]} />
 
-      {/* Master BOM procurement rollup — context for every internal role; renders nothing if no BOM. */}
-      <BomProgress rollup={bomRollup} />
+      {/* Row 2: identity, Open Actions (renamed from Needs Attention), and the Master BOM rollup
+          side by side — three cards instead of two; BomProgress used to sit in its own full-width
+          row below the timeline. */}
+      <div className="grid items-start gap-6 lg:grid-cols-3">
+        <ProjectHeader project={project} health={health} blocker={blocker} />
+        <TodayBand milestones={attentionMilestones} />
+        <BomProgress rollup={bomRollup} />
+      </div>
 
       {pm ? (
         // PM/admin: the all-departments tabbed card.

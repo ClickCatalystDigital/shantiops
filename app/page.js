@@ -1,11 +1,11 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { getMyWork, getBomWork, getDepartmentTasks, getStageBottlenecks, getWaitingList, getSourcingItems } from '@/lib/data';
+import { getMyWork, getBomWork, getDepartmentTasks, getStageBottlenecks, getSourcingItems, getProcurementFlowCounts } from '@/lib/data';
 import { getSessionUser, isCustomer, isManager, isHead, headDepartments, canAccessDepartment, roleHome } from '@/lib/auth';
 import StatusBadge from '@/components/StatusBadge';
 import DispatchBoard from '@/components/DispatchBoard';
 import TicketsPanel from '@/components/TicketsPanel';
-import ProcurementQueue from '@/components/ProcurementQueue';
+import ProcurementFlow from '@/components/ProcurementFlow';
 import PageHeader from '@/components/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -70,14 +70,14 @@ export default async function Home({ searchParams }) {
   const tasksByDept = deptsToShow.length
     ? await Promise.all(deptsToShow.map(d => getDepartmentTasks(d)))
     : [];
-  // Cross-project BOM items (§5c) — feeds both the Procurement queue card below and every
-  // TicketsPanel's "Cancel BOM item" picker, the same way DepartmentPanel threads a project's own
-  // bom into TicketsPanel on the project page.
+  // Cross-project BOM items (§5c) — feeds every TicketsPanel's "Cancel BOM item" picker, the same
+  // way DepartmentPanel threads a project's own bom into TicketsPanel on the project page.
   const sourcingItems = deptsToShow.length ? await getSourcingItems() : [];
   const bottlenecks = deptsToShow.includes('Production') ? await getStageBottlenecks('Production') : [];
-  const waitingByDept = deptsToShow.length
-    ? await Promise.all(deptsToShow.map(d => getWaitingList(d)))
-    : [];
+  // Procurement's pipeline glance (§2 of the redesign) — replaces the old Sourcing/PO-placed/
+  // In-transit tiles. Positioned right after the stat chips, ahead of the per-project breakdown
+  // below, which is the least useful thing on this page for a quick "where do things stand" glance.
+  const procurementFlow = deptsToShow.includes('Procurement') ? await getProcurementFlowCounts() : null;
   // Open Master-BOM work for BOM-owning departments (Engineering: missing BOMs; Procurement /
   // Stores / Production: items not yet closed). Fills the once-empty Engineering attention list.
   const bomWork = deptFilter && deptFilter !== 'Engineering' && !['Procurement', 'Stores', 'Production'].includes(deptFilter)
@@ -108,6 +108,10 @@ export default async function Home({ searchParams }) {
         <StatChip label="due soon" value={chips.dueSoon} dot="bg-warning" />
       </div>
 
+      {/* Procurement's pipeline glance sits right after the KPI chips — ahead of the per-project
+          breakdown below, which is the least useful thing here for a quick status check. */}
+      {procurementFlow && <ProcurementFlow counts={procurementFlow} />}
+
       {bomWork.length > 0 && (
         <Card>
           <CardHeader className="py-4"><CardTitle className="text-base">Master BOM</CardTitle></CardHeader>
@@ -128,35 +132,55 @@ export default async function Home({ searchParams }) {
         </Card>
       )}
 
+      {/* "Open Actions" (renamed from "Needs Attention") — each project card now splits into
+          Urgent (not yet delayed, closest deadline first) on top and Needs Attention (already
+          overdue/blocked) below, instead of one severity-sorted list. */}
       {groups.length === 0 ? (
         <Card><CardContent className="py-10 text-center text-muted-foreground">
           Nothing needs attention right now. 🎉
         </CardContent></Card>
       ) : (
         <div className="grid items-start gap-4 md:grid-cols-2 2xl:grid-cols-3">
-          {groups.map(g => (
-            <Card key={g.items[0].project_id}>
-              <CardHeader className="py-4">
-                <CardTitle className="text-base">
-                  <Link href={`/projects/${g.items[0].project_id}`} className="text-primary hover:underline">{g.project_no}</Link>
-                  <span className="text-muted-foreground font-normal"> · {g.customer_name}</span>
-                </CardTitle>
-                <CardAction className="text-xs text-muted-foreground tnum">{g.items.length} item{g.items.length !== 1 ? 's' : ''}</CardAction>
-              </CardHeader>
-              <CardContent className="flex flex-col divide-y pt-0">
-                {g.items.map(m => (
-                  <Link key={m.id} href={`/projects/${m.project_id}`}
-                    className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5 text-sm transition-colors hover:bg-muted/40 -mx-2 px-2 rounded">
-                    <StatusBadge status={m.eff} />
-                    <span className="font-medium">{m.milestone_label}</span>
-                    {manager && <span className="text-xs text-muted-foreground">{m.assignee ? `@${m.assignee}` : 'Unassigned'}</span>}
-                    <span className="ml-auto text-xs text-muted-foreground tnum">{formatDate(m.planned_end)}</span>
-                    {m.delay_reason && <span className="w-full text-xs text-warning">⚠ {m.delay_reason}</span>}
-                  </Link>
-                ))}
-              </CardContent>
-            </Card>
-          ))}
+          {groups.map(g => {
+            const delayed = g.items.filter(m => ['overdue', 'blocked'].includes(m.eff.code));
+            const urgent = g.items.filter(m => !['overdue', 'blocked'].includes(m.eff.code))
+              .sort((a, b) => (a.planned_end || '').localeCompare(b.planned_end || ''));
+            const row = m => (
+              <Link key={m.id} href={`/projects/${m.project_id}`}
+                className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5 text-sm transition-colors hover:bg-muted/40 -mx-2 px-2 rounded">
+                <StatusBadge status={m.eff} />
+                <span className="font-medium">{m.milestone_label}</span>
+                {manager && <span className="text-xs text-muted-foreground">{m.assignee ? `@${m.assignee}` : 'Unassigned'}</span>}
+                <span className="ml-auto text-xs text-muted-foreground tnum">{formatDate(m.planned_end)}</span>
+                {m.delay_reason && <span className="w-full text-xs text-warning">⚠ {m.delay_reason}</span>}
+              </Link>
+            );
+            return (
+              <Card key={g.items[0].project_id}>
+                <CardHeader className="py-4">
+                  <CardTitle className="text-base">
+                    <Link href={`/projects/${g.items[0].project_id}`} className="text-primary hover:underline">{g.project_no}</Link>
+                    <span className="text-muted-foreground font-normal"> · {g.customer_name}</span>
+                  </CardTitle>
+                  <CardAction className="text-xs text-muted-foreground tnum">{g.items.length} item{g.items.length !== 1 ? 's' : ''}</CardAction>
+                </CardHeader>
+                <CardContent className="flex flex-col gap-3 pt-0">
+                  {urgent.length > 0 && (
+                    <div>
+                      <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Urgent</p>
+                      <div className="flex flex-col divide-y">{urgent.map(row)}</div>
+                    </div>
+                  )}
+                  {delayed.length > 0 && (
+                    <div>
+                      <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Needs attention</p>
+                      <div className="flex flex-col divide-y">{delayed.map(row)}</div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
 
@@ -174,40 +198,10 @@ export default async function Home({ searchParams }) {
         </Card>
       )}
 
-      {deptsToShow.includes('Procurement') && sourcingItems.length > 0 && (
-        <ProcurementQueue bom={sourcingItems} tasks={tasksByDept[deptsToShow.indexOf('Procurement')]} />
-      )}
-
-      {deptsToShow.map((d, i) => {
-        const groups = Object.entries(waitingByDept[i]);
-        if (groups.length === 0) return null;
-        return (
-          <Card key={`waiting-${d}`}>
-            <CardHeader className="py-4"><CardTitle className="text-base">Waiting on — {d}</CardTitle></CardHeader>
-            <CardContent className="flex flex-col gap-3 pt-0">
-              {groups.map(([category, items]) => (
-                <div key={category}>
-                  <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    {category} · {items.length}
-                  </p>
-                  <div className="flex flex-col divide-y">
-                    {items.map(m => (
-                      <Link key={m.id} href={`/projects/${m.project_id}`}
-                        className="flex items-center gap-2 py-1.5 text-sm transition-colors hover:bg-muted/40 -mx-2 px-2 rounded">
-                        <span className="font-medium text-primary">{m.project_no}</span>
-                        <span className="truncate text-muted-foreground">{m.milestone_label}</span>
-                      </Link>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        );
-      })}
-
       {/* Procurement's Tickets card moved to the Requests tab (§4.0b) — split into Raised
-          by/for Procurement there, so it's not duplicated here. */}
+          by/for Procurement there, so it's not duplicated here. "Waiting on" (delay_category
+          grouping) is removed entirely — near-unused across the whole app (one milestone total
+          has ever had a category set) and fully redundant with Open Actions above. */}
       {deptsToShow.map((d, i) => d !== 'Procurement' && (
         <TicketsPanel key={d} title={d} department={d} canRaise tasks={tasksByDept[i]} bom={sourcingItems} />
       ))}

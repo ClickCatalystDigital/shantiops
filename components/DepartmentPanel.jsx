@@ -1,9 +1,11 @@
 // One department's slice of a project: its milestones (edit drawer scoped to role) + the department's
-// special panel — Engineering → Bill of Materials, Dispatch → Packing, and Procurement / Stores /
-// Production → the same BOM table scoped to the columns their department owns (bomFields comes from
-// the server via editableBomFields(user)). Every department also gets a cross-department task card
-// (TicketsPanel.jsx, repurposed from the old standalone tickets entity) — the one thing every
-// department has, including Engineering/Stores who own no milestones.
+// special panel — Engineering → Bill of Materials, Dispatch → Packing, and Stores / Production → the
+// same BOM table scoped to the columns their department owns (bomFields comes from the server via
+// editableBomFields(user)). Every department also gets a cross-department task card (TicketsPanel.jsx,
+// repurposed from the old standalone tickets entity) — the one thing every department has, including
+// Engineering/Stores who own no milestones. Procurement is the deliberate exception to both: its BOM
+// work moved entirely to /procurement (§4 of the redesign) and its Tickets/Raise card moved to the
+// Requests tab (§4.0b) — this page shows it only the Milestone board, Stages, and ProcurementQueue.
 import MilestoneBoard from './MilestoneBoard';
 import BomPanel from './BomPanel';
 import PackingPanel from './PackingPanel';
@@ -14,7 +16,7 @@ import StagesPanel from './StagesPanel';
 import ProcurementQueue from './ProcurementQueue';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 
-const BOM_DEPARTMENTS = ['Procurement', 'Stores', 'Production'];
+const BOM_DEPARTMENTS = ['Stores', 'Production'];
 
 export default function DepartmentPanel({
   department, milestones, head = false,
@@ -68,9 +70,11 @@ export default function DepartmentPanel({
         <QcPanel projectId={projectId} records={qcRecords} canEdit={canEditQc} />
       )}
 
-      {/* Every department gets this cross-department card, including Engineering/Stores who own no
-          milestones — this is their home now instead of the old dead-end message. */}
-      <TicketsPanel department={department} projectId={projectId} milestones={milestones} bom={bom} tasks={deptTasks} canRaise={canRaiseTickets} />
+      {/* Every department except Procurement gets this cross-department card — Procurement's moved
+          to the Requests tab (§4.0b), split into Raised by/for Procurement there. */}
+      {department !== 'Procurement' && (
+        <TicketsPanel department={department} projectId={projectId} milestones={milestones} bom={bom} tasks={deptTasks} canRaise={canRaiseTickets} />
+      )}
     </div>
   );
 }
