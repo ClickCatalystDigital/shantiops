@@ -253,8 +253,11 @@ demo projects + their milestones/stages are untouched — only the BOM bulk and 
    original draft: `procurement_requests` only ever stores *new-item* requests — no `kind`/
    `bom_item_id` columns — since cancel requests were already committed to keeping their existing
    `tasks`-based flow untouched; the Requests inbox just displays both from their two real sources.
-4. ⏳ Procurement workspace's four sub-tabs (§4.1–§4.4) — next.
-5. ⏳ Operations + project page restructure (§2, §3).
+4. ✅ Procurement workspace's four sub-tabs (§4.1–§4.4) — `ProcurementWorkspace.jsx` rebuilt;
+   `lib/procurement.js` (new) owns the auto-draft-PO bookkeeping; PO issue/unissue extended.
+   Suppliers kept as a 5th tab (not in the original spec, but a working feature with no other
+   home). Verified live end to end — see the commit message for the full check.
+5. ⏳ Operations + project page restructure (§2, §3) — next.
 
 Each phase: build → verify live as a real department head → keep `node --test lib/handoff.test.mjs`
 and `node lib/pmb-selfcheck.mjs` green → commit. `SYSTEM.md` gets updated once, after Phase 5, rather
