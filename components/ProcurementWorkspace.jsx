@@ -1,13 +1,14 @@
 'use client';
 
-// Procurement's cross-project workbench (§5a) — three tabs: Sourcing (the daily worklist, segmented
-// by where each item sits in the real process, multi-select + a contextual action bar), Purchase
-// orders (issue/cancel/PDF), Suppliers (provisional list + price history). Reuses the
-// select-all/action-bar interaction already established in ProcurementQueue.jsx.
+// Procurement's cross-project workbench (§5a), rebuilt into the four-tab flow from
+// PROCUREMENT-CHANGES.md §4: Sourcing (gather quotes) -> Selection (compare/pick, auto-drafts a PO)
+// -> Purchase Orders (issue/cancel-issue) -> State (search + manual status override, always shows
+// every accepted item regardless of stage). Suppliers stays a 5th tab — not named in the redesign
+// spec, but it's a real, working feature (add/edit/deactivate) with no other home, so it's kept
+// rather than dropped.
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { api, showToast } from '@/lib/client';
-import { formatDate, formatMoney } from '@/lib/format';
+import { api, showToast, formatDate, formatMoney } from '@/lib/client';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from './ui/tabs';
 import { Button } from './ui/button';
@@ -15,208 +16,80 @@ import { Input } from './ui/input';
 import { Textarea } from './ui/textarea';
 import { Label } from './ui/label';
 import { Badge } from './ui/badge';
-import { Checkbox } from './ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from './ui/dialog';
 
-const PAYMENT_TERMS = ['LC', 'Advance', 'After Delivery', 'PDC', 'COD'];
+const PAYMENT_TERM_PRESETS = ['LC', 'Advance %', 'After Delivery', 'PDC', 'COD'];
+const ADVANCE_PCTS = Array.from({ length: 10 }, (_, i) => `${(i + 1) * 10}%`);
 const RESOLVED = ['CLOSED', 'RECEIVED', 'CANCELLED'];
-const SEGMENTS = [
-  { key: 'to_source', label: 'To source' },
-  { key: 'comparing', label: 'Comparing' },
-  { key: 'on_order', label: 'On order' },
-  { key: 'delivered', label: 'Delivered' },
-  { key: 'cancelled', label: 'Cancelled' },
-];
+// Sourcing/Selection are for items still working toward a PO — once one's issued (TRANSIT) or
+// closed out, it's State's job to show it, not theirs.
+const OUT_OF_PIPELINE = [...RESOLVED, 'TRANSIT'];
+const STATUS_TONE = {
+  PENDING: 'bg-muted text-muted-foreground ring-border',
+  TRANSIT: 'bg-warning/10 text-warning ring-warning/20',
+  CLOSED: 'bg-success/10 text-success ring-success/20',
+  RECEIVED: 'bg-success/10 text-success ring-success/20',
+  CANCELLED: 'bg-danger/10 text-danger ring-danger/20',
+};
+const BOM_STATUSES = ['PENDING', 'TRANSIT', 'CLOSED', 'CANCELLED', 'RECEIVED'];
 
-function segmentOf(item, quoteCount) {
-  if (item.purchase_status === 'CANCELLED') return 'cancelled';
-  if (RESOLVED.includes(item.purchase_status)) return 'delivered';
-  if (item.selected_quote_id) return 'on_order';
-  return quoteCount > 0 ? 'comparing' : 'to_source';
+// Payment terms field — LC / Advance % (reveals a 10-100% step-10 picker) / After Delivery / PDC /
+// COD, plus a free-text "add new option" escape hatch (§4.1). Shared by Sourcing's quote form.
+function PaymentTermsField({ value, advancePct, onChange, onAdvancePctChange }) {
+  const [custom, setCustom] = useState(!PAYMENT_TERM_PRESETS.includes(value) && !!value);
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label>Payment terms</Label>
+      {custom ? (
+        <Input value={value} onChange={e => onChange(e.target.value)} placeholder="Custom terms" autoFocus />
+      ) : (
+        <Select value={value} onValueChange={v => onChange(v)}>
+          <SelectTrigger className="w-full"><SelectValue placeholder="—" /></SelectTrigger>
+          <SelectContent>{PAYMENT_TERM_PRESETS.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+        </Select>
+      )}
+      {value === 'Advance %' && !custom && (
+        <Select value={advancePct} onValueChange={onAdvancePctChange}>
+          <SelectTrigger className="h-8 w-full text-xs"><SelectValue placeholder="Which %?" /></SelectTrigger>
+          <SelectContent>{ADVANCE_PCTS.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent>
+        </Select>
+      )}
+      <button type="button" className="w-fit text-xs text-primary hover:underline"
+        onClick={() => { setCustom(c => !c); onChange(''); }}>
+        {custom ? 'Pick from list' : '+ Add new option'}
+      </button>
+    </div>
+  );
 }
 
-export default function ProcurementWorkspace({ sourcingItems, suppliers, purchaseOrders, quotes }) {
-  const [tab, setTab] = useState('sourcing');
+function ItemContext({ it }) {
   return (
-    <Tabs value={tab} onValueChange={setTab} className="flex-col gap-4">
-      <TabsList variant="line" className="w-max justify-start px-0">
-        <TabsTrigger value="sourcing">Sourcing</TabsTrigger>
-        <TabsTrigger value="orders">Purchase orders</TabsTrigger>
-        <TabsTrigger value="suppliers">Suppliers</TabsTrigger>
-      </TabsList>
-      <TabsContent value="sourcing"><Sourcing items={sourcingItems} suppliers={suppliers} quotes={quotes} /></TabsContent>
-      <TabsContent value="orders"><PurchaseOrders orders={purchaseOrders} /></TabsContent>
-      <TabsContent value="suppliers"><Suppliers suppliers={suppliers} quotes={quotes} /></TabsContent>
-    </Tabs>
+    <p className="truncate text-xs text-muted-foreground">
+      {it.project_no} · {it.moc || '—'} · {it.size_spec || '—'} · {it.qty_text || '—'}
+      {it.pr_ref && ` · PR ${it.pr_ref}`}
+    </p>
   );
 }
 
 // ---------- Sourcing ----------
 
-function Sourcing({ items, suppliers, quotes }) {
-  const router = useRouter();
-  const [segment, setSegment] = useState('to_source');
-  const [selected, setSelected] = useState(new Set());
-  const [expanded, setExpanded] = useState(null);
-  const [quoteDialog, setQuoteDialog] = useState(false);
-  const [poDialog, setPoDialog] = useState(false);
-
-  const quotesByItem = {};
-  for (const q of quotes) (quotesByItem[q.bom_item_id] ||= []).push(q);
-
-  const withSegment = items.map(it => ({ ...it, __segment: segmentOf(it, (quotesByItem[it.id] || []).length) }));
-  const counts = Object.fromEntries(SEGMENTS.map(s => [s.key, withSegment.filter(i => i.__segment === s.key).length]));
-  const shown = withSegment.filter(i => i.__segment === segment);
-
-  function toggle(id) {
-    setSelected(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
-  }
-  function toggleAll() {
-    setSelected(s => (s.size === shown.length ? new Set() : new Set(shown.map(i => i.id))));
-  }
-  function changeSegment(key) {
-    setSegment(key); setSelected(new Set()); setExpanded(null);
-  }
-
-  const selectedItems = shown.filter(i => selected.has(i.id));
-
-  function openPoDialog() {
-    const supplierIds = new Set(selectedItems.map(i => i.selected_quote_id && quotes.find(q => q.id === i.selected_quote_id)?.supplier_id));
-    if (supplierIds.size > 1) return showToast('All selected items must share one supplier', 'error');
-    setPoDialog(true);
-  }
-
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap gap-2">
-        {SEGMENTS.map(s => (
-          <button key={s.key} onClick={() => changeSegment(s.key)}
-            className={`rounded-md border px-3 py-1.5 text-sm ${segment === s.key ? 'border-foreground/30 bg-muted' : 'text-muted-foreground'}`}>
-            {s.label} <span className="text-xs text-muted-foreground">{counts[s.key]}</span>
-          </button>
-        ))}
-      </div>
-
-      <Card>
-        <CardContent className="flex flex-col gap-0 pt-4">
-          {shown.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">Nothing here.</p>}
-          {shown.length > 0 && (
-            <div className="flex items-center gap-3 border-b pb-2 text-xs text-muted-foreground">
-              <Checkbox checked={selected.size === shown.length} onCheckedChange={toggleAll} />
-              <span>Select all</span>
-            </div>
-          )}
-          {shown.map(it => (
-            <div key={it.id} className="border-b last:border-b-0">
-              <div className="flex items-center gap-3 py-2.5 text-sm">
-                <Checkbox checked={selected.has(it.id)} onCheckedChange={() => toggle(it.id)} />
-                <button className="min-w-0 flex-1 text-left" onClick={() => setExpanded(expanded === it.id ? null : it.id)}>
-                  <span className="font-medium">{it.material_description}</span>
-                  <span className="ml-2 text-xs text-muted-foreground">{it.project_no} · {it.qty_text}</span>
-                </button>
-                {it.__segment === 'on_order' && <span className="shrink-0 text-xs text-muted-foreground">{it.selected_supplier_name}</span>}
-                {it.__segment === 'comparing' && <Badge variant="outline">{(quotesByItem[it.id] || []).length} quotes</Badge>}
-                <Badge variant="outline">{it.purchase_status || 'PENDING'}</Badge>
-              </div>
-              {expanded === it.id && (
-                <ItemDetail item={it} quotes={quotesByItem[it.id] || []} router={router} />
-              )}
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-
-      {selected.size > 0 && (
-        <div className="sticky bottom-4 flex items-center gap-3 rounded-md border bg-background p-3 shadow-sm">
-          <span className="text-sm text-muted-foreground">{selected.size} item{selected.size !== 1 ? 's' : ''} selected</span>
-          {(segment === 'to_source' || segment === 'comparing') && (
-            <Button size="sm" onClick={() => setQuoteDialog(true)}>Log quote</Button>
-          )}
-          {segment === 'on_order' && <Button size="sm" onClick={openPoDialog}>Create PO</Button>}
-          <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setSelected(new Set())}>Clear</Button>
-        </div>
-      )}
-
-      {quoteDialog && (
-        <QuoteDialog items={selectedItems} suppliers={suppliers} router={router}
-          onClose={() => { setQuoteDialog(false); setSelected(new Set()); }} />
-      )}
-      {poDialog && (
-        <PoDialog items={selectedItems} quotes={quotes} router={router}
-          onClose={() => { setPoDialog(false); setSelected(new Set()); }} />
-      )}
-    </div>
-  );
-}
-
-function ItemDetail({ item, quotes, router }) {
-  const [busy, setBusy] = useState(false);
-
-  async function select(quoteId) {
-    setBusy(true);
-    try {
-      await api(`/api/bom-items/${item.id}/select-supplier`, { method: 'POST', body: { quote_id: quoteId } });
-      showToast('Supplier selected'); router.refresh();
-    } catch (err) { showToast(err.message, 'error'); }
-    setBusy(false);
-  }
-  async function revert() {
-    setBusy(true);
-    try {
-      await api(`/api/bom-items/${item.id}/select-supplier`, { method: 'DELETE' });
-      showToast('Selection reverted'); router.refresh();
-    } catch (err) { showToast(err.message, 'error'); }
-    setBusy(false);
-  }
-
-  return (
-    <div className="flex flex-col gap-2 bg-muted/30 px-3 py-3 text-sm">
-      <div className="text-xs text-muted-foreground">{item.moc} · {item.size_spec}</div>
-      {item.selected_quote_id && (
-        <div className="flex items-center justify-between rounded-md border bg-background px-3 py-2">
-          <span>Selected: <strong>{item.selected_supplier_name}</strong> · {formatMoney(item.selected_unit_price)}{item.po_ref && <span className="ml-2 text-xs text-muted-foreground">PO {item.po_ref}</span>}</span>
-          <button className="text-xs text-muted-foreground hover:text-destructive" disabled={busy} onClick={revert}>Revert</button>
-        </div>
-      )}
-      {quotes.length === 0 && !item.selected_quote_id && (
-        <p className="text-xs text-muted-foreground">No quotes logged yet — select this item and Log quote.</p>
-      )}
-      {quotes.length > 0 && (
-        <div className="flex flex-col gap-1.5">
-          {quotes.map(q => (
-            <div key={q.id} className={`flex items-center justify-between rounded-md border px-3 py-1.5 ${q.id === item.selected_quote_id ? 'border-foreground/30 bg-background' : ''}`}>
-              <span>{q.supplier_name}</span>
-              <span className="text-xs text-muted-foreground">{formatMoney(q.unit_price)}{q.expected_delivery_days ? ` · ${q.expected_delivery_days}d` : ''}{q.payment_terms ? ` · ${q.payment_terms}` : ''}</span>
-              {q.id === item.selected_quote_id
-                ? <Badge>Selected</Badge>
-                : <button className="text-xs text-primary hover:underline" disabled={busy} onClick={() => select(q.id)}>Select</button>}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function QuoteDialog({ items, suppliers, router, onClose }) {
+function AddQuoteDialog({ item, suppliers, router, onClose }) {
   const [supplierId, setSupplierId] = useState('');
   const [newSupplier, setNewSupplier] = useState(false);
   const [newSupplierName, setNewSupplierName] = useState('');
-  const [source, setSource] = useState('');
-  const [days, setDays] = useState('');
+  const [price, setPrice] = useState('');
+  const [uom, setUom] = useState('');
   const [terms, setTerms] = useState('');
   const [advancePct, setAdvancePct] = useState('');
-  const [prices, setPrices] = useState(() => Object.fromEntries(items.map(i => [i.id, ''])));
-  const [uoms, setUoms] = useState(() => Object.fromEntries(items.map(i => [i.id, ''])));
+  const [deliveryDate, setDeliveryDate] = useState('');
+  const [source, setSource] = useState('');
   const [busy, setBusy] = useState(false);
 
   async function submit() {
     if (!newSupplier && !supplierId) return showToast('Pick a supplier', 'error');
     if (newSupplier && !newSupplierName.trim()) return showToast('Name the new supplier', 'error');
-    for (const it of items) {
-      if (!(Number(prices[it.id]) > 0)) return showToast(`Enter a price for ${it.material_description}`, 'error');
-    }
+    if (!(Number(price) > 0)) return showToast('Enter a price', 'error');
     setBusy(true);
     try {
       let sid = supplierId;
@@ -224,13 +97,14 @@ function QuoteDialog({ items, suppliers, router, onClose }) {
         const res = await api('/api/suppliers', { method: 'POST', body: { name: newSupplierName.trim() } });
         sid = res.id;
       }
-      const paymentTerms = terms === 'Advance' && advancePct ? `Advance ${advancePct}%` : terms;
+      const paymentTerms = terms === 'Advance %' && advancePct ? `Advance ${advancePct}` : terms;
       await api('/api/supplier-quotes', {
         method: 'POST',
         body: {
           supplier_id: sid,
-          items: items.map(it => ({ bom_item_id: it.id, unit_price: Number(prices[it.id]), uom: uoms[it.id] || undefined })),
-          expected_delivery_days: days || undefined, payment_terms: paymentTerms || undefined, quote_source: source || undefined,
+          items: [{ bom_item_id: item.id, unit_price: Number(price), uom: uom || undefined }],
+          payment_terms: paymentTerms || undefined, quote_source: source || undefined,
+          expected_delivery_date: deliveryDate || undefined,
         },
       });
       showToast('Quote logged'); router.refresh(); onClose();
@@ -240,23 +114,38 @@ function QuoteDialog({ items, suppliers, router, onClose }) {
 
   return (
     <Dialog open onOpenChange={o => { if (!o) onClose(); }}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
-        <DialogHeader><DialogTitle>Log a quote — {items.length} item{items.length !== 1 ? 's' : ''}</DialogTitle></DialogHeader>
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-md">
+        <DialogHeader><DialogTitle>Add quote — {item.material_description}</DialogTitle></DialogHeader>
         <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1.5">
+            <Label>Vendor / Make</Label>
+            {newSupplier ? (
+              <Input value={newSupplierName} onChange={e => setNewSupplierName(e.target.value)} placeholder="New supplier name" autoFocus />
+            ) : (
+              <Select value={supplierId} onValueChange={setSupplierId}>
+                <SelectTrigger className="w-full"><SelectValue placeholder="Choose…" /></SelectTrigger>
+                <SelectContent>{suppliers.map(s => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}</SelectContent>
+              </Select>
+            )}
+            <button type="button" className="w-fit text-xs text-primary hover:underline" onClick={() => setNewSupplier(v => !v)}>
+              {newSupplier ? 'Pick existing supplier' : '+ Add a new supplier'}
+            </button>
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
-              <Label>Supplier</Label>
-              {newSupplier ? (
-                <Input value={newSupplierName} onChange={e => setNewSupplierName(e.target.value)} placeholder="New supplier name" autoFocus />
-              ) : (
-                <Select value={supplierId} onValueChange={setSupplierId}>
-                  <SelectTrigger className="w-full"><SelectValue placeholder="Choose…" /></SelectTrigger>
-                  <SelectContent>{suppliers.map(s => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}</SelectContent>
-                </Select>
-              )}
-              <button type="button" className="w-fit text-xs text-primary hover:underline" onClick={() => setNewSupplier(v => !v)}>
-                {newSupplier ? 'Pick existing supplier' : '+ New supplier'}
-              </button>
+              <Label>Quote</Label>
+              <Input type="number" min="0" step="0.01" value={price} onChange={e => setPrice(e.target.value)} placeholder="Unit price" />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>UoM</Label>
+              <Input value={uom} onChange={e => setUom(e.target.value)} placeholder="e.g. Kg, No" />
+            </div>
+          </div>
+          <PaymentTermsField value={terms} advancePct={advancePct} onChange={setTerms} onAdvancePctChange={setAdvancePct} />
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label>Expected delivery</Label>
+              <Input type="date" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)} />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label>Quote source</Label>
@@ -270,151 +159,142 @@ function QuoteDialog({ items, suppliers, router, onClose }) {
               </Select>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1.5">
-              <Label>Expected delivery (days)</Label>
-              <Input type="number" min="0" value={days} onChange={e => setDays(e.target.value)} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label>Payment terms</Label>
-              <Select value={terms} onValueChange={setTerms}>
-                <SelectTrigger className="w-full"><SelectValue placeholder="—" /></SelectTrigger>
-                <SelectContent>{PAYMENT_TERMS.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-          </div>
-          {terms === 'Advance' && (
-            <div className="flex flex-col gap-1.5">
-              <Label>Advance %</Label>
-              <Input type="number" min="0" max="100" value={advancePct} onChange={e => setAdvancePct(e.target.value)} placeholder="e.g. 40" />
-            </div>
-          )}
-          <div className="flex flex-col gap-2">
-            <Label>Pricing</Label>
-            {items.map(it => (
-              <div key={it.id} className="flex items-center gap-2">
-                <span className="min-w-0 flex-1 truncate text-sm">{it.material_description}</span>
-                <Input className="w-28" type="number" min="0" step="0.01" placeholder="Unit price"
-                  value={prices[it.id]} onChange={e => setPrices(p => ({ ...p, [it.id]: e.target.value }))} />
-                <Input className="w-20" placeholder="UoM"
-                  value={uoms[it.id]} onChange={e => setUoms(u => ({ ...u, [it.id]: e.target.value }))} />
-              </div>
-            ))}
-          </div>
         </div>
         <DialogFooter>
-          <Button disabled={busy} onClick={submit}>{busy ? 'Saving…' : 'Log quote'}</Button>
+          <Button disabled={busy} onClick={submit}>{busy ? 'Saving…' : 'Add quote'}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
 
-function PoDialog({ items, quotes, router, onClose }) {
-  const winningQuotes = items.map(it => quotes.find(q => q.id === it.selected_quote_id)).filter(Boolean);
-  const supplierName = winningQuotes[0]?.supplier_name || '—';
+function SourcingRow({ it, quotes, suppliers, router }) {
+  const [expanded, setExpanded] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
 
-  const [deliveryAddress, setDeliveryAddress] = useState('');
-  const [indentRef, setIndentRef] = useState('');
-  const [discountPct, setDiscountPct] = useState('0');
-  const [gstPct, setGstPct] = useState('18');
-  const [instructions, setInstructions] = useState('');
-  // Pre-filled from the winning quote(s) — they're what the supplier actually offered — but stay
-  // editable since the PO is the document of record, not the quote.
-  const [paymentTerms, setPaymentTerms] = useState(winningQuotes[0]?.payment_terms || '');
-  const [quoteSource, setQuoteSource] = useState(winningQuotes[0]?.quote_source || '');
-  const [quoteDate, setQuoteDate] = useState(winningQuotes[0]?.quoted_at?.slice(0, 10) || '');
+  return (
+    <div className="border-b last:border-b-0">
+      <button className="flex w-full items-center gap-3 py-2.5 text-left text-sm" onClick={() => setExpanded(v => !v)}>
+        <div className="min-w-0 flex-1">
+          <span className="font-medium">{it.material_description}</span>
+          <ItemContext it={it} />
+        </div>
+        {quotes.length > 0 && <Badge variant="outline">{quotes.length} quote{quotes.length !== 1 ? 's' : ''}</Badge>}
+      </button>
+      {expanded && (
+        <div className="flex flex-col gap-2 bg-muted/30 px-3 py-3 text-sm">
+          {quotes.length === 0 && <p className="text-xs text-muted-foreground">No quotes yet.</p>}
+          {quotes.map(q => (
+            <div key={q.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-background px-3 py-1.5">
+              <span className="font-medium">{q.supplier_name}</span>
+              <span className="text-xs text-muted-foreground">
+                {formatMoney(q.unit_price)}{q.uom ? `/${q.uom}` : ''}
+                {q.payment_terms ? ` · ${q.payment_terms}` : ''}
+                {q.expected_delivery_date ? ` · by ${formatDate(q.expected_delivery_date)}` : ''}
+              </span>
+            </div>
+          ))}
+          <Button size="sm" variant="outline" className="w-fit" onClick={() => setDialogOpen(true)}>+ Add quote</Button>
+        </div>
+      )}
+      {dialogOpen && (
+        <AddQuoteDialog item={it} suppliers={suppliers} router={router} onClose={() => setDialogOpen(false)} />
+      )}
+    </div>
+  );
+}
+
+function Sourcing({ items, quotesByItem, suppliers, router }) {
+  const [q, setQ] = useState('');
+  const needle = q.trim().toLowerCase();
+  const shown = items.filter(it => !it.selected_quote_id && !OUT_OF_PIPELINE.includes(it.purchase_status))
+    .filter(it => !needle || it.material_description.toLowerCase().includes(needle) || it.project_no.toLowerCase().includes(needle));
+
+  return (
+    <div className="flex flex-col gap-3">
+      <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Search description or project…" className="h-8 w-64" />
+      <Card>
+        <CardContent className="flex flex-col pt-4">
+          {shown.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">Nothing to source right now.</p>}
+          {shown.map(it => (
+            <SourcingRow key={it.id} it={it} quotes={quotesByItem[it.id] || []} suppliers={suppliers} router={router} />
+          ))}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ---------- Selection ----------
+
+function SelectionRow({ it, quotes, router }) {
   const [busy, setBusy] = useState(false);
+  const lowestPrice = quotes.length ? Math.min(...quotes.map(q => q.unit_price)) : null;
+  const fastest = quotes.filter(q => q.expected_delivery_date).length
+    ? Math.min(...quotes.filter(q => q.expected_delivery_date).map(q => new Date(q.expected_delivery_date).getTime()))
+    : null;
 
-  const subtotal = items.reduce((a, it) => {
-    const qty = parseFloat(it.qty_text) || 1;
-    return a + qty * (winningQuotes.find(q => q.id === it.selected_quote_id)?.unit_price || 0);
-  }, 0);
-
-  async function submit() {
+  async function select(quoteId) {
     setBusy(true);
     try {
-      const res = await api('/api/purchase-orders', {
-        method: 'POST',
-        body: {
-          items: items.map(i => i.id), delivery_address: deliveryAddress || undefined, indent_ref: indentRef || undefined,
-          discount_pct: Number(discountPct) || 0, gst_pct: Number(gstPct), special_instructions: instructions || undefined,
-          payment_terms: paymentTerms || undefined, quote_source: quoteSource || undefined, quote_date: quoteDate || undefined,
-        },
-      });
-      showToast(`PO ${res.po_no} created`); router.refresh(); onClose();
+      await api(`/api/bom-items/${it.id}/select-supplier`, { method: 'POST', body: { quote_id: quoteId } });
+      showToast('Supplier selected — PO draft updated'); router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+    setBusy(false);
+  }
+  async function undo() {
+    setBusy(true);
+    try {
+      await api(`/api/bom-items/${it.id}/select-supplier`, { method: 'DELETE' });
+      showToast('Selection undone'); router.refresh();
     } catch (err) { showToast(err.message, 'error'); }
     setBusy(false);
   }
 
   return (
-    <Dialog open onOpenChange={o => { if (!o) onClose(); }}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
-        <DialogHeader><DialogTitle>Create PO — {supplierName}</DialogTitle></DialogHeader>
-        <div className="flex flex-col gap-3">
-          <div className="flex flex-col divide-y rounded-md border text-sm">
-            {items.map(it => (
-              <div key={it.id} className="flex items-center justify-between px-3 py-1.5">
-                <span className="truncate">{it.material_description}</span>
-                <span className="shrink-0 text-xs text-muted-foreground">{it.qty_text}</span>
-              </div>
-            ))}
-          </div>
-          <p className="text-sm text-muted-foreground">Subtotal (est.): {formatMoney(subtotal)}</p>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1.5">
-              <Label>Payment terms</Label>
-              <Select value={paymentTerms} onValueChange={setPaymentTerms}>
-                <SelectTrigger className="w-full"><SelectValue placeholder="—" /></SelectTrigger>
-                <SelectContent>{PAYMENT_TERMS.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label>Quotation via</Label>
-              <Select value={quoteSource} onValueChange={setQuoteSource}>
-                <SelectTrigger className="w-full"><SelectValue placeholder="—" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="whatsapp">WhatsApp</SelectItem>
-                  <SelectItem value="email">Email</SelectItem>
-                  <SelectItem value="phone">Phone</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1.5">
-              <Label>Quote date</Label>
-              <Input type="date" value={quoteDate} onChange={e => setQuoteDate(e.target.value)} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label>Indent / Job ref</Label>
-              <Input value={indentRef} onChange={e => setIndentRef(e.target.value)} />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1.5">
-              <Label>Discount %</Label>
-              <Input type="number" min="0" max="100" value={discountPct} onChange={e => setDiscountPct(e.target.value)} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label>GST %</Label>
-              <Input type="number" min="0" value={gstPct} onChange={e => setGstPct(e.target.value)} />
-            </div>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label>Delivery address (leave blank for factory)</Label>
-            <Textarea rows={2} value={deliveryAddress} onChange={e => setDeliveryAddress(e.target.value)} />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label>Special instructions</Label>
-            <Textarea rows={2} value={instructions} onChange={e => setInstructions(e.target.value)} />
-          </div>
+    <div className="flex flex-col gap-2 border-b py-3 last:border-b-0">
+      <div className="flex items-center justify-between">
+        <div className="min-w-0">
+          <p className="font-medium">{it.material_description}</p>
+          <ItemContext it={it} />
         </div>
-        <DialogFooter>
-          <Button disabled={busy} onClick={submit}>{busy ? 'Creating…' : 'Create PO'}</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        {it.selected_quote_id && (
+          <Button size="sm" variant="outline" disabled={busy} onClick={undo}>Undo selection</Button>
+        )}
+      </div>
+      <div className="flex flex-col gap-1.5">
+        {quotes.map(q => (
+          <div key={q.id}
+            className={`flex flex-wrap items-center gap-2 rounded-md border px-3 py-1.5 text-sm ${q.id === it.selected_quote_id ? 'border-foreground/30 bg-muted' : ''}`}>
+            <span className="font-medium">{q.supplier_name}</span>
+            <span className="text-xs text-muted-foreground">{formatMoney(q.unit_price)}{q.uom ? `/${q.uom}` : ''}</span>
+            {q.unit_price === lowestPrice && <Badge variant="outline" className="text-success">Lowest price</Badge>}
+            {fastest && q.expected_delivery_date && new Date(q.expected_delivery_date).getTime() === fastest && (
+              <Badge variant="outline" className="text-primary">Fastest delivery</Badge>
+            )}
+            {q.payment_terms && <span className="text-xs text-muted-foreground">{q.payment_terms}</span>}
+            {q.expected_delivery_date && <span className="text-xs text-muted-foreground">by {formatDate(q.expected_delivery_date)}</span>}
+            <div className="ml-auto">
+              {q.id === it.selected_quote_id
+                ? <Badge>Selected</Badge>
+                : <Button size="sm" variant="ghost" disabled={busy} onClick={() => select(q.id)}>Select</Button>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Selection({ items, quotesByItem, router }) {
+  const shown = items.filter(it => (quotesByItem[it.id] || []).length > 0 && !OUT_OF_PIPELINE.includes(it.purchase_status));
+  return (
+    <Card>
+      <CardContent className="flex flex-col pt-4">
+        {shown.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">Nothing ready to compare yet — log a quote in Sourcing first.</p>}
+        {shown.map(it => <SelectionRow key={it.id} it={it} quotes={quotesByItem[it.id] || []} router={router} />)}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -434,7 +314,17 @@ function PurchaseOrders({ orders }) {
     setBusy(po.id);
     try {
       await api(`/api/purchase-orders/${po.id}`, { method: 'PATCH', body: { action: 'issue' } });
-      showToast(`${po.po_no} issued`); router.refresh();
+      showToast(`${po.po_no} issued`);
+      window.open(`/api/purchase-orders/${po.id}/pdf`, '_blank');
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+    setBusy(null);
+  }
+  async function unissue(po) {
+    setBusy(po.id);
+    try {
+      await api(`/api/purchase-orders/${po.id}`, { method: 'PATCH', body: { action: 'unissue' } });
+      showToast(`${po.po_no} back to draft`); router.refresh();
     } catch (err) { showToast(err.message, 'error'); }
     setBusy(null);
   }
@@ -449,7 +339,7 @@ function PurchaseOrders({ orders }) {
     setBusy(null);
   }
 
-  if (!orders.length) return <p className="py-10 text-center text-sm text-muted-foreground">No purchase orders yet.</p>;
+  if (!orders.length) return <p className="py-10 text-center text-sm text-muted-foreground">No purchase orders yet — select a supplier for an item in Selection to start one.</p>;
 
   return (
     <Card>
@@ -462,15 +352,18 @@ function PurchaseOrders({ orders }) {
             <span className="text-xs text-muted-foreground">{po.item_count} item{po.item_count !== 1 ? 's' : ''} · {formatMoney(po.subtotal)}</span>
             <span className="text-xs text-muted-foreground">{formatDate(po.created_at)}</span>
             <div className="ml-auto flex gap-2">
+              <Button asChild size="sm" variant="outline" className="h-6 px-2 text-xs">
+                <a href={`/api/purchase-orders/${po.id}/pdf`} target="_blank" rel="noreferrer">View</a>
+              </Button>
               {po.status === 'draft' && (
-                <button className="text-xs text-primary hover:underline" disabled={busy === po.id} onClick={() => issue(po)}>Issue</button>
+                <Button size="sm" className="h-6 px-2 text-xs" disabled={busy === po.id} onClick={() => issue(po)}>Issue</Button>
+              )}
+              {po.status === 'issued' && (
+                <Button size="sm" variant="outline" className="h-6 px-2 text-xs" disabled={busy === po.id} onClick={() => unissue(po)}>Cancel Issue</Button>
               )}
               {po.status !== 'cancelled' && (
                 <button className="text-xs text-muted-foreground hover:text-destructive" disabled={busy === po.id} onClick={() => cancel(po)}>Cancel</button>
               )}
-              <Button asChild size="sm" variant="outline" className="h-6 px-2 text-xs">
-                <a href={`/api/purchase-orders/${po.id}/pdf`} target="_blank" rel="noreferrer">PDF</a>
-              </Button>
             </div>
           </div>
         ))}
@@ -479,7 +372,64 @@ function PurchaseOrders({ orders }) {
   );
 }
 
-// ---------- Suppliers ----------
+// ---------- State ----------
+
+function State({ items, router }) {
+  const [q, setQ] = useState('');
+  const [busy, setBusy] = useState(null);
+  const needle = q.trim().toLowerCase();
+  const shown = items.filter(it => !needle
+    || it.material_description.toLowerCase().includes(needle)
+    || it.project_no.toLowerCase().includes(needle)
+    || (it.po_ref || '').toLowerCase().includes(needle));
+
+  async function setStatus(it, value) {
+    setBusy(it.id);
+    try {
+      await api(`/api/bom-items/${it.id}`, { method: 'PATCH', body: { purchase_status: value } });
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+    setBusy(null);
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Search description, project, PO…" className="h-8 w-72" />
+      <Card>
+        <CardContent className="flex flex-col divide-y pt-4">
+          {shown.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">No items match.</p>}
+          {shown.map(it => (
+            <div key={it.id} className="flex flex-wrap items-center gap-3 py-2.5 text-sm">
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-medium">{it.material_description}</p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {it.project_no} · {it.moc || '—'} · {it.size_spec || '—'} · {it.qty_text || '—'}
+                  {it.pr_ref && ` · PR ${it.pr_ref}`}
+                </p>
+              </div>
+              <span className="w-28 shrink-0 truncate text-xs text-muted-foreground">{it.po_ref || '—'}</span>
+              <span className="w-32 shrink-0 truncate text-xs text-muted-foreground">{it.selected_supplier_name || '—'}</span>
+              <Select value={it.purchase_status || 'PENDING'} disabled={busy === it.id} onValueChange={v => setStatus(it, v)}>
+                <SelectTrigger className="h-7 w-28 shrink-0 text-xs">
+                  <SelectValue>
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${STATUS_TONE[it.purchase_status] || STATUS_TONE.PENDING}`}>
+                      {it.purchase_status || 'PENDING'}
+                    </span>
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {BOM_STATUSES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ---------- Suppliers (unchanged from the earlier build — kept, not part of the redesign spec) ----------
 
 const SUPPLIER_FIELDS = [
   ['name', 'Name'], ['gst_no', 'GST No'], ['contact_person', 'Contact person'],
@@ -602,5 +552,33 @@ function Suppliers({ suppliers, quotes }) {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+// ---------- Root ----------
+
+export default function ProcurementWorkspace({ sourcingItems, suppliers, purchaseOrders, quotes }) {
+  const router = useRouter();
+  const [tab, setTab] = useState('sourcing');
+
+  const quotesByItem = {};
+  for (const q of quotes) (quotesByItem[q.bom_item_id] ||= []).push(q);
+  const activeItems = sourcingItems.filter(it => it.purchase_status !== 'CANCELLED');
+
+  return (
+    <Tabs value={tab} onValueChange={setTab} className="flex-col gap-4">
+      <TabsList variant="line" className="w-max justify-start px-0">
+        <TabsTrigger value="sourcing">Sourcing</TabsTrigger>
+        <TabsTrigger value="selection">Selection</TabsTrigger>
+        <TabsTrigger value="orders">Purchase orders</TabsTrigger>
+        <TabsTrigger value="state">State</TabsTrigger>
+        <TabsTrigger value="suppliers">Suppliers</TabsTrigger>
+      </TabsList>
+      <TabsContent value="sourcing"><Sourcing items={activeItems} quotesByItem={quotesByItem} suppliers={suppliers} router={router} /></TabsContent>
+      <TabsContent value="selection"><Selection items={activeItems} quotesByItem={quotesByItem} router={router} /></TabsContent>
+      <TabsContent value="orders"><PurchaseOrders orders={purchaseOrders} /></TabsContent>
+      <TabsContent value="state"><State items={sourcingItems} router={router} /></TabsContent>
+      <TabsContent value="suppliers"><Suppliers suppliers={suppliers} quotes={quotes} /></TabsContent>
+    </Tabs>
   );
 }

@@ -35,12 +35,12 @@ export async function POST(req) {
     if (!bomItem) continue; // skip a bad id rather than failing the whole batch
     const { lastId } = await execute(
       `INSERT INTO supplier_quotes
-        (supplier_id, bom_item_id, project_id, unit_price, uom, expected_delivery_days,
+        (supplier_id, bom_item_id, project_id, unit_price, uom, expected_delivery_days, expected_delivery_date,
          payment_terms, quote_source, valid_until, notes, batch_id, quoted_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [supplierId, bomItem.id, bomItem.project_id, Number(it.unit_price), it.uom || b.uom || null,
-        b.expected_delivery_days || null, b.payment_terms || null, b.quote_source || null,
-        b.valid_until || null, b.notes || null, batchId, user.username]
+        b.expected_delivery_days || null, b.expected_delivery_date || null, b.payment_terms || null,
+        b.quote_source || null, b.valid_until || null, b.notes || null, batchId, user.username]
     );
     ids.push(Number(lastId));
   }

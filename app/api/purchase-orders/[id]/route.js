@@ -32,9 +32,37 @@ export async function PATCH(req, { params }) {
     await execute("UPDATE purchase_orders SET status = 'issued', issued_at = CURRENT_TIMESTAMP WHERE id = ?", [po.id]);
     const items = await queryAll('SELECT bom_item_id FROM po_items WHERE po_id = ?', [po.id]);
     for (const it of items) {
-      if (it.bom_item_id) await execute('UPDATE bom_items SET po_ref = ? WHERE id = ?', [po.po_no, it.bom_item_id]);
+      // §4.3 — issuing is also the item's real-world "sent to vendor" moment, so PENDING moves to
+      // TRANSIT here, not just the po_ref stamp. A status the user already overrode by hand (via
+      // State, §4.4) is left alone — only items still sitting at the default PENDING get bumped.
+      if (it.bom_item_id) {
+        await execute('UPDATE bom_items SET po_ref = ? WHERE id = ?', [po.po_no, it.bom_item_id]);
+        await execute(
+          "UPDATE bom_items SET purchase_status = 'TRANSIT' WHERE id = ? AND (purchase_status IS NULL OR purchase_status = 'PENDING')",
+          [it.bom_item_id]
+        );
+      }
     }
     await audit('po_issued', { actor: user.username, detail: po.po_no });
+    return NextResponse.json({ ok: true });
+  }
+
+  if (b.action === 'unissue') {
+    // "Cancel Issue" (§4.3) — undoes the issue, not the PO: back to draft, re-issuable, items
+    // revert TRANSIT -> PENDING. Distinct from the permanent `cancel` below, which the PO tab keeps
+    // as a separate action for actually killing a PO.
+    if (po.status !== 'issued') return NextResponse.json({ error: 'Only an issued PO can be un-issued' }, { status: 400 });
+    await execute("UPDATE purchase_orders SET status = 'draft', issued_at = NULL WHERE id = ?", [po.id]);
+    const items = await queryAll('SELECT bom_item_id FROM po_items WHERE po_id = ?', [po.id]);
+    for (const it of items) {
+      if (it.bom_item_id) {
+        await execute(
+          "UPDATE bom_items SET purchase_status = 'PENDING' WHERE id = ? AND purchase_status = 'TRANSIT'",
+          [it.bom_item_id]
+        );
+      }
+    }
+    await audit('po_unissued', { actor: user.username, detail: po.po_no });
     return NextResponse.json({ ok: true });
   }
 
