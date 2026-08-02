@@ -311,15 +311,21 @@ function QuoteDialog({ items, suppliers, router, onClose }) {
 }
 
 function PoDialog({ items, quotes, router, onClose }) {
+  const winningQuotes = items.map(it => quotes.find(q => q.id === it.selected_quote_id)).filter(Boolean);
+  const supplierName = winningQuotes[0]?.supplier_name || '—';
+
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [indentRef, setIndentRef] = useState('');
   const [discountPct, setDiscountPct] = useState('0');
   const [gstPct, setGstPct] = useState('18');
   const [instructions, setInstructions] = useState('');
+  // Pre-filled from the winning quote(s) — they're what the supplier actually offered — but stay
+  // editable since the PO is the document of record, not the quote.
+  const [paymentTerms, setPaymentTerms] = useState(winningQuotes[0]?.payment_terms || '');
+  const [quoteSource, setQuoteSource] = useState(winningQuotes[0]?.quote_source || '');
+  const [quoteDate, setQuoteDate] = useState(winningQuotes[0]?.quoted_at?.slice(0, 10) || '');
   const [busy, setBusy] = useState(false);
 
-  const winningQuotes = items.map(it => quotes.find(q => q.id === it.selected_quote_id)).filter(Boolean);
-  const supplierName = winningQuotes[0]?.supplier_name || '—';
   const subtotal = items.reduce((a, it) => {
     const qty = parseFloat(it.qty_text) || 1;
     return a + qty * (winningQuotes.find(q => q.id === it.selected_quote_id)?.unit_price || 0);
@@ -333,6 +339,7 @@ function PoDialog({ items, quotes, router, onClose }) {
         body: {
           items: items.map(i => i.id), delivery_address: deliveryAddress || undefined, indent_ref: indentRef || undefined,
           discount_pct: Number(discountPct) || 0, gst_pct: Number(gstPct), special_instructions: instructions || undefined,
+          payment_terms: paymentTerms || undefined, quote_source: quoteSource || undefined, quote_date: quoteDate || undefined,
         },
       });
       showToast(`PO ${res.po_no} created`); router.refresh(); onClose();
@@ -356,6 +363,36 @@ function PoDialog({ items, quotes, router, onClose }) {
           <p className="text-sm text-muted-foreground">Subtotal (est.): {formatMoney(subtotal)}</p>
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
+              <Label>Payment terms</Label>
+              <Select value={paymentTerms} onValueChange={setPaymentTerms}>
+                <SelectTrigger className="w-full"><SelectValue placeholder="—" /></SelectTrigger>
+                <SelectContent>{PAYMENT_TERMS.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>Quotation via</Label>
+              <Select value={quoteSource} onValueChange={setQuoteSource}>
+                <SelectTrigger className="w-full"><SelectValue placeholder="—" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="whatsapp">WhatsApp</SelectItem>
+                  <SelectItem value="email">Email</SelectItem>
+                  <SelectItem value="phone">Phone</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label>Quote date</Label>
+              <Input type="date" value={quoteDate} onChange={e => setQuoteDate(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>Indent / Job ref</Label>
+              <Input value={indentRef} onChange={e => setIndentRef(e.target.value)} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
               <Label>Discount %</Label>
               <Input type="number" min="0" max="100" value={discountPct} onChange={e => setDiscountPct(e.target.value)} />
             </div>
@@ -363,10 +400,6 @@ function PoDialog({ items, quotes, router, onClose }) {
               <Label>GST %</Label>
               <Input type="number" min="0" value={gstPct} onChange={e => setGstPct(e.target.value)} />
             </div>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label>Indent / Job ref</Label>
-            <Input value={indentRef} onChange={e => setIndentRef(e.target.value)} />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label>Delivery address (leave blank for factory)</Label>
@@ -448,9 +481,57 @@ function PurchaseOrders({ orders }) {
 
 // ---------- Suppliers ----------
 
+const SUPPLIER_FIELDS = [
+  ['name', 'Name'], ['gst_no', 'GST No'], ['contact_person', 'Contact person'],
+  ['phone', 'Phone'], ['email', 'Email'],
+];
+
+function SupplierEditForm({ supplier, onDone }) {
+  const router = useRouter();
+  const [form, setForm] = useState({
+    name: supplier.name || '', gst_no: supplier.gst_no || '', contact_person: supplier.contact_person || '',
+    phone: supplier.phone || '', email: supplier.email || '',
+  });
+  const [busy, setBusy] = useState(false);
+
+  async function save() {
+    if (!form.name.trim()) return showToast('Name is required', 'error');
+    setBusy(true);
+    try {
+      await api(`/api/suppliers/${supplier.id}`, { method: 'PATCH', body: form });
+      showToast('Supplier updated'); router.refresh(); onDone();
+    } catch (err) { showToast(err.message, 'error'); }
+    setBusy(false);
+  }
+  async function deactivate() {
+    if (!window.confirm(`Deactivate ${supplier.name}? They'll drop off this list.`)) return;
+    setBusy(true);
+    try {
+      await api(`/api/suppliers/${supplier.id}`, { method: 'PATCH', body: { active: false } });
+      showToast('Supplier deactivated'); router.refresh(); onDone();
+    } catch (err) { showToast(err.message, 'error'); }
+    setBusy(false);
+  }
+
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      {SUPPLIER_FIELDS.map(([key, label]) => (
+        <Input key={key} placeholder={label} value={form[key]} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
+          className={key === 'email' ? 'col-span-2 h-8 text-xs' : 'h-8 text-xs'} />
+      ))}
+      <div className="col-span-2 flex gap-2">
+        <Button size="sm" disabled={busy} onClick={save}>Save</Button>
+        <Button size="sm" variant="outline" disabled={busy} onClick={onDone}>Cancel</Button>
+        <Button size="sm" variant="outline" disabled={busy} className="ml-auto text-destructive" onClick={deactivate}>Deactivate</Button>
+      </div>
+    </div>
+  );
+}
+
 function Suppliers({ suppliers, quotes }) {
   const router = useRouter();
   const [expanded, setExpanded] = useState(null);
+  const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({ name: '', gst_no: '', contact_person: '', phone: '', email: '' });
   const [busy, setBusy] = useState(false);
 
@@ -482,14 +563,23 @@ function Suppliers({ suppliers, quotes }) {
                 </button>
                 {expanded === s.id && (
                   <div className="mt-2 flex flex-col gap-1.5 bg-muted/30 p-2 text-xs">
-                    {s.contact_person && <p>{s.contact_person} · {s.phone} · {s.email}</p>}
-                    {history.length === 0 && <p className="text-muted-foreground">No quotes logged yet.</p>}
-                    {history.map(q => (
-                      <div key={q.id} className="flex items-center justify-between border-t pt-1.5 first:border-t-0 first:pt-0">
-                        <span>{q.material_description} <span className="text-muted-foreground">· {q.project_no}</span></span>
-                        <span className="text-muted-foreground">{formatMoney(q.unit_price)} · {formatDate(q.quoted_at)}</span>
-                      </div>
-                    ))}
+                    {editing === s.id ? (
+                      <SupplierEditForm supplier={s} onDone={() => setEditing(null)} />
+                    ) : (
+                      <>
+                        <div className="flex items-center justify-between">
+                          <span>{s.contact_person && `${s.contact_person} · `}{s.phone}{s.email ? ` · ${s.email}` : ''}{s.gst_no ? ` · GST ${s.gst_no}` : ''}</span>
+                          <button type="button" className="shrink-0 text-primary hover:underline" onClick={() => setEditing(s.id)}>Edit</button>
+                        </div>
+                        {history.length === 0 && <p className="text-muted-foreground">No quotes logged yet.</p>}
+                        {history.map(q => (
+                          <div key={q.id} className="flex items-center justify-between border-t pt-1.5 first:border-t-0 first:pt-0">
+                            <span>{q.material_description} <span className="text-muted-foreground">· {q.project_no}</span></span>
+                            <span className="text-muted-foreground">{formatMoney(q.unit_price)} · {formatDate(q.quoted_at)}</span>
+                          </div>
+                        ))}
+                      </>
+                    )}
                   </div>
                 )}
               </div>

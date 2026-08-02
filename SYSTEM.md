@@ -13,30 +13,28 @@ set of user accounts:
    via the same dashboard.
 
 Everything in this file reflects the **current, working build** as of 2026-08-02. Most recent round:
-the **Procurement system** (§5a) — a real cross-project workspace at `/procurement` (Sourcing,
-Purchase orders, Suppliers tabs), replacing the department's old dead end of just editing
-`purchase_status` by hand. A provisional `suppliers` table (the client's real list arrives later,
-mapped on additively), an append-only `supplier_quotes` price-history log (single-item or batch
-entry, one supplier quoting several items at once), supplier selection that writes a winning-quote
-pointer onto the BOM row (with a revert path that leaves history untouched), and structured
-`purchase_orders`/`po_items` that can span several projects — the same MS angle bought once for
-several boilers — culminating in a real **PO PDF** matching the business's actual hand-made POs
-(two real samples supplied this round: `578/SB/2025-26`, `562/SB/2026-27 (split-po)`), continuing
-their live document sequence (`po_no` counter seeded at 578). Verified live end-to-end on SB-1103:
-logged a batch quote from a new supplier against two items, selected the winner, created a PO
-(`579/SB/2026-27`, subtotal computed correctly from free-text BOM quantities), issued it (confirmed
-the existing BOM table and `ProcurementQueue.jsx` — neither aware structured POs exist — picked up
-the `po_ref` stamp automatically), generated a real PDF, then cancelled it and confirmed the item
-returned to "on order" (not all the way back to "to source") with `supplier_quotes` history intact.
-Landed the same session: Procurement's **cancel-request flow** (Design/Engineering ask Procurement
-to cancel a specific BOM line via the existing cross-department Raise dialog; Procurement accepts
-individually or via select-all, flipping the item to the new `CANCELLED` status) and **Workflow
-Stages** (§3c) — a reusable, department-defined checklist layer *under* a milestone, named/multiple
-templates per milestone type, auto-copying the default the moment a project is created. Deeper
-history (the tickets-collapse round, the Tasks/Workers split, the login-page split, QC test records, multi-project
-customer logins, etc.) lives in `git log` now rather than repeated here — each is still documented
-in full in its own
-numbered section below, just not re-summarized at the top on every round.
+a **gap-fixing pass over the Procurement system** (§5c) after a report that "nothing changed" turned
+out to be mostly a false alarm (a stale build — see below) but surfaced two real, now-fixed
+implementation gaps: `PoDialog` never collected `payment_terms`/`quote_source`/`quote_date` despite
+the schema, API, and PDF template all already supporting them, so every real PO would have shipped
+with its most prominent term blank; and the Suppliers tab had no edit affordance despite `PATCH
+/api/suppliers/[id]` already existing. Both fixed and verified live end-to-end (logged a quote,
+created a PO, confirmed the values arrived pre-filled and reached the PDF route; edited a supplier
+via the new inline form). Also found and fixed: **this machine's disk was 99% full**
+(`.next`'s webpack cache was failing to write, `ENOSPC`), which most likely explains the "nothing
+changed" report — a separately-running dev server for this same repo would have a stale/corrupted
+build with no visible error to the person using it. Cleared this project's `.next` cache (safe,
+gitignored, regenerates) as the contained fix; the underlying low-disk-space condition is a machine
+issue outside this repo's scope and still needs attention. Two structural gaps also newly documented
+(§5c): Operations (`/`) carries zero Procurement-specific UI — only the dedicated Nav tab and the
+project-page card do — and Operations' own cross-department Raise dialog can't offer "Cancel BOM
+item" since it never receives BOM data. Everything from the **Procurement system** build itself
+(the `/procurement` workspace, suppliers/quotes/supplier-selection/POs, the PO PDF, the
+cancel-request flow) and **Workflow Stages** (§3c) landed in prior rounds and is unchanged here.
+Deeper history (the tickets-collapse round, the Tasks/Workers split, the login-page split, QC test
+records, multi-project customer logins, etc.) lives in `git log` now rather than repeated here —
+each is still documented in full in its own numbered section below, just not re-summarized at the
+top on every round.
 
 ---
 
@@ -593,13 +591,45 @@ real daily workbench.
   — "we will reshape BOM later."
 - **Deliberately deferred, schema left with room**: fine-grained line-splitting across suppliers
   (v1 keeps single-supplier-per-item as the only real flow; a split is a manual multi-`po_items`
-  exception, not automated); units as an Engineering-owned structured attribute (would enable real
-  numeric cross-project qty aggregation instead of the current human-judgment grouping — `uom`
+  exception, not automated — **no UI exists for it at all**, `purchase_orders.is_split` is set only
+  if a future flow ever passes it); units as an Engineering-owned structured attribute (would enable
+  real numeric cross-project qty aggregation instead of the current human-judgment grouping — `uom`
   stays free text on quotes/POs for now); a supplier-facing portal (the `suppliers` +
   `supplier_quotes` schema is ready for it); a PO approval threshold; buy-now-price-later; quote
-  expiry (`supplier_quotes.valid_until` exists but isn't enforced anywhere yet). **Stores' own
-  equivalent queue is still not built** — its real trigger is an open question pending a workflow
-  conversation, unlike Procurement's process, which was defined in full before building.
+  expiry (`supplier_quotes.valid_until` exists but isn't enforced anywhere yet — nothing greys out
+  or warns on an expired quote); quote **correction** (a bad price is superseded by logging a new
+  quote, not edited or deleted in place — `supplier_quotes` has no `PATCH`/`DELETE` route,
+  deliberately, to keep the price-history log honest). **Stores' own equivalent queue is still not
+  built** — its real trigger is an open question pending a workflow conversation, unlike
+  Procurement's process, which was defined in full before building.
+- **GST is a flat percentage, not IGST vs CGST+SGST** — `lib/po-pdf.js` renders one "GST @ X%" line
+  (`gst_pct`, defaulting to 18) matching the *simpler* of the two real sample POs; the Volfram
+  sample actually itemizes "IGST @ 18%" specifically, which in Indian tax law depends on whether the
+  supplier is in the same state as Shanti (Telangana) or not — a real compliance distinction this
+  build doesn't make. No supplier `state` field exists to compute it from. Flagged, not fixed — needs
+  a business-side answer before it's worth a schema change, same category as the other open client
+  questions in this section.
+- **Neither cross-project surface reaches Operations (`/`) or the cross-department Raise dialog
+  there** — confirmed this round while chasing a "nothing changed" report that turned out to be a
+  stale build (see below), not a real gap in what was already documented above, but two real gaps
+  surfaced alongside it: (1) `app/page.js` (Operations) was never touched by this work — a
+  Procurement head landing there sees the same generic Master BOM/Waiting-on/Tickets cards every
+  department gets, nothing Sourcing- or cancel-request-specific; only the dedicated **Procurement**
+  Nav tab (`/procurement`) and the project-page **Procurement queue** card carry this system's UI.
+  (2) Operations' own `TicketsPanel` mount (in `app/page.js`) never passes a `bom` prop, so raising a
+  **Cancel BOM item** request only works from a project page's Raise dialog, not from Operations —
+  same underlying component, just missing one prop at that call site.
+- **This round also fixed two real implementation gaps**, found by testing every surface end to end
+  rather than trusting the earlier "verified" note: `PoDialog` collected discount/GST/delivery/
+  instructions but never `payment_terms`/`quote_source`/`quote_date` — despite the schema, the API
+  route, and the PDF template all already supporting them (`lib/po-pdf.js` renders "Payment
+  Terms:-", "Quotation:-", "Quote Date:-"), so every generated PO would have shipped with the most
+  prominent term on the real sample POs left blank. Fixed by pre-filling all three from the winning
+  quote(s) (still editable) — verified live: logged a quote with "After Delivery" terms via
+  WhatsApp, created a PO, confirmed both values arrived pre-filled in the dialog before submit. Also:
+  the Suppliers tab could add a supplier but never edit one, despite `PATCH /api/suppliers/[id]`
+  already existing and accepting every field including `active` (deactivate) — added inline edit +
+  deactivate to `Suppliers` in `ProcurementWorkspace.jsx`, reusing that existing route.
 
 ## 6. Customer Portal (read-only, external)
 
