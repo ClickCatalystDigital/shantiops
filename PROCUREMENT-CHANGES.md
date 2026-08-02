@@ -1,6 +1,7 @@
 # Procurement Redesign — Changes Log
 
-**Status:** In progress — building phase by phase (see "Rollout / build order" at the bottom).
+**Status:** ✅ Done — all 5 phases shipped and folded into `SYSTEM.md` §5c (the as-built reference
+from here on). Kept as the historical record of the investigation and decisions.
 **Purpose:** Single source of truth for the Procurement redesign while it's being built. Once each
 phase ships, fold the final, as-built behavior into `SYSTEM.md` and mark that section done here.
 
@@ -257,7 +258,15 @@ demo projects + their milestones/stages are untouched — only the BOM bulk and 
    `lib/procurement.js` (new) owns the auto-draft-PO bookkeeping; PO issue/unissue extended.
    Suppliers kept as a 5th tab (not in the original spec, but a working feature with no other
    home). Verified live end to end — see the commit message for the full check.
-5. ⏳ Operations + project page restructure (§2, §3) — next.
+5. ✅ Operations + project page restructure (§2, §3) — `ProcurementFlow.jsx` (new) replaces the old
+   KPI tiles; Waiting-on removed and Needs Attention → Open Actions renamed **globally**, not just
+   for Procurement (both are shared cards/components with no clean way to scope the change to one
+   department, and the redundancy argument for Waiting-on held app-wide, not just for Procurement's
+   data); the plain BOM table + Tickets/Raise card are gone from Procurement's project-page section
+   specifically, every other department unchanged. Verified live end to end — see the commit
+   message for the full check.
+
+**`SYSTEM.md` §5c now has the full as-built writeup** — this file stays as the historical record.
 
 Each phase: build → verify live as a real department head → keep `node --test lib/handoff.test.mjs`
 and `node lib/pmb-selfcheck.mjs` green → commit. `SYSTEM.md` gets updated once, after Phase 5, rather
