@@ -244,12 +244,21 @@ demo projects + their milestones/stages are untouched — only the BOM bulk and 
 
 ## 8. Rollout / build order
 
-1. This doc (done).
-2. Reseed demo dataset (§7).
-3. Requests tab + acceptance gate + split Tickets (§4.0, §4.0b, §2).
-4. Procurement workspace's four sub-tabs (§4.1–§4.4).
-5. Operations + project page restructure (§2, §3).
+1. ✅ This doc.
+2. ✅ Reseed demo dataset (§7) — `scripts/seed-procurement-demo.mjs`, verified live.
+3. ✅ Requests tab + acceptance gate + split Tickets (§4.0, §4.0b, §2 Tickets-card removal) —
+   `procurement_requests` table, `/requests` page, `RequestsWorkspace.jsx`, "Request procurement"
+   kind on the Raise dialog. Verified live end to end (raise → accept → materializes → shows in
+   `/procurement`; split tickets; non-Procurement heads blocked). One simplification from the
+   original draft: `procurement_requests` only ever stores *new-item* requests — no `kind`/
+   `bom_item_id` columns — since cancel requests were already committed to keeping their existing
+   `tasks`-based flow untouched; the Requests inbox just displays both from their two real sources.
+4. ⏳ Procurement workspace's four sub-tabs (§4.1–§4.4) — next.
+5. ⏳ Operations + project page restructure (§2, §3).
 
 Each phase: build → verify live as a real department head → keep `node --test lib/handoff.test.mjs`
-and `node lib/pmb-selfcheck.mjs` green → commit → update `SYSTEM.md` with the as-built behavior and
-mark that section done here.
+and `node lib/pmb-selfcheck.mjs` green → commit. `SYSTEM.md` gets updated once, after Phase 5, rather
+than after each phase — its own convention is a coherent as-built snapshot per round, and updating it
+mid-flight (while e.g. the project-page BOM table Phase 3 is meant to remove is still there) would
+read as an inconsistent, half-migrated system rather than a clean round summary. This doc stays the
+single source of truth for what's actually shipped in the meantime.
