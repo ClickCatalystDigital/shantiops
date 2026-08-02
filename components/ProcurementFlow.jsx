@@ -1,26 +1,25 @@
 'use client';
 
 // Operations' Procurement pipeline glance (§2 of the redesign) — a small flowchart, not a data
-// chart, so per the dataviz skill it doesn't need a validated categorical palette: the spine stays
-// neutral (border/card tokens, matching every other stage box), only Cancelled gets a real status
-// color (danger), applied to the exact same box shape every other stage uses rather than a
-// different treatment — "looks like Closed, just in light red," not a special pill or badge.
+// chart, so per the dataviz skill it doesn't need a validated categorical palette: every node uses
+// the same neutral shape and border, Cancelled included — "should be black and same as others," per
+// feedback on an earlier pass that gave it a full red border/text treatment and looked heavier than
+// the rest. The only signal that it's a different outcome is a faint red wash and a red label word.
 //
-// Redesigned twice: v1 was flat boxed tiles + arrow glyphs with Cancelled as an unconnected header
-// badge. v2 was a dot-spine with dashed diagonal drop-lines — still read as busy/decorative rather
-// than a real flowchart. This version: rectangle nodes on a CSS-grid spine (grid-cols-5 guarantees
-// each node's center sits at an exact 10/30/50/70/90% column position, shared by the branch
-// connectors below so nothing needs pixel measurement or a ResizeObserver to stay aligned), the
-// horizontal spine drawn as one line *behind* the nodes so they visually break it into segments, and
-// the three sources that can actually be cancelled (Sourcing/Selection/PO issued — not Requests,
-// before it's even a BOM item, and not Closed, already done) merge into Cancelled via right-angle
-// elbow connectors with rounded corners (SVG paths, `strokeLinejoin="round"` is what rounds a sharp
-// L-turn — no arc math needed).
+// Redesigned three times: v1 was flat boxed tiles + arrow glyphs with Cancelled as an unconnected
+// header badge. v2 was a dot-spine with dashed diagonal drop-lines. v3 gave Cancelled a full red
+// border/number, sat it under Selection, and had no arrowheads. This version: rectangle nodes,
+// **Cancelled positioned under Closed** (both are terminal states, so the diagram reads left-to-right
+// as one flow instead of branching off the middle), and small chevron arrowheads on every segment —
+// the CSS-grid spine (`grid-cols-5` fixes each node's center at an exact 10/30/50/70/90% column
+// position, shared by the branch connectors below so nothing needs pixel measurement) plus
+// right-angle elbow connectors (SVG paths, `strokeLinejoin="round"` rounds the corners) merging
+// Sourcing/Selection/PO issued into the same x=90 column Closed and Cancelled share.
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from './ui/card';
 import { Button } from './ui/button';
 import { Popover, PopoverTrigger, PopoverContent } from './ui/popover';
-import { InfoIcon } from 'lucide-react';
+import { InfoIcon, ChevronRightIcon, ChevronDownIcon } from 'lucide-react';
 
 const STAGES = [
   { key: 'requests', label: 'Requests', help: 'New-item and cancel requests from other departments, waiting for Procurement to accept them.' },
@@ -30,6 +29,9 @@ const STAGES = [
   { key: 'closed', label: 'Closed', help: 'Delivered and closed out (or received by Stores).' },
 ];
 const CANCELLED_HELP = 'Cancelled from Sourcing, Selection, or after a PO was issued — a request never reaches this from Requests or Closed.';
+// Shared x-positions (% of the diagram's width) — the single source of truth every piece below
+// (node columns, the spine arrows, the branch elbows) positions itself against.
+const X = { requests: 10, sourcing: 30, selection: 50, po_issued: 70, closed: 90 };
 
 function InfoButton({ label, help, tone }) {
   return (
@@ -45,19 +47,16 @@ function InfoButton({ label, help, tone }) {
   );
 }
 
-// The one node shape, reused for every stage including Cancelled — a rounded rectangle "card",
-// only the tone changes. This is the literal answer to "Cancelled should look similar to Closed,
-// just in light red": same component, same size, same layout, tone='danger' instead of 'neutral'.
+// The one node shape, reused for every stage including Cancelled — same border, same black value
+// text as a normal stage. Only a faint background wash and the label word itself carry the "this is
+// the cancelled outcome" signal, so it reads as a sibling of Closed, not a heavier/alarming box.
 function StageBox({ value, label, help, tone = 'neutral' }) {
-  const boxTone = tone === 'danger'
-    ? 'border-danger/25 bg-danger/5'
-    : 'border-border bg-card';
-  const valueTone = tone === 'danger' ? 'text-danger' : 'text-foreground';
-  const labelTone = tone === 'danger' ? 'text-danger/80' : 'text-muted-foreground';
+  const boxTone = tone === 'danger' ? 'border-border bg-danger/5' : 'border-border bg-card';
+  const labelTone = tone === 'danger' ? 'text-danger/90' : 'text-muted-foreground';
   return (
     <div className={`relative z-10 flex min-w-[6.5rem] flex-col items-center gap-1 rounded-lg border px-4 py-2.5 shadow-sm ${boxTone}`}>
       <div className="flex items-center gap-1">
-        <span className={`text-lg font-semibold tnum leading-none ${valueTone}`}>{value}</span>
+        <span className="text-lg font-semibold tnum leading-none text-foreground">{value}</span>
         <InfoButton label={label} help={help} tone={tone} />
       </div>
       <span className={`text-xs ${labelTone}`}>{label}</span>
@@ -65,7 +64,22 @@ function StageBox({ value, label, help, tone = 'neutral' }) {
   );
 }
 
+// A mini arrowhead on the spine, at the midpoint between two node centers — its own small square
+// viewBox (not the diagram's stretched one) so it never gets skewed by the connector SVG's
+// non-uniform x/y scaling below.
+function FlowArrow({ atPercent }) {
+  return (
+    <ChevronRightIcon className="absolute top-1/2 z-10 size-3.5 -translate-x-1/2 -translate-y-1/2 text-muted-foreground/50"
+      style={{ left: `${atPercent}%` }} />
+  );
+}
+
 export default function ProcurementFlow({ counts }) {
+  const midpoints = [
+    (X.requests + X.sourcing) / 2, (X.sourcing + X.selection) / 2,
+    (X.selection + X.po_issued) / 2, (X.po_issued + X.closed) / 2,
+  ];
+
   return (
     <Card>
       <CardHeader>
@@ -81,36 +95,47 @@ export default function ProcurementFlow({ counts }) {
             labels on a narrow screen once 5 of them share one row — scroll horizontally instead
             of squeezing, same trade-off any dashboard makes for a wide stat row on mobile. */}
         <div className="overflow-x-auto">
-        <div className="mx-auto flex min-w-[34rem] flex-col items-center">
-          {/* Row 1 — grid-cols-5 fixes each node's center at 10/30/50/70/90%, so the spine line
-              (behind the nodes) and the branch connectors below can share those exact x-positions
-              without measuring anything. */}
-          <div className="relative grid w-full grid-cols-5">
-            <div className="absolute inset-x-[10%] top-1/2 h-px -translate-y-1/2 bg-border" />
-            {STAGES.map(s => (
-              <div key={s.key} className="flex items-center justify-center">
-                <StageBox value={counts[s.key]} label={s.label} help={s.help} />
+          <div className="mx-auto flex min-w-[34rem] flex-col items-center">
+            {/* Row 1 — grid-cols-5 fixes each node's center at 10/30/50/70/90%, so the spine
+                arrows and the branch connectors below can share those exact x-positions without
+                measuring anything. */}
+            <div className="relative grid w-full grid-cols-5">
+              <div className="absolute inset-x-[10%] top-1/2 h-px -translate-y-1/2 bg-border" />
+              {midpoints.map(x => <FlowArrow key={x} atPercent={x} />)}
+              {STAGES.map(s => (
+                <div key={s.key} className="flex items-center justify-center">
+                  <StageBox value={counts[s.key]} label={s.label} help={s.help} />
+                </div>
+              ))}
+            </div>
+
+            {/* Branch connectors — Sourcing/Selection/PO issued all elbow over to the x=90 column,
+                the same one Closed sits in above and Cancelled sits in below, then one shared trunk
+                drops into Cancelled. Right-aligning Cancelled under Closed (both terminal states)
+                reads as one flow continuing right, not a branch off the middle. Three lines in, one
+                out — same "several sources, one target" shape as an org chart;
+                strokeLinejoin="round" is the whole trick for the rounded 90° corners. */}
+            <div className="relative w-full">
+              <svg viewBox="0 0 100 32" preserveAspectRatio="none" className="h-8 w-full">
+                <path d={`M${X.sourcing},0 L${X.sourcing},16 L${X.closed},16`} className="fill-none stroke-danger/30"
+                  strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                <path d={`M${X.selection},0 L${X.selection},16 L${X.closed},16`} className="fill-none stroke-danger/30"
+                  strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                <path d={`M${X.po_issued},0 L${X.po_issued},16 L${X.closed},16`} className="fill-none stroke-danger/30"
+                  strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                <path d={`M${X.closed},16 L${X.closed},32`} className="fill-none stroke-danger/30"
+                  strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <ChevronDownIcon className="absolute bottom-0 z-10 size-3.5 -translate-x-1/2 translate-y-1/2 text-danger/50"
+                style={{ left: `${X.closed}%` }} />
+            </div>
+
+            <div className="grid w-full grid-cols-5">
+              <div className="col-start-5 flex items-center justify-center">
+                <StageBox value={counts.cancelled} label="Cancelled" help={CANCELLED_HELP} tone="danger" />
               </div>
-            ))}
+            </div>
           </div>
-
-          {/* Branch connectors — Sourcing(30) and PO issued(70) elbow inward to meet Selection's
-              straight drop(50) at a shared merge point, then one trunk continues down into
-              Cancelled. Three lines in, one out — same "several sources, one target" shape as an
-              org chart. strokeLinejoin="round" is the whole trick for the rounded 90° corners. */}
-          <svg viewBox="0 0 100 32" preserveAspectRatio="none" className="h-8 w-full">
-            <path d="M30,0 L30,16 L50,16" className="fill-none stroke-danger/30"
-              strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-            <path d="M50,0 L50,16" className="fill-none stroke-danger/30"
-              strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-            <path d="M70,0 L70,16 L50,16" className="fill-none stroke-danger/30"
-              strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-            <path d="M50,16 L50,32" className="fill-none stroke-danger/30"
-              strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-
-          <StageBox value={counts.cancelled} label="Cancelled" help={CANCELLED_HELP} tone="danger" />
-        </div>
         </div>
       </CardContent>
     </Card>
