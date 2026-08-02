@@ -3,7 +3,7 @@
 // `POST /api/tickets`. Separate from milestones, which are a fixed per-project template with no
 // create path.
 import { NextResponse } from 'next/server';
-import { execute } from '@/lib/db';
+import { execute, queryOne } from '@/lib/db';
 import { getSessionUser, isInternal, isHead, headDepartments, canAccessDepartment } from '@/lib/auth';
 import { DEPARTMENTS } from '@/lib/milestones';
 import { notifyDepartment } from '@/lib/notify';
@@ -44,13 +44,27 @@ export async function POST(req) {
   }
   const projectId = b.project_id ? Number(b.project_id) : null;
 
+  // A cancel-request (§ Procurement cancel-request flow) — a task with bom_item_id set, always
+  // aimed at Procurement, the only department that owns purchase_status. Validated against the
+  // item's own project_id rather than trusted from the body, same boundary as every other
+  // client-supplied id in this app.
+  let bomItemId = null;
+  if (b.bom_item_id) {
+    if (department !== 'Procurement') {
+      return NextResponse.json({ error: 'Cancel requests can only be sent to Procurement' }, { status: 400 });
+    }
+    const item = await queryOne('SELECT id FROM bom_items WHERE id = ? AND project_id = ?', [b.bom_item_id, projectId]);
+    if (!item) return NextResponse.json({ error: 'BOM item not found on this project' }, { status: 404 });
+    bomItemId = item.id;
+  }
+
   // created_by is server-set, never taken from the body. An unassigned task on a shared
   // department board is one nobody owns, so it falls back to whoever created it.
   const assignedTo = String(b.assigned_to || '').trim() || user.username;
   const { lastId } = await execute(
-    `INSERT INTO tasks (title, due_date, department, assigned_to, created_by, from_department, project_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [title, dueDate, department, assignedTo, user.username, fromDepartment, projectId]
+    `INSERT INTO tasks (title, due_date, department, assigned_to, created_by, from_department, project_id, bom_item_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [title, dueDate, department, assignedTo, user.username, fromDepartment, projectId, bomItemId]
   );
   const taskId = Number(lastId);
 
@@ -61,7 +75,7 @@ export async function POST(req) {
     await notifyDepartment(department, {
       kind: 'request',
       task_id: taskId,
-      title: `Task from ${fromDepartment}`,
+      title: bomItemId ? `Cancel request from ${fromDepartment}` : `Task from ${fromDepartment}`,
       body: title,
     }, { except: user.id, assignedTo });
   }

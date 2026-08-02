@@ -13,21 +13,21 @@ set of user accounts:
    via the same dashboard.
 
 Everything in this file reflects the **current, working build** as of 2026-08-01. Most recent round:
-**Workflow Stages** (§3c) — a reusable, department-defined checklist layer *under* a milestone
-(Open → Current → Closed), generalized to every department. Went through two passes in the same
-session: a first cut where templates grew implicitly and only applied on demand, then a second pass
-adding what actually matters for real use — **named, multiple templates per milestone type** (e.g.
-"Standard" vs "Fast-track"), a real **Manage-tab editor** (rename/reorder/delete template items,
-not just grow-from-usage), and **auto-copying the default template the moment a project is
-created** (`createProjectMilestones`, the same choke point both `POST /api/projects` and the demo
-seed already went through). Verified live end-to-end: shape a milestone's stages, save them as a
-named default template, create a brand-new project and watch its matching milestone arrive with
-those stages already on it, drag cards across Kanban lanes, and auto-complete a milestone whose
-handoff notification fires downstream exactly as a manual Close would. This resolves the tagging
-layer §8 had parked — Production's "7 named phases" question — since any department can now define
-stages under its existing granular milestones. Deeper history (the tickets-collapse round, the
-Tasks/Workers split, the login-page split, QC test records, multi-project customer logins, etc.)
-lives in `git log` now rather than repeated here — each is still documented in full in its own
+**Procurement's cancel-request flow** (§5a) — Design (or Engineering) can ask Procurement to cancel
+a specific BOM line item; Procurement sees every pending request on their own project-page queue,
+selects individually or all, and accepting flips each item's `purchase_status` to the newly-added
+`CANCELLED` and closes the request in one action. Verified live end-to-end on SB-1104: raised a
+cancel request as `design_head` against a real BOM line, accepted it as `procurement_head` via
+select-all, confirmed the item's status flipped, the BOM rollup/open-item counts adjusted (a
+cancelled item no longer counts as open work anywhere), and the request disappeared from the queue.
+Landed alongside it: **Workflow Stages** (§3c), a reusable, department-defined checklist layer
+*under* a milestone (Open → Current → Closed) — named, multiple templates per milestone type, a
+real Manage-tab editor, and auto-copying the default template the moment a project is created. This
+resolves the tagging layer §8 had parked — Production's "7 named phases" question — since any
+department can now define stages under its existing granular milestones. Deeper history (the
+tickets-collapse round, the Tasks/Workers split, the login-page split, QC test records, multi-project
+customer logins, etc.) lives in `git log` now rather than repeated here — each is still documented
+in full in its own
 numbered section below, just not re-summarized at the top on every round.
 
 ---
@@ -470,10 +470,37 @@ those workbooks and replaces the shared spreadsheet:
 6. **Parser self-check** (no JS test framework, same precedent as the agent's `--selftest`):
    `node lib/pmb-selfcheck.mjs` (synthetic fixtures) or point it at a real workbook to print
    per-sheet mapping/counts/skips.
+7. **Procurement's real process, modeled directly** (this round): sourcing → compare pricing →
+   release PO all sit under `PENDING` (the item's own `po_ref` presence is the finer signal —
+   blank means still sourcing, filled means a PO exists even though the status hasn't moved to
+   `TRANSIT` yet) → `TRANSIT` while following up with the vendor → `CLOSED` on delivery, with a
+   `CANCELLED` exit that only Design/Engineering can trigger (they own no BOM fields, so it goes
+   through a **cancel-request task**, not a direct edit). `components/ProcurementQueue.jsx`, mounted
+   above the BOM table on Procurement's own department panel, is Procurement's real day-to-day
+   worklist: **Sourcing / PO placed / In transit** counts derived client-side from the same `bom`
+   data already on the page (no new query), plus a **Cancel requests** list — checkbox per row, a
+   "select all," and one **Accept selected** action that marks the request(s) done and flips the
+   item(s) to `CANCELLED` in a single `POST /api/production/tasks/accept-cancellations` call.
+   Raising one happens from the existing cross-department `Raise` dialog (`TicketsPanel.jsx`) — a
+   third "Cancel BOM item" kind, offered only once "Procurement" is the target department, that
+   picks a live BOM line (excluding anything already resolved or already requested) instead of
+   free-typing a title. The task/item link is a single `tasks.bom_item_id` column — no new "kind"
+   enum, since a `bom_item_id`-linked task *is* a cancel-request by construction; extend this if a
+   second BOM-linked task type is ever needed. `CLOSED`/`RECEIVED`/`CANCELLED` are all treated as
+   "resolved, not open work" everywhere a BOM open-count is computed (`getBomWork`, `getBomRollup`,
+   `getBomRollupAll`) — a cancelled item stops showing up as something anyone needs to chase.
+   **Stores' own equivalent queue is deliberately not built yet** — its real trigger (what actually
+   signals "this item needs Stores' attention," with GRN fields being their own department's
+   territory) is still an open question pending a real workflow conversation, unlike Procurement's
+   process, which was defined in full before building.
 
 Deliberately **not** built (v1 decisions): document management for drawings/IBR/QC certificates,
 release/approval workflow for BOM revisions, Excel export/back-sync, in-app BOM authoring from
-scratch (the add/edit/delete APIs are 90% of it — natural v2), supplier/lead-time analytics.
+scratch (the add/edit/delete APIs are 90% of it — natural v2), supplier/lead-time analytics, a
+Purchase Order PDF generator (same `@react-pdf/renderer` precedent as the packing-list PDF) and a
+Supplier Selector (payment terms / pricing / delivery comparison, manually entered since the
+negotiation happens over WhatsApp) — both real, named asks, each deserving its own schema rather
+than being folded into `bom_items`.
 
 ## 5. Packing & BOM (the digital packing list)
 
@@ -532,7 +559,8 @@ users (role + departments CSV + project_ids CSV [customer scoping, one-or-more] 
 ```
 
 `bom_items` carries the spreadsheet-mirror columns — `section` (sheet), `group_label` (assembly
-heading), `make`, `qty_text`, `purchase_status` (PENDING/TRANSIT/CLOSED/RECEIVED), and free-text
+heading), `make`, `qty_text`, `purchase_status` (PENDING/TRANSIT/CLOSED/RECEIVED/CANCELLED — the
+last added this round, §5a), and free-text
 refs `pr_ref`/`po_ref`/`grn_ref`/`grn_qty_text`/`pending_qty_text`/`bqtc_ref`/`issued_ref`/
 `received_ref`/`remarks`, plus `import_id → bom_imports` (null = pasted/added in-app). All refs
 are deliberately free text (the cells mix numbers, dates and codes); only `purchase_status` is
@@ -546,8 +574,10 @@ back; `reopen_count` feeds the notification `dedupe_key` so a redo-and-reclose c
 downstream again, unlike the old ticket-based flow's `source_key` UNIQUE limitation; cleared
 implicitly whenever `actual_end` is next set on re-close except `reopen_count`, which only grows).
 `tasks` carries `from_department` (set only on a cross-department raise, null for a department's own
-board items — the signal `notifyDepartment` fires on) and `project_id` (optional context). All added
-via the standing `addColumn()` migration helper in `lib/db.js`, not one-off `ALTER TABLE`s.
+board items — the signal `notifyDepartment` fires on), `project_id` (optional context), and
+`bom_item_id` (§5a — set only on a Procurement cancel-request; by construction, a task with this set
+*is* a cancel-request, no separate `kind` column). All added via the standing `addColumn()`
+migration helper in `lib/db.js`, not one-off `ALTER TABLE`s.
 
 ## 8. Operations-platform deferred items
 
@@ -862,7 +892,8 @@ file).
 (session-cookie, PM-gated), `api/qc-records/*` (§5b, QC + PM-gated), `api/milestones/[id]/reopen`
 (§3b, the send-back-for-rework endpoint), `api/milestones/[id]/stages` + `api/milestones/[id]/stages/
 [stageId]` (§3c, add/apply-template and rename/status/delete on a milestone's own instance),
-`api/stage-templates/*` (§3c, the named-template CRUD — header + `.../items/*`), and
+`api/stage-templates/*` (§3c, the named-template CRUD — header + `.../items/*`),
+`api/production/tasks/accept-cancellations` (§5a, Procurement's bulk cancel-request accept), and
 `api/notifications`. `app/login/page.js` /
 `app/d-login/page.js` (§2c) are the production sign-in page and the gated demo picker;
 `app/production/*` (§3a, Tasks + Workers — route name is legacy, Tasks now works for every
@@ -877,8 +908,11 @@ calendar (§3a/§3b); `app/notifications/page.js` is the bell's "View all" desti
 role-aware `/help` guide content — plain data, no CMS, also feeds `InfoPopover`),
 `ProductionToday.jsx` / `WorkersPanel.jsx` (§3a), `NotificationBell.jsx` / `TicketsPanel.jsx` (§3b —
 `TicketsPanel.jsx` kept its name across the tickets collapse; it's the cross-department
-task/reopen panel now, not a literal tickets list), `StagesPanel.jsx` (§3c, the Kanban/Manage
-Stages card — native HTML5 drag-and-drop, no library).
+task/reopen panel now, not a literal tickets list, and its `RaiseDialog` is also where a
+cancel-request against a BOM item gets raised, §5a), `StagesPanel.jsx` (§3c, the Kanban/Manage
+Stages card — native HTML5 drag-and-drop, no library), `ProcurementQueue.jsx` (§5a, Procurement's
+own Sourcing/PO-placed/In-transit worklist + cancel-requests accept action, mounted above the BOM
+table on their department panel only).
 `components/ui/` — shadcn primitives, including `popover.jsx` (added this round, same
 `radix-ui` unified-import pattern as the rest).
 `agent/` — the Python Windows agent, its Inno Setup installer, and its own

@@ -11,6 +11,7 @@ import BomTable from './BomTable';
 import QcPanel from './QcPanel';
 import TicketsPanel from './TicketsPanel';
 import StagesPanel from './StagesPanel';
+import ProcurementQueue from './ProcurementQueue';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 
 const BOM_DEPARTMENTS = ['Procurement', 'Stores', 'Production'];
@@ -35,6 +36,10 @@ export default function DepartmentPanel({
       {department === 'Engineering' && (
         <BomPanel projectId={projectId} bom={bom} pending={pending} canUpload={canUploadBom}
           editableFields={bomFields} imports={bomImports} />
+      )}
+
+      {department === 'Procurement' && bom.length > 0 && (
+        <ProcurementQueue bom={bom} tasks={deptTasks} />
       )}
 
       {showBom && (
@@ -65,7 +70,7 @@ export default function DepartmentPanel({
 
       {/* Every department gets this cross-department card, including Engineering/Stores who own no
           milestones — this is their home now instead of the old dead-end message. */}
-      <TicketsPanel department={department} projectId={projectId} milestones={milestones} tasks={deptTasks} canRaise={canRaiseTickets} />
+      <TicketsPanel department={department} projectId={projectId} milestones={milestones} bom={bom} tasks={deptTasks} canRaise={canRaiseTickets} />
     </div>
   );
 }

@@ -26,10 +26,10 @@ import {
 import { PlusIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-function RaiseDialog({ department, projectId, milestones, router }) {
+function RaiseDialog({ department, projectId, milestones, bom = [], tasks = [], router }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [form, setForm] = useState({ kind: 'request', to_department: '', milestone_id: '', title: '', body: '', due_date: '' });
+  const [form, setForm] = useState({ kind: 'request', to_department: '', milestone_id: '', bom_item_id: '', title: '', body: '', due_date: '' });
 
   function set(field) { return e => setForm(f => ({ ...f, [field]: e.target.value })); }
 
@@ -41,16 +41,37 @@ function RaiseDialog({ department, projectId, milestones, router }) {
   const reopenOptions = (milestones || []).filter(m =>
     m.department === form.to_department && (m.actual_end || m.status === 'done'));
 
+  // Cancel-request targets a Procurement BOM item — only offerable once "Procurement" is picked
+  // as the target. Excludes items already resolved and items with an existing open cancel-request
+  // (deduped against this department's own outgoing tasks, already in the `tasks` prop).
+  const openCancelBomIds = new Set(tasks.filter(t => t.bom_item_id && t.status === 'open').map(t => t.bom_item_id));
+  const eligibleBom = form.to_department === 'Procurement'
+    ? bom.filter(b => !['CANCELLED', 'CLOSED', 'RECEIVED'].includes(b.purchase_status) && !openCancelBomIds.has(b.id))
+    : [];
+
   async function submit() {
-    if (!form.title.trim()) return showToast('Title is required', 'error');
+    if (form.kind !== 'cancel_item' && !form.title.trim()) return showToast('Title is required', 'error');
     if (!form.to_department) return showToast('Pick a department', 'error');
     if (form.kind === 'reopen' && !form.milestone_id) return showToast('Pick the milestone to send back', 'error');
+    if (form.kind === 'cancel_item' && !form.bom_item_id) return showToast('Pick an item to cancel', 'error');
     setBusy(true);
     try {
       if (form.kind === 'reopen') {
         const reason = form.body.trim() ? `${form.title.trim()} — ${form.body.trim()}` : form.title.trim();
         await api(`/api/milestones/${form.milestone_id}/reopen`, { method: 'POST', body: { reason } });
         showToast('Sent back for rework');
+      } else if (form.kind === 'cancel_item') {
+        const item = eligibleBom.find(b => String(b.id) === form.bom_item_id);
+        const title = `Cancel: ${item.material_description}` + (form.body.trim() ? ` — ${form.body.trim()}` : '');
+        await api('/api/production/tasks', {
+          method: 'POST',
+          body: {
+            title, due_date: todayISO(), department: form.to_department,
+            from_department: department || undefined, project_id: projectId || undefined,
+            bom_item_id: item.id,
+          },
+        });
+        showToast('Cancel request sent');
       } else {
         await api('/api/production/tasks', {
           method: 'POST',
@@ -61,7 +82,7 @@ function RaiseDialog({ department, projectId, milestones, router }) {
         });
         showToast('Task raised');
       }
-      setForm({ kind: 'request', to_department: '', milestone_id: '', title: '', body: '', due_date: '' });
+      setForm({ kind: 'request', to_department: '', milestone_id: '', bom_item_id: '', title: '', body: '', due_date: '' });
       setOpen(false);
       router.refresh();
     } catch (err) { showToast(err.message, 'error'); }
@@ -80,18 +101,26 @@ function RaiseDialog({ department, projectId, milestones, router }) {
             <div className="flex flex-col gap-1.5">
               <Label>Kind</Label>
               <Select value={form.kind}
-                onValueChange={v => setForm(f => ({ ...f, kind: v, milestone_id: v === 'reopen' ? f.milestone_id : '' }))}>
+                onValueChange={v => setForm(f => ({
+                  ...f, kind: v,
+                  milestone_id: v === 'reopen' ? f.milestone_id : '',
+                  bom_item_id: v === 'cancel_item' ? f.bom_item_id : '',
+                }))}>
                 <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="request">Task</SelectItem>
                   {canReopen && <SelectItem value="reopen">Send back (rework)</SelectItem>}
+                  {form.to_department === 'Procurement' && <SelectItem value="cancel_item">Cancel BOM item</SelectItem>}
                 </SelectContent>
               </Select>
             </div>
             <div className="flex flex-col gap-1.5">
               <Label>To department</Label>
               <Select value={form.to_department}
-                onValueChange={v => setForm(f => ({ ...f, to_department: v, milestone_id: '' }))}>
+                onValueChange={v => setForm(f => ({
+                  ...f, to_department: v, milestone_id: '', bom_item_id: '',
+                  kind: v !== 'Procurement' && f.kind === 'cancel_item' ? 'request' : f.kind,
+                }))}>
                 <SelectTrigger className="w-full"><SelectValue placeholder="Choose…" /></SelectTrigger>
                 <SelectContent>
                   {DEPARTMENTS.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
@@ -116,14 +145,31 @@ function RaiseDialog({ department, projectId, milestones, router }) {
               </Select>
             </div>
           )}
+          {form.kind === 'cancel_item' && (
+            <div className="flex flex-col gap-1.5">
+              <Label>Item</Label>
+              <Select value={form.bom_item_id} onValueChange={v => setForm(f => ({ ...f, bom_item_id: v }))}>
+                <SelectTrigger className="w-full"><SelectValue placeholder="Which item?" /></SelectTrigger>
+                <SelectContent>
+                  {eligibleBom.length === 0 && (
+                    <div className="px-2 py-1.5 text-xs text-muted-foreground">No items eligible right now</div>
+                  )}
+                  {eligibleBom.map(b => <SelectItem key={b.id} value={String(b.id)}>{b.material_description}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          {form.kind !== 'cancel_item' && (
+            <div className="flex flex-col gap-1.5">
+              <Label>{form.kind === 'reopen' ? 'Reason' : 'Title'}</Label>
+              <Input value={form.title} onChange={set('title')}
+                placeholder={form.kind === 'reopen' ? 'Why is this being sent back?' : 'Short summary'} />
+            </div>
+          )}
           <div className="flex flex-col gap-1.5">
-            <Label>{form.kind === 'reopen' ? 'Reason' : 'Title'}</Label>
-            <Input value={form.title} onChange={set('title')}
-              placeholder={form.kind === 'reopen' ? 'Why is this being sent back?' : 'Short summary'} />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label>Details</Label>
-            <Textarea rows={2} value={form.body} onChange={set('body')} />
+            <Label>{form.kind === 'cancel_item' ? 'Reason (optional)' : 'Details'}</Label>
+            <Textarea rows={2} value={form.body} onChange={set('body')}
+              placeholder={form.kind === 'cancel_item' ? 'Why is this being cancelled?' : undefined} />
           </div>
           {form.kind === 'request' && (
             <div className="flex flex-col gap-1.5">
@@ -133,7 +179,9 @@ function RaiseDialog({ department, projectId, milestones, router }) {
           )}
         </div>
         <DialogFooter>
-          <Button disabled={busy} onClick={submit}>{busy ? 'Sending…' : (form.kind === 'reopen' ? 'Send back' : 'Raise task')}</Button>
+          <Button disabled={busy} onClick={submit}>
+            {busy ? 'Sending…' : form.kind === 'reopen' ? 'Send back' : form.kind === 'cancel_item' ? 'Send cancel request' : 'Raise task'}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -141,7 +189,7 @@ function RaiseDialog({ department, projectId, milestones, router }) {
 }
 
 export default function TicketsPanel({
-  tasks = [], department = null, projectId = null, milestones = [], canRaise = false, showDepartment = false,
+  tasks = [], department = null, projectId = null, milestones = [], bom = [], canRaise = false, showDepartment = false,
   title = 'Tickets',
 }) {
   const router = useRouter();
@@ -159,7 +207,7 @@ export default function TicketsPanel({
       <CardHeader>
         <CardTitle>{title}</CardTitle>
         {canRaise && (
-          <CardAction><RaiseDialog department={department} projectId={projectId} milestones={milestones} router={router} /></CardAction>
+          <CardAction><RaiseDialog department={department} projectId={projectId} milestones={milestones} bom={bom} tasks={tasks} router={router} /></CardAction>
         )}
       </CardHeader>
       <CardContent className="flex flex-col divide-y">

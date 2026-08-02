@@ -31,6 +31,7 @@ const STATUS_TONE = {
   CLOSED: 'bg-success/10 text-success ring-success/20',
   RECEIVED: 'bg-success/10 text-success ring-success/20',
   TRANSIT: 'bg-warning/10 text-warning ring-warning/20',
+  CANCELLED: 'bg-danger/10 text-danger ring-danger/20',
 };
 
 export default function BomTable({ projectId, bom, pendingIds = [], editableFields = [] }) {
