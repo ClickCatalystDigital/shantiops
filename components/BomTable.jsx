@@ -175,7 +175,14 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
             ) : (
               <TableRow key={r.id}>
                 <TableCell className="sticky left-0 z-10 w-12 bg-background tnum text-muted-foreground">{bom.indexOf(r) + 1}</TableCell>
-                <TableCell className="sticky left-12 z-10 w-64 min-w-64 max-w-64 break-words bg-background font-medium">{r.material_description}</TableCell>
+                <TableCell className="sticky left-12 z-10 w-64 min-w-64 max-w-64 break-words bg-background font-medium">
+                  {r.material_description}
+                  {/* Derived from selected_quote_id (§5a) — set via the Procurement workspace's
+                      supplier selection, not editable here. */}
+                  {r.selected_supplier_name && (
+                    <div className="text-xs font-normal text-muted-foreground">Supplier: {r.selected_supplier_name}</div>
+                  )}
+                </TableCell>
                 <TableCell className="w-32 bg-background md:sticky md:left-[19rem] md:z-10">
                   {canInlineStatus ? (
                     <Select value={r.purchase_status || 'none'} onValueChange={v => setStatus(r, v)}>

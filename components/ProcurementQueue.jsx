@@ -8,7 +8,8 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, showToast } from '@/lib/client';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import Link from 'next/link';
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Checkbox } from './ui/checkbox';
 import { Button } from './ui/button';
 
@@ -53,7 +54,16 @@ export default function ProcurementQueue({ bom = [], tasks = [] }) {
 
   return (
     <Card>
-      <CardHeader><CardTitle>Procurement queue</CardTitle></CardHeader>
+      <CardHeader>
+        <CardTitle>Procurement queue</CardTitle>
+        <CardAction>
+          <Button asChild size="sm" variant="outline">
+            {/* Sourcing/quotes/POs are cross-project — that workspace lives at /procurement, not
+                scoped to this one project (§5a). */}
+            <Link href="/procurement">Open Procurement workspace →</Link>
+          </Button>
+        </CardAction>
+      </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <div className="grid grid-cols-3 gap-3">
           <Stat label="Sourcing" value={sourcing.length} />

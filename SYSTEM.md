@@ -12,20 +12,28 @@ set of user accounts:
    blocks USB drives, CDs/DVDs, phones, and websites on employee machines until a manager approves,
    via the same dashboard.
 
-Everything in this file reflects the **current, working build** as of 2026-08-01. Most recent round:
-**Procurement's cancel-request flow** (§5a) — Design (or Engineering) can ask Procurement to cancel
-a specific BOM line item; Procurement sees every pending request on their own project-page queue,
-selects individually or all, and accepting flips each item's `purchase_status` to the newly-added
-`CANCELLED` and closes the request in one action. Verified live end-to-end on SB-1104: raised a
-cancel request as `design_head` against a real BOM line, accepted it as `procurement_head` via
-select-all, confirmed the item's status flipped, the BOM rollup/open-item counts adjusted (a
-cancelled item no longer counts as open work anywhere), and the request disappeared from the queue.
-Landed alongside it: **Workflow Stages** (§3c), a reusable, department-defined checklist layer
-*under* a milestone (Open → Current → Closed) — named, multiple templates per milestone type, a
-real Manage-tab editor, and auto-copying the default template the moment a project is created. This
-resolves the tagging layer §8 had parked — Production's "7 named phases" question — since any
-department can now define stages under its existing granular milestones. Deeper history (the
-tickets-collapse round, the Tasks/Workers split, the login-page split, QC test records, multi-project
+Everything in this file reflects the **current, working build** as of 2026-08-02. Most recent round:
+the **Procurement system** (§5a) — a real cross-project workspace at `/procurement` (Sourcing,
+Purchase orders, Suppliers tabs), replacing the department's old dead end of just editing
+`purchase_status` by hand. A provisional `suppliers` table (the client's real list arrives later,
+mapped on additively), an append-only `supplier_quotes` price-history log (single-item or batch
+entry, one supplier quoting several items at once), supplier selection that writes a winning-quote
+pointer onto the BOM row (with a revert path that leaves history untouched), and structured
+`purchase_orders`/`po_items` that can span several projects — the same MS angle bought once for
+several boilers — culminating in a real **PO PDF** matching the business's actual hand-made POs
+(two real samples supplied this round: `578/SB/2025-26`, `562/SB/2026-27 (split-po)`), continuing
+their live document sequence (`po_no` counter seeded at 578). Verified live end-to-end on SB-1103:
+logged a batch quote from a new supplier against two items, selected the winner, created a PO
+(`579/SB/2026-27`, subtotal computed correctly from free-text BOM quantities), issued it (confirmed
+the existing BOM table and `ProcurementQueue.jsx` — neither aware structured POs exist — picked up
+the `po_ref` stamp automatically), generated a real PDF, then cancelled it and confirmed the item
+returned to "on order" (not all the way back to "to source") with `supplier_quotes` history intact.
+Landed the same session: Procurement's **cancel-request flow** (Design/Engineering ask Procurement
+to cancel a specific BOM line via the existing cross-department Raise dialog; Procurement accepts
+individually or via select-all, flipping the item to the new `CANCELLED` status) and **Workflow
+Stages** (§3c) — a reusable, department-defined checklist layer *under* a milestone, named/multiple
+templates per milestone type, auto-copying the default the moment a project is created. Deeper
+history (the tickets-collapse round, the Tasks/Workers split, the login-page split, QC test records, multi-project
 customer logins, etc.) lives in `git log` now rather than repeated here — each is still documented
 in full in its own
 numbered section below, just not re-summarized at the top on every round.
@@ -488,19 +496,13 @@ those workbooks and replaces the shared spreadsheet:
    enum, since a `bom_item_id`-linked task *is* a cancel-request by construction; extend this if a
    second BOM-linked task type is ever needed. `CLOSED`/`RECEIVED`/`CANCELLED` are all treated as
    "resolved, not open work" everywhere a BOM open-count is computed (`getBomWork`, `getBomRollup`,
-   `getBomRollupAll`) — a cancelled item stops showing up as something anyone needs to chase.
-   **Stores' own equivalent queue is deliberately not built yet** — its real trigger (what actually
-   signals "this item needs Stores' attention," with GRN fields being their own department's
-   territory) is still an open question pending a real workflow conversation, unlike Procurement's
-   process, which was defined in full before building.
+   `getBomRollupAll`) — a cancelled item stops showing up as something anyone needs to chase. The
+   fuller cross-project sourcing/quotes/PO system this process feeds into is §5c.
 
 Deliberately **not** built (v1 decisions): document management for drawings/IBR/QC certificates,
 release/approval workflow for BOM revisions, Excel export/back-sync, in-app BOM authoring from
-scratch (the add/edit/delete APIs are 90% of it — natural v2), supplier/lead-time analytics, a
-Purchase Order PDF generator (same `@react-pdf/renderer` precedent as the packing-list PDF) and a
-Supplier Selector (payment terms / pricing / delivery comparison, manually entered since the
-negotiation happens over WhatsApp) — both real, named asks, each deserving its own schema rather
-than being folded into `bom_items`.
+scratch (the add/edit/delete APIs are 90% of it — natural v2), supplier/lead-time analytics. The
+Purchase Order PDF and Supplier Selector named here in earlier rounds are **built** — see §5c.
 
 ## 5. Packing & BOM (the digital packing list)
 
@@ -529,6 +531,76 @@ QC can flip inline. Whole-row department ownership like `packing_lists` — no f
 like the BOM's, since no other department writes part of a QC record. Full CRUD
 (`app/api/qc-records/*`) gated to QC + PM, audited the same as everything else.
 
+## 5c. Procurement system — sourcing, quotes, supplier selection, purchase orders
+
+Procurement's real process, modeled directly rather than guessed: contact suppliers → compare
+pricing → release PO all sit under BOM status `PENDING` (the item's own `po_ref` presence is the
+finer signal within that bucket — blank means still sourcing, filled means a PO exists even though
+the status hasn't moved to `TRANSIT` yet) → `TRANSIT` while following up with the vendor → `CLOSED`
+on delivery, with a `CANCELLED` exit (§5a point 7, the cancel-request flow). Two surfaces now exist:
+`ProcurementQueue.jsx` (§5a point 7 — the project-page glance, cancel-requests) and this, the
+cross-project workbench at **`/procurement`** (`app/procurement/page.js`, gated like every other
+department-only surface — `canAccessDepartment(user, 'Procurement')` — with a Procurement-only Nav
+tab, same mechanism as Workers). It exists because a PO can span projects: the same MS angle gets
+bought once for several boilers, not per project, so anything scoped to one project can't be the
+real daily workbench.
+
+- **Suppliers** (`suppliers` table) — deliberately provisional: the client's real supplier list is
+  coming separately and will be mapped onto this additively. `UNIQUE(name)` exists now specifically
+  so "Kirloskar" and "Kirloskar Bros" can't drift into two rows before that happens.
+- **Quotes** (`supplier_quotes`, append-only, never mutated) — the price-history log ("track each
+  item per supplier per timestamp") and the seed of a future supplier-facing portal. Logged per item
+  or as a batch (one supplier quoting several items at once, sharing a `batch_id`) from the same
+  dialog — `getAllQuotes()` fetches the whole small table once for the workspace, filtered
+  client-side by item or supplier rather than a per-item/per-supplier round trip.
+- **Supplier selection** — `bom_items.selected_quote_id` is the winning-quote pointer; NULL means
+  "still needs sourcing," which is what drives the Sourcing tab's default segment. Set/cleared only
+  through `POST`/`DELETE /api/bom-items/[id]/select-supplier` (never the generic BOM-field PATCH),
+  and reverting only clears the pointer — `supplier_quotes` history is untouched.
+- **Sourcing tab** — every active project's BOM items in one segmented list (**To source / Comparing
+  / On order / Delivered / Cancelled**, derived client-side from `purchase_status` +
+  `selected_quote_id` + quote count), multi-select + a contextual action bar (**Log quote** in the
+  first two segments, **Create PO** in On order), and a per-item expandable detail showing the full
+  quote comparison with a Select/Revert action. Cross-project "same item on other projects"
+  grouping was deliberately **not** built as a query — these are hand-typed spreadsheet rows (SB-1104
+  alone has two different rows both called "MS ANGLE"), so any such grouping is a human judgment
+  call, not something to auto-merge; the segmented list is the real v1 answer to "what needs my
+  attention," not a merge tool.
+- **Purchase orders** (`purchase_orders` + snapshot `po_items`, same precedent as `packing_items`
+  snapshotting `bom_items` — an issued PO's lines never silently change if the BOM row is edited
+  afterward) — created from a set of already-selected items that must share one supplier (validated
+  both client- and server-side). `po_no` is a single global sequence (`NNN/SB/YYYY-YY`, Indian
+  financial year) continuing the real business's own numbering — `counters.po_no` seeded at 578 to
+  match the real sample POs (`578/SB/2025-26`, `562/SB/2026-27 (split-po)`). Every terms/logistics
+  field defaults to what's on every sample PO (`delivery_schedule='IMMEDIATELY'`,
+  `transportation='Our Scope'`, `freight='To Pay Basis'`, `guarantee='NA'`, `gst_pct=18`), so issuing
+  one is mostly picking a supplier and items. **Coexistence, not replacement**: issuing a PO stamps
+  its number into each line's existing `po_ref` column, so the plain `BomTable` and
+  `ProcurementQueue`'s "PO placed" bucket (both reading `po_ref` presence, neither aware a
+  structured PO exists) keep working unchanged; cancelling clears it. Cancelling a PO returns its
+  items to "on order," not all the way to "to source" — `selected_quote_id` is untouched, only the
+  `po_ref` stamp clears.
+- **PO PDF** (`lib/po-pdf.js`, exact mirror of `lib/packing-pdf.js` — same `@react-pdf/renderer`
+  approach) — matches the two real sample POs' layout: fixed Shanti header (GST `36AAECS7382N1ZN`,
+  Nacharam address — constant across both samples; only the *delivery address* varies per PO, e.g.
+  a site like Kucharam, not a buying-entity selector), supplier block, PO meta, line table, terms,
+  and Sub Total → Discount% → GST% → Grand Total. `GET /api/purchase-orders/[id]/pdf` mirrors
+  `app/api/packing/[id]/pdf/route.js` exactly (`runtime='nodejs'`, inline disposition).
+- **BOM display**: `BomTable` shows the derived supplier name under an item's description
+  (`selected_supplier_name`, joined in `getProjectBom` via `selected_quote_id`) — read-only there,
+  set only through the workspace. Full per-department column-scoping of the BOM table (Procurement
+  currently sees every department's columns, not just its own) is a known gap, explicitly deferred
+  — "we will reshape BOM later."
+- **Deliberately deferred, schema left with room**: fine-grained line-splitting across suppliers
+  (v1 keeps single-supplier-per-item as the only real flow; a split is a manual multi-`po_items`
+  exception, not automated); units as an Engineering-owned structured attribute (would enable real
+  numeric cross-project qty aggregation instead of the current human-judgment grouping — `uom`
+  stays free text on quotes/POs for now); a supplier-facing portal (the `suppliers` +
+  `supplier_quotes` schema is ready for it); a PO approval threshold; buy-now-price-later; quote
+  expiry (`supplier_quotes.valid_until` exists but isn't enforced anywhere yet). **Stores' own
+  equivalent queue is still not built** — its real trigger is an open question pending a workflow
+  conversation, unlike Procurement's process, which was defined in full before building.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own
@@ -554,6 +626,9 @@ tasks ──< notifications                          (§3b — a cross-departmen
 tickets                                          (§3b — dead, kept only for notifications.ticket_id FK + pre-collapse history; nothing reads/writes it)
 milestones ──< milestone_stages                  (§3c — one row per stage per milestone instance, status Open/Current/Closed)
 stage_templates ──< stage_template_items         (§3c — named, reusable per department + milestone_key; one is_default auto-copies at project creation)
+suppliers ──< supplier_quotes                    (§5c — provisional supplier list; append-only price-history log, per item per supplier per timestamp)
+suppliers ──< purchase_orders ──< po_items        (§5c — a PO can span projects; po_items snapshots bom_items at PO-creation time)
+bom_items.selected_quote_id → supplier_quotes    (§5c — the winning-quote pointer; NULL = still needs sourcing)
 workers ──< worker_days                          (§3a — Production-only shop-floor people with no users row; one attendance row per worker per day)
 users (role + departments CSV + project_ids CSV [customer scoping, one-or-more] + pending flag)
 ```
@@ -612,7 +687,10 @@ page; a similar stack on Operations) with no pass yet on which are department-le
 which actually get used, and which should collapse or merge. `TicketsPanel.jsx`'s default title is
 still literally "Tickets" on the project page (department name on Operations) — confirmed still
 live, cosmetic only, the backing entity has been gone since §3b; worth fixing as part of this pass
-rather than in isolation.
+rather than in isolation. **Procurement's `/procurement` workspace (§5c) is separate from this and
+already built** — it's a department-specific surface (same pattern as Workers), not the PM
+action-queue/Manager-flow/Head-queue redesign this paragraph is about; the two shouldn't be
+conflated when picking this back up.
 
 ---
 
@@ -887,14 +965,18 @@ pure data, importable client-side), `usb.js` (device approval domain logic, shar
 `handoff.test.mjs` (§3b, the pure handoff rule + its `node --test`, unchanged by the tickets
 collapse), `notify.js` (§3b, formerly `tickets.js` — notification fan-out + `fireHandoff`, no
 longer creates any row besides the notification itself), `beep.js` (§3b, WebAudio chime, no audio
-file).
+file), `po-pdf.js` (§5c, the Purchase Order PDF — exact mirror of `packing-pdf.js`).
 `app/` — pages + API routes, including `api/agent/*` (Bearer-agent), `api/usb/*`, `api/browser/*`
 (session-cookie, PM-gated), `api/qc-records/*` (§5b, QC + PM-gated), `api/milestones/[id]/reopen`
 (§3b, the send-back-for-rework endpoint), `api/milestones/[id]/stages` + `api/milestones/[id]/stages/
 [stageId]` (§3c, add/apply-template and rename/status/delete on a milestone's own instance),
 `api/stage-templates/*` (§3c, the named-template CRUD — header + `.../items/*`),
-`api/production/tasks/accept-cancellations` (§5a, Procurement's bulk cancel-request accept), and
-`api/notifications`. `app/login/page.js` /
+`api/production/tasks/accept-cancellations` (§5a, Procurement's bulk cancel-request accept),
+`api/suppliers/*`, `api/supplier-quotes`, `api/bom-items/[id]/select-supplier`,
+`api/purchase-orders/*` (+ `/[id]/pdf`) (§5c, the Procurement system's CRUD — all gated
+`requireDepartment(user, 'Procurement')`), and `api/notifications`. `app/procurement/page.js` (§5c,
+the cross-project workspace — gated like `app/production/workers/page.js`, no calendar/date params
+needed). `app/login/page.js` /
 `app/d-login/page.js` (§2c) are the production sign-in page and the gated demo picker;
 `app/production/*` (§3a, Tasks + Workers — route name is legacy, Tasks now works for every
 department, verified live) is gated by `isHead`/`headDepartments` (any department) except Workers,
@@ -912,7 +994,9 @@ task/reopen panel now, not a literal tickets list, and its `RaiseDialog` is also
 cancel-request against a BOM item gets raised, §5a), `StagesPanel.jsx` (§3c, the Kanban/Manage
 Stages card — native HTML5 drag-and-drop, no library), `ProcurementQueue.jsx` (§5a, Procurement's
 own Sourcing/PO-placed/In-transit worklist + cancel-requests accept action, mounted above the BOM
-table on their department panel only).
+table on their department panel only, with a link into the workspace below),
+`ProcurementWorkspace.jsx` (§5c, the `/procurement` page's 3-tab client component — Sourcing,
+Purchase orders, Suppliers).
 `components/ui/` — shadcn primitives, including `popover.jsx` (added this round, same
 `radix-ui` unified-import pattern as the rest).
 `agent/` — the Python Windows agent, its Inno Setup installer, and its own

@@ -6,7 +6,7 @@ import { usePathname, useSearchParams, useRouter } from 'next/navigation';
 import {
   SunIcon, MoonIcon, SettingsIcon, LogOutIcon, LayoutGridIcon, BarChart3Icon,
   LayoutDashboardIcon, FolderKanbanIcon, PackageIcon, ShieldCheckIcon, InfoIcon,
-  CalendarDaysIcon, HardHatIcon,
+  CalendarDaysIcon, HardHatIcon, ShoppingCartIcon,
 } from 'lucide-react';
 import { DEPARTMENTS } from '@/lib/milestones';
 import { cn } from '@/lib/utils';
@@ -35,6 +35,9 @@ export default function Nav({ user }) {
   // stricter single-department check the pages themselves still enforce via inDepartment().
   const hasTasks = departments.length > 0;
   const inProduction = departments.includes('Production');
+  // Procurement's own cross-project workspace (§5a) — same mechanism as Workers below, a
+  // department-only surface a PM reaches via a link on the project page instead of a nav tab.
+  const inProcurement = departments.includes('Procurement');
   // A multi-department head narrows whichever section they're currently in — Tasks or
   // Operations — by department, one shared row of chips rather than a duplicate row per
   // section (that read as unlabeled twins of each other when both existed at once).
@@ -57,6 +60,7 @@ export default function Nav({ user }) {
         { href: '/', label: 'Operations', icon: LayoutDashboardIcon },
         { href: '/projects', label: 'Projects', icon: FolderKanbanIcon },
         ...(inProduction ? [{ href: '/production/workers', label: 'Workers', icon: HardHatIcon }] : []),
+        ...(inProcurement ? [{ href: '/procurement', label: 'Procurement', icon: ShoppingCartIcon }] : []),
       ];
 
   // l.dept links narrow whichever base route they point at (Tasks vs Operations both use it) —
