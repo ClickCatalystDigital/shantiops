@@ -206,7 +206,9 @@ export default async function Home({ searchParams }) {
         );
       })}
 
-      {deptsToShow.map((d, i) => (
+      {/* Procurement's Tickets card moved to the Requests tab (§4.0b) — split into Raised
+          by/for Procurement there, so it's not duplicated here. */}
+      {deptsToShow.map((d, i) => d !== 'Procurement' && (
         <TicketsPanel key={d} title={d} department={d} canRaise tasks={tasksByDept[i]} bom={sourcingItems} />
       ))}
     </main>

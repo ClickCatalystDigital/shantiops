@@ -29,7 +29,10 @@ import { cn } from '@/lib/utils';
 function RaiseDialog({ department, projectId, milestones, bom = [], tasks = [], router }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [form, setForm] = useState({ kind: 'request', to_department: '', milestone_id: '', bom_item_id: '', title: '', body: '', due_date: '' });
+  const [form, setForm] = useState({
+    kind: 'request', to_department: '', milestone_id: '', bom_item_id: '', title: '', body: '', due_date: '',
+    moc: '', size_spec: '', qty_text: '', pr_ref: '',
+  });
 
   function set(field) { return e => setForm(f => ({ ...f, [field]: e.target.value })); }
 
@@ -49,14 +52,29 @@ function RaiseDialog({ department, projectId, milestones, bom = [], tasks = [], 
     ? bom.filter(b => !['CANCELLED', 'CLOSED', 'RECEIVED'].includes(b.purchase_status) && !openCancelBomIds.has(b.id))
     : [];
 
+  // New-item request (§4.0) — same project-context requirement as Reopen: a request needs a
+  // project to attach to, and Operations' Raise dialog has no project picker of its own.
+  const canRequestItem = form.to_department === 'Procurement' && !!projectId;
+
   async function submit() {
-    if (form.kind !== 'cancel_item' && !form.title.trim()) return showToast('Title is required', 'error');
+    if (!['cancel_item', 'request_item'].includes(form.kind) && !form.title.trim()) return showToast('Title is required', 'error');
+    if (form.kind === 'request_item' && !form.title.trim()) return showToast('Item description is required', 'error');
     if (!form.to_department) return showToast('Pick a department', 'error');
     if (form.kind === 'reopen' && !form.milestone_id) return showToast('Pick the milestone to send back', 'error');
     if (form.kind === 'cancel_item' && !form.bom_item_id) return showToast('Pick an item to cancel', 'error');
     setBusy(true);
     try {
-      if (form.kind === 'reopen') {
+      if (form.kind === 'request_item') {
+        await api('/api/procurement-requests', {
+          method: 'POST',
+          body: {
+            project_id: projectId || undefined, from_department: department || undefined,
+            material_description: form.title, moc: form.moc || undefined, size_spec: form.size_spec || undefined,
+            qty_text: form.qty_text || undefined, pr_ref: form.pr_ref || undefined, notes: form.body || undefined,
+          },
+        });
+        showToast('Request sent to Procurement');
+      } else if (form.kind === 'reopen') {
         const reason = form.body.trim() ? `${form.title.trim()} — ${form.body.trim()}` : form.title.trim();
         await api(`/api/milestones/${form.milestone_id}/reopen`, { method: 'POST', body: { reason } });
         showToast('Sent back for rework');
@@ -82,7 +100,10 @@ function RaiseDialog({ department, projectId, milestones, bom = [], tasks = [], 
         });
         showToast('Task raised');
       }
-      setForm({ kind: 'request', to_department: '', milestone_id: '', bom_item_id: '', title: '', body: '', due_date: '' });
+      setForm({
+        kind: 'request', to_department: '', milestone_id: '', bom_item_id: '', title: '', body: '', due_date: '',
+        moc: '', size_spec: '', qty_text: '', pr_ref: '',
+      });
       setOpen(false);
       router.refresh();
     } catch (err) { showToast(err.message, 'error'); }
@@ -111,6 +132,7 @@ function RaiseDialog({ department, projectId, milestones, bom = [], tasks = [], 
                   <SelectItem value="request">Task</SelectItem>
                   {canReopen && <SelectItem value="reopen">Send back (rework)</SelectItem>}
                   {form.to_department === 'Procurement' && <SelectItem value="cancel_item">Cancel BOM item</SelectItem>}
+                  {canRequestItem && <SelectItem value="request_item">Request procurement</SelectItem>}
                 </SelectContent>
               </Select>
             </div>
@@ -119,7 +141,7 @@ function RaiseDialog({ department, projectId, milestones, bom = [], tasks = [], 
               <Select value={form.to_department}
                 onValueChange={v => setForm(f => ({
                   ...f, to_department: v, milestone_id: '', bom_item_id: '',
-                  kind: v !== 'Procurement' && f.kind === 'cancel_item' ? 'request' : f.kind,
+                  kind: v !== 'Procurement' && ['cancel_item', 'request_item'].includes(f.kind) ? 'request' : f.kind,
                 }))}>
                 <SelectTrigger className="w-full"><SelectValue placeholder="Choose…" /></SelectTrigger>
                 <SelectContent>
@@ -163,7 +185,31 @@ function RaiseDialog({ department, projectId, milestones, bom = [], tasks = [], 
               </Select>
             </div>
           )}
-          {form.kind !== 'cancel_item' && (
+          {form.kind === 'request_item' && (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2 flex flex-col gap-1.5">
+                <Label>Item description</Label>
+                <Input value={form.title} onChange={set('title')} placeholder="e.g. MS ANGLE" />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label>MOC / spec (optional)</Label>
+                <Input value={form.moc} onChange={set('moc')} placeholder="e.g. MS" />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label>Size (optional)</Label>
+                <Input value={form.size_spec} onChange={set('size_spec')} />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label>Qty (optional)</Label>
+                <Input value={form.qty_text} onChange={set('qty_text')} placeholder="e.g. 4 Nos" />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label>PR No. & date (optional)</Label>
+                <Input value={form.pr_ref} onChange={set('pr_ref')} />
+              </div>
+            </div>
+          )}
+          {!['cancel_item', 'request_item'].includes(form.kind) && (
             <div className="flex flex-col gap-1.5">
               <Label>{form.kind === 'reopen' ? 'Reason' : 'Title'}</Label>
               <Input value={form.title} onChange={set('title')}
@@ -171,7 +217,7 @@ function RaiseDialog({ department, projectId, milestones, bom = [], tasks = [], 
             </div>
           )}
           <div className="flex flex-col gap-1.5">
-            <Label>{form.kind === 'cancel_item' ? 'Reason (optional)' : 'Details'}</Label>
+            <Label>{form.kind === 'cancel_item' ? 'Reason (optional)' : form.kind === 'request_item' ? 'Notes (optional)' : 'Details'}</Label>
             <Textarea rows={2} value={form.body} onChange={set('body')}
               placeholder={form.kind === 'cancel_item' ? 'Why is this being cancelled?' : undefined} />
           </div>
@@ -184,7 +230,11 @@ function RaiseDialog({ department, projectId, milestones, bom = [], tasks = [], 
         </div>
         <DialogFooter>
           <Button disabled={busy} onClick={submit}>
-            {busy ? 'Sending…' : form.kind === 'reopen' ? 'Send back' : form.kind === 'cancel_item' ? 'Send cancel request' : 'Raise task'}
+            {busy ? 'Sending…'
+              : form.kind === 'reopen' ? 'Send back'
+              : form.kind === 'cancel_item' ? 'Send cancel request'
+              : form.kind === 'request_item' ? 'Send request'
+              : 'Raise task'}
           </Button>
         </DialogFooter>
       </DialogContent>

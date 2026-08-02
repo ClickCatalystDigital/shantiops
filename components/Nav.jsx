@@ -6,7 +6,7 @@ import { usePathname, useSearchParams, useRouter } from 'next/navigation';
 import {
   SunIcon, MoonIcon, SettingsIcon, LogOutIcon, LayoutGridIcon, BarChart3Icon,
   LayoutDashboardIcon, FolderKanbanIcon, PackageIcon, ShieldCheckIcon, InfoIcon,
-  CalendarDaysIcon, HardHatIcon, ShoppingCartIcon,
+  CalendarDaysIcon, HardHatIcon, ShoppingCartIcon, InboxIcon,
 } from 'lucide-react';
 import { DEPARTMENTS } from '@/lib/milestones';
 import { cn } from '@/lib/utils';
@@ -61,6 +61,10 @@ export default function Nav({ user }) {
         { href: '/projects', label: 'Projects', icon: FolderKanbanIcon },
         ...(inProduction ? [{ href: '/production/workers', label: 'Workers', icon: HardHatIcon }] : []),
         ...(inProcurement ? [{ href: '/procurement', label: 'Procurement', icon: ShoppingCartIcon }] : []),
+        // New-item/cancel requests from Engineering/Design (§4.0) — same tab-gating mechanism as
+        // Procurement above; a separate nav tab rather than a Procurement sub-tab since it's where
+        // requests wait before they even become Procurement's problem.
+        ...(inProcurement ? [{ href: '/requests', label: 'Requests', icon: InboxIcon }] : []),
       ];
 
   // l.dept links narrow whichever base route they point at (Tasks vs Operations both use it) —
