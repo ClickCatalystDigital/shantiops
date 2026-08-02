@@ -53,7 +53,7 @@ export default function BomPanel({ projectId, bom, pending, canUpload, editableF
           </p>
         ) : (
           <BomTable projectId={projectId} bom={bom} pendingIds={pending.map(p => p.id)}
-            editableFields={editableFields} />
+            editableFields={editableFields} department="Engineering" />
         )}
 
         {imports.length > 0 && (

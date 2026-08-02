@@ -586,9 +586,27 @@ real daily workbench.
   `app/api/packing/[id]/pdf/route.js` exactly (`runtime='nodejs'`, inline disposition).
 - **BOM display**: `BomTable` shows the derived supplier name under an item's description
   (`selected_supplier_name`, joined in `getProjectBom` via `selected_quote_id`) — read-only there,
-  set only through the workspace. Full per-department column-scoping of the BOM table (Procurement
-  currently sees every department's columns, not just its own) is a known gap, explicitly deferred
-  — "we will reshape BOM later."
+  set only through the workspace. **Procurement's column view is now scoped** (Stores/Production are
+  not yet — deliberately, see below): before building this, checked whether `/procurement`'s
+  Sourcing tab already made the plain BOM table redundant for Procurement — it doesn't. The only
+  place anywhere in the app to advance an item to `TRANSIT`/`CLOSED` is `BomTable`'s inline Status
+  dropdown (the Sourcing tab's segments are read-only derived labels, no status-setting control
+  exists there), and `pr_ref` (Purchase Requisition No. & Date, from the original PMB Excel) is only
+  ever edited through `BomTable`'s row dialog — neither is duplicated by the cross-project workspace.
+  So the fix was narrowing columns, not removing the table: `lib/bom-fields.mjs` gained
+  `BOM_CONTEXT_FIELDS` (Engineering's moc/size_spec/make/qty_text — read-only context every viewing
+  department needs regardless of who owns it) and `visibleBomColumns(department, allColumns)` /
+  `showPackingColumn(department)`, gated by a `SCOPED_BOM_VIEW` set (currently just `Procurement`,
+  opt-in per department as each one's real needs get confirmed the same way Procurement's was — not
+  a blanket rule). `BomTable` takes a new `department` prop (threaded from `DepartmentPanel` and
+  `BomPanel`) and narrows its `COLUMNS`/Packing-column rendering accordingly, with the sticky-header
+  left-offset math (`actionsLeft`) recomputed when Packing drops out so nothing gaps or overlaps.
+  Procurement now sees: Description, MOC/Size/Make/Qty (context), Status (still the one live control),
+  PR ref, PO ref — GRN/GRN Qty/Pending Qty/BQ-TC (Stores), Issued/Received (Production), and the
+  Packing badge (Dispatch) are gone from their view. Verified live: header/column set and colSpan
+  math checked via DOM inspection as `procurement_head` (10 = 6 narrowed columns + 3 fixed + 1
+  actions, no visual gap), then confirmed `stores_head` on the same project still sees all 17 columns
+  unchanged — the scoping is genuinely per-department opt-in, not a shared behavior change.
 - **Deliberately deferred, schema left with room**: fine-grained line-splitting across suppliers
   (v1 keeps single-supplier-per-item as the only real flow; a split is a manual multi-`po_items`
   exception, not automated — **no UI exists for it at all**, `purchase_orders.is_split` is set only
@@ -609,16 +627,29 @@ real daily workbench.
   build doesn't make. No supplier `state` field exists to compute it from. Flagged, not fixed — needs
   a business-side answer before it's worth a schema change, same category as the other open client
   questions in this section.
-- **Neither cross-project surface reaches Operations (`/`) or the cross-department Raise dialog
-  there** — confirmed this round while chasing a "nothing changed" report that turned out to be a
-  stale build (see below), not a real gap in what was already documented above, but two real gaps
-  surfaced alongside it: (1) `app/page.js` (Operations) was never touched by this work — a
-  Procurement head landing there sees the same generic Master BOM/Waiting-on/Tickets cards every
-  department gets, nothing Sourcing- or cancel-request-specific; only the dedicated **Procurement**
-  Nav tab (`/procurement`) and the project-page **Procurement queue** card carry this system's UI.
-  (2) Operations' own `TicketsPanel` mount (in `app/page.js`) never passes a `bom` prop, so raising a
-  **Cancel BOM item** request only works from a project page's Raise dialog, not from Operations —
-  same underlying component, just missing one prop at that call site.
+- **Both cross-project-surface-on-Operations gaps are now closed.** `app/page.js` fetches
+  `getSourcingItems()` (cross-project, same query `/procurement` uses) whenever a head has at least
+  one granted department, and reuses the **existing** `ProcurementQueue.jsx` unchanged — mounted on
+  Operations exactly like on the project page (`bom`/`tasks` props, same Sourcing/PO placed/In
+  transit stats and cancel-request accept action) whenever Procurement is among the departments being
+  shown. The same `sourcingItems` list is now also threaded into every `TicketsPanel` mount on
+  Operations (both the normal department loop and the Dispatch board's own mount) as its `bom` prop —
+  matching what `DepartmentPanel` already passes on the project page — so **Cancel BOM item** works
+  from Operations too, from any department, not just Procurement's own. Since Operations spans every
+  active project rather than one, `TicketsPanel`'s item picker now shows `project_no · description`
+  when the bom rows carry a `project_no` (cross-project case only — the project-page picker is
+  unaffected, its rows never carry that field) so same-named items across projects (e.g. two "MS
+  ANGLE" rows in two different orders) stay distinguishable. The cancel-request's `POST
+  /api/production/tasks` call now stamps `project_id` from the **selected item itself**
+  (`item.project_id`) rather than the dialog's own `projectId` prop, which is `null` on Operations —
+  on the project page these are always the same project, so no behavior change there; on Operations
+  it's what makes the resulting task link back to the right project. Verified live as
+  `procurement_head`: the Procurement queue card (373/5/6 sourcing/PO-placed/in-transit, matching
+  `/procurement`) rendered on Operations; opened Raise → Procurement → Cancel BOM item and confirmed
+  the picker listed items from all 4 active projects with the `SB-1103 · MS ANGLE` style prefix;
+  submitted one, confirmed in Turso that the created task's `project_id` matched the item's actual
+  project (4, not null), then deleted the test row. Also verified no regression on the project page's
+  own Raise dialog (items there still show bare `material_description`, no stray prefix).
 - **This round also fixed two real implementation gaps**, found by testing every surface end to end
   rather than trusting the earlier "verified" note: `PoDialog` collected discount/GST/delivery/
   instructions but never `payment_terms`/`quote_source`/`quote_date` — despite the schema, the API

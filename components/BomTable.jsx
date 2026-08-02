@@ -7,7 +7,7 @@
 import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, showToast } from '@/lib/client';
-import { BOM_STATUSES } from '@/lib/bom-fields.mjs';
+import { BOM_STATUSES, visibleBomColumns, showPackingColumn } from '@/lib/bom-fields.mjs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -34,7 +34,7 @@ const STATUS_TONE = {
   CANCELLED: 'bg-danger/10 text-danger ring-danger/20',
 };
 
-export default function BomTable({ projectId, bom, pendingIds = [], editableFields = [] }) {
+export default function BomTable({ projectId, bom, pendingIds = [], editableFields = [], department }) {
   const router = useRouter();
   const [q, setQ] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -42,6 +42,9 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
   const [busy, setBusy] = useState(false);
   const scrollerRef = useRef(null);
   const packed = new Set(bom.map(b => b.id).filter(id => !pendingIds.includes(id)));
+  const columns = visibleBomColumns(department, COLUMNS);
+  const showPacking = showPackingColumn(department);
+  const actionsLeft = showPacking ? 'md:left-[33rem]' : 'md:left-[27rem]';
 
   // One column's worth of horizontal scroll per click — cheaper than hunting for the scrollbar
   // at the bottom of a long page.
@@ -152,19 +155,23 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
             <TableRow>
               {/* Sticky group: # · Description · Status · Packing · Actions. Fixed widths so the
                   left offsets stack (3+16=19, +8=27, +6=33rem). Status/Packing/Actions pin at md+
-                  only — the full ~650px group would exceed a phone viewport. */}
+                  only — the full ~650px group would exceed a phone viewport. Packing (Dispatch's
+                  column, not Procurement's job) drops out for a scoped department (§5c) — Actions
+                  then shifts left to 27rem to close the gap. */}
               <TableHead className="sticky left-0 z-10 w-12 bg-background">#</TableHead>
               <TableHead className="sticky left-12 z-10 w-64 min-w-64 max-w-64 bg-background">Description</TableHead>
-              <TableHead className="w-32 bg-background md:sticky md:left-[19rem] md:z-10">Status</TableHead>
-              <TableHead className={`w-24 bg-background md:sticky md:left-[27rem] md:z-10 ${dialogFields.length ? '' : 'md:border-r'}`}>Packing</TableHead>
-              {(dialogFields.length > 0) && <TableHead className="w-20 bg-background md:sticky md:left-[33rem] md:z-10 md:border-r" />}
-              {COLUMNS.map(c => <TableHead key={c}>{FIELD_LABELS[c]}</TableHead>)}
+              <TableHead className={`w-32 bg-background md:sticky md:left-[19rem] md:z-10 ${!showPacking && dialogFields.length === 0 ? 'md:border-r' : ''}`}>Status</TableHead>
+              {showPacking && (
+                <TableHead className={`w-24 bg-background md:sticky md:left-[27rem] md:z-10 ${dialogFields.length ? '' : 'md:border-r'}`}>Packing</TableHead>
+              )}
+              {(dialogFields.length > 0) && <TableHead className={`w-20 bg-background md:sticky ${actionsLeft} md:z-10 md:border-r`} />}
+              {columns.map(c => <TableHead key={c}>{FIELD_LABELS[c]}</TableHead>)}
             </TableRow>
           </TableHeader>
           <TableBody>
             {rendered.map((r, i) => r.divider ? (
               <TableRow key={r.key} className="hover:bg-transparent">
-                <TableCell colSpan={COLUMNS.length + 4 + (dialogFields.length ? 1 : 0)}
+                <TableCell colSpan={columns.length + (showPacking ? 4 : 3) + (dialogFields.length ? 1 : 0)}
                   className={r.divider === 'section'
                     ? 'bg-muted/50 font-semibold'
                     : 'pl-6 text-xs font-medium uppercase tracking-wide text-muted-foreground'}>
@@ -183,7 +190,7 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
                     <div className="text-xs font-normal text-muted-foreground">Supplier: {r.selected_supplier_name}</div>
                   )}
                 </TableCell>
-                <TableCell className="w-32 bg-background md:sticky md:left-[19rem] md:z-10">
+                <TableCell className={`w-32 bg-background md:sticky md:left-[19rem] md:z-10 ${!showPacking && dialogFields.length === 0 ? 'md:border-r' : ''}`}>
                   {canInlineStatus ? (
                     <Select value={r.purchase_status || 'none'} onValueChange={v => setStatus(r, v)}>
                       <SelectTrigger className="h-7 w-28 text-xs"><SelectValue /></SelectTrigger>
@@ -198,13 +205,15 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
                     </span>
                   )}
                 </TableCell>
-                <TableCell className={`w-24 bg-background md:sticky md:left-[27rem] md:z-10 ${dialogFields.length ? '' : 'md:border-r'}`}>
-                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${packed.has(r.id) ? 'bg-success/10 text-success ring-success/20' : 'bg-warning/10 text-warning ring-warning/20'}`}>
-                    {packed.has(r.id) ? 'Packed' : 'Pending'}
-                  </span>
-                </TableCell>
+                {showPacking && (
+                  <TableCell className={`w-24 bg-background md:sticky md:left-[27rem] md:z-10 ${dialogFields.length ? '' : 'md:border-r'}`}>
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${packed.has(r.id) ? 'bg-success/10 text-success ring-success/20' : 'bg-warning/10 text-warning ring-warning/20'}`}>
+                      {packed.has(r.id) ? 'Packed' : 'Pending'}
+                    </span>
+                  </TableCell>
+                )}
                 {dialogFields.length > 0 && (
-                  <TableCell className="w-20 whitespace-nowrap bg-background md:sticky md:left-[33rem] md:z-10 md:border-r">
+                  <TableCell className={`w-20 whitespace-nowrap bg-background md:sticky ${actionsLeft} md:z-10 md:border-r`}>
                     <div className="flex items-center gap-1">
                       <Button size="icon-sm" variant="ghost" aria-label="Edit item" onClick={() => setEditing(r)}>
                         <PencilIcon className="size-3.5" />
@@ -217,7 +226,7 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
                     </div>
                   </TableCell>
                 )}
-                {COLUMNS.map(c => (
+                {columns.map(c => (
                   <TableCell key={c} className="whitespace-nowrap text-muted-foreground">{r[c] || '—'}</TableCell>
                 ))}
               </TableRow>

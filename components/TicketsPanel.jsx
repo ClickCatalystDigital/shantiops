@@ -67,7 +67,7 @@ function RaiseDialog({ department, projectId, milestones, bom = [], tasks = [], 
           method: 'POST',
           body: {
             title, due_date: todayISO(), department: form.to_department,
-            from_department: department || undefined, project_id: projectId || undefined,
+            from_department: department || undefined, project_id: item.project_id || projectId || undefined,
             bom_item_id: item.id,
           },
         });
@@ -154,7 +154,11 @@ function RaiseDialog({ department, projectId, milestones, bom = [], tasks = [], 
                   {eligibleBom.length === 0 && (
                     <div className="px-2 py-1.5 text-xs text-muted-foreground">No items eligible right now</div>
                   )}
-                  {eligibleBom.map(b => <SelectItem key={b.id} value={String(b.id)}>{b.material_description}</SelectItem>)}
+                  {eligibleBom.map(b => (
+                    <SelectItem key={b.id} value={String(b.id)}>
+                      {b.project_no ? `${b.project_no} · ${b.material_description}` : b.material_description}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

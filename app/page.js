@@ -1,10 +1,11 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { getMyWork, getBomWork, getDepartmentTasks, getStageBottlenecks, getWaitingList } from '@/lib/data';
+import { getMyWork, getBomWork, getDepartmentTasks, getStageBottlenecks, getWaitingList, getSourcingItems } from '@/lib/data';
 import { getSessionUser, isCustomer, isManager, isHead, headDepartments, canAccessDepartment, roleHome } from '@/lib/auth';
 import StatusBadge from '@/components/StatusBadge';
 import DispatchBoard from '@/components/DispatchBoard';
 import TicketsPanel from '@/components/TicketsPanel';
+import ProcurementQueue from '@/components/ProcurementQueue';
 import PageHeader from '@/components/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -52,12 +53,15 @@ export default async function Home({ searchParams }) {
   // Dispatch department view = the packing board (§ "packing within department").
   if (deptFilter === 'Dispatch') {
     const dispatchTasks = deptsToShow.length ? await getDepartmentTasks('Dispatch') : [];
+    // Cross-project BOM items, so a Dispatch head raising a "Cancel BOM item" request from
+    // Operations gets the same picker the project page's Raise dialog offers.
+    const sourcingItems = deptsToShow.length ? await getSourcingItems() : [];
     return (
       <main className="container flex flex-col gap-6 py-8">
         <PageHeader title="Packing &amp; Dispatch"
           description="Packing lists generated from each project's BOM — Pending → Ready → Dispatched." />
         <DispatchBoard />
-        {deptsToShow.length > 0 && <TicketsPanel department="Dispatch" tasks={dispatchTasks} canRaise />}
+        {deptsToShow.length > 0 && <TicketsPanel department="Dispatch" tasks={dispatchTasks} bom={sourcingItems} canRaise />}
       </main>
     );
   }
@@ -66,6 +70,10 @@ export default async function Home({ searchParams }) {
   const tasksByDept = deptsToShow.length
     ? await Promise.all(deptsToShow.map(d => getDepartmentTasks(d)))
     : [];
+  // Cross-project BOM items (§5c) — feeds both the Procurement queue card below and every
+  // TicketsPanel's "Cancel BOM item" picker, the same way DepartmentPanel threads a project's own
+  // bom into TicketsPanel on the project page.
+  const sourcingItems = deptsToShow.length ? await getSourcingItems() : [];
   const bottlenecks = deptsToShow.includes('Production') ? await getStageBottlenecks('Production') : [];
   const waitingByDept = deptsToShow.length
     ? await Promise.all(deptsToShow.map(d => getWaitingList(d)))
@@ -166,6 +174,10 @@ export default async function Home({ searchParams }) {
         </Card>
       )}
 
+      {deptsToShow.includes('Procurement') && sourcingItems.length > 0 && (
+        <ProcurementQueue bom={sourcingItems} tasks={tasksByDept[deptsToShow.indexOf('Procurement')]} />
+      )}
+
       {deptsToShow.map((d, i) => {
         const groups = Object.entries(waitingByDept[i]);
         if (groups.length === 0) return null;
@@ -195,7 +207,7 @@ export default async function Home({ searchParams }) {
       })}
 
       {deptsToShow.map((d, i) => (
-        <TicketsPanel key={d} title={d} department={d} canRaise tasks={tasksByDept[i]} />
+        <TicketsPanel key={d} title={d} department={d} canRaise tasks={tasksByDept[i]} bom={sourcingItems} />
       ))}
     </main>
   );

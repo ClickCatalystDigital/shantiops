@@ -47,7 +47,7 @@ export default function DepartmentPanel({
           <CardHeader><CardTitle>Master BOM — {department}</CardTitle></CardHeader>
           <CardContent>
             <BomTable projectId={projectId} bom={bom} pendingIds={pending.map(p => p.id)}
-              editableFields={bomFields} />
+              editableFields={bomFields} department={department} />
           </CardContent>
         </Card>
       )}
