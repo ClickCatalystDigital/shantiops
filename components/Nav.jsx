@@ -60,11 +60,12 @@ export default function Nav({ user }) {
         { href: '/', label: 'Operations', icon: LayoutDashboardIcon },
         { href: '/projects', label: 'Projects', icon: FolderKanbanIcon },
         ...(inProduction ? [{ href: '/production/workers', label: 'Workers', icon: HardHatIcon }] : []),
-        ...(inProcurement ? [{ href: '/procurement', label: 'Procurement', icon: ShoppingCartIcon }] : []),
         // New-item/cancel requests from Engineering/Design (§4.0) — same tab-gating mechanism as
-        // Procurement above; a separate nav tab rather than a Procurement sub-tab since it's where
-        // requests wait before they even become Procurement's problem.
+        // Procurement below; a separate nav tab rather than a Procurement sub-tab since it's where
+        // requests wait before they even become Procurement's problem. Ordered before Procurement —
+        // it's the inbox that feeds it, so it reads left-to-right as the actual workflow.
         ...(inProcurement ? [{ href: '/requests', label: 'Requests', icon: InboxIcon }] : []),
+        ...(inProcurement ? [{ href: '/procurement', label: 'Procurement', icon: ShoppingCartIcon }] : []),
       ];
 
   // l.dept links narrow whichever base route they point at (Tasks vs Operations both use it) —

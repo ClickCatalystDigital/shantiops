@@ -50,9 +50,13 @@ await run('DELETE FROM supplier_quotes');
 await run('DELETE FROM po_items');
 await run('DELETE FROM purchase_orders');
 await run('DELETE FROM suppliers');
+// Seed-created Requests/tasks are tagged created_by='seed-script' so a re-run can find and clear
+// exactly its own rows without touching anything a real department head has since created.
+await run("DELETE FROM tasks WHERE created_by = 'seed-script'");
 for (const pid of PROJECTS) {
   await run('DELETE FROM bom_items WHERE project_id = ?', [pid]);
   await run('DELETE FROM bom_imports WHERE project_id = ?', [pid]);
+  await run('DELETE FROM procurement_requests WHERE project_id = ?', [pid]);
 }
 console.log('  wiped.');
 
@@ -88,12 +92,18 @@ for (const pid of PROJECTS) {
 }
 
 console.log('--- seeding quotes ---');
+// expected_delivery_date is what the Sourcing/Selection UI actually reads (added after this script
+// was first written, which only wrote the older expected_delivery_days int) — every seeded quote
+// silently had no delivery date and "Fastest delivery" never lit up. Compute a real date from the
+// same "days" input so both columns stay populated and consistent.
 async function logQuote(bomItemId, projectId, supplierId, price, uom, days, terms, source) {
+  const deliveryDate = new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
   const { lastInsertRowid } = await run(
     `INSERT INTO supplier_quotes
-       (supplier_id, bom_item_id, project_id, unit_price, uom, expected_delivery_days, payment_terms, quote_source, quoted_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'seed-script')`,
-    [supplierId, bomItemId, projectId, price, uom, days, terms, source]
+       (supplier_id, bom_item_id, project_id, unit_price, uom, expected_delivery_days, expected_delivery_date,
+        payment_terms, quote_source, quoted_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'seed-script')`,
+    [supplierId, bomItemId, projectId, price, uom, days, deliveryDate, terms, source]
   );
   return Number(lastInsertRowid);
 }
@@ -105,9 +115,12 @@ for (const pid of PROJECTS) {
   valveQuote[pid] = await logQuote(itemId[pid].valve, pid, PRECISION, 4200, 'No', 20, 'LC', 'phone');
   safetyQuote[pid] = await logQuote(itemId[pid].safety, pid, PRECISION, 6800, 'No', 12, 'Advance 50%', 'whatsapp');
   pumpQuote[pid] = await logQuote(itemId[pid].pump, pid, KIRLOSKAR, 18500, 'No', 25, 'LC', 'email');
+  // A second, unselected quote on the Feed Pump — so the item that ends up with an issued PO also
+  // has a real "rejected offer" to show in the cancel-request detail overlay (§ Phase 4 point 6).
+  await logQuote(itemId[pid].pump, pid, BANSAL, 19800, 'No', 30, 'After Delivery', 'phone');
 }
 console.log('  MS ANGLE: 2 quotes/project (comparing, no winner) · GLOBE VALVE: 1 quote/project (comparing)');
-console.log('  SAFETY VALVE + FEED PUMP: 1 quote/project each, selected below (on order)');
+console.log('  SAFETY VALVE + FEED PUMP: 1 quote/project each, selected below (on order) · FEED PUMP also has 1 rejected quote');
 
 console.log('--- selecting suppliers (safety valve + feed pump) ---');
 for (const pid of PROJECTS) {
@@ -163,6 +176,55 @@ console.log('--- creating + issuing a PO (Feed Pump, Kirloskar Bros, spans all 4
   }
   console.log(`  ${poNo} (issued) — id ${poId}, 4 line items, items flipped to TRANSIT`);
 }
+
+console.log('--- seeding pending new-item requests (Requests tab, §4.0) ---');
+const NEW_ITEM_REQUESTS = [
+  { desc: 'MS ROUND BAR', moc: 'MS', size: 'DIA 20mm - 6000 Lg', qty: '4 Nos', pr: 'PR-2201', from: 'Engineering', by: 'engg_head' },
+  { desc: 'THERMOWELL WITH FLANGE', moc: 'SS304', size: '1/2" NPT', qty: '2 Nos', pr: null, from: 'Design', by: 'design_head' },
+];
+for (const pid of PROJECTS) {
+  for (const r of NEW_ITEM_REQUESTS) {
+    await run(
+      `INSERT INTO procurement_requests
+         (project_id, from_department, material_description, moc, size_spec, qty_text, pr_ref, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'seed-script')`,
+      [pid, r.from, r.desc, r.moc, r.size, r.qty, r.pr]
+    );
+  }
+}
+console.log(`  ${NEW_ITEM_REQUESTS.length} pending requests x ${PROJECTS.length} projects`);
+
+console.log('--- seeding cancel-request tasks (Requests tab, existing cancel-request flow) ---');
+const today = new Date().toISOString().slice(0, 10);
+async function addTask(title, department, fromDepartment, projectId, bomItemId, assignedTo) {
+  await run(
+    `INSERT INTO tasks (title, due_date, department, assigned_to, created_by, from_department, project_id, bom_item_id)
+     VALUES (?, ?, ?, ?, 'seed-script', ?, ?, ?)`,
+    [title, today, department, assignedTo, fromDepartment, projectId, bomItemId]
+  );
+}
+for (const pid of PROJECTS) {
+  // The rich case — Feed Pump already has a rejected quote (Bansal) and an issued PO (above), so
+  // this cancel-request's detail overlay has real supplier/PO/rejected-offer data to show.
+  await addTask('Cancel: FEED PUMP (CENTRIFUGAL) & MOTOR — spec revised, no longer needed',
+    'Procurement', 'Design', pid, itemId[pid].pump, 'design_head');
+  // The plain case — MS PLATE is still to_source (no quotes, no PO), so this overlay demos the
+  // "nothing logged yet" state.
+  await addTask('Cancel: MS PLATE — duplicate line item from the last revision',
+    'Procurement', 'Engineering', pid, itemId[pid].plate, 'engg_head');
+}
+console.log(`  2 cancel-requests x ${PROJECTS.length} projects`);
+
+console.log('--- seeding plain cross-department tasks (Raised by/for Procurement) ---');
+await addTask('Confirm hydro test slot before we release the boiler shell PO',
+  'QC', 'Procurement', PROJECTS[0], null, 'qc_head');
+await addTask('Flag any spec changes on MS ANGLE before we finalize the vendor comparison',
+  'Design', 'Procurement', PROJECTS[1], null, 'design_head');
+await addTask('Please confirm expected delivery for the pressure gauge before we finalize drawings',
+  'Procurement', 'Design', PROJECTS[0], null, 'procurement_head');
+await addTask('Stores needs the updated GRN contact for the new Precision Valves PO',
+  'Procurement', 'Stores', PROJECTS[2], null, 'procurement_head');
+console.log('  2 raised by Procurement, 2 raised for Procurement');
 
 console.log('\n--- done ---');
 console.log('Per project (x4): 2 to_source (Plate, Gauge) · 2 comparing (Angle x2 quotes, Valve x1 quote)');

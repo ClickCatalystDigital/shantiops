@@ -2,10 +2,13 @@
 
 // Procurement's cross-project workbench (§5a), rebuilt into the four-tab flow from
 // PROCUREMENT-CHANGES.md §4: Sourcing (gather quotes) -> Selection (compare/pick, auto-drafts a PO)
-// -> Purchase Orders (issue/cancel-issue) -> State (search + manual status override, always shows
-// every accepted item regardless of stage). Suppliers stays a 5th tab — not named in the redesign
-// spec, but it's a real, working feature (add/edit/deactivate) with no other home, so it's kept
-// rather than dropped.
+// -> Purchase Orders (issue/cancel-issue) -> Status (search + manual status override, always shows
+// every accepted item regardless of stage — labeled "State" in the original spec, renamed for
+// clarity in the Phase 4 polish pass). Suppliers stays a 5th tab, visually separated to the right of
+// the other four (it's a standalone feature, not part of their shared lifecycle) — not named in the
+// redesign spec, but it's a real, working feature (add/edit/deactivate) with no other home, so it's
+// kept rather than dropped. One shared search input lives under the tab bar, same position
+// regardless of active tab, filtering whichever tab is open.
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, showToast, formatDate, formatMoney } from '@/lib/client';
@@ -18,6 +21,7 @@ import { Label } from './ui/label';
 import { Badge } from './ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from './ui/dialog';
+import { Sheet, SheetContent, SheetHeader, SheetFooter, SheetTitle, SheetDescription } from './ui/sheet';
 
 const PAYMENT_TERM_PRESETS = ['LC', 'Advance %', 'After Delivery', 'PDC', 'COD'];
 const ADVANCE_PCTS = Array.from({ length: 10 }, (_, i) => `${(i + 1) * 10}%`);
@@ -204,24 +208,20 @@ function SourcingRow({ it, quotes, suppliers, router }) {
   );
 }
 
-function Sourcing({ items, quotesByItem, suppliers, router }) {
-  const [q, setQ] = useState('');
+function Sourcing({ items, quotesByItem, suppliers, router, q }) {
   const needle = q.trim().toLowerCase();
   const shown = items.filter(it => !it.selected_quote_id && !OUT_OF_PIPELINE.includes(it.purchase_status))
     .filter(it => !needle || it.material_description.toLowerCase().includes(needle) || it.project_no.toLowerCase().includes(needle));
 
   return (
-    <div className="flex flex-col gap-3">
-      <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Search description or project…" className="h-8 w-64" />
-      <Card>
-        <CardContent className="flex flex-col pt-4">
-          {shown.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">Nothing to source right now.</p>}
-          {shown.map(it => (
-            <SourcingRow key={it.id} it={it} quotes={quotesByItem[it.id] || []} suppliers={suppliers} router={router} />
-          ))}
-        </CardContent>
-      </Card>
-    </div>
+    <Card>
+      <CardContent className="flex flex-col pt-4">
+        {shown.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">Nothing to source right now.</p>}
+        {shown.map(it => (
+          <SourcingRow key={it.id} it={it} quotes={quotesByItem[it.id] || []} suppliers={suppliers} router={router} />
+        ))}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -286,8 +286,10 @@ function SelectionRow({ it, quotes, router }) {
   );
 }
 
-function Selection({ items, quotesByItem, router }) {
-  const shown = items.filter(it => (quotesByItem[it.id] || []).length > 0 && !OUT_OF_PIPELINE.includes(it.purchase_status));
+function Selection({ items, quotesByItem, router, q }) {
+  const needle = q.trim().toLowerCase();
+  const shown = items.filter(it => (quotesByItem[it.id] || []).length > 0 && !OUT_OF_PIPELINE.includes(it.purchase_status))
+    .filter(it => !needle || it.material_description.toLowerCase().includes(needle) || it.project_no.toLowerCase().includes(needle));
   return (
     <Card>
       <CardContent className="flex flex-col pt-4">
@@ -306,17 +308,69 @@ const PO_TONE = {
   cancelled: 'bg-danger/10 text-danger ring-1 ring-inset ring-danger/20',
 };
 
-function PurchaseOrders({ orders }) {
+// The PO detail drawer — View no longer opens a new browser tab; it slides in from the right with
+// the PDF rendered inline (the route already serves Content-Disposition: inline, same as the
+// packing PDF route, so the iframe just works) and every action lives in the footer here instead of
+// crowding the row. Reuses whatever handler/busy state the parent (PurchaseOrders) passes down —
+// no duplicated logic, just relocated.
+function PODrawer({ po, onClose, onIssue, onUnissue, onCancel, busy }) {
+  return (
+    <Sheet open onOpenChange={o => !o && onClose()}>
+      <SheetContent className="w-full sm:max-w-2xl">
+        <SheetHeader>
+          <SheetTitle>{po.po_no}</SheetTitle>
+          <SheetDescription>
+            {po.supplier_name} · {po.item_count} item{po.item_count !== 1 ? 's' : ''} · {formatMoney(po.subtotal)}
+            {' · '}
+            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${PO_TONE[po.status] || ''}`}>{po.status}</span>
+          </SheetDescription>
+        </SheetHeader>
+        <div className="min-h-0 flex-1 px-4">
+          <iframe src={`/api/purchase-orders/${po.id}/pdf`} title={`${po.po_no} PDF`} className="h-full w-full rounded-md border" />
+        </div>
+        <SheetFooter className="flex-row gap-2">
+          {po.status === 'draft' && (
+            <Button className="flex-1" disabled={busy} onClick={() => onIssue(po)}>{busy ? 'Issuing…' : 'Issue'}</Button>
+          )}
+          {po.status === 'issued' && (
+            <Button variant="outline" className="flex-1" disabled={busy} onClick={() => onUnissue(po)}>Cancel Issue</Button>
+          )}
+          {po.status !== 'cancelled' && (
+            <Button variant="ghost" className="text-destructive hover:text-destructive" disabled={busy} onClick={() => onCancel(po)}>Cancel PO</Button>
+          )}
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function PurchaseOrders({ orders, q, view }) {
   const router = useRouter();
   const [busy, setBusy] = useState(null);
+  const [viewingId, setViewingId] = useState(null);
+  const needle = q.trim().toLowerCase();
+  // Active vs Fulfilled (§ Phase 4) — a fulfilled PO (every line resolved, or the PO itself
+  // cancelled) has nothing left to act on, so it drops out of the default list rather than
+  // accumulating there forever; the toggle in the shared search row switches which bucket shows.
+  const bucketed = orders.filter(po => (view === 'fulfilled' ? po.fulfilled : !po.fulfilled));
+  const shown = bucketed.filter(po => !needle
+    || po.po_no.toLowerCase().includes(needle) || po.supplier_name.toLowerCase().includes(needle));
+  const viewing = orders.find(po => po.id === viewingId) || null;
 
+  // Issuing still needs to hand the PM a real file (not just leave the drawer open) — fetch the same
+  // PDF route as a blob and trigger a download, instead of the old window.open(..., '_blank').
   async function issue(po) {
     setBusy(po.id);
     try {
       await api(`/api/purchase-orders/${po.id}`, { method: 'PATCH', body: { action: 'issue' } });
-      showToast(`${po.po_no} issued`);
-      window.open(`/api/purchase-orders/${po.id}/pdf`, '_blank');
-      router.refresh();
+      const res = await fetch(`/api/purchase-orders/${po.id}/pdf`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `${po.po_no.replace(/\//g, '-')}.pdf`;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+      showToast(`${po.po_no} issued`); router.refresh();
     } catch (err) { showToast(err.message, 'error'); }
     setBusy(null);
   }
@@ -334,7 +388,7 @@ function PurchaseOrders({ orders }) {
     setBusy(po.id);
     try {
       await api(`/api/purchase-orders/${po.id}`, { method: 'PATCH', body: { action: 'cancel', reason } });
-      showToast(`${po.po_no} cancelled`); router.refresh();
+      showToast(`${po.po_no} cancelled`); setViewingId(null); router.refresh();
     } catch (err) { showToast(err.message, 'error'); }
     setBusy(null);
   }
@@ -343,45 +397,53 @@ function PurchaseOrders({ orders }) {
 
   return (
     <Card>
+      {shown.length > 0 && (
+        <div className="flex items-center gap-3 border-b px-4 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          <span className="flex-1">PO No. · Supplier</span>
+          <span className="w-20 shrink-0">Status</span>
+          <span className="w-32 shrink-0">Items · Total</span>
+          <span className="w-20 shrink-0 text-right">Date</span>
+        </div>
+      )}
       <CardContent className="flex flex-col divide-y pt-4">
-        {orders.map(po => (
-          <div key={po.id} className="flex flex-wrap items-center gap-3 py-2.5 text-sm">
-            <span className="font-medium">{po.po_no}</span>
-            <span className="text-muted-foreground">{po.supplier_name}</span>
-            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${PO_TONE[po.status] || ''}`}>{po.status}</span>
-            <span className="text-xs text-muted-foreground">{po.item_count} item{po.item_count !== 1 ? 's' : ''} · {formatMoney(po.subtotal)}</span>
-            <span className="text-xs text-muted-foreground">{formatDate(po.created_at)}</span>
-            <div className="ml-auto flex gap-2">
-              <Button asChild size="sm" variant="outline" className="h-6 px-2 text-xs">
-                <a href={`/api/purchase-orders/${po.id}/pdf`} target="_blank" rel="noreferrer">View</a>
-              </Button>
-              {po.status === 'draft' && (
-                <Button size="sm" className="h-6 px-2 text-xs" disabled={busy === po.id} onClick={() => issue(po)}>Issue</Button>
-              )}
-              {po.status === 'issued' && (
-                <Button size="sm" variant="outline" className="h-6 px-2 text-xs" disabled={busy === po.id} onClick={() => unissue(po)}>Cancel Issue</Button>
-              )}
-              {po.status !== 'cancelled' && (
-                <button className="text-xs text-muted-foreground hover:text-destructive" disabled={busy === po.id} onClick={() => cancel(po)}>Cancel</button>
-              )}
-            </div>
-          </div>
+        {shown.length === 0 && (
+          <p className="py-6 text-center text-sm text-muted-foreground">
+            {bucketed.length === 0
+              ? `No ${view} purchase orders.`
+              : 'No purchase orders match.'}
+          </p>
+        )}
+        {shown.map(po => (
+          <button key={po.id} onClick={() => setViewingId(po.id)}
+            className="flex flex-wrap items-center gap-3 py-2.5 text-left text-sm transition-colors hover:bg-muted/40 -mx-2 px-2 rounded">
+            <span className="flex-1 truncate">
+              <span className="font-medium">{po.po_no}</span>
+              <span className="text-muted-foreground"> · {po.supplier_name}</span>
+            </span>
+            <span className={`w-20 shrink-0 rounded-full px-2 py-0.5 text-center text-xs font-medium ${PO_TONE[po.status] || ''}`}>{po.status}</span>
+            <span className="w-32 shrink-0 text-xs text-muted-foreground">{po.item_count} item{po.item_count !== 1 ? 's' : ''} · {formatMoney(po.subtotal)}</span>
+            <span className="w-20 shrink-0 text-right text-xs text-muted-foreground">{formatDate(po.created_at)}</span>
+          </button>
         ))}
       </CardContent>
+      {viewing && (
+        <PODrawer po={viewing} onClose={() => setViewingId(null)}
+          onIssue={issue} onUnissue={unissue} onCancel={cancel} busy={busy === viewing.id} />
+      )}
     </Card>
   );
 }
 
 // ---------- State ----------
 
-function State({ items, router }) {
-  const [q, setQ] = useState('');
+function State({ items, router, q, statusFilter }) {
   const [busy, setBusy] = useState(null);
   const needle = q.trim().toLowerCase();
   const shown = items.filter(it => !needle
     || it.material_description.toLowerCase().includes(needle)
     || it.project_no.toLowerCase().includes(needle)
-    || (it.po_ref || '').toLowerCase().includes(needle));
+    || (it.po_ref || '').toLowerCase().includes(needle))
+    .filter(it => statusFilter === 'all' || (it.purchase_status || 'PENDING') === statusFilter);
 
   async function setStatus(it, value) {
     setBusy(it.id);
@@ -393,12 +455,18 @@ function State({ items, router }) {
   }
 
   return (
-    <div className="flex flex-col gap-3">
-      <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Search description, project, PO…" className="h-8 w-72" />
-      <Card>
-        <CardContent className="flex flex-col divide-y pt-4">
-          {shown.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">No items match.</p>}
-          {shown.map(it => (
+    <Card>
+      {shown.length > 0 && (
+        <div className="flex items-center gap-3 border-b px-4 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          <span className="flex-1">Part Description</span>
+          <span className="w-28 shrink-0">PO No.</span>
+          <span className="w-32 shrink-0">Make</span>
+          <span className="w-28 shrink-0">Status</span>
+        </div>
+      )}
+      <CardContent className="flex flex-col divide-y pt-4">
+        {shown.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">No items match.</p>}
+        {shown.map(it => (
             <div key={it.id} className="flex flex-wrap items-center gap-3 py-2.5 text-sm">
               <div className="min-w-0 flex-1">
                 <p className="truncate font-medium">{it.material_description}</p>
@@ -423,9 +491,8 @@ function State({ items, router }) {
               </Select>
             </div>
           ))}
-        </CardContent>
-      </Card>
-    </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -478,12 +545,14 @@ function SupplierEditForm({ supplier, onDone }) {
   );
 }
 
-function Suppliers({ suppliers, quotes }) {
+function Suppliers({ suppliers, quotes, q: search }) {
   const router = useRouter();
   const [expanded, setExpanded] = useState(null);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({ name: '', gst_no: '', contact_person: '', phone: '', email: '' });
   const [busy, setBusy] = useState(false);
+  const needle = search.trim().toLowerCase();
+  const shownSuppliers = suppliers.filter(s => !needle || s.name.toLowerCase().includes(needle));
 
   async function add(e) {
     e.preventDefault();
@@ -503,7 +572,8 @@ function Suppliers({ suppliers, quotes }) {
       <Card>
         <CardContent className="flex flex-col divide-y pt-4">
           {suppliers.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">No suppliers yet — add one below.</p>}
-          {suppliers.map(s => {
+          {suppliers.length > 0 && shownSuppliers.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">No suppliers match.</p>}
+          {shownSuppliers.map(s => {
             const history = quotes.filter(q => q.supplier_id === s.id);
             return (
               <div key={s.id} className="py-2">
@@ -557,28 +627,71 @@ function Suppliers({ suppliers, quotes }) {
 
 // ---------- Root ----------
 
+// One search placeholder per tab — same input, same position, different meaning depending on what's
+// active (§4, point 4). Keyed by tab value.
+const SEARCH_PLACEHOLDER = {
+  sourcing: 'Search description or project…',
+  selection: 'Search description or project…',
+  orders: 'Search PO number or supplier…',
+  state: 'Search description, project, PO…',
+  suppliers: 'Search supplier name…',
+};
+
 export default function ProcurementWorkspace({ sourcingItems, suppliers, purchaseOrders, quotes }) {
   const router = useRouter();
   const [tab, setTab] = useState('sourcing');
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [poView, setPoView] = useState('active');
 
   const quotesByItem = {};
-  for (const q of quotes) (quotesByItem[q.bom_item_id] ||= []).push(q);
+  for (const quote of quotes) (quotesByItem[quote.bom_item_id] ||= []).push(quote);
   const activeItems = sourcingItems.filter(it => it.purchase_status !== 'CANCELLED');
+  const fulfilledCount = purchaseOrders.filter(po => po.fulfilled).length;
+  const activeOrderCount = purchaseOrders.length - fulfilledCount;
 
   return (
     <Tabs value={tab} onValueChange={setTab} className="flex-col gap-4">
-      <TabsList variant="line" className="w-max justify-start px-0">
-        <TabsTrigger value="sourcing">Sourcing</TabsTrigger>
-        <TabsTrigger value="selection">Selection</TabsTrigger>
-        <TabsTrigger value="orders">Purchase orders</TabsTrigger>
-        <TabsTrigger value="state">State</TabsTrigger>
-        <TabsTrigger value="suppliers">Suppliers</TabsTrigger>
+      <TabsList variant="line" className="w-full justify-start px-0">
+        <TabsTrigger value="sourcing" className="flex-none">Sourcing</TabsTrigger>
+        <TabsTrigger value="selection" className="flex-none">Selection</TabsTrigger>
+        <TabsTrigger value="orders" className="flex-none">Purchase Orders</TabsTrigger>
+        <TabsTrigger value="state" className="flex-none">Status</TabsTrigger>
+        {/* Suppliers is a real, standalone feature (§ Phase 2), not part of the Sourcing→Status
+            lifecycle the other four tabs form — kept visually separate at the far right of the same
+            bar rather than a floating sixth item or a second row. */}
+        <TabsTrigger value="suppliers" className="ml-auto flex-none">Suppliers</TabsTrigger>
       </TabsList>
-      <TabsContent value="sourcing"><Sourcing items={activeItems} quotesByItem={quotesByItem} suppliers={suppliers} router={router} /></TabsContent>
-      <TabsContent value="selection"><Selection items={activeItems} quotesByItem={quotesByItem} router={router} /></TabsContent>
-      <TabsContent value="orders"><PurchaseOrders orders={purchaseOrders} /></TabsContent>
-      <TabsContent value="state"><State items={sourcingItems} router={router} /></TabsContent>
-      <TabsContent value="suppliers"><Suppliers suppliers={suppliers} quotes={quotes} /></TabsContent>
+      {/* One shared search row, same position under the tab bar regardless of which tab is active,
+          so switching tabs never makes the page jump (§4, point 4). Each tab interprets it. A
+          tab-specific control (Status's status filter, Purchase Orders' Active/Fulfilled toggle)
+          sits right-aligned in the same row rather than adding a second control row per tab. */}
+      <div className="flex items-center gap-2">
+        <Input value={search} onChange={e => setSearch(e.target.value)}
+          placeholder={SEARCH_PLACEHOLDER[tab]} className="h-8 w-72" />
+        {tab === 'state' && (
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="ml-auto h-8 w-36"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All statuses</SelectItem>
+              {BOM_STATUSES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        )}
+        {tab === 'orders' && (
+          <div className="ml-auto flex gap-1 rounded-md border p-0.5">
+            <Button size="sm" variant={poView === 'active' ? 'secondary' : 'ghost'} className="h-7 px-2.5 text-xs"
+              onClick={() => setPoView('active')}>Active ({activeOrderCount})</Button>
+            <Button size="sm" variant={poView === 'fulfilled' ? 'secondary' : 'ghost'} className="h-7 px-2.5 text-xs"
+              onClick={() => setPoView('fulfilled')}>Fulfilled ({fulfilledCount})</Button>
+          </div>
+        )}
+      </div>
+      <TabsContent value="sourcing"><Sourcing items={activeItems} quotesByItem={quotesByItem} suppliers={suppliers} router={router} q={search} /></TabsContent>
+      <TabsContent value="selection"><Selection items={activeItems} quotesByItem={quotesByItem} router={router} q={search} /></TabsContent>
+      <TabsContent value="orders"><PurchaseOrders orders={purchaseOrders} q={search} view={poView} /></TabsContent>
+      <TabsContent value="state"><State items={sourcingItems} router={router} q={search} statusFilter={statusFilter} /></TabsContent>
+      <TabsContent value="suppliers"><Suppliers suppliers={suppliers} quotes={quotes} q={search} /></TabsContent>
     </Tabs>
   );
 }

@@ -23,7 +23,7 @@ export default async function ProcurementPage() {
 
   return (
     <main className="container flex flex-col gap-6 py-8">
-      <PageHeader title="Procurement" description="Sourcing, supplier quotes, and purchase orders — across every active project" />
+      <PageHeader title="Procurement" />
       <ProcurementWorkspace
         sourcingItems={sourcingItems}
         suppliers={suppliers}

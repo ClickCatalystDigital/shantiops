@@ -597,12 +597,13 @@ gets bought once for several boilers, not per project.
   `TRANSIT`→`PENDING`, `po_ref` stays (the PO document still exists, just not sent) — distinct from
   the pre-existing permanent `cancel` action (still available separately; returns items to "on
   order," not back to draft, and doesn't touch `po_ref`).
-- **State** — every accepted item, always (the one tab that isn't lifecycle-scoped, so a status is
-  never impossible to find or fix). Search + Part Description/Spec/Size/Qty/PR ref/PO number/Make +
-  an always-editable **STATUS** dropdown (`PENDING` gray / `TRANSIT` orange / `CLOSED` green /
-  `CANCELLED` red / `RECEIVED` green — kept as a 5th status for Stores' receipt signal, just not
-  emphasized) that manually overrides whatever the automatic flow set, reusing the existing
-  `PATCH /api/bom-items/[id]`.
+- **Status** (labeled "State" in the original spec, renamed in the Phase 4 polish pass, §"Phase 4"
+  below) — every accepted item, always (the one tab that isn't lifecycle-scoped, so a status is
+  never impossible to find or fix). Search + a status filter + Part Description/Spec/Size/Qty/PR
+  ref/PO number/Make + an always-editable **STATUS** dropdown (`PENDING` gray / `TRANSIT` orange /
+  `CLOSED` green / `CANCELLED` red / `RECEIVED` green — kept as a 5th status for Stores' receipt
+  signal, just not emphasized) that manually overrides whatever the automatic flow set, reusing the
+  existing `PATCH /api/bom-items/[id]`.
 - **Suppliers** — unchanged 5th tab (add/edit/deactivate); not named in the redesign spec but a
   real, working feature kept rather than dropped.
 
@@ -658,6 +659,49 @@ POs' layout.
   answer.
 - **Suppliers table** (`suppliers`) still deliberately provisional — the client's real supplier list
   is coming separately.
+
+### Phase 4 — premium UI polish pass
+
+A follow-up round after using the shipped redesign live — nav/layout/interaction refinements, no new
+business process. Full investigation notes (including two real bugs found while verifying) in
+`PROCUREMENT-CHANGES.md` §9.
+
+- **Nav**: Requests sits before Procurement (it's the inbox that feeds the workspace).
+- **`/procurement` tab bar** (`ProcurementWorkspace.jsx`): Sourcing/Selection/Purchase
+  Orders/Status stay left-aligned; **Suppliers** — a standalone feature, not part of the other four's
+  shared lifecycle — sits pushed to the far right of the same bar. **One shared search input** lives
+  directly under the tab bar, same position regardless of active tab, with a per-tab placeholder;
+  Sourcing/Selection/Status lost their own private search boxes in favor of it, Purchase Orders and
+  Suppliers gained search for the first time. **Column headers** added to Status and Purchase Orders
+  (both genuinely tabular); deliberately not added to Sourcing/Selection, whose rows are variable
+  card content, not a fixed grid. **Status filter** dropdown (all/PENDING/TRANSIT/CLOSED/CANCELLED/
+  RECEIVED) sits in the same search row for the Status tab — reintroduces the equivalent filter the
+  pre-redesign `BomTable` had.
+- **Fulfilled POs**: `getPurchaseOrders()` returns a `fulfilled` flag (every line item resolved, or
+  the PO itself cancelled) — a two-way Active/Fulfilled toggle with live counts in the Purchase
+  Orders tab's search row keeps resolved POs from accumulating in the default view.
+- **PO View**: no longer a new browser tab — a right-side drawer with the PDF inline
+  (`<iframe src=".../pdf">`, the route already serves it inline, no backend change) and
+  Issue/Cancel Issue/Cancel in the drawer footer. **Issue** now triggers a real file download
+  (fetches the PDF as a blob) instead of `window.open`.
+- **Cancel-request detail overlay** (`RequestsWorkspace.jsx`): clicking a cancel-request (the bulk
+  checkbox flow still works alongside it) opens the item's spec, requesting department + reason, the
+  selected supplier if any, the issued PO if any (`getBomItemPoInfo()`, new), and every other quote
+  that was logged but not picked (`getItemQuotes()`, already existed, now used here) — before
+  "Accept & cancel item" flips it through the existing `accept-cancellations` route.
+- **Operations Procurement flow diagram** (`ProcurementFlow.jsx`) rebuilt as one continuous spine
+  (an SVG connector layer sharing coordinates with the HTML node labels) with **Cancelled** as a
+  real, visually connected branch off Sourcing/Selection/PO-issued specifically — not Requests
+  (before it's even a BOM item) or Closed (already done).
+- **Master BOM card on Operations**: each project row now shows a stacked closed/transit/pending bar
+  (`getBomWork()` gained a transit count) instead of a bare open-item count.
+- **Two real bugs found and fixed while building/verifying this pass**: the seed script wrote
+  `expected_delivery_days` (an int) but the UI only ever read the newer `expected_delivery_date`, so
+  every seeded quote silently had no delivery date and "Fastest delivery" never lit up; and
+  `getPurchaseOrders()`'s fulfilled-check used `purchase_status NOT IN (...)` without accounting for
+  `NULL` (SQL's three-valued logic drops NULL rows out of a `NOT IN` count entirely), so a draft PO
+  whose items had never had their status explicitly set read as wrongly "fulfilled." Both fixed;
+  the second one caught live via a direct DB query showing the miscount before the fix.
 
 ## 6. Customer Portal (read-only, external)
 
