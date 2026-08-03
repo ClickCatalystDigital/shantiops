@@ -38,9 +38,15 @@ export default function PdfPreview({ open, onOpenChange, url, title, description
         const buf = await res.arrayBuffer();
         if (cancelled) return;
 
-        const pdfjsLib = await import('pdfjs-dist/build/pdf.mjs');
-        const workerUrl = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default;
-        pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
+        // legacy/ build (not build/) — the modern build leans on syntax some bundler pipelines
+        // can't parse. The worker is served as a plain static file from public/ (kept in sync by
+        // scripts/copy-pdf-worker.js on every `npm install`) rather than resolved through
+        // webpack's asset-module bundling (`new URL(..., import.meta.url)`) — Next's production
+        // Terser pass doesn't recognize that bundled copy as an ES module and fails with
+        // "'import'/'export' cannot be used outside module code". A static /public file is never
+        // parsed or minified by webpack at all, so neither failure mode applies.
+        const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
+        pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
 
         const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
         if (cancelled) return;
