@@ -1,5 +1,5 @@
 import { notFound, redirect } from 'next/navigation';
-import { getProjectDetail, getProjectBom, getProjectPackingLists, getBomRollup, getQcRecords, getProjectTasks, getProjectStages, getStageTemplates } from '@/lib/data';
+import { getProjectDetail, getProjectBom, getProjectPackingLists, getBomRollup, getQcRecords, getQcDocuments, getProjectTasks, getProjectStages, getStageTemplates } from '@/lib/data';
 import { getSessionUser, isCustomer, isPM, isHead, headDepartments, canAccessDepartment, roleHome } from '@/lib/auth';
 import { DEPARTMENTS } from '@/lib/milestones';
 import { editableBomFields } from '@/lib/bom-fields.mjs';
@@ -23,6 +23,7 @@ export default async function ProjectDetail({ params }) {
   const packingLists = await getProjectPackingLists(params.id);
   const bomRollup = await getBomRollup(params.id);
   const qcRecords = await getQcRecords(params.id);
+  const qcDocuments = await getQcDocuments(params.id);
   const tasks = await getProjectTasks(project.id);
   const stages = await getProjectStages(project.id);
   const { templates: stageTemplates, items: stageTemplateItems } = await getStageTemplates();
@@ -41,7 +42,7 @@ export default async function ProjectDetail({ params }) {
     canPack: canAccessDepartment(user, 'Dispatch'),
     bomFields: editableBomFields(user), // field-level BOM edit scope (enforced again in the API)
     bomImports: imports,
-    qcRecords, canEditQc: canAccessDepartment(user, 'QC'),
+    qcRecords, qcDocuments, canEditQc: canAccessDepartment(user, 'QC'),
     // One query for all 8 tabs — DepartmentPanel filters client-side, same as it already does for
     // milestones. A head only ever sees their own department's panel, and a PM's canAccessDepartment
     // is unconditionally true for every department, so a single flag matches the real permission

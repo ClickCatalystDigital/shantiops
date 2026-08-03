@@ -1,0 +1,212 @@
+'use client';
+
+// Document editor (/projects/[id]/qc/[docId]) — Form IV A only in V1. The right column of every
+// part row is display-only, populated from whatever certificate is linked and nothing else: the
+// literal implementation of "it should fetch from the TC data only" (QC-CHANGES.md §1). Preview PDF
+// stays disabled while any part is unlinked — the server route re-asserts this, this is just the UX
+// echo of that gate.
+import { useMemo, useState } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { api, showToast } from '@/lib/client';
+import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
+import { ChevronLeftIcon, AlertTriangleIcon } from 'lucide-react';
+import CertPicker from './CertPicker';
+
+const HEADER_FIELDS = [
+  ['makers_no', "Maker's No."], ['year_of_make', 'Year of Make'],
+  ['design_pressure', 'Design Pressure'], ['hydro_test_pressure', 'Hydro Test Pressure'],
+  ['boiler_type', 'Boiler Type'], ['length_overall', 'Length Overall'],
+  ['internal_diameter', 'Internal Dia'], ['heating_surface', 'Heating Surface'],
+  ['evaporation_capacity', 'Evaporation Cap.'], ['steam_temp', 'Steam Outlet Temp.'],
+  ['drawing_no', 'Drawing No.'], ['doc_id', 'Document ID'],
+];
+
+function sizeText(p) {
+  return [p.size_t, p.size_w, p.size_l].filter(Boolean).join(' × ') || '—';
+}
+
+function BoilerDetailsSheet({ open, onOpenChange, document, router }) {
+  const [form, setForm] = useState(() => Object.fromEntries(HEADER_FIELDS.map(([k]) => [k, document[k] || ''])));
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    if (!form.doc_id.trim()) return showToast('Document ID cannot be empty', 'error');
+    setBusy(true);
+    try {
+      await api(`/api/qc-documents/${document.id}`, { method: 'PATCH', body: form });
+      showToast('Boiler details updated');
+      onOpenChange(false);
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+    setBusy(false);
+  }
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="w-full sm:max-w-md">
+        <SheetHeader><SheetTitle>Edit boiler details</SheetTitle></SheetHeader>
+        <div className="grid grid-cols-2 gap-3 overflow-y-auto px-4">
+          {HEADER_FIELDS.map(([k, label]) => (
+            <div key={k} className="flex flex-col gap-1.5">
+              <Label>{label}</Label>
+              <Input value={form[k]} onChange={e => setForm(f => ({ ...f, [k]: e.target.value }))} />
+            </div>
+          ))}
+        </div>
+        <SheetFooter>
+          <Button disabled={busy} onClick={submit}>{busy ? 'Saving…' : 'Save changes'}</Button>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function PartRow({ part, selected, onToggle, onOpenPicker }) {
+  const linked = !!part.test_certificate_id;
+  return (
+    <div className="flex items-start gap-3 py-2.5 text-sm">
+      <Checkbox className="mt-0.5" checked={selected} onCheckedChange={() => onToggle(part.id)} />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <span className="font-medium">{part.part_no}. {part.part_name}</span>
+        <span className="text-xs text-muted-foreground">{sizeText(part)} · qty {part.qty}</span>
+      </div>
+      <button onClick={() => onOpenPicker([part.id])} className="flex min-w-0 flex-1 flex-col items-end text-right hover:opacity-80">
+        {linked ? (
+          <>
+            <span className="font-medium">{part.certificate_no} · {part.tc_cast_no}{part.tc_plate_no ? ` · ${part.tc_plate_no}` : ''}</span>
+            <span className="text-xs text-muted-foreground">{part.material_spec} · {part.steel_maker}</span>
+            <span className="text-xs text-muted-foreground">
+              C {part.chem_c} Mn {part.chem_mn} … Y.S {part.ys} UTS {part.uts}
+            </span>
+          </>
+        ) : (
+          <span className="flex items-center gap-1 text-warning">
+            <AlertTriangleIcon className="size-3.5" />No certificate — Link…
+          </span>
+        )}
+      </button>
+    </div>
+  );
+}
+
+export default function QcDocumentEditor({ project, document, parts, certificates, canEdit }) {
+  const router = useRouter();
+  // parts comes straight from the server prop, no local copy — router.refresh() after linking
+  // re-fetches it server-side and flows the new value straight back in, same as QcPanel does for
+  // qc_records. A local useState(initialParts) would freeze at mount and never see the update.
+  const [filter, setFilter] = useState('all');
+  const [selected, setSelected] = useState(new Set());
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerTargets, setPickerTargets] = useState([]);
+  const [boilerOpen, setBoilerOpen] = useState(false);
+  const [pdfOpen, setPdfOpen] = useState(false);
+
+  const unlinked = parts.filter(p => !p.test_certificate_id);
+  const shown = filter === 'unlinked' ? unlinked : parts;
+  const usedIds = useMemo(() => new Set(parts.filter(p => p.test_certificate_id).map(p => p.test_certificate_id)), [parts]);
+
+  function toggle(id) {
+    setSelected(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  }
+
+  function openPicker(partIds) {
+    setPickerTargets(partIds);
+    setPickerOpen(true);
+  }
+
+  async function link(certId) {
+    try {
+      await api(`/api/qc-documents/${document.id}/link-parts`, {
+        method: 'POST', body: { part_ids: pickerTargets, test_certificate_id: certId },
+      });
+      showToast(`Linked ${pickerTargets.length} part${pickerTargets.length === 1 ? '' : 's'}`);
+      setSelected(new Set());
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+  }
+
+  return (
+    <main className="container flex flex-col gap-6 py-8">
+      <div className="flex items-center gap-3">
+        <Link href={`/projects/${project.id}?dept=QC`} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+          <ChevronLeftIcon className="size-4" />QC
+        </Link>
+        <h1 className="text-xl font-bold tracking-tight">{document.doc_id}</h1>
+        <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">Draft</span>
+        <div className="ml-auto flex items-center gap-2">
+          {unlinked.length > 0 && (
+            <span className="text-xs text-warning">{unlinked.length} part{unlinked.length === 1 ? '' : 's'} still need a certificate</span>
+          )}
+          <Button disabled={unlinked.length > 0} onClick={() => setPdfOpen(true)}>Preview PDF</Button>
+        </div>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Boiler details</CardTitle>
+          {canEdit && (
+            <CardAction><Button size="sm" variant="ghost" onClick={() => setBoilerOpen(true)}>Edit</Button></CardAction>
+          )}
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">
+            Maker's No. {document.makers_no || '—'} · Year {document.year_of_make || '—'} ·
+            {' '}Design {document.design_pressure || '—'} · Hydro {document.hydro_test_pressure || '—'}
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Form IV A — Material Test Certificates</CardTitle>
+          <CardAction>
+            <div className="flex items-center gap-1">
+              <Button size="xs" variant={filter === 'all' ? 'secondary' : 'ghost'} onClick={() => setFilter('all')}>All ({parts.length})</Button>
+              <Button size="xs" variant={filter === 'unlinked' ? 'secondary' : 'ghost'} onClick={() => setFilter('unlinked')}>
+                Unlinked ({unlinked.length})
+              </Button>
+            </div>
+          </CardAction>
+        </CardHeader>
+        <CardContent className="flex flex-col divide-y">
+          {shown.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">Nothing here.</p>}
+          {shown.map(p => (
+            <PartRow key={p.id} part={p} selected={selected.has(p.id)} onToggle={toggle} onOpenPicker={openPicker} />
+          ))}
+        </CardContent>
+      </Card>
+
+      {selected.size > 0 && (
+        <div className="sticky bottom-4 flex items-center justify-between rounded-xl bg-popover p-3 text-sm shadow-lg ring-1 ring-foreground/10">
+          <span>{selected.size} selected</span>
+          <Button size="sm" onClick={() => openPicker([...selected])}>Link to certificate…</Button>
+        </div>
+      )}
+
+      <CertPicker
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        title={`Link certificate — ${pickerTargets.length} part${pickerTargets.length === 1 ? '' : 's'}`}
+        certificates={certificates}
+        usedIds={usedIds}
+        onPick={link}
+      />
+      <BoilerDetailsSheet open={boilerOpen} onOpenChange={setBoilerOpen} document={document} router={router} />
+
+      <Sheet open={pdfOpen} onOpenChange={setPdfOpen}>
+        <SheetContent className="w-full sm:max-w-3xl">
+          <SheetHeader><SheetTitle>{document.doc_id} — Form IV A</SheetTitle></SheetHeader>
+          <div className="min-h-0 flex-1 px-4">
+            <iframe src={`/api/qc-documents/${document.id}/pdf`} title={`${document.doc_id} PDF`} className="h-full w-full rounded-md border" />
+          </div>
+        </SheetContent>
+      </Sheet>
+    </main>
+  );
+}

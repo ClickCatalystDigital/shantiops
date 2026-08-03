@@ -11,6 +11,7 @@ import BomPanel from './BomPanel';
 import PackingPanel from './PackingPanel';
 import BomTable from './BomTable';
 import QcPanel from './QcPanel';
+import StatutoryDocsPanel from './StatutoryDocsPanel';
 import TicketsPanel from './TicketsPanel';
 import StagesPanel from './StagesPanel';
 import ProcurementQueue from './ProcurementQueue';
@@ -22,6 +23,7 @@ export default function DepartmentPanel({
   department, milestones, head = false,
   projectId, bom = [], pending = [], packingLists = [], canUploadBom = false, canPack = false,
   bomFields = [], bomImports = [], qcRecords = [], canEditQc = false,
+  qcDocuments = [],
   tasks = [], canRaiseTickets = false,
   stages = [], stageTemplates = [], stageTemplateItems = [], canManageStages = false,
 }) {
@@ -67,7 +69,10 @@ export default function DepartmentPanel({
       )}
 
       {department === 'QC' && (
-        <QcPanel projectId={projectId} records={qcRecords} canEdit={canEditQc} />
+        <>
+          <QcPanel projectId={projectId} records={qcRecords} canEdit={canEditQc} />
+          <StatutoryDocsPanel projectId={projectId} documents={qcDocuments} canEdit={canEditQc} />
+        </>
       )}
 
       {/* Every department except Procurement gets this cross-department card — Procurement's moved
