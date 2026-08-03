@@ -39,9 +39,8 @@ export default function PdfPreview({ open, onOpenChange, url, title, description
         if (cancelled) return;
 
         const pdfjsLib = await import('pdfjs-dist/build/pdf.mjs');
-        pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-          'pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url
-        ).toString();
+        const workerUrl = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default;
+        pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
         const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
         if (cancelled) return;
