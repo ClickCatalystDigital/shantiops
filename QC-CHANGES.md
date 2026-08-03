@@ -1,10 +1,12 @@
 # QC Statutory Documentation & Test Certificate Bank — Changes Log
 
-**Status:** New requirement — intake/requirements stage. Nothing built yet. Only the **SF series**
-sample has been seen; the client named six more (MF, CF, SIB, FBC, PRS, Headers) and said each will
-get its own sample. This is a separate, much bigger ask than the existing QC Test Records feature
-(`qc_records` — hydro test/NDE/MTC log, pass/fail per test, `SYSTEM.md` §5b) — that module stays
-as-is; this is additional.
+**Status:** ✅ V1 done — Test Certificate bank + Form IV A statutory documents shipped and folded into
+`SYSTEM.md` §5d (the as-built reference from here on). Kept as the historical record of the
+investigation and decisions. Only the **SF series** sample has been seen; the client named six more
+(MF, CF, SIB, FBC, PRS, Headers) and said each will get its own sample — those, plus Forms II(1)/
+III/III A, remain open (§5/§8 below). This is a separate feature from the existing QC Test Records
+module (`qc_records` — hydro test/NDE/MTC log, pass/fail per test, `SYSTEM.md` §5b), which stays
+as-is.
 **Purpose:** single source of truth for this feature while it's investigated and (eventually) built.
 Once a design is agreed and shipped, fold the as-built behavior into `SYSTEM.md` (a new §5d) and mark
 this file done — same lifecycle `PROCUREMENT-CHANGES.md` went through for the Procurement redesign.

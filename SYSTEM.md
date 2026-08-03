@@ -509,10 +509,11 @@ those workbooks and replaces the shared spreadsheet:
    `getBomRollupAll`) — a cancelled item stops showing up as something anyone needs to chase. The
    fuller cross-project sourcing/quotes/PO system this process feeds into is §5c.
 
-Deliberately **not** built (v1 decisions): document management for drawings/IBR/QC certificates,
-release/approval workflow for BOM revisions, Excel export/back-sync, in-app BOM authoring from
-scratch (the add/edit/delete APIs are 90% of it — natural v2), supplier/lead-time analytics. The
-Purchase Order PDF and Supplier Selector named here in earlier rounds are **built** — see §5c.
+Deliberately **not** built (v1 decisions): document management for drawings/IBR, release/approval
+workflow for BOM revisions, Excel export/back-sync, in-app BOM authoring from scratch (the
+add/edit/delete APIs are 90% of it — natural v2), supplier/lead-time analytics. The Purchase Order
+PDF and Supplier Selector named here in earlier rounds are **built** — see §5c. QC statutory
+certificate documents (Form IV A) are also now **built** — see §5d.
 
 ## 5. Packing & BOM (the digital packing list)
 
@@ -702,6 +703,67 @@ business process. Full investigation notes (including two real bugs found while 
   `NULL` (SQL's three-valued logic drops NULL rows out of a `NOT IN` count entirely), so a draft PO
   whose items had never had their status explicitly set read as wrongly "fulfilled." Both fixed;
   the second one caught live via a direct DB query showing the miscount before the fix.
+
+## 5d. QC statutory documents — Test Certificate bank + Form IV A
+
+Full history/decisions in `QC-CHANGES.md` (kept as the record — this section is the as-built
+result). Client's real requirement: every boiler ships with statutory paperwork (4 forms; V1
+covers Form IV A only, the one form exercising all five client asks) built from Material Test
+Certificates that plates/tubes/forgings already came with. Two lifetimes, two homes:
+
+- **Test Certificate bank** (`test_certificates` table) — cross-project, own **`/qc`** route
+  (`components/TcBank.jsx`), QC-department-gated the same way `/procurement` is gated
+  (`components/Nav.jsx`'s `inQc` mirrors `inProcurement`). A cert is entered once and reused
+  across boilers — the real sample showed ~3.2× reuse (58 part rows off 18 certs). Keyed on
+  **Cert No. + Cast No. + Plate No.** together, never Cert No. alone (one cert number covered 4
+  different casts in the sample) — duplicate-key POSTs are rejected.
+- **Statutory documents** (`qc_documents` + `qc_document_parts`) — per-boiler, live inside the
+  Project → QC tab, below the existing `QcPanel` (§5b) as a second card (`StatutoryDocsPanel.jsx`)
+  — `qc_records` is a pass/fail test log, a different job. **New document** seeds the SF-series
+  Form IV A part list from a hardcoded template (`lib/qc-template.mjs`, transcribed from the real
+  sample — 54 parts) since V1 has only ever seen the one series; each part row starts unlinked.
+  The editor (`QcDocumentEditor.jsx`, at `/projects/[id]/qc/[docId]`) lists every part with
+  search, an Unlinked filter, and multi-select **bulk-link to one certificate** (the point of the
+  reuse ratio — collapses 58 picks to ~18). The **certificate picker** (`CertPicker.jsx`) always
+  shows cert+cast+plate+spec+maker together (never cert alone, same ambiguity reason as above),
+  floats certs already used in this document first, and has an inline **"+ Add certificate"** so
+  a missing cert is a two-click detour, not a dead end.
+- **The hard gate**: *Preview PDF* stays disabled client-side while any part is unlinked, and the
+  PDF route (`app/api/qc-documents/[id]/pdf/route.js`) re-checks server-side and 409s if any part
+  still lacks a `test_certificate_id` — the UI gate alone was never trusted as the real
+  enforcement.
+- **PDF** (`lib/qc-doc-pdf.js`, `@react-pdf/renderer`, modeled on `lib/po-pdf.js`) — landscape
+  Form IV A, 18 columns, generated live from current data on every request rather than stored;
+  edit or delete the source document (`StatutoryDocsPanel.jsx`'s delete does the same explicit
+  child-then-parent row delete as `qc_documents`'s DELETE route — no reliance on `ON DELETE
+  CASCADE`, since this app never turns SQLite FK enforcement on for plain `execute()` calls) and
+  the next PDF reflects it.
+- **In-app PDF preview** (`components/PdfPreview.jsx`) renders to `<canvas>` via `pdfjs-dist`
+  instead of an `<iframe>`, because an iframe's rendering depends on the browser's own PDF
+  viewer/plugin being enabled — some browsers download instead of showing it inline. Centered
+  modal (not a side drawer — an 18-column table needs real width), sized off the viewport so a
+  phone-width screen is already near-fullscreen with no separate mobile layout; render scale
+  comes from the actual container width × `devicePixelRatio` so it stays crisp at whatever size
+  the modal opens at. Live window-resize-while-open doesn't re-render the canvas at the new width
+  (accepted — opening fresh at any size is correct, and resizing an already-open desktop window
+  mid-session isn't a real usage pattern here); pinch-to-zoom on mobile works natively, since
+  nothing sets a restrictive viewport meta or `touch-action`. Reused as-is for the Purchase Order
+  preview in `/procurement` (§5c) — same component, no PO-specific fork.
+- **`pdfjs-dist` worker, a build gotcha worth knowing**: the modern build
+  (`pdfjs-dist/build/pdf.mjs`) uses private-class-field syntax some production webpack/Terser
+  pipelines (Render.com's included) can't parse — use `pdfjs-dist/legacy/build/pdf.mjs`. The
+  worker itself must be served as a **plain static file from `public/pdf.worker.min.mjs`**
+  (`scripts/copy-pdf-worker.js`, run via `postinstall` and also committed directly) rather than
+  resolved through webpack's `new URL(..., import.meta.url)` asset-module bundling — Next's
+  production Terser pass doesn't recognize a bundled copy as an ES module and fails with
+  `'import'/'export' cannot be used outside module code`.
+- **Deliberately not built (v1 decisions, same reasoning as §5a's list)**: Forms II(1)/III/III A
+  (Form IV A is the only one exercising all five client requirements); the other six document
+  series (only SF has a real sample); xlsx bulk import of TCs (the two-phase `BomImport.jsx`
+  pattern is the obvious fast-follow); linking parts to `bom_items`; TC file attachments;
+  revisions/approval workflow. See `QC-CHANGES.md` §5/§8 for the open client questions (who owns
+  TC entry, one PDF per form vs. per folder, the doc-ID naming convention) still pending an
+  answer.
 
 ## 6. Customer Portal (read-only, external)
 

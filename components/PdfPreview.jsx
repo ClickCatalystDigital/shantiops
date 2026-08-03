@@ -18,7 +18,7 @@ import { Button } from '@/components/ui/button';
 import { DownloadIcon } from 'lucide-react';
 
 export default function PdfPreview({ open, onOpenChange, url, title, description, filename, actions }) {
-  const containerRef = useRef(null);
+  const containerRef = useRef(null); // canvases mount here; never given JSX children, see note below
   const [status, setStatus] = useState('loading'); // loading | ready | error
   const [error, setError] = useState(null);
 
@@ -52,12 +52,9 @@ export default function PdfPreview({ open, onOpenChange, url, title, description
         if (cancelled) return;
 
         const container = containerRef.current;
-        if (!container) return;
-        container.innerHTML = '';
-        // Available render width = the scroll container's own width, minus its horizontal padding.
-        const targetWidth = (container.clientWidth || 800) - 32;
+        const targetWidth = Math.max(200, Math.round(container.clientWidth - 32));
         const dpr = window.devicePixelRatio || 1;
-
+        container.innerHTML = '';
         for (let i = 1; i <= pdf.numPages; i++) {
           const page = await pdf.getPage(i);
           const baseViewport = page.getViewport({ scale: 1 });
@@ -70,7 +67,6 @@ export default function PdfPreview({ open, onOpenChange, url, title, description
           canvas.className = 'mx-auto h-auto rounded-md border shadow-sm';
           container.appendChild(canvas);
           await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
-          if (cancelled) return;
         }
         if (!cancelled) setStatus('ready');
       } catch (err) {
