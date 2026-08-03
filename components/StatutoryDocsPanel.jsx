@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
-import { PlusIcon, ChevronRightIcon } from 'lucide-react';
+import { PlusIcon, ChevronRightIcon, Trash2Icon } from 'lucide-react';
 
 const EMPTY = {
   doc_id: '', makers_no: '', year_of_make: '', boiler_type: '', length_overall: '',
@@ -129,6 +129,15 @@ export default function StatutoryDocsPanel({ projectId, documents = [], canEdit 
   const router = useRouter();
   const [open, setOpen] = useState(false);
 
+  async function remove(d) {
+    if (!window.confirm(`Delete "${d.doc_id}"? This removes the document and all its certificate links — can't be undone.`)) return;
+    try {
+      await api(`/api/qc-documents/${d.id}`, { method: 'DELETE' });
+      showToast('Document deleted');
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -146,16 +155,23 @@ export default function StatutoryDocsPanel({ projectId, documents = [], canEdit 
           <p className="text-sm text-muted-foreground">No statutory documents filed yet.</p>
         )}
         {documents.map(d => (
-          <button key={d.id} onClick={() => router.push(`/projects/${projectId}/qc/${d.id}`)}
-            className="flex w-full items-center gap-2 py-2.5 text-left text-sm hover:bg-muted/50">
-            <div className="flex flex-col">
-              <span className="font-medium">{d.doc_id}</span>
-              <span className="text-xs text-muted-foreground">
-                {d.series} series · Form IV A · {d.linked_parts} of {d.total_parts} parts linked
-              </span>
-            </div>
-            <ChevronRightIcon className="ml-auto size-4 text-muted-foreground" />
-          </button>
+          <div key={d.id} className="flex w-full items-center gap-1 py-2.5 text-sm hover:bg-muted/50">
+            <button onClick={() => router.push(`/projects/${projectId}/qc/${d.id}`)}
+              className="flex flex-1 items-center gap-2 text-left">
+              <div className="flex flex-col">
+                <span className="font-medium">{d.doc_id}</span>
+                <span className="text-xs text-muted-foreground">
+                  {d.series} series · Form IV A · {d.linked_parts} of {d.total_parts} parts linked
+                </span>
+              </div>
+              <ChevronRightIcon className="ml-auto size-4 text-muted-foreground" />
+            </button>
+            {canEdit && (
+              <Button size="icon-sm" variant="ghost" aria-label="Delete document" onClick={() => remove(d)}>
+                <Trash2Icon className="size-3.5" />
+              </Button>
+            )}
+          </div>
         ))}
       </CardContent>
       {canEdit && <NewDocumentSheet open={open} onOpenChange={setOpen} projectId={projectId} router={router} />}

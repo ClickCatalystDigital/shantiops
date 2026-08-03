@@ -15,8 +15,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
-import { ChevronLeftIcon, AlertTriangleIcon } from 'lucide-react';
+import { ChevronLeftIcon, AlertTriangleIcon, SearchIcon } from 'lucide-react';
 import CertPicker from './CertPicker';
+import PdfPreview from './PdfPreview';
 
 const HEADER_FIELDS = [
   ['makers_no', "Maker's No."], ['year_of_make', 'Year of Make'],
@@ -101,6 +102,7 @@ export default function QcDocumentEditor({ project, document, parts, certificate
   // re-fetches it server-side and flows the new value straight back in, same as QcPanel does for
   // qc_records. A local useState(initialParts) would freeze at mount and never see the update.
   const [filter, setFilter] = useState('all');
+  const [q, setQ] = useState('');
   const [selected, setSelected] = useState(new Set());
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerTargets, setPickerTargets] = useState([]);
@@ -108,11 +110,29 @@ export default function QcDocumentEditor({ project, document, parts, certificate
   const [pdfOpen, setPdfOpen] = useState(false);
 
   const unlinked = parts.filter(p => !p.test_certificate_id);
-  const shown = filter === 'unlinked' ? unlinked : parts;
+  const byFilter = filter === 'unlinked' ? unlinked : parts;
+  const needle = q.trim().toLowerCase();
+  const shown = needle
+    ? byFilter.filter(p => [p.part_no, p.part_name, p.certificate_no, p.tc_cast_no, p.tc_plate_no, p.material_spec, p.steel_maker]
+        .some(v => v && String(v).toLowerCase().includes(needle)))
+    : byFilter;
   const usedIds = useMemo(() => new Set(parts.filter(p => p.test_certificate_id).map(p => p.test_certificate_id)), [parts]);
+  const allShownSelected = shown.length > 0 && shown.every(p => selected.has(p.id));
 
   function toggle(id) {
     setSelected(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  }
+
+  // Selects/deselects every part currently visible under the active search + All/Unlinked filter —
+  // not literally all 54 rows — so a narrowed search ("GUSSET") plus one click bulk-links just that
+  // result set.
+  function toggleSelectShown() {
+    const ids = shown.map(p => p.id);
+    setSelected(s => {
+      const n = new Set(s);
+      ids.forEach(id => (allShownSelected ? n.delete(id) : n.add(id)));
+      return n;
+    });
   }
 
   function openPicker(partIds) {
@@ -174,11 +194,22 @@ export default function QcDocumentEditor({ project, document, parts, certificate
             </div>
           </CardAction>
         </CardHeader>
-        <CardContent className="flex flex-col divide-y">
-          {shown.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">Nothing here.</p>}
-          {shown.map(p => (
-            <PartRow key={p.id} part={p} selected={selected.has(p.id)} onToggle={toggle} onOpenPicker={openPicker} />
-          ))}
+        <CardContent className="flex flex-col gap-3">
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Search part name, number, or certificate" className="pl-8" />
+            </div>
+            <Button size="sm" variant="outline" disabled={shown.length === 0} onClick={toggleSelectShown}>
+              {allShownSelected ? 'Deselect all' : 'Select all'}
+            </Button>
+          </div>
+          <div className="flex flex-col divide-y">
+            {shown.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">No matches.</p>}
+            {shown.map(p => (
+              <PartRow key={p.id} part={p} selected={selected.has(p.id)} onToggle={toggle} onOpenPicker={openPicker} />
+            ))}
+          </div>
         </CardContent>
       </Card>
 
@@ -198,15 +229,13 @@ export default function QcDocumentEditor({ project, document, parts, certificate
         onPick={link}
       />
       <BoilerDetailsSheet open={boilerOpen} onOpenChange={setBoilerOpen} document={document} router={router} />
-
-      <Sheet open={pdfOpen} onOpenChange={setPdfOpen}>
-        <SheetContent className="w-full sm:max-w-3xl">
-          <SheetHeader><SheetTitle>{document.doc_id} — Form IV A</SheetTitle></SheetHeader>
-          <div className="min-h-0 flex-1 px-4">
-            <iframe src={`/api/qc-documents/${document.id}/pdf`} title={`${document.doc_id} PDF`} className="h-full w-full rounded-md border" />
-          </div>
-        </SheetContent>
-      </Sheet>
+      <PdfPreview
+        open={pdfOpen}
+        onOpenChange={setPdfOpen}
+        url={`/api/qc-documents/${document.id}/pdf`}
+        title={`${document.doc_id} — Form IV A`}
+        filename={`${document.doc_id.replace(/\//g, '-')}.pdf`}
+      />
     </main>
   );
 }

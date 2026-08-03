@@ -21,7 +21,7 @@ import { Label } from './ui/label';
 import { Badge } from './ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from './ui/dialog';
-import { Sheet, SheetContent, SheetHeader, SheetFooter, SheetTitle, SheetDescription } from './ui/sheet';
+import PdfPreview from './PdfPreview';
 
 const PAYMENT_TERM_PRESETS = ['LC', 'Advance %', 'After Delivery', 'PDC', 'COD'];
 const ADVANCE_PCTS = Array.from({ length: 10 }, (_, i) => `${(i + 1) * 10}%`);
@@ -308,39 +308,39 @@ const PO_TONE = {
   cancelled: 'bg-danger/10 text-danger ring-1 ring-inset ring-danger/20',
 };
 
-// The PO detail drawer — View no longer opens a new browser tab; it slides in from the right with
-// the PDF rendered inline (the route already serves Content-Disposition: inline, same as the
-// packing PDF route, so the iframe just works) and every action lives in the footer here instead of
-// crowding the row. Reuses whatever handler/busy state the parent (PurchaseOrders) passes down —
-// no duplicated logic, just relocated.
+// The PO detail view — a centered PDF.js preview (PdfPreview) rather than an embedded iframe, so it
+// renders regardless of the browser's own PDF-viewer/download settings, plus real width for a dense
+// PO. Every status action lives in the footer alongside the shared Download button. Reuses whatever
+// handler/busy state the parent (PurchaseOrders) passes down — no duplicated logic, just relocated.
 function PODrawer({ po, onClose, onIssue, onUnissue, onCancel, busy }) {
   return (
-    <Sheet open onOpenChange={o => !o && onClose()}>
-      <SheetContent className="w-full sm:max-w-2xl">
-        <SheetHeader>
-          <SheetTitle>{po.po_no}</SheetTitle>
-          <SheetDescription>
-            {po.supplier_name} · {po.item_count} item{po.item_count !== 1 ? 's' : ''} · {formatMoney(po.subtotal)}
-            {' · '}
-            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${PO_TONE[po.status] || ''}`}>{po.status}</span>
-          </SheetDescription>
-        </SheetHeader>
-        <div className="min-h-0 flex-1 px-4">
-          <iframe src={`/api/purchase-orders/${po.id}/pdf`} title={`${po.po_no} PDF`} className="h-full w-full rounded-md border" />
-        </div>
-        <SheetFooter className="flex-row gap-2">
+    <PdfPreview
+      open
+      onOpenChange={o => !o && onClose()}
+      url={`/api/purchase-orders/${po.id}/pdf`}
+      title={po.po_no}
+      description={
+        <>
+          {po.supplier_name} · {po.item_count} item{po.item_count !== 1 ? 's' : ''} · {formatMoney(po.subtotal)}
+          {' · '}
+          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${PO_TONE[po.status] || ''}`}>{po.status}</span>
+        </>
+      }
+      filename={`${po.po_no.replace(/\//g, '-')}.pdf`}
+      actions={
+        <>
           {po.status === 'draft' && (
-            <Button className="flex-1" disabled={busy} onClick={() => onIssue(po)}>{busy ? 'Issuing…' : 'Issue'}</Button>
+            <Button disabled={busy} onClick={() => onIssue(po)}>{busy ? 'Issuing…' : 'Issue'}</Button>
           )}
           {po.status === 'issued' && (
-            <Button variant="outline" className="flex-1" disabled={busy} onClick={() => onUnissue(po)}>Cancel Issue</Button>
+            <Button variant="outline" disabled={busy} onClick={() => onUnissue(po)}>Cancel Issue</Button>
           )}
           {po.status !== 'cancelled' && (
             <Button variant="ghost" className="text-destructive hover:text-destructive" disabled={busy} onClick={() => onCancel(po)}>Cancel PO</Button>
           )}
-        </SheetFooter>
-      </SheetContent>
-    </Sheet>
+        </>
+      }
+    />
   );
 }
 
