@@ -15,18 +15,25 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
-import { ChevronLeftIcon, AlertTriangleIcon, SearchIcon } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
+import { ChevronLeftIcon, AlertTriangleIcon, SearchIcon, PlusIcon, Trash2Icon } from 'lucide-react';
 import CertPicker from './CertPicker';
 import PdfPreview from './PdfPreview';
 
 const HEADER_FIELDS = [
-  ['makers_no', "Maker's No."], ['year_of_make', 'Year of Make'],
+  ['company', 'Company'], ['makers_no', "Maker's No."], ['year_of_make', 'Year of Make'],
   ['design_pressure', 'Design Pressure'], ['hydro_test_pressure', 'Hydro Test Pressure'],
   ['boiler_type', 'Boiler Type'], ['length_overall', 'Length Overall'],
   ['internal_diameter', 'Internal Dia'], ['heating_surface', 'Heating Surface'],
   ['evaporation_capacity', 'Evaporation Cap.'], ['steam_temp', 'Steam Outlet Temp.'],
   ['drawing_no', 'Drawing No.'], ['doc_id', 'Document ID'],
 ];
+
+// V2-CHANGES.md Group 2 — same two companies as StatutoryDocsPanel.jsx's NewDocumentSheet; this
+// sheet only needs the plain names (doc-ID prefix derivation is a creation-time concern, not an
+// edit-time one — changing a document's company later doesn't retroactively rewrite its doc_id).
+const COMPANIES = ['Shanti Boilers', 'Shanti Techno Fab'];
 
 function sizeText(p) {
   return [p.size_t, p.size_w, p.size_l].filter(Boolean).join(' × ') || '—';
@@ -56,7 +63,16 @@ function BoilerDetailsSheet({ open, onOpenChange, document, router }) {
           {HEADER_FIELDS.map(([k, label]) => (
             <div key={k} className="flex flex-col gap-1.5">
               <Label>{label}</Label>
-              <Input value={form[k]} onChange={e => setForm(f => ({ ...f, [k]: e.target.value }))} />
+              {k === 'company' ? (
+                <Select value={form.company} onValueChange={v => setForm(f => ({ ...f, company: v }))}>
+                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {COMPANIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input value={form[k]} onChange={e => setForm(f => ({ ...f, [k]: e.target.value }))} />
+              )}
             </div>
           ))}
         </div>
@@ -68,7 +84,7 @@ function BoilerDetailsSheet({ open, onOpenChange, document, router }) {
   );
 }
 
-function PartRow({ part, selected, onToggle, onOpenPicker }) {
+function PartRow({ part, selected, onToggle, onOpenPicker, onRemove, canEdit }) {
   const linked = !!part.test_certificate_id;
   return (
     <div className="flex items-start gap-3 py-2.5 text-sm">
@@ -92,7 +108,76 @@ function PartRow({ part, selected, onToggle, onOpenPicker }) {
           </span>
         )}
       </button>
+      {canEdit && (
+        <button
+          aria-label="Remove part"
+          onClick={() => onRemove(part)}
+          className="mt-0.5 shrink-0 text-muted-foreground hover:text-destructive"
+        >
+          <Trash2Icon className="size-3.5" />
+        </button>
+      )}
     </div>
+  );
+}
+
+// V2-CHANGES.md Group 2 — manage per-document exceptions (client point 1): the SF template's 54
+// parts are the default, but a specific boiler may need one added or removed. Deliberately a small
+// Dialog, not a full Sheet — this is a handful of short fields, not the boiler-details form.
+function AddPartDialog({ open, onOpenChange, documentId, router }) {
+  const EMPTY = { part_no: '', part_name: '', size_t: '', size_w: '', size_l: '', qty: '' };
+  const [form, setForm] = useState(EMPTY);
+  const [busy, setBusy] = useState(false);
+
+  function set(field) { return e => setForm(f => ({ ...f, [field]: e.target.value })); }
+
+  async function submit() {
+    if (!form.part_name.trim()) return showToast('Part name is required', 'error');
+    setBusy(true);
+    try {
+      await api(`/api/qc-documents/${documentId}/parts`, { method: 'POST', body: form });
+      showToast('Part added — link it to a certificate before the PDF can be previewed');
+      setForm(EMPTY);
+      onOpenChange(false);
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+    setBusy(false);
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={o => { onOpenChange(o); if (!o) setForm(EMPTY); }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader><DialogTitle>Add part</DialogTitle></DialogHeader>
+        <div className="flex flex-col gap-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label>Part No.</Label>
+              <Input value={form.part_no} onChange={set('part_no')} placeholder="55" />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>Qty</Label>
+              <Input value={form.qty} onChange={set('qty')} placeholder="1" />
+            </div>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label>Part Name</Label>
+            <Input value={form.part_name} onChange={set('part_name')} placeholder="e.g. INSPECTION DOOR" autoFocus />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label>Size (mm)</Label>
+            <div className="grid grid-cols-3 gap-2">
+              <Input value={form.size_t} onChange={set('size_t')} placeholder="T" />
+              <Input value={form.size_w} onChange={set('size_w')} placeholder="W" />
+              <Input value={form.size_l} onChange={set('size_l')} placeholder="L" />
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button disabled={busy} onClick={submit}>{busy ? 'Adding…' : 'Add part'}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -108,6 +193,7 @@ export default function QcDocumentEditor({ project, document, parts, certificate
   const [pickerTargets, setPickerTargets] = useState([]);
   const [boilerOpen, setBoilerOpen] = useState(false);
   const [pdfOpen, setPdfOpen] = useState(false);
+  const [addPartOpen, setAddPartOpen] = useState(false);
 
   const unlinked = parts.filter(p => !p.test_certificate_id);
   const byFilter = filter === 'unlinked' ? unlinked : parts;
@@ -151,6 +237,16 @@ export default function QcDocumentEditor({ project, document, parts, certificate
     } catch (err) { showToast(err.message, 'error'); }
   }
 
+  async function removePart(part) {
+    if (!window.confirm(`Remove "${part.part_name}" from this document?`)) return;
+    try {
+      await api(`/api/qc-documents/${document.id}/parts/${part.id}`, { method: 'DELETE' });
+      showToast('Part removed');
+      setSelected(s => { const n = new Set(s); n.delete(part.id); return n; });
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+  }
+
   return (
     <main className="container flex flex-col gap-6 py-8">
       <div className="flex items-center gap-3">
@@ -159,6 +255,7 @@ export default function QcDocumentEditor({ project, document, parts, certificate
         </Link>
         <h1 className="text-xl font-bold tracking-tight">{document.doc_id}</h1>
         <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">Draft</span>
+        <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">{document.company}</span>
         <div className="ml-auto flex items-center gap-2">
           {unlinked.length > 0 && (
             <span className="text-xs text-warning">{unlinked.length} part{unlinked.length === 1 ? '' : 's'} still need a certificate</span>
@@ -203,11 +300,17 @@ export default function QcDocumentEditor({ project, document, parts, certificate
             <Button size="sm" variant="outline" disabled={shown.length === 0} onClick={toggleSelectShown}>
               {allShownSelected ? 'Deselect all' : 'Select all'}
             </Button>
+            {canEdit && (
+              <Button size="sm" variant="outline" onClick={() => setAddPartOpen(true)}>
+                <PlusIcon data-icon="inline-start" />Add part
+              </Button>
+            )}
           </div>
           <div className="flex flex-col divide-y">
             {shown.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">No matches.</p>}
             {shown.map(p => (
-              <PartRow key={p.id} part={p} selected={selected.has(p.id)} onToggle={toggle} onOpenPicker={openPicker} />
+              <PartRow key={p.id} part={p} selected={selected.has(p.id)} onToggle={toggle} onOpenPicker={openPicker}
+                onRemove={removePart} canEdit={canEdit} />
             ))}
           </div>
         </CardContent>
@@ -229,6 +332,7 @@ export default function QcDocumentEditor({ project, document, parts, certificate
         onPick={link}
       />
       <BoilerDetailsSheet open={boilerOpen} onOpenChange={setBoilerOpen} document={document} router={router} />
+      <AddPartDialog open={addPartOpen} onOpenChange={setAddPartOpen} documentId={document.id} router={router} />
       <PdfPreview
         open={pdfOpen}
         onOpenChange={setPdfOpen}

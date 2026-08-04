@@ -1,9 +1,9 @@
 'use client';
 
-// The Requests tab (§4.0/§4.0b) — the acceptance gate for new-item requests, the existing
-// cancel-request flow (reused, not migrated), and the two split Tickets feeds moved here from
-// Operations. Everything here operates on data DepartmentPanel/Operations already fetch elsewhere —
-// no new query shape beyond the two additions in app/requests/page.js.
+// The Requests tab (§4.0) — the acceptance inbox for new-item requests and the existing
+// cancel-request flow (reused, not migrated). The two direction-split incident feeds moved to the
+// Operations Procurement view (V2-CHANGES.md Group 4b). Everything here operates on data
+// DepartmentPanel/Operations already fetch elsewhere — no new query shape.
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -13,7 +13,6 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import TicketsPanel from './TicketsPanel';
 
 function NewItemRequest({ r, router }) {
   const [busy, setBusy] = useState(false);
@@ -183,7 +182,6 @@ function CancelRequests({ tasks, itemById, quotesById, poById, router }) {
 
 export default function RequestsWorkspace({
   requests, cancelRequests, cancelItemById = {}, cancelQuotesById = {}, cancelPoById = {},
-  raisedByProcurement, raisedForProcurement,
 }) {
   const router = useRouter();
 
@@ -204,13 +202,6 @@ export default function RequestsWorkspace({
             quotesById={cancelQuotesById} poById={cancelPoById} router={router} />
         </CardContent>
       </Card>
-
-      <div className="grid gap-4 md:grid-cols-2">
-        <TicketsPanel title="Raised by Procurement" department="Procurement" canRaise showDepartment
-          tasks={raisedByProcurement} />
-        <TicketsPanel title="Raised for Procurement" department="Procurement"
-          tasks={raisedForProcurement} />
-      </div>
     </div>
   );
 }

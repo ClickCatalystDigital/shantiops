@@ -6,8 +6,11 @@ import { audit } from '@/lib/usb';
 const EDITABLE = [
   'doc_id', 'makers_no', 'year_of_make', 'boiler_type', 'length_overall', 'internal_diameter',
   'design_pressure', 'hydro_test_pressure', 'heating_surface', 'evaporation_capacity', 'steam_temp',
-  'drawing_no',
+  'drawing_no', 'company',
 ];
+
+// V2-CHANGES.md Group 2 — same two known companies as the create route.
+const COMPANIES = ['Shanti Boilers', 'Shanti Techno Fab'];
 
 // Editing the boiler-level header fields (the "edit" link on the Boiler details card) — the part
 // table and its certificate links have their own endpoint (link-parts), not this one.
@@ -24,6 +27,9 @@ export async function PATCH(req, { params }) {
   if (!keys.length) return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
   if (keys.includes('doc_id') && !String(b.doc_id || '').trim()) {
     return NextResponse.json({ error: 'Document ID cannot be empty' }, { status: 400 });
+  }
+  if (keys.includes('company') && !COMPANIES.includes(b.company)) {
+    return NextResponse.json({ error: 'Unknown company' }, { status: 400 });
   }
 
   const changed = {};

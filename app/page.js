@@ -209,13 +209,33 @@ export default async function Home({ searchParams }) {
         </Card>
       )}
 
-      {/* Procurement's Tickets card moved to the Requests tab (§4.0b) — split into Raised
-          by/for Procurement there, so it's not duplicated here. "Waiting on" (delay_category
-          grouping) is removed entirely — near-unused across the whole app (one milestone total
-          has ever had a category set) and fully redundant with Open Actions above. */}
+      {/* Cross-department "incidents" card per department. Procurement is special-cased below into
+          two direction-split cards (V2-CHANGES.md Group 4b — moved back here from the Requests tab,
+          which now only holds the New-item/Cancel acceptance inbox). "Waiting on" (delay_category
+          grouping) stays removed — near-unused across the whole app and redundant with Open Actions. */}
       {deptsToShow.map((d, i) => d !== 'Procurement' && (
         <TicketsPanel key={d} title={d} department={d} canRaise tasks={tasksByDept[i]} bom={sourcingItems} />
       ))}
+
+      {/* Procurement's incident cards, direction-split (V2-CHANGES.md Group 4b / D15). Same
+          from_department filter the Requests page used; reuses the already-fetched Procurement
+          tasks rather than a second query. Outgoing = raised by Procurement toward others; Incoming
+          = raised toward Procurement by others. bom_item_id-linked tasks are cancel-requests, shown
+          in the Requests inbox / Procurement queue, not here. */}
+      {(() => {
+        const pi = deptsToShow.indexOf('Procurement');
+        if (pi === -1) return null;
+        const procTasks = tasksByDept[pi] || [];
+        const outgoing = procTasks.filter(t => t.from_department === 'Procurement' && !t.bom_item_id);
+        const incoming = procTasks.filter(t => t.department === 'Procurement' && t.from_department && t.from_department !== 'Procurement' && !t.bom_item_id);
+        return (
+          <div className="grid gap-4 md:grid-cols-2">
+            <TicketsPanel title="Outgoing Incidents" department="Procurement" canRaise showDepartment
+              tasks={outgoing} bom={sourcingItems} />
+            <TicketsPanel title="Incoming Incidents" department="Procurement" tasks={incoming} />
+          </div>
+        );
+      })()}
     </main>
   );
 }

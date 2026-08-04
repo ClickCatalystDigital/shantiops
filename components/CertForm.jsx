@@ -4,13 +4,20 @@
 // "+ Add certificate" escape hatch inside the document editor's link picker, so the hard gate never
 // dead-ends). Three field groups in the sample's own order/vocabulary (QC-CHANGES.md §2): identity,
 // chemical analysis (per cast/heat), physical analysis (per rolled plate).
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { api, showToast } from '@/lib/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
+import { UploadIcon, SparklesIcon } from 'lucide-react';
+import PdfInlinePreview from './PdfInlinePreview';
+
+// Only fields the form actually has — guards against the AI returning an unexpected key.
+const EXTRACTABLE_FIELDS = ['certificate_no', 'cast_no', 'plate_no', 'material_spec', 'steel_maker',
+  'size_t', 'size_w', 'size_l', 'chem_c', 'chem_mn', 'chem_p', 'chem_s', 'chem_si',
+  'ys', 'uts', 'elongation', 'bend_test'];
 
 const EMPTY = {
   certificate_no: '', cast_no: '', plate_no: '', material_spec: '', steel_maker: '',
@@ -46,6 +53,9 @@ export default function CertForm({ open, onOpenChange, certificate = null, certi
   const editing = !!certificate;
   const [form, setForm] = useState(() => (editing ? { ...EMPTY, ...certificate } : EMPTY));
   const [busy, setBusy] = useState(false);
+  const fileRef = useRef(null);
+  const [pdfFile, setPdfFile] = useState(null);   // newly picked, not yet uploaded
+  const [extracting, setExtracting] = useState(false);
 
   const makers = useMemo(() => [...new Set(certificates.map(c => c.steel_maker).filter(Boolean))].sort(), [certificates]);
   const specs = useMemo(() => [...new Set(certificates.map(c => c.material_spec).filter(Boolean))].sort(), [certificates]);
@@ -59,6 +69,34 @@ export default function CertForm({ open, onOpenChange, certificate = null, certi
 
   function reset() {
     setForm(editing ? { ...EMPTY, ...certificate } : EMPTY);
+    setPdfFile(null);
+  }
+
+  // Add-flow only (see file header note): auto-fills empty fields from the AI's best-effort read of
+  // the PDF. Edit-flow still lets you attach/replace a PDF, just without silently overwriting
+  // already-correct saved values on pick.
+  async function pickPdf(e) {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (!f) return;
+    setPdfFile(f);
+    if (editing) return;
+
+    setExtracting(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', f);
+      const { fields } = await api('/api/test-certificates/extract', { method: 'POST', body: fd });
+      setForm(cur => {
+        const next = { ...cur };
+        for (const k of EXTRACTABLE_FIELDS) if (fields[k] != null && fields[k] !== '') next[k] = String(fields[k]);
+        return next;
+      });
+      showToast('Fields populated from the PDF — review before saving');
+    } catch (err) {
+      showToast(`Couldn't auto-fill from the PDF (${err.message}) — fill in the fields manually`, 'warning');
+    }
+    setExtracting(false);
   }
 
   async function submit() {
@@ -67,16 +105,44 @@ export default function CertForm({ open, onOpenChange, certificate = null, certi
     }
     setBusy(true);
     try {
+      let id = certificate?.id;
       if (editing) {
         await api(`/api/test-certificates/${certificate.id}`, { method: 'PATCH', body: form });
-        showToast('Certificate updated');
         onSaved?.({ ...certificate, ...form });
       } else {
         const res = await api('/api/test-certificates', { method: 'POST', body: form });
-        showToast('Certificate added');
-        onSaved?.({ ...form, id: res.id });
-        setForm(EMPTY);
+        id = res.id;
+        onSaved?.({ ...form, id });
       }
+
+      if (pdfFile) {
+        try {
+          const fd = new FormData();
+          fd.append('file', pdfFile);
+          await api(`/api/test-certificates/${id}/pdf`, { method: 'POST', body: fd });
+          showToast(editing ? 'Certificate updated' : 'Certificate added, with PDF');
+        } catch (err) {
+          showToast(`${editing ? 'Certificate updated' : 'Certificate added'}, but the PDF couldn't be uploaded (${err.message})`, 'warning');
+        }
+      } else {
+        showToast(editing ? 'Certificate updated' : 'Certificate added');
+      }
+
+      if (!editing) setForm(EMPTY);
+      setPdfFile(null);
+      onOpenChange(false);
+      router?.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+    setBusy(false);
+  }
+
+  async function del() {
+    if (!editing) return;
+    if (!window.confirm(`Delete certificate ${certificate.certificate_no}? This also removes its stored PDF.`)) return;
+    setBusy(true);
+    try {
+      await api(`/api/test-certificates/${certificate.id}`, { method: 'DELETE' });
+      showToast('Certificate deleted');
       onOpenChange(false);
       router?.refresh();
     } catch (err) { showToast(err.message, 'error'); }
@@ -85,11 +151,30 @@ export default function CertForm({ open, onOpenChange, certificate = null, certi
 
   return (
     <Sheet open={open} onOpenChange={o => { onOpenChange(o); if (!o) reset(); }}>
-      <SheetContent className="w-full sm:max-w-md">
+      {/* Widened from max-w-md: the PDF column needs real width alongside the form, on desktop —
+          stacks to one column on mobile (client asked for "left side of the overlay," which only
+          means something once there's room for two). */}
+      <SheetContent className="w-full sm:max-w-3xl">
         <SheetHeader>
           <SheetTitle>{editing ? 'Edit Test Certificate' : 'Add Test Certificate'}</SheetTitle>
         </SheetHeader>
-        <div className="flex flex-col gap-4 overflow-y-auto px-4">
+        <div className="grid grid-cols-1 gap-4 overflow-y-auto px-4 md:grid-cols-2">
+          {/* Left — PDF upload/preview. Add-flow: picking a file also triggers AI populate (best-
+              effort; failure just leaves the form for manual entry, per the header note). */}
+          <div className="flex flex-col gap-2 md:order-1">
+            <p className="text-xs font-medium text-muted-foreground">SOURCE PDF</p>
+            <input ref={fileRef} type="file" accept=".pdf" className="hidden" onChange={pickPdf} />
+            <Button type="button" variant="outline" size="sm" disabled={extracting} onClick={() => fileRef.current?.click()}>
+              {extracting ? <><SparklesIcon data-icon="inline-start" className="animate-pulse" />Reading PDF…</>
+                : <><UploadIcon data-icon="inline-start" />{pdfFile || certificate?.pdf_key ? 'Replace PDF' : 'Upload PDF'}</>}
+            </Button>
+            {!editing && (
+              <p className="text-xs text-muted-foreground">AI fills the fields on the right — always review before saving.</p>
+            )}
+            <PdfInlinePreview file={pdfFile} url={!pdfFile && certificate?.pdf_key ? `/api/test-certificates/${certificate.id}/pdf` : undefined} />
+          </div>
+
+          <div className="flex flex-col gap-4 md:order-2">
           <div className="flex flex-col gap-3">
             <p className="text-xs font-medium text-muted-foreground">IDENTITY</p>
             <div className="flex flex-col gap-1.5">
@@ -152,8 +237,12 @@ export default function CertForm({ open, onOpenChange, certificate = null, certi
               </Select>
             </div>
           </div>
+          </div>
         </div>
         <SheetFooter>
+          {editing && (
+            <Button variant="outline" disabled={busy} className="mr-auto text-destructive" onClick={del}>Delete</Button>
+          )}
           <Button disabled={busy} onClick={submit}>{busy ? 'Saving…' : editing ? 'Save changes' : 'Add certificate'}</Button>
         </SheetFooter>
       </SheetContent>

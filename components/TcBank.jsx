@@ -9,21 +9,33 @@ import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { PlusIcon, SearchIcon, ChevronRightIcon } from 'lucide-react';
+import { PlusIcon, SearchIcon, ChevronRightIcon, FileTextIcon } from 'lucide-react';
 import CertForm from './CertForm';
+import PdfPreview from './PdfPreview';
 
 function sizeText(c) {
   return [c.size_t, c.size_w, c.size_l].filter(Boolean).join(' × ') || '—';
 }
 
-function CertRow({ c, onClick }) {
+function CertRow({ c, onClick, onViewPdf }) {
   return (
     <button onClick={onClick} className="flex w-full flex-col gap-1 py-2.5 text-left text-sm hover:bg-muted/50">
       <div className="flex items-center gap-2">
         <span className="font-medium">{c.certificate_no}</span>
         <span className="text-muted-foreground">cast {c.cast_no}</span>
         {c.plate_no && <span className="text-muted-foreground">plate {c.plate_no}</span>}
-        <ChevronRightIcon className="ml-auto size-4 text-muted-foreground" />
+        {c.pdf_key && (
+          <span
+            role="button"
+            tabIndex={0}
+            onClick={e => { e.stopPropagation(); onViewPdf(); }}
+            onKeyDown={e => { if (e.key === 'Enter') { e.stopPropagation(); onViewPdf(); } }}
+            className="ml-auto flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-primary hover:bg-primary/10"
+          >
+            <FileTextIcon className="size-3.5" />PDF
+          </span>
+        )}
+        <ChevronRightIcon className={c.pdf_key ? 'size-4 text-muted-foreground' : 'ml-auto size-4 text-muted-foreground'} />
       </div>
       <p className="text-xs text-muted-foreground">{c.material_spec} · {c.steel_maker} · {sizeText(c)}</p>
       <p className="text-xs text-muted-foreground">
@@ -42,6 +54,7 @@ export default function TcBank({ certificates = [] }) {
   const [q, setQ] = useState('');
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [viewingPdf, setViewingPdf] = useState(null);
 
   const needle = q.trim().toLowerCase();
   const shown = certificates.filter(c => !needle || [
@@ -75,7 +88,7 @@ export default function TcBank({ certificates = [] }) {
             </p>
           )}
           {shown.map(c => (
-            <CertRow key={c.id} c={c} onClick={() => { setEditing(c); setFormOpen(true); }} />
+            <CertRow key={c.id} c={c} onClick={() => { setEditing(c); setFormOpen(true); }} onViewPdf={() => setViewingPdf(c)} />
           ))}
         </div>
       </CardContent>
@@ -86,6 +99,15 @@ export default function TcBank({ certificates = [] }) {
         certificates={certificates}
         router={router}
       />
+      {viewingPdf && (
+        <PdfPreview
+          open={!!viewingPdf}
+          onOpenChange={o => !o && setViewingPdf(null)}
+          url={`/api/test-certificates/${viewingPdf.id}/pdf`}
+          title={`Certificate ${viewingPdf.certificate_no}`}
+          filename={`${viewingPdf.certificate_no}.pdf`}
+        />
+      )}
     </Card>
   );
 }

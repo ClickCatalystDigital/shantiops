@@ -12,7 +12,8 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, showToast, formatDate, formatMoney } from '@/lib/client';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardAction } from './ui/card';
+import MasterImport from './MasterImport';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from './ui/tabs';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -400,6 +401,7 @@ function PurchaseOrders({ orders, q, view }) {
       {shown.length > 0 && (
         <div className="flex items-center gap-3 border-b px-4 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
           <span className="flex-1">PO No. · Supplier</span>
+          <span className="w-24 shrink-0">Project</span>
           <span className="w-20 shrink-0">Status</span>
           <span className="w-32 shrink-0">Items · Total</span>
           <span className="w-20 shrink-0 text-right">Date</span>
@@ -419,6 +421,9 @@ function PurchaseOrders({ orders, q, view }) {
             <span className="flex-1 truncate">
               <span className="font-medium">{po.po_no}</span>
               <span className="text-muted-foreground"> · {po.supplier_name}</span>
+            </span>
+            <span className="w-24 shrink-0 truncate text-xs text-muted-foreground">
+              {po.project_count > 1 ? 'Multiple' : (po.first_project_no || '—')}
             </span>
             <span className={`w-20 shrink-0 rounded-full px-2 py-0.5 text-center text-xs font-medium ${PO_TONE[po.status] || ''}`}>{po.status}</span>
             <span className="w-32 shrink-0 text-xs text-muted-foreground">{po.item_count} item{po.item_count !== 1 ? 's' : ''} · {formatMoney(po.subtotal)}</span>
@@ -459,6 +464,7 @@ function State({ items, router, q, statusFilter }) {
       {shown.length > 0 && (
         <div className="flex items-center gap-3 border-b px-4 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
           <span className="flex-1">Part Description</span>
+          <span className="w-24 shrink-0">Project</span>
           <span className="w-28 shrink-0">PO No.</span>
           <span className="w-32 shrink-0">Make</span>
           <span className="w-28 shrink-0">Status</span>
@@ -471,10 +477,11 @@ function State({ items, router, q, statusFilter }) {
               <div className="min-w-0 flex-1">
                 <p className="truncate font-medium">{it.material_description}</p>
                 <p className="truncate text-xs text-muted-foreground">
-                  {it.project_no} · {it.moc || '—'} · {it.size_spec || '—'} · {it.qty_text || '—'}
+                  {it.moc || '—'} · {it.size_spec || '—'} · {it.qty_text || '—'}
                   {it.pr_ref && ` · PR ${it.pr_ref}`}
                 </p>
               </div>
+              <span className="w-24 shrink-0 truncate text-xs text-muted-foreground">{it.project_no}</span>
               <span className="w-28 shrink-0 truncate text-xs text-muted-foreground">{it.po_ref || '—'}</span>
               <span className="w-32 shrink-0 truncate text-xs text-muted-foreground">{it.selected_supplier_name || '—'}</span>
               <Select value={it.purchase_status || 'PENDING'} disabled={busy === it.id} onValueChange={v => setStatus(it, v)}>
@@ -609,7 +616,12 @@ function Suppliers({ suppliers, quotes, q: search }) {
       </Card>
 
       <Card>
-        <CardHeader><CardTitle className="text-base">Add supplier</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle className="text-base">Add supplier</CardTitle>
+          {/* V2-CHANGES.md Group 3 — bulk vendor import from the client's real STERP master file,
+              full-replace on confirm. Manual add below stays for one-off additions/corrections. */}
+          <CardAction><MasterImport type="suppliers" label="Suppliers" /></CardAction>
+        </CardHeader>
         <CardContent>
           <form onSubmit={add} className="grid grid-cols-2 gap-3">
             <Input placeholder="Name" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />

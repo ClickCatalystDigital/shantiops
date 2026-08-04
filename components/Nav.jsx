@@ -70,7 +70,10 @@ export default function Nav({ user }) {
         // it's the inbox that feeds it, so it reads left-to-right as the actual workflow.
         ...(inProcurement ? [{ href: '/requests', label: 'Requests', icon: InboxIcon }] : []),
         ...(inProcurement ? [{ href: '/procurement', label: 'Procurement', icon: ShoppingCartIcon }] : []),
-        ...(inQc ? [{ href: '/qc', label: 'QC', icon: FlaskConicalIcon }] : []),
+        // V2-CHANGES.md Group 1 — labeled "Certificates" (was "QC"), route/gate unchanged. The QC
+        // *department* elsewhere (project-page tab, qc_records, milestones) keeps its own name —
+        // this is just the nav label for the cross-project Test Certificate bank.
+        ...(inQc ? [{ href: '/qc', label: 'Certificates', icon: FlaskConicalIcon }] : []),
       ];
 
   // l.dept links narrow whichever base route they point at (Tasks vs Operations both use it) —

@@ -11,13 +11,22 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { PlusIcon, ChevronRightIcon, Trash2Icon } from 'lucide-react';
 
 const EMPTY = {
   doc_id: '', makers_no: '', year_of_make: '', boiler_type: '', length_overall: '',
   internal_diameter: '', design_pressure: '', hydro_test_pressure: '', heating_surface: '',
-  evaporation_capacity: '', steam_temp: '', drawing_no: '',
+  evaporation_capacity: '', steam_temp: '', drawing_no: '', company: 'Shanti Boilers',
 };
+
+// V2-CHANGES.md Group 2 — the two companies this build knows about, and each one's doc-ID prefix
+// (client-confirmed 2026-08-04: STF- for Shanti Techno Fab, same "-SF-" suffix as Shanti Boilers'
+// SBH- since both are SF-series Form IV A documents).
+const COMPANIES = [
+  { value: 'Shanti Boilers', prefix: 'SBH' },
+  { value: 'Shanti Techno Fab', prefix: 'STF' },
+];
 
 // V1 covers the SF series only (QC-CHANGES.md §4/§7) — no series picker, since building one for
 // series we haven't seen a sample of yet would be inventing requirements.
@@ -33,13 +42,29 @@ function NewDocumentSheet({ open, onOpenChange, projectId, router }) {
         const next = { ...f, [field]: v };
         // Suggest a doc ID from the maker's number until the user edits it themselves — a starting
         // point, not an enforced format (QC V1 plan §8 assumption 1: we don't know the full encoding).
+        // Prefix follows whichever company is currently selected (client-confirmed 2026-08-04).
         if (field === 'makers_no' && !docIdTouched) {
           const digits = v.replace(/\D/g, '');
-          next.doc_id = digits ? `SBH-${digits}-SF-` : '';
+          const prefix = COMPANIES.find(c => c.value === f.company)?.prefix || COMPANIES[0].prefix;
+          next.doc_id = digits ? `${prefix}-${digits}-SF-` : '';
         }
         return next;
       });
     };
+  }
+
+  // Changing the company also re-derives doc_id (same "until touched" rule as makers_no) so picking
+  // a company after already typing Maker's No. still gets the right prefix.
+  function setCompany(company) {
+    setForm(f => {
+      const next = { ...f, company };
+      if (!docIdTouched) {
+        const digits = f.makers_no.replace(/\D/g, '');
+        const prefix = COMPANIES.find(c => c.value === company)?.prefix || COMPANIES[0].prefix;
+        next.doc_id = digits ? `${prefix}-${digits}-SF-` : '';
+      }
+      return next;
+    });
   }
 
   async function submit() {
@@ -64,6 +89,15 @@ function NewDocumentSheet({ open, onOpenChange, projectId, router }) {
           <SheetTitle>New statutory document — SF series</SheetTitle>
         </SheetHeader>
         <div className="flex flex-col gap-3 overflow-y-auto px-4">
+          <div className="flex flex-col gap-1.5">
+            <Label>Company</Label>
+            <Select value={form.company} onValueChange={setCompany}>
+              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {COMPANIES.map(c => <SelectItem key={c.value} value={c.value}>{c.value}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
           <div className="flex flex-col gap-1.5">
             <Label>Maker's No.</Label>
             <Input value={form.makers_no} onChange={set('makers_no')} placeholder="SB-1037" />
@@ -161,7 +195,7 @@ export default function StatutoryDocsPanel({ projectId, documents = [], canEdit 
               <div className="flex flex-col">
                 <span className="font-medium">{d.doc_id}</span>
                 <span className="text-xs text-muted-foreground">
-                  {d.series} series · Form IV A · {d.linked_parts} of {d.total_parts} parts linked
+                  {d.series} series · Form IV A · {d.company} · {d.linked_parts} of {d.total_parts} parts linked
                 </span>
               </div>
               <ChevronRightIcon className="ml-auto size-4 text-muted-foreground" />
