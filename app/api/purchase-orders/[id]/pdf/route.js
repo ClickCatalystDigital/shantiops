@@ -1,3 +1,5 @@
+// app/api/purchase-orders/[id]/pdf/route.js
+
 import { NextResponse } from 'next/server';
 import { getPurchaseOrderDetail } from '@/lib/data';
 import { getSessionUser, requireDepartment } from '@/lib/auth';

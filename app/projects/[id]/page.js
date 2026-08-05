@@ -1,3 +1,5 @@
+// app/projects/[id]/page.js
+
 import { notFound, redirect } from 'next/navigation';
 import { getProjectDetail, getProjectBom, getProjectPackingLists, getBomRollup, getQcRecords, getQcDocuments, getProjectTasks, getProjectStages, getStageTemplates } from '@/lib/data';
 import { getSessionUser, isCustomer, isPM, isHead, headDepartments, canAccessDepartment, roleHome } from '@/lib/auth';

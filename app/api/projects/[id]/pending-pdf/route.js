@@ -1,3 +1,5 @@
+// aoo/api/projects/[id]/pending-pdf/route.js
+
 import { NextResponse } from 'next/server';
 import { queryOne } from '@/lib/db';
 import { getProjectBom } from '@/lib/data';

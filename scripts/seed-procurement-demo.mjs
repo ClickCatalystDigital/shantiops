@@ -26,15 +26,15 @@ const PROJECTS = [3, 4, 5, 6]; // SB-1104, SB-1103, SB-1105, STF-IBR-052
 // One item template, reused per project (real PMB spreadsheets do repeat the same materials across
 // boiler orders) — deliberately spans every stage of the lifecycle so the demo is self-explanatory.
 const ITEM_TEMPLATE = [
-  { key: 'plate', desc: 'MS PLATE', moc: 'MS', size: '2000 X 5000 X 8 THK', qty: '2 Nos', section: 'BOILER', status: null },
-  { key: 'gauge', desc: 'PRESSURE GAUGE (STEAM)', moc: null, size: '0-10 Kg/cm2', qty: '1 No', section: 'MOUNTINGS', status: null },
-  { key: 'angle', desc: 'MS ANGLE', moc: 'MS', size: 'ISA 50 X 50 X 5 - 5000 Lg', qty: '4 Nos', section: 'BOILER', status: null },
-  { key: 'valve', desc: 'GLOBE VALVE (MSSV) - F/E', moc: null, size: '50 NB', qty: '1 No', section: 'MOUNTINGS', status: null },
-  { key: 'safety', desc: 'SAFETY VALVE (HIGH LIFT TYPE)', moc: null, size: '2" x 3"', qty: '1 No', section: 'MOUNTINGS', status: null },
-  { key: 'pump', desc: 'FEED PUMP (CENTRIFUGAL) & MOTOR', moc: null, size: '5 HP', qty: '2 Nos', section: 'MOUNTINGS', status: null }, // stays PENDING; TRANSIT stamped after PO issue below
-  { key: 'pipe', desc: 'MS PIPE', moc: 'MS', size: "25 NB 'B' CL - 5000 Lg", qty: '3 Nos', section: 'BOILER', status: 'CLOSED' },
-  { key: 'wlg', desc: 'WATER LEVEL GAUGE WITH PROTECTORS', moc: null, size: 'F/E', qty: '1 No', section: 'MOUNTINGS', status: 'RECEIVED' },
-  { key: 'sheet', desc: 'MS CHEQUERED SHEET', moc: 'MS', size: '5 X 600 X 2500', qty: '1 No', section: 'BOILER', status: 'CANCELLED' },
+  { key: 'plate', desc: 'MS PLATE', moc: 'MS', size: '2000 X 5000 X 8 THK', qty: '2 Nos', section: 'BOILER', status: 'Enquiry' },
+  { key: 'gauge', desc: 'PRESSURE GAUGE (STEAM)', moc: null, size: '0-10 Kg/cm2', qty: '1 No', section: 'MOUNTINGS', status: 'Enquiry' },
+  { key: 'angle', desc: 'MS ANGLE', moc: 'MS', size: 'ISA 50 X 50 X 5 - 5000 Lg', qty: '4 Nos', section: 'BOILER', status: 'Comparison' },
+  { key: 'valve', desc: 'GLOBE VALVE (MSSV) - F/E', moc: null, size: '50 NB', qty: '1 No', section: 'MOUNTINGS', status: 'Comparison' },
+  { key: 'safety', desc: 'SAFETY VALVE (HIGH LIFT TYPE)', moc: null, size: '2" x 3"', qty: '1 No', section: 'MOUNTINGS', status: 'Comparison' },
+  { key: 'pump', desc: 'FEED PUMP (CENTRIFUGAL) & MOTOR', moc: null, size: '5 HP', qty: '2 Nos', section: 'MOUNTINGS', status: 'Comparison' }, // -> Ordered/Transit stamped after PO issue below
+  { key: 'pipe', desc: 'MS PIPE', moc: 'MS', size: "25 NB 'B' CL - 5000 Lg", qty: '3 Nos', section: 'BOILER', status: 'Received' },
+  { key: 'wlg', desc: 'WATER LEVEL GAUGE WITH PROTECTORS', moc: null, size: 'F/E', qty: '1 No', section: 'MOUNTINGS', status: 'Received' },
+  { key: 'sheet', desc: 'MS CHEQUERED SHEET', moc: 'MS', size: '5 X 600 X 2500', qty: '1 No', section: 'BOILER', status: 'Cancelled' },
 ];
 
 // Only used when the suppliers table is empty (fresh DB, no vendor import) — never inserted over a
@@ -66,12 +66,24 @@ await run('DELETE FROM supplier_quotes');
 await run('DELETE FROM po_items');
 await run('DELETE FROM purchase_orders');
 await run("DELETE FROM tasks WHERE created_by = 'seed-script'");
+// Group 5 additions (V2-CHANGES.md 5.1–5.4): RFQs, PRs (which materialize bom_items), and the
+// direct-cancel flow's void-PO notifications are demo-generated procurement state too. FK order
+// matters on Turso (which enforces FKs, unlike the local-sqlite fallback): rfq_items references
+// bom_items, so RFQs go BEFORE the bom_items wipe; bom_items.pr_item_id references pr_items, so
+// PR tables go AFTER it.
+await run('DELETE FROM rfq_items');
+await run('DELETE FROM rfq_suppliers');
+await run('DELETE FROM rfqs');
+await run("DELETE FROM notifications WHERE kind = 'po_void_needed'");
 for (const pid of PROJECTS) {
   await run('DELETE FROM bom_items WHERE project_id = ?', [pid]);
   await run('DELETE FROM bom_imports WHERE project_id = ?', [pid]);
   await run('DELETE FROM procurement_requests WHERE project_id = ?', [pid]);
 }
-console.log('  wiped (quotes, POs, seed tasks, demo-project BOM/requests).');
+await run('DELETE FROM pr_item_projects');
+await run('DELETE FROM pr_items');
+await run('DELETE FROM purchase_requisitions');
+console.log('  wiped (quotes, POs, RFQs, PRs, seed tasks, demo-project BOM/requests).');
 
 // Fresh-DB fallback only — never over a real master.
 const supCount = (await run('SELECT COUNT(*) AS n FROM suppliers')).rows[0].n;
@@ -142,6 +154,10 @@ console.log('--- selecting suppliers (safety valve + feed pump) ---');
 for (const pid of PROJECTS) {
   await run('UPDATE bom_items SET selected_quote_id = ? WHERE id = ?', [safetyQuote[pid], itemId[pid].safety]);
   await run('UPDATE bom_items SET selected_quote_id = ? WHERE id = ?', [pumpQuote[pid], itemId[pid].pump]);
+  // D2 tri-state, matching what selectQuoteForItem (lib/procurement.js) writes for a real
+  // selection: winner = 1, every sibling quote on the same item = 0.
+  await run('UPDATE supplier_quotes SET is_selected = 1 WHERE id IN (?, ?)', [safetyQuote[pid], pumpQuote[pid]]);
+  await run('UPDATE supplier_quotes SET is_selected = 0 WHERE bom_item_id = ? AND id != ?', [itemId[pid].pump, pumpQuote[pid]]);
 }
 
 function poNumber(seq) {
@@ -188,31 +204,20 @@ console.log(`--- creating + issuing a PO (Feed Pump, ${S_PUMP.name}, spans all 4
        VALUES (?, ?, ?, 'FEED PUMP (CENTRIFUGAL) & MOTOR', 2, 'No', 18500, 37000, ?)`,
       [poId, itemId[pid].pump, pid, i++]
     );
-    // Issuing (existing PATCH /api/purchase-orders/[id] behavior): stamp po_ref, and — matching
-    // this item's real status — flip it into TRANSIT so ProcurementQueue's stats read correctly too.
-    await run('UPDATE bom_items SET po_ref = ?, purchase_status = ? WHERE id = ?', [poNo, 'TRANSIT', itemId[pid].pump]);
+    // Issuing (PATCH /api/purchase-orders/[id], Phase 5.1 semantics): stamp po_ref and advance
+    // to Ordered — issue means Ordered now, not Transit (D5). Half the projects then get the
+    // manual Status-tab override to Transit ("shipment confirmed dispatched"), so the demo still
+    // shows every D4 stage without faking how any of them is reached.
+    const status = PROJECTS.indexOf(pid) % 2 === 0 ? 'Ordered' : 'Transit';
+    await run('UPDATE bom_items SET po_ref = ?, purchase_status = ? WHERE id = ?', [poNo, status, itemId[pid].pump]);
   }
-  console.log(`  ${poNo} (issued) — id ${poId}, 4 line items, items flipped to TRANSIT`);
+  console.log(`  ${poNo} (issued) — id ${poId}, 4 line items -> Ordered (2 overridden to Transit)`);
 }
 
-console.log('--- seeding pending new-item requests (Requests tab, §4.0) ---');
-const NEW_ITEM_REQUESTS = [
-  { desc: 'MS ROUND BAR', moc: 'MS', size: 'DIA 20mm - 6000 Lg', qty: '4 Nos', pr: 'PR-2201', from: 'Engineering' },
-  { desc: 'THERMOWELL WITH FLANGE', moc: 'SS304', size: '1/2" NPT', qty: '2 Nos', pr: null, from: 'Design' },
-];
-for (const pid of PROJECTS) {
-  for (const r of NEW_ITEM_REQUESTS) {
-    await run(
-      `INSERT INTO procurement_requests
-         (project_id, from_department, material_description, moc, size_spec, qty_text, pr_ref, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'seed-script')`,
-      [pid, r.from, r.desc, r.moc, r.size, r.qty, r.pr]
-    );
-  }
-}
-console.log(`  ${NEW_ITEM_REQUESTS.length} pending requests x ${PROJECTS.length} projects`);
-
-console.log('--- seeding cancel-request tasks (Requests tab, existing cancel-request flow) ---');
+// Pending new-item requests and cancel-request tasks are no longer seeded — both mechanisms were
+// retired by Group 5 Bundles A/B (V2-CHANGES.md): PRs materialize straight to Enquiry with no
+// accept step, and Eng/Design cancel items directly from the BOM table. Seeding them would create
+// rows nothing in the UI can display or resolve.
 const today = new Date().toISOString().slice(0, 10);
 async function addTask(title, department, fromDepartment, projectId, bomItemId, assignedTo) {
   await run(
@@ -221,13 +226,6 @@ async function addTask(title, department, fromDepartment, projectId, bomItemId, 
     [title, today, department, assignedTo, fromDepartment, projectId, bomItemId]
   );
 }
-for (const pid of PROJECTS) {
-  await addTask('Cancel: FEED PUMP (CENTRIFUGAL) & MOTOR — spec revised, no longer needed',
-    'Procurement', 'Design', pid, itemId[pid].pump, 'design_head');
-  await addTask('Cancel: MS PLATE — duplicate line item from the last revision',
-    'Procurement', 'Engineering', pid, itemId[pid].plate, 'engg_head');
-}
-console.log(`  2 cancel-requests x ${PROJECTS.length} projects`);
 
 console.log('--- seeding plain cross-department tasks (Outgoing/Incoming Incidents) ---');
 await addTask('Confirm hydro test slot before we release the boiler shell PO',
@@ -241,7 +239,7 @@ await addTask('Stores needs the updated GRN contact for the new valve PO',
 console.log('  2 raised by Procurement, 2 raised for Procurement');
 
 console.log('\n--- done ---');
-console.log('Per project (x4): 2 to_source (Plate, Gauge) · 2 comparing (Angle x2 quotes, Valve x1 quote)');
-console.log('  · 2 on_order (Safety Valve -> draft PO, Feed Pump -> issued PO / TRANSIT) · 1 CLOSED (Pipe)');
-console.log('  · 1 RECEIVED (Water Level Gauge) · 1 CANCELLED (Chequered Sheet)');
+console.log('Per project (x4): 2 Enquiry (Plate, Gauge) · 3 Comparison (Angle x2 quotes, Valve, Safety Valve selected -> draft PO)');
+console.log('  · 1 Ordered-or-Transit (Feed Pump, issued PO; Transit on half the projects) · 2 Received (Pipe, Water Level Gauge)');
+console.log('  · 1 Cancelled (Chequered Sheet)');
 console.log('Both POs span all 4 projects -> the Purchase Orders tab shows "Multiple" (Group 4a).');

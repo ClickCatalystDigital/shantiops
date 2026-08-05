@@ -1217,3 +1217,58 @@ logic and are worth reading in full before touching anything in `app/api/agent/*
 `app/api/usb/*`/`app/api/browser/*`. Known gaps are listed explicitly in §10, §13, and §17 — don't
 rediscover them, just check whether they've since been closed (git log / the API surface) before
 assuming they're still open.
+
+
+
+### Known gap — D4 stage derivation isn't applied everywhere yet (2026-08-05)
+
+Phase 5.0b (`V2-CHANGES.md`) found that `purchase_status` isn't kept live by quote-logging or
+supplier-selection (only PO issue/unissue, cancel, and a manual override move it) and fixed the
+undercounted-`Ordered` bug in `getProcurementFlowCounts` via `deriveActiveStage`/
+`deriveCancelledOrigin` (`lib/data.js`). The same undercount existed in `getBomWork()` (feeds
+Operations' Master BOM card) — fixed this round by calling the same `deriveActiveStage` instead of
+grouping on the raw column.
+
+**Still open**: `ProcurementQueue.jsx` (project-page glance) has the identical bug via
+`bomStageCounts()` (`lib/bom-fields.mjs`), which only reads `purchase_status` directly. **Do not
+fix this by dropping `deriveActiveStage` into `bomStageCounts` as-is** — confirmed via
+`lib/pmb-selfcheck.mjs`'s existing fixture that `deriveActiveStage` never checks for an explicit
+`purchase_status === 'Comparison'`; it only trusts the raw column for `Ordered`/`Transit` and
+otherwise falls back to a `quote_count` signal that doesn't exist on this path yet. Applying it
+unmodified would silently reclassify real Comparison-stage rows as Enquiry — a worse regression
+than the bug being fixed, and would break `pmb-selfcheck.mjs`'s `bomStageCounts` assertion
+(`Comparison: 1` from a bare `{purchase_status: 'Comparison'}` fixture with no `quote_count`).
+
+Real fix needs, in order: (1) add a `quote_count` subquery to `getProjectBom` (`lib/data.js`,
+mirroring `getProcurementFlowCounts`'s pattern); (2) write one shared derive function — used by
+`bomStageCounts`, `getProcurementFlowCounts`, and `getBomWork` alike — that trusts an explicit
+`Comparison`/`Enquiry` column value when already set correctly, and only promotes using
+`quote_count`/`selected_quote_id`/`po_ref` where the column is stale or missing; (3) update
+`pmb-selfcheck.mjs`'s `bomStageCounts` fixtures/assertions to match whatever the new shared
+function actually expects as input, since the current fixtures carry no `quote_count` field at all.
+
+
+### Prevention — stop this from recurring a fourth time
+
+This bug (raw `purchase_status` silently disagreeing with reality) has now been found and fixed
+twice independently (`getProcurementFlowCounts`, then `getBomWork`) and is documented as still open
+a third time (`ProcurementQueue.jsx`, above). That pattern — the same bug rediscovered in each new
+consumer — is the actual risk, not any single instance of it. Two standing follow-ups, distinct from
+the `ProcurementQueue.jsx` fix itself:
+
+1. **One shared derive function, not three+ copies.** Once `bomStageCounts` is fixed (per the
+   `getProjectBom`/`quote_count` plan above), audit for any other place that reads `purchase_status`
+   to answer "what stage is this item in" (as opposed to "what does the stored override literally
+   say," which the Status tab needs verbatim, deliberately). Every such site should call the one
+   shared function. Grep for `purchase_status` reads outside `lib/bom-fields.mjs`'s `isOpenStatus`/
+   `isClosedStatus` and outside the Status tab's own display/edit path before considering this closed
+   — don't assume the three sites found so far are the only ones.
+2. **A data-quality surface, not just a data-quality fix.** Because `purchase_status` is deliberately
+   never kept fully live (Phase 5.0b's "signal-based inference, not exact tracking" precedent — see
+   above), drift between the stored column and the derived real stage is expected to keep happening
+   by design, not a bug to eliminate. Nothing today surfaces that drift to a human — it was only
+   caught this round by manually comparing two Operations cards side by side. Once the shared derive
+   function from (1) exists, a small "N items show a stale status — selected supplier or draft PO
+   exists but the column still reads Enquiry/Comparison" list (comparing raw vs. derived per item)
+   would turn silent drift into an actionable queue, using the Status tab's existing override control
+   to resolve each one. Not built yet — flagged here so it isn't lost.

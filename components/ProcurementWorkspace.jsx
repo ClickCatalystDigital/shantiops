@@ -1,7 +1,8 @@
 'use client';
 
 // Procurement's cross-project workbench (§5a), rebuilt into the four-tab flow from
-// PROCUREMENT-CHANGES.md §4: Sourcing (gather quotes) -> Selection (compare/pick, auto-drafts a PO)
+// PROCUREMENT-CHANGES.md §4: Enquiry (gather quotes, create RFQs — V2-CHANGES.md Phase 5.1,
+// replaces the original Sourcing tab per D1) -> Selection (compare/pick, auto-drafts a PO)
 // -> Purchase Orders (issue/cancel-issue) -> Status (search + manual status override, always shows
 // every accepted item regardless of stage — labeled "State" in the original spec, renamed for
 // clarity in the Phase 4 polish pass). Suppliers stays a 5th tab, visually separated to the right of
@@ -9,7 +10,7 @@
 // redesign spec, but it's a real, working feature (add/edit/deactivate) with no other home, so it's
 // kept rather than dropped. One shared search input lives under the tab bar, same position
 // regardless of active tab, filtering whichever tab is open.
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, showToast, formatDate, formatMoney } from '@/lib/client';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from './ui/card';
@@ -23,61 +24,27 @@ import { Badge } from './ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from './ui/dialog';
 import PdfPreview from './PdfPreview';
+import PaymentTermsField from './PaymentTermsField';
+import CreateRfqDialog from './CreateRfqDialog';
+import { PURCHASE_STATUSES as BOM_STATUSES, CLOSED_STATUSES, STATUS_TONE, DEFAULT_PURCHASE_STATUS } from '@/lib/bom-fields.mjs';
 
-const PAYMENT_TERM_PRESETS = ['LC', 'Advance %', 'After Delivery', 'PDC', 'COD'];
-const ADVANCE_PCTS = Array.from({ length: 10 }, (_, i) => `${(i + 1) * 10}%`);
-const RESOLVED = ['CLOSED', 'RECEIVED', 'CANCELLED'];
-// Sourcing/Selection are for items still working toward a PO — once one's issued (TRANSIT) or
-// closed out, it's State's job to show it, not theirs.
-const OUT_OF_PIPELINE = [...RESOLVED, 'TRANSIT'];
-const STATUS_TONE = {
-  PENDING: 'bg-muted text-muted-foreground ring-border',
-  TRANSIT: 'bg-warning/10 text-warning ring-warning/20',
-  CLOSED: 'bg-success/10 text-success ring-success/20',
-  RECEIVED: 'bg-success/10 text-success ring-success/20',
-  CANCELLED: 'bg-danger/10 text-danger ring-danger/20',
-};
-const BOM_STATUSES = ['PENDING', 'TRANSIT', 'CLOSED', 'CANCELLED', 'RECEIVED'];
-
-// Payment terms field — LC / Advance % (reveals a 10-100% step-10 picker) / After Delivery / PDC /
-// COD, plus a free-text "add new option" escape hatch (§4.1). Shared by Sourcing's quote form.
-function PaymentTermsField({ value, advancePct, onChange, onAdvancePctChange }) {
-  const [custom, setCustom] = useState(!PAYMENT_TERM_PRESETS.includes(value) && !!value);
-  return (
-    <div className="flex flex-col gap-1.5">
-      <Label>Payment terms</Label>
-      {custom ? (
-        <Input value={value} onChange={e => onChange(e.target.value)} placeholder="Custom terms" autoFocus />
-      ) : (
-        <Select value={value} onValueChange={v => onChange(v)}>
-          <SelectTrigger className="w-full"><SelectValue placeholder="—" /></SelectTrigger>
-          <SelectContent>{PAYMENT_TERM_PRESETS.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
-        </Select>
-      )}
-      {value === 'Advance %' && !custom && (
-        <Select value={advancePct} onValueChange={onAdvancePctChange}>
-          <SelectTrigger className="h-8 w-full text-xs"><SelectValue placeholder="Which %?" /></SelectTrigger>
-          <SelectContent>{ADVANCE_PCTS.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent>
-        </Select>
-      )}
-      <button type="button" className="w-fit text-xs text-primary hover:underline"
-        onClick={() => { setCustom(c => !c); onChange(''); }}>
-        {custom ? 'Pick from list' : '+ Add new option'}
-      </button>
-    </div>
-  );
-}
+// Enquiry/Selection are for items still working toward a PO — once one's issued (Ordered, Phase
+// 5.1 — was Transit pre-5.1) or closed out, it's Status's job to show it, not theirs.
+const OUT_OF_PIPELINE = [...CLOSED_STATUSES, 'Ordered', 'Transit'];
 
 function ItemContext({ it }) {
   return (
     <p className="truncate text-xs text-muted-foreground">
       {it.project_no} · {it.moc || '—'} · {it.size_spec || '—'} · {it.qty_text || '—'}
       {it.pr_ref && ` · PR ${it.pr_ref}`}
+      {/* Group 5 Bundle A — the unified PR flow's structured pr_no/timestamp, distinct from the
+          legacy free-text pr_ref above (kept for PMB-imported/manually-typed rows). */}
+      {it.pr_no && ` · ${it.pr_no} · ${formatDate(it.pr_created_at)}`}
     </p>
   );
 }
 
-// ---------- Sourcing ----------
+// ---------- Enquiry (was Sourcing) ----------
 
 function AddQuoteDialog({ item, suppliers, router, onClose }) {
   const [supplierId, setSupplierId] = useState('');
@@ -173,19 +140,72 @@ function AddQuoteDialog({ item, suppliers, router, onClose }) {
   );
 }
 
-function SourcingRow({ it, quotes, suppliers, router }) {
+// RFQ suppliers for one item's expanded row (Phase 5.1) — lazy-fetched only once expanded, since
+// the summary count alone (rfqSummary) is enough for the collapsed row.
+function RfqSuppliersList({ rfqId, router }) {
+  const [detail, setDetail] = useState(null);
+  const [busy, setBusy] = useState(null);
+
+  useEffect(() => {
+    api(`/api/rfqs/${rfqId}`).then(setDetail).catch(() => setDetail(null));
+  }, [rfqId]);
+
+  async function resend(supplierId) {
+    setBusy(supplierId);
+    try {
+      const d = await api(`/api/rfqs/${rfqId}`, { method: 'PATCH', body: { supplier_id: supplierId, action: 'resend' } });
+      setDetail(d); showToast('New link issued'); router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+    setBusy(null);
+  }
+
+  if (!detail) return null;
+  return (
+    <div className="flex flex-col gap-1 border-t pt-2">
+      <p className="text-xs font-medium text-muted-foreground">{detail.rfq_no} — invited suppliers</p>
+      {detail.suppliers.map(s => (
+        <div key={s.id} className="flex items-center justify-between gap-2 text-xs">
+          <span>{s.supplier_name}</span>
+          <span className="flex items-center gap-2">
+            {s.responded_at ? (
+              <Badge variant="outline" className="text-success">Responded</Badge>
+            ) : s.sent_at ? (
+              <Badge variant="outline" className="text-muted-foreground">Sent, no reply</Badge>
+            ) : (
+              <Badge variant="outline" className="text-muted-foreground">Not sent</Badge>
+            )}
+            {!s.responded_at && (
+              <button type="button" className="text-primary hover:underline" disabled={busy === s.supplier_id}
+                onClick={() => resend(s.supplier_id)}>Resend</button>
+            )}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function EnquiryRow({ it, quotes, suppliers, router, rfqSummary, selected, onToggle }) {
   const [expanded, setExpanded] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
 
   return (
     <div className="border-b last:border-b-0">
-      <button className="flex w-full items-center gap-3 py-2.5 text-left text-sm" onClick={() => setExpanded(v => !v)}>
-        <div className="min-w-0 flex-1">
-          <span className="font-medium">{it.material_description}</span>
-          <ItemContext it={it} />
-        </div>
-        {quotes.length > 0 && <Badge variant="outline">{quotes.length} quote{quotes.length !== 1 ? 's' : ''}</Badge>}
-      </button>
+      <div className="flex w-full items-center gap-3 py-2.5 text-left text-sm">
+        <input type="checkbox" className="size-4 shrink-0" checked={selected} onChange={onToggle} onClick={e => e.stopPropagation()} />
+        <button className="flex min-w-0 flex-1 items-center gap-3 text-left" onClick={() => setExpanded(v => !v)}>
+          <div className="min-w-0 flex-1">
+            <span className="font-medium">{it.material_description}</span>
+            <ItemContext it={it} />
+          </div>
+          {(quotes.length > 0 || rfqSummary) && (
+            <Badge variant="outline">
+              {quotes.length > 0 ? `${quotes.length} quote${quotes.length !== 1 ? 's' : ''}` : rfqSummary.rfq_no}
+              {rfqSummary && ` · ${rfqSummary.responded}/${rfqSummary.invited} responded`}
+            </Badge>
+          )}
+        </button>
+      </div>
       {expanded && (
         <div className="flex flex-col gap-2 bg-muted/30 px-3 py-3 text-sm">
           {quotes.length === 0 && <p className="text-xs text-muted-foreground">No quotes yet.</p>}
@@ -200,6 +220,7 @@ function SourcingRow({ it, quotes, suppliers, router }) {
             </div>
           ))}
           <Button size="sm" variant="outline" className="w-fit" onClick={() => setDialogOpen(true)}>+ Add quote</Button>
+          {rfqSummary && <RfqSuppliersList rfqId={rfqSummary.rfq_id} router={router} />}
         </div>
       )}
       {dialogOpen && (
@@ -209,19 +230,53 @@ function SourcingRow({ it, quotes, suppliers, router }) {
   );
 }
 
-function Sourcing({ items, quotesByItem, suppliers, router, q }) {
+function Enquiry({ items, quotesByItem, suppliers, rfqSummaryByItem, router, q }) {
   const needle = q.trim().toLowerCase();
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [rfqDialogOpen, setRfqDialogOpen] = useState(false);
   const shown = items.filter(it => !it.selected_quote_id && !OUT_OF_PIPELINE.includes(it.purchase_status))
     .filter(it => !needle || it.material_description.toLowerCase().includes(needle) || it.project_no.toLowerCase().includes(needle));
+  const shownIds = shown.map(it => it.id);
+  const allShownSelected = shownIds.length > 0 && shownIds.every(id => selectedIds.has(id));
+
+  function toggle(id) {
+    setSelectedIds(s => { const next = new Set(s); next.has(id) ? next.delete(id) : next.add(id); return next; });
+  }
+  function toggleAllShown() {
+    setSelectedIds(s => {
+      if (allShownSelected) { const next = new Set(s); shownIds.forEach(id => next.delete(id)); return next; }
+      return new Set([...s, ...shownIds]);
+    });
+  }
+  const selectedItems = items.filter(it => selectedIds.has(it.id));
 
   return (
     <Card>
       <CardContent className="flex flex-col pt-4">
-        {shown.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">Nothing to source right now.</p>}
+        {shown.length > 0 && (
+          <div className="mb-2 flex items-center gap-3 border-b pb-2">
+            <input type="checkbox" className="size-4" checked={allShownSelected} onChange={toggleAllShown} />
+            <span className="text-xs text-muted-foreground">Select all ({shown.length})</span>
+            {selectedIds.size > 0 && (
+              <div className="ml-auto flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">{selectedIds.size} selected</span>
+                <Button size="sm" onClick={() => setRfqDialogOpen(true)}>Create RFQ</Button>
+                <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>Clear</Button>
+              </div>
+            )}
+          </div>
+        )}
+        {shown.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">Nothing to enquire right now.</p>}
         {shown.map(it => (
-          <SourcingRow key={it.id} it={it} quotes={quotesByItem[it.id] || []} suppliers={suppliers} router={router} />
+          <EnquiryRow key={it.id} it={it} quotes={quotesByItem[it.id] || []} suppliers={suppliers} router={router}
+            rfqSummary={rfqSummaryByItem[it.id]} selected={selectedIds.has(it.id)} onToggle={() => toggle(it.id)} />
         ))}
       </CardContent>
+      {rfqDialogOpen && (
+        <CreateRfqDialog items={selectedItems} suppliers={suppliers} router={router}
+          onClose={() => setRfqDialogOpen(false)}
+          onCreated={() => { setSelectedIds(new Set()); setRfqDialogOpen(false); router.refresh(); }} />
+      )}
     </Card>
   );
 }
@@ -309,43 +364,231 @@ const PO_TONE = {
   cancelled: 'bg-danger/10 text-danger ring-1 ring-inset ring-danger/20',
 };
 
+// Group 5 Bundle A (5.3, D11) — draft-only PO editing: qty/rate per line, or re-pointing a line at
+// a different supplier (pick an already-logged quote, or add a brand-new one inline — same
+// existing/new-supplier shape as AddQuoteDialog above). A plain Dialog stacked on top of the PDF
+// preview rather than squeezed into PdfPreview.jsx itself — that component is shared by QC/packing
+// PDFs too and has no generic content slot, so editing lives in its own small dialog instead.
+function ChangeSupplierPanel({ line, suppliers, onDone, onCancel }) {
+  const [quotes, setQuotes] = useState(null);
+  const [quoteId, setQuoteId] = useState('');
+  const [addingNew, setAddingNew] = useState(false);
+  const [newSupplierMode, setNewSupplierMode] = useState(false);
+  const [supplierId, setSupplierId] = useState('');
+  const [newSupplierName, setNewSupplierName] = useState('');
+  const [price, setPrice] = useState('');
+  const [uom, setUom] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api(`/api/bom-items/${line.bom_item_id}/quotes`).then(setQuotes).catch(() => setQuotes([]));
+  }, [line.bom_item_id]);
+
+  async function save() {
+    setBusy(true);
+    try {
+      const body = { action: 'change_supplier', po_item_id: line.id };
+      if (addingNew) {
+        if (!newSupplierMode && !supplierId) return showToast('Pick a supplier', 'error');
+        if (newSupplierMode && !newSupplierName.trim()) return showToast('Name the new supplier', 'error');
+        if (!(Number(price) > 0)) { showToast('Enter a price', 'error'); setBusy(false); return; }
+        body.new_quote = {
+          supplier_id: newSupplierMode ? undefined : supplierId,
+          new_supplier_name: newSupplierMode ? newSupplierName.trim() : undefined,
+          unit_price: Number(price), uom: uom || undefined,
+        };
+      } else {
+        if (!quoteId) { showToast('Pick a quote', 'error'); setBusy(false); return; }
+        body.quote_id = Number(quoteId);
+      }
+      await api(`/api/purchase-orders/${line.po_id}`, { method: 'PATCH', body });
+      showToast('Supplier changed');
+      onDone();
+    } catch (err) { showToast(err.message, 'error'); }
+    setBusy(false);
+  }
+
+  return (
+    <div className="flex flex-col gap-2 rounded-md border bg-muted/30 p-3 text-sm">
+      {!addingNew ? (
+        <>
+          <Select value={quoteId} onValueChange={setQuoteId} disabled={!quotes?.length}>
+            <SelectTrigger className="w-full"><SelectValue placeholder={quotes === null ? 'Loading quotes…' : quotes.length ? 'Pick a logged quote…' : 'No other quotes logged'} /></SelectTrigger>
+            <SelectContent>
+              {/* po_items carries no selected_quote_id (that lives on bom_items) — picking the
+                  current supplier's own quote again is a harmless no-op re-point, so the list is
+                  every logged quote, not excluding one. */}
+              {(quotes || []).map(q => (
+                <SelectItem key={q.id} value={String(q.id)}>{q.supplier_name} · {formatMoney(q.unit_price)}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <button type="button" className="w-fit text-xs text-primary hover:underline" onClick={() => setAddingNew(true)}>+ Add a new supplier's quote instead</button>
+        </>
+      ) : (
+        <>
+          {newSupplierMode ? (
+            <Input value={newSupplierName} onChange={e => setNewSupplierName(e.target.value)} placeholder="New supplier name" autoFocus />
+          ) : (
+            <Select value={supplierId} onValueChange={setSupplierId}>
+              <SelectTrigger className="w-full"><SelectValue placeholder="Choose a supplier…" /></SelectTrigger>
+              <SelectContent>{suppliers.map(s => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}</SelectContent>
+            </Select>
+          )}
+          <button type="button" className="w-fit text-xs text-primary hover:underline" onClick={() => setNewSupplierMode(v => !v)}>
+            {newSupplierMode ? 'Pick existing supplier' : '+ Add a new supplier'}
+          </button>
+          <div className="grid grid-cols-2 gap-2">
+            <Input type="number" min="0" step="0.01" value={price} onChange={e => setPrice(e.target.value)} placeholder="Unit price" />
+            <Input value={uom} onChange={e => setUom(e.target.value)} placeholder="UoM (e.g. Kg, No)" />
+          </div>
+          <button type="button" className="w-fit text-xs text-primary hover:underline" onClick={() => setAddingNew(false)}>Pick an existing quote instead</button>
+        </>
+      )}
+      <div className="flex gap-2">
+        <Button size="sm" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save'}</Button>
+        <Button size="sm" variant="ghost" onClick={onCancel}>Cancel</Button>
+      </div>
+    </div>
+  );
+}
+
+function EditPoLinesDialog({ po, suppliers, onClose, onPoGone, router }) {
+  const [detail, setDetail] = useState(null);
+  const [drafts, setDrafts] = useState({}); // po_item_id -> { qty, rate }
+  const [changingId, setChangingId] = useState(null);
+  const [busyId, setBusyId] = useState(null);
+
+  useEffect(() => {
+    api(`/api/purchase-orders/${po.id}`).then(d => {
+      setDetail(d);
+      setDrafts(Object.fromEntries(d.items.map(it => [it.id, { qty: String(it.qty), rate: String(it.rate) }])));
+    }).catch(() => {});
+  }, [po.id]);
+
+  function setDraft(id, patch) { setDrafts(d => ({ ...d, [id]: { ...d[id], ...patch } })); }
+
+  async function saveLine(line) {
+    setBusyId(line.id);
+    try {
+      await api(`/api/purchase-orders/${po.id}`, {
+        method: 'PATCH',
+        body: { action: 'edit_item', po_item_id: line.id, qty: Number(drafts[line.id].qty), rate: Number(drafts[line.id].rate) },
+      });
+      showToast('Line updated'); router.refresh();
+      const d = await api(`/api/purchase-orders/${po.id}`); setDetail(d);
+    } catch (err) { showToast(err.message, 'error'); }
+    setBusyId(null);
+  }
+
+  return (
+    <Dialog open onOpenChange={o => !o && onClose()}>
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+        <DialogHeader><DialogTitle>Edit {po.po_no} — draft</DialogTitle></DialogHeader>
+        <div className="flex flex-col gap-3">
+          {!detail && <p className="text-sm text-muted-foreground">Loading…</p>}
+          {detail?.items.map(line => (
+            <div key={line.id} className="flex flex-col gap-2 rounded-md border p-3 text-sm">
+              <p className="font-medium">{line.description}</p>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="flex flex-col gap-1">
+                  <Label className="text-xs">Qty</Label>
+                  <Input type="number" min="0" step="0.01" value={drafts[line.id]?.qty || ''}
+                    onChange={e => setDraft(line.id, { qty: e.target.value })} />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <Label className="text-xs">Rate</Label>
+                  <Input type="number" min="0" step="0.01" value={drafts[line.id]?.rate || ''}
+                    onChange={e => setDraft(line.id, { rate: e.target.value })} />
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button size="sm" disabled={busyId === line.id} onClick={() => saveLine(line)}>Save</Button>
+                {line.bom_item_id && (
+                  <button type="button" className="text-xs text-primary hover:underline"
+                    onClick={() => setChangingId(changingId === line.id ? null : line.id)}>
+                    {changingId === line.id ? 'Cancel change' : 'Change supplier'}
+                  </button>
+                )}
+              </div>
+              {changingId === line.id && (
+                <ChangeSupplierPanel line={line} suppliers={suppliers}
+                  onDone={async () => {
+                    setChangingId(null);
+                    router.refresh();
+                    // Moving the PO's last line onto a different supplier's draft deletes this PO
+                    // (same "empty draft cleans itself up" behavior removeItemFromDraftPO already
+                    // has everywhere else) — re-fetching it 404s, so close the whole editor instead
+                    // of trying to refresh a PO that may no longer exist.
+                    try {
+                      const d = await api(`/api/purchase-orders/${po.id}`);
+                      setDetail(d);
+                      setDrafts(Object.fromEntries(d.items.map(it => [it.id, { qty: String(it.qty), rate: String(it.rate) }])));
+                    } catch {
+                      onClose();
+                      onPoGone();
+                    }
+                  }}
+                  onCancel={() => setChangingId(null)} />
+              )}
+            </div>
+          ))}
+        </div>
+        <DialogFooter><Button variant="outline" onClick={onClose}>Done</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // The PO detail view — a centered PDF.js preview (PdfPreview) rather than an embedded iframe, so it
 // renders regardless of the browser's own PDF-viewer/download settings, plus real width for a dense
 // PO. Every status action lives in the footer alongside the shared Download button. Reuses whatever
 // handler/busy state the parent (PurchaseOrders) passes down — no duplicated logic, just relocated.
-function PODrawer({ po, onClose, onIssue, onUnissue, onCancel, busy }) {
+function PODrawer({ po, suppliers, router, onClose, onIssue, onUnissue, onCancel, busy }) {
+  const [editing, setEditing] = useState(false);
   return (
-    <PdfPreview
-      open
-      onOpenChange={o => !o && onClose()}
-      url={`/api/purchase-orders/${po.id}/pdf`}
-      title={po.po_no}
-      description={
-        <>
-          {po.supplier_name} · {po.item_count} item{po.item_count !== 1 ? 's' : ''} · {formatMoney(po.subtotal)}
-          {' · '}
-          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${PO_TONE[po.status] || ''}`}>{po.status}</span>
-        </>
-      }
-      filename={`${po.po_no.replace(/\//g, '-')}.pdf`}
-      actions={
-        <>
-          {po.status === 'draft' && (
-            <Button disabled={busy} onClick={() => onIssue(po)}>{busy ? 'Issuing…' : 'Issue'}</Button>
-          )}
-          {po.status === 'issued' && (
-            <Button variant="outline" disabled={busy} onClick={() => onUnissue(po)}>Cancel Issue</Button>
-          )}
-          {po.status !== 'cancelled' && (
-            <Button variant="ghost" className="text-destructive hover:text-destructive" disabled={busy} onClick={() => onCancel(po)}>Cancel PO</Button>
-          )}
-        </>
-      }
-    />
+    <>
+      <PdfPreview
+        open
+        onOpenChange={o => !o && onClose()}
+        url={`/api/purchase-orders/${po.id}/pdf`}
+        title={po.po_no}
+        description={
+          <>
+            {po.supplier_name} · {po.item_count} item{po.item_count !== 1 ? 's' : ''} · {formatMoney(po.subtotal)}
+            {' · '}
+            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${PO_TONE[po.status] || ''}`}>{po.status}</span>
+          </>
+        }
+        filename={`${po.po_no.replace(/\//g, '-')}.pdf`}
+        actions={
+          <>
+            {/* Group 5 Bundle A (5.3) — draft-only, per D11: an issued PO is locked, Cancel Issue
+                gets you back to draft first. */}
+            {po.status === 'draft' && (
+              <Button variant="outline" disabled={busy} onClick={() => setEditing(true)}>Edit</Button>
+            )}
+            {po.status === 'draft' && (
+              <Button disabled={busy} onClick={() => onIssue(po)}>{busy ? 'Issuing…' : 'Issue'}</Button>
+            )}
+            {po.status === 'issued' && (
+              <Button variant="outline" disabled={busy} onClick={() => onUnissue(po)}>Cancel Issue</Button>
+            )}
+            {po.status !== 'cancelled' && (
+              <Button variant="ghost" className="text-destructive hover:text-destructive" disabled={busy} onClick={() => onCancel(po)}>Cancel PO</Button>
+            )}
+          </>
+        }
+      />
+      {editing && (
+        <EditPoLinesDialog po={po} suppliers={suppliers} router={router}
+          onClose={() => setEditing(false)} onPoGone={onClose} />
+      )}
+    </>
   );
 }
 
-function PurchaseOrders({ orders, q, view }) {
+function PurchaseOrders({ orders, q, view, suppliers }) {
   const router = useRouter();
   const [busy, setBusy] = useState(null);
   const [viewingId, setViewingId] = useState(null);
@@ -432,7 +675,7 @@ function PurchaseOrders({ orders, q, view }) {
         ))}
       </CardContent>
       {viewing && (
-        <PODrawer po={viewing} onClose={() => setViewingId(null)}
+        <PODrawer po={viewing} suppliers={suppliers} router={router} onClose={() => setViewingId(null)}
           onIssue={issue} onUnissue={unissue} onCancel={cancel} busy={busy === viewing.id} />
       )}
     </Card>
@@ -448,7 +691,7 @@ function State({ items, router, q, statusFilter }) {
     || it.material_description.toLowerCase().includes(needle)
     || it.project_no.toLowerCase().includes(needle)
     || (it.po_ref || '').toLowerCase().includes(needle))
-    .filter(it => statusFilter === 'all' || (it.purchase_status || 'PENDING') === statusFilter);
+    .filter(it => statusFilter === 'all' || (it.purchase_status || DEFAULT_PURCHASE_STATUS) === statusFilter);
 
   async function setStatus(it, value) {
     setBusy(it.id);
@@ -484,11 +727,11 @@ function State({ items, router, q, statusFilter }) {
               <span className="w-24 shrink-0 truncate text-xs text-muted-foreground">{it.project_no}</span>
               <span className="w-28 shrink-0 truncate text-xs text-muted-foreground">{it.po_ref || '—'}</span>
               <span className="w-32 shrink-0 truncate text-xs text-muted-foreground">{it.selected_supplier_name || '—'}</span>
-              <Select value={it.purchase_status || 'PENDING'} disabled={busy === it.id} onValueChange={v => setStatus(it, v)}>
+              <Select value={it.purchase_status || DEFAULT_PURCHASE_STATUS} disabled={busy === it.id} onValueChange={v => setStatus(it, v)}>
                 <SelectTrigger className="h-7 w-28 shrink-0 text-xs">
                   <SelectValue>
-                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${STATUS_TONE[it.purchase_status] || STATUS_TONE.PENDING}`}>
-                      {it.purchase_status || 'PENDING'}
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${STATUS_TONE[it.purchase_status] || STATUS_TONE[DEFAULT_PURCHASE_STATUS]}`}>
+                      {it.purchase_status || DEFAULT_PURCHASE_STATUS}
                     </span>
                   </SelectValue>
                 </SelectTrigger>
@@ -642,34 +885,34 @@ function Suppliers({ suppliers, quotes, q: search }) {
 // One search placeholder per tab — same input, same position, different meaning depending on what's
 // active (§4, point 4). Keyed by tab value.
 const SEARCH_PLACEHOLDER = {
-  sourcing: 'Search description or project…',
+  enquiry: 'Search description or project…',
   selection: 'Search description or project…',
   orders: 'Search PO number or supplier…',
   state: 'Search description, project, PO…',
   suppliers: 'Search supplier name…',
 };
 
-export default function ProcurementWorkspace({ sourcingItems, suppliers, purchaseOrders, quotes }) {
+export default function ProcurementWorkspace({ sourcingItems, suppliers, purchaseOrders, quotes, rfqSummaryByItem = {} }) {
   const router = useRouter();
-  const [tab, setTab] = useState('sourcing');
+  const [tab, setTab] = useState('enquiry');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [poView, setPoView] = useState('active');
 
   const quotesByItem = {};
   for (const quote of quotes) (quotesByItem[quote.bom_item_id] ||= []).push(quote);
-  const activeItems = sourcingItems.filter(it => it.purchase_status !== 'CANCELLED');
+  const activeItems = sourcingItems.filter(it => it.purchase_status !== 'Cancelled');
   const fulfilledCount = purchaseOrders.filter(po => po.fulfilled).length;
   const activeOrderCount = purchaseOrders.length - fulfilledCount;
 
   return (
     <Tabs value={tab} onValueChange={setTab} className="flex-col gap-4">
       <TabsList variant="line" className="w-full justify-start px-0">
-        <TabsTrigger value="sourcing" className="flex-none">Sourcing</TabsTrigger>
+        <TabsTrigger value="enquiry" className="flex-none">Enquiry</TabsTrigger>
         <TabsTrigger value="selection" className="flex-none">Selection</TabsTrigger>
         <TabsTrigger value="orders" className="flex-none">Purchase Orders</TabsTrigger>
         <TabsTrigger value="state" className="flex-none">Status</TabsTrigger>
-        {/* Suppliers is a real, standalone feature (§ Phase 2), not part of the Sourcing→Status
+        {/* Suppliers is a real, standalone feature (§ Phase 2), not part of the Enquiry→Status
             lifecycle the other four tabs form — kept visually separate at the far right of the same
             bar rather than a floating sixth item or a second row. */}
         <TabsTrigger value="suppliers" className="ml-auto flex-none">Suppliers</TabsTrigger>
@@ -699,9 +942,9 @@ export default function ProcurementWorkspace({ sourcingItems, suppliers, purchas
           </div>
         )}
       </div>
-      <TabsContent value="sourcing"><Sourcing items={activeItems} quotesByItem={quotesByItem} suppliers={suppliers} router={router} q={search} /></TabsContent>
+      <TabsContent value="enquiry"><Enquiry items={activeItems} quotesByItem={quotesByItem} suppliers={suppliers} rfqSummaryByItem={rfqSummaryByItem} router={router} q={search} /></TabsContent>
       <TabsContent value="selection"><Selection items={activeItems} quotesByItem={quotesByItem} router={router} q={search} /></TabsContent>
-      <TabsContent value="orders"><PurchaseOrders orders={purchaseOrders} q={search} view={poView} /></TabsContent>
+      <TabsContent value="orders"><PurchaseOrders orders={purchaseOrders} q={search} view={poView} suppliers={suppliers} /></TabsContent>
       <TabsContent value="state"><State items={sourcingItems} router={router} q={search} statusFilter={statusFilter} /></TabsContent>
       <TabsContent value="suppliers"><Suppliers suppliers={suppliers} quotes={quotes} q={search} /></TabsContent>
     </Tabs>

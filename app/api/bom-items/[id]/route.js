@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getSessionUser, requireDepartment } from '@/lib/auth';
 import { audit } from '@/lib/usb';
-import { editableBomFields } from '@/lib/bom-fields.mjs';
+import { editableBomFields, PURCHASE_STATUSES } from '@/lib/bom-fields.mjs';
 
 // Field-level department scoping — the trust boundary of the PMB module. A head may only write
 // the columns their department owns (BOM_FIELD_OWNERS); a PM writes anything. Enforced here, not
@@ -26,12 +26,17 @@ export async function PATCH(req, { params }) {
   if (keys.includes('material_description') && !String(b.material_description || '').trim()) {
     return NextResponse.json({ error: 'Description cannot be empty' }, { status: 400 });
   }
+  // V2-CHANGES.md D4 (Phase 5.0): purchase_status is now a mixed-case enum (Enquiry/Comparison/
+  // Ordered/Transit/Received/Cancelled/In-Stock) — no more blind .toUpperCase(), validate against
+  // the known list instead so a bad value 400s here rather than landing as silent junk.
+  if (keys.includes('purchase_status') && b.purchase_status && !PURCHASE_STATUSES.includes(b.purchase_status)) {
+    return NextResponse.json({ error: `Unknown purchase_status: ${b.purchase_status}` }, { status: 400 });
+  }
 
   const changed = {};
   for (const k of keys) {
     let v = typeof b[k] === 'string' ? b[k].trim() : b[k];
     if (v === '') v = null;
-    if (k === 'purchase_status' && v) v = String(v).toUpperCase();
     changed[k] = v;
   }
   await execute(

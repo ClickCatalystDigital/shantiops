@@ -1,3 +1,5 @@
+// app/api/suppliers/route.js
+
 // Provisional suppliers table (§5a) — the client's real supplier list is coming separately and
 // will be mapped onto this additively. UNIQUE(name) exists specifically so "Kirloskar" and
 // "Kirloskar Bros" can't drift into two rows before that happens.

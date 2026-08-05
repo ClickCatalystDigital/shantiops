@@ -1,3 +1,5 @@
+// app/api/purchase-orders/route.js
+
 // Create a draft PO from a set of already supplier-selected BOM items (any project — a PO can
 // span several, the same MS angle bought once for multiple boilers). All items must already carry
 // a selected_quote_id (via /select-supplier) and share one supplier — that's what makes a single

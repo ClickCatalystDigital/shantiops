@@ -1,3 +1,5 @@
+// app/api/packing/from-bom/route.js
+
 import { NextResponse } from 'next/server';
 import { execute, queryAll, queryOne, nextNumber } from '@/lib/db';
 import { getSessionUser, requireDepartment } from '@/lib/auth';

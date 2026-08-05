@@ -42,6 +42,11 @@ export default function Nav({ user }) {
   // than living inside one project, same mechanism as Procurement above. PMs and every other
   // department see no new nav item.
   const inQc = departments.includes('QC');
+  // Group 5 Bundle A — the unified PR flow's shared "Requests" surface for Eng/Design/Stores
+  // (app/pr/page.js). Excludes anyone who already has Procurement's own /requests tab (disjoint in
+  // practice today, but cheap to guard) so a dual-department head never sees two tabs both labeled
+  // "Requests" pointing at different pages.
+  const inRequestDept = !inProcurement && ['Engineering', 'Design', 'Stores'].some(d => departments.includes(d));
   // A multi-department head narrows whichever section they're currently in — Tasks or
   // Operations — by department, one shared row of chips rather than a duplicate row per
   // section (that read as unlabeled twins of each other when both existed at once).
@@ -64,12 +69,11 @@ export default function Nav({ user }) {
         { href: '/', label: 'Operations', icon: LayoutDashboardIcon },
         { href: '/projects', label: 'Projects', icon: FolderKanbanIcon },
         ...(inProduction ? [{ href: '/production/workers', label: 'Workers', icon: HardHatIcon }] : []),
-        // New-item/cancel requests from Engineering/Design (§4.0) — same tab-gating mechanism as
-        // Procurement below; a separate nav tab rather than a Procurement sub-tab since it's where
-        // requests wait before they even become Procurement's problem. Ordered before Procurement —
-        // it's the inbox that feeds it, so it reads left-to-right as the actual workflow.
-        ...(inProcurement ? [{ href: '/requests', label: 'Requests', icon: InboxIcon }] : []),
+        // The old /requests tab (new-item + cancel-request inbox) is retired — Group 5 Bundle A's
+        // PR flow and Bundle B's direct-cancel action both bypass the accept-then-materialize gate
+        // entirely, so there's nothing left to accept.
         ...(inProcurement ? [{ href: '/procurement', label: 'Procurement', icon: ShoppingCartIcon }] : []),
+        ...(inRequestDept ? [{ href: '/pr', label: 'Requests', icon: InboxIcon }] : []),
         // V2-CHANGES.md Group 1 — labeled "Certificates" (was "QC"), route/gate unchanged. The QC
         // *department* elsewhere (project-page tab, qc_records, milestones) keeps its own name —
         // this is just the nav label for the cross-project Test Certificate bank.

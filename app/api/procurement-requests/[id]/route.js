@@ -1,7 +1,7 @@
 // Accept or reject a new-item procurement request (§4.0). Accepting is the acceptance gate itself:
-// it materializes the request into a real bom_items row (purchase_status='PENDING'), which is what
-// makes it show up anywhere in Procurement — nothing else needs to "hide" a pending request, it
-// simply isn't a BOM row yet. Rejecting just closes it out, no BOM row is ever created.
+// it materializes the request into a real bom_items row (purchase_status='Enquiry', D4), which is
+// what makes it show up anywhere in Procurement — nothing else needs to "hide" a pending request,
+// it simply isn't a BOM row yet. Rejecting just closes it out, no BOM row is ever created.
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getSessionUser, requireDepartment } from '@/lib/auth';
@@ -20,7 +20,7 @@ export async function PATCH(req, { params }) {
   if (b.action === 'accept') {
     const { lastId } = await execute(
       `INSERT INTO bom_items (project_id, material_description, moc, size_spec, qty_text, pr_ref, purchase_status)
-       VALUES (?, ?, ?, ?, ?, ?, 'PENDING')`,
+       VALUES (?, ?, ?, ?, ?, ?, 'Enquiry')`,
       [request.project_id, request.material_description, request.moc, request.size_spec, request.qty_text, request.pr_ref]
     );
     const bomItemId = Number(lastId);

@@ -1,7 +1,7 @@
 // Accept one or more Procurement cancel-requests in one action (the Manage tab's "select all" —
 // see components/ProcurementQueue.jsx): each task is marked done and its linked BOM item's
-// purchase_status flips to CANCELLED. Procurement-only — this is Procurement acting on its own
-// purchase_status field, same authority the inline BOM status dropdown already gives them.
+// purchase_status flips to Cancelled (D4). Procurement-only — this is Procurement acting on its
+// own purchase_status field, same authority the inline BOM status dropdown already gives them.
 import { NextResponse } from 'next/server';
 import { execute, queryAll } from '@/lib/db';
 import { getSessionUser, isInternal, isHead, canAccessDepartment } from '@/lib/auth';
@@ -27,7 +27,7 @@ export async function POST(req) {
 
   for (const t of tasks) {
     await execute('UPDATE tasks SET status = ? WHERE id = ?', ['done', t.id]);
-    await execute('UPDATE bom_items SET purchase_status = ? WHERE id = ?', ['CANCELLED', t.bom_item_id]);
+    await execute('UPDATE bom_items SET purchase_status = ? WHERE id = ?', ['Cancelled', t.bom_item_id]);
     await audit('bom_item_cancelled', { actor: user.username, detail: `task ${t.id} (${t.title}): item ${t.bom_item_id}` });
   }
 

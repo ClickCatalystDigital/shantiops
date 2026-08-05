@@ -1,3 +1,5 @@
+// app/api/supplier-quotes/route.js
+
 // Log a quote — one item or a batch (one supplier quoting several items at once), same endpoint:
 // the body always carries `items`, a single-element array for the single-item case. Append-only,
 // nothing here is ever updated or deleted — this is the price-history log (§5a).
@@ -5,6 +7,7 @@ import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getSessionUser, requireDepartment } from '@/lib/auth';
 import { audit } from '@/lib/usb';
+import { advancePurchaseStatus } from '@/lib/procurement';
 
 export async function POST(req) {
   const user = getSessionUser();
@@ -43,6 +46,10 @@ export async function POST(req) {
         b.quote_source || null, b.valid_until || null, b.notes || null, batchId, user.username]
     );
     ids.push(Number(lastId));
+    // V2-CHANGES.md Phase 5.1 — logging a quote is a real forward action now, not just data
+    // sourcing goes on to read later: it's Procurement's first real signal an item has moved from
+    // "still need to contact suppliers" to "at least one quote is in."
+    await advancePurchaseStatus(bomItem.id, 'Comparison');
   }
   if (!ids.length) return NextResponse.json({ error: 'No valid items' }, { status: 400 });
 

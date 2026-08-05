@@ -17,7 +17,11 @@ import StagesPanel from './StagesPanel';
 import ProcurementQueue from './ProcurementQueue';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 
-const BOM_DEPARTMENTS = ['Stores', 'Production'];
+const BOM_DEPARTMENTS = ['Stores', 'Production', 'Design'];
+// D10 (Group 5 Bundle B) — Eng/Design can cancel a BOM item directly (Enquiry/Comparison/Ordered
+// only, enforced server-side). Design has no BOM_FIELD_OWNERS entry (bomFields comes back empty for
+// them), so this is what grants them anything to do here at all beyond read-only visibility.
+const CANCEL_DEPARTMENTS = ['Engineering', 'Design'];
 
 export default function DepartmentPanel({
   department, milestones, head = false,
@@ -34,16 +38,17 @@ export default function DepartmentPanel({
   const deptTemplates = stageTemplates.filter(t => t.department === department);
   const deptTemplateIds = new Set(deptTemplates.map(t => t.id));
   const deptTemplateItems = stageTemplateItems.filter(i => deptTemplateIds.has(i.template_id));
+  const canCancel = CANCEL_DEPARTMENTS.includes(department);
 
   return (
     <div className="flex flex-col gap-6">
       {department === 'Engineering' && (
         <BomPanel projectId={projectId} bom={bom} pending={pending} canUpload={canUploadBom}
-          editableFields={bomFields} imports={bomImports} />
+          editableFields={bomFields} imports={bomImports} canCancel={canCancel} />
       )}
 
       {department === 'Procurement' && bom.length > 0 && (
-        <ProcurementQueue bom={bom} tasks={deptTasks} />
+        <ProcurementQueue bom={bom} />
       )}
 
       {showBom && (
@@ -51,7 +56,7 @@ export default function DepartmentPanel({
           <CardHeader><CardTitle>Master BOM — {department}</CardTitle></CardHeader>
           <CardContent>
             <BomTable projectId={projectId} bom={bom} pendingIds={pending.map(p => p.id)}
-              editableFields={bomFields} department={department} />
+              editableFields={bomFields} department={department} canCancel={canCancel} />
           </CardContent>
         </Card>
       )}

@@ -4,7 +4,7 @@
 // same material gets bought once for several boilers, not per project.
 import { redirect } from 'next/navigation';
 import { getSessionUser, canAccessDepartment, roleHome } from '@/lib/auth';
-import { getSourcingItems, getSuppliers, getPurchaseOrders, getAllQuotes } from '@/lib/data';
+import { getSourcingItems, getSuppliers, getPurchaseOrders, getAllQuotes, getRfqSummaryByItem } from '@/lib/data';
 import PageHeader from '@/components/PageHeader';
 import ProcurementWorkspace from '@/components/ProcurementWorkspace';
 
@@ -14,11 +14,12 @@ export default async function ProcurementPage() {
   const user = getSessionUser();
   if (!canAccessDepartment(user, 'Procurement')) redirect(roleHome(user));
 
-  const [sourcingItems, suppliers, purchaseOrders, quotes] = await Promise.all([
+  const [sourcingItems, suppliers, purchaseOrders, quotes, rfqSummaryByItem] = await Promise.all([
     getSourcingItems(),
     getSuppliers(),
     getPurchaseOrders(),
     getAllQuotes(),
+    getRfqSummaryByItem(),
   ]);
 
   return (
@@ -29,6 +30,7 @@ export default async function ProcurementPage() {
         suppliers={suppliers}
         purchaseOrders={purchaseOrders}
         quotes={quotes}
+        rfqSummaryByItem={rfqSummaryByItem}
       />
     </main>
   );

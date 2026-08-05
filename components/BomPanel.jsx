@@ -21,7 +21,7 @@ function parseBom(text) {
   }).filter(r => r.material_description);
 }
 
-export default function BomPanel({ projectId, bom, pending, canUpload, editableFields = [], imports = [] }) {
+export default function BomPanel({ projectId, bom, pending, canUpload, editableFields = [], imports = [], canCancel = false }) {
   const router = useRouter();
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
@@ -53,7 +53,7 @@ export default function BomPanel({ projectId, bom, pending, canUpload, editableF
           </p>
         ) : (
           <BomTable projectId={projectId} bom={bom} pendingIds={pending.map(p => p.id)}
-            editableFields={editableFields} department="Engineering" />
+            editableFields={editableFields} department="Engineering" canCancel={canCancel} />
         )}
 
         {imports.length > 0 && (

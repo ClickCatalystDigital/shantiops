@@ -7,7 +7,7 @@
 import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, showToast } from '@/lib/client';
-import { BOM_STATUSES, visibleBomColumns, showPackingColumn } from '@/lib/bom-fields.mjs';
+import { BOM_STATUSES, STATUS_TONE, DEFAULT_PURCHASE_STATUS, visibleBomColumns, showPackingColumn } from '@/lib/bom-fields.mjs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -15,7 +15,13 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { PencilIcon, TrashIcon } from '@heroicons/react/24/solid';
-import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react';
+import { ChevronLeftIcon, ChevronRightIcon, XCircleIcon } from 'lucide-react';
+
+// D10 (Group 5 Bundle B, Phase 5.4) — cancellable at Enquiry/Comparison/Ordered, blocked once
+// Transit (shipped). Mirrors the API route's own CANCELLABLE set (app/api/bom-items/[id]/cancel) —
+// duplicated here only so the button can hide itself without a round trip; the route is the real
+// gate.
+const CANCELLABLE = new Set(['Enquiry', 'Comparison', 'Ordered']);
 
 const FIELD_LABELS = {
   section: 'Section', group_label: 'Group', material_description: 'Description',
@@ -27,14 +33,7 @@ const FIELD_LABELS = {
 // Visible data columns, in spreadsheet order (section/group render as divider rows instead).
 const COLUMNS = ['moc', 'size_spec', 'make', 'qty_text', 'pr_ref', 'po_ref',
   'grn_ref', 'grn_qty_text', 'pending_qty_text', 'bqtc_ref', 'issued_ref', 'received_ref', 'remarks'];
-const STATUS_TONE = {
-  CLOSED: 'bg-success/10 text-success ring-success/20',
-  RECEIVED: 'bg-success/10 text-success ring-success/20',
-  TRANSIT: 'bg-warning/10 text-warning ring-warning/20',
-  CANCELLED: 'bg-danger/10 text-danger ring-danger/20',
-};
-
-export default function BomTable({ projectId, bom, pendingIds = [], editableFields = [], department }) {
+export default function BomTable({ projectId, bom, pendingIds = [], editableFields = [], department, canCancel = false }) {
   const router = useRouter();
   const [q, setQ] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -56,11 +55,14 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
   const canStructure = editableFields.includes('material_description');
   // Dialog fields: the viewer's editable set, minus status (inline select covers it).
   const dialogFields = editableFields.filter(f => f !== 'purchase_status');
+  // The Actions column exists for edit/delete (dialogFields) OR the D10 cancel button — Design has
+  // no editable fields at all (no BOM_FIELD_OWNERS entry) but still needs this column for Cancel.
+  const hasActions = dialogFields.length > 0 || canCancel;
 
   const needle = q.trim().toLowerCase();
   const rows = bom.filter(b => {
     if (statusFilter !== 'all') {
-      const st = b.purchase_status || 'PENDING'; // blank counts as pending
+      const st = b.purchase_status || DEFAULT_PURCHASE_STATUS; // blank counts as Enquiry
       if (st !== statusFilter) return false;
     }
     if (!needle) return true;
@@ -74,7 +76,12 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
   for (const b of rows) {
     const section = b.section || '';
     if (section !== lastSection) {
-      rendered.push({ divider: 'section', label: section || 'BOM', key: `s-${section}` });
+      // Pre-existing bug, fixed in passing: a section name that reappears non-contiguously
+      // (BOILER -> BOM -> MOUNTINGS -> BOILER again) used to collide on the same `s-${section}`
+      // key across separate divider rows — React's "two children with the same key" warning,
+      // caught live while verifying Bundle B on a Design view. `b.id` (the first row of this new
+      // run) makes every occurrence unique, same fix the group divider below already had.
+      rendered.push({ divider: 'section', label: section || 'BOM', key: `s-${section}-${b.id}` });
       lastSection = section; lastGroup = undefined;
     }
     if ((b.group_label || '') !== lastGroup) {
@@ -120,6 +127,15 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
     } catch (err) { showToast(err.message, 'error'); }
   }
 
+  async function cancelItem(item) {
+    if (!window.confirm(`Cancel "${item.material_description}"? This can't be undone.`)) return;
+    try {
+      await api(`/api/bom-items/${item.id}/cancel`, { method: 'POST' });
+      showToast('Item cancelled');
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+  }
+
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -160,18 +176,18 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
                   then shifts left to 27rem to close the gap. */}
               <TableHead className="sticky left-0 z-10 w-12 bg-background">#</TableHead>
               <TableHead className="sticky left-12 z-10 w-64 min-w-64 max-w-64 bg-background">Description</TableHead>
-              <TableHead className={`w-32 bg-background md:sticky md:left-[19rem] md:z-10 ${!showPacking && dialogFields.length === 0 ? 'md:border-r' : ''}`}>Status</TableHead>
+              <TableHead className={`w-32 bg-background md:sticky md:left-[19rem] md:z-10 ${!showPacking && !hasActions ? 'md:border-r' : ''}`}>Status</TableHead>
               {showPacking && (
-                <TableHead className={`w-24 bg-background md:sticky md:left-[27rem] md:z-10 ${dialogFields.length ? '' : 'md:border-r'}`}>Packing</TableHead>
+                <TableHead className={`w-24 bg-background md:sticky md:left-[27rem] md:z-10 ${hasActions ? '' : 'md:border-r'}`}>Packing</TableHead>
               )}
-              {(dialogFields.length > 0) && <TableHead className={`w-20 bg-background md:sticky ${actionsLeft} md:z-10 md:border-r`} />}
+              {hasActions && <TableHead className={`w-20 bg-background md:sticky ${actionsLeft} md:z-10 md:border-r`} />}
               {columns.map(c => <TableHead key={c}>{FIELD_LABELS[c]}</TableHead>)}
             </TableRow>
           </TableHeader>
           <TableBody>
             {rendered.map((r, i) => r.divider ? (
               <TableRow key={r.key} className="hover:bg-transparent">
-                <TableCell colSpan={columns.length + (showPacking ? 4 : 3) + (dialogFields.length ? 1 : 0)}
+                <TableCell colSpan={columns.length + (showPacking ? 4 : 3) + (hasActions ? 1 : 0)}
                   className={r.divider === 'section'
                     ? 'bg-muted/50 font-semibold'
                     : 'pl-6 text-xs font-medium uppercase tracking-wide text-muted-foreground'}>
@@ -190,7 +206,7 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
                     <div className="text-xs font-normal text-muted-foreground">Supplier: {r.selected_supplier_name}</div>
                   )}
                 </TableCell>
-                <TableCell className={`w-32 bg-background md:sticky md:left-[19rem] md:z-10 ${!showPacking && dialogFields.length === 0 ? 'md:border-r' : ''}`}>
+                <TableCell className={`w-32 bg-background md:sticky md:left-[19rem] md:z-10 ${!showPacking && !hasActions ? 'md:border-r' : ''}`}>
                   {canInlineStatus ? (
                     <Select value={r.purchase_status || 'none'} onValueChange={v => setStatus(r, v)}>
                       <SelectTrigger className="h-7 w-28 text-xs"><SelectValue /></SelectTrigger>
@@ -201,26 +217,35 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
                     </Select>
                   ) : (
                     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${STATUS_TONE[r.purchase_status] || 'bg-muted text-muted-foreground ring-border'}`}>
-                      {r.purchase_status || 'PENDING'}
+                      {r.purchase_status || DEFAULT_PURCHASE_STATUS}
                     </span>
                   )}
                 </TableCell>
                 {showPacking && (
-                  <TableCell className={`w-24 bg-background md:sticky md:left-[27rem] md:z-10 ${dialogFields.length ? '' : 'md:border-r'}`}>
+                  <TableCell className={`w-24 bg-background md:sticky md:left-[27rem] md:z-10 ${hasActions ? '' : 'md:border-r'}`}>
                     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${packed.has(r.id) ? 'bg-success/10 text-success ring-success/20' : 'bg-warning/10 text-warning ring-warning/20'}`}>
                       {packed.has(r.id) ? 'Packed' : 'Pending'}
                     </span>
                   </TableCell>
                 )}
-                {dialogFields.length > 0 && (
+                {hasActions && (
                   <TableCell className={`w-20 whitespace-nowrap bg-background md:sticky ${actionsLeft} md:z-10 md:border-r`}>
                     <div className="flex items-center gap-1">
-                      <Button size="icon-sm" variant="ghost" aria-label="Edit item" onClick={() => setEditing(r)}>
-                        <PencilIcon className="size-3.5" />
-                      </Button>
+                      {dialogFields.length > 0 && (
+                        <Button size="icon-sm" variant="ghost" aria-label="Edit item" onClick={() => setEditing(r)}>
+                          <PencilIcon className="size-3.5" />
+                        </Button>
+                      )}
                       {canStructure && (
                         <Button size="icon-sm" variant="ghost" className="text-danger" aria-label="Delete item" onClick={() => remove(r)}>
                           <TrashIcon className="size-3.5" />
+                        </Button>
+                      )}
+                      {/* D10 — Eng/Design cancel directly, no Procurement accept step. Hidden once
+                          the item is past Ordered (Transit+), or already terminal. */}
+                      {canCancel && CANCELLABLE.has(r.purchase_status || DEFAULT_PURCHASE_STATUS) && (
+                        <Button size="icon-sm" variant="ghost" className="text-danger" aria-label="Cancel item" onClick={() => cancelItem(r)}>
+                          <XCircleIcon className="size-3.5" />
                         </Button>
                       )}
                     </div>

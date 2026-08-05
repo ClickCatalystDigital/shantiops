@@ -6,6 +6,7 @@ import StatusBadge from '@/components/StatusBadge';
 import DispatchBoard from '@/components/DispatchBoard';
 import TicketsPanel from '@/components/TicketsPanel';
 import ProcurementFlow from '@/components/ProcurementFlow';
+import MasterBomTable from '@/components/MasterBomTable';
 import PageHeader from '@/components/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -112,36 +113,7 @@ export default async function Home({ searchParams }) {
           breakdown below, which is the least useful thing here for a quick status check. */}
       {procurementFlow && <ProcurementFlow counts={procurementFlow} />}
 
-      {bomWork.length > 0 && (
-        <Card>
-          <CardHeader className="py-4"><CardTitle className="text-base">Master BOM</CardTitle></CardHeader>
-          <CardContent className="flex flex-col divide-y pt-0">
-            {/* Stacked closed/transit/pending bar per project (§ Phase 4 point 8) — same
-                success/warning/muted visual language as BomProgress.jsx's per-section rollup on the
-                project page, at project-list granularity instead of section granularity. */}
-            {bomWork.map(w => (
-              <Link key={w.id} href={`/projects/${w.id}`}
-                className="flex flex-col gap-1.5 py-2.5 text-sm transition-colors hover:bg-muted/40 -mx-2 px-2 rounded">
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                  <span className="font-medium text-primary">{w.project_no}</span>
-                  <span className="text-muted-foreground">{w.customer_name}</span>
-                  <span className="ml-auto text-xs tnum">
-                    {w.total === 0
-                      ? <span className="text-warning font-medium">BOM not uploaded</span>
-                      : <span className="text-muted-foreground">{w.open} open item{w.open !== 1 ? 's' : ''}</span>}
-                  </span>
-                </div>
-                {w.total > 0 && (
-                  <div className="flex h-1.5 overflow-hidden rounded-full bg-muted">
-                    <div className="h-full bg-success" style={{ width: `${(w.closed / w.total) * 100}%` }} />
-                    <div className="h-full bg-warning" style={{ width: `${(w.transit / w.total) * 100}%` }} />
-                  </div>
-                )}
-              </Link>
-            ))}
-          </CardContent>
-        </Card>
-      )}
+      <MasterBomTable bomWork={bomWork} />
 
       {/* "Open Actions" (renamed from "Needs Attention") — each project card now splits into
           Urgent (not yet delayed, closest deadline first) on top and Needs Attention (already
