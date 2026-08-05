@@ -43,7 +43,7 @@ import { InfoIcon, ChevronRightIcon, ChevronDownIcon } from 'lucide-react';
 // any of this even becomes a bom_item, so it stays plain/neutral — there's no D4 status to echo
 // yet.
 const STAGES = [
-  { key: 'requests', label: 'Requests', tone: 'plain', help: 'New-item and cancel requests from other departments, waiting for Procurement to accept them.' },
+  // { key: 'requests', label: 'Requests', tone: 'plain', help: 'New-item and cancel requests from other departments, waiting for Procurement to accept them.' },
   { key: 'enquiry', label: 'Enquiry', tone: 'enquiry', help: 'Accepted items with no quote logged yet — Procurement still needs to contact suppliers.' },
   { key: 'comparison', label: 'Comparison', tone: 'comparison', help: 'At least one quote is in, but no supplier has been picked yet.' },
   { key: 'ordered', label: 'Ordered', tone: 'ordered', help: 'A supplier is selected and a purchase order has been drafted, not yet issued.' },
