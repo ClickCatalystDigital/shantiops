@@ -7,6 +7,7 @@ import {
   SunIcon, MoonIcon, SettingsIcon, LogOutIcon, LayoutGridIcon, BarChart3Icon,
   LayoutDashboardIcon, FolderKanbanIcon, PackageIcon, ShieldCheckIcon, InfoIcon,
   CalendarDaysIcon, HardHatIcon, ShoppingCartIcon, InboxIcon, FlaskConicalIcon,
+  TagIcon, WarehouseIcon, TrendingUpIcon, UsersIcon, CalculatorIcon,
 } from 'lucide-react';
 import { DEPARTMENTS } from '@/lib/milestones';
 import { cn } from '@/lib/utils';
@@ -42,6 +43,16 @@ export default function Nav({ user }) {
   // than living inside one project, same mechanism as Procurement above. PMs and every other
   // department see no new nav item.
   const inQc = departments.includes('QC');
+  // V2-CHANGES.md Group 6 — Sales' own Sale Order list (6.1) and Stores' own inventory workbench
+  // (6.2/6.3), same cross-project top-level-tab mechanism as Procurement/QC above.
+  const inSales = departments.includes('Sales');
+  const inMarketing = departments.includes('Marketing');
+  const inStores = departments.includes('Stores');
+  // V3_CHANGES.md §12 — HR's own cross-project workspace, same mechanism as Sales/Procurement/QC.
+  const inHr = departments.includes('HR');
+  // Calc — the engineering calculation engine, jointly owned by Design and Engineering (same
+  // cross-project top-level-tab mechanism as Procurement/QC/Sales/HR above).
+  const inCalc = departments.includes('Design') || departments.includes('Engineering');
   // Group 5 Bundle A — the unified PR flow's shared "Requests" surface for Eng/Design/Stores
   // (app/pr/page.js). Excludes anyone who already has Procurement's own /requests tab (disjoint in
   // practice today, but cheap to guard) so a dual-department head never sees two tabs both labeled
@@ -62,6 +73,7 @@ export default function Nav({ user }) {
         { href: '/', label: 'Operations', icon: LayoutDashboardIcon },
         { href: '/projects', label: 'Projects', icon: FolderKanbanIcon },
         { href: '/approvals', label: 'Approvals', icon: ShieldCheckIcon },
+        { href: '/calc', label: 'Calc Sheets', icon: CalculatorIcon },
       ]
     : [
         ...(hasTasks ? [{ href: '/production', label: 'Home', icon: CalendarDaysIcon }] : []),
@@ -73,6 +85,13 @@ export default function Nav({ user }) {
         // PR flow and Bundle B's direct-cancel action both bypass the accept-then-materialize gate
         // entirely, so there's nothing left to accept.
         ...(inProcurement ? [{ href: '/procurement', label: 'Procurement', icon: ShoppingCartIcon }] : []),
+        ...(inStores ? [{ href: '/stores', label: 'Inventory', icon: WarehouseIcon }] : []),
+        ...(inSales ? [{ href: '/sales', label: 'Sales', icon: TagIcon }] : []),
+        // V3_CHANGES.md A4 — shared by Sales and Marketing, same cross-project top-level-tab
+        // mechanism as Procurement/QC/Sales above; either department sees it once, not twice.
+        ...(inSales || inMarketing ? [{ href: '/pipeline', label: 'Pipeline', icon: TrendingUpIcon }] : []),
+        ...(inHr ? [{ href: '/hr', label: 'HR', icon: UsersIcon }] : []),
+        ...(inCalc ? [{ href: '/calc', label: 'Calc Sheets', icon: CalculatorIcon }] : []),
         ...(inRequestDept ? [{ href: '/pr', label: 'Requests', icon: InboxIcon }] : []),
         // V2-CHANGES.md Group 1 — labeled "Certificates" (was "QC"), route/gate unchanged. The QC
         // *department* elsewhere (project-page tab, qc_records, milestones) keeps its own name —

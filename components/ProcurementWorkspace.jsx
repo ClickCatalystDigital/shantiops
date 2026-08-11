@@ -32,10 +32,20 @@ import { PURCHASE_STATUSES as BOM_STATUSES, CLOSED_STATUSES, STATUS_TONE, DEFAUL
 // 5.1 — was Transit pre-5.1) or closed out, it's Status's job to show it, not theirs.
 const OUT_OF_PIPELINE = [...CLOSED_STATUSES, 'Ordered', 'Transit'];
 
+// V2-CHANGES.md Group 6 Phase 6.4 — source='stock'/'sas' items point at the sentinel system
+// project (project_is_system, from getSourcingItems) instead of a real one; reads better here as
+// "SO #.../Stock" than the sentinel's literal placeholder project_no.
+function projectLabel(it) {
+  if (!it.project_is_system) return it.project_no;
+  if (it.source === 'sas') return `SO #${it.sale_order_no || '—'}`;
+  if (it.source === 'stock') return 'Stock';
+  return it.project_no;
+}
+
 function ItemContext({ it }) {
   return (
     <p className="truncate text-xs text-muted-foreground">
-      {it.project_no} · {it.moc || '—'} · {it.size_spec || '—'} · {it.qty_text || '—'}
+      {projectLabel(it)} · {it.moc || '—'} · {it.size_spec || '—'} · {it.qty_text || '—'}
       {it.pr_ref && ` · PR ${it.pr_ref}`}
       {/* Group 5 Bundle A — the unified PR flow's structured pr_no/timestamp, distinct from the
           legacy free-text pr_ref above (kept for PMB-imported/manually-typed rows). */}
@@ -666,7 +676,9 @@ function PurchaseOrders({ orders, q, view, suppliers }) {
               <span className="text-muted-foreground"> · {po.supplier_name}</span>
             </span>
             <span className="w-24 shrink-0 truncate text-xs text-muted-foreground">
-              {po.project_count > 1 ? 'Multiple' : (po.first_project_no || '—')}
+              {po.project_count > 1 ? 'Multiple' : po.first_project_is_system
+                ? (po.first_bom_source === 'sas' ? `SO #${po.first_sale_order_no || '—'}` : 'Stock')
+                : (po.first_project_no || '—')}
             </span>
             <span className={`w-20 shrink-0 rounded-full px-2 py-0.5 text-center text-xs font-medium ${PO_TONE[po.status] || ''}`}>{po.status}</span>
             <span className="w-32 shrink-0 text-xs text-muted-foreground">{po.item_count} item{po.item_count !== 1 ? 's' : ''} · {formatMoney(po.subtotal)}</span>
@@ -724,7 +736,7 @@ function State({ items, router, q, statusFilter }) {
                   {it.pr_ref && ` · PR ${it.pr_ref}`}
                 </p>
               </div>
-              <span className="w-24 shrink-0 truncate text-xs text-muted-foreground">{it.project_no}</span>
+              <span className="w-24 shrink-0 truncate text-xs text-muted-foreground">{projectLabel(it)}</span>
               <span className="w-28 shrink-0 truncate text-xs text-muted-foreground">{it.po_ref || '—'}</span>
               <span className="w-32 shrink-0 truncate text-xs text-muted-foreground">{it.selected_supplier_name || '—'}</span>
               <Select value={it.purchase_status || DEFAULT_PURCHASE_STATUS} disabled={busy === it.id} onValueChange={v => setStatus(it, v)}>

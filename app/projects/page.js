@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { getProjectsWithStatus } from '@/lib/data';
+import { getProjectsWithStatus, getCustomers, getDesignProgressByProject } from '@/lib/data';
 import { getSessionUser, isPM } from '@/lib/auth';
 import StatusBadge from '@/components/StatusBadge';
 import NewProjectForm from '@/components/NewProjectForm';
@@ -12,12 +12,14 @@ export const dynamic = 'force-dynamic';
 export default async function Projects() {
   const user = getSessionUser();
   const canCreate = isPM(user);
-  const projects = await getProjectsWithStatus();
+  const [projects, customers, designProgress] = await Promise.all([
+    getProjectsWithStatus(), canCreate ? getCustomers() : [], getDesignProgressByProject(),
+  ]);
 
   return (
     <main className="container flex flex-col gap-6 py-8">
       <PageHeader title="Projects" description="Every customer order, design → commissioning">
-        {canCreate && <NewProjectForm />}
+        {canCreate && <NewProjectForm customers={customers} />}
       </PageHeader>
 
       {/* Mobile: cards. Desktop: table. */}
@@ -45,21 +47,26 @@ export default async function Projects() {
             <TableHeader>
               <TableRow>
                 <TableHead>Project</TableHead><TableHead>Customer</TableHead>
-                <TableHead>Description</TableHead><TableHead>Order Date</TableHead><TableHead>Status</TableHead>
+                <TableHead>Description</TableHead><TableHead>Order Date</TableHead>
+                <TableHead>Design Progress</TableHead><TableHead>Status</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {projects.map(p => (
-                <TableRow key={p.id}>
-                  <TableCell><Link href={`/projects/${p.id}`} className="font-medium text-primary hover:underline">{p.project_no}</Link></TableCell>
-                  <TableCell>{p.customer_name}</TableCell>
-                  <TableCell className="text-muted-foreground">{p.description || '—'}</TableCell>
-                  <TableCell className="tnum">{p.order_date || '—'}</TableCell>
-                  <TableCell><StatusBadge status={p.roll} /></TableCell>
-                </TableRow>
-              ))}
+              {projects.map(p => {
+                const dp = designProgress[p.id];
+                return (
+                  <TableRow key={p.id}>
+                    <TableCell><Link href={`/projects/${p.id}`} className="font-medium text-primary hover:underline">{p.project_no}</Link></TableCell>
+                    <TableCell>{p.customer_name}</TableCell>
+                    <TableCell className="text-muted-foreground">{p.description || '—'}</TableCell>
+                    <TableCell className="tnum">{p.order_date || '—'}</TableCell>
+                    <TableCell className="text-muted-foreground">{dp ? `${dp.done}/${dp.total}` : '—'}</TableCell>
+                    <TableCell><StatusBadge status={p.roll} /></TableCell>
+                  </TableRow>
+                );
+              })}
               {projects.length === 0 && (
-                <TableRow><TableCell colSpan={5} className="text-muted-foreground">No projects yet.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={6} className="text-muted-foreground">No projects yet.</TableCell></TableRow>
               )}
             </TableBody>
           </Table>

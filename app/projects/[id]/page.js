@@ -1,7 +1,7 @@
 // app/projects/[id]/page.js
 
 import { notFound, redirect } from 'next/navigation';
-import { getProjectDetail, getProjectBom, getProjectPackingLists, getBomRollup, getQcRecords, getQcDocuments, getProjectTasks, getProjectStages, getStageTemplates } from '@/lib/data';
+import { getProjectDetail, getProjectBom, getProjectPackingLists, getBomRollup, getQcRecords, getQcDocuments, getProjectTasks, getProjectStages, getStageTemplates, getProjectDesignSummary } from '@/lib/data';
 import { getSessionUser, isCustomer, isPM, isHead, headDepartments, canAccessDepartment, roleHome } from '@/lib/auth';
 import { DEPARTMENTS } from '@/lib/milestones';
 import { editableBomFields } from '@/lib/bom-fields.mjs';
@@ -29,6 +29,7 @@ export default async function ProjectDetail({ params }) {
   const tasks = await getProjectTasks(project.id);
   const stages = await getProjectStages(project.id);
   const { templates: stageTemplates, items: stageTemplateItems } = await getStageTemplates();
+  const designSummary = await getProjectDesignSummary(project.id);
 
   const pm = isPM(user);
   const head = isHead(user);
@@ -51,6 +52,7 @@ export default async function ProjectDetail({ params }) {
     // surface (no per-department map needed).
     tasks, canRaiseTickets: pm || head,
     stages, stageTemplates, stageTemplateItems, canManageStages: pm || head,
+    designSummary,
   };
 
   return (

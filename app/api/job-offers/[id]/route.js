@@ -1,0 +1,19 @@
+// app/api/job-offers/[id]/route.js — Recruitment leftover: status transitions for an offer
+// (draft -> sent -> accepted/declined). Doesn't auto-hire on accept — hiring stays its own
+// explicit PATCH /api/job-applicants/[id] action, unchanged, so accepting an offer never silently
+// short-circuits the existing hire flow.
+import { NextResponse } from 'next/server';
+import { execute } from '@/lib/db';
+import { getSessionUser, requireDepartment } from '@/lib/auth';
+
+const STATUSES = ['draft', 'sent', 'accepted', 'declined'];
+
+export async function PATCH(req, { params }) {
+  const user = getSessionUser();
+  const denied = requireDepartment(user, 'HR');
+  if (denied) return denied;
+  const b = await req.json();
+  if (!STATUSES.includes(b.status)) return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
+  await execute('UPDATE job_offers SET status = ? WHERE id = ?', [b.status, params.id]);
+  return NextResponse.json({ ok: true });
+}

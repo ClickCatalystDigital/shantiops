@@ -15,6 +15,7 @@ import StatutoryDocsPanel from './StatutoryDocsPanel';
 import TicketsPanel from './TicketsPanel';
 import StagesPanel from './StagesPanel';
 import ProcurementQueue from './ProcurementQueue';
+import DesignPanel from './DesignPanel';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 
 const BOM_DEPARTMENTS = ['Stores', 'Production', 'Design'];
@@ -30,6 +31,7 @@ export default function DepartmentPanel({
   qcDocuments = [],
   tasks = [], canRaiseTickets = false,
   stages = [], stageTemplates = [], stageTemplateItems = [], canManageStages = false,
+  designSummary = null,
 }) {
   const deptMs = milestones.filter(m => m.department === department);
   const showBom = BOM_DEPARTMENTS.includes(department) && bom.length > 0;
@@ -49,6 +51,10 @@ export default function DepartmentPanel({
 
       {department === 'Procurement' && bom.length > 0 && (
         <ProcurementQueue bom={bom} />
+      )}
+
+      {department === 'Design' && (
+        <DesignPanel projectId={projectId} designSummary={designSummary} />
       )}
 
       {showBom && (

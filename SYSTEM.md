@@ -12,6 +12,12 @@ set of user accounts:
    blocks USB drives, CDs/DVDs, phones, and websites on employee machines until a manager approves,
    via the same dashboard.
 
+**Product decision, do not reopen (`V3_CHANGES.md` §12):** regulated accounting/GST/TDS/statutory
+payroll are permanently deferred — ERPNext-integration territory, an option not a dependency. CRM,
+Selling, and HR (incl. Recruitment) are built natively to real ERPNext feature depth instead. See
+`V3_CHANGES.md` §12 for the full decision, boundary, and capability matrix before touching anything
+CRM/Selling/HR/Finance shaped.
+
 Everything in this file reflects the **current, working build** as of 2026-08-03. Most recent round:
 a **full Procurement redesign** — the working spec lived in `PROCUREMENT-CHANGES.md` during the
 build and is now folded in here (§5c); that file stays as the historical record of the investigation
@@ -764,6 +770,207 @@ Certificates that plates/tubes/forgings already came with. Two lifetimes, two ho
   revisions/approval workflow. See `QC-CHANGES.md` §5/§8 for the open client questions (who owns
   TC entry, one PDF per form vs. per folder, the doc-ID naming convention) still pending an
   answer.
+
+## 5e. Sales department, Stores inventory, and In-Stock/SAS trading
+
+V2-CHANGES.md Group 6 (the round's last group) — closes out D6–D9/D14, schema Phase 5.0 had left
+dormant (`inventory_items`, `bom_items.source`, `sale_order_no`). Two new departments' worth of
+surface, plus one real behavioral addition to the D4 procurement lifecycle: an item can now also
+reach terminal status by being fulfilled from existing stock, not just procured.
+
+- **Sales** (`/sales`, `components/SalesWorkspace.jsx`) — a real department (`lib/milestones.js`
+  `DEPARTMENTS`), so it gets the generic Home/Operations/Projects shell for free and flows through
+  the access matrix/d-login like every other head; owns no milestones (same precedent as
+  Engineering/Stores). Maintains a simple **Sale Order** list (`sale_orders` table, D14 — free-text
+  `so_no`, no entity upgrade yet) that Stores references when raising a trade request (§5e below).
+- **Stores' inventory workbench** (`/stores`, `components/StoresWorkspace.jsx`) —
+  `inventory_items` (D8: description, on-hand, location, reorder point). A low-stock badge reads off
+  **`available`** (on-hand minus every active reservation, below), not raw on-hand, since that's the
+  number Stores can actually still promise.
+- **Reserved/available inventory model (D6/D9)** — the client's own concern, raised directly while
+  scoping this group: a naive "mark In-Stock → decrement on-hand" would let the same physical stock
+  be promised to two different requests (a project BOM item and a trade order) at once. Fixed with a
+  real two-step, not a single action: **Reserve** (`inventory_reservations` table) commits stock
+  against one open request — reduces `available`, `on_hand` untouched — so no other request (any
+  source) can draw the same units; **Issue** is the actual hand-out moment — `on_hand` decrements,
+  the item's `purchase_status` becomes terminal **`In-Stock`** (D6). **Release** undoes an unissued
+  reservation (also fired automatically on cancel, `lib/procurement.js`
+  `releaseReservationsForItem`). Reserving less than requested **splits the `bom_items` row** —
+  the reserved portion (a new cloned row) goes to Issue, the remainder keeps procuring on the
+  original row — reusing the same per-project split pattern Group 5's PR flow already established,
+  not new machinery.
+- **Stock-building (D7)** — a `source='stock'` item runs the ordinary Enquiry→Received pipeline
+  unchanged; reaching **Received** increments the inventory line it was raised against
+  (`bom_items.inventory_item_id`/`inventory_qty`, captured numerically at request time — never
+  parsed from the free-text `qty_text`). Guarded on the item's prior status so a re-save of an
+  already-Received row never double-counts.
+- **SAS/trade requests (D7/D14)** — Stores raises non-BOM requests from `/pr` (Group 5 Bundle A's
+  unified PR flow) via a per-line **source** selector (`bom`/`stock`/`sas`, Stores-only,
+  server-enforced): `sas` needs a Sale Order instead of a project. Since `bom_items.project_id`
+  stays `NOT NULL` at the DB level (never actually relaxed, just deferred — confirmed by reading the
+  schema before building), `stock`/`sas` items point at one seeded **sentinel system project**
+  (`is_system=1`, `status='system'`) instead — invisible on every dashboard/rollup that already
+  filters `status='active'`, but Procurement's own Enquiry/Selection/Status/PO tabs explicitly
+  include it and render **`SO #<no>`** / **`Stock`** in place of the sentinel's placeholder name.
+  From there a `sas`/`stock` item is an ordinary `bom_items` row — RFQ, Selection, PO, and Reserve
+  all already handle it with no new procurement code, which is what lets a trade request compete for
+  the same `available` stock pool as a project BOM item through the same Reserve action.
+- **Four real bugs found and fixed while verifying, not just the happy path** — one pre-existing
+  (unrelated to this round's own code, caught because this round's own routes happened to exercise
+  it), three at the seam between the new reservation model and existing Group 5 routes it now has to
+  coexist with:
+  1. `nextCounterValue()` (`lib/db.js`) silently failed to persist for any counter never pre-seeded
+     with a row (`pr_no`, added by Group 5 Bundle A, never was) — its `UPDATE ... WHERE name = ?`
+     matched zero rows, so every call after the first recomputed the same value and collided on
+     `purchase_requisitions.pr_no`'s UNIQUE constraint. Fixed at the root with an atomic `INSERT ...
+     ON CONFLICT DO UPDATE ... RETURNING value` upsert.
+  2. Manually cancelling a BOM item via the Status tab's dropdown (Procurement owns
+     `purchase_status` outright) bypassed the reservation-release call that only lived in the
+     dedicated `/cancel` route (Eng/Design only) — a manually-cancelled item's reservation stayed
+     phantom-committed against `available` with no automatic cleanup. Fixed by adding the same
+     transition-guarded release to the generic `PATCH /api/bom-items/[id]` route.
+  3. Deleting a BOM item with any reservation history — active *or* released, both kept as history,
+     same append-only precedent as `supplier_quotes` — 500'd on a raw Turso foreign-key constraint
+     instead of a clean error (`inventory_reservations.bom_item_id` has no `ON DELETE` clause).
+     Fixed with a block-not-cascade guard mirroring the existing `packing_items` check on the same
+     route.
+  4. `reserveFromStock()` never checked the target item wasn't already terminal (Received/Cancelled/
+     In-Stock) — since `issueReservation()` unconditionally sets `purchase_status = 'In-Stock'`,
+     reserving against an already-Received item and then issuing it would silently overwrite/
+     resurrect a resolved item's real status. The same lesson Phase 5.1's `advancePurchaseStatus`
+     already learned once for a different write path, hadn't carried over to this new one. Fixed
+     with an `isClosedStatus` guard at the top of `reserveFromStock` (`lib/procurement.js`).
+  All four confirmed live on the real dev DB and covered in `scripts/inventory-reservations-selfcheck.mjs`
+  (8 cases), including the exclusivity case itself (a second request correctly blocked from drawing
+  stock a first request had already reserved).
+
+## 5f. Calc Sheets — engineering calculation engine
+
+`/calc` (`components/CalcWorkspace.jsx`), gated to Design/Engineering jointly (`requireCalcAccess`,
+`lib/calc.js` — checks either department; PMs pass unconditionally), same cross-department
+top-level-tab mechanism as `/stores`, `/qc`, `/sales`. A persistent, Turso-backed calculation tool
+that took an isolated React prototype to an engineering-grade platform over three phases plus a
+follow-on round. Build history was in `CALC-CHANGES.md` (folded here 2026-08-11); the module's own
+fast test is `scripts/calc-engine-selfcheck.mjs`.
+
+**The pure/server split — this is what makes it trustworthy.** The computation core
+(`lib/calc-engine.js` — `computeAll`, `runValidations`, `runFormulaTests`, `goalSeek`,
+`sensitivityAnalysis`, `changeImpact`, the `LIBRARY`) is pure: no DB, no Next-server imports, so it
+imports into both the `'use client'` workspace (instant live recompute while editing) and the server
+(`lib/calc.js`, the Turso data layer, on snapshot save). The identical code path both places is what
+makes "Reproduce" in the Audit panel — replaying a frozen snapshot and getting the same numbers —
+actually mean something. `scripts/calc-engine-selfcheck.mjs` hand-mirrors `lib/calc-engine.js`
+byte-for-byte (Next's extensionless-import convention doesn't resolve in plain Node); **keep the two
+in sync whenever the engine changes** — it's the iteration loop, run it before the browser.
+
+**Phase 1 — trust the numbers.** (1) **Units:** every physical-unit variable is wrapped as a mathjs
+`Unit` before evaluation and converted back to the formula's declared output unit after — mixed-unit
+inputs (42 bar against an MPa allowable stress) convert automatically, a genuine dimension mismatch
+throws instead of silently computing. (2) **Iteration/convergence:** the formula dependency graph
+runs through Tarjan's SCC detection; acyclic formulas run once in dependency order, a real
+circular-dependency group iterates Gauss-Seidel until every formula's relative change drops below its
+own `iteration_tolerance` (or `iteration_max` hits, reported `converged: false` honestly). (3)
+**Lookup tables:** `LOOKUP("table", x, "column")` in a formula does 1D linear interpolation,
+extrapolates past the range with a warning rather than clamping. (4) **Regression tests:** a
+formula's worked examples (`calc_formula_tests`) run live in Methodology and as a save-time gate —
+`setFormulaStatus` blocks Draft→Pending while any test fails, one implementation both places.
+
+**Phase 2 — real engineering complexity.** (2.1) **Multi-domain chain:** a seeded thermal
+(flue-gas) domain — `GasVelocity` ⟷ `HeatTransferCoefficient`, a genuine 2-way cycle — feeds a
+`ThermalCorrosionAllowance` into the mechanical (shell-thickness) domain via the *validation* layer,
+not by editing the approved formula body (which would force a version bump on every seed boot); also
+the first live demo of 1.2's convergence engine. (2.2) **Goal-seek:** bisection on a chosen input
+against a target output, `computeAll` as the black-box. (2.3) **Sensitivity:** sweep one input ±% and
+chart the response (inline SVG, no chart dep). (2.4) **Conditional execution:** an optional boolean
+`guard_expr` per formula version; a false guard skips the formula (keeps its prior value) instead of
+computing.
+
+**Phase 3 — professional work product.** (3.1) **PDF report** (`lib/calc-report-pdf.js`, same
+`@react-pdf/renderer` shape as `po-pdf.js`/`quotation-pdf.js`): a "Calculation Sheet" from a
+snapshot's frozen data — inputs, full execution trace, validations, and a deduplicated References
+section. (3.2) **Change impact analysis:** before approving a new formula version, `changeImpact`
+recomputes every past snapshot that pinned it and reports which outputs move and which validations
+flip — pure, runs client-side. (3.3) **Excel bridge** (`xlsx`, already a dep): export the live
+methodology to a 4-sheet workbook (`lib/calc-export.js`); import updates existing non-computed
+variable values by name via a two-phase preview/confirm (`lib/calc-import.mjs`, same shape as the
+masters import) — scoped down from a full column-mapping wizard on purpose.
+
+**Follow-on items (12–16).** Design margin as a named `DesignMarginPct` constant (not a hardcoded
+0.15 inside a validation); engineering notes (`calc_notes`, append-only, on any variable or formula);
+array/list variables (a new `array` variable type with `SUM("arr","col")`/`COUNT("arr")` aggregate
+functions — scoped to aggregates, not per-row formulas); a structured standard/clause/**edition**
+tracker (`source_edition` column, indexed in the PDF's References section); calculation templates
+(`calc_templates` — save/apply a named preset of inputs, seeded "Fire Tube Boiler — Standard"). A
+dropdown-UX pass converted free-text unit / x-column / test-input fields to Selects where the option
+set is knowable.
+
+**Roles (item 17) — explicitly deferred, not skipped.** Submit-for-review and Approve are both
+clickable by the same user (`requireCalcAccess` is department-only). A real reviewer/code-authority
+split needs Shanti's actual org chart — same deferral as every other approval workflow in the app —
+so it's flagged, not faked.
+
+**Not modeled at all — needs real Shanti data first.** The seeded material tables (SA-516 allowable
+stress), the thermal correlation constants, and the nozzle-schedule areas are all *illustrative*
+demo data, deliberately not certified values — real material-property tables, design-basis
+translation, and BOM/drawing generation wait for actual Shanti calculation sheets and QA/material-cert
+data (this is what the "needs real Shanti data" comments in `lib/db.js`'s calc seed point at).
+
+**Schema** (`lib/db.js` `migrate`/`seedCalcDemoData`): `calc_variables` (incl. `array_json` for array
+vars, now per-sheet — see §A below), `calc_formulas` (+ `iteration_*`, `source_edition`) /
+`calc_formula_versions` (+ `guard_expr`) / `calc_formula_tests`, `calc_validations`, `calc_snapshots`
+(per-sheet), `calc_tables`/`calc_table_rows`, `calc_notes` (per-sheet for variable notes, sheet-less
+for formula notes), `calc_templates`, `calc_sheets`, `calc_drawings`/`calc_drawing_files`. API routes
+under `app/api/calc-*`, all gated by `requireCalcAccess`, audited via `lib/usb.js`.
+
+**Round 2 (`CALC-CHANGES2.md`, folded in here 2026-08-11) — real project hierarchy + Drawings.**
+
+- **§A Project hierarchy:** `Company → Project → Calc Sheet → Snapshot`. New `calc_sheets`
+  (`project_id` FK → `projects.id`). `calc_variables` (Registry — where a variable's live value
+  actually lives), `calc_snapshots`, and variable-entity `calc_notes` are now scoped by
+  `calc_sheet_id` — Registry's global `UNIQUE(name)` became `UNIQUE(calc_sheet_id, name)` via a
+  one-time guarded table rebuild (`migrateCalcProjectHierarchy` in `lib/db.js`, ids preserved).
+  Methodology (`calc_formulas`/`calc_formula_versions`/`calc_formula_tests`), Tables
+  (`calc_tables`/`calc_table_rows`), `calc_validations`, and `calc_templates` stay fully global —
+  unchanged, referenced by name from any sheet. Because `computeAll` always runs the *full* global
+  formula set for whichever sheet is open, every sheet needs its own computed-variable row per
+  global formula for dependency resolution to work — `addFormula` backfills one onto every existing
+  `calc_sheets` row when a new formula is created, and `createCalcSheet` clones the seed
+  input/constant/array set (+ one computed row per formula) from an existing sheet when a new one is
+  made. Routing: `/calc` → project picker → `/calc/project/[projectId]` → sheet selector/tabs →
+  `/calc/project/[projectId]/[sheetId]` → the workspace. Sidebar relabeled "Project" → **Calculation**;
+  Registry stays alongside it (per-sheet data); Methodology/Library/Tables grouped under an
+  **Engineering** heading for tidiness only (still global); Audit under **Governance**.
+- **§B/§C Drawings:** new `calc_drawings` (project-scoped, not sheet-scoped — one GA Drawing per
+  boiler) + `calc_drawing_files` (Cloudflare R2 via `lib/r2.js`, same best-effort try/catch pattern
+  as `test_certificates.pdf_key` — an unconfigured bucket in dev 502s the upload/delete route without
+  touching the DB row). New sidebar panel with a 6-segment inline-SVG progress bar (green = approved/
+  as_built, yellow = in_progress/under_review, gray = not_started) — the only visualization this
+  round adds; a validation donut/margin gauge/portfolio dashboard were all explicitly rejected.
+  Routes under `app/api/calc-drawings/*`.
+- **§D Projects tab:** `/projects` gets a read-only **Design Progress** column
+  (`getDesignProgressByProject`, cheap SQL proxy — a sheet counts "done" once it has any snapshot, a
+  drawing once approved/as_built — not a full validations replay across every project). The project
+  page's Design department panel (previously just the bare milestone list, `DesignPanel.jsx` via
+  `DepartmentPanel.jsx`) now also gets Calculation Sheets (pass/warn/fail replayed from each sheet's
+  latest snapshot against live validations, `getProjectDesignSummary`), the same Drawings checklist,
+  a 5-item merge-sorted Activity feed, and a placeholder Work Orders/SOS table (3 columns, no real
+  schema — awaiting Shanti's actual WO/SOS format, and not to be confused with Sales' `sale_orders`).
+- **§E Operations tab:** `DesignFlow.jsx` (Concept → Calculation → Review → Approved → Released),
+  mirrored off `ProcurementFlow.jsx`'s node/spine shapes but without its cancellation branching (Design
+  has no cancelled/terminal-exit concept). `getDesignFlowCounts()` derives each active project's stage
+  from calc_sheets/snapshots/drawings status alone — no new enum; since Methodology is global,
+  "all formulas approved" is one project-independent flag, not a per-project engine recompute.
+  `DesignMasterTable.jsx` (Project | Customer | Design Progress | Bottleneck | Calc Status | Drawings)
+  reuses `TodayBand`'s exact `['overdue','blocked']` partition for Bottleneck. Incidents split into
+  Outgoing/Incoming `TicketsPanel`s, same pattern as Procurement's.
+- **§F Requests tab:** the *live* Requests mechanism is `/pr` (`PrWorkspace.jsx`,
+  `purchase_requisitions`/`pr_items`) — the older single-item `procurement_requests` table is already
+  retired (Nav.jsx). `pr_items`/`bom_items` gained `category` (`plate`/`ms_section`/`angle`/`standard`,
+  'bom'-source lines only) + `category_fields_json` (shape varies by category, same idiom as
+  `calc_tables`) + `origin` (`manual`|`bom`, the latter reserved for a future auto-BOM generator, not
+  built this round). **`heat_number` deliberately not added** — Procurement-vs-Stores ownership is
+  unresolved against `BOM_FIELD_OWNERS`' existing pattern (every other receipt-time field is Stores'),
+  deferred rather than force-picked. Belt number and Job Cards confirmed out of scope, not built.
 
 ## 6. Customer Portal (read-only, external)
 

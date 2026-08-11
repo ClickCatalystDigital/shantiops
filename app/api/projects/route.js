@@ -13,10 +13,14 @@ export async function POST(req) {
   }
   const project_no = b.project_no?.trim() || (await nextNumber('project_no', 'SB'));
   try {
+    // customer_id/sale_order_id — V3_CHANGES.md §12 Phase 2f, the Lead→Customer→Quotation→Sale
+    // Order→Project chain's final link. Both additive/nullable; customer_name stays NOT NULL and
+    // required exactly as before, so the 6 pre-existing free-text-only projects are unaffected.
     const r = await execute(
-      `INSERT INTO projects (project_no, customer_name, description, order_date, owner)
-       VALUES (?, ?, ?, ?, ?)`,
-      [project_no, b.customer_name.trim(), b.description || null, b.order_date || null, user?.username || null]
+      `INSERT INTO projects (project_no, customer_name, description, order_date, owner, customer_id, sale_order_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [project_no, b.customer_name.trim(), b.description || null, b.order_date || null, user?.username || null,
+        b.customer_id || null, b.sale_order_id || null]
     );
     const projectId = Number(r.lastId);
     // Seed the full milestone chain with planned dates so the tracker is alive from day one —

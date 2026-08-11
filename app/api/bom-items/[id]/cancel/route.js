@@ -8,7 +8,7 @@ import { execute, queryOne } from '@/lib/db';
 import { getSessionUser, canAccessDepartment } from '@/lib/auth';
 import { audit } from '@/lib/usb';
 import { notifyDepartment } from '@/lib/notify';
-import { removeItemFromDraftPO } from '@/lib/procurement';
+import { removeItemFromDraftPO, releaseReservationsForItem } from '@/lib/procurement';
 import { DEFAULT_PURCHASE_STATUS } from '@/lib/bom-fields.mjs';
 
 const CANCEL_DEPARTMENTS = ['Engineering', 'Design'];
@@ -34,6 +34,9 @@ export async function POST(req, { params }) {
   // A selected-but-not-issued item may still be sitting on a draft PO — clean that up regardless of
   // stage, same cleanup select-supplier's DELETE (undo) already does.
   await removeItemFromDraftPO(item.id);
+  // V2-CHANGES.md Group 6 Phase 6.3 — an active stock reservation against this item must release
+  // too, or that stock stays phantom-committed with no request left to issue it against.
+  await releaseReservationsForItem(item.id);
 
   if (status === 'Ordered') {
     // Ordered = a PO was actually issued (Phase 5.1's advancePurchaseStatus) — Procurement needs to

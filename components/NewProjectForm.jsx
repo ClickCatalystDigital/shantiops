@@ -10,11 +10,15 @@ import { PlusIcon } from 'lucide-react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose,
 } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
-export default function NewProjectForm() {
+// V3_CHANGES.md §12 Phase 2f — customer picker wires the new nullable projects.customer_id.
+// customer_name stays required/free-text exactly as before (backward-compat with the 6
+// pre-existing projects); picking a customer here just autofills it and sets the id alongside.
+export default function NewProjectForm({ customers = [] }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [f, setF] = useState({ project_no: '', customer_name: '', description: '', order_date: '' });
+  const [f, setF] = useState({ project_no: '', customer_name: '', customer_id: '', description: '', order_date: '' });
   const [busy, setBusy] = useState(false);
 
   async function submit(e) {
@@ -48,7 +52,16 @@ export default function NewProjectForm() {
           </div>
           <div className="flex flex-col gap-1.5">
             <Label>Customer *</Label>
-            <Input required value={f.customer_name} onChange={e => setF({ ...f, customer_name: e.target.value })} />
+            {customers.length > 0 && (
+              <Select value={f.customer_id} onValueChange={id => {
+                const c = customers.find(x => String(x.id) === id);
+                setF({ ...f, customer_id: id, customer_name: c?.name || f.customer_name });
+              }}>
+                <SelectTrigger><SelectValue placeholder="Pick an existing customer (optional)" /></SelectTrigger>
+                <SelectContent>{customers.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}</SelectContent>
+              </Select>
+            )}
+            <Input required value={f.customer_name} onChange={e => setF({ ...f, customer_name: e.target.value, customer_id: '' })} placeholder="Or type a customer name" />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label>Description</Label>

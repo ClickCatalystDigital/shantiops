@@ -1,12 +1,14 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { getMyWork, getBomWork, getDepartmentTasks, getStageBottlenecks, getSourcingItems, getProcurementFlowCounts } from '@/lib/data';
+import { getMyWork, getBomWork, getDepartmentTasks, getStageBottlenecks, getSourcingItems, getProcurementFlowCounts, getDesignFlowCounts, getDesignWork } from '@/lib/data';
 import { getSessionUser, isCustomer, isManager, isHead, headDepartments, canAccessDepartment, roleHome } from '@/lib/auth';
 import StatusBadge from '@/components/StatusBadge';
 import DispatchBoard from '@/components/DispatchBoard';
 import TicketsPanel from '@/components/TicketsPanel';
 import ProcurementFlow from '@/components/ProcurementFlow';
+import DesignFlow from '@/components/DesignFlow';
 import MasterBomTable from '@/components/MasterBomTable';
+import DesignMasterTable from '@/components/DesignMasterTable';
 import PageHeader from '@/components/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -79,6 +81,9 @@ export default async function Home({ searchParams }) {
   // In-transit tiles. Positioned right after the stat chips, ahead of the per-project breakdown
   // below, which is the least useful thing on this page for a quick "where do things stand" glance.
   const procurementFlow = deptsToShow.includes('Procurement') ? await getProcurementFlowCounts() : null;
+  // Design's pipeline glance (§E) — same slot/precedent as Procurement's.
+  const designFlow = deptsToShow.includes('Design') ? await getDesignFlowCounts() : null;
+  const designWork = deptsToShow.includes('Design') ? await getDesignWork() : [];
   // Open Master-BOM work for BOM-owning departments (Engineering: missing BOMs; Procurement /
   // Stores / Production: items not yet closed). Fills the once-empty Engineering attention list.
   const bomWork = deptFilter && deptFilter !== 'Engineering' && !['Procurement', 'Stores', 'Production'].includes(deptFilter)
@@ -112,8 +117,10 @@ export default async function Home({ searchParams }) {
       {/* Procurement's pipeline glance sits right after the KPI chips — ahead of the per-project
           breakdown below, which is the least useful thing here for a quick status check. */}
       {procurementFlow && <ProcurementFlow counts={procurementFlow} />}
+      {designFlow && <DesignFlow counts={designFlow} />}
 
       <MasterBomTable bomWork={bomWork} />
+      <DesignMasterTable designWork={designWork} />
 
       {/* "Open Actions" (renamed from "Needs Attention") — each project card now splits into
           Urgent (not yet delayed, closest deadline first) on top and Needs Attention (already
@@ -185,7 +192,7 @@ export default async function Home({ searchParams }) {
           two direction-split cards (V2-CHANGES.md Group 4b — moved back here from the Requests tab,
           which now only holds the New-item/Cancel acceptance inbox). "Waiting on" (delay_category
           grouping) stays removed — near-unused across the whole app and redundant with Open Actions. */}
-      {deptsToShow.map((d, i) => d !== 'Procurement' && (
+      {deptsToShow.map((d, i) => d !== 'Procurement' && d !== 'Design' && (
         <TicketsPanel key={d} title={d} department={d} canRaise tasks={tasksByDept[i]} bom={sourcingItems} />
       ))}
 
@@ -205,6 +212,23 @@ export default async function Home({ searchParams }) {
             <TicketsPanel title="Outgoing Incidents" department="Procurement" canRaise showDepartment
               tasks={outgoing} bom={sourcingItems} />
             <TicketsPanel title="Incoming Incidents" department="Procurement" tasks={incoming} />
+          </div>
+        );
+      })()}
+
+      {/* Design's incident cards, direction-split (§E) — same exact pattern as Procurement's just
+          above, reusing the already-fetched Design tasks rather than a second query. */}
+      {(() => {
+        const di = deptsToShow.indexOf('Design');
+        if (di === -1) return null;
+        const designTasks = tasksByDept[di] || [];
+        const outgoing = designTasks.filter(t => t.from_department === 'Design' && !t.bom_item_id);
+        const incoming = designTasks.filter(t => t.department === 'Design' && t.from_department && t.from_department !== 'Design' && !t.bom_item_id);
+        return (
+          <div className="grid gap-4 md:grid-cols-2">
+            <TicketsPanel title="Outgoing Incidents" department="Design" canRaise showDepartment
+              tasks={outgoing} bom={sourcingItems} />
+            <TicketsPanel title="Incoming Incidents" department="Design" tasks={incoming} />
           </div>
         );
       })()}

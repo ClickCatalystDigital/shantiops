@@ -1,11 +1,14 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { getExecutiveSummary, getProjectsWithStatus } from '@/lib/data';
+import { getExecutiveSummary, getProjectsWithStatus, getErpSnapshot, getOpportunityPipelineCounts, getProcurementFlowCounts, getWorkforceCounts } from '@/lib/data';
 import { getSessionUser, isManager, roleHome } from '@/lib/auth';
+import { todayISO } from '@/lib/date';
 import StatusBadge from '@/components/StatusBadge';
 import PortfolioDelayTimeline from '@/components/PortfolioDelayTimeline';
+import ProcurementFlow from '@/components/ProcurementFlow';
 import PageHeader from '@/components/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { formatDate, formatMoney } from '@/lib/format';
 import { deltaLabel } from '@/lib/delay';
@@ -13,13 +16,112 @@ import { cn } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 
+// V3_CHANGES.md §12 invariant amendment — Finance + statutory Payroll tiles still read ONLY
+// erp_snapshot (never computed here, per §2.4); HR went native (Phase 3) so headcount/attendance
+// is real data now, shown in WorkforceCard below instead of this snapshot row.
+const SNAPSHOT_TILES = [
+  { key: 'receivables_outstanding', label: 'Receivables' },
+  { key: 'cash_position', label: 'Cash Position' },
+  { key: 'invoice_total_mtd', label: 'Invoiced (MTD)' },
+  { key: 'invoice_paid_mtd', label: 'Paid (MTD)' },
+  { key: 'payroll_mtd', label: 'Payroll (MTD)' },
+];
+
+function SnapshotRow({ snapshot }) {
+  const rows = SNAPSHOT_TILES.map(t => snapshot[t.key]).filter(Boolean);
+  const asOf = rows.length ? new Date(rows[0].as_of).toLocaleString() : null;
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Finance</CardTitle>
+        {asOf && (
+          <p className="text-xs text-muted-foreground">
+            As of {asOf} · <Badge variant={rows[0].source === 'erpnext' ? 'default' : 'outline'}>
+              {rows[0].source === 'erpnext' ? 'ERPNext' : 'Demo data'}
+            </Badge>
+          </p>
+        )}
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          {SNAPSHOT_TILES.map(t => {
+            const row = snapshot[t.key];
+            return (
+              <div key={t.key} className="rounded-lg border p-3">
+                <div className="text-lg font-bold tnum">{row?.value_text ?? '—'}</div>
+                <div className="text-xs text-muted-foreground">{t.label}</div>
+              </div>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// V3_CHANGES.md §12 Phase 5 — real data, no snapshot/badge (HR is native, not deferred).
+function WorkforceCard({ workforce }) {
+  const tiles = [
+    { label: 'Active Headcount', value: workforce.headcount },
+    { label: 'Present Today', value: workforce.presentToday },
+    { label: 'On Leave Today', value: workforce.onLeaveToday },
+    { label: 'Open Roles', value: workforce.openOpenings },
+  ];
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Workforce</CardTitle>
+        <p className="text-xs text-muted-foreground"><Link href="/hr" className="hover:underline">Open HR workspace →</Link></p>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {tiles.map(t => (
+            <div key={t.label} className="rounded-lg border p-3">
+              <div className="text-lg font-bold tnum">{t.value}</div>
+              <div className="text-xs text-muted-foreground">{t.label}</div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function PipelineCard({ pipeline }) {
+  const { counts, openValue, total } = pipeline;
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Sales Pipeline</CardTitle>
+        <p className="text-xs text-muted-foreground">
+          <Link href="/pipeline" className="hover:underline">{total} opportunities</Link> · {formatMoney(openValue)} open
+        </p>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-3 gap-3 sm:grid-cols-5">
+          {Object.entries(counts).map(([stage, n]) => (
+            <div key={stage} className="rounded-lg border p-3">
+              <div className="text-lg font-bold tnum">{n}</div>
+              <div className="text-xs text-muted-foreground">{stage}</div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default async function Executive() {
   const user = getSessionUser();
   if (!isManager(user)) redirect(roleHome(user));
 
-  const [{ kpi, delayedBy, topRisks, forecast }, projects] = await Promise.all([
+  const [{ kpi, delayedBy, topRisks, forecast }, projects, snapshot, pipeline, procurementCounts, workforce] = await Promise.all([
     getExecutiveSummary(),
     getProjectsWithStatus(),
+    getErpSnapshot(),
+    getOpportunityPipelineCounts(),
+    getProcurementFlowCounts(),
+    getWorkforceCounts(todayISO()),
   ]);
 
   const stats = [
@@ -50,7 +152,18 @@ export default async function Executive() {
         ))}
       </div>
 
-      {/* Row 2: milestone tracker */}
+      {/* Row 2: 360 pillars — live (Sales Pipeline, Workforce, Procurement) + snapshot-backed
+          (Finance/statutory Payroll only, per §12's invariant amendment — HR is native now).
+          Production/QC/Dispatch/Supplier-performance pillars are deliberately not duplicated here
+          — the Milestone Tracker + Top Risks below already cover portfolio operational health. */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <PipelineCard pipeline={pipeline} />
+        <WorkforceCard workforce={workforce} />
+      </div>
+      <ProcurementFlow counts={procurementCounts} />
+      <SnapshotRow snapshot={snapshot} />
+
+      {/* Row 3: milestone tracker */}
       <PortfolioDelayTimeline projects={projects} />
 
       {/* Row 3: risks + delay reasons */}
