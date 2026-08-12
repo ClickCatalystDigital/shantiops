@@ -18,11 +18,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { PlusIcon, TrashIcon } from 'lucide-react';
 import { api, showToast } from '@/lib/client';
 import { formatMoney } from '@/lib/format';
+import { TasksPanel } from '@/components/SalesWorkspace';
 
 function AddOpportunityDialog({ departments, customers, onClose, router }) {
   const [title, setTitle] = useState('');
   const [customerId, setCustomerId] = useState('');
   const [valueNum, setValueNum] = useState('');
+  const [source, setSource] = useState('');
   const [ownerDept, setOwnerDept] = useState(departments[0] || 'Sales');
   const [saving, setSaving] = useState(false);
 
@@ -38,6 +40,7 @@ function AddOpportunityDialog({ departments, customers, onClose, router }) {
           customer_id: customerId || null,
           customer_name: customer?.name || null,
           value_num: valueNum ? Number(valueNum) : null,
+          source: source || null,
           owner_dept: ownerDept,
         },
       });
@@ -71,6 +74,10 @@ function AddOpportunityDialog({ departments, customers, onClose, router }) {
             <Label>Value ₹ (optional)</Label>
             <Input type="number" value={valueNum} onChange={e => setValueNum(e.target.value)} />
           </div>
+          <div className="grid gap-1.5">
+            <Label>Source (optional)</Label>
+            <Input value={source} onChange={e => setSource(e.target.value)} placeholder="Website, referral, event…" />
+          </div>
           {departments.length > 1 && (
             <div className="grid gap-1.5">
               <Label>Owner department</Label>
@@ -92,17 +99,32 @@ function AddOpportunityDialog({ departments, customers, onClose, router }) {
   );
 }
 
-function OpportunityDetailSheet({ opportunity, onClose, router }) {
+function OpportunityDetailSheet({ opportunity, users, onClose, router }) {
   const [items, setItems] = useState([]);
   const [notes, setNotes] = useState([]);
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
+  const [source, setSource] = useState(opportunity.source || '');
+  const [nextContactDate, setNextContactDate] = useState(opportunity.next_contact_date || '');
+  const [lostReason, setLostReason] = useState(opportunity.lost_reason || '');
+  const [savingDetails, setSavingDetails] = useState(false);
 
   function load() {
     api(`/api/opportunities/${opportunity.id}/items`).then(setItems).catch(() => {});
     api(`/api/crm-notes?opportunity_id=${opportunity.id}`).then(setNotes).catch(() => {});
   }
   useEffect(load, [opportunity.id]);
+
+  async function saveDetails() {
+    setSavingDetails(true);
+    try {
+      await api(`/api/opportunities/${opportunity.id}`, { method: 'PATCH', body: {
+        source: source || null, next_contact_date: nextContactDate || null, lost_reason: lostReason || null,
+      } });
+      showToast('Saved');
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); } finally { setSavingDetails(false); }
+  }
 
   function updateItem(i, key, val) {
     setItems(prev => prev.map((it, idx) => idx === i ? { ...it, [key]: val } : it));
@@ -133,6 +155,19 @@ function OpportunityDetailSheet({ opportunity, onClose, router }) {
       <SheetContent className="w-full sm:max-w-lg">
         <SheetHeader><SheetTitle>{opportunity.title}</SheetTitle></SheetHeader>
         <div className="flex flex-col gap-5 overflow-y-auto px-4 pb-4">
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between text-sm font-semibold">
+              <span>Details</span>
+              <Button size="sm" variant="outline" onClick={saveDetails} disabled={savingDetails}>{savingDetails ? 'Saving…' : 'Save'}</Button>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="grid gap-1"><Label className="text-xs">Source</Label><Input value={source} onChange={e => setSource(e.target.value)} /></div>
+              <div className="grid gap-1"><Label className="text-xs">Next contact</Label><Input type="date" value={nextContactDate} onChange={e => setNextContactDate(e.target.value)} /></div>
+            </div>
+            {opportunity.stage === 'Lost' && (
+              <div className="grid gap-1"><Label className="text-xs">Lost reason</Label><Input value={lostReason} onChange={e => setLostReason(e.target.value)} placeholder="Why was this lost?" /></div>
+            )}
+          </div>
           <div>
             <div className="mb-2 flex items-center justify-between text-sm font-semibold">
               <span>Line items</span>
@@ -151,6 +186,8 @@ function OpportunityDetailSheet({ opportunity, onClose, router }) {
             </div>
           </div>
 
+          <TasksPanel opportunityId={opportunity.id} users={users} />
+
           <div>
             <div className="mb-2 text-sm font-semibold">Notes / activity</div>
             <div className="flex flex-col gap-1.5">
@@ -165,7 +202,7 @@ function OpportunityDetailSheet({ opportunity, onClose, router }) {
   );
 }
 
-export default function PipelineWorkspace({ opportunities, departments, customers, stages }) {
+export default function PipelineWorkspace({ opportunities, departments, customers, stages, users = [] }) {
   const router = useRouter();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selected, setSelected] = useState(null);
@@ -173,12 +210,27 @@ export default function PipelineWorkspace({ opportunities, departments, customer
 
   const stageNames = stages.map(s => s.name);
 
+  // CRM Analytics (docs.frappe.io/erpnext/CRM) — open pipeline value and win rate, computed from
+  // the same opportunities/stages already loaded, no separate report page or API call needed.
+  const wonStages = new Set(stages.filter(s => s.is_won).map(s => s.name));
+  const lostStages = new Set(stages.filter(s => s.is_lost).map(s => s.name));
+  const openValue = opportunities.filter(o => !wonStages.has(o.stage) && !lostStages.has(o.stage))
+    .reduce((sum, o) => sum + (o.value_num || 0), 0);
+  const wonCount = opportunities.filter(o => wonStages.has(o.stage)).length;
+  const lostCount = opportunities.filter(o => lostStages.has(o.stage)).length;
+  const winRate = (wonCount + lostCount) > 0 ? Math.round((wonCount / (wonCount + lostCount)) * 100) : null;
+
   async function move(opp, stage) {
     if (opp.stage === stage) return;
     setBusyId(opp.id);
     try {
       await api(`/api/opportunities/${opp.id}`, { method: 'PATCH', body: { stage } });
       router.refresh();
+      // ERPNext CRM parity: a Lost opportunity should carry a reason (docs.frappe.io/erpnext/CRM
+      // "Good practices"). Opens the detail sheet so the reason is entered inline there —
+      // window.prompt() isn't reliable across browsers/embeds, so this reuses the existing
+      // detail-sheet edit pattern instead of a blocking dialog.
+      if (stage === 'Lost') setSelected({ ...opp, stage });
     } catch (err) {
       showToast(err.message, 'error');
     } finally {
@@ -195,6 +247,12 @@ export default function PipelineWorkspace({ opportunities, departments, customer
         </CardAction>
       </CardHeader>
       <CardContent>
+        {opportunities.length > 0 && (
+          <div className="mb-4 flex flex-wrap gap-4 text-sm">
+            <div><span className="text-muted-foreground">Open pipeline value: </span><span className="font-semibold tnum">{formatMoney(openValue)}</span></div>
+            <div><span className="text-muted-foreground">Win rate: </span><span className="font-semibold tnum">{winRate == null ? '—' : `${winRate}%`}</span><span className="text-muted-foreground"> ({wonCount} won / {lostCount} lost)</span></div>
+          </div>
+        )}
         {opportunities.length === 0 ? (
           <p className="py-6 text-center text-sm text-muted-foreground">No opportunities yet.</p>
         ) : (
@@ -221,8 +279,12 @@ export default function PipelineWorkspace({ opportunities, departments, customer
                   >
                     <div className="font-medium">{o.title}</div>
                     {o.customer_name && <div className="text-xs text-muted-foreground">{o.customer_name}</div>}
+                    {o.stage === 'Lost' && o.lost_reason && <div className="text-xs text-muted-foreground">Lost: {o.lost_reason}</div>}
                     <div className="mt-1 flex items-center justify-between">
-                      <Badge variant="outline">{o.owner_dept}</Badge>
+                      <div className="flex items-center gap-1">
+                        <Badge variant="outline">{o.owner_dept}</Badge>
+                        {o.source && <Badge variant="secondary">{o.source}</Badge>}
+                      </div>
                       {o.value_num != null && <span className="text-xs font-semibold tnum">{formatMoney(o.value_num)}</span>}
                     </div>
                   </div>
@@ -233,7 +295,7 @@ export default function PipelineWorkspace({ opportunities, departments, customer
         )}
       </CardContent>
       {dialogOpen && <AddOpportunityDialog departments={departments} customers={customers} router={router} onClose={() => setDialogOpen(false)} />}
-      {selected && <OpportunityDetailSheet opportunity={selected} router={router} onClose={() => setSelected(null)} />}
+      {selected && <OpportunityDetailSheet opportunity={selected} users={users} router={router} onClose={() => setSelected(null)} />}
     </Card>
   );
 }

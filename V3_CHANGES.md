@@ -683,6 +683,122 @@ before assuming a code regression.
 
 ---
 
+## 15. HR completion bundle: Payroll (statutory) + Full & Final + Loans + Expense Claims/Advances — STATUS: BUILT & VERIFIED (2026-08-11)
+
+**The §12 HARD BOUNDARY was intentionally reopened by explicit user decision** for exactly the
+items it named as excluded (statutory PF/ESI/PT/TDS calculations; Expense Claim/Employee Advance/
+Overtime, which "post to GL" in ERPNext) — **not because the reasoning behind that boundary was
+wrong, but because the user now has a separate integration path**: a future "Tally agent" (and
+other means) will read the numbers this bundle computes and sync them into real accounting
+software. Shanti Ops therefore still builds **zero ledger/chart-of-accounts/journal-entry
+infrastructure** — every figure here is computed once and stored as a plain fact, the exact
+precedent `quotations.total`/`employees.ctc` already set. Every column a future accounting sync
+will need is marked `-- ACCOUNTING INTEGRATION POINT` in `lib/db.js`: `salary_slips`'s REAL
+columns (gross/deductions/net/PF/ESI/PT/TDS/overtime) and `expense_claims.total_amount` on
+approved/paid rows. **This decision does not extend to any other HR/Selling doctype not explicitly
+named here** — re-litigate case by case, same as the original boundary required.
+
+Also closed in this bundle (the user's full list, minus HR — Performance/Training/Grievance which
+stays deferred as originally instructed): the two §13 non-blocking gaps (attendance grace-period,
+leave approver override), an undocumented Onboarding/Separation gap found during planning (no way
+to add an ad-hoc checklist task), and the documented Recruitment gap (`job_offers` had a working
+API but zero UI).
+
+### Explicit scope boundaries (stated up front, not discovered as a surprise later)
+
+- **New tax regime only** — HRA exemption/80C/other declarations (old regime) is a separate large
+  rules engine, out of scope.
+- **Section 87A rebate** is a simple full-rebate-below-threshold rule, not the precise marginal-
+  relief taper right at the threshold.
+- **Statutory rates/slabs are seeded with best-known figures at build time (today, 2026-08-11 →
+  FY2026-27) but are editable configuration**, never hardcoded — verify them against the actual
+  current law before relying on generated payslips for real payroll.
+- No payslip email delivery or bank-file export — PDF generation only, mirroring the existing PO/
+  Quotation PDF pattern.
+- Non-recurring **Additional Salary** (arrears/bonus) only — a recurring allowance belongs in the
+  salary structure instead.
+
+### What was built
+
+**Schema:** `salary_structures`/`salary_structure_components`/`salary_structure_assignments`
+(no separate component master catalog — see `lib/db.js`'s comment on why, at this company's
+scale); `statutory_rates` (single-row, editable), `professional_tax_slabs` (Telangana seeded),
+`income_tax_slabs` (new regime, FY2026-27 seeded); `employees.pt_state`; `payroll_runs`/
+`salary_slips`/`salary_slip_components`; `additional_salary`; `employee_loans`/`loan_repayments`
+(reducing-balance EMI); `employee_separation.settlement_slip_id`; `expense_claim_types`/
+`expense_claims`/`expense_claim_items`; `employee_advances`; `shift_types.grace_minutes`.
+
+**`lib/payroll.js`** (mirrors `lib/hr.js`'s pure-function shape): Loss-of-Pay proration
+(`payment_days`/`working_days`, unmarked days default to paid — the realistic default for salaried
+staff not punched daily); PF (ceiling-capped, togglable), ESI (ceiling-gated), PT (state-slab
+lookup); **YTD-accurate TDS** — projects the full year's taxable income from what's actually been
+earned/deducted so far this FY (not a flat month×12 guess), so mid-year joiners and pay changes
+compute correctly; overtime (hours beyond the scheduled shift × hourly-rate-from-Basic ×
+statutory multiplier, reusing §13's `attendance_days.working_hours`/`getShiftForDate`); loan EMI
+amortization; Full & Final settlement (prorated exit-month pay + leave encashment − outstanding
+advances − loan foreclosure). One persistence entrypoint, `generateSalarySlip`, used by every
+generation path (payroll run, ad-hoc slip, settlement) — same "one function, every caller"
+precedent `createEmployeeWithOnboarding` already set.
+
+**`lib/payslip-pdf.js`** mirrors `lib/po-pdf.js`/`lib/quotation-pdf.js` exactly.
+
+**~20 new API routes**, **`components/PayrollWorkspace.jsx`** (Payroll Runs → Salary Slips →
+Additional Salary → Structures → Statutory Settings) and **`components/ExpensesWorkspace.jsx`**
+(Expense Claims → Advances → Loans), mounted as two new tabs in the existing `HrWorkspace.jsx`
+(no new nav item/page). Small leftover UI: attendance grace-period awareness, leave-request
+approver override, onboarding/separation "+ Add task", a "Generate Final Settlement" button on the
+Separation section, and an Offer panel on the Recruitment Kanban's "offered" column.
+
+### Two real bugs found and fixed during verification (not just the happy path)
+
+1. **TDS's YTD "periods elapsed" was calendar-derived, not slip-derived.** It assumed payroll had
+   been run every month since the employee's join date, so if this module is adopted mid-FY
+   (earlier months paid a different way, no slip exists here for them), those "missing" months got
+   silently averaged into the projection and diluted it, understating tax by exactly the missing-
+   month fraction. Found live: a first-ever run for a mid-year test case projected ₹757,800 annual
+   taxable income (below the rebate threshold, so ₹0 TDS) when the real projection was ₹2,423,400.
+   Fixed by deriving "periods elapsed" from the count of actual prior slips in the FY (+1 for the
+   current one) instead of months-since-joining; "periods total" (the correct denominator for
+   whatever fraction of the year has slips) stays the calendar/join-date fact.
+2. **Full & Final settlement's proration divided a truncated numerator by an equally-truncated
+   denominator.** The exit-month period was correctly clamped to the relieving date for computing
+   *payment days*, but that same clamped range was also used as the *working-days denominator* —
+   so `payment_days / working_days` washed out to ≈1 whenever there was no mid-period absence,
+   paying a **full month's Basic/HRA for a half-month worked** (confirmed live: a Aug 1–15
+   settlement paid the complete ₹21,000 Basic+HRA instead of the correct ~₹10,080). Fixed by
+   always dividing by the full calendar month's working days, while the numerator (`payment_days`)
+   still only counts days through the relieving date.
+
+Both were caught by hand-verifying the generated numbers against the seeded rates for two
+representative employees (one at the PF-ceiling/ESI-eligibility edge with an absence + overtime +
+active loan, one well above the TDS rebate threshold) across two consecutive payroll months, not
+by trusting the code to be self-evidently correct.
+
+### Verified (curl + direct-DB assertions against the shared Turso DB, after both fixes)
+
+Every figure hand-checked exactly: LWP proration, overtime (hours beyond shift × rate ×
+multiplier), PF at the wage ceiling, ESI at the eligibility boundary, PT slab lookup, loan EMI
+reducing-balance amortization across two installments (principal↑/interest↓ correctly), YTD TDS
+carrying consistently month-to-month for steady income (June and July landed on the identical
+figure, as expected), a valid payslip PDF, an expense claim approved and correctly settling against
+a referenced advance, and a Full & Final settlement correctly netting leave encashment + a second
+advance's recovery + the active loan's foreclosure into one settlement slip (loan → `foreclosed`,
+both advances → `settled`, `employee_separation.settlement_slip_id` linked). Onboarding/separation
+ad-hoc task add and the job-offer create→accept flow also verified. All test data (test employees'
+temporary field values, structure, assignments, slips, runs, loan, advances, claim, separation,
+shift, attendance marks, job opening/applicant/offer) cleaned up from the shared DB afterward.
+`npm run build` clean (twice) after cleanup.
+
+**Environment note, not a code defect:** this session shared the working directory with (at least)
+one other concurrent Claude Code session actively building the unrelated Calc module — visible in
+`next.config.js`'s per-port `distDir` fix (their own fix for the same multi-`next-dev` corruption
+problem §13's session hit) and in a mid-verification `ENOSPC` from `~/.npm` cache growing to 3.4G
+across sessions (cleared with `npm cache clean --force`, a safe/recoverable operation, to unblock
+the final build). Verification here ran its own dev server on a dedicated port (`next dev -p
+4001`, auto-isolated by that same `distDir` fix) rather than fighting over a shared one.
+
+---
+
 ## 14. Where things stand — read this first if picking up cold
 
 - **Track A (§1–11):** built, verified, live.
@@ -693,7 +809,268 @@ before assuming a code regression.
   in full (see §13's Implementation record); browser verification was cut short by an ambient dev
   server instability in that session (documented in §13, not a code defect) after one clean
   confirming pass of the new Employee detail Sheet UI.
-- **Accounting/GST/TDS/statutory payroll:** permanently deferred by product decision (§12), not
-  something to reconsider without a fresh, explicit decision.
+- **§15 (Payroll/FnF/Loans/Expense Claims/Advances):** built, verified, live. The HARD BOUNDARY
+  named in §12 was intentionally reopened for exactly these items, by explicit user decision (a
+  future accounting sync owns the ledger; this module only computes and stores). Two real bugs
+  found and fixed during verification — see §15's record. Old tax regime, HR — Performance/
+  Training/Grievance remain deferred.
+- **Accounting (General Ledger / Chart of Accounts / journal entries) itself:** still permanently
+  deferred — §15 computes statutory *numbers*, it does not build a ledger. GST/e-invoicing/e-way
+  bill/returns-filing remain out of scope entirely, not reopened by §15.
 - **Performance reviews / Training / Grievance / Warranty / AMC:** explicitly scoped and deferred,
   not oversights (§12 decision 13/14).
+
+## 16. CRM record-keeping brought to full ERPNext CRM field/report parity (2026-08-12)
+
+Checked against the actual ERPNext CRM docs (docs.frappe.io/erpnext/CRM), which also states the
+module is **scheduled for removal in ERPNext v17** (Frappe recommends Frappe CRM instead) — worth
+knowing before treating "ERPNext CRM" as a stable long-term target.
+
+Added on top of §12's CRM: `leads.source/territory/industry` (source existed as a column since
+§12 but was never in the create form — now is), `opportunities.source/lost_reason/
+next_contact_date`, and a **Reports** tab on `/sales` (lead funnel by status, conversion rate,
+leads by source, pipeline by stage with value, win rate, campaign performance) — computed
+client-side from data already loaded, no new API/report page. Pipeline (`/pipeline`) also got an
+inline open-value/win-rate strip.
+
+**Deliberately not built — a real gap, not an oversight:** Email Campaign (scheduled send
+sequences), Newsletter, Appointment as its own entity, Prospect. These need an actual email-
+sending integration (SMTP/provider credentials) and are a materially bigger build than the
+record-keeping above — asked the user, explicitly deferred. Revisit only when campaign email
+sending is an actual near-term need, and get provider credentials first.
+
+Also fixed while here: Marketing-department nav had no path to `/sales` (Leads/Campaigns) despite
+having API access — `Nav.jsx`'s `/sales` tab and `app/sales/page.js`'s guard were Sales-only; both
+now accept `Sales || Marketing`, same pattern already used for `/pipeline`. And a latent bug in
+`leads`/`opportunities` POST: `owner_dept` defaulted to hardcoded `'Sales'` when the client didn't
+send one (the form never did), so the access check right after it always rejected a Marketing-only
+user — now defaults to a department the acting user actually has.
+
+Once Marketing could reach `/sales`, it also got Customers/Quotations/Sale Orders — the commercial
+fulfilment chain, which is Sales' job, not Marketing's. `SalesWorkspace.jsx` now takes a
+`departments` prop (same "departments the viewer holds" shape `app/pipeline/page.js` already used)
+and only renders those three tabs when the viewer holds Sales; Leads/Campaigns/Reports stay shared.
+The Reports tab also got a **By department** table (leads, conversion, open pipeline, won value,
+win rate split Sales vs Marketing) — the combined-only totals were hiding which department was
+actually driving the pipeline, the same problem a shared total always has.
+
+`/sales`'s tab bar was also converted to a collapsible left sidebar (shadcn Sidebar primitives,
+`components/ui/sidebar.jsx`), same structural pattern `CalcWorkspace.jsx` already uses for
+`/calc` — a flat `PANELS` array filtered by department instead of Calc's grouped sections, same
+local-state active-panel mechanism. `/pipeline` stayed a single-page Kanban (no sub-navigation to
+collapse into a sidebar).
+
+## 17. CRM brought to Frappe CRM parity — Task, Call Log, Views, Assignment Rule, SLA (2026-08-12)
+
+§16 checked against **ERPNext CRM**'s docs; this pass checked against the actual product ERPNext
+points to instead — **Frappe CRM** (github.com/frappe/crm), a different codebase and data model
+(Lead/Deal/Contact/Organization/Note/Task/Call Log, no Campaign doctype at all). Read its repo
+doctype list and full docs nav (Core Records / Views / Other Features), not assumed from memory.
+
+**What Frappe CRM actually has that ERPNext CRM didn't**, and what's now built to match:
+
+- **Task** — reuses the existing cross-department `tasks` table (`lib/db.js`, already "every
+  department's own ad-hoc task list on a month calendar") rather than a new table — a CRM task is
+  just a task with `lead_id`/`opportunity_id`/`customer_id` set, same one-of-three discriminator
+  `crm_notes` already uses. New thin API (`app/api/crm-tasks/`) instead of extending
+  `app/api/production/tasks/route.js`, which carries Production-only baggage (`from_department`,
+  `bom_item_id`, cross-department notify) that doesn't apply to a CRM task. Surfaces in three
+  places: a new Lead detail sheet (didn't exist before — Leads only had a Convert button), the
+  existing Opportunity detail sheet, and a shared **Tasks** sidebar panel listing every CRM task
+  across all three link types. Unassigned by default (unlike Production's own board, which falls
+  back to the creator) — a CRM task quietly owned by whoever happened to create it would hide that
+  nobody's actually following up.
+- **Call Log** — not a new doctype; `crm_notes` (already had `note_type='call'`) gained
+  `call_type` (incoming/outgoing) and `duration_seconds`, populated only when the "Log as a call"
+  toggle is checked in the notes composer.
+- **Views** ("Saved View"/"Pinned View" in Frappe CRM's own docs) — `crm_saved_views` table,
+  personal to the user who saved it (not shared/team-wide, matching Frappe CRM's own scope).
+  Scoped to Leads only for now (status/source/search filters); a pinned view is a clickable chip
+  that reapplies the saved filter set.
+- **Assignment Rule** — scoped down to the one pattern that mattered: round-robin a department's
+  new leads across a configured username list (`crm_assignment_rules`, one row per department,
+  `next_index` advances on every auto-assign). Configured via a new **Team** sidebar panel,
+  dept-scoped edit (a Marketing head can only set Marketing's list, same boundary as everywhere
+  else in CRM). No rule configured -> lead stays unassigned, same "visibly unowned rather than
+  silently defaulted" choice Task made above.
+- **SLA** — `SLA_HOURS = 24` constant (`components/SalesWorkspace.jsx`), not Frappe CRM's full
+  SLA doctype (business-hours calendar, holiday list, per-priority windows). A lead still in
+  `new` status past that threshold gets a red "SLA overdue" badge on the Leads table and rolls up
+  into a count on the Reports tab. `ponytail:` flagged in the code — add real business-hours
+  config if a different threshold or per-department SLA becomes a real need.
+
+**Explicitly not built — a real gap, not an oversight, confirmed against Frappe CRM's docs
+directly:** email/WhatsApp/Twilio/Exotel integration (already deferred per §16, user confirmed
+again), Organization as a separate doctype from Customer (would be redundant — Customer already
+covers it), Territory (already deferred, §12), a schema-level custom-fields builder or Form
+Script (structurally out of scope for a bespoke app, not a CRM feature gap).
+
+**Verified live** (Marketing Head and Sales Head, via the shared Turso DB, test rows cleaned up
+after): lead + task + call-log creation end to end, round-robin auto-assignment on a second lead
+after configuring a rule, saved-view persistence across reload, dept-scoped Team panel (each head
+sees only their own department's row), SLA count on Reports, Tasks panel inside the Opportunity
+detail sheet. `npm run build` clean throughout.
+
+## 18. Scope of Supply draft, Sales→Stores flow verified, Reports as its own tab (2026-08-12)
+
+**STATUS: CRM work is not "done" — this section and §16/§17 are the running record. Keep adding
+here until the user says the CRM work is finished.**
+
+### Trading (Sales enquiry → Stores → Procurement) — verified, already built
+Checked against the user's description: Sales readies an enquiry, sends it to Stores, Stores
+reserves stock or asks Procurement for the shortfall. This already exists under the name **SAS
+("Sold-As-Such")**: `bom_items.source = 'sas'`, documented in `SYSTEM.md` §5e. Lead→Quotation→
+Sale Order works (`app/api/quotations/[id]/convert/route.js`); Stores has a real reserve/issue/
+release mechanism (`lib/procurement.js` — `reserveFromStock`/`issueReservation`/
+`releaseReservation`, tested via `scripts/inventory-reservations-selfcheck.mjs`); Stores can raise
+a PR to Procurement (`PR_DEPARTMENTS` includes Stores, `app/api/purchase-requisitions/route.js`,
+server-enforced Stores-only for `stock`/`sas` sources). **One real gap, not fixed this round**: no
+automatic Sales→Stores handoff — `sale_orders` creation/status-change raises no task or
+notification, and `bom_items.sale_order_no` is free-text, not an FK, so Stores must manually
+search for the SO number. Flag for a future pass if it becomes a real friction point.
+
+### Scope of Supply / Work Order (Sales confirmed order → Design + Engineering) — draft built
+No real format exists yet ("I don't have a format... as this is a boiler company, I am guessing it
+would be filled with configuration" — user's own words) — built as an **educated draft**, meant to
+be replaced once the real format is provided, not a finished feature:
+- New `scope_of_supply` table (`lib/db.js`): `project_id`, `title`, a free-text `spec` field (not a
+  structured boiler-configuration schema), `status` (draft/released).
+- Auto-created when a Project is linked to a Sale Order (`app/api/projects/route.js` — a draft row
+  seeds the moment `sale_order_id` is set, since that's this system's actual "order confirmed"
+  moment; there's no separate `confirmed` status on `sale_orders` today).
+- Replaces `components/DesignPanel.jsx`'s year-old inert placeholder card ("awaiting Work Order /
+  Scope of Supply format" — `CALC-CHANGES2.md` §D), and also now renders in Engineering's own tab
+  (`components/DepartmentPanel.jsx`) — **the same row, not department-split**, since it's one work
+  order both departments read from. New shared component: `components/ScopeOfSupplyPanel.jsx`.
+- Verified live: draft auto-creates, spec edits save, Release flips status, and Engineering sees
+  the exact same released row Design entered — confirmed the two departments are genuinely joined
+  on this document, not two copies.
+
+### CRM Reports — pulled out of Sales into its own top-level tab, with charts + PDF
+User: "the reports should be a main tab instead of within Sales tab... sidebar for all reports...
+separated by sales or marketing... mature visualization... downloadable."
+- New nav tab `Reports` (`components/Nav.jsx`, same `inSales || inMarketing` shared-tab pattern as
+  Pipeline) → `app/crm-reports/page.js` → `components/CrmReportsWorkspace.jsx`, same
+  sidebar-workspace shell as `SalesWorkspace`/`CalcWorkspace`, grouped into **Sales** (Sales
+  Pipeline, By Department) and **Marketing** (Lead Funnel, Leads by Source, Campaign Performance)
+  sidebar sections — a Marketing-only head sees only the Marketing group, Sales-only sees only
+  Sales, matching the same department gating as everywhere else in CRM. `ReportsTab` and its
+  helpers were deleted from `SalesWorkspace.jsx` (moved wholesale, not duplicated).
+- **Charts**: reused the app's own existing bar idiom (`components/BomProgress.jsx` — thin rounded
+  bars on `bg-muted`) instead of adding a charting dependency. Magnitude gets one hue (`bg-chart-1`,
+  the app's own existing categorical/chart token ramp in `app/globals.css`); Won/Lost/Converted
+  rows get the reserved status tokens (`bg-success`/`bg-destructive`) — dataviz skill's "sequential
+  = one hue, status colors reserved" rule, never mixed on one chart.
+- **"Download PDF"**: the browser's native print-to-PDF (`window.print()`) against a scoped print
+  stylesheet (`app/globals.css` `@media print`, `#report-print-area`) — no PDF library added. Note
+  for the record: Frappe CRM itself has no PDF-export feature for its views (checked its full docs
+  nav) — this is genuinely new scope beyond either CRM being used as a reference, not a gap being
+  closed.
+- Verified live: nav tab appears, sidebar correctly splits by department (re-verified after an
+  earlier false alarm — see below), bar charts render with real proportions once a lead/source
+  existed, print stylesheet rule confirmed present in the compiled CSS.
+- **Correction during this work**: first login attempt clicked the wrong demo-login button (Sales
+  Head instead of Marketing Head) and momentarily looked like a department-gating bug. It wasn't —
+  re-verified with the correct login and the split is correct. Noted here so it isn't mistaken for
+  a real incident if this file is read cold later.
+
+### WhatsApp / Email quick-links — added
+`components/SalesWorkspace.jsx`'s new `ContactLinks` component: a `wa.me/<number>` link and a
+`mailto:` link next to any phone/email already on file (Lead detail sheet, Customer detail sheet,
+per-contact rows). Opens WhatsApp Web / the user's mail client — **not** a WhatsApp Business API or
+email-sending integration (that's the already-deferred item from §16/§17).
+
+### Noted for later — NOT started
+User: "we need to think on how many documents we need like sales invoice and others... figure out
+how many of those requires input from accounts." This is a future scoping pass (which Selling/
+Accounting documents — Sales Invoice, Credit Note, etc. — this system needs, and which ones need
+Accounts' involvement vs. can stay Sales-only) — **explicitly not scoped or built this round**,
+recorded here so it isn't lost.
+
+## 19. CRM roadmap — recorded, explicitly NOT built yet (2026-08-12)
+
+User asked for these to be noted only ("do not start working on these. just note it.") — a punch
+list for a future round, not a design commitment yet.
+
+### Dashboard report (top of Reports, both departments)
+A stat-tile + trend-chart dashboard matching the reference screenshot the user shared (ERPNext's
+own CRM dashboard): Total leads, Avg. time to close a lead, Ongoing deals, Won deals, Avg. won deal
+value, Avg. deal value, Avg. time to close a deal, a "Sales trend" line chart (leads/deals/won
+deals per day), a "Forecasted revenue" chart (projected vs actual by deal probability). Needs to be
+department-split (Sales vs Marketing see different stat sets) and needs a **top-right "viewing as"
+dropdown** — pick yourself or a teammate and see their numbers.
+
+**Real gap this exposes, not previously flagged**: today `opportunities`/`leads` are owned at the
+*department* level (`owner_dept`) — `leads.assigned_to` exists (§17) but **opportunities have no
+individual-rep ownership field at all**. A per-person dashboard needs per-person data to filter by,
+so this isn't just a UI build — it needs an `assigned_to` (or equivalent) on `opportunities` first,
+plus a per-stage timestamp history to compute "avg. time to close" honestly (today there's only
+`created_at`/`updated_at`, no stage-change log, so "time to close" would currently have to be
+approximated from `updated_at`, which isn't the same thing).
+
+### Marketing reports requested — overlap check against what's already built (§18)
+| Requested | Status |
+|---|---|
+| Campaign Performance Report | **Already built** (§18) — leads + opportunity value per campaign |
+| Lead Source Effectiveness Report | Partial — "Leads by Source" (§18) counts leads per source; "effectiveness" implies *conversion rate* per source, which isn't computed yet |
+| Customer Acquisition Cost (CAC) vs. ROI Report | Not built — feasible with existing `campaigns.budget` vs. opportunity value won, but needs a defined CAC formula agreed first |
+| Conversion Rate / Attribution Report | Partial — overall lead conversion rate exists (Lead Funnel report); *multi-touch attribution* (crediting more than one campaign/source per conversion) does not exist and the data model doesn't support it today (one `campaign_id` per lead, not a touchpoint history) |
+| Customer Retention & Churn Report | Not built — no concept of "churn" exists at all today; would need repeat-purchase/order-recency tracking on `customers`/`sale_orders` |
+
+### Sales reports requested — overlap check
+| Requested | Status |
+|---|---|
+| Sales Pipeline Velocity Report | Not built — needs a stage-change timestamp log (doesn't exist; `opportunities` only has `updated_at`, not a history of which stage changed when) |
+| Sales Forecasting Report | Not built — needs a weighted-pipeline forecasting model (probability × value by expected close date); `probability`/`expected_close` fields exist on opportunities so the raw inputs are there, the model/report isn't |
+| Win/Loss Analysis Report | Partial — win rate exists (Sales Pipeline report), `lost_reason` field exists (§16) but nothing aggregates *why* deals are lost across the pipeline yet |
+| Sales Activity Report | Partial — Tasks/Notes/Call Log exist (§17) but nothing rolls them up into a per-rep activity-volume report |
+| Deal Aging & Stalled Deals Report | Not built — needs "time since last activity" per opportunity, which needs the notes/tasks timeline to be queried against, not just opportunity fields |
+
+Every report gets a "Download PDF" button — same native `window.print()` mechanism already built
+for the existing reports (§18), no new work needed there once each report exists.
+
+### Operations tab — flow-diagram revamp
+User wants the same kind of visual flow-diagram treatment Operations already has, built fresh for
+Sales and Marketing (each gets its own diagram — the funnels are related but not identical, per
+§17's "one shared funnel, Sales does fulfilment, Marketing doesn't" model). Not scoped or started.
+
+### Maturity assessment, asked directly
+User asked whether this is "world class" CRM maturity. Answer given: no — this is a solid
+record-keeping + reporting foundation (matches ERPNext CRM depth, partially matches Frappe CRM's
+day-to-day tools) but has none of: automation/workflow triggers, a unified two-way inbox, real
+analytics (forecasting/cohort/attribution modeling — bar charts and tables aren't that), a
+dashboard, a custom-fields/workflow-builder layer, a real business-hours SLA engine, or mobile/AI.
+Closing that gap is a materially bigger, multi-round effort, not a polish pass — recorded here so
+future sessions don't assume "CRM parity" work is close to finished.
+
+## 20. CRM Help — `/help` gets its first Sales/Marketing content (2026-08-12)
+
+`/help` (`app/help/page.js` + `components/help-content.jsx`) existed before this but had **zero
+content for Sales or Marketing** — `HEAD_GUIDES` never had those two keys, so a Sales-only or
+Marketing-only head landed on the "No departments assigned yet" empty state despite having a full
+department to work in. Confirmed via exploration before building, not assumed.
+
+Built, inspired by the ERPNext CRM docs structure the user pasted (Introduction → what it covers →
+workflow):
+- `components/help-crm-content.jsx` — plain data, same "no CMS" convention as the existing
+  `help-content.jsx`: `CRM_INTRO` (a short multi-paragraph summary, titled "Introduction to Sales"
+  per the user's exact wording), `CRM_FEATURES` (12 entries — Leads, Opportunities/Pipeline,
+  Campaigns, Customers, Quotations, Sale Orders, Tasks, Notes & Call Log, Saved Views, Team/
+  Assignment Rules, Reports, WhatsApp/Email links — each a few short plain-English paragraphs,
+  each tagged with `depts` where it's Sales-only or Marketing-only so the sidebar only shows what
+  the viewer actually has), `CRM_HOWTO` (8 numbered steps, Lead → work it → Convert → work the
+  deal → Quote → confirm the Sale Order → hand off to Design/Engineering's Scope of Supply →
+  keep the pipeline honest).
+- `components/CrmHelpWorkspace.jsx` — new sidebar workspace, same shadcn Sidebar pattern as
+  `SalesWorkspace`/`CrmReportsWorkspace`/`CalcWorkspace`: **Introduction to Sales** (single page),
+  **Features** (grouped list, filtered by department), **How To** (single page, numbered).
+- `app/help/page.js` — wired in without touching the existing department-grid page for every other
+  department (Design/Engineering/Procurement/etc. keep exactly what they had). A PM previews both
+  Sales and Marketing content; a Sales-only or Marketing-only head sees only their own department's
+  Features; a head who holds Sales/Marketing *and* another department sees the CRM sidebar plus
+  their other department's existing grid card below it, unchanged.
+
+**Not yet live-verified in the browser this round** — user is conserving tokens; `npm run build`
+is clean (`/help` compiles at 6.73 kB) but a visual pass (does the sidebar render correctly for
+Marketing Head vs Sales Head vs a dual-department head) is still outstanding. Verify before
+treating this as fully done.

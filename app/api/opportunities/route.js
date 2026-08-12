@@ -35,7 +35,8 @@ export async function POST(req) {
   const title = String(b.title || '').trim();
   if (!title) return NextResponse.json({ error: 'Title is required' }, { status: 400 });
 
-  const ownerDept = PIPELINE_DEPARTMENTS.includes(b.owner_dept) ? b.owner_dept : 'Sales';
+  const ownerDept = PIPELINE_DEPARTMENTS.includes(b.owner_dept) ? b.owner_dept
+    : PIPELINE_DEPARTMENTS.find(d => canAccessDepartment(user, d)) || 'Sales';
   if (!canAccessDepartment(user, ownerDept)) {
     return NextResponse.json({ error: 'Not granted that department' }, { status: 403 });
   }
@@ -44,10 +45,11 @@ export async function POST(req) {
   // customer_id — V3_CHANGES.md §12 Phase 1d wires up the previously-dead FK; customer_name stays
   // as a fallback/display cache when no real customer record is picked.
   const { lastId } = await execute(
-    `INSERT INTO opportunities (customer_id, customer_name, title, stage, value_num, probability, expected_close, owner_dept, campaign_id, notes, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO opportunities (customer_id, customer_name, title, stage, value_num, probability, expected_close, owner_dept, campaign_id, notes, source, next_contact_date, created_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [b.customer_id || null, b.customer_name || null, title, stage, b.value_num || null, b.probability || null,
-      b.expected_close || null, ownerDept, b.campaign_id || null, b.notes || null, user.username]
+      b.expected_close || null, ownerDept, b.campaign_id || null, b.notes || null, b.source || null,
+      b.next_contact_date || null, user.username]
   );
   await audit('opportunity_created', { actor: user.username, detail: title });
   return NextResponse.json({ id: Number(lastId) });

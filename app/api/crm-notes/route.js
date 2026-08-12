@@ -32,11 +32,15 @@ export async function POST(req) {
     return NextResponse.json({ error: 'Exactly one of lead_id, opportunity_id, customer_id is required' }, { status: 400 });
   }
   const noteType = NOTE_TYPES.includes(b.note_type) ? b.note_type : 'note';
+  // Call Log fields (Frappe CRM parity) — only meaningful when note_type is 'call', silently
+  // ignored otherwise rather than 400ing, since the client always sends whatever the form has.
+  const callType = noteType === 'call' && ['incoming', 'outgoing'].includes(b.call_type) ? b.call_type : null;
+  const durationSeconds = noteType === 'call' && b.duration_seconds ? Number(b.duration_seconds) : null;
 
   const { lastId } = await execute(
-    `INSERT INTO crm_notes (lead_id, opportunity_id, customer_id, note_type, content, created_by)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [b.lead_id || null, b.opportunity_id || null, b.customer_id || null, noteType, content, user.username]
+    `INSERT INTO crm_notes (lead_id, opportunity_id, customer_id, note_type, content, call_type, duration_seconds, created_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [b.lead_id || null, b.opportunity_id || null, b.customer_id || null, noteType, content, callType, durationSeconds, user.username]
   );
   return NextResponse.json({ id: Number(lastId) });
 }

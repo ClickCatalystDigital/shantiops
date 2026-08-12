@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
+import ScopeOfSupplyPanel from './ScopeOfSupplyPanel';
 
 const SHEET_STATUS_STYLE = {
   pass: { label: 'Pass', cls: 'text-success bg-success/10 ring-1 ring-inset ring-success/20' },
@@ -18,7 +18,7 @@ const DRAWING_STATUS_LABEL = {
   not_started: 'Not started', in_progress: 'In progress', under_review: 'Under review', approved: 'Approved', as_built: 'As built',
 };
 
-export default function DesignPanel({ projectId, designSummary }) {
+export default function DesignPanel({ projectId, designSummary, scopeOfSupply = [], canEditScope = false }) {
   const { calcSheets = [], drawings = [], activity = [] } = designSummary || {};
   const drawingsComplete = drawings.filter((d) => d.status === 'approved' || d.status === 'as_built').length;
 
@@ -74,20 +74,7 @@ export default function DesignPanel({ projectId, designSummary }) {
         </CardContent>
       </Card>
 
-      {/* Work Orders / SOS — a genuinely new placeholder, no schema beyond this until Shanti
-          provides the real Work Order / Scope of Supply format. Not sale_orders (a different,
-          stock/trade concept, §5e). */}
-      <Card>
-        <CardHeader><CardTitle>Work Orders / SOS</CardTitle></CardHeader>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader><TableRow><TableHead>WO #</TableHead><TableHead>Description</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
-            <TableBody>
-              <TableRow><TableCell colSpan={3} className="text-muted-foreground">Not yet available — awaiting Work Order / Scope of Supply format.</TableCell></TableRow>
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      <ScopeOfSupplyPanel projectId={projectId} scopeOfSupply={scopeOfSupply} canEdit={canEditScope} />
     </div>
   );
 }

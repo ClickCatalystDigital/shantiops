@@ -11,7 +11,7 @@ import Link from 'next/link';
 import {
   Database, FunctionSquare, PlayCircle, History, Plus, Trash2,
   ArrowRight, CheckCircle2, AlertTriangle, XCircle, GitBranch, Save, RotateCcw,
-  BookOpen, ShieldCheck, ExternalLink, Calculator, RefreshCw, ChevronDown,
+  BookOpen, ShieldCheck, ExternalLink, Calculator, RefreshCw, ChevronDown, ChevronRight,
   Table as TableIcon, FileText as FileTextIcon, FileSpreadsheet, Upload, MessageSquare, LayoutTemplate,
   LayoutDashboard,
 } from 'lucide-react';
@@ -32,6 +32,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Separator } from '@/components/ui/separator';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 
 const TYPE_STYLE = {
   input: { label: 'Input', cls: 'text-info bg-info/10 ring-1 ring-inset ring-info/20' },
@@ -168,15 +169,41 @@ export default function CalcWorkspace({ initialState, sheetId, sheetChain }) {
               <Calculator className="size-4" />
             </div>
             <div className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
-              <div className="truncate text-sm font-semibold tracking-tight">Calc Sheets</div>
-              <div className="truncate text-xs text-sidebar-foreground/60">
-                {sheetChain ? `${sheetChain.customerName} → ${sheetChain.projectNo} → ${sheetChain.sheetName}` : '—'}
-              </div>
-              {sheetChain && (
-                <div className="mt-1 flex gap-2 text-[11px]">
-                  <Link href="/calc" className="text-sidebar-foreground/70 underline hover:text-sidebar-foreground">Change project</Link>
-                  <Link href={`/calc/project/${sheetChain.projectId}`} className="text-sidebar-foreground/70 underline hover:text-sidebar-foreground">Change sheet</Link>
-                </div>
+              {sheetChain ? (
+                <>
+                  <InlineSwitcher
+                    trigger={
+                      <span className="flex min-w-0 items-center gap-1">
+                        <span className="truncate text-sm font-semibold tracking-tight text-sidebar-foreground">{sheetChain.projectNo}</span>
+                        <ChevronDown className="size-3 shrink-0 text-sidebar-foreground/40" />
+                      </span>
+                    }
+                    triggerClassName="-mx-1 flex min-w-0 rounded-md px-1 py-0.5 hover:bg-sidebar-accent"
+                    placeholder="Search projects…"
+                    loadItems={async () => (await api('/api/projects')).projects}
+                    getKey={(p) => p.id} getLabel={(p) => p.project_no} getSub={(p) => p.customer_name}
+                    onPick={(p) => router.push(`/calc/project/${p.id}`)}
+                  />
+                  <div className="truncate text-[11px] text-sidebar-foreground/50">{sheetChain.customerName}</div>
+                  <div className="mt-1 flex min-w-0 items-center gap-1">
+                    <ChevronRight className="size-3 shrink-0 text-sidebar-foreground/30" />
+                    <InlineSwitcher
+                      trigger={
+                        <span className="flex min-w-0 items-center gap-1">
+                          <span className="truncate text-xs font-medium text-sidebar-foreground/80">{sheetChain.sheetName}</span>
+                          <ChevronDown className="size-3 shrink-0 text-sidebar-foreground/40" />
+                        </span>
+                      }
+                      triggerClassName="-mx-1 flex min-w-0 rounded-md px-1 py-0.5 hover:bg-sidebar-accent"
+                      placeholder="Search sheets…"
+                      loadItems={async () => (await api(`/api/calc-sheets?project_id=${sheetChain.projectId}`)).sheets}
+                      getKey={(s) => s.id} getLabel={(s) => s.name} getSub={() => null}
+                      onPick={(s) => router.push(`/calc/project/${sheetChain.projectId}/${s.id}`)}
+                    />
+                  </div>
+                </>
+              ) : (
+                <div className="truncate text-sm font-semibold tracking-tight">Calc Sheets</div>
               )}
             </div>
             <SidebarTrigger className="ml-auto group-data-[collapsible=icon]:hidden" />
@@ -226,6 +253,23 @@ export default function CalcWorkspace({ initialState, sheetId, sheetChain }) {
             <h1 className="text-base font-semibold leading-tight">{activePanel.label}</h1>
             <p className="text-xs text-muted-foreground">{activePanel.description}</p>
           </div>
+          {/* Persistent status strip — visible from every panel, not just Calculation, so a
+              failing validation is visible while browsing Registry/Methodology/etc too. */}
+          <div className="hidden shrink-0 items-center gap-1.5 sm:flex">
+            {failCount > 0 && (
+              <span className="flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-1 text-xs font-medium tnum text-destructive">
+                <XCircle className="size-3" />{failCount}
+              </span>
+            )}
+            {warnCount > 0 && (
+              <span className="flex items-center gap-1 rounded-full bg-warning/10 px-2 py-1 text-xs font-medium tnum text-warning">
+                <AlertTriangle className="size-3" />{warnCount}
+              </span>
+            )}
+            <span className="flex items-center gap-1 rounded-full bg-success/10 px-2 py-1 text-xs font-medium tnum text-success">
+              <CheckCircle2 className="size-3" />{passCount}
+            </span>
+          </div>
         </div>
 
         <div className="flex-1 overflow-auto p-4">
@@ -245,7 +289,7 @@ export default function CalcWorkspace({ initialState, sheetId, sheetChain }) {
           )}
           {panel === 'registry' && <RegistryPanel variables={variables} liveValues={liveValues} router={router} notes={notes} sheetId={sheetId} />}
           {panel === 'library' && <LibraryPanel formulas={formulas} router={router} sheetId={sheetId} />}
-          {panel === 'tables' && <TablesPanel tables={tables} router={router} nameList={nameList} />}
+          {panel === 'tables' && <TablesPanel tables={tables} router={router} nameList={nameList} variables={variables} />}
           {panel === 'audit' && <AuditPanel variables={variables} formulas={formulas} tables={tables} snapshots={snapshots} router={router} />}
           {panel === 'drawings' && <DrawingsPanel drawings={drawings} projectId={sheetChain?.projectId} router={router} />}
           {panel === 'portfolio' && <PortfolioPanel />}
@@ -295,33 +339,35 @@ function TemplatesCard({ templates, router, sheetId }) {
     }
   }
 
+  // A quick-start affordance, not a primary object — dashed border + no CardHeader weight keeps it
+  // visually secondary to the Design inputs card it sits above (premium-repositioning pass).
   return (
-    <Card>
-      <CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-sm"><LayoutTemplate className="size-3.5" /> Templates</CardTitle></CardHeader>
-      <CardContent className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2 rounded-md border border-dashed px-3 py-2.5">
+      <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+        <LayoutTemplate className="size-3.5" /> Templates
+      </div>
+      <div className="flex gap-2">
+        <Select value={selected} onValueChange={setSelected}>
+          <SelectTrigger className="flex-1"><SelectValue placeholder="Start from a scenario…" /></SelectTrigger>
+          <SelectContent>
+            {templates.map((t) => <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Button size="sm" variant="outline" disabled={!selected || busy} onClick={apply}>Apply</Button>
+      </div>
+      {selected && templates.find((t) => String(t.id) === selected)?.description && (
+        <p className="text-xs text-muted-foreground">{templates.find((t) => String(t.id) === selected).description}</p>
+      )}
+      {showSave ? (
         <div className="flex gap-2">
-          <Select value={selected} onValueChange={setSelected}>
-            <SelectTrigger className="flex-1"><SelectValue placeholder="Start from a scenario…" /></SelectTrigger>
-            <SelectContent>
-              {templates.map((t) => <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <Button size="sm" variant="outline" disabled={!selected || busy} onClick={apply}>Apply</Button>
+          <Input placeholder="Template name" value={saveName} onChange={(e) => setSaveName(e.target.value)} className="flex-1" />
+          <Button size="sm" disabled={busy} onClick={saveAsTemplate}>Save</Button>
+          <Button size="sm" variant="ghost" onClick={() => setShowSave(false)}>Cancel</Button>
         </div>
-        {selected && templates.find((t) => String(t.id) === selected)?.description && (
-          <p className="text-xs text-muted-foreground">{templates.find((t) => String(t.id) === selected).description}</p>
-        )}
-        {showSave ? (
-          <div className="flex gap-2">
-            <Input placeholder="Template name" value={saveName} onChange={(e) => setSaveName(e.target.value)} className="flex-1" />
-            <Button size="sm" disabled={busy} onClick={saveAsTemplate}>Save</Button>
-            <Button size="sm" variant="ghost" onClick={() => setShowSave(false)}>Cancel</Button>
-          </div>
-        ) : (
-          <button onClick={() => setShowSave(true)} className="self-start text-xs text-muted-foreground hover:text-foreground">Save current inputs as a new template</button>
-        )}
-      </CardContent>
-    </Card>
+      ) : (
+        <button onClick={() => setShowSave(true)} className="self-start text-xs text-muted-foreground hover:text-foreground">Save current inputs as a new template</button>
+      )}
+    </div>
   );
 }
 
@@ -344,124 +390,140 @@ function ProjectPanel({ otherVars, computedVars, liveValues, trace, checks, conv
 
   const inputVars = otherVars.filter((v) => v.type === 'input');
 
+  // Premium-repositioning pass: Calculation used to be one long scroll doing two jobs — the daily
+  // worksheet (inputs/results/validations, opened every day) and an engineering deep-dive
+  // (execution trace, the analytics visuals, goal-seek/sensitivity, occasional/investigative use).
+  // Split via sub-tabs (same Tabs/TabsList variant="line" ProjectDepartmentTabs.jsx already uses)
+  // instead of a new sidebar item or a collapsible section — nothing below is deleted or made
+  // harder to reach, just no longer sharing scroll weight with the daily view by default.
   return (
-    <div className="flex flex-col gap-4">
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-      <div className="flex flex-col gap-3">
-        <TemplatesCard templates={templates} router={router} sheetId={sheetId} />
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm">Design inputs</CardTitle></CardHeader>
-          <CardContent className="flex flex-col divide-y p-0">
-            {otherVars.map((v) => (
-              <div key={v.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
-                <div className="min-w-0">
-                  <div className="text-sm font-medium">{v.name}</div>
-                  <div className="text-xs text-muted-foreground">{TYPE_STYLE[v.type].label}{v.unit ? ` · ${v.unit}` : ''}</div>
-                </div>
-                <Input
-                  type="number" defaultValue={v.value} className="w-28 shrink-0 text-right font-mono"
-                  onChange={(e) => onLocalChange(v.id, Number(e.target.value))}
-                  onBlur={(e) => onPersist(v.id, Number(e.target.value))}
-                />
-              </div>
-            ))}
-          </CardContent>
-        </Card>
+    <Tabs defaultValue="worksheet" className="flex-col gap-4">
+      <TabsList variant="line" className="w-fit">
+        <TabsTrigger value="worksheet">Worksheet</TabsTrigger>
+        <TabsTrigger value="analysis">Analysis</TabsTrigger>
+      </TabsList>
 
-        <Button onClick={saveSnapshot} disabled={saving} className="self-start">
-          <Save data-icon="inline-start" />{saving ? 'Saving…' : 'Save snapshot of this run'}
-        </Button>
+      <TabsContent value="worksheet" className="flex flex-col gap-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div className="flex flex-col gap-3">
+            <TemplatesCard templates={templates} router={router} sheetId={sheetId} />
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm">Design inputs</CardTitle></CardHeader>
+              <CardContent className="flex flex-col divide-y p-0">
+                {otherVars.map((v) => (
+                  <div key={v.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium">{v.name}</div>
+                      <div className="text-xs text-muted-foreground">{TYPE_STYLE[v.type].label}{v.unit ? ` · ${v.unit}` : ''}</div>
+                    </div>
+                    <Input
+                      type="number" defaultValue={v.value} className="w-28 shrink-0 text-right font-mono"
+                      onChange={(e) => onLocalChange(v.id, Number(e.target.value))}
+                      onBlur={(e) => onPersist(v.id, Number(e.target.value))}
+                    />
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
 
-        {unapproved.length > 0 && (
-          <div className="flex items-start gap-2 rounded-md border border-warning/20 bg-warning/10 px-3 py-2 text-xs text-warning">
-            <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-            <span>{unapproved.length} formula(s) in this run aren't Approved yet: {unapproved.map((t) => t.formulaName).join(', ')}. Results are provisional.</span>
-          </div>
-        )}
-      </div>
+            <Button onClick={saveSnapshot} disabled={saving} className="self-start">
+              <Save data-icon="inline-start" />{saving ? 'Saving…' : 'Save snapshot of this run'}
+            </Button>
 
-      <div className="flex flex-col gap-3">
-        {convergence.map((c) => (
-          <div key={c.outputVars.join(',')} className={`rounded-md border px-3 py-2 text-xs ${
-            c.converged ? 'border-success/20 bg-success/5 text-success' : 'border-destructive/20 bg-destructive/10 text-destructive'
-          }`}>
-            <div className="flex items-center justify-between gap-2">
-              <span className="flex items-center gap-1.5 font-medium">
-                <RefreshCw className="size-3.5 shrink-0" />
-                {c.converged
-                  ? `Converged in ${c.iterations} iteration${c.iterations === 1 ? '' : 's'}`
-                  : `Did not converge after ${c.maxIterations} iterations`}
-                <span className="font-normal text-muted-foreground">— {c.outputVars.join(', ')}</span>
-              </span>
-              <button onClick={() => setShowIterations((s) => !s)} className="flex shrink-0 items-center gap-1 text-muted-foreground hover:text-foreground">
-                Iteration history <ChevronDown className={`size-3.5 transition-transform ${showIterations ? 'rotate-180' : ''}`} />
-              </button>
-            </div>
-            {showIterations && (
-              <div className="mt-2 max-h-48 overflow-auto rounded border border-border/50 bg-background/50">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="h-7 text-xs">Iter</TableHead>
-                      <TableHead className="h-7 text-xs">Variable</TableHead>
-                      <TableHead className="h-7 text-xs">Value</TableHead>
-                      <TableHead className="h-7 text-xs">Δ</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {c.history.map((h, i) => (
-                      <TableRow key={i}>
-                        <TableCell className="py-1 font-mono text-xs">{h.iteration}</TableCell>
-                        <TableCell className="py-1 font-mono text-xs">{h.variable}</TableCell>
-                        <TableCell className="py-1 font-mono text-xs">{h.error ? 'error' : round(h.value)}</TableCell>
-                        <TableCell className="py-1 font-mono text-xs">{h.error ? '—' : `${round(h.delta * 100)}%`}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+            {unapproved.length > 0 && (
+              <div className="flex items-start gap-2 rounded-md border border-warning/20 bg-warning/10 px-3 py-2 text-xs text-warning">
+                <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+                <span>{unapproved.length} formula(s) in this run aren't Approved yet: {unapproved.map((t) => t.formulaName).join(', ')}. Results are provisional.</span>
               </div>
             )}
           </div>
-        ))}
 
-        <Card className="has-data-[slot=card-footer]:pb-0">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Results</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col divide-y p-0">
-            {computedVars.map((v) => {
-              const value = liveValues[v.name];
-              return (
-                <div key={v.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
-                  <div className="text-sm font-medium">{v.name}</div>
-                  <div className="font-mono text-sm font-medium text-success">
-                    {value === null || value === undefined || Number.isNaN(value) ? '—' : `${round(value)}${v.unit ? ' ' + v.unit : ''}`}
-                  </div>
-                </div>
-              );
-            })}
-          </CardContent>
-          <CardFooter className="flex items-center gap-4 text-xs">
-            <span className="flex items-center gap-1.5 text-success"><CheckCircle2 className="size-3.5" />{passCount} passed</span>
-            <span className="flex items-center gap-1.5 text-warning"><AlertTriangle className="size-3.5" />{warnCount} warnings</span>
-            <span className="flex items-center gap-1.5 text-destructive"><XCircle className="size-3.5" />{failCount} failures</span>
-          </CardFooter>
-        </Card>
-
-        {checks.length > 0 && (
-          <div className="flex flex-col gap-1.5">
-            {checks.map((c) => (
-              <div key={c.id} className={`flex items-start gap-2 rounded-md border px-2.5 py-1.5 text-xs ${
-                c.pass ? 'border-success/20 bg-success/5 text-success'
-                  : c.severity === 'fail' ? 'border-destructive/20 bg-destructive/10 text-destructive' : 'border-warning/20 bg-warning/10 text-warning'
+          <div className="flex flex-col gap-3">
+            {convergence.map((c) => (
+              <div key={c.outputVars.join(',')} className={`rounded-md border px-3 py-2 text-xs ${
+                c.converged ? 'border-success/20 bg-success/5 text-success' : 'border-destructive/20 bg-destructive/10 text-destructive'
               }`}>
-                {c.pass ? <CheckCircle2 className="mt-0.5 size-3.5 shrink-0" /> : c.severity === 'fail' ? <XCircle className="mt-0.5 size-3.5 shrink-0" /> : <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />}
-                <span>{c.name}{!c.pass ? ` — ${c.message}` : ''}</span>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-1.5 font-medium">
+                    <RefreshCw className="size-3.5 shrink-0" />
+                    {c.converged
+                      ? `Converged in ${c.iterations} iteration${c.iterations === 1 ? '' : 's'}`
+                      : `Did not converge after ${c.maxIterations} iterations`}
+                    <span className="font-normal text-muted-foreground">— {c.outputVars.join(', ')}</span>
+                  </span>
+                  <button onClick={() => setShowIterations((s) => !s)} className="flex shrink-0 items-center gap-1 text-muted-foreground hover:text-foreground">
+                    Iteration history <ChevronDown className={`size-3.5 transition-transform ${showIterations ? 'rotate-180' : ''}`} />
+                  </button>
+                </div>
+                {showIterations && (
+                  <div className="mt-2 max-h-48 overflow-auto rounded border border-border/50 bg-background/50">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="h-7 text-xs">Iter</TableHead>
+                          <TableHead className="h-7 text-xs">Variable</TableHead>
+                          <TableHead className="h-7 text-xs">Value</TableHead>
+                          <TableHead className="h-7 text-xs">Δ</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {c.history.map((h, i) => (
+                          <TableRow key={i}>
+                            <TableCell className="py-1 font-mono text-xs">{h.iteration}</TableCell>
+                            <TableCell className="py-1 font-mono text-xs">{h.variable}</TableCell>
+                            <TableCell className="py-1 font-mono text-xs">{h.error ? 'error' : round(h.value)}</TableCell>
+                            <TableCell className="py-1 font-mono text-xs">{h.error ? '—' : `${round(h.delta * 100)}%`}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
               </div>
             ))}
-          </div>
-        )}
 
+            <Card className="has-data-[slot=card-footer]:pb-0">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Results</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col divide-y p-0">
+                {computedVars.map((v) => {
+                  const value = liveValues[v.name];
+                  return (
+                    <div key={v.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                      <div className="text-sm font-medium">{v.name}</div>
+                      <div className="font-mono text-sm font-medium text-success">
+                        {value === null || value === undefined || Number.isNaN(value) ? '—' : `${round(value)}${v.unit ? ' ' + v.unit : ''}`}
+                      </div>
+                    </div>
+                  );
+                })}
+              </CardContent>
+              <CardFooter className="flex items-center gap-4 text-xs">
+                <span className="flex items-center gap-1.5 text-success"><CheckCircle2 className="size-3.5" />{passCount} passed</span>
+                <span className="flex items-center gap-1.5 text-warning"><AlertTriangle className="size-3.5" />{warnCount} warnings</span>
+                <span className="flex items-center gap-1.5 text-destructive"><XCircle className="size-3.5" />{failCount} failures</span>
+              </CardFooter>
+            </Card>
+
+            {checks.length > 0 && (
+              <div className="flex flex-col gap-1.5">
+                {checks.map((c) => (
+                  <div key={c.id} className={`flex items-start gap-2 rounded-md border px-2.5 py-1.5 text-xs ${
+                    c.pass ? 'border-success/20 bg-success/5 text-success'
+                      : c.severity === 'fail' ? 'border-destructive/20 bg-destructive/10 text-destructive' : 'border-warning/20 bg-warning/10 text-warning'
+                  }`}>
+                    {c.pass ? <CheckCircle2 className="mt-0.5 size-3.5 shrink-0" /> : c.severity === 'fail' ? <XCircle className="mt-0.5 size-3.5 shrink-0" /> : <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />}
+                    <span>{c.name}{!c.pass ? ` — ${c.message}` : ''}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </TabsContent>
+
+      <TabsContent value="analysis" className="flex flex-col gap-4">
         <Card className="gap-0 py-0">
           <CardHeader className="border-b py-2.5"><CardTitle className="text-xs font-semibold uppercase text-muted-foreground">Execution trace</CardTitle></CardHeader>
           <CardContent className="flex flex-col divide-y p-0">
@@ -497,20 +559,19 @@ function ProjectPanel({ otherVars, computedVars, liveValues, trace, checks, conv
             ))}
           </CardContent>
         </Card>
-      </div>
-    </div>
 
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-      <ValidationDonut passCount={passCount} warnCount={warnCount} failCount={failCount} />
-      <MarginGauge variables={variables} liveValues={liveValues} />
-      <InputRadar otherVars={otherVars} liveValues={liveValues} snapshots={snapshots} />
-    </div>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <ValidationDonut passCount={passCount} warnCount={warnCount} failCount={failCount} />
+          <MarginGauge variables={variables} liveValues={liveValues} />
+          <InputRadar otherVars={otherVars} liveValues={liveValues} snapshots={snapshots} />
+        </div>
 
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-      <GoalSeekCard inputVars={inputVars} computedVars={computedVars} variables={variables} formulas={formulas} tables={tables} onPersist={onPersist} onLocalChange={onLocalChange} />
-      <SensitivityCard inputVars={inputVars} computedVars={computedVars} variables={variables} formulas={formulas} tables={tables} />
-    </div>
-    </div>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <GoalSeekCard inputVars={inputVars} computedVars={computedVars} variables={variables} formulas={formulas} tables={tables} onPersist={onPersist} onLocalChange={onLocalChange} />
+          <SensitivityCard inputVars={inputVars} computedVars={computedVars} variables={variables} formulas={formulas} tables={tables} />
+        </div>
+      </TabsContent>
+    </Tabs>
   );
 }
 
@@ -1648,6 +1709,57 @@ function AuditPanel({ variables, formulas, tables, snapshots, router }) {
 
 // ---- Tables (Phase 1.3) ---------------------------------------------------------------------
 
+// In-place searchable project/sheet switcher (sidebar header breadcrumb) — same open/type/filter/pick
+// shape as PrWorkspace's ItemSearchField, generalized over item shape so both switchers share one
+// component instead of two near-duplicates. Items load lazily on first open, not on every workspace
+// mount. `trigger` is a node (not just text) so the breadcrumb segment itself — project no., sheet
+// name — doubles as the dropdown's button, chevron included, instead of a separate "Switch X" link.
+function InlineSwitcher({ trigger, triggerClassName, placeholder, loadItems, getKey, getLabel, getSub, onPick }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const [items, setItems] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  async function toggle() {
+    if (!open && items === null) {
+      setLoading(true);
+      try { setItems(await loadItems()); } catch { setItems([]); } finally { setLoading(false); }
+    }
+    setOpen((o) => !o);
+  }
+
+  const t = q.trim().toLowerCase();
+  const filtered = (items || []).filter((it) => !t
+    || getLabel(it).toLowerCase().includes(t) || (getSub(it) || '').toLowerCase().includes(t));
+
+  return (
+    <div className="relative min-w-0">
+      <button type="button" onClick={toggle} className={triggerClassName}>
+        {trigger}
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full z-20 mt-1 w-56 rounded-md border bg-popover text-popover-foreground shadow-md">
+          <Input autoFocus value={q} onChange={(e) => setQ(e.target.value)}
+            onBlur={() => setTimeout(() => setOpen(false), 150)}
+            placeholder={placeholder} className="m-1 h-7 w-[calc(100%-0.5rem)] text-xs" />
+          <div className="max-h-56 overflow-auto py-1">
+            {loading && <div className="px-3 py-1.5 text-xs text-muted-foreground">Loading…</div>}
+            {!loading && filtered.map((it) => (
+              <button key={getKey(it)} type="button"
+                className="flex w-full flex-col items-start gap-0 px-3 py-1.5 text-left text-xs hover:bg-muted/40"
+                onMouseDown={() => { onPick(it); setOpen(false); setQ(''); }}>
+                <span className="font-medium text-foreground">{getLabel(it)}</span>
+                {getSub(it) && <span className="text-[11px] text-muted-foreground">{getSub(it)}</span>}
+              </button>
+            ))}
+            {!loading && filtered.length === 0 && <div className="px-3 py-1.5 text-xs text-muted-foreground">No matches</div>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Dropdown of existing registry variable names, custom fallback — used for the "X column" field
 // below, which is almost always meant to line up with the variable LOOKUP()'s x-argument actually
 // passes at call time.
@@ -1673,9 +1785,10 @@ function NameSelect({ value, onChange, names, placeholder }) {
   );
 }
 
-function TablesPanel({ tables, router, nameList }) {
+function TablesPanel({ tables, router, nameList, variables }) {
   const [newTable, setNewTable] = useState({ name: '', standard: '', xColumn: '', xUnit: '', colName: '', colUnit: '' });
   const [busy, setBusy] = useState(false);
+  const knownUnits = useMemo(() => variables.map((v) => v.unit).filter(Boolean), [variables]);
 
   async function addTable() {
     if (!newTable.name.trim() || !newTable.xColumn.trim() || !newTable.colName.trim()) return;
@@ -1726,10 +1839,10 @@ function TablesPanel({ tables, router, nameList }) {
             <Input placeholder="Standard reference (optional)" value={newTable.standard} onChange={(e) => setNewTable({ ...newTable, standard: e.target.value })} />
             <div />
             <NameSelect placeholder="X column, e.g. Temperature" value={newTable.xColumn} onChange={(xColumn) => setNewTable({ ...newTable, xColumn })} names={nameList} />
-            <Input placeholder="X unit, e.g. degC" value={newTable.xUnit} onChange={(e) => setNewTable({ ...newTable, xUnit: e.target.value })} />
+            <UnitSelect value={newTable.xUnit} onChange={(xUnit) => setNewTable({ ...newTable, xUnit })} knownUnits={knownUnits} />
             <div />
             <Input placeholder="Value column name, e.g. AllowableStress" value={newTable.colName} onChange={(e) => setNewTable({ ...newTable, colName: e.target.value })} />
-            <Input placeholder="Value unit, e.g. MPa" value={newTable.colUnit} onChange={(e) => setNewTable({ ...newTable, colUnit: e.target.value })} />
+            <UnitSelect value={newTable.colUnit} onChange={(colUnit) => setNewTable({ ...newTable, colUnit })} knownUnits={knownUnits} />
           </div>
           <Button onClick={addTable} disabled={busy} size="sm" className="mt-2">Add table</Button>
           <p className="mt-2 text-xs text-muted-foreground">One value column for now — add rows once the table exists.</p>

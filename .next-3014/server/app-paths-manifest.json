@@ -1,0 +1,9 @@
+{
+  "/help/page": "app/help/page.js",
+  "/api/notifications/route": "app/api/notifications/route.js",
+  "/login/page": "app/login/page.js",
+  "/d-login/page": "app/d-login/page.js",
+  "/production/page": "app/production/page.js",
+  "/pipeline/page": "app/pipeline/page.js",
+  "/sales/page": "app/sales/page.js"
+}

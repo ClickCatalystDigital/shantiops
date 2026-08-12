@@ -4,8 +4,11 @@ import { PM_GUIDE, HEAD_GUIDES, CUSTOMER_GUIDE } from '@/components/help-content
 import PageHeader from '@/components/PageHeader';
 import LogoutButton from '@/components/LogoutButton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import CrmHelpWorkspace from '@/components/CrmHelpWorkspace';
 
 export const dynamic = 'force-dynamic';
+
+const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 
 function GuideSection({ title, icon: Icon, steps }) {
   return (
@@ -29,6 +32,11 @@ function GuideSection({ title, icon: Icon, steps }) {
 export default async function HelpPage() {
   const user = getSessionUser();
 
+  // CRM Help (Sales/Marketing) has no entry in HEAD_GUIDES at all — it gets its own sidebar
+  // workspace instead of a grid card, rendered separately below. A PM previews both departments'
+  // content; a head sees only the department(s) they're actually granted.
+  const crmDepts = isPM(user) ? CRM_DEPARTMENTS : headDepartments(user).filter(d => CRM_DEPARTMENTS.includes(d));
+
   let sections = [];
   if (isPM(user)) {
     sections = PM_GUIDE;
@@ -41,7 +49,7 @@ export default async function HelpPage() {
   const body = (
     <div className="grid gap-4 sm:grid-cols-2">
       {sections.map(s => <GuideSection key={s.title} {...s} />)}
-      {sections.length === 0 && (
+      {sections.length === 0 && crmDepts.length === 0 && (
         <Card className="sm:col-span-2"><CardContent className="py-10 text-center text-muted-foreground">
           No departments assigned yet — contact your PM for a guide to your work.
         </CardContent></Card>
@@ -67,13 +75,24 @@ export default async function HelpPage() {
     );
   }
 
+  // CRM Help is a full-bleed sidebar workspace (same reasoning as /sales, /crm-reports: the
+  // shadcn Sidebar docks to the viewport edge, so it can't live inside the constrained
+  // `container` below without the two fighting for layout). A CRM-only head (no other granted
+  // department) sees just this — nothing left to show in the grid underneath.
+  const crmOnly = crmDepts.length > 0 && sections.length === 0;
+
   return (
-    <main className="container flex flex-col gap-6 py-8">
-      <PageHeader title="Help"
-        description={isPM(user)
-          ? 'How to use the system, end to end'
-          : 'What you can do here, department by department'} />
-      {body}
-    </main>
+    <>
+      {crmDepts.length > 0 && <CrmHelpWorkspace departments={crmDepts} />}
+      {!crmOnly && (
+        <main className="container flex flex-col gap-6 py-8">
+          <PageHeader title="Help"
+            description={isPM(user)
+              ? 'How to use the system, end to end'
+              : 'What you can do here, department by department'} />
+          {body}
+        </main>
+      )}
+    </>
   );
 }

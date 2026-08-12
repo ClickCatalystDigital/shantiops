@@ -16,6 +16,7 @@ import TicketsPanel from './TicketsPanel';
 import StagesPanel from './StagesPanel';
 import ProcurementQueue from './ProcurementQueue';
 import DesignPanel from './DesignPanel';
+import ScopeOfSupplyPanel from './ScopeOfSupplyPanel';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 
 const BOM_DEPARTMENTS = ['Stores', 'Production', 'Design'];
@@ -32,6 +33,7 @@ export default function DepartmentPanel({
   tasks = [], canRaiseTickets = false,
   stages = [], stageTemplates = [], stageTemplateItems = [], canManageStages = false,
   designSummary = null,
+  scopeOfSupply = [], canEditScope = false,
 }) {
   const deptMs = milestones.filter(m => m.department === department);
   const showBom = BOM_DEPARTMENTS.includes(department) && bom.length > 0;
@@ -45,8 +47,11 @@ export default function DepartmentPanel({
   return (
     <div className="flex flex-col gap-6">
       {department === 'Engineering' && (
-        <BomPanel projectId={projectId} bom={bom} pending={pending} canUpload={canUploadBom}
-          editableFields={bomFields} imports={bomImports} canCancel={canCancel} />
+        <>
+          <ScopeOfSupplyPanel projectId={projectId} scopeOfSupply={scopeOfSupply} canEdit={canEditScope} />
+          <BomPanel projectId={projectId} bom={bom} pending={pending} canUpload={canUploadBom}
+            editableFields={bomFields} imports={bomImports} canCancel={canCancel} />
+        </>
       )}
 
       {department === 'Procurement' && bom.length > 0 && (
@@ -54,7 +59,7 @@ export default function DepartmentPanel({
       )}
 
       {department === 'Design' && (
-        <DesignPanel projectId={projectId} designSummary={designSummary} />
+        <DesignPanel projectId={projectId} designSummary={designSummary} scopeOfSupply={scopeOfSupply} canEditScope={canEditScope} />
       )}
 
       {showBom && (

@@ -5,8 +5,8 @@ import { putObject } from '@/lib/r2';
 import { audit } from '@/lib/usb';
 
 // CALC-CHANGES2.md §B — same shape as test-certificates' PDF upload: formData -> arrayBuffer ->
-// Buffer -> putObject, then store the R2 key. Best-effort: R2 env isn't set in dev yet, so an
-// unconfigured bucket 502s this route without touching anything already saved.
+// Buffer -> putObject, then store the R2 key. Best-effort: an unconfigured bucket (missing env
+// vars) 502s this route without touching anything already saved.
 export async function POST(req, { params }) {
   const user = getSessionUser();
   const denied = requireCalcAccess(user);

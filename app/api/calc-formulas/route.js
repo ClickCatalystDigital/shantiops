@@ -1,7 +1,16 @@
 import { NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth';
 import { requireCalcAccess, addFormula, importLibraryFormula, LIBRARY } from '@/lib/calc';
+import { queryAll } from '@/lib/db';
 import { audit } from '@/lib/usb';
+
+export async function GET() {
+  const user = getSessionUser();
+  const denied = requireCalcAccess(user);
+  if (denied) return denied;
+  const formulas = await queryAll('SELECT id, name, output_var AS outputVar FROM calc_formulas ORDER BY id');
+  return NextResponse.json({ formulas });
+}
 
 export async function POST(req) {
   const user = getSessionUser();

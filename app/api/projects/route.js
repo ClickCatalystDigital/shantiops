@@ -1,7 +1,17 @@
 import { NextResponse } from 'next/server';
-import { execute, nextNumber, initDB, createProjectMilestones } from '@/lib/db';
+import { execute, queryOne, nextNumber, initDB, createProjectMilestones } from '@/lib/db';
 import { getSessionUser, requirePM } from '@/lib/auth';
+import { getActiveProjectsList } from '@/lib/data';
 import { audit } from '@/lib/usb';
+
+// In-place Calc Sheets project switcher (CalcWorkspace sidebar) — same list app/calc/page.js's
+// picker uses, just as a client-side fetch instead of a server component prop.
+export async function GET() {
+  const user = getSessionUser();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const projects = await getActiveProjectsList();
+  return NextResponse.json({ projects });
+}
 
 export async function POST(req) {
   const user = getSessionUser();
@@ -30,6 +40,18 @@ export async function POST(req) {
     const start = b.order_date && b.order_date > todayStr ? new Date(b.order_date) : new Date();
     const startDaysAgo = Math.round((Date.now() - start.getTime()) / 864e5);
     await createProjectMilestones(await initDB(), projectId, startDaysAgo, false);
+
+    // Scope of Supply draft — the confirmed order landing on Design/Engineering's plate
+    // (DesignPanel.jsx's placeholder card). Only when a real Sale Order backs this project;
+    // free-text-only projects (no sale_order_id) get nothing to draft yet.
+    if (b.sale_order_id) {
+      const so = await queryOne('SELECT so_no FROM sale_orders WHERE id = ?', [b.sale_order_id]);
+      await execute(
+        'INSERT INTO scope_of_supply (project_id, title, created_by) VALUES (?, ?, ?)',
+        [projectId, so ? `Scope of Supply — ${so.so_no}` : 'Scope of Supply', user?.username || null]
+      );
+    }
+
     await audit('project_created', { actor: user.username, detail: `${project_no} · ${b.customer_name.trim()}` });
     return NextResponse.json({ id: projectId, project_no });
   } catch (e) {

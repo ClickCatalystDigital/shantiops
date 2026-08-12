@@ -1,0 +1,5 @@
+{
+  "/api/notifications/route": "app/api/notifications/route.js",
+  "/calc/project/[projectId]/[sheetId]/page": "app/calc/project/[projectId]/[sheetId]/page.js",
+  "/api/config/brand/route": "app/api/config/brand/route.js"
+}

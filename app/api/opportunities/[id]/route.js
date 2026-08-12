@@ -44,6 +44,9 @@ export async function PATCH(req, { params }) {
   if (b.expected_close !== undefined) { fields.push('expected_close = ?'); args.push(b.expected_close || null); }
   if (b.campaign_id !== undefined) { fields.push('campaign_id = ?'); args.push(b.campaign_id || null); }
   if (b.notes !== undefined) { fields.push('notes = ?'); args.push(b.notes || null); }
+  if (b.source !== undefined) { fields.push('source = ?'); args.push(b.source || null); }
+  if (b.lost_reason !== undefined) { fields.push('lost_reason = ?'); args.push(b.lost_reason || null); }
+  if (b.next_contact_date !== undefined) { fields.push('next_contact_date = ?'); args.push(b.next_contact_date || null); }
   if (!fields.length) return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
 
   fields.push("updated_at = CURRENT_TIMESTAMP");

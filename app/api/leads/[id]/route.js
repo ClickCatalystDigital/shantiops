@@ -25,6 +25,8 @@ export async function PATCH(req, { params }) {
   for (const [key, col] of [
     ['lead_name', 'lead_name'], ['company_name', 'company_name'], ['phone', 'phone'],
     ['email', 'email'], ['source', 'source'], ['notes', 'notes'], ['campaign_id', 'campaign_id'],
+    ['territory', 'territory'], ['industry', 'industry'], ['next_contact_date', 'next_contact_date'],
+    ['assigned_to', 'assigned_to'],
   ]) {
     if (b[key] !== undefined) { fields.push(`${col} = ?`); args.push(b[key] || null); }
   }

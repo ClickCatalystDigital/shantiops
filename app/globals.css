@@ -234,3 +234,24 @@
     transform: rotateY(360deg) scale(1);
   }
 }
+
+/* CRM Reports "Download PDF" — native browser print-to-PDF (window.print()) against one scoped
+   area, no charting/PDF dependency. Everything outside #report-print-area is hidden; the report
+   card itself is unwrapped from the app chrome so it prints as a plain document. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  #report-print-area,
+  #report-print-area * {
+    visibility: visible;
+  }
+
+  #report-print-area {
+    position: absolute;
+    inset: 0;
+    box-shadow: none;
+    border: none;
+  }
+}

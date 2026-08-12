@@ -86,10 +86,15 @@ export default function Nav({ user }) {
         // entirely, so there's nothing left to accept.
         ...(inProcurement ? [{ href: '/procurement', label: 'Procurement', icon: ShoppingCartIcon }] : []),
         ...(inStores ? [{ href: '/stores', label: 'Inventory', icon: WarehouseIcon }] : []),
-        ...(inSales ? [{ href: '/sales', label: 'Sales', icon: TagIcon }] : []),
+        // Marketing shares the Sales tab (Leads/Campaigns are its rows too) — same
+        // inSales||inMarketing pattern as /pipeline below.
+        ...(inSales || inMarketing ? [{ href: '/sales', label: 'Sales', icon: TagIcon }] : []),
         // V3_CHANGES.md A4 — shared by Sales and Marketing, same cross-project top-level-tab
         // mechanism as Procurement/QC/Sales above; either department sees it once, not twice.
         ...(inSales || inMarketing ? [{ href: '/pipeline', label: 'Pipeline', icon: TrendingUpIcon }] : []),
+        // V3_CHANGES.md §18 — Reports pulled out of the Sales sidebar into its own top-level tab,
+        // same shared-not-duplicated mechanism as Pipeline above.
+        ...(inSales || inMarketing ? [{ href: '/crm-reports', label: 'Reports', icon: BarChart3Icon }] : []),
         ...(inHr ? [{ href: '/hr', label: 'HR', icon: UsersIcon }] : []),
         ...(inCalc ? [{ href: '/calc', label: 'Calc Sheets', icon: CalculatorIcon }] : []),
         ...(inRequestDept ? [{ href: '/pr', label: 'Requests', icon: InboxIcon }] : []),
