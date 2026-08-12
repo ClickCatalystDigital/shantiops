@@ -35,6 +35,7 @@ const DEMO_GROUPS = [
       'sales_head',
       'marketing_head',
       'hr_head',
+      'marketing_head'
     ],
   },
   {

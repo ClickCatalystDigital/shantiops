@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
-import { getSessionUser, requirePM, canApproveUser } from '@/lib/auth';
+import { getSessionUser, requirePM, canApproveUser, isAdmin } from '@/lib/auth';
 import { audit } from '@/lib/usb';
 
 // PM-only: toggle a functional head's department access (access matrix), active status, and/or
@@ -22,6 +22,13 @@ export async function PATCH(req, { params }) {
   if ('active' in b) {
     sets.push('active = ?'); args.push(b.active ? 1 : 0);
     auditActions.push([b.active ? 'user_reactivated' : 'user_deactivated', '']);
+  }
+  if ('safe_pass' in b) {
+    // Stricter than the requirePM check above this route already passed — only admin, not
+    // manager/executive, may grant/revoke the onboarding bypass.
+    if (!isAdmin(user)) return NextResponse.json({ error: 'Only admin can grant safe pass' }, { status: 403 });
+    sets.push('safe_pass = ?'); args.push(b.safe_pass ? 1 : 0);
+    auditActions.push([b.safe_pass ? 'safe_pass_granted' : 'safe_pass_revoked', '']);
   }
   if (b.approve) {
     const target = await queryOne('SELECT id, username, role FROM users WHERE id = ?', [params.id]);

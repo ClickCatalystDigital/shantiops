@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 
 const BLANK = { username: '', password: '', display_name: '' };
 
-export default function UserManagement({ heads: initialHeads }) {
+export default function UserManagement({ heads: initialHeads, isAdmin = false }) {
   const router = useRouter();
   const [heads, setHeads] = useState(initialHeads);
   const [f, setF] = useState(BLANK);
@@ -41,6 +41,17 @@ export default function UserManagement({ heads: initialHeads }) {
     }
   }
 
+  async function toggleSafePass(head) {
+    const safe_pass = !head.safe_pass;
+    setHeads(hs => hs.map(h => (h.id === head.id ? { ...h, safe_pass } : h)));
+    try {
+      await api(`/api/users/${head.id}`, { method: 'PATCH', body: { safe_pass } });
+    } catch (err) {
+      showToast(err.message, 'error');
+      setHeads(hs => hs.map(h => (h.id === head.id ? { ...h, safe_pass: head.safe_pass } : h)));
+    }
+  }
+
   return (
     <Card>
       <CardHeader><CardTitle>User Management</CardTitle></CardHeader>
@@ -49,7 +60,13 @@ export default function UserManagement({ heads: initialHeads }) {
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
-                <TableRow><TableHead>Head</TableHead><TableHead>Username</TableHead><TableHead>Status</TableHead><TableHead /></TableRow>
+                <TableRow>
+                  <TableHead>Head</TableHead>
+                  <TableHead>Username</TableHead>
+                  <TableHead>Status</TableHead>
+                  {isAdmin && <TableHead>Safe Pass</TableHead>}
+                  <TableHead />
+                </TableRow>
               </TableHeader>
               <TableBody>
                 {heads.map(h => (
@@ -57,6 +74,13 @@ export default function UserManagement({ heads: initialHeads }) {
                     <TableCell>{h.display_name || '—'}</TableCell>
                     <TableCell className="text-muted-foreground">@{h.username}</TableCell>
                     <TableCell>{h.active ? 'Active' : 'Deactivated'}</TableCell>
+                    {isAdmin && (
+                      <TableCell>
+                        <Button variant={h.safe_pass ? 'default' : 'outline'} size="sm" onClick={() => toggleSafePass(h)}>
+                          {h.safe_pass ? 'Granted' : 'Grant'}
+                        </Button>
+                      </TableCell>
+                    )}
                     <TableCell><Button variant="outline" size="sm" onClick={() => toggleActive(h)}>{h.active ? 'Deactivate' : 'Reactivate'}</Button></TableCell>
                   </TableRow>
                 ))}

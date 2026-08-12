@@ -3,7 +3,7 @@ import Nav from '@/components/Nav';
 import DeviceSetupGate from '@/components/DeviceSetupGate';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { getSessionUser, isInternal, needsDeviceEnrollment, isDemoUser } from '@/lib/auth';
+import { getSessionUser, isInternal, needsDeviceEnrollment, isDemoUser, hasSafePass } from '@/lib/auth';
 import { getMyMachine } from '@/lib/data';
 
 export const metadata = {
@@ -21,7 +21,7 @@ export default async function RootLayout({ children }) {
   // unblocked so someone can always register machines / approve people.
   const gated = needsDeviceEnrollment(user);
   const machine = gated ? await getMyMachine(user.id) : null;
-  const needsDeviceSetup = gated && !isDemoUser(user) && !(machine?.enrolled_at || machine?.last_seen);
+  const needsDeviceSetup = gated && !isDemoUser(user) && !hasSafePass(user) && !(machine?.enrolled_at || machine?.last_seen);
 
   return (
     <html lang="en" suppressHydrationWarning>

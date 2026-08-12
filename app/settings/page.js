@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { getSessionUser, isCustomer, isPM, roleHome } from '@/lib/auth';
+import { getSessionUser, isCustomer, isPM, isAdmin, roleHome } from '@/lib/auth';
 import { getFunctionalHeads } from '@/lib/data';
 import { queryOne } from '@/lib/db';
 import ChangePasswordForm from '@/components/ChangePasswordForm';
@@ -35,7 +35,7 @@ export default async function Settings() {
           <Separator />
           <h2 className="text-lg font-semibold">Access Management</h2>
           <AccessMatrix heads={heads} />
-          <UserManagement heads={heads} />
+          <UserManagement heads={heads} isAdmin={isAdmin(user)} />
 
           <Separator />
           <h2 className="text-lg font-semibold">USB Device Approval</h2>
