@@ -1,7 +1,7 @@
 // app/projects/[id]/page.js
 
 import { notFound, redirect } from 'next/navigation';
-import { getProjectDetail, getProjectBom, getProjectPackingLists, getBomRollup, getQcRecords, getQcDocuments, getProjectTasks, getProjectStages, getStageTemplates, getProjectDesignSummary, getScopeOfSupply } from '@/lib/data';
+import { getProjectDetail, getProjectBom, getProjectPackingLists, getBomRollup, getQcRecords, getQcDocuments, getProjectTasks, getProjectStages, getStageTemplates, getProjectDesignSummary, getScopeOfSupply, getProjectDesignStage } from '@/lib/data';
 import { getSessionUser, isCustomer, isPM, isHead, headDepartments, canAccessDepartment, roleHome } from '@/lib/auth';
 import { DEPARTMENTS } from '@/lib/milestones';
 import { editableBomFields } from '@/lib/bom-fields.mjs';
@@ -11,6 +11,7 @@ import PortfolioDelayTimeline from '@/components/PortfolioDelayTimeline';
 import DepartmentPanel from '@/components/DepartmentPanel';
 import ProjectDepartmentTabs from '@/components/ProjectDepartmentTabs';
 import BomProgress from '@/components/BomProgress';
+import DesignFlow from '@/components/DesignFlow';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,6 +32,10 @@ export default async function ProjectDetail({ params }) {
   const { templates: stageTemplates, items: stageTemplateItems } = await getStageTemplates();
   const designSummary = await getProjectDesignSummary(project.id);
   const scopeOfSupply = await getScopeOfSupply(project.id);
+  // Row 2 slot 3 — project-scoped mirror of the Design flow chip (DESIGN-OPS-REDESIGN.md). Only
+  // fetched while the project hasn't handed its BOM to Procurement yet (see the swap below) —
+  // skip the query otherwise since the chip won't render.
+  const designStage = bom.length === 0 ? await getProjectDesignStage(project.id) : null;
 
   const pm = isPM(user);
   const head = isHead(user);
@@ -65,13 +70,19 @@ export default async function ProjectDetail({ params }) {
           the room. */}
       <PortfolioDelayTimeline projects={[{ ...project, milestones }]} />
 
-      {/* Row 2: identity, Open Actions (renamed from Needs Attention), and the Master BOM rollup
-          side by side — three cards instead of two; BomProgress used to sit in its own full-width
-          row below the timeline. */}
+      {/* Row 2: identity, Open Actions, and a third slot that mirrors this project's downstream
+          progress. While Design still owns it: a project-scoped Design flow chip, current stage
+          highlighted, no counts. Once the BOM hands off to Procurement: TODO — swap to a
+          project-scoped Procurement progress chip once components/ProcurementFlow.jsx is
+          available; Master BOM stays here as the interim so the slot isn't empty. */}
       <div className="grid items-start gap-6 lg:grid-cols-3">
         <ProjectHeader project={project} health={health} blocker={blocker} />
         <TodayBand milestones={attentionMilestones} />
-        <BomProgress rollup={bomRollup} />
+        {bom.length === 0 ? (
+          <DesignFlow activeStage={designStage} title="Design Progress" href={`/calc/project/${project.id}`} linkLabel="Open Calc Sheet →" />
+        ) : (
+          <BomProgress rollup={bomRollup} />
+        )}
       </div>
 
       {pm ? (

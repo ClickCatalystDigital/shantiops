@@ -3,6 +3,7 @@ import { execute, queryOne, nextNumber, initDB, createProjectMilestones } from '
 import { getSessionUser, requirePM } from '@/lib/auth';
 import { getActiveProjectsList } from '@/lib/data';
 import { audit } from '@/lib/usb';
+import { notifyDepartment } from '@/lib/notify';
 
 // In-place Calc Sheets project switcher (CalcWorkspace sidebar) — same list app/calc/page.js's
 // picker uses, just as a client-side fetch instead of a server component prop.
@@ -46,10 +47,25 @@ export async function POST(req) {
     // free-text-only projects (no sale_order_id) get nothing to draft yet.
     if (b.sale_order_id) {
       const so = await queryOne('SELECT so_no FROM sale_orders WHERE id = ?', [b.sale_order_id]);
+      const sosTitle = so ? `Scope of Supply — ${so.so_no}` : 'Scope of Supply';
       await execute(
         'INSERT INTO scope_of_supply (project_id, title, created_by) VALUES (?, ?, ?)',
-        [projectId, so ? `Scope of Supply — ${so.so_no}` : 'Scope of Supply', user?.username || null]
+        [projectId, sosTitle, user?.username || null]
       );
+      // Missing auto-create notification (DESIGN-OPS-REDESIGN.md, Project page) — Design and
+      // Engineering share this row (ScopeOfSupplyPanel.jsx is the one editing surface for both),
+      // so both get notified. Never let a notify failure block project creation, same contract
+      // fireHandoff's callers rely on in lib/notify.js.
+      try {
+        const note = {
+          kind: 'sos_created',
+          title: 'New Scope of Supply',
+          body: `${project_no} · ${sosTitle}`,
+          dedupe_key: `sos_created:${projectId}`,
+        };
+        await notifyDepartment('Design', note);
+        await notifyDepartment('Engineering', note);
+      } catch (err) { /* notification is best-effort */ }
     }
 
     await audit('project_created', { actor: user.username, detail: `${project_no} · ${b.customer_name.trim()}` });

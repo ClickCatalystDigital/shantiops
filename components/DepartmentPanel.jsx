@@ -44,8 +44,19 @@ export default function DepartmentPanel({
   const deptTemplateItems = stageTemplateItems.filter(i => deptTemplateIds.has(i.template_id));
   const canCancel = CANCEL_DEPARTMENTS.includes(department);
 
+  // return (
+  //   <div className="flex flex-col gap-6">
+  //     {department === 'Engineering' && (
+
   return (
     <div className="flex flex-col gap-6">
+      {/* Incidents (renamed from Tickets) — every department except Procurement gets this
+          cross-department card; Procurement's moved to the Requests tab (§4.0b). Moved here from
+          the bottom of the panel so it sits right under Open Actions instead of last on the page. */}
+      {department !== 'Procurement' && (
+        <TicketsPanel department={department} projectId={projectId} milestones={milestones} bom={bom} tasks={deptTasks} canRaise={canRaiseTickets} />
+      )}
+
       {department === 'Engineering' && (
         <>
           <ScopeOfSupplyPanel projectId={projectId} scopeOfSupply={scopeOfSupply} canEdit={canEditScope} />
@@ -93,9 +104,12 @@ export default function DepartmentPanel({
 
       {/* Every department except Procurement gets this cross-department card — Procurement's moved
           to the Requests tab (§4.0b), split into Raised by/for Procurement there. */}
-      {department !== 'Procurement' && (
+      {/* {department !== 'Procurement' && (
         <TicketsPanel department={department} projectId={projectId} milestones={milestones} bom={bom} tasks={deptTasks} canRaise={canRaiseTickets} />
       )}
     </div>
+  );
+} */}
+</div>
   );
 }

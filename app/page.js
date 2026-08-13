@@ -1,3 +1,5 @@
+// app/page.js
+
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getMyWork, getBomWork, getDepartmentTasks, getStageBottlenecks, getSourcingItems, getProcurementFlowCounts, getDesignFlowCounts, getDesignWork } from '@/lib/data';
@@ -6,9 +8,9 @@ import StatusBadge from '@/components/StatusBadge';
 import DispatchBoard from '@/components/DispatchBoard';
 import TicketsPanel from '@/components/TicketsPanel';
 import ProcurementFlow from '@/components/ProcurementFlow';
-import DesignFlow from '@/components/DesignFlow';
 import MasterBomTable from '@/components/MasterBomTable';
-import DesignMasterTable from '@/components/DesignMasterTable';
+import DesignOperationsSection from '@/components/DesignOperationsSection';
+import OperationsAttentionSection from '@/components/OperationsAttentionSection';
 import PageHeader from '@/components/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -17,15 +19,15 @@ import { ArrowRightIcon } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 
-function StatChip({ label, value, dot }) {
-  return (
-    <div className="flex items-center gap-2 rounded-full border bg-card px-3 py-1.5 text-sm shadow-sm">
-      <span className={`size-2 rounded-full ${dot}`} />
-      <span className="font-semibold tnum">{value}</span>
-      <span className="text-muted-foreground">{label}</span>
-    </div>
-  );
-}
+// function StatChip({ label, value, dot }) {
+//   return (
+//     <div className="flex items-center gap-2 rounded-full border bg-card px-3 py-1.5 text-sm shadow-sm">
+//       <span className={`size-2 rounded-full ${dot}`} />
+//       <span className="font-semibold tnum">{value}</span>
+//       <span className="text-muted-foreground">{label}</span>
+//     </div>
+//   );
+// }
 
 export default async function Home({ searchParams }) {
   const user = getSessionUser();
@@ -52,6 +54,11 @@ export default async function Home({ searchParams }) {
   // [] for them) — their cross-department raise/oversight surface is the project page's
   // all-departments tab strip instead (app/projects/[id]/page.js), which they always get.
   const deptsToShow = manager ? [] : (deptFilter ? [deptFilter] : headDepartments(user));
+  // Design's Operations view is now one unified card (DesignOperationsCard) whose master table +
+  // the project page's own Open Actions card already surface what the generic per-project
+  // "needs attention" grid below would otherwise duplicate — see DESIGN-OPS-REDESIGN.md. Other
+  // departments haven't had this pass yet, so the grid stays for them.
+  const isDesignOnlyView = deptsToShow.length === 1 && deptsToShow[0] === 'Design';
 
   // Dispatch department view = the packing board (§ "packing within department").
   if (deptFilter === 'Dispatch') {
@@ -84,23 +91,24 @@ export default async function Home({ searchParams }) {
   // Design's pipeline glance (§E) — same slot/precedent as Procurement's.
   const designFlow = deptsToShow.includes('Design') ? await getDesignFlowCounts() : null;
   const designWork = deptsToShow.includes('Design') ? await getDesignWork() : [];
+  // Same direction-split the old standalone incident cards used, just precomputed here now that
+  // DesignOperationsCard needs both lists as props instead of an inline IIFE further down.
+  const designTasks = deptsToShow.includes('Design') ? (tasksByDept[deptsToShow.indexOf('Design')] || []) : [];
+  const designOutgoing = designTasks.filter(t => t.from_department === 'Design' && !t.bom_item_id);
+  const designIncoming = designTasks.filter(t => t.department === 'Design' && t.from_department && t.from_department !== 'Design' && !t.bom_item_id);
   // Open Master-BOM work for BOM-owning departments (Engineering: missing BOMs; Procurement /
   // Stores / Production: items not yet closed). Fills the once-empty Engineering attention list.
   const bomWork = deptFilter && deptFilter !== 'Engineering' && !['Procurement', 'Stores', 'Production'].includes(deptFilter)
     ? [] : await getBomWork(user);
   const title = deptFilter || (manager ? "Today's Factory" : null);
   const total = groups.reduce((a, g) => a + g.items.length, 0);
-  const allItems = groups.flatMap(g => g.items);
-  const chips = {
-    overdue: allItems.filter(m => m.eff.code === 'overdue').length,
-    blocked: allItems.filter(m => m.eff.code === 'blocked').length,
-    dueSoon: allItems.filter(m => m.eff.code === 'due_now' || m.eff.code === 'due_soon').length,
-  };
-
+  // Chip counts now live inside OperationsAttentionSection (it needs them anyway to build the
+  // pill options), so the standalone `chips` calc here is gone — nothing else on the page used it.
   return (
     <main className="container flex flex-col gap-6 py-8">
       <PageHeader title={title}
-        description={`${manager ? 'Everything needing attention across all projects' : `Assigned to @${user?.username}`} · ${total} item${total !== 1 ? 's' : ''}`}>
+        description={`${manager ? 'Everything needing attention across all projects' : `Assigned to @${user?.username}`} `}> 
+        {/* · ${total} item${total !== 1 ? 's' : ''}`}> */}
         {manager && (
           <Button asChild variant="outline" size="sm">
             <Link href="/executive">Executive view <ArrowRightIcon data-icon="inline-end" /></Link>
@@ -108,71 +116,20 @@ export default async function Home({ searchParams }) {
         )}
       </PageHeader>
 
-      <div className="flex flex-wrap gap-2">
-        <StatChip label="overdue" value={chips.overdue} dot="bg-danger" />
-        <StatChip label="blocked" value={chips.blocked} dot="bg-blocked" />
-        <StatChip label="due soon" value={chips.dueSoon} dot="bg-warning" />
-      </div>
-
       {/* Procurement's pipeline glance sits right after the KPI chips — ahead of the per-project
           breakdown below, which is the least useful thing here for a quick status check. */}
       {procurementFlow && <ProcurementFlow counts={procurementFlow} />}
-      {designFlow && <DesignFlow counts={designFlow} />}
+      {designFlow && (
+        <DesignOperationsSection groups={groups} counts={designFlow} designWork={designWork}
+          outgoing={designOutgoing} incoming={designIncoming} sourcingItems={sourcingItems} />
+      )}
 
       <MasterBomTable bomWork={bomWork} />
-      <DesignMasterTable designWork={designWork} />
 
       {/* "Open Actions" (renamed from "Needs Attention") — each project card now splits into
           Urgent (not yet delayed, closest deadline first) on top and Needs Attention (already
           overdue/blocked) below, instead of one severity-sorted list. */}
-      {groups.length === 0 ? (
-        <Card><CardContent className="py-10 text-center text-muted-foreground">
-          Nothing needs attention right now. 🎉
-        </CardContent></Card>
-      ) : (
-        <div className="grid items-start gap-4 md:grid-cols-2 2xl:grid-cols-3">
-          {groups.map(g => {
-            const delayed = g.items.filter(m => ['overdue', 'blocked'].includes(m.eff.code));
-            const urgent = g.items.filter(m => !['overdue', 'blocked'].includes(m.eff.code))
-              .sort((a, b) => (a.planned_end || '').localeCompare(b.planned_end || ''));
-            const row = m => (
-              <Link key={m.id} href={`/projects/${m.project_id}`}
-                className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5 text-sm transition-colors hover:bg-muted/40 -mx-2 px-2 rounded">
-                <StatusBadge status={m.eff} />
-                <span className="font-medium">{m.milestone_label}</span>
-                {manager && <span className="text-xs text-muted-foreground">{m.assignee ? `@${m.assignee}` : 'Unassigned'}</span>}
-                <span className="ml-auto text-xs text-muted-foreground tnum">{formatDate(m.planned_end)}</span>
-                {m.delay_reason && <span className="w-full text-xs text-warning">⚠ {m.delay_reason}</span>}
-              </Link>
-            );
-            return (
-              <Card key={g.items[0].project_id}>
-                <CardHeader className="py-4">
-                  <CardTitle className="text-base">
-                    <Link href={`/projects/${g.items[0].project_id}`} className="text-primary hover:underline">{g.project_no}</Link>
-                    <span className="text-muted-foreground font-normal"> · {g.customer_name}</span>
-                  </CardTitle>
-                  <CardAction className="text-xs text-muted-foreground tnum">{g.items.length} item{g.items.length !== 1 ? 's' : ''}</CardAction>
-                </CardHeader>
-                <CardContent className="flex flex-col gap-3 pt-0">
-                  {urgent.length > 0 && (
-                    <div>
-                      <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Urgent</p>
-                      <div className="flex flex-col divide-y">{urgent.map(row)}</div>
-                    </div>
-                  )}
-                  {delayed.length > 0 && (
-                    <div>
-                      <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Needs attention</p>
-                      <div className="flex flex-col divide-y">{delayed.map(row)}</div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-      )}
+      {!isDesignOnlyView && <OperationsAttentionSection groups={groups} manager={manager} />}
 
       {bottlenecks.length > 0 && (
         <Card>
@@ -218,7 +175,7 @@ export default async function Home({ searchParams }) {
 
       {/* Design's incident cards, direction-split (§E) — same exact pattern as Procurement's just
           above, reusing the already-fetched Design tasks rather than a second query. */}
-      {(() => {
+      {/* {(() => {
         const di = deptsToShow.indexOf('Design');
         if (di === -1) return null;
         const designTasks = tasksByDept[di] || [];
@@ -231,7 +188,7 @@ export default async function Home({ searchParams }) {
             <TicketsPanel title="Incoming Incidents" department="Design" tasks={incoming} />
           </div>
         );
-      })()}
+      })()} */}
     </main>
   );
 }
