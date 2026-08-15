@@ -2,13 +2,13 @@
 // [id] route at all (list + create only). Adds detail (with items) + status PATCH.
 import { NextResponse } from 'next/server';
 import { execute } from '@/lib/db';
-import { getSessionUser, requireDepartment, canAccessDepartment, isPM } from '@/lib/auth';
+import { getFreshSessionUser, requireDepartment, canAccessDepartment, isPM } from '@/lib/auth';
 import { getSaleOrderDetail } from '@/lib/data';
 
 const STATUSES = ['open', 'fulfilled', 'cancelled'];
 
 export async function GET(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const detail = await getSaleOrderDetail(params.id);
   if (!detail) return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -16,7 +16,7 @@ export async function GET(req, { params }) {
 }
 
 export async function PATCH(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!isPM(user)) {
     const denied = requireDepartment(user, 'Sales');
     if (denied) return denied;

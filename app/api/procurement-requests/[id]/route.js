@@ -4,11 +4,11 @@
 // it simply isn't a BOM row yet. Rejecting just closes it out, no BOM row is ever created.
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
-import { getSessionUser, requireDepartment } from '@/lib/auth';
+import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { audit } from '@/lib/usb';
 
 export async function PATCH(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Procurement');
   if (denied) return denied;
 

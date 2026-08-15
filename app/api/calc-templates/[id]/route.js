@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
-import { getSessionUser } from '@/lib/auth';
+import { getFreshSessionUser } from '@/lib/auth';
 import { requireCalcAccess, applyTemplate, deleteTemplate } from '@/lib/calc';
 import { audit } from '@/lib/usb';
 
 // One route, two verbs: PATCH applies the template to the live registry (writes), DELETE removes it.
 export async function PATCH(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireCalcAccess(user);
   if (denied) return denied;
 
@@ -17,7 +17,7 @@ export async function PATCH(req, { params }) {
 }
 
 export async function DELETE(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireCalcAccess(user);
   if (denied) return denied;
 

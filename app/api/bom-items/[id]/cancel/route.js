@@ -5,7 +5,7 @@
 // procurement_requests in Bundle A).
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
-import { getSessionUser, canAccessDepartment } from '@/lib/auth';
+import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
 import { audit } from '@/lib/usb';
 import { notifyDepartment } from '@/lib/notify';
 import { removeItemFromDraftPO, releaseReservationsForItem } from '@/lib/procurement';
@@ -17,7 +17,7 @@ const CANCEL_DEPARTMENTS = ['Engineering', 'Design'];
 const CANCELLABLE = new Set(['Enquiry', 'Comparison', 'Ordered']);
 
 export async function POST(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!CANCEL_DEPARTMENTS.some(d => canAccessDepartment(user, d))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }

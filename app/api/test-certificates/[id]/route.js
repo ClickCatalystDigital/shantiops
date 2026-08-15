@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
-import { getSessionUser, requireDepartment } from '@/lib/auth';
+import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { audit } from '@/lib/usb';
 import { deleteObject } from '@/lib/r2';
 
@@ -11,7 +11,7 @@ const EDITABLE = [
 ];
 
 export async function PATCH(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;
 
@@ -44,7 +44,7 @@ export async function PATCH(req, { params }) {
 // too). Blocked if any statutory-document part still cites this cert — deleting it would silently
 // break that document's hard PDF gate (SYSTEM.md §5d), so it's a 409 naming the count, not a cascade.
 export async function DELETE(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;
 

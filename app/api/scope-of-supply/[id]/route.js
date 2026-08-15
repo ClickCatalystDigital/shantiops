@@ -2,10 +2,10 @@
 // (draft -> released), same field-level shape as app/api/opportunities/[id]/route.js.
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
-import { getSessionUser, canAccessDepartment } from '@/lib/auth';
+import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
 
 export async function PATCH(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!canAccessDepartment(user, 'Design') && !canAccessDepartment(user, 'Engineering')) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { execute } from '@/lib/db';
-import { getSessionUser, canAccessDepartment, isPM } from '@/lib/auth';
+import { getFreshSessionUser, canAccessDepartment, isPM } from '@/lib/auth';
 
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 function canAccessCrm(user) {
@@ -8,7 +8,7 @@ function canAccessCrm(user) {
 }
 
 export async function PATCH(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!canAccessCrm(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const b = await req.json();
   const fields = [];

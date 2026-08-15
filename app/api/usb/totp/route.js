@@ -5,10 +5,10 @@ import { NextResponse } from 'next/server';
 import { authenticator } from 'otplib';
 import QRCode from 'qrcode';
 import { queryOne, execute } from '@/lib/db';
-import { getSessionUser, requirePM } from '@/lib/auth';
+import { getFreshSessionUser, requirePM } from '@/lib/auth';
 
 export async function POST(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const guard = requirePM(user);
   if (guard) return guard;
   const b = await req.json();

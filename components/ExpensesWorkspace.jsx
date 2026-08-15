@@ -1,20 +1,20 @@
 'use client';
 
 // components/ExpensesWorkspace.jsx — HR completion bundle. Expense Claims | Advances | Loans, one
-// workspace component mounted as a tab inside HrWorkspace.jsx. Workflow only — no GL posting
+// workspace component mounted inside HrWorkspace.jsx with compact nested sidebar navigation. Workflow only — no GL posting
 // happens anywhere in this file (HARD BOUNDARY); approving a claim just flips its status and, if
 // it references an advance, bumps that advance's settled_amount (a running total, not a ledger).
 import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { PlusIcon, CheckIcon, XIcon, TrashIcon } from 'lucide-react';
+import { PlusIcon, CheckIcon, XIcon, TrashIcon, ReceiptIcon, IndianRupeeIcon, LandmarkIcon } from 'lucide-react';
 import { api, showToast } from '@/lib/client';
+import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 
 function fmt(n) {
   return Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -327,19 +327,20 @@ function LoansTab({ employeeLoans, employees, router }) {
 // ---------------------------------------------------------------------------------------------
 
 export default function ExpensesWorkspace({
-  employees, expenseClaims, expenseClaimTypes, employeeAdvances, employeeLoans, router,
+  employees, expenseClaims, expenseClaimTypes, employeeAdvances, employeeLoans, router, nested = false,
 }) {
   const [tab, setTab] = useState('claims');
+  const navItems = [
+    { key: 'claims', label: 'Expense Claims', icon: ReceiptIcon },
+    { key: 'advances', label: 'Advances', icon: IndianRupeeIcon },
+    { key: 'loans', label: 'Loans', icon: LandmarkIcon },
+  ];
+
   return (
-    <Tabs value={tab} onValueChange={setTab} className="flex-col gap-4">
-      <TabsList variant="line" className="w-full justify-start px-0">
-        <TabsTrigger value="claims" className="flex-none">Expense Claims</TabsTrigger>
-        <TabsTrigger value="advances" className="flex-none">Advances</TabsTrigger>
-        <TabsTrigger value="loans" className="flex-none">Loans</TabsTrigger>
-      </TabsList>
-      <TabsContent value="claims"><ExpenseClaimsTab expenseClaims={expenseClaims} employees={employees} expenseClaimTypes={expenseClaimTypes} employeeAdvances={employeeAdvances} router={router} /></TabsContent>
-      <TabsContent value="advances"><AdvancesTab employeeAdvances={employeeAdvances} employees={employees} router={router} /></TabsContent>
-      <TabsContent value="loans"><LoansTab employeeLoans={employeeLoans} employees={employees} router={router} /></TabsContent>
-    </Tabs>
+    <WorkspaceSidebar title="HR Expenses" icon={ReceiptIcon} items={navItems} activeKey={tab} onChange={setTab} nested={nested}>
+      {tab === 'claims' && <ExpenseClaimsTab expenseClaims={expenseClaims} employees={employees} expenseClaimTypes={expenseClaimTypes} employeeAdvances={employeeAdvances} router={router} />}
+      {tab === 'advances' && <AdvancesTab employeeAdvances={employeeAdvances} employees={employees} router={router} />}
+      {tab === 'loans' && <LoansTab employeeLoans={employeeLoans} employees={employees} router={router} />}
+    </WorkspaceSidebar>
   );
 }

@@ -75,7 +75,7 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
           )}
           {!readOnly && <Button variant="outline" size="sm" onClick={() => { setDraft(list); setEditing(v => !v); }}>{editing ? 'Close' : 'Edit details'}</Button>}
           <Button asChild size="sm"><a href={`/api/packing/${list.id}/pdf`} target="_blank" rel="noreferrer"><FileTextIcon data-icon="inline-start" />Generate PDF</a></Button>
-          {!readOnly && <Button asChild variant="ghost" size="sm"><Link href="/?dept=Dispatch">← All</Link></Button>}
+          {!readOnly && <Button asChild variant="ghost" size="sm"><Link href="/ops?dept=Dispatch">← All</Link></Button>}
         </div>
       </div>
 

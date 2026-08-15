@@ -5,14 +5,14 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { execute, queryAll, nextCounterValue } from '@/lib/db';
-import { getSessionUser, requireDepartment } from '@/lib/auth';
+import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { getRfqDetail } from '@/lib/data';
 import { audit } from '@/lib/usb';
 
 const TOKEN_TTL_MS = 14 * 24 * 60 * 60 * 1000; // D12
 
 export async function POST(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Procurement');
   if (denied) return denied;
 
@@ -49,7 +49,7 @@ export async function POST(req) {
 }
 
 export async function GET() {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Procurement');
   if (denied) return denied;
   const rows = await queryAll('SELECT * FROM rfqs ORDER BY created_at DESC');

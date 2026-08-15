@@ -2,7 +2,7 @@
 // HR|PM; POST HR-only (single-department gate, unlike CRM's two-department pattern).
 import { NextResponse } from 'next/server';
 import { queryAll } from '@/lib/db';
-import { getSessionUser, requireDepartment, canAccessDepartment, isPM } from '@/lib/auth';
+import { getFreshSessionUser, requireDepartment, canAccessDepartment, isPM } from '@/lib/auth';
 import { getEmployees } from '@/lib/data';
 import { createEmployeeWithOnboarding } from '@/lib/hr';
 import { audit } from '@/lib/usb';
@@ -12,7 +12,7 @@ function canAccessHr(user) {
 }
 
 export async function GET(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!canAccessHr(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const search = new URL(req.url).searchParams.get('search');
   if (search) {
@@ -25,7 +25,7 @@ export async function GET(req) {
 }
 
 export async function POST(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'HR');
   if (denied) return denied;
 

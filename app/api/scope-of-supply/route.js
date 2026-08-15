@@ -5,14 +5,14 @@
 // listing by project. Shared by Design and Engineering — same work order, not department-split.
 import { NextResponse } from 'next/server';
 import { execute, queryAll } from '@/lib/db';
-import { getSessionUser, isInternal, canAccessDepartment } from '@/lib/auth';
+import { getFreshSessionUser, isInternal, canAccessDepartment } from '@/lib/auth';
 
 function canEditScope(user) {
   return canAccessDepartment(user, 'Design') || canAccessDepartment(user, 'Engineering');
 }
 
 export async function GET(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const projectId = new URL(req.url).searchParams.get('project_id');
   if (!projectId) return NextResponse.json({ error: 'project_id is required' }, { status: 400 });
@@ -20,7 +20,7 @@ export async function GET(req) {
 }
 
 export async function POST(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!canEditScope(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const b = await req.json();
   const title = String(b.title || '').trim();

@@ -2,11 +2,11 @@
 // Operators may only set `reason` on a pending request for their own machine.
 import { NextResponse } from 'next/server';
 import { queryOne, execute } from '@/lib/db';
-import { getSessionUser, isPM, isHead } from '@/lib/auth';
+import { getFreshSessionUser, isPM, isHead } from '@/lib/auth';
 import { effectiveStatus, verifyTotp, audit, APPROVAL_MINUTES_DEFAULT } from '@/lib/usb';
 
 export async function PATCH(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!isPM(user) && !isHead(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const b = await req.json();
 

@@ -6,13 +6,13 @@
 // exists, they just see the free-text ref appear or disappear.
 import { NextResponse } from 'next/server';
 import { execute, queryAll, queryOne } from '@/lib/db';
-import { getSessionUser, requireDepartment } from '@/lib/auth';
+import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { getPurchaseOrderDetail } from '@/lib/data';
 import { audit } from '@/lib/usb';
 import { advancePurchaseStatus, selectQuoteForItem } from '@/lib/procurement';
 
 export async function GET(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Procurement');
   if (denied) return denied;
   const detail = await getPurchaseOrderDetail(params.id);
@@ -21,7 +21,7 @@ export async function GET(req, { params }) {
 }
 
 export async function PATCH(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Procurement');
   if (denied) return denied;
 

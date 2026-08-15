@@ -1,10 +1,10 @@
 // Shop-floor workers. These people never log in — this is a roster, not an account.
 import { NextResponse } from 'next/server';
 import { execute } from '@/lib/db';
-import { getSessionUser, requireDepartment } from '@/lib/auth';
+import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 
 export async function POST(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Production');
   if (denied) return denied;
 

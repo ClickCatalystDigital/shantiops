@@ -3,12 +3,12 @@
 // (Phase 6.4). Mirrors app/api/suppliers/route.js's shape.
 import { NextResponse } from 'next/server';
 import { execute, queryAll } from '@/lib/db';
-import { getSessionUser, isInternal, requireDepartment } from '@/lib/auth';
+import { getFreshSessionUser, isInternal, requireDepartment } from '@/lib/auth';
 import { getSaleOrders } from '@/lib/data';
 import { audit } from '@/lib/usb';
 
 export async function GET(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const search = new URL(req.url).searchParams.get('search');
@@ -23,7 +23,7 @@ export async function GET(req) {
 }
 
 export async function POST(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Sales');
   if (denied) return denied;
 

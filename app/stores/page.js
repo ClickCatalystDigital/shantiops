@@ -1,7 +1,7 @@
 // app/stores/page.js — V2-CHANGES.md Group 6 Phase 6.2/6.3. Stores' own cross-project inventory
 // workbench, same gating mechanism as /procurement, /qc, /sales.
 import { redirect } from 'next/navigation';
-import { getSessionUser, canAccessDepartment, roleHome } from '@/lib/auth';
+import { getFreshSessionUser, canAccessDepartment, roleHome } from '@/lib/auth';
 import { getInventoryItems, getOpenBomItems, getActiveReservations } from '@/lib/data';
 import PageHeader from '@/components/PageHeader';
 import StoresWorkspace from '@/components/StoresWorkspace';
@@ -9,7 +9,7 @@ import StoresWorkspace from '@/components/StoresWorkspace';
 export const dynamic = 'force-dynamic';
 
 export default async function StoresPage() {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!canAccessDepartment(user, 'Stores')) redirect(roleHome(user));
 
   const [inventoryItems, openRequests, activeReservations] = await Promise.all([

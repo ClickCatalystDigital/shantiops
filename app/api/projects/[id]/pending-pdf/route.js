@@ -3,13 +3,13 @@
 import { NextResponse } from 'next/server';
 import { queryOne } from '@/lib/db';
 import { getProjectBom } from '@/lib/data';
-import { getSessionUser, requireDepartment } from '@/lib/auth';
+import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { renderPendingPdf } from '@/lib/packing-pdf';
 
 export const runtime = 'nodejs';
 
 export async function GET(req, { params }) {
-  const denied = requireDepartment(getSessionUser(), 'Dispatch');
+  const denied = requireDepartment(await getFreshSessionUser(), 'Dispatch');
   if (denied) return denied;
 
   const project = await queryOne('SELECT * FROM projects WHERE id = ?', [params.id]);

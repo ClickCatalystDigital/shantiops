@@ -2,12 +2,12 @@
 // app/api/employees/route.js's onboarding auto-seed, for the reverse lifecycle event.
 import { NextResponse } from 'next/server';
 import { execute } from '@/lib/db';
-import { getSessionUser, requireDepartment } from '@/lib/auth';
+import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { DEFAULT_SEPARATION_TASKS } from '@/lib/hr';
 import { audit } from '@/lib/usb';
 
 export async function POST(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'HR');
   if (denied) return denied;
 

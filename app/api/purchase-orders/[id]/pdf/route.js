@@ -2,13 +2,13 @@
 
 import { NextResponse } from 'next/server';
 import { getPurchaseOrderDetail } from '@/lib/data';
-import { getSessionUser, requireDepartment } from '@/lib/auth';
+import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { renderPoPdf } from '@/lib/po-pdf';
 
 export const runtime = 'nodejs';
 
 export async function GET(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Procurement');
   if (denied) return denied;
 

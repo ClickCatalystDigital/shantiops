@@ -1,17 +1,17 @@
 import { NextResponse } from 'next/server';
 import { execute } from '@/lib/db';
-import { getSessionUser, requireDepartment } from '@/lib/auth';
+import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { getExpenseClaimTypes } from '@/lib/data';
 
 export async function GET() {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'HR');
   if (denied) return denied;
   return NextResponse.json(await getExpenseClaimTypes());
 }
 
 export async function POST(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'HR');
   if (denied) return denied;
   const b = await req.json();

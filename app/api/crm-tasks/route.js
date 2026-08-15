@@ -4,7 +4,7 @@
 // POST requires exactly one of lead_id/opportunity_id/customer_id.
 import { NextResponse } from 'next/server';
 import { execute } from '@/lib/db';
-import { getSessionUser, isInternal, canAccessDepartment } from '@/lib/auth';
+import { getFreshSessionUser, isInternal, canAccessDepartment } from '@/lib/auth';
 import { getCrmTasks } from '@/lib/data';
 
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
@@ -13,7 +13,7 @@ function canAccessCrm(user) {
 }
 
 export async function GET(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const sp = new URL(req.url).searchParams;
   const leadId = sp.get('lead_id');
@@ -23,7 +23,7 @@ export async function GET(req) {
 }
 
 export async function POST(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!canAccessCrm(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const b = await req.json();

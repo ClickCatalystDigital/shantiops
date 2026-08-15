@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getSessionUser } from '@/lib/auth';
+import { getFreshSessionUser, hasActiveDesignResponsibility } from '@/lib/auth';
 import { requireCalcAccess, saveFormulaVersion, setFormulaStatus } from '@/lib/calc';
 import { audit } from '@/lib/usb';
 
@@ -8,7 +8,7 @@ const STATUSES = ['draft', 'pending', 'approved', 'deprecated'];
 // Two distinct edits share this endpoint, same as the prototype: a status transition
 // (Submit/Approve — { status }) or a new expression version, which resets status to draft ({ expr }).
 export async function PATCH(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireCalcAccess(user);
   if (denied) return denied;
 
@@ -16,6 +16,7 @@ export async function PATCH(req, { params }) {
 
   if (b.status !== undefined) {
     if (!STATUSES.includes(b.status)) return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
+    if (b.status === 'approved' && !(await hasActiveDesignResponsibility(user, 'head'))) return NextResponse.json({ error: 'Only the Design Head can approve formulas' }, { status: 403 });
     try {
       await setFormulaStatus(params.id, b.status, b.sheetId);
     } catch (e) {

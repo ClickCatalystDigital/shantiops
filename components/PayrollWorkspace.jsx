@@ -1,13 +1,12 @@
 'use client';
 
 // components/PayrollWorkspace.jsx — HR completion bundle. Payroll Runs | Salary Slips | Additional
-// Salary | Structures | Statutory Settings, one workspace component mounted as a tab inside
+// Salary | Structures | Statutory Settings, one workspace component mounted inside
 // HrWorkspace.jsx (same multi-tab-in-one-file precedent as ProcurementWorkspace.jsx). Every number
 // here is computed by lib/payroll.js and rendered as a stored fact — no arithmetic happens client
 // side beyond simple display formatting.
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -16,8 +15,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
-import { PlusIcon } from 'lucide-react';
+import { PlusIcon, CalendarDaysIcon, FileTextIcon, IndianRupeeIcon, Layers3Icon, Settings2Icon } from 'lucide-react';
 import { api, showToast } from '@/lib/client';
+import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 
 function fmt(n) {
   return Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -631,29 +631,30 @@ function TaxSlabsCard({ taxSlabs, router }) {
 
 export default function PayrollWorkspace({
   employees, payrollRuns, salarySlips, salaryStructures, salaryAssignments,
-  statutoryRates, ptSlabs, taxSlabs, additionalSalary, router,
+  statutoryRates, ptSlabs, taxSlabs, additionalSalary, router, nested = false,
 }) {
   const [tab, setTab] = useState('runs');
+  const navItems = [
+    { key: 'runs', label: 'Payroll Runs', icon: CalendarDaysIcon },
+    { key: 'slips', label: 'Salary Slips', icon: FileTextIcon },
+    { key: 'additional', label: 'Additional Salary', icon: IndianRupeeIcon },
+    { key: 'structures', label: 'Structures', icon: Layers3Icon },
+    { key: 'settings', label: 'Statutory Settings', icon: Settings2Icon },
+  ];
+
   return (
-    <Tabs value={tab} onValueChange={setTab} className="flex-col gap-4">
-      <TabsList variant="line" className="w-full justify-start px-0">
-        <TabsTrigger value="runs" className="flex-none">Payroll Runs</TabsTrigger>
-        <TabsTrigger value="slips" className="flex-none">Salary Slips</TabsTrigger>
-        <TabsTrigger value="additional" className="flex-none">Additional Salary</TabsTrigger>
-        <TabsTrigger value="structures" className="flex-none">Structures</TabsTrigger>
-        <TabsTrigger value="settings" className="flex-none">Statutory Settings</TabsTrigger>
-      </TabsList>
-      <TabsContent value="runs"><PayrollRunsTab payrollRuns={payrollRuns} router={router} /></TabsContent>
-      <TabsContent value="slips"><SalarySlipsTab salarySlips={salarySlips} /></TabsContent>
-      <TabsContent value="additional"><AdditionalSalaryTab additionalSalary={additionalSalary} employees={employees} router={router} /></TabsContent>
-      <TabsContent value="structures"><StructuresTab salaryStructures={salaryStructures} salaryAssignments={salaryAssignments} employees={employees} router={router} /></TabsContent>
-      <TabsContent value="settings">
+    <WorkspaceSidebar title="Payroll" icon={IndianRupeeIcon} items={navItems} activeKey={tab} onChange={setTab} nested={nested}>
+      {tab === 'runs' && <PayrollRunsTab payrollRuns={payrollRuns} router={router} />}
+      {tab === 'slips' && <SalarySlipsTab salarySlips={salarySlips} />}
+      {tab === 'additional' && <AdditionalSalaryTab additionalSalary={additionalSalary} employees={employees} router={router} />}
+      {tab === 'structures' && <StructuresTab salaryStructures={salaryStructures} salaryAssignments={salaryAssignments} employees={employees} router={router} />}
+      {tab === 'settings' && (
         <div className="flex flex-col gap-4">
           <RatesForm statutoryRates={statutoryRates} router={router} />
           <PtSlabsCard ptSlabs={ptSlabs} router={router} />
           <TaxSlabsCard taxSlabs={taxSlabs} router={router} />
         </div>
-      </TabsContent>
-    </Tabs>
+      )}
+    </WorkspaceSidebar>
   );
 }

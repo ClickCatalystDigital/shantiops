@@ -2,14 +2,14 @@
 // references an advance bumps that advance's settled_amount (simple running total, no ledger).
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
-import { getSessionUser, requireDepartment } from '@/lib/auth';
+import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { getExpenseClaimDetail } from '@/lib/data';
 import { audit } from '@/lib/usb';
 
 const STATUSES = ['draft', 'submitted', 'approved', 'rejected', 'paid'];
 
 export async function GET(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'HR');
   if (denied) return denied;
   const detail = await getExpenseClaimDetail(params.id);
@@ -18,7 +18,7 @@ export async function GET(req, { params }) {
 }
 
 export async function PATCH(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'HR');
   if (denied) return denied;
   const b = await req.json();

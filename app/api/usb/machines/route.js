@@ -2,12 +2,12 @@
 // Revocation = machines.active flag (checked on every agent call), not token expiry.
 import { NextResponse } from 'next/server';
 import { queryOne, execute } from '@/lib/db';
-import { getSessionUser, signAgentToken } from '@/lib/auth';
+import { getFreshSessionUser, signAgentToken } from '@/lib/auth';
 import { audit } from '@/lib/usb';
 import { issueEnrollCode } from '@/lib/enroll';
 
 export async function POST(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!['admin', 'executive'].includes(user?.role)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const b = await req.json();
 
@@ -26,7 +26,7 @@ export async function POST(req) {
 
 // Kill switch / reactivate.
 export async function PATCH(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!['admin', 'executive'].includes(user?.role)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const b = await req.json();
   const machine = await queryOne('SELECT * FROM machines WHERE id = ?', [Number(b.id)]);

@@ -1,7 +1,7 @@
 // Move a stage between lanes (Kanban drag) or remove it from a milestone's instance list.
 import { NextResponse } from 'next/server';
 import { execute, queryAll, queryOne } from '@/lib/db';
-import { getSessionUser, isInternal, isHead, canAccessDepartment } from '@/lib/auth';
+import { getFreshSessionUser, isInternal, isHead, canAccessDepartment } from '@/lib/auth';
 import { audit } from '@/lib/usb';
 import { fireHandoff } from '@/lib/notify';
 import { todayISO } from '@/lib/date';
@@ -17,7 +17,7 @@ async function load(milestoneId, stageId) {
 }
 
 export async function PATCH(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const { m, stage } = await load(params.id, params.stageId);
   if (!m || !stage) return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -66,7 +66,7 @@ export async function PATCH(req, { params }) {
 }
 
 export async function DELETE(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const { m, stage } = await load(params.id, params.stageId);
   if (!m || !stage) return NextResponse.json({ error: 'Not found' }, { status: 404 });

@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
-import { getSessionUser, isHead, headDepartments, roleHome } from '@/lib/auth';
+import { getFreshSessionUser, isHead, isManager, headDepartments, roleHome } from '@/lib/auth';
+import { DEPARTMENTS } from '@/lib/milestones';
 import {
   getDepartmentCalendar, getOpenDepartmentTasks, getFunctionalHeads,
 } from '@/lib/data';
@@ -11,13 +12,14 @@ export const dynamic = 'force-dynamic';
 const VIEWS = ['month', 'week', 'year'];
 
 export default async function ProductionTodayPage({ searchParams }) {
-  const user = getSessionUser();
-  // Any granted department — PMs stay locked out (headDepartments is [] for them by
-  // construction), same exclusion as before, just no longer Production-specific.
-  if (!isHead(user) || headDepartments(user).length === 0) redirect(roleHome(user));
+  const user = await getFreshSessionUser();
+  const manager = isManager(user);
+  const allowedDepartments = manager ? DEPARTMENTS : headDepartments(user);
+  if ((!manager && !isHead(user)) || allowedDepartments.length === 0) redirect(roleHome(user));
 
-  const deptFilter = searchParams?.dept || null;
-  const deptsToShow = deptFilter ? [deptFilter] : headDepartments(user);
+  const requestedDept = searchParams?.dept || null;
+  const deptFilter = requestedDept && allowedDepartments.includes(requestedDept) ? requestedDept : null;
+  const deptsToShow = deptFilter ? [deptFilter] : allowedDepartments;
 
   const today = todayISO();
   // Validate before any of this reaches date math and a SQL bound param.

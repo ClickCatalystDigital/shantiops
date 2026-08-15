@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
-import { getSessionUser } from '@/lib/auth';
+import { getFreshSessionUser } from '@/lib/auth';
 import { requireCalcAccess, updateVariableValue, updateVariableArrayRows, deleteVariable } from '@/lib/calc';
 import { audit } from '@/lib/usb';
 
 export async function PATCH(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireCalcAccess(user);
   if (denied) return denied;
 
@@ -22,7 +22,7 @@ export async function PATCH(req, { params }) {
 }
 
 export async function DELETE(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireCalcAccess(user);
   if (denied) return denied;
 

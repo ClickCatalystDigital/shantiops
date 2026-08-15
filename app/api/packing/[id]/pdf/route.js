@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
 import { getPackingDetail } from '@/lib/data';
-import { getSessionUser, isCustomer, canAccessDepartment, canAccessProject } from '@/lib/auth';
+import { getFreshSessionUser, isCustomer, canAccessDepartment, canAccessProject } from '@/lib/auth';
 import { renderPackingPdf } from '@/lib/packing-pdf';
 
 export const runtime = 'nodejs';
 
 export async function GET(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const data = await getPackingDetail(params.id);
   if (!data) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 

@@ -4,7 +4,7 @@
 // opportunities' bulk-PUT — a quotation is created whole, not built up incrementally in the UI).
 import { NextResponse } from 'next/server';
 import { execute, nextCounterValue } from '@/lib/db';
-import { getSessionUser, canAccessDepartment, isPM } from '@/lib/auth';
+import { getFreshSessionUser, canAccessDepartment, isPM } from '@/lib/auth';
 import { getQuotations } from '@/lib/data';
 import { audit } from '@/lib/usb';
 
@@ -14,13 +14,13 @@ function canAccessCrm(user) {
 }
 
 export async function GET() {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!canAccessCrm(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   return NextResponse.json(await getQuotations());
 }
 
 export async function POST(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!canAccessCrm(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const b = await req.json();

@@ -2,8 +2,9 @@
 
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import ProductionTodayPage from './production/page';
 import { getMyWork, getBomWork, getDepartmentTasks, getStageBottlenecks, getSourcingItems, getProcurementFlowCounts, getDesignFlowCounts, getDesignWork } from '@/lib/data';
-import { getSessionUser, isCustomer, isManager, isHead, headDepartments, canAccessDepartment, roleHome } from '@/lib/auth';
+import { getFreshSessionUser, isCustomer, isManager, isHead, headDepartments, canAccessDepartment, roleHome } from '@/lib/auth';
 import StatusBadge from '@/components/StatusBadge';
 import DispatchBoard from '@/components/DispatchBoard';
 import TicketsPanel from '@/components/TicketsPanel';
@@ -29,8 +30,9 @@ export const dynamic = 'force-dynamic';
 //   );
 // }
 
-export default async function Home({ searchParams }) {
-  const user = getSessionUser();
+export async function OperationsPage({ searchParams }) {
+  const user = await getFreshSessionUser();
+  if (!user) redirect('/login');
   if (isCustomer(user)) redirect(roleHome(user));
 
   if (isHead(user) && headDepartments(user).length === 0) {
@@ -192,3 +194,7 @@ export default async function Home({ searchParams }) {
     </main>
   );
 }
+
+// `/` is the original department Home/Tasks experience. The Operations dashboard above keeps its
+// original UI and is exposed at `/ops`; this module remains the shared implementation boundary.
+export default ProductionTodayPage;

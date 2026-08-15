@@ -4,11 +4,11 @@
 // own purchase_status field, same authority the inline BOM status dropdown already gives them.
 import { NextResponse } from 'next/server';
 import { execute, queryAll } from '@/lib/db';
-import { getSessionUser, isInternal, isHead, canAccessDepartment } from '@/lib/auth';
+import { getFreshSessionUser, isInternal, isHead, canAccessDepartment } from '@/lib/auth';
 import { audit } from '@/lib/usb';
 
 export async function POST(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   if (isHead(user) && !canAccessDepartment(user, 'Procurement')) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });

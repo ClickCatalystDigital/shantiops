@@ -3,7 +3,7 @@
 // it (cascades to stage_template_items).
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
-import { getSessionUser, isInternal, isHead, canAccessDepartment } from '@/lib/auth';
+import { getFreshSessionUser, isInternal, isHead, canAccessDepartment } from '@/lib/auth';
 import { audit } from '@/lib/usb';
 
 async function loadTemplate(id) {
@@ -11,7 +11,7 @@ async function loadTemplate(id) {
 }
 
 export async function PATCH(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const tpl = await loadTemplate(params.id);
   if (!tpl) return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -45,7 +45,7 @@ export async function PATCH(req, { params }) {
 }
 
 export async function DELETE(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const tpl = await loadTemplate(params.id);
   if (!tpl) return NextResponse.json({ error: 'Not found' }, { status: 404 });

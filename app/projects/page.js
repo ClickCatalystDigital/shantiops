@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { getProjectsWithStatus, getCustomers, getDesignProgressByProject } from '@/lib/data';
-import { getSessionUser, isPM } from '@/lib/auth';
+import { getFreshSessionUser, isPM } from '@/lib/auth';
 import StatusBadge from '@/components/StatusBadge';
 import NewProjectForm from '@/components/NewProjectForm';
 import PageHeader from '@/components/PageHeader';
@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 export const dynamic = 'force-dynamic';
 
 export default async function Projects() {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const canCreate = isPM(user);
   const [projects, customers, designProgress] = await Promise.all([
     getProjectsWithStatus(), canCreate ? getCustomers() : [], getDesignProgressByProject(),

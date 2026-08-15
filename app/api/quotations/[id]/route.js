@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { execute } from '@/lib/db';
-import { getSessionUser, canAccessDepartment, isPM } from '@/lib/auth';
+import { getFreshSessionUser, canAccessDepartment, isPM } from '@/lib/auth';
 import { getQuotationDetail } from '@/lib/data';
 import { audit } from '@/lib/usb';
 
@@ -11,7 +11,7 @@ function canAccessCrm(user) {
 }
 
 export async function GET(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!canAccessCrm(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const detail = await getQuotationDetail(params.id);
   if (!detail) return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -19,7 +19,7 @@ export async function GET(req, { params }) {
 }
 
 export async function PATCH(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!canAccessCrm(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const b = await req.json();
   if (b.status !== undefined && !STATUSES.includes(b.status)) {

@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
-import { getSessionUser } from '@/lib/auth';
+import { getFreshSessionUser } from '@/lib/auth';
 import { requireCalcAccess, getCalcState } from '@/lib/calc';
 import { buildCalcWorkbook } from '@/lib/calc-export';
 
 export const runtime = 'nodejs';
 
 export async function GET(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireCalcAccess(user);
   if (denied) return denied;
 

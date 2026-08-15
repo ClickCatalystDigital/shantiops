@@ -1,11 +1,11 @@
 // Whitelist toggle. Enabling is a standing grant → TOTP required; disabling is free.
 import { NextResponse } from 'next/server';
 import { queryOne, queryAll, execute } from '@/lib/db';
-import { getSessionUser, requirePM } from '@/lib/auth';
+import { getFreshSessionUser, requirePM } from '@/lib/auth';
 import { verifyTotp, audit, effectiveStatus, APPROVAL_MINUTES_DEFAULT } from '@/lib/usb';
 
 export async function PATCH(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const guard = requirePM(user);
   if (guard) return guard;
   const b = await req.json();

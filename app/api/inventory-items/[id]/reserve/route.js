@@ -2,12 +2,12 @@
 // commits stock against an open request without yet handing it out — see lib/procurement.js's
 // reserveFromStock for the exclusivity/split-on-shortfall logic.
 import { NextResponse } from 'next/server';
-import { getSessionUser, requireDepartment } from '@/lib/auth';
+import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { reserveFromStock } from '@/lib/procurement';
 import { audit } from '@/lib/usb';
 
 export async function POST(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Stores');
   if (denied) return denied;
 

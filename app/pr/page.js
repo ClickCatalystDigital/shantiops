@@ -3,7 +3,7 @@
 // acceptance gate. One page, gated to whichever of the three departments the viewer holds — not
 // three separate builds.
 import { redirect } from 'next/navigation';
-import { getSessionUser, canAccessDepartment, headDepartments, isPM, roleHome } from '@/lib/auth';
+import { getFreshSessionUser, canAccessDepartment, headDepartments, isPM, roleHome } from '@/lib/auth';
 import { getActiveProjectsList, getInventoryItems, getSaleOrders } from '@/lib/data';
 import PageHeader from '@/components/PageHeader';
 import PrWorkspace from '@/components/PrWorkspace';
@@ -13,7 +13,7 @@ export const dynamic = 'force-dynamic';
 const PR_DEPARTMENTS = ['Engineering', 'Design', 'Stores'];
 
 export default async function PrPage() {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!PR_DEPARTMENTS.some(d => canAccessDepartment(user, d))) redirect(roleHome(user));
 
   const departments = isPM(user) ? PR_DEPARTMENTS : headDepartments(user).filter(d => PR_DEPARTMENTS.includes(d));

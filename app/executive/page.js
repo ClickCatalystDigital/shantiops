@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getExecutiveSummary, getProjectsWithStatus, getErpSnapshot, getOpportunityPipelineCounts, getProcurementFlowCounts, getWorkforceCounts } from '@/lib/data';
-import { getSessionUser, isManager, roleHome } from '@/lib/auth';
+import { getFreshSessionUser, isManager, roleHome } from '@/lib/auth';
 import { todayISO } from '@/lib/date';
 import StatusBadge from '@/components/StatusBadge';
 import PortfolioDelayTimeline from '@/components/PortfolioDelayTimeline';
@@ -112,7 +112,7 @@ function PipelineCard({ pipeline }) {
 }
 
 export default async function Executive() {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!isManager(user)) redirect(roleHome(user));
 
   const [{ kpi, delayedBy, topRisks, forecast }, projects, snapshot, pipeline, procurementCounts, workforce] = await Promise.all([

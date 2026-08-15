@@ -11,12 +11,12 @@
 // "learning mode." Quotes themselves stay append-only/immutable; only this outcome flag moves.
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
-import { getSessionUser, requireDepartment } from '@/lib/auth';
+import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { audit } from '@/lib/usb';
 import { selectQuoteForItem, removeItemFromDraftPO } from '@/lib/procurement';
 
 export async function POST(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Procurement');
   if (denied) return denied;
 
@@ -32,7 +32,7 @@ export async function POST(req, { params }) {
 }
 
 export async function DELETE(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Procurement');
   if (denied) return denied;
 

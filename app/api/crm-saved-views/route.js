@@ -3,10 +3,10 @@
 // Frappe CRM's own saved views use). GET lists this user's views for an entity; POST creates one.
 import { NextResponse } from 'next/server';
 import { execute, queryAll } from '@/lib/db';
-import { getSessionUser, isInternal } from '@/lib/auth';
+import { getFreshSessionUser, isInternal } from '@/lib/auth';
 
 export async function GET(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const entity = new URL(req.url).searchParams.get('entity') || 'leads';
   const rows = await queryAll(
@@ -17,7 +17,7 @@ export async function GET(req) {
 }
 
 export async function POST(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const b = await req.json();
   const name = String(b.name || '').trim();

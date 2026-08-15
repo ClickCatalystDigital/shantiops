@@ -4,12 +4,12 @@
 // Team panel can show them side by side); PUT upserts the caller's own department only.
 import { NextResponse } from 'next/server';
 import { execute, queryAll, queryOne } from '@/lib/db';
-import { getSessionUser, canAccessDepartment } from '@/lib/auth';
+import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
 
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 
 export async function GET() {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!CRM_DEPARTMENTS.some(d => canAccessDepartment(user, d))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
@@ -18,7 +18,7 @@ export async function GET() {
 }
 
 export async function PUT(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const b = await req.json();
   const ownerDept = CRM_DEPARTMENTS.includes(b.owner_dept) ? b.owner_dept : null;
   if (!ownerDept) return NextResponse.json({ error: 'A valid department is required' }, { status: 400 });

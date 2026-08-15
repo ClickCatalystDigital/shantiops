@@ -3,12 +3,12 @@
 // items rather than beginning blank.
 import { NextResponse } from 'next/server';
 import { execute } from '@/lib/db';
-import { getSessionUser, isInternal, isHead, canAccessDepartment } from '@/lib/auth';
+import { getFreshSessionUser, isInternal, isHead, canAccessDepartment } from '@/lib/auth';
 import { DEPARTMENTS } from '@/lib/milestones';
 import { audit } from '@/lib/usb';
 
 export async function POST(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const b = await req.json();

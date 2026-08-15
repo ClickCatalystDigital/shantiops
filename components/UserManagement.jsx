@@ -10,9 +10,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
-const BLANK = { username: '', password: '', display_name: '' };
+const BLANK = { employeeId: '', username: '', password: '' };
 
-export default function UserManagement({ heads: initialHeads, isAdmin = false }) {
+export default function UserManagement({ heads: initialHeads, availableEmployees = [], isAdmin = false }) {
   const router = useRouter();
   const [heads, setHeads] = useState(initialHeads);
   const [f, setF] = useState(BLANK);
@@ -23,7 +23,7 @@ export default function UserManagement({ heads: initialHeads, isAdmin = false })
     setBusy(true);
     try {
       await api('/api/users', { method: 'POST', body: f });
-      showToast('Functional head created');
+      showToast('System access created and linked to HR');
       setF(BLANK);
       router.refresh();
     } catch (err) { showToast(err.message, 'error'); }
@@ -89,14 +89,17 @@ export default function UserManagement({ heads: initialHeads, isAdmin = false })
           </div>
         )}
 
-        <form onSubmit={create} className="grid items-end gap-3 sm:grid-cols-[1fr_1fr_1fr_auto]">
+        <form onSubmit={create} className="grid items-end gap-3 sm:grid-cols-[1.4fr_1fr_1fr_auto]">
+          <div className="flex flex-col gap-1.5"><Label>HR employee *</Label>
+            <select required value={f.employeeId} onChange={e => setF({ ...f, employeeId: e.target.value })} className="h-10 rounded-md border bg-background px-3 text-sm">
+              <option value="">Select an active HR employee</option>
+              {availableEmployees.map(e => <option key={e.id} value={e.id}>{e.name} · {e.employee_code} · {e.department || 'Unassigned'}</option>)}
+            </select></div>
           <div className="flex flex-col gap-1.5"><Label>Username *</Label>
             <Input required value={f.username} onChange={e => setF({ ...f, username: e.target.value })} /></div>
           <div className="flex flex-col gap-1.5"><Label>Password *</Label>
             <Input type="password" required minLength={6} value={f.password} onChange={e => setF({ ...f, password: e.target.value })} /></div>
-          <div className="flex flex-col gap-1.5"><Label>Display Name</Label>
-            <Input value={f.display_name} onChange={e => setF({ ...f, display_name: e.target.value })} /></div>
-          <Button disabled={busy}>{busy ? 'Creating…' : 'New Head'}</Button>
+          <Button disabled={busy || availableEmployees.length === 0}>{busy ? 'Creating…' : 'Create access'}</Button>
         </form>
       </CardContent>
     </Card>

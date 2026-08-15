@@ -1,7 +1,7 @@
 // app/hr/page.js — V3_CHANGES.md §12 Phase 3g. HR's own cross-project workspace, same gating
 // mechanism as /procurement, /qc, /sales (components/Nav.jsx's inHr).
 import { redirect } from 'next/navigation';
-import { getSessionUser, canAccessDepartment, roleHome } from '@/lib/auth';
+import { getFreshSessionUser, canAccessDepartment, roleHome } from '@/lib/auth';
 import {
   getEmployees, getDesignations, getEmploymentTypes, getLeaveTypes, getLeaveRequests,
   getHolidays, getShiftTypes, getShiftAssignments, getJobOpenings, getAttendanceForDate,
@@ -11,13 +11,12 @@ import {
 } from '@/lib/data';
 import { getStatutoryRates } from '@/lib/payroll';
 import { todayISO } from '@/lib/date';
-import PageHeader from '@/components/PageHeader';
 import HrWorkspace from '@/components/HrWorkspace';
 
 export const dynamic = 'force-dynamic';
 
 export default async function HrPage() {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!canAccessDepartment(user, 'HR')) redirect(roleHome(user));
 
   const today = todayISO();
@@ -35,8 +34,7 @@ export default async function HrPage() {
   ]);
 
   return (
-    <main className="container flex flex-col gap-6 py-8">
-      <PageHeader title="HR" description="Employees, attendance, leave, shifts and recruitment" />
+    <main className="min-h-[calc(100svh-3.5rem)]">
       <HrWorkspace
         employees={employees} designations={designations} employmentTypes={employmentTypes}
         leaveTypes={leaveTypes} pendingLeaveRequests={leaveRequests} holidays={holidays}

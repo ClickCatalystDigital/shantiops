@@ -2,10 +2,10 @@
 // owner (personal saved filters, same boundary as the create route).
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
-import { getSessionUser } from '@/lib/auth';
+import { getFreshSessionUser } from '@/lib/auth';
 
 export async function PATCH(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const existing = await queryOne('SELECT * FROM crm_saved_views WHERE id = ?', [params.id]);
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   if (existing.user !== user.username) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -16,7 +16,7 @@ export async function PATCH(req, { params }) {
 }
 
 export async function DELETE(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const existing = await queryOne('SELECT * FROM crm_saved_views WHERE id = ?', [params.id]);
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   if (existing.user !== user.username) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });

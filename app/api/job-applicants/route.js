@@ -1,17 +1,17 @@
 import { NextResponse } from 'next/server';
 import { execute } from '@/lib/db';
-import { getSessionUser, requireDepartment, canAccessDepartment, isPM } from '@/lib/auth';
+import { getFreshSessionUser, requireDepartment, canAccessDepartment, isPM } from '@/lib/auth';
 import { getJobApplicants } from '@/lib/data';
 
 export async function GET(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!isPM(user) && !canAccessDepartment(user, 'HR')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const jobOpeningId = new URL(req.url).searchParams.get('job_opening_id');
   return NextResponse.json(await getJobApplicants(jobOpeningId));
 }
 
 export async function POST(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'HR');
   if (denied) return denied;
   const b = await req.json();

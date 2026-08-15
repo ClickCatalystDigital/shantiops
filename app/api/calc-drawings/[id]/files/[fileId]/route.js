@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getSessionUser } from '@/lib/auth';
+import { getFreshSessionUser, hasActiveDesignResponsibility } from '@/lib/auth';
 import { requireCalcAccess } from '@/lib/calc';
 import { queryOne, execute } from '@/lib/db';
 import { getObjectBuffer, deleteObject } from '@/lib/r2';
@@ -8,7 +8,7 @@ import { audit } from '@/lib/usb';
 // Proxied read-back — works without a public R2 bucket URL, same shape as
 // app/api/test-certificates/[id]/pdf/route.js's GET.
 export async function GET(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireCalcAccess(user);
   if (denied) return denied;
 
@@ -26,9 +26,10 @@ export async function GET(req, { params }) {
 }
 
 export async function DELETE(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireCalcAccess(user);
   if (denied) return denied;
+  if (!(await hasActiveDesignResponsibility(user, 'head'))) return NextResponse.json({ error: 'Only the Design Head can delete files' }, { status: 403 });
 
   const file = await queryOne('SELECT file_key FROM calc_drawing_files WHERE id = ? AND drawing_id = ?', [params.fileId, params.id]);
   if (!file) return NextResponse.json({ error: 'Not found' }, { status: 404 });

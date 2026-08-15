@@ -1,12 +1,12 @@
 import { notFound, redirect } from 'next/navigation';
 import { getPackingDetail } from '@/lib/data';
-import { getSessionUser, isCustomer, canAccessDepartment, canAccessProject, roleHome } from '@/lib/auth';
+import { getFreshSessionUser, isCustomer, canAccessDepartment, canAccessProject, roleHome } from '@/lib/auth';
 import PackingDetail from '@/components/PackingDetail';
 
 export const dynamic = 'force-dynamic';
 
 export default async function PackingPage({ params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const data = await getPackingDetail(params.id);
   if (!data) notFound();
 
@@ -19,7 +19,7 @@ export default async function PackingPage({ params }) {
     }
   } else if (!canEdit) {
     // Internal users without Dispatch access have no business on the packing board.
-    redirect('/');
+    redirect(roleHome(user));
   }
 
   return <PackingDetail list={data.list} items={data.items} readOnly={!canEdit} />;

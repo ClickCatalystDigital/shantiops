@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
-import { getSessionUser, requireDepartment } from '@/lib/auth';
+import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { audit } from '@/lib/usb';
 
 const EDITABLE = ['test_type', 'reference_no', 'result', 'inspector', 'tested_on', 'notes'];
@@ -8,7 +8,7 @@ const EDITABLE = ['test_type', 'reference_no', 'result', 'inspector', 'tested_on
 // QC updates a record — most commonly flipping result from pending to pass/fail once the test's
 // back, or filling in reference_no once the cert number is issued.
 export async function PATCH(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;
 
@@ -43,7 +43,7 @@ export async function PATCH(req, { params }) {
 }
 
 export async function DELETE(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;
 

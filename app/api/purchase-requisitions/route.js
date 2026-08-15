@@ -11,7 +11,7 @@
 // project to split across.
 import { NextResponse } from 'next/server';
 import { execute, queryOne, nextCounterValue } from '@/lib/db';
-import { getSessionUser, canAccessDepartment } from '@/lib/auth';
+import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
 import { audit } from '@/lib/usb';
 
 const PR_DEPARTMENTS = ['Engineering', 'Design', 'Stores'];
@@ -21,7 +21,7 @@ const NON_BOM_SOURCES = new Set(['stock', 'sas']);
 const CATEGORIES = new Set(['plate', 'ms_section', 'angle', 'standard']);
 
 export async function POST(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const b = await req.json();
 
   const raisedByDept = b.raised_by_dept;

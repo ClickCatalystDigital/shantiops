@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
-import { getSessionUser, requireDepartment } from '@/lib/auth';
+import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { audit } from '@/lib/usb';
 import { editableBomFields, PURCHASE_STATUSES } from '@/lib/bom-fields.mjs';
 import { releaseReservationsForItem } from '@/lib/procurement';
@@ -9,7 +9,7 @@ import { releaseReservationsForItem } from '@/lib/procurement';
 // the columns their department owns (BOM_FIELD_OWNERS); a PM writes anything. Enforced here, not
 // in the UI, so a forged request from devtools gets a 403 naming the offending keys.
 export async function PATCH(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const allowed = editableBomFields(user);
   if (!allowed.length) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
@@ -73,7 +73,7 @@ export async function PATCH(req, { params }) {
 // Deleting a BOM row is an Engineering call (it un-defines a material). Rows already carried onto
 // a packing list are protected — deleting them would orphan the reconciliation history.
 export async function DELETE(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const deniedResp = requireDepartment(user, 'Engineering');
   if (deniedResp) return deniedResp;
 

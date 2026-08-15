@@ -1,10 +1,10 @@
 // Tick a task off (or back on) from the calendar, the To dos rail, or the cross-department panel.
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
-import { getSessionUser, canAccessDepartment } from '@/lib/auth';
+import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
 
 export async function PATCH(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const task = await queryOne('SELECT id, department, from_department FROM tasks WHERE id = ?', [params.id]);
   if (!task) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 

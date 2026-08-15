@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getSessionUser } from '@/lib/auth';
+import { getFreshSessionUser, hasActiveDesignResponsibility } from '@/lib/auth';
 import { requireCalcAccess, addDrawingFile } from '@/lib/calc';
 import { putObject } from '@/lib/r2';
 import { audit } from '@/lib/usb';
@@ -8,9 +8,10 @@ import { audit } from '@/lib/usb';
 // Buffer -> putObject, then store the R2 key. Best-effort: an unconfigured bucket (missing env
 // vars) 502s this route without touching anything already saved.
 export async function POST(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireCalcAccess(user);
   if (denied) return denied;
+  if (!(await hasActiveDesignResponsibility(user, 'head')) && !(await hasActiveDesignResponsibility(user, 'designer'))) return NextResponse.json({ error: 'Design access required' }, { status: 403 });
 
   const form = await req.formData();
   const file = form.get('file');

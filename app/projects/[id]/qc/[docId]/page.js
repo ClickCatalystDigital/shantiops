@@ -1,13 +1,13 @@
 import { notFound, redirect } from 'next/navigation';
 import { queryOne } from '@/lib/db';
 import { getQcDocumentDetail, getTestCertificates } from '@/lib/data';
-import { getSessionUser, canAccessDepartment, roleHome } from '@/lib/auth';
+import { getFreshSessionUser, canAccessDepartment, roleHome } from '@/lib/auth';
 import QcDocumentEditor from '@/components/QcDocumentEditor';
 
 export const dynamic = 'force-dynamic';
 
 export default async function QcDocumentPage({ params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!canAccessDepartment(user, 'QC')) redirect(roleHome(user));
 
   const project = await queryOne('SELECT id, project_no, customer_name FROM projects WHERE id = ?', [params.id]);

@@ -2,7 +2,7 @@
 
 import { NextResponse } from 'next/server';
 import { execute, queryAll, queryOne, nextNumber } from '@/lib/db';
-import { getSessionUser, requireDepartment } from '@/lib/auth';
+import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { getProjectBom } from '@/lib/data';
 import { audit } from '@/lib/usb';
 
@@ -11,7 +11,7 @@ import { audit } from '@/lib/usb';
 // qty starts with a number ("2 Nos" → 2); leaves IBR No / Item Code / Box for the Dispatch head.
 // Only pending lines are pulled (handles partial dispatch).
 export async function POST(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Dispatch');
   if (denied) return denied;
 

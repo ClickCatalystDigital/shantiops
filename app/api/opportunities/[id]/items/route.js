@@ -4,18 +4,18 @@
 // grid UI where the user edits several rows then hits Save once.
 import { NextResponse } from 'next/server';
 import { execute, queryAll, queryOne } from '@/lib/db';
-import { getSessionUser, canAccessDepartment } from '@/lib/auth';
+import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
 
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 
 export async function GET(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   return NextResponse.json(await queryAll('SELECT * FROM opportunity_items WHERE opportunity_id = ? ORDER BY sort_order, id', [params.id]));
 }
 
 export async function PUT(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!CRM_DEPARTMENTS.some(d => canAccessDepartment(user, d))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }

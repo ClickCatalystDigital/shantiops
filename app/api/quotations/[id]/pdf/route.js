@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getQuotationDetail } from '@/lib/data';
-import { getSessionUser, canAccessDepartment, isPM } from '@/lib/auth';
+import { getFreshSessionUser, canAccessDepartment, isPM } from '@/lib/auth';
 import { renderQuotationPdf } from '@/lib/quotation-pdf';
 
 export const runtime = 'nodejs';
@@ -8,7 +8,7 @@ export const runtime = 'nodejs';
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 
 export async function GET(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!isPM(user) && !CRM_DEPARTMENTS.some(d => canAccessDepartment(user, d))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }

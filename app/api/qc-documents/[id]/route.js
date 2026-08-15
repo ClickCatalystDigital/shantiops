@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
-import { getSessionUser, requireDepartment } from '@/lib/auth';
+import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { audit } from '@/lib/usb';
 
 const EDITABLE = [
@@ -15,7 +15,7 @@ const COMPANIES = ['Shanti Boilers', 'Shanti Techno Fab'];
 // Editing the boiler-level header fields (the "edit" link on the Boiler details card) — the part
 // table and its certificate links have their own endpoint (link-parts), not this one.
 export async function PATCH(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;
 
@@ -48,7 +48,7 @@ export async function PATCH(req, { params }) {
 // ON DELETE CASCADE — this app never turns SQLite foreign-key enforcement on for plain
 // execute() calls, so the constraint alone wouldn't actually remove the child rows.
 export async function DELETE(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;
 

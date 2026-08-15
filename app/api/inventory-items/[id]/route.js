@@ -4,14 +4,14 @@
 // path for it moving through the reserve→issue workflow, this is Stores' own override.
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
-import { getSessionUser, requireDepartment } from '@/lib/auth';
+import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { audit } from '@/lib/usb';
 
 const FIELDS = ['description', 'spec', 'on_hand', 'location', 'reorder_point', 'item_code'];
 const NUMERIC = new Set(['on_hand', 'reorder_point']);
 
 export async function PATCH(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Stores');
   if (denied) return denied;
 

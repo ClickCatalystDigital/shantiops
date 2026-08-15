@@ -4,7 +4,7 @@
 // No PageHeader/<main container> — SalesWorkspace owns the full sidebar layout itself, same as
 // CalcWorkspace's page.
 import { redirect } from 'next/navigation';
-import { getSessionUser, canAccessDepartment, headDepartments, isPM, roleHome } from '@/lib/auth';
+import { getFreshSessionUser, canAccessDepartment, headDepartments, isPM, roleHome } from '@/lib/auth';
 import { getSaleOrders, getLeads, getCustomers, getQuotations, getCampaigns, getFunctionalHeads } from '@/lib/data';
 import { queryAll } from '@/lib/db';
 import SalesWorkspace from '@/components/SalesWorkspace';
@@ -14,7 +14,7 @@ export const dynamic = 'force-dynamic';
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 
 export default async function SalesPage() {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!canAccessDepartment(user, 'Sales') && !canAccessDepartment(user, 'Marketing')) redirect(roleHome(user));
 
   // Sale-transaction tabs (Customers/Quotations/Sale Orders) stay Sales-only — Marketing shares

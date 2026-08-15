@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { queryOne, execute } from '@/lib/db';
-import { getSessionUser } from '@/lib/auth';
+import { getFreshSessionUser } from '@/lib/auth';
 
 export async function POST(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   const { currentPassword, newPassword } = await req.json();
   if (!newPassword || newPassword.length < 6) {

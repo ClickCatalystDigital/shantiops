@@ -1,6 +1,6 @@
 node_modules
 .next
-.next-3001
+.next-*
 *.db
 *.db-journal
 .env

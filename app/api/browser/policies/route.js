@@ -1,14 +1,14 @@
 // Manager CRUD for browser domain policies. PM-only.
 import { NextResponse } from 'next/server';
 import { queryAll, execute } from '@/lib/db';
-import { getSessionUser, requirePM } from '@/lib/auth';
+import { getFreshSessionUser, requirePM } from '@/lib/auth';
 import { audit } from '@/lib/usb';
 import { normalizeDomain, POLICY_ACTIONS } from '@/lib/browser';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const guard = requirePM(user);
   if (guard) return guard;
   const policies = await queryAll("SELECT * FROM approval_policies WHERE kind = 'browser' ORDER BY target");
@@ -16,7 +16,7 @@ export async function GET() {
 }
 
 export async function POST(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const guard = requirePM(user);
   if (guard) return guard;
   const b = await req.json();
@@ -37,7 +37,7 @@ export async function POST(req) {
 }
 
 export async function DELETE(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const guard = requirePM(user);
   if (guard) return guard;
   const b = await req.json();

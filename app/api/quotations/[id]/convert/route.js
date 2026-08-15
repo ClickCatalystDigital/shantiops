@@ -4,7 +4,7 @@
 // copy of it today, not converted to an FK in this phase).
 import { NextResponse } from 'next/server';
 import { execute, queryAll, queryOne, nextCounterValue } from '@/lib/db';
-import { getSessionUser, canAccessDepartment, isPM } from '@/lib/auth';
+import { getFreshSessionUser, canAccessDepartment, isPM } from '@/lib/auth';
 import { audit } from '@/lib/usb';
 
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
@@ -13,7 +13,7 @@ function canAccessCrm(user) {
 }
 
 export async function POST(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!canAccessCrm(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const quotation = await queryOne(

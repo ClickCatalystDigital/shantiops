@@ -10,13 +10,13 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, showToast } from '@/lib/client';
-import { Card, CardAction, CardContent, CardHeader, CardTitle } from './ui/card';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from './ui/tabs';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Badge } from './ui/badge';
 import { Separator } from './ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import { ListChecksIcon, KanbanSquareIcon, Settings2Icon } from 'lucide-react';
+import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 
 const LANES = [
   { key: 'open', label: 'Open' },
@@ -40,31 +40,19 @@ export default function StagesPanel({
     } catch (err) { showToast(err.message, 'error'); }
   }
 
+  const items = [
+    { key: 'kanban', label: 'Kanban', icon: KanbanSquareIcon },
+    ...(canManage ? [{ key: 'manage', label: 'Manage', icon: Settings2Icon }] : []),
+  ];
+
   return (
-    <Card>
-      <Tabs value={tab} onValueChange={setTab} className="contents">
-        <CardHeader>
-          <CardTitle>Stages — {department}</CardTitle>
-          <CardAction>
-            <TabsList>
-              <TabsTrigger value="kanban">Kanban</TabsTrigger>
-              {canManage && <TabsTrigger value="manage">Manage</TabsTrigger>}
-            </TabsList>
-          </CardAction>
-        </CardHeader>
-        <CardContent>
-          <TabsContent value="kanban">
-            <Kanban stages={stages} onMove={move} />
-          </TabsContent>
-          {canManage && (
-            <TabsContent value="manage">
-              <Manage department={department} milestones={milestones} stages={stages}
-                stageTemplates={stageTemplates} stageTemplateItems={stageTemplateItems} router={router} />
-            </TabsContent>
-          )}
-        </CardContent>
-      </Tabs>
-    </Card>
+    <WorkspaceSidebar nested title={`Stages — ${department}`} icon={ListChecksIcon} items={items} activeKey={tab} onChange={setTab}>
+      {tab === 'kanban' && <Kanban stages={stages} onMove={move} />}
+      {tab === 'manage' && canManage && (
+        <Manage department={department} milestones={milestones} stages={stages}
+          stageTemplates={stageTemplates} stageTemplateItems={stageTemplateItems} router={router} />
+      )}
+    </WorkspaceSidebar>
   );
 }
 

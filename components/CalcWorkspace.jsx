@@ -9,11 +9,11 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
-  Database, FunctionSquare, PlayCircle, History, Plus, Trash2,
+  Database, FunctionSquare, History, Plus, Trash2,
   ArrowRight, CheckCircle2, AlertTriangle, XCircle, GitBranch, Save, RotateCcw,
   BookOpen, ShieldCheck, ExternalLink, Calculator, RefreshCw, ChevronDown, ChevronRight,
   Table as TableIcon, FileText as FileTextIcon, FileSpreadsheet, Upload, MessageSquare, LayoutTemplate,
-  LayoutDashboard,
+  LayoutDashboard, ChartSpline, PencilRuler,
 } from 'lucide-react';
 import { computeAll, runValidations, runFormulaTests, extractDeps, round, LIBRARY, goalSeek, sensitivityAnalysis, changeImpact } from '@/lib/calc-engine';
 import { api, showToast } from '@/lib/client';
@@ -32,7 +32,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Separator } from '@/components/ui/separator';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 
 const TYPE_STYLE = {
   input: { label: 'Input', cls: 'text-info bg-info/10 ring-1 ring-inset ring-info/20' },
@@ -60,7 +60,7 @@ const STATUS_STYLE = {
 // standalone entry, added when that panel lands.
 const PANELS = [
   {
-    key: 'project', label: 'Calculation', icon: PlayCircle, description: 'Daily work — edit inputs, review results',
+    key: 'project', label: 'Calculation', icon: Calculator, description: 'Daily work — edit inputs, review results',
     help: 'Edit inputs on the left — results and validations recompute live. Save a snapshot to freeze this exact run.',
     group: null,
   },
@@ -90,7 +90,7 @@ const PANELS = [
     group: 'Governance',
   },
   {
-    key: 'drawings', label: 'Drawings', icon: FileTextIcon, description: 'Design deliverable checklist + files',
+    key: 'drawings', label: 'Drawings', icon: PencilRuler, description: 'Design deliverable checklist + files',
     help: 'A checklist of design drawings for this project — not a CAD studio. Upload files and track status per drawing.',
     group: 'Drawings',
   },
@@ -106,9 +106,10 @@ const PANEL_GROUPS = [...new Set(PANELS.map((p) => p.group))].map((group) => ({
   group, items: PANELS.filter((p) => p.group === group),
 }));
 
-export default function CalcWorkspace({ initialState, sheetId, sheetChain }) {
+export default function CalcWorkspace({ initialState, sheetId, sheetChain, user, designTeam = [] }) {
   const router = useRouter();
   const [panel, setPanel] = useState('project');
+  const [calcView, setCalcView] = useState('worksheet');
   const [variables, setVariables] = useState(initialState.variables);
   const [formulas, setFormulas] = useState(initialState.formulas);
   const [validations, setValidations] = useState(initialState.validations);
@@ -159,12 +160,21 @@ export default function CalcWorkspace({ initialState, sheetId, sheetChain }) {
   const passCount = checks.length - failCount - warnCount;
   const activePanel = PANELS.find((p) => p.key === panel);
   const approvedFormulas = formulas.filter((f) => f.status === 'approved').length;
+  async function deleteCurrentSheet() {
+    if (!sheetChain || !window.confirm(`Delete calculation sheet “${sheetChain.sheetName}”?`)) return;
+    try {
+      await api(`/api/calc-sheets/${sheetChain.sheetId}`, { method: 'DELETE' });
+      showToast('Calculation sheet deleted');
+      router.push(`/calc/project/${sheetChain.projectId}`);
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+  }
 
   return (
     <SidebarProvider>
       <Sidebar collapsible="icon">
-        <SidebarHeader className="gap-3 px-3 py-3.5">
-          <div className="flex items-center gap-2.5">
+        <SidebarHeader className="gap-2 px-3 py-3.5 group-data-[collapsible=icon]:px-2">
+          <div className="flex items-center gap-2.5 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0">
             <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
               <Calculator className="size-4" />
             </div>
@@ -185,7 +195,7 @@ export default function CalcWorkspace({ initialState, sheetId, sheetChain }) {
                     onPick={(p) => router.push(`/calc/project/${p.id}`)}
                   />
                   <div className="truncate text-[11px] text-sidebar-foreground/50">{sheetChain.customerName}</div>
-                  <div className="mt-1 flex min-w-0 items-center gap-1">
+                  <div className="mt-1 flex min-w-0 flex-1 items-center gap-1">
                     <ChevronRight className="size-3 shrink-0 text-sidebar-foreground/30" />
                     <InlineSwitcher
                       trigger={
@@ -194,7 +204,7 @@ export default function CalcWorkspace({ initialState, sheetId, sheetChain }) {
                           <ChevronDown className="size-3 shrink-0 text-sidebar-foreground/40" />
                         </span>
                       }
-                      triggerClassName="-mx-1 flex min-w-0 rounded-md px-1 py-0.5 hover:bg-sidebar-accent"
+                      triggerClassName="-mx-1 flex w-full min-w-0 max-w-full rounded-md px-1 py-0.5 hover:bg-sidebar-accent"
                       placeholder="Search sheets…"
                       loadItems={async () => (await api(`/api/calc-sheets?project_id=${sheetChain.projectId}`)).sheets}
                       getKey={(s) => s.id} getLabel={(s) => s.name} getSub={() => null}
@@ -206,7 +216,11 @@ export default function CalcWorkspace({ initialState, sheetId, sheetChain }) {
                 <div className="truncate text-sm font-semibold tracking-tight">Calc Sheets</div>
               )}
             </div>
-            <SidebarTrigger className="ml-auto group-data-[collapsible=icon]:hidden" />
+            {sheetChain && <Button variant="ghost" size="icon-sm" className="ml-auto text-muted-foreground hover:text-destructive group-data-[collapsible=icon]:hidden" title="Delete calculation sheet" onClick={deleteCurrentSheet}><Trash2 className="size-3.5" /></Button>}
+            <SidebarTrigger className={sheetChain ? '' : 'ml-auto'} />
+          </div>
+          <div className="hidden justify-center group-data-[collapsible=icon]:flex">
+            <SidebarTrigger aria-label="Expand Calc Sheets sidebar" />
           </div>
         </SidebarHeader>
         <SidebarContent>
@@ -279,6 +293,7 @@ export default function CalcWorkspace({ initialState, sheetId, sheetChain }) {
               convergence={convergence} passCount={passCount} warnCount={warnCount} failCount={failCount} unapproved={unapproved}
               onLocalChange={updateLocalValue} onPersist={persistValue} router={router}
               variables={variables} formulas={formulas} tables={tables} templates={templates} sheetId={sheetId} snapshots={snapshots}
+              calcView={calcView} setCalcView={setCalcView}
             />
           )}
           {panel === 'methodology' && (
@@ -291,7 +306,7 @@ export default function CalcWorkspace({ initialState, sheetId, sheetChain }) {
           {panel === 'library' && <LibraryPanel formulas={formulas} router={router} sheetId={sheetId} />}
           {panel === 'tables' && <TablesPanel tables={tables} router={router} nameList={nameList} variables={variables} />}
           {panel === 'audit' && <AuditPanel variables={variables} formulas={formulas} tables={tables} snapshots={snapshots} router={router} />}
-          {panel === 'drawings' && <DrawingsPanel drawings={drawings} projectId={sheetChain?.projectId} router={router} />}
+          {panel === 'drawings' && <DrawingsPanel drawings={drawings} projectId={sheetChain?.projectId} router={router} user={user} designTeam={designTeam} />}
           {panel === 'portfolio' && <PortfolioPanel />}
         </div>
       </SidebarInset>
@@ -371,9 +386,10 @@ function TemplatesCard({ templates, router, sheetId }) {
   );
 }
 
-function ProjectPanel({ otherVars, computedVars, liveValues, trace, checks, convergence, passCount, warnCount, failCount, unapproved, onLocalChange, onPersist, router, variables, formulas, tables, templates, sheetId, snapshots }) {
+function ProjectPanel({ otherVars, computedVars, liveValues, trace, checks, convergence, passCount, warnCount, failCount, unapproved, onLocalChange, onPersist, router, variables, formulas, tables, templates, sheetId, snapshots, calcView, setCalcView }) {
   const [saving, setSaving] = useState(false);
   const [showIterations, setShowIterations] = useState(false);
+  const [showTrace, setShowTrace] = useState(false);
 
   async function saveSnapshot() {
     setSaving(true);
@@ -389,21 +405,32 @@ function ProjectPanel({ otherVars, computedVars, liveValues, trace, checks, conv
   }
 
   const inputVars = otherVars.filter((v) => v.type === 'input');
+  const hasSizingMargin = typeof liveValues.RequiredThickness === 'number'
+    && typeof liveValues.SelectedThickness === 'number'
+    && variables.some((v) => v.name === 'DesignMarginPct')
+    && liveValues.RequiredThickness !== 0;
+  const hasInputHistory = inputVars.length >= 3 && (snapshots?.length || 0) >= 5;
+  const insightCount = 1 + (hasSizingMargin ? 1 : 0) + (hasInputHistory ? 1 : 0);
+  const insightGridClass = insightCount === 3 ? 'md:grid-cols-3' : insightCount === 2 ? 'md:grid-cols-2' : 'md:grid-cols-1';
 
   // Premium-repositioning pass: Calculation used to be one long scroll doing two jobs — the daily
   // worksheet (inputs/results/validations, opened every day) and an engineering deep-dive
   // (execution trace, the analytics visuals, goal-seek/sensitivity, occasional/investigative use).
-  // Split via sub-tabs (same Tabs/TabsList variant="line" ProjectDepartmentTabs.jsx already uses)
-  // instead of a new sidebar item or a collapsible section — nothing below is deleted or made
-  // harder to reach, just no longer sharing scroll weight with the daily view by default.
+  // Worksheet and Analysis are two views of the same calculation sheet. Keep them close to the
+  // sheet in a compact nested sidebar so the daily worksheet and investigative analysis do not
+  // compete for one long scroll.
   return (
-    <Tabs defaultValue="worksheet" className="flex-col gap-4">
-      <TabsList variant="line" className="w-fit">
-        <TabsTrigger value="worksheet">Worksheet</TabsTrigger>
-        <TabsTrigger value="analysis">Analysis</TabsTrigger>
-      </TabsList>
+    <WorkspaceSidebar
+      nested
+      hideHeader
+      title="Calculation view"
+      icon={Calculator}
+      items={[{ key: 'worksheet', label: 'Worksheet', icon: FileSpreadsheet }, { key: 'analysis', label: 'Analysis', icon: ChartSpline }]}
+      activeKey={calcView}
+      onChange={setCalcView}
+    >
 
-      <TabsContent value="worksheet" className="flex flex-col gap-4">
+      {calcView === 'worksheet' && <div className="flex flex-col gap-4">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className="flex flex-col gap-3">
             <TemplatesCard templates={templates} router={router} sheetId={sheetId} />
@@ -521,12 +548,43 @@ function ProjectPanel({ otherVars, computedVars, liveValues, trace, checks, conv
             )}
           </div>
         </div>
-      </TabsContent>
+      </div>}
 
-      <TabsContent value="analysis" className="flex flex-col gap-4">
+      {calcView === 'analysis' && <div className="flex flex-col gap-5">
+        <section className="flex flex-col gap-2">
+          <div>
+            <h2 className="text-sm font-semibold">Visual diagnostics</h2>
+            <p className="text-xs text-muted-foreground">Quick signals about validation health, sizing margin, and how today compares with saved runs.</p>
+          </div>
+          <div className={`grid grid-cols-1 gap-4 ${insightGridClass}`}>
+            <ValidationDonut passCount={passCount} warnCount={warnCount} failCount={failCount} />
+            {hasSizingMargin && <MarginGauge variables={variables} liveValues={liveValues} />}
+            {hasInputHistory && <InputRadar otherVars={otherVars} liveValues={liveValues} snapshots={snapshots} />}
+          </div>
+        </section>
+
+        <section className="flex flex-col gap-2">
+          <div>
+            <h2 className="text-sm font-semibold">What-if analysis</h2>
+            <p className="text-xs text-muted-foreground">Explore a target or test how an output responds before changing the worksheet.</p>
+          </div>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <GoalSeekCard inputVars={inputVars} computedVars={computedVars} variables={variables} formulas={formulas} tables={tables} onPersist={onPersist} onLocalChange={onLocalChange} />
+            <SensitivityCard inputVars={inputVars} computedVars={computedVars} variables={variables} formulas={formulas} tables={tables} />
+          </div>
+        </section>
+
         <Card className="gap-0 py-0">
-          <CardHeader className="border-b py-2.5"><CardTitle className="text-xs font-semibold uppercase text-muted-foreground">Execution trace</CardTitle></CardHeader>
-          <CardContent className="flex flex-col divide-y p-0">
+          <CardHeader className="border-b py-2.5">
+            <button type="button" className="flex w-full items-center justify-between gap-3 text-left" onClick={() => setShowTrace((open) => !open)}>
+              <div>
+                <CardTitle className="text-sm">Execution trace</CardTitle>
+                <p className="mt-0.5 text-xs font-normal text-muted-foreground">Formula-by-formula audit of how this result was produced.</p>
+              </div>
+              <ChevronDown className={`size-4 shrink-0 text-muted-foreground transition-transform ${showTrace ? 'rotate-180' : ''}`} />
+            </button>
+          </CardHeader>
+          {showTrace && <CardContent className="flex flex-col divide-y p-0">
             {trace.map((t, i) => (
               <div key={t.formulaId} className="px-4 py-2.5 text-xs">
                 <div className="flex flex-wrap items-center gap-2">
@@ -534,21 +592,9 @@ function ProjectPanel({ otherVars, computedVars, liveValues, trace, checks, conv
                   <span className="font-medium">{t.formulaName}</span>
                   <Badge variant="outline">v{t.version}</Badge>
                   <Badge className={STATUS_STYLE[t.status].cls} variant="outline">{STATUS_STYLE[t.status].label}</Badge>
-                  {t.iterations != null && (
-                    <Badge variant="outline" className={t.converged ? 'text-success' : 'text-destructive'}>
-                      <RefreshCw className="size-3" data-icon="inline-start" />{t.iterations} iter
-                    </Badge>
-                  )}
-                  {t.warnings?.length > 0 && (
-                    <Badge variant="outline" className="text-warning" title={t.warnings.join('; ')}>
-                      <AlertTriangle className="size-3" data-icon="inline-start" />{t.warnings.length === 1 ? 'extrapolated' : `${t.warnings.length} warnings`}
-                    </Badge>
-                  )}
-                  {t.guardExpr && (
-                    <Badge variant="outline" className={t.skipped ? 'text-muted-foreground' : 'text-info'} title={`Guard: ${t.guardExpr}`}>
-                      {t.skipped ? 'skipped (guard false)' : 'guard passed'}
-                    </Badge>
-                  )}
+                  {t.iterations != null && <Badge variant="outline" className={t.converged ? 'text-success' : 'text-destructive'}><RefreshCw className="size-3" data-icon="inline-start" />{t.iterations} iter</Badge>}
+                  {t.warnings?.length > 0 && <Badge variant="outline" className="text-warning" title={t.warnings.join('; ')}><AlertTriangle className="size-3" data-icon="inline-start" />{t.warnings.length === 1 ? 'extrapolated' : `${t.warnings.length} warnings`}</Badge>}
+                  {t.guardExpr && <Badge variant="outline" className={t.skipped ? 'text-muted-foreground' : 'text-info'} title={`Guard: ${t.guardExpr}`}>{t.skipped ? 'skipped (guard false)' : 'guard passed'}</Badge>}
                   <ArrowRight className="size-3 text-muted-foreground" />
                   <span className="font-mono">{t.error ? 'error' : t.skipped ? 'n/a' : round(t.output)}</span>
                 </div>
@@ -557,21 +603,10 @@ function ProjectPanel({ otherVars, computedVars, liveValues, trace, checks, conv
                 {t.warnings?.length > 0 && <div className="mt-0.5 pl-4 text-warning">{t.warnings.join(' ')}</div>}
               </div>
             ))}
-          </CardContent>
+          </CardContent>}
         </Card>
-
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          <ValidationDonut passCount={passCount} warnCount={warnCount} failCount={failCount} />
-          <MarginGauge variables={variables} liveValues={liveValues} />
-          <InputRadar otherVars={otherVars} liveValues={liveValues} snapshots={snapshots} />
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <GoalSeekCard inputVars={inputVars} computedVars={computedVars} variables={variables} formulas={formulas} tables={tables} onPersist={onPersist} onLocalChange={onLocalChange} />
-          <SensitivityCard inputVars={inputVars} computedVars={computedVars} variables={variables} formulas={formulas} tables={tables} />
-        </div>
-      </TabsContent>
-    </Tabs>
+      </div>}
+    </WorkspaceSidebar>
   );
 }
 
@@ -1945,6 +1980,12 @@ const DRAWING_STATUS_STYLE = {
   approved: { label: 'Approved', cls: 'text-success bg-success/10 ring-1 ring-inset ring-success/20' },
   as_built: { label: 'As built', cls: 'text-success bg-success/10 ring-1 ring-inset ring-success/20' },
 };
+function formatFileSize(bytes) {
+  if (bytes === null || bytes === undefined || Number.isNaN(bytes)) return null;
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 // §C — the one drawing-progress visual this round builds (everything else from the visualization
 // discussion — validation donut, margin gauge, portfolio dashboard — was explicitly rejected).
 // green = approved/as_built, yellow = in_progress/under_review, gray = not_started.
@@ -1956,6 +1997,10 @@ function drawingBarColor(status) {
 function DrawingProgressBar({ drawings }) {
   const complete = drawings.filter((d) => d.status === 'approved' || d.status === 'as_built').length;
   const segW = 100 / Math.max(drawings.length, 1);
+  const totalBytes = drawings.reduce(
+    (sum, d) => sum + (d.files || []).reduce((s, f) => s + (f.fileSize || 0), 0),
+    0
+  );
   return (
     <div className="flex items-center gap-3">
       <svg viewBox={`0 0 100 10`} className="h-2.5 flex-1" preserveAspectRatio="none">
@@ -1963,7 +2008,9 @@ function DrawingProgressBar({ drawings }) {
           <rect key={d.id} x={i * segW} y={0} width={segW - 1} height={10} rx={1} fill={drawingBarColor(d.status)} opacity={0.85} />
         ))}
       </svg>
-      <span className="shrink-0 text-xs text-muted-foreground">{complete} of {drawings.length} complete</span>
+      <span className="shrink-0 text-xs text-muted-foreground">
+        {complete} of {drawings.length} complete{totalBytes > 0 && ` · ${formatFileSize(totalBytes)} total`}
+      </span>
     </div>
   );
 }
@@ -1999,105 +2046,154 @@ function DrawingFileUpload({ drawingId, router }) {
   );
 }
 
-function DrawingCard({ drawing, router }) {
+// function LegacyDrawingCard({ drawing, router }) {
+//   const [open, setOpen] = useState(false);
+//   const [busy, setBusy] = useState(false);
+//   const [form, setForm] = useState({ status: drawing.status, assignedTo: drawing.assignedTo || '', dueDate: drawing.dueDate || '', notes: drawing.notes || '' });
+
+//   async function save(patch) {
+//     setBusy(true);
+//     try {
+//       await api(`/api/calc-drawings/${drawing.id}`, { method: 'PATCH', body: patch });
+//       router.refresh();
+//     } catch (err) {
+//       showToast(err.message, 'error');
+//     } finally {
+//       setBusy(false);
+//     }
+//   }
+
+//   async function remove() {
+//     setBusy(true);
+//     try {
+//       await api(`/api/calc-drawings/${drawing.id}`, { method: 'DELETE' });
+//       showToast('Drawing deleted');
+//       router.refresh();
+//     } catch (err) {
+//       showToast(err.message, 'error');
+//       setBusy(false);
+//     }
+//   }
+
+//   async function removeFile(fileId) {
+//     try {
+//       await api(`/api/calc-drawings/${drawing.id}/files/${fileId}`, { method: 'DELETE' });
+//       router.refresh();
+//     } catch (err) {
+//       showToast(err.message, 'error');
+//     }
+//   }
+
+//   return (
+//     <Card>
+//       <button className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left" onClick={() => setOpen((o) => !o)}>
+//         <div className="min-w-0">
+//           <div className="text-sm font-medium">{drawing.name}</div>
+//           {drawing.drawingType && <div className="text-xs text-muted-foreground">{drawing.drawingType}</div>}
+//         </div>
+//         <div className="flex shrink-0 items-center gap-2">
+//           <Badge className={DRAWING_STATUS_STYLE[drawing.status].cls} variant="outline">{DRAWING_STATUS_STYLE[drawing.status].label}</Badge>
+//           <ChevronDown className={`size-3.5 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`} />
+//         </div>
+//       </button>
+//       {open && (
+//         <CardContent className="flex flex-col gap-3 border-t pt-3">
+//           <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+//             <div className="flex flex-col gap-1">
+//               <Label className="text-xs">Status</Label>
+//               <Select value={form.status} onValueChange={(status) => { setForm({ ...form, status }); save({ status }); }}>
+//                 <SelectTrigger><SelectValue /></SelectTrigger>
+//                 <SelectContent>
+//                   {DRAWING_STATUSES.map((s) => <SelectItem key={s} value={s}>{DRAWING_STATUS_STYLE[s].label}</SelectItem>)}
+//                 </SelectContent>
+//               </Select>
+//             </div>
+//             <div className="flex flex-col gap-1">
+//               <Label className="text-xs">Assigned to</Label>
+//               <Input value={form.assignedTo} onChange={(e) => setForm({ ...form, assignedTo: e.target.value })} onBlur={() => save({ assignedTo: form.assignedTo })} />
+//             </div>
+//             <div className="flex flex-col gap-1">
+//               <Label className="text-xs">Due date</Label>
+//               <Input type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} onBlur={() => save({ dueDate: form.dueDate })} />
+//             </div>
+//           </div>
+//           <div className="flex flex-col gap-1">
+//             <Label className="text-xs">Notes</Label>
+//             <Textarea rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} onBlur={() => save({ notes: form.notes })} />
+//           </div>
+
+//           <Separator />
+
+//           <div className="flex flex-col gap-1.5">
+//             <div className="flex items-center justify-between">
+//               <Label className="text-xs">Files</Label>
+//               <DrawingFileUpload drawingId={drawing.id} router={router} />
+//             </div>
+//             {drawing.files.length === 0 && <p className="text-xs text-muted-foreground">No files yet.</p>}
+//             {drawing.files.map((f) => (
+//               <div key={f.id} className="flex items-center justify-between gap-2 rounded border px-2.5 py-1.5 text-xs">
+//                 <a href={`/api/calc-drawings/${drawing.id}/files/${f.id}`} className="flex min-w-0 flex-1 items-center justify-between gap-2 truncate text-primary hover:underline">
+//                   <span className="truncate">{f.fileName}</span>
+//                   {formatFileSize(f.fileSize) && <span className="shrink-0 text-muted-foreground">{formatFileSize(f.fileSize)}</span>}
+//                 </a>
+//                 <button onClick={() => removeFile(f.id)} className="shrink-0 text-muted-foreground hover:text-destructive"><Trash2 className="size-3.5" /></button>
+//               </div>
+//             ))}
+//           </div>
+
+//           <Button variant="ghost" size="sm" disabled={busy} onClick={remove} className="self-start text-destructive hover:text-destructive">
+//             <Trash2 className="size-3.5" data-icon="inline-start" />Delete drawing
+//           </Button>
+//         </CardContent>
+//       )}
+//     </Card>
+//   );
+// }
+
+function DrawingCard({ drawing, router, canApprove, designTeam }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [fileBusy, setFileBusy] = useState(null);
   const [form, setForm] = useState({ status: drawing.status, assignedTo: drawing.assignedTo || '', dueDate: drawing.dueDate || '', notes: drawing.notes || '' });
-
-  async function save(patch) {
-    setBusy(true);
-    try {
-      await api(`/api/calc-drawings/${drawing.id}`, { method: 'PATCH', body: patch });
-      router.refresh();
-    } catch (err) {
-      showToast(err.message, 'error');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function remove() {
-    setBusy(true);
-    try {
-      await api(`/api/calc-drawings/${drawing.id}`, { method: 'DELETE' });
-      showToast('Drawing deleted');
-      router.refresh();
-    } catch (err) {
-      showToast(err.message, 'error');
-      setBusy(false);
-    }
-  }
-
-  async function removeFile(fileId) {
+  const save = async (patch) => { setBusy(true); try { await api(`/api/calc-drawings/${drawing.id}`, { method: 'PATCH', body: patch }); router.refresh(); } catch (err) { showToast(err.message, 'error'); } finally { setBusy(false); } };
+  const remove = async () => { setBusy(true); try { await api(`/api/calc-drawings/${drawing.id}`, { method: 'DELETE' }); router.refresh(); } catch (err) { showToast(err.message, 'error'); setBusy(false); } };
+  const removeFile = async (fileId) => {
+    setFileBusy(fileId);
     try {
       await api(`/api/calc-drawings/${drawing.id}/files/${fileId}`, { method: 'DELETE' });
       router.refresh();
     } catch (err) {
       showToast(err.message, 'error');
+    } finally {
+      setFileBusy(null);
     }
-  }
-
-  return (
-    <Card>
-      <button className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left" onClick={() => setOpen((o) => !o)}>
-        <div className="min-w-0">
-          <div className="text-sm font-medium">{drawing.name}</div>
-          {drawing.drawingType && <div className="text-xs text-muted-foreground">{drawing.drawingType}</div>}
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <Badge className={DRAWING_STATUS_STYLE[drawing.status].cls} variant="outline">{DRAWING_STATUS_STYLE[drawing.status].label}</Badge>
-          <ChevronDown className={`size-3.5 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`} />
-        </div>
+  };
+  return <Card>
+    <button className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left" onClick={() => setOpen((v) => !v)}>
+      <div className="min-w-0"><div className="text-sm font-medium">{drawing.name}</div>{drawing.drawingType && <div className="text-xs text-muted-foreground">{drawing.drawingType}</div>}</div>
+      <div className="flex shrink-0 items-center gap-2"><Badge className={DRAWING_STATUS_STYLE[drawing.status].cls} variant="outline">{DRAWING_STATUS_STYLE[drawing.status].label}</Badge><ChevronDown className={`size-3.5 transition-transform ${open ? 'rotate-180' : ''}`} /></div>
+    </button>
+    {open && <CardContent className="flex flex-col gap-3 border-t pt-3">
+      <div className="flex justify-end gap-2"><DrawingFileUpload drawingId={drawing.id} router={router} />{canApprove && <Button variant="ghost" size="sm" disabled={busy} onClick={remove} className="text-destructive hover:text-destructive"><Trash2 className="size-3.5" data-icon="inline-start" />Delete drawing</Button>}</div>
+      <div className="flex flex-col gap-1.5"><div className="flex items-center justify-between"><Label className="text-xs">Files</Label><span className="text-xs text-muted-foreground">{drawing.files.length} file{drawing.files.length === 1 ? '' : 's'}</span></div>{drawing.files.length === 0 && <p className="text-sm text-muted-foreground">No files yet.</p>}{drawing.files.map((f) => (
+  <div key={f.id} className="flex items-center justify-between gap-2 rounded border px-2.5 py-1.5 text-xs">
+    <a href={`/api/calc-drawings/${drawing.id}/files/${f.id}`} className="min-w-0 flex-1 truncate text-primary hover:underline">{f.fileName}</a>
+    {formatFileSize(f.fileSize) && <span className="shrink-0 text-muted-foreground">{formatFileSize(f.fileSize)}</span>}
+    {canApprove && (
+      <button onClick={() => removeFile(f.id)} disabled={fileBusy === f.id} className="shrink-0 text-muted-foreground hover:text-destructive disabled:opacity-50">
+        <Trash2 className="size-3.5" />
       </button>
-      {open && (
-        <CardContent className="flex flex-col gap-3 border-t pt-3">
-          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-            <div className="flex flex-col gap-1">
-              <Label className="text-xs">Status</Label>
-              <Select value={form.status} onValueChange={(status) => { setForm({ ...form, status }); save({ status }); }}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {DRAWING_STATUSES.map((s) => <SelectItem key={s} value={s}>{DRAWING_STATUS_STYLE[s].label}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex flex-col gap-1">
-              <Label className="text-xs">Assigned to</Label>
-              <Input value={form.assignedTo} onChange={(e) => setForm({ ...form, assignedTo: e.target.value })} onBlur={() => save({ assignedTo: form.assignedTo })} />
-            </div>
-            <div className="flex flex-col gap-1">
-              <Label className="text-xs">Due date</Label>
-              <Input type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} onBlur={() => save({ dueDate: form.dueDate })} />
-            </div>
-          </div>
-          <div className="flex flex-col gap-1">
-            <Label className="text-xs">Notes</Label>
-            <Textarea rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} onBlur={() => save({ notes: form.notes })} />
-          </div>
-
-          <Separator />
-
-          <div className="flex flex-col gap-1.5">
-            <div className="flex items-center justify-between">
-              <Label className="text-xs">Files</Label>
-              <DrawingFileUpload drawingId={drawing.id} router={router} />
-            </div>
-            {drawing.files.length === 0 && <p className="text-xs text-muted-foreground">No files yet.</p>}
-            {drawing.files.map((f) => (
-              <div key={f.id} className="flex items-center justify-between gap-2 rounded border px-2.5 py-1.5 text-xs">
-                <a href={`/api/calc-drawings/${drawing.id}/files/${f.id}`} className="min-w-0 truncate text-primary hover:underline">{f.fileName}</a>
-                <button onClick={() => removeFile(f.id)} className="shrink-0 text-muted-foreground hover:text-destructive"><Trash2 className="size-3.5" /></button>
-              </div>
-            ))}
-          </div>
-
-          <Button variant="ghost" size="sm" disabled={busy} onClick={remove} className="self-start text-destructive hover:text-destructive">
-            <Trash2 className="size-3.5" data-icon="inline-start" />Delete drawing
-          </Button>
-        </CardContent>
-      )}
-    </Card>
-  );
+    )}
+  </div>
+))}</div>
+      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+        <div className="flex flex-col gap-1"><Label className="text-xs">Status</Label><Select value={form.status} onValueChange={(status) => { setForm({ ...form, status }); save({ status }); }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{DRAWING_STATUSES.filter((s) => canApprove || !['approved', 'as_built'].includes(s)).map((s) => <SelectItem key={s} value={s}>{DRAWING_STATUS_STYLE[s].label}</SelectItem>)}</SelectContent></Select></div>
+        <div className="flex flex-col gap-1"><Label className="text-xs">Assigned to</Label><Select disabled={!canApprove} value={form.assignedTo || undefined} onValueChange={(assignedTo) => { setForm({ ...form, assignedTo }); save({ assignedTo }); }}><SelectTrigger><SelectValue placeholder="Select a Design teammate" /></SelectTrigger><SelectContent>{designTeam.map((m) => <SelectItem key={m.id} value={m.name}>{m.name}</SelectItem>)}</SelectContent></Select></div>
+        <div className="flex flex-col gap-1"><Label className="text-xs">Due date</Label><Input type="date" disabled={!canApprove} value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} onBlur={() => save({ dueDate: form.dueDate })} /></div>
+      </div>
+      <div className="flex flex-col gap-1"><Label className="text-xs">Notes</Label><Textarea rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} onBlur={() => save({ notes: form.notes })} /></div>
+    </CardContent>}
+  </Card>;
 }
 
 function AddDrawingDialog({ projectId, router }) {
@@ -2139,7 +2235,8 @@ function AddDrawingDialog({ projectId, router }) {
   );
 }
 
-function DrawingsPanel({ drawings, projectId, router }) {
+function DrawingsPanel({ drawings, projectId, router, user, designTeam }) {
+  const canApprove = ['admin', 'manager', 'executive'].includes(user?.role) || user?.department_roles?.Design === 'head';
   return (
     <div className="flex flex-col gap-3">
       <Card>
@@ -2152,7 +2249,7 @@ function DrawingsPanel({ drawings, projectId, router }) {
         <AddDrawingDialog projectId={projectId} router={router} />
       </div>
       <div className="flex flex-col gap-2">
-        {drawings.map((d) => <DrawingCard key={d.id} drawing={d} router={router} />)}
+        {drawings.map((d) => <DrawingCard key={d.id} drawing={d} router={router} canApprove={canApprove} designTeam={designTeam} />)}
         {drawings.length === 0 && <p className="text-sm text-muted-foreground">No drawings yet.</p>}
       </div>
     </div>

@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getCustomerView } from '@/lib/data';
-import { getSessionUser, isCustomer, parseProjectIds, roleHome } from '@/lib/auth';
+import { getFreshSessionUser, isCustomer, parseProjectIds, roleHome } from '@/lib/auth';
 import { formatDate } from '@/lib/format';
 import LogoutButton from '@/components/LogoutButton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic';
 // "My Orders" — a customer's landing page. Always shown, even for a single order, so a company
 // with more projects later doesn't need a different flow — one place to see everything they have.
 export default async function MyOrders() {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!isCustomer(user)) redirect(roleHome(user));
 
   const ids = parseProjectIds(user.project_ids ?? user.project_id);

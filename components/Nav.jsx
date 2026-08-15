@@ -28,87 +28,55 @@ export default function Nav({ user }) {
 
   const isPMUser = user && ['admin', 'manager', 'executive'].includes(user.role);
   const departments = user?.departments || [];
+  const tabDepartments = isPMUser ? DEPARTMENTS : departments;
   // Departments the user can browse: PM → all; head → their granted list. Packing lives under Dispatch.
   const accessibleDepts = isPMUser ? DEPARTMENTS : departments;
   const activeDept = searchParams.get('dept');
-  // Tasks is now every head department's calendar, not just Production's — any granted
-  // department gets the tab. Workers stays Production's own shop-floor surface, so it keeps the
-  // stricter single-department check the pages themselves still enforce via inDepartment().
-  const hasTasks = departments.length > 0;
-  const inProduction = departments.includes('Production');
-  // Procurement's own cross-project workspace (§5a) — same mechanism as Workers below, a
-  // department-only surface a PM reaches via a link on the project page instead of a nav tab.
-  const inProcurement = departments.includes('Procurement');
-  // Test Certificate bank (QC-CHANGES.md) — cross-project, so it's its own top-level tab rather
-  // than living inside one project, same mechanism as Procurement above. PMs and every other
-  // department see no new nav item.
-  const inQc = departments.includes('QC');
-  // V2-CHANGES.md Group 6 — Sales' own Sale Order list (6.1) and Stores' own inventory workbench
-  // (6.2/6.3), same cross-project top-level-tab mechanism as Procurement/QC above.
-  const inSales = departments.includes('Sales');
-  const inMarketing = departments.includes('Marketing');
-  const inStores = departments.includes('Stores');
-  // V3_CHANGES.md §12 — HR's own cross-project workspace, same mechanism as Sales/Procurement/QC.
-  const inHr = departments.includes('HR');
-  // Calc — the engineering calculation engine, jointly owned by Design and Engineering (same
-  // cross-project top-level-tab mechanism as Procurement/QC/Sales/HR above).
-  const inCalc = departments.includes('Design') || departments.includes('Engineering');
-  // Group 5 Bundle A — the unified PR flow's shared "Requests" surface for Eng/Design/Stores
-  // (app/pr/page.js). Excludes anyone who already has Procurement's own /requests tab (disjoint in
-  // practice today, but cheap to guard) so a dual-department head never sees two tabs both labeled
-  // "Requests" pointing at different pages.
-  const inRequestDept = !inProcurement && ['Engineering', 'Design', 'Stores'].some(d => departments.includes(d));
-  // A multi-department head narrows whichever section they're currently in — Tasks or
-  // Operations — by department, one shared row of chips rather than a duplicate row per
-  // section (that read as unlabeled twins of each other when both existed at once).
-  const onTasks = pathname === '/production';
-  const deptTabs = departments.length > 1
-    ? departments.map(d => ({ href: `${onTasks ? '/production' : '/'}?dept=${d}`, label: d, dept: d, icon: LayoutGridIcon }))
-    : [];
+  // Tasks is a shared department-aware workspace; Home remains the common landing tab. Workers
+  // stays Production's own shop-floor surface, enforced by the page via inDepartment().
+  // Group 5 Bundle A — the unified PR flow's shared "Requests" surface for Eng/Design/Stores.
+  // A PM sees it as part of the all-department oversight tabs; a dual-role head with Procurement
+  // access keeps the existing single Procurement workspace experience.
+  const canSeeRequests = isPMUser || (
+    !departments.includes('Procurement') && ['Engineering', 'Design', 'Stores'].some(d => departments.includes(d))
+  );
+  // Workspace tabs are derived from current department grants. Shared Sales/Marketing and
+  // Design/Engineering workspaces appear once, so adding access in Settings immediately changes
+  // the user's tab set on the next render without hard-coded per-user roles.
+  const deptTabs = [];
+  const addDeptTab = (depts, href, label, icon) => {
+    if (isPMUser && (href === '/production' || href === '/production/workers')) return;
+    if (depts.some(d => tabDepartments.includes(d))) deptTabs.push({ href, label, icon });
+  };
+  addDeptTab(['Production'], '/production', 'Tasks', CalendarDaysIcon);
+  addDeptTab(['Production'], '/production/workers', 'Workers', HardHatIcon);
+  addDeptTab(['Procurement'], '/procurement', 'Procurement', ShoppingCartIcon);
+  addDeptTab(['Stores'], '/stores', 'Inventory', WarehouseIcon);
+  addDeptTab(['Sales', 'Marketing'], '/sales', 'Sales', TagIcon);
+  addDeptTab(['Sales', 'Marketing'], '/pipeline', 'Pipeline', TrendingUpIcon);
+  addDeptTab(['Sales', 'Marketing'], '/crm-reports', 'Reports', BarChart3Icon);
+  addDeptTab(['HR'], '/hr', 'HR', UsersIcon);
+  addDeptTab(['Design', 'Engineering'], '/calc', 'Calc Sheets', CalculatorIcon);
+  addDeptTab(['QC'], '/qc', 'Certificates', FlaskConicalIcon);
+  addDeptTab(['Dispatch'], '/ops?dept=Dispatch', 'Dispatch', PackageIcon);
+  if (canSeeRequests) deptTabs.push({ href: '/pr', label: 'Requests', icon: InboxIcon });
 
   // Primary tabs (top bar on desktop, bottom bar on mobile). No Packing tab — it's Dispatch-scoped.
-  const LINKS = isPMUser
-    ? [
-        { href: '/executive', label: 'Executive', icon: BarChart3Icon },
-        { href: '/', label: 'Operations', icon: LayoutDashboardIcon },
-        { href: '/projects', label: 'Projects', icon: FolderKanbanIcon },
-        { href: '/approvals', label: 'Approvals', icon: ShieldCheckIcon },
-        { href: '/calc', label: 'Calc Sheets', icon: CalculatorIcon },
-      ]
-    : [
-        ...(hasTasks ? [{ href: '/production', label: 'Home', icon: CalendarDaysIcon }] : []),
-        ...deptTabs,
-        { href: '/', label: 'Operations', icon: LayoutDashboardIcon },
-        { href: '/projects', label: 'Projects', icon: FolderKanbanIcon },
-        ...(inProduction ? [{ href: '/production/workers', label: 'Workers', icon: HardHatIcon }] : []),
-        // The old /requests tab (new-item + cancel-request inbox) is retired — Group 5 Bundle A's
-        // PR flow and Bundle B's direct-cancel action both bypass the accept-then-materialize gate
-        // entirely, so there's nothing left to accept.
-        ...(inProcurement ? [{ href: '/procurement', label: 'Procurement', icon: ShoppingCartIcon }] : []),
-        ...(inStores ? [{ href: '/stores', label: 'Inventory', icon: WarehouseIcon }] : []),
-        // Marketing shares the Sales tab (Leads/Campaigns are its rows too) — same
-        // inSales||inMarketing pattern as /pipeline below.
-        ...(inSales || inMarketing ? [{ href: '/sales', label: 'Sales', icon: TagIcon }] : []),
-        // V3_CHANGES.md A4 — shared by Sales and Marketing, same cross-project top-level-tab
-        // mechanism as Procurement/QC/Sales above; either department sees it once, not twice.
-        ...(inSales || inMarketing ? [{ href: '/pipeline', label: 'Pipeline', icon: TrendingUpIcon }] : []),
-        // V3_CHANGES.md §18 — Reports pulled out of the Sales sidebar into its own top-level tab,
-        // same shared-not-duplicated mechanism as Pipeline above.
-        ...(inSales || inMarketing ? [{ href: '/crm-reports', label: 'Reports', icon: BarChart3Icon }] : []),
-        ...(inHr ? [{ href: '/hr', label: 'HR', icon: UsersIcon }] : []),
-        ...(inCalc ? [{ href: '/calc', label: 'Calc Sheets', icon: CalculatorIcon }] : []),
-        ...(inRequestDept ? [{ href: '/pr', label: 'Requests', icon: InboxIcon }] : []),
-        // V2-CHANGES.md Group 1 — labeled "Certificates" (was "QC"), route/gate unchanged. The QC
-        // *department* elsewhere (project-page tab, qc_records, milestones) keeps its own name —
-        // this is just the nav label for the cross-project Test Certificate bank.
-        ...(inQc ? [{ href: '/qc', label: 'Certificates', icon: FlaskConicalIcon }] : []),
-      ];
+  const LINKS = [
+    { href: '/', label: 'Home', icon: CalendarDaysIcon },
+    { href: '/ops', label: 'Operations', icon: LayoutDashboardIcon },
+    { href: '/projects', label: 'Projects', icon: FolderKanbanIcon },
+    ...(isPMUser ? [{ href: '/executive', label: 'Executive', icon: BarChart3Icon }] : []),
+    ...(isPMUser ? [{ href: '/approvals', label: 'Approvals', icon: ShieldCheckIcon }] : []),
+    ...deptTabs,
+  ];
 
-  // l.dept links narrow whichever base route they point at (Tasks vs Operations both use it) —
-  // compare against that link's own pathname, not a hardcoded '/', so the two don't cross-activate.
-  const isActive = l => (l.dept
-    ? pathname === l.href.split('?')[0] && activeDept === l.dept
-    : pathname === l.href && !activeDept);
+  // Query-qualified workspace tabs (currently Dispatch) activate only on their own route/filter.
+  const isActive = l => {
+    const [base, query] = l.href.split('?');
+    const requiredDept = query ? new URLSearchParams(query).get('dept') : null;
+    return pathname === base && (requiredDept ? activeDept === requiredDept : !activeDept);
+  };
 
   useEffect(() => {
     const saved = localStorage.getItem('theme') || 'light';
@@ -186,12 +154,12 @@ export default function Nav({ user }) {
                   {theme === 'dark' ? <SunIcon data-icon="inline-start" /> : <MoonIcon data-icon="inline-start" />}
                   {theme === 'dark' ? 'Light mode' : 'Dark mode'}
                 </DropdownMenuItem>
-                {accessibleDepts.length > 0 && (
+                {(isPMUser || accessibleDepts.length > 1) && (
                   <DropdownMenuSub>
                     <DropdownMenuSubTrigger><LayoutGridIcon data-icon="inline-start" />Departments</DropdownMenuSubTrigger>
                     <DropdownMenuSubContent>
                       {accessibleDepts.map(d => (
-                        <DropdownMenuItem key={d} onClick={() => router.push(`/?dept=${d}`)}>
+                        <DropdownMenuItem key={d} onClick={() => router.push(`/ops?dept=${d}`)}>
                           {d === 'Dispatch' && <PackageIcon data-icon="inline-start" />}{d}
                         </DropdownMenuItem>
                       ))}

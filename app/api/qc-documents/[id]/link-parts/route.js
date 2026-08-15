@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { execute, queryAll, queryOne } from '@/lib/db';
-import { getSessionUser, requireDepartment } from '@/lib/auth';
+import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { audit } from '@/lib/usb';
 
 // Link one or more of this document's parts to a certificate — the single-row "Link…" action and
@@ -8,7 +8,7 @@ import { audit } from '@/lib/usb';
 // (chemistry/physical) are never sent here or stored on the part row — they're read live from the
 // certificate at render time, which is what makes them display-only everywhere in the editor.
 export async function POST(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;
 

@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { getCustomerView } from '@/lib/data';
-import { getSessionUser, isCustomer, canAccessProject, roleHome } from '@/lib/auth';
+import { getFreshSessionUser, isCustomer, canAccessProject, roleHome } from '@/lib/auth';
 import { formatDate } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import LogoutButton from '@/components/LogoutButton';
@@ -12,7 +12,7 @@ import { CheckIcon, LoaderIcon } from 'lucide-react';
 export const dynamic = 'force-dynamic';
 
 export default async function Portal({ params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (isCustomer(user) && !canAccessProject(user, params.id)) redirect(roleHome(user));
 
   const data = await getCustomerView(params.id);

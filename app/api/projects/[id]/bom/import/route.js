@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
-import { getSessionUser, requireDepartment } from '@/lib/auth';
+import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { audit } from '@/lib/usb';
 import { parsePmb } from '@/lib/pmb.mjs';
 
@@ -12,7 +12,7 @@ import { parsePmb } from '@/lib/pmb.mjs';
 // so there is no draft-import state to store or clean up. The original .xlsx is kept whole in
 // bom_imports — that row IS the revision record.
 export async function POST(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Engineering');
   if (denied) return denied;
 

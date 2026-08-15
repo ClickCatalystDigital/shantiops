@@ -11,7 +11,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
   Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
@@ -19,30 +18,23 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectGroup, SelectItem,
 } from '@/components/ui/select';
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table';
-import { PlusIcon } from 'lucide-react';
+import { PlusIcon, HouseIcon, ClipboardListIcon, UsersIcon } from 'lucide-react';
+import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 
 export default function WorkersPanel({ date, sheet, workers, projects }) {
+  const [tab, setTab] = useState('home');
+  const navItems = [
+    { key: 'home', label: 'Home', icon: HouseIcon },
+    { key: 'sheet', label: 'Daily Sheet', icon: ClipboardListIcon },
+    { key: 'roster', label: 'Workers Roster', icon: UsersIcon },
+  ];
+
   return (
-    <Tabs defaultValue="home" className="flex-col gap-4">
-      {/* flex-col + the border-b wrapper: the ui component's data-horizontal variant relies on a
-          shadcn CSS import this repo doesn't use (same note as ProjectDepartmentTabs). */}
-      <div className="overflow-x-auto border-b">
-        <TabsList variant="line" className="w-max justify-start px-0">
-          <TabsTrigger value="home" className="flex-none px-3 py-2">Home</TabsTrigger>
-          <TabsTrigger value="sheet" className="flex-none px-3 py-2">Daily sheet</TabsTrigger>
-          <TabsTrigger value="roster" className="flex-none px-3 py-2">Workers roster</TabsTrigger>
-        </TabsList>
-      </div>
-      <TabsContent value="home">
-        <WorkersHome date={date} sheet={sheet} />
-      </TabsContent>
-      <TabsContent value="sheet">
-        <DailySheet date={date} rows={sheet} projects={projects} />
-      </TabsContent>
-      <TabsContent value="roster">
-        <Roster workers={workers} />
-      </TabsContent>
-    </Tabs>
+    <WorkspaceSidebar title="Workers" icon={UsersIcon} items={navItems} activeKey={tab} onChange={setTab}>
+      {tab === 'home' && <WorkersHome date={date} sheet={sheet} />}
+      {tab === 'sheet' && <DailySheet date={date} rows={sheet} projects={projects} />}
+      {tab === 'roster' && <Roster workers={workers} />}
+    </WorkspaceSidebar>
   );
 }
 

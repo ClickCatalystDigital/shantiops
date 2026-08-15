@@ -4,11 +4,11 @@
 // department they're granted.
 import { NextResponse } from 'next/server';
 import { execute, queryAll, queryOne } from '@/lib/db';
-import { getSessionUser, isInternal, isHead, canAccessDepartment } from '@/lib/auth';
+import { getFreshSessionUser, isInternal, isHead, canAccessDepartment } from '@/lib/auth';
 import { audit } from '@/lib/usb';
 
 export async function POST(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const m = await queryOne('SELECT id, department, milestone_key FROM milestones WHERE id = ?', [params.id]);

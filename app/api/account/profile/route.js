@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
-import { getSessionUser, signToken, COOKIE_OPTS } from '@/lib/auth';
+import { getFreshSessionUser, signToken, COOKIE_OPTS } from '@/lib/auth';
 
 export async function PATCH(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   const { display_name, contact_number } = await req.json();
   await execute(

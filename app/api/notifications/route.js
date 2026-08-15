@@ -2,11 +2,11 @@
 // scans (see getNotifications in lib/data.js) since this runs on every page for every logged-in user.
 import { NextResponse } from 'next/server';
 import { execute } from '@/lib/db';
-import { getSessionUser } from '@/lib/auth';
+import { getFreshSessionUser } from '@/lib/auth';
 import { getNotifications } from '@/lib/data';
 
 export async function GET() {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   return NextResponse.json(await getNotifications(user.id));
 }
@@ -14,7 +14,7 @@ export async function GET() {
 // {id} marks one read; {} (or no body) marks everything read. Returns the fresh payload so the
 // bell needs no follow-up GET.
 export async function PATCH(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const b = await req.json().catch(() => ({}));
   if (b.id) {

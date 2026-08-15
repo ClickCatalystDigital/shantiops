@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
 import { execute, nextNumber, queryAll } from '@/lib/db';
-import { getSessionUser, requireDepartment } from '@/lib/auth';
+import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { audit } from '@/lib/usb';
 
 export async function POST(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Dispatch');
   if (denied) return denied;
   const b = await req.json();
@@ -27,7 +27,7 @@ export async function POST(req) {
 
 // Used by the packing-list "new" form to preselect a project.
 export async function GET() {
-  const denied = requireDepartment(getSessionUser(), 'Dispatch');
+  const denied = requireDepartment(await getFreshSessionUser(), 'Dispatch');
   if (denied) return denied;
   const projects = await queryAll('SELECT id, project_no, customer_name FROM projects ORDER BY created_at DESC');
   return NextResponse.json({ projects });

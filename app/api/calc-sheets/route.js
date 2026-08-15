@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
-import { getSessionUser } from '@/lib/auth';
+import { getFreshSessionUser } from '@/lib/auth';
 import { requireCalcAccess, getCalcSheets, createCalcSheet } from '@/lib/calc';
 import { audit } from '@/lib/usb';
 
 // CALC-CHANGES2.md §A — the calc-sheet selector tabs under /calc/project/[projectId] list/create
 // against this route.
 export async function GET(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireCalcAccess(user);
   if (denied) return denied;
 
@@ -19,7 +19,7 @@ export async function GET(req) {
 }
 
 export async function POST(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireCalcAccess(user);
   if (denied) return denied;
 

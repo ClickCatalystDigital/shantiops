@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
-import { getSessionUser, requireDepartment } from '@/lib/auth';
+import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { audit } from '@/lib/usb';
 import { putObject, getObjectBuffer } from '@/lib/r2';
 
@@ -10,7 +10,7 @@ import { putObject, getObjectBuffer } from '@/lib/r2';
 // configured yet, the certificate row itself is already saved (this route failing doesn't undo
 // that) — the caller just shows "couldn't upload the PDF yet" instead of blocking the save.
 export async function POST(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;
 
@@ -40,7 +40,7 @@ export async function POST(req, { params }) {
 // Proxied read — PdfPreview.jsx does a plain fetch(url), so this route just needs to return the
 // bytes with the right content type; works whether or not R2_PUBLIC_DOMAIN_URL is set.
 export async function GET(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;
 

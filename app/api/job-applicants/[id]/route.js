@@ -4,14 +4,14 @@
 // and a direct new-hire seed onboarding identically.
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
-import { getSessionUser, requireDepartment } from '@/lib/auth';
+import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { createEmployeeWithOnboarding } from '@/lib/hr';
 import { audit } from '@/lib/usb';
 
 const STATUSES = ['applied', 'screening', 'interview', 'offered', 'hired', 'rejected'];
 
 export async function PATCH(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'HR');
   if (denied) return denied;
 

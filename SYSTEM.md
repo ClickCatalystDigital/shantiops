@@ -149,12 +149,40 @@ place; gating them too would be a lockout with no way out.
 ## 2b. Help — role-aware guide
 
 The **"i" icon** next to the cog (top nav; a plain link on customer portal headers, which have no
-Nav) opens **`/help`**. Content is a plain data structure (`components/help-content.jsx` —
-`PM_GUIDE`, `HEAD_GUIDES` keyed by department, `CUSTOMER_GUIDE`), rendered as numbered step cards;
-adding a new feature later is one entry in the relevant array, no new page. A PM sees a full system
-tour (projects → tracker → Master BOM → packing → approvals → onboarding → settings); a head sees
-one section per **granted** department (Engineering/Procurement/Stores/Production/etc.); a customer
-sees how to read their order.
+Nav) opens **`/help`**. Customer help remains in `components/help-content.jsx` as
+`CUSTOMER_GUIDE`. Internal department help is now driven by
+`components/department-help-content.jsx` and rendered by
+`components/DepartmentHelpWorkspace.jsx`; each guide has an introduction, an icon-labelled feature
+list, and a final **How To** section. A PM can preview every department guide, while a functional
+head sees only their **granted** departments. Sales and Marketing have separate content, so
+Marketing never inherits a Sales heading or explanation. Adding a feature is one data entry in the
+department guide, not a new route or page.
+
+### Help workspace update (2026-08-15)
+
+- All internal departments now use the same sidebar order: department selector when a user has
+  multiple departments, Introduction, Features in sequence, and How To last.
+- Guides currently cover Design, Engineering, Procurement, Stores, Production, QC, Dispatch,
+  Installation, Sales, Marketing, and HR, with plain-language explanations and practical steps.
+- The shared workspace resets to Introduction when the user switches departments, and the content
+  is rendered client-side without another login or page navigation.
+- The original Home/Tasks calendar UI from `app/production/page.js` is now rendered at `/`; the
+  legacy `/production` route remains available. The original Operations dashboard implementation
+  remains in `app/page.js` as `OperationsPage` and is rendered at `/ops` through
+  `app/ops/page.js`. No dashboard UI is replaced by a simplified landing page.
+- Each feature page now includes its existing explanation plus a practical checklist and a visible
+  Watch out section. Each department Introduction welcomes the user, explains the Home → Operations
+  → Projects → department framework, and shows icon-led feature summaries that open the detailed
+  feature guide. The detailed feature framework is consistent across all 40+ feature entries:
+  **Why this matters**, **How it works in Shanti Ops**, **Work through it**, **Avoid this**, and
+  **Done when**. The first and last sections explain the business value and the handoff outcome,
+  while the middle sections explain the real workflow and the control points built into the app.
+- The How To page uses the same learning pattern for every department: a responsive step map, large
+  two-digit step numbers, an action description, why the step matters, and a verification check
+  before continuing. The five-step sequences remain grounded in each department’s real project,
+  record, handoff, and close-out workflow.
+- The older CRM-specific help components remain in the repository for compatibility, but
+  `/help` uses the shared department workspace as its source of truth.
 
 The once-empty Engineering department view is now a real workspace: the **Master BOM** (§5a) —
 Engineering owns the item definitions, and Procurement / Stores / Production each edit only the
@@ -182,6 +210,66 @@ named accounts skip the device-setup gate (§2a) entirely, so a demo walkthrough
 the escape hatch completely.
 
 ## 3. Operations view (daily execution)
+
+### Shared navigation and landing model (2026-08-15)
+
+All internal users now land on **`/` — Home** after login. The existing designed Home dashboard is
+preserved intact; `/ops` is an explicit URL alias to that same dashboard so routing did not create a
+second simplified Home design. `/projects` remains the common Projects workspace. Customers
+continue to land on `/portal`.
+
+The primary navigation is now stable across roles:
+
+- `Home` → `/`
+- `Operations` → `/ops`
+- `Projects` → `/projects`
+- PM/admin tabs → `/executive`, `/approvals`, plus all department workspaces available to PMs
+- Functional-head tabs are derived from `users.departments` at render time: Tasks/Workers,
+  Procurement, Inventory, Sales, Pipeline, Reports, HR, Calc Sheets, Certificates, Dispatch, and
+  Requests as applicable. Shared workspaces such as Sales/Marketing and Design/Engineering appear
+  once rather than once per department.
+
+The existing `/production` route remains the calendar/tasks route for compatibility; it is no longer
+the Home tab. `/packing` remains a compatibility entry point and redirects to `/ops?dept=Dispatch`.
+Adding or removing department access through the admin Settings → User Management flow changes the
+next fresh navigation render automatically. API and server-page authorization use the fresh database
+user lookup, so the new tabs and their access rules stay aligned.
+
+### Workspace sub-navigation update (2026-08-15)
+
+The cog's **Departments** menu is now shown to PM/admin/manager users and to heads with more than
+one granted department. A single-department head already has that department in the primary
+navigation, so the redundant one-item menu is hidden.
+
+Navigation-style sub-tabs now use the shared `components/WorkspaceSidebar.jsx` shell with the same
+collapsible sidebar, icon buttons, active state, mobile trigger, and inset content treatment as the
+Help workspace. Converted workspaces are Procurement (Enquiry, Selection, Purchase Orders, Status,
+  Suppliers), Approvals (Devices, Browser, People, Mail), HR, Payroll, Expenses, Workers, project
+  department panels, Calc (Worksheet, Analysis), and milestone Stages (Kanban, Manage). Nested
+  workspaces such as Payroll and Expenses use the compact responsive version of the same sidebar
+  language so HR does not render competing full-width sidebars.
+
+The sidebar shell keeps the workspace name in the desktop sidebar and uses the active section name
+in the mobile context header. Full workspace pages no longer wrap the shell in a duplicate PageHeader;
+this prevents the fixed collapsed rail from overlaying a second title and removes the artificial
+vertical offset above the work area. Workspace content uses a consistent four-unit vertical gap so
+toolbars/search controls remain visibly separated from their result cards. These rules live in
+`components/WorkspaceSidebar.jsx`, so converted workspaces inherit the same correction. In the
+collapsed state, the workspace icon uses the same centered 32px grid as navigation icons, and a
+visible expand control sits directly below it above the navigation list; the rail is no longer the
+only discoverable way to reopen the sidebar. The Calc Worksheet/Analysis switch is owned by
+`CalcWorkspace` and is passed explicitly into its `ProjectPanel` child; this keeps the view state
+in the existing calculation shell while avoiding an undefined reference in the extracted panel.
+The Calc project/sheet breadcrumb also keeps its sheet switcher flex-constrained inside the sidebar;
+long sheet names truncate with an ellipsis instead of expanding the sidebar into the content area.
+The same collapsed-state alignment and visible expand control are also applied to the custom Calc,
+Sales/Marketing, CRM Reports, and Help sidebar shells; all `SidebarProvider`-based sidebars now
+share the same collapsed interaction instead of relying on the hidden rail alone.
+Calc's nested Worksheet/Analysis switch intentionally omits its redundant "Calculation view" label;
+the parent Calc sidebar and content header already establish that context. Its primary Calculation
+entry uses the calculator icon, Analysis uses a chart icon, Portfolio uses a dashboard icon, and
+Drawings uses a pencil/ruler icon; Registry, Methodology, Library, Tables, and Audit retain icons
+matching their data or workflow purpose.
 
 - **Creating a project seeds its full milestone chain** (`createProjectMilestones` in `lib/db.js`,
   called from `POST /api/projects`) with planned dates laid out from the order date (or today) —
@@ -266,20 +354,13 @@ about department resolution going stale across a client-side nav):
    construction). Fixed by using the presence of `from_department` in the request body as the
    caller-intent signal instead of re-deriving it — see §3b.
 
-**Renamed and decluttered, same round:** the Nav tab for `/production` is now labelled **"Home"**
-(was "Tasks" — `components/Nav.jsx`), the page's own header/subheader ("Tasks" / "Tasks and
-milestones across your departments") is gone, and the To-dos rail is now titled **"Tasks"**
-(`components/ProductionToday.jsx`). Also: 5 demo head accounts (`design_head`, `engg_head`,
-`procurement_head`, `qc_head`, `dispatch_head`) had been manually granted 2–3 departments each on
-2026-07-12 (found via `usb_audit` — a 40-second manual-testing window, never reverted), which put
-extra per-department nav tabs and a confusing "same tab, different page depending on Home vs
-Operations" behavior in front of anyone using those logins. Reverted all 5 back to their single
-documented department (matching README.md) via `PATCH /api/users/[id]`, same endpoint the Access
-Matrix UI uses, so it's properly audited. The per-department nav-tab behavior itself
-(`components/Nav.jsx`'s `deptTabs`/`onTasks`) is unchanged — it was never buggy, just fed bad data.
+**Navigation update (2026-08-15):** the existing `/production` Tasks calendar is now also rendered
+at the common **Home** URL `/`, and the original Operations dashboard is rendered at `/ops`.
+Navigation is derived from the user's current `users.departments` grants, so liaison roles appear
+with every newly granted workspace on the next render. Shared department workspaces are deduplicated.
 
-- **Tasks** (`/production`, `components/ProductionToday.jsx` — route name is legacy, the nav label
-  now says "Home", no on-page header) — Month/Week/Year calendar merging **two** sources per day:
+- **Home / Tasks** (`/` with `/production` retained as a compatibility route,
+  `components/ProductionToday.jsx`) — Month/Week/Year calendar merging **two** sources per day:
   **milestones** (`planned_end`) and **tasks** (`title, due_date, status, department, assigned_to,
   from_department, project_id` — the last two added when tickets collapsed into this table, §3b).
   `getDepartmentCalendar(departments, from, to)` in `lib/data.js` takes an array so a
@@ -288,19 +369,19 @@ Matrix UI uses, so it's properly audited. The per-department nav-tab behavior it
   mirroring `app/page.js`). Combined-view pills prefix with `[Department]`. A **"Tasks" rail**
   (renamed from "To dos") lists open tasks regardless of which day is selected — this now includes
   cross-department-raised tasks for free, since those are just `tasks` rows with `department` set
-  to the target. PMs do **not**
-  get this tab — same exclusion as before, just keyed on "any granted department" instead of
-  "Production specifically"; a PM-oversight cross-department view is deferred (§8), same status as
-  the combined multi-department dashboard.
+  to the target. PMs see the combined department calendar at Home, while heads see only their
+  granted departments; the same `?dept=` filter narrows either view.
 - **Workers** (`/production/workers`, `components/WorkersPanel.jsx`, Production-only) — a **Home**
   sub-tab (headcount + today's attendance %, derived from props already on the page — no new query)
   alongside the daily attendance + work-assignment sheet for shop-floor workers who **never log in
   and have no `users` row** (`workers` table: name, trade, department, never deleted, only
   deactivated). One row per worker per day (`worker_days`, `UNIQUE(worker_id, date)`) —
   present/half/absent, optionally linked to a project + milestone they worked on.
-- **Landing tab:** `roleHome`/`postLoginHome` (`lib/auth.js`) still send a Production member to
-  `/production` after login instead of `/` — unchanged, deliberately not generalized to every
-  department yet.
+- **Landing tab:** `roleHome`/`postLoginHome` (`lib/auth.js`) send every internal role to `/`;
+  customers still go to `/portal`. Unauthorized compatibility redirects also use this common Home.
+- **Invalid-session fallback:** if middleware sees a stale cookie but the fresh database lookup no
+  longer finds an active user, `roleHome(null)` resolves to `/login`; Home and Operations explicitly
+  enforce the same guard before doing any dashboard work.
 
 ## 3b. Cross-department signals — tickets collapsed into milestones + tasks + notifications
 
@@ -904,10 +985,54 @@ tracker (`source_edition` column, indexed in the PDF's References section); calc
 dropdown-UX pass converted free-text unit / x-column / test-input fields to Selects where the option
 set is knowable.
 
-**Roles (item 17) — explicitly deferred, not skipped.** Submit-for-review and Approve are both
-clickable by the same user (`requireCalcAccess` is department-only). A real reviewer/code-authority
-split needs Shanti's actual org chart — same deferral as every other approval workflow in the app —
-so it's flagged, not faked.
+**Design responsibility and access hierarchy (decision 2026-08-15).** HR remains the people master;
+Settings grants application access only to existing HR employees. Executives and managers grant or
+revoke the Design Head's system access. A Design Head grants or revokes Designer access for active
+HR employees in the Design department from their own Settings view. Admin has an unrestricted
+override for all departments and responsibilities. A Design Head cannot create another Design Head,
+change another department, or approve their own submission. These are separate from the HR
+designation label: `Design Head`/`Designer` may describe the employee, but the system responsibility
+assignment is the permission source.
+
+The Design workflow is therefore `Designer work → Under review → Design Head approval → Released`.
+The current enforcement is status-based: only a Design Head can select `approved`/`as_built`, assign
+Design teammates, set due dates, delete drawings, or delete drawing files; Designers can upload files,
+edit working notes, and move work through `not_started`/`in_progress`/`under_review`. Formula approval
+is also Design-Head-only. Approval actions, assignments, due dates, access changes, and employee
+deactivation are audited. Version-specific approval records, rejection reasons/resubmission requests,
+and a dedicated approval queue/notification workflow remain the next approval-hardening increment;
+they are not represented as completed features in this release. Design Heads and Designers are
+eligible only while their linked HR employee is active and assigned to Design.
+
+The Settings account-creation form requires an active, unlinked HR employee and writes the new
+user's `employees.user_id` link in the same workflow. A Design Head's Settings page can grant or
+revoke only Designer access for active linked Design employees; it cannot create accounts or assign
+another head. Calc users may delete a calculation sheet, but the API preserves the last sheet in a
+project and there is no employee project-delete operation.
+
+**Current-user HR integration (implemented 2026-08-15).** The database migration also runs an
+idempotent `backfillSystemUsersIntoHr` pass for existing internal accounts (`admin`, `manager`,
+`executive`, and `operator`) that do not yet have an `employees.user_id` link. It creates one active
+or inactive `staff` HR row using the account name and first department, without overwriting an
+existing employee or guessing a missing department. New admin/manager/executive account creation
+therefore follows the same HR-first rule as operator creation. HR remains the authoritative place
+to correct employee name, department, designation, active status, and reporting line.
+
+**Authority map for Design and Engineering (implemented 2026-08-15).** `admin`, `manager`, and
+`executive` may assign or change Head responsibility for either department. A Design Head may grant
+or revoke Designer access only for active, HR-linked Design employees and cannot grant another Head
+or manage unrelated departments. The same responsibility model is available for Engineering; the
+HR employee record mirrors cross-department system access in `employees.access_departments`, while
+`employees.department` remains the primary HR department. Design Head owns technical approval of
+calculations and drawings; Designers submit work by moving it to `under_review`. No employee can
+approve their own work. Access-changing and approval actions are audited, and sensitive mutations
+re-check the current HR link so deactivation takes effect immediately.
+
+The one-time responsibility migration preserves the demo `design_head` as Design Head and, when
+those accounts exist, configures `jaganmohan` as Design + Engineering Head and `ravi`/`vijay` as
+Design + Engineering Designers. The migration records a marker and will not overwrite later admin
+changes. Admins can change all of these assignments from Settings → Access Management; the linked
+HR rows update their system department-access mirror at the same time.
 
 **Not modeled at all — needs real Shanti data first.** The seeded material tables (SA-516 allowable
 stress), the thermal correlation constants, and the nozzle-schedule areas are all *illustrative*
@@ -944,8 +1069,15 @@ under `app/api/calc-*`, all gated by `requireCalcAccess`, audited via `lib/usb.j
   boiler) + `calc_drawing_files` (Cloudflare R2 via `lib/r2.js`, same best-effort try/catch pattern
   as `test_certificates.pdf_key` — an unconfigured bucket in dev 502s the upload/delete route without
   touching the DB row). New sidebar panel with a 6-segment inline-SVG progress bar (green = approved/
-  as_built, yellow = in_progress/under_review, gray = not_started) — the only visualization this
-  round adds; a validation donut/margin gauge/portfolio dashboard were all explicitly rejected.
+  as_built, yellow = in_progress/under_review, gray = not_started).
+
+  Sheet-level diagnostics remain in the Calculation → Analysis view: validation donut, margin gauge,
+  history-gated input radar, goal-seek, sensitivity response chart, and an execution trace. Analysis
+  presents visual diagnostics first, then the two what-if tools; the execution trace is collapsed by
+  default because it is an on-demand engineering audit rather than the first-read summary. The Calc → Portfolio
+  view is intentionally a cross-project status table (design progress, bottleneck, calculation
+  status, and drawings), not an engineering chart dashboard; aggregate portfolio charts remain
+  deferred until there is a defined management question and trusted cross-project metric model.
   Routes under `app/api/calc-drawings/*`.
 - **§D Projects tab:** `/projects` gets a read-only **Design Progress** column
   (`getDesignProgressByProject`, cheap SQL proxy — a sheet counts "done" once it has any snapshot, a
@@ -1327,7 +1459,10 @@ hierarchy + audit trail was judged sufficient; revisit if that proves too light.
   Schema = raw `CREATE TABLE IF NOT EXISTS` DDL in `lib/db.js` `migrate()`, additive changes via
   `addColumn()` (ignores "duplicate column" on re-run).
 - **Auth**: bcrypt + JWT in an httpOnly cookie carrying role + granted departments (human users) or
-  a Bearer header carrying `role:'agent'` + `machine_id` (the Windows agent). See §12.
+  a Bearer header carrying `role:'agent'` + `machine_id` (the Windows agent). Human API routes
+  re-check the active/pending user row on every request, so deactivation and permission changes
+  take effect immediately; the JWT is only the signed session locator. Production requires an
+  explicit `SESSION_SECRET` and human sessions expire after 12 hours. See §12.
 - **Windows Agent**: Python 3, stdlib-only HTTP server (no new dependency), `requests` +
   `pywin32`/`wmi` on Windows. PyInstaller for the executable, Inno Setup for the installer.
 - **Browser Extension**: vanilla JS, Manifest V3, declarativeNetRequest — no build step, no
@@ -1344,7 +1479,8 @@ pure data, importable client-side), `usb.js` (device approval domain logic, shar
 collapse), `notify.js` (§3b, formerly `tickets.js` — notification fan-out + `fireHandoff`, no
 longer creates any row besides the notification itself), `beep.js` (§3b, WebAudio chime, no audio
 file), `po-pdf.js` (§5c, the Purchase Order PDF — exact mirror of `packing-pdf.js`).
-`app/` — pages + API routes, including `api/agent/*` (Bearer-agent), `api/usb/*`, `api/browser/*`
+`app/` — pages + API routes, including `/` (Home/Tasks calendar), `/ops` (Operations dashboard),
+`/projects` (shared Projects), `api/agent/*` (Bearer-agent), `api/usb/*`, `api/browser/*`
 (session-cookie, PM-gated), `api/qc-records/*` (§5b, QC + PM-gated), `api/milestones/[id]/reopen`
 (§3b, the send-back-for-rework endpoint), `api/milestones/[id]/stages` + `api/milestones/[id]/stages/
 [stageId]` (§3c, add/apply-template and rename/status/delete on a milestone's own instance),
@@ -1359,7 +1495,7 @@ needed). `app/login/page.js` /
 `app/production/*` (§3a, Tasks + Workers — route name is legacy, Tasks now works for every
 department, verified live) is gated by `isHead`/`headDepartments` (any department) except Workers,
 which stays `inDepartment(user, 'Production')`. There is no `app/tickets/*` — never was in this
-round's model either; cross-department tasks live inside `app/page.js` (Operations) and the Tasks
+round's model either; cross-department tasks live inside `app/ops/page.js` (Operations) and the Tasks
 calendar (§3a/§3b); `app/notifications/page.js` is the bell's "View all" destination, not in nav.
 `app/layout.js` is also where the device-setup gate lives (see §2a) — every page renders through it.
 `components/` — nav, project/milestone/packing UI, settings forms, `DevicesPanel` /
@@ -1390,10 +1526,16 @@ itself. Deliberately not linked from anywhere in the UI — reached only by typi
 Has its own embedded fonts/styling and doesn't share the app's design system. Don't delete it as
 "unused"; it's live business material.
 
+The repository naming convention is documented separately in
+[docs/PROJECT-STRUCTURE.md](docs/PROJECT-STRUCTURE.md). Existing product-spec filenames and the
+`/production` route are retained as compatibility-sensitive historical names; new source files
+should use lowercase kebab-case for documents and domain-oriented names for code.
+
 ## 20. Run
 
 ```bash
 npm install
+npm run lint        # dependency-free JavaScript syntax check
 npm run dev        # http://localhost:3000
 ```
 
@@ -1427,55 +1569,21 @@ assuming they're still open.
 
 
 
-### Known gap — D4 stage derivation isn't applied everywhere yet (2026-08-05)
+### Resolved hardening notes (2026-08-15)
 
-Phase 5.0b (`V2-CHANGES.md`) found that `purchase_status` isn't kept live by quote-logging or
-supplier-selection (only PO issue/unissue, cancel, and a manual override move it) and fixed the
-undercounted-`Ordered` bug in `getProcurementFlowCounts` via `deriveActiveStage`/
-`deriveCancelledOrigin` (`lib/data.js`). The same undercount existed in `getBomWork()` (feeds
-Operations' Master BOM card) — fixed this round by calling the same `deriveActiveStage` instead of
-grouping on the raw column.
-
-**Still open**: `ProcurementQueue.jsx` (project-page glance) has the identical bug via
-`bomStageCounts()` (`lib/bom-fields.mjs`), which only reads `purchase_status` directly. **Do not
-fix this by dropping `deriveActiveStage` into `bomStageCounts` as-is** — confirmed via
-`lib/pmb-selfcheck.mjs`'s existing fixture that `deriveActiveStage` never checks for an explicit
-`purchase_status === 'Comparison'`; it only trusts the raw column for `Ordered`/`Transit` and
-otherwise falls back to a `quote_count` signal that doesn't exist on this path yet. Applying it
-unmodified would silently reclassify real Comparison-stage rows as Enquiry — a worse regression
-than the bug being fixed, and would break `pmb-selfcheck.mjs`'s `bomStageCounts` assertion
-(`Comparison: 1` from a bare `{purchase_status: 'Comparison'}` fixture with no `quote_count`).
-
-Real fix needs, in order: (1) add a `quote_count` subquery to `getProjectBom` (`lib/data.js`,
-mirroring `getProcurementFlowCounts`'s pattern); (2) write one shared derive function — used by
-`bomStageCounts`, `getProcurementFlowCounts`, and `getBomWork` alike — that trusts an explicit
-`Comparison`/`Enquiry` column value when already set correctly, and only promotes using
-`quote_count`/`selected_quote_id`/`po_ref` where the column is stale or missing; (3) update
-`pmb-selfcheck.mjs`'s `bomStageCounts` fixtures/assertions to match whatever the new shared
-function actually expects as input, since the current fixtures carry no `quote_count` field at all.
+- Project creation now uses one database transaction for the project, milestone chain, and initial
+  Scope of Supply. Notifications and audit remain best-effort side effects after commit.
+- Human API routes use a fresh active/pending user lookup rather than trusting stale JWT role
+  claims. The project picker also scopes customer results to the customer's own project IDs.
+- Procurement stage summaries share `derivePurchaseStage()` in `lib/bom-fields.mjs`; the project
+  queue now accounts for quote counts and selected suppliers while preserving explicit terminal and
+  Comparison states. `lib/pmb-selfcheck.mjs` covers these signal combinations.
 
 
-### Prevention — stop this from recurring a fourth time
+### Prevention
 
-This bug (raw `purchase_status` silently disagreeing with reality) has now been found and fixed
-twice independently (`getProcurementFlowCounts`, then `getBomWork`) and is documented as still open
-a third time (`ProcurementQueue.jsx`, above). That pattern — the same bug rediscovered in each new
-consumer — is the actual risk, not any single instance of it. Two standing follow-ups, distinct from
-the `ProcurementQueue.jsx` fix itself:
-
-1. **One shared derive function, not three+ copies.** Once `bomStageCounts` is fixed (per the
-   `getProjectBom`/`quote_count` plan above), audit for any other place that reads `purchase_status`
-   to answer "what stage is this item in" (as opposed to "what does the stored override literally
-   say," which the Status tab needs verbatim, deliberately). Every such site should call the one
-   shared function. Grep for `purchase_status` reads outside `lib/bom-fields.mjs`'s `isOpenStatus`/
-   `isClosedStatus` and outside the Status tab's own display/edit path before considering this closed
-   — don't assume the three sites found so far are the only ones.
-2. **A data-quality surface, not just a data-quality fix.** Because `purchase_status` is deliberately
-   never kept fully live (Phase 5.0b's "signal-based inference, not exact tracking" precedent — see
-   above), drift between the stored column and the derived real stage is expected to keep happening
-   by design, not a bug to eliminate. Nothing today surfaces that drift to a human — it was only
-   caught this round by manually comparing two Operations cards side by side. Once the shared derive
-   function from (1) exists, a small "N items show a stale status — selected supplier or draft PO
-   exists but the column still reads Enquiry/Comparison" list (comparing raw vs. derived per item)
-   would turn silent drift into an actionable queue, using the Status tab's existing override control
-   to resolve each one. Not built yet — flagged here so it isn't lost.
+`purchase_status` remains an editable operational field, so it may lag behind quote and supplier
+signals by design. All summary views must use the shared `derivePurchaseStage()` helper; the raw
+field remains appropriate only for the Status tab's literal display/edit path. The PMB self-check
+now includes explicit Comparison, quote-count, and selected-supplier cases to prevent another
+consumer from silently reintroducing raw-column bucketing.

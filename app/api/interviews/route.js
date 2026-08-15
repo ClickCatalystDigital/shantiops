@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 import { execute, queryAll } from '@/lib/db';
-import { getSessionUser, requireDepartment, canAccessDepartment, isPM } from '@/lib/auth';
+import { getFreshSessionUser, requireDepartment, canAccessDepartment, isPM } from '@/lib/auth';
 
 export async function GET(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!isPM(user) && !canAccessDepartment(user, 'HR')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const applicantId = new URL(req.url).searchParams.get('applicant_id');
   if (!applicantId) return NextResponse.json({ error: 'applicant_id is required' }, { status: 400 });
@@ -11,7 +11,7 @@ export async function GET(req) {
 }
 
 export async function POST(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'HR');
   if (denied) return denied;
   const b = await req.json();

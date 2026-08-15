@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
-import { getSessionUser, requireDepartment } from '@/lib/auth';
+import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { audit } from '@/lib/usb';
 
 const REQUIRED = ['certificate_no', 'cast_no', 'material_spec', 'steel_maker'];
@@ -14,7 +14,7 @@ const FIELDS = [
 // (QC-CHANGES.md §3). Exact-duplicate (cert + cast + plate) is rejected server-side even though the
 // form already warns client-side, so the bank's key stays clean regardless of how it's reached.
 export async function POST(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;
 

@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
-import { getSessionUser } from '@/lib/auth';
+import { getFreshSessionUser } from '@/lib/auth';
 import { requireCalcAccess, addNote } from '@/lib/calc';
 import { audit } from '@/lib/usb';
 
 const ENTITY_TYPES = ['variable', 'formula'];
 
 export async function POST(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireCalcAccess(user);
   if (denied) return denied;
 

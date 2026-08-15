@@ -8,12 +8,12 @@
 // at 578 in lib/db.js).
 import { NextResponse } from 'next/server';
 import { execute, queryAll, nextCounterValue } from '@/lib/db';
-import { getSessionUser, requireDepartment } from '@/lib/auth';
+import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { getPurchaseOrders } from '@/lib/data';
 import { audit } from '@/lib/usb';
 
 export async function GET(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Procurement');
   if (denied) return denied;
   const { searchParams } = new URL(req.url);
@@ -24,7 +24,7 @@ export async function GET(req) {
 }
 
 export async function POST(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Procurement');
   if (denied) return denied;
 

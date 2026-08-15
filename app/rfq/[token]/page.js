@@ -1,6 +1,6 @@
 // app/rfq/[token]/page.js — the supplier-facing RFQ portal (V2-CHANGES.md Phase 5.1, D12). No
 // login: the token itself is the auth. No Nav — the root layout already skips <Nav> whenever
-// getSessionUser() is null (isInternal(null) is false), which it always is here since this route
+// await getFreshSessionUser() is null (isInternal(null) is false), which it always is here since this route
 // is in middleware.js's PUBLIC_PATHS and a supplier never has a session cookie.
 import { getRfqByToken } from '@/lib/data';
 import RfqPortalForm from '@/components/RfqPortalForm';

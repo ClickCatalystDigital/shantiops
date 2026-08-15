@@ -1,21 +1,20 @@
 'use client';
 
-// Procurement's cross-project workbench (§5a), rebuilt into the four-tab flow from
+// Procurement's cross-project workbench (§5a), rebuilt into the four-section sidebar flow from
 // PROCUREMENT-CHANGES.md §4: Enquiry (gather quotes, create RFQs — V2-CHANGES.md Phase 5.1,
 // replaces the original Sourcing tab per D1) -> Selection (compare/pick, auto-drafts a PO)
 // -> Purchase Orders (issue/cancel-issue) -> Status (search + manual status override, always shows
 // every accepted item regardless of stage — labeled "State" in the original spec, renamed for
-// clarity in the Phase 4 polish pass). Suppliers stays a 5th tab, visually separated to the right of
+// clarity in the Phase 4 polish pass). Suppliers stays a 5th sidebar item after
 // the other four (it's a standalone feature, not part of their shared lifecycle) — not named in the
 // redesign spec, but it's a real, working feature (add/edit/deactivate) with no other home, so it's
-// kept rather than dropped. One shared search input lives under the tab bar, same position
-// regardless of active tab, filtering whichever tab is open.
+// kept rather than dropped. One shared search input lives above the active section, same position
+// regardless of active section, filtering whichever section is open.
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, showToast, formatDate, formatMoney } from '@/lib/client';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from './ui/card';
 import MasterImport from './MasterImport';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from './ui/tabs';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Textarea } from './ui/textarea';
@@ -27,6 +26,8 @@ import PdfPreview from './PdfPreview';
 import PaymentTermsField from './PaymentTermsField';
 import CreateRfqDialog from './CreateRfqDialog';
 import { PURCHASE_STATUSES as BOM_STATUSES, CLOSED_STATUSES, STATUS_TONE, DEFAULT_PURCHASE_STATUS } from '@/lib/bom-fields.mjs';
+import WorkspaceSidebar from '@/components/WorkspaceSidebar';
+import { SearchIcon, GitCompareIcon, FileTextIcon, ListChecksIcon, Building2Icon, ShoppingCartIcon } from 'lucide-react';
 
 // Enquiry/Selection are for items still working toward a PO — once one's issued (Ordered, Phase
 // 5.1 — was Transit pre-5.1) or closed out, it's Status's job to show it, not theirs.
@@ -917,23 +918,21 @@ export default function ProcurementWorkspace({ sourcingItems, suppliers, purchas
   const fulfilledCount = purchaseOrders.filter(po => po.fulfilled).length;
   const activeOrderCount = purchaseOrders.length - fulfilledCount;
 
+  const navItems = [
+    { key: 'enquiry', label: 'Enquiry', icon: SearchIcon },
+    { key: 'selection', label: 'Selection', icon: GitCompareIcon },
+    { key: 'orders', label: 'Purchase Orders', icon: FileTextIcon },
+    { key: 'state', label: 'Status', icon: ListChecksIcon },
+    { key: 'suppliers', label: 'Suppliers', icon: Building2Icon },
+  ];
+
   return (
-    <Tabs value={tab} onValueChange={setTab} className="flex-col gap-4">
-      <TabsList variant="line" className="w-full justify-start px-0">
-        <TabsTrigger value="enquiry" className="flex-none">Enquiry</TabsTrigger>
-        <TabsTrigger value="selection" className="flex-none">Selection</TabsTrigger>
-        <TabsTrigger value="orders" className="flex-none">Purchase Orders</TabsTrigger>
-        <TabsTrigger value="state" className="flex-none">Status</TabsTrigger>
-        {/* Suppliers is a real, standalone feature (§ Phase 2), not part of the Enquiry→Status
-            lifecycle the other four tabs form — kept visually separate at the far right of the same
-            bar rather than a floating sixth item or a second row. */}
-        <TabsTrigger value="suppliers" className="ml-auto flex-none">Suppliers</TabsTrigger>
-      </TabsList>
+    <WorkspaceSidebar title="Procurement" icon={ShoppingCartIcon} items={navItems} activeKey={tab} onChange={setTab}>
       {/* One shared search row, same position under the tab bar regardless of which tab is active,
           so switching tabs never makes the page jump (§4, point 4). Each tab interprets it. A
           tab-specific control (Status's status filter, Purchase Orders' Active/Fulfilled toggle)
           sits right-aligned in the same row rather than adding a second control row per tab. */}
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Input value={search} onChange={e => setSearch(e.target.value)}
           placeholder={SEARCH_PLACEHOLDER[tab]} className="h-8 w-72" />
         {tab === 'state' && (
@@ -954,11 +953,11 @@ export default function ProcurementWorkspace({ sourcingItems, suppliers, purchas
           </div>
         )}
       </div>
-      <TabsContent value="enquiry"><Enquiry items={activeItems} quotesByItem={quotesByItem} suppliers={suppliers} rfqSummaryByItem={rfqSummaryByItem} router={router} q={search} /></TabsContent>
-      <TabsContent value="selection"><Selection items={activeItems} quotesByItem={quotesByItem} router={router} q={search} /></TabsContent>
-      <TabsContent value="orders"><PurchaseOrders orders={purchaseOrders} q={search} view={poView} suppliers={suppliers} /></TabsContent>
-      <TabsContent value="state"><State items={sourcingItems} router={router} q={search} statusFilter={statusFilter} /></TabsContent>
-      <TabsContent value="suppliers"><Suppliers suppliers={suppliers} quotes={quotes} q={search} /></TabsContent>
-    </Tabs>
+      {tab === 'enquiry' && <Enquiry items={activeItems} quotesByItem={quotesByItem} suppliers={suppliers} rfqSummaryByItem={rfqSummaryByItem} router={router} q={search} />}
+      {tab === 'selection' && <Selection items={activeItems} quotesByItem={quotesByItem} router={router} q={search} />}
+      {tab === 'orders' && <PurchaseOrders orders={purchaseOrders} q={search} view={poView} suppliers={suppliers} />}
+      {tab === 'state' && <State items={sourcingItems} router={router} q={search} statusFilter={statusFilter} />}
+      {tab === 'suppliers' && <Suppliers suppliers={suppliers} quotes={quotes} q={search} />}
+    </WorkspaceSidebar>
   );
 }

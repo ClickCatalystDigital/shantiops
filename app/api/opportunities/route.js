@@ -4,7 +4,7 @@
 // app/api/bom-items/[id]/cancel/route.js's CANCEL_DEPARTMENTS.
 import { NextResponse } from 'next/server';
 import { execute, queryAll } from '@/lib/db';
-import { getSessionUser, isInternal, canAccessDepartment } from '@/lib/auth';
+import { getFreshSessionUser, isInternal, canAccessDepartment } from '@/lib/auth';
 import { getOpportunities } from '@/lib/data';
 import { audit } from '@/lib/usb';
 
@@ -22,13 +22,13 @@ async function isValidStage(name) {
 }
 
 export async function GET() {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   return NextResponse.json(await getOpportunities());
 }
 
 export async function POST(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!canAccessPipeline(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const b = await req.json();

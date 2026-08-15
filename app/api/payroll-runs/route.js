@@ -3,20 +3,20 @@
 // lib/payroll.js's generateSalarySlip (the one persistence entrypoint every generation path uses).
 import { NextResponse } from 'next/server';
 import { execute, queryAll } from '@/lib/db';
-import { getSessionUser, requireDepartment } from '@/lib/auth';
+import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { getPayrollRuns } from '@/lib/data';
 import { generateSalarySlip } from '@/lib/payroll';
 import { audit } from '@/lib/usb';
 
 export async function GET() {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'HR');
   if (denied) return denied;
   return NextResponse.json(await getPayrollRuns());
 }
 
 export async function POST(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'HR');
   if (denied) return denied;
   const b = await req.json();

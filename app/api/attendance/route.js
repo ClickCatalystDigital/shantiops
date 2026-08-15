@@ -4,14 +4,14 @@
 // overwrites every column via excluded.*, same documented behavior the old route had.
 import { NextResponse } from 'next/server';
 import { execute } from '@/lib/db';
-import { getSessionUser, requireDepartment } from '@/lib/auth';
+import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { getAttendanceForDate, getAttendanceHistory } from '@/lib/data';
 import { deriveAttendanceMetrics, getShiftForDate } from '@/lib/hr';
 
 const STATUSES = ['present', 'half', 'absent', 'leave'];
 
 export async function GET(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'HR');
   if (denied) return denied;
   const params = new URL(req.url).searchParams;
@@ -23,7 +23,7 @@ export async function GET(req) {
 }
 
 export async function POST(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'HR');
   if (denied) return denied;
 

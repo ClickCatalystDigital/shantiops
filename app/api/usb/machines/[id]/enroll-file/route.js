@@ -4,13 +4,13 @@
 // 24h expiry, and an enrolled machine does nothing without manager TOTP.
 import { NextResponse } from 'next/server';
 import { queryOne } from '@/lib/db';
-import { getSessionUser, isPM } from '@/lib/auth';
+import { getFreshSessionUser, isPM } from '@/lib/auth';
 import { ensureEnrollCode } from '@/lib/enroll';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const machine = await queryOne('SELECT id, name, user_id FROM machines WHERE id = ?', [Number(params.id)]);
   if (!machine) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   if (!isPM(user) && machine.user_id !== user?.id) {

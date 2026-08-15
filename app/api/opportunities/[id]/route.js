@@ -3,7 +3,7 @@
 // app/api/milestones/[id]/stages/[stageId]/route.js's status-change endpoint.
 import { NextResponse } from 'next/server';
 import { execute, queryOne, queryAll } from '@/lib/db';
-import { getSessionUser, canAccessDepartment } from '@/lib/auth';
+import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
 import { audit } from '@/lib/usb';
 
 const PIPELINE_DEPARTMENTS = ['Sales', 'Marketing'];
@@ -19,7 +19,7 @@ async function isValidStage(name) {
 }
 
 export async function PATCH(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!canAccessPipeline(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const { id } = params;

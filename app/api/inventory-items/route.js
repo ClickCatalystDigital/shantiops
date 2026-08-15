@@ -3,18 +3,18 @@
 // department to search inventory, same reasoning as /api/sale-orders' GET); writes are Stores-only.
 import { NextResponse } from 'next/server';
 import { execute } from '@/lib/db';
-import { getSessionUser, isInternal, requireDepartment } from '@/lib/auth';
+import { getFreshSessionUser, isInternal, requireDepartment } from '@/lib/auth';
 import { getInventoryItems } from '@/lib/data';
 import { audit } from '@/lib/usb';
 
 export async function GET() {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   return NextResponse.json(await getInventoryItems());
 }
 
 export async function POST(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Stores');
   if (denied) return denied;
 

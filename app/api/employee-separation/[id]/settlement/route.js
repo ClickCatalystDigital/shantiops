@@ -4,12 +4,12 @@
 // including flipping the advance/loan statuses). Links employee_separation.settlement_slip_id.
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
-import { getSessionUser, requireDepartment } from '@/lib/auth';
+import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { generateSalarySlip } from '@/lib/payroll';
 import { audit } from '@/lib/usb';
 
 export async function POST(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'HR');
   if (denied) return denied;
 

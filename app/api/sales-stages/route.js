@@ -2,16 +2,16 @@
 // PM-only to manage (same "template manager" precedent as Workflow Stages, SYSTEM.md §3c).
 import { NextResponse } from 'next/server';
 import { execute, queryAll } from '@/lib/db';
-import { getSessionUser, isInternal, requirePM } from '@/lib/auth';
+import { getFreshSessionUser, isInternal, requirePM } from '@/lib/auth';
 
 export async function GET() {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   return NextResponse.json(await queryAll('SELECT * FROM sales_stages ORDER BY sort_order'));
 }
 
 export async function POST(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requirePM(user);
   if (denied) return denied;
 

@@ -3,7 +3,7 @@ import Nav from '@/components/Nav';
 import DeviceSetupGate from '@/components/DeviceSetupGate';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { getSessionUser, isInternal, needsDeviceEnrollment, isDemoUser, hasSafePass } from '@/lib/auth';
+import { getFreshSessionUser, isInternal, needsDeviceEnrollment, isDemoUser, hasSafePass } from '@/lib/auth';
 import { getMyMachine } from '@/lib/data';
 
 export const metadata = {
@@ -15,7 +15,7 @@ export const metadata = {
 const themeInit = `(function(){try{var t=localStorage.getItem('theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}})();`;
 
 export default async function RootLayout({ children }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   // Functional heads, plus any self-registered "Project Manager" account (see
   // needsDeviceEnrollment) — the bootstrap admin/manager/executive seed accounts stay
   // unblocked so someone can always register machines / approve people.

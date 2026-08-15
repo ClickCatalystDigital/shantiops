@@ -3,12 +3,12 @@
 // it only materializes into one once Procurement accepts it in the Requests tab (see [id]/route.js).
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
-import { getSessionUser, isInternal, canAccessDepartment } from '@/lib/auth';
+import { getFreshSessionUser, isInternal, canAccessDepartment } from '@/lib/auth';
 import { audit } from '@/lib/usb';
 import { notifyDepartment } from '@/lib/notify';
 
 export async function POST(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const b = await req.json();

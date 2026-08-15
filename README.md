@@ -45,6 +45,7 @@ see SYSTEM.md §2c); `/login` itself is the plain sign-in page shown to real use
 
 ## Other docs
 
+- [docs/PROJECT-STRUCTURE.md](docs/PROJECT-STRUCTURE.md) — repository layout and naming rules
 - [agent/README.md](agent/README.md) — Windows agent build/test commands
 - [docs/SETUP.md](docs/SETUP.md) — security-platform go-live checklist
 - [docs/v4-zoho-mail-brainstorm.md](docs/v4-zoho-mail-brainstorm.md) — future milestone framing

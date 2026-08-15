@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
-import { getSessionUser, isInternal, isHead, canAccessDepartment } from '@/lib/auth';
+import { getFreshSessionUser, isInternal, isHead, canAccessDepartment } from '@/lib/auth';
 import { audit } from '@/lib/usb';
 import { todayISO } from '@/lib/date';
 import { fireHandoff } from '@/lib/notify';
@@ -12,7 +12,7 @@ const EDITABLE = ['assignee', 'department', 'planned_start', 'planned_end', 'act
 const HEAD_EDITABLE = ['actual_start', 'actual_end', 'status', 'delay_reason', 'delay_category'];
 
 export async function PATCH(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const b = await req.json();
 

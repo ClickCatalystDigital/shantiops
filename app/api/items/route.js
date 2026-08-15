@@ -3,14 +3,14 @@
 // catalog picker (Group 5 Bundle A) — Engineering-gated, same gate the items import itself uses.
 import { NextResponse } from 'next/server';
 import { queryAll } from '@/lib/db';
-import { getSessionUser, canAccessDepartment } from '@/lib/auth';
+import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
 
 // The PR line composer (Group 5 Bundle A) is shared by Engineering/Design/Stores — same three
 // departments as the /pr nav tab — not just Engineering's own items-import gate.
 const PR_DEPARTMENTS = ['Engineering', 'Design', 'Stores'];
 
 export async function GET(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!PR_DEPARTMENTS.some(d => canAccessDepartment(user, d))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }

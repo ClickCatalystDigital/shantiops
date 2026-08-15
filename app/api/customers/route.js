@@ -3,7 +3,7 @@
 // app/api/suppliers/route.js exactly: GET+search, POST, deactivate-never-delete on [id].
 import { NextResponse } from 'next/server';
 import { execute, queryAll } from '@/lib/db';
-import { getSessionUser, isInternal, canAccessDepartment, isPM } from '@/lib/auth';
+import { getFreshSessionUser, isInternal, canAccessDepartment, isPM } from '@/lib/auth';
 import { audit } from '@/lib/usb';
 
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
@@ -12,7 +12,7 @@ function canAccessCrm(user) {
 }
 
 export async function GET(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const search = new URL(req.url).searchParams.get('search');
   if (search) {
@@ -26,7 +26,7 @@ export async function GET(req) {
 }
 
 export async function POST(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!canAccessCrm(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const b = await req.json();

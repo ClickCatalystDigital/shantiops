@@ -1,19 +1,19 @@
 // app/api/campaigns/route.js — V3_CHANGES.md §12 Phase 1c. Marketing's own real surface.
 import { NextResponse } from 'next/server';
 import { execute, queryAll } from '@/lib/db';
-import { getSessionUser, isInternal, canAccessDepartment } from '@/lib/auth';
+import { getFreshSessionUser, isInternal, canAccessDepartment } from '@/lib/auth';
 import { audit } from '@/lib/usb';
 
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 
 export async function GET() {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   return NextResponse.json(await queryAll('SELECT * FROM campaigns ORDER BY created_at DESC'));
 }
 
 export async function POST(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!CRM_DEPARTMENTS.some(d => canAccessDepartment(user, d))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }

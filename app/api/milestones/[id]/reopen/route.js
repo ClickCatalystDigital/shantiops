@@ -5,7 +5,7 @@
 // gated to the milestone's own department — see lib/notify.js for why).
 import { NextResponse } from 'next/server';
 import { execute, queryAll, queryOne } from '@/lib/db';
-import { getSessionUser, isInternal } from '@/lib/auth';
+import { getFreshSessionUser, isInternal } from '@/lib/auth';
 import { audit } from '@/lib/usb';
 import { notifyDepartment } from '@/lib/notify';
 import { handoffTarget } from '@/lib/handoff.mjs';
@@ -13,7 +13,7 @@ import { handoffTarget } from '@/lib/handoff.mjs';
 const MILESTONE_DONE = "(actual_end IS NOT NULL OR status = 'done')";
 
 export async function POST(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const b = await req.json();

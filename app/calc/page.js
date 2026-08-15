@@ -3,7 +3,7 @@
 // Procurement sourcing picker) instead of inventing a second one.
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { getSessionUser, canAccessDepartment, roleHome } from '@/lib/auth';
+import { getFreshSessionUser, canAccessDepartment, roleHome } from '@/lib/auth';
 import { getActiveProjectsList } from '@/lib/data';
 import PageHeader from '@/components/PageHeader';
 import { Card, CardContent } from '@/components/ui/card';
@@ -11,7 +11,7 @@ import { Card, CardContent } from '@/components/ui/card';
 export const dynamic = 'force-dynamic';
 
 export default async function CalcProjectPicker() {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!canAccessDepartment(user, 'Design') && !canAccessDepartment(user, 'Engineering')) redirect(roleHome(user));
 
   const projects = await getActiveProjectsList();

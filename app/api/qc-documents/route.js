@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
-import { getSessionUser, requireDepartment } from '@/lib/auth';
+import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { audit } from '@/lib/usb';
 import { SF_FORM_IVA_PARTS } from '@/lib/qc-template.mjs';
 
@@ -19,7 +19,7 @@ const COMPANIES = ['Shanti Boilers', 'Shanti Techno Fab'];
 // is auto-copied whole from SF_FORM_IVA_PARTS (client-confirmed, §8 assumption 1) rather than built
 // by hand, so a fresh document is immediately a real, linkable table.
 export async function POST(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;
 

@@ -5,18 +5,18 @@
 // "Kirloskar Bros" can't drift into two rows before that happens.
 import { NextResponse } from 'next/server';
 import { execute } from '@/lib/db';
-import { getSessionUser, requireDepartment, isInternal } from '@/lib/auth';
+import { getFreshSessionUser, requireDepartment, isInternal } from '@/lib/auth';
 import { getSuppliers } from '@/lib/data';
 import { audit } from '@/lib/usb';
 
 export async function GET() {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   return NextResponse.json(await getSuppliers());
 }
 
 export async function POST(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Procurement');
   if (denied) return denied;
 

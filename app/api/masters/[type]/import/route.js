@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
-import { getSessionUser, canAccessDepartment, requirePM } from '@/lib/auth';
+import { getFreshSessionUser, canAccessDepartment, requirePM } from '@/lib/auth';
 import { audit } from '@/lib/usb';
 import { parsePartyMaster, parseItemMaster } from '@/lib/master-import.mjs';
 
@@ -53,7 +53,7 @@ const TYPES = {
 };
 
 export async function POST(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const spec = TYPES[params.type];
   if (!spec) return NextResponse.json({ error: `Unknown master type "${params.type}"` }, { status: 404 });
   if (!spec.gate(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
-import { getSessionUser, requireDepartment } from '@/lib/auth';
+import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { audit } from '@/lib/usb';
 
 // V2-CHANGES.md Group 2 — remove a part that's an exception (not applicable to this boiler, entered
@@ -8,7 +8,7 @@ import { audit } from '@/lib/usb';
 // other documents), removing a part only affects this one document's own list, and removing an
 // unlinked part can only ever shrink what Preview PDF's hard gate requires, never break it.
 export async function DELETE(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;
 

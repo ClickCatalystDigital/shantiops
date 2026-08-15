@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
-import { getSessionUser, requireDepartment } from '@/lib/auth';
+import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 
 export async function POST(req, { params }) {
-  const denied = requireDepartment(getSessionUser(), 'Dispatch');
+  const denied = requireDepartment(await getFreshSessionUser(), 'Dispatch');
   if (denied) return denied;
   const b = await req.json();
   if (!b.material_description?.trim()) {
@@ -23,7 +23,7 @@ export async function POST(req, { params }) {
 }
 
 export async function DELETE(req) {
-  const denied = requireDepartment(getSessionUser(), 'Dispatch');
+  const denied = requireDepartment(await getFreshSessionUser(), 'Dispatch');
   if (denied) return denied;
   const itemId = new URL(req.url).searchParams.get('itemId');
   if (!itemId) return NextResponse.json({ error: 'itemId required' }, { status: 400 });

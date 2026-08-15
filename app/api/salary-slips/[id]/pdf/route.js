@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
 import { getSalarySlipDetail } from '@/lib/data';
-import { getSessionUser, requireDepartment } from '@/lib/auth';
+import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { renderPayslipPdf } from '@/lib/payslip-pdf';
 
 export const runtime = 'nodejs';
 
 export async function GET(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'HR');
   if (denied) return denied;
   const detail = await getSalarySlipDetail(params.id);

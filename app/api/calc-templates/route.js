@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getSessionUser } from '@/lib/auth';
+import { getFreshSessionUser } from '@/lib/auth';
 import { requireCalcAccess, getCalcState, addTemplate } from '@/lib/calc';
 import { audit } from '@/lib/usb';
 
@@ -7,7 +7,7 @@ import { audit } from '@/lib/usb';
 // what's on screen right now" shape as saveSnapshot, just for reusable starting scenarios instead
 // of an audit record.
 export async function POST(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireCalcAccess(user);
   if (denied) return denied;
 

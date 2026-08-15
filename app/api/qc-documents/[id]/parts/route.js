@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
-import { getSessionUser, requireDepartment } from '@/lib/auth';
+import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { audit } from '@/lib/usb';
 
 // V2-CHANGES.md Group 2 — add a part row a document's exceptions need beyond the SF template's
@@ -8,7 +8,7 @@ import { audit } from '@/lib/usb';
 // exceptions"). Starts unlinked, same as every seeded row — the hard PDF gate (qc-documents/[id]/pdf)
 // re-checks server-side regardless of how many parts a document ends up with.
 export async function POST(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;
 

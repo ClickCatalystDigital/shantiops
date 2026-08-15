@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getSessionUser, requireDepartment } from '@/lib/auth';
+import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { extractFields } from '@/lib/extract';
 
 // V2-CHANGES.md Group 1 — stateless AI populate-from-PDF, called right after a certificate PDF is
@@ -31,7 +31,7 @@ Extract exactly these fields as a flat JSON object (use null for anything not pr
 Return ONLY the JSON object, no prose, no markdown fences.`;
 
 export async function POST(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;
 

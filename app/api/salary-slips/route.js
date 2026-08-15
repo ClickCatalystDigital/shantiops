@@ -1,13 +1,13 @@
 // app/api/salary-slips/route.js — list, plus ad-hoc single-employee slip generation (outside a
 // batch payroll run) via the same lib/payroll.js generateSalarySlip entrypoint.
 import { NextResponse } from 'next/server';
-import { getSessionUser, requireDepartment } from '@/lib/auth';
+import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { getSalarySlips } from '@/lib/data';
 import { generateSalarySlip } from '@/lib/payroll';
 import { audit } from '@/lib/usb';
 
 export async function GET(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'HR');
   if (denied) return denied;
   const employeeId = new URL(req.url).searchParams.get('employee_id');
@@ -15,7 +15,7 @@ export async function GET(req) {
 }
 
 export async function POST(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'HR');
   if (denied) return denied;
   const b = await req.json();

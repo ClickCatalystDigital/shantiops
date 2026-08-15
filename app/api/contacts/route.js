@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { execute } from '@/lib/db';
-import { getSessionUser, isInternal, canAccessDepartment, isPM } from '@/lib/auth';
+import { getFreshSessionUser, isInternal, canAccessDepartment, isPM } from '@/lib/auth';
 import { getContacts } from '@/lib/data';
 
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
@@ -9,7 +9,7 @@ function canAccessCrm(user) {
 }
 
 export async function GET(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const customerId = new URL(req.url).searchParams.get('customer_id');
   if (!customerId) return NextResponse.json({ error: 'customer_id is required' }, { status: 400 });
@@ -17,7 +17,7 @@ export async function GET(req) {
 }
 
 export async function POST(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!canAccessCrm(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const b = await req.json();
   if (!b.customer_id) return NextResponse.json({ error: 'customer_id is required' }, { status: 400 });

@@ -3,14 +3,14 @@
 // whichever id query param is passed; POST requires exactly one of the three.
 import { NextResponse } from 'next/server';
 import { execute } from '@/lib/db';
-import { getSessionUser, isInternal, canAccessDepartment } from '@/lib/auth';
+import { getFreshSessionUser, isInternal, canAccessDepartment } from '@/lib/auth';
 import { getCrmNotes } from '@/lib/data';
 
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 const NOTE_TYPES = ['call', 'email', 'meeting', 'note'];
 
 export async function GET(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const sp = new URL(req.url).searchParams;
   const leadId = sp.get('lead_id');
@@ -20,7 +20,7 @@ export async function GET(req) {
 }
 
 export async function POST(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!CRM_DEPARTMENTS.some(d => canAccessDepartment(user, d))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }

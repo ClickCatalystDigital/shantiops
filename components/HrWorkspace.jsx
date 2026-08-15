@@ -1,13 +1,12 @@
 'use client';
 
 // components/HrWorkspace.jsx — V3_CHANGES.md §12 Phase 3g/4f. Employees | Attendance | Leave |
-// Shifts | Holidays | Recruitment, one workspace component, same multi-tab-in-one-file precedent
+// Shifts | Holidays | Recruitment, one workspace component with shared sidebar navigation
 // as ProcurementWorkspace.jsx. Employee detail (onboarding checklist, leave balance, separation)
 // opens in a right-side Sheet, same drawer pattern the Purchase Order view already uses.
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -22,8 +21,9 @@ import {
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter,
 } from '@/components/ui/sheet';
-import { PlusIcon, CheckIcon, XIcon } from 'lucide-react';
+import { PlusIcon, CheckIcon, XIcon, UsersIcon, CalendarDaysIcon, Clock3Icon, UserPlusIcon, IndianRupeeIcon, ReceiptIcon } from 'lucide-react';
 import { api, showToast } from '@/lib/client';
+import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 import PayrollWorkspace from '@/components/PayrollWorkspace';
 import ExpensesWorkspace from '@/components/ExpensesWorkspace';
 
@@ -1068,38 +1068,39 @@ export default function HrWorkspace({
   const router = useRouter();
   const [tab, setTab] = useState('employees');
 
+  const navItems = [
+    { key: 'employees', label: 'Employees', icon: UsersIcon },
+    { key: 'attendance', label: 'Attendance', icon: CalendarDaysIcon },
+    { key: 'leave', label: 'Leave', icon: CalendarDaysIcon },
+    { key: 'shifts', label: 'Shifts', icon: Clock3Icon },
+    { key: 'holidays', label: 'Holidays', icon: CalendarDaysIcon },
+    { key: 'recruitment', label: 'Recruitment', icon: UserPlusIcon },
+    { key: 'payroll', label: 'Payroll', icon: IndianRupeeIcon },
+    { key: 'expenses', label: 'Expenses', icon: ReceiptIcon },
+  ];
+
   return (
-    <Tabs value={tab} onValueChange={setTab} className="flex-col gap-4">
-      <TabsList variant="line" className="w-full flex-wrap justify-start px-0">
-        <TabsTrigger value="employees" className="flex-none">Employees</TabsTrigger>
-        <TabsTrigger value="attendance" className="flex-none">Attendance</TabsTrigger>
-        <TabsTrigger value="leave" className="flex-none">Leave</TabsTrigger>
-        <TabsTrigger value="shifts" className="flex-none">Shifts</TabsTrigger>
-        <TabsTrigger value="holidays" className="flex-none">Holidays</TabsTrigger>
-        <TabsTrigger value="recruitment" className="flex-none">Recruitment</TabsTrigger>
-        <TabsTrigger value="payroll" className="flex-none">Payroll</TabsTrigger>
-        <TabsTrigger value="expenses" className="flex-none">Expenses</TabsTrigger>
-      </TabsList>
-      <TabsContent value="employees"><EmployeesTab employees={employees} designations={designations} employmentTypes={employmentTypes} router={router} /></TabsContent>
-      <TabsContent value="attendance"><AttendanceTab attendanceToday={attendanceToday} today={today} router={router} /></TabsContent>
-      <TabsContent value="leave"><LeaveTab employees={employees} leaveTypes={leaveTypes} pendingLeaveRequests={pendingLeaveRequests} router={router} /></TabsContent>
-      <TabsContent value="shifts"><ShiftsTab shiftTypes={shiftTypes} shiftAssignments={shiftAssignments} employees={employees} router={router} /></TabsContent>
-      <TabsContent value="holidays"><HolidaysTab holidays={holidays} router={router} /></TabsContent>
-      <TabsContent value="recruitment"><RecruitmentTab jobOpenings={jobOpenings} router={router} /></TabsContent>
-      <TabsContent value="payroll">
-        <PayrollWorkspace
+    <WorkspaceSidebar title="HR" icon={UsersIcon} items={navItems} activeKey={tab} onChange={setTab}>
+      {tab === 'employees' && <EmployeesTab employees={employees} designations={designations} employmentTypes={employmentTypes} router={router} />}
+      {tab === 'attendance' && <AttendanceTab attendanceToday={attendanceToday} today={today} router={router} />}
+      {tab === 'leave' && <LeaveTab employees={employees} leaveTypes={leaveTypes} pendingLeaveRequests={pendingLeaveRequests} router={router} />}
+      {tab === 'shifts' && <ShiftsTab shiftTypes={shiftTypes} shiftAssignments={shiftAssignments} employees={employees} router={router} />}
+      {tab === 'holidays' && <HolidaysTab holidays={holidays} router={router} />}
+      {tab === 'recruitment' && <RecruitmentTab jobOpenings={jobOpenings} router={router} />}
+      {tab === 'payroll' && (
+        <PayrollWorkspace nested
           employees={employees} payrollRuns={payrollRuns} salarySlips={salarySlips}
           salaryStructures={salaryStructures} salaryAssignments={salaryAssignments}
           statutoryRates={statutoryRates} ptSlabs={ptSlabs} taxSlabs={taxSlabs}
           additionalSalary={additionalSalary} router={router}
         />
-      </TabsContent>
-      <TabsContent value="expenses">
-        <ExpensesWorkspace
+      )}
+      {tab === 'expenses' && (
+        <ExpensesWorkspace nested
           employees={employees} expenseClaims={expenseClaims} expenseClaimTypes={expenseClaimTypes}
           employeeAdvances={employeeAdvances} employeeLoans={employeeLoans} router={router}
         />
-      </TabsContent>
-    </Tabs>
+      )}
+    </WorkspaceSidebar>
   );
 }

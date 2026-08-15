@@ -2,7 +2,7 @@
 
 import { notFound, redirect } from 'next/navigation';
 import { getProjectDetail, getProjectBom, getProjectPackingLists, getBomRollup, getQcRecords, getQcDocuments, getProjectTasks, getProjectStages, getStageTemplates, getProjectDesignSummary, getScopeOfSupply, getProjectDesignStage } from '@/lib/data';
-import { getSessionUser, isCustomer, isPM, isHead, headDepartments, canAccessDepartment, roleHome } from '@/lib/auth';
+import { getFreshSessionUser, isCustomer, isPM, isHead, headDepartments, canAccessDepartment, roleHome } from '@/lib/auth';
 import { DEPARTMENTS } from '@/lib/milestones';
 import { editableBomFields } from '@/lib/bom-fields.mjs';
 import ProjectHeader from '@/components/ProjectHeader';
@@ -16,7 +16,7 @@ import DesignFlow from '@/components/DesignFlow';
 export const dynamic = 'force-dynamic';
 
 export default async function ProjectDetail({ params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (isCustomer(user)) redirect(roleHome(user)); // customers use the portal, not the ops view
 
   const data = await getProjectDetail(params.id);

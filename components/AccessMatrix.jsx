@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
-export default function AccessMatrix({ heads: initialHeads }) {
+export default function AccessMatrix({ heads: initialHeads, canAssignHead = false }) {
   const [heads, setHeads] = useState(initialHeads);
 
   async function toggle(head, dept) {
@@ -21,6 +21,13 @@ export default function AccessMatrix({ heads: initialHeads }) {
       showToast(err.message, 'error');
       setHeads(hs => hs.map(h => (h.id === head.id ? { ...h, departments: head.departments } : h)));
     }
+  }
+
+  async function setDepartmentRole(head, dept, role) {
+    const nextRoles = { ...head.departmentRoles, [dept]: role };
+    setHeads(hs => hs.map(h => h.id === head.id ? { ...h, departmentRoles: nextRoles } : h));
+    try { await api(`/api/users/${head.id}`, { method: 'PATCH', body: { departmentRoles: nextRoles } }); }
+    catch (err) { showToast(err.message, 'error'); }
   }
 
   return (
@@ -36,6 +43,8 @@ export default function AccessMatrix({ heads: initialHeads }) {
                 <TableRow>
                   <TableHead>Head</TableHead>
                   {DEPARTMENTS.map(d => <TableHead key={d} className="text-center">{d}</TableHead>)}
+                  <TableHead>Design responsibility</TableHead>
+                  <TableHead>Engineering responsibility</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -50,6 +59,22 @@ export default function AccessMatrix({ heads: initialHeads }) {
                         <Checkbox checked={h.departments.includes(d)} onCheckedChange={() => toggle(h, d)} />
                       </TableCell>
                     ))}
+                    <TableCell>
+                      <select
+                        className="h-8 rounded-md border bg-background px-2 text-xs"
+                        value={h.departmentRoles?.Design || 'designer'}
+                        disabled={!canAssignHead || !h.departments.includes('Design')}
+                        onChange={e => setDepartmentRole(h, 'Design', e.target.value)}
+                      >
+                        <option value="designer">Designer</option>
+                        <option value="head">Design Head</option>
+                      </select>
+                    </TableCell>
+                    <TableCell>
+                      <select className="h-8 rounded-md border bg-background px-2 text-xs" value={h.departmentRoles?.Engineering || 'designer'} disabled={!canAssignHead || !h.departments.includes('Engineering')} onChange={e => setDepartmentRole(h, 'Engineering', e.target.value)}>
+                        <option value="designer">Engineer</option><option value="head">Engineering Head</option>
+                      </select>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

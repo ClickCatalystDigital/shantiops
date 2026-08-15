@@ -3,7 +3,7 @@
 // brief) + "New Calculation Sheet".
 import Link from 'next/link';
 import { redirect, notFound } from 'next/navigation';
-import { getSessionUser, canAccessDepartment, roleHome } from '@/lib/auth';
+import { getFreshSessionUser, canAccessDepartment, roleHome } from '@/lib/auth';
 import { getCalcSheets } from '@/lib/calc';
 import { queryOne } from '@/lib/db';
 import PageHeader from '@/components/PageHeader';
@@ -13,7 +13,7 @@ import { Card, CardContent } from '@/components/ui/card';
 export const dynamic = 'force-dynamic';
 
 export default async function CalcSheetSelector({ params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   if (!canAccessDepartment(user, 'Design') && !canAccessDepartment(user, 'Engineering')) redirect(roleHome(user));
 
   const project = await queryOne('SELECT id, project_no, customer_name FROM projects WHERE id = ?', [params.projectId]);

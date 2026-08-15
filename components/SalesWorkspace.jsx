@@ -879,8 +879,8 @@ export default function SalesWorkspace({ saleOrders, leads, customers, quotation
   return (
     <SidebarProvider>
       <Sidebar collapsible="icon">
-        <SidebarHeader className="gap-3 px-3 py-3.5">
-          <div className="flex items-center gap-2.5">
+        <SidebarHeader className="gap-2 px-3 py-3.5 group-data-[collapsible=icon]:px-2">
+          <div className="flex items-center gap-2.5 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0">
             <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
               <MegaphoneIcon className="size-4" />
             </div>
@@ -888,6 +888,9 @@ export default function SalesWorkspace({ saleOrders, leads, customers, quotation
               {inSales ? 'Sales' : 'Marketing'}
             </div>
             <SidebarTrigger className="ml-auto group-data-[collapsible=icon]:hidden" />
+          </div>
+          <div className="hidden justify-center group-data-[collapsible=icon]:flex">
+            <SidebarTrigger aria-label="Expand Sales or Marketing sidebar" />
           </div>
         </SidebarHeader>
         <SidebarContent>

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getSessionUser } from '@/lib/auth';
+import { getFreshSessionUser } from '@/lib/auth';
 import { requireCalcAccess, getCalcState, updateVariableValue } from '@/lib/calc';
 import { audit } from '@/lib/usb';
 import { parseVariableValues } from '@/lib/calc-import.mjs';
@@ -9,7 +9,7 @@ import { parseVariableValues } from '@/lib/calc-import.mjs';
 // table — it only patches the `value` of variables matched by exact name, and only non-computed
 // ones (a computed variable's value comes from its formula, not an import).
 export async function POST(req) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireCalcAccess(user);
   if (denied) return denied;
 

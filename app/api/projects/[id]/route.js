@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { execute } from '@/lib/db';
-import { getSessionUser } from '@/lib/auth';
+import { getFreshSessionUser } from '@/lib/auth';
 import { requireCalcAccess } from '@/lib/calc';
 import { audit } from '@/lib/usb';
 
@@ -9,7 +9,7 @@ import { audit } from '@/lib/usb';
 // Calc Sheets (Design/Engineering/PM) rather than requirePM's stricter manager-tier-only check —
 // renaming a project's number/customer here is a Calc-workspace action, not a PM project-creation one.
 export async function PATCH(req, { params }) {
-  const user = getSessionUser();
+  const user = await getFreshSessionUser();
   const denied = requireCalcAccess(user);
   if (denied) return denied;
 
