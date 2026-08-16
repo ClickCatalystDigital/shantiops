@@ -52,20 +52,31 @@ export default function PdfPreview({ open, onOpenChange, url, title, description
         if (cancelled) return;
 
         const container = containerRef.current;
-        const targetWidth = Math.max(200, Math.round(container.clientWidth - 32));
+        // Fit each page to CONTAIN within the visible area (both width and height) so one whole page
+        // shows at a time — portrait A4 is taller than wide, so fitting to width alone cut pages off.
+        // Each page sits in a full-viewport-height slide with scroll-snap, so scrolling lands on the
+        // next complete page.
+        const availW = Math.max(200, container.clientWidth - 32);
+        const availH = Math.max(200, container.clientHeight - 16);
         const dpr = window.devicePixelRatio || 1;
         container.innerHTML = '';
         for (let i = 1; i <= pdf.numPages; i++) {
           const page = await pdf.getPage(i);
-          const baseViewport = page.getViewport({ scale: 1 });
-          const scale = (targetWidth / baseViewport.width) * dpr;
-          const viewport = page.getViewport({ scale });
+          const base = page.getViewport({ scale: 1 });
+          const cssScale = Math.min(availW / base.width, availH / base.height);
+          const viewport = page.getViewport({ scale: cssScale * dpr });
           const canvas = document.createElement('canvas');
           canvas.width = viewport.width;
           canvas.height = viewport.height;
-          canvas.style.width = `${targetWidth}px`;
-          canvas.className = 'mx-auto h-auto rounded-md border shadow-sm';
-          container.appendChild(canvas);
+          canvas.style.width = `${base.width * cssScale}px`;
+          canvas.style.height = `${base.height * cssScale}px`;
+          canvas.className = 'rounded-md border shadow-sm bg-white';
+          const slide = document.createElement('div');
+          slide.className = 'flex shrink-0 items-center justify-center';
+          slide.style.minHeight = `${availH}px`;
+          slide.style.scrollSnapAlign = 'start';
+          slide.appendChild(canvas);
+          container.appendChild(slide);
           await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
         }
         if (!cancelled) setStatus('ready');
@@ -96,7 +107,7 @@ export default function PdfPreview({ open, onOpenChange, url, title, description
           <DialogTitle>{title}</DialogTitle>
           {description && <DialogDescription>{description}</DialogDescription>}
         </DialogHeader>
-        <div className="-mx-4 flex min-h-0 flex-1 flex-col overflow-y-auto border-y bg-muted/30 px-4 py-4">
+        <div className="-mx-4 flex min-h-0 flex-1 snap-y snap-mandatory flex-col overflow-y-auto border-y bg-muted/30 px-4">
           {status === 'loading' && <p className="py-12 text-center text-sm text-muted-foreground">Rendering PDF…</p>}
           {status === 'error' && <p className="py-12 text-center text-sm text-destructive">{error}</p>}
           {/* React never gives this div JSX children, so it never tries to reconcile/remove the

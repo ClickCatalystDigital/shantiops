@@ -57,7 +57,7 @@ export default function Nav({ user }) {
   addDeptTab(['Sales', 'Marketing'], '/crm-reports', 'Reports', BarChart3Icon);
   addDeptTab(['HR'], '/hr', 'HR', UsersIcon);
   addDeptTab(['Design', 'Engineering'], '/calc', 'Calc Sheets', CalculatorIcon);
-  addDeptTab(['QC'], '/qc', 'Certificates', FlaskConicalIcon);
+  addDeptTab(['QC'], '/qc', 'QC', FlaskConicalIcon);
   addDeptTab(['Dispatch'], '/ops?dept=Dispatch', 'Dispatch', PackageIcon);
   if (canSeeRequests) deptTabs.push({ href: '/pr', label: 'Requests', icon: InboxIcon });
 

@@ -28,6 +28,11 @@ const HEADER_FIELDS = [
   ['internal_diameter', 'Internal Dia'], ['heating_surface', 'Heating Surface'],
   ['evaporation_capacity', 'Evaporation Cap.'], ['steam_temp', 'Steam Outlet Temp.'],
   ['drawing_no', 'Drawing No.'], ['doc_id', 'Document ID'],
+  // Full-folder fields (QC-FOLDER-DESIGN.md) — label, covering letter, Form II(1).
+  ['working_pressure', 'Working Pressure'], ['drawing_no_from', 'Drawing No. From'],
+  ['drawing_no_to', 'Drawing No. To'], ['label_model_code', 'Label Model Code'],
+  ['submission_date', 'Submission Date'], ['signer_name', 'Signed By (QC)'],
+  ['recipient_name', 'Recipient (blank = Director)'], ['recipient_address', 'Recipient Address'],
 ];
 
 // V2-CHANGES.md Group 2 — same two companies as StatutoryDocsPanel.jsx's NewDocumentSheet; this
@@ -181,7 +186,79 @@ function AddPartDialog({ open, onOpenChange, documentId, router }) {
   );
 }
 
-export default function QcDocumentEditor({ project, document, parts, certificates, canEdit }) {
+// Mountings & fittings list editor (QC-FOLDER-DESIGN.md §4.2) — a small editable table, saved whole
+// via the bulk-replace endpoint. serial_numbers is free text (one description can have several).
+const MOUNT_COLS = [['description', 'Description'], ['size', 'Size'], ['moc', 'MOC'],
+  ['serial_numbers', 'Serial No(s)'], ['make', 'Make'], ['qty', 'Qty']];
+const EMPTY_MOUNT = { description: '', size: '', moc: '', serial_numbers: '', make: '', qty: '' };
+
+function MountingsCard({ documentId, mountings, canEdit, router }) {
+  const [rows, setRows] = useState(() => mountings.map(m => ({ ...m })));
+  const [busy, setBusy] = useState(false);
+  const setCell = (i, k) => e => setRows(rs => rs.map((r, j) => (j === i ? { ...r, [k]: e.target.value } : r)));
+
+  async function save() {
+    setBusy(true);
+    try {
+      await api(`/api/qc-documents/${documentId}/mountings`, { method: 'POST', body: { rows } });
+      showToast('Mountings saved');
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+    setBusy(false);
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Mountings &amp; Fittings</CardTitle>
+        {canEdit && (
+          <CardAction>
+            <div className="flex items-center gap-1">
+              <Button size="sm" variant="outline" onClick={() => setRows(rs => [...rs, { ...EMPTY_MOUNT }])}>
+                <PlusIcon data-icon="inline-start" />Add row
+              </Button>
+              <Button size="sm" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save'}</Button>
+            </div>
+          </CardAction>
+        )}
+      </CardHeader>
+      <CardContent className="overflow-x-auto">
+        {rows.length === 0 && <p className="py-4 text-sm text-muted-foreground">No mountings listed yet.</p>}
+        {rows.length > 0 && (
+          <table className="w-full min-w-[720px] text-sm">
+            <thead>
+              <tr className="text-left text-xs text-muted-foreground">
+                {MOUNT_COLS.map(([, l]) => <th key={l} className="px-1 pb-2 font-medium">{l}</th>)}
+                {canEdit && <th className="w-8" />}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={i} className="border-t">
+                  {MOUNT_COLS.map(([k]) => (
+                    <td key={k} className="px-1 py-1">
+                      <Input value={r[k] || ''} onChange={setCell(i, k)} disabled={!canEdit} className="h-8" />
+                    </td>
+                  ))}
+                  {canEdit && (
+                    <td className="px-1 py-1">
+                      <Button size="icon-sm" variant="ghost" aria-label="Remove row"
+                        onClick={() => setRows(rs => rs.filter((_, j) => j !== i))}>
+                        <Trash2Icon className="size-3.5" />
+                      </Button>
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+export default function QcDocumentEditor({ project, document, parts, certificates, mountings = [], canEdit }) {
   const router = useRouter();
   // parts comes straight from the server prop, no local copy — router.refresh() after linking
   // re-fetches it server-side and flows the new value straight back in, same as QcPanel does for
@@ -316,6 +393,8 @@ export default function QcDocumentEditor({ project, document, parts, certificate
         </CardContent>
       </Card>
 
+      <MountingsCard documentId={document.id} mountings={mountings} canEdit={canEdit} router={router} />
+
       {selected.size > 0 && (
         <div className="sticky bottom-4 flex items-center justify-between rounded-xl bg-popover p-3 text-sm shadow-lg ring-1 ring-foreground/10">
           <span>{selected.size} selected</span>
@@ -328,6 +407,7 @@ export default function QcDocumentEditor({ project, document, parts, certificate
         onOpenChange={setPickerOpen}
         title={`Link certificate — ${pickerTargets.length} part${pickerTargets.length === 1 ? '' : 's'}`}
         certificates={certificates}
+        project={project}
         usedIds={usedIds}
         onPick={link}
       />
@@ -337,7 +417,7 @@ export default function QcDocumentEditor({ project, document, parts, certificate
         open={pdfOpen}
         onOpenChange={setPdfOpen}
         url={`/api/qc-documents/${document.id}/pdf`}
-        title={`${document.doc_id} — Form IV A`}
+        title={`${document.doc_id} — Statutory Folder`}
         filename={`${document.doc_id.replace(/\//g, '-')}.pdf`}
       />
     </main>

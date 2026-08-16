@@ -7,6 +7,9 @@ const EDITABLE = [
   'doc_id', 'makers_no', 'year_of_make', 'boiler_type', 'length_overall', 'internal_diameter',
   'design_pressure', 'hydro_test_pressure', 'heating_surface', 'evaporation_capacity', 'steam_temp',
   'drawing_no', 'company',
+  // Full-folder fields (QC-FOLDER-DESIGN.md)
+  'working_pressure', 'drawing_no_from', 'drawing_no_to', 'label_model_code',
+  'submission_date', 'signer_name', 'recipient_name', 'recipient_address', 'manifest_extra',
 ];
 
 // V2-CHANGES.md Group 2 — same two known companies as the create route.

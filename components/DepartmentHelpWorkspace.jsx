@@ -44,14 +44,14 @@ function GuideBody({ item }) {
         </section>
       )}
       {item.watchOut && (
-        <section className="rounded-xl border border-amber-200/70 bg-amber-50/50 p-4 dark:border-amber-900/60 dark:bg-amber-950/20">
-          <h2 className="text-sm font-semibold">Avoid this</h2>
+        <section className="rounded-xl border border-warning/30 bg-warning/5 p-4">
+          <h2 className="text-sm font-semibold text-warning">Avoid this</h2>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">{item.watchOut}</p>
         </section>
       )}
       {item.outcome && (
-        <section className="rounded-xl border border-emerald-200/70 bg-emerald-50/50 p-4 dark:border-emerald-900/60 dark:bg-emerald-950/20">
-          <h2 className="text-sm font-semibold">Done when</h2>
+        <section className="rounded-xl border border-success/30 bg-success/5 p-4">
+          <h2 className="text-sm font-semibold text-success">Done when</h2>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">{item.outcome}</p>
         </section>
       )}
@@ -89,7 +89,7 @@ function NumberedSteps({ steps, department }) {
         <div className="mt-4 grid gap-2 sm:grid-cols-5">
           {steps.map((step, i) => (
             <div key={step.title} className="rounded-lg border bg-background/70 px-3 py-2">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Step {String(i + 1).padStart(2, '0')}</div>
+              <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Step {String(i + 1).padStart(2, '0')}</div>
               <div className="mt-1 text-xs font-medium leading-5">{step.title}</div>
             </div>
           ))}
@@ -101,7 +101,7 @@ function NumberedSteps({ steps, department }) {
             <div className="flex items-start gap-4">
               <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-accent text-lg font-bold text-accent-foreground sm:size-12 sm:text-xl">{String(i + 1).padStart(2, '0')}</span>
               <div className="min-w-0 flex-1">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Step {String(i + 1).padStart(2, '0')}</div>
+                <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Step {String(i + 1).padStart(2, '0')}</div>
                 <h3 className="mt-1 text-base font-semibold leading-6 sm:text-lg">{step.title}</h3>
                 <p className="mt-2 text-sm leading-7 text-muted-foreground">{step.body}</p>
               </div>
@@ -149,12 +149,12 @@ export default function DepartmentHelpWorkspace({ departments = [] }) {
     <SidebarProvider>
       <Sidebar collapsible="icon">
         <SidebarHeader className="gap-2 px-3 py-3.5 group-data-[collapsible=icon]:px-2">
-          <div className="flex items-center gap-2.5 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0">
+          <div className="flex items-center gap-2.5 group-data-[collapsible=icon]:hidden">
             <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
               <GuideIcon className="size-4" />
             </div>
-            <div className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight group-data-[collapsible=icon]:hidden">{guide.title} Help</div>
-            <SidebarTrigger className="ml-auto group-data-[collapsible=icon]:hidden" />
+            <div className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight">{guide.title} Help</div>
+            <SidebarTrigger className="ml-auto" />
           </div>
           <div className="hidden justify-center group-data-[collapsible=icon]:flex">
             <SidebarTrigger aria-label="Expand Help sidebar" />
@@ -221,7 +221,7 @@ export default function DepartmentHelpWorkspace({ departments = [] }) {
       </Sidebar>
 
       <SidebarInset>
-        <div className="flex items-center gap-3 border-b bg-muted/20 px-4 py-3.5">
+        <div className="sticky top-14 z-30 flex items-center gap-3 border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-4 py-3.5">
           <SidebarTrigger className="md:hidden" />
           <Separator orientation="vertical" className="h-5 md:hidden" />
           <ActiveIcon className="size-4 text-muted-foreground" />

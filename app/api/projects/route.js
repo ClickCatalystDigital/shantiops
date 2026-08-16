@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { nextNumber, createProjectMilestones, withTransaction } from '@/lib/db';
 import { getFreshSessionUser, requirePM, isCustomer, canAccessProject } from '@/lib/auth';
 import { getActiveProjectsList } from '@/lib/data';
+import { isValidSeries } from '@/lib/qc-series';
 import { audit } from '@/lib/usb';
 import { notifyDepartment } from '@/lib/notify';
 
@@ -26,6 +27,11 @@ export async function POST(req) {
   if (!b.customer_name?.trim()) {
     return NextResponse.json({ error: 'Customer name is required' }, { status: 400 });
   }
+  // series = the equipment model (lib/qc-series.js), a stored attribute used for filtering. It sits in
+  // a fixed mid-segment of the real project code (e.g. STF-IBR-045-CF-400-15), NOT a prefix, and the
+  // full code's segments aren't formalized yet — so the number stays manual / the legacy SB counter,
+  // not derived from the model.
+  const series = isValidSeries(b.series) ? b.series : null;
   const project_no = b.project_no?.trim() || (await nextNumber('project_no', 'SB'));
   try {
     // customer_id/sale_order_id — V3_CHANGES.md §12 Phase 2f, the Lead→Customer→Quotation→Sale
@@ -33,10 +39,10 @@ export async function POST(req) {
     // required exactly as before, so the 6 pre-existing free-text-only projects are unaffected.
     const { projectId, sosTitle } = await withTransaction(async tx => {
       const r = await tx.execute({
-        sql: `INSERT INTO projects (project_no, customer_name, description, order_date, owner, customer_id, sale_order_id)
-              VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        sql: `INSERT INTO projects (project_no, customer_name, description, order_date, owner, customer_id, sale_order_id, series)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         args: [project_no, b.customer_name.trim(), b.description || null, b.order_date || null, user?.username || null,
-          b.customer_id || null, b.sale_order_id || null],
+          b.customer_id || null, b.sale_order_id || null, series],
       });
       const id = Number(r.lastInsertRowid);
       // Project, milestones, and the initial Scope of Supply are one business operation. If any

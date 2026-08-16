@@ -9,12 +9,7 @@
 // "Download PDF" is the browser's native print-to-PDF against a scoped print stylesheet
 // (app/globals.css) — no charting/PDF dependency added.
 import { useState } from 'react';
-import {
-  SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarGroup, SidebarGroupLabel,
-  SidebarGroupContent, SidebarMenu, SidebarMenuItem, SidebarMenuButton,
-  SidebarTrigger, SidebarInset, SidebarRail,
-} from '@/components/ui/sidebar';
-import { Separator } from '@/components/ui/separator';
+import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -218,61 +213,33 @@ export default function CrmReportsWorkspace({ leads, opportunities, campaigns, s
   const [report, setReport] = useState(items[0]?.key);
   const active = items.find(r => r.key === report) || items[0];
 
-  return (
-    <SidebarProvider>
-      <Sidebar collapsible="icon">
-        <SidebarHeader className="gap-2 px-3 py-3.5 group-data-[collapsible=icon]:px-2">
-          <div className="flex items-center gap-2.5 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0">
-            <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-              <BarChart3Icon className="size-4" />
-            </div>
-            <div className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight group-data-[collapsible=icon]:hidden">Reports</div>
-            <SidebarTrigger className="ml-auto group-data-[collapsible=icon]:hidden" />
-          </div>
-          <div className="hidden justify-center group-data-[collapsible=icon]:flex">
-            <SidebarTrigger aria-label="Expand Reports sidebar" />
-          </div>
-        </SidebarHeader>
-        <SidebarContent>
-          {GROUPS.filter(g => departments.includes(g)).map(group => (
-            <SidebarGroup key={group}>
-              <SidebarGroupLabel>{group}</SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  {items.filter(r => r.group === group).map(r => (
-                    <SidebarMenuItem key={r.key}>
-                      <SidebarMenuButton isActive={active?.key === r.key} tooltip={r.label} onClick={() => setReport(r.key)}>
-                        <r.icon />
-                        <span>{r.label}</span>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ))}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
-          ))}
-        </SidebarContent>
-        <SidebarRail />
-      </Sidebar>
+  const reportGroups = GROUPS.filter(g => departments.includes(g)).map(group => ({
+    label: group,
+    items: items.filter(r => r.group === group),
+  }));
 
-      <SidebarInset>
-        <div className="flex items-center gap-3 border-b bg-muted/20 px-4 py-3.5 print:hidden">
-          <SidebarTrigger className="md:hidden" />
-          <Separator orientation="vertical" className="h-5 md:hidden" />
+  return (
+    <WorkspaceSidebar
+      title="Reports"
+      icon={BarChart3Icon}
+      groups={reportGroups}
+      activeKey={report}
+      onChange={setReport}
+      header={
+        <>
           {active && <active.icon className="size-4 text-muted-foreground" />}
           <div className="min-w-0 flex-1">
             <h1 className="text-base font-semibold leading-tight">{active?.label}</h1>
             <Badge variant="outline" className="mt-0.5">{active?.group}</Badge>
           </div>
-        </div>
-        <div className="flex-1 overflow-auto p-4">
-          {active?.key === 'lead_funnel' && <LeadFunnelReport leads={leads} />}
-          {active?.key === 'leads_by_source' && <LeadsBySourceReport leads={leads} />}
-          {active?.key === 'campaign_performance' && <CampaignPerformanceReport leads={leads} opportunities={opportunities} campaigns={campaigns} />}
-          {active?.key === 'sales_pipeline' && <SalesPipelineReport opportunities={opportunities} stages={stages} />}
-          {active?.key === 'by_department' && <ByDepartmentReport leads={leads} opportunities={opportunities} stages={stages} />}
-        </div>
-      </SidebarInset>
-    </SidebarProvider>
+        </>
+      }
+    >
+      {active?.key === 'lead_funnel' && <LeadFunnelReport leads={leads} />}
+      {active?.key === 'leads_by_source' && <LeadsBySourceReport leads={leads} />}
+      {active?.key === 'campaign_performance' && <CampaignPerformanceReport leads={leads} opportunities={opportunities} campaigns={campaigns} />}
+      {active?.key === 'sales_pipeline' && <SalesPipelineReport opportunities={opportunities} stages={stages} />}
+      {active?.key === 'by_department' && <ByDepartmentReport leads={leads} opportunities={opportunities} stages={stages} />}
+    </WorkspaceSidebar>
   );
 }

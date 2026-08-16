@@ -33,22 +33,23 @@ import { Separator } from '@/components/ui/separator';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
+import { TONE_CLASS } from '@/lib/status-styles';
 
 const TYPE_STYLE = {
-  input: { label: 'Input', cls: 'text-info bg-info/10 ring-1 ring-inset ring-info/20' },
-  constant: { label: 'Constant', cls: 'text-muted-foreground bg-muted ring-1 ring-inset ring-border' },
-  computed: { label: 'Computed', cls: 'text-success bg-success/10 ring-1 ring-inset ring-success/20' },
-  array: { label: 'Array', cls: 'text-warning bg-warning/10 ring-1 ring-inset ring-warning/20' },
+  input: { label: 'Input', cls: TONE_CLASS.info },
+  constant: { label: 'Constant', cls: TONE_CLASS.neutral },
+  computed: { label: 'Computed', cls: TONE_CLASS.success },
+  array: { label: 'Array', cls: TONE_CLASS.warning },
 };
 // Phase 3 dropdown UX pass — common mathjs unit strings already used across the seeded methodology,
 // offered as a Select instead of free-text typing. "Custom…" drops back to a text input for anything
 // not on the list (mathjs accepts far more units than this module happens to use).
 const COMMON_UNITS = ['bar', 'MPa', 'mm', 'm', 'm/s', 'degC', 'kg', 'kgf/cm2', 'kgf/mm2', 'mm2', '-'];
 const STATUS_STYLE = {
-  draft: { label: 'Draft', cls: 'text-warning bg-warning/10 ring-1 ring-inset ring-warning/20' },
-  pending: { label: 'Pending approval', cls: 'text-info bg-info/10 ring-1 ring-inset ring-info/20' },
-  approved: { label: 'Approved', cls: 'text-success bg-success/10 ring-1 ring-inset ring-success/20' },
-  deprecated: { label: 'Deprecated', cls: 'text-muted-foreground bg-muted ring-1 ring-inset ring-border' },
+  draft: { label: 'Draft', cls: TONE_CLASS.warning },
+  pending: { label: 'Pending approval', cls: TONE_CLASS.info },
+  approved: { label: 'Approved', cls: TONE_CLASS.success },
+  deprecated: { label: 'Deprecated', cls: TONE_CLASS.neutral },
 };
 
 // CALC-CHANGES2.md §A sidebar relabel/regroup — same panels/components, just labels + a `group`
@@ -174,11 +175,11 @@ export default function CalcWorkspace({ initialState, sheetId, sheetChain, user,
     <SidebarProvider>
       <Sidebar collapsible="icon">
         <SidebarHeader className="gap-2 px-3 py-3.5 group-data-[collapsible=icon]:px-2">
-          <div className="flex items-center gap-2.5 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0">
+          <div className="flex items-center gap-2.5 group-data-[collapsible=icon]:hidden">
             <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
               <Calculator className="size-4" />
             </div>
-            <div className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
+            <div className="min-w-0 flex-1">
               {sheetChain ? (
                 <>
                   <InlineSwitcher

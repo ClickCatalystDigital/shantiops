@@ -26,7 +26,7 @@ function CertOption({ c, onClick }) {
   );
 }
 
-export default function CertPicker({ open, onOpenChange, title, certificates = [], usedIds = new Set(), onPick }) {
+export default function CertPicker({ open, onOpenChange, title, certificates = [], project = null, usedIds = new Set(), onPick }) {
   const router = useRouter();
   const [q, setQ] = useState('');
   const [formOpen, setFormOpen] = useState(false);
@@ -80,6 +80,8 @@ export default function CertPicker({ open, onOpenChange, title, certificates = [
         open={formOpen}
         onOpenChange={setFormOpen}
         certificates={certificates}
+        projects={project ? [project] : []}
+        defaultProjectIds={project ? [project.id] : []}
         router={router}
         onSaved={cert => pick(cert)}
       />

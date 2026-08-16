@@ -26,7 +26,7 @@ import { Button } from './ui/button';
 
 function CountBadge({ count }) {
   return (
-    <span className="flex size-5 items-center justify-center rounded-full bg-muted text-[11px] font-semibold tnum text-foreground">
+    <span className="flex size-5 items-center justify-center rounded-full bg-muted text-xs font-semibold tnum text-foreground">
       {count}
     </span>
   );

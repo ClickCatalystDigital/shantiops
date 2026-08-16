@@ -16,6 +16,8 @@ export default async function QcDocumentPage({ params }) {
   const detail = await getQcDocumentDetail(params.docId);
   if (!detail || String(detail.document.project_id) !== String(params.id)) notFound();
 
+  // The whole bank is linkable: picking a cert for a part auto-associates it with this project
+  // (handled in link-parts). certificate_projects is many-to-many, so a shared plate is reusable.
   const certificates = await getTestCertificates();
 
   return (
@@ -23,6 +25,7 @@ export default async function QcDocumentPage({ params }) {
       project={project}
       document={detail.document}
       parts={detail.parts}
+      mountings={detail.mountings}
       certificates={certificates}
       canEdit={canAccessDepartment(user, 'QC')}
     />

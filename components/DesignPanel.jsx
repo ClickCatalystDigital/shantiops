@@ -11,14 +11,20 @@ import { Button } from './ui/button';
 import { ChevronDownIcon } from 'lucide-react';
 import ScopeOfSupplyPanel from './ScopeOfSupplyPanel';
 
+import { TONE_CLASS } from '@/lib/status-styles';
+
 const SHEET_STATUS_STYLE = {
-  pass: { label: 'Pass', cls: 'text-success bg-success/10 ring-1 ring-inset ring-success/20' },
-  warn: { label: 'Warning', cls: 'text-warning bg-warning/10 ring-1 ring-inset ring-warning/20' },
-  fail: { label: 'Fail', cls: 'text-destructive bg-destructive/10 ring-1 ring-inset ring-destructive/20' },
-  no_data: { label: 'No snapshot yet', cls: 'text-muted-foreground bg-muted ring-1 ring-inset ring-border' },
+  pass: { label: 'Pass', cls: TONE_CLASS.success },
+  warn: { label: 'Warning', cls: TONE_CLASS.warning },
+  fail: { label: 'Fail', cls: TONE_CLASS.destructive },
+  no_data: { label: 'No snapshot yet', cls: TONE_CLASS.neutral },
 };
-const DRAWING_STATUS_LABEL = {
-  not_started: 'Not started', in_progress: 'In progress', under_review: 'Under review', approved: 'Approved', as_built: 'As built',
+const DRAWING_STATUS_STYLE = {
+  not_started: { label: 'Not started', cls: TONE_CLASS.neutral },
+  in_progress: { label: 'In progress', cls: TONE_CLASS.info },
+  under_review: { label: 'Under review', cls: TONE_CLASS.warning },
+  approved: { label: 'Approved', cls: TONE_CLASS.success },
+  as_built: { label: 'As built', cls: TONE_CLASS.success },
 };
 
 export default function DesignPanel({ projectId, designSummary, scopeOfSupply = [], canEditScope = false }) {
@@ -59,7 +65,7 @@ export default function DesignPanel({ projectId, designSummary, scopeOfSupply = 
             {drawings.map((d) => (
               <div key={d.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
                 <span className="text-sm font-medium">{d.name}</span>
-                <span className="text-xs text-muted-foreground">{DRAWING_STATUS_LABEL[d.status]}</span>
+                <Badge className={DRAWING_STATUS_STYLE[d.status].cls} variant="outline">{DRAWING_STATUS_STYLE[d.status].label}</Badge>
               </div>
             ))}
             {drawings.length === 0 && <p className="px-4 py-3 text-sm text-muted-foreground">No drawings yet.</p>}

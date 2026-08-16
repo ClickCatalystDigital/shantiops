@@ -1,7 +1,7 @@
 'use client';
 
 import {
-  SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarGroup,
+  SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarGroup, SidebarGroupLabel,
   SidebarGroupContent, SidebarMenu, SidebarMenuItem, SidebarMenuButton,
   SidebarTrigger, SidebarInset, SidebarRail,
 } from '@/components/ui/sidebar';
@@ -11,8 +11,13 @@ import { cn } from '@/lib/utils';
 
 // Shared shell for workspace-level navigation. The content stays owned by each workspace;
 // this component only standardizes the sidebar behavior and visual language.
-export default function WorkspaceSidebar({ title, icon: TitleIcon = LayoutPanelTopIcon, items, activeKey, onChange, children, nested = false, hideHeader = false }) {
-  const activeItem = items.find(item => item.key === activeKey) || items[0];
+// `groups` (optional): [{ label, items }] — for menus with sections (e.g. Sales/Marketing).
+// Falls back to flat `items` when omitted.
+// `header` (optional): custom node rendered in a pinned bar above scrollable children, replacing
+// the default mobile-only trigger bar with one that's visible at every breakpoint.
+export default function WorkspaceSidebar({ title, icon: TitleIcon = LayoutPanelTopIcon, items, groups, activeKey, onChange, children, nested = false, hideHeader = false, header }) {
+  const flatItems = groups ? groups.flatMap(g => g.items) : items;
+  const activeItem = flatItems.find(item => item.key === activeKey) || flatItems[0];
 
   if (nested) {
     return (
@@ -48,47 +53,77 @@ export default function WorkspaceSidebar({ title, icon: TitleIcon = LayoutPanelT
     <SidebarProvider>
       <Sidebar collapsible="icon">
         <SidebarHeader className="gap-2 px-3 py-3.5 group-data-[collapsible=icon]:px-2">
-          <div className="flex items-center gap-2.5 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0">
+          <div className="flex items-center gap-2.5 group-data-[collapsible=icon]:hidden">
             <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
               <TitleIcon className="size-4" />
             </div>
-            <div className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight group-data-[collapsible=icon]:hidden">{title}</div>
-            <SidebarTrigger className="ml-auto group-data-[collapsible=icon]:hidden" />
+            <div className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight">{title}</div>
+            <SidebarTrigger className="ml-auto" />
           </div>
           <div className="hidden justify-center group-data-[collapsible=icon]:flex">
             <SidebarTrigger aria-label={`Expand ${title} sidebar`} />
           </div>
         </SidebarHeader>
         <SidebarContent>
-          <SidebarGroup>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {items.map(item => {
-                  const Icon = item.icon || LayoutPanelTopIcon;
-                  return (
-                    <SidebarMenuItem key={item.key}>
-                      <SidebarMenuButton isActive={activeKey === item.key} tooltip={item.label} onClick={() => onChange(item.key)}>
-                        <Icon />
-                        <span>{item.label}</span>
-                        {item.badge != null && <span className="ml-auto text-xs text-muted-foreground">{item.badge}</span>}
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  );
-                })}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
+          {groups ? groups.map(group => (
+            <SidebarGroup key={group.label}>
+              <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {group.items.map(item => {
+                    const Icon = item.icon || LayoutPanelTopIcon;
+                    return (
+                      <SidebarMenuItem key={item.key}>
+                        <SidebarMenuButton isActive={activeKey === item.key} tooltip={item.label} onClick={() => onChange(item.key)}>
+                          <Icon />
+                          <span>{item.label}</span>
+                          {item.badge != null && <span className="ml-auto text-xs text-muted-foreground">{item.badge}</span>}
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    );
+                  })}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          )) : (
+            <SidebarGroup>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {items.map(item => {
+                    const Icon = item.icon || LayoutPanelTopIcon;
+                    return (
+                      <SidebarMenuItem key={item.key}>
+                        <SidebarMenuButton isActive={activeKey === item.key} tooltip={item.label} onClick={() => onChange(item.key)}>
+                          <Icon />
+                          <span>{item.label}</span>
+                          {item.badge != null && <span className="ml-auto text-xs text-muted-foreground">{item.badge}</span>}
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    );
+                  })}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          )}
         </SidebarContent>
         <SidebarRail />
       </Sidebar>
       <SidebarInset>
-        <div className="flex items-center gap-3 border-b bg-muted/20 px-4 py-3.5 md:hidden">
-          <SidebarTrigger />
-          <Separator orientation="vertical" className="h-5" />
-          <TitleIcon className="size-4 text-muted-foreground" />
-          <span className="truncate text-sm font-semibold">{activeItem?.label || title}</span>
-        </div>
-        <div className="flex min-w-0 flex-1 flex-col gap-4 p-4 md:p-6">{children}</div>
+        {header ? (
+          <div className="sticky top-14 z-30 flex items-center gap-3 border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-4 py-3.5 print:hidden">
+            <SidebarTrigger className="md:hidden" />
+            <Separator orientation="vertical" className="h-5 md:hidden" />
+            {header}
+          </div>
+        ) : (
+          <div className="sticky top-14 z-30 flex items-center gap-3 border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-4 py-3.5 md:hidden">
+            <SidebarTrigger />
+            <Separator orientation="vertical" className="h-5" />
+            <TitleIcon className="size-4 text-muted-foreground" />
+            <span className="truncate text-sm font-semibold">{activeItem?.label || title}</span>
+          </div>
+        )}
+        <div className="flex min-w-0 flex-1 flex-col gap-4 overflow-auto p-4 md:p-6">{children}</div>
       </SidebarInset>
     </SidebarProvider>
   );

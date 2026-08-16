@@ -10,12 +10,7 @@
 import { useState, useMemo } from 'react';
 import FilterPills from './FilterPills';
 import DesignOperationsCard from './DesignOperationsCard';
-
-const FILTER_DEFS = [
-  { key: 'overdue', label: 'overdue', dot: 'bg-danger', match: code => code === 'overdue' },
-  { key: 'blocked', label: 'blocked', dot: 'bg-blocked', match: code => code === 'blocked' },
-  { key: 'dueSoon', label: 'due soon', dot: 'bg-warning', match: code => code === 'due_now' || code === 'due_soon' },
-];
+import { MILESTONE_FILTER_DEFS as FILTER_DEFS } from '@/lib/milestone-filters';
 
 export default function DesignOperationsSection({ groups, counts, designWork, outgoing, incoming, sourcingItems }) {
   const [selected, setSelected] = useState([]);

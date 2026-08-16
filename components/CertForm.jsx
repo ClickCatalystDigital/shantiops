@@ -11,8 +11,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
-import { UploadIcon, SparklesIcon } from 'lucide-react';
+import { UploadIcon, SparklesIcon, XIcon } from 'lucide-react';
 import PdfInlinePreview from './PdfInlinePreview';
+import SearchableSelect from './SearchableSelect';
 
 // Only fields the form actually has — guards against the AI returning an unexpected key.
 const EXTRACTABLE_FIELDS = ['certificate_no', 'cast_no', 'plate_no', 'material_spec', 'steel_maker',
@@ -25,6 +26,12 @@ const EMPTY = {
   chem_c: '', chem_mn: '', chem_p: '', chem_s: '', chem_si: '',
   ys: '', uts: '', elongation: '', bend_test: 'OK',
 };
+
+// certificate.project_ids comes back from getTestCertificates as a "2,6" concatenation.
+function parseProjectIds(certificate, fallback) {
+  if (!certificate?.project_ids) return fallback.map(Number).filter(Boolean);
+  return String(certificate.project_ids).split(',').map(Number).filter(Boolean);
+}
 
 // A Select seeded from the bank's existing distinct values, with a "+ Custom" escape hatch — same
 // idiom as ProcurementWorkspace's PaymentTermsField. Kills the "S" / "SA106 Gr B" typo class the
@@ -49,9 +56,10 @@ function PickOrType({ label, value, options, onChange }) {
   );
 }
 
-export default function CertForm({ open, onOpenChange, certificate = null, certificates = [], router, onSaved }) {
+export default function CertForm({ open, onOpenChange, certificate = null, certificates = [], projects = [], defaultProjectIds = [], router, onSaved }) {
   const editing = !!certificate;
   const [form, setForm] = useState(() => (editing ? { ...EMPTY, ...certificate } : EMPTY));
+  const [projectIds, setProjectIds] = useState(() => parseProjectIds(certificate, defaultProjectIds));
   const [busy, setBusy] = useState(false);
   const fileRef = useRef(null);
   const [pdfFile, setPdfFile] = useState(null);   // newly picked, not yet uploaded
@@ -60,6 +68,8 @@ export default function CertForm({ open, onOpenChange, certificate = null, certi
   const makers = useMemo(() => [...new Set(certificates.map(c => c.steel_maker).filter(Boolean))].sort(), [certificates]);
   const specs = useMemo(() => [...new Set(certificates.map(c => c.material_spec).filter(Boolean))].sort(), [certificates]);
 
+  // Global dupe (a physical cert is entered once, then linked to many projects). Best-effort client
+  // warning over the certs we were handed; the server enforces it globally regardless.
   const dupe = !editing && form.certificate_no.trim() && form.cast_no.trim()
     ? certificates.find(c => c.certificate_no === form.certificate_no.trim() && c.cast_no === form.cast_no.trim()
         && (c.plate_no || null) === (form.plate_no.trim() || null))
@@ -69,6 +79,7 @@ export default function CertForm({ open, onOpenChange, certificate = null, certi
 
   function reset() {
     setForm(editing ? { ...EMPTY, ...certificate } : EMPTY);
+    setProjectIds(parseProjectIds(certificate, defaultProjectIds));
     setPdfFile(null);
   }
 
@@ -106,11 +117,12 @@ export default function CertForm({ open, onOpenChange, certificate = null, certi
     setBusy(true);
     try {
       let id = certificate?.id;
+      const body = { ...form, project_ids: projectIds };
       if (editing) {
-        await api(`/api/test-certificates/${certificate.id}`, { method: 'PATCH', body: form });
+        await api(`/api/test-certificates/${certificate.id}`, { method: 'PATCH', body });
         onSaved?.({ ...certificate, ...form });
       } else {
-        const res = await api('/api/test-certificates', { method: 'POST', body: form });
+        const res = await api('/api/test-certificates', { method: 'POST', body });
         id = res.id;
         onSaved?.({ ...form, id });
       }
@@ -178,6 +190,31 @@ export default function CertForm({ open, onOpenChange, certificate = null, certi
           <div className="flex flex-col gap-3">
             <p className="text-xs font-medium text-muted-foreground">IDENTITY</p>
             <div className="flex flex-col gap-1.5">
+              <Label>Projects <span className="text-muted-foreground">(optional — add now or later)</span></Label>
+              {projectIds.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {projectIds.map(pid => {
+                    const p = projects.find(x => x.id === pid);
+                    return (
+                      <span key={pid} className="inline-flex items-center gap-1 rounded-full border bg-muted/50 px-2 py-0.5 text-xs">
+                        {p ? p.project_no : `#${pid}`}
+                        <button type="button" aria-label="Remove project"
+                          onClick={() => setProjectIds(ids => ids.filter(x => x !== pid))}>
+                          <XIcon className="size-3 text-muted-foreground hover:text-foreground" />
+                        </button>
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+              <SearchableSelect
+                items={projects.filter(p => !projectIds.includes(p.id))}
+                value={null}
+                onChange={id => id != null && setProjectIds(ids => [...ids, Number(id)])}
+                getLabel={p => p.project_no} getSub={p => p.customer_name}
+                triggerPlaceholder="Add a project…" placeholder="Search projects…" className="w-full" />
+            </div>
+            <div className="flex flex-col gap-1.5">
               <Label>Certificate No.</Label>
               <Input value={form.certificate_no} onChange={set('certificate_no')} placeholder="RCL/MTL/PLM/80839164" />
             </div>
@@ -235,6 +272,17 @@ export default function CertForm({ open, onOpenChange, certificate = null, certi
                   <SelectItem value="NOT OK">NOT OK</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+            {/* Form III A extras (only that form uses them; blank is fine for IV A-only certs). */}
+            <div className="grid grid-cols-2 gap-2">
+              <div className="flex flex-col gap-1.5">
+                <Label>Steel Making Process</Label>
+                <Input value={form.steel_making_process || ''} onChange={set('steel_making_process')} placeholder="e.g. BASIC OXYGEN" />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label>Heat Treatment</Label>
+                <Input value={form.heat_treatment || ''} onChange={set('heat_treatment')} placeholder="e.g. NORMALISED" />
+              </div>
             </div>
           </div>
           </div>

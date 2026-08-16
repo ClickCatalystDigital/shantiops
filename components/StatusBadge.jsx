@@ -1,16 +1,18 @@
 import { effectiveStatus } from '@/lib/sla';
 import { cn } from '@/lib/utils';
+import { TONE_CLASS } from '@/lib/status-styles';
 
-// Soft tinted status pill keyed to the status palette (success/warning/danger/blocked/info).
+// Soft tinted status pill — colors come from the shared tone palette (lib/status-styles.js), the
+// same one CalcWorkspace/DesignPanel badges use, so a pill here and a Badge there never drift.
 const STYLES = {
-  done: 'text-success bg-success/10 ring-success/20',
-  overdue: 'text-danger bg-danger/10 ring-danger/20',
-  blocked: 'text-blocked bg-blocked/10 ring-blocked/20',
-  due_now: 'text-warning bg-warning/10 ring-warning/20',
-  due_soon: 'text-warning bg-warning/10 ring-warning/20',
-  in_progress: 'text-info bg-info/10 ring-info/20',
-  not_started: 'text-muted-foreground bg-muted ring-border',
-  gray: 'text-muted-foreground bg-muted ring-border',
+  done: TONE_CLASS.success,
+  overdue: TONE_CLASS.danger,
+  blocked: TONE_CLASS.danger, // --blocked is aliased to --danger at the token level
+  due_now: TONE_CLASS.warning,
+  due_soon: TONE_CLASS.warning,
+  in_progress: TONE_CLASS.info,
+  not_started: TONE_CLASS.neutral,
+  gray: TONE_CLASS.neutral,
 };
 
 const DOT = {
@@ -23,7 +25,7 @@ export default function StatusBadge({ m, status, className }) {
   const s = status || effectiveStatus(m);
   return (
     <span className={cn(
-      'inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset whitespace-nowrap',
+      'inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap',
       STYLES[s.code] || STYLES.gray,
       className
     )}>

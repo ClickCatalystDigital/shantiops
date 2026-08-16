@@ -8,11 +8,12 @@ const FIELDS = [
   'certificate_no', 'cast_no', 'plate_no', 'material_spec', 'steel_maker',
   'size_t', 'size_w', 'size_l', 'chem_c', 'chem_mn', 'chem_p', 'chem_s', 'chem_si',
   'ys', 'uts', 'elongation', 'bend_test',
+  'steel_making_process', 'heat_treatment',   // Form III A extras (QC-FOLDER-DESIGN.md)
 ];
 
-// QC enters a Test Certificate — the bank record every statutory document's parts fetch from
-// (QC-CHANGES.md §3). Exact-duplicate (cert + cast + plate) is rejected server-side even though the
-// form already warns client-side, so the bank's key stays clean regardless of how it's reached.
+// QC enters a Test Certificate — one physical cert (cert + cast + plate), globally unique in the bank
+// (a cert is a real material, entered once). It may be linked to any number of projects now or later
+// via certificate_projects; `project_ids` on create is optional (a cert can be uploaded unassigned).
 export async function POST(req) {
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
@@ -26,13 +27,14 @@ export async function POST(req) {
   }
 
   const plateNo = b.plate_no?.trim() || null;
+  // Global dupe: one physical cert is entered once, then linked to many projects.
   const dupe = await queryOne(
     `SELECT id FROM test_certificates WHERE certificate_no = ? AND cast_no = ?
        AND (plate_no = ? OR (plate_no IS NULL AND ? IS NULL))`,
     [b.certificate_no.trim(), b.cast_no.trim(), plateNo, plateNo]);
   if (dupe) {
     return NextResponse.json(
-      { error: 'Already in the bank — same certificate, cast and plate.', existingId: dupe.id },
+      { error: 'Already in the bank — same certificate, cast and plate. Add its project from that row instead.', existingId: dupe.id },
       { status: 409 });
   }
 
@@ -45,10 +47,19 @@ export async function POST(req) {
     `INSERT INTO test_certificates (${FIELDS.join(', ')}, created_by)
      VALUES (${FIELDS.map(() => '?').join(', ')}, ?)`,
     [...values, user.username]);
+  const certId = Number(res.lastId);
+
+  // Optional initial project links. Validate each exists; ignore duplicates (idempotent).
+  const projectIds = Array.isArray(b.project_ids) ? [...new Set(b.project_ids.map(Number).filter(Boolean))] : [];
+  for (const pid of projectIds) {
+    const project = await queryOne('SELECT id FROM projects WHERE id = ?', [pid]);
+    if (!project) continue;
+    await execute('INSERT OR IGNORE INTO certificate_projects (certificate_id, project_id) VALUES (?, ?)', [certId, pid]);
+  }
 
   await audit('test_certificate_add', {
     actor: user.username,
-    detail: JSON.stringify({ test_certificate_id: Number(res.lastId), certificate_no: b.certificate_no.trim() }),
+    detail: JSON.stringify({ test_certificate_id: certId, certificate_no: b.certificate_no.trim(), project_ids: projectIds }),
   });
-  return NextResponse.json({ id: Number(res.lastId) });
+  return NextResponse.json({ id: certId });
 }

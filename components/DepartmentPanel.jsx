@@ -11,7 +11,7 @@ import BomPanel from './BomPanel';
 import PackingPanel from './PackingPanel';
 import BomTable from './BomTable';
 import QcPanel from './QcPanel';
-import StatutoryDocsPanel from './StatutoryDocsPanel';
+import QcProjectSummary from './QcProjectSummary';
 import TicketsPanel from './TicketsPanel';
 import StagesPanel from './StagesPanel';
 import ProcurementQueue from './ProcurementQueue';
@@ -29,7 +29,7 @@ export default function DepartmentPanel({
   department, milestones, head = false,
   projectId, bom = [], pending = [], packingLists = [], canUploadBom = false, canPack = false,
   bomFields = [], bomImports = [], qcRecords = [], canEditQc = false,
-  qcDocuments = [],
+  qcDocuments = [], qcSummary = {},
   tasks = [], canRaiseTickets = false,
   stages = [], stageTemplates = [], stageTemplateItems = [], canManageStages = false,
   designSummary = null,
@@ -43,10 +43,6 @@ export default function DepartmentPanel({
   const deptTemplateIds = new Set(deptTemplates.map(t => t.id));
   const deptTemplateItems = stageTemplateItems.filter(i => deptTemplateIds.has(i.template_id));
   const canCancel = CANCEL_DEPARTMENTS.includes(department);
-
-  // return (
-  //   <div className="flex flex-col gap-6">
-  //     {department === 'Engineering' && (
 
   return (
     <div className="flex flex-col gap-6">
@@ -98,18 +94,9 @@ export default function DepartmentPanel({
       {department === 'QC' && (
         <>
           <QcPanel projectId={projectId} records={qcRecords} canEdit={canEditQc} />
-          <StatutoryDocsPanel projectId={projectId} documents={qcDocuments} canEdit={canEditQc} />
+          <QcProjectSummary projectId={projectId} summary={qcSummary} canManage={canEditQc} />
         </>
       )}
-
-      {/* Every department except Procurement gets this cross-department card — Procurement's moved
-          to the Requests tab (§4.0b), split into Raised by/for Procurement there. */}
-      {/* {department !== 'Procurement' && (
-        <TicketsPanel department={department} projectId={projectId} milestones={milestones} bom={bom} tasks={deptTasks} canRaise={canRaiseTickets} />
-      )}
     </div>
-  );
-} */}
-</div>
   );
 }

@@ -18,7 +18,7 @@ export default function InfoPopover({ guide }) {
         <div className="text-sm font-medium">{guide.title}</div>
         {guide.steps.map((s, i) => (
           <div key={s.title} className="flex gap-2.5">
-            <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-accent text-[11px] font-semibold text-accent-foreground">{i + 1}</span>
+            <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-semibold text-accent-foreground">{i + 1}</span>
             <div>
               <div className="text-xs font-medium">{s.title}</div>
               <p className="text-xs text-muted-foreground">{s.body}</p>

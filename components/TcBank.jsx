@@ -37,19 +37,26 @@ function CertRow({ c, onClick, onViewPdf }) {
         )}
         <ChevronRightIcon className={c.pdf_key ? 'size-4 text-muted-foreground' : 'ml-auto size-4 text-muted-foreground'} />
       </div>
-      <p className="text-xs text-muted-foreground">{c.material_spec} · {c.steel_maker} · {sizeText(c)}</p>
+      <p className="text-xs text-muted-foreground">
+        {c.material_spec} · {c.steel_maker} · {sizeText(c)}
+      </p>
       <p className="text-xs text-muted-foreground">
         C {c.chem_c} Mn {c.chem_mn} P {c.chem_p} S {c.chem_s} Si {c.chem_si}
         {' · '}Y.S {c.ys} UTS {c.uts} El {c.elongation}% · {c.bend_test}
       </p>
-      <p className="text-xs text-muted-foreground">
-        used in {c.used_in_parts} part{c.used_in_parts === 1 ? '' : 's'}
-      </p>
+      <div className="flex flex-wrap items-center gap-1">
+        {c.project_nos
+          ? c.project_nos.split('||').map(pn => (
+              <span key={pn} className="rounded-full border bg-muted/50 px-1.5 py-0.5 text-[11px] text-foreground/70">{pn}</span>
+            ))
+          : <span className="text-[11px] text-muted-foreground">Unassigned</span>}
+        <span className="ml-auto text-[11px] text-muted-foreground">used in {c.used_in_parts} part{c.used_in_parts === 1 ? '' : 's'}</span>
+      </div>
     </button>
   );
 }
 
-export default function TcBank({ certificates = [] }) {
+export default function TcBank({ certificates = [], projects = [], defaultProjectIds = [] }) {
   const router = useRouter();
   const [q, setQ] = useState('');
   const [formOpen, setFormOpen] = useState(false);
@@ -66,7 +73,8 @@ export default function TcBank({ certificates = [] }) {
       <CardHeader>
         <CardTitle>Test Certificates</CardTitle>
         <CardAction>
-          <Button size="sm" variant="outline" onClick={() => { setEditing(null); setFormOpen(true); }}>
+          <Button size="sm" variant="outline"
+            onClick={() => { setEditing(null); setFormOpen(true); }}>
             <PlusIcon data-icon="inline-start" />Add Certificate
           </Button>
         </CardAction>
@@ -97,6 +105,8 @@ export default function TcBank({ certificates = [] }) {
         onOpenChange={setFormOpen}
         certificate={editing}
         certificates={certificates}
+        projects={projects}
+        defaultProjectIds={defaultProjectIds}
         router={router}
       />
       {viewingPdf && (

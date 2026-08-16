@@ -20,7 +20,7 @@ export default function FilterPills({ options, selected, onToggle }) {
             onClick={() => onToggle(opt.key)}
             aria-pressed={isSelected}
             className={cn(
-              'flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm shadow-sm transition-colors',
+              'flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm transition-colors',
               isSelected
                 ? 'border-primary/50 bg-primary/10 ring-1 ring-inset ring-primary/30'
                 : 'border-border bg-card hover:bg-muted/50'

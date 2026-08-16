@@ -1,23 +1,23 @@
-// Test Certificate bank (QC-CHANGES.md) — cross-project, same shape as app/procurement/page.js:
-// a department-gated top-level route rendering one client workspace component.
+// QC workspace (QC-CHANGES.md) — department-gated top-level route with two project-scoped tabs
+// (Test Certificates + Documents), rendered by one client workspace component.
 import { redirect } from 'next/navigation';
 import { getFreshSessionUser, canAccessDepartment, roleHome } from '@/lib/auth';
-import { getTestCertificates } from '@/lib/data';
-import PageHeader from '@/components/PageHeader';
-import TcBank from '@/components/TcBank';
+import { getTestCertificates, getAllQcDocuments, getActiveProjectsList } from '@/lib/data';
+import QcWorkspace from '@/components/QcWorkspace';
 
 export const dynamic = 'force-dynamic';
 
-export default async function QcPage() {
+export default async function QcPage({ searchParams }) {
   const user = await getFreshSessionUser();
   if (!canAccessDepartment(user, 'QC')) redirect(roleHome(user));
 
-  const certificates = await getTestCertificates();
+  const sp = await searchParams;
+  const [projects, certificates, documents] = await Promise.all([
+    getActiveProjectsList(),
+    getTestCertificates(),
+    getAllQcDocuments(),
+  ]);
 
-  return (
-    <main className="container flex flex-col gap-6 py-8">
-      <PageHeader title="Test Certificates" description="Entered once, referenced by every part cut from that batch." />
-      <TcBank certificates={certificates} />
-    </main>
-  );
+  return <QcWorkspace projects={projects} certificates={certificates} documents={documents}
+    initialTab={sp?.tab} initialProject={sp?.project} />;
 }

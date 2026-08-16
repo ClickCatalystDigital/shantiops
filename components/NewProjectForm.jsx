@@ -11,6 +11,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose,
 } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { QC_SERIES } from '@/lib/qc-series';
 
 // V3_CHANGES.md §12 Phase 2f — customer picker wires the new nullable projects.customer_id.
 // customer_name stays required/free-text exactly as before (backward-compat with the 6
@@ -18,7 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 export default function NewProjectForm({ customers = [] }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [f, setF] = useState({ project_no: '', customer_name: '', customer_id: '', description: '', order_date: '' });
+  const [f, setF] = useState({ series: '', project_no: '', customer_name: '', customer_id: '', description: '', order_date: '' });
   const [busy, setBusy] = useState(false);
 
   async function submit(e) {
@@ -42,13 +43,21 @@ export default function NewProjectForm({ customers = [] }) {
         <form onSubmit={submit} className="flex flex-col gap-4">
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
-              <Label>Project No <span className="text-muted-foreground">(blank = auto)</span></Label>
-              <Input value={f.project_no} onChange={e => setF({ ...f, project_no: e.target.value })} placeholder="SB-1019" />
+              <Label>Model</Label>
+              <Select value={f.series || undefined} onValueChange={s => setF({ ...f, series: s })}>
+                <SelectTrigger><SelectValue placeholder="Equipment model" /></SelectTrigger>
+                <SelectContent>{QC_SERIES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
+              </Select>
             </div>
             <div className="flex flex-col gap-1.5">
               <Label>Order Date</Label>
               <Input type="date" value={f.order_date} onChange={e => setF({ ...f, order_date: e.target.value })} />
             </div>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label>Project No <span className="text-muted-foreground">(blank = auto)</span></Label>
+            <Input value={f.project_no} onChange={e => setF({ ...f, project_no: e.target.value })}
+              placeholder="STF-IBR-045-CF-400-15" />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label>Customer *</Label>

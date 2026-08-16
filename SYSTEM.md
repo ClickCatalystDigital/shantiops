@@ -791,66 +791,119 @@ business process. Full investigation notes (including two real bugs found while 
   whose items had never had their status explicitly set read as wrongly "fulfilled." Both fixed;
   the second one caught live via a direct DB query showing the miscount before the fix.
 
-## 5d. QC statutory documents — Test Certificate bank + Form IV A
+## 5d. QC statutory documents — Test Certificate bank + statutory folder
 
-Full history/decisions in `QC-CHANGES.md` (kept as the record — this section is the as-built
-result). Client's real requirement: every boiler ships with statutory paperwork (4 forms; V1
-covers Form IV A only, the one form exercising all five client asks) built from Material Test
-Certificates that plates/tubes/forgings already came with. Two lifetimes, two homes:
+Full history/decisions in `QC-CHANGES.md` (the original investigation record). This section is the
+**current as-built** and has moved well past that record — read this, not just QC-CHANGES.
+Client's real requirement: every boiler ships a statutory **folder** for the Directorate of Boilers,
+built from the Material Test Certificates (TCs) that plates/tubes/forgings arrived with. Today the
+app fully implements the **Test Certificate bank + Form IV A**; the rest of the folder (other forms,
+covering letter, stage-wise report) is understood but **not yet generated** — see "The real folder"
+and "Next" below.
 
-- **Test Certificate bank** (`test_certificates` table) — cross-project, own **`/qc`** route
-  (`components/TcBank.jsx`), QC-department-gated the same way `/procurement` is gated
-  (`components/Nav.jsx`'s `inQc` mirrors `inProcurement`). A cert is entered once and reused
-  across boilers — the real sample showed ~3.2× reuse (58 part rows off 18 certs). Keyed on
-  **Cert No. + Cast No. + Plate No.** together, never Cert No. alone (one cert number covered 4
-  different casts in the sample) — duplicate-key POSTs are rejected.
-- **Statutory documents** (`qc_documents` + `qc_document_parts`) — per-boiler, live inside the
-  Project → QC tab, below the existing `QcPanel` (§5b) as a second card (`StatutoryDocsPanel.jsx`)
-  — `qc_records` is a pass/fail test log, a different job. **New document** seeds the SF-series
-  Form IV A part list from a hardcoded template (`lib/qc-template.mjs`, transcribed from the real
-  sample — 54 parts) since V1 has only ever seen the one series; each part row starts unlinked.
-  The editor (`QcDocumentEditor.jsx`, at `/projects/[id]/qc/[docId]`) lists every part with
-  search, an Unlinked filter, and multi-select **bulk-link to one certificate** (the point of the
-  reuse ratio — collapses 58 picks to ~18). The **certificate picker** (`CertPicker.jsx`) always
-  shows cert+cast+plate+spec+maker together (never cert alone, same ambiguity reason as above),
-  floats certs already used in this document first, and has an inline **"+ Add certificate"** so
-  a missing cert is a two-click detour, not a dead end.
-- **The hard gate**: *Preview PDF* stays disabled client-side while any part is unlinked, and the
-  PDF route (`app/api/qc-documents/[id]/pdf/route.js`) re-checks server-side and 409s if any part
-  still lacks a `test_certificate_id` — the UI gate alone was never trusted as the real
-  enforcement.
-- **PDF** (`lib/qc-doc-pdf.js`, `@react-pdf/renderer`, modeled on `lib/po-pdf.js`) — landscape
-  Form IV A, 18 columns, generated live from current data on every request rather than stored;
-  edit or delete the source document (`StatutoryDocsPanel.jsx`'s delete does the same explicit
-  child-then-parent row delete as `qc_documents`'s DELETE route — no reliance on `ON DELETE
-  CASCADE`, since this app never turns SQLite FK enforcement on for plain `execute()` calls) and
-  the next PDF reflects it.
-- **In-app PDF preview** (`components/PdfPreview.jsx`) renders to `<canvas>` via `pdfjs-dist`
-  instead of an `<iframe>`, because an iframe's rendering depends on the browser's own PDF
-  viewer/plugin being enabled — some browsers download instead of showing it inline. Centered
-  modal (not a side drawer — an 18-column table needs real width), sized off the viewport so a
-  phone-width screen is already near-fullscreen with no separate mobile layout; render scale
-  comes from the actual container width × `devicePixelRatio` so it stays crisp at whatever size
-  the modal opens at. Live window-resize-while-open doesn't re-render the canvas at the new width
-  (accepted — opening fresh at any size is correct, and resizing an already-open desktop window
-  mid-session isn't a real usage pattern here); pinch-to-zoom on mobile works natively, since
-  nothing sets a restrictive viewport meta or `touch-action`. Reused as-is for the Purchase Order
-  preview in `/procurement` (§5c) — same component, no PO-specific fork.
-- **`pdfjs-dist` worker, a build gotcha worth knowing**: the modern build
-  (`pdfjs-dist/build/pdf.mjs`) uses private-class-field syntax some production webpack/Terser
-  pipelines (Render.com's included) can't parse — use `pdfjs-dist/legacy/build/pdf.mjs`. The
-  worker itself must be served as a **plain static file from `public/pdf.worker.min.mjs`**
-  (`scripts/copy-pdf-worker.js`, run via `postinstall` and also committed directly) rather than
-  resolved through webpack's `new URL(..., import.meta.url)` asset-module bundling — Next's
-  production Terser pass doesn't recognize a bundled copy as an ES module and fails with
-  `'import'/'export' cannot be used outside module code`.
-- **Deliberately not built (v1 decisions, same reasoning as §5a's list)**: Forms II(1)/III/III A
-  (Form IV A is the only one exercising all five client requirements); the other six document
-  series (only SF has a real sample); xlsx bulk import of TCs (the two-phase `BomImport.jsx`
-  pattern is the obvious fast-follow); linking parts to `bom_items`; TC file attachments;
-  revisions/approval workflow. See `QC-CHANGES.md` §5/§8 for the open client questions (who owns
-  TC entry, one PDF per form vs. per folder, the doc-ID naming convention) still pending an
-  answer.
+### Data model (phase 2 — cert↔project is many-to-many)
+
+- **Test Certificate bank** (`test_certificates`) — the whole bank, **globally unique** on
+  **Cert No. + Cast No. + Plate No.** together (never Cert No. alone — one cert number covered 4
+  casts in the sample). A cert is one physical material entered once, then **used in many projects**
+  (one plate is cut into parts across several boilers — real sample showed ~3.2× reuse). The
+  cert↔project link is a **many-to-many join, `certificate_projects`**; a cert may have **zero**
+  projects (uploaded, not yet allocated) and gain them over time. The old single
+  `test_certificates.project_id` column is **vestigial/retired** (kept, all-NULL, `ponytail:` note
+  to drop later) — do not use it; use the join table.
+- **Auto-associate**: linking a document part to a cert (`app/api/qc-documents/[id]/link-parts`)
+  inserts the cert↔project row for that document's project automatically — using a cert on a
+  project's folder *is* what allocates it to that project.
+- **Equipment model on the project** — `projects.series` holds one of **CF, MF, OF, SF, SIB, PRS,
+  FCB, FAB** (`lib/qc-series.js`; the DB column is named `series` for historical reasons but the
+  business term is **model**). It is **NOT a project-number prefix** — it sits in a fixed mid-segment
+  of the structured project code, e.g. `STF-IBR-045-`**`CF`**`-400-15`. Set **only at project
+  creation** (`components/NewProjectForm.jsx`, "Model" field; `app/api/projects` POST stores it,
+  number stays manual/legacy `SB-####` — the full code's segment meanings aren't formalized).
+  Backfilled for existing projects by parsing the model segment out of `project_no`
+  (`scripts/qc-reassign-certs.mjs`).
+- TC PDF: each cert can carry its source PDF in R2 (`pdf_key`/`pdf_url`), AI-extracted on upload
+  (`app/api/test-certificates/extract`, `components/CertForm.jsx` + `PdfInlinePreview`).
+
+### UI (phase 2 — one workspace, two tabs)
+
+- **`/qc` workspace** (`components/QcWorkspace.jsx`, QC-department-gated in `Nav.jsx`) — two tabs via
+  `WorkspaceSidebar`: **Test Certificates** (`TcBank.jsx`) and **Documents**
+  (`StatutoryDocsPanel.jsx`, cross-project here). Header has two **searchable** selectors
+  (`components/SearchableSelect.jsx`): **Model** (left) narrows the **Project** list; picking a
+  project auto-selects its model; neither set → everything. Projects sorted newest-first. Certs are
+  cross-project with project chips; adding a cert is always available (project(s) optional, multi-
+  select). Creating a **document still requires a project** (a folder is 1:1 with a boiler/project).
+- **Project → QC tab** (`components/DepartmentPanel.jsx`, `department === 'QC'`) shows `QcPanel`
+  (§5b, the pass/fail test log — a different job) **+** `components/QcProjectSummary.jsx`: a read-only
+  roll-up (certs uploaded / with PDF, docs finalized / total) with **Manage** buttons that deep-link
+  into the `/qc` workspace (`?tab=&project=`), gated to QC-access users. The full add/edit lives in
+  the workspace now, not this tab.
+- **Statutory documents** (`qc_documents` + `qc_document_parts`) — per-boiler. **New document** seeds
+  the Form IV A part list from a hardcoded template (`lib/qc-template.mjs`, 54 parts, SF sample) —
+  every part starts unlinked. The editor (`QcDocumentEditor.jsx`, `/projects/[id]/qc/[docId]`) has
+  search, an Unlinked filter, and multi-select **bulk-link to one certificate**; the picker
+  (`CertPicker.jsx`) reaches the whole bank, shows cert+cast+plate+spec+maker together, and has
+  inline **"+ Add certificate"**. Company/letterhead per document comes from a two-value list in
+  `StatutoryDocsPanel.jsx` (Shanti Boilers `SBH` / Shanti Techno Fab `STF`) — **incomplete**, see the
+  real folder below.
+- **The hard gate**: *Preview PDF* is disabled while any part is unlinked, and
+  `app/api/qc-documents/[id]/pdf/route.js` re-checks server-side and 409s — the UI gate is never the
+  real enforcement.
+
+### PDF rendering (still Form IV A only)
+
+- `lib/qc-doc-pdf.js` (`@react-pdf/renderer`, modeled on `lib/po-pdf.js`) — landscape Form IV A, 18
+  columns, generated live per request. In-app preview `components/PdfPreview.jsx` renders to
+  `<canvas>` via `pdfjs-dist` (not an iframe — iframes depend on the browser's PDF plugin). **Build
+  gotcha**: use `pdfjs-dist/legacy/build/pdf.mjs` (the modern build's private-class-field syntax
+  breaks Render.com's Terser), and serve the worker as a **plain static file**
+  `public/pdf.worker.min.mjs` (`scripts/copy-pdf-worker.js`, `postinstall` + committed) — webpack
+  asset-module bundling of it fails Next's production Terser pass.
+
+### The real folder (from the sample set — understood, generation NOT built yet)
+
+Real filled samples live at **`/Users/pujan/Developer/FOLDER SAMPLE - FOR APP/`** — one folder per
+model (CF, MF, OF, SF, SIB, PRS, HEADERS) plus a shared STAGE WISE REPORT. Read them (they're the
+source of truth for layouts). **The full field-by-field design analysis — what's fixed vs variable in
+the label, covering letter, mounting list, and each form, and the new data needed — is in
+`QC-FOLDER-DESIGN.md`** (also the source for the QC help page). Key facts a new AI must know:
+
+- **A complete folder is much more than Form IV A.** Filed order (from the covering letters):
+  covering letter (submission to the Director of Boilers, listing the folder's manifest) →
+  documentation label → the **forms workbook** → list of mountings & fittings → stage-wise material
+  certification/inspection report → the TC copies themselves.
+- **Which forms exist differs by model** (each form is its own sheet in the model's `.xlsx`):
+  - CF / MF / OF: **Form II(1) + III + III A + IV A**. SF: same four **+ a Mountings sheet**.
+  - SIB (Small Industrial Boiler): **Form XVII** (Chapter-XIV small-boiler cert) instead of
+    II(1)/III, **+ III A + IV A**.
+  - PRS (Pressure Reducing Station) / HEADERS (Steam Header): **Form III + Form IV A (labelled
+    "4A")** only — no II(1)/III A.
+- **Legal entity is selected by the maker-number prefix, not picked by hand** — `STF-` → **Shanti
+  Techno Fab Pvt Ltd**, `SB-` → **Shanti Boilers & Pressure Vessels (P) Ltd**. These are the *same two*
+  entities the current `COMPANIES` list has, but the first's real legal name is "Shanti Boilers &
+  Pressure Vessels" (the list says just "Shanti Boilers") and selection should follow the prefix. The
+  folder's letterhead, ref prefix, and signatories all follow the entity.
+- **Form III A** is a per-part TC table like IV A but scoped to one named part (e.g. the feed
+  pipeline) and carries **extra columns not in IV A nor stored on `test_certificates`**: *Steel
+  Making Process* and *Heat Treatment*. **Form III** is the boiler description block (dimensions,
+  pressures, heating surface, evaporation, steam temp — overlaps `qc_documents` meta) + parts-
+  manufactured list + construction/seams + drums/headers tables (often "Not Applicable") + mountings
+  ref + safety-valve test. **Form II(1)** is the inspection certificate (inspecting authority, W.P.,
+  hydro test pressure + date, drawing numbers, stamps, signatories) — mostly **new fields**.
+- **Model-list reconciliation still open**: the defined 8 are CF/MF/OF/SF/SIB/PRS/FCB/FAB, but the
+  samples include **HEADERS** (not in the 8) and have **no FCB/FAB** sample. Confirm with the client.
+
+### Next / not yet built
+
+- **The full combined folder PDF** — client-confirmed 2026-08-16: **one model per folder**, output as
+  **one combined multi-page PDF** in filed order (not separate form downloads). One model per folder
+  means the generator selects the form set + layout + entity by `projects.series`. Needs new stored
+  fields for II(1)/XVII/III/III A (inspector, W.P., hydro date, drawing numbers, signatories, steel-
+  making-process, heat-treatment) and generation of the covering-letter manifest + stage-wise report.
+- Still deferred: xlsx **bulk TC import** (the `BomImport.jsx` two-phase pattern is the obvious
+  fast-follow); linking parts to `bom_items`; TC revisions/approval workflow. See `QC-CHANGES.md`
+  §5/§8 for older open questions.
 
 ## 5e. Sales department, Stores inventory, and In-Stock/SAS trading
 

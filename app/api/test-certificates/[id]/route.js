@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { execute, queryOne } from '@/lib/db';
+import { execute, queryOne, queryAll } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { audit } from '@/lib/usb';
 import { deleteObject } from '@/lib/r2';
@@ -8,6 +8,7 @@ const EDITABLE = [
   'certificate_no', 'cast_no', 'plate_no', 'material_spec', 'steel_maker',
   'size_t', 'size_w', 'size_l', 'chem_c', 'chem_mn', 'chem_p', 'chem_s', 'chem_si',
   'ys', 'uts', 'elongation', 'bend_test',
+  'steel_making_process', 'heat_treatment',
 ];
 
 export async function PATCH(req, { params }) {
@@ -20,7 +21,33 @@ export async function PATCH(req, { params }) {
 
   const b = await req.json();
   const keys = Object.keys(b).filter(k => EDITABLE.includes(k));
-  if (!keys.length) return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
+  const hasProjectIds = Array.isArray(b.project_ids);
+  if (!keys.length && !hasProjectIds) return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
+
+  // Reconcile project links (many-to-many). `project_ids` is the full desired set. Additions are
+  // free; a removal is blocked (409) if that project's statutory-document parts still cite this cert
+  // — removing it would leave those parts pointing at a cert no longer in their project.
+  if (hasProjectIds) {
+    const want = new Set(b.project_ids.map(Number).filter(Boolean));
+    const have = new Set((await queryAll('SELECT project_id FROM certificate_projects WHERE certificate_id = ?', [params.id])).map(r => r.project_id));
+    const toAdd = [...want].filter(p => !have.has(p));
+    const toRemove = [...have].filter(p => !want.has(p));
+    for (const pid of toRemove) {
+      const used = await queryOne(
+        `SELECT COUNT(*) AS n FROM qc_document_parts p JOIN qc_documents d ON d.id = p.document_id
+          WHERE p.test_certificate_id = ? AND d.project_id = ?`, [params.id, pid]);
+      if (used.n > 0) {
+        return NextResponse.json(
+          { error: `Used by ${used.n} document part${used.n === 1 ? '' : 's'} in that project — unlink it there before removing the project` },
+          { status: 409 });
+      }
+    }
+    for (const pid of toAdd) {
+      const project = await queryOne('SELECT id FROM projects WHERE id = ?', [pid]);
+      if (project) await execute('INSERT OR IGNORE INTO certificate_projects (certificate_id, project_id) VALUES (?, ?)', [params.id, pid]);
+    }
+    for (const pid of toRemove) await execute('DELETE FROM certificate_projects WHERE certificate_id = ? AND project_id = ?', [params.id, pid]);
+  }
 
   const changed = {};
   for (const k of keys) {
@@ -28,13 +55,15 @@ export async function PATCH(req, { params }) {
     if (v === '') v = null;
     changed[k] = v;
   }
-  await execute(
-    `UPDATE test_certificates SET ${Object.keys(changed).map(k => `${k} = ?`).join(', ')} WHERE id = ?`,
-    [...Object.values(changed), params.id]);
+  if (Object.keys(changed).length) {
+    await execute(
+      `UPDATE test_certificates SET ${Object.keys(changed).map(k => `${k} = ?`).join(', ')} WHERE id = ?`,
+      [...Object.values(changed), params.id]);
+  }
 
   await audit('test_certificate_edit', {
     actor: user.username,
-    detail: JSON.stringify({ test_certificate_id: Number(params.id), changed }),
+    detail: JSON.stringify({ test_certificate_id: Number(params.id), changed, project_ids: hasProjectIds ? b.project_ids : undefined }),
   });
   return NextResponse.json({ ok: true });
 }

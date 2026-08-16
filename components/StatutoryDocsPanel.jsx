@@ -159,7 +159,11 @@ function NewDocumentSheet({ open, onOpenChange, projectId, router }) {
   );
 }
 
-export default function StatutoryDocsPanel({ projectId, documents = [], canEdit = false }) {
+// `projectId` scopes the New-document sheet (a doc is always created for one project). Rows link off
+// each doc's own `d.project_id` so this also works as the /qc workspace's cross-project Docs list —
+// pass projectId=null there to keep New disabled until a project is picked. `showProject` labels the
+// owning project per row (only useful in the cross-project list).
+export default function StatutoryDocsPanel({ projectId = null, documents = [], canEdit = false, showProject = false }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
 
@@ -178,7 +182,8 @@ export default function StatutoryDocsPanel({ projectId, documents = [], canEdit 
         <CardTitle>Statutory Documents</CardTitle>
         {canEdit && (
           <CardAction>
-            <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
+            <Button size="sm" variant="outline" disabled={!projectId} onClick={() => setOpen(true)}
+              title={projectId ? undefined : 'Select a project to add a document'}>
               <PlusIcon data-icon="inline-start" />New document
             </Button>
           </CardAction>
@@ -190,11 +195,12 @@ export default function StatutoryDocsPanel({ projectId, documents = [], canEdit 
         )}
         {documents.map(d => (
           <div key={d.id} className="flex w-full items-center gap-1 py-2.5 text-sm hover:bg-muted/50">
-            <button onClick={() => router.push(`/projects/${projectId}/qc/${d.id}`)}
+            <button onClick={() => router.push(`/projects/${d.project_id}/qc/${d.id}`)}
               className="flex flex-1 items-center gap-2 text-left">
               <div className="flex flex-col">
                 <span className="font-medium">{d.doc_id}</span>
                 <span className="text-xs text-muted-foreground">
+                  {showProject && d.project_no && <>{d.project_no} · </>}
                   {d.series} series · Form IV A · {d.company} · {d.linked_parts} of {d.total_parts} parts linked
                 </span>
               </div>
@@ -208,7 +214,7 @@ export default function StatutoryDocsPanel({ projectId, documents = [], canEdit 
           </div>
         ))}
       </CardContent>
-      {canEdit && <NewDocumentSheet open={open} onOpenChange={setOpen} projectId={projectId} router={router} />}
+      {canEdit && projectId && <NewDocumentSheet open={open} onOpenChange={setOpen} projectId={projectId} router={router} />}
     </Card>
   );
 }

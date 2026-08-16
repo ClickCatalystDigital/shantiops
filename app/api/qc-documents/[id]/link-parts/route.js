@@ -12,7 +12,7 @@ export async function POST(req, { params }) {
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;
 
-  const document = await queryOne('SELECT id FROM qc_documents WHERE id = ?', [params.id]);
+  const document = await queryOne('SELECT id, project_id FROM qc_documents WHERE id = ?', [params.id]);
   if (!document) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   const b = await req.json();
@@ -34,6 +34,11 @@ export async function POST(req, { params }) {
   await execute(
     `UPDATE qc_document_parts SET test_certificate_id = ? WHERE id IN (${ownIds.map(() => '?').join(',')})`,
     [cert.id, ...ownIds]);
+
+  // Auto-associate: using a cert on this project's document means the cert belongs to this project
+  // (client-confirmed). Idempotent — the certificate_projects PK ignores a repeat.
+  await execute('INSERT OR IGNORE INTO certificate_projects (certificate_id, project_id) VALUES (?, ?)',
+    [cert.id, document.project_id]);
 
   await audit('qc_document_link_parts', {
     actor: user.username,

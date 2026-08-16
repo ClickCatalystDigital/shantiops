@@ -88,7 +88,7 @@
 
   --success: hsl(142 58% 46%);
   --warning: hsl(32 90% 56%);
-  --danger: hsl(0 72% 60%);
+  --danger: hsl(0 63% 55%); /* aligned to --destructive's dark value — light mode already matches it exactly */
   --blocked: var(--danger);
   --info: hsl(217 85% 62%);
 

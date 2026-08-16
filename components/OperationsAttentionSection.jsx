@@ -17,12 +17,7 @@ import FilterPills from './FilterPills';
 import StatusBadge from './StatusBadge';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from './ui/card';
 import { formatDate } from '@/lib/format';
-
-const FILTER_DEFS = [
-  { key: 'overdue', label: 'overdue', dot: 'bg-danger', match: code => code === 'overdue' },
-  { key: 'blocked', label: 'blocked', dot: 'bg-blocked', match: code => code === 'blocked' },
-  { key: 'dueSoon', label: 'due soon', dot: 'bg-warning', match: code => code === 'due_now' || code === 'due_soon' },
-];
+import { MILESTONE_FILTER_DEFS as FILTER_DEFS } from '@/lib/milestone-filters';
 
 export default function OperationsAttentionSection({ groups, manager }) {
   const [selected, setSelected] = useState([]);

@@ -6,7 +6,7 @@ export default function MilestoneCard({ m, onClick }) {
     <button
       onClick={onClick}
       title="Click to update"
-      className="flex w-full flex-col gap-2 rounded-lg border bg-card p-3 text-left shadow-sm transition-colors hover:border-primary/40 hover:bg-accent/40"
+      className="flex w-full flex-col gap-2 rounded-lg border bg-card p-3 text-left transition-colors hover:border-primary/40 hover:bg-accent/40"
     >
       <div className="flex items-start justify-between gap-2">
         <span className="text-sm font-medium leading-snug">{m.milestone_label}</span>

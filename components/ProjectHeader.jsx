@@ -25,7 +25,7 @@ export default function ProjectHeader({ project, health, blocker }) {
         </div>
 
         {blocker ? (
-          <div className="flex items-start gap-3 rounded-lg border border-danger/20 bg-danger/5 p-3">
+          <div className="flex items-start gap-3 rounded-lg border border-danger/30 bg-danger/5 p-3">
             <TriangleAlertIcon className="mt-0.5 size-5 shrink-0 text-danger" />
             <div className="text-sm">
               <div className="font-semibold">Why is this delayed?</div>
@@ -37,7 +37,7 @@ export default function ProjectHeader({ project, health, blocker }) {
             </div>
           </div>
         ) : (
-          <div className="flex items-center gap-3 rounded-lg border border-success/20 bg-success/5 p-3 text-sm">
+          <div className="flex items-center gap-3 rounded-lg border border-success/30 bg-success/5 p-3 text-sm">
             <CheckCircle2Icon className="size-5 shrink-0 text-success" />
             <span>On track — no overdue or blocked milestones.</span>
           </div>

@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getQcDocumentDetail } from '@/lib/data';
+import { queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
-import { renderQcDocPdf } from '@/lib/qc-doc-pdf';
+import { renderQcFolderPdf } from '@/lib/qc-folder-pdf';
 
 export const runtime = 'nodejs';
 
@@ -24,7 +25,8 @@ export async function GET(req, { params }) {
       { status: 409 });
   }
 
-  const pdf = await renderQcDocPdf(detail.document, detail.parts);
+  const project = await queryOne('SELECT id, project_no, customer_name, series FROM projects WHERE id = ?', [detail.document.project_id]);
+  const pdf = await renderQcFolderPdf(detail.document, detail.parts, detail.mountings, project);
   return new NextResponse(pdf, {
     headers: {
       'Content-Type': 'application/pdf',
