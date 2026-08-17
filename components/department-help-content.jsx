@@ -7,7 +7,7 @@ import {
   FlaskConicalIcon, BadgeCheckIcon, ClipboardCheckIcon, MapPinIcon, RouteIcon, ShoppingCartIcon,
   UserPlusIcon, Building2Icon, MegaphoneIcon, TrendingUpIcon, PhoneIcon, BarChart3Icon,
   UserRoundIcon, UserCheckIcon, Clock3Icon, IndianRupeeIcon, ReceiptIcon, ShieldCheckIcon,
-  ListChecksIcon, MessageSquareIcon, WrenchIcon,
+  ListChecksIcon, MessageSquareIcon, WrenchIcon, BellIcon,
 } from 'lucide-react';
 
 const FEATURE_FOUNDATIONS = {
@@ -118,6 +118,12 @@ const FEATURE_FOUNDATIONS = {
     outcome: 'The receiving department sees a clear task or notification with enough context to act without restarting the conversation.',
     checklist: ['Name the receiving department or person.', 'Include the project, item, date, and dependency.', 'Confirm the response before closing the handoff.'],
     watchOut: 'A notification is a signal, not proof of completion. Keep the actual result in the relevant record or task.',
+  },
+  jobcards: {
+    value: 'A Job Card is one real piece of shop-floor work — an operation against an actual project milestone, not a free-typed description. It is where planning becomes an auditable record of who did what, on which machine, for how long, and at what cost.',
+    outcome: 'The card carries a real milestone, a workstation where relevant, logged hours against named workers, any consumables used, and a quantity/status that is true right now — not what was planned three weeks ago.',
+    checklist: ['Create the card against the actual milestone, not a guessed one — the project/milestone picker is the only way in, so the fabrication percentage stays accurate.', 'Log hours in real sessions as they happen, not one lump total at the end of the week.', 'Flag subcontracted or site work with the Outside/Site markers instead of leaving them looking like ordinary shop work.'],
+    watchOut: 'Do not leave a card sitting in Pending once work has actually started, and do not close it out with an invented quantity just to clear the board — a wrong Done count breaks the fabrication percentage every other view relies on.',
   },
   tests: {
     value: 'Test records make quality decisions auditable. They preserve what was tested, when, by whom, against which reference, and with what result.',
@@ -257,6 +263,12 @@ const FEATURE_FOUNDATIONS = {
     checklist: ['Check employee, date, amount, and supporting detail.', 'Complete approval and settlement steps in order.', 'Review separation tasks before deactivating the employee.'],
     watchOut: 'Do not close an employee record while an advance, loan, expense, or settlement task is unresolved.',
   },
+  issues: {
+    value: 'Material issued to WIP is the record of what physically left Stores for the shop floor — separate from the on-hand/purchase-status bookkeeping Reserve and Issue already handle, and separate from Production\'s own issued/received BOM fields. It exists because "Stores handed this over" is a real event worth a timestamp and a name, even when nothing else in the system needs to change because of it.',
+    outcome: 'Anyone looking at a project later can see exactly what left Stores, when, how much, and who logged it — without relying on memory or a side conversation with Production.',
+    checklist: ['Pick the real project and BOM item, not a close-sounding one.', 'Log the quantity that actually physically moved, not the full requirement.', 'Log it close to when it happened — a week-old backfill is much easier to get wrong.'],
+    watchOut: 'This log does not reserve, receive, or issue anything by itself — it has no effect on Inventory\'s on-hand/available numbers or the BOM line\'s purchase status. Use Reserve/Issue for that; use this only as the physical-handoff record.',
+  },
 };
 
 const feature = (key, label, icon, body, extra = {}) => {
@@ -320,6 +332,62 @@ export const DEPARTMENT_HELP = {
       feature('scope', 'Scope of Supply', FileInputIcon, ['Read the work order created from a confirmed Sale Order. Confirm what the boiler, equipment, or package includes before detailed design starts.', 'Keep the scope clear and practical: what is included, what is excluded, and what the customer must provide. Release it only after Design and Engineering agree.']),
       feature('calc', 'Calculation Sheets', CalculatorIcon, ['Open Calc Sheets from the Design or Engineering tab and choose the project. Inputs, formulas, validations, snapshots, and review status stay attached to that project.', 'Save a snapshot when a calculation is ready for review. A snapshot is the frozen record of the exact inputs and formula versions used.']),
       feature('drawings', 'Drawings', RulerIcon, ['Use the Drawings panel to keep drawing files and their status with the calculation work. This is a release tracker, not a CAD editor.', 'Use clear drawing numbers and revision notes so Production can tell which file is current.']),
+      {
+        key: 'notifications', label: 'Notifications', icon: BellIcon, group: true,
+        body: ['There are three notification paths for Design. Customer covers the customer’s comments and approvals. Internal (Design) covers handoffs that stay entirely inside Design. External (Departments) covers every signal that crosses a department or commercial boundary — Sales, Procurement, PM tier.'],
+        children: [
+          feature('notifications-customer', 'Customer', BellIcon, [
+            'A drawing only reaches the customer because a Design Head chose to share it. The "Share with customer" checkbox on each drawing in the Drawings panel is Head-only. A Designer cannot toggle it, same as approving a drawing.',
+            'The effect is immediate once switched on. The customer can open the file, read and reply in the comment thread, and, once the drawing is Under review, approve it right away. There is no waiting period on that side.',
+            'Only a drawing that has actually reached Under review, Approved, or As built becomes visible, even with the toggle on. A Not started or In progress drawing stays internal regardless of the toggle, so sharing early does not leak unfinished work.',
+            'The customer’s order-progress screen reflects this with no extra words. The Design & Engineering step turns from blue to amber with a clock icon whenever a shared drawing is sitting Under review and waiting on them. Only the color and icon change; the label still just says "In progress."',
+            'A notification is not sent instantly. It fires five minutes after the toggle is switched on, and only if it is still on at that point. Flip it off within those five minutes, for an accidental click, and nothing is ever sent. Flip it on again later and the five-minute clock restarts.',
+            'The comment thread is shared, not duplicated. What you write in the Drawings panel and what the customer writes in their portal land in the same thread. Each message is tagged "Customer" when it is theirs, so it is always clear who said what.',
+            'Today this notification is in-system only. The customer sees it in their own portal bell. WhatsApp delivery is planned as an addition later, not a replacement for this.',
+          ], {
+            value: 'The customer-visible toggle is a release gate, separate from your own Under review or Approved status. It exists so a drawing can be technically ready in the system before a Design Head has actually decided the customer should see it.',
+            outcome: 'The customer sees exactly the drawings a Design Head chose to share, can act on them the instant they are shared, and is notified once, not on every click, five minutes after a genuine, sustained toggle-on.',
+            checklist: [
+              'Turn the toggle on only when the drawing is genuinely ready for the customer to review. Turning it on does not itself change the drawing’s status.',
+              'Expect the customer to be able to act immediately. Do not treat the five-minute delay as a window to undo a real share.',
+              'Read the customer’s comments in the same Drawings panel thread. There is no separate customer inbox to check.',
+            ],
+            watchOut: 'Toggling a drawing visible and then off again within five minutes is genuinely silent: no notification, no trace the customer would see. Do not rely on that window to "test" sharing with a real customer. Use it only to correct a real mistake.',
+          }),
+          feature('notifications-internal', 'Internal (Design)', BellIcon, [
+            'Internal means the event happens inside Design\'s own chain — no other department is involved on either end.',
+            'Milestone handoff within Design: Design owns four consecutive milestones (Design, Submit Design Approval, Release BOM / PR, Release All Drawings). When one closes, the next teammate assigned to the following one is notified it\'s their turn — same mechanism as a cross-department handoff, it just never leaves Design because both ends belong to Design.',
+            'A Design milestone reopened by Design itself: if a Design Head sends a Design milestone back for rework, the assigned teammate is notified directly.',
+          ], {
+            value: 'Not every handoff Design deals with involves another team — most of the day-to-day is Design handing work to Design. Keeping that internal traffic separate from cross-department signals makes it obvious at a glance whether a notification needs you to loop in someone outside Design or not.',
+            outcome: 'A Design teammate can tell, from the notification alone, that the work is staying inside the department — no other team needs to be pulled in to act on it.',
+            checklist: [
+              'Treat an internal handoff exactly like an external one for urgency — it still blocks the next milestone in the chain.',
+              'If an internal reopen arrives, recheck the actual calc/drawing before assuming the earlier close-out still stands.',
+            ],
+            watchOut: 'Internal does not mean low-priority. Release BOM / PR and Release All Drawings are still the milestones Procurement and Production are waiting on next — an internal delay becomes an external one the moment it\'s late.',
+          }),
+          feature('notifications-external', 'External (Departments)', BellIcon, [
+            'External means another department — or Sales/PM as a commercial party — is the source or the destination of the event, not Design\'s own chain.',
+            'This is the same bell every internal department uses. It sits top right of the app, shows a red unread count, and is polled automatically. Click a notification to jump straight to its project, or mark one or all as read from the same panel.',
+            'A new Sale Order is created: Design is notified the moment Sales creates a Sale Order or converts an accepted quotation into one — earlier than the Scope of Supply notification below, since a Sale Order can exist before it becomes a Project. Every PM-tier account (admin/manager/executive) receives the same notification at the same time.',
+            'A new order reaching Design: creating a project from a confirmed Sale Order (a Design Head or PM converting it) notifies both Design and Engineering that a new Scope of Supply exists — separately, Sales and PM tier are notified too, since converting is the moment they\'ve been waiting to hear about.',
+            'Milestone handoff crossing into or out of Design: when the milestone immediately before one of Design\'s own belongs to another department (rare — Design usually starts the chain) or when Design\'s last milestone (Release All Drawings) closes and hands off to Procurement, that other department is notified automatically.',
+            'Milestone reopened from outside Design: if a milestone downstream discovers a problem traced back to Design\'s earlier work and that Design milestone gets reopened, Design gets a second notice that the work it already handed off is no longer actually finished.',
+            'Cross-department task raised against Design: any other department raising a task with Design as the target notifies Design the same way a milestone handoff does.',
+            'Unlike the Customer subsection above, none of this is a toggle anyone controls. It is automatic for every user with Design department access. There is nothing to turn on or off.',
+          ], {
+            value: 'External notifications exist so Design never has to check another team\'s screen to find out an order has landed, work has been sent back, or someone outside the department is waiting on a response. Every signal here crosses a department (or a commercial) boundary — Sales, Procurement, a PM — not from anyone deciding to notify Design.',
+            outcome: 'Design can trust the bell as the one place a cross-department signal will appear, with enough context (project, title, body) to act without asking who sent it or why.',
+            checklist: [
+              'Treat an unread badge as a real queue, not a suggestion. Clear it by acting, not by mass-marking read.',
+              'Follow a notification\'s link into the actual project record instead of acting from memory of the title alone.',
+              'If an external reopen notification arrives, recheck the work before assuming your earlier close-out still stands — someone downstream found a real problem.',
+            ],
+            watchOut: 'Marking a notification read is not the same as resolving what it is about. The bell only proves you saw it. The underlying milestone, task, or drawing still needs the real action.',
+          }),
+        ],
+      },
       feature('bom', 'Material definition and BOM', ClipboardListIcon, ['Define the material description, MOC, size/specification, make, quantity, section, and group label. Engineering/Design owns the technical definition; downstream teams add purchasing and receipt information.', 'Import the PMB workbook, review detected rows and skipped rows, then confirm. Never replace a live BOM without checking the revision preview.']),
       feature('tasks', 'Tasks and handoffs', ListChecksIcon, ['Use Tasks for small follow-ups that do not deserve a milestone. Raise a cross-department task when another team needs to act.', 'When a milestone closes, check the next team’s notification and task signal. Do not rely only on memory or a private note.']),
       feature('requests', 'Purchase requests', MessageSquareIcon, ['Use Requests when Design knows a material must be sourced but Procurement needs a formal request. Add the project, item, quantity, and useful specification.', 'The request goes directly to Procurement’s Enquiry flow; it is not a second approval queue.']),
@@ -364,7 +432,7 @@ export const DEPARTMENT_HELP = {
       'The key habit is to keep the commercial trail complete: request, comparison, supplier, PO, transit, and receipt should be understandable to someone who was not present when the decision was made.',
     ],
     features: [
-      feature('enquiry', 'Enquiry queue', SearchIcon, ['Start with Enquiry items and Requests from Engineering, Design, or Stores. Confirm the technical description before contacting suppliers.', 'Use the project and source fields to separate normal project demand from In-Stock or Sold-As-Such demand.']),
+      feature('enquiry', 'Enquiry queue', SearchIcon, ['Start with Enquiry items and Requests from Engineering, Design, or Stores. Confirm the technical description before contacting suppliers.', 'Use the project and source fields to separate normal project demand from In-Stock or Sold-As-Such demand.', 'A "Reserved from stock" badge means Stores has already committed inventory against that line — check with Stores before spending time sourcing it. The line still shows here because Reserve alone doesn\'t close it out; Stores only marks it In-Stock once they actually Issue the material.']),
       feature('quotes', 'Comparison and quotes', GitCompareIcon, ['Record each supplier quote with price, unit, payment terms, validity, and notes. Multiple quotes create a comparison trail rather than one unexplained price.', 'Do not delete a quote just because it lost; the history helps explain the final choice.']),
       feature('supplier', 'Supplier selection', Building2Icon, ['Select the supplier only after checking price, validity, terms, and technical fit. The selected quote becomes the basis for the draft PO.', 'If the requirement changes, update the BOM or request and leave a note rather than silently changing the supplier decision.']),
       feature('po', 'Purchase Orders', FileTextIcon, ['Review draft PO lines, issue the PO when the commercial details are correct, and generate the PDF for the supplier.', 'A PO issue moves the item into the next operational stage. Treat unissue/void actions as controlled corrections, not casual edits.']),
@@ -384,18 +452,52 @@ export const DEPARTMENT_HELP = {
     intro: [
       'Stores is the physical truth of material: what is on hand, what is reserved, what arrived, and what is still pending. Accurate receipt data prevents both shortages and false availability.',
       'Use Inventory for stock work, Projects/BOM for project context, and Requests when a new material requirement needs Procurement attention.',
+      'You now get a notification whenever a new BOM lands — an import, a single item, or a purchase requisition line — so Open Requests shouldn\'t need a blind daily check anymore.',
+      'Operations has a Stores pipeline diagram now (the same kind of glance Procurement, Sales, and Design already have) — SAS/Trade, BOM Released, and Build Stock as the three sources feeding in, then Requests → Stores Review → Reserved → In-Stock, with Received (via Procurement) as the one outcome from Procurement\'s own pipeline Stores actually needs to see.',
     ],
     features: [
       feature('inventory', 'Inventory', BoxesIcon, ['Inventory shows on-hand quantity and the quantity reserved for active project requirements. Available stock is the usable balance after reservations.', 'Keep item names and units consistent so the same stock is not entered twice under slightly different names.']),
-      feature('reserve', 'Reservations', ClipboardCheckIcon, ['Reserve stock against a BOM requirement when material is committed to a project. A reservation reduces available stock without pretending the material has already been issued.', 'Release a reservation when the requirement is cancelled or fulfilled another way.']),
+      feature('reserve', 'Reservations', ClipboardCheckIcon, ['Reserve stock against a BOM requirement when material is committed to a project. A reservation reduces available stock without pretending the material has already been issued.', 'Release a reservation when the requirement is cancelled or fulfilled another way — this fully frees the quantity back to available; there is no separate "reassign to a different project" action, releasing and reserving again is how you move committed stock to a different requirement.', 'A "≈" badge under a request\'s description is a non-binding possible match against Inventory (plain keyword overlap, not automated) — check it before scrolling the full Inventory list, but always confirm it\'s actually the right item before reserving.', 'Reserving does not change the BOM line\'s purchase status by itself — only Issue does. Procurement sees a "Reserved from stock" badge on the line the moment you reserve, so they know not to duplicate the sourcing work, but the line still technically shows as open until you actually Issue it.', 'Reservations work identically whichever kind of demand you\'re reserving against — a normal project BOM line, a Stock request, or a SAS trade request all draw from the same available pool, no special cases.']),
+      feature('review', 'Manual review (Stores Review / Procure)', ClipboardCheckIcon, [
+        'A fresh BOM or SAS line (not a Build stock request you raised yourself) lands in Stores Review first — a "Stores Review" badge instead of the usual status, and it stays invisible to Procurement entirely. It does not reach Enquiry until you act on it.',
+        'You have two ways forward: Reserve from stock, same as any other request, which fulfills it from inventory and it never needs Procurement at all — or Procure, which sends it straight to Procurement\'s Enquiry queue with one click, no separate approval step on their end.',
+        'The Manual / Auto toggle at the top of Inventory is not a real setting yet — Auto (matching lines reserving themselves automatically) shows a "coming soon" note; only Manual is actually built, and it is what runs regardless of which one is selected.',
+        'A request that predates this feature, or one you raised on yourself as Build stock, skips this entirely and behaves exactly as before — only genuinely new bom/SAS demand gets the Stores Review badge.',
+      ], {
+        value: 'Before this, every new BOM line landed in Procurement\'s queue the instant it was released, whether or not Stores already had the material sitting in Inventory — Procurement had no way to know, and nothing stopped duplicate sourcing work. This closes that gap: Stores gets the first look, and only sends demand to Procurement that Stores has actually confirmed it can\'t fulfill itself.',
+        outcome: 'Every fresh line gets an explicit Stores decision — Reserve or Procure — before Procurement ever sees it, and that decision is visible on the line itself, not buried in a status change nobody else can read.',
+        checklist: [
+          'Check Inventory (or the possible-match badge) before deciding — Procure is a real choice, not a default to fall back on when unsure.',
+          'Do not sit on a Stores Review line — it is genuinely invisible to Procurement until you act, so a forgotten line delays the project silently.',
+          'Reserve if you have it; Procure if you do not, or if using existing stock would leave nothing for the requirement that already has a claim on it.',
+        ],
+        watchOut: 'Procure cannot be undone by re-clicking it — once a line reaches Procurement, treat any further change (need less, cancel outright) as a normal request to Procurement, not something to fix by reversing this button.',
+      }),
       feature('receipt', 'GRN and receipt fields', PackageCheckIcon, ['On the BOM, record GRN reference, quantity received, pending quantity, and BQ-TC reference. These fields tell the rest of the system what physically arrived.', 'Use clear dates and quantities; do not write a total in a field that means pending balance.']),
-      feature('sas', 'In-Stock and SAS material', BoxesIcon, ['Stock and Sold-As-Such items can follow the same sourcing and status flow without being attached to a normal project milestone chain.', 'Check the source and project context before issuing stock so the inventory movement remains auditable.']),
-      feature('tasks', 'Tasks and handoffs', ListChecksIcon, ['Use Tasks for a missing document, a receipt question, or a delivery follow-up. Close the task when the physical or documentary action is complete.']),
+      feature('sas', 'In-Stock and SAS material', BoxesIcon, ['Stock and Sold-As-Such items can follow the same sourcing and status flow without being attached to a normal project milestone chain.', 'Check the source and project context before issuing stock so the inventory movement remains auditable.', 'SAS is Sales-initiated, not Stores-initiated — Sales raises a trade request against their own Sale Order (from their Sale Orders tab) and it lands directly in your Requests queue. You no longer raise a SAS line yourself; only Build stock requests (source \'stock\') are still something Stores raises through Requests.']),
+      feature('notifications', 'Notifications', BellIcon, [
+        'You receive a notification the moment new material demand exists, from any of two sources: Engineering/Design importing a BOM workbook or adding a single BOM item, or any department raising a purchase requisition line — including Sales pushing a SAS material request against their own Sale Order.',
+        'A SAS request from Sales reaches you the same way any new demand does: same Requests queue, same notification, no separate inbox to check and no need for Sales to message you separately.',
+        'You also receive a notification the moment Procurement marks a BOM line Received, so you know material has actually arrived for a project (named by project number), landed as stock, or been received against a SAS trade request, without opening the BOM yourself to check.',
+        'This is the same bell every internal department uses, top right of the app. It is automatic for everyone with Stores access; nothing here is a toggle you turn on or off.',
+      ], {
+        value: 'Before this, Open Requests only told you what had already landed if you thought to check it, and a Received line was invisible until you happened to look. The notification exists so both a fresh requirement and material actually arriving reach you the moment either happens.',
+        outcome: 'Every new demand — a BOM import, a single item, a purchase requisition line — and every Received line reaches Stores through one bell, with enough context (who raised it, which project, how many lines) to act without opening the BOM to check.',
+        checklist: [
+          'Treat the bell as the trigger to open Requests, not a substitute for actually reserving or issuing material.',
+          'A SAS notification from Sales needs the same judgment as any other new requirement — check the description and quantity are specific enough before reserving.',
+          'A "Procured" notification is your cue to check whether Stores already reserved something against that same line before — reconcile it rather than treating the arrival as automatically new demand.',
+          'Do not wait for a notification for material that\'s clearly already overdue on a project you can see in the BOM — the bell covers new demand and new arrivals, not a daily sweep.',
+        ],
+        watchOut: 'The notification tells you demand exists or material arrived; it does not tell you whether stock is available or already reserved. Still check Inventory (or the possible-match badge) before promising anything back to the requester.',
+      }),
+      feature('issues', 'Material issued to WIP', PackageCheckIcon, ['Log material leaving Stores for the shop floor — pick the project, the BOM item, and the quantity. This is a separate action from Reserve→Issue: it does not touch on-hand or purchase status, it is purely a record of what physically went to WIP and when.', 'Production can log the same event from their own BOM view — either side recording it is fine, there is no duplicate-entry conflict since each is just an append-only log row, not a status change.']),
+      feature('tasks', 'Tasks and handoffs', ListChecksIcon, ['Use Tasks for a missing document, a receipt question, or a delivery follow-up. Close the task when the physical or documentary action is complete.', 'Operations now shows Outgoing and Incoming Incidents for Stores, split by direction — same pattern Procurement already has. Raising one from either card sends a real notification to the other department immediately; there is nothing extra to do beyond filling in the Raise dialog.']),
     ],
     howTo: [
       { title: 'Receive material', body: 'Match the delivered material to the PO/BOM, record GRN reference and date, enter quantity received, and update the pending balance.' },
       { title: 'Reserve stock', body: 'Find the project requirement, choose the inventory item, enter the quantity, and confirm the reservation. Check available balance before promising stock.' },
-      { title: 'Issue material', body: 'Confirm the project and quantity, then record the issue reference/date in the Production-owned fields when the material leaves Stores.' },
+      { title: 'Issue material', body: 'From Active reservations, click Issue once material actually leaves Stores for a reserved requirement — it decrements on-hand and marks that BOM line In-Stock. For material that arrived the normal way (not via a stock reservation) and is now physically leaving for the shop floor, use Material issued to WIP instead — pick the project and BOM item and log the quantity.' },
       { title: 'Handle a mismatch', body: 'Do not force a receipt into the wrong line. Raise a task to Procurement or Engineering with the PO, material description, and actual quantity.' },
       { title: 'Close the loop', body: 'Make sure the BOM receipt fields, inventory quantity, and reservation state agree before closing the Stores task.' },
     ],
@@ -403,22 +505,24 @@ export const DEPARTMENT_HELP = {
   Production: {
     title: 'Production', icon: HardHatIcon,
     intro: [
-      'Production uses the project milestone chain and material signals to plan and record shop-floor execution. The goal is a truthful view of what has started, what is blocked, and what material was actually used.',
-      'Tasks is your calendar for daily work. Operations is the cross-project view. Workers is the shop-floor attendance and assignment sheet for people who do not log into Shanti Ops.',
+      'Production plans and records shop-floor execution against the real milestone chain used on the shop floor — Marking/Cutting through Drilling, Shell Welding, Site Marking, the FURA-B/RC/AR and Box-Up welds, Tubes & Stay Rods, Pad Plates, Smoke Box, Refractory, and Painting — plus Hydro Test, which moved here from QC because Production is who actually runs it day to day.',
+      'Job Card is now your main tab, and it opens on the board by default because that is what gets touched most during the day. BOM, Daily Sheet, and Workers Roster sit underneath it as sub-tabs — the old separate Tasks and Home tabs are gone because they showed the same calendar Home already shows everyone.',
     ],
     features: [
-      feature('tasks', 'Tasks calendar', CalendarDaysIcon, ['Tasks shows monthly, weekly, and yearly views for your granted departments. It combines milestone dates with ordinary follow-up tasks.', 'Use a due date and assignee for every action that someone must remember. Cross-department tasks show the sending department when relevant.']),
-      feature('milestones', 'Production milestones', RouteIcon, ['Start a milestone when work begins and close it when the work is complete. Closing late asks for a reason so the project history explains the delay.', 'Use stages/checklists inside a milestone for repeatable steps without inventing many new milestones.']),
-      feature('bom', 'Issued and received material', ClipboardListIcon, ['Record issued and received references on the BOM as material moves into work. These are operational references, not a replacement for Stores inventory records.', 'Check MOC, size, quantity, and section before issuing material to avoid using the wrong line.']),
-      feature('workers', 'Workers and attendance', UsersIcon, ['Workers is for shop-floor people who do not have user accounts. Mark present, half-day, or absent for the selected date and record the project/task they worked on.', 'Keep worker names and trades current; deactivate rather than delete a historical worker.']),
+      feature('jobcards', 'Job Card board', HardHatIcon, ['Create a card against a real project milestone — the picker is Project then Milestone, not a typed description — and it carries an operation, workstation, and planned quantity if you know them yet.', 'Click a card to log hours against a named worker (filtered to their trade), add consumables like rods or gas, update planned/done/rejected quantity, pause and resume, and see the labor cost run as hours are logged.', 'Mark a card Outside for subcontracted work or Site for work done at the customer’s location instead of the shop — both show as a badge on the card so they are never mistaken for ordinary shop-floor work.', 'A failed test or a rejected quantity does not need a new form from scratch — Create rework card on the original card spins up a linked pending card against the same milestone.']),
+      feature('bom', 'BOM, fabrication progress, and material issue', ClipboardListIcon, ['Pick a project to see its Master BOM, scoped to the fields Production owns (issued/received references) — the same table Engineering, Procurement, and Stores see, just field-scoped to what you are allowed to change.', 'The fabrication progress bars on this tab come directly from Job Card completion per milestone, so they only move when real cards are actually being closed out.', 'Issue material against a BOM line here when it leaves Stores for the shop floor — Production can record this now, the same authority you already had over issued/received references, just structured instead of free text.']),
+      feature('milestones', 'Production milestones', RouteIcon, ['Start a milestone when work really begins and close it only when the deliverable is actually complete; closing late asks for a reason so the project history explains the delay.', 'Use Stages under a milestone for repeatable checklist steps instead of inventing a new milestone for every variation.']),
+      feature('tests', 'Hydro Test', FlaskConicalIcon, ['Hydro Test now belongs to Production end to end — you own the milestone and the test record itself (result, reference number, inspector, tested-on date), which you did not before.', 'Every other test type — radiography/NDE, material test certificates, freeform — stays QC’s; this tab only ever shows and creates Hydro Test records.']),
+      feature('employees', 'Workers Roster', UsersIcon, ['A Production worker is an HR employee record, not a separate roster — Add worker searches HR first, and if the person already exists you activate them onto Production instead of risking a second, slightly-misspelled entry for the same human.', 'Only create a new person when the search genuinely finds nobody. Trade is a controlled list (Welder, Fitter, Gas Cutter, Machinist, Grinder, Painter, Rigger, Helper), not free text, so job cards can filter workers by skill — designation stays HR’s field, not yours.', 'Deactivate rather than delete a worker who has left — their attendance and job-card history has to stay readable.']),
+      feature('attendance', 'Daily Sheet', CalendarDaysIcon, ['Overview and Sheet live under one Daily Sheet tab now. Overview is the day’s headcount and attendance percentage; Sheet is where you actually mark present/half-day/absent and the project/milestone someone worked on.', 'This writes to the same attendance record HR reads from — there is no separate Production attendance system to keep in sync by hand anymore.']),
       feature('handoff', 'Department handoffs', MessageSquareIcon, ['Use tasks and notifications when Production needs a response from QC, Stores, Dispatch, or another department. A closed milestone should create a visible next action where configured.', 'Do not close a blocked job just to remove it from the screen; record the blocker and delay reason.']),
     ],
     howTo: [
-      { title: 'Plan today', body: 'Open Tasks, choose the department/date view, and review open tasks, milestone dates, and overdue work before assigning new actions.' },
-      { title: 'Start work', body: 'Open the project milestone, confirm material readiness, start the work, and add a task for any dependency that could stop the job.' },
-      { title: 'Record material use', body: 'Update issued and received references with the real quantity/date. Ask Stores to correct receipt data instead of overwriting it from Production.' },
-      { title: 'Update workers', body: 'Open Workers, choose the date, mark attendance, and add project/work assignment details while the day is still fresh.' },
-      { title: 'Close correctly', body: 'Close the milestone only when complete. If late, choose the delay reason; if another department must act, raise a task before closing.' },
+      { title: 'Open the board', body: 'Open Job Card. It lands on the board by default, grouped Pending / In progress / Done — check what is already moving before creating anything new.' },
+      { title: 'Create the card correctly', body: 'New job card, then pick the real Project and Milestone — not a typed guess. Add a workstation, planned quantity, and Outside/Site flags if either applies.' },
+      { title: 'Do and record the work', body: 'As work happens, log hours against the actual worker doing it, add any consumables used, and keep planned/done/rejected quantity true to what is physically happening.' },
+      { title: 'Handle exceptions honestly', body: 'Pause a card instead of leaving it looking active when work has genuinely stopped. If QC fails a Hydro Test or a quantity is rejected, use Create rework card rather than editing the original result away.' },
+      { title: 'Close the day', body: 'Mark attendance on the Daily Sheet while it is still fresh, close milestones only when actually complete with a real reason if late, and raise a task for anything another department must still act on.' },
     ],
   },
   QC: {
@@ -491,16 +595,36 @@ export const DEPARTMENT_HELP = {
       feature('pipeline', 'Pipeline', TrendingUpIcon, ['Move opportunities through the configured stages. Keep value, probability, expected close, next contact date, and lost reason current.', 'An opportunity is the active deal; a lead is still an enquiry. Do not leave won work sitting as an open opportunity.']),
       feature('customers', 'Customers and contacts', Building2Icon, ['Keep the commercial party, people, and addresses in one place. Reuse these records in quotations and orders instead of creating near-duplicates.']),
       feature('quotations', 'Quotations', FileTextIcon, ['Build the proposal with real line items, rates, taxes/terms as applicable, then generate the PDF. Convert an accepted quotation to a Sale Order.']),
-      feature('sale-orders', 'Sale Orders', ShoppingCartIcon, ['The Sale Order is the confirmed commercial order. Linking it to a Project creates the Design/Engineering Scope of Supply handoff.']),
+      feature('sale-orders', 'Sale Orders', ShoppingCartIcon, ['The Sale Order is the confirmed commercial order. Linking it to a Project creates the Design/Engineering Scope of Supply handoff.', 'Convert to Project on a Sale Order creates the Project directly — no need to ask a PM out of band. Once a Project exists for that order, the button is gone; you\'re looking at the right one if it isn\'t there.', 'Request from Stores on a Sale Order raises a trade (SAS) request straight to Stores\' queue — describe the item and quantity, and Stores sees it immediately.']),
+      feature('notifications', 'Notifications', BellIcon, [
+        'You do not get a notification for your own Sale Order the moment you create it — that one goes to Design and every PM-tier account (admin/manager/executive) instead, so they know a new order exists even before it becomes a Project. Check the Sale Orders list to confirm it saved; the bell is not the confirmation for your own action.',
+        'You receive a notification when a Sale Order is converted to a Project. A Design Head (or a PM) does the converting, so this is how you find out the commercial-to-technical handoff actually happened without asking. Every PM-tier account gets the same notification at the same time.',
+        'You send a notification to Stores every time you use Request from Stores on a Sale Order. It lands in Stores\' Requests queue immediately, the same way one they raise themselves would — there is no separate inbox and no delay.',
+        'This is the same bell every internal department uses, top right of the app. It is automatic for everyone with Sales access; nothing here is a toggle you turn on or off.',
+      ], {
+        value: 'These notifications exist so the Sale Order → Project handoff is never a silent, out-of-band ask. Sales finds out the moment its own commercial work becomes technical work, and Design/PM find out the moment a new order exists, without either side checking the other\'s screen.',
+        outcome: 'Every Sale Order event that matters to another team — creation, conversion, a SAS push — reaches the right people through the bell, with enough context to act without asking who sent it.',
+        checklist: [
+          'Do not assume silence means nothing happened — your own Sale Order creation intentionally does not notify you; check the list instead.',
+          'Follow a "converted to Project" notification straight into the Project record rather than acting from the title alone.',
+          'When you raise a SAS request, describe the item and quantity well enough that Stores can act on the notification without replying to ask what you meant.',
+        ],
+        watchOut: 'Marking a notification read only proves you saw it. A "converted to Project" notice still means the commercial note or task you owe Design/Engineering needs to actually be added to the new Project.',
+      }),
       feature('tasks', 'Tasks, notes, and calls', PhoneIcon, ['Log the outcome and next step after every meaningful contact. Add tasks with due dates instead of relying on memory.']),
       feature('reports', 'Reports', BarChart3Icon, ['Use Sales Pipeline, By Department, Lead Funnel, Source, and Campaign reports to keep the funnel honest. Reports can be printed to PDF from the browser.']),
     ],
     howTo: [
-      { title: 'Capture an enquiry', body: 'Create a Lead with the best contact details and source you have. Add a follow-up task immediately.' },
-      { title: 'Qualify it', body: 'Log calls/notes, confirm requirement and timing, and move the lead status to qualified when it is a real opportunity.' },
-      { title: 'Create the commercial record', body: 'Convert the lead, work the Opportunity, create a Quotation with real line items, and generate the PDF.' },
-      { title: 'Confirm the order', body: 'Convert the accepted quotation to a Sale Order and check customer/address details before linking it to a Project.' },
-      { title: 'Hand off cleanly', body: 'Link the Sale Order to the Project and add any commercial note or task that Design/Engineering must know.' },
+      { section: 'Sale Order', title: 'Capture an enquiry', body: 'Create a Lead with the best contact details and source you have. Add a follow-up task immediately.' },
+      { section: 'Sale Order', title: 'Qualify it', body: 'Log calls/notes, confirm requirement and timing, and move the lead status to qualified when it is a real opportunity.' },
+      { section: 'Sale Order', title: 'Create the commercial record', body: 'Convert the lead, work the Opportunity, create a Quotation with real line items, and generate the PDF.' },
+      { section: 'Sale Order', title: 'Confirm the order', body: 'Convert the accepted quotation to a Sale Order and check customer/address details before linking it to a Project.' },
+      { section: 'Sale Order', title: 'Hand off cleanly', body: 'Open Sale Orders and use Convert to Project on the order, or link it to a Project already created, then add any commercial note or task that Design/Engineering must know.' },
+      {
+        section: 'SAS material request', title: 'Request material for a SO', body: 'Open Sale Orders, use Request from Stores on the order, and describe the item and quantity. This goes to Stores as a trade (SAS) request against that Sale Order.',
+        why: 'Material sometimes needs to move before a Project exists — a SAS request lets Stores act on it without waiting for the full handoff.',
+        verify: 'The item description and quantity are specific enough for Stores to act on without asking you to clarify.',
+      },
     ],
   },
   Marketing: {

@@ -33,6 +33,14 @@ const FIELD_LABELS = {
 // Visible data columns, in spreadsheet order (section/group render as divider rows instead).
 const COLUMNS = ['moc', 'size_spec', 'make', 'qty_text', 'pr_ref', 'po_ref',
   'grn_ref', 'grn_qty_text', 'pending_qty_text', 'bqtc_ref', 'issued_ref', 'received_ref', 'remarks'];
+// table-fixed (see the Table usage below) only respects the header row's widths, then applies
+// them to every row in that column — these need to exist for every entry in COLUMNS or that
+// column falls back to an even, too-narrow equal split alongside the others.
+const COLUMN_WIDTHS = {
+  moc: 'w-36', size_spec: 'w-28', make: 'w-20', qty_text: 'w-16', pr_ref: 'w-32', po_ref: 'w-32',
+  grn_ref: 'w-32', grn_qty_text: 'w-20', pending_qty_text: 'w-24', bqtc_ref: 'w-20',
+  issued_ref: 'w-24', received_ref: 'w-24', remarks: 'w-40',
+};
 export default function BomTable({ projectId, bom, pendingIds = [], editableFields = [], department, canCancel = false }) {
   const router = useRouter();
   const [q, setQ] = useState('');
@@ -166,7 +174,13 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
         )}
       </div>
 
-      <Table ref={scrollerRef}>
+      {/* table-fixed is load-bearing, not decorative: the sticky offsets below (left-12,
+          left-[19rem], left-[27rem]) are hardcoded assuming each column renders at exactly its
+          declared w-* width. table-layout's default (auto) lets content shrink a column below
+          that (e.g. "#" with single-digit rows), so the offsets stop matching reality and the
+          scrolling columns physically overlap/bleed under the sticky ones instead of hiding
+          cleanly behind them. Fixed layout forces the declared widths to actually be honored. */}
+      <Table ref={scrollerRef} className="table-fixed">
           <TableHeader>
             <TableRow>
               {/* Sticky group: # · Description · Status · Packing · Actions. Fixed widths so the
@@ -181,7 +195,7 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
                 <TableHead className={`w-24 bg-background md:sticky md:left-[27rem] md:z-10 ${hasActions ? '' : 'md:border-r'}`}>Packing</TableHead>
               )}
               {hasActions && <TableHead className={`w-20 bg-background md:sticky ${actionsLeft} md:z-10 md:border-r`} />}
-              {columns.map(c => <TableHead key={c}>{FIELD_LABELS[c]}</TableHead>)}
+              {columns.map(c => <TableHead key={c} className={COLUMN_WIDTHS[c] || 'w-28'}>{FIELD_LABELS[c]}</TableHead>)}
             </TableRow>
           </TableHeader>
           <TableBody>

@@ -4,6 +4,7 @@ import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { audit } from '@/lib/usb';
 import { editableBomFields, PURCHASE_STATUSES } from '@/lib/bom-fields.mjs';
 import { releaseReservationsForItem } from '@/lib/procurement';
+import { notifyDepartment } from '@/lib/notify';
 
 // Field-level department scoping — the trust boundary of the PMB module. A head may only write
 // the columns their department owns (BOM_FIELD_OWNERS); a PM writes anything. Enforced here, not
@@ -61,6 +62,24 @@ export async function PATCH(req, { params }) {
   // guard: only fires on the transition *into* Cancelled, not a re-save of an already-cancelled row.
   if (item.purchase_status !== 'Cancelled' && changed.purchase_status === 'Cancelled') {
     await releaseReservationsForItem(item.id);
+  }
+  // STORES-SALES-CHANGES.md — Stores previously had zero signal when something they were waiting
+  // on actually got procured; they'd only find out by checking the BOM themselves. Only fires on
+  // the transition into Received, same idiom as the Cancelled guard above.
+  if (item.purchase_status !== 'Received' && changed.purchase_status === 'Received') {
+    try {
+      let context;
+      if (item.source === 'sas') context = `for SO #${item.sale_order_no || '—'}`;
+      else if (item.source === 'stock') context = 'into stock';
+      else {
+        const project = await queryOne('SELECT project_no FROM projects WHERE id = ?', [item.project_id]);
+        context = project ? `for ${project.project_no}` : null;
+      }
+      await notifyDepartment('Stores', {
+        kind: 'bom_received', title: `Procured: ${item.material_description}`,
+        body: context, dedupe_key: `bom_received:${item.id}`,
+      });
+    } catch (err) { /* notification is best-effort */ }
   }
 
   await audit('bom_item_edit', {

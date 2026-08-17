@@ -6,6 +6,8 @@ import { NextResponse } from 'next/server';
 import { execute, queryAll, queryOne, nextCounterValue } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment, isPM } from '@/lib/auth';
 import { audit } from '@/lib/usb';
+import { notifyDepartment, notifyPMs } from '@/lib/notify';
+import { COMPANY_NAMES } from '@/lib/qc-doc-pdf.js';
 
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 function canAccessCrm(user) {
@@ -28,13 +30,15 @@ export async function POST(req, { params }) {
 
   const seq = await nextCounterValue('sale_order_no', 0);
   const soNo = `SO-${seq}`;
+  const b = await req.json().catch(() => ({}));
+  const company = COMPANY_NAMES.includes(b.company) ? b.company : COMPANY_NAMES[0];
 
   const { lastId } = await execute(
     `INSERT INTO sale_orders
-       (so_no, customer_name, customer_id, opportunity_id, quotation_id, description, subtotal, tax_pct, tax_amount, total, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (so_no, customer_name, customer_id, opportunity_id, quotation_id, description, subtotal, tax_pct, tax_amount, total, company, created_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [soNo, quotation.customer_name, quotation.customer_id, quotation.opportunity_id, quotation.id,
-      `Converted from ${quotation.quotation_no}`, quotation.subtotal, quotation.tax_pct, quotation.tax_amount, quotation.total, user.username]
+      `Converted from ${quotation.quotation_no}`, quotation.subtotal, quotation.tax_pct, quotation.tax_amount, quotation.total, company, user.username]
   );
   const soId = Number(lastId);
   let sortOrder = 0;
@@ -46,5 +50,10 @@ export async function POST(req, { params }) {
     );
   }
   await audit('quotation_converted', { actor: user.username, detail: `${quotation.quotation_no} -> ${soNo}` });
+  try {
+    const note = { kind: 'sale_order_created', title: `New Sale Order: ${soNo}`, body: quotation.customer_name || null, dedupe_key: `so_created:${soId}` };
+    await notifyDepartment('Design', note);
+    await notifyPMs(note, { except: user.id });
+  } catch (err) { /* notification is best-effort */ }
   return NextResponse.json({ id: soId, so_no: soNo });
 }

@@ -4,7 +4,7 @@
 // three separate builds.
 import { redirect } from 'next/navigation';
 import { getFreshSessionUser, canAccessDepartment, headDepartments, isPM, roleHome } from '@/lib/auth';
-import { getActiveProjectsList, getInventoryItems, getSaleOrders } from '@/lib/data';
+import { getActiveProjectsList, getInventoryItems } from '@/lib/data';
 import PageHeader from '@/components/PageHeader';
 import PrWorkspace from '@/components/PrWorkspace';
 
@@ -17,16 +17,16 @@ export default async function PrPage() {
   if (!PR_DEPARTMENTS.some(d => canAccessDepartment(user, d))) redirect(roleHome(user));
 
   const departments = isPM(user) ? PR_DEPARTMENTS : headDepartments(user).filter(d => PR_DEPARTMENTS.includes(d));
-  // inventoryItems/saleOrders only matter for Stores' stock/sas source (Phase 6.4) — small tables,
-  // cheap to fetch regardless of whether Stores is among this viewer's departments.
-  const [projects, inventoryItems, saleOrders] = await Promise.all([
-    getActiveProjectsList(), getInventoryItems(), getSaleOrders(),
+  // inventoryItems only matters for Stores' stock source (Phase 6.4) — small table, cheap to fetch
+  // regardless of whether Stores is among this viewer's departments.
+  const [projects, inventoryItems] = await Promise.all([
+    getActiveProjectsList(), getInventoryItems(),
   ]);
 
   return (
     <main className="container flex flex-col gap-6 py-8">
       <PageHeader title="Requests" description="Raise a purchase requisition — it lands on Procurement's Enquiry tab immediately" />
-      <PrWorkspace departments={departments} projects={projects} inventoryItems={inventoryItems} saleOrders={saleOrders} />
+      <PrWorkspace departments={departments} projects={projects} inventoryItems={inventoryItems} />
     </main>
   );
 }

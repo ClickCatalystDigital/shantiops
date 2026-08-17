@@ -19,7 +19,7 @@ import { QC_SERIES } from '@/lib/qc-series';
 export default function NewProjectForm({ customers = [] }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [f, setF] = useState({ series: '', project_no: '', customer_name: '', customer_id: '', description: '', order_date: '' });
+  const [f, setF] = useState({ series: '', project_no: '', customer_name: '', customer_id: '', description: '', order_date: '', company: 'Shanti Boilers' });
   const [busy, setBusy] = useState(false);
 
   async function submit(e) {
@@ -75,6 +75,16 @@ export default function NewProjectForm({ customers = [] }) {
           <div className="flex flex-col gap-1.5">
             <Label>Description</Label>
             <Input value={f.description} onChange={e => setF({ ...f, description: e.target.value })} placeholder="3 TPH Solid Fuel Boiler" />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label>Company</Label>
+            <Select value={f.company} onValueChange={c => setF({ ...f, company: c })}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Shanti Boilers">Shanti Boilers</SelectItem>
+                <SelectItem value="Shanti Techno Fab">Shanti Techno Fab</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <DialogFooter>
             <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>

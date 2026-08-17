@@ -27,7 +27,8 @@ export async function PATCH(req, { params }) {
     'gender', 'date_of_birth', 'photo_url', 'reports_to', 'current_address', 'permanent_address',
     'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relation', 'personal_email',
     'scheduled_confirmation_date', 'final_confirmation_date', 'contract_end_date', 'notice_period_days',
-    'date_of_retirement', 'salary_mode', 'bank_name', 'bank_account_no', 'bank_ifsc', 'ctc', 'salary_currency']) {
+    'date_of_retirement', 'salary_mode', 'bank_name', 'bank_account_no', 'bank_ifsc', 'ctc', 'salary_currency',
+    'cost_rate_per_hour', 'company']) {
     if (b[key] !== undefined) { fields.push(`${key} = ?`); args.push(b[key]); }
   }
   if (!fields.length) return NextResponse.json({ error: 'No fields to update' }, { status: 400 });

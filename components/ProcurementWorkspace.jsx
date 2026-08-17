@@ -209,6 +209,11 @@ function EnquiryRow({ it, quotes, suppliers, router, rfqSummary, selected, onTog
             <span className="font-medium">{it.material_description}</span>
             <ItemContext it={it} />
           </div>
+          {it.reserved_qty > 0 && (
+            <Badge className="border-success/30 bg-success-surface text-success" title="Stores has already reserved stock against this line — check before sourcing it again.">
+              Reserved from stock
+            </Badge>
+          )}
           {(quotes.length > 0 || rfqSummary) && (
             <Badge variant="outline">
               {quotes.length > 0 ? `${quotes.length} quote${quotes.length !== 1 ? 's' : ''}` : rfqSummary.rfq_no}

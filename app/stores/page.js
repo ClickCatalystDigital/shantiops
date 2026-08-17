@@ -2,7 +2,7 @@
 // workbench, same gating mechanism as /procurement, /qc, /sales.
 import { redirect } from 'next/navigation';
 import { getFreshSessionUser, canAccessDepartment, roleHome } from '@/lib/auth';
-import { getInventoryItems, getOpenBomItems, getActiveReservations } from '@/lib/data';
+import { getInventoryItems, getOpenBomItems, getActiveReservations, getActiveProjectsList } from '@/lib/data';
 import PageHeader from '@/components/PageHeader';
 import StoresWorkspace from '@/components/StoresWorkspace';
 
@@ -12,14 +12,14 @@ export default async function StoresPage() {
   const user = await getFreshSessionUser();
   if (!canAccessDepartment(user, 'Stores')) redirect(roleHome(user));
 
-  const [inventoryItems, openRequests, activeReservations] = await Promise.all([
-    getInventoryItems(), getOpenBomItems(), getActiveReservations(),
+  const [inventoryItems, openRequests, activeReservations, projects] = await Promise.all([
+    getInventoryItems(), getOpenBomItems(), getActiveReservations(), getActiveProjectsList(),
   ]);
 
   return (
     <main className="container flex flex-col gap-6 py-8">
       <PageHeader title="Inventory" description="On-hand stock — available nets out active reservations" />
-      <StoresWorkspace inventoryItems={inventoryItems} openRequests={openRequests} activeReservations={activeReservations} />
+      <StoresWorkspace inventoryItems={inventoryItems} openRequests={openRequests} activeReservations={activeReservations} projects={projects} />
     </main>
   );
 }

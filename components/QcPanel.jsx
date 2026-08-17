@@ -41,10 +41,10 @@ function ResultPill({ value, onChange, disabled }) {
   );
 }
 
-function AddRecordDialog({ projectId, router }) {
+function AddRecordDialog({ projectId, router, defaultTestType }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [form, setForm] = useState({ test_type: '', reference_no: '', result: 'pending', inspector: '', tested_on: '', notes: '' });
+  const [form, setForm] = useState({ test_type: defaultTestType || '', reference_no: '', result: 'pending', inspector: '', tested_on: '', notes: '' });
 
   function set(field) { return e => setForm(f => ({ ...f, [field]: e.target.value })); }
 
@@ -53,8 +53,8 @@ function AddRecordDialog({ projectId, router }) {
     setBusy(true);
     try {
       await api('/api/qc-records', { method: 'POST', body: { project_id: projectId, ...form } });
-      showToast('QC record added');
-      setForm({ test_type: '', reference_no: '', result: 'pending', inspector: '', tested_on: '', notes: '' });
+      showToast('Record added');
+      setForm({ test_type: defaultTestType || '', reference_no: '', result: 'pending', inspector: '', tested_on: '', notes: '' });
       setOpen(false);
       router.refresh();
     } catch (err) { showToast(err.message, 'error'); }
@@ -71,7 +71,11 @@ function AddRecordDialog({ projectId, router }) {
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-1.5">
             <Label>Test type</Label>
-            <Input value={form.test_type} onChange={set('test_type')} placeholder="Hydro test, Radiography, MTC…" />
+            {defaultTestType ? (
+              <Input value={form.test_type} disabled />
+            ) : (
+              <Input value={form.test_type} onChange={set('test_type')} placeholder="Hydro test, Radiography, MTC…" />
+            )}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
@@ -113,8 +117,12 @@ function AddRecordDialog({ projectId, router }) {
   );
 }
 
-export default function QcPanel({ projectId, records = [], canEdit = false }) {
+export default function QcPanel({
+  projectId, records = [], canEdit = false, title = 'QC Records', defaultTestType = null,
+  reworkMilestoneId = null,
+}) {
   const router = useRouter();
+  const [reworking, setReworking] = useState(null);
 
   async function setResult(id, result) {
     try {
@@ -131,16 +139,32 @@ export default function QcPanel({ projectId, records = [], canEdit = false }) {
     } catch (err) { showToast(err.message, 'error'); }
   }
 
+  // A failed record can spin up a rework card directly instead of someone re-navigating to Job
+  // Card and re-picking the milestone by hand — reworkMilestoneId is only ever passed for the
+  // hydro-test instance of this panel (Production owns both the milestone and the rework path).
+  async function createRework(record) {
+    setReworking(record.id);
+    try {
+      await api('/api/job-cards', {
+        method: 'POST',
+        body: { milestone_id: reworkMilestoneId, qc_record_id: record.id, notes: `Rework — failed ${record.test_type}${record.reference_no ? ` (${record.reference_no})` : ''}` },
+      });
+      showToast('Rework card created on the Job Card board');
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+    setReworking(null);
+  }
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle>QC Records</CardTitle>
-        {canEdit && <CardAction><AddRecordDialog projectId={projectId} router={router} /></CardAction>}
+        <CardTitle>{title}</CardTitle>
+        {canEdit && <CardAction><AddRecordDialog projectId={projectId} router={router} defaultTestType={defaultTestType} /></CardAction>}
       </CardHeader>
       <CardContent className="flex flex-col divide-y">
         {records.length === 0 && (
           <p className="text-sm text-muted-foreground">
-            No tests logged yet — hydro test, radiography/NDE, material test certificates.
+            {defaultTestType ? `No ${defaultTestType.toLowerCase()} records logged yet.` : 'No tests logged yet — hydro test, radiography/NDE, material test certificates.'}
           </p>
         )}
         {records.map(r => (
@@ -148,6 +172,11 @@ export default function QcPanel({ projectId, records = [], canEdit = false }) {
             <span className="font-medium">{r.test_type}</span>
             {r.reference_no && <span className="text-muted-foreground">{r.reference_no}</span>}
             <ResultPill value={r.result} disabled={!canEdit} onChange={v => setResult(r.id, v)} />
+            {canEdit && reworkMilestoneId && r.result === 'fail' && (
+              <Button size="sm" variant="outline" disabled={reworking === r.id} onClick={() => createRework(r)}>
+                {reworking === r.id ? 'Creating…' : 'Create rework card'}
+              </Button>
+            )}
             <span className="ml-auto flex items-center gap-3 text-xs text-muted-foreground">
               {r.inspector && <span>{r.inspector}</span>}
               {r.tested_on && <span className="tnum">{formatDate(r.tested_on)}</span>}

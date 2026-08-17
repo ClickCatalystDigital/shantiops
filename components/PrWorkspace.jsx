@@ -6,10 +6,12 @@
 // bom_items on Enquiry — no acceptance gate. Kept deliberately lean per the client's steer
 // ("if they don't like it, we can make changes later") — no PR history/list view yet.
 //
-// V2-CHANGES.md Group 6 Phase 6.4 — Stores-only, a per-line source selector (bom/stock/sas, D7).
+// V2-CHANGES.md Group 6 Phase 6.4 — Stores-only, a per-line source selector (bom/stock, D7).
 // Eng/Design stay bom-only (their lines never show the picker, always source='bom'). 'stock' builds
-// existing inventory (no project, a numeric qty for the Received-time increment, Phase 6.3);
-// 'sas' is a trade item against a Sale Order (Phase 6.1's list, no project).
+// existing inventory (no project, a numeric qty for the Received-time increment, Phase 6.3).
+// 'sas' (trade against a Sale Order) used to be raisable from here too, Stores-initiated — per
+// STORES-SALES-CHANGES.md, SAS is now Sales-only (components/SalesWorkspace.jsx's own "Request
+// from Stores" dialog), so it's deliberately not offered in this picker anymore.
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, showToast } from '@/lib/client';
@@ -25,7 +27,7 @@ function emptyLine() {
   return {
     key: nextKey++, source: 'bom', material_description: '', moc: '', size_spec: '', uomHint: '',
     projects: [{ key: nextKey++, project_id: '', qty_text: '' }],
-    inventory_item_id: '', qty: '', sale_order_no: '', qty_text: '',
+    inventory_item_id: '', qty: '',
     category: '', categoryFields: {},
   };
 }
@@ -112,9 +114,9 @@ function ItemSearchField({ line, onChange }) {
   );
 }
 
-const SOURCE_LABEL = { bom: 'Project material', stock: 'Build stock', sas: 'Trade (SAS)' };
+const SOURCE_LABEL = { bom: 'Project material', stock: 'Build stock' };
 
-function LineCard({ line, projects, inventoryItems, saleOrders, showSourcePicker, onChange, onRemove, removable }) {
+function LineCard({ line, projects, inventoryItems, showSourcePicker, onChange, onRemove, removable }) {
   function setLine(patch) { onChange({ ...line, ...patch }); }
   function setProject(pkey, patch) {
     setLine({ projects: line.projects.map(p => p.key === pkey ? { ...p, ...patch } : p) });
@@ -218,29 +220,11 @@ function LineCard({ line, projects, inventoryItems, saleOrders, showSourcePicker
           </div>
         </div>
       )}
-
-      {line.source === 'sas' && (
-        <div className="grid grid-cols-2 gap-3">
-          <div className="flex flex-col gap-1.5">
-            <Label>Sale Order</Label>
-            <Select value={line.sale_order_no} onValueChange={v => setLine({ sale_order_no: v })}>
-              <SelectTrigger className="w-full"><SelectValue placeholder="Choose…" /></SelectTrigger>
-              <SelectContent>
-                {saleOrders.map(so => <SelectItem key={so.id} value={so.so_no}>{so.so_no}{so.customer_name ? ` · ${so.customer_name}` : ''}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label>Quantity</Label>
-            <Input value={line.qty_text} onChange={e => setLine({ qty_text: e.target.value })} placeholder="e.g. 4 Nos" />
-          </div>
-        </div>
-      )}
     </div>
   );
 }
 
-export default function PrWorkspace({ departments, projects, inventoryItems = [], saleOrders = [] }) {
+export default function PrWorkspace({ departments, projects, inventoryItems = [] }) {
   const router = useRouter();
   const [dept, setDept] = useState(departments[0] || '');
   const [lines, setLines] = useState([emptyLine()]);
@@ -262,9 +246,6 @@ export default function PrWorkspace({ departments, projects, inventoryItems = []
       if (source === 'stock' && (!l.inventory_item_id || !l.qty || Number(l.qty) <= 0)) {
         return showToast('Pick an inventory item and a quantity to build', 'error');
       }
-      if (source === 'sas' && (!l.sale_order_no || !l.qty_text.trim())) {
-        return showToast('Pick a Sale Order and a quantity', 'error');
-      }
     }
     setBusy(true);
     try {
@@ -276,7 +257,6 @@ export default function PrWorkspace({ departments, projects, inventoryItems = []
             const source = showSourcePicker ? l.source : 'bom';
             const base = { material_description: l.material_description, moc: l.moc || undefined, size_spec: l.size_spec || undefined, source };
             if (source === 'stock') return { ...base, inventory_item_id: Number(l.inventory_item_id), qty: Number(l.qty) };
-            if (source === 'sas') return { ...base, sale_order_no: l.sale_order_no, qty_text: l.qty_text };
             return {
               ...base, category: l.category || undefined, category_fields: l.category ? l.categoryFields : undefined,
               projects: l.projects.map(p => ({ project_id: Number(p.project_id), qty_text: p.qty_text })),
@@ -305,7 +285,7 @@ export default function PrWorkspace({ departments, projects, inventoryItems = []
           </div>
         )}
         {lines.map(l => (
-          <LineCard key={l.key} line={l} projects={projects} inventoryItems={inventoryItems} saleOrders={saleOrders}
+          <LineCard key={l.key} line={l} projects={projects} inventoryItems={inventoryItems}
             showSourcePicker={showSourcePicker} onChange={next => updateLine(l.key, next)}
             onRemove={() => removeLine(l.key)} removable={lines.length > 1} />
         ))}

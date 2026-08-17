@@ -1,18 +1,23 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
-import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
+import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
 import { audit } from '@/lib/usb';
 
-// QC logs a test/inspection — hydro test, radiography/NDE, material test certificate, etc.
+// Hydro Test ownership transferred QC -> Production (lib/milestones.js) — a new hydro-test record
+// is Production's to create; everything else (radiography/NDE, MTC, freeform) stays QC's.
+function canTouch(user, testType) {
+  return /hydro/i.test(testType || '') ? canAccessDepartment(user, 'Production') : canAccessDepartment(user, 'QC');
+}
+
+// Logs a test/inspection — hydro test, radiography/NDE, material test certificate, etc.
 export async function POST(req) {
   const user = await getFreshSessionUser();
-  const denied = requireDepartment(user, 'QC');
-  if (denied) return denied;
-
   const b = await req.json();
   if (!b.project_id || !b.test_type?.trim()) {
     return NextResponse.json({ error: 'project_id and test_type are required' }, { status: 400 });
   }
+  if (!canTouch(user, b.test_type)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+
   const project = await queryOne('SELECT id FROM projects WHERE id = ?', [b.project_id]);
   if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
 

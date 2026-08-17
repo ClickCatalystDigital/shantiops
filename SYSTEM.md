@@ -383,6 +383,35 @@ with every newly granted workspace on the next render. Shared department workspa
   longer finds an active user, `roleHome(null)` resolves to `/login`; Home and Operations explicitly
   enforce the same guard before doing any dashboard work.
 
+### Production roster unification + Job Card supersedes Workers (2026-08-16)
+
+The `workers`/`worker_days` tables described above are **retired** (migrated then dropped, not kept
+frozen — a from-scratch DB never creates them at all now). PRODUCTION-MODULE-DESIGN.md §2.5's
+finding: `workers` and HR's `employees` had drifted into two rosters for the same people, because
+`seedV3HrData`'s copy only ever ran once. Fixed for good, not just re-synced: a shop-floor worker is
+now an `employees` row (`department='Production'`, `employee_type='worker'`) — one people master,
+no second table. HR owns identity/designation/payroll; Production owns trade/availability/job-card
+history. Attendance moved the same way, onto HR's `attendance_days` (already built, employee-keyed)
+— Production's Daily Sheet and HR's own attendance screens now read/write the same rows, not two
+systems kept in sync by hand.
+
+- **Add-worker is search-first.** `GET /api/production/workers?search=` checks HR before creating
+  anyone — a `worker`-type match gets activated onto the roster in one click; a `staff`-type match
+  is shown but not selectable (reassigning staff into Production is an HR decision); only when
+  nothing matches does the form fall through to create a new person, and even then the server
+  rejects an exact-name duplicate against the existing Production roster. This is what stops the
+  drift from recurring inside the unified table.
+- **Trade is a controlled list** (`trades` master — Welder, Fitter, Gas Cutter, Machinist, Grinder,
+  Painter, Rigger, Helper), not free text, and is a different axis from HR's `designations`:
+  trade/skill is what a job card assigns work by; designation is a pay grade/title. Never duplicated
+  into Production.
+- **Nav: `Workers` tab renamed `Job Card`**, the board (§5g) is now the default landing view;
+  `Daily Sheet` (Overview + Sheet merged into one nested sub-sidebar, `WorkspaceSidebar`'s `nested`
+  mode — same pattern Payroll uses inside HR) and `Workers Roster` are sub-tabs beneath it, alongside
+  a new `BOM` tab (§5g). The `Tasks` nav item is dropped — it was identical to `Home` for a
+  Production head, a leftover from before the 2026-08-15 nav redesign moved that content to `Home`
+  for everyone.
+
 ## 3b. Cross-department signals — tickets collapsed into milestones + tasks + notifications
 
 Closing a milestone used to leave the *next* department with no signal it was their turn, and
@@ -568,7 +597,28 @@ those workbooks and replaces the shared spreadsheet:
    filter — the big project has 400+ rows) rendered in the Engineering panel and in the
    Procurement/Stores/Production department panels; `BomProgress` per-section rollup on the
    project page; a **BOM %** column in the Executive Delivery Forecast; a "Master BOM" open-items
-   card on Operations for BOM-owning heads.
+   card on Operations for BOM-owning heads. Also reused by Production's cross-project BOM tab
+   (§5g) — same component, same fix below, not a separate implementation.
+   - **Sticky-column bug fixed (2026-08-16):** the pinned `#`/Description/Status/Packing/Actions
+     columns' `left` offsets were hardcoded pixel values assuming each column renders at exactly
+     its declared `w-*` width. The table's default `table-layout: auto` let the browser shrink a
+     column below that (confirmed: `#` rendered at 25px against a declared 48px), so the offsets
+     stopped matching reality and the scrolling department-specific columns (Make, PR/PO/GRN refs,
+     etc.) physically overlapped the sticky ones at rest, not just mid-scroll — text clipped
+     mid-word regardless of scroll position. Fixed with `table-fixed` on `BomTable`'s own `<Table>`
+     (not the shared `ui/table.jsx` primitive — other tables in the app lack this column's
+     per-field width discipline, so forcing it globally would likely break them) plus explicit
+     widths on every department-specific column, which `table-fixed` requires to avoid squeezing
+     them into an even, too-narrow split. Verified live against SB-1104's real BOM.
+   - **Follow-on: two `min-w-0` gaps, same underlying pattern.** Making the table properly wider
+     exposed two flex-container ancestors that were never told they're allowed to shrink below
+     their content's intrinsic width, so instead of the table scrolling internally, the whole page
+     grew a horizontal scrollbar. Fixed in two shared primitives (not `BomTable` — every page using
+     either): `ui/table.jsx`'s own scroll wrapper div (`min-w-0` added alongside its existing
+     `overflow-x-auto`), and `ui/sidebar.jsx`'s `SidebarInset` (`main`, the content area every
+     sidebar-based page sits in) — `flex-1` never implies `min-width: 0` on its own, and this was
+     the one actually missing it. Both fixes only take effect when content would otherwise
+     overflow, so neither changes anything for a page that already fits. Verified live.
 5. **Audit:** imports, replaces, item adds/edits/deletes all write `usb_audit` rows
    (`bom_import` / `bom_replace` / `bom_item_add` / `bom_item_edit` / `bom_item_delete`) via the
    shared `audit()`.
@@ -845,8 +895,11 @@ and "Next" below.
   search, an Unlinked filter, and multi-select **bulk-link to one certificate**; the picker
   (`CertPicker.jsx`) reaches the whole bank, shows cert+cast+plate+spec+maker together, and has
   inline **"+ Add certificate"**. Company/letterhead per document comes from a two-value list in
-  `StatutoryDocsPanel.jsx` (Shanti Boilers `SBH` / Shanti Techno Fab `STF`) — **incomplete**, see the
-  real folder below.
+  `StatutoryDocsPanel.jsx` (Shanti Boilers `SBH` / Shanti Techno Fab `STF`) — **no longer
+  incomplete** (2026-08-16): a new document now defaults to the *project's own* `company` (§5g)
+  instead of always Shanti Boilers, and the two-value list itself is no longer duplicated three ways
+  — `lib/qc-doc-pdf.js` exports `COMPANY_NAMES`/`companyProfile()` as the one source both
+  `qc-documents` routes and the PO/payslip PDFs (§5g) now import.
 - **The hard gate**: *Preview PDF* is disabled while any part is unlinked, and
   `app/api/qc-documents/[id]/pdf/route.js` re-checks server-side and 409s — the UI gate is never the
   real enforcement.
@@ -1155,7 +1208,59 @@ under `app/api/calc-*`, all gated by `requireCalcAccess`, audited via `lib/usb.j
   `calc_tables`) + `origin` (`manual`|`bom`, the latter reserved for a future auto-BOM generator, not
   built this round). **`heat_number` deliberately not added** — Procurement-vs-Stores ownership is
   unresolved against `BOM_FIELD_OWNERS`' existing pattern (every other receipt-time field is Stores'),
-  deferred rather than force-picked. Belt number and Job Cards confirmed out of scope, not built.
+  deferred rather than force-picked. Belt number confirmed out of scope, not built. Job Cards were
+  out of scope *for this Requests-tab round* — they exist now, as their own module, see §5g.
+
+## 5g. Production — Job Cards, milestone-scoped shop-floor execution
+
+Full history/decisions in `PRODUCTION-MODULE-DESIGN.md`, kept as the record — this section is the
+as-built result. Production's own nav tab is renamed **`Job Card`** (was `Workers`); the board is
+the default landing view. The now-redundant `Tasks` tab (`/production` — identical content to
+`Home`) is dropped from `Nav.jsx`. See §3a for the people-side change (roster unification) this
+module depends on.
+
+- **Job Cards are milestone-scoped, not free-text.** `job_cards.milestone_id` is the primary link —
+  `project_id`/`section` are derived server-side from the real milestone
+  (`lib/milestones.js` MILESTONE_TEMPLATE, e.g. "Shell Welding", "Box Up Welding (OS / IS / G)"),
+  never taken from the client, so a card can't drift out of sync with the milestone it's meant to
+  roll up into. `operation_id` (from a small `operations` master) and `workstation_id` (`workstations`
+  master, carries `machine_hour_rate`) are both optional — most milestones are already one specific
+  action; operation is a finer tag only for the few that bundle several verbs. `bom_item_id` stays
+  optional for the cases that map to one BOM line. `status` (pending/progress/done), `is_paused`,
+  `is_outside`+`outside_vendor` (subcontracted, a flag not a module), `is_site` (Site Marking /
+  Welding FURA-B/RC/AR happen at the customer's site, not the shop — same flag precedent), and
+  `qty_planned`/`qty_done`/`qty_rejected` round out the row.
+- **Time logs, not one hours field.** `job_card_time_logs` — one row per work session, `employee_id`
+  + `minutes` (+ optional `from_time`/`to_time`, real clock times; the UI computes minutes from
+  them when given, direct minutes entry is the fallback) + `qty_completed`. Labor cost = Σ
+  `minutes`/60 × `employees.cost_rate_per_hour` (HR-owned rate, Production-consumed, same
+  ownership split as §2.5) — computed at today's rate, not frozen historically; shown per-log and
+  as a card total, explicitly labelled "labor only" since `job_card_consumables` (welding
+  rods/gas/discs, free text, no Item master, no stock ledger) carry no price.
+- **Rework loop.** `job_cards.rework_of_job_card_id` / `qc_record_id` carry lineage. A card's own
+  "Create rework card" button spawns a linked pending card against the same milestone; a failed
+  Hydro Test record (see below) has the same button built in, pre-filled.
+- **BOM tab** (new, cross-project) — a project picker, then the existing `BomTable`/`getProjectBom`
+  (§5a) field-scoped to Production's real ownership (`issued_ref`/`received_ref`, straight from
+  `BOM_FIELD_OWNERS.Production` — no separate UI-level list to drift from the server-enforced one).
+  Alongside it: **fabrication-% progress bars per milestone** (`getFabricationProgress`, job-card
+  completion, correct by construction now that cards are milestone-scoped) and an **issue-material**
+  mini-form/list against `material_issues` (`bom_item_id`, optional `job_card_id`, `qty`) —
+  structured Stores→WIP consumption, replacing free text going forward without touching existing
+  `issued_ref`/`received_ref` data. Stores **or** Production can issue (mirrors the authority
+  Production already had over those BOM columns).
+- **Masters:** `operations`, `workstations`, `trades` (§3a) — all three get a small `+` popover
+  (`components/QuickAddInline.jsx`) next to their pickers, so a new workstation doesn't need direct
+  API access to add.
+- **Hydro Test — ownership transferred from QC to Production, not shared.** `qc_records` splits by
+  `test_type`: a hydro-test record (`POST`/`PATCH`/`DELETE /api/qc-records`) is Production's alone
+  now; every other type (radiography/NDE, MTC, freeform) stays QC-exclusive, same table, no new
+  column. The milestone (`hydro_test`, `lib/milestones.js`) moved department too — `department` is
+  copied onto each `milestones` row at project-creation time, not derived live, so a migration
+  updates already-seeded projects' rows, not just the template. The record UI (`QcPanel`, `title`/
+  `defaultTestType`/`reworkMilestoneId` props) now also renders on the project page's **Production**
+  tab, filtered to hydro rows, locked to that test type; QC's own tab excludes hydro rows so it
+  never shows edit controls that would now 403.
 
 ## 6. Customer Portal (read-only, external)
 
@@ -1186,7 +1291,13 @@ suppliers ──< supplier_quotes                    (§5c — provisional suppl
 suppliers ──< purchase_orders ──< po_items        (§5c — a PO can span projects; po_items snapshots bom_items at PO-creation time)
 bom_items.selected_quote_id → supplier_quotes    (§5c — the winning-quote pointer; NULL = still needs sourcing)
 projects ──< procurement_requests                (§5c — a new-item request from Engineering/Design; not a bom_items row until accepted, bom_item_id set on acceptance)
-workers ──< worker_days                          (§3a — Production-only shop-floor people with no users row; one attendance row per worker per day)
+employees ──< attendance_days                    (§3a — the one attendance system now; workers/worker_days retired, migrated then dropped)
+milestones ──< job_cards ──< job_card_time_logs  (§5g — the shop-floor execution unit; time_logs is employee_id + minutes/from_time/to_time, multi-session)
+job_cards ──< job_card_consumables               (§5g — welding rods/gas/discs, free text, no price)
+job_cards ──> job_cards (rework_of, self)        (§5g — QC-fail/rejected-qty rework lineage)
+bom_items ──< material_issues                    (§5g — structured Stores/Production→WIP consumption, job_card_id optional)
+operations / workstations / trades               (§5g/§3a — flat masters; workstations carries machine_hour_rate, employees.trade_id-equivalent is the free-text `employees.trade` validated against `trades`)
+sale_orders ──< projects                          (company decided at the Sale Order — the commercial commitment — and copied onto the project at creation; projects.company is the denormalized read)
 users (role + departments CSV + project_ids CSV [customer scoping, one-or-more] + pending flag)
 ```
 
@@ -1210,6 +1321,15 @@ board items — the signal `notifyDepartment` fires on), `project_id` (optional 
 `bom_item_id` (§5a — set only on a Procurement cancel-request; by construction, a task with this set
 *is* a cancel-request, no separate `kind` column). All added via the standing `addColumn()`
 migration helper in `lib/db.js`, not one-off `ALTER TABLE`s.
+
+**Multi-company (§5g), added this round:** `employees.cost_rate_per_hour` (labor costing) and
+`employees.company` (which entity employs this person — payslip's own axis, distinct from a
+project's) are both HR-owned, API-editable (`PATCH /api/employees/[id]`); no dedicated HR form
+field for `company` yet. `sale_orders.company` is the source of truth (set on both creation paths —
+direct create and the quotation→convert flow — and editable after the fact); `projects.company` is
+copied from it at project-creation time, defaulting to Shanti Boilers only for a project created
+without a sale order. Existing pre-migration rows were backfilled by this system's own documented
+rule (`STF-` project-number prefix → Shanti Techno Fab, §5d) rather than a blanket default.
 
 ## 8. Operations-platform deferred items
 
@@ -1253,6 +1373,12 @@ section only. The still-open half of this paragraph is the PM action-queue/Manag
 redesign proper (which cards to collapse or merge for the *other* departments) and fixing
 `TicketsPanel.jsx`'s default title, still literally "Tickets" where no department overrides it —
 cosmetic only, the backing entity has been gone since §3b.
+
+**Production Job Cards (§5g), built this round** — no longer listed here as deferred. What's left,
+genuinely small: no HR form field to set an individual `employees.company` (API-editable only); no
+way to pre-assign a worker to a job card before they log hours (matches ERPNext's own model, left
+alone on purpose, not a regression); and the Workers Roster's inline trade-edit dropdown only picks
+up a trade added via `QuickAddInline` after a page refresh, not live in the same session.
 
 ---
 

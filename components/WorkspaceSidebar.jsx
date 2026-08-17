@@ -123,7 +123,13 @@ export default function WorkspaceSidebar({ title, icon: TitleIcon = LayoutPanelT
             <span className="truncate text-sm font-semibold">{activeItem?.label || title}</span>
           </div>
         )}
-        <div className="flex min-w-0 flex-1 flex-col gap-4 overflow-auto p-4 md:p-6">{children}</div>
+        {/* overflow-x-hidden (not the old overflow-auto shorthand) is load-bearing: this is a
+            flex-col container, and a wide descendant (a table needing real horizontal scroll,
+            e.g. BomTable) can still push this box's own width outward in the cross axis even with
+            min-w-0 on every child down the chain. Hidden on x forces this box to never grow past
+            its own layout width regardless; the descendant's own overflow-x-auto still handles
+            its internal scrolling exactly as before. */}
+        <div className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto overflow-x-hidden p-4 md:p-6">{children}</div>
       </SidebarInset>
     </SidebarProvider>
   );

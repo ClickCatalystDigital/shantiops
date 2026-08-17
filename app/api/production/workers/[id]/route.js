@@ -1,8 +1,11 @@
-// Edit a worker, or deactivate one. No DELETE: workers go inactive so their worker_days history
-// survives — same reasoning as machines.active on the security side.
+// Edit a worker, or deactivate one. No hard delete: workers go inactive so their attendance
+// history survives. Scoped to employee_type='worker' AND department='Production' so this endpoint
+// can only ever touch shop-floor rows, never a staff HR record — those stay HR-only via
+// PATCH /api/employees/[id].
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
+import { audit } from '@/lib/usb';
 
 const EDITABLE = ['name', 'trade', 'active'];
 
@@ -11,7 +14,10 @@ export async function PATCH(req, { params }) {
   const denied = requireDepartment(user, 'Production');
   if (denied) return denied;
 
-  const worker = await queryOne('SELECT id FROM workers WHERE id = ?', [params.id]);
+  const worker = await queryOne(
+    "SELECT id, name FROM employees WHERE id = ? AND employee_type = 'worker' AND department = 'Production'",
+    [params.id]
+  );
   if (!worker) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   const b = await req.json();
@@ -28,8 +34,9 @@ export async function PATCH(req, { params }) {
     changed[k] = v === '' ? null : v;
   }
   await execute(
-    `UPDATE workers SET ${Object.keys(changed).map(k => `${k} = ?`).join(', ')} WHERE id = ?`,
+    `UPDATE employees SET ${Object.keys(changed).map(k => `${k} = ?`).join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
     [...Object.values(changed), params.id]
   );
+  await audit('worker_updated', { actor: user.username, detail: `#${params.id} · ${worker.name}` });
   return NextResponse.json({ ok: true });
 }

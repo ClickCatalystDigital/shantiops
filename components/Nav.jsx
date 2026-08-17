@@ -48,8 +48,10 @@ export default function Nav({ user }) {
     if (isPMUser && (href === '/production' || href === '/production/workers')) return;
     if (depts.some(d => tabDepartments.includes(d))) deptTabs.push({ href, label, icon });
   };
-  addDeptTab(['Production'], '/production', 'Tasks', CalendarDaysIcon);
-  addDeptTab(['Production'], '/production/workers', 'Workers', HardHatIcon);
+  // Tasks (/production) dropped — identical content to Home for a Production head, kept as a
+  // compatibility URL only (SYSTEM.md nav history). Workers renamed Job Card: work planning is
+  // now the daily-use surface, roster/attendance are sub-tabs beneath it (PRODUCTION-MODULE-DESIGN.md §3.1).
+  addDeptTab(['Production'], '/production/workers', 'Job Card', HardHatIcon);
   addDeptTab(['Procurement'], '/procurement', 'Procurement', ShoppingCartIcon);
   addDeptTab(['Stores'], '/stores', 'Inventory', WarehouseIcon);
   addDeptTab(['Sales', 'Marketing'], '/sales', 'Sales', TagIcon);

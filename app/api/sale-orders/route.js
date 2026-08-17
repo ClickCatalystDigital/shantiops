@@ -6,6 +6,8 @@ import { execute, queryAll } from '@/lib/db';
 import { getFreshSessionUser, isInternal, requireDepartment } from '@/lib/auth';
 import { getSaleOrders } from '@/lib/data';
 import { audit } from '@/lib/usb';
+import { notifyDepartment, notifyPMs } from '@/lib/notify';
+import { COMPANY_NAMES } from '@/lib/qc-doc-pdf.js';
 
 export async function GET(req) {
   const user = await getFreshSessionUser();
@@ -30,11 +32,17 @@ export async function POST(req) {
   const b = await req.json();
   const soNo = String(b.so_no || '').trim();
   if (!soNo) return NextResponse.json({ error: 'Sale Order number is required' }, { status: 400 });
+  const company = COMPANY_NAMES.includes(b.company) ? b.company : COMPANY_NAMES[0];
 
   const { lastId } = await execute(
-    'INSERT INTO sale_orders (so_no, customer_name, description, created_by) VALUES (?, ?, ?, ?)',
-    [soNo, b.customer_name || null, b.description || null, user.username]
+    'INSERT INTO sale_orders (so_no, customer_name, description, company, created_by) VALUES (?, ?, ?, ?, ?)',
+    [soNo, b.customer_name || null, b.description || null, company, user.username]
   );
   await audit('sale_order_created', { actor: user.username, detail: soNo });
+  try {
+    const note = { kind: 'sale_order_created', title: `New Sale Order: ${soNo}`, body: b.customer_name || null, dedupe_key: `so_created:${lastId}` };
+    await notifyDepartment('Design', note);
+    await notifyPMs(note, { except: user.id });
+  } catch (err) { /* notification is best-effort */ }
   return NextResponse.json({ id: Number(lastId) });
 }

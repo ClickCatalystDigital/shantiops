@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 import { execute } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment, canAccessDepartment, isPM } from '@/lib/auth';
 import { getSaleOrderDetail } from '@/lib/data';
+import { COMPANY_NAMES } from '@/lib/qc-doc-pdf.js';
 
 const STATUSES = ['open', 'fulfilled', 'cancelled'];
 
@@ -25,9 +26,12 @@ export async function PATCH(req, { params }) {
   if (b.status !== undefined && !STATUSES.includes(b.status)) {
     return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
   }
+  if (b.company !== undefined && !COMPANY_NAMES.includes(b.company)) {
+    return NextResponse.json({ error: 'Invalid company' }, { status: 400 });
+  }
   const fields = [];
   const args = [];
-  for (const key of ['status', 'description']) {
+  for (const key of ['status', 'description', 'company']) {
     if (b[key] !== undefined) { fields.push(`${key} = ?`); args.push(b[key]); }
   }
   if (!fields.length) return NextResponse.json({ error: 'No fields to update' }, { status: 400 });

@@ -1,9 +1,11 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarGroup, SidebarGroupLabel,
   SidebarGroupContent, SidebarMenu, SidebarMenuItem, SidebarMenuButton,
+  SidebarMenuSub, SidebarMenuSubItem, SidebarMenuSubButton,
   SidebarTrigger, SidebarInset, SidebarRail,
 } from '@/components/ui/sidebar';
 import { Separator } from '@/components/ui/separator';
@@ -75,61 +77,135 @@ function GuideBody({ item }) {
   );
 }
 
-function NumberedSteps({ steps, department }) {
+function StepSummaryRow({ steps }) {
   return (
-    <div className="flex flex-col gap-5">
-      <section className="rounded-xl border bg-primary/[0.04] p-4 sm:p-5">
-        <div className="flex items-start gap-3">
-          <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary text-lg font-bold text-primary-foreground">✓</span>
-          <div>
-            <h2 className="text-base font-semibold sm:text-lg">Work through {department} step by step</h2>
-            <p className="mt-1 text-sm leading-6 text-muted-foreground">Follow the steps in order when you are doing this work for the first time. Each step explains what to do and what to check before handing work forward.</p>
-          </div>
+    <div className="mt-4 grid gap-2 sm:grid-cols-5">
+      {steps.map((step, i) => (
+        <div key={step.title} className="rounded-lg border bg-background/70 px-3 py-2">
+          <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Step {String(i + 1).padStart(2, '0')}</div>
+          <div className="mt-1 text-xs font-medium leading-5">{step.title}</div>
         </div>
-        <div className="mt-4 grid gap-2 sm:grid-cols-5">
-          {steps.map((step, i) => (
-            <div key={step.title} className="rounded-lg border bg-background/70 px-3 py-2">
-              <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Step {String(i + 1).padStart(2, '0')}</div>
-              <div className="mt-1 text-xs font-medium leading-5">{step.title}</div>
-            </div>
-          ))}
-        </div>
-      </section>
-      <div className="flex flex-col gap-4">
-        {steps.map((step, i) => (
-          <article key={step.title} className="rounded-xl border p-4 sm:p-5">
-            <div className="flex items-start gap-4">
-              <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-accent text-lg font-bold text-accent-foreground sm:size-12 sm:text-xl">{String(i + 1).padStart(2, '0')}</span>
-              <div className="min-w-0 flex-1">
-                <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Step {String(i + 1).padStart(2, '0')}</div>
-                <h3 className="mt-1 text-base font-semibold leading-6 sm:text-lg">{step.title}</h3>
-                <p className="mt-2 text-sm leading-7 text-muted-foreground">{step.body}</p>
-              </div>
-            </div>
-            {(step.why || step.verify) && (
-              <div className="mt-4 grid gap-3 border-t pt-4 sm:grid-cols-2 sm:pl-16">
-                {step.why && <div className="rounded-lg bg-muted/40 p-3"><h4 className="text-xs font-semibold uppercase tracking-wide">Why this step matters</h4><p className="mt-1 text-sm leading-6 text-muted-foreground">{step.why}</p></div>}
-                {step.verify && <div className="rounded-lg bg-muted/40 p-3"><h4 className="text-xs font-semibold uppercase tracking-wide">Before you continue</h4><p className="mt-1 text-sm leading-6 text-muted-foreground">{step.verify}</p></div>}
-              </div>
-            )}
-          </article>
-        ))}
-      </div>
+      ))}
     </div>
   );
 }
 
+function StepArticles({ steps }) {
+  return (
+    <div className="flex flex-col gap-4">
+      {steps.map((step, i) => (
+        <article key={step.title} className="rounded-xl border p-4 sm:p-5">
+          <div className="flex items-start gap-4">
+            <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-accent text-lg font-bold text-accent-foreground sm:size-12 sm:text-xl">{String(i + 1).padStart(2, '0')}</span>
+            <div className="min-w-0 flex-1">
+              <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Step {String(i + 1).padStart(2, '0')}</div>
+              <h3 className="mt-1 text-base font-semibold leading-6 sm:text-lg">{step.title}</h3>
+              <p className="mt-2 text-sm leading-7 text-muted-foreground">{step.body}</p>
+            </div>
+          </div>
+          {(step.why || step.verify) && (
+            <div className="mt-4 grid gap-3 border-t pt-4 sm:grid-cols-2 sm:pl-16">
+              {step.why && <div className="rounded-lg bg-muted/40 p-3"><h4 className="text-xs font-semibold uppercase tracking-wide">Why this step matters</h4><p className="mt-1 text-sm leading-6 text-muted-foreground">{step.why}</p></div>}
+              {step.verify && <div className="rounded-lg bg-muted/40 p-3"><h4 className="text-xs font-semibold uppercase tracking-wide">Before you continue</h4><p className="mt-1 text-sm leading-6 text-muted-foreground">{step.verify}</p></div>}
+            </div>
+          )}
+        </article>
+      ))}
+    </div>
+  );
+}
+
+// A department's How To is normally one flat sequence (the common case, every department but
+// Sales today). A step can carry a `section` label instead — Sales has genuinely separate
+// workflows (Sale Order vs. SAS material request), not one chain with an extra step bolted on the
+// end, so each section gets its own intro card and its own Step 01... numbering. Departments that
+// never set `section` render exactly as before — this is additive, not a format change.
+function NumberedSteps({ steps, department }) {
+  const hasSections = steps.some(s => s.section);
+  if (!hasSections) {
+    return (
+      <div className="flex flex-col gap-5">
+        <section className="rounded-xl border bg-primary/[0.04] p-4 sm:p-5">
+          <div className="flex items-start gap-3">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary text-lg font-bold text-primary-foreground">✓</span>
+            <div>
+              <h2 className="text-base font-semibold sm:text-lg">Work through {department} step by step</h2>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">Follow the steps in order when you are doing this work for the first time. Each step explains what to do and what to check before handing work forward.</p>
+            </div>
+          </div>
+          <StepSummaryRow steps={steps} />
+        </section>
+        <StepArticles steps={steps} />
+      </div>
+    );
+  }
+
+  const sections = [];
+  for (const step of steps) {
+    let group = sections.find(g => g.title === step.section);
+    if (!group) { group = { title: step.section, steps: [] }; sections.push(group); }
+    group.steps.push(step);
+  }
+
+  return (
+    <div className="flex flex-col gap-8">
+      {sections.map(section => (
+        <div key={section.title} className="flex flex-col gap-5">
+          <section className="rounded-xl border bg-primary/[0.04] p-4 sm:p-5">
+            <div className="flex items-start gap-3">
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary text-lg font-bold text-primary-foreground">✓</span>
+              <div>
+                <h2 className="text-base font-semibold sm:text-lg">{section.title}</h2>
+                <p className="mt-1 text-sm leading-6 text-muted-foreground">Follow these steps in order for {section.title.toLowerCase()}.</p>
+              </div>
+            </div>
+            <StepSummaryRow steps={section.steps} />
+          </section>
+          <StepArticles steps={section.steps} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// A feature entry can be a group (Notifications: Customer / Departmental) instead of a leaf page.
+// Flatten once wherever a page needs to be found or listed by key.
+const flattenFeatures = features => features.flatMap(f => f.group ? f.children : [f]);
+
 export default function DepartmentHelpWorkspace({ departments = [] }) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const available = departments.filter(d => DEPARTMENT_HELP[d]);
-  const [department, setDepartment] = useState(available[0]);
-  const [page, setPage] = useState('intro');
+
+  // The current department/page live in the URL (?dept=&page=) so a link to a specific guide
+  // section can be shared. State still drives the render; the URL is kept in sync alongside it,
+  // not read on every render, so a stale query string never fights a user's click mid-session.
+  const urlDept = searchParams.get('dept');
+  const urlPage = searchParams.get('page');
+  const [department, setDepartment] = useState(available.includes(urlDept) ? urlDept : available[0]);
+  const [page, setPage] = useState(() => {
+    const initialGuide = DEPARTMENT_HELP[available.includes(urlDept) ? urlDept : available[0]];
+    const validPage = urlPage && initialGuide && (urlPage === 'howto' || flattenFeatures(initialGuide.features).some(f => f.key === urlPage));
+    return validPage ? urlPage : 'intro';
+  });
   const guide = DEPARTMENT_HELP[department] || DEPARTMENT_HELP[available[0]];
-  const feature = guide?.features.find(f => f.key === page);
+  const feature = guide && flattenFeatures(guide.features).find(f => f.key === page);
   const GuideIcon = guide?.icon || BookOpenIcon;
+
+  function updateUrl(nextDept, nextPage) {
+    const params = new URLSearchParams({ dept: nextDept, page: nextPage });
+    router.replace(`/help?${params}`, { scroll: false });
+  }
 
   function chooseDepartment(next) {
     setDepartment(next);
     setPage('intro');
+    updateUrl(next, 'intro');
+  }
+
+  function choosePage(next) {
+    setPage(next);
+    updateUrl(department, next);
   }
 
   if (!guide) return null;
@@ -184,7 +260,7 @@ export default function DepartmentHelpWorkspace({ departments = [] }) {
             <SidebarGroupContent>
               <SidebarMenu>
                 <SidebarMenuItem>
-                  <SidebarMenuButton isActive={page === 'intro'} tooltip={`Introduction to ${guide.title}`} onClick={() => setPage('intro')}>
+                  <SidebarMenuButton isActive={page === 'intro'} tooltip={`Introduction to ${guide.title}`} onClick={() => choosePage('intro')}>
                     <InfoIcon /><span>Introduction</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -195,9 +271,24 @@ export default function DepartmentHelpWorkspace({ departments = [] }) {
             <SidebarGroupLabel>Features</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {guide.features.map(item => (
+                {guide.features.map(item => item.group ? (
                   <SidebarMenuItem key={item.key}>
-                    <SidebarMenuButton isActive={page === item.key} tooltip={item.label} onClick={() => setPage(item.key)}>
+                    <SidebarMenuButton isActive={item.children.some(c => c.key === page)} tooltip={item.label} onClick={() => choosePage(item.children[0].key)}>
+                      <item.icon /><span>{item.label}</span>
+                    </SidebarMenuButton>
+                    <SidebarMenuSub>
+                      {item.children.map(child => (
+                        <SidebarMenuSubItem key={child.key}>
+                          <SidebarMenuSubButton isActive={page === child.key} onClick={() => choosePage(child.key)} className="cursor-pointer">
+                            <span>{child.label}</span>
+                          </SidebarMenuSubButton>
+                        </SidebarMenuSubItem>
+                      ))}
+                    </SidebarMenuSub>
+                  </SidebarMenuItem>
+                ) : (
+                  <SidebarMenuItem key={item.key}>
+                    <SidebarMenuButton isActive={page === item.key} tooltip={item.label} onClick={() => choosePage(item.key)}>
                       <item.icon /><span>{item.label}</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -209,7 +300,7 @@ export default function DepartmentHelpWorkspace({ departments = [] }) {
             <SidebarGroupContent>
               <SidebarMenu>
                 <SidebarMenuItem>
-                  <SidebarMenuButton isActive={page === 'howto'} tooltip="How To" onClick={() => setPage('howto')}>
+                  <SidebarMenuButton isActive={page === 'howto'} tooltip="How To" onClick={() => choosePage('howto')}>
                     <ListChecksIcon /><span>How To</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -266,7 +357,7 @@ export default function DepartmentHelpWorkspace({ departments = [] }) {
                     {guide.features.map(item => {
                       const Icon = item.icon;
                       return (
-                        <button key={item.key} type="button" onClick={() => setPage(item.key)} className="group rounded-xl border p-4 text-left transition-colors hover:border-primary/60 hover:bg-muted/30">
+                        <button key={item.key} type="button" onClick={() => choosePage(item.group ? item.children[0].key : item.key)} className="group rounded-xl border p-4 text-left transition-colors hover:border-primary/60 hover:bg-muted/30">
                           <div className="flex items-start gap-3">
                             <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground"><Icon className="size-4" /></span>
                             <span className="min-w-0">

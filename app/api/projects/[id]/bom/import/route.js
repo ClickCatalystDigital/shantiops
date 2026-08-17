@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { audit } from '@/lib/usb';
+import { notifyDepartment } from '@/lib/notify';
 import { parsePmb } from '@/lib/pmb.mjs';
 
 // PMB (.xlsx) import — Engineering (or PM) only. One stateless route, two phases:
@@ -85,16 +86,19 @@ export async function POST(req, { params }) {
   let n = 0;
   for (const sheet of parsed.sheets) {
     for (const it of sheet.items) {
+      // Manual-mode gate (STORES-SALES-CHANGES.md) applies only to genuinely fresh rows — a row
+      // carrying a real historical status from the client's own PMB export (already Received/
+      // Closed etc.) skips it; it doesn't need Stores' review, it's already resolved.
       await execute(
         `INSERT INTO bom_items
            (project_id, material_description, moc, size_spec, sort_order, section, group_label,
             make, qty_text, purchase_status, pr_ref, po_ref, grn_ref, grn_qty_text,
-            pending_qty_text, bqtc_ref, issued_ref, received_ref, remarks, import_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            pending_qty_text, bqtc_ref, issued_ref, received_ref, remarks, import_id, pending_review)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [params.id, it.material_description, it.moc, it.size_spec, n, it.section, it.group_label,
           it.make, it.qty_text, it.purchase_status, it.pr_ref, it.po_ref, it.grn_ref,
           it.grn_qty_text, it.pending_qty_text, it.bqtc_ref, it.issued_ref, it.received_ref,
-          it.remarks, importId]);
+          it.remarks, importId, it.purchase_status ? 0 : 1]);
       n++;
     }
   }
@@ -106,6 +110,18 @@ export async function POST(req, { params }) {
       inserted: n, skipped: parsed.totalSkipped, previous_items: existing.n,
     }),
   });
+
+  // STORES-SALES-CHANGES.md §3.1 — Stores previously heard about a new BOM only by opening the
+  // workbench and eyeballing it. Best-effort, outside the insert loop above (already committed).
+  if (n > 0) {
+    try {
+      const project = await queryOne('SELECT project_no FROM projects WHERE id = ?', [params.id]);
+      await notifyDepartment('Stores', {
+        kind: 'bom_released', title: `New BOM: ${project?.project_no || params.id}`,
+        body: `${n} item(s)`, dedupe_key: `bom_import:${importId}`,
+      });
+    } catch (err) { /* notification is best-effort */ }
+  }
 
   return NextResponse.json({ importId, revision, inserted: n, skipped: parsed.totalSkipped });
 }

@@ -4,7 +4,7 @@
 // No PageHeader/<main container> — SalesWorkspace owns the full sidebar layout itself, same as
 // CalcWorkspace's page.
 import { redirect } from 'next/navigation';
-import { getFreshSessionUser, canAccessDepartment, headDepartments, isPM, roleHome } from '@/lib/auth';
+import { getFreshSessionUser, canAccessDepartment, headDepartments, isPM, isDesignHead, roleHome } from '@/lib/auth';
 import { getSaleOrders, getLeads, getCustomers, getQuotations, getCampaigns, getFunctionalHeads } from '@/lib/data';
 import { queryAll } from '@/lib/db';
 import SalesWorkspace from '@/components/SalesWorkspace';
@@ -34,6 +34,6 @@ export default async function SalesPage() {
   const savedViews = savedViewRows.map(r => ({ ...r, filters: JSON.parse(r.filters || '{}') }));
 
   return (
-    <SalesWorkspace saleOrders={saleOrders} leads={leads} customers={customers} quotations={quotations} campaigns={campaigns} departments={departments} users={crmUsers} savedViews={savedViews} />
+    <SalesWorkspace saleOrders={saleOrders} leads={leads} customers={customers} quotations={quotations} campaigns={campaigns} departments={departments} users={crmUsers} savedViews={savedViews} canCreateProject={isDesignHead(user)} />
   );
 }

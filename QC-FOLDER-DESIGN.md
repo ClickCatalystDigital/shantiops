@@ -1,12 +1,20 @@
 # QC Statutory Folder — design reference
 
-**Status:** design analysis (2026-08-16), derived from real filled samples at
-`/Users/pujan/Developer/FOLDER SAMPLE - FOR APP/`. No code built from this yet — this is the
-reference for the full-folder build and the source for the QC help-page content. SYSTEM.md §5d keeps
-only the as-built summary and points here.
+**Status:** design analysis (2026-08-16) — **and now built as a first pass** (`lib/qc-folder-pdf.js`,
+`lib/qc-entities.js`, `lib/qc-models.js`, `qc_mountings` table). This document is still the reference
+for what's real vs simplified; SYSTEM.md §5d has the as-built pointer.
 
-**What the app does today:** Test Certificate bank (many-to-many with projects) + **Form IV A** PDF
-only. This document covers the *rest* of the folder so we can build it.
+**What the app generates today:** one combined PDF — Label → Covering letter → Mounting list → the
+project's model-specific forms (§3) → every linked cert's own source PDF appended at the end (via
+`pdf-lib`, merging each cert's uploaded R2 file after the last form). Content for the identifying
+fields (§4) is real; **full legal boilerplate paragraphs and the Form III sub-tables (Drums/Headers,
+Parts-outside-works, the full Safety Valve block) are simplified, not verbatim** — flagged inline in
+`lib/qc-folder-pdf.js` with a `ponytail:` note. Not yet tested against a cert that actually has an R2
+PDF attached (none of the seed certs do) — the merge code path is unexercised in practice so far.
+
+**Letterhead has no logo.** `public/logo.svg` is the SBOPS *app's* own icon, not a Shanti Boilers /
+Shanti Techno Fab company logo — using it on a government submission would be wrong, so the letterhead
+stays text-only until a real company logo file is provided.
 
 ---
 

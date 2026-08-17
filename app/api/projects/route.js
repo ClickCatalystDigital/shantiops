@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
-import { nextNumber, createProjectMilestones, withTransaction } from '@/lib/db';
-import { getFreshSessionUser, requirePM, isCustomer, canAccessProject } from '@/lib/auth';
+import { nextNumber, createProjectMilestones, withTransaction, queryOne } from '@/lib/db';
+import { getFreshSessionUser, isDesignHead, isCustomer, canAccessProject } from '@/lib/auth';
 import { getActiveProjectsList } from '@/lib/data';
 import { isValidSeries } from '@/lib/qc-series';
 import { audit } from '@/lib/usb';
-import { notifyDepartment } from '@/lib/notify';
+import { notifyDepartment, notifyPMs } from '@/lib/notify';
+import { COMPANY_NAMES } from '@/lib/qc-doc-pdf.js';
 
 // In-place Calc Sheets project switcher (CalcWorkspace sidebar) — same list app/calc/page.js's
 // picker uses, just as a client-side fetch instead of a server component prop.
@@ -21,8 +22,9 @@ export async function GET() {
 
 export async function POST(req) {
   const user = await getFreshSessionUser();
-  const denied = requirePM(user); // project creation is PM/engineering-only
-  if (denied) return denied;
+  // Project creation is PM tier, plus Design head so Sales' SO→Project handoff (STORES-SALES-
+  // CHANGES.md §2b) doesn't require an out-of-band ask to a PM (isDesignHead already covers isPM).
+  if (!isDesignHead(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const b = await req.json();
   if (!b.customer_name?.trim()) {
     return NextResponse.json({ error: 'Customer name is required' }, { status: 400 });
@@ -33,16 +35,26 @@ export async function POST(req) {
   // not derived from the model.
   const series = isValidSeries(b.series) ? b.series : null;
   const project_no = b.project_no?.trim() || (await nextNumber('project_no', 'SB'));
+  // Which legal entity — decided at the Sale Order (the commercial commitment), not here, when one
+  // exists: copy it onto the project. Only a project created without going through Sales falls
+  // back to a manual company field on this form.
+  let company = COMPANY_NAMES[0];
+  if (b.sale_order_id) {
+    const so = await queryOne('SELECT company FROM sale_orders WHERE id = ?', [b.sale_order_id]);
+    if (so?.company) company = so.company;
+  } else if (COMPANY_NAMES.includes(b.company)) {
+    company = b.company;
+  }
   try {
     // customer_id/sale_order_id — V3_CHANGES.md §12 Phase 2f, the Lead→Customer→Quotation→Sale
     // Order→Project chain's final link. Both additive/nullable; customer_name stays NOT NULL and
     // required exactly as before, so the 6 pre-existing free-text-only projects are unaffected.
     const { projectId, sosTitle } = await withTransaction(async tx => {
       const r = await tx.execute({
-        sql: `INSERT INTO projects (project_no, customer_name, description, order_date, owner, customer_id, sale_order_id, series)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        sql: `INSERT INTO projects (project_no, customer_name, description, order_date, owner, customer_id, sale_order_id, series, company)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         args: [project_no, b.customer_name.trim(), b.description || null, b.order_date || null, user?.username || null,
-          b.customer_id || null, b.sale_order_id || null, series],
+          b.customer_id || null, b.sale_order_id || null, series, company],
       });
       const id = Number(r.lastInsertRowid);
       // Project, milestones, and the initial Scope of Supply are one business operation. If any
@@ -76,6 +88,12 @@ export async function POST(req) {
         };
         await notifyDepartment('Design', note);
         await notifyDepartment('Engineering', note);
+        // The Sales→PM handoff (STORES-SALES-CHANGES.md §2b): a Design head converting a Sale
+        // Order to a Project is the event Sales and PMs actually need to hear about — Design
+        // already knows, they did it.
+        const convertNote = { kind: 'project_created', title: `Project created from Sale Order`, body: `${project_no} · ${sosTitle}`, dedupe_key: `so_converted:${projectId}` };
+        await notifyDepartment('Sales', convertNote);
+        await notifyPMs(convertNote, { except: user.id });
       } catch (err) { /* notification is best-effort */ }
     }
 

@@ -28,7 +28,7 @@ const CANCEL_DEPARTMENTS = ['Engineering', 'Design'];
 export default function DepartmentPanel({
   department, milestones, head = false,
   projectId, bom = [], pending = [], packingLists = [], canUploadBom = false, canPack = false,
-  bomFields = [], bomImports = [], qcRecords = [], canEditQc = false,
+  bomFields = [], bomImports = [], qcRecords = [], canEditQc = false, canEditProductionQc = false,
   qcDocuments = [], qcSummary = {},
   tasks = [], canRaiseTickets = false,
   stages = [], stageTemplates = [], stageTemplateItems = [], canManageStages = false,
@@ -43,6 +43,7 @@ export default function DepartmentPanel({
   const deptTemplateIds = new Set(deptTemplates.map(t => t.id));
   const deptTemplateItems = stageTemplateItems.filter(i => deptTemplateIds.has(i.template_id));
   const canCancel = CANCEL_DEPARTMENTS.includes(department);
+  const hydroMilestoneId = milestones.find(m => m.milestone_key === 'hydro_test')?.id;
 
   return (
     <div className="flex flex-col gap-6">
@@ -91,9 +92,22 @@ export default function DepartmentPanel({
         <PackingPanel projectId={projectId} pending={pending} packingLists={packingLists} canPack={canPack} />
       )}
 
+      {/* Hydro Test ownership transferred QC -> Production (lib/milestones.js) — the milestone
+          already showed up above via deptMs; this is the actual test record (pass/fail, cert no.),
+          filtered to hydro-test rows only. Everything else stays under QC's own tab. */}
+      {department === 'Production' && (
+        <QcPanel projectId={projectId} records={qcRecords.filter(r => /hydro/i.test(r.test_type))}
+          canEdit={canEditProductionQc} title="Hydro Test" defaultTestType="Hydro Test"
+          reworkMilestoneId={hydroMilestoneId} />
+      )}
+
       {department === 'QC' && (
         <>
-          <QcPanel projectId={projectId} records={qcRecords} canEdit={canEditQc} />
+          {/* Hydro-test rows excluded — QC can still see them lower down if needed via the project
+              summary, but the edit/delete controls here would 403 now that Production owns them
+              (found as a real bug: this block previously showed unfiltered records with live
+              controls that quietly stopped working instead of being visibly QC's or not). */}
+          <QcPanel projectId={projectId} records={qcRecords.filter(r => !/hydro/i.test(r.test_type))} canEdit={canEditQc} />
           <QcProjectSummary projectId={projectId} summary={qcSummary} canManage={canEditQc} />
         </>
       )}

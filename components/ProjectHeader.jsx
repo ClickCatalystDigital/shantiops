@@ -17,6 +17,7 @@ export default function ProjectHeader({ project, health, blocker }) {
             <p className="text-sm text-muted-foreground">{project.description || 'No description'}</p>
             <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
               <span>PM <b className="text-foreground">{project.owner || '—'}</b></span>
+              <span>Entity <b className="text-foreground">{project.company || 'Shanti Boilers'}</b></span>
               {project.order_value ? <span>Value <b className="text-foreground">{formatMoney(project.order_value)}</b></span> : null}
               <span>Updated {formatDate(project.updated_at)}</span>
             </div>

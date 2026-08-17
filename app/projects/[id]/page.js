@@ -53,6 +53,7 @@ export default async function ProjectDetail({ params }) {
     bomFields: editableBomFields(user), // field-level BOM edit scope (enforced again in the API)
     bomImports: imports,
     qcRecords, qcDocuments, qcSummary, canEditQc: canAccessDepartment(user, 'QC'),
+    canEditProductionQc: canAccessDepartment(user, 'Production'),
     // One query for all 8 tabs — DepartmentPanel filters client-side, same as it already does for
     // milestones. A head only ever sees their own department's panel, and a PM's canAccessDepartment
     // is unconditionally true for every department, so a single flag matches the real permission

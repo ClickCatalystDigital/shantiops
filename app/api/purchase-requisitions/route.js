@@ -4,18 +4,23 @@
 // single-item procurement_requests flow, which is now dead but left in place, same "don't drop"
 // precedent as the retired tickets table).
 //
-// V2-CHANGES.md Group 6 Phase 6.4 (D7) — a line's `source` (bom/stock/sas), Stores-only for
-// stock/sas (server-enforced, not just hidden client-side). 'stock'/'sas' materialize a single
-// bom_items row pointed at the sentinel system project (bom_items.project_id stays NOT NULL, see
-// Phase 6.4's plan note) instead of a real project — no pr_item_projects split, since there's no
-// project to split across.
+// V2-CHANGES.md Group 6 Phase 6.4 (D7) — a line's `source` (bom/stock/sas), server-enforced not
+// just hidden client-side. 'stock' is Stores-only (needs an inventory item, Stores' own picker).
+// 'sas' materializes a single bom_items row pointed at the sentinel system project
+// (bom_items.project_id stays NOT NULL, see Phase 6.4's plan note) instead of a real project — no
+// pr_item_projects split, since there's no project to split across.
+//
+// STORES-SALES-CHANGES.md — SAS used to be Stores-initiated (Stores raising a trade line against a
+// Sale Order themselves), then briefly both Stores-and-Sales; it's now Sales-only by client
+// decision — Sales pushes the request, Stores only ever receives and fulfills it.
 import { NextResponse } from 'next/server';
 import { execute, queryOne, nextCounterValue } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
 import { audit } from '@/lib/usb';
+import { notifyDepartment } from '@/lib/notify';
 
-const PR_DEPARTMENTS = ['Engineering', 'Design', 'Stores'];
-const NON_BOM_SOURCES = new Set(['stock', 'sas']);
+const PR_DEPARTMENTS = ['Engineering', 'Design', 'Stores', 'Sales'];
+const SAS_RAISERS = new Set(['Sales']);
 // CALC-CHANGES2.md §F — category tag, 'bom'-source lines only (stock/sas are inventory/trade
 // lines, not physical-material categories).
 const CATEGORIES = new Set(['plate', 'ms_section', 'angle', 'standard']);
@@ -36,8 +41,14 @@ export async function POST(req) {
       return NextResponse.json({ error: 'Every line needs a description' }, { status: 400 });
     }
     const source = line.source || 'bom';
-    if (NON_BOM_SOURCES.has(source) && raisedByDept !== 'Stores') {
-      return NextResponse.json({ error: 'Only Stores can raise stock/trade (SAS) requests' }, { status: 403 });
+    if (raisedByDept === 'Sales' && source !== 'sas') {
+      return NextResponse.json({ error: 'Sales can only raise trade (SAS) requests' }, { status: 403 });
+    }
+    if (source === 'stock' && raisedByDept !== 'Stores') {
+      return NextResponse.json({ error: 'Only Stores can raise stock requests' }, { status: 403 });
+    }
+    if (source === 'sas' && !SAS_RAISERS.has(raisedByDept)) {
+      return NextResponse.json({ error: 'Only Sales can raise trade (SAS) requests' }, { status: 403 });
     }
     if (source === 'stock') {
       if (!line.inventory_item_id || !(Number(line.qty) > 0)) {
@@ -82,6 +93,8 @@ export async function POST(req) {
     );
 
     if (source === 'stock') {
+      // Stores raising a Build stock request is already Stores' own decision — no second
+      // self-review gate needed, unlike 'bom'/'sas' below.
       const sentinel = await queryOne('SELECT id FROM projects WHERE is_system = 1 LIMIT 1');
       const { lastId: bomItemId } = await execute(
         `INSERT INTO bom_items (project_id, material_description, moc, size_spec, qty_text, purchase_status,
@@ -95,8 +108,8 @@ export async function POST(req) {
       const sentinel = await queryOne('SELECT id FROM projects WHERE is_system = 1 LIMIT 1');
       const { lastId: bomItemId } = await execute(
         `INSERT INTO bom_items (project_id, material_description, moc, size_spec, qty_text, purchase_status,
-                                 pr_item_id, source, sale_order_no, category, category_fields_json, origin)
-         VALUES (?, ?, ?, ?, ?, 'Enquiry', ?, 'sas', ?, ?, ?, ?)`,
+                                 pr_item_id, source, sale_order_no, category, category_fields_json, origin, pending_review)
+         VALUES (?, ?, ?, ?, ?, 'Enquiry', ?, 'sas', ?, ?, ?, ?, 1)`,
         [sentinel.id, line.material_description.trim(), line.moc || null, line.size_spec || null,
           line.qty_text.trim(), Number(prItemId), line.sale_order_no.trim(), category, categoryFieldsJson, origin]
       );
@@ -107,11 +120,13 @@ export async function POST(req) {
           'INSERT INTO pr_item_projects (pr_item_id, project_id, qty_text) VALUES (?, ?, ?)',
           [Number(prItemId), p.project_id, p.qty_text.trim()]
         );
-        // Materializes immediately — this line×project pair is the real procurement need, live on
-        // Enquiry the moment the PR is submitted (no accept step, per the unify decision).
+        // Materializes immediately — this line×project pair is the real procurement need, but
+        // stays out of Procurement's Enquiry queue (pending_review=1) until Stores explicitly
+        // reserves it from stock or clicks Procure (the unify decision was "no accept step",
+        // this doesn't reintroduce one — it's a Stores-only gate, not a Procurement one).
         const { lastId: bomItemId } = await execute(
-          `INSERT INTO bom_items (project_id, material_description, moc, size_spec, qty_text, purchase_status, pr_item_id, category, category_fields_json, origin)
-           VALUES (?, ?, ?, ?, ?, 'Enquiry', ?, ?, ?, ?)`,
+          `INSERT INTO bom_items (project_id, material_description, moc, size_spec, qty_text, purchase_status, pr_item_id, category, category_fields_json, origin, pending_review)
+           VALUES (?, ?, ?, ?, ?, 'Enquiry', ?, ?, ?, ?, 1)`,
           [p.project_id, line.material_description.trim(), line.moc || null, line.size_spec || null,
             p.qty_text.trim(), Number(prItemId), category, categoryFieldsJson, origin]
         );
@@ -124,5 +139,15 @@ export async function POST(req) {
     actor: user.username,
     detail: `${prNo} (${raisedByDept}): ${lines.length} line(s), ${bomItemIds.length} item(s)`,
   });
+  // STORES-SALES-CHANGES.md §3.1/§4 — every line here lands on Stores' workbench one way or
+  // another (Enquiry queue or their own Requests tab); tell them, don't make them go look.
+  if (raisedByDept !== 'Stores') {
+    try {
+      await notifyDepartment('Stores', {
+        kind: 'bom_released', title: `New ${prNo} from ${raisedByDept}`,
+        body: `${lines.length} line(s)`, dedupe_key: `pr_raised:${prNo}`,
+      });
+    } catch (err) { /* notification is best-effort */ }
+  }
   return NextResponse.json({ pr_no: prNo, bom_item_ids: bomItemIds });
 }

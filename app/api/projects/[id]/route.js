@@ -3,6 +3,7 @@ import { execute } from '@/lib/db';
 import { getFreshSessionUser } from '@/lib/auth';
 import { requireCalcAccess } from '@/lib/calc';
 import { audit } from '@/lib/usb';
+import { COMPANY_NAMES } from '@/lib/qc-doc-pdf.js';
 
 // Rename a project's identity (project_no / customer_name) — used e.g. when a demo/seed project
 // is repurposed into a real one instead of creating a duplicate. Gated the same as the rest of
@@ -19,6 +20,10 @@ export async function PATCH(req, { params }) {
   if (b.project_no !== undefined) { fields.push('project_no = ?'); args.push(String(b.project_no).trim()); }
   if (b.customer_name !== undefined) { fields.push('customer_name = ?'); args.push(String(b.customer_name).trim()); }
   if (b.description !== undefined) { fields.push('description = ?'); args.push(b.description || null); }
+  if (b.company !== undefined) {
+    if (!COMPANY_NAMES.includes(b.company)) return NextResponse.json({ error: 'Invalid company' }, { status: 400 });
+    fields.push('company = ?'); args.push(b.company);
+  }
   if (!fields.length) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
 
   args.push(params.id);

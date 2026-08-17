@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { audit } from '@/lib/usb';
+import { COMPANY_NAMES } from '@/lib/qc-doc-pdf.js';
 
 const EDITABLE = [
   'doc_id', 'makers_no', 'year_of_make', 'boiler_type', 'length_overall', 'internal_diameter',
@@ -11,9 +12,6 @@ const EDITABLE = [
   'working_pressure', 'drawing_no_from', 'drawing_no_to', 'label_model_code',
   'submission_date', 'signer_name', 'recipient_name', 'recipient_address', 'manifest_extra',
 ];
-
-// V2-CHANGES.md Group 2 — same two known companies as the create route.
-const COMPANIES = ['Shanti Boilers', 'Shanti Techno Fab'];
 
 // Editing the boiler-level header fields (the "edit" link on the Boiler details card) — the part
 // table and its certificate links have their own endpoint (link-parts), not this one.
@@ -31,7 +29,7 @@ export async function PATCH(req, { params }) {
   if (keys.includes('doc_id') && !String(b.doc_id || '').trim()) {
     return NextResponse.json({ error: 'Document ID cannot be empty' }, { status: 400 });
   }
-  if (keys.includes('company') && !COMPANIES.includes(b.company)) {
+  if (keys.includes('company') && !COMPANY_NAMES.includes(b.company)) {
     return NextResponse.json({ error: 'Unknown company' }, { status: 400 });
   }
 

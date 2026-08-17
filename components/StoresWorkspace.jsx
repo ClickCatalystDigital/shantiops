@@ -8,7 +8,7 @@
 // one request (reduces `available`, on_hand untouched) so no other request — bom, stock, or sas —
 // can be promised the same units; Issue is the actual hand-out moment (on_hand decrements, the
 // request's bom_item goes terminal In-Stock). Release undoes an unissued Reserve.
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -18,9 +18,9 @@ import { Badge } from '@/components/ui/badge';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { PlusIcon, PencilIcon, PackageCheckIcon, UndoIcon } from 'lucide-react';
+import { PlusIcon, PencilIcon, PackageCheckIcon, UndoIcon, TruckIcon } from 'lucide-react';
 import { api, showToast } from '@/lib/client';
 
 function isLowStock(item) {
@@ -37,6 +37,50 @@ function requestLabel(item) {
 function leadingQty(qtyText) {
   const m = String(qtyText || '').match(/^\s*(\d+(?:\.\d+)?)/);
   return m ? m[1] : '1';
+}
+
+// STORES-SALES-CHANGES.md §3.1 — the cheap win: no automated bom_items↔inventory_items matching
+// exists anywhere (free-text on both sides, no shared item_code yet — see §3.2 for the real fix).
+// This is a non-binding nudge only, plain keyword overlap, never auto-reserves.
+function normalizeWords(s) {
+  return String(s || '').toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length >= 3);
+}
+// STORES-SALES-CHANGES.md §2c — Stores' entire workspace used to be three plain, disconnected
+// tables with no "here's what needs your attention today" signal and no cross-referencing between
+// them. This is that signal: a one-glance summary computed from the same three lists already on
+// the page (no new query, no new schema), each chip jumping straight to the section it counts.
+function TodaySummary({ inventoryItems, openRequests, activeReservations }) {
+  const lowStock = inventoryItems.filter(isLowStock).length;
+  const withMatch = openRequests.filter(r => possibleMatches(r, inventoryItems).length > 0).length;
+  const chips = [
+    { href: '#requests-card', dot: 'bg-warning', value: openRequests.length, label: 'open request' + (openRequests.length === 1 ? '' : 's') },
+    { href: '#requests-card', dot: 'bg-info', value: withMatch, label: 'with a possible match' },
+    { href: '#inventory-card', dot: 'bg-danger', value: lowStock, label: 'low stock' },
+    { href: '#reservations-card', dot: 'bg-success', value: activeReservations.length, label: 'ready to issue' },
+  ];
+  return (
+    <div className="flex flex-wrap gap-2">
+      {chips.map(c => (
+        <a key={c.label} href={c.href}
+          className="flex items-center gap-2 rounded-full border bg-card px-3 py-1.5 text-sm shadow-sm transition-colors hover:bg-muted/50">
+          <span className={`size-2 rounded-full ${c.dot}`} />
+          <span className="font-semibold tnum">{c.value}</span>
+          <span className="text-muted-foreground">{c.label}</span>
+        </a>
+      ))}
+    </div>
+  );
+}
+
+function possibleMatches(request, inventoryItems) {
+  const reqWords = new Set(normalizeWords(request.material_description));
+  if (!reqWords.size) return [];
+  return inventoryItems
+    .map(it => ({ item: it, score: normalizeWords(it.description).filter(w => reqWords.has(w)).length }))
+    .filter(m => m.score > 0 && m.item.available > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 2)
+    .map(m => m.item);
 }
 
 function ItemFormDialog({ item, onClose, router }) {
@@ -166,8 +210,23 @@ function ReserveDialog({ request, inventoryItems, onClose, router }) {
 
 function OpenRequestsCard({ openRequests, inventoryItems, router }) {
   const [reserveFor, setReserveFor] = useState(null);
+  const [busyId, setBusyId] = useState(null);
+
+  // Manual-mode gate (STORES-SALES-CHANGES.md) — a pending_review line hasn't been sent to
+  // Procurement yet; Procure is the explicit "no, buy it" decision. Reserve already works
+  // unmodified on these rows (reserveFromStock never checked purchase_status/pending_review).
+  async function procure(r) {
+    setBusyId(r.id);
+    try {
+      await api(`/api/bom-items/${r.id}/procure`, { method: 'POST' });
+      showToast('Sent to Procurement');
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+    setBusyId(null);
+  }
+
   return (
-    <Card>
+    <Card id="requests-card" className="scroll-mt-4">
       <CardHeader><CardTitle>Open requests</CardTitle></CardHeader>
       <CardContent>
         {openRequests.length === 0 ? (
@@ -184,19 +243,42 @@ function OpenRequestsCard({ openRequests, inventoryItems, router }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {openRequests.map(r => (
-                <TableRow key={r.id}>
-                  <TableCell className="font-medium">{r.material_description}</TableCell>
-                  <TableCell className="text-muted-foreground">{r.qty_text || '—'}</TableCell>
-                  <TableCell className="text-muted-foreground">{requestLabel(r)}</TableCell>
-                  <TableCell><Badge variant="secondary">{r.purchase_status || 'Enquiry'}</Badge></TableCell>
-                  <TableCell>
-                    <Button size="sm" variant="outline" disabled={!inventoryItems.length} onClick={() => setReserveFor(r)}>
-                      Reserve from stock
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {openRequests.map(r => {
+                const matches = possibleMatches(r, inventoryItems);
+                return (
+                  <TableRow key={r.id}>
+                    <TableCell className="font-medium">
+                      {r.material_description}
+                      {matches.length > 0 && (
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {matches.map(m => (
+                            <Badge key={m.id} variant="outline" className="text-xs font-normal text-muted-foreground">
+                              ≈ {m.description} ({m.available} avail)
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">{r.qty_text || '—'}</TableCell>
+                    <TableCell className="text-muted-foreground">{requestLabel(r)}</TableCell>
+                    <TableCell>
+                      {r.pending_review
+                        ? <Badge className="border-warning/30 bg-warning-surface text-warning" title="Not visible to Procurement yet — Reserve or Procure it.">Stores Review</Badge>
+                        : <Badge variant="secondary">{r.purchase_status || 'Enquiry'}</Badge>}
+                    </TableCell>
+                    <TableCell className="flex justify-end gap-1">
+                      <Button size="sm" variant="outline" disabled={!inventoryItems.length} onClick={() => setReserveFor(r)}>
+                        Reserve from stock
+                      </Button>
+                      {r.pending_review === 1 && (
+                        <Button size="sm" disabled={busyId === r.id} onClick={() => procure(r)}>
+                          {busyId === r.id ? 'Sending…' : 'Procure'}
+                        </Button>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         )}
@@ -204,6 +286,97 @@ function OpenRequestsCard({ openRequests, inventoryItems, router }) {
       {reserveFor && (
         <ReserveDialog request={reserveFor} inventoryItems={inventoryItems} router={router} onClose={() => setReserveFor(null)} />
       )}
+    </Card>
+  );
+}
+
+// STORES-SALES-CHANGES.md — Stores already had server-side permission to log a material issue
+// (app/api/material-issues/route.js's canIssue allows Stores OR Production) but no UI to use it —
+// only Production's own panel (WorkersPanel.jsx's ProductionBomTab) called this endpoint. This is
+// that missing UI, same endpoint, same shape, simplified (no fabrication-progress bars — that's
+// Production's own concern, not Stores'). Distinct from the Reserve→Issue action above: that one
+// finalizes a *stock* reservation (decrements on_hand, marks the line In-Stock); this one just logs
+// that material physically left Stores for WIP — it doesn't touch on_hand or purchase_status.
+function MaterialIssuesCard({ projects }) {
+  const [projectId, setProjectId] = useState('');
+  const [bom, setBom] = useState(null);
+  const [issues, setIssues] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [form, setForm] = useState({ bom_item_id: '', qty: '' });
+  const [busy, setBusy] = useState(false);
+
+  async function loadAll() {
+    const [{ items }, iss] = await Promise.all([
+      api(`/api/projects/${projectId}/bom`),
+      api(`/api/material-issues?project_id=${projectId}`),
+    ]);
+    setBom(items); setIssues(iss);
+  }
+
+  useEffect(() => {
+    if (!projectId) { setBom(null); setIssues(null); return; }
+    let cancelled = false;
+    setLoading(true);
+    loadAll().catch(err => !cancelled && showToast(err.message, 'error'))
+      .finally(() => !cancelled && setLoading(false));
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId]);
+
+  async function logIssue() {
+    if (!form.bom_item_id) return showToast('Pick a BOM item', 'error');
+    const qty = Number(form.qty);
+    if (!qty || qty <= 0) return showToast('Enter a quantity', 'error');
+    setBusy(true);
+    try {
+      await api('/api/material-issues', { method: 'POST', body: { bom_item_id: Number(form.bom_item_id), qty } });
+      showToast('Material issue logged');
+      setForm({ bom_item_id: '', qty: '' });
+      await loadAll();
+    } catch (err) { showToast(err.message, 'error'); }
+    setBusy(false);
+  }
+
+  return (
+    <Card id="material-issues-card" className="scroll-mt-4">
+      <CardHeader><CardTitle>Material issued to WIP</CardTitle></CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <Select value={projectId} onValueChange={setProjectId}>
+          <SelectTrigger className="w-64"><SelectValue placeholder="Select a project" /></SelectTrigger>
+          <SelectContent><SelectGroup>
+            {projects.map(p => <SelectItem key={p.id} value={String(p.id)}>{p.project_no} · {p.customer_name}</SelectItem>)}
+          </SelectGroup></SelectContent>
+        </Select>
+        {!projectId ? (
+          <p className="py-4 text-center text-sm text-muted-foreground">Pick a project to log material leaving Stores for WIP.</p>
+        ) : loading || !bom ? (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : (
+          <>
+            <div className="flex flex-wrap gap-2">
+              <Select value={form.bom_item_id} onValueChange={v => setForm({ ...form, bom_item_id: v })}>
+                <SelectTrigger className="w-72"><SelectValue placeholder="BOM item" /></SelectTrigger>
+                <SelectContent><SelectGroup>
+                  {bom.map(b => <SelectItem key={b.id} value={String(b.id)}>{b.material_description} {b.size_spec ? `· ${b.size_spec}` : ''}</SelectItem>)}
+                </SelectGroup></SelectContent>
+              </Select>
+              <Input type="number" min="0" placeholder="Qty" className="w-24" value={form.qty}
+                onChange={e => setForm({ ...form, qty: e.target.value })} />
+              <Button size="sm" onClick={logIssue} disabled={busy}><TruckIcon />Log issue</Button>
+            </div>
+            {issues?.length > 0 && (
+              <div className="flex flex-col gap-1 pt-1">
+                {issues.slice(0, 8).map(i => (
+                  <div key={i.id} className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>{i.material_description}</span>
+                    <span className="tnum">qty {i.qty} · {i.issued_by}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </CardContent>
     </Card>
   );
 }
@@ -225,7 +398,7 @@ function ActiveReservationsCard({ activeReservations, router }) {
   }
 
   return (
-    <Card>
+    <Card id="reservations-card" className="scroll-mt-4">
       <CardHeader><CardTitle>Active reservations</CardTitle></CardHeader>
       <CardContent>
         {activeReservations.length === 0 ? (
@@ -266,14 +439,45 @@ function ActiveReservationsCard({ activeReservations, router }) {
   );
 }
 
-export default function StoresWorkspace({ inventoryItems, openRequests = [], activeReservations = [] }) {
+// STORES-SALES-CHANGES.md — Manual is the only mode that's actually built (the Reserve/Procure
+// buttons on Open requests below). Auto (matching lines reserve themselves the moment a BOM/SAS
+// line releases) is deliberately not built yet — today's only match signal is the possible-match
+// badge's plain keyword overlap, not safe to auto-commit physical stock against. This toggle is
+// UI-only: picking Auto doesn't change any real behavior, it just shows that it's not ready. Real
+// Auto mode is worth building once §3.2's item_code catalog gives a trustworthy exact-match signal.
+function ReservationModeToggle() {
+  const [mode, setMode] = useState('manual');
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="inline-flex w-fit rounded-lg border p-0.5">
+        <button type="button" onClick={() => setMode('manual')}
+          className={`rounded-md px-3 py-1 text-sm font-medium transition-colors ${mode === 'manual' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
+          Manual
+        </button>
+        <button type="button" onClick={() => setMode('auto')}
+          className={`rounded-md px-3 py-1 text-sm font-medium transition-colors ${mode === 'auto' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
+          Auto
+        </button>
+      </div>
+      {mode === 'auto' && (
+        <div className="rounded-lg border border-dashed bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+          Auto mode — coming soon. Matching lines will reserve themselves automatically once item-code matching lands; for now everything below still works the Manual way.
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function StoresWorkspace({ inventoryItems, openRequests = [], activeReservations = [], projects = [] }) {
   const router = useRouter();
   const [dialogItem, setDialogItem] = useState(undefined); // undefined = closed, null = add, {} = edit
   const lowStockCount = inventoryItems.filter(isLowStock).length;
 
   return (
     <div className="flex flex-col gap-6">
-      <Card>
+      <ReservationModeToggle />
+      <TodaySummary inventoryItems={inventoryItems} openRequests={openRequests} activeReservations={activeReservations} />
+      <Card id="inventory-card" className="scroll-mt-4">
         <CardHeader>
           <CardTitle>
             Inventory
@@ -327,6 +531,7 @@ export default function StoresWorkspace({ inventoryItems, openRequests = [], act
 
       <OpenRequestsCard openRequests={openRequests} inventoryItems={inventoryItems} router={router} />
       <ActiveReservationsCard activeReservations={activeReservations} router={router} />
+      <MaterialIssuesCard projects={projects} />
     </div>
   );
 }

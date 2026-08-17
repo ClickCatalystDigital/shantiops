@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { audit } from '@/lib/usb';
+import { notifyDepartment } from '@/lib/notify';
 import { BOM_FIELDS } from '@/lib/bom-fields.mjs';
 
 // Add a single BOM item in-app (materials get added mid-project — the BOM definition is
@@ -25,14 +26,22 @@ export async function POST(req) {
     typeof b[f] === 'string' && b[f].trim() ? b[f].trim() : null);
   values[0] = b.material_description.trim();
 
+  // Manual-mode gate (STORES-SALES-CHANGES.md) — a single item added mid-project is always fresh
+  // new demand, so this one always sets pending_review=1 (no historical-data case like PMB import).
   const res = await execute(
-    `INSERT INTO bom_items (project_id, sort_order, ${fields.join(', ')})
-     VALUES (?, ?, ${fields.map(() => '?').join(', ')})`,
+    `INSERT INTO bom_items (project_id, sort_order, pending_review, ${fields.join(', ')})
+     VALUES (?, ?, 1, ${fields.map(() => '?').join(', ')})`,
     [b.project_id, (max?.m ?? -1) + 1, ...values]);
 
   await audit('bom_item_add', {
     actor: user.username,
     detail: JSON.stringify({ bom_item_id: Number(res.lastId), project_id: b.project_id, description: values[0] }),
   });
+  try {
+    await notifyDepartment('Stores', {
+      kind: 'bom_released', title: 'New BOM item', body: values[0],
+      dedupe_key: `bom_item:${Number(res.lastId)}`,
+    });
+  } catch (err) { /* notification is best-effort */ }
   return NextResponse.json({ id: Number(res.lastId) });
 }

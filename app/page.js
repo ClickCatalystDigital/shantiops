@@ -3,12 +3,14 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import ProductionTodayPage from './production/page';
-import { getMyWork, getBomWork, getDepartmentTasks, getStageBottlenecks, getSourcingItems, getProcurementFlowCounts, getDesignFlowCounts, getDesignWork } from '@/lib/data';
+import { getMyWork, getBomWork, getDepartmentTasks, getStageBottlenecks, getSourcingItems, getProcurementFlowCounts, getDesignFlowCounts, getDesignWork, getSalesFlowCounts, getStoresFlowCounts } from '@/lib/data';
 import { getFreshSessionUser, isCustomer, isManager, isHead, headDepartments, canAccessDepartment, roleHome } from '@/lib/auth';
 import StatusBadge from '@/components/StatusBadge';
 import DispatchBoard from '@/components/DispatchBoard';
 import TicketsPanel from '@/components/TicketsPanel';
 import ProcurementFlow from '@/components/ProcurementFlow';
+import SalesFlow from '@/components/SalesFlow';
+import StoresFlow from '@/components/StoresFlow';
 import MasterBomTable from '@/components/MasterBomTable';
 import DesignOperationsSection from '@/components/DesignOperationsSection';
 import OperationsAttentionSection from '@/components/OperationsAttentionSection';
@@ -90,6 +92,10 @@ export async function OperationsPage({ searchParams }) {
   // In-transit tiles. Positioned right after the stat chips, ahead of the per-project breakdown
   // below, which is the least useful thing on this page for a quick "where do things stand" glance.
   const procurementFlow = deptsToShow.includes('Procurement') ? await getProcurementFlowCounts() : null;
+  // Sales' pipeline glance (STORES-SALES-CHANGES.md follow-up) — same slot/precedent as Procurement's.
+  const salesFlow = deptsToShow.includes('Sales') ? await getSalesFlowCounts() : null;
+  // Stores' pipeline glance (STORES-SALES-CHANGES.md follow-up) — same slot/precedent as Procurement's.
+  const storesFlow = deptsToShow.includes('Stores') ? await getStoresFlowCounts() : null;
   // Design's pipeline glance (§E) — same slot/precedent as Procurement's.
   const designFlow = deptsToShow.includes('Design') ? await getDesignFlowCounts() : null;
   const designWork = deptsToShow.includes('Design') ? await getDesignWork() : [];
@@ -121,6 +127,8 @@ export async function OperationsPage({ searchParams }) {
       {/* Procurement's pipeline glance sits right after the KPI chips — ahead of the per-project
           breakdown below, which is the least useful thing here for a quick status check. */}
       {procurementFlow && <ProcurementFlow counts={procurementFlow} />}
+      {salesFlow && <SalesFlow counts={salesFlow} />}
+      {storesFlow && <StoresFlow counts={storesFlow} />}
       {designFlow && (
         <DesignOperationsSection groups={groups} counts={designFlow} designWork={designWork}
           outgoing={designOutgoing} incoming={designIncoming} sourcingItems={sourcingItems} />
@@ -151,7 +159,7 @@ export async function OperationsPage({ searchParams }) {
           two direction-split cards (V2-CHANGES.md Group 4b — moved back here from the Requests tab,
           which now only holds the New-item/Cancel acceptance inbox). "Waiting on" (delay_category
           grouping) stays removed — near-unused across the whole app and redundant with Open Actions. */}
-      {deptsToShow.map((d, i) => d !== 'Procurement' && d !== 'Design' && (
+      {deptsToShow.map((d, i) => d !== 'Procurement' && d !== 'Design' && d !== 'Stores' && (
         <TicketsPanel key={d} title={d} department={d} canRaise tasks={tasksByDept[i]} bom={sourcingItems} />
       ))}
 
@@ -171,6 +179,25 @@ export async function OperationsPage({ searchParams }) {
             <TicketsPanel title="Outgoing Incidents" department="Procurement" canRaise showDepartment
               tasks={outgoing} bom={sourcingItems} />
             <TicketsPanel title="Incoming Incidents" department="Procurement" tasks={incoming} />
+          </div>
+        );
+      })()}
+
+      {/* Stores' incident cards, direction-split — same exact pattern as Procurement's above,
+          reusing the already-fetched Stores tasks. TicketsPanel's raise dialog already fires a
+          real notification to the target department (same mechanism every other Raise does), so
+          this gets Stores real incoming/outgoing notifications for free — nothing extra to wire. */}
+      {(() => {
+        const si = deptsToShow.indexOf('Stores');
+        if (si === -1) return null;
+        const storesTasks = tasksByDept[si] || [];
+        const outgoing = storesTasks.filter(t => t.from_department === 'Stores' && !t.bom_item_id);
+        const incoming = storesTasks.filter(t => t.department === 'Stores' && t.from_department && t.from_department !== 'Stores' && !t.bom_item_id);
+        return (
+          <div className="grid gap-4 md:grid-cols-2">
+            <TicketsPanel title="Outgoing Incidents" department="Stores" canRaise showDepartment
+              tasks={outgoing} bom={sourcingItems} />
+            <TicketsPanel title="Incoming Incidents" department="Stores" tasks={incoming} />
           </div>
         );
       })()}

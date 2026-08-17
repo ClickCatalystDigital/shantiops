@@ -1,17 +1,29 @@
 import Link from 'next/link';
 import { getProjectsWithStatus, getCustomers, getDesignProgressByProject } from '@/lib/data';
-import { getFreshSessionUser, isPM } from '@/lib/auth';
+import { getFreshSessionUser, isDesignHead } from '@/lib/auth';
 import StatusBadge from '@/components/StatusBadge';
 import NewProjectForm from '@/components/NewProjectForm';
 import PageHeader from '@/components/PageHeader';
 import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+
+// Which department(s) currently have the ball on a project — a small pill row next to the health
+// badge, not a replacement for it (health = is it late; this = who's actually holding it).
+function DepartmentPills({ departments }) {
+  if (!departments?.length) return null;
+  return (
+    <div className="mt-1 flex flex-wrap gap-1">
+      {departments.map(d => <Badge key={d} variant="outline" className="text-xs font-normal">{d}</Badge>)}
+    </div>
+  );
+}
 
 export const dynamic = 'force-dynamic';
 
 export default async function Projects() {
   const user = await getFreshSessionUser();
-  const canCreate = isPM(user);
+  const canCreate = isDesignHead(user);
   const [projects, customers, designProgress] = await Promise.all([
     getProjectsWithStatus(), canCreate ? getCustomers() : [], getDesignProgressByProject(),
   ]);
@@ -34,6 +46,7 @@ export default async function Projects() {
                 </div>
                 <div className="text-sm">{p.customer_name}</div>
                 <div className="text-xs text-muted-foreground">{p.description || '—'}</div>
+                <DepartmentPills departments={p.activeDepartments} />
               </CardContent>
             </Card>
           </Link>
@@ -61,7 +74,10 @@ export default async function Projects() {
                     <TableCell className="text-muted-foreground">{p.description || '—'}</TableCell>
                     <TableCell className="tnum">{p.order_date || '—'}</TableCell>
                     <TableCell className="text-muted-foreground">{dp ? `${dp.done}/${dp.total}` : '—'}</TableCell>
-                    <TableCell><StatusBadge status={p.roll} /></TableCell>
+                    <TableCell>
+                      <StatusBadge status={p.roll} />
+                      <DepartmentPills departments={p.activeDepartments} />
+                    </TableCell>
                   </TableRow>
                 );
               })}

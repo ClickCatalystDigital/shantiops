@@ -16,7 +16,7 @@ import {
   LayoutDashboard, ChartSpline, PencilRuler,
 } from 'lucide-react';
 import { computeAll, runValidations, runFormulaTests, extractDeps, round, LIBRARY, goalSeek, sensitivityAnalysis, changeImpact } from '@/lib/calc-engine';
-import { api, showToast } from '@/lib/client';
+import { api, showToast, formatDate } from '@/lib/client';
 import {
   SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarFooter, SidebarGroup,
   SidebarGroupLabel, SidebarGroupContent, SidebarMenu, SidebarMenuItem, SidebarMenuButton,
@@ -27,6 +27,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Separator } from '@/components/ui/separator';
@@ -2155,7 +2156,20 @@ function DrawingCard({ drawing, router, canApprove, designTeam }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [fileBusy, setFileBusy] = useState(null);
+  const [comments, setComments] = useState(null); // null = not yet loaded
+  const [commentDraft, setCommentDraft] = useState('');
   const [form, setForm] = useState({ status: drawing.status, assignedTo: drawing.assignedTo || '', dueDate: drawing.dueDate || '', notes: drawing.notes || '' });
+  const loadComments = async () => { if (comments) return; try { setComments(await api(`/api/calc-drawings/${drawing.id}/comments`)); } catch (err) { showToast(err.message, 'error'); } };
+  const postComment = async () => {
+    if (!commentDraft.trim()) return;
+    setBusy(true);
+    try {
+      await api(`/api/calc-drawings/${drawing.id}/comments`, { method: 'POST', body: { body: commentDraft.trim() } });
+      setCommentDraft('');
+      setComments(await api(`/api/calc-drawings/${drawing.id}/comments`));
+    } catch (err) { showToast(err.message, 'error'); }
+    setBusy(false);
+  };
   const save = async (patch) => { setBusy(true); try { await api(`/api/calc-drawings/${drawing.id}`, { method: 'PATCH', body: patch }); router.refresh(); } catch (err) { showToast(err.message, 'error'); } finally { setBusy(false); } };
   const remove = async () => { setBusy(true); try { await api(`/api/calc-drawings/${drawing.id}`, { method: 'DELETE' }); router.refresh(); } catch (err) { showToast(err.message, 'error'); setBusy(false); } };
   const removeFile = async (fileId) => {
@@ -2172,7 +2186,7 @@ function DrawingCard({ drawing, router, canApprove, designTeam }) {
   return <Card>
     <button className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left" onClick={() => setOpen((v) => !v)}>
       <div className="min-w-0"><div className="text-sm font-medium">{drawing.name}</div>{drawing.drawingType && <div className="text-xs text-muted-foreground">{drawing.drawingType}</div>}</div>
-      <div className="flex shrink-0 items-center gap-2"><Badge className={DRAWING_STATUS_STYLE[drawing.status].cls} variant="outline">{DRAWING_STATUS_STYLE[drawing.status].label}</Badge><ChevronDown className={`size-3.5 transition-transform ${open ? 'rotate-180' : ''}`} /></div>
+      <div className="flex shrink-0 items-center gap-2">{drawing.customerApprovedAt && <Badge variant="outline" className="border-success text-success">Customer approved {formatDate(drawing.customerApprovedAt)}</Badge>}<Badge className={DRAWING_STATUS_STYLE[drawing.status].cls} variant="outline">{DRAWING_STATUS_STYLE[drawing.status].label}</Badge><ChevronDown className={`size-3.5 transition-transform ${open ? 'rotate-180' : ''}`} /></div>
     </button>
     {open && <CardContent className="flex flex-col gap-3 border-t pt-3">
       <div className="flex justify-end gap-2"><DrawingFileUpload drawingId={drawing.id} router={router} />{canApprove && <Button variant="ghost" size="sm" disabled={busy} onClick={remove} className="text-destructive hover:text-destructive"><Trash2 className="size-3.5" data-icon="inline-start" />Delete drawing</Button>}</div>
@@ -2193,6 +2207,36 @@ function DrawingCard({ drawing, router, canApprove, designTeam }) {
         <div className="flex flex-col gap-1"><Label className="text-xs">Due date</Label><Input type="date" disabled={!canApprove} value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} onBlur={() => save({ dueDate: form.dueDate })} /></div>
       </div>
       <div className="flex flex-col gap-1"><Label className="text-xs">Notes</Label><Textarea rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} onBlur={() => save({ notes: form.notes })} /></div>
+      {canApprove && (
+        <div className="flex items-center gap-2">
+          <Checkbox id={`cv-${drawing.id}`} checked={drawing.customerVisible} disabled={busy}
+            onCheckedChange={(v) => save({ customerVisible: !!v })} />
+          <Label htmlFor={`cv-${drawing.id}`} className="font-normal text-xs">
+            Share with customer{drawing.customerVisible ? ' — visible once status reaches Under review' : ' (not shown in the portal)'}
+          </Label>
+        </div>
+      )}
+      <div className="flex flex-col gap-1.5 border-t pt-2.5">
+        <Label className="text-xs">Comments{drawing.status === 'not_started' || drawing.status === 'in_progress' ? ' (internal only — not visible to the customer yet)' : ''}</Label>
+        {comments === null ? (
+          <button type="button" className="w-fit text-xs text-primary hover:underline" onClick={loadComments}>Show comments</button>
+        ) : (
+          <>
+            {comments.length === 0 && <p className="text-xs text-muted-foreground">No comments yet.</p>}
+            {comments.map((c) => (
+              <div key={c.id} className="text-xs">
+                <span className="font-medium">{c.author_name}</span>{c.author_type === 'customer' && <Badge variant="outline" className="ml-1.5 text-[10px]">Customer</Badge>}{' '}
+                <span className="text-muted-foreground">{formatDate(c.created_at)}</span>
+                <p className="mt-0.5">{c.body}</p>
+              </div>
+            ))}
+            <div className="flex gap-2 pt-1">
+              <Textarea rows={2} value={commentDraft} onChange={(e) => setCommentDraft(e.target.value)} placeholder="Reply…" />
+            </div>
+            <Button size="sm" variant="outline" className="w-fit" disabled={busy || !commentDraft.trim()} onClick={postComment}>Comment</Button>
+          </>
+        )}
+      </div>
     </CardContent>}
   </Card>;
 }

@@ -6,9 +6,13 @@ import { cn } from "@/lib/utils"
 
 // ref forwards to the actual scrolling container (not the <table> itself) — callers that need
 // to drive horizontal scroll programmatically (e.g. "scroll right" buttons) attach it here.
+// min-w-0 is load-bearing: on a flex/grid ancestor, a child otherwise refuses to shrink below its
+// content's intrinsic width (the "min-width: auto" default), so a wide table pushes the whole
+// layout wider — a page-level scrollbar — instead of scrolling inside this div as intended. Only
+// matters once content would overflow, so it can't change anything for a table that already fits.
 const Table = React.forwardRef(function Table({ className, ...props }, ref) {
   return (
-    <div ref={ref} data-slot="table-container" className="relative w-full overflow-x-auto">
+    <div ref={ref} data-slot="table-container" className="relative w-full min-w-0 overflow-x-auto">
       <table
         data-slot="table"
         className={cn("w-full caption-bottom text-sm", className)}

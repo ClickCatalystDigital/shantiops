@@ -637,13 +637,14 @@ function AddSaleOrderDialog({ onClose, router }) {
   const [soNo, setSoNo] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [description, setDescription] = useState('');
+  const [company, setCompany] = useState('Shanti Boilers');
   const [saving, setSaving] = useState(false);
 
   async function save() {
     if (!soNo.trim()) return showToast('Sale Order number is required', 'error');
     setSaving(true);
     try {
-      await api('/api/sale-orders', { method: 'POST', body: { so_no: soNo.trim(), customer_name: customerName.trim() || null, description: description.trim() || null } });
+      await api('/api/sale-orders', { method: 'POST', body: { so_no: soNo.trim(), customer_name: customerName.trim() || null, description: description.trim() || null, company } });
       showToast('Sale Order added');
       router.refresh();
       onClose();
@@ -658,6 +659,16 @@ function AddSaleOrderDialog({ onClose, router }) {
           <div className="grid gap-1.5"><Label>Sale Order number</Label><Input value={soNo} onChange={e => setSoNo(e.target.value)} placeholder="SO-1042" autoFocus /></div>
           <div className="grid gap-1.5"><Label>Customer (optional)</Label><Input value={customerName} onChange={e => setCustomerName(e.target.value)} /></div>
           <div className="grid gap-1.5"><Label>Description (optional)</Label><Input value={description} onChange={e => setDescription(e.target.value)} /></div>
+          <div className="grid gap-1.5">
+            <Label>Company — which entity is contracting this order</Label>
+            <Select value={company} onValueChange={setCompany}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Shanti Boilers">Shanti Boilers</SelectItem>
+                <SelectItem value="Shanti Techno Fab">Shanti Techno Fab</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
         <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Add Sale Order'}</Button></DialogFooter>
       </DialogContent>
@@ -665,8 +676,102 @@ function AddSaleOrderDialog({ onClose, router }) {
   );
 }
 
-function SaleOrdersTab({ saleOrders, router }) {
+// A quotation-converted Sale Order always defaults to Shanti Boilers (the convert endpoint has no
+// UI passing a choice) — this is what fixes a wrongly-defaulted one after the fact.
+function SoCompanyCell({ so, router }) {
+  const [saving, setSaving] = useState(false);
+  async function change(company) {
+    setSaving(true);
+    try {
+      await api(`/api/sale-orders/${so.id}`, { method: 'PATCH', body: { company } });
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+    setSaving(false);
+  }
+  return (
+    <Select value={so.company || 'Shanti Boilers'} onValueChange={change} disabled={saving}>
+      <SelectTrigger className="h-7 w-40 border-transparent bg-transparent text-muted-foreground hover:border-input">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="Shanti Boilers">Shanti Boilers</SelectItem>
+        <SelectItem value="Shanti Techno Fab">Shanti Techno Fab</SelectItem>
+      </SelectContent>
+    </Select>
+  );
+}
+
+// STORES-SALES-CHANGES.md §2b/§4 — Sales' own "Convert to Project" instead of an out-of-band ask
+// to a PM. Server-gated to isDesignHead (PM or a Design head) — canCreateProject just hides the
+// button for anyone else, same "hide, don't rely on hiding" precedent as the rest of the app.
+function ConvertToProjectDialog({ so, onClose, router }) {
+  const [description, setDescription] = useState('');
+  const [orderDate, setOrderDate] = useState('');
+  const [saving, setSaving] = useState(false);
+  async function save() {
+    setSaving(true);
+    try {
+      const { id } = await api('/api/projects', {
+        method: 'POST',
+        body: { customer_name: so.customer_name || '', description: description.trim() || null, order_date: orderDate || null, sale_order_id: so.id },
+      });
+      showToast('Project created');
+      router.push(`/projects/${id}`);
+    } catch (err) { showToast(err.message, 'error'); setSaving(false); }
+  }
+  return (
+    <Dialog open onOpenChange={o => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Convert {so.so_no} to a Project</DialogTitle></DialogHeader>
+        <div className="flex flex-col gap-3">
+          <div className="grid gap-1.5"><Label>Customer</Label><Input value={so.customer_name || ''} disabled /></div>
+          <div className="grid gap-1.5"><Label>Description</Label><Input value={description} onChange={e => setDescription(e.target.value)} placeholder="3 TPH Solid Fuel Boiler" /></div>
+          <div className="grid gap-1.5"><Label>Order Date</Label><Input type="date" value={orderDate} onChange={e => setOrderDate(e.target.value)} /></div>
+        </div>
+        <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? 'Creating…' : 'Create Project'}</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// STORES-SALES-CHANGES.md §2b/§4 — the SAS "push to Stores" Sales was missing: same source='sas'
+// PR line Stores already raises against a Sale Order (app/api/purchase-requisitions/route.js),
+// just initiated from Sales' own side instead.
+function RequestFromStoresDialog({ so, onClose, router }) {
+  const [description, setDescription] = useState('');
+  const [qtyText, setQtyText] = useState('');
+  const [saving, setSaving] = useState(false);
+  async function save() {
+    if (!description.trim() || !qtyText.trim()) return showToast('Description and quantity are required', 'error');
+    setSaving(true);
+    try {
+      await api('/api/purchase-requisitions', {
+        method: 'POST',
+        body: { raised_by_dept: 'Sales', lines: [{ source: 'sas', material_description: description.trim(), sale_order_no: so.so_no, qty_text: qtyText.trim() }] },
+      });
+      showToast('Request sent to Stores');
+      router.refresh();
+      onClose();
+    } catch (err) { showToast(err.message, 'error'); } finally { setSaving(false); }
+  }
+  return (
+    <Dialog open onOpenChange={o => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Request material from Stores for {so.so_no}</DialogTitle></DialogHeader>
+        <div className="flex flex-col gap-3">
+          <div className="grid gap-1.5"><Label>Item description *</Label><Input value={description} onChange={e => setDescription(e.target.value)} placeholder="MS Plate 6mm" autoFocus /></div>
+          <div className="grid gap-1.5"><Label>Quantity *</Label><Input value={qtyText} onChange={e => setQtyText(e.target.value)} placeholder="4 Nos" /></div>
+        </div>
+        <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? 'Sending…' : 'Send to Stores'}</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function SaleOrdersTab({ saleOrders, router, canCreateProject = false }) {
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [convertSo, setConvertSo] = useState(null);
+  const [sasSo, setSasSo] = useState(null);
   return (
     <Card>
       <CardHeader>
@@ -676,15 +781,20 @@ function SaleOrdersTab({ saleOrders, router }) {
       <CardContent>
         {saleOrders.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No Sale Orders yet.</p> : (
           <Table>
-            <TableHeader><TableRow><TableHead>SO No.</TableHead><TableHead>Customer</TableHead><TableHead>Total</TableHead><TableHead>Status</TableHead><TableHead>Created</TableHead></TableRow></TableHeader>
+            <TableHeader><TableRow><TableHead>SO No.</TableHead><TableHead>Customer</TableHead><TableHead>Company</TableHead><TableHead>Total</TableHead><TableHead>Status</TableHead><TableHead>Created</TableHead><TableHead /></TableRow></TableHeader>
             <TableBody>
               {saleOrders.map(so => (
                 <TableRow key={so.id}>
                   <TableCell className="font-medium">{so.so_no}</TableCell>
                   <TableCell>{so.customer_name || '—'}</TableCell>
+                  <TableCell><SoCompanyCell so={so} router={router} /></TableCell>
                   <TableCell className="tnum">{so.total ? formatMoney(so.total) : '—'}</TableCell>
                   <TableCell><Badge variant={so.status === 'open' ? 'outline' : 'default'}>{so.status || 'open'}</Badge></TableCell>
                   <TableCell className="text-muted-foreground">{new Date(so.created_at).toLocaleDateString()}</TableCell>
+                  <TableCell className="flex justify-end gap-2">
+                    <Button size="sm" variant="outline" onClick={() => setSasSo(so)}>Request from Stores</Button>
+                    {canCreateProject && !so.project_id && <Button size="sm" variant="outline" onClick={() => setConvertSo(so)}>Convert to Project</Button>}
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -692,6 +802,8 @@ function SaleOrdersTab({ saleOrders, router }) {
         )}
       </CardContent>
       {dialogOpen && <AddSaleOrderDialog router={router} onClose={() => setDialogOpen(false)} />}
+      {convertSo && <ConvertToProjectDialog so={convertSo} router={router} onClose={() => setConvertSo(null)} />}
+      {sasSo && <RequestFromStoresDialog so={sasSo} router={router} onClose={() => setSasSo(null)} />}
     </Card>
   );
 }
@@ -867,7 +979,7 @@ const PANELS = [
   { key: 'team', label: 'Team', icon: ContactIcon, description: 'Auto-assign new leads round-robin', salesOnly: false },
 ];
 
-export default function SalesWorkspace({ saleOrders, leads, customers, quotations, campaigns, departments = ['Sales', 'Marketing'], users = [], savedViews = [] }) {
+export default function SalesWorkspace({ saleOrders, leads, customers, quotations, campaigns, departments = ['Sales', 'Marketing'], users = [], savedViews = [], canCreateProject = false }) {
   const router = useRouter();
   const [panel, setPanel] = useState('leads');
   // Customers/Quotations/Sale Orders are the commercial fulfilment chain — Sales-owned. Marketing
@@ -926,7 +1038,7 @@ export default function SalesWorkspace({ saleOrders, leads, customers, quotation
           {activePanel.key === 'leads' && <LeadsTab leads={leads} users={users} savedViews={savedViews} router={router} />}
           {activePanel.key === 'customers' && <CustomersTab customers={customers} router={router} />}
           {activePanel.key === 'quotations' && <QuotationsTab quotations={quotations} customers={customers} router={router} />}
-          {activePanel.key === 'sale_orders' && <SaleOrdersTab saleOrders={saleOrders} router={router} />}
+          {activePanel.key === 'sale_orders' && <SaleOrdersTab saleOrders={saleOrders} router={router} canCreateProject={canCreateProject} />}
           {activePanel.key === 'campaigns' && <CampaignsTab campaigns={campaigns} router={router} />}
           {activePanel.key === 'tasks' && <AllTasksTab users={users} />}
           {activePanel.key === 'team' && <TeamTab users={users} departments={departments} />}
