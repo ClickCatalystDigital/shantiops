@@ -17,14 +17,23 @@ export default function UserManagement({ heads: initialHeads, availableEmployees
   const [heads, setHeads] = useState(initialHeads);
   const [f, setF] = useState(BLANK);
   const [busy, setBusy] = useState(false);
+  const [newEmployee, setNewEmployee] = useState(false);
+  const [newName, setNewName] = useState('');
 
   async function create(e) {
     e.preventDefault();
     setBusy(true);
     try {
-      await api('/api/users', { method: 'POST', body: f });
+      let employeeId = f.employeeId;
+      if (newEmployee) {
+        const emp = await api('/api/employees', { method: 'POST', body: { name: newName } });
+        employeeId = emp.id;
+      }
+      await api('/api/users', { method: 'POST', body: { ...f, employeeId } });
       showToast('System access created and linked to HR');
       setF(BLANK);
+      setNewName('');
+      setNewEmployee(false);
       router.refresh();
     } catch (err) { showToast(err.message, 'error'); }
     setBusy(false);
@@ -89,17 +98,27 @@ export default function UserManagement({ heads: initialHeads, availableEmployees
           </div>
         )}
 
-        <form onSubmit={create} className="grid items-end gap-3 sm:grid-cols-[1.4fr_1fr_1fr_auto]">
-          <div className="flex flex-col gap-1.5"><Label>HR employee *</Label>
-            <select required value={f.employeeId} onChange={e => setF({ ...f, employeeId: e.target.value })} className="h-10 rounded-md border bg-background px-3 text-sm">
-              <option value="">Select an active HR employee</option>
-              {availableEmployees.map(e => <option key={e.id} value={e.id}>{e.name} · {e.employee_code} · {e.department || 'Unassigned'}</option>)}
-            </select></div>
-          <div className="flex flex-col gap-1.5"><Label>Username *</Label>
-            <Input required value={f.username} onChange={e => setF({ ...f, username: e.target.value })} /></div>
-          <div className="flex flex-col gap-1.5"><Label>Password *</Label>
-            <Input type="password" required minLength={6} value={f.password} onChange={e => setF({ ...f, password: e.target.value })} /></div>
-          <Button disabled={busy || availableEmployees.length === 0}>{busy ? 'Creating…' : 'Create access'}</Button>
+        <form onSubmit={create} className="flex flex-col gap-3">
+          <button type="button" className="w-fit text-xs text-muted-foreground underline" onClick={() => setNewEmployee(v => !v)}>
+            {newEmployee ? 'Select an existing HR employee instead' : "+ Person isn't in HR yet — add them"}
+          </button>
+          <div className="grid items-end gap-3 sm:grid-cols-[1.4fr_1fr_1fr_auto]">
+            {newEmployee ? (
+              <div className="flex flex-col gap-1.5"><Label>New employee name *</Label>
+                <Input required value={newName} onChange={e => setNewName(e.target.value)} /></div>
+            ) : (
+              <div className="flex flex-col gap-1.5"><Label>HR employee *</Label>
+                <select required value={f.employeeId} onChange={e => setF({ ...f, employeeId: e.target.value })} className="h-10 rounded-md border bg-background px-3 text-sm">
+                  <option value="">Select an active HR employee</option>
+                  {availableEmployees.map(e => <option key={e.id} value={e.id}>{e.name} · {e.employee_code} · {e.department || 'Unassigned'}</option>)}
+                </select></div>
+            )}
+            <div className="flex flex-col gap-1.5"><Label>Username *</Label>
+              <Input required value={f.username} onChange={e => setF({ ...f, username: e.target.value })} /></div>
+            <div className="flex flex-col gap-1.5"><Label>Password *</Label>
+              <Input type="password" required minLength={6} value={f.password} onChange={e => setF({ ...f, password: e.target.value })} /></div>
+            <Button disabled={busy || (!newEmployee && availableEmployees.length === 0)}>{busy ? 'Creating…' : 'Create access'}</Button>
+          </div>
         </form>
       </CardContent>
     </Card>
