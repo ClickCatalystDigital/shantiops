@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { execute, queryOne } from '@/lib/db';
+import { execute, queryOne, queryAll } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { audit } from '@/lib/usb';
 import { notifyDepartment } from '@/lib/notify';
@@ -83,22 +83,31 @@ export async function POST(req, { params }) {
     [params.id, file.name, buffer, revision, summary, user.username]);
   const importId = Number(imp.lastId);
 
+  // §3.2 catalog wiring — best-effort auto-link: PMB descriptions and the client's own Item Master
+  // export both ultimately came from the same ERP system, so an exact (case/space-insensitive)
+  // name match is a real signal, not a guess, worth taking automatically here (unlike the fuzzy
+  // keyword overlap the possible-match badge uses elsewhere). No match just leaves item_id NULL —
+  // same as any row nobody's linked yet.
+  const catalog = await queryAll('SELECT id, item_name FROM items');
+  const catalogByName = new Map(catalog.map(c => [c.item_name.trim().toLowerCase().replace(/\s+/g, ' '), c.id]));
+
   let n = 0;
   for (const sheet of parsed.sheets) {
     for (const it of sheet.items) {
       // Manual-mode gate (STORES-SALES-CHANGES.md) applies only to genuinely fresh rows — a row
       // carrying a real historical status from the client's own PMB export (already Received/
       // Closed etc.) skips it; it doesn't need Stores' review, it's already resolved.
+      const itemId = catalogByName.get(String(it.material_description || '').trim().toLowerCase().replace(/\s+/g, ' ')) || null;
       await execute(
         `INSERT INTO bom_items
            (project_id, material_description, moc, size_spec, sort_order, section, group_label,
             make, qty_text, purchase_status, pr_ref, po_ref, grn_ref, grn_qty_text,
-            pending_qty_text, bqtc_ref, issued_ref, received_ref, remarks, import_id, pending_review)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            pending_qty_text, bqtc_ref, issued_ref, received_ref, remarks, import_id, pending_review, item_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [params.id, it.material_description, it.moc, it.size_spec, n, it.section, it.group_label,
           it.make, it.qty_text, it.purchase_status, it.pr_ref, it.po_ref, it.grn_ref,
           it.grn_qty_text, it.pending_qty_text, it.bqtc_ref, it.issued_ref, it.received_ref,
-          it.remarks, importId, it.purchase_status ? 0 : 1]);
+          it.remarks, importId, it.purchase_status ? 0 : 1, itemId]);
       n++;
     }
   }

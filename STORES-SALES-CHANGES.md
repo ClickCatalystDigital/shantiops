@@ -1,9 +1,14 @@
 # Stores / Sales — Changes Log
 
-**Status:** 🟡 Cheap fixes shipped 2026-08-17 (§3.1 + the two Sales gaps from §2b). **Not shipped:**
-the Item Master catalog wiring (§3.2) — deliberately deferred, sequenceable, not started. Once §3.2
-ships too, fold the full as-built behavior into `SYSTEM.md` §5c/§5e and mark this doc done, same
-pattern `PROCUREMENT-CHANGES.md` and `QC-CHANGES.md` already follow.
+**Status:** ✅ Done — every item in this doc (§3.1's cheap hint through §3.2's real catalog wiring,
+Manual mode, flow diagrams, Stores Incidents, department progress split) shipped 2026-08-17 and is
+folded into `SYSTEM.md` §5e (the as-built reference from here on). Kept as the historical record of
+the investigation and decisions, same pattern `PROCUREMENT-CHANGES.md`/`QC-CHANGES.md` already
+follow — not deleted.
+
+**Genuinely still open, not part of "done" above** (explicitly out of scope for this round, not
+forgotten): whether Sales needs its own Projects-tab view (raised, then told to ignore); Dispatch's
+own daily-UI redesign (flagged alongside Stores' back in §2c, only Stores got the pass).
 
 **What shipped 2026-08-17** (decisions made, resolving §4's open questions for this round):
 - Stores gets a non-binding "possible match" keyword-overlap hint on Open Requests
@@ -324,7 +329,33 @@ it. Don't default to a new module up front.
   drift mid-build.
 - Stores' and Dispatch's actual daily-UI redesign (§2c) is explicitly waiting on a separate meeting
   (mentioned in the investigating session, not detailed here) — check whether that meeting has
-  happened and what it decided before designing new Stores screens.
+  happened and what it decided before designing new Stores screens. Stores' own pass shipped this
+  round (today-summary chips, flow diagram, Incidents); Dispatch's never did.
+
+**What shipped 2026-08-17, tenth pass — §3.2 done, plus the progress-split, closing this doc out:**
+- **§3.2 catalog wiring, for real.** Confirmed against the real client export that `items.item_code`
+  is essentially unusable — only 1 of 2,773 rows has one populated — so the real join key is
+  `items.id`, populated only when a line is actually picked from the catalog search (no retroactive
+  backfill). New `bom_items.item_id`/`inventory_items.item_id`. `PrWorkspace.jsx`'s pre-existing
+  `ItemSearchField` (search already worked, just never persisted a link) now sets it on pick and
+  clears it on hand-edit; the identical pattern was added fresh to Stores' New Item dialog. PMB
+  import best-effort auto-links on an exact item_name match (same source ERP as the catalog, a real
+  signal). `possibleMatches()` now checks `item_id` first — a genuine match, own green ✓ badge — and
+  only falls back to the old fuzzy "≈" keyword overlap when no catalog link exists on either side.
+  Verified end-to-end live: raised a PR line via catalog search, added a matching Inventory item via
+  the same search, confirmed the exact-match badge rendered, cleaned up.
+- **Department Progress / Overall Progress**, replacing the old "Design Progress" column that was
+  always Design-specific (calc-sheet/drawing counts) regardless of which department actually held
+  the project. Both new numbers are plain milestone done/total, reusing the same `activeDepartments`
+  computation the department pill already used — Department Progress for whichever department(s)
+  currently have the project, Overall Progress for the whole thing. `getDesignProgressByProject()`
+  (now dead) removed. Browser-verified against real data.
+- Per user direction: the "does Sales need its own Projects-tab view" question was dropped, not
+  decided — explicitly out of scope now, not merely deferred.
+- Folded into `SYSTEM.md` §5e as the as-built reference (see the "As of 2026-08-17" subsection
+  there) — this doc's own header above now reads Done, same historical-record convention
+  `PROCUREMENT-CHANGES.md`/`QC-CHANGES.md` already established (checked their actual headers before
+  assuming — neither was deleted after folding, so this doc isn't either).
 
 ---
 

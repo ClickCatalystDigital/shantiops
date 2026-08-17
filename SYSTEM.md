@@ -1031,6 +1031,78 @@ reach terminal status by being fulfilled from existing stock, not just procured.
   (8 cases), including the exclusivity case itself (a second request correctly blocked from drawing
   stock a first request had already reserved).
 
+### As of 2026-08-17 — Stores/Sales integration round (working spec: `STORES-SALES-CHANGES.md`, now
+### done and kept as the historical record, same precedent as `PROCUREMENT-CHANGES.md`/`QC-CHANGES.md`)
+
+A investigation-first pass (traced the real code before deciding anything) found the actual gaps: no
+automated BOM↔stock matching, SAS framed as Stores-initiated when the client's own model was
+Sales-push, Sales unable to trigger a Project from its own Sale Order, Procurement's Enquiry queue
+with zero stock-awareness, and near-zero cross-department notification coverage on any of it. All of
+the following shipped against those specific findings, nothing speculative:
+
+- **SAS is Sales-only now**, not Stores-initiated (a real reversal from Group 6's original design,
+  §5e above — reflects a client decision made this round, not a bug in the original). Sales pushes a
+  trade request against its own Sale Order (`components/SalesWorkspace.jsx`'s Request from Stores
+  dialog) straight into `POST /api/purchase-requisitions`'s existing `source='sas'` materialization —
+  same mechanism Stores used to use, just a different raiser. `PrWorkspace.jsx`'s Kind picker no
+  longer offers Trade (SAS) to Stores at all; `SAS_RAISERS` is server-enforced to `{'Sales'}`.
+- **Cross-department notifications**, wired at the actual event, not just logged: Sale Order created
+  → Design + PM tier; SO converted to Project → Sales + PM tier (on top of the pre-existing Design +
+  Engineering Scope-of-Supply notify); any new BOM (import, single add, or a PR line) → Stores;
+  Procurement marking a line Received → Stores; Stores clicking Procure (below) → Procurement;
+  releasing a reservation that leaves a Stores-Review line still gated → Stores again. `notifyPMs()`
+  (`lib/notify.js`) is a narrow, deliberate exception to `notifyDepartment`'s by-design PM exclusion
+  (PMs have no `departments` value specifically so per-milestone-handoff noise never reaches them) —
+  used only for the two genuinely PM-relevant commercial events above.
+- **Manual-mode Stores review gate** — the actual fix for "every new BOM line lands in Procurement's
+  queue regardless of stock." New `bom_items.pending_review` column (plain boolean, deliberately NOT
+  a new `purchase_status` enum value — that would have rippled into `derivePurchaseStage`/
+  `BomStageBar`/`ProcurementFlow`'s 5-stage bar everywhere it's used). A fresh `bom`/`sas` line
+  (PMB import when no historical status exists, a single BOM-item add, or the `bom`/`sas` branches of
+  `purchase-requisitions`) inserts with `pending_review=1`; Stores' own Build stock requests skip it
+  (self-raised, no second review needed). `getSourcingItems()` excludes `pending_review=1` rows
+  entirely from Procurement's Enquiry query — genuinely invisible, not just unlabeled — until Stores
+  clicks **Reserve** (fulfills from stock, never needs Procurement) or the new **Procure**
+  (`POST /api/bom-items/[id]/procure`, clears the flag only, `purchase_status` untouched — it was
+  already `'Enquiry'` from creation — and notifies Procurement). An **Auto/Manual toggle** exists in
+  `StoresWorkspace.jsx` but Auto is a UI-only "coming soon" stub — Manual is the only real behavior
+  regardless of which is selected, pending real item-level matching (see §3.2 below) being trustworthy
+  enough to auto-commit stock against.
+- **Reserved-from-stock visibility on Procurement's own Enquiry queue** — `getSourcingItems()` now
+  also returns `reserved_qty` (sum of active `inventory_reservations` per line); `ProcurementWorkspace.jsx`'s
+  `EnquiryRow` shows a "Reserved from stock" badge when non-zero. Visibility only, not a status
+  change — Reserve alone still never touches `purchase_status`, only Issue does.
+- **Operations flow diagrams** for Sales (`components/SalesFlow.jsx`) and Stores
+  (`components/StoresFlow.jsx`), same slot/pattern as Procurement's/Design's own. Stores' diagram has
+  three source boxes (SAS/Trade from Sales, BOM Released from Design, Build Stock from Stores itself)
+  feeding a `Requests → Stores Review → Reserved → In-Stock` spine, plus a `Received (via
+  Procurement)` terminal that links out to Procurement's own pipeline instead of duplicating its
+  5 stages. **Stores Outgoing/Incoming Incidents** added to Operations too — the exact same
+  direction-split `TicketsPanel` pattern Procurement already had; no new notification plumbing
+  needed, the Raise dialog's existing route (`POST /api/production/tasks`) already notifies.
+- **Department-handling pills + split progress on the Projects list** (`app/projects/page.js`,
+  `getProjectsWithStatus()` in `lib/data.js`) — "Design Progress" (always Design-specific: calc-sheet
+  snapshot + drawing-approval counts, regardless of which department actually held the project) is
+  gone, along with its backing `getDesignProgressByProject()`. Replaced with two well-defined,
+  department-agnostic numbers built from the same milestone data the health badge already used:
+  **Department Progress** (done/total of just the milestones owned by whichever department(s)
+  `activeDepartments` says currently have the project) and **Overall Progress** (done/total of every
+  milestone on the project). Both are plain milestone counts, no new concept invented.
+- **§3.2 — the real Item Master catalog wiring, done.** Confirmed against the real client export
+  (and the loaded data) that `items.item_code` is essentially unusable as a join key — only 1 of
+  2,773 rows actually has one populated. The real key is `items.id` instead, and it's populated only
+  when a line is genuinely picked from the catalog — no retroactive backfill of old free-text rows.
+  New nullable `bom_items.item_id`/`inventory_items.item_id` (both `REFERENCES items(id)`).
+  `PrWorkspace.jsx`'s pre-existing `ItemSearchField` (search UI already existed — Group 5's `/api/items`
+  route — but never persisted a link) now sets `item_id` on pick and clears it on any hand-edit
+  after; the same pattern was added fresh to Stores' New Item dialog
+  (`components/StoresWorkspace.jsx`). The PMB import route best-effort auto-links on an exact
+  (case/space-insensitive) `item_name` match against the catalog — a real signal since PMB exports
+  and the Item Master both came from the same client ERP, not a guess. `possibleMatches()` (the
+  Stores possible-match badge) now checks `item_id` equality first — a real, non-fuzzy match, shown
+  with its own green ✓ badge distinct from the existing muted "≈" keyword-overlap one — falling back
+  to keyword overlap only when no catalog link exists on either side.
+
 ## 5f. Calc Sheets — engineering calculation engine
 
 `/calc` (`components/CalcWorkspace.jsx`), gated to Design/Engineering jointly (`requireCalcAccess`,

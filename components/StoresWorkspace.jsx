@@ -39,9 +39,10 @@ function leadingQty(qtyText) {
   return m ? m[1] : '1';
 }
 
-// STORES-SALES-CHANGES.md §3.1 — the cheap win: no automated bom_items↔inventory_items matching
-// exists anywhere (free-text on both sides, no shared item_code yet — see §3.2 for the real fix).
-// This is a non-binding nudge only, plain keyword overlap, never auto-reserves.
+// STORES-SALES-CHANGES.md §3.1 — the cheap win: plain keyword overlap, a non-binding nudge, never
+// auto-reserves. §3.2 built the real fix on top: when both sides were picked from the item catalog
+// (ItemSearchField / Stores' New Item dialog), request.item_id === inventory row's item_id is an
+// actual match, not a guess — possibleMatches() below prefers that whenever it exists.
 function normalizeWords(s) {
   return String(s || '').toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length >= 3);
 }
@@ -73,6 +74,10 @@ function TodaySummary({ inventoryItems, openRequests, activeReservations }) {
 }
 
 function possibleMatches(request, inventoryItems) {
+  if (request.item_id) {
+    const exact = inventoryItems.filter(it => it.item_id === request.item_id && it.available > 0);
+    if (exact.length) return exact.slice(0, 2).map(item => ({ item, exact: true }));
+  }
   const reqWords = new Set(normalizeWords(request.material_description));
   if (!reqWords.size) return [];
   return inventoryItems
@@ -80,7 +85,7 @@ function possibleMatches(request, inventoryItems) {
     .filter(m => m.score > 0 && m.item.available > 0)
     .sort((a, b) => b.score - a.score)
     .slice(0, 2)
-    .map(m => m.item);
+    .map(m => ({ item: m.item, exact: false }));
 }
 
 function ItemFormDialog({ item, onClose, router }) {
@@ -91,7 +96,31 @@ function ItemFormDialog({ item, onClose, router }) {
   const [location, setLocation] = useState(item?.location || '');
   const [reorderPoint, setReorderPoint] = useState(item?.reorder_point ?? '');
   const [itemCode, setItemCode] = useState(item?.item_code || '');
+  const [itemId, setItemId] = useState(item?.item_id || null);
   const [saving, setSaving] = useState(false);
+  const [catalogResults, setCatalogResults] = useState([]);
+  const [catalogOpen, setCatalogOpen] = useState(false);
+
+  // §3.2 catalog wiring — same search endpoint/idiom as PrWorkspace's ItemSearchField, so a
+  // picked-from-catalog inventory row and a picked-from-catalog BOM/PR line can share item_id for
+  // real (not fuzzy-keyword) matching. Hand-editing after a pick clears the link, same reasoning.
+  async function onDescriptionChange(v) {
+    setDescription(v);
+    setItemId(null);
+    if (v.trim().length < 2) { setCatalogResults([]); setCatalogOpen(false); return; }
+    try {
+      const rows = await api(`/api/items?search=${encodeURIComponent(v.trim())}`);
+      setCatalogResults(rows);
+      setCatalogOpen(rows.length > 0);
+    } catch { /* catalog search is best-effort — free text still works */ }
+  }
+  function pickCatalogItem(it) {
+    setDescription(it.item_name);
+    setSpec(it.detail_desc || '');
+    setItemCode(it.item_code || '');
+    setItemId(it.id);
+    setCatalogOpen(false);
+  }
 
   async function save() {
     if (!description.trim()) return showToast('Description is required', 'error');
@@ -100,7 +129,7 @@ function ItemFormDialog({ item, onClose, router }) {
       const body = {
         description: description.trim(), spec: spec.trim() || null, on_hand: onHand,
         location: location.trim() || null, reorder_point: reorderPoint === '' ? null : reorderPoint,
-        item_code: itemCode.trim() || null,
+        item_code: itemCode.trim() || null, item_id: itemId,
       };
       if (editing) await api(`/api/inventory-items/${item.id}`, { method: 'PATCH', body });
       else await api('/api/inventory-items', { method: 'POST', body });
@@ -119,9 +148,23 @@ function ItemFormDialog({ item, onClose, router }) {
       <DialogContent>
         <DialogHeader><DialogTitle>{editing ? 'Edit inventory item' : 'New inventory item'}</DialogTitle></DialogHeader>
         <div className="grid grid-cols-2 gap-3">
-          <div className="col-span-2 grid gap-1.5">
+          <div className="relative col-span-2 grid gap-1.5">
             <Label>Description</Label>
-            <Input value={description} onChange={e => setDescription(e.target.value)} autoFocus />
+            <Input value={description} onChange={e => onDescriptionChange(e.target.value)}
+              onFocus={() => setCatalogOpen(catalogResults.length > 0)} onBlur={() => setTimeout(() => setCatalogOpen(false), 150)}
+              placeholder="Search the item catalog, or just type a description" autoFocus />
+            {itemId && <p className="text-xs text-success">✓ Linked to catalog — real matching against BOM/PR lines now possible for this item.</p>}
+            {catalogOpen && (
+              <div className="absolute top-full z-10 mt-1 w-full rounded-md border bg-popover shadow-md">
+                {catalogResults.map(it => (
+                  <button key={it.id} type="button" className="flex w-full flex-col items-start gap-0.5 border-b px-3 py-1.5 text-left text-sm last:border-b-0 hover:bg-muted/40"
+                    onMouseDown={() => pickCatalogItem(it)}>
+                    <span className="font-medium">{it.item_name}</span>
+                    <span className="text-xs text-muted-foreground">{it.item_code ? `${it.item_code} · ` : ''}{it.uom || '—'}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <div className="grid gap-1.5">
             <Label>Spec (optional)</Label>
@@ -251,9 +294,11 @@ function OpenRequestsCard({ openRequests, inventoryItems, router }) {
                       {r.material_description}
                       {matches.length > 0 && (
                         <div className="mt-1 flex flex-wrap gap-1">
-                          {matches.map(m => (
-                            <Badge key={m.id} variant="outline" className="text-xs font-normal text-muted-foreground">
-                              ≈ {m.description} ({m.available} avail)
+                          {matches.map(({ item, exact }) => (
+                            <Badge key={item.id} variant="outline"
+                              className={exact ? 'border-success/30 bg-success-surface text-xs font-normal text-success' : 'text-xs font-normal text-muted-foreground'}
+                              title={exact ? 'Same catalog item — a real match, not a guess.' : 'Non-binding keyword overlap — confirm before reserving.'}>
+                              {exact ? '✓' : '≈'} {item.description} ({item.available} avail)
                             </Badge>
                           ))}
                         </div>

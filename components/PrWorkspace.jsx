@@ -29,6 +29,7 @@ function emptyLine() {
     projects: [{ key: nextKey++, project_id: '', qty_text: '' }],
     inventory_item_id: '', qty: '',
     category: '', categoryFields: {},
+    item_id: null, // §3.2 — set only when picked from the catalog search; cleared on any hand-edit
   };
 }
 
@@ -75,7 +76,9 @@ function ItemSearchField({ line, onChange }) {
   const [open, setOpen] = useState(false);
 
   async function onType(v) {
-    onChange({ material_description: v });
+    // §3.2 — hand-editing after a pick invalidates the catalog link; the description no longer
+    // provably matches the row item_id pointed at, so the tie is dropped rather than left stale.
+    onChange({ material_description: v, item_id: null });
     if (v.trim().length < 2) { setResults([]); setOpen(false); return; }
     try {
       const rows = await api(`/api/items?search=${encodeURIComponent(v.trim())}`);
@@ -88,6 +91,7 @@ function ItemSearchField({ line, onChange }) {
     const category = guessCategory(item.group_name);
     onChange({
       material_description: item.item_name, size_spec: item.detail_desc || '', uomHint: item.uom || '',
+      item_id: item.id,
       ...(category && { category, categoryFields: {} }),
     });
     setOpen(false);
@@ -99,6 +103,7 @@ function ItemSearchField({ line, onChange }) {
       <Input value={line.material_description} onChange={e => onType(e.target.value)}
         onFocus={() => setOpen(results.length > 0)} onBlur={() => setTimeout(() => setOpen(false), 150)}
         placeholder="Search the item catalog, or just type a description" />
+      {line.item_id && <p className="text-xs text-success">✓ Linked to catalog — real matching against Inventory now possible for this line.</p>}
       {open && (
         <div className="absolute top-full z-10 mt-1 w-full rounded-md border bg-popover shadow-md">
           {results.map(it => (
@@ -255,7 +260,7 @@ export default function PrWorkspace({ departments, projects, inventoryItems = []
           raised_by_dept: dept,
           lines: lines.map(l => {
             const source = showSourcePicker ? l.source : 'bom';
-            const base = { material_description: l.material_description, moc: l.moc || undefined, size_spec: l.size_spec || undefined, source };
+            const base = { material_description: l.material_description, moc: l.moc || undefined, size_spec: l.size_spec || undefined, source, item_id: l.item_id || undefined };
             if (source === 'stock') return { ...base, inventory_item_id: Number(l.inventory_item_id), qty: Number(l.qty) };
             return {
               ...base, category: l.category || undefined, category_fields: l.category ? l.categoryFields : undefined,

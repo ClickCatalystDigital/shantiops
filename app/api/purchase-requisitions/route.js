@@ -92,26 +92,30 @@ export async function POST(req) {
       [Number(prId), line.material_description.trim(), line.moc || null, line.size_spec || null, i, category, categoryFieldsJson, origin]
     );
 
+    // §3.2 — only ever set when the line was actually picked from the catalog search
+    // (PrWorkspace's ItemSearchField); a hand-typed description clears it client-side.
+    const itemId = line.item_id ? Number(line.item_id) : null;
+
     if (source === 'stock') {
       // Stores raising a Build stock request is already Stores' own decision — no second
       // self-review gate needed, unlike 'bom'/'sas' below.
       const sentinel = await queryOne('SELECT id FROM projects WHERE is_system = 1 LIMIT 1');
       const { lastId: bomItemId } = await execute(
         `INSERT INTO bom_items (project_id, material_description, moc, size_spec, qty_text, purchase_status,
-                                 pr_item_id, source, inventory_item_id, inventory_qty, category, category_fields_json, origin)
-         VALUES (?, ?, ?, ?, ?, 'Enquiry', ?, 'stock', ?, ?, ?, ?, ?)`,
+                                 pr_item_id, source, inventory_item_id, inventory_qty, category, category_fields_json, origin, item_id)
+         VALUES (?, ?, ?, ?, ?, 'Enquiry', ?, 'stock', ?, ?, ?, ?, ?, ?)`,
         [sentinel.id, line.material_description.trim(), line.moc || null, line.size_spec || null,
-          String(line.qty), Number(prItemId), Number(line.inventory_item_id), Number(line.qty), category, categoryFieldsJson, origin]
+          String(line.qty), Number(prItemId), Number(line.inventory_item_id), Number(line.qty), category, categoryFieldsJson, origin, itemId]
       );
       bomItemIds.push(Number(bomItemId));
     } else if (source === 'sas') {
       const sentinel = await queryOne('SELECT id FROM projects WHERE is_system = 1 LIMIT 1');
       const { lastId: bomItemId } = await execute(
         `INSERT INTO bom_items (project_id, material_description, moc, size_spec, qty_text, purchase_status,
-                                 pr_item_id, source, sale_order_no, category, category_fields_json, origin, pending_review)
-         VALUES (?, ?, ?, ?, ?, 'Enquiry', ?, 'sas', ?, ?, ?, ?, 1)`,
+                                 pr_item_id, source, sale_order_no, category, category_fields_json, origin, pending_review, item_id)
+         VALUES (?, ?, ?, ?, ?, 'Enquiry', ?, 'sas', ?, ?, ?, ?, 1, ?)`,
         [sentinel.id, line.material_description.trim(), line.moc || null, line.size_spec || null,
-          line.qty_text.trim(), Number(prItemId), line.sale_order_no.trim(), category, categoryFieldsJson, origin]
+          line.qty_text.trim(), Number(prItemId), line.sale_order_no.trim(), category, categoryFieldsJson, origin, itemId]
       );
       bomItemIds.push(Number(bomItemId));
     } else {
@@ -125,10 +129,10 @@ export async function POST(req) {
         // reserves it from stock or clicks Procure (the unify decision was "no accept step",
         // this doesn't reintroduce one — it's a Stores-only gate, not a Procurement one).
         const { lastId: bomItemId } = await execute(
-          `INSERT INTO bom_items (project_id, material_description, moc, size_spec, qty_text, purchase_status, pr_item_id, category, category_fields_json, origin, pending_review)
-           VALUES (?, ?, ?, ?, ?, 'Enquiry', ?, ?, ?, ?, 1)`,
+          `INSERT INTO bom_items (project_id, material_description, moc, size_spec, qty_text, purchase_status, pr_item_id, category, category_fields_json, origin, pending_review, item_id)
+           VALUES (?, ?, ?, ?, ?, 'Enquiry', ?, ?, ?, ?, 1, ?)`,
           [p.project_id, line.material_description.trim(), line.moc || null, line.size_spec || null,
-            p.qty_text.trim(), Number(prItemId), category, categoryFieldsJson, origin]
+            p.qty_text.trim(), Number(prItemId), category, categoryFieldsJson, origin, itemId]
         );
         bomItemIds.push(Number(bomItemId));
       }

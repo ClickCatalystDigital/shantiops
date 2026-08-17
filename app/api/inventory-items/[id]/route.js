@@ -7,8 +7,8 @@ import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { audit } from '@/lib/usb';
 
-const FIELDS = ['description', 'spec', 'on_hand', 'location', 'reorder_point', 'item_code'];
-const NUMERIC = new Set(['on_hand', 'reorder_point']);
+const FIELDS = ['description', 'spec', 'on_hand', 'location', 'reorder_point', 'item_code', 'item_id'];
+const NUMERIC = new Set(['on_hand', 'reorder_point', 'item_id']);
 
 export async function PATCH(req, { params }) {
   const user = await getFreshSessionUser();
