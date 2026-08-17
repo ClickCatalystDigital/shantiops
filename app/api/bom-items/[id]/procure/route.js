@@ -8,6 +8,7 @@ import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { audit } from '@/lib/usb';
+import { notifyDepartment } from '@/lib/notify';
 
 export async function POST(req, { params }) {
   const user = await getFreshSessionUser();
@@ -22,5 +23,14 @@ export async function POST(req, { params }) {
   await audit('bom_item_procure', {
     actor: user.username, detail: `bom_item ${item.id} (${item.material_description}) sent to Procurement`,
   });
+  // Procurement previously got zero signal when new demand reached their queue through the live
+  // purchase-requisitions flow — this is the one deliberate moment worth notifying them about: a
+  // human just decided "this genuinely needs sourcing," not the system defaulting it there.
+  try {
+    await notifyDepartment('Procurement', {
+      kind: 'request', title: 'New Enquiry item from Stores', body: item.material_description,
+      dedupe_key: `bom_procured:${item.id}`,
+    });
+  } catch (err) { /* notification is best-effort */ }
   return NextResponse.json({ ok: true });
 }

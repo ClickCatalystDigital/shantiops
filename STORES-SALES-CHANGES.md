@@ -180,6 +180,21 @@ Incidents:**
 - Stores' Help page updated: new "Manual review (Stores Review / Procure)" feature, intro mentions
   the flow diagram, Tasks feature mentions the Incidents cards. Browser-verified.
 
+**What shipped 2026-08-17, ninth pass — the two gaps found in the eighth-pass audit, fixed:**
+- **Procurement notified on Procure.** `app/api/bom-items/[id]/procure/route.js` now fires
+  `notifyDepartment('Procurement', ...)` after clearing `pending_review` — closes the pre-existing
+  gap where Procurement never heard about new demand through the live flow. Verified live: clicking
+  Procure notified both `procurement_head` and `proc`, then cleaned up.
+- **Released reservation re-flags a still-gated line.** `releaseReservation()` (`lib/procurement.js`)
+  now checks whether the bom_item is still `pending_review=1` and not yet closed after releasing,
+  and if so notifies Stores that the line needs a fresh Reserve/Procure decision — skips the
+  cancel-cleanup path (`releaseReservationsForItem`, called from the Cancel route after
+  `purchase_status` is already `'Cancelled'`), since a cancelled item isn't awaiting anything.
+  Verified live end-to-end: reserved a test line, released it, confirmed `stores_head`/`stores`/
+  `babji` were notified "Reservation released — needs a decision", then cleaned up.
+- Help content updated on both sides: Stores' "Manual review" feature and Notifications feature,
+  Procurement's "Enquiry queue" feature — all three browser-verified.
+
 **Still explicitly deferred, not touched:** whether Sales needs its own Projects-tab view to check
 progress; splitting "Design progress" into a per-current-department progress column plus a separate
 overall-progress column (the department pill above answers "who", not "how far along that
