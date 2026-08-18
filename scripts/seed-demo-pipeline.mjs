@@ -90,10 +90,16 @@ async function seedMilestones(projectId, doneThrough) {
       ps = isoDaysFromNow((i - doneThrough) * 4);
       pe = isoDaysFromNow((i - doneThrough) * 4 + 3);
     }
+    // depends_on_key: previous milestone in this script's own template order, same default
+    // lib/db.js's createProjectMilestones seeds — this script writes milestones directly and
+    // never goes through that function, so it has to set this itself (lib/dependency.mjs's
+    // dependency engine reads it; a NULL here just silently reads as "no structural predecessor",
+    // no crash, but every one of this script's projects would wrongly look fully unblocked).
+    const dependsOnKey = i > 0 ? MILESTONES[i - 1][0] : null;
     await run(
-      `INSERT INTO milestones (project_id, milestone_key, milestone_label, sort_order, department, planned_start, planned_end, actual_start, actual_end, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [projectId, key, label, i, department, ps, pe, as, ae, status]
+      `INSERT INTO milestones (project_id, milestone_key, milestone_label, sort_order, department, planned_start, planned_end, actual_start, actual_end, status, depends_on_key)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [projectId, key, label, i, department, ps, pe, as, ae, status, dependsOnKey]
     );
   }
 }

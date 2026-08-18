@@ -1518,11 +1518,13 @@ it does not decide any business question the code itself can't already prove.
 - **`depends_on_key`** (`milestones` table) existed in schema from the original redesign but was
   never read or written by any code — confirmed by a full-repo grep before this work started. v1
   makes it real.
-- **Seeding** (`lib/db.js`, `createProjectMilestones`): every new project gets `depends_on_key` set
-  to the previous milestone's key in `MILESTONE_TEMPLATE` order. **Backfill** (`lib/db.js`,
-  `backfillDependsOnKey`, called once from `migrate()`): fills the same value onto every existing
-  row still `NULL`, per project, ordered by that project's own `sort_order, id` — idempotent, a
-  no-op once every row has a value.
+- **Seeding** (`lib/db.js`, `createProjectMilestones`, fixed 2026-08-18 — see "Real bug found and
+  fixed" below): every new project's `depends_on_key` is read from `currentDependsOnKeyMap()` —
+  whatever's currently configured system-wide (via the admin UI below), keyed by `milestone_key`.
+  Only a `milestone_key` that has never appeared in any project yet falls back to plain
+  `MILESTONE_TEMPLATE` order. The original one-time historical backfill (`backfillDependsOnKey`,
+  which gave every pre-2026-08-18 row its first value) already ran against the real DB and has
+  been removed from `migrate()` — it must never run as a standing migration (see below for why).
 - **`lib/dependency.mjs`** — pure module (no framework imports, safe for client components and
   plain `node --test`, same shape as `lib/handoff.mjs`/`lib/bom-fields.mjs`).
   `milestoneReadiness(m, rows, bomItems)` returns `{ ready, blocked_by }` for one milestone:
@@ -1555,6 +1557,28 @@ it does not decide any business question the code itself can't already prove.
   `milestone_key`'s `depends_on_key` has ever diverged across projects ("mixed") — not expected
   today (every row so far came from the same uniform seed/backfill), but the column is per-row,
   so it's checked rather than assumed.
+- **Real bug found and fixed (2026-08-18)**: a PM/head's confirmed answer in the admin UI did not
+  actually survive into new projects, and could silently revert on its own. Two compounding
+  causes, both fixed:
+  1. `createProjectMilestones` originally always re-derived `depends_on_key` from plain
+     `MILESTONE_TEMPLATE` order, never reading what the admin UI had configured — so a new project
+     (real or demo) created after an edit would quietly get the old template default back. Fixed
+     by `currentDependsOnKeyMap()` (above).
+  2. Worse: `backfillDependsOnKey`'s old guard — "any row with `depends_on_key IS NULL` still
+     needs backfilling" — became actively wrong the moment "None" (`NULL`) became a legitimate
+     admin-configured value (a milestone with no structural predecessor). Since it re-ran on every
+     `migrate()` call (every server restart in production; every dev-mode module reload while
+     testing), it would silently overwrite a just-confirmed "None" back to the template-order
+     default the next time the process restarted — indistinguishable, from its own point of view,
+     from data that had simply never been migrated yet. Fixed by removing it entirely from
+     `migrate()`'s recurring path — its one-time job on the real DB was already done.
+  Verified live end-to-end: set a real intra-Production edge to "None" via the API, created a
+  genuinely new project through the real `POST /api/projects` flow (not seed data), confirmed via
+  direct DB query that the new project's row picked up `NULL` correctly, confirmed the value
+  survives a full server restart. All test projects created during this verification were deleted
+  afterward (matched by name, `LIKE '%DELETE ME%'`, checked against the pre-existing 11 real
+  projects first) and the test edge was restored to its original default — no seeded/demo project
+  data was touched.
 - **Permission-aware UI** (roadmap item 4) — one concrete slice done: Installation's "Mark
   complete" button (`InstallationMilestoneActions.jsx`) now renders based on
   `canPerformAction(user, 'Installation', 'installation.milestone.complete')`

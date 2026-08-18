@@ -7,10 +7,12 @@ import { audit } from '@/lib/usb';
 // PM-only, same tier as Action Permissions — this is what lets a Production head's confirmed
 // answer (SYSTEM.md §5j "Unresolved business questions") actually become the real structural
 // chain lib/dependency.mjs reads, instead of staying stuck at the plain template-order guess
-// createProjectMilestones/backfillDependsOnKey seeded it with. Global by design: one edit here
-// updates depends_on_key for that milestone_key across every project at once (not just future
-// ones), same as how the chain was originally backfilled — a PM confirming "drilling doesn't
-// really wait on marking_cutting" should take effect everywhere immediately, not per-project.
+// createProjectMilestones originally seeded it with. Global by design: one edit here updates
+// depends_on_key for that milestone_key across every project at once (not just future ones) — a
+// PM confirming "drilling doesn't really wait on marking_cutting" should take effect everywhere
+// immediately, not per-project. createProjectMilestones reads this table's current state
+// (currentDependsOnKeyMap in lib/db.js) to seed every new project from here on, so this really is
+// the one source of truth now, not just existing projects.
 const VALID_KEYS = new Set(MILESTONE_TEMPLATE.map(m => m.key));
 
 export async function PATCH(req) {
