@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { putObject, getObjectBuffer } from '@/lib/r2';
 
@@ -13,6 +14,8 @@ export async function POST(req, { params }) {
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;
+  const actionDenied = await requireAction(user, 'QC', 'qc.certificate.write');
+  if (actionDenied) return actionDenied;
 
   const cert = await queryOne('SELECT id, pdf_key FROM test_certificates WHERE id = ?', [params.id]);
   if (!cert) return NextResponse.json({ error: 'Not found' }, { status: 404 });

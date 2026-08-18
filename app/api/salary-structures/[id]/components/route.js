@@ -1,11 +1,14 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 
 export async function POST(req, { params }) {
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'HR');
   if (denied) return denied;
+  const actionDenied = await requireAction(user, 'HR', 'hr.salary_structure.write');
+  if (actionDenied) return actionDenied;
   const b = await req.json();
   const name = String(b.name || '').trim();
   if (!name || !['earning', 'deduction'].includes(b.component_type)) {

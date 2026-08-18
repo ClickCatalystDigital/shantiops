@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, requirePM, canApproveUser, isAdmin, canManageDesignAccess, hasActiveDesignResponsibility, isPM, parseDepartmentRoles } from '@/lib/auth';
+import { DEPARTMENTS } from '@/lib/milestones';
+import { RESPONSIBILITY_VALUES } from '@/lib/department-roles';
 import { audit } from '@/lib/usb';
 
 // PM-only: toggle a functional head's department access (access matrix), active status, and/or
@@ -31,10 +33,9 @@ export async function PATCH(req, { params }) {
   if (b.departmentRoles !== undefined) {
     if (!canManageDesignAccess(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     const roles = parseDepartmentRoles(b.departmentRoles);
-    const supported = ['Design', 'Engineering'];
     if (designSelfManage && Object.keys(roles).some(dept => dept !== 'Design')) return NextResponse.json({ error: 'Design Heads can only manage Design access' }, { status: 403 });
     for (const [dept, requested] of Object.entries(roles)) {
-      if (!supported.includes(dept) || !['head', 'designer'].includes(requested)) return NextResponse.json({ error: 'Invalid department responsibility' }, { status: 400 });
+      if (!DEPARTMENTS.includes(dept) || !RESPONSIBILITY_VALUES.includes(requested)) return NextResponse.json({ error: 'Invalid department responsibility' }, { status: 400 });
       if (requested === 'head' && !['admin', 'manager', 'executive'].includes(user.role)) return NextResponse.json({ error: 'Only admin, manager, or executive can assign a department head' }, { status: 403 });
     }
     const employee = managedEmployee || await queryOne('SELECT id, department, active FROM employees WHERE user_id = ?', [params.id]);

@@ -28,18 +28,20 @@ const FIELD_LABELS = {
   moc: 'MOC / Material Spec', size_spec: 'Size / Spec', make: 'Make', qty_text: 'Qty',
   purchase_status: 'Status', pr_ref: 'PR No. & Date', po_ref: 'PO No. & Date',
   grn_ref: 'GRN No. & Date', grn_qty_text: 'GRN Qty', pending_qty_text: 'Pending Qty',
-  bqtc_ref: 'BQ-TC', issued_ref: 'Issued', received_ref: 'Received', remarks: 'Remarks',
+  bqtc_ref: 'BQ-TC', issued_ref: 'Issued', received_ref: 'Received',
+  production_done: 'Prod. Done', remarks: 'Remarks',
 };
 // Visible data columns, in spreadsheet order (section/group render as divider rows instead).
 const COLUMNS = ['moc', 'size_spec', 'make', 'qty_text', 'pr_ref', 'po_ref',
-  'grn_ref', 'grn_qty_text', 'pending_qty_text', 'bqtc_ref', 'issued_ref', 'received_ref', 'remarks'];
+  'grn_ref', 'grn_qty_text', 'pending_qty_text', 'bqtc_ref', 'issued_ref', 'received_ref',
+  'production_done', 'remarks'];
 // table-fixed (see the Table usage below) only respects the header row's widths, then applies
 // them to every row in that column — these need to exist for every entry in COLUMNS or that
 // column falls back to an even, too-narrow equal split alongside the others.
 const COLUMN_WIDTHS = {
   moc: 'w-36', size_spec: 'w-28', make: 'w-20', qty_text: 'w-16', pr_ref: 'w-32', po_ref: 'w-32',
   grn_ref: 'w-32', grn_qty_text: 'w-20', pending_qty_text: 'w-24', bqtc_ref: 'w-20',
-  issued_ref: 'w-24', received_ref: 'w-24', remarks: 'w-40',
+  issued_ref: 'w-24', received_ref: 'w-24', production_done: 'w-20', remarks: 'w-40',
 };
 export default function BomTable({ projectId, bom, pendingIds = [], editableFields = [], department, canCancel = false }) {
   const router = useRouter();
@@ -60,9 +62,11 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
   }
 
   const canInlineStatus = editableFields.includes('purchase_status');
+  const canToggleProductionDone = editableFields.includes('production_done');
   const canStructure = editableFields.includes('material_description');
-  // Dialog fields: the viewer's editable set, minus status (inline select covers it).
-  const dialogFields = editableFields.filter(f => f !== 'purchase_status');
+  // Dialog fields: the viewer's editable set, minus status and production_done (both get their own
+  // inline control — a text-input dialog is the wrong shape for a boolean toggle).
+  const dialogFields = editableFields.filter(f => f !== 'purchase_status' && f !== 'production_done');
   // The Actions column exists for edit/delete (dialogFields) OR the D10 cancel button — Design has
   // no editable fields at all (no BOM_FIELD_OWNERS entry) but still needs this column for Cancel.
   const hasActions = dialogFields.length > 0 || canCancel;
@@ -102,6 +106,15 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
   async function setStatus(item, value) {
     try {
       await api(`/api/bom-items/${item.id}`, { method: 'PATCH', body: { purchase_status: value === 'none' ? '' : value } });
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+  }
+
+  // Production's own signal that a line is fabricated — Dispatch can only pull it onto a packing
+  // list once this is set (getProjectBom's readyForPacking).
+  async function toggleProductionDone(item, checked) {
+    try {
+      await api(`/api/bom-items/${item.id}`, { method: 'PATCH', body: { production_done: checked ? 1 : 0 } });
       router.refresh();
     } catch (err) { showToast(err.message, 'error'); }
   }
@@ -266,7 +279,14 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
                   </TableCell>
                 )}
                 {columns.map(c => (
-                  <TableCell key={c} className="whitespace-nowrap text-muted-foreground">{r[c] || '—'}</TableCell>
+                  <TableCell key={c} className="whitespace-nowrap text-muted-foreground">
+                    {c === 'production_done' ? (
+                      canToggleProductionDone ? (
+                        <input type="checkbox" checked={!!r.production_done} aria-label="Production done"
+                          onChange={e => toggleProductionDone(r, e.target.checked)} />
+                      ) : (r.production_done ? 'Done' : '—')
+                    ) : (r[c] || '—')}
+                  </TableCell>
                 ))}
               </TableRow>
             ))}

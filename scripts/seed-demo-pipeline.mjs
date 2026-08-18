@@ -1,7 +1,9 @@
 // Wipes every per-project/demo row (projects, leads, customers, quotations, sale orders, BOM, QC,
 // job cards, packing, calc sheets/drawings, tasks, notifications, opportunities) and rebuilds 3
 // projects, each frozen at one distinct pipeline stage, so a demo can walk prospect -> mid-build ->
-// dispatched without any one project representing two stages at once. Confirmed with the user
+// dispatched without any one project representing two stages at once — plus 8 more (Step 5) so
+// every milestone-owning department (Design/Procurement/Production/Dispatch/Installation) has at
+// least 2 projects sitting genuinely active with it, not 0 or 1. Confirmed with the user
 // (2026-08-17): all current project data is test/demo data, safe to wipe.
 //
 // Config/master tables are left untouched: users, employees, operations, workstations, trades,
@@ -54,9 +56,9 @@ function isoDaysFromNow(n) { return new Date(Date.now() + n * 86400000).toISOStr
 const MILESTONES = [
   ['design', 'Design', 'Design'], ['design_approval', 'Submit Design Approval', 'Design'],
   ['release_bom', 'Release BOM / PR', 'Design'], ['release_drawings', 'Release All Drawings', 'Design'],
-  ['order_tubes', 'Order BQ / Tubes', 'Procurement'], ['procure_tubes', 'Procure Tubes', 'Procurement'],
-  ['order_ms', 'Order MS as per PR', 'Procurement'], ['order_valves', 'Order Pumps / Valves / SV / Motors', 'Procurement'],
-  ['order_panel', 'Order WLG / Casting / Panel', 'Procurement'],
+  ['procurement_enquiry', 'Enquiry', 'Procurement'], ['procurement_comparison', 'Comparison', 'Procurement'],
+  ['procurement_ordered', 'Ordered', 'Procurement'], ['procurement_transit', 'Transit', 'Procurement'],
+  ['procurement_procured', 'Procured', 'Procurement'],
   ['marking_cutting', 'Marking, Cutting, Rolling Shell', 'Production'], ['drilling', 'Drilling', 'Production'],
   ['shell_welding', 'Shell Welding', 'Production'], ['site_marking', 'Site Marking', 'Production'],
   ['welding_fura', 'Welding (FURA-B / RC / AR)', 'Production'], ['box_up', 'Box Up', 'Production'],
@@ -184,6 +186,7 @@ console.log('=== Step 1: wiping per-project/demo data (config/masters preserved)
   await run('DELETE FROM qc_mountings');
   await run('DELETE FROM qc_documents');
   await run('DELETE FROM test_certificates');
+  await run('DELETE FROM qc_records');
   await run('DELETE FROM po_items');
   await run('DELETE FROM supplier_quotes');
   await run('DELETE FROM purchase_orders');
@@ -437,6 +440,126 @@ console.log('=== Step 4: near-complete project — rebuilt SB-1018 ===');
   console.log(`  Customer login: asian_brown / asian_brown123`);
 }
 
+console.log('=== Step 5: department coverage — 2 active projects per milestone-owning department ===');
+// Every milestone-owning department (lib/milestones.js's MILESTONE_TEMPLATE: Design, Procurement,
+// Production, Dispatch, Installation — Engineering/Stores own no milestones, same precedent QC's
+// Hydro Test now falls under Production) needs >=2 projects sitting genuinely "active" with it —
+// getProjectsWithStatus()'s activeDepartments reads exactly one department off whichever milestone
+// sits at doneThrough+1 (in_progress), so one frozen project covers exactly one department's pill.
+// Step 3 (Konkan Sugars, doneThrough=1 -> Design) and Step 4 (SB-1018, doneThrough=22 -> Installation,
+// not Dispatch — packing lands at index 22 and is DONE by then, site_installation at 23 is what's
+// in_progress) already supply one each; this step adds the other 8 to reach 2x5. Bare
+// customer/lead/quotation/SO/project/milestones per project — no drawings/QC/packing built out for
+// these, since the one thing that needs verifying is activeDepartments coverage, not a full
+// workspace walkthrough for each; BOM items and a hydro-test QC record are added only where the
+// department's own workspace would otherwise show an empty table (Procurement/Production).
+async function seedFrozenProject({ customer, description, rate, terms, doneThrough, bomItems = [], hydroTestNote = null }) {
+  const customerId = await getOrCreateCustomer(customer);
+  await createLead({ leadName: customer.leadName, companyName: customer.name, phone: customer.phone, email: customer.email, customerId });
+  const quotation = await createQuotation({
+    customerId, items: [{ desc: description, hsn: '8402', qty: 1, uom: 'No', rate }], terms,
+  });
+  const so = await convertQuotationToSaleOrder(quotation, customer.name, 'Shanti Boilers');
+  const seq = await nextCounter('project_no');
+  const projectNo = `SB-${seq}`;
+  const projectId = await createProject({
+    projectNo, customerName: customer.name, customerId, saleOrderId: so.soId,
+    description, orderValue: quotation.total, company: 'Shanti Boilers',
+  });
+  await seedMilestones(projectId, doneThrough);
+
+  let sortOrder = 0;
+  for (const it of bomItems) {
+    await run(
+      `INSERT INTO bom_items (project_id, material_description, moc, size_spec, section, qty_text, purchase_status, sort_order)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [projectId, it.desc, it.moc, it.size, it.section, it.qty, it.status, sortOrder++]
+    );
+  }
+  if (hydroTestNote) {
+    await run(`INSERT INTO qc_records (project_id, test_type, result, notes) VALUES (?, 'Hydro Test', 'pending', ?)`, [projectId, hydroTestNote]);
+  }
+
+  console.log(`  ${projectNo} (${customer.name}) — id ${projectId}, doneThrough=${doneThrough}.`);
+  return projectId;
+}
+
+{
+  // Design — kickoff stage (nothing done yet, the 'design' milestone itself is in_progress),
+  // distinct from Konkan Sugars' mid-Design (already past design/design_approval).
+  await seedFrozenProject({
+    customer: { name: 'Vindhya Paper Mills Ltd', phone: '9876501234', email: 'projects@vindhyapaper.example', city: 'Bhopal', state: 'Madhya Pradesh', gst_no: '23AABCV2345N1Z2', leadName: 'A. Tiwari' },
+    description: '4 TPH Rice Husk Fired Boiler @ 14 Kg/cm2', rate: 5100000,
+    terms: 'Advance 30% with order, balance against dispatch.', doneThrough: -1,
+  });
+
+  // Procurement — two projects, two different Procurement milestones in progress.
+  await seedFrozenProject({
+    customer: { name: 'Deccan Sugar Works', phone: '9845098450', email: 'purchase@deccansugar.example', city: 'Belagavi', state: 'Karnataka', gst_no: '29AABCD6789P1Z3', leadName: 'K. Rao' },
+    description: '6 TPH Bagasse Fired Boiler @ 21 Kg/cm2', rate: 7400000,
+    terms: 'Advance 40% with order, 40% before dispatch, 20% on commissioning.', doneThrough: 3,
+    bomItems: [
+      { desc: 'BOILER TUBE', moc: 'SA 210 GR A1', size: '51 X 4.5 THK', qty: '120 Nos', section: 'BOILER', status: 'PENDING' },
+      { desc: 'MS PLATE', moc: 'MS', size: '2500 X 6000 X 12 THK', qty: '3 Nos', section: 'BOILER', status: 'PENDING' },
+    ],
+  });
+  await seedFrozenProject({
+    customer: { name: 'Coromandel Textiles Pvt Ltd', phone: '9840012345', email: 'engg@coromandeltex.example', city: 'Coimbatore', state: 'Tamil Nadu', gst_no: '33AABCC4567Q1Z4', leadName: 'S. Krishnan' },
+    description: '2.5 TPH Solid Fuel Fired Boiler @ 10.5 Kg/cm2', rate: 3400000,
+    terms: 'Advance 30% with order, balance against dispatch.', doneThrough: 6,
+    bomItems: [
+      { desc: 'SAFETY VALVE (HIGH LIFT TYPE)', moc: null, size: '2" x 3"', qty: '2 Nos', section: 'MOUNTINGS', status: 'PENDING' },
+      { desc: 'FEED PUMP (CENTRIFUGAL) & MOTOR', moc: null, size: '7.5 HP', qty: '2 Nos', section: 'MOUNTINGS', status: 'PENDING' },
+    ],
+  });
+
+  // Production — two projects, two different Production milestones in progress; the second sits
+  // right at Hydro Test, so it also gets a pending QC record (Production/QC's shared boundary —
+  // QC owns no milestones of its own since Hydro Test moved to Production, so its own workspace
+  // coverage comes from records like this rather than a frozen milestone stage).
+  await seedFrozenProject({
+    customer: { name: 'Malwa Steel Industries', phone: '9893012345', email: 'projects@malwasteel.example', city: 'Indore', state: 'Madhya Pradesh', gst_no: '23AABCM8901R1Z5', leadName: 'R. Deshmukh' },
+    description: '3.5 TPH Solid Fuel Fired Boiler @ 12 Kg/cm2', rate: 4600000,
+    terms: 'Advance 30% with order, balance against dispatch.', doneThrough: 12,
+    bomItems: [
+      { desc: 'MS PLATE', moc: 'MS', size: '2200 X 5500 X 10 THK', qty: '3 Nos', section: 'BOILER', status: 'RECEIVED' },
+      { desc: 'MS ANGLE', moc: 'MS', size: 'ISA 65 X 65 X 6', qty: '6 Nos', section: 'BOILER', status: 'RECEIVED' },
+    ],
+  });
+  await seedFrozenProject({
+    customer: { name: 'Godavari Agro Processors', phone: '9963045678', email: 'engg@godavariagro.example', city: 'Rajahmundry', state: 'Andhra Pradesh', gst_no: '37AABCG3456S1Z6', leadName: 'P. Naidu' },
+    description: '5 TPH Husk Fired Boiler @ 17.5 Kg/cm2', rate: 6900000,
+    terms: 'Advance 40% with order, 40% before dispatch, 20% on commissioning.', doneThrough: 18,
+    bomItems: [
+      { desc: 'PRESSURE GAUGE (STEAM)', moc: null, size: '0-25 Kg/cm2', qty: '2 Nos', section: 'MOUNTINGS', status: 'RECEIVED' },
+    ],
+    hydroTestNote: 'Scheduled — awaiting shop-floor slot.',
+  });
+
+  // Dispatch — packing is a single milestone, so both projects sit at the same doneThrough.
+  await seedFrozenProject({
+    customer: { name: 'Narmada Chemicals Ltd', phone: '9425067890', email: 'stores@narmadachem.example', city: 'Bharuch', state: 'Gujarat', gst_no: '24AABCN5678T1Z7', leadName: 'H. Solanki' },
+    description: '3 TPH Solid Fuel Fired Boiler @ 10.54 Kg/cm2', rate: 4200000,
+    terms: 'Advance 30% with order, balance against dispatch.', doneThrough: 21,
+  });
+  await seedFrozenProject({
+    customer: { name: 'Kaveri Spinning Mills', phone: '9944056789', email: 'purchase@kaverispinning.example', city: 'Erode', state: 'Tamil Nadu', gst_no: '33AABCK7890U1Z8', leadName: 'M. Palanisamy' },
+    description: '2 TPH Solid Fuel Fired Boiler @ 10.5 Kg/cm2', rate: 3100000,
+    terms: 'Advance 30% with order, balance against dispatch.', doneThrough: 21,
+  });
+
+  // Installation — SB-1018 already covers one (site_installation in progress); this one sits one
+  // stage further, at commissioning.
+  await seedFrozenProject({
+    customer: { name: 'Himalayan Dairy Pvt Ltd', phone: '9412034567', email: 'projects@himalayandairy.example', city: 'Haldwani', state: 'Uttarakhand', gst_no: '05AABCH2345V1Z9', leadName: 'D. Bisht' },
+    description: '2.5 TPH Solid Fuel Fired Boiler @ 10.5 Kg/cm2', rate: 3500000,
+    terms: 'Advance 30% with order, balance against dispatch.', doneThrough: 23,
+  });
+
+  console.log('  8 projects seeded — Design x1 (+Konkan Sugars), Procurement x2, Production x2, Dispatch x2, Installation x1 (+SB-1018).');
+}
+
 console.log('\n=== done ===');
 console.log('3 projects at 3 distinct stages: Ganga Textiles (Sale Order only, no project) ->');
 console.log('Konkan Sugars (Design in progress, live drawing under_review) -> SB-1018 / Asian Brown (near-complete).');
+console.log('Plus 8 more, 2 active projects per milestone-owning department (Design/Procurement/Production/Dispatch/Installation).');

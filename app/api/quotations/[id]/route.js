@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { execute } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment, isPM } from '@/lib/auth';
+import { requireCrmAction } from '@/lib/action-permissions';
 import { getQuotationDetail } from '@/lib/data';
 import { audit } from '@/lib/usb';
 
@@ -21,6 +22,8 @@ export async function GET(req, { params }) {
 export async function PATCH(req, { params }) {
   const user = await getFreshSessionUser();
   if (!canAccessCrm(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const actionDenied = await requireCrmAction(user, 'sales.quotation.status');
+  if (actionDenied) return actionDenied;
   const b = await req.json();
   if (b.status !== undefined && !STATUSES.includes(b.status)) {
     return NextResponse.json({ error: 'Invalid status' }, { status: 400 });

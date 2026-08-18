@@ -7,9 +7,20 @@
 import { NextResponse } from 'next/server';
 import { execute, queryAll, queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 import { getPurchaseOrderDetail } from '@/lib/data';
 import { audit } from '@/lib/usb';
 import { advancePurchaseStatus, selectQuoteForItem } from '@/lib/procurement';
+
+// change_supplier is still a draft-only line edit, same real-world action as edit_item — both are
+// "edit PO lines" from the Responsibility model's point of view (lib/action-permissions.js).
+const PO_ACTION_KEYS = {
+  issue: 'procurement.po.issue',
+  unissue: 'procurement.po.unissue',
+  cancel: 'procurement.po.cancel',
+  edit_item: 'procurement.po.edit_lines',
+  change_supplier: 'procurement.po.edit_lines',
+};
 
 export async function GET(req, { params }) {
   const user = await getFreshSessionUser();
@@ -29,6 +40,11 @@ export async function PATCH(req, { params }) {
   if (!po) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   const b = await req.json();
+  const actionKey = PO_ACTION_KEYS[b.action];
+  if (actionKey) {
+    const actionDenied = await requireAction(user, 'Procurement', actionKey);
+    if (actionDenied) return actionDenied;
+  }
 
   if (b.action === 'issue') {
     if (po.status !== 'draft') return NextResponse.json({ error: 'Only a draft PO can be issued' }, { status: 400 });

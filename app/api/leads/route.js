@@ -3,6 +3,7 @@
 import { NextResponse } from 'next/server';
 import { execute, queryAll, queryOne } from '@/lib/db';
 import { getFreshSessionUser, isInternal, canAccessDepartment } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
@@ -50,6 +51,8 @@ export async function POST(req) {
   if (!canAccessDepartment(user, ownerDept)) {
     return NextResponse.json({ error: 'Not granted that department' }, { status: 403 });
   }
+  const actionDenied = await requireAction(user, ownerDept, 'crm.lead.create');
+  if (actionDenied) return actionDenied;
 
   const assignedTo = await nextAssignee(ownerDept);
   const { lastId } = await execute(

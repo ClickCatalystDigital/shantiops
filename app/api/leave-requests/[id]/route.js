@@ -5,6 +5,7 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 import { getLeaveBalance } from '@/lib/hr';
 import { toISODate } from '@/lib/date';
 import { audit } from '@/lib/usb';
@@ -15,6 +16,8 @@ export async function PATCH(req, { params }) {
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'HR');
   if (denied) return denied;
+  const actionDenied = await requireAction(user, 'HR', 'hr.leave.decide');
+  if (actionDenied) return actionDenied;
 
   const request = await queryOne('SELECT * FROM leave_requests WHERE id = ?', [params.id]);
   if (!request) return NextResponse.json({ error: 'Not found' }, { status: 404 });

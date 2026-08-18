@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 
 const REQUIRED = ['certificate_no', 'cast_no', 'material_spec', 'steel_maker'];
@@ -18,6 +19,8 @@ export async function POST(req) {
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;
+  const actionDenied = await requireAction(user, 'QC', 'qc.certificate.write');
+  if (actionDenied) return actionDenied;
 
   const b = await req.json();
   for (const f of REQUIRED) {

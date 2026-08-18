@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne, queryAll } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { deleteObject } from '@/lib/r2';
 
@@ -15,6 +16,8 @@ export async function PATCH(req, { params }) {
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;
+  const actionDenied = await requireAction(user, 'QC', 'qc.certificate.write');
+  if (actionDenied) return actionDenied;
 
   const cert = await queryOne('SELECT id FROM test_certificates WHERE id = ?', [params.id]);
   if (!cert) return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -76,6 +79,8 @@ export async function DELETE(req, { params }) {
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;
+  const actionDenied = await requireAction(user, 'QC', 'qc.certificate.delete');
+  if (actionDenied) return actionDenied;
 
   const cert = await queryOne('SELECT id, pdf_key, certificate_no FROM test_certificates WHERE id = ?', [params.id]);
   if (!cert) return NextResponse.json({ error: 'Not found' }, { status: 404 });

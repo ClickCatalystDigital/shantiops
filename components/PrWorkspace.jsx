@@ -12,15 +12,17 @@
 // 'sas' (trade against a Sale Order) used to be raisable from here too, Stores-initiated — per
 // STORES-SALES-CHANGES.md, SAS is now Sales-only (components/SalesWorkspace.jsx's own "Request
 // from Stores" dialog), so it's deliberately not offered in this picker anymore.
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, showToast } from '@/lib/client';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardAction } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { TrashIcon, PlusIcon } from 'lucide-react';
+import { Badge } from './ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup } from './ui/select';
+import { TrashIcon, PlusIcon, ClipboardListIcon, PackageCheckIcon, LayoutTemplateIcon, CheckIcon } from 'lucide-react';
+import WorkspaceSidebar from './WorkspaceSidebar';
 
 let nextKey = 1;
 function emptyLine() {
@@ -229,7 +231,7 @@ function LineCard({ line, projects, inventoryItems, showSourcePicker, onChange, 
   );
 }
 
-export default function PrWorkspace({ departments, projects, inventoryItems = [] }) {
+function RaisePrTab({ departments, projects, inventoryItems = [] }) {
   const router = useRouter();
   const [dept, setDept] = useState(departments[0] || '');
   const [lines, setLines] = useState([emptyLine()]);
@@ -302,5 +304,247 @@ export default function PrWorkspace({ departments, projects, inventoryItems = []
         </Button>
       </CardContent>
     </Card>
+  );
+}
+
+// Release BOM = a deliberate, whole-project action ("everything's ready together"), not something
+// inferred from the first item landing on the BOM — a project's BOM usually gets built up
+// piecemeal over days (app/api/projects/[id]/release-bom's own comment explains why). This tab is
+// just that button plus enough status to know whether it's already been pressed.
+function ReleaseBomTab({ projects }) {
+  const router = useRouter();
+  const [projectId, setProjectId] = useState('');
+  const [status, setStatus] = useState(null); // { bomCount, released } | null
+  const [loading, setLoading] = useState(false);
+  const [releasing, setReleasing] = useState(false);
+
+  useEffect(() => {
+    if (!projectId) { setStatus(null); return; }
+    let cancelled = false;
+    setLoading(true);
+    api(`/api/projects/${projectId}/release-bom`)
+      .then(s => !cancelled && setStatus(s))
+      .catch(err => !cancelled && showToast(err.message, 'error'))
+      .finally(() => !cancelled && setLoading(false));
+    return () => { cancelled = true; };
+  }, [projectId]);
+
+  async function release() {
+    setReleasing(true);
+    try {
+      await api(`/api/projects/${projectId}/release-bom`, { method: 'POST' });
+      showToast('BOM released');
+      setStatus(s => ({ ...s, released: true }));
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); } finally { setReleasing(false); }
+  }
+
+  return (
+    <Card>
+      <CardHeader><CardTitle>Release BOM</CardTitle></CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <Select value={projectId} onValueChange={setProjectId}>
+          <SelectTrigger className="w-64"><SelectValue placeholder="Select a project" /></SelectTrigger>
+          <SelectContent><SelectGroup>
+            {projects.map(p => <SelectItem key={p.id} value={String(p.id)}>{p.project_no} · {p.customer_name}</SelectItem>)}
+          </SelectGroup></SelectContent>
+        </Select>
+        {!projectId ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">Pick a project to release its BOM to Procurement.</p>
+        ) : loading || !status ? (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : (
+          <div className="flex items-center justify-between rounded-md border p-3">
+            <span className="text-sm">{status.bomCount} BOM item{status.bomCount === 1 ? '' : 's'} on this project</span>
+            {status.released ? (
+              <span className="flex items-center gap-1 text-sm text-success"><CheckIcon className="size-4" />Released</span>
+            ) : (
+              <Button size="sm" disabled={releasing || !status.bomCount} onClick={release}>
+                {releasing ? 'Releasing…' : 'Release BOM'}
+              </Button>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// Reusable per-boiler-model material lists — a new project's BOM can start from a real template
+// instead of a blank Raise PR form every time. No prior template concept existed in the BOM/PR
+// code (confirmed by search); this is a genuinely new page, not a rename of an existing one.
+function TemplateItemsEditor({ items, onChange }) {
+  function update(i, patch) { onChange(items.map((it, idx) => idx === i ? { ...it, ...patch } : it)); }
+  function add() { onChange([...items, { material_description: '', moc: '', size_spec: '', section: '', qty_text: '' }]); }
+  function remove(i) { onChange(items.filter((_, idx) => idx !== i)); }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <Label>Items</Label>
+      {items.map((it, i) => (
+        <div key={i} className="grid grid-cols-5 gap-2">
+          <Input className="col-span-2" placeholder="Description" value={it.material_description}
+            onChange={e => update(i, { material_description: e.target.value })} />
+          <Input placeholder="MOC" value={it.moc} onChange={e => update(i, { moc: e.target.value })} />
+          <Input placeholder="Size / spec" value={it.size_spec} onChange={e => update(i, { size_spec: e.target.value })} />
+          <div className="flex gap-1">
+            <Input placeholder="Qty" value={it.qty_text} onChange={e => update(i, { qty_text: e.target.value })} />
+            <Button size="icon-sm" variant="ghost" onClick={() => remove(i)}><TrashIcon className="size-4" /></Button>
+          </div>
+        </div>
+      ))}
+      <Button size="sm" variant="outline" className="w-fit" onClick={add}><PlusIcon data-icon="inline-start" />Add item</Button>
+    </div>
+  );
+}
+
+function NewTemplateDialog({ onClose, router }) {
+  const [name, setName] = useState('');
+  const [series, setSeries] = useState('');
+  const [items, setItems] = useState([{ material_description: '', moc: '', size_spec: '', section: '', qty_text: '' }]);
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    if (!name.trim()) return showToast('Name is required', 'error');
+    setSaving(true);
+    try {
+      await api('/api/bom-templates', {
+        method: 'POST',
+        body: { name: name.trim(), series: series.trim() || undefined, items: items.filter(i => i.material_description.trim()) },
+      });
+      showToast('Template created');
+      router.refresh();
+      onClose();
+    } catch (err) { showToast(err.message, 'error'); } finally { setSaving(false); }
+  }
+
+  return (
+    <Card>
+      <CardHeader><CardTitle>New template</CardTitle></CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="flex flex-col gap-1.5">
+            <Label>Name</Label>
+            <Input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. 3 TPH Solid Fuel Fired Boiler" autoFocus />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label>Series / model (optional)</Label>
+            <Input value={series} onChange={e => setSeries(e.target.value)} />
+          </div>
+        </div>
+        <TemplateItemsEditor items={items} onChange={setItems} />
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button disabled={saving} onClick={save}>{saving ? 'Saving…' : 'Create template'}</Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ApplyTemplateDialog({ template, projects, onClose, router }) {
+  const [projectId, setProjectId] = useState('');
+  const [applying, setApplying] = useState(false);
+
+  async function apply() {
+    if (!projectId) return showToast('Choose a project', 'error');
+    setApplying(true);
+    try {
+      const res = await api(`/api/bom-templates/${template.id}/apply`, { method: 'POST', body: { project_id: Number(projectId) } });
+      showToast(`${res.inserted} item(s) added to the project's BOM`);
+      router.refresh();
+      onClose();
+    } catch (err) { showToast(err.message, 'error'); } finally { setApplying(false); }
+  }
+
+  return (
+    <Card>
+      <CardHeader><CardTitle>Apply "{template.name}" to a project</CardTitle></CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <Select value={projectId} onValueChange={setProjectId}>
+          <SelectTrigger className="w-64"><SelectValue placeholder="Select a project" /></SelectTrigger>
+          <SelectContent><SelectGroup>
+            {projects.map(p => <SelectItem key={p.id} value={String(p.id)}>{p.project_no} · {p.customer_name}</SelectItem>)}
+          </SelectGroup></SelectContent>
+        </Select>
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button disabled={applying} onClick={apply}>{applying ? 'Applying…' : 'Apply to project'}</Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function TemplatesTab({ projects }) {
+  const router = useRouter();
+  const [templates, setTemplates] = useState(null);
+  const [creating, setCreating] = useState(false);
+  const [applyTarget, setApplyTarget] = useState(null);
+
+  function load() {
+    api('/api/bom-templates').then(setTemplates).catch(err => showToast(err.message, 'error'));
+  }
+  useEffect(load, []);
+
+  async function remove(t) {
+    if (!window.confirm(`Delete template "${t.name}"?`)) return;
+    try {
+      await api(`/api/bom-templates/${t.id}`, { method: 'DELETE' });
+      showToast('Template deleted');
+      load();
+    } catch (err) { showToast(err.message, 'error'); }
+  }
+
+  if (creating) {
+    return <NewTemplateDialog router={router} onClose={() => { setCreating(false); load(); }} />;
+  }
+  if (applyTarget) {
+    return <ApplyTemplateDialog template={applyTarget} projects={projects} router={router} onClose={() => setApplyTarget(null)} />;
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>BOM Templates</CardTitle>
+        <CardAction><Button size="sm" onClick={() => setCreating(true)}><PlusIcon data-icon="inline-start" />New template</Button></CardAction>
+      </CardHeader>
+      <CardContent className="flex flex-col divide-y p-0">
+        {!templates ? (
+          <p className="px-4 py-6 text-center text-sm text-muted-foreground">Loading…</p>
+        ) : templates.length === 0 ? (
+          <p className="px-4 py-6 text-center text-sm text-muted-foreground">No templates yet — create one from a project's material list.</p>
+        ) : templates.map(t => (
+          <div key={t.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
+            <div>
+              <span className="text-sm font-medium">{t.name}</span>
+              {t.series && <Badge variant="outline" className="ml-2 text-xs font-normal">{t.series}</Badge>}
+              <span className="ml-2 text-xs text-muted-foreground">{t.item_count} item{t.item_count === 1 ? '' : 's'}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <Button size="sm" variant="outline" onClick={() => setApplyTarget(t)}>Apply to project</Button>
+              <Button size="icon-sm" variant="ghost" className="text-danger" onClick={() => remove(t)}><TrashIcon className="size-3.5" /></Button>
+            </div>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+export default function PrWorkspace({ departments, projects, inventoryItems = [] }) {
+  const [tab, setTab] = useState('raise');
+  const navItems = [
+    { key: 'raise', label: 'Raise PR', icon: ClipboardListIcon },
+    { key: 'release', label: 'Release BOM', icon: PackageCheckIcon },
+    { key: 'templates', label: 'Templates', icon: LayoutTemplateIcon },
+  ];
+
+  return (
+    <WorkspaceSidebar title="Requests" icon={ClipboardListIcon} items={navItems} activeKey={tab} onChange={setTab}>
+      {tab === 'raise' && <RaisePrTab departments={departments} projects={projects} inventoryItems={inventoryItems} />}
+      {tab === 'release' && <ReleaseBomTab projects={projects} />}
+      {tab === 'templates' && <TemplatesTab projects={projects} />}
+    </WorkspaceSidebar>
   );
 }

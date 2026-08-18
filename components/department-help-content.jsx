@@ -10,6 +10,19 @@ import {
   ListChecksIcon, MessageSquareIcon, WrenchIcon, BellIcon,
 } from 'lucide-react';
 
+// Milestone Tracker (2026-08-17) — most milestones now complete themselves off a real event
+// instead of waiting for someone to open the status drawer (lib/milestone-auto.js is the single
+// source of truth this table mirrors). Shared shape so every manufacturing department's guide
+// renders the same table via GuideBody's existing `table` field — no new renderer needed.
+function milestoneTrackerFeature(rows) {
+  return feature('milestone-tracker', 'Milestone Tracker', Clock3Icon, [
+    'Most of your milestones no longer need someone to open the status drawer and mark them done by hand — they complete themselves the moment the real underlying work actually finishes, the same way the rest of the app already tracks that work.',
+    'A milestone still shown as "Explicit action" has no reliable signal elsewhere in the app to detect completion from — it needs a real person to say so, but through a dedicated button instead of the generic status editor.',
+  ], {
+    table: { columns: ['Milestone', 'Trigger', 'How it completes'], rows },
+  });
+}
+
 const FEATURE_FOUNDATIONS = {
   scope: {
     value: 'The Scope of Supply is the shared boundary of the order. It protects the team from designing, buying, or promising something that was never agreed with the customer.',
@@ -389,6 +402,12 @@ export const DEPARTMENT_HELP = {
         ],
       },
       feature('bom', 'Material definition and BOM', ClipboardListIcon, ['Define the material description, MOC, size/specification, make, quantity, section, and group label. Engineering/Design owns the technical definition; downstream teams add purchasing and receipt information.', 'Import the PMB workbook, review detected rows and skipped rows, then confirm. Never replace a live BOM without checking the revision preview.']),
+      milestoneTrackerFeature([
+        ['Design', 'Explicit action', 'The Design Head clicks "Approve Design" on the project\'s Design tab — an internal sign-off with no other data signal to detect it from.'],
+        ['Submit Design Approval', 'Automatic', 'Completes once every customer-visible drawing on the project has been approved by the customer — the same per-drawing approval already tracked in the Drawings panel, just rolled up.'],
+        ['Release BOM / PR', 'Explicit action', 'Design or Engineering clicks "Release BOM" on the Requests → Release BOM tab, once the project actually has BOM items to release.'],
+        ['Release All Drawings', 'Manual only', 'No automatic or explicit-button trigger yet — close it from the milestone drawer once every drawing is genuinely released.'],
+      ]),
       feature('tasks', 'Tasks and handoffs', ListChecksIcon, ['Use Tasks for small follow-ups that do not deserve a milestone. Raise a cross-department task when another team needs to act.', 'When a milestone closes, check the next team’s notification and task signal. Do not rely only on memory or a private note.']),
       feature('requests', 'Purchase requests', MessageSquareIcon, ['Use Requests when Design knows a material must be sourced but Procurement needs a formal request. Add the project, item, quantity, and useful specification.', 'The request goes directly to Procurement’s Enquiry flow; it is not a second approval queue.']),
     ],
@@ -414,6 +433,21 @@ export const DEPARTMENT_HELP = {
       feature('calc', 'Calculation workspace', CalculatorIcon, ['Use Methodology for approved formulas, Variables for inputs, Tables for reference data, Validations for guardrails, and Snapshots for frozen calculation results.', 'A snapshot preserves the calculation as it was run. Use Reproduce or the Audit area when someone asks why a result changed.']),
       feature('drawings', 'Drawings and release', RulerIcon, ['Track drawing numbers, revisions, approvals, and as-built status with the project. Upload the file only after checking that the revision label matches the record.', 'Released calculations and drawings are the handoff signal to the shop; do not leave the project in an ambiguous review state.']),
       feature('bom', 'Master BOM', ClipboardListIcon, ['Import a PMB workbook and inspect the preview before confirming. Technical columns include description, MOC, size/spec, make, quantity, section, group, and remarks.', 'Procurement owns purchase status and references; Stores owns receipt fields; Production owns issued/received fields. Do not overwrite another department’s operational fields.']),
+      feature('notifications', 'Notifications', BellIcon, [
+        'You receive a notification the moment a new order reaches Engineering: converting a confirmed Sale Order into a Project (a Design Head or PM does the converting) notifies Engineering and Design at the same time, since a fresh Scope of Supply now exists for both to work from.',
+        'You receive a notification when a BOM template is applied to a project — a reusable per-boiler-model starting BOM (Requests → Templates), applied by Design, Stores, or Engineering itself. If someone else applied it, this is how Engineering learns a BOM has taken shape without opening the project to check. If Engineering applied it, no notification is sent for that own action — same "you don\'t get pinged for your own work" pattern as Sales\' own Sale Order creation.',
+        'Engineering owns no milestones of its own (Design owns the whole Design→BOM→Drawings chain), so unlike most departments there is no milestone-handoff traffic here — these two are genuinely the only notification types Engineering receives.',
+        'This is the same bell every internal department uses, top right of the app. It is automatic for everyone with Engineering access; nothing here is a toggle you turn on or off.',
+      ], {
+        value: 'Before the BOM-template notification existed, Engineering had exactly one notification type — Scope of Supply creation — and no way to learn that a template had seeded a project\'s BOM unless someone mentioned it directly. This closes that gap without inventing a new milestone Engineering doesn\'t actually own.',
+        outcome: 'Engineering can trust the bell to cover both moments a project\'s BOM meaningfully changes shape from outside its own hands — a brand-new order arriving, and a template being applied to one.',
+        checklist: [
+          'Treat a Scope of Supply notification as the cue to open the project and confirm the technical assumptions before detailed work starts, not just evidence the order exists.',
+          'Treat a BOM-template notification as the cue to review what the template actually inserted — a template is a starting point, not a substitute for checking the real requirement.',
+          'Do not expect a notification for routine BOM edits, drawing status changes, or milestone handoffs elsewhere in the project — those stay with the departments that own them.',
+        ],
+        watchOut: 'Marking a notification read only proves you saw it. A BOM-template notification still means the inserted lines need the same review as any other BOM content before Procurement starts sourcing against them.',
+      }),
       feature('requests', 'Material requests', FileTextIcon, ['Use Requests for a new item or a quantity that must be sourced. Add enough technical detail for a buyer to obtain comparable quotes.', 'If an existing BOM line is wrong, correct the definition first; do not create a duplicate request to work around bad data.']),
       feature('milestones', 'Milestones and tasks', ListChecksIcon, ['Use milestones for major Engineering deliverables and Tasks for small follow-ups. Close both with real dates so downstream teams see the handoff clearly.']),
     ],
@@ -438,6 +472,13 @@ export const DEPARTMENT_HELP = {
       feature('po', 'Purchase Orders', FileTextIcon, ['Review draft PO lines, issue the PO when the commercial details are correct, and generate the PDF for the supplier.', 'A PO issue moves the item into the next operational stage. Treat unissue/void actions as controlled corrections, not casual edits.']),
       feature('status', 'Status and delivery', TruckIcon, ['Use the status view to follow Enquiry, Comparison, Ordered, Transit, Received, Cancelled, and In-Stock. The summary also considers quote and supplier signals when the editable status cell is behind.', 'Keep PR/PO references readable because Stores and Production use them downstream.']),
       feature('requests', 'New-item requests', ClipboardListIcon, ['Requests land directly in the Enquiry flow. Accept the requirement by sourcing it, not by creating a second manual record.', 'Ask the requesting team for missing technical information through a task so the request remains traceable.']),
+      milestoneTrackerFeature([
+        ['Enquiry', 'Automatic', 'Completes once every BOM item on the project has moved past Enquiry into Comparison or further — "all items must clear the stage," not just the first one.'],
+        ['Comparison', 'Automatic', 'Completes once every item has moved past Comparison into Ordered or further.'],
+        ['Ordered', 'Automatic', 'Completes once every item has moved past Ordered into Transit or further.'],
+        ['Transit', 'Automatic', 'Completes once every item has reached a closed status — Received, Cancelled, or In-Stock.'],
+        ['Procured', 'Automatic', 'Same trigger as Transit — every item closed. The two often complete together, since arriving is usually the same real-world event as being fully procured.'],
+      ]),
     ],
     howTo: [
       { title: 'Work a new enquiry', body: 'Open Enquiry, confirm the requirement and project, contact suitable suppliers, and record each quote with comparable units and terms.' },
@@ -516,6 +557,10 @@ export const DEPARTMENT_HELP = {
       feature('bom', 'BOM, fabrication progress, and material issue', ClipboardListIcon, ['Pick a project to see its Master BOM, scoped to the fields Production owns (issued/received references) — the same table Engineering, Procurement, and Stores see, just field-scoped to what you are allowed to change.', 'The fabrication progress bars on this tab come directly from Job Card completion per milestone, so they only move when real cards are actually being closed out.', 'Issue material against a BOM line here when it leaves Stores for the shop floor — Production can record this now, the same authority you already had over issued/received references, just structured instead of free text.']),
       feature('milestones', 'Production milestones', RouteIcon, ['Start a milestone when work really begins and close it only when the deliverable is actually complete; closing late asks for a reason so the project history explains the delay.', 'Use Stages under a milestone for repeatable checklist steps instead of inventing a new milestone for every variation.']),
       feature('tests', 'Hydro Test', FlaskConicalIcon, ['Hydro Test now belongs to Production end to end — you own the milestone and the test record itself (result, reference number, inspector, tested-on date), which you did not before.', 'Every other test type — radiography/NDE, material test certificates, freeform — stays QC’s; this tab only ever shows and creates Hydro Test records.']),
+      milestoneTrackerFeature([
+        ['Marking/Cutting through Painting (11 milestones)', 'Automatic', 'Each one completes once every job card raised against it on the Job Card board reaches Done — no card raised yet means the milestone stays open, not "trivially done."'],
+        ['Hydro Test', 'Automatic', 'Completes once a Hydro Test record for the project is logged with a Pass result.'],
+      ]),
       feature('employees', 'Workers Roster', UsersIcon, ['A Production worker is an HR employee record, not a separate roster — Add worker searches HR first, and if the person already exists you activate them onto Production instead of risking a second, slightly-misspelled entry for the same human.', 'Only create a new person when the search genuinely finds nobody. Trade is a controlled list (Welder, Fitter, Gas Cutter, Machinist, Grinder, Painter, Rigger, Helper), not free text, so job cards can filter workers by skill — designation stays HR’s field, not yours.', 'Deactivate rather than delete a worker who has left — their attendance and job-card history has to stay readable.']),
       feature('attendance', 'Daily Sheet', CalendarDaysIcon, ['Overview and Sheet live under one Daily Sheet tab now. Overview is the day’s headcount and attendance percentage; Sheet is where you actually mark present/half-day/absent and the project/milestone someone worked on.', 'This writes to the same attendance record HR reads from — there is no separate Production attendance system to keep in sync by hand anymore.']),
       feature('handoff', 'Department handoffs', MessageSquareIcon, ['Use tasks and notifications when Production needs a response from QC, Stores, Dispatch, or another department. A closed milestone should create a visible next action where configured.', 'Do not close a blocked job just to remove it from the screen; record the blocker and delay reason.']),
@@ -539,6 +584,19 @@ export const DEPARTMENT_HELP = {
       feature('certificates', 'Test Certificate bank', BadgeCheckIcon, ['Enter a certificate once with its certificate number, maker/cast/plate details, material data, and uploaded PDF when available.', 'Link certificates to the relevant project or part so the same material evidence can be found later without duplicate entry.']),
       feature('statutory', 'Statutory documents', FileTextIcon, ['Use the statutory document editor for the supported Form IV A workflow. Header data and part rows are kept together so the PDF reflects the saved record.', 'Do not advance a document with missing required fields; the PDF gate is there to prevent incomplete evidence being treated as final.']),
       feature('milestones', 'QC milestones', RouteIcon, ['Start and close QC milestones with actual dates. When work is late or failed, record the reason and create the follow-up task.', 'A QC result and a milestone are related but not identical: use the test record for the evidence and the milestone for project progress.']),
+      feature('notifications', 'Notifications', BellIcon, [
+        'You receive a notification once every BOM item on a project has cleared Procurement — the "Procured" milestone completing, the same automatic signal Procurement\'s own status queue relies on. The notification tells you the project is ready for QC to start preparing inspection records, before Production even starts fabricating.',
+        'This is currently QC\'s only notification type. QC owns no milestones that another department hands off into or out of (Hydro Test, the one milestone that used to sit with QC, now belongs entirely to Production — see the Test records section), so there is no cross-department handoff traffic reaching QC the way there is for most other departments.',
+        'This is the same bell every internal department uses, top right of the app. It is automatic for everyone with QC access; nothing here is a toggle you turn on or off.',
+      ], {
+        value: 'Before this existed, QC had no cross-department signal at all — the only way to know a project had reached a stage worth preparing for was to keep checking projects by hand. This gives QC the same early warning every other manufacturing department already had.',
+        outcome: 'QC learns a project is materially ready to be worked the moment Procurement finishes clearing it, instead of discovering that only when Production or Dispatch is already asking for QC\'s sign-off.',
+        checklist: [
+          'Treat the notification as a planning signal, not a request for an immediate test — use it to line up references, certificates, and inspection records ahead of the actual fabrication work.',
+          'Open the named project to confirm what was actually procured before assuming every line QC expects has arrived.',
+        ],
+        watchOut: 'This notification tracks Procurement clearing every BOM line — it does not mean material has physically arrived at Stores or that fabrication has started. Check the project\'s actual status before treating it as a cue to test anything.',
+      }),
       feature('handoff', 'Release and sign-off', ShieldCheckIcon, ['Make the result and supporting references clear for Production, Dispatch, Management, and the customer-facing record. Keep rework visible instead of silently editing a passed record.']),
     ],
     howTo: [
@@ -561,6 +619,9 @@ export const DEPARTMENT_HELP = {
       feature('packing', 'Packing details', BoxesIcon, ['Add box number, quantity, unit, MOC, size/spec, item code, ibr number, make, and scanned quantity as applicable.', 'Scanned quantity is a physical check; it should not silently exceed the BOM quantity without an explanation.']),
       feature('pdf', 'Packing PDFs', FileTextIcon, ['Generate the customer-facing PDF when the list is Ready. Use the pending-list PDF when you need a list of lines still waiting to be packed.', 'Check customer name, address, invoice/DC details, vehicle, and dispatch method before issuing the document.']),
       feature('reconcile', 'BOM reconciliation', ClipboardCheckIcon, ['A packing item keeps a link to its BOM line. Use that link to explain what was carried, what remains pending, and why a partial list was created.']),
+      milestoneTrackerFeature([
+        ['Packing', 'Automatic', 'Completes once a packing list for the project reaches Packed or Dispatched status — a Draft list doesn\'t count yet.'],
+      ]),
     ],
     howTo: [
       { title: 'Create the list', body: 'Open Dispatch, generate a draft from the project BOM, and confirm that only the intended pending lines were included.' },
@@ -579,8 +640,12 @@ export const DEPARTMENT_HELP = {
     features: [
       feature('milestones', 'Site milestones', RouteIcon, ['Start and close installation, commissioning, and site milestones with actual dates. Use planned dates to make the expected visit visible early.', 'If a date moves, record the reason so the customer-facing progress story remains honest.']),
       feature('tasks', 'Site tasks', ListChecksIcon, ['Use tasks for access arrangements, foundation readiness, customer documents, travel, tools, and punch-list items.', 'Assign each task to a person or receiving department and include the project in the task.']),
-      feature('handoff', 'Handoffs', MessageSquareIcon, ['Use cross-department tasks when Installation needs Dispatch, QC, Production, or Management to act. Close the task only after the receiving action is confirmed.', 'Keep customer commitments in the project record, not only in a private message.']),
+      feature('handoff', 'Handoffs', MessageSquareIcon, ['Use cross-department tasks when Installation needs Dispatch, QC, Production, or Management to act. Close the task only after the receiving action is confirmed.', 'Keep customer commitments in the project record, not only in a private message.', 'Marking Commissioning & Handover complete is different from every other milestone close: there is no next department in the chain for it to hand off to, so it notifies Sales and every PM-tier account directly instead — the project is now fully done, not just past Installation.']),
       feature('progress', 'Customer progress', FolderKanbanIcon, ['The customer portal reads project progress from milestones. Accurate actual dates and delay reasons improve the customer view without extra reporting work.']),
+      milestoneTrackerFeature([
+        ['Site Installation', 'Explicit action', 'Click "Mark complete" on the project\'s Installation tab — nothing else in the app logs a site visit, so there\'s no data signal to auto-detect this from.'],
+        ['Commissioning & Handover', 'Explicit action', 'Same "Mark complete" action, once site installation is done.'],
+      ]),
     ],
     howTo: [
       { title: 'Prepare the visit', body: 'Open the project, review the next site milestone, and create tasks for access, material, travel, tools, and customer readiness.' },
@@ -595,7 +660,7 @@ export const DEPARTMENT_HELP = {
     intro: ['Sales manages the commercial journey from qualified enquiry to confirmed Sale Order. The CRM keeps customers, contacts, quotations, and orders connected so the factory receives a clean handoff.', 'Marketing shares Leads, Campaigns, Pipeline, Tasks, and Reports. Sales additionally owns Customers, Quotations, and Sale Orders.'],
     features: [
       feature('leads', 'Leads', UserPlusIcon, ['Capture the person/company, contact details, source, territory, and industry. Move the status as the conversation progresses.', 'Convert a qualified lead to create a Customer and Opportunity together; this prevents duplicate typing.']),
-      feature('pipeline', 'Pipeline', TrendingUpIcon, ['Move opportunities through the configured stages. Keep value, probability, expected close, next contact date, and lost reason current.', 'An opportunity is the active deal; a lead is still an enquiry. Do not leave won work sitting as an open opportunity.']),
+      feature('pipeline', 'Pipeline', TrendingUpIcon, ['Move opportunities through the configured stages. Keep value, probability, expected close, next contact date, and lost reason current.', 'An opportunity is the active deal; a lead is still an enquiry. Do not leave won work sitting as an open opportunity.', 'Creating a Quotation linked to an opportunity still sitting in Lead or Qualified moves it to Quoted automatically — one-way, so it never pulls a Won or Lost opportunity backward. It does not replace moving a card by hand for every other stage change; it only ever pushes Lead/Qualified forward the moment real commercial evidence (a quotation) exists.']),
       feature('customers', 'Customers and contacts', Building2Icon, ['Keep the commercial party, people, and addresses in one place. Reuse these records in quotations and orders instead of creating near-duplicates.']),
       feature('quotations', 'Quotations', FileTextIcon, ['Build the proposal with real line items, rates, taxes/terms as applicable, then generate the PDF. Convert an accepted quotation to a Sale Order.']),
       feature('sale-orders', 'Sale Orders', ShoppingCartIcon, ['The Sale Order is the confirmed commercial order. Linking it to a Project creates the Design/Engineering Scope of Supply handoff.', 'Convert to Project on a Sale Order creates the Project directly — no need to ask a PM out of band. Once a Project exists for that order, the button is gone; you\'re looking at the right one if it isn\'t there.', 'Request from Stores on a Sale Order raises a trade (SAS) request straight to Stores\' queue — describe the item and quantity, and Stores sees it immediately.']),
@@ -603,14 +668,16 @@ export const DEPARTMENT_HELP = {
         'You do not get a notification for your own Sale Order the moment you create it — that one goes to Design and every PM-tier account (admin/manager/executive) instead, so they know a new order exists even before it becomes a Project. Check the Sale Orders list to confirm it saved; the bell is not the confirmation for your own action.',
         'You receive a notification when a Sale Order is converted to a Project. A Design Head (or a PM) does the converting, so this is how you find out the commercial-to-technical handoff actually happened without asking. Every PM-tier account gets the same notification at the same time.',
         'You send a notification to Stores every time you use Request from Stores on a Sale Order. It lands in Stores\' Requests queue immediately, the same way one they raise themselves would — there is no separate inbox and no delay.',
+        'You receive a notification when a project reaches Commissioning & Handover — the very last milestone in the chain, closed by Installation. Every other milestone hands off to a specific next department, but there is nothing after Commissioning, so this is fired directly to Sales and every PM-tier account instead of the usual handoff mechanism. It is the one place Sales learns a project it sold is actually, fully done.',
         'This is the same bell every internal department uses, top right of the app. It is automatic for everyone with Sales access; nothing here is a toggle you turn on or off.',
       ], {
-        value: 'These notifications exist so the Sale Order → Project handoff is never a silent, out-of-band ask. Sales finds out the moment its own commercial work becomes technical work, and Design/PM find out the moment a new order exists, without either side checking the other\'s screen.',
-        outcome: 'Every Sale Order event that matters to another team — creation, conversion, a SAS push — reaches the right people through the bell, with enough context to act without asking who sent it.',
+        value: 'These notifications exist so the Sale Order → Project handoff, and the project\'s eventual completion, are never a silent, out-of-band ask. Sales finds out the moment its own commercial work becomes technical work, the moment a new order exists, and the moment the whole thing is finally delivered — without checking someone else\'s screen for any of the three.',
+        outcome: 'Every event that matters to Sales across a project\'s full lifecycle — creation, conversion, a SAS push, and completion — reaches the right people through the bell, with enough context to act without asking who sent it.',
         checklist: [
           'Do not assume silence means nothing happened — your own Sale Order creation intentionally does not notify you; check the list instead.',
           'Follow a "converted to Project" notification straight into the Project record rather than acting from the title alone.',
           'When you raise a SAS request, describe the item and quantity well enough that Stores can act on the notification without replying to ask what you meant.',
+          'Treat a "project complete" notification as the cue for whatever closing-the-loop step is yours to own — a customer call, final paperwork, a handover confirmation — not just a status update to note and move past.',
         ],
         watchOut: 'Marking a notification read only proves you saw it. A "converted to Project" notice still means the commercial note or task you owe Design/Engineering needs to actually be added to the new Project.',
       }),

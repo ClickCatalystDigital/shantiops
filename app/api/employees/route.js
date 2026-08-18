@@ -3,6 +3,7 @@
 import { NextResponse } from 'next/server';
 import { queryAll } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment, canAccessDepartment, isPM } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 import { getEmployees } from '@/lib/data';
 import { createEmployeeWithOnboarding } from '@/lib/hr';
 import { audit } from '@/lib/usb';
@@ -28,6 +29,8 @@ export async function POST(req) {
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'HR');
   if (denied) return denied;
+  const actionDenied = await requireAction(user, 'HR', 'hr.employee.write');
+  if (actionDenied) return actionDenied;
 
   const b = await req.json();
   const name = String(b.name || '').trim();

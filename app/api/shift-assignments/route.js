@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { execute } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 import { getShiftAssignments, getShiftHistory } from '@/lib/data';
 
 export async function GET(req) {
@@ -17,6 +18,8 @@ export async function POST(req) {
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'HR');
   if (denied) return denied;
+  const actionDenied = await requireAction(user, 'HR', 'hr.shift_assignment.write');
+  if (actionDenied) return actionDenied;
   const b = await req.json();
   if (!b.employee_id || !b.shift_type_id || !b.from_date) {
     return NextResponse.json({ error: 'employee_id, shift_type_id, from_date are required' }, { status: 400 });

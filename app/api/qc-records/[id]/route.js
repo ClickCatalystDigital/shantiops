@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
+import { syncHydroTestMilestone } from '@/lib/milestone-auto';
 
 const EDITABLE = ['test_type', 'reference_no', 'result', 'inspector', 'tested_on', 'notes'];
 
@@ -20,6 +22,10 @@ export async function PATCH(req, { params }) {
   const record = await queryOne('SELECT * FROM qc_records WHERE id = ?', [params.id]);
   if (!record) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   if (!canTouch(user, record.test_type)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  if (!/hydro/i.test(record.test_type)) {
+    const actionDenied = await requireAction(user, 'QC', 'qc.test.write');
+    if (actionDenied) return actionDenied;
+  }
 
   const b = await req.json();
   const keys = Object.keys(b).filter(k => EDITABLE.includes(k));
@@ -41,6 +47,12 @@ export async function PATCH(req, { params }) {
     `UPDATE qc_records SET ${Object.keys(changed).map(k => `${k} = ?`).join(', ')} WHERE id = ?`,
     [...Object.values(changed), params.id]);
 
+  const testType = changed.test_type ?? record.test_type;
+  const result = changed.result ?? record.result;
+  if (/hydro/i.test(testType) && result === 'pass') {
+    await syncHydroTestMilestone(record.project_id, user.username);
+  }
+
   await audit('qc_record_edit', {
     actor: user.username,
     detail: JSON.stringify({ qc_record_id: Number(params.id), project_id: record.project_id, changed }),
@@ -53,6 +65,10 @@ export async function DELETE(req, { params }) {
   const record = await queryOne('SELECT * FROM qc_records WHERE id = ?', [params.id]);
   if (!record) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   if (!canTouch(user, record.test_type)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  if (!/hydro/i.test(record.test_type)) {
+    const actionDenied = await requireAction(user, 'QC', 'qc.test.delete');
+    if (actionDenied) return actionDenied;
+  }
 
   await execute('DELETE FROM qc_records WHERE id = ?', [params.id]);
   await audit('qc_record_delete', {

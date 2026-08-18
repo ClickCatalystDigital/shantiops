@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { execute } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 import { getSalaryStructureDetail } from '@/lib/data';
 
 export async function GET(req, { params }) {
@@ -16,6 +17,8 @@ export async function PATCH(req, { params }) {
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'HR');
   if (denied) return denied;
+  const actionDenied = await requireAction(user, 'HR', 'hr.salary_structure.write');
+  if (actionDenied) return actionDenied;
   const b = await req.json();
   const fields = [];
   const args = [];

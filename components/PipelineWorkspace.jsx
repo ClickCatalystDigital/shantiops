@@ -18,7 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { PlusIcon, TrashIcon } from 'lucide-react';
 import { api, showToast } from '@/lib/client';
 import { formatMoney } from '@/lib/format';
-import { TasksPanel } from '@/components/SalesWorkspace';
+import { TasksPanel, NewQuotationDialog } from '@/components/SalesWorkspace';
 
 function AddOpportunityDialog({ departments, customers, onClose, router }) {
   const [title, setTitle] = useState('');
@@ -99,7 +99,7 @@ function AddOpportunityDialog({ departments, customers, onClose, router }) {
   );
 }
 
-function OpportunityDetailSheet({ opportunity, users, onClose, router }) {
+function OpportunityDetailSheet({ opportunity, users, customers, onClose, router }) {
   const [items, setItems] = useState([]);
   const [notes, setNotes] = useState([]);
   const [note, setNote] = useState('');
@@ -108,6 +108,7 @@ function OpportunityDetailSheet({ opportunity, users, onClose, router }) {
   const [nextContactDate, setNextContactDate] = useState(opportunity.next_contact_date || '');
   const [lostReason, setLostReason] = useState(opportunity.lost_reason || '');
   const [savingDetails, setSavingDetails] = useState(false);
+  const [quoteDialogOpen, setQuoteDialogOpen] = useState(false);
 
   function load() {
     api(`/api/opportunities/${opportunity.id}/items`).then(setItems).catch(() => {});
@@ -151,10 +152,16 @@ function OpportunityDetailSheet({ opportunity, users, onClose, router }) {
   }
 
   return (
+    <>
     <Sheet open onOpenChange={o => !o && onClose()}>
       <SheetContent className="w-full sm:max-w-lg">
-        <SheetHeader><SheetTitle>{opportunity.title}</SheetTitle></SheetHeader>
+        <SheetHeader>
+          <SheetTitle>{opportunity.title}</SheetTitle>
+        </SheetHeader>
         <div className="flex flex-col gap-5 overflow-y-auto px-4 pb-4">
+          <Button size="sm" variant="outline" className="self-start" onClick={() => setQuoteDialogOpen(true)}>
+            <PlusIcon />Create Quotation
+          </Button>
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between text-sm font-semibold">
               <span>Details</span>
@@ -199,6 +206,16 @@ function OpportunityDetailSheet({ opportunity, users, onClose, router }) {
         <SheetFooter><Button variant="outline" onClick={onClose}>Close</Button></SheetFooter>
       </SheetContent>
     </Sheet>
+    {quoteDialogOpen && (
+      <NewQuotationDialog
+        customers={customers}
+        opportunityId={opportunity.id}
+        initialCustomerId={opportunity.customer_id}
+        router={router}
+        onClose={() => setQuoteDialogOpen(false)}
+      />
+    )}
+    </>
   );
 }
 
@@ -295,7 +312,7 @@ export default function PipelineWorkspace({ opportunities, departments, customer
         )}
       </CardContent>
       {dialogOpen && <AddOpportunityDialog departments={departments} customers={customers} router={router} onClose={() => setDialogOpen(false)} />}
-      {selected && <OpportunityDetailSheet opportunity={selected} users={users} router={router} onClose={() => setSelected(null)} />}
+      {selected && <OpportunityDetailSheet opportunity={selected} users={users} customers={customers} router={router} onClose={() => setSelected(null)} />}
     </Card>
   );
 }

@@ -7,7 +7,12 @@ import { TriangleAlertIcon, CheckCircle2Icon } from 'lucide-react';
 
 // Identity + "why delayed" only — progress/current-phase/next-milestone/est-dispatch now live in
 // the Milestone Tracker (PortfolioDelayTimeline) directly below, which shows them per-stage anyway.
-export default function ProjectHeader({ project, health, blocker }) {
+export default function ProjectHeader({ project, health, blocker, milestones = [] }) {
+  // Dependency-blocked is a separate signal from `blocker` (biggestBlocker, SLA/human-status
+  // driven, lib/sla.js) — deliberately not merged into it or its severity ranking (SYSTEM.md §5j).
+  // Shown as its own muted line, only for milestones not already done.
+  const depBlocked = milestones.filter(m => m.blocked_by && !(m.actual_end || m.status === 'done'));
+  const firstDep = depBlocked[0];
   return (
     <Card>
       <CardContent className="flex flex-col gap-4 py-5">
@@ -41,6 +46,16 @@ export default function ProjectHeader({ project, health, blocker }) {
           <div className="flex items-center gap-3 rounded-lg border border-success/30 bg-success/5 p-3 text-sm">
             <CheckCircle2Icon className="size-5 shrink-0 text-success" />
             <span>On track — no overdue or blocked milestones.</span>
+          </div>
+        )}
+
+        {firstDep && (
+          <div className="text-sm text-muted-foreground">
+            ⏳ {depBlocked.length === 1 ? '1 milestone is' : `${depBlocked.length} milestones are`} waiting on a
+            dependency — <b className="text-foreground">{firstDep.milestone_label}</b> waiting on{' '}
+            {firstDep.blocked_by.type === 'milestone'
+              ? `${firstDep.blocked_by.department}: ${firstDep.blocked_by.label}`
+              : firstDep.blocked_by.reason}
           </div>
         )}
 

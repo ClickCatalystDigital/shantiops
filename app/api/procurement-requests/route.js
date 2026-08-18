@@ -35,9 +35,11 @@ export async function POST(req) {
     actor: user.username, detail: `${b.from_department}: ${materialDescription} (project ${project.id})`,
   });
   // Same signal-only precedent as a cross-department task raise (§3b) — no work object here yet,
-  // the request itself doesn't become one until accepted.
+  // the request itself doesn't become one until accepted. actionKey narrows this to Procurement
+  // Heads if procurement.request.decide (the PATCH .../[id] route that resolves it) is configured
+  // Head-only — a Member who can't accept/reject it doesn't need the chime.
   await notifyDepartment('Procurement', {
     kind: 'request', title: `New procurement request from ${b.from_department}`, body: materialDescription,
-  }, { except: user.id });
+  }, { except: user.id, actionKey: 'procurement.request.decide' });
   return NextResponse.json({ id });
 }

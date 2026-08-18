@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server';
 import { execute } from '@/lib/db';
 import { getFreshSessionUser, isInternal, requireDepartment } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 import { getInventoryItems } from '@/lib/data';
 import { audit } from '@/lib/usb';
 
@@ -17,6 +18,8 @@ export async function POST(req) {
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Stores');
   if (denied) return denied;
+  const actionDenied = await requireAction(user, 'Stores', 'stores.inventory.write');
+  if (actionDenied) return actionDenied;
 
   const b = await req.json();
   const description = String(b.description || '').trim();

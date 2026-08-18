@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 
 // V2-CHANGES.md Group 2 — add a part row a document's exceptions need beyond the SF template's
@@ -11,6 +12,8 @@ export async function POST(req, { params }) {
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;
+  const actionDenied = await requireAction(user, 'QC', 'qc.document.write');
+  if (actionDenied) return actionDenied;
 
   const doc = await queryOne('SELECT id FROM qc_documents WHERE id = ?', [params.id]);
   if (!doc) return NextResponse.json({ error: 'Not found' }, { status: 404 });

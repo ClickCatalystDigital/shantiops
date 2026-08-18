@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { execute } from '@/lib/db';
 import { getFreshSessionUser, isInternal, canAccessDepartment, isPM } from '@/lib/auth';
+import { requireCrmAction } from '@/lib/action-permissions';
 import { getAddresses } from '@/lib/data';
 
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
@@ -19,6 +20,8 @@ export async function GET(req) {
 export async function POST(req) {
   const user = await getFreshSessionUser();
   if (!canAccessCrm(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const actionDenied = await requireCrmAction(user, 'sales.customer.write');
+  if (actionDenied) return actionDenied;
   const b = await req.json();
   if (!b.customer_id) return NextResponse.json({ error: 'customer_id is required' }, { status: 400 });
 

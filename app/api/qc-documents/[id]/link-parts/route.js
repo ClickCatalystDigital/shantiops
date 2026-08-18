@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { execute, queryAll, queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 
 // Link one or more of this document's parts to a certificate — the single-row "Link…" action and
@@ -11,6 +12,8 @@ export async function POST(req, { params }) {
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;
+  const actionDenied = await requireAction(user, 'QC', 'qc.document.write');
+  if (actionDenied) return actionDenied;
 
   const document = await queryOne('SELECT id, project_id FROM qc_documents WHERE id = ?', [params.id]);
   if (!document) return NextResponse.json({ error: 'Not found' }, { status: 404 });

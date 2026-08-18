@@ -2,11 +2,14 @@
 import { NextResponse } from 'next/server';
 import { execute } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 
 export async function POST(req, { params }) {
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Production');
   if (denied) return denied;
+  const actionDenied = await requireAction(user, 'Production', 'production.jobcard.consumable');
+  if (actionDenied) return actionDenied;
 
   const b = await req.json();
   const itemName = String(b.item_name || '').trim();

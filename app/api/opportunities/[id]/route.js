@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne, queryAll } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 
 const PIPELINE_DEPARTMENTS = ['Sales', 'Marketing'];
@@ -28,6 +29,8 @@ export async function PATCH(req, { params }) {
   if (!canAccessDepartment(user, existing.owner_dept)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
+  const actionDenied = await requireAction(user, existing.owner_dept, 'crm.opportunity.write');
+  if (actionDenied) return actionDenied;
 
   const b = await req.json();
   const fields = [];

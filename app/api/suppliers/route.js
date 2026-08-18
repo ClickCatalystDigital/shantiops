@@ -6,6 +6,7 @@
 import { NextResponse } from 'next/server';
 import { execute } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment, isInternal } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 import { getSuppliers } from '@/lib/data';
 import { audit } from '@/lib/usb';
 
@@ -19,6 +20,8 @@ export async function POST(req) {
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Procurement');
   if (denied) return denied;
+  const actionDenied = await requireAction(user, 'Procurement', 'procurement.supplier.write');
+  if (actionDenied) return actionDenied;
 
   const b = await req.json();
   const name = String(b.name || '').trim();

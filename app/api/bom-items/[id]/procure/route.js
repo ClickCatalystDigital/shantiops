@@ -7,6 +7,7 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { notifyDepartment } from '@/lib/notify';
 
@@ -14,6 +15,8 @@ export async function POST(req, { params }) {
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Stores');
   if (denied) return denied;
+  const actionDenied = await requireAction(user, 'Stores', 'stores.procure');
+  if (actionDenied) return actionDenied;
 
   const item = await queryOne('SELECT id, material_description, pending_review FROM bom_items WHERE id = ?', [params.id]);
   if (!item) return NextResponse.json({ error: 'Not found' }, { status: 404 });

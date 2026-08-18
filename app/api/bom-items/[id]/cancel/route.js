@@ -10,6 +10,7 @@ import { audit } from '@/lib/usb';
 import { notifyDepartment } from '@/lib/notify';
 import { removeItemFromDraftPO, releaseReservationsForItem } from '@/lib/procurement';
 import { DEFAULT_PURCHASE_STATUS } from '@/lib/bom-fields.mjs';
+import { syncProcurementMilestones } from '@/lib/milestone-auto';
 
 const CANCEL_DEPARTMENTS = ['Engineering', 'Design'];
 // D10: cancellable at Enquiry/Comparison/Ordered, blocked once Transit (shipped) — distinct from
@@ -31,6 +32,7 @@ export async function POST(req, { params }) {
   }
 
   await execute("UPDATE bom_items SET purchase_status = 'Cancelled' WHERE id = ?", [item.id]);
+  await syncProcurementMilestones(item.project_id);
   // A selected-but-not-issued item may still be sitting on a draft PO — clean that up regardless of
   // stage, same cleanup select-supplier's DELETE (undo) already does.
   await removeItemFromDraftPO(item.id);

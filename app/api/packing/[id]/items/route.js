@@ -1,10 +1,14 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 
 export async function POST(req, { params }) {
-  const denied = requireDepartment(await getFreshSessionUser(), 'Dispatch');
+  const user = await getFreshSessionUser();
+  const denied = requireDepartment(user, 'Dispatch');
   if (denied) return denied;
+  const actionDenied = await requireAction(user, 'Dispatch', 'dispatch.packing.edit');
+  if (actionDenied) return actionDenied;
   const b = await req.json();
   if (!b.material_description?.trim()) {
     return NextResponse.json({ error: 'Item description is required' }, { status: 400 });
@@ -23,8 +27,11 @@ export async function POST(req, { params }) {
 }
 
 export async function DELETE(req) {
-  const denied = requireDepartment(await getFreshSessionUser(), 'Dispatch');
+  const user = await getFreshSessionUser();
+  const denied = requireDepartment(user, 'Dispatch');
   if (denied) return denied;
+  const actionDenied = await requireAction(user, 'Dispatch', 'dispatch.packing.edit');
+  if (actionDenied) return actionDenied;
   const itemId = new URL(req.url).searchParams.get('itemId');
   if (!itemId) return NextResponse.json({ error: 'itemId required' }, { status: 400 });
   await execute('DELETE FROM packing_items WHERE id = ?', [itemId]);

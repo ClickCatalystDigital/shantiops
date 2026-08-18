@@ -16,9 +16,12 @@ export async function GET(req) {
   if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const projectId = new URL(req.url).searchParams.get('project_id');
   if (!projectId) return NextResponse.json({ error: 'project_id is required' }, { status: 400 });
-  return NextResponse.json(await queryAll('SELECT * FROM scope_of_supply WHERE project_id = ? ORDER BY created_at DESC', [projectId]));
+  return NextResponse.json(await queryAll('SELECT * FROM scope_of_supply WHERE project_id = ? ORDER BY created_at', [projectId]));
 }
 
+// Manual add — a second work order, or the first one for a project that predates the auto-created
+// header (a direct-created project with no sale_order_id). Header only; items are added via
+// /api/scope-of-supply/[id]/items once the document exists.
 export async function POST(req) {
   const user = await getFreshSessionUser();
   if (!canEditScope(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -27,8 +30,8 @@ export async function POST(req) {
   if (!title) return NextResponse.json({ error: 'Title is required' }, { status: 400 });
   if (!b.project_id) return NextResponse.json({ error: 'project_id is required' }, { status: 400 });
   const { lastId } = await execute(
-    'INSERT INTO scope_of_supply (project_id, title, spec, created_by) VALUES (?, ?, ?, ?)',
-    [b.project_id, title, b.spec || null, user.username]
+    'INSERT INTO scope_of_supply (project_id, title, created_by) VALUES (?, ?, ?)',
+    [b.project_id, title, user.username]
   );
   return NextResponse.json({ id: Number(lastId) });
 }

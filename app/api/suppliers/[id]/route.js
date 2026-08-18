@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 
 const FIELDS = ['name', 'gst_no', 'contact_person', 'phone', 'email', 'address', 'default_payment_terms', 'active'];
@@ -14,6 +15,12 @@ export async function PATCH(req, { params }) {
   if (!supplier) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   const b = await req.json();
+  // Deactivate is its own action from the UI's own dedicated button (components/
+  // ProcurementWorkspace.jsx's deactivate()) and sends body:{active:false} alone — anything else
+  // (name/gst/contact edits) is the general supplier.write action, even if 'active' rides along.
+  const isDeactivateOnly = Object.keys(b).length === 1 && 'active' in b && !b.active;
+  const actionDenied = await requireAction(user, 'Procurement', isDeactivateOnly ? 'procurement.supplier.deactivate' : 'procurement.supplier.write');
+  if (actionDenied) return actionDenied;
   const sets = [];
   const args = [];
   for (const f of FIELDS) {

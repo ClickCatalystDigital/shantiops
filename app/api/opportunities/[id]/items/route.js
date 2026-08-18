@@ -5,6 +5,7 @@
 import { NextResponse } from 'next/server';
 import { execute, queryAll, queryOne } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 
@@ -24,6 +25,8 @@ export async function PUT(req, { params }) {
   if (!canAccessDepartment(user, opp.owner_dept)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
+  const actionDenied = await requireAction(user, opp.owner_dept, 'crm.opportunity.write');
+  if (actionDenied) return actionDenied;
 
   const { items } = await req.json();
   if (!Array.isArray(items)) return NextResponse.json({ error: 'items must be an array' }, { status: 400 });

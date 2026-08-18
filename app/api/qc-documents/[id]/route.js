@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { COMPANY_NAMES } from '@/lib/qc-doc-pdf.js';
 
@@ -19,6 +20,8 @@ export async function PATCH(req, { params }) {
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;
+  const actionDenied = await requireAction(user, 'QC', 'qc.document.write');
+  if (actionDenied) return actionDenied;
 
   const doc = await queryOne('SELECT id FROM qc_documents WHERE id = ?', [params.id]);
   if (!doc) return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -52,6 +55,8 @@ export async function DELETE(req, { params }) {
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;
+  const actionDenied = await requireAction(user, 'QC', 'qc.document.delete');
+  if (actionDenied) return actionDenied;
 
   const doc = await queryOne('SELECT id, doc_id, project_id FROM qc_documents WHERE id = ?', [params.id]);
   if (!doc) return NextResponse.json({ error: 'Not found' }, { status: 404 });

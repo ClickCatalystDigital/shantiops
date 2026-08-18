@@ -6,6 +6,7 @@ import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { execute, queryAll, nextCounterValue } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 import { getRfqDetail } from '@/lib/data';
 import { audit } from '@/lib/usb';
 
@@ -15,6 +16,8 @@ export async function POST(req) {
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Procurement');
   if (denied) return denied;
+  const actionDenied = await requireAction(user, 'Procurement', 'procurement.rfq.create');
+  if (actionDenied) return actionDenied;
 
   const b = await req.json();
   const bomItemIds = Array.isArray(b.bom_item_ids) ? b.bom_item_ids.map(Number).filter(Boolean) : [];

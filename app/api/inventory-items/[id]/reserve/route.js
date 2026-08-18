@@ -3,6 +3,7 @@
 // reserveFromStock for the exclusivity/split-on-shortfall logic.
 import { NextResponse } from 'next/server';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 import { reserveFromStock } from '@/lib/procurement';
 import { audit } from '@/lib/usb';
 
@@ -10,6 +11,8 @@ export async function POST(req, { params }) {
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Stores');
   if (denied) return denied;
+  const actionDenied = await requireAction(user, 'Stores', 'stores.reservation.reserve');
+  if (actionDenied) return actionDenied;
 
   const b = await req.json();
   if (!b.bom_item_id || !b.qty) {

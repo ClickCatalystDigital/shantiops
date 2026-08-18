@@ -37,7 +37,7 @@ export default function MilestoneGrid({ milestones }) {
             <TableHead>Milestone</TableHead><TableHead>Assignee</TableHead>
             <TableHead>Plan Start</TableHead><TableHead>Plan End</TableHead>
             <TableHead>Act Start</TableHead><TableHead>Act End</TableHead>
-            <TableHead>Status</TableHead><TableHead>SLA</TableHead><TableHead>Delay Reason</TableHead>
+            <TableHead>Status</TableHead><TableHead>SLA</TableHead><TableHead>Delay Reason</TableHead><TableHead>Dependency</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -59,6 +59,16 @@ export default function MilestoneGrid({ milestones }) {
               <TableCell><StatusBadge m={m} /></TableCell>
               <TableCell><Input className="min-w-32" defaultValue={m.delay_reason || ''}
                 onBlur={e => e.target.value !== (m.delay_reason || '') && patch(m.id, 'delay_reason', e.target.value)} /></TableCell>
+              <TableCell className="min-w-40 text-xs">
+                {m.blocked_by && (
+                  <div className="text-muted-foreground">
+                    ⏳ {m.blocked_by.type === 'milestone' ? `${m.blocked_by.department}: ${m.blocked_by.label}` : m.blocked_by.reason}
+                  </div>
+                )}
+                {m.out_of_order && (
+                  <div className="text-warning">⚠ ahead of {m.out_of_order.department}: {m.out_of_order.label}</div>
+                )}
+              </TableCell>
             </TableRow>
           ))}
         </TableBody>

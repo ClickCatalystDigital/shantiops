@@ -2,6 +2,7 @@
 // actual "confirm" moment: Stores hands the material out, on_hand decrements, item -> In-Stock.
 import { NextResponse } from 'next/server';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 import { issueReservation } from '@/lib/procurement';
 import { audit } from '@/lib/usb';
 
@@ -9,6 +10,8 @@ export async function POST(req, { params }) {
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Stores');
   if (denied) return denied;
+  const actionDenied = await requireAction(user, 'Stores', 'stores.reservation.issue');
+  if (actionDenied) return actionDenied;
 
   try {
     const res = await issueReservation(Number(params.id));

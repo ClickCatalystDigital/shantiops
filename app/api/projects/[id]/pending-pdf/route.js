@@ -15,10 +15,10 @@ export async function GET(req, { params }) {
   const project = await queryOne('SELECT * FROM projects WHERE id = ?', [params.id]);
   if (!project) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  const { pending } = await getProjectBom(params.id);
-  if (!pending.length) return NextResponse.json({ error: 'No pending BOM lines' }, { status: 400 });
+  const { readyForPacking } = await getProjectBom(params.id);
+  if (!readyForPacking.length) return NextResponse.json({ error: 'No BOM lines ready to pack' }, { status: 400 });
 
-  const pdf = await renderPendingPdf(project, pending);
+  const pdf = await renderPendingPdf(project, readyForPacking);
   return new NextResponse(pdf, {
     headers: {
       'Content-Type': 'application/pdf',

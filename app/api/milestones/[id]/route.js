@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, isInternal, isHead, canAccessDepartment } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { todayISO } from '@/lib/date';
 import { fireHandoff } from '@/lib/notify';
+import { notifyMilestoneExtra } from '@/lib/milestone-auto';
 
 // Whitelisted columns — never interpolate a client-supplied column name into SQL.
 const EDITABLE = ['assignee', 'department', 'planned_start', 'planned_end', 'actual_start', 'actual_end',
@@ -36,6 +38,13 @@ export async function PATCH(req, { params }) {
     }
     allowed = HEAD_EDITABLE;
   }
+  // Installation's "Mark complete" button (components/InstallationMilestoneActions.jsx) is the one
+  // action from this generic route wired to the Responsibility model so far — every other
+  // department's milestone edits through here (the drawer, the bulk-edit grid) are untouched.
+  if (m.department === 'Installation' && b.status === 'done') {
+    const actionDenied = await requireAction(user, 'Installation', 'installation.milestone.complete');
+    if (actionDenied) return actionDenied;
+  }
 
   const sets = [];
   const args = [];
@@ -65,6 +74,7 @@ export async function PATCH(req, { params }) {
     const after = await queryOne('SELECT status, actual_end FROM milestones WHERE id = ?', [params.id]);
     if (!wasDone && (after?.actual_end || after?.status === 'done')) {
       await fireHandoff(params.id, user.username);
+      await notifyMilestoneExtra(m.project_id, m.milestone_key);
     }
   } catch (e) {
     await audit('handoff_failed', { actor: user.username, detail: `milestone ${params.id}: ${e}` });

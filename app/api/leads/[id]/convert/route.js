@@ -5,6 +5,7 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
@@ -17,6 +18,8 @@ export async function POST(req, { params }) {
   const lead = await queryOne('SELECT * FROM leads WHERE id = ?', [params.id]);
   if (!lead) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   if (lead.status === 'converted') return NextResponse.json({ error: 'Already converted' }, { status: 409 });
+  const actionDenied = await requireAction(user, lead.owner_dept, 'crm.lead.convert');
+  if (actionDenied) return actionDenied;
 
   const companyName = lead.company_name || lead.lead_name;
   let customer = await queryOne('SELECT * FROM customers WHERE name = ?', [companyName]);

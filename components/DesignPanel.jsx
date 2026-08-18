@@ -4,12 +4,14 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
-import { ChevronDownIcon } from 'lucide-react';
+import { ChevronDownIcon, CheckIcon } from 'lucide-react';
 import ScopeOfSupplyPanel from './ScopeOfSupplyPanel';
+import { api, showToast } from '@/lib/client';
 
 import { TONE_CLASS } from '@/lib/status-styles';
 
@@ -27,13 +29,47 @@ const DRAWING_STATUS_STYLE = {
   as_built: { label: 'As built', cls: TONE_CLASS.success },
 };
 
-export default function DesignPanel({ projectId, designSummary, scopeOfSupply = [], canEditScope = false }) {
+export default function DesignPanel({ projectId, designSummary, scopeOfSupply = [], canEditScope = false, milestones = [], canApprove = false }) {
   const { calcSheets = [], drawings = [], activity = [] } = designSummary || {};
   const drawingsComplete = drawings.filter((d) => d.status === 'approved' || d.status === 'as_built').length;
   const [activityOpen, setActivityOpen] = useState(false);
+  const router = useRouter();
+  const [approving, setApproving] = useState(false);
+  const designMilestone = milestones.find(m => m.milestone_key === 'design');
+  const designDone = !!(designMilestone?.actual_end || designMilestone?.status === 'done');
+
+  async function approveDesign() {
+    setApproving(true);
+    try {
+      await api(`/api/milestones/${designMilestone.id}`, { method: 'PATCH', body: { status: 'done' } });
+      showToast('Design approved');
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); } finally { setApproving(false); }
+  }
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Design = the head's own internal sign-off that the design is ready — no other data in the
+          app can infer this (unlike Design Approval, which aggregates the customer's per-drawing
+          approvals), so it's a real, explicit action instead of the generic milestone drawer. */}
+      {designMilestone && (
+        <Card>
+          <CardContent className="flex items-center justify-between gap-3 py-4">
+            <div>
+              <p className="text-sm font-medium">Internal design sign-off</p>
+              <p className="text-xs text-muted-foreground">Marks the Design milestone complete once the head is satisfied it's ready to proceed.</p>
+            </div>
+            {designDone ? (
+              <span className="flex items-center gap-1 text-sm text-success"><CheckIcon className="size-4" />Approved</span>
+            ) : canApprove ? (
+              <Button size="sm" disabled={approving} onClick={approveDesign}>{approving ? 'Approving…' : 'Approve Design'}</Button>
+            ) : (
+              <span className="text-xs text-muted-foreground">Awaiting Design head</span>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       <div className="grid gap-4 sm:grid-cols-2">
         <Card>
           <CardHeader>

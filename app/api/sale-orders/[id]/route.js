@@ -3,6 +3,7 @@
 import { NextResponse } from 'next/server';
 import { execute } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment, canAccessDepartment, isPM } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 import { getSaleOrderDetail } from '@/lib/data';
 import { COMPANY_NAMES } from '@/lib/qc-doc-pdf.js';
 
@@ -22,6 +23,8 @@ export async function PATCH(req, { params }) {
     const denied = requireDepartment(user, 'Sales');
     if (denied) return denied;
   }
+  const actionDenied = await requireAction(user, 'Sales', 'sales.saleorder.status');
+  if (actionDenied) return actionDenied;
   const b = await req.json();
   if (b.status !== undefined && !STATUSES.includes(b.status)) {
     return NextResponse.json({ error: 'Invalid status' }, { status: 400 });

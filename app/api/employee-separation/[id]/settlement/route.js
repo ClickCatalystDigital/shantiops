@@ -5,6 +5,7 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 import { generateSalarySlip } from '@/lib/payroll';
 import { audit } from '@/lib/usb';
 
@@ -12,6 +13,8 @@ export async function POST(req, { params }) {
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'HR');
   if (denied) return denied;
+  const actionDenied = await requireAction(user, 'HR', 'hr.separation.settle');
+  if (actionDenied) return actionDenied;
 
   const separation = await queryOne('SELECT * FROM employee_separation WHERE id = ?', [params.id]);
   if (!separation) return NextResponse.json({ error: 'Not found' }, { status: 404 });

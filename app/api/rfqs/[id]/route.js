@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 import { getRfqDetail } from '@/lib/data';
 import { audit } from '@/lib/usb';
 
@@ -23,6 +24,8 @@ export async function PATCH(req, { params }) {
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Procurement');
   if (denied) return denied;
+  const actionDenied = await requireAction(user, 'Procurement', 'procurement.rfq.record');
+  if (actionDenied) return actionDenied;
 
   const b = await req.json();
   const rs = await queryOne('SELECT * FROM rfq_suppliers WHERE rfq_id = ? AND supplier_id = ?', [params.id, b.supplier_id]);

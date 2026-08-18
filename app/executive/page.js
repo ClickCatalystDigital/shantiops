@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { getExecutiveSummary, getProjectsWithStatus, getErpSnapshot, getOpportunityPipelineCounts, getProcurementFlowCounts, getWorkforceCounts } from '@/lib/data';
+import { getExecutiveSummary, getProjectsWithStatus, getErpSnapshot, getOpportunityPipelineCounts, getProcurementFlowCounts, getWorkforceCounts, getDependencyHealthSummary } from '@/lib/data';
 import { getFreshSessionUser, isManager, roleHome } from '@/lib/auth';
 import { todayISO } from '@/lib/date';
 import StatusBadge from '@/components/StatusBadge';
@@ -115,14 +115,17 @@ export default async function Executive() {
   const user = await getFreshSessionUser();
   if (!isManager(user)) redirect(roleHome(user));
 
-  const [{ kpi, delayedBy, topRisks, forecast }, projects, snapshot, pipeline, procurementCounts, workforce] = await Promise.all([
+  const [{ kpi, delayedBy, topRisks, forecast }, projects, snapshot, pipeline, procurementCounts, workforce, dependencyHealth] = await Promise.all([
     getExecutiveSummary(),
     getProjectsWithStatus(),
     getErpSnapshot(),
     getOpportunityPipelineCounts(),
     getProcurementFlowCounts(),
     getWorkforceCounts(todayISO()),
+    getDependencyHealthSummary(),
   ]);
+  const deptRows = Object.entries(dependencyHealth.byDepartment).sort((a, b) => b[1] - a[1]);
+  const deptMax = deptRows.reduce((a, [, n]) => Math.max(a, n), 0) || 1;
 
   const stats = [
     { label: 'Projects', value: kpi.total },
@@ -205,6 +208,53 @@ export default async function Executive() {
                     </div>
                     <span className="w-6 text-right font-semibold tnum">{n}</span>
                   </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Dependency Chain rollup (SYSTEM.md §5j) — cross-project blocked_by/out_of_order, the
+          instrument for watching where the chain actually reads as blocked and where
+          milestone-auto disagrees with it, without clicking through every project. Read-only. */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader><CardTitle>Dependency-Blocked, by Department</CardTitle></CardHeader>
+          <CardContent>
+            {deptRows.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Nothing currently waiting on a dependency. 🎉</p>
+            ) : (
+              <div className="flex flex-col gap-2.5">
+                {deptRows.map(([dept, n]) => (
+                  <div key={dept} className="flex items-center gap-3 text-sm">
+                    <span className="w-24 shrink-0 text-muted-foreground">{dept}</span>
+                    <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+                      <div className="h-full rounded-full bg-primary" style={{ width: `${(n / deptMax) * 100}%` }} />
+                    </div>
+                    <span className="w-6 text-right font-semibold tnum">{n}</span>
+                  </div>
+                ))}
+                <p className="pt-1 text-xs text-muted-foreground">{dependencyHealth.blockedCount} milestone(s) total, across active projects.</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader><CardTitle>Finished Out of Order</CardTitle></CardHeader>
+          <CardContent>
+            {dependencyHealth.outOfOrder.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No contradictions found — nothing finished ahead of its own predecessor.</p>
+            ) : (
+              <div className="flex flex-col divide-y">
+                {dependencyHealth.outOfOrder.map((o, i) => (
+                  <Link key={i} href={`/projects/${o.project_id}`}
+                    className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5 text-sm -mx-2 px-2 rounded transition-colors hover:bg-muted/40">
+                    <span className="font-medium">{o.project_no}</span>
+                    <span className="text-muted-foreground">{o.milestone_label}</span>
+                    <span className="ml-auto text-xs text-warning">ahead of {o.out_of_order.department}: {o.out_of_order.label}</span>
+                  </Link>
                 ))}
               </div>
             )}

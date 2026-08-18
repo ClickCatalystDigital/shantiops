@@ -3,6 +3,7 @@
 import { NextResponse } from 'next/server';
 import { execute } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 import { DEFAULT_SEPARATION_TASKS } from '@/lib/hr';
 import { audit } from '@/lib/usb';
 
@@ -10,6 +11,8 @@ export async function POST(req) {
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'HR');
   if (denied) return denied;
+  const actionDenied = await requireAction(user, 'HR', 'hr.separation.write');
+  if (actionDenied) return actionDenied;
 
   const b = await req.json();
   if (!b.employee_id) return NextResponse.json({ error: 'employee_id is required' }, { status: 400 });

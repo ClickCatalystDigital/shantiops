@@ -1,8 +1,11 @@
-// app/api/scope-of-supply/[id]/route.js — PATCH covers editing the spec and releasing it
-// (draft -> released), same field-level shape as app/api/opportunities/[id]/route.js.
+// app/api/scope-of-supply/[id]/route.js — PATCH covers editing the document header (title, the
+// commercial refs/terms the printable version needs) and releasing it (draft -> released), same
+// field-level shape as app/api/opportunities/[id]/route.js.
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
+
+const TEXT_FIELDS = ['po_no', 'payment_terms', 'freight_terms', 'delivery_terms', 'prepared_by'];
 
 export async function PATCH(req, { params }) {
   const user = await getFreshSessionUser();
@@ -16,7 +19,11 @@ export async function PATCH(req, { params }) {
   const fields = [];
   const args = [];
   if (b.title !== undefined) { fields.push('title = ?'); args.push(String(b.title).trim()); }
-  if (b.spec !== undefined) { fields.push('spec = ?'); args.push(b.spec || null); }
+  for (const f of TEXT_FIELDS) {
+    if (b[f] !== undefined) { fields.push(`${f} = ?`); args.push(b[f] || null); }
+  }
+  if (b.po_date !== undefined) { fields.push('po_date = ?'); args.push(b.po_date || null); }
+  if (b.tax_pct !== undefined) { fields.push('tax_pct = ?'); args.push(Number(b.tax_pct) || 0); }
   if (b.status !== undefined) {
     if (!['draft', 'released'].includes(b.status)) return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
     fields.push('status = ?'); args.push(b.status);

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 
 // V2-CHANGES.md Group 2 — remove a part that's an exception (not applicable to this boiler, entered
@@ -11,6 +12,8 @@ export async function DELETE(req, { params }) {
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;
+  const actionDenied = await requireAction(user, 'QC', 'qc.document.delete');
+  if (actionDenied) return actionDenied;
 
   // Scoped to this document — a stray/forged part id from another document must not be deletable
   // through this route, same trust-boundary reasoning as link-parts' own ownership check.

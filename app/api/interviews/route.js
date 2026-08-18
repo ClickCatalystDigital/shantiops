@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { execute, queryAll } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment, canAccessDepartment, isPM } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 
 export async function GET(req) {
   const user = await getFreshSessionUser();
@@ -14,6 +15,8 @@ export async function POST(req) {
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'HR');
   if (denied) return denied;
+  const actionDenied = await requireAction(user, 'HR', 'hr.recruitment.write');
+  if (actionDenied) return actionDenied;
   const b = await req.json();
   if (!b.applicant_id) return NextResponse.json({ error: 'applicant_id is required' }, { status: 400 });
   const { lastId } = await execute(

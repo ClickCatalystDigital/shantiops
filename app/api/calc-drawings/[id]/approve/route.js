@@ -4,6 +4,7 @@ import { queryOne } from '@/lib/db';
 import { approveDrawing } from '@/lib/calc';
 import { notifyDepartment } from '@/lib/notify';
 import { audit } from '@/lib/usb';
+import { syncDesignApprovalMilestone } from '@/lib/milestone-auto';
 
 // Customer-only — approving your own drawing has no internal-user analogue (Design's own sign-off
 // is the existing `status` field, PATCHed via app/api/calc-drawings/[id]/route.js).
@@ -26,6 +27,9 @@ export async function POST(req, { params }) {
   await notifyDepartment('Design', {
     kind: 'approval', title: `Customer approved a drawing`, body: drawing.name,
   });
+  // design_approval = customer approves the design as a whole — no separate single action for
+  // that exists, so it's this per-drawing approval's project-level rollup (lib/milestone-auto.js).
+  await syncDesignApprovalMilestone(drawing.project_id, user.username);
 
   return NextResponse.json({ ok: true });
 }

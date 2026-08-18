@@ -5,6 +5,7 @@
 import { NextResponse } from 'next/server';
 import { execute, queryAll, queryOne, nextCounterValue } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment, isPM } from '@/lib/auth';
+import { requireCrmAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { notifyDepartment, notifyPMs } from '@/lib/notify';
 import { COMPANY_NAMES } from '@/lib/qc-doc-pdf.js';
@@ -17,6 +18,8 @@ function canAccessCrm(user) {
 export async function POST(req, { params }) {
   const user = await getFreshSessionUser();
   if (!canAccessCrm(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const actionDenied = await requireCrmAction(user, 'sales.quotation.convert');
+  if (actionDenied) return actionDenied;
 
   const quotation = await queryOne(
     `SELECT q.*, c.name AS customer_name FROM quotations q JOIN customers c ON c.id = q.customer_id WHERE q.id = ?`,

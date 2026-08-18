@@ -125,6 +125,22 @@ export default function MilestoneDrawer({ milestone, head = false, onClose }) {
           </div>
           <SheetDescription>{milestone.department} · {cat}</SheetDescription>
         </SheetHeader>
+        {(milestone.blocked_by || milestone.out_of_order) && (
+          <div className="flex flex-col gap-1 border-b px-4 py-3 text-sm">
+            {milestone.blocked_by && (
+              <div className="text-muted-foreground">
+                ⏳ Waiting on {milestone.blocked_by.type === 'milestone'
+                  ? `${milestone.blocked_by.department}: ${milestone.blocked_by.label}`
+                  : milestone.blocked_by.reason}
+              </div>
+            )}
+            {milestone.out_of_order && (
+              <div className="text-warning">
+                ⚠ Finished ahead of {milestone.out_of_order.department}: {milestone.out_of_order.label}
+              </div>
+            )}
+          </div>
+        )}
         {body}
       </SheetContent>
     </Sheet>

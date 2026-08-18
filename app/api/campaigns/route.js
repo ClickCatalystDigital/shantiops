@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import { execute, queryAll } from '@/lib/db';
 import { getFreshSessionUser, isInternal, canAccessDepartment } from '@/lib/auth';
+import { requireCrmAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
@@ -17,6 +18,8 @@ export async function POST(req) {
   if (!CRM_DEPARTMENTS.some(d => canAccessDepartment(user, d))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
+  const actionDenied = await requireCrmAction(user, 'marketing.campaign.write');
+  if (actionDenied) return actionDenied;
   const b = await req.json();
   const name = String(b.name || '').trim();
   if (!name) return NextResponse.json({ error: 'Name is required' }, { status: 400 });

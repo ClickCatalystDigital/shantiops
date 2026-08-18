@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import { execute } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment, canAccessDepartment, isPM } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 import { getOperations } from '@/lib/data';
 
 export async function GET() {
@@ -14,6 +15,8 @@ export async function POST(req) {
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Production');
   if (denied) return denied;
+  const actionDenied = await requireAction(user, 'Production', 'production.settings.write');
+  if (actionDenied) return actionDenied;
   const b = await req.json();
   const name = String(b.name || '').trim();
   if (!name) return NextResponse.json({ error: 'Name is required' }, { status: 400 });

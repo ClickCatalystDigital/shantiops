@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server';
 import { execute, queryAll } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 import { getPayrollRuns } from '@/lib/data';
 import { generateSalarySlip } from '@/lib/payroll';
 import { audit } from '@/lib/usb';
@@ -19,6 +20,8 @@ export async function POST(req) {
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'HR');
   if (denied) return denied;
+  const actionDenied = await requireAction(user, 'HR', 'hr.payroll.run');
+  if (actionDenied) return actionDenied;
   const b = await req.json();
   const periodMonth = Number(b.period_month);
   const periodYear = Number(b.period_year);

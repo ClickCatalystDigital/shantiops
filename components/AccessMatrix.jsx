@@ -4,6 +4,7 @@
 import { useState } from 'react';
 import { api, showToast } from '@/lib/client';
 import { DEPARTMENTS } from '@/lib/milestones';
+import { RESPONSIBILITY_VALUES, responsibilityLabel } from '@/lib/department-roles';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -43,8 +44,7 @@ export default function AccessMatrix({ heads: initialHeads, canAssignHead = fals
                 <TableRow>
                   <TableHead>Head</TableHead>
                   {DEPARTMENTS.map(d => <TableHead key={d} className="text-center">{d}</TableHead>)}
-                  <TableHead>Design responsibility</TableHead>
-                  <TableHead>Engineering responsibility</TableHead>
+                  <TableHead>Responsibility</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -60,20 +60,24 @@ export default function AccessMatrix({ heads: initialHeads, canAssignHead = fals
                       </TableCell>
                     ))}
                     <TableCell>
-                      <select
-                        className="h-8 rounded-md border bg-background px-2 text-xs"
-                        value={h.departmentRoles?.Design || 'designer'}
-                        disabled={!canAssignHead || !h.departments.includes('Design')}
-                        onChange={e => setDepartmentRole(h, 'Design', e.target.value)}
-                      >
-                        <option value="designer">Designer</option>
-                        <option value="head">Design Head</option>
-                      </select>
-                    </TableCell>
-                    <TableCell>
-                      <select className="h-8 rounded-md border bg-background px-2 text-xs" value={h.departmentRoles?.Engineering || 'designer'} disabled={!canAssignHead || !h.departments.includes('Engineering')} onChange={e => setDepartmentRole(h, 'Engineering', e.target.value)}>
-                        <option value="designer">Engineer</option><option value="head">Engineering Head</option>
-                      </select>
+                      <div className="flex flex-col gap-1">
+                        {DEPARTMENTS.filter(d => h.departments.includes(d)).map(d => (
+                          <div key={d} className="flex items-center gap-1.5">
+                            <span className="w-20 shrink-0 truncate text-xs text-muted-foreground">{d}</span>
+                            <select
+                              className="h-7 rounded-md border bg-background px-1.5 text-xs"
+                              value={h.departmentRoles?.[d] || 'designer'}
+                              disabled={!canAssignHead}
+                              onChange={e => setDepartmentRole(h, d, e.target.value)}
+                            >
+                              {RESPONSIBILITY_VALUES.map(v => (
+                                <option key={v} value={v}>{responsibilityLabel(d, v)}</option>
+                              ))}
+                            </select>
+                          </div>
+                        ))}
+                        {h.departments.length === 0 && <span className="text-xs text-muted-foreground">—</span>}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

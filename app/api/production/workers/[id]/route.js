@@ -5,6 +5,7 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 
 const EDITABLE = ['name', 'trade', 'active'];
@@ -21,6 +22,11 @@ export async function PATCH(req, { params }) {
   if (!worker) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   const b = await req.json();
+  // Same single-key-body idiom as suppliers' deactivate() — WorkersPanel.jsx sends {active:...}
+  // alone for the activate/deactivate toggle, and any real field edit alone otherwise.
+  const isActiveOnly = Object.keys(b).length === 1 && 'active' in b;
+  const actionDenied = await requireAction(user, 'Production', isActiveOnly ? 'production.worker.deactivate' : 'production.worker.write');
+  if (actionDenied) return actionDenied;
   const keys = Object.keys(b).filter(k => EDITABLE.includes(k));
   if (!keys.length) return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
   if (keys.includes('name') && !String(b.name || '').trim()) {

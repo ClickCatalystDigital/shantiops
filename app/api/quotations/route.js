@@ -3,8 +3,9 @@
 // POST accepts the full item list at once (small form, not a separate line-item endpoint like
 // opportunities' bulk-PUT — a quotation is created whole, not built up incrementally in the UI).
 import { NextResponse } from 'next/server';
-import { execute, nextCounterValue } from '@/lib/db';
+import { execute, queryOne, nextCounterValue } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment, isPM } from '@/lib/auth';
+import { requireCrmAction } from '@/lib/action-permissions';
 import { getQuotations } from '@/lib/data';
 import { audit } from '@/lib/usb';
 
@@ -22,6 +23,8 @@ export async function GET() {
 export async function POST(req) {
   const user = await getFreshSessionUser();
   if (!canAccessCrm(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const actionDenied = await requireCrmAction(user, 'sales.quotation.create');
+  if (actionDenied) return actionDenied;
 
   const b = await req.json();
   if (!b.customer_id) return NextResponse.json({ error: 'customer_id is required' }, { status: 400 });
@@ -57,5 +60,21 @@ export async function POST(req) {
     );
   }
   await audit('quotation_created', { actor: user.username, detail: quotationNo });
+
+  // A quotation existing is real proof the opportunity has reached Quoted — advance it forward
+  // if it hasn't already, same one-way/rank idiom as advancePurchaseStatus (lib/procurement.js).
+  // sort_order (not stage name) is the rank source since sales_stages is DB-configurable.
+  if (b.opportunity_id) {
+    try {
+      const opp = await queryOne(
+        `SELECT o.stage, s.sort_order FROM opportunities o
+           JOIN sales_stages s ON s.name = o.stage WHERE o.id = ?`, [b.opportunity_id]);
+      const quoted = await queryOne(`SELECT sort_order FROM sales_stages WHERE name = 'Quoted' AND active = 1`);
+      if (opp && quoted && opp.sort_order < quoted.sort_order) {
+        await execute('UPDATE opportunities SET stage = ? WHERE id = ?', ['Quoted', b.opportunity_id]);
+      }
+    } catch (err) { /* best-effort, quotation creation is the user's real intent */ }
+  }
+
   return NextResponse.json({ id: quotationId, quotation_no: quotationNo });
 }

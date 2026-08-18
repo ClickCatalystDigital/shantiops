@@ -2,6 +2,7 @@
 // reservation's qty back into `available` without touching on_hand (nothing was decremented yet).
 import { NextResponse } from 'next/server';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 import { releaseReservation } from '@/lib/procurement';
 import { audit } from '@/lib/usb';
 
@@ -9,6 +10,8 @@ export async function POST(req, { params }) {
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Stores');
   if (denied) return denied;
+  const actionDenied = await requireAction(user, 'Stores', 'stores.reservation.release');
+  if (actionDenied) return actionDenied;
 
   try {
     const res = await releaseReservation(Number(params.id));

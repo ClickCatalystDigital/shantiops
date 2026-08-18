@@ -9,6 +9,7 @@
 import { NextResponse } from 'next/server';
 import { execute, queryAll, nextCounterValue } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 import { getPurchaseOrders } from '@/lib/data';
 import { audit } from '@/lib/usb';
 
@@ -27,6 +28,8 @@ export async function POST(req) {
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Procurement');
   if (denied) return denied;
+  const actionDenied = await requireAction(user, 'Procurement', 'procurement.po.create');
+  if (actionDenied) return actionDenied;
 
   const b = await req.json();
   const itemIds = Array.isArray(b.items) ? b.items.map(Number).filter(Boolean) : [];

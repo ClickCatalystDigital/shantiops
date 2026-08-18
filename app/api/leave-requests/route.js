@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 import { getLeaveRequests } from '@/lib/data';
 import { daysBetween, getLeaveBalance } from '@/lib/hr';
 import { audit } from '@/lib/usb';
@@ -17,6 +18,8 @@ export async function POST(req) {
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'HR');
   if (denied) return denied;
+  const actionDenied = await requireAction(user, 'HR', 'hr.leave.request');
+  if (actionDenied) return actionDenied;
 
   const b = await req.json();
   if (!b.employee_id || !b.leave_type_id || !b.from_date || !b.to_date) {

@@ -1,12 +1,15 @@
 import { NextResponse } from 'next/server';
 import { execute, nextNumber, queryAll } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 
 export async function POST(req) {
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Dispatch');
   if (denied) return denied;
+  const actionDenied = await requireAction(user, 'Dispatch', 'dispatch.packing.create');
+  if (actionDenied) return actionDenied;
   const b = await req.json();
   if (!b.customer_name?.trim()) {
     return NextResponse.json({ error: 'Customer name is required' }, { status: 400 });

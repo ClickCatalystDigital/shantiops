@@ -514,8 +514,12 @@ function CustomersTab({ customers, router }) {
 
 // --- Quotations -----------------------------------------------------------------------------------
 
-function NewQuotationDialog({ customers, onClose, router }) {
-  const [customerId, setCustomerId] = useState('');
+// Exported so PipelineWorkspace.jsx's OpportunityDetailSheet can reuse it — a quotation created
+// from an opportunity's own "Create Quotation" button carries opportunity_id, which is what lets
+// the auto-advance-to-Quoted in app/api/quotations/route.js actually fire (it never did before:
+// no UI path set opportunity_id, only a direct API call could).
+export function NewQuotationDialog({ customers, opportunityId = null, initialCustomerId = '', onClose, router }) {
+  const [customerId, setCustomerId] = useState(initialCustomerId ? String(initialCustomerId) : '');
   const [taxPct, setTaxPct] = useState('18');
   const [items, setItems] = useState([{ item_description: '', qty: 1, uom: 'Nos', rate: 0 }]);
   const [saving, setSaving] = useState(false);
@@ -532,7 +536,10 @@ function NewQuotationDialog({ customers, onClose, router }) {
     if (!cleanItems.length) return showToast('At least one line item is required', 'error');
     setSaving(true);
     try {
-      const res = await api('/api/quotations', { method: 'POST', body: { customer_id: customerId, tax_pct: Number(taxPct) || 0, items: cleanItems } });
+      const res = await api('/api/quotations', {
+        method: 'POST',
+        body: { customer_id: customerId, opportunity_id: opportunityId, tax_pct: Number(taxPct) || 0, items: cleanItems },
+      });
       showToast(`Quotation ${res.quotation_no} created`);
       router.refresh();
       onClose();

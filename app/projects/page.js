@@ -4,32 +4,9 @@ import { getFreshSessionUser, isDesignHead } from '@/lib/auth';
 import StatusBadge from '@/components/StatusBadge';
 import NewProjectForm from '@/components/NewProjectForm';
 import PageHeader from '@/components/PageHeader';
+import { DepartmentPills, DepartmentProgress } from '@/components/DepartmentStatus';
 import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-
-// Which department(s) currently have the ball on a project — a small pill row next to the health
-// badge, not a replacement for it (health = is it late; this = who's actually holding it).
-function DepartmentPills({ departments }) {
-  if (!departments?.length) return null;
-  return (
-    <div className="mt-1 flex flex-wrap gap-1">
-      {departments.map(d => <Badge key={d} variant="outline" className="text-xs font-normal">{d}</Badge>)}
-    </div>
-  );
-}
-
-// Answers a different question from the pill above: not "who has it" but "how far along is that
-// department's own slice of this project" — done/total of just the milestones that department
-// owns here. A project with no active department (nothing started yet) shows nothing.
-function DepartmentProgress({ departmentProgress }) {
-  if (!departmentProgress?.length) return <span className="text-muted-foreground">—</span>;
-  return (
-    <span className="text-muted-foreground">
-      {departmentProgress.map(dp => `${dp.department} ${dp.done}/${dp.total}`).join(', ')}
-    </span>
-  );
-}
 
 export const dynamic = 'force-dynamic';
 
@@ -58,7 +35,7 @@ export default async function Projects() {
                 </div>
                 <div className="text-sm">{p.customer_name}</div>
                 <div className="text-xs text-muted-foreground">{p.description || '—'}</div>
-                <DepartmentPills departments={p.activeDepartments} />
+                <div className="mt-1"><DepartmentPills departmentProgress={p.departmentProgress} /></div>
                 <div className="mt-1 flex items-center justify-between text-xs">
                   <DepartmentProgress departmentProgress={p.departmentProgress} />
                   <span className="text-muted-foreground">Overall {p.overallDone}/{p.overallTotal}</span>
@@ -92,7 +69,7 @@ export default async function Projects() {
                   <TableCell className="tnum text-muted-foreground">{p.overallDone}/{p.overallTotal}</TableCell>
                   <TableCell>
                     <StatusBadge status={p.roll} />
-                    <DepartmentPills departments={p.activeDepartments} />
+                    <div className="mt-1"><DepartmentPills departmentProgress={p.departmentProgress} /></div>
                   </TableCell>
                 </TableRow>
               ))}

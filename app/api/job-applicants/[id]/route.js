@@ -5,6 +5,7 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 import { createEmployeeWithOnboarding } from '@/lib/hr';
 import { audit } from '@/lib/usb';
 
@@ -14,6 +15,8 @@ export async function PATCH(req, { params }) {
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'HR');
   if (denied) return denied;
+  const actionDenied = await requireAction(user, 'HR', 'hr.applicant.decide');
+  if (actionDenied) return actionDenied;
 
   const applicant = await queryOne('SELECT * FROM job_applicants WHERE id = ?', [params.id]);
   if (!applicant) return NextResponse.json({ error: 'Not found' }, { status: 404 });

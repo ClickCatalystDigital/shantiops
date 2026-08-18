@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 import { getJobCards } from '@/lib/data';
 import { audit } from '@/lib/usb';
 
@@ -21,6 +22,8 @@ export async function POST(req) {
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Production');
   if (denied) return denied;
+  const actionDenied = await requireAction(user, 'Production', 'production.jobcard.create');
+  if (actionDenied) return actionDenied;
 
   const b = await req.json();
   const milestoneId = Number(b.milestone_id);

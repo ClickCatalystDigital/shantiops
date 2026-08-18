@@ -1334,6 +1334,463 @@ module depends on.
   tab, filtered to hydro rows, locked to that test type; QC's own tab excludes hydro rows so it
   never shows edit controls that would now 403.
 
+## 5h. Milestone automation, structured Scope of Supply, and Requests/Templates (2026-08-17, no separate working-spec doc — folded straight in here)
+
+- **Stores gets a sidebar workspace** (`components/StoresWorkspace.jsx`), same `WorkspaceSidebar`
+  pattern as Production's Job Card panel: Inventory / Open Requests / Active Reservations /
+  Material Issued to WIP as real tabs instead of one long scrolling page. The today-summary chips
+  and Manual/Auto toggle live on the Inventory (default) tab; the chips now switch tabs instead of
+  anchor-jumping to a div id that isn't mounted on other tabs.
+- **Projects list and project-detail page both show "who has it, doing what."**
+  `lib/data.js`'s `activeDepartmentStatus(ms)` (shared by `getProjectsWithStatus()` and the
+  project-detail page, scoped to that one project's milestones) returns `departmentProgress`:
+  `{department, done, total, activeMilestones}` per department currently holding the ball —
+  `activeMilestones` is the specific in-progress (or next-up) milestone label(s), so a pill reads
+  "Production · Welding (FURA-B / RC / AR)", not just "Production". Shared render components
+  `components/DepartmentStatus.jsx` (`DepartmentPills`/`DepartmentProgress`) back both the Projects
+  list table/cards and the project-detail page's Row 2 slot 3 ("Currently With" card), which
+  replaced the old Design-chip-or-BOM-rollup guess entirely — deleted `getBomRollup`,
+  `getProjectDesignStage`, `components/BomProgress.jsx` as dead code once nothing read them.
+- **Cross-department BOM visibility gates** — three, each wired at the actual write path, not a
+  polling check: Procurement's Enquiry queue (`getSourcingItems()`) now also requires the
+  project's `release_bom` milestone to be `done` (a normal `source='bom'` line only reaches
+  Procurement once Design has actually finished releasing it; stock/sas sentinel lines are exempt,
+  they have no milestones). Production's BOM view and Stores' Material-Issued tab
+  (`GET /api/projects/[id]/bom`, the one route both actually call) now only return items with
+  `purchase_status IN ('Received','In-Stock')` — Stores has to have it in hand first. Dispatch can
+  only pull a line into a new packing list once Production explicitly marks it done — new
+  `bom_items.production_done` column, owned by Production (`BOM_FIELD_OWNERS`), toggled inline in
+  `BomTable.jsx`'s new "Prod. Done" column; `getProjectBom()`'s `readyForPacking` (a new field,
+  kept separate from the existing `pending` — which still feeds the generic cross-department
+  "Pending" badge and shouldn't change meaning on old rows) is what `/api/packing/from-bom` and
+  the pending-dispatch PDF actually pull from now.
+- **Milestone automation** (`lib/milestone-auto.js`) — most milestones complete themselves off the
+  real event that finishes the work, instead of only ever being hand-marked in the drawer. Wired
+  into the API route that owns each event, one-way (pending → done only, never auto-reopens, same
+  semantics the manual PATCH route already had):
+  - **Production's 12 milestones** (Marking/Cutting .. Painting) — done once every job card raised
+    against that `milestone_id` reaches `done` (`app/api/job-cards/[id]/route.js`).
+  - **Hydro Test** — done on a passing `qc_records` row (`app/api/qc-records` POST/PATCH).
+  - **Packing** — done once a `packing_lists` row for the project reaches `packed`/`dispatched`
+    (`app/api/packing/[id]/route.js`).
+  - **Procurement's 5 milestones, redesigned** — the old per-material-category set (Order BQ/Tubes,
+    Procure Tubes, Order MS, Order Valves, Order Panel) had nothing in the data model tagging a BOM
+    item by category, so they could only ever be hand-marked with no real signal. Replaced with
+    `procurement_enquiry`/`comparison`/`ordered`/`transit`/`procured`, mirroring the BOM item's own
+    `purchase_status` stages (`lib/bom-fields.mjs` `ACTIVE_STAGES`) — a milestone completes once
+    *every* BOM item on the project has moved at least that far along ("all items must clear the
+    stage," `syncProcurementMilestones`, called from the one real choke point
+    `advancePurchaseStatus` in `lib/procurement.js` plus the manual Status-tab PATCH, cancel route,
+    and Stores' Issue-to-In-Stock path). Existing projects' old 5 milestone rows were renamed in
+    place by a `system_migrations`-gated one-time migration (`scope_of_supply...` — see below for
+    the naming, this one's marker is a similar one-off in `lib/db.js`), not left inconsistent
+    between old and new projects.
+  - **Design Approval** — no single "customer approves the whole design" action exists, so this
+    aggregates the existing per-drawing customer approval
+    (`calc_drawings.customer_approved_at`, `app/api/calc-drawings/[id]/approve`): done once every
+    customer-visible drawing on the project has been approved (needs at least one to conclude
+    anything).
+  - **Design** (the milestone) and **Site Installation / Commissioning** have no reliable signal
+    anywhere else in the app — real explicit actions instead of the generic drawer: an "Approve
+    Design" button (Design Head only, `DesignPanel.jsx`) and a "Mark complete" button per
+    Installation milestone (`components/InstallationMilestoneActions.jsx`).
+  - **Release BOM** stays a deliberate whole-project action too (a project's BOM usually builds up
+    piecemeal over days — the first item landing isn't "released"), now with a real button (see
+    Requests below) instead of only the generic drawer.
+- **Requests (`/pr`) rebuilt with a sidebar** (`components/PrWorkspace.jsx`, `WorkspaceSidebar`):
+  **Raise PR** (unchanged), **Release BOM** (project picker + status + the button above,
+  `POST /api/projects/[id]/release-bom`), **Templates** (new — `bom_templates`/
+  `bom_template_items` tables, create/apply/delete a reusable per-boiler-model material list;
+  applying one materializes `bom_items` the same shape a normal PR line gets, `purchase_status`
+  `Enquiry` + `pending_review=1`, so Stores still reviews it first).
+- **Scope of Supply, completed** — the earlier "lean" pass (one `scope_of_supply` row per Sale
+  Order line item) fit the data but not the real document: the client's own Order Acknowledgement
+  paper form is a header (client block, Job No/Offer/PO refs, GST No, payment/freight/delivery
+  terms, prepared-by) plus priced line items (SL/Product/Qty/Unit Price/Basic Value) plus totals
+  (Basic Total/GST/Grand Total). `scope_of_supply` went back to being a document header (one or
+  more per project, same "second WO" precedent as before this pass); new `scope_of_supply_items`
+  is the priced line-item table (`unit_price`, `amount` — defaults to qty×unit price, an explicit
+  amount always wins for lump-sum lines). New header columns: `po_no`, `po_date`,
+  `payment_terms` (prefilled from the originating quotation), `freight_terms`, `delivery_terms`,
+  `prepared_by`, `tax_pct` (default 18). Existing flat lean-pass rows were migrated into
+  header+items per project by a `system_migrations`-gated one-time pass
+  (`scope_of_supply_document_shape_v1`). `lib/data.js`'s `getScopeOfSupply()` now returns each
+  header with its `items`, computed `basicTotal`/`taxAmount`/`grandTotal`, and the client/Job-No/
+  Offer context joined from `projects → customers` / `sale_orders → quotations` (not duplicated
+  onto every row). New item CRUD routes (`app/api/scope-of-supply/[id]/items[/[itemId]]`), and a
+  PDF export (`lib/sos-pdf.js`, modeled directly on `lib/quotation-pdf.js`'s
+  `@react-pdf/renderer` shape) matching the reference document's layout, at
+  `GET /api/scope-of-supply/[id]/pdf`. `components/ScopeOfSupplyPanel.jsx` rewritten to match:
+  inline-editable header fields, a priced item table with add/edit/delete, live totals, and a PDF
+  download link.
+- **Demo data** (`scripts/seed-demo-pipeline.mjs`) extended from 3 hand-frozen projects to 11, so
+  every milestone-owning department (Design/Procurement/Production/Dispatch/Installation) has
+  ≥2 projects genuinely active with it — verified directly against `getProjectsWithStatus()`'s own
+  `activeDepartments`-equivalent logic, not just eyeballed.
+- **Help — Milestone Tracker.** Each manufacturing department's guide
+  (`components/department-help-content.jsx`) gets a new "Milestone Tracker" feature page — a table
+  (reusing `GuideBody`'s existing `item.table` renderer, no new UI) listing every milestone that
+  department owns, whether it's Automatic or an Explicit action, and exactly what completes it —
+  the human-readable mirror of `lib/milestone-auto.js`.
+
+## 5i. Responsibility model + Action Permissions (2026-08-18, no separate working-spec doc — folded straight in here)
+
+Generalizes a pattern that used to exist only for Design/Engineering (a hardcoded Head/Designer
+`<select>` pair in the Access Matrix, with Design's Head-only actions hand-checked via
+`hasActiveDesignResponsibility`) into every department, plus a real admin-configurable engine for
+*which* actions are Head-only. Four layers, built in one pass:
+
+**1. Data model — `lib/department-roles.js`.** `users.department_roles` was already a generic
+`{dept: 'head'|'designer'} ` JSON column (`lib/db.js`); only its *usage* was Design/Engineering-only
+before this pass. The non-head tier keeps the literal stored value `'designer'` everywhere — it was
+already `departmentRole()`'s (`lib/auth.js`) department-agnostic fallback token, not actually
+Design-specific, so there was nothing to migrate. `RESPONSIBILITY_LABELS` maps `{department: {head,
+designer}}` to a display label per department (`"QC Head"/"Inspector"`, `"Sales Head"/"Sales
+Executive"`, etc. — drafted this session, not yet reviewed against how the team actually talks);
+`responsibilityLabel(dept, value)` reads it with a sane fallback.
+
+**2. Backend — `lib/auth.js`.** `isDepartmentHead(user, dept)` / `isDepartmentMember(user, dept)`
+are the generic, department-agnostic checks (PM always passes; otherwise real department access +
+`departmentRole(user, dept) === 'head'`/`'designer'`). `isDesignHead`/`isDesignDesigner` are now
+one-line aliases over these — every pre-existing call site (formula approval, drawing deletion,
+Design self-service access management) is unchanged. `app/api/users/[id]/route.js`'s
+`departmentRoles` PATCH validates against the real `DEPARTMENTS` list (`lib/milestones.js`) and
+`RESPONSIBILITY_VALUES`, not a hardcoded `['Design', 'Engineering']`.
+
+**3. UI — `components/AccessMatrix.jsx`.** The two hardcoded "Design responsibility"/"Engineering
+responsibility" columns became one **Responsibility** column: for each head, one compact
+`<select>` per granted department (only departments they're actually checked into render a
+dropdown), driven by `RESPONSIBILITY_LABELS` instead of two hand-written `<option>` blocks.
+
+**4. Action Permissions engine — `lib/action-permissions.js` + `action_permissions` table.** The
+actual per-action Head-gate, admin-configurable from Settings → **Action Permissions**
+(`components/ActionPermissionsPanel.jsx`), one department at a time, each action a plain
+Everyone/Head-only `<select>` (not drag-and-drop — a single two-state toggle per row does
+everything a drag target would, with none of the reorder-state or touch-handling code that buys
+nothing here).
+- `ACTION_CATALOG` is the full list of gated actions, one entry per real mutation, department by
+  department — see the file itself for the current count per department, kept current as the
+  source of truth rather than duplicated here.
+- `action_permissions (department, action_key, requires_head)` stores the toggle; no row for an
+  action means it defaults **open to everyone with department access** — the same behavior every
+  one of these routes had before this table existed, so wiring a new action in without configuring
+  it is a no-op, never a silent lockout.
+- `canPerformAction(user, department, actionKey)` is the one true check: PM always passes; a
+  non-head who isn't granted `department` fails outright; otherwise it's open unless
+  `requires_head` is set, in which case it needs `isDepartmentHead`. `requireAction(...)` is the
+  route-ergonomic null-or-403 wrapper (same shape as `requireDepartment`).
+- **Shared-record departments**: some entities don't belong to one fixed department — an
+  Opportunity/Lead/CRM Task can be owned by either Sales or Marketing (`owner_dept`/`department`
+  column on the row itself, resolved server-side at creation, read back on every edit — this
+  already existed in `app/api/opportunities/[id]/route.js` etc. before this pass, just not used
+  for a permission gate yet). Those routes call `requireAction(user, <the record's own resolved
+  department>, actionKey)`, never the acting user's department — a Sales Head editing a
+  Marketing-owned opportunity is still a Marketing action. `requireCrmAction(user, actionKey)` is
+  the *other* shared shape — routes gated by `canAccessCrm` (Sales OR Marketing OR PM) with no
+  per-record department of their own (customers, quotations, Sale Orders) — picks whichever of the
+  two the acting user actually has, Sales first (matches how Sales' own help docs already describe
+  ownership).
+- **Deliberately not wired**, each a real boundary, not an oversight:
+  - **Design's own hardcoded gates** (formula approval, drawing/file deletion, calc/drawing
+    approval — `hasActiveDesignResponsibility` call sites) predate this table and stay
+    non-configurable on purpose; migrating a stable, always-Head-only rule into a toggle a PM could
+    flip open is a bigger, riskier change than generalizing the *mechanism* was.
+  - **CRM Notes** (`crm-notes`) — an append-only activity log with no `owner_dept` of its own and
+    no per-record department check even today (any CRM-access user can note any record); gating it
+    would invent a rule that doesn't exist yet.
+  - **The generic cross-department task/incident system** (`app/api/production/tasks`, backing
+    every department's own Tasks board and Operations' Incidents panel) — inherently
+    inter-departmental by design (any department can raise a task aimed at any other), doesn't fit
+    a single-department Head/Member model.
+  - **Material issued to WIP**, **hydro test records** (inside a QC-owned route, but the action is
+    Production's), **purchase requisitions** (any department can raise one) — genuinely shared
+    across departments; forcing one into a single department's bucket would misattribute it.
+
+## 5j. Future Workflow Intelligence / Dependency Engine (2026-08-18, v1 observational + a first slice of the roadmap — no working-spec doc, folded straight in here)
+
+A first pass at making the workflow system reason about *why* something is blocked and *who*
+unblocks it, instead of every gate being a one-off hand-rolled check re-derived per feature. v1
+is deliberately small and read-only: it computes a signal, it does not enforce anything yet, and
+it does not decide any business question the code itself can't already prove.
+
+### Current Dependency Engine v1
+
+- **`depends_on_key`** (`milestones` table) existed in schema from the original redesign but was
+  never read or written by any code — confirmed by a full-repo grep before this work started. v1
+  makes it real.
+- **Seeding** (`lib/db.js`, `createProjectMilestones`): every new project gets `depends_on_key` set
+  to the previous milestone's key in `MILESTONE_TEMPLATE` order. **Backfill** (`lib/db.js`,
+  `backfillDependsOnKey`, called once from `migrate()`): fills the same value onto every existing
+  row still `NULL`, per project, ordered by that project's own `sort_order, id` — idempotent, a
+  no-op once every row has a value.
+- **`lib/dependency.mjs`** — pure module (no framework imports, safe for client components and
+  plain `node --test`, same shape as `lib/handoff.mjs`/`lib/bom-fields.mjs`).
+  `milestoneReadiness(m, rows, bomItems)` returns `{ ready, blocked_by }` for one milestone:
+  already-done milestones are always `ready`; otherwise it checks the structural predecessor
+  (`depends_on_key` target not done → `blocked_by: {type:'milestone', ...}`), then a small
+  `READINESS_CHECKS` table of live-signal checks keyed by `milestone_key` (currently one entry,
+  see below) → `blocked_by: {type:'signal', ...}`. `projectDependencyStatus(rows, bomItems)` maps
+  a whole project's milestones through it.
+- **`lib/data.js`, `getProjectDetail()`** — computes `blocked_by` fresh on every read (not stored,
+  not cached — no staleness risk) and attaches it additively to each milestone object it returns.
+  Feeds the BOM signal query with the same shape `syncProcurementMilestones` already uses.
+- **`blocked_by` is now surfaced everywhere a milestone renders**: `MilestoneCard.jsx`,
+  `MilestoneGrid.jsx` (bulk-edit, new "Dependency" column), `MilestoneDrawer.jsx` (detail sheet),
+  and `ProjectHeader.jsx` (a separate muted summary line — deliberately its own line, not merged
+  into the existing SLA/human-status-driven `biggestBlocker` hero above it, same "don't conflate
+  the two facts" boundary as `effectiveStatus()`).
+- **`outOfOrderFlag(m, rows)` / `out_of_order`** (`lib/dependency.mjs`) — the "cross-record
+  consistency" gap the v1 audit found: a milestone can be marked done while its own structural
+  predecessor isn't, and `milestoneReadiness()`'s own done-short-circuit never looks back to catch
+  it. This is the dedicated check for that case — read-only, same `blocked_by`-shaped surfacing
+  (`MilestoneCard`/`MilestoneGrid`/`MilestoneDrawer`, a muted "⚠ Finished ahead of…" line).
+- **Structural-chain admin UI** (`components/DependencyChainPanel.jsx`, Settings → Access
+  Management, PM-only) — the actual mechanism for resolving the "Unresolved business questions"
+  below: one dropdown per milestone picking its structural predecessor (or "None"). An edit
+  updates `depends_on_key` for that `milestone_key` across every project at once
+  (`PATCH /api/dependency-chain`), not just future ones. Server-side cycle guard (walks the
+  chain-as-it-would-read after the edit; `milestoneReadiness()` itself only ever checks one hop
+  up, so a cycle wouldn't crash it, but it would leave two milestones permanently "blocked by"
+  each other) plus self-reference and unknown-key rejection. Settings also flags if a
+  `milestone_key`'s `depends_on_key` has ever diverged across projects ("mixed") — not expected
+  today (every row so far came from the same uniform seed/backfill), but the column is per-row,
+  so it's checked rather than assumed.
+- **Permission-aware UI** (roadmap item 4) — one concrete slice done: Installation's "Mark
+  complete" button (`InstallationMilestoneActions.jsx`) now renders based on
+  `canPerformAction(user, 'Installation', 'installation.milestone.complete')`
+  (`app/projects/[id]/page.js`) instead of the coarser `canAccessDepartment` check it used before
+  — a Member who'd get a 403 from the real server-side gate (`app/api/milestones/[id]/route.js`)
+  no longer sees the button at all. The other ~64 actions in `ACTION_CATALOG` aren't wired to any
+  UI yet — this was the one action already both Head-gateable *and* had a dedicated button to gate.
+- **Head-only notification routing** (roadmap item 5) — `notifyDepartment()` (`lib/notify.js`)
+  takes an optional `actionKey`; when given and that `(department, actionKey)` is configured
+  `requires_head` in `action_permissions`, the department-derived recipient list narrows to Heads
+  only (an explicit `assignedTo` still always reaches that person regardless). Wired at the one
+  clean 1:1 match found: `POST /api/procurement-requests` notifying Procurement narrows to Heads
+  when `procurement.request.decide` (the accept/reject action) is Head-gated — a Member who
+  couldn't decide it anyway doesn't get the chime. Every other `notifyDepartment` call site is
+  unchanged (`actionKey` omitted defaults to the old full-department fan-out); most existing calls
+  don't have as unambiguous a 1:1 action match and weren't force-fitted into one.
+- **ACTION_CATALOG audit (2026-08-18)** — verified, not assumed: cross-referenced all 82 catalog
+  entries against every real `requireAction`/`requireCrmAction` call site in `app/api`. Clean —
+  every catalog key has a real route enforcing it, every route's key exists in the catalog, no
+  orphans. Three entries looked unwired on a naive literal-string grep
+  (`procurement.po.issue/unissue/cancel`, `procurement.supplier.deactivate`,
+  `production.worker.deactivate`) but are dispatched via an object-literal map
+  (`purchase-orders/[id]/route.js`'s `PO_ACTION_KEYS`) or a ternary
+  (`suppliers/[id]/route.js`, `production/workers/[id]/route.js`) — read all three directly and
+  confirmed every real mutation branch is gated on every request path, not a bypass. §5i's "~65
+  actions" undercounts; it's 82.
+- **Dependency-health rollup** (`lib/data.js` `getDependencyHealthSummary()`, Executive page) —
+  cross-project `blocked_by`/`out_of_order` counts, since both were otherwise only visible one
+  project at a time. Two cards: dependency-blocked counts by department, and every current
+  out-of-order flag with a link to its project. This is the actual "let real usage teach us"
+  instrument, not just a hope — and it immediately found two genuine anomalies in existing seed
+  data on first load (SB-1023: Procurement's Enquiry stage finished while Design's Release All
+  Drawings — several milestones upstream — still hasn't), confirmed real by opening the project
+  directly (all 4 BOM items already `Received`, drawings milestone still `Not started`).
+- **Deliberately untouched**: the human-settable `milestones.status = 'blocked'` and
+  `lib/sla.js`'s `effectiveStatus()`/`SEVERITY` ranking. Dependency-blocked is a distinct fact from
+  a person marking something blocked for a real-world reason (vendor delay, etc.) — they are not
+  merged, and no decision has been made yet about how a future UI should rank/combine the two.
+- **Tests**: `lib/dependency.test.mjs`, 13 cases (`node --test lib/dependency.test.mjs`), covering
+  the sequential chain, reopened predecessors re-blocking their successor, a human `'blocked'`
+  status not affecting the computed dependency signal, an already-done milestone always reading
+  ready, a stale/missing `depends_on_key` target failing open (`ready: true`, no crash) rather
+  than failing loud, and `outOfOrderFlag()`'s own cases. Verified live against seeded project data
+  in the browser and against several synthetic edge-case states run directly through
+  `milestoneReadiness()`. The admin UI's cycle guard, self-reference rejection, and unknown-key
+  validation were verified live via direct API calls (accept/reject cycle correctly rejected,
+  edits correctly applied then reverted, `lib/handoff.test.mjs`/`lib/date.test.mjs` re-run
+  alongside — 26 tests total, all passing).
+- **Two correctness fixes made after the initial build**, both applied and re-verified (tests +
+  live check), before any further work was allowed to proceed:
+  1. **`pending_review` handling** — `getProjectDetail()`'s BOM signal query now excludes
+     `bom_items.pending_review = 1`, matching `getSourcingItems()`'s own visibility rule. Before
+     this fix, a Manual-mode BOM line still sitting in Stores Review (invisible to and
+     unactionable by Procurement) could make the engine report "Waiting on Procurement" for
+     material Procurement had no way to act on.
+  2. **Readiness-owner handling** — `READINESS_CHECKS` entries now return their own `department`
+     in the result, instead of `milestoneReadiness()` hardcoding `'Procurement'` at the call site.
+     Harmless with one entry; would have silently mislabeled the responsible department the moment
+     a second, differently-owned check was added.
+
+### Important findings — these are NOT the same thing
+
+Auditing the existing codebase for this work surfaced four genuinely different kinds of
+milestone-to-milestone relationship, all currently flattened into one `sort_order` sequence in
+`MILESTONE_TEMPLATE`. **They must not be assumed equivalent**:
+
+1. **Structural milestone ordering** — the plain fact that `MILESTONE_TEMPLATE` lists milestone A
+   before milestone B. This is a display/default-seeding order, nothing more, unless one of the
+   next three categories also happens to hold for that specific pair.
+2. **Department handoffs** — `lib/handoff.mjs`'s `handoffTarget()` fires a notification at the
+   *last* milestone of one department's run, to the *first* milestone of the next department's
+   run. This is a notify-only relay, not a gate — it does not stop the next milestone from
+   starting, and it deliberately treats same-department consecutive milestones as a non-event (no
+   notification between them).
+3. **Operational readiness gates based on live signals** — a handful of places where the code
+   genuinely checks real state (not just "is the previous milestone marked done") before allowing
+   or reporting something as ready. See the next section for the actual list — there are fewer of
+   these, and they don't always point at the milestone `depends_on_key` currently names.
+4. **Activities that may run in parallel** — several milestones the code neither gates nor
+   notifies between, where nothing rules out the underlying shop-floor work happening concurrently.
+
+The dependency-engine audit found the current `depends_on_key` seeding conflates categories 1 and
+3 in most places (it always points at "the previous milestone," whether or not that predecessor is
+a real operational prerequisite) — see "Unresolved business questions" below.
+
+### Existing operational gates discovered (category 3, real code today)
+
+These are the actual live-signal checks that exist in the app right now, independent of the new
+dependency engine — some pre-date it, one (`marking_cutting`) is now also modeled in
+`READINESS_CHECKS`:
+
+- **Procurement visibility depends on `release_bom`**, not `release_drawings`.
+  `lib/data.js`, `getSourcingItems()`: a `source='bom'` BOM line is invisible to Procurement's
+  sourcing queue until `milestones.milestone_key = 'release_bom'` is `done` for that project. The
+  current `depends_on_key` chain has `procurement_enquiry` pointing at `release_drawings` (its
+  literal template predecessor) — one hop later than the code's real gate.
+- **Production/Stores material visibility depends on BOM purchase/receipt state.**
+  `lib/data.js` and related BOM queries scope Production/Stores views to
+  `purchase_status IN ('Received', 'In-Stock')` — the same signal `derivePurchaseStage` (below)
+  computes, not a milestone at all.
+- **Packing eligibility depends on per-BOM-item `production_done`**, not the `painting` milestone.
+  `lib/data.js`, `getProjectBom()`: `readyForPacking = pending.filter(b => b.production_done)`.
+  The current `depends_on_key` chain has `packing` pointing at `painting` (its template
+  predecessor) — a different, coarser signal than the real per-item gate.
+- **Procurement milestone progression uses `derivePurchaseStage` / weakest-link logic.**
+  `lib/bom-fields.mjs`'s `derivePurchaseStage(item)` is a hybrid: trusts `purchase_status` once
+  it's reached an advanced stage (`Ordered/Transit/Received/Cancelled/In-Stock`), derives from
+  `selected_quote_id`/`po_ref`/`quote_count` for the earlier, less-trustworthy stages.
+  `lib/milestone-auto.js`'s `syncProcurementMilestones` completes each of the 5 procurement
+  milestones once *every* BOM item on the project has reached at least that stage (the worst item
+  gates the milestone) — this is one continuous signal bucketed into 5 thresholds, not 5
+  independently-gated milestones each waiting on the one before it.
+- **Production milestone completion comes from job-card state**, per milestone, independently.
+  `lib/milestone-auto.js`'s `syncProductionMilestoneById`: a given Production milestone completes
+  once every `job_cards` row raised against *that specific milestone* reaches `'done'`. Confirmed
+  by reading `app/api/job-cards/route.js`'s POST handler directly: it only checks that the target
+  milestone's `department === 'Production'` — nothing checks any other milestone's status before
+  allowing a job card to be created or closed.
+- **QC/Hydro Test milestone completion comes from actual QC records.**
+  `lib/milestone-auto.js`'s `syncHydroTestMilestone`: completes off `qc_records` where
+  `test_type` matches `/hydro/i` and `result = 'pass'` — independent of any other milestone.
+- **Packing milestone completion comes from packing-list state.**
+  `lib/milestone-auto.js`'s `syncPackingMilestone`: completes off `packing_lists.status` reaching
+  `'packed'` or `'dispatched'` — independent of any other milestone.
+
+### Unresolved business questions
+
+**The actual dependency relationships between the 11 intra-Production milestones are intentionally
+NOT decided.** The code proves no ordering constraint between them — `handoffTarget` treats same-
+department consecutive milestones as a non-event, and `job_cards` creation has no predecessor
+check at all. Nothing here should be inferred from generic manufacturing-industry knowledge; only
+real operational data or Production department-head confirmation should settle it.
+
+Marked **UNCONFIRMED — requires real operational data and/or Production department-head
+confirmation**:
+
+- `marking_cutting → drilling`
+- `drilling → shell_welding`
+- `shell_welding → site_marking`
+- `site_marking → welding_fura`
+- `welding_fura → box_up`
+- `box_up → box_up_welding`
+- `box_up_welding → tube_stay_welding`
+- `tube_stay_welding → pad_plates`
+- `pad_plates → smoke_box`
+- `smoke_box → hydro_test`
+- `hydro_test → refractory`
+- `refractory → painting`
+
+Also **UNCONFIRMED** — code shows an ordered milestone pair but proves no real prerequisite
+between them (all fully manual, no auto-sync, no gating route found anywhere in the repo):
+
+- `design → design_approval`
+- `design_approval → release_bom`
+- `release_bom → release_drawings`
+- `packing → site_installation`
+- `site_installation → commissioning`
+
+**Known mismatches between the current `depends_on_key` chain and the one real gate that exists**
+(not yet corrected — no dependency-model changes have been made beyond the two fixes listed
+above):
+
+- `procurement_enquiry.depends_on_key` = `release_drawings`, but the real enforced visibility gate
+  (`getSourcingItems()`) checks `release_bom`.
+- `packing.depends_on_key` = `painting`, but the real enforced gate (`getProjectBom()`) checks
+  per-item `production_done`.
+
+### Future intelligence roadmap
+
+1. **Dependency-aware workflow** — PARTIALLY BUILT. The v1 engine (`lib/dependency.mjs`) is real
+   and read-only; the structural chain itself is still only confirmed-correct for
+   `marking_cutting` and the non-Production edges — the 12 intra-Production edges remain
+   UNCONFIRMED (see below), and the admin UI to fix that now exists (`DependencyChainPanel.jsx`)
+   but hasn't been exercised with a real Production-head decision yet.
+2. **"Why is this blocked?" explanations** — BUILT. `blocked_by`/`out_of_order` now render on
+   `ProjectHeader.jsx`, `MilestoneCard.jsx`, `MilestoneGrid.jsx`, and `MilestoneDrawer.jsx` — the
+   real computed cause and department, not a bare badge. Kept deliberately separate from the
+   SLA/human-status-driven `biggestBlocker` hero, per the "don't conflate" boundary above.
+3. **Transition guardrails** — STILL NOT BUILT, on purpose. Needs #1's structural chain to be
+   trustworthy first (i.e. the Production questions below settled) — building this now would
+   enforce the 12 unconfirmed relationships as real restrictions on real users.
+4. **Permission-aware UI** — ONE SLICE BUILT. Installation's "Mark complete" button now renders
+   off `canPerformAction()` instead of a coarser department check (see §5j above). The other ~64
+   actions in `ACTION_CATALOG` have no client-side gating yet — each would need its own button/UI
+   surface identified and wired, same as this one was.
+5. **Smarter notification routing** — ONE SLICE BUILT. `notifyDepartment()` takes an optional
+   `actionKey` and narrows to Heads when that action is Head-gated; wired at the one clean 1:1
+   match found (`procurement.request.decide`). Every other call site is still full-department
+   fan-out — most don't have as clean a single-action mapping and weren't force-fitted into one.
+6. **Impact-based escalation** — STILL NOT BUILT, on purpose, same reason as #3: a milestone that's
+   "blocking other work" per an unconfirmed chain isn't a real signal to escalate harder on yet.
+7. **Cross-record consistency checks** — BUILT (one case). `outOfOrderFlag()`/`out_of_order` flags
+   a milestone finished while its structural predecessor wasn't — read-only, surfaced everywhere
+   `blocked_by` is. Other kinds of cross-record disagreement (not just done-out-of-order) are still
+   unbuilt.
+8. **Extending Item Master/catalog linking** — NOT BUILT. Connecting `item_code` (§3.2) more deeply
+   into the readiness signals, once real per-item identity is consistently available across
+   BOM/Stores/Procurement.
+9. **Pattern learning from accumulated operational data** — NOT BUILT, needs real history first.
+   Once enough real project history exists, using it (rather than either guessed rules or a
+   one-time department-head interview) to
+   confirm or refine which milestone relationships are real, how long stages actually take, and
+   which blockers actually predict downstream delay.
+
+### Important architectural principle
+
+**The goal is not to build a giant rules engine immediately.** The intended direction, in order:
+
+```
+current system state
+  → understand dependencies
+  → identify blockers
+  → identify the responsible person/department
+  → understand downstream impact
+  → recommend/trigger the appropriate action
+  → eventually, once enough historical data exists, learn patterns and make predictions
+```
+
+**Historical data and department-head input should eventually determine business relationships
+that cannot be reliably established from code alone** — this applies directly to the Production
+sequencing questions above, and to any future milestone relationship the code itself doesn't
+already prove. Guessing them from generic manufacturing knowledge, or from `MILESTONE_TEMPLATE`'s
+display order alone, is explicitly out of scope until one of those two sources is available.
+
+**Frozen as of 2026-08-18**: intentionally sitting at "understand dependencies / identify
+blockers / identify responsible department" in the pipeline above — the read-only signal layer
+(`blocked_by`, `out_of_order`, the Executive rollup) plus the admin tool to correct the chain.
+Explicitly not proceeding to guardrails, escalation, or any ML/statistical/Bayesian prediction
+layer until real department-head input (via the Dependency Chain admin UI) and real project
+history exist to ground it — not a timeline, a precondition. In the meantime, the system already
+captures what future learning would need without any extra instrumentation: `depends_on_key`
+edits are audited (`dependency_chain_edit`), every milestone status change is audited
+(`milestone_edit`) with real timestamps, and `blocked_by`/`out_of_order` are computed live off
+real state on every read rather than snapshotted — so nothing needs to be added now to make that
+data available later, it just needs time and real usage to accumulate.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own

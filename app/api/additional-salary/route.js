@@ -3,6 +3,7 @@
 import { NextResponse } from 'next/server';
 import { execute } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 import { getAdditionalSalary } from '@/lib/data';
 import { audit } from '@/lib/usb';
 
@@ -18,6 +19,8 @@ export async function POST(req) {
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'HR');
   if (denied) return denied;
+  const actionDenied = await requireAction(user, 'HR', 'hr.additional_salary.write');
+  if (actionDenied) return actionDenied;
   const b = await req.json();
   if (!b.employee_id || !b.name || !['earning', 'deduction'].includes(b.component_type) || !b.amount || !b.period_month || !b.period_year) {
     return NextResponse.json({ error: 'employee_id, name, component_type, amount, period_month, period_year are required' }, { status: 400 });

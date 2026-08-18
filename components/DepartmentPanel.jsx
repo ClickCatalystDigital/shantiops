@@ -16,8 +16,13 @@ import TicketsPanel from './TicketsPanel';
 import StagesPanel from './StagesPanel';
 import ProcurementQueue from './ProcurementQueue';
 import DesignPanel from './DesignPanel';
+import InstallationMilestoneActions from './InstallationMilestoneActions';
 import ScopeOfSupplyPanel from './ScopeOfSupplyPanel';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { Badge } from './ui/badge';
+import { TONE_CLASS } from '@/lib/status-styles';
+
+const APPROVED_DRAWING_STATUSES = new Set(['approved', 'as_built']);
 
 const BOM_DEPARTMENTS = ['Stores', 'Production', 'Design'];
 // D10 (Group 5 Bundle B) — Eng/Design can cancel a BOM item directly (Enquiry/Comparison/Ordered
@@ -34,6 +39,7 @@ export default function DepartmentPanel({
   stages = [], stageTemplates = [], stageTemplateItems = [], canManageStages = false,
   designSummary = null,
   scopeOfSupply = [], canEditScope = false,
+  canApproveDesign = false, canMarkInstallation = false,
 }) {
   const deptMs = milestones.filter(m => m.department === department);
   const showBom = BOM_DEPARTMENTS.includes(department) && bom.length > 0;
@@ -67,7 +73,8 @@ export default function DepartmentPanel({
       )}
 
       {department === 'Design' && (
-        <DesignPanel projectId={projectId} designSummary={designSummary} scopeOfSupply={scopeOfSupply} canEditScope={canEditScope} />
+        <DesignPanel projectId={projectId} designSummary={designSummary} scopeOfSupply={scopeOfSupply} canEditScope={canEditScope}
+          milestones={deptMs} canApprove={canApproveDesign} />
       )}
 
       {showBom && (
@@ -96,9 +103,37 @@ export default function DepartmentPanel({
           already showed up above via deptMs; this is the actual test record (pass/fail, cert no.),
           filtered to hydro-test rows only. Everything else stays under QC's own tab. */}
       {department === 'Production' && (
-        <QcPanel projectId={projectId} records={qcRecords.filter(r => /hydro/i.test(r.test_type))}
-          canEdit={canEditProductionQc} title="Hydro Test" defaultTestType="Hydro Test"
-          reworkMilestoneId={hydroMilestoneId} />
+        <>
+          {/* Read-only view of the drawings Design already finalized, so Production has the
+              approved GA drawing in hand once the project reaches them (post Procurement/Stores). */}
+          <Card>
+            <CardHeader><CardTitle>Approved Drawings</CardTitle></CardHeader>
+            <CardContent className="flex flex-col divide-y p-0">
+              {(designSummary?.drawings || []).filter(d => APPROVED_DRAWING_STATUSES.has(d.status)).map(d => (
+                <div key={d.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                  <span className="text-sm font-medium">{d.name}</span>
+                  <div className="flex items-center gap-2">
+                    {d.files.map(f => (
+                      <a key={f.id} href={f.fileUrl} target="_blank" rel="noreferrer"
+                        className="text-xs text-primary underline underline-offset-2">{f.fileName}</a>
+                    ))}
+                    <Badge className={TONE_CLASS.success} variant="outline">{d.status === 'as_built' ? 'As built' : 'Approved'}</Badge>
+                  </div>
+                </div>
+              ))}
+              {!(designSummary?.drawings || []).some(d => APPROVED_DRAWING_STATUSES.has(d.status)) && (
+                <p className="px-4 py-3 text-sm text-muted-foreground">No approved drawings yet.</p>
+              )}
+            </CardContent>
+          </Card>
+          <QcPanel projectId={projectId} records={qcRecords.filter(r => /hydro/i.test(r.test_type))}
+            canEdit={canEditProductionQc} title="Hydro Test" defaultTestType="Hydro Test"
+            reworkMilestoneId={hydroMilestoneId} />
+        </>
+      )}
+
+      {department === 'Installation' && (
+        <InstallationMilestoneActions projectId={projectId} milestones={deptMs} canMark={canMarkInstallation} />
       )}
 
       {department === 'QC' && (

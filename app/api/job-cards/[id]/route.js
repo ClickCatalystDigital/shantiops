@@ -3,8 +3,10 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 import { getJobCardDetail } from '@/lib/data';
 import { audit } from '@/lib/usb';
+import { syncProductionMilestoneById } from '@/lib/milestone-auto';
 
 const STATUSES = ['pending', 'progress', 'done'];
 const EDITABLE = ['workstation_id', 'qty_planned', 'qty_done', 'qty_rejected', 'status', 'is_paused', 'planned_start', 'planned_end', 'notes'];
@@ -22,8 +24,10 @@ export async function PATCH(req, { params }) {
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Production');
   if (denied) return denied;
+  const actionDenied = await requireAction(user, 'Production', 'production.jobcard.edit');
+  if (actionDenied) return actionDenied;
 
-  const card = await queryOne('SELECT id, status FROM job_cards WHERE id = ?', [params.id]);
+  const card = await queryOne('SELECT id, status, milestone_id FROM job_cards WHERE id = ?', [params.id]);
   if (!card) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   const b = await req.json();
@@ -52,5 +56,10 @@ export async function PATCH(req, { params }) {
   args.push(params.id);
   await execute(`UPDATE job_cards SET ${fields.join(', ')} WHERE id = ?`, args);
   await audit('job_card_updated', { actor: user.username, detail: `#${params.id} · ${keys.join(',')}` });
+  // A milestone's own work is done once every job card raised against it is — check on every
+  // transition into 'done', not just once, since this is often the LAST card to close.
+  if (keys.includes('status') && b.status === 'done') {
+    await syncProductionMilestoneById(card.milestone_id, user.username);
+  }
   return NextResponse.json({ ok: true });
 }

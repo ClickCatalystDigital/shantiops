@@ -5,6 +5,7 @@
 import { NextResponse } from 'next/server';
 import { execute, queryAll } from '@/lib/db';
 import { getFreshSessionUser, isInternal, canAccessDepartment } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 import { getOpportunities } from '@/lib/data';
 import { audit } from '@/lib/usb';
 
@@ -40,6 +41,8 @@ export async function POST(req) {
   if (!canAccessDepartment(user, ownerDept)) {
     return NextResponse.json({ error: 'Not granted that department' }, { status: 403 });
   }
+  const actionDenied = await requireAction(user, ownerDept, 'crm.opportunity.create');
+  if (actionDenied) return actionDenied;
   const stage = (b.stage && await isValidStage(b.stage)) ? b.stage : 'Lead';
 
   // customer_id — V3_CHANGES.md §12 Phase 1d wires up the previously-dead FK; customer_name stays

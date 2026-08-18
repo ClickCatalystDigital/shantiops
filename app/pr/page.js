@@ -25,7 +25,7 @@ export default async function PrPage() {
 
   return (
     <main className="container flex flex-col gap-6 py-8">
-      <PageHeader title="Requests" description="Raise a purchase requisition — it lands on Procurement's Enquiry tab immediately" />
+      <PageHeader title="Requests" description="Raise purchase requisitions, release a project's BOM, and manage reusable BOM templates" />
       <PrWorkspace departments={departments} projects={projects} inventoryItems={inventoryItems} />
     </main>
   );

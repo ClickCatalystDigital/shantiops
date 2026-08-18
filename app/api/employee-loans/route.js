@@ -3,6 +3,7 @@
 import { NextResponse } from 'next/server';
 import { execute } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 import { getEmployeeLoans } from '@/lib/data';
 import { computeLoanEmi } from '@/lib/payroll';
 import { audit } from '@/lib/usb';
@@ -19,6 +20,8 @@ export async function POST(req) {
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'HR');
   if (denied) return denied;
+  const actionDenied = await requireAction(user, 'HR', 'hr.loan.write');
+  if (actionDenied) return actionDenied;
   const b = await req.json();
   if (!b.employee_id || !b.principal_amount || !b.tenure_months || !b.disbursed_date) {
     return NextResponse.json({ error: 'employee_id, principal_amount, tenure_months, disbursed_date are required' }, { status: 400 });

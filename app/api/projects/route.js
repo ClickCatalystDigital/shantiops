@@ -49,7 +49,7 @@ export async function POST(req) {
     // customer_id/sale_order_id — V3_CHANGES.md §12 Phase 2f, the Lead→Customer→Quotation→Sale
     // Order→Project chain's final link. Both additive/nullable; customer_name stays NOT NULL and
     // required exactly as before, so the 6 pre-existing free-text-only projects are unaffected.
-    const { projectId, sosTitle } = await withTransaction(async tx => {
+    const { projectId, sosTitle, itemCount } = await withTransaction(async tx => {
       const r = await tx.execute({
         sql: `INSERT INTO projects (project_no, customer_name, description, order_date, owner, customer_id, sale_order_id, series, company)
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -64,16 +64,43 @@ export async function POST(req) {
       const startDaysAgo = Math.round((Date.now() - start.getTime()) / 864e5);
       await createProjectMilestones(tx, id, startDaysAgo, false);
 
-      let title = null;
+      // Scope of Supply: a real document header (client/PO/terms — the Order Acknowledgement
+      // shape) plus one priced line item per Sale Order line (the actual sold deliverables —
+      // Boiler, Air Pre-Heater, Multi Cyclone Dust Collector, etc.), not a freeform blob. Payment
+      // terms and GST% are prefilled from the quotation/SO that produced this project — an
+      // educated starting point, still editable on the document itself afterward.
+      let sosTitle = null;
+      let itemCount = 0;
       if (b.sale_order_id) {
-        const so = await tx.execute({ sql: 'SELECT so_no FROM sale_orders WHERE id = ?', args: [b.sale_order_id] });
-        title = so.rows.length ? `Scope of Supply — ${so.rows[0].so_no}` : 'Scope of Supply';
-        await tx.execute({
-          sql: 'INSERT INTO scope_of_supply (project_id, title, created_by) VALUES (?, ?, ?)',
-          args: [id, title, user?.username || null],
+        const so = await tx.execute({ sql: 'SELECT so_no, tax_pct, quotation_id FROM sale_orders WHERE id = ?', args: [b.sale_order_id] });
+        const soRow = so.rows[0];
+        const soNo = soRow?.so_no || null;
+        sosTitle = soNo ? `Scope of Supply — ${soNo}` : 'Scope of Supply';
+        let paymentTerms = null;
+        if (soRow?.quotation_id) {
+          const q = await tx.execute({ sql: 'SELECT terms FROM quotations WHERE id = ?', args: [soRow.quotation_id] });
+          paymentTerms = q.rows[0]?.terms || null;
+        }
+        const header = await tx.execute({
+          sql: `INSERT INTO scope_of_supply (project_id, title, payment_terms, tax_pct, created_by)
+                VALUES (?, ?, ?, ?, ?)`,
+          args: [id, sosTitle, paymentTerms, soRow?.tax_pct || 18, user?.username || null],
         });
+        const headerId = Number(header.lastInsertRowid);
+        const items = await tx.execute({
+          sql: 'SELECT item_description, qty, uom, rate, amount, sort_order, id FROM sale_order_items WHERE sale_order_id = ? ORDER BY sort_order, id',
+          args: [b.sale_order_id],
+        });
+        for (const it of items.rows) {
+          await tx.execute({
+            sql: `INSERT INTO scope_of_supply_items (scope_of_supply_id, description, qty, uom, unit_price, amount, sale_order_item_id, sort_order)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            args: [headerId, it.item_description, it.qty ?? null, it.uom || null, it.rate ?? null, it.amount ?? null, it.id, it.sort_order],
+          });
+        }
+        itemCount = items.rows.length;
       }
-      return { projectId: id, sosTitle: title };
+      return { projectId: id, sosTitle, itemCount };
     });
 
     // Notifications and audit are intentionally outside the transaction: they are best-effort
@@ -83,7 +110,7 @@ export async function POST(req) {
         const note = {
           kind: 'sos_created',
           title: 'New Scope of Supply',
-          body: `${project_no} · ${sosTitle}`,
+          body: `${project_no} · ${sosTitle} · ${itemCount} item${itemCount === 1 ? '' : 's'}`,
           dedupe_key: `sos_created:${projectId}`,
         };
         await notifyDepartment('Design', note);

@@ -4,11 +4,14 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne, queryAll } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 
 export async function PATCH(req, { params }) {
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'HR');
   if (denied) return denied;
+  const actionDenied = await requireAction(user, 'HR', 'hr.onboarding.task');
+  if (actionDenied) return actionDenied;
 
   const b = await req.json();
   if (!['pending', 'done'].includes(b.status)) return NextResponse.json({ error: 'Invalid status' }, { status: 400 });

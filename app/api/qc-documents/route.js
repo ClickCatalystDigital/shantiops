@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { SF_FORM_IVA_PARTS } from '@/lib/qc-template.mjs';
 import { COMPANY_NAMES } from '@/lib/qc-doc-pdf.js';
@@ -18,6 +19,8 @@ export async function POST(req) {
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;
+  const actionDenied = await requireAction(user, 'QC', 'qc.document.write');
+  if (actionDenied) return actionDenied;
 
   const b = await req.json();
   if (!b.project_id) return NextResponse.json({ error: 'project_id is required' }, { status: 400 });

@@ -3,6 +3,7 @@
 import { NextResponse } from 'next/server';
 import { execute } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 import { getStatutoryRates } from '@/lib/payroll';
 
 export async function GET() {
@@ -16,6 +17,8 @@ export async function PATCH(req) {
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'HR');
   if (denied) return denied;
+  const actionDenied = await requireAction(user, 'HR', 'hr.statutory.write');
+  if (actionDenied) return actionDenied;
   const b = await req.json();
   const fields = [];
   const args = [];

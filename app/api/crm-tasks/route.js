@@ -5,6 +5,7 @@
 import { NextResponse } from 'next/server';
 import { execute } from '@/lib/db';
 import { getFreshSessionUser, isInternal, canAccessDepartment } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 import { getCrmTasks } from '@/lib/data';
 
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
@@ -39,6 +40,8 @@ export async function POST(req) {
   }
   const department = CRM_DEPARTMENTS.includes(b.department) ? b.department
     : CRM_DEPARTMENTS.find(d => canAccessDepartment(user, d)) || 'Sales';
+  const actionDenied = await requireAction(user, department, 'crm.task.create');
+  if (actionDenied) return actionDenied;
 
   // Unassigned by default — unlike Production's own task board (app/api/production/tasks/
   // route.js), a CRM task falling back to its creator would hide that nobody's actually

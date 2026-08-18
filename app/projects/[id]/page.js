@@ -1,8 +1,9 @@
 // app/projects/[id]/page.js
 
 import { notFound, redirect } from 'next/navigation';
-import { getProjectDetail, getProjectBom, getProjectPackingLists, getBomRollup, getQcRecords, getQcDocuments, getQcProjectSummary, getProjectTasks, getProjectStages, getStageTemplates, getProjectDesignSummary, getScopeOfSupply, getProjectDesignStage } from '@/lib/data';
-import { getFreshSessionUser, isCustomer, isPM, isHead, headDepartments, canAccessDepartment, roleHome } from '@/lib/auth';
+import { getProjectDetail, getProjectBom, getProjectPackingLists, getQcRecords, getQcDocuments, getQcProjectSummary, getProjectTasks, getProjectStages, getStageTemplates, getProjectDesignSummary, getScopeOfSupply, activeDepartmentStatus } from '@/lib/data';
+import { getFreshSessionUser, isCustomer, isPM, isHead, isDesignHead, headDepartments, canAccessDepartment, roleHome } from '@/lib/auth';
+import { canPerformAction } from '@/lib/action-permissions';
 import { DEPARTMENTS } from '@/lib/milestones';
 import { editableBomFields } from '@/lib/bom-fields.mjs';
 import ProjectHeader from '@/components/ProjectHeader';
@@ -10,8 +11,8 @@ import TodayBand from '@/components/TodayBand';
 import PortfolioDelayTimeline from '@/components/PortfolioDelayTimeline';
 import DepartmentPanel from '@/components/DepartmentPanel';
 import ProjectDepartmentTabs from '@/components/ProjectDepartmentTabs';
-import BomProgress from '@/components/BomProgress';
-import DesignFlow from '@/components/DesignFlow';
+import { DepartmentPills, DepartmentProgress } from '@/components/DepartmentStatus';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,7 +25,6 @@ export default async function ProjectDetail({ params }) {
   const { project, milestones, health, blocker } = data;
   const { bom, pending, imports } = await getProjectBom(params.id);
   const packingLists = await getProjectPackingLists(params.id);
-  const bomRollup = await getBomRollup(params.id);
   const qcRecords = await getQcRecords(params.id);
   const qcDocuments = await getQcDocuments(params.id);
   const qcSummary = await getQcProjectSummary(params.id);
@@ -33,10 +33,13 @@ export default async function ProjectDetail({ params }) {
   const { templates: stageTemplates, items: stageTemplateItems } = await getStageTemplates();
   const designSummary = await getProjectDesignSummary(project.id);
   const scopeOfSupply = await getScopeOfSupply(project.id);
-  // Row 2 slot 3 — project-scoped mirror of the Design flow chip (DESIGN-OPS-REDESIGN.md). Only
-  // fetched while the project hasn't handed its BOM to Procurement yet (see the swap below) —
-  // skip the query otherwise since the chip won't render.
-  const designStage = bom.length === 0 ? await getProjectDesignStage(project.id) : null;
+  // Row 2 slot 3 — which department(s) currently have the ball, and what they're actually doing,
+  // same departmentProgress shape the Projects list uses (lib/data.js's activeDepartmentStatus,
+  // shared with getProjectsWithStatus), just scoped to this one project's own milestones instead of
+  // recomputed from a fresh query. Replaces the old Design-chip-or-BOM-rollup guess, which showed
+  // Design's own progress (or a BOM rollup once Procurement had the BOM) regardless of which
+  // department actually held the project at the time.
+  const { departmentProgress } = activeDepartmentStatus(milestones);
 
   const pm = isPM(user);
   const head = isHead(user);
@@ -62,6 +65,17 @@ export default async function ProjectDetail({ params }) {
     stages, stageTemplates, stageTemplateItems, canManageStages: pm || head,
     designSummary,
     scopeOfSupply, canEditScope: canAccessDepartment(user, 'Design') || canAccessDepartment(user, 'Engineering'),
+    // Explicit shortcut actions that mark one specific milestone done directly, standing in for
+    // milestones with no other data signal to auto-detect from (lib/milestone-auto.js's comments
+    // explain why each of these three can't be inferred the way Production/QC/Dispatch/Procurement
+    // are). Design head internally approving the design, and Installation confirming its own two
+    // milestones on the ground, are real actions — just not something this app can see happen on
+    // its own the way a job card or a QC record closing can.
+    canApproveDesign: isDesignHead(user),
+    // Permission-aware UI (roadmap item 4, SYSTEM.md §5j): match the real server-side gate
+    // (requireAction in app/api/milestones/[id]/route.js) exactly, rather than the coarser
+    // department-access check this used to be — a Member who'd get a 403 doesn't see the button.
+    canMarkInstallation: await canPerformAction(user, 'Installation', 'installation.milestone.complete'),
   };
 
   return (
@@ -72,19 +86,27 @@ export default async function ProjectDetail({ params }) {
           the room. */}
       <PortfolioDelayTimeline projects={[{ ...project, milestones }]} />
 
-      {/* Row 2: identity, Open Actions, and a third slot that mirrors this project's downstream
-          progress. While Design still owns it: a project-scoped Design flow chip, current stage
-          highlighted, no counts. Once the BOM hands off to Procurement: TODO — swap to a
-          project-scoped Procurement progress chip once components/ProcurementFlow.jsx is
-          available; Master BOM stays here as the interim so the slot isn't empty. */}
+      {/* Row 2: identity, Open Actions (TodayBand — this project's own overdue/blocked/due-soon
+          milestones, the same exception-only ATTENTION set as Operations' cross-project version,
+          just scoped to one project), and a third slot showing who currently has the ball —
+          department pill(s) + that department's own milestone progress here, computed the same way
+          the Projects list computes it (activeDepartmentStatus), not a phase-specific guess. */}
       <div className="grid items-start gap-6 lg:grid-cols-3">
-        <ProjectHeader project={project} health={health} blocker={blocker} />
+        <ProjectHeader project={project} health={health} blocker={blocker} milestones={milestones} />
         <TodayBand milestones={attentionMilestones} />
-        {bom.length === 0 ? (
-          <DesignFlow activeStage={designStage} title="Design Progress" href={`/calc/project/${project.id}`} linkLabel="Open Calc Sheet →" />
-        ) : (
-          <BomProgress rollup={bomRollup} />
-        )}
+        <Card>
+          <CardHeader><CardTitle>Currently With</CardTitle></CardHeader>
+          <CardContent className="flex flex-col gap-2">
+            {departmentProgress.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Not started yet.</p>
+            ) : (
+              <>
+                <DepartmentPills departmentProgress={departmentProgress} />
+                <DepartmentProgress departmentProgress={departmentProgress} />
+              </>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       {pm ? (

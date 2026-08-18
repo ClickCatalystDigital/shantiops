@@ -1,10 +1,12 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { editableBomFields, PURCHASE_STATUSES } from '@/lib/bom-fields.mjs';
 import { releaseReservationsForItem } from '@/lib/procurement';
 import { notifyDepartment } from '@/lib/notify';
+import { syncProcurementMilestones } from '@/lib/milestone-auto';
 
 // Field-level department scoping — the trust boundary of the PMB module. A head may only write
 // the columns their department owns (BOM_FIELD_OWNERS); a PM writes anything. Enforced here, not
@@ -34,6 +36,13 @@ export async function PATCH(req, { params }) {
   if (keys.includes('purchase_status') && b.purchase_status && !PURCHASE_STATUSES.includes(b.purchase_status)) {
     return NextResponse.json({ error: `Unknown purchase_status: ${b.purchase_status}` }, { status: 400 });
   }
+  // Procurement's own inline Status dropdown is the one path that can set purchase_status directly
+  // (see the resync comment below) — that's the "manually change purchase status" action from the
+  // Responsibility model, distinct from every other field this route also handles.
+  if (keys.includes('purchase_status')) {
+    const actionDenied = await requireAction(user, 'Procurement', 'procurement.status.manual_edit');
+    if (actionDenied) return actionDenied;
+  }
 
   const changed = {};
   for (const k of keys) {
@@ -44,6 +53,11 @@ export async function PATCH(req, { params }) {
   await execute(
     `UPDATE bom_items SET ${Object.keys(changed).map(k => `${k} = ?`).join(', ')} WHERE id = ?`,
     [...Object.values(changed), params.id]);
+
+  // Procurement's own inline Status dropdown (BomTable.jsx) is the one path that can set any
+  // purchase_status value directly, bypassing advancePurchaseStatus's forward-only ratchet —
+  // resync the 5 stage milestones against real BOM state whenever this happens.
+  if ('purchase_status' in changed) await syncProcurementMilestones(item.project_id);
 
   // V2-CHANGES.md Group 6 Phase 6.3/6.4 (D7) — build stock: a source='stock' item reaching
   // Received increments the inventory line it was raised against (inventory_item_id/inventory_qty,
@@ -95,6 +109,8 @@ export async function DELETE(req, { params }) {
   const user = await getFreshSessionUser();
   const deniedResp = requireDepartment(user, 'Engineering');
   if (deniedResp) return deniedResp;
+  const actionDenied = await requireAction(user, 'Engineering', 'engineering.bom.delete_item');
+  if (actionDenied) return actionDenied;
 
   const item = await queryOne('SELECT * FROM bom_items WHERE id = ?', [params.id]);
   if (!item) return NextResponse.json({ error: 'Not found' }, { status: 404 });

@@ -20,8 +20,9 @@ import {
 } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { PlusIcon, PencilIcon, PackageCheckIcon, UndoIcon, TruckIcon } from 'lucide-react';
+import { PlusIcon, PencilIcon, PackageCheckIcon, UndoIcon, TruckIcon, PackageIcon, ClipboardListIcon } from 'lucide-react';
 import { api, showToast } from '@/lib/client';
+import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 
 function isLowStock(item) {
   return item.reorder_point != null && item.available <= item.reorder_point;
@@ -49,25 +50,27 @@ function normalizeWords(s) {
 // STORES-SALES-CHANGES.md §2c — Stores' entire workspace used to be three plain, disconnected
 // tables with no "here's what needs your attention today" signal and no cross-referencing between
 // them. This is that signal: a one-glance summary computed from the same three lists already on
-// the page (no new query, no new schema), each chip jumping straight to the section it counts.
-function TodaySummary({ inventoryItems, openRequests, activeReservations }) {
+// the page (no new query, no new schema). Each chip switches to the sidebar tab it counts — the
+// workspace moved to WorkspaceSidebar's tabbed sections, so an anchor-jump to an on-page div id
+// no longer reaches a section that isn't mounted on the current tab.
+function TodaySummary({ inventoryItems, openRequests, activeReservations, onNavigate }) {
   const lowStock = inventoryItems.filter(isLowStock).length;
   const withMatch = openRequests.filter(r => possibleMatches(r, inventoryItems).length > 0).length;
   const chips = [
-    { href: '#requests-card', dot: 'bg-warning', value: openRequests.length, label: 'open request' + (openRequests.length === 1 ? '' : 's') },
-    { href: '#requests-card', dot: 'bg-info', value: withMatch, label: 'with a possible match' },
-    { href: '#inventory-card', dot: 'bg-danger', value: lowStock, label: 'low stock' },
-    { href: '#reservations-card', dot: 'bg-success', value: activeReservations.length, label: 'ready to issue' },
+    { tab: 'requests', dot: 'bg-warning', value: openRequests.length, label: 'open request' + (openRequests.length === 1 ? '' : 's') },
+    { tab: 'requests', dot: 'bg-info', value: withMatch, label: 'with a possible match' },
+    { tab: 'inventory', dot: 'bg-danger', value: lowStock, label: 'low stock' },
+    { tab: 'reservations', dot: 'bg-success', value: activeReservations.length, label: 'ready to issue' },
   ];
   return (
     <div className="flex flex-wrap gap-2">
       {chips.map(c => (
-        <a key={c.label} href={c.href}
+        <button key={c.label} type="button" onClick={() => onNavigate(c.tab)}
           className="flex items-center gap-2 rounded-full border bg-card px-3 py-1.5 text-sm shadow-sm transition-colors hover:bg-muted/50">
           <span className={`size-2 rounded-full ${c.dot}`} />
           <span className="font-semibold tnum">{c.value}</span>
           <span className="text-muted-foreground">{c.label}</span>
-        </a>
+        </button>
       ))}
     </div>
   );
@@ -269,7 +272,7 @@ function OpenRequestsCard({ openRequests, inventoryItems, router }) {
   }
 
   return (
-    <Card id="requests-card" className="scroll-mt-4">
+    <Card>
       <CardHeader><CardTitle>Open requests</CardTitle></CardHeader>
       <CardContent>
         {openRequests.length === 0 ? (
@@ -383,7 +386,7 @@ function MaterialIssuesCard({ projects }) {
   }
 
   return (
-    <Card id="material-issues-card" className="scroll-mt-4">
+    <Card>
       <CardHeader><CardTitle>Material issued to WIP</CardTitle></CardHeader>
       <CardContent className="flex flex-col gap-3">
         <Select value={projectId} onValueChange={setProjectId}>
@@ -443,7 +446,7 @@ function ActiveReservationsCard({ activeReservations, router }) {
   }
 
   return (
-    <Card id="reservations-card" className="scroll-mt-4">
+    <Card>
       <CardHeader><CardTitle>Active reservations</CardTitle></CardHeader>
       <CardContent>
         {activeReservations.length === 0 ? (
@@ -513,7 +516,19 @@ function ReservationModeToggle() {
   );
 }
 
-export default function StoresWorkspace({ inventoryItems, openRequests = [], activeReservations = [], projects = [] }) {
+// STORES-SALES-CHANGES.md follow-up — the workspace outgrew one long scrolling page (today
+// chips, Inventory, Open requests, Active reservations, Material issued, all stacked). Same
+// sidebar-workspace pattern as Production's Job Card panel (WorkersPanel.jsx): one section per
+// tab, Inventory as the default landing tab since the mode toggle + today-summary glance belong
+// somewhere and Inventory is what Stores opens to most.
+const NAV_ITEMS = (counts) => [
+  { key: 'inventory', label: 'Inventory', icon: PackageIcon, badge: counts.lowStock || null },
+  { key: 'requests', label: 'Open Requests', icon: ClipboardListIcon, badge: counts.requests || null },
+  { key: 'reservations', label: 'Active Reservations', icon: PackageCheckIcon, badge: counts.reservations || null },
+  { key: 'issued', label: 'Material Issued to WIP', icon: TruckIcon },
+];
+
+function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavigate }) {
   const router = useRouter();
   const [dialogItem, setDialogItem] = useState(undefined); // undefined = closed, null = add, {} = edit
   const lowStockCount = inventoryItems.filter(isLowStock).length;
@@ -521,8 +536,8 @@ export default function StoresWorkspace({ inventoryItems, openRequests = [], act
   return (
     <div className="flex flex-col gap-6">
       <ReservationModeToggle />
-      <TodaySummary inventoryItems={inventoryItems} openRequests={openRequests} activeReservations={activeReservations} />
-      <Card id="inventory-card" className="scroll-mt-4">
+      <TodaySummary inventoryItems={inventoryItems} openRequests={openRequests} activeReservations={activeReservations} onNavigate={onNavigate} />
+      <Card>
         <CardHeader>
           <CardTitle>
             Inventory
@@ -573,10 +588,31 @@ export default function StoresWorkspace({ inventoryItems, openRequests = [], act
           <ItemFormDialog item={dialogItem} router={router} onClose={() => setDialogItem(undefined)} />
         )}
       </Card>
-
-      <OpenRequestsCard openRequests={openRequests} inventoryItems={inventoryItems} router={router} />
-      <ActiveReservationsCard activeReservations={activeReservations} router={router} />
-      <MaterialIssuesCard projects={projects} />
     </div>
+  );
+}
+
+export default function StoresWorkspace({ inventoryItems, openRequests = [], activeReservations = [], projects = [] }) {
+  const router = useRouter();
+  const [tab, setTab] = useState('inventory');
+  const navItems = NAV_ITEMS({
+    lowStock: inventoryItems.filter(isLowStock).length,
+    requests: openRequests.length,
+    reservations: activeReservations.length,
+  });
+
+  return (
+    <WorkspaceSidebar title="Inventory" icon={PackageIcon} items={navItems} activeKey={tab} onChange={setTab}>
+      {tab === 'inventory' && (
+        <InventoryTab inventoryItems={inventoryItems} openRequests={openRequests} activeReservations={activeReservations} onNavigate={setTab} />
+      )}
+      {tab === 'requests' && (
+        <OpenRequestsCard openRequests={openRequests} inventoryItems={inventoryItems} router={router} />
+      )}
+      {tab === 'reservations' && (
+        <ActiveReservationsCard activeReservations={activeReservations} router={router} />
+      )}
+      {tab === 'issued' && <MaterialIssuesCard projects={projects} />}
+    </WorkspaceSidebar>
   );
 }
