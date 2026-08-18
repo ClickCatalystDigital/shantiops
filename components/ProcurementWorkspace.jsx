@@ -10,7 +10,7 @@
 // redesign spec, but it's a real, working feature (add/edit/deactivate) with no other home, so it's
 // kept rather than dropped. One shared search input lives above the active section, same position
 // regardless of active section, filtering whichever section is open.
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, showToast, formatDate, formatMoney } from '@/lib/client';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from './ui/card';
@@ -27,7 +27,8 @@ import PaymentTermsField from './PaymentTermsField';
 import CreateRfqDialog from './CreateRfqDialog';
 import { PURCHASE_STATUSES as BOM_STATUSES, CLOSED_STATUSES, STATUS_TONE, DEFAULT_PURCHASE_STATUS } from '@/lib/bom-fields.mjs';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
-import { SearchIcon, GitCompareIcon, FileTextIcon, ListChecksIcon, Building2Icon, ShoppingCartIcon } from 'lucide-react';
+import SupplierAnalysis from '@/components/SupplierAnalysis';
+import { SearchIcon, GitCompareIcon, FileTextIcon, ListChecksIcon, Building2Icon, ShoppingCartIcon, BarChart3Icon, LayoutDashboardIcon } from 'lucide-react';
 
 // Enquiry/Selection are for items still working toward a PO — once one's issued (Ordered, Phase
 // 5.1 — was Transit pre-5.1) or closed out, it's Status's job to show it, not theirs.
@@ -907,7 +908,8 @@ const SEARCH_PLACEHOLDER = {
   selection: 'Search description or project…',
   orders: 'Search PO number or supplier…',
   state: 'Search description, project, PO…',
-  suppliers: 'Search supplier name…',
+  'suppliers-roster': 'Search supplier name…',
+  'suppliers-analysis': 'Search supplier or item…',
 };
 
 export default function ProcurementWorkspace({ sourcingItems, suppliers, purchaseOrders, quotes, rfqSummaryByItem = {} }) {
@@ -916,6 +918,8 @@ export default function ProcurementWorkspace({ sourcingItems, suppliers, purchas
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [poView, setPoView] = useState('active');
+  const [analysisView, setAnalysisView] = useState('dashboard');
+  const [projectFilter, setProjectFilter] = useState('all');
 
   const quotesByItem = {};
   for (const quote of quotes) (quotesByItem[quote.bom_item_id] ||= []).push(quote);
@@ -923,12 +927,32 @@ export default function ProcurementWorkspace({ sourcingItems, suppliers, purchas
   const fulfilledCount = purchaseOrders.filter(po => po.fulfilled).length;
   const activeOrderCount = purchaseOrders.length - fulfilledCount;
 
+  // Project list for the Enquiry/Selection filter: NOT plain activeItems (that only drops
+  // Cancelled) — a project whose items are all already Ordered/Transit/Received/In-Stock has
+  // nothing left for either tab to show, but would still appear, reading as "stuck in
+  // Procurement" when it's actually already past it. Match the same OUT_OF_PIPELINE cut both
+  // tabs already apply to their own rows, so the dropdown only ever lists a project with real
+  // outstanding Enquiry/Selection work.
+  const inPipelineItems = useMemo(() => activeItems.filter(it => !OUT_OF_PIPELINE.includes(it.purchase_status)), [activeItems]);
+  const bomProjects = useMemo(() => [...new Set(inPipelineItems.map(it => it.project_no))].sort(), [inPipelineItems]);
+  const projectItems = projectFilter === 'all' ? activeItems : activeItems.filter(it => it.project_no === projectFilter);
+
+  // Suppliers is one nav item with two sub-views (roster / analysis) instead of two flat tabs —
+  // "Suppliers" is the one word for this entity everywhere in the app; a second flat tab called
+  // "Vendor Analysis" would read as a different entity. Same SidebarMenuSub pattern the Help
+  // page's Notifications entry already uses (WorkspaceSidebar.jsx's `group`/`children`).
   const navItems = [
     { key: 'enquiry', label: 'Enquiry', icon: SearchIcon },
     { key: 'selection', label: 'Selection', icon: GitCompareIcon },
     { key: 'orders', label: 'Purchase Orders', icon: FileTextIcon },
     { key: 'state', label: 'Status', icon: ListChecksIcon },
-    { key: 'suppliers', label: 'Suppliers', icon: Building2Icon },
+    {
+      key: 'suppliers', label: 'Suppliers', icon: Building2Icon, group: true,
+      children: [
+        { key: 'suppliers-roster', label: 'Roster', icon: Building2Icon },
+        { key: 'suppliers-analysis', label: 'Analysis', icon: BarChart3Icon },
+      ],
+    },
   ];
 
   return (
@@ -940,6 +964,15 @@ export default function ProcurementWorkspace({ sourcingItems, suppliers, purchas
       <div className="flex flex-wrap items-center gap-2">
         <Input value={search} onChange={e => setSearch(e.target.value)}
           placeholder={SEARCH_PLACEHOLDER[tab]} className="h-8 w-72" />
+        {(tab === 'enquiry' || tab === 'selection') && bomProjects.length > 0 && (
+          <Select value={projectFilter} onValueChange={setProjectFilter}>
+            <SelectTrigger className="ml-auto h-8 w-44"><SelectValue placeholder="All projects" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All projects</SelectItem>
+              {bomProjects.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        )}
         {tab === 'state' && (
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="ml-auto h-8 w-36"><SelectValue /></SelectTrigger>
@@ -957,12 +990,23 @@ export default function ProcurementWorkspace({ sourcingItems, suppliers, purchas
               onClick={() => setPoView('fulfilled')}>Fulfilled ({fulfilledCount})</Button>
           </div>
         )}
+        {tab === 'suppliers-analysis' && (
+          <div className="ml-auto flex gap-1 rounded-md border p-0.5">
+            <Button size="sm" variant={analysisView === 'dashboard' ? 'secondary' : 'ghost'} className="h-7 px-2.5 text-xs"
+              onClick={() => setAnalysisView('dashboard')}><LayoutDashboardIcon />Dashboard</Button>
+            <Button size="sm" variant={analysisView === 'supplier' ? 'secondary' : 'ghost'} className="h-7 px-2.5 text-xs"
+              onClick={() => setAnalysisView('supplier')}>By Supplier</Button>
+            <Button size="sm" variant={analysisView === 'item' ? 'secondary' : 'ghost'} className="h-7 px-2.5 text-xs"
+              onClick={() => setAnalysisView('item')}>By Item</Button>
+          </div>
+        )}
       </div>
-      {tab === 'enquiry' && <Enquiry items={activeItems} quotesByItem={quotesByItem} suppliers={suppliers} rfqSummaryByItem={rfqSummaryByItem} router={router} q={search} />}
-      {tab === 'selection' && <Selection items={activeItems} quotesByItem={quotesByItem} router={router} q={search} />}
+      {tab === 'enquiry' && <Enquiry items={projectItems} quotesByItem={quotesByItem} suppliers={suppliers} rfqSummaryByItem={rfqSummaryByItem} router={router} q={search} />}
+      {tab === 'selection' && <Selection items={projectItems} quotesByItem={quotesByItem} router={router} q={search} />}
       {tab === 'orders' && <PurchaseOrders orders={purchaseOrders} q={search} view={poView} suppliers={suppliers} />}
       {tab === 'state' && <State items={sourcingItems} router={router} q={search} statusFilter={statusFilter} />}
-      {tab === 'suppliers' && <Suppliers suppliers={suppliers} quotes={quotes} q={search} />}
+      {tab === 'suppliers-roster' && <Suppliers suppliers={suppliers} quotes={quotes} q={search} />}
+      {tab === 'suppliers-analysis' && <SupplierAnalysis view={analysisView} suppliers={suppliers} quotes={quotes} purchaseOrders={purchaseOrders} q={search} />}
     </WorkspaceSidebar>
   );
 }

@@ -10,12 +10,11 @@
 // (app/globals.css) — no charting/PDF dependency added.
 import { useState } from 'react';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
-import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { BarChart3Icon, TrendingUpIcon, UsersIcon, MegaphoneIcon, DownloadIcon, PieChartIcon } from 'lucide-react';
+import { BarChart3Icon, TrendingUpIcon, UsersIcon, MegaphoneIcon, PieChartIcon, UserRoundIcon } from 'lucide-react';
 import { formatMoney } from '@/lib/format';
+import { BarList, StatRow, ReportShell } from '@/components/ReportKit';
 
 const SLA_HOURS = 24;
 function isSlaBreached(lead) {
@@ -26,56 +25,6 @@ function countBy(rows, key) {
   const counts = {};
   for (const r of rows) { const k = r[key] || '—'; counts[k] = (counts[k] || 0) + 1; }
   return Object.entries(counts).sort((a, b) => b[1] - a[1]);
-}
-
-// One hue for magnitude (dataviz skill: sequential = one hue), reserved status tokens only when
-// the row itself is a status (Won/Lost/Converted) — never mixed on the same chart.
-function BarList({ items, valueFmt = String, colorFor = () => 'bg-chart-1' }) {
-  const max = Math.max(1, ...items.map(i => i.value));
-  if (items.length === 0) return <p className="text-sm text-muted-foreground">No data yet.</p>;
-  return (
-    <div className="flex flex-col gap-2">
-      {items.map(i => (
-        <div key={i.label} className="flex items-center gap-3 text-sm">
-          <span className="w-32 shrink-0 truncate text-muted-foreground" title={i.label}>{i.label}</span>
-          <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
-            <div className={`h-full rounded-full ${colorFor(i)}`} style={{ width: `${(i.value / max) * 100}%` }} />
-          </div>
-          <span className="w-20 shrink-0 text-right tnum text-xs text-muted-foreground">{valueFmt(i.value)}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function StatRow({ stats }) {
-  return (
-    <div className="flex flex-wrap gap-4 text-sm">
-      {stats.map(s => (
-        <div key={s.label}>
-          <span className="text-muted-foreground">{s.label}: </span>
-          <span className={`font-semibold tnum ${s.warn ? 'text-destructive' : ''}`}>{s.value}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function ReportShell({ title, description, children }) {
-  return (
-    <Card id="report-print-area">
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        <CardAction>
-          <Button size="sm" variant="outline" onClick={() => window.print()}><DownloadIcon />Download PDF</Button>
-        </CardAction>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        {description && <p className="text-sm text-muted-foreground">{description}</p>}
-        {children}
-      </CardContent>
-    </Card>
-  );
 }
 
 function LeadFunnelReport({ leads }) {
@@ -199,16 +148,125 @@ function ByDepartmentReport({ leads, opportunities, stages }) {
   );
 }
 
+function mostCommon(values) {
+  const counts = {};
+  for (const v of values) { if (!v) continue; counts[v] = (counts[v] || 0) + 1; }
+  const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  return entries[0]?.[0] || null;
+}
+
+// STERP "Sales Agent Performance" (SYSTEM.md §5e) — every metric here is real, per-agent data
+// EXCEPT two, both flagged in the description and in the table's own column headers rather than
+// silently presented as equivalent to the rest:
+//  - Won value / lost reasons: `opportunities` has no per-agent owner column, only `created_by`
+//    and department-level `owner_dept`. `created_by` is the closest real field, used as a labeled
+//    approximation — it's who created the record, not necessarily who's been running the deal.
+//  - Avg. response time: no first-contact timestamp exists anywhere. Approximated as the time from
+//    `leads.created_at` to that lead's first `crm_notes` row (getLeadNotes()) — the earliest real
+//    sign the lead was actually worked, not a defined SLA field.
+function AgentPerformanceReport({ leads, opportunities, tasks, notes, stages, users }) {
+  const wonStages = new Set(stages.filter(s => s.is_won).map(s => s.name));
+  const lostStages = new Set(stages.filter(s => s.is_lost).map(s => s.name));
+  const displayName = { ...Object.fromEntries(users.map(u => [u.username, u.display_name || u.username])) };
+  const nameFor = u => displayName[u] || u;
+
+  const firstNoteByLead = {};
+  for (const n of notes) if (!firstNoteByLead[n.lead_id]) firstNoteByLead[n.lead_id] = n; // notes arrive pre-sorted by created_at
+
+  const agents = [...new Set([
+    ...leads.map(l => l.assigned_to),
+    ...tasks.map(t => t.assigned_to),
+    ...opportunities.map(o => o.created_by),
+  ].filter(Boolean))];
+
+  const rows = agents.map(agent => {
+    const agentLeads = leads.filter(l => l.assigned_to === agent);
+    const converted = agentLeads.filter(l => l.status === 'converted').length;
+    const agentTasks = tasks.filter(t => t.assigned_to === agent);
+    const tasksDone = agentTasks.filter(t => t.status === 'done').length;
+    const agentOpps = opportunities.filter(o => o.created_by === agent);
+    const won = agentOpps.filter(o => wonStages.has(o.stage));
+    const lost = agentOpps.filter(o => lostStages.has(o.stage));
+    const responseHours = agentLeads
+      .map(l => firstNoteByLead[l.id])
+      .filter(Boolean)
+      .map(n => (new Date(n.created_at).getTime() - new Date(agentLeads.find(l => l.id === n.lead_id).created_at).getTime()) / 36e5)
+      .filter(h => h >= 0);
+    return {
+      agent, name: nameFor(agent),
+      leadCount: agentLeads.length,
+      conversionRate: agentLeads.length ? Math.round((converted / agentLeads.length) * 100) : null,
+      taskCount: agentTasks.length,
+      followUpRate: agentTasks.length ? Math.round((tasksDone / agentTasks.length) * 100) : null,
+      wonValue: won.reduce((s, o) => s + (o.value_num || 0), 0),
+      topLostReason: mostCommon(lost.map(o => o.lost_reason)),
+      avgResponseHours: responseHours.length ? Math.round(responseHours.reduce((a, b) => a + b, 0) / responseHours.length) : null,
+    };
+  }).sort((a, b) => b.wonValue - a.wonValue || b.leadCount - a.leadCount);
+
+  const ratedConversion = rows.filter(r => r.conversionRate != null);
+  const avgConversion = ratedConversion.length ? Math.round(ratedConversion.reduce((s, r) => s + r.conversionRate, 0) / ratedConversion.length) : null;
+  const ratedResponse = rows.filter(r => r.avgResponseHours != null);
+  const avgResponse = ratedResponse.length ? Math.round(ratedResponse.reduce((s, r) => s + r.avgResponseHours, 0) / ratedResponse.length) : null;
+  const topByWon = rows.filter(r => r.wonValue > 0).slice(0, 8).map(r => ({ label: r.name, value: r.wonValue }));
+
+  return (
+    <ReportShell title="Agent Performance"
+      description="Leads assigned, follow-up completion, and pipeline outcomes per Sales agent. Won value and response time are labeled approximations — see the column notes below.">
+      <StatRow stats={[
+        { label: 'Agents tracked', value: rows.length },
+        { label: 'Avg conversion rate', value: avgConversion == null ? '—' : `${avgConversion}%` },
+        { label: 'Avg response time (approx.)', value: avgResponse == null ? '—' : `${avgResponse}h` },
+      ]} />
+      {topByWon.length > 0 && (
+        <div>
+          <h3 className="mb-2 text-xs font-medium text-muted-foreground">Top agents by won value (attributed by opportunity creator)</h3>
+          <BarList items={topByWon} valueFmt={formatMoney} />
+        </div>
+      )}
+      {rows.length === 0 ? <p className="text-sm text-muted-foreground">No leads, opportunities, or tasks are assigned to anyone yet.</p> : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Agent</TableHead><TableHead>Leads</TableHead><TableHead>Conversion</TableHead>
+              <TableHead>Follow-ups done</TableHead><TableHead>Won value*</TableHead>
+              <TableHead>Response time*</TableHead><TableHead>Top lost reason*</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map(r => (
+              <TableRow key={r.agent}>
+                <TableCell className="font-medium">{r.name}</TableCell>
+                <TableCell className="tnum">{r.leadCount}</TableCell>
+                <TableCell className="tnum">{r.conversionRate == null ? '—' : `${r.conversionRate}%`}</TableCell>
+                <TableCell className="tnum">{r.taskCount ? `${r.followUpRate}% (${r.taskCount})` : '—'}</TableCell>
+                <TableCell className="tnum">{formatMoney(r.wonValue)}</TableCell>
+                <TableCell className="tnum">{r.avgResponseHours == null ? '—' : `${r.avgResponseHours}h`}</TableCell>
+                <TableCell className="text-muted-foreground">{r.topLostReason || '—'}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+      <p className="text-xs text-muted-foreground">
+        * Won value and Top lost reason are attributed by who created the opportunity — Opportunities has no dedicated per-agent owner field.
+        Response time is the gap to a lead's first logged note, not a real first-contact timestamp.
+      </p>
+    </ReportShell>
+  );
+}
+
 const REPORTS = [
   { key: 'sales_pipeline', label: 'Sales Pipeline', icon: TrendingUpIcon, group: 'Sales' },
   { key: 'by_department', label: 'By Department', icon: PieChartIcon, group: 'Sales' },
+  { key: 'agent_performance', label: 'Agent Performance', icon: UserRoundIcon, group: 'Sales' },
   { key: 'lead_funnel', label: 'Lead Funnel', icon: UsersIcon, group: 'Marketing' },
   { key: 'leads_by_source', label: 'Leads by Source', icon: BarChart3Icon, group: 'Marketing' },
   { key: 'campaign_performance', label: 'Campaign Performance', icon: MegaphoneIcon, group: 'Marketing' },
 ];
 const GROUPS = ['Sales', 'Marketing'];
 
-export default function CrmReportsWorkspace({ leads, opportunities, campaigns, stages, departments = ['Sales', 'Marketing'] }) {
+export default function CrmReportsWorkspace({ leads, opportunities, campaigns, stages, tasks = [], notes = [], users = [], departments = ['Sales', 'Marketing'] }) {
   const items = REPORTS.filter(r => departments.includes(r.group));
   const [report, setReport] = useState(items[0]?.key);
   const active = items.find(r => r.key === report) || items[0];
@@ -240,6 +298,7 @@ export default function CrmReportsWorkspace({ leads, opportunities, campaigns, s
       {active?.key === 'campaign_performance' && <CampaignPerformanceReport leads={leads} opportunities={opportunities} campaigns={campaigns} />}
       {active?.key === 'sales_pipeline' && <SalesPipelineReport opportunities={opportunities} stages={stages} />}
       {active?.key === 'by_department' && <ByDepartmentReport leads={leads} opportunities={opportunities} stages={stages} />}
+      {active?.key === 'agent_performance' && <AgentPerformanceReport leads={leads} opportunities={opportunities} tasks={tasks} notes={notes} stages={stages} users={users} />}
     </WorkspaceSidebar>
   );
 }

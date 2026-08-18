@@ -3,6 +3,7 @@
 import {
   SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarGroup, SidebarGroupLabel,
   SidebarGroupContent, SidebarMenu, SidebarMenuItem, SidebarMenuButton,
+  SidebarMenuSub, SidebarMenuSubItem, SidebarMenuSubButton,
   SidebarTrigger, SidebarInset, SidebarRail,
 } from '@/components/ui/sidebar';
 import { Separator } from '@/components/ui/separator';
@@ -12,11 +13,15 @@ import { cn } from '@/lib/utils';
 // Shared shell for workspace-level navigation. The content stays owned by each workspace;
 // this component only standardizes the sidebar behavior and visual language.
 // `groups` (optional): [{ label, items }] — for menus with sections (e.g. Sales/Marketing).
-// Falls back to flat `items` when omitted.
+// Falls back to flat `items` when omitted. A flat item can itself be `{ key, label, icon, group:
+// true, children: [{key,label,icon}, ...] }` — renders as a parent row that expands into a
+// sub-menu (same SidebarMenuSub pattern DepartmentHelpWorkspace.jsx uses for its Notifications
+// group), for a workspace tab with two or three closely-related sub-views instead of two flat
+// tabs users have to remember are related.
 // `header` (optional): custom node rendered in a pinned bar above scrollable children, replacing
 // the default mobile-only trigger bar with one that's visible at every breakpoint.
 export default function WorkspaceSidebar({ title, icon: TitleIcon = LayoutPanelTopIcon, items, groups, activeKey, onChange, children, nested = false, hideHeader = false, header }) {
-  const flatItems = groups ? groups.flatMap(g => g.items) : items;
+  const flatItems = groups ? groups.flatMap(g => g.items) : items.flatMap(item => item.group ? item.children : item);
   const activeItem = flatItems.find(item => item.key === activeKey) || flatItems[0];
 
   if (nested) {
@@ -91,6 +96,23 @@ export default function WorkspaceSidebar({ title, icon: TitleIcon = LayoutPanelT
                 <SidebarMenu>
                   {items.map(item => {
                     const Icon = item.icon || LayoutPanelTopIcon;
+                    if (item.group) return (
+                      <SidebarMenuItem key={item.key}>
+                        <SidebarMenuButton isActive={item.children.some(c => c.key === activeKey)} tooltip={item.label} onClick={() => onChange(item.children[0].key)}>
+                          <Icon />
+                          <span>{item.label}</span>
+                        </SidebarMenuButton>
+                        <SidebarMenuSub>
+                          {item.children.map(child => (
+                            <SidebarMenuSubItem key={child.key}>
+                              <SidebarMenuSubButton isActive={activeKey === child.key} onClick={() => onChange(child.key)} className="cursor-pointer">
+                                <span>{child.label}</span>
+                              </SidebarMenuSubButton>
+                            </SidebarMenuSubItem>
+                          ))}
+                        </SidebarMenuSub>
+                      </SidebarMenuItem>
+                    );
                     return (
                       <SidebarMenuItem key={item.key}>
                         <SidebarMenuButton isActive={activeKey === item.key} tooltip={item.label} onClick={() => onChange(item.key)}>

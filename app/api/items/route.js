@@ -1,17 +1,21 @@
 // app/api/items/route.js — read-only search over the Item Master catalog (Group 3 import,
 // 2,773 rows). No query surface existed yet (import-only until now). Powers the PR line composer's
-// catalog picker (Group 5 Bundle A) — Engineering-gated, same gate the items import itself uses.
+// catalog picker (Group 5 Bundle A) — Engineering-gated, same gate the items import itself uses —
+// and, since SYSTEM.md §5e's Price Lists round, Sales' quotation-line item picker and Price List
+// entry form too.
 import { NextResponse } from 'next/server';
 import { queryAll } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
 
 // The PR line composer (Group 5 Bundle A) is shared by Engineering/Design/Stores — same three
-// departments as the /pr nav tab — not just Engineering's own items-import gate.
-const PR_DEPARTMENTS = ['Engineering', 'Design', 'Stores'];
+// departments as the /pr nav tab. Sales added for the quotation/price-list item pickers — reading
+// the catalog to price against it is a different concern from owning it, so this stays a read
+// gate, not a write one.
+const CATALOG_SEARCH_DEPARTMENTS = ['Engineering', 'Design', 'Stores', 'Sales'];
 
 export async function GET(req) {
   const user = await getFreshSessionUser();
-  if (!PR_DEPARTMENTS.some(d => canAccessDepartment(user, d))) {
+  if (!CATALOG_SEARCH_DEPARTMENTS.some(d => canAccessDepartment(user, d))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

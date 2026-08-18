@@ -841,6 +841,73 @@ business process. Full investigation notes (including two real bugs found while 
   whose items had never had their status explicitly set read as wrongly "fulfilled." Both fixed;
   the second one caught live via a direct DB query showing the miscount before the fix.
 
+### Suppliers — merged into one nav item, Roster + Analysis, Analysis gets a Dashboard (2026-08-18)
+
+STERP-parity items "Vendor Analysis," "Vendor Rating," and "Purchase Card" (STERP.md Priority 1)
+— built as a read-only report, no schema change, entirely derived from `supplier_quotes` and
+`purchase_orders`/`po_items` that Procurement already logs. Named "Suppliers" throughout, never
+"Vendor" — the app already has one word for this entity; introducing a second one on a
+neighboring tab reads as a different entity to a new user, not a synonym.
+
+- **One `Suppliers` nav item, two sub-views, not two flat tabs.** `WorkspaceSidebar.jsx` gained
+  `group`/`children` support on a flat `items` entry — a parent row that expands into
+  `SidebarMenuSub`, the exact same pattern `DepartmentHelpWorkspace.jsx`'s Notifications entry
+  already used, now shared rather than reimplemented a second time. `ProcurementWorkspace.jsx`'s
+  nav is `{key:'suppliers', group:true, children:[{key:'suppliers-roster', label:'Roster'},
+  {key:'suppliers-analysis', label:'Analysis'}]}` — Roster is the existing add/edit/deactivate
+  contact list (unchanged component), Analysis is the new report.
+- **`components/SupplierAnalysis.jsx`** (renamed from the first pass's `VendorAnalysis.jsx`) — a
+  3-way Dashboard / By Supplier / By Item toggle in the shared search row (same idiom as the
+  Purchase Orders tab's Active/Fulfilled toggle), **Dashboard is the default view**.
+  - **Dashboard**: portfolio-level stats (active suppliers, quotes logged, total issued-PO spend,
+    overall win rate), a 6-month issued-PO spend trend (`BarList`, one bucket per month), top
+    suppliers by spend, top win rate (2+ quotes only, so a single lucky quote doesn't read as
+    100%), and most-quoted materials — five real views built from the same aggregation the other
+    two tabs use, not new data.
+  - **By Supplier**: every active supplier ranked by issued-PO spend (`purchase_orders.status =
+    'issued'` only — draft/cancelled POs aren't real spend), with quote count, quotes won
+    (`supplier_quotes.is_selected`), win rate, and PO count. A top-8-by-spend `BarList` sits above
+    the table; clicking a row expands that supplier's full quote history inline.
+  - **By Item (Purchase Card)**: groups all logged quotes by `material_description` text (exact
+    match, not fuzzy — a differently-typed description is a separate card, called out as a
+    watch-out in the help copy), most-quoted first as a chip list. Selecting one shows every
+    supplier who's quoted it, cheapest/most-recent stats, and — once there are 3+ quotes to plot —
+    an inline-SVG price-trend line, same no-dependency idiom as `CalcWorkspace.jsx`'s
+    sensitivity-sweep chart.
+- **`components/ReportKit.jsx`**, new — `BarList`/`StatRow`/`ReportShell` (the bar-chart idiom,
+  stat-chip row, and Card+"Download PDF"-via-`window.print()` shell) extracted out of
+  `CrmReportsWorkspace.jsx`, which now imports them instead of defining its own copy. Shared by
+  both report surfaces rather than duplicated once a second one existed.
+- **Fixed as a side effect**: `getAllQuotes()` (`lib/data.js`) was missing the `bom_items`/`projects`
+  join — Roster's per-quote line (`{material_description} · {project_no}`) was silently rendering
+  `undefined · undefined` for every row. Both are safe inner joins (`bom_item_id`/`project_id` are
+  `NOT NULL`); fixing the query fixed both call sites.
+- **Deliberately not built: an on-time-delivery % or composite supplier rating.** `bom_items.
+  received_ref` (Production's "received qty + date") is free text, not a structured date — there is
+  no honest way to diff it against `supplier_quotes.expected_delivery_date` yet. Faking a score off
+  unstructured text would be worse than not having one. Needs `received_ref` split into real columns
+  first, a real follow-up, not part of this round.
+- **Help page**: the Procurement guide's feature group is now `key: 'suppliers'`, label
+  "Suppliers," matching the app nav 1:1 — four children: "Roster" (new content — add/edit/
+  deactivate, the dedupe rationale), "Analysis — Dashboard," "Analysis — By Supplier," "Analysis —
+  By Item (Purchase Card)," each with the standard Why/How/Work-through/Avoid/Done-when framework.
+
+### Project filter — Enquiry and Selection (2026-08-18)
+
+A `Select` next to the shared search input on the Enquiry and Selection tabs, same right-aligned
+slot the Status tab's status filter already uses. Picking one narrows both tabs (the filter is
+lifted to `ProcurementWorkspace`'s root, alongside the existing free-text search) rather than being
+scoped per-tab, so switching between Enquiry and Selection keeps the same project in view.
+
+The option list is **not** plain `activeItems` (that only drops `Cancelled`) — it's `activeItems`
+further filtered to `!OUT_OF_PIPELINE.includes(purchase_status)`, the same
+`[...CLOSED_STATUSES, 'Ordered', 'Transit']` cut both `Enquiry` and `Selection` already apply to
+their own rows (line ~35). First pass got this wrong: it listed every project with any
+`release_bom`-cleared item ever, so a project already fully Ordered/Transit/Received/In-Stock —
+genuinely past Procurement's Enquiry/Selection concern — still showed up, reading as "stuck in
+Procurement" when it wasn't. Fixed same day, live-verified: the option count on the seed data
+dropped from 6 projects to the 2 that actually have open Enquiry/Selection work.
+
 ## 5d. QC statutory documents — Test Certificate bank + statutory folder
 
 Full history/decisions in `QC-CHANGES.md` (the original investigation record). This section is the
@@ -973,7 +1040,17 @@ reach terminal status by being fulfilled from existing stock, not just procured.
 - **Stores' inventory workbench** (`/stores`, `components/StoresWorkspace.jsx`) —
   `inventory_items` (D8: description, on-hand, location, reorder point). A low-stock badge reads off
   **`available`** (on-hand minus every active reservation, below), not raw on-hand, since that's the
-  number Stores can actually still promise.
+  number Stores can actually still promise. **This is STERP's "Minimum Stock Level" — same concept,
+  built earlier under the inventory-management name `reorder_point` rather than a second column.** A
+  later audit (STERP.md) missed it — the check grepped for `reorder.?level`, not `reorder_point`, a
+  research gap, not a product one; flagging here so it isn't "rediscovered" as missing a third time.
+  **Below-minimum filter added 2026-08-18**: a `Button` toggle in the Inventory card header
+  ("Below minimum only" / "Showing below minimum"), filtering the table to `isLowStock()` rows —
+  previously there was only the count badge and per-row "Low" flag, no way to actually narrow the
+  list. The existing "low stock" chip in `TodaySummary` now doubles as the filter's on-switch
+  (`onShowLowStock`) instead of just jumping to a tab that was already the default — clicking it
+  used to do nothing since Inventory is where you land regardless. Live-verified: 2 seeded items
+  (5/10 and 50/10) — toggle and chip both correctly narrow to the one below its minimum.
 - **Reserved/available inventory model (D6/D9)** — the client's own concern, raised directly while
   scoping this group: a naive "mark In-Stock → decrement on-hand" would let the same physical stock
   be promised to two different requests (a project BOM item and a trade order) at once. Fixed with a
@@ -1102,6 +1179,92 @@ the following shipped against those specific findings, nothing speculative:
   Stores possible-match badge) now checks `item_id` equality first — a real, non-fuzzy match, shown
   with its own green ✓ badge distinct from the existing muted "≈" keyword-overlap one — falling back
   to keyword overlap only when no catalog link exists on either side.
+
+### Price Lists + Agent Performance (2026-08-18, STERP Priority 1/2, no separate working-spec doc)
+
+STERP-parity items "Price Lists" (schema item) and "Sales Agent Performance" (report item), built
+together since the report's honest caveats and the price list's exact-match caveat are the same
+kind of thing — real data where it exists, a labeled approximation where the underlying field
+genuinely doesn't, never presented as equivalent.
+
+- **`price_lists`** (new table, `lib/db.js`) — `customer_id` nullable (NULL = default rate open to
+  every customer), `item_id NOT NULL REFERENCES items(id)` (a price list only makes sense against a
+  real catalog item, same reasoning `supplier_quotes.bom_item_id` is `NOT NULL`), `rate`, `uom`,
+  `valid_from`/`valid_until`. No `UNIQUE(customer_id, item_id)` — a renewed rate is a new row with
+  its own validity window, same append-friendly shape as `supplier_quotes`. Unlike
+  `supplier_quotes`, edit/delete **is** allowed (`app/api/price-lists/[id]/route.js`) — this is a
+  published rate list, not a price-history log.
+- **Sales → Price Lists**, a new tab (`components/SalesWorkspace.jsx`'s `PANELS`) — add/remove a
+  rate, item picked from the same catalog search (`/api/items?search=`) Quotations now shares.
+  `/api/items`'s department gate (`app/api/items/route.js`) widened from
+  Engineering/Design/Stores to include Sales — a read gate (searching the catalog to price against
+  it), not a write one.
+- **`NewQuotationDialog` rate auto-fill** — the line-item description field is now a catalog
+  search-as-you-type (`QuotationItemField`), same idiom as `PrWorkspace`/`StoresWorkspace`'s own
+  each-file-local copies (three near-identical small typeaheads now, deliberately not
+  force-unified — different line shapes each time). Picking an item calls
+  `GET /api/price-lists?item_id=&customer_id=` (customer-specific row wins over the NULL/default
+  row; most recent `valid_from` breaks a tie; expired rows excluded) and fills the rate — still a
+  plain editable number afterward, never locked, with a small "Rate from the default/customer price
+  list" hint. Re-runs on customer change so picking item-then-customer works the same as
+  customer-then-item. Live-verified: a default-rate entry (₹3,200/Mtr) auto-filled correctly into a
+  new quotation, total computed right through GST.
+- **Reports → Agent Performance** (`components/CrmReportsWorkspace.jsx`, new Sales-group report) —
+  groups leads/tasks by `assigned_to`, opportunities by `created_by` (see caveat below), client-side
+  same as every other report on this page. Real per-agent numbers: leads assigned, conversion rate,
+  follow-up completion. **Two labeled approximations, not silently equivalent to the rest**: Won
+  value / lost reasons are attributed by whoever *created* the opportunity —
+  `opportunities` has no per-agent owner column, only `created_by` and department-level
+  `owner_dept`; and Average response time is the gap from `leads.created_at` to that lead's first
+  `crm_notes` row (new `getLeadNotes()`, `lib/data.js`) — no first-contact timestamp exists
+  anywhere. Both are marked with an asterisk in the table and spelled out in a footnote and the
+  report's own description, not just in code comments. Live-verified against real seed data.
+- **Help page**: Sales gained two new feature entries ("Price Lists," "Agent Performance") and the
+  existing Quotations/Reports bullets were extended to mention the new behavior, following the
+  existing Why/How/Work-through/Avoid/Done-when framework where warranted.
+
+### Sales Enquiry, Returns, and Costing (2026-08-18) — and Sales Offices/Branches, deliberately skipped
+
+Closes out STERP's Sales-owned remainder. Before building, checked what already existed rather
+than re-deriving — this repo's own prior "Minimum Stock Level" miss (§5e above) made that check a
+first step, not an afterthought this round.
+
+- **Enquiry** — not a new entity. `leads.status='new'` already *is* the raw-enquiry bucket
+  (`isSlaBreached` already special-cases it); `LeadsTab` gained an `initialStatus` prop and a new
+  `PANELS` entry ("Enquiry," before "Leads") renders the exact same component pre-filtered to
+  `new`. Zero new schema, zero new component.
+- **Sales Offices and Branches — skipped, on purpose, by explicit decision.** No branch/office
+  concept exists anywhere in the app; the only real multi-entity axis is `company` (Shanti Boilers
+  / Shanti Techno Fab — a legal entity, already fully wired) and `leads.territory` is free text
+  read by zero filters or reports. No confirmed multi-branch operation exists today, so this
+  stayed unbuilt rather than inventing a speculative master-data entity — the YAGNI call, not an
+  oversight. Revisit if a real multi-office need shows up.
+- **Sales Returns** — new `sales_returns` table (`sale_order_id`, `item_description`, `qty`,
+  `reason`, `inspection_outcome` pending/accepted/rejected, `stock_action` none/returned_to_stock/
+  scrapped, `inventory_item_id`, `credit_note_ref`). New Sales → Returns tab: raise a return,
+  inspect it, and — only once accepted — Restock (credits `inventory_items.on_hand`, reusing the
+  exact `on_hand = on_hand + ?` idiom `app/api/bom-items/[id]/route.js`'s stock-build receipt
+  already uses, guarded server-side to fire only on the transition into `returned_to_stock`) or
+  Scrap. `credit_note_ref` is a plain reference string — no ledger posting, that's the client's
+  separate Tally-integration doc, not this build. Live-verified: raised a return, accepted it,
+  restocked against `inventory_items` — `on_hand` moved 5 → 8 for the 3-unit return.
+- **Sales Costing** — post-sale only, real numbers, on the Sale Order once it has a linked Project.
+  New `getProjectCosting(projectId)` (`lib/data.js`): material cost = `SUM(po_items.amount)` for
+  *issued* POs only against that project (draft/cancelled aren't real spend, same convention
+  Suppliers → Analysis already uses), labor cost = `SUM(job_card_time_logs.minutes/60 ×
+  employees.cost_rate_per_hour)` joined through `job_cards.project_id`, margin = the Sale Order's
+  `total` minus both. New `GET /api/projects/[id]/costing`; a "Costing" button/Sheet on the Sale
+  Orders table, shown only when `so.project_id` exists — there's no honest cost data before that
+  (Opportunities/Quotations never link to a Project pre-sale; `bom_items` carries no cost field at
+  all, only `po_items` and job-card time logs do, and both require a real Project to exist first).
+  **A pre-sale cost estimate on the Quotation was explicitly deferred, not built**: it would need
+  someone to hand-enter a speculative cost, since no real data exists that early — flagged as a
+  distinct future phase if it turns out to matter, not silently folded into this one. Live-verified:
+  a Sale Order with a Project but no issued POs/logged labor yet correctly showed material cost —,
+  labor cost —, margin = 100% of quoted value (nothing spent yet, honestly represented as zero, not
+  hidden).
+- **Help page**: three new Sales feature entries ("Enquiry," "Costing," "Returns"), standard
+  Why/How/Work-through/Avoid/Done-when framework.
 
 ## 5f. Calc Sheets — engineering calculation engine
 

@@ -7,7 +7,7 @@ import {
   FlaskConicalIcon, BadgeCheckIcon, ClipboardCheckIcon, MapPinIcon, RouteIcon, ShoppingCartIcon,
   UserPlusIcon, Building2Icon, MegaphoneIcon, TrendingUpIcon, PhoneIcon, BarChart3Icon,
   UserRoundIcon, UserCheckIcon, Clock3Icon, IndianRupeeIcon, ReceiptIcon, ShieldCheckIcon,
-  ListChecksIcon, MessageSquareIcon, WrenchIcon, BellIcon,
+  ListChecksIcon, MessageSquareIcon, WrenchIcon, BellIcon, TagIcon, InboxIcon, UndoIcon,
 } from 'lucide-react';
 
 // Milestone Tracker (2026-08-17) — most milestones now complete themselves off a real event
@@ -472,6 +472,52 @@ export const DEPARTMENT_HELP = {
       feature('po', 'Purchase Orders', FileTextIcon, ['Review draft PO lines, issue the PO when the commercial details are correct, and generate the PDF for the supplier.', 'A PO issue moves the item into the next operational stage. Treat unissue/void actions as controlled corrections, not casual edits.']),
       feature('status', 'Status and delivery', TruckIcon, ['Use the status view to follow Enquiry, Comparison, Ordered, Transit, Received, Cancelled, and In-Stock. The summary also considers quote and supplier signals when the editable status cell is behind.', 'Keep PR/PO references readable because Stores and Production use them downstream.']),
       feature('requests', 'New-item requests', ClipboardListIcon, ['Requests land directly in the Enquiry flow. Accept the requirement by sourcing it, not by creating a second manual record.', 'Ask the requesting team for missing technical information through a task so the request remains traceable.']),
+      {
+        key: 'suppliers', label: 'Suppliers', icon: Building2Icon, group: true,
+        body: ['Suppliers has two parts. Roster is the plain contact list — add, edit, or deactivate a supplier, and see their quote history one at a time. Analysis is a read-only report over the same quotes and purchase orders, rolled up: a Dashboard overview, By Supplier (spend, win rate, activity), and By Item — the "Purchase Card," a price history across every supplier who has ever quoted a material. Nothing under Suppliers needs separate data entry — it all comes from what Enquiry and Purchase Orders already log.'],
+        children: [
+          feature('suppliers-roster', 'Roster', Building2Icon, [
+            'Add a supplier with name, GST number, contact person, phone, and email — name is the only required field. Expand a row to edit those details or deactivate the supplier, and to see every quote logged against them, most recent first.',
+            'A bulk import (Add supplier card) replaces the whole roster from the client\'s real party-master file — use it for a full refresh, not for adding one supplier.',
+            'Deactivating a supplier removes them from this list and from the picker when logging a new quote, but does not touch their quote history — it stays visible in Analysis.',
+          ], {
+            value: 'A clean, deduplicated supplier list is what keeps a quote comparison meaningful — "Kirloskar" and "Kirloskar Bros" logged as two different suppliers would quietly split one supplier\'s track record in half.',
+            outcome: 'Every supplier you deal with exists exactly once, with current contact details, and a name a Designer or Head can pick confidently while logging a quote.',
+            checklist: ['Check the list for a near-duplicate name before adding a new supplier.', 'Keep contact person and phone current — this is what Enquiry work actually uses day to day.'],
+            watchOut: 'Deactivate, don\'t delete-and-recreate, for a supplier you are not currently using — recreating loses the link to their quote history.',
+          }),
+          feature('suppliers-analysis-dashboard', 'Analysis — Dashboard', BarChart3Icon, [
+            'Open Suppliers → Analysis; Dashboard is the default view. It is a portfolio summary: total suppliers with real activity, quotes logged, total issued-PO spend, and overall win rate across everyone.',
+            'Below the stats: issued-PO spend for the last six months, the top suppliers by spend, the top win rates (suppliers with at least two quotes, so one lucky quote does not read as 100%), and the most-quoted materials.',
+            'Every chart here is the same underlying data as By Supplier and By Item, just aggregated — use Dashboard for the five-second read, and drill into the other two views when you need one supplier or one material in full.',
+          ], {
+            value: 'The other two views answer "tell me about this one supplier" or "tell me about this one material." Dashboard answers the question that comes before either of those: where is the real spend and activity concentrated across everyone, right now.',
+            outcome: 'A glance at Dashboard before a sourcing or renewal conversation tells you who actually matters in the numbers, without opening every supplier one at a time.',
+            checklist: ['Treat the six-month spend trend as a shape, not a precise total — it only counts issued POs, same as everywhere else in Analysis.', 'A thin dashboard (few bars) usually means few quotes logged yet, not that nothing is happening — check Enquiry.'],
+            watchOut: 'Win rate here only includes suppliers with 2+ quotes on purpose — a single win or loss is not a rate.',
+          }),
+          feature('suppliers-analysis-supplier', 'Analysis — By Supplier', Building2Icon, [
+            'Switch to By Supplier. The table ranks every active supplier by issued-PO spend, with quote count, quotes won, and win rate next to it.',
+            'Click a supplier row to expand their full quote history inline — the same material/project/price/date detail as Roster, without leaving the report.',
+            'The bar chart above the table is the same spend numbers, just the top few suppliers at a glance before you scroll the full table.',
+          ], {
+            value: 'Price comparisons today live one quote at a time, on one BOM line. This rolls that up: which suppliers actually get the business, how often, and for how much — the pattern a single line never shows.',
+            outcome: 'Before renewing terms or picking a supplier for a new enquiry, you can see their real track record — spend, win rate, quote volume — in one place instead of remembering it.',
+            checklist: ['Sort by spend first when the question is "who matters most," by win rate when the question is "who actually gets picked."', 'Expand a supplier before assuming a low win rate means a weak supplier — check what they were quoting against.'],
+            watchOut: 'Spend only counts issued POs. A supplier with strong quote activity but no issued PO yet will show real quotes and zero spend — that is correct, not a bug.',
+          }),
+          feature('suppliers-analysis-item', 'Analysis — By Item (Purchase Card)', SearchIcon, [
+            'Switch to By Item and pick a material from the chip list — it is every distinct material description that has at least one logged quote, most-quoted first.',
+            'The detail panel shows every supplier who has ever quoted that exact material, the price, the project, and the date — plus a price-trend line once there are at least three quotes to trend.',
+            'Use this before opening a new enquiry for something you have likely bought before: the cheapest logged price and who quoted it are both right there.',
+          ], {
+            value: 'A price quoted six months ago on a different project is easy to forget and expensive to re-negotiate blind. This is the "have we bought this before, and for how much" check in one place instead of searching old projects.',
+            outcome: 'Before accepting a new quote, you can see whether it is actually competitive against this material\'s own history — not just against the other quotes on the current enquiry.',
+            checklist: ['Search the material description if it is not in the first page of chips — the list is sorted by quote count, not alphabetically.', 'Treat the price trend as a pattern, not a forecast — it plots logged history only.'],
+            watchOut: 'A material typed slightly differently across two quotes (extra spacing, a different abbreviation) shows as two separate cards here — this groups on exact text, it does not fuzzy-match descriptions.',
+          }),
+        ],
+      },
       milestoneTrackerFeature([
         ['Enquiry', 'Automatic', 'Completes once every BOM item on the project has moved past Enquiry into Comparison or further — "all items must clear the stage," not just the first one.'],
         ['Comparison', 'Automatic', 'Completes once every item has moved past Comparison into Ordered or further.'],
@@ -497,7 +543,7 @@ export const DEPARTMENT_HELP = {
       'Operations has a Stores pipeline diagram now (the same kind of glance Procurement, Sales, and Design already have) — SAS/Trade, BOM Released, and Build Stock as the three sources feeding in, then Requests → Stores Review → Reserved → In-Stock, with Received (via Procurement) as the one outcome from Procurement\'s own pipeline Stores actually needs to see.',
     ],
     features: [
-      feature('inventory', 'Inventory', BoxesIcon, ['Inventory shows on-hand quantity and the quantity reserved for active project requirements. Available stock is the usable balance after reservations.', 'Keep item names and units consistent so the same stock is not entered twice under slightly different names.']),
+      feature('inventory', 'Inventory', BoxesIcon, ['Inventory shows on-hand quantity and the quantity reserved for active project requirements. Available stock is the usable balance after reservations.', 'Keep item names and units consistent so the same stock is not entered twice under slightly different names.', 'Set a minimum stock level per item (New item / edit) to get a "Low" flag once available stock drops to or below it. Click the low-stock count — on the card title or the "low stock" chip above it — to filter the table down to just those items; toggle it off the same way.']),
       feature('reserve', 'Reservations', ClipboardCheckIcon, ['Reserve stock against a BOM requirement when material is committed to a project. A reservation reduces available stock without pretending the material has already been issued.', 'Release a reservation when the requirement is cancelled or fulfilled another way — this fully frees the quantity back to available; there is no separate "reassign to a different project" action, releasing and reserving again is how you move committed stock to a different requirement.', 'A green "✓" badge under a request\'s description is a real match — both sides were picked from the item catalog (search when raising the request, or search in the New Item dialog) and share the same underlying item. A muted "≈" badge is the older, weaker signal: plain keyword overlap, not automated, when no catalog link exists on one or both sides. Trust the ✓; still eyeball the ≈ before reserving.', 'Reserving does not change the BOM line\'s purchase status by itself — only Issue does. Procurement sees a "Reserved from stock" badge on the line the moment you reserve, so they know not to duplicate the sourcing work, but the line still technically shows as open until you actually Issue it.', 'Reservations work identically whichever kind of demand you\'re reserving against — a normal project BOM line, a Stock request, or a SAS trade request all draw from the same available pool, no special cases.']),
       feature('review', 'Manual review (Stores Review / Procure)', ClipboardCheckIcon, [
         'A fresh BOM or SAS line (not a Build stock request you raised yourself) lands in Stores Review first — a "Stores Review" badge instead of the usual status, and it stays invisible to Procurement entirely. It does not reach Enquiry until you act on it.',
@@ -659,11 +705,45 @@ export const DEPARTMENT_HELP = {
     title: 'Sales', icon: TrendingUpIcon,
     intro: ['Sales manages the commercial journey from qualified enquiry to confirmed Sale Order. The CRM keeps customers, contacts, quotations, and orders connected so the factory receives a clean handoff.', 'Marketing shares Leads, Campaigns, Pipeline, Tasks, and Reports. Sales additionally owns Customers, Quotations, and Sale Orders.'],
     features: [
+      feature('enquiry', 'Enquiry', InboxIcon, [
+        'Enquiry is the same Leads list, pre-filtered to status "new" — a raw, not-yet-worked enquiry is exactly what that status already means (the 24h SLA flag already treats it that way). It is not a second record to fill in.',
+        'Use it as your daily start-here queue; switch to the full Leads tab when you need to see contacted/qualified/converted/lost too.',
+      ]),
       feature('leads', 'Leads', UserPlusIcon, ['Capture the person/company, contact details, source, territory, and industry. Move the status as the conversation progresses.', 'Convert a qualified lead to create a Customer and Opportunity together; this prevents duplicate typing.']),
       feature('pipeline', 'Pipeline', TrendingUpIcon, ['Move opportunities through the configured stages. Keep value, probability, expected close, next contact date, and lost reason current.', 'An opportunity is the active deal; a lead is still an enquiry. Do not leave won work sitting as an open opportunity.', 'Creating a Quotation linked to an opportunity still sitting in Lead or Qualified moves it to Quoted automatically — one-way, so it never pulls a Won or Lost opportunity backward. It does not replace moving a card by hand for every other stage change; it only ever pushes Lead/Qualified forward the moment real commercial evidence (a quotation) exists.']),
       feature('customers', 'Customers and contacts', Building2Icon, ['Keep the commercial party, people, and addresses in one place. Reuse these records in quotations and orders instead of creating near-duplicates.']),
-      feature('quotations', 'Quotations', FileTextIcon, ['Build the proposal with real line items, rates, taxes/terms as applicable, then generate the PDF. Convert an accepted quotation to a Sale Order.']),
+      feature('quotations', 'Quotations', FileTextIcon, ['Build the proposal with real line items, rates, taxes/terms as applicable, then generate the PDF. Convert an accepted quotation to a Sale Order.', 'Search the item catalog while typing a line\'s description — picking a match fills in the UoM and, if a Price List entry exists for that item (and this customer, or the default rate), the rate too. You can always overwrite the rate by hand; nothing is locked.']),
+      feature('price-lists', 'Price Lists', TagIcon, [
+        'Set a rate per item, either for one specific customer or as the default open to everyone — Sales → Price Lists → New Price, searched from the same item catalog Quotations uses.',
+        'Add a valid-from/valid-until window when a rate is time-bound; leave either blank for an open-ended rate. An expired entry stays visible in the list (flagged "Expired") but is skipped by the quotation auto-fill.',
+        'A customer-specific price always wins over the default rate for the same item when both exist.',
+      ], {
+        value: 'A rate re-typed from memory on every quotation drifts — the same item ends up billed differently to the same customer across two proposals with no record of which was right. A published rate list is the one place the real, current price for an item actually lives.',
+        outcome: 'Building a quotation for a repeat item is a lookup, not a guess — the rate is right there the moment the item is picked, still visible for you to confirm or override before saving.',
+        checklist: ['Set the default (all-customers) rate first; add a customer-specific override only where a real negotiated rate differs from it.', 'Refresh an expiring rate before it lapses — Quotations silently falls back to a blank/manual rate once it does, not the old number.'],
+        watchOut: 'This groups on the exact catalog item, not a typed description — a quotation line typed free-text without picking from the catalog never matches a price list entry, even if the words look the same.',
+      }),
       feature('sale-orders', 'Sale Orders', ShoppingCartIcon, ['The Sale Order is the confirmed commercial order. Linking it to a Project creates the Design/Engineering Scope of Supply handoff.', 'Convert to Project on a Sale Order creates the Project directly — no need to ask a PM out of band. Once a Project exists for that order, the button is gone; you\'re looking at the right one if it isn\'t there.', 'Request from Stores on a Sale Order raises a trade (SAS) request straight to Stores\' queue — describe the item and quantity, and Stores sees it immediately.']),
+      feature('costing', 'Costing', IndianRupeeIcon, [
+        'A "Costing" button appears on a Sale Order once it has a linked Project — before that there is no real BOM, PO, or labor data to cost against, so nothing shows.',
+        'Shows the quoted value against real actual cost: issued-PO spend (draft/cancelled POs don\'t count) plus logged job-card labor time. It updates live as Procurement issues POs and Production logs hours — check back rather than treating one look as final.',
+        'This is actual cost, not an estimate — there is deliberately no pre-sale cost prediction on the Quotation itself yet, since no real cost data exists before a Project does.',
+      ], {
+        value: 'A quoted margin only means something once it is checked against what the job actually cost. Without this, that comparison meant pulling PO totals and labor hours by hand, project by project.',
+        outcome: 'You can see, at any point after Sale Order conversion, whether a job is tracking to the margin it was quoted at — before it is too late to do anything about it.',
+        checklist: ['Treat an early-stage margin (little PO/labor data logged yet) as incomplete, not as a final number.', 'A negative margin shown in red is worth a real look, not a shrug — it means actual cost has already passed the quoted value.'],
+        watchOut: 'Material cost only counts what Procurement has issued a PO for — approved-but-not-yet-ordered BOM demand is invisible here, same as it is everywhere else in the app that reads issued spend.',
+      }),
+      feature('returns', 'Returns', UndoIcon, [
+        'Raise a return against a Sale Order with the item, quantity, and reason. It starts pending — nothing else happens until someone inspects it.',
+        'Move Inspection to accepted or rejected. Only accepted returns unlock a stock action: Restock (pick which inventory item it credits, adds the returned quantity straight to On-hand) or Scrap (no stock effect).',
+        'Credit note is a plain reference field — type the number once Accounts issues it. This app does not generate or post the credit note itself.',
+      ], {
+        value: 'Returned material that never gets logged either vanishes from the record entirely or quietly reappears in stock with no trace of why — neither is acceptable when a customer disputes what came back.',
+        outcome: 'Every return has a reason, an inspection decision, and — if it goes back on the shelf — a real stock movement tied to the specific inventory item it credited.',
+        checklist: ['Don\'t restock before Inspection is actually accepted — the stock action is deliberately locked until then.', 'Pick the real inventory item the material matches, not a close-sounding one — the on-hand credit lands on whatever you pick.'],
+        watchOut: 'Restock only ever adds quantity once — re-picking a different inventory item afterward does not move the credit, it was already applied to the first one.',
+      }),
       feature('notifications', 'Notifications', BellIcon, [
         'You do not get a notification for your own Sale Order the moment you create it — that one goes to Design and every PM-tier account (admin/manager/executive) instead, so they know a new order exists even before it becomes a Project. Check the Sale Orders list to confirm it saved; the bell is not the confirmation for your own action.',
         'You receive a notification when a Sale Order is converted to a Project. A Design Head (or a PM) does the converting, so this is how you find out the commercial-to-technical handoff actually happened without asking. Every PM-tier account gets the same notification at the same time.',
@@ -682,7 +762,17 @@ export const DEPARTMENT_HELP = {
         watchOut: 'Marking a notification read only proves you saw it. A "converted to Project" notice still means the commercial note or task you owe Design/Engineering needs to actually be added to the new Project.',
       }),
       feature('tasks', 'Tasks, notes, and calls', PhoneIcon, ['Log the outcome and next step after every meaningful contact. Add tasks with due dates instead of relying on memory.']),
-      feature('reports', 'Reports', BarChart3Icon, ['Use Sales Pipeline, By Department, Lead Funnel, Source, and Campaign reports to keep the funnel honest. Reports can be printed to PDF from the browser.']),
+      feature('reports', 'Reports', BarChart3Icon, ['Use Sales Pipeline, By Department, Agent Performance, Lead Funnel, Source, and Campaign reports to keep the funnel honest. Reports can be printed to PDF from the browser.']),
+      feature('agent-performance', 'Agent Performance', UserRoundIcon, [
+        'Reports → Agent Performance groups every lead, task, and opportunity by who it\'s assigned to (or, for opportunities, who created it — see the watch-out below) — no separate data entry, it reads what Leads/Tasks/Pipeline already record.',
+        'Leads assigned, conversion rate, and follow-up completion are real per-agent numbers straight off `assigned_to`. Won value and top lost reason are not — Opportunities has no per-agent owner field yet, so these are attributed by whoever created the opportunity record instead, labeled with an asterisk in the table.',
+        'Average response time is a proxy too: the gap between a lead being created and the first note logged against it, not a real tracked first-contact timestamp. Treat it as a rough signal, not an SLA measurement.',
+      ], {
+        value: 'Every other report here looks at the funnel as a whole. This is the one that answers "who is actually doing the work" — without it, a slow or overloaded agent is invisible until someone happens to notice.',
+        outcome: 'You can see, per agent, how much is on their plate and how it\'s converting — enough to rebalance assignment or follow up on a stalled patch, without pulling each agent\'s leads one at a time.',
+        checklist: ['Read Won value and Top lost reason as "who logged this," not "whose deal this really was," until Opportunities gets a real owner field.', 'Use response time to spot a pattern across many leads, not to judge one.'],
+        watchOut: 'An agent with zero leads/tasks/opportunities assigned to their username simply doesn\'t appear in the table — this is not a filtered-out or hidden row, there is nothing to show yet.',
+      }),
     ],
     howTo: [
       { section: 'Sale Order', title: 'Capture an enquiry', body: 'Create a Lead with the best contact details and source you have. Add a follow-up task immediately.' },

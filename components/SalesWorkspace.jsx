@@ -23,7 +23,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
 import {
   PlusIcon, TrashIcon, UserPlusIcon, UsersIcon, FileTextIcon, ShoppingCartIcon,
-  MegaphoneIcon, CheckSquareIcon, ContactIcon, MessageCircleIcon, MailIcon,
+  MegaphoneIcon, CheckSquareIcon, ContactIcon, MessageCircleIcon, MailIcon, TagIcon,
+  InboxIcon, UndoIcon, IndianRupeeIcon,
 } from 'lucide-react';
 import { api, showToast } from '@/lib/client';
 import { formatMoney } from '@/lib/format';
@@ -262,11 +263,14 @@ function LeadDetailSheet({ lead, users, onClose, router }) {
 
 const LEAD_FILTER_DEFAULT = { status: 'all', source: 'all', search: '' };
 
-function LeadsTab({ leads, users, savedViews, router }) {
+// STERP "Sales Enquiry" (SYSTEM.md §5e) — a raw enquiry already IS a status='new' lead
+// (isSlaBreached already special-cases it as the unactioned bucket); reuses this exact component
+// under the Enquiry nav entry with initialStatus='new' rather than a second table/entity.
+function LeadsTab({ leads, users, savedViews, router, initialStatus = 'all' }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [busyId, setBusyId] = useState(null);
   const [selected, setSelected] = useState(null);
-  const [filters, setFilters] = useState(LEAD_FILTER_DEFAULT);
+  const [filters, setFilters] = useState({ ...LEAD_FILTER_DEFAULT, status: initialStatus });
   const [views, setViews] = useState(savedViews);
   const [viewName, setViewName] = useState('');
 
@@ -518,16 +522,77 @@ function CustomersTab({ customers, router }) {
 // from an opportunity's own "Create Quotation" button carries opportunity_id, which is what lets
 // the auto-advance-to-Quoted in app/api/quotations/route.js actually fire (it never did before:
 // no UI path set opportunity_id, only a direct API call could).
+// STERP "Price Lists" (SYSTEM.md §5e) — search-as-you-type over the Item Master catalog, same
+// /api/items?search= idiom PrWorkspace/StoresWorkspace already each have their own copy of (not
+// worth force-sharing across three different line shapes). Picking an item also looks up the
+// matching price_lists rate (customer-specific first, else the default row) and auto-fills it —
+// still a plain editable number afterward, never locked. Re-runs the lookup when the customer
+// changes after an item is already picked, so picking item-then-customer works the same as
+// customer-then-item.
+function QuotationItemField({ item, customerId, onChange }) {
+  const [results, setResults] = useState([]);
+  const [open, setOpen] = useState(false);
+  const [priceHint, setPriceHint] = useState(null);
+
+  async function lookupPrice(itemId, custId) {
+    if (!itemId) { setPriceHint(null); return; }
+    try {
+      const match = await api(`/api/price-lists?item_id=${itemId}${custId ? `&customer_id=${custId}` : ''}`);
+      if (match) { onChange({ rate: match.rate }); setPriceHint(match.customer_id ? 'the customer price list' : 'the default price list'); }
+      else setPriceHint(null);
+    } catch { /* best-effort — a quote can always be priced by hand */ }
+  }
+
+  async function onType(v) {
+    onChange({ item_description: v, item_id: null });
+    setPriceHint(null);
+    if (v.trim().length < 2) { setResults([]); setOpen(false); return; }
+    try {
+      const rows = await api(`/api/items?search=${encodeURIComponent(v.trim())}`);
+      setResults(rows);
+      setOpen(rows.length > 0);
+    } catch { /* catalog search is best-effort — free text still works */ }
+  }
+
+  function pick(it) {
+    onChange({ item_description: it.item_name, uom: it.uom || item.uom, item_id: it.id });
+    setOpen(false);
+    lookupPrice(it.id, customerId);
+  }
+
+  useEffect(() => { if (item.item_id) lookupPrice(item.item_id, customerId); }, [customerId]);
+
+  return (
+    <div className="relative flex-1">
+      <Input placeholder="Description" value={item.item_description}
+        onChange={e => onType(e.target.value)}
+        onFocus={() => setOpen(results.length > 0)} onBlur={() => setTimeout(() => setOpen(false), 150)} />
+      {priceHint && <p className="mt-1 text-xs text-success">Rate from {priceHint}</p>}
+      {open && (
+        <div className="absolute top-full z-10 mt-1 w-full rounded-md border bg-popover shadow-md">
+          {results.map(it => (
+            <button key={it.id} type="button" className="flex w-full flex-col items-start gap-0.5 border-b px-3 py-1.5 text-left text-sm last:border-b-0 hover:bg-muted/40"
+              onMouseDown={() => pick(it)}>
+              <span className="font-medium">{it.item_name}</span>
+              <span className="text-xs text-muted-foreground">{it.item_code ? `${it.item_code} · ` : ''}{it.uom || '—'}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function NewQuotationDialog({ customers, opportunityId = null, initialCustomerId = '', onClose, router }) {
   const [customerId, setCustomerId] = useState(initialCustomerId ? String(initialCustomerId) : '');
   const [taxPct, setTaxPct] = useState('18');
-  const [items, setItems] = useState([{ item_description: '', qty: 1, uom: 'Nos', rate: 0 }]);
+  const [items, setItems] = useState([{ item_description: '', qty: 1, uom: 'Nos', rate: 0, item_id: null }]);
   const [saving, setSaving] = useState(false);
 
-  function updateItem(i, key, val) {
-    setItems(prev => prev.map((it, idx) => idx === i ? { ...it, [key]: val } : it));
+  function updateItem(i, patch) {
+    setItems(prev => prev.map((it, idx) => idx === i ? { ...it, ...patch } : it));
   }
-  function addRow() { setItems(prev => [...prev, { item_description: '', qty: 1, uom: 'Nos', rate: 0 }]); }
+  function addRow() { setItems(prev => [...prev, { item_description: '', qty: 1, uom: 'Nos', rate: 0, item_id: null }]); }
   function removeRow(i) { setItems(prev => prev.filter((_, idx) => idx !== i)); }
 
   async function save() {
@@ -561,10 +626,10 @@ export function NewQuotationDialog({ customers, opportunityId = null, initialCus
           <div className="flex flex-col gap-2">
             <Label>Line items</Label>
             {items.map((it, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <Input placeholder="Description" value={it.item_description} onChange={e => updateItem(i, 'item_description', e.target.value)} className="flex-1" />
-                <Input placeholder="Qty" type="number" value={it.qty} onChange={e => updateItem(i, 'qty', e.target.value)} className="w-20" />
-                <Input placeholder="Rate" type="number" value={it.rate} onChange={e => updateItem(i, 'rate', e.target.value)} className="w-32" />
+              <div key={i} className="flex items-start gap-2">
+                <QuotationItemField item={it} customerId={customerId} onChange={patch => updateItem(i, patch)} />
+                <Input placeholder="Qty" type="number" value={it.qty} onChange={e => updateItem(i, { qty: e.target.value })} className="w-20" />
+                <Input placeholder="Rate" type="number" value={it.rate} onChange={e => updateItem(i, { rate: e.target.value })} className="w-32" />
                 <Button size="sm" variant="ghost" onClick={() => removeRow(i)}><TrashIcon className="size-4" /></Button>
               </div>
             ))}
@@ -634,6 +699,167 @@ function QuotationsTab({ quotations, customers, router }) {
         )}
       </CardContent>
       {dialogOpen && <NewQuotationDialog customers={customers} router={router} onClose={() => setDialogOpen(false)} />}
+    </Card>
+  );
+}
+
+// --- Price Lists (STERP, SYSTEM.md §5e) ------------------------------------------------------------
+
+// Same catalog search-as-you-type as QuotationItemField, minus the price lookup — this dialog IS
+// where a rate gets entered, so there's nothing to auto-fill from.
+function PriceListItemField({ value, onChange }) {
+  const [results, setResults] = useState([]);
+  const [open, setOpen] = useState(false);
+
+  async function onType(v) {
+    onChange({ item_name: v, item_id: null });
+    if (v.trim().length < 2) { setResults([]); setOpen(false); return; }
+    try {
+      const rows = await api(`/api/items?search=${encodeURIComponent(v.trim())}`);
+      setResults(rows);
+      setOpen(rows.length > 0);
+    } catch { /* catalog search is best-effort */ }
+  }
+  function pick(it) {
+    onChange({ item_name: it.item_name, item_id: it.id, uom: it.uom || '' });
+    setOpen(false);
+  }
+
+  return (
+    <div className="relative">
+      <Input placeholder="Search the item catalog" value={value.item_name}
+        onChange={e => onType(e.target.value)}
+        onFocus={() => setOpen(results.length > 0)} onBlur={() => setTimeout(() => setOpen(false), 150)} />
+      {open && (
+        <div className="absolute top-full z-10 mt-1 w-full rounded-md border bg-popover shadow-md">
+          {results.map(it => (
+            <button key={it.id} type="button" className="flex w-full flex-col items-start gap-0.5 border-b px-3 py-1.5 text-left text-sm last:border-b-0 hover:bg-muted/40"
+              onMouseDown={() => pick(it)}>
+              <span className="font-medium">{it.item_name}</span>
+              <span className="text-xs text-muted-foreground">{it.item_code ? `${it.item_code} · ` : ''}{it.uom || '—'}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AddPriceListDialog({ customers, onClose, router }) {
+  const [item, setItem] = useState({ item_name: '', item_id: null, uom: '' });
+  const [customerId, setCustomerId] = useState('__all__');
+  const [rate, setRate] = useState('');
+  const [validFrom, setValidFrom] = useState('');
+  const [validUntil, setValidUntil] = useState('');
+  const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    if (!item.item_id) return showToast('Pick an item from the catalog', 'error');
+    if (!(Number(rate) > 0)) return showToast('Rate must be a positive number', 'error');
+    setSaving(true);
+    try {
+      await api('/api/price-lists', {
+        method: 'POST',
+        body: {
+          item_id: item.item_id, customer_id: customerId === '__all__' ? null : customerId,
+          rate: Number(rate), uom: item.uom || null, valid_from: validFrom || null, valid_until: validUntil || null,
+          notes: notes.trim() || null,
+        },
+      });
+      showToast('Price added');
+      router.refresh();
+      onClose();
+    } catch (err) { showToast(err.message, 'error'); } finally { setSaving(false); }
+  }
+
+  return (
+    <Dialog open onOpenChange={o => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>New Price</DialogTitle></DialogHeader>
+        <div className="flex flex-col gap-3">
+          <div className="grid gap-1.5">
+            <Label>Item</Label>
+            <PriceListItemField value={item} onChange={patch => setItem(prev => ({ ...prev, ...patch }))} />
+          </div>
+          <div className="grid gap-1.5">
+            <Label>Customer</Label>
+            <Select value={customerId} onValueChange={setCustomerId}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">All customers (default rate)</SelectItem>
+                {customers.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-1.5"><Label>Rate</Label><Input type="number" value={rate} onChange={e => setRate(e.target.value)} autoFocus={!!item.item_id} /></div>
+            <div className="grid gap-1.5"><Label>UoM</Label><Input value={item.uom} onChange={e => setItem(prev => ({ ...prev, uom: e.target.value }))} /></div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-1.5"><Label>Valid from (optional)</Label><Input type="date" value={validFrom} onChange={e => setValidFrom(e.target.value)} /></div>
+            <div className="grid gap-1.5"><Label>Valid until (optional)</Label><Input type="date" value={validUntil} onChange={e => setValidUntil(e.target.value)} /></div>
+          </div>
+          <div className="grid gap-1.5"><Label>Notes (optional)</Label><Input value={notes} onChange={e => setNotes(e.target.value)} /></div>
+        </div>
+        <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Add Price'}</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function PriceListRow({ pl, router }) {
+  const [busy, setBusy] = useState(false);
+  const today = new Date().toISOString().slice(0, 10);
+  const expired = pl.valid_until && pl.valid_until < today;
+
+  async function remove() {
+    if (!window.confirm(`Remove this price for ${pl.item_name}?`)) return;
+    setBusy(true);
+    try {
+      await api(`/api/price-lists/${pl.id}`, { method: 'DELETE' });
+      showToast('Price removed');
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+    setBusy(false);
+  }
+
+  return (
+    <TableRow>
+      <TableCell className="font-medium">
+        {pl.item_name}
+        {pl.item_code && <span className="ml-1.5 text-xs font-normal text-muted-foreground">{pl.item_code}</span>}
+      </TableCell>
+      <TableCell>{pl.customer_name || <Badge variant="outline">All customers</Badge>}</TableCell>
+      <TableCell className="tnum">{formatMoney(pl.rate)}{pl.uom ? `/${pl.uom}` : ''}</TableCell>
+      <TableCell className="text-muted-foreground">
+        {pl.valid_from || '—'} – {pl.valid_until || 'open'}
+        {expired && <Badge variant="destructive" className="ml-1.5">Expired</Badge>}
+      </TableCell>
+      <TableCell><Button size="icon-sm" variant="ghost" disabled={busy} onClick={remove}><TrashIcon className="size-4" /></Button></TableCell>
+    </TableRow>
+  );
+}
+
+function PriceListsTab({ priceLists, customers, router }) {
+  const [dialogOpen, setDialogOpen] = useState(false);
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Price Lists</CardTitle>
+        <CardAction><Button size="sm" onClick={() => setDialogOpen(true)}><PlusIcon />New Price</Button></CardAction>
+      </CardHeader>
+      <CardContent>
+        {priceLists.length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">No prices set yet — quotations fall back to a manually typed rate.</p>
+        ) : (
+          <Table>
+            <TableHeader><TableRow><TableHead>Item</TableHead><TableHead>Customer</TableHead><TableHead>Rate</TableHead><TableHead>Validity</TableHead><TableHead /></TableRow></TableHeader>
+            <TableBody>{priceLists.map(pl => <PriceListRow key={pl.id} pl={pl} router={router} />)}</TableBody>
+          </Table>
+        )}
+      </CardContent>
+      {dialogOpen && <AddPriceListDialog customers={customers} router={router} onClose={() => setDialogOpen(false)} />}
     </Card>
   );
 }
@@ -775,10 +1001,43 @@ function RequestFromStoresDialog({ so, onClose, router }) {
   );
 }
 
+// STERP "Sales Costing" (SYSTEM.md §5e) — post-sale only, real numbers: actual issued-PO spend +
+// actual labor cost against the Project vs. the Sale Order's quoted total. Only ever shown once a
+// Project exists (canCreateProject's own !so.project_id gate proves the button below is correct) —
+// there's no honest cost data before that point, see lib/data.js's getProjectCosting comment.
+function CostingSheet({ so, onClose }) {
+  const [costing, setCosting] = useState(null);
+  useEffect(() => { api(`/api/projects/${so.project_id}/costing`).then(setCosting).catch(() => {}); }, [so.project_id]);
+
+  return (
+    <Sheet open onOpenChange={o => !o && onClose()}>
+      <SheetContent className="w-full sm:max-w-md">
+        <SheetHeader><SheetTitle>Costing — {so.so_no}</SheetTitle></SheetHeader>
+        <div className="flex flex-col gap-3 px-4 pb-4">
+          {!costing ? <p className="text-sm text-muted-foreground">Loading…</p> : (
+            <>
+              <div className="flex justify-between text-sm"><span className="text-muted-foreground">Quoted value</span><span className="tnum font-medium">{formatMoney(costing.sellingValue)}</span></div>
+              <div className="flex justify-between text-sm"><span className="text-muted-foreground">Material cost (issued POs)</span><span className="tnum">{formatMoney(costing.materialCost)}</span></div>
+              <div className="flex justify-between text-sm"><span className="text-muted-foreground">Labor cost (job-card time logs)</span><span className="tnum">{formatMoney(costing.laborCost)}</span></div>
+              <div className="flex justify-between border-t pt-2 text-sm font-medium"><span>Total actual cost</span><span className="tnum">{formatMoney(costing.totalCost)}</span></div>
+              <div className={`flex justify-between text-sm font-semibold ${costing.margin < 0 ? 'text-destructive' : 'text-success'}`}>
+                <span>Margin</span><span className="tnum">{formatMoney(costing.margin)}{costing.marginPct != null ? ` (${costing.marginPct}%)` : ''}</span>
+              </div>
+              <p className="text-xs text-muted-foreground">Actual cost only — draft/cancelled POs and un-logged labor aren't counted. Updates live as Procurement issues POs and Production logs time.</p>
+            </>
+          )}
+        </div>
+        <SheetFooter><Button variant="outline" onClick={onClose}>Close</Button></SheetFooter>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 function SaleOrdersTab({ saleOrders, router, canCreateProject = false }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [convertSo, setConvertSo] = useState(null);
   const [sasSo, setSasSo] = useState(null);
+  const [costingSo, setCostingSo] = useState(null);
   return (
     <Card>
       <CardHeader>
@@ -799,6 +1058,7 @@ function SaleOrdersTab({ saleOrders, router, canCreateProject = false }) {
                   <TableCell><Badge variant={so.status === 'open' ? 'outline' : 'default'}>{so.status || 'open'}</Badge></TableCell>
                   <TableCell className="text-muted-foreground">{new Date(so.created_at).toLocaleDateString()}</TableCell>
                   <TableCell className="flex justify-end gap-2">
+                    {so.project_id && <Button size="sm" variant="outline" onClick={() => setCostingSo(so)}><IndianRupeeIcon />Costing</Button>}
                     <Button size="sm" variant="outline" onClick={() => setSasSo(so)}>Request from Stores</Button>
                     {canCreateProject && !so.project_id && <Button size="sm" variant="outline" onClick={() => setConvertSo(so)}>Convert to Project</Button>}
                   </TableCell>
@@ -811,6 +1071,128 @@ function SaleOrdersTab({ saleOrders, router, canCreateProject = false }) {
       {dialogOpen && <AddSaleOrderDialog router={router} onClose={() => setDialogOpen(false)} />}
       {convertSo && <ConvertToProjectDialog so={convertSo} router={router} onClose={() => setConvertSo(null)} />}
       {sasSo && <RequestFromStoresDialog so={sasSo} router={router} onClose={() => setSasSo(null)} />}
+      {costingSo && <CostingSheet so={costingSo} onClose={() => setCostingSo(null)} />}
+    </Card>
+  );
+}
+
+// --- Returns (STERP, SYSTEM.md §5e) ----------------------------------------------------------------
+
+function AddReturnDialog({ saleOrders, onClose, router }) {
+  const [soId, setSoId] = useState('');
+  const [description, setDescription] = useState('');
+  const [qty, setQty] = useState('');
+  const [reason, setReason] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    if (!soId) return showToast('Sale Order is required', 'error');
+    if (!description.trim()) return showToast('Item description is required', 'error');
+    if (!(Number(qty) > 0)) return showToast('Quantity must be a positive number', 'error');
+    setSaving(true);
+    try {
+      await api('/api/sales-returns', {
+        method: 'POST',
+        body: { sale_order_id: soId, item_description: description.trim(), qty: Number(qty), reason: reason.trim() || null },
+      });
+      showToast('Return raised');
+      router.refresh();
+      onClose();
+    } catch (err) { showToast(err.message, 'error'); } finally { setSaving(false); }
+  }
+
+  return (
+    <Dialog open onOpenChange={o => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Raise a Return</DialogTitle></DialogHeader>
+        <div className="flex flex-col gap-3">
+          <div className="grid gap-1.5">
+            <Label>Sale Order</Label>
+            <Select value={soId} onValueChange={setSoId}>
+              <SelectTrigger><SelectValue placeholder="Choose Sale Order" /></SelectTrigger>
+              <SelectContent>{saleOrders.map(so => <SelectItem key={so.id} value={String(so.id)}>{so.so_no}{so.customer_name ? ` · ${so.customer_name}` : ''}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          <div className="grid gap-1.5"><Label>Item description</Label><Input value={description} onChange={e => setDescription(e.target.value)} autoFocus /></div>
+          <div className="grid gap-1.5 sm:w-32"><Label>Quantity</Label><Input type="number" value={qty} onChange={e => setQty(e.target.value)} /></div>
+          <div className="grid gap-1.5"><Label>Reason (optional)</Label><Input value={reason} onChange={e => setReason(e.target.value)} placeholder="Damaged in transit, wrong item, customer changed spec…" /></div>
+        </div>
+        <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Raise Return'}</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+const OUTCOME_TONE = { pending: 'outline', accepted: 'default', rejected: 'destructive' };
+
+function ReturnRow({ ret, inventoryItems, router }) {
+  const [busy, setBusy] = useState(false);
+  const [invPick, setInvPick] = useState(ret.inventory_item_id ? String(ret.inventory_item_id) : '');
+  const [creditRef, setCreditRef] = useState(ret.credit_note_ref || '');
+
+  async function patch(body) {
+    setBusy(true);
+    try {
+      await api(`/api/sales-returns/${ret.id}`, { method: 'PATCH', body });
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+    setBusy(false);
+  }
+
+  return (
+    <TableRow>
+      <TableCell className="font-medium">{ret.so_no}<div className="text-xs font-normal text-muted-foreground">{ret.customer_name}</div></TableCell>
+      <TableCell>{ret.item_description}<div className="text-xs text-muted-foreground">{ret.reason || '—'}</div></TableCell>
+      <TableCell className="tnum">{ret.qty}</TableCell>
+      <TableCell>
+        <Select value={ret.inspection_outcome} onValueChange={v => patch({ inspection_outcome: v })} disabled={busy}>
+          <SelectTrigger className="h-7 w-28"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {['pending', 'accepted', 'rejected'].map(s => <SelectItem key={s} value={s}><Badge variant={OUTCOME_TONE[s]}>{s}</Badge></SelectItem>)}
+          </SelectContent>
+        </Select>
+      </TableCell>
+      <TableCell>
+        {ret.inspection_outcome === 'accepted' ? (
+          ret.stock_action === 'returned_to_stock' ? (
+            <span className="text-xs text-success">Restocked — {ret.inventory_description || '—'}</span>
+          ) : (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Select value={invPick} onValueChange={setInvPick} disabled={busy}>
+                <SelectTrigger className="h-7 w-40"><SelectValue placeholder="Inventory item…" /></SelectTrigger>
+                <SelectContent>{inventoryItems.map(i => <SelectItem key={i.id} value={String(i.id)}>{i.description}</SelectItem>)}</SelectContent>
+              </Select>
+              <Button size="sm" variant="outline" disabled={busy || !invPick} onClick={() => patch({ stock_action: 'returned_to_stock', inventory_item_id: invPick })}>Restock</Button>
+              <Button size="sm" variant="ghost" disabled={busy} onClick={() => patch({ stock_action: 'scrapped' })}>Scrap</Button>
+            </div>
+          )
+        ) : <span className="text-xs text-muted-foreground">{ret.stock_action === 'scrapped' ? 'Scrapped' : '—'}</span>}
+      </TableCell>
+      <TableCell>
+        <Input value={creditRef} onChange={e => setCreditRef(e.target.value)} onBlur={() => creditRef !== (ret.credit_note_ref || '') && patch({ credit_note_ref: creditRef })}
+          placeholder="Credit note #" className="h-7 w-32" disabled={busy} />
+      </TableCell>
+    </TableRow>
+  );
+}
+
+function ReturnsTab({ returns, saleOrders, inventoryItems, router }) {
+  const [dialogOpen, setDialogOpen] = useState(false);
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Returns</CardTitle>
+        <CardAction><Button size="sm" onClick={() => setDialogOpen(true)}><PlusIcon />Raise Return</Button></CardAction>
+      </CardHeader>
+      <CardContent>
+        {returns.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No returns raised yet.</p> : (
+          <Table>
+            <TableHeader><TableRow><TableHead>Sale Order</TableHead><TableHead>Item</TableHead><TableHead>Qty</TableHead><TableHead>Inspection</TableHead><TableHead>Stock action</TableHead><TableHead>Credit note</TableHead></TableRow></TableHeader>
+            <TableBody>{returns.map(r => <ReturnRow key={r.id} ret={r} inventoryItems={inventoryItems} router={router} />)}</TableBody>
+          </Table>
+        )}
+      </CardContent>
+      {dialogOpen && <AddReturnDialog saleOrders={saleOrders} router={router} onClose={() => setDialogOpen(false)} />}
     </Card>
   );
 }
@@ -977,16 +1359,19 @@ const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 // department instead of grouped, same shadcn Sidebar primitives, same local-state active-panel
 // mechanism as the Tabs it replaces.
 const PANELS = [
+  { key: 'enquiry', label: 'Enquiry', icon: InboxIcon, description: 'New, not-yet-qualified enquiries', salesOnly: false },
   { key: 'leads', label: 'Leads', icon: UserPlusIcon, description: 'Prospects not yet qualified', salesOnly: false },
   { key: 'customers', label: 'Customers', icon: UsersIcon, description: 'Accounts, contacts and addresses', salesOnly: true },
   { key: 'quotations', label: 'Quotations', icon: FileTextIcon, description: 'Proposals sent to customers', salesOnly: true },
+  { key: 'price_lists', label: 'Price Lists', icon: TagIcon, description: 'Customer/product rates and validity', salesOnly: true },
   { key: 'sale_orders', label: 'Sale Orders', icon: ShoppingCartIcon, description: 'Accepted orders', salesOnly: true },
+  { key: 'returns', label: 'Returns', icon: UndoIcon, description: 'Returned material against a Sale Order', salesOnly: true },
   { key: 'campaigns', label: 'Campaigns', icon: MegaphoneIcon, description: 'Marketing initiatives', salesOnly: false },
   { key: 'tasks', label: 'Tasks', icon: CheckSquareIcon, description: 'Every to-do across leads, deals and customers', salesOnly: false },
   { key: 'team', label: 'Team', icon: ContactIcon, description: 'Auto-assign new leads round-robin', salesOnly: false },
 ];
 
-export default function SalesWorkspace({ saleOrders, leads, customers, quotations, campaigns, departments = ['Sales', 'Marketing'], users = [], savedViews = [], canCreateProject = false }) {
+export default function SalesWorkspace({ saleOrders, leads, customers, quotations, campaigns, priceLists = [], returns = [], inventoryItems = [], departments = ['Sales', 'Marketing'], users = [], savedViews = [], canCreateProject = false }) {
   const router = useRouter();
   const [panel, setPanel] = useState('leads');
   // Customers/Quotations/Sale Orders are the commercial fulfilment chain — Sales-owned. Marketing
@@ -1042,10 +1427,13 @@ export default function SalesWorkspace({ saleOrders, leads, customers, quotation
           </div>
         </div>
         <div className="flex-1 overflow-auto p-4">
+          {activePanel.key === 'enquiry' && <LeadsTab leads={leads} users={users} savedViews={savedViews} router={router} initialStatus="new" />}
           {activePanel.key === 'leads' && <LeadsTab leads={leads} users={users} savedViews={savedViews} router={router} />}
           {activePanel.key === 'customers' && <CustomersTab customers={customers} router={router} />}
           {activePanel.key === 'quotations' && <QuotationsTab quotations={quotations} customers={customers} router={router} />}
+          {activePanel.key === 'price_lists' && <PriceListsTab priceLists={priceLists} customers={customers} router={router} />}
           {activePanel.key === 'sale_orders' && <SaleOrdersTab saleOrders={saleOrders} router={router} canCreateProject={canCreateProject} />}
+          {activePanel.key === 'returns' && <ReturnsTab returns={returns} saleOrders={saleOrders} inventoryItems={inventoryItems} router={router} />}
           {activePanel.key === 'campaigns' && <CampaignsTab campaigns={campaigns} router={router} />}
           {activePanel.key === 'tasks' && <AllTasksTab users={users} />}
           {activePanel.key === 'team' && <TeamTab users={users} departments={departments} />}

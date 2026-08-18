@@ -53,19 +53,22 @@ function normalizeWords(s) {
 // the page (no new query, no new schema). Each chip switches to the sidebar tab it counts — the
 // workspace moved to WorkspaceSidebar's tabbed sections, so an anchor-jump to an on-page div id
 // no longer reaches a section that isn't mounted on the current tab.
-function TodaySummary({ inventoryItems, openRequests, activeReservations, onNavigate }) {
+function TodaySummary({ inventoryItems, openRequests, activeReservations, onNavigate, onShowLowStock }) {
   const lowStock = inventoryItems.filter(isLowStock).length;
   const withMatch = openRequests.filter(r => possibleMatches(r, inventoryItems).length > 0).length;
   const chips = [
     { tab: 'requests', dot: 'bg-warning', value: openRequests.length, label: 'open request' + (openRequests.length === 1 ? '' : 's') },
     { tab: 'requests', dot: 'bg-info', value: withMatch, label: 'with a possible match' },
-    { tab: 'inventory', dot: 'bg-danger', value: lowStock, label: 'low stock' },
+    // Below-minimum chip doubles as the Inventory table's filter switch (onShowLowStock), not
+    // just a tab jump — previously it navigated to Inventory (already the default tab) and did
+    // nothing else, so clicking it never actually narrowed anything.
+    { tab: 'inventory', dot: 'bg-danger', value: lowStock, label: 'low stock', onClick: onShowLowStock },
     { tab: 'reservations', dot: 'bg-success', value: activeReservations.length, label: 'ready to issue' },
   ];
   return (
     <div className="flex flex-wrap gap-2">
       {chips.map(c => (
-        <button key={c.label} type="button" onClick={() => onNavigate(c.tab)}
+        <button key={c.label} type="button" onClick={() => { onNavigate(c.tab); c.onClick?.(); }}
           className="flex items-center gap-2 rounded-full border bg-card px-3 py-1.5 text-sm shadow-sm transition-colors hover:bg-muted/50">
           <span className={`size-2 rounded-full ${c.dot}`} />
           <span className="font-semibold tnum">{c.value}</span>
@@ -182,7 +185,7 @@ function ItemFormDialog({ item, onClose, router }) {
             <Input type="number" value={onHand} onChange={e => setOnHand(e.target.value)} />
           </div>
           <div className="grid gap-1.5">
-            <Label>Reorder point (optional)</Label>
+            <Label>Minimum stock level (optional)</Label>
             <Input type="number" value={reorderPoint} onChange={e => setReorderPoint(e.target.value)} />
           </div>
           <div className="col-span-2 grid gap-1.5">
@@ -531,25 +534,35 @@ const NAV_ITEMS = (counts) => [
 function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavigate }) {
   const router = useRouter();
   const [dialogItem, setDialogItem] = useState(undefined); // undefined = closed, null = add, {} = edit
+  const [lowOnly, setLowOnly] = useState(false);
   const lowStockCount = inventoryItems.filter(isLowStock).length;
+  const shown = lowOnly ? inventoryItems.filter(isLowStock) : inventoryItems;
 
   return (
     <div className="flex flex-col gap-6">
       <ReservationModeToggle />
-      <TodaySummary inventoryItems={inventoryItems} openRequests={openRequests} activeReservations={activeReservations} onNavigate={onNavigate} />
+      <TodaySummary inventoryItems={inventoryItems} openRequests={openRequests} activeReservations={activeReservations}
+        onNavigate={onNavigate} onShowLowStock={() => setLowOnly(true)} />
       <Card>
         <CardHeader>
           <CardTitle>
             Inventory
             {lowStockCount > 0 && <Badge variant="destructive" className="ml-2">{lowStockCount} low stock</Badge>}
           </CardTitle>
-          <CardAction>
+          <CardAction className="flex items-center gap-2">
+            {lowStockCount > 0 && (
+              <Button size="sm" variant={lowOnly ? 'secondary' : 'outline'} onClick={() => setLowOnly(v => !v)}>
+                {lowOnly ? 'Showing below minimum' : 'Below minimum only'}
+              </Button>
+            )}
             <Button size="sm" onClick={() => setDialogItem(null)}><PlusIcon />New item</Button>
           </CardAction>
         </CardHeader>
         <CardContent>
           {inventoryItems.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">No inventory items yet.</p>
+          ) : shown.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">Nothing below its minimum right now.</p>
           ) : (
             <Table>
               <TableHeader>
@@ -559,12 +572,12 @@ function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavi
                   <TableHead>On-hand</TableHead>
                   <TableHead>Available</TableHead>
                   <TableHead>Location</TableHead>
-                  <TableHead>Reorder pt.</TableHead>
+                  <TableHead>Minimum</TableHead>
                   <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {inventoryItems.map(it => (
+                {shown.map(it => (
                   <TableRow key={it.id}>
                     <TableCell className="font-medium">{it.description}</TableCell>
                     <TableCell className="text-muted-foreground">{it.spec || '—'}</TableCell>
