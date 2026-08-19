@@ -2172,6 +2172,112 @@ Closes the loop from BOM authoring through to a traceable production baseline, r
   commit silently rolled it back. Fixed with a `lineRef` mirror read only by that one post-await
   update; every synchronous handler is untouched.
 
+**Same-day follow-on** — template traceability, PDF export, un-release, and the Release BOM tab
+becoming the actual management surface (not just a summary + button):
+
+- **`bom_items.template_id`** (live FK to `bom_templates`, same lineage idiom as `import_id` →
+  `bom_imports`) — every applied line now says which template it came from. `BomTable` shows
+  `via {template name}` inline; the release-bom GET route returns `templatesApplied` (name + count
+  per template on the project), rendered as a badge row above the table.
+- **Multi-template apply is chain-friendly** — `UseTemplateDialog` no longer closes after one
+  apply; it resets to let you pick another template against the same project, with a "Done" button
+  once finished. A duplicate `item_id` already on the project (same template re-applied, or two
+  templates sharing a line) prompts a plain `confirm()` before inserting a second copy — the same
+  check now lives in both the Raise PR dialog and the older Templates-tab `ApplyTemplateDialog`,
+  which needed the identical fix (it was silently reporting success on a skipped apply).
+- **BOM PDF** — `lib/bom-pdf.js` (modeled directly on `lib/sos-pdf.js`, same `@react-pdf/renderer`
+  approach) + `GET /api/projects/[id]/bom/pdf`. One landscape table: description, Item Code, MOC,
+  size/spec, drawing, qty, status.
+- **Un-release** — no new mechanism: reuses the existing generic `POST /api/milestones/[id]/reopen`
+  (the same "send back for rework" action `TicketsPanel.jsx` already exposes for any milestone).
+  `release_bom` is just another milestone, so reopening it needs a reason and un-does `markMilestoneDone`
+  exactly like any other reopen. Revision counters never roll back — releasing again gets a fresh,
+  higher `bom_release_revision`.
+- **Release BOM tab now embeds `BomTable` directly** — the same searchable/editable/deletable table
+  every department panel already uses, fed by a new `?all=1` mode on `GET /api/projects/[id]/bom`
+  (delegates to `getProjectBom`, no second query shape). Release / PDF / Un-release moved into
+  `CardAction` (top right), matching the placement pattern used elsewhere (e.g. Raise PR's "Use
+  template" button). `BomTable` gained an optional `onSaved` callback — additive, every existing
+  caller unaffected — because a client-fetched `bom` list (this tab, same as `ProductionBomTab`)
+  never picks up `router.refresh()`'s server-prop refresh on its own.
+- **Two real bugs, same root cause, fixed live**: `getProjectBom()` returns
+  `{ bom, pending, readyForPacking, imports }`, not a bare array — the new `?all=1` branch and the
+  PDF route both passed the whole object where `BomTable`/`bom-pdf.js` expected `bom.map(...)`,
+  crashing the table and breaking the PDF download. Fixed both call sites to destructure `.bom`,
+  matching every pre-existing caller (`app/projects/[id]/page.js`, `pending-pdf`, `packing/from-bom`).
+
+## 5l. Work Orders — production-control layer above Job Cards (2026-08-19, STERP Priority 2/3 items 20-21-22-23-24-27-28-29, no separate working-spec doc — folded straight in here)
+
+Closes out Production's remaining STERP list. Job Cards (§5g) were already the shop-floor execution
+record — milestone-scoped, with time logs, consumables, and rework lineage — but there was no real
+production-order entity above them. This adds one: `work_orders`, referencing a project's live BOM
+release baseline (`bom_release_revision`, §5k) rather than a frozen copy, carrying a Process Route
+Card and material requirements, and generating/linking the existing Job Cards underneath it. Nothing
+about Job Cards' own execution model (time logs, consumables, rework) was rebuilt — a Work Order is
+a new layer on top, not a replacement.
+
+- **`work_orders`** — `wo_no` (`nextNumber('wo_no', 'WO')`, same counter idiom as `po_no`/`so_no`),
+  `mode` (`against_order` | `against_stock`, items 22/23), `project_id`/`sale_order_id` (both
+  nullable — a stock Work Order has neither), `qty_planned`, `bom_release_revision` (snapshotted
+  from the project at creation, item 21's "linked to the approved BOM Release Revision"),
+  `planned_start`/`planned_end`, `status` (`draft` → `released` → `in_progress` → `completed`, or
+  `cancelled` from any open state).
+- **`work_order_operations` is the Process Route Card (item 24)** — sequence, `operation_id`/
+  `workstation_id` (the same masters §5g already built, not a parallel taxonomy),
+  `milestone_id` (optional — mapping a route step to a real Production milestone keeps
+  `lib/milestone-auto.js`'s existing automation firing for against_order Work Orders exactly as it
+  does for hand-created cards), `department`, `planned_minutes`, `inputs`/`outputs`,
+  `quality_checkpoint`. Only editable while the Work Order is `draft` — once released, routing is a
+  baseline field, same lock as quantity/dates below.
+- **`work_order_materials`** — the BOM/material link (item 21, and item 27's material-consumption
+  rollup). A line either carries `bom_item_id` (against_order — issued quantity is read live off
+  `material_issues`, never a second ledger) or its own `item_id`/`description` with a manual
+  `qty_issued` column (against_stock, which has no `bom_items` row to point at — a small "Log issue"
+  action updates it directly).
+- **Job Cards get `work_order_id`/`work_order_operation_id`** (nullable — hand-created cards outside
+  a Work Order are unaffected) and **`job_cards.project_id` becomes nullable** — a table rebuild
+  (`relaxJobCardsProjectIdForWorkOrders`, same idiom as `reshapeJobCardsForMilestone`), the one real
+  schema change against-stock Work Orders required, since a stock Work Order has no project for its
+  generated cards to belong to. `POST /api/work-orders/[id]/generate-job-cards` creates one card per
+  route step that doesn't already have one (safe to call again after adding a step later), so
+  "generate/link multiple Job Cards" is one action instead of hand-creating each.
+- **Work Order Process Tracking (item 27)** — `getWorkOrderDetail()`'s `progress` block: job-card
+  completion (`qtyDone`/`qtyRejected` summed off linked cards), operation status per route step
+  (`job_card_count`/`job_cards_done`), a `delayed` flag (past `planned_end`, not yet at target qty),
+  and a rework count — all derived from existing relationships, no new tracking table.
+- **Work Order Change Note (item 28)** — `work_order_change_notes` (field/old/new/reason). Once a
+  Work Order is past `draft`, `qty_planned`/`planned_start`/`planned_end`/`product_description` can
+  only move through `POST .../change-notes`, which applies the field and logs the note together;
+  a direct `PATCH` on those fields 400s with a pointer to the Change Note route instead.
+- **Work Order Costing (item 29)** — extends `getProjectCosting()` (Sales' own project-costing view,
+  §5e) with an optional `workOrderId` param that scopes the labor query to that Work Order's own job
+  cards, rather than building a second, possibly conflicting cost rollup. `getWorkOrderCosting()`
+  reuses it for the actual side on against_order Work Orders (material stays project-scoped — POs
+  aren't raised per-WO in this app); against_stock Work Orders, which have no project to reuse it
+  against, compute actual cost directly off the same tables. Planned material is
+  `Σ qty_required × unit_cost` (manually entered — this app has no item-level standard-rate master);
+  planned labor is each route step's `planned_minutes × workstation.machine_hour_rate` where set.
+  Subcontract/overhead: no cost field exists anywhere for outside-work vendor pricing or overhead
+  allocation, so this lists the outside job cards instead of fabricating a number.
+- **Production Forecasting (item 20)** — `getProductionForecast()`: released/in-progress Work Orders
+  due within a horizon (their planned dates already come from project milestones/order dates at
+  Work-Order-creation time — nothing new to derive there), their route cards' still-open planned
+  time per workstation (flagged `overloaded` against a flat single-shift-per-day capacity assumption
+  — `ponytail`: the upgrade path once this shop runs multiple shifts is a real capacity calendar, not
+  needed yet), and their still-outstanding material lines (same live `material_issues` read as the
+  detail view, so a BOM-linked line's outstanding quantity is real, not stale).
+- **UI** — `components/WorkOrdersPanel.jsx` (list + create + the full detail sheet: route card,
+  materials, linked job cards, change notes, costing) and `components/ProductionForecastPanel.jsx`,
+  both new tabs on the existing Job Card `WorkspaceSidebar` (`components/WorkersPanel.jsx`) —
+  **Work Orders** and **Forecast** — next to Job Card/BOM/Daily Sheet/Workers Roster, not a new nav
+  item or page route.
+- **Action Permissions** — `production.workorder.create`/`.edit`/`.release`/`.change_note`, same
+  admin-configurable catalog (§5i) every other department action already goes through.
+- **What this corrects in STERP.md**: the Priority 3 list previously showed **Job Card** and **Job
+  Card Process Tracking** (items 25/26) as missing. They were already built in §5g (2026-08-16) —
+  milestone-scoped cards, time logs, qty done/rejected, rework lineage — before this round even
+  started; STERP.md's own labels were stale, not the app. Fixed in this pass (see STERP.md).
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own
@@ -2207,6 +2313,11 @@ job_cards ──< job_card_consumables               (§5g — welding rods/gas/
 job_cards ──> job_cards (rework_of, self)        (§5g — QC-fail/rejected-qty rework lineage)
 bom_items ──< material_issues                    (§5g — structured Stores/Production→WIP consumption, job_card_id optional)
 operations / workstations / trades               (§5g/§3a — flat masters; workstations carries machine_hour_rate, employees.trade_id-equivalent is the free-text `employees.trade` validated against `trades`)
+work_orders ──< work_order_operations             (§5l — the Process Route Card; operation_id/workstation_id/milestone_id all optional pointers into existing masters)
+work_orders ──< work_order_materials               (§5l — bom_item_id link for against_order, or its own item_id/description + manual qty_issued for against_stock)
+work_orders ──< work_order_change_notes           (§5l — field/old/new/reason, the only path to move a released Work Order's baseline)
+work_orders ──< job_cards (work_order_id, work_order_operation_id, both optional)  (§5l — generated execution records; job_cards.project_id is nullable for against_stock Work Orders with no project)
+work_orders ──> projects / sale_orders (project_id, sale_order_id, both optional)  (§5l — against_order vs. against_stock)
 sale_orders ──< projects                          (company decided at the Sale Order — the commercial commitment — and copied onto the project at creation; projects.company is the denormalized read)
 users (role + departments CSV + project_ids CSV [customer scoping, one-or-more] + pending flag)
 ```

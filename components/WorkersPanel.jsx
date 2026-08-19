@@ -18,12 +18,14 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectGroup, SelectItem,
 } from '@/components/ui/select';
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table';
-import { PlusIcon, HouseIcon, ClipboardListIcon, UsersIcon, HardHatIcon, PackageIcon, ScissorsIcon, TrashIcon } from 'lucide-react';
+import { PlusIcon, HouseIcon, ClipboardListIcon, UsersIcon, HardHatIcon, PackageIcon, ScissorsIcon, TrashIcon, ClipboardIcon, TrendingUpIcon } from 'lucide-react';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 import JobCardBoard from '@/components/JobCardBoard';
 import BomTable from '@/components/BomTable';
 import { BOM_FIELD_OWNERS } from '@/lib/bom-fields.mjs';
 import QuickAddInline from '@/components/QuickAddInline';
+import WorkOrdersPanel from '@/components/WorkOrdersPanel';
+import ProductionForecastPanel from '@/components/ProductionForecastPanel';
 
 // Renamed from "Workers" to "Job Card" (PRODUCTION-MODULE-DESIGN.md §3.1 nav decision) — job cards
 // get touched far more often per day than the roster/attendance sub-tabs, so work planning is the
@@ -32,7 +34,9 @@ export default function WorkersPanel({ date, sheet, workers, projects, trades, j
   const [tab, setTab] = useState('jobcards');
   const navItems = [
     { key: 'jobcards', label: 'Job Card', icon: HardHatIcon },
+    { key: 'workorders', label: 'Work Orders', icon: ClipboardIcon },
     { key: 'bom', label: 'BOM', icon: PackageIcon },
+    { key: 'forecast', label: 'Forecast', icon: TrendingUpIcon },
     { key: 'sheet', label: 'Daily Sheet', icon: ClipboardListIcon },
     { key: 'roster', label: 'Workers Roster', icon: UsersIcon },
   ];
@@ -42,7 +46,9 @@ export default function WorkersPanel({ date, sheet, workers, projects, trades, j
       {tab === 'jobcards' && (
         <JobCardBoard jobCards={jobCards} operations={operations} workstations={workstations} projects={projects} workers={workers} />
       )}
+      {tab === 'workorders' && <WorkOrdersPanel projects={projects} operations={operations} workstations={workstations} />}
       {tab === 'bom' && <ProductionBomTab projects={projects} />}
+      {tab === 'forecast' && <ProductionForecastPanel />}
       {tab === 'sheet' && <DailySheetWorkspace date={date} sheet={sheet} projects={projects} />}
       {tab === 'roster' && <Roster workers={workers} trades={trades} />}
     </WorkspaceSidebar>

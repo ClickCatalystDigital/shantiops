@@ -77,6 +77,45 @@ function GuideBody({ item }) {
   );
 }
 
+// A department's Introduction is normally prose-only — fine for a linear workflow. Production's
+// Work Order / ad-hoc Job Card split is the one genuinely branching relationship this app's help
+// docs need to show, not just describe, so this is opt-in via guide.introFlow rather than a
+// feature every department is expected to fill in. No charting library exists anywhere in this
+// app (BomStageBar.jsx's own comment: "the whole design system is hand-built Tailwind") — boxes
+// and arrows in plain flexbox match that, not a new dependency for one diagram.
+function FlowBox({ title, body }) {
+  return (
+    <div className="flex-1 rounded-xl border bg-background p-3.5 sm:p-4">
+      <h3 className="text-sm font-semibold">{title}</h3>
+      {body && <p className="mt-1 text-xs leading-5 text-muted-foreground">{body}</p>}
+    </div>
+  );
+}
+
+function IntroFlow({ flow }) {
+  return (
+    <section className="rounded-xl border bg-muted/20 p-4 sm:p-5">
+      <h2 className="text-base font-semibold">{flow.heading}</h2>
+      {flow.subheading && <p className="mt-1 text-sm leading-6 text-muted-foreground">{flow.subheading}</p>}
+      <div className="mt-4 flex flex-col items-center">
+        {flow.stages.map((stage, i) => (
+          <div key={i} className="flex w-full flex-col items-center">
+            <div className={`flex w-full gap-3 ${stage.boxes.length > 1 ? 'flex-col sm:flex-row' : ''}`}>
+              {stage.boxes.map((box, j) => <FlowBox key={j} {...box} />)}
+            </div>
+            {i < flow.stages.length - 1 && (
+              <div className="flex flex-col items-center gap-0.5 py-1.5">
+                <span aria-hidden className="text-muted-foreground">↓</span>
+                {stage.arrowNote && <span className="max-w-xs text-center text-[11px] leading-4 text-muted-foreground">{stage.arrowNote}</span>}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function StepSummaryRow({ steps }) {
   return (
     <div className="mt-4 grid gap-2 sm:grid-cols-5">
@@ -120,7 +159,7 @@ function StepArticles({ steps }) {
 // workflows (Sale Order vs. SAS material request), not one chain with an extra step bolted on the
 // end, so each section gets its own intro card and its own Step 01... numbering. Departments that
 // never set `section` render exactly as before — this is additive, not a format change.
-function NumberedSteps({ steps, department }) {
+function NumberedSteps({ steps, department, topicLabel }) {
   const hasSections = steps.some(s => s.section);
   if (!hasSections) {
     return (
@@ -129,7 +168,7 @@ function NumberedSteps({ steps, department }) {
           <div className="flex items-start gap-3">
             <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary text-lg font-bold text-primary-foreground">✓</span>
             <div>
-              <h2 className="text-base font-semibold sm:text-lg">Work through {department} step by step</h2>
+              <h2 className="text-base font-semibold sm:text-lg">{topicLabel ? `How to: ${topicLabel}` : `Work through ${department} step by step`}</h2>
               <p className="mt-1 text-sm leading-6 text-muted-foreground">Follow the steps in order when you are doing this work for the first time. Each step explains what to do and what to check before handing work forward.</p>
             </div>
           </div>
@@ -185,11 +224,21 @@ export default function DepartmentHelpWorkspace({ departments = [] }) {
   const [department, setDepartment] = useState(available.includes(urlDept) ? urlDept : available[0]);
   const [page, setPage] = useState(() => {
     const initialGuide = DEPARTMENT_HELP[available.includes(urlDept) ? urlDept : available[0]];
-    const validPage = urlPage && initialGuide && (urlPage === 'howto' || flattenFeatures(initialGuide.features).some(f => f.key === urlPage));
+    const validPage = urlPage && initialGuide && (
+      urlPage === 'howto' ||
+      flattenFeatures(initialGuide.features).some(f => f.key === urlPage) ||
+      (initialGuide.howToGroups || []).some(t => t.key === urlPage)
+    );
     return validPage ? urlPage : 'intro';
   });
   const guide = DEPARTMENT_HELP[department] || DEPARTMENT_HELP[available[0]];
   const feature = guide && flattenFeatures(guide.features).find(f => f.key === page);
+  // How To can be a flat sequence (guide.howTo, the common case) or, like a grouped feature
+  // (Notifications: Customer / Departmental), a set of separate focused walkthroughs
+  // (guide.howToGroups) — one per real action instead of one long generic chain. Landing on the
+  // bare 'howto' key with groups present just shows the first topic, same as a feature group's own
+  // parent button jumping to `children[0].key`.
+  const howToTopic = guide?.howToGroups && (guide.howToGroups.find(t => t.key === page) || (page === 'howto' ? guide.howToGroups[0] : null));
   const GuideIcon = guide?.icon || BookOpenIcon;
 
   function updateUrl(nextDept, nextPage) {
@@ -210,8 +259,8 @@ export default function DepartmentHelpWorkspace({ departments = [] }) {
 
   if (!guide) return null;
 
-  const title = page === 'intro' ? `Introduction to ${guide.title}` : page === 'howto' ? 'How To' : feature?.label;
-  const activeIcon = page === 'intro' ? InfoIcon : page === 'howto' ? ListChecksIcon : feature?.icon;
+  const title = page === 'intro' ? `Introduction to ${guide.title}` : howToTopic ? `How To — ${howToTopic.label}` : page === 'howto' ? 'How To' : feature?.label;
+  const activeIcon = page === 'intro' ? InfoIcon : howToTopic ? (howToTopic.icon || ListChecksIcon) : page === 'howto' ? ListChecksIcon : feature?.icon;
   const ActiveIcon = activeIcon || GuideIcon;
 
   const framework = [
@@ -299,11 +348,28 @@ export default function DepartmentHelpWorkspace({ departments = [] }) {
           <SidebarGroup>
             <SidebarGroupContent>
               <SidebarMenu>
-                <SidebarMenuItem>
-                  <SidebarMenuButton isActive={page === 'howto'} tooltip="How To" onClick={() => choosePage('howto')}>
-                    <ListChecksIcon /><span>How To</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
+                {guide.howToGroups ? (
+                  <SidebarMenuItem>
+                    <SidebarMenuButton isActive={page === 'howto' || guide.howToGroups.some(t => t.key === page)} tooltip="How To" onClick={() => choosePage(guide.howToGroups[0].key)}>
+                      <ListChecksIcon /><span>How To</span>
+                    </SidebarMenuButton>
+                    <SidebarMenuSub>
+                      {guide.howToGroups.map(topic => (
+                        <SidebarMenuSubItem key={topic.key}>
+                          <SidebarMenuSubButton isActive={page === topic.key || (page === 'howto' && topic === guide.howToGroups[0])} onClick={() => choosePage(topic.key)} className="cursor-pointer">
+                            <span>{topic.label}</span>
+                          </SidebarMenuSubButton>
+                        </SidebarMenuSubItem>
+                      ))}
+                    </SidebarMenuSub>
+                  </SidebarMenuItem>
+                ) : (
+                  <SidebarMenuItem>
+                    <SidebarMenuButton isActive={page === 'howto'} tooltip="How To" onClick={() => choosePage('howto')}>
+                      <ListChecksIcon /><span>How To</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
@@ -334,6 +400,7 @@ export default function DepartmentHelpWorkspace({ departments = [] }) {
                   </p>
                 </section>
                 <GuideBody item={{ body: guide.intro }} />
+                {guide.introFlow && <IntroFlow flow={guide.introFlow} />}
                 <section>
                   <h2 className="text-base font-semibold">How Shanti Ops is organised</h2>
                   <p className="mt-2 text-sm leading-7 text-muted-foreground">
@@ -372,7 +439,8 @@ export default function DepartmentHelpWorkspace({ departments = [] }) {
                 </section>
               </>
             )}
-            {page === 'howto' && <NumberedSteps steps={guide.howTo} department={guide.title} />}
+            {page === 'howto' && !guide.howToGroups && <NumberedSteps steps={guide.howTo} department={guide.title} />}
+            {howToTopic && <NumberedSteps steps={howToTopic.steps} department={guide.title} topicLabel={howToTopic.label} />}
             {feature && <GuideBody item={feature} />}
           </div>
         </div>

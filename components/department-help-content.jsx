@@ -8,7 +8,7 @@ import {
   UserPlusIcon, Building2Icon, MegaphoneIcon, TrendingUpIcon, PhoneIcon, BarChart3Icon,
   UserRoundIcon, UserCheckIcon, Clock3Icon, IndianRupeeIcon, ReceiptIcon, ShieldCheckIcon,
   ListChecksIcon, MessageSquareIcon, WrenchIcon, BellIcon, TagIcon, InboxIcon, UndoIcon,
-  ScissorsIcon,
+  ScissorsIcon, ClipboardIcon,
 } from 'lucide-react';
 
 // Milestone Tracker (2026-08-17) — most milestones now complete themselves off a real event
@@ -148,6 +148,27 @@ const FEATURE_FOUNDATIONS = {
     outcome: 'The card carries a real milestone, a workstation where relevant, logged hours against named workers, any consumables used, and a quantity/status that is true right now — not what was planned three weeks ago.',
     checklist: ['Create the card against the actual milestone, not a guessed one — the project/milestone picker is the only way in, so the fabrication percentage stays accurate.', 'Log hours in real sessions as they happen, not one lump total at the end of the week.', 'Flag subcontracted or site work with the Outside/Site markers instead of leaving them looking like ordinary shop work.'],
     watchOut: 'Do not leave a card sitting in Pending once work has actually started, and do not close it out with an invented quantity just to clear the board — a wrong Done count breaks the fabrication percentage every other view relies on.',
+  },
+  workorders: {
+    value: 'A Work Order is the production order itself — the record that says what you are making, how much, by when, and against which project or stock need, before any Job Card exists. Job Cards are still where the actual work gets logged; the Work Order is what authorizes and tracks them as a set.',
+    outcome: 'A released Work Order has a real route (each step tied to a workstation and, where it applies, a milestone), a material list with real quantities, and a full set of generated Job Cards — so its progress bar, delay flag, and costing are all trustworthy, not guesses.',
+    checklist: [
+      'Pick the right mode first: Against a customer order needs a project (and pulls its BOM); Against stock needs neither, just a product description.',
+      'Build the full route before you release — operation, workstation, and planned minutes for every step — because routing locks the moment the Work Order leaves draft.',
+      'Click Generate Job Cards once, right after releasing, instead of creating the cards by hand — it reads the route card so nothing gets missed or duplicated.',
+      'Use a Change Note (not a plain edit) for quantity, dates, or product description once the Work Order is released — that is the only way those changes stay in the record.',
+    ],
+    watchOut: 'A route step with no workstation set will never show up in Forecast\'s workstation load, and a material line with no quantity or BOM link will never show real progress — an empty-looking Work Order is usually one you released before finishing the route or materials, not a sign nothing needs to happen.',
+  },
+  forecast: {
+    value: 'Forecast turns your open Work Orders into a look-ahead: what is coming due, which workstations are getting overloaded, and which materials are still short — all read live off real Work Orders, not typed in separately.',
+    outcome: 'A department head can see the next 30 days of load and shortage at a glance, before it becomes a missed date on the shop floor.',
+    checklist: [
+      'Treat an empty Forecast as a signal to check Work Orders, not proof there is nothing coming — only released/in-progress Work Orders with planned dates, routed steps, and material lines actually appear here.',
+      'Re-route or flag for an extra shift as soon as a workstation shows Overloaded, rather than waiting for the delay to actually happen.',
+      'Chase the specific outstanding material shown here with Stores/Procurement instead of a general "are we on track" check.',
+    ],
+    watchOut: 'Overloaded is a flat single-shift-per-day estimate, not a real shift calendar — treat it as an early warning, not an exact number.',
   },
   tests: {
     value: 'Test records make quality decisions auditable. They preserve what was tested, when, by whom, against which reference, and with what result.',
@@ -335,13 +356,25 @@ const HOW_TO_NOTES = [
   },
 ];
 
+// The positional HOW_TO_NOTES fallback only makes sense against a single flat sequence — a topic
+// inside howToGroups (§ Production's Work Orders/Job Cards split) is its own short sequence, not a
+// slice of one big department-wide chain, so it always carries its own explicit why/verify instead
+// of borrowing this array by index.
+function enrichSteps(steps, guide) {
+  return steps.map((step, index) => ({
+    ...step,
+    why: step.why || HOW_TO_NOTES[index]?.why(guide),
+    verify: step.verify || HOW_TO_NOTES[index]?.verify,
+  }));
+}
+
 function enrichHowTo() {
   for (const guide of Object.values(DEPARTMENT_HELP)) {
-    guide.howTo = guide.howTo.map((step, index) => ({
-      ...step,
-      why: step.why || HOW_TO_NOTES[index]?.why(guide),
-      verify: step.verify || HOW_TO_NOTES[index]?.verify,
-    }));
+    if (guide.howToGroups) {
+      guide.howToGroups = guide.howToGroups.map(topic => ({ ...topic, steps: enrichSteps(topic.steps, guide) }));
+    } else {
+      guide.howTo = enrichSteps(guide.howTo, guide);
+    }
   }
 }
 
@@ -628,10 +661,47 @@ export const DEPARTMENT_HELP = {
     title: 'Production', icon: HardHatIcon,
     intro: [
       'Production plans and records shop-floor execution against the real milestone chain used on the shop floor — Marking/Cutting through Drilling, Shell Welding, Site Marking, the FURA-B/RC/AR and Box-Up welds, Tubes & Stay Rods, Pad Plates, Smoke Box, Refractory, and Painting — plus Hydro Test, which moved here from QC because Production is who actually runs it day to day.',
-      'Job Card is now your main tab, and it opens on the board by default because that is what gets touched most during the day. BOM, Daily Sheet, and Workers Roster sit underneath it as sub-tabs — the old separate Tasks and Home tabs are gone because they showed the same calendar Home already shows everyone.',
+      'Job Card is now your main tab, and it opens on the board by default because that is what gets touched most during the day. Work Orders, BOM, Forecast, Daily Sheet, and Workers Roster sit underneath it as sub-tabs — the old separate Tasks and Home tabs are gone because they showed the same calendar Home already shows everyone.',
     ],
+    introFlow: {
+      heading: 'How a Work Order (or a one-off card) becomes a completed milestone',
+      subheading: 'Two ways in, one shared execution path.',
+      stages: [
+        {
+          boxes: [
+            { title: 'Work Order', body: 'Against a customer order (linked project + BOM) or against stock — the production order for a whole batch.' },
+            { title: 'Job Card (ad hoc)', body: 'A one-off, created directly from the board — skips straight to Job Card execution below.' },
+          ],
+          arrowNote: 'The Work Order path continues below; an ad hoc card already is a Job Card.',
+        },
+        {
+          boxes: [{ title: 'Process Route Card', body: 'One row per production step — operation, workstation, and (optionally) a real milestone.' }],
+          arrowNote: 'Release the Work Order, then Generate Job Cards.',
+        },
+        {
+          boxes: [{ title: 'Job Cards generated', body: 'One Job Card per route step, created in a single action — already linked to the right milestone.' }],
+          arrowNote: 'Both paths now have real Job Cards to work.',
+        },
+        {
+          boxes: [{ title: 'Job Card execution', body: 'Hours, consumables, and quantity done/rejected are logged here, on every card, from either path.' }],
+          arrowNote: 'Once every card against a milestone is Done —',
+        },
+        {
+          boxes: [{ title: 'Milestone completes automatically', body: 'No manual close needed for these — and Forecast / Work Order Costing read straight off this same data.' }],
+        },
+      ],
+    },
     features: [
       feature('jobcards', 'Job Card board', HardHatIcon, ['Create a card against a real project milestone — the picker is Project then Milestone, not a typed description — and it carries an operation, workstation, and planned quantity if you know them yet.', 'Click a card to log hours against a named worker (filtered to their trade), add consumables like rods or gas, update planned/done/rejected quantity, pause and resume, and see the labor cost run as hours are logged.', 'Mark a card Outside for subcontracted work or Site for work done at the customer’s location instead of the shop — both show as a badge on the card so they are never mistaken for ordinary shop-floor work.', 'A failed test or a rejected quantity does not need a new form from scratch — Create rework card on the original card spins up a linked pending card against the same milestone.']),
+      feature('workorders', 'Work Orders', ClipboardIcon, [
+        'A Work Order is the production-control record that sits above Job Cards — either Against a customer order (linked to a Project/Sale Order and its released BOM) or Against stock (a replenishment run with no customer project).',
+        'Build its Process Route Card first — the operation sequence, work centre, planned time, and quality checkpoints, each step optionally mapped to a real Production milestone so the existing milestone automation still fires.',
+        'Add its material requirements — pull straight from the project BOM when the Work Order is against an order (issued quantity then reads live off Stores\' own material-issue log, nothing to keep in sync by hand), or add items directly with a manual issue log for a stock Work Order.',
+        'Release it, then Generate Job Cards to spawn the real execution cards for every route step in one action instead of creating them by hand. Progress, delays, and rework roll up automatically from those linked cards.',
+        'Once released, quantity/dates/product description can only move through a Change Note — a logged reason plus the old and new value — never a silent edit to the baseline.',
+        'Load Costing on a Work Order for planned vs. actual material and labor; outside/subcontracted job cards are listed separately since this app has no vendor cost field for job-work.',
+      ]),
+      feature('forecast', 'Forecast', TrendingUpIcon, ['Upcoming Work Orders, workstation load, and outstanding material demand for the next 30 days — built from real released/in-progress Work Orders, their route cards, and their material lines, not a prediction model.', 'A workstation shows Overloaded once its open route-card time exceeds a flat single-shift assumption for the horizon — a signal to re-route or add a shift, not a hard limit.']),
       feature('bom', 'BOM, fabrication progress, and material issue', ClipboardListIcon, ['Pick a project to see its Master BOM, scoped to the fields Production owns (issued/received references) — the same table Engineering, Procurement, and Stores see, just field-scoped to what you are allowed to change.', 'The fabrication progress bars on this tab come directly from Job Card completion per milestone, so they only move when real cards are actually being closed out.', 'Issue material against a BOM line here when it leaves Stores for the shop floor — Production can record this now, the same authority you already had over issued/received references, just structured instead of free text.']),
       feature('remnant', 'Cutting & Remnant Matching', ScissorsIcon, [
         'Every plate or section BOM line shows in a "Cutting & remnant" list on the BOM tab. A "Reserved — ready to cut" badge means the system already found a matching piece in Stores for you.',
@@ -655,12 +725,160 @@ export const DEPARTMENT_HELP = {
       feature('attendance', 'Daily Sheet', CalendarDaysIcon, ['Overview and Sheet live under one Daily Sheet tab now. Overview is the day’s headcount and attendance percentage; Sheet is where you actually mark present/half-day/absent and the project/milestone someone worked on.', 'This writes to the same attendance record HR reads from — there is no separate Production attendance system to keep in sync by hand anymore.']),
       feature('handoff', 'Department handoffs', MessageSquareIcon, ['Use tasks and notifications when Production needs a response from QC, Stores, Dispatch, or another department. A closed milestone should create a visible next action where configured.', 'Do not close a blocked job just to remove it from the screen; record the blocker and delay reason.']),
     ],
-    howTo: [
-      { title: 'Open the board', body: 'Open Job Card. It lands on the board by default, grouped Pending / In progress / Done — check what is already moving before creating anything new.' },
-      { title: 'Create the card correctly', body: 'New job card, then pick the real Project and Milestone — not a typed guess. Add a workstation, planned quantity, and Outside/Site flags if either applies.' },
-      { title: 'Do and record the work', body: 'As work happens, log hours against the actual worker doing it, add any consumables used, and keep planned/done/rejected quantity true to what is physically happening.' },
-      { title: 'Handle exceptions honestly', body: 'Pause a card instead of leaving it looking active when work has genuinely stopped. If QC fails a Hydro Test or a quantity is rejected, use Create rework card rather than editing the original result away.' },
-      { title: 'Close the day', body: 'Mark attendance on the Daily Sheet while it is still fresh, close milestones only when actually complete with a real reason if late, and raise a task for anything another department must still act on.' },
+    // How To is split into one focused walkthrough per real action (like Notifications' Customer /
+    // Departmental split above) instead of one long generic chain — pick the page for the thing you
+    // are actually trying to do, not the department, and it stays a short, complete answer.
+    howToGroups: [
+      {
+        key: 'howto-jobcard', label: 'Create a Job Card', icon: HardHatIcon,
+        steps: [
+          {
+            title: 'Open the board', body: 'Open Job Card. It lands on the board by default, grouped Pending / In progress / Done — check what is already moving before creating anything new.',
+            why: 'Starting from the board gives you the real current state of every project before you plan or create anything new.',
+            verify: 'You know what is already Pending, In progress, and Done before deciding what to do next.',
+          },
+          {
+            title: 'Create the card correctly', body: 'New job card, then pick the real Project and Milestone — not a typed guess. Add a workstation, planned quantity, and Outside/Site flags if either applies. Use this for a one-off, or anything a Work Order\'s route card didn\'t cover — for a whole new batch, set up a Work Order instead (see that guide).',
+            why: 'A card tied to the real milestone is what keeps the fabrication percentage and milestone automation correct — a guessed one quietly breaks both.',
+            verify: 'Required fields are complete and the milestone/project genuinely matches the work.',
+          },
+        ],
+      },
+      {
+        key: 'howto-workorder', label: 'Set up a Work Order', icon: ClipboardIcon,
+        steps: [
+          {
+            title: 'Choose the mode and build the route', body: 'Open Work Orders → New Work Order. Choose Against a customer order (pick the project) or Against stock (type the product), set the planned quantity and dates, then build the Process Route Card — every operation, workstation, and planned time — before you release it.',
+            why: 'The Work Order is what authorizes the batch and carries its route and material plan — building it up front is what makes Generate Job Cards, Forecast, and Costing trustworthy later.',
+            verify: 'Every route step has an operation and workstation, and (for an against-order Work Order) the material lines are pulled in from the BOM, before you release.',
+          },
+          {
+            title: 'Release and generate its Job Cards', body: 'Release the Work Order, then click Generate Job Cards — this creates one card per route step automatically, already linked to the right milestone and workstation, instead of you creating each one by hand.',
+            why: 'Generating from the route card is what keeps every card\'s milestone/workstation link correct and stops the same step from being created twice.',
+            verify: 'One Job Card now exists per route step, each showing on the board under the right project and milestone.',
+          },
+        ],
+      },
+      {
+        key: 'howto-log', label: 'Log work on a card', icon: Clock3Icon,
+        steps: [
+          {
+            title: 'Do and record the work', body: 'As work happens, log hours against the actual worker doing it, add any consumables used, and keep planned/done/rejected quantity true to what is physically happening.',
+            why: 'Recording the result as it happens is what the next department, and the Work Order\'s own costing, actually rely on — not a memory of it later.',
+            verify: 'Hours, consumables, and quantity are saved in the record itself, not only remembered or messaged.',
+          },
+        ],
+      },
+      {
+        key: 'howto-cut', label: 'Cut material for a Job Card', icon: ScissorsIcon,
+        steps: [
+          {
+            title: 'Find the line and check for a reservation', body: 'Open Job Card → BOM, pick the project, and find the "Cutting & remnant" list — every plate/section line shows here. A "Reserved — ready to cut" badge means Stores already has a matching piece waiting for you; no badge just means you\'ll pick a source piece yourself.',
+            why: 'A reserved piece is already the correct size for this line — skipping the check risks cutting from the wrong stock and losing a genuine match.',
+            verify: 'You know whether this line has a reserved piece before you open Cut.',
+          },
+          {
+            title: 'Cut and record what you kept', body: 'Click Cut — a reserved piece pre-fills the source and required size; otherwise use Find stock to choose the stock line and piece yourself. Confirm the Used dimensions (or adjust to what was actually cut), and add a Remnant row for any usable offcut you\'re keeping, then click Cut.',
+            why: 'Declaring only what was used and kept is what lets the system compute weight, scrap, and the stock update for you — a hand-typed weight is exactly what this flow exists to avoid.',
+            verify: 'The remnant shows back in Stores as available and the leftover became scrap automatically — you never calculated a weight by hand.',
+          },
+        ],
+      },
+      {
+        key: 'howto-hydro', label: 'Record a Hydro Test', icon: FlaskConicalIcon,
+        steps: [
+          {
+            title: 'Open the project\'s Production tab and log the result', body: 'On the project page, open the Production tab (filtered to Hydro Test only) and record the result, reference number, inspector, and tested-on date. This is the one test type Production owns end-to-end — every other test type stays QC\'s.',
+            why: 'Hydro Test moved to Production because Production is who actually runs it day to day — logging it here, not asking QC, is what keeps the record honest.',
+            verify: 'Result, reference, inspector, and date are all filled in before you save.',
+          },
+          {
+            title: 'Handle a fail without losing the trail', body: 'A failing result has its own Create rework card button, pre-filled — use it instead of editing the original record. A passing result automatically closes the Hydro Test milestone for you.',
+            why: 'Keeping the failed record as-is, with a linked rework card, is what preserves an honest quality history instead of quietly erasing a failure.',
+            verify: 'A failed test has a linked rework card, and a passed test shows the Hydro Test milestone closed on its own.',
+          },
+        ],
+      },
+      {
+        key: 'howto-milestone', label: 'Start and close a milestone', icon: RouteIcon,
+        steps: [
+          {
+            title: 'Start it when work really begins', body: 'Open the milestone from the project page and mark it started once real work is actually underway — not in advance, and not as a formality.',
+            why: 'An early start date makes the project timeline lie about when work actually began, which breaks every delay/on-time read built on it.',
+            verify: 'The milestone\'s start date matches the day work genuinely began.',
+          },
+          {
+            title: 'Close it honestly, with a reason if late', body: 'Close a milestone only when the deliverable is actually complete. Closing late asks for a reason, which goes into the project history — use Stages under a milestone for repeatable checklist steps instead of inventing a new milestone for every variation.',
+            why: 'A late-close reason is what lets anyone reading the project later understand a real delay instead of guessing.',
+            verify: 'The milestone is genuinely complete, and a late close has a real reason attached, not a placeholder.',
+          },
+        ],
+      },
+      {
+        key: 'howto-exceptions', label: 'Handle exceptions', icon: WrenchIcon,
+        steps: [
+          {
+            title: 'Pause, rework, or change the plan', body: 'Pause a card instead of leaving it looking active when work has genuinely stopped. If QC fails a Hydro Test or a quantity is rejected, use Create rework card rather than editing the original result away. If a Work Order\'s quantity, dates, or product changes mid-flight, use its Change Note instead of editing the field directly.',
+            why: 'Exceptions handled honestly — pause, rework, Change Note — keep the record trustworthy instead of quietly rewriting what actually happened.',
+            verify: 'Any paused card, rework card, or Change Note has a real, findable reason attached to it.',
+          },
+        ],
+      },
+      {
+        key: 'howto-roster', label: 'Add a worker to the roster', icon: UsersIcon,
+        steps: [
+          {
+            title: 'Search HR before creating anyone new', body: 'Add worker searches HR first — if the person already exists as an HR employee record, activate them onto Production instead of creating a second, slightly-misspelled entry for the same human. Only create a new person when the search genuinely finds nobody.',
+            why: 'A Production worker is an HR employee record, not a separate roster — a duplicate entry splits one person\'s attendance and job-card history across two records.',
+            verify: 'You searched HR first, and the person you added or activated has one single record, not a duplicate.',
+          },
+          {
+            title: 'Set trade, and deactivate instead of delete', body: 'Trade is a controlled list (Welder, Fitter, Gas Cutter, Machinist, Grinder, Painter, Rigger, Helper), not free text, so job cards can filter workers by skill — designation stays HR\'s field, not yours. When someone leaves, deactivate rather than delete them.',
+            why: 'Deleting a worker would break every job card and attendance record that already points at them — deactivating keeps that history readable.',
+            verify: 'The worker\'s trade is set from the real list, and a departed worker is deactivated, not deleted.',
+          },
+        ],
+      },
+      {
+        key: 'howto-attendance', label: 'Mark attendance', icon: CalendarDaysIcon,
+        steps: [
+          {
+            title: 'Check Overview, then mark the Sheet', body: 'Daily Sheet has two views under one tab: Overview is the day\'s headcount and attendance percentage; Sheet is where you actually mark present/half-day/absent and the project/milestone each worker worked on.',
+            why: 'Marking attendance against the real project/milestone is what makes the headcount numbers, and Production\'s own labor cost, mean something.',
+            verify: 'Every worker present today has a status and a project/milestone recorded, not just a checkmark.',
+          },
+          {
+            title: 'Trust it as the one real attendance record', body: 'This writes to the same attendance record HR reads from — there is no separate Production attendance system to keep in sync by hand.',
+            why: 'A second, unsynced attendance record is exactly the kind of drift that makes payroll and HR distrust Production\'s numbers.',
+            verify: 'You marked attendance once, here, and did not also track it anywhere else.',
+          },
+        ],
+      },
+      {
+        key: 'howto-handoff', label: 'Raise a department handoff', icon: MessageSquareIcon,
+        steps: [
+          {
+            title: 'Use a task or notification, not a side conversation', body: 'Use tasks and notifications when Production needs a response from QC, Stores, Dispatch, or another department. A closed milestone should create a visible next action where one is configured.',
+            why: 'A handoff that only happened in conversation leaves no record another department, or you later, can point back to.',
+            verify: 'The other department has a real task or notification, not just a message you sent them.',
+          },
+          {
+            title: 'Never close a blocked job to hide it', body: 'Do not close a blocked job just to remove it from the screen — record the actual blocker and delay reason instead.',
+            why: 'A quietly closed blocked job looks finished to everyone downstream, which is worse than an honestly open one.',
+            verify: 'A blocked job stays open with a real blocker and reason recorded, not closed early.',
+          },
+        ],
+      },
+      {
+        key: 'howto-close', label: 'Close the day', icon: BadgeCheckIcon,
+        steps: [
+          {
+            title: 'Close the day', body: 'Mark attendance on the Daily Sheet while it is still fresh, close milestones only when actually complete with a real reason if late, check Forecast for any workstation running Overloaded, and raise a task for anything another department must still act on.',
+            why: 'Closing the day with an honest status is what keeps dashboards, Forecast, and downstream departments aligned with what is actually happening on the shop floor.',
+            verify: 'Attendance is marked, no milestone is closed early, and Forecast has been checked for anything about to go overloaded or late.',
+          },
+        ],
+      },
     ],
   },
   QC: {

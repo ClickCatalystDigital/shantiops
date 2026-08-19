@@ -50,18 +50,6 @@ These exist in some form but do not yet match the full STERP capability:
 - GIR  
   Receiving and GRN data exist, but there is no formal Gate Inward Receipt document and gate-entry workflow.
 
-- Production Route Card  
-  Milestones and stages provide related tracking, but there is no formal route-card object with operations, sequence, work centre, and execution entries.
-
-- Production Against Stock / Against Order  
-  Stock and Sold-As-Such material flows exist, and customer projects exist, but production planning is not explicitly separated into these production modes.
-
-- Job Card Process Tracking  
-  Tasks and milestones provide partial tracking, but no dedicated Job Card lifecycle exists.
-
-- Work Order Process Tracking  
-  Project milestones provide partial tracking, but there is no true Work Order record.
-
 - Incoming and In-Process QC  
   QC test records and milestones exist, but inspection is not yet deeply linked to PO receipt, operation, route card, or work order stages.
 
@@ -198,49 +186,68 @@ These require new tables, permissions, and some cross-module logic.
    - Effective revision
    - Downstream impact
 
-20. Production Forecasting
+20. Production Forecasting — BUILT (2026-08-19, SYSTEM.md §5l)
 
-   Use project milestones, order dates, BOM demand, and capacity assumptions to forecast upcoming material and production load.
+   Upcoming Work Orders, workstation load, and outstanding material demand off real released/
+   in-progress Work Orders — their route cards' planned time and their material lines — not a
+   synthetic prediction model. Production → Job Card → Forecast.
 
 ### Priority 3 — Larger manufacturing execution features
 
 These should be designed together because they depend on one another.
 
-21. Work Order / Production Order
+21. Work Order / Production Order — BUILT (2026-08-19, SYSTEM.md §5l)
 
-   Create a true production order linked to a project, BOM, quantity, planned dates, and production mode.
+   `work_orders`: linked to a project (and its live BOM release baseline) or to stock replenishment,
+   quantity, planned dates, and mode. The real production-order entity Job Cards (already built,
+   see item 25 below) sit underneath.
 
-22. Work Order Against Order
+22. Work Order Against Order — BUILT (2026-08-19, SYSTEM.md §5l)
 
-   Link production orders to customer Sale Orders and projects.
+   `work_orders.mode = 'against_order'` — linked to a project and its Sale Order.
 
-23. Work Order Against Stock
+23. Work Order Against Stock — BUILT (2026-08-19, SYSTEM.md §5l)
 
-   Create production orders for stock replenishment without requiring a customer project.
+   `work_orders.mode = 'against_stock'` — no project required; `job_cards.project_id` made nullable
+   to let its generated execution cards exist without one.
 
-24. Process Route Card
+24. Process Route Card — BUILT (2026-08-19, SYSTEM.md §5l)
 
-   Define operation sequence, work centre, planned time, responsible department, inputs, outputs, and quality checkpoints.
+   `work_order_operations` — sequence, work centre (reuses the existing `operations`/`workstations`
+   masters, §5g), planned time, department, inputs/outputs, quality checkpoint.
 
-25. Job Card
+**Correction (2026-08-19):** items 25/26 below were previously listed as missing in this file. They
+were not — Job Cards (milestone-scoped cards, time logs, qty done/rejected, rework lineage) shipped
+2026-08-16 (SYSTEM.md §5g), before the Work Order work below even started. This file's own labels
+were stale, not the app.
 
-   Create execution-level work cards from a Work Order and Route Card.
+25. Job Card — BUILT EARLIER (2026-08-16, SYSTEM.md §5g, not this round)
 
-26. Job Card Process Tracking
+   Milestone-scoped execution-level work cards already existed before this round's Work Order work
+   — see the correction note above. A Work Order's "Generate Job Cards" action now creates them from
+   its Route Card instead of requiring a hand-made card per step.
 
-   Track start/end time, operator, quantity completed, rejected quantity, downtime, and remarks.
+26. Job Card Process Tracking — BUILT EARLIER (2026-08-16, SYSTEM.md §5g, not this round)
 
-27. Work Order Process Tracking
+   Start/end time (time logs), operator, quantity completed/rejected, and rework lineage already
+   existed before this round — see the correction note above.
 
-   Roll up job-card completion, material consumption, operation status, and production progress.
+27. Work Order Process Tracking — BUILT (2026-08-19, SYSTEM.md §5l)
 
-28. Work Order Change Note
+   Job-card completion, material consumption (read live off Stores' material-issue log), operation
+   status per route step, and a delay/rework flag — all derived on a Work Order's detail view, no
+   new tracking table.
 
-   Add controlled changes to quantities, routing, dates, specifications, or operations after work has started.
+28. Work Order Change Note — BUILT (2026-08-19, SYSTEM.md §5l)
 
-29. Work Order Costing
+   `work_order_change_notes` — once a Work Order is released, quantity/dates/product description can
+   only move through a logged reason + old/new value, never a silent edit.
 
-   Calculate actual versus planned material, labour, subcontracting, and overhead cost.
+29. Work Order Costing — BUILT (2026-08-19, SYSTEM.md §5l)
+
+   Planned vs. actual material and labour, extending Sales' existing `getProjectCosting()` (§5e)
+   rather than a second cost rollup. Subcontracting/overhead: no vendor-cost or overhead-allocation
+   field exists anywhere in this app, so outside job cards are listed, not fabricated into a number.
 
 ### Priority 4 — Quality and service expansion
 
