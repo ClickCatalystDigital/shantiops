@@ -36,11 +36,13 @@ export async function POST(req) {
   let sortOrder = 0;
   for (const it of items) {
     if (!it.material_description?.trim()) continue;
+    const categoryFieldsJson = it.category && it.category_fields ? JSON.stringify(it.category_fields) : null;
     await execute(
-      `INSERT INTO bom_template_items (template_id, section, material_description, moc, size_spec, qty_text, sort_order)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO bom_template_items (template_id, section, material_description, moc, size_spec, qty_text, sort_order, item_id, category, category_fields_json)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [templateId, it.section?.trim() || null, it.material_description.trim(), it.moc?.trim() || null,
-        it.size_spec?.trim() || null, it.qty_text?.trim() || null, sortOrder++]
+        it.size_spec?.trim() || null, it.qty_text?.trim() || null, sortOrder++,
+        it.item_id ? Number(it.item_id) : null, it.category || null, categoryFieldsJson]
     );
   }
   return NextResponse.json({ id: templateId });

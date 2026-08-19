@@ -20,12 +20,33 @@ import {
 } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { PlusIcon, PencilIcon, PackageCheckIcon, UndoIcon, TruckIcon, PackageIcon, ClipboardListIcon } from 'lucide-react';
+import { PlusIcon, PencilIcon, PackageCheckIcon, UndoIcon, TruckIcon, PackageIcon, ClipboardListIcon, LayersIcon } from 'lucide-react';
 import { api, showToast } from '@/lib/client';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 
 function isLowStock(item) {
   return item.reorder_point != null && item.available <= item.reorder_point;
+}
+
+// Cutting & Remnant Management — plate/section stock, layered on top of the plain on_hand number
+// above (lib/stock-pieces.js). category mirrors bom_items' own taxonomy (components/PrWorkspace.jsx
+// CATEGORY_LABEL) — the profile-family key lib/remnant-match.js matches a BOM line against.
+const DIMENSIONAL_CATEGORIES = [
+  { value: 'plate', label: 'Plate' },
+  { value: 'ms_section', label: 'MS Section' },
+  { value: 'angle', label: 'Angle' },
+];
+
+const PIECE_STATUS = {
+  available: { cls: 'bg-success/10 text-success ring-success/20', label: 'Available' },
+  reserved: { cls: 'bg-warning/10 text-warning ring-warning/20', label: 'Reserved' },
+  consumed: { cls: 'bg-muted text-muted-foreground ring-border', label: 'Consumed' },
+  scrap: { cls: 'bg-danger/10 text-danger ring-danger/20', label: 'Scrap' },
+};
+
+function pieceDimsLabel(p) {
+  if (p.status === 'scrap') return '—'; // scrap is a residual weight only, never a real shape
+  return p.kind === 'plate' ? `${p.length_mm}×${p.width_mm}×${p.thickness_mm} mm` : `${p.length_mm} mm`;
 }
 
 // Sentinel-project rows (source='stock'/'sas', Phase 6.4) have no real project_no to show.
@@ -103,6 +124,8 @@ function ItemFormDialog({ item, onClose, router }) {
   const [reorderPoint, setReorderPoint] = useState(item?.reorder_point ?? '');
   const [itemCode, setItemCode] = useState(item?.item_code || '');
   const [itemId, setItemId] = useState(item?.item_id || null);
+  const [category, setCategory] = useState(item?.category || '');
+  const [moc, setMoc] = useState(item?.moc || '');
   const [saving, setSaving] = useState(false);
   const [catalogResults, setCatalogResults] = useState([]);
   const [catalogOpen, setCatalogOpen] = useState(false);
@@ -136,6 +159,7 @@ function ItemFormDialog({ item, onClose, router }) {
         description: description.trim(), spec: spec.trim() || null, on_hand: onHand,
         location: location.trim() || null, reorder_point: reorderPoint === '' ? null : reorderPoint,
         item_code: itemCode.trim() || null, item_id: itemId,
+        category: category || null, moc: moc.trim() || null,
       };
       if (editing) await api(`/api/inventory-items/${item.id}`, { method: 'PATCH', body });
       else await api('/api/inventory-items', { method: 'POST', body });
@@ -174,15 +198,35 @@ function ItemFormDialog({ item, onClose, router }) {
           </div>
           <div className="grid gap-1.5">
             <Label>Spec (optional)</Label>
-            <Input value={spec} onChange={e => setSpec(e.target.value)} />
+            <Input value={spec} onChange={e => setSpec(e.target.value)}
+              placeholder={['ms_section', 'angle'].includes(category) ? 'Section size, e.g. ISMB 150 or 50x50x6' : undefined} />
           </div>
           <div className="grid gap-1.5">
             <Label>Item code (optional)</Label>
             <Input value={itemCode} onChange={e => setItemCode(e.target.value)} />
           </div>
           <div className="grid gap-1.5">
-            <Label>On-hand</Label>
-            <Input type="number" value={onHand} onChange={e => setOnHand(e.target.value)} />
+            <Label>Category (optional)</Label>
+            <Select value={category || '__none'} onValueChange={v => setCategory(v === '__none' ? '' : v)}>
+              <SelectTrigger><SelectValue placeholder="Not dimensional" /></SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value="__none">Not dimensional</SelectItem>
+                  {DIMENSIONAL_CATEGORIES.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid gap-1.5">
+            <Label>Material / grade (optional)</Label>
+            <Input value={moc} onChange={e => setMoc(e.target.value)} placeholder="e.g. IS 2062 E250" />
+          </div>
+          {category && <p className="col-span-2 text-xs text-muted-foreground">
+            Category + material let Production's Cut action auto-match remnants against this line when a BOM releases. Add plate/section pieces from the Inventory table after saving.
+          </p>}
+          <div className="grid gap-1.5">
+            <Label>On-hand{item?.track_pieces ? ' (piece count)' : ''}</Label>
+            <Input type="number" value={onHand} onChange={e => setOnHand(e.target.value)} disabled={!!item?.track_pieces} />
           </div>
           <div className="grid gap-1.5">
             <Label>Minimum stock level (optional)</Label>
@@ -199,6 +243,158 @@ function ItemFormDialog({ item, onClose, router }) {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// Receiving new dimensional stock (a bought plate/section, not a remnant — those are created by
+// Production's Cut action instead). kind follows the inventory line's own category, same mapping
+// PrWorkspace's guessCategory uses (plate is its own shape; ms_section/angle are both "linear" —
+// cut by length, weight = length × kg/m, since a non-rectangular profile's cross-section isn't
+// L×W×T).
+function AddPieceDialog({ inventoryItem, onClose, router, onAdded }) {
+  const kind = inventoryItem.category === 'plate' ? 'plate' : 'linear';
+  const [length, setLength] = useState('');
+  const [width, setWidth] = useState('');
+  const [thickness, setThickness] = useState('');
+  const [density, setDensity] = useState('7850');
+  const [kgPerM, setKgPerM] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    setSaving(true);
+    try {
+      const result = await api('/api/stock-pieces', {
+        method: 'POST',
+        body: {
+          inventory_item_id: inventoryItem.id, kind,
+          length_mm: Number(length),
+          width_mm: kind === 'plate' ? Number(width) : null,
+          thickness_mm: kind === 'plate' ? Number(thickness) : null,
+          density: kind === 'plate' ? Number(density) : null,
+          kg_per_m: kind === 'linear' ? Number(kgPerM) : null,
+        },
+      });
+      showToast(`${result.code} added — ${result.weight_kg} kg`);
+      await onAdded?.();
+      router.refresh();
+      onClose();
+    } catch (err) { showToast(err.message, 'error'); }
+    setSaving(false);
+  }
+
+  return (
+    <Dialog open onOpenChange={o => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Add piece — {inventoryItem.description}</DialogTitle></DialogHeader>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-1.5">
+            <Label>Length (mm)</Label>
+            <Input type="number" value={length} onChange={e => setLength(e.target.value)} autoFocus />
+          </div>
+          {kind === 'plate' ? (
+            <>
+              <div className="grid gap-1.5">
+                <Label>Width (mm)</Label>
+                <Input type="number" value={width} onChange={e => setWidth(e.target.value)} />
+              </div>
+              <div className="grid gap-1.5">
+                <Label>Thickness (mm)</Label>
+                <Input type="number" value={thickness} onChange={e => setThickness(e.target.value)} />
+              </div>
+              <div className="grid gap-1.5">
+                <Label>Density (kg/m³)</Label>
+                <Input type="number" value={density} onChange={e => setDensity(e.target.value)} />
+              </div>
+            </>
+          ) : (
+            <div className="grid gap-1.5">
+              <Label>Weight per metre (kg/m)</Label>
+              <Input type="number" value={kgPerM} onChange={e => setKgPerM(e.target.value)} />
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={save} disabled={saving}>{saving ? 'Adding…' : 'Add piece'}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// The observer side of Cutting & Remnant Management (Production owns Cut; Stores just sees the
+// outcome): every piece under one inventory line, its lineage-derived status, and a Release action
+// for a 'reserved' piece whose BOM line got cancelled/edited before Production ever cut it.
+function PiecesDialog({ inventoryItem, onClose, router }) {
+  const [pieces, setPieces] = useState(null);
+  const [adding, setAdding] = useState(false);
+  const [busyId, setBusyId] = useState(null);
+
+  async function load() {
+    setPieces(await api(`/api/stock-pieces?inventory_item_id=${inventoryItem.id}`));
+  }
+  useEffect(() => { load().catch(err => showToast(err.message, 'error')); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function release(id) {
+    setBusyId(id);
+    try {
+      await api(`/api/stock-pieces/${id}/release`, { method: 'POST' });
+      showToast('Piece released back to stock');
+      await load();
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+    setBusyId(null);
+  }
+
+  return (
+    <>
+      <Dialog open onOpenChange={o => !o && onClose()}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader><DialogTitle>Pieces — {inventoryItem.description}</DialogTitle></DialogHeader>
+          {!pieces ? (
+            <p className="text-sm text-muted-foreground">Loading…</p>
+          ) : (
+            <div className="flex flex-col gap-3">
+              <div className="flex justify-end">
+                <Button size="sm" onClick={() => setAdding(true)}><PlusIcon />Add piece</Button>
+              </div>
+              {pieces.length === 0 ? (
+                <p className="py-6 text-center text-sm text-muted-foreground">No pieces yet.</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Code</TableHead>
+                      <TableHead>Dimensions</TableHead>
+                      <TableHead>Weight</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {pieces.map(p => (
+                      <TableRow key={p.id}>
+                        <TableCell className="font-medium">{p.code}</TableCell>
+                        <TableCell className="text-muted-foreground">{pieceDimsLabel(p)}</TableCell>
+                        <TableCell className="tnum">{p.weight_kg} kg</TableCell>
+                        <TableCell><Badge className={PIECE_STATUS[p.status]?.cls}>{PIECE_STATUS[p.status]?.label || p.status}</Badge></TableCell>
+                        <TableCell>
+                          {p.status === 'reserved' && (
+                            <Button size="sm" variant="outline" disabled={busyId === p.id} onClick={() => release(p.id)}>Release</Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </div>
+          )}
+          <DialogFooter><Button variant="outline" onClick={onClose}>Close</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {adding && <AddPieceDialog inventoryItem={inventoryItem} router={router} onClose={() => setAdding(false)} onAdded={load} />}
+    </>
   );
 }
 
@@ -313,18 +509,24 @@ function OpenRequestsCard({ openRequests, inventoryItems, router }) {
                     <TableCell className="text-muted-foreground">{r.qty_text || '—'}</TableCell>
                     <TableCell className="text-muted-foreground">{requestLabel(r)}</TableCell>
                     <TableCell>
-                      {r.pending_review
+                      {r.reserved_piece_count > 0
+                        ? <Badge className="border-info/30 bg-info-surface text-info" title="Cutting & Remnant Management matched this line to stock automatically — ready for Production to cut. No action needed here.">Remnant reserved</Badge>
+                        : r.pending_review
                         ? <Badge className="border-warning/30 bg-warning-surface text-warning" title="Not visible to Procurement yet — Reserve or Procure it.">Stores Review</Badge>
                         : <Badge variant="secondary">{r.purchase_status || 'Enquiry'}</Badge>}
                     </TableCell>
                     <TableCell className="flex justify-end gap-1">
-                      <Button size="sm" variant="outline" disabled={!inventoryItems.length} onClick={() => setReserveFor(r)}>
-                        Reserve from stock
-                      </Button>
-                      {r.pending_review === 1 && (
-                        <Button size="sm" disabled={busyId === r.id} onClick={() => procure(r)}>
-                          {busyId === r.id ? 'Sending…' : 'Procure'}
-                        </Button>
+                      {!(r.reserved_piece_count > 0) && (
+                        <>
+                          <Button size="sm" variant="outline" disabled={!inventoryItems.length} onClick={() => setReserveFor(r)}>
+                            Reserve from stock
+                          </Button>
+                          {r.pending_review === 1 && (
+                            <Button size="sm" disabled={busyId === r.id} onClick={() => procure(r)}>
+                              {busyId === r.id ? 'Sending…' : 'Procure'}
+                            </Button>
+                          )}
+                        </>
                       )}
                     </TableCell>
                   </TableRow>
@@ -534,6 +736,7 @@ const NAV_ITEMS = (counts) => [
 function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavigate }) {
   const router = useRouter();
   const [dialogItem, setDialogItem] = useState(undefined); // undefined = closed, null = add, {} = edit
+  const [piecesFor, setPiecesFor] = useState(null);
   const [lowOnly, setLowOnly] = useState(false);
   const lowStockCount = inventoryItems.filter(isLowStock).length;
   const shown = lowOnly ? inventoryItems.filter(isLowStock) : inventoryItems;
@@ -579,7 +782,10 @@ function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavi
               <TableBody>
                 {shown.map(it => (
                   <TableRow key={it.id}>
-                    <TableCell className="font-medium">{it.description}</TableCell>
+                    <TableCell className="font-medium">
+                      {it.description}
+                      {it.catalog_item_code && <div className="text-xs font-normal text-muted-foreground">{it.catalog_item_code}</div>}
+                    </TableCell>
                     <TableCell className="text-muted-foreground">{it.spec || '—'}</TableCell>
                     <TableCell>{it.on_hand}</TableCell>
                     <TableCell>
@@ -588,7 +794,10 @@ function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavi
                     </TableCell>
                     <TableCell className="text-muted-foreground">{it.location || '—'}</TableCell>
                     <TableCell className="text-muted-foreground">{it.reorder_point ?? '—'}</TableCell>
-                    <TableCell>
+                    <TableCell className="flex justify-end gap-1">
+                      {(DIMENSIONAL_CATEGORIES.some(c => c.value === it.category) || it.track_pieces) && (
+                        <Button size="icon-sm" variant="ghost" title="Pieces" onClick={() => setPiecesFor(it)}><LayersIcon /></Button>
+                      )}
                       <Button size="icon-sm" variant="ghost" onClick={() => setDialogItem(it)}><PencilIcon /></Button>
                     </TableCell>
                   </TableRow>
@@ -601,6 +810,7 @@ function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavi
           <ItemFormDialog item={dialogItem} router={router} onClose={() => setDialogItem(undefined)} />
         )}
       </Card>
+      {piecesFor && <PiecesDialog inventoryItem={piecesFor} router={router} onClose={() => setPiecesFor(null)} />}
     </div>
   );
 }

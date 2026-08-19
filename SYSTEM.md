@@ -1144,7 +1144,10 @@ the following shipped against those specific findings, nothing speculative:
   already `'Enquiry'` from creation — and notifies Procurement). An **Auto/Manual toggle** exists in
   `StoresWorkspace.jsx` but Auto is a UI-only "coming soon" stub — Manual is the only real behavior
   regardless of which is selected, pending real item-level matching (see §3.2 below) being trustworthy
-  enough to auto-commit stock against.
+  enough to auto-commit stock against. **Note (2026-08-19):** a real automatic reservation mechanism
+  does now exist, but it's a separate, narrower thing from what this toggle promises — §5k's
+  geometry-based remnant matching, scoped to plate/section stock only, not this toggle's broader
+  "any item" ambition. This Auto stub is unchanged and still not live.
 - **Reserved-from-stock visibility on Procurement's own Enquiry queue** — `getSourcingItems()` now
   also returns `reserved_qty` (sum of active `inventory_reservations` per line); `ProcurementWorkspace.jsx`'s
   `EnquiryRow` shows a "Reserved from stock" badge when non-zero. Visibility only, not a status
@@ -1483,7 +1486,9 @@ module depends on.
   mini-form/list against `material_issues` (`bom_item_id`, optional `job_card_id`, `qty`) —
   structured Stores→WIP consumption, replacing free text going forward without touching existing
   `issued_ref`/`received_ref` data. Stores **or** Production can issue (mirrors the authority
-  Production already had over those BOM columns).
+  Production already had over those BOM columns). **Cutting & remnant (2026-08-19, §5k):** a
+  separate list, scoped to dimensional (plate/section) lines only, each with a **Cut** action —
+  pre-filled with the auto-matched remnant when one exists.
 - **Masters:** `operations`, `workstations`, `trades` (§3a) — all three get a small `+` popover
   (`components/QuickAddInline.jsx`) next to their pickers, so a new workstation doesn't need direct
   API access to add.
@@ -1977,6 +1982,195 @@ edits are audited (`dependency_chain_edit`), every milestone status change is au
 (`milestone_edit`) with real timestamps, and `blocked_by`/`out_of_order` are computed live off
 real state on every read rather than snapshotted — so nothing needs to be added now to make that
 data available later, it just needs time and real usage to accumulate.
+
+## 5k. Cutting & Remnant Management (2026-08-19, no separate working-spec doc — folded straight in here)
+
+Client-raised, from a direct conversation about plate/section offcuts: a plate bought at (say)
+1500×6000×10 mm is cut for a project, and the usable leftover should go back into stock as a
+**remnant** for a later project instead of being re-bought or scrapped blindly. Two things were
+missing to make that real: (1) inventory had no concept of a physical piece with dimensions — just
+a scalar `on_hand` number — so there was nowhere for a remnant to live; (2) nothing checked a BOM's
+required material against what stock actually had, so even a perfect remnant sitting in Stores
+would never get found. Both are built now, layered additively on top of everything in §5e/§5g —
+the existing scalar `on_hand`, `inventory_reservations`, `getSourcingItems`/`getOpenBomItems`
+gating, and `reserveFromStock`'s split-on-shortfall pattern are all reused, not rewritten.
+
+- **Piece-level stock (`stock_pieces`, `lib/stock-pieces.js`)** — opt-in per `inventory_items` row
+  (`track_pieces=1`, set automatically the first time a piece is received). A piece carries `kind`
+  (`plate` | `linear`), dimensions (`length_mm`/`width_mm`/`thickness_mm` for a plate;
+  `length_mm`/`kg_per_m` for a linear section — angles/channels/beams/pipes/bars, cut by length
+  since a non-rectangular profile's cross-section isn't `L×W×T`), a computed `weight_kg`
+  (`length×width×thickness×density` for a plate, `length×kg_per_m` for linear — **weight is always
+  derived from geometry, never hand-typed**, the other half of the client's original ask), and
+  `status` (`available` | `reserved` | `consumed` | `scrap`). `parent_id` + `cut_at` chain a cut's
+  outputs back to their source piece — no separate `cut_operations` header table; nothing needs
+  attributes beyond that yet. A piece-tracked line's `on_hand` becomes a rollup (count of
+  `available` pieces) so the existing Stores Inventory table needed zero changes to keep working.
+  Codes are traceability ids in the shape the client actually asked for: `PL-0007` (root) →
+  `PL-0007-U1` (used, consumed into a project) / `PL-0007-R1` (remnant, back in stock available) /
+  `PL-0007-S1` (scrap). **Note:** this is a different id from `items.item_code` (§3.2) — that
+  column is still import-only and unusable as a key (1 of 2,773 rows populated); piece codes are
+  generated fresh by this engine and solve the same traceability need §3.2 could not.
+- **Cut = the shop-floor moment (`cutPiece`)** — one transaction: source piece → `consumed`; each
+  declared **used** piece → its own child row, `consumed`, linked to the project (+ BOM line if
+  cutting a reserved piece); each declared **remnant** → a child row, `available`, `source='remnant'`
+  — genuinely back in stock, matchable against a future BOM line exactly like a purchased piece;
+  any leftover weight (`source − used − remnant`) → one `scrap` child, auto-computed, never typed.
+  The operator only ever enters **what was used and what usable remnant they kept** — every weight,
+  the scrap number, and the stock update are computed, matching the client's explicit UX ask ("hide
+  most of this complexity... they just tell the system what they cut"). If the cut piece was
+  `reserved` against a BOM line, that line's `purchase_status` flips to the same terminal
+  **`In-Stock`** `issueReservation()` already uses (D9, §5e) — but only once every reserved piece
+  against that line has actually been cut (a line needing qty 2 can be matched by 2 separate
+  pieces; the first cut alone must not prematurely close the line).
+- **Automatic remnant-to-BOM matching (`lib/remnant-match.js`) — the core of this round.** Triggered
+  the moment Design clicks **Release BOM** (`POST /api/projects/[id]/release-bom`, after
+  `markMilestoneDone`) and again on a single BOM-item add to an already-released project
+  (`POST /api/bom-items`) — both best-effort, never blocking the underlying action. For every BOM
+  line with a dimensional `category` (`plate`/`ms_section`/`angle`) and parsed numeric
+  `category_fields_json` (length/width/thickness for a plate, length + a profile string for
+  linear):
+  1. Candidates: `stock_pieces` where `status='available'`, same `category`, and the inventory
+     line's `moc` matches the BOM line's `moc` (normalized string comparison — same free-text
+     nature as `bom_items.moc` today, not a grade taxonomy). Plate additionally requires thickness
+     within a small tolerance and the required rectangle to fit **with rotation** —
+     `(L≥reqL && W≥reqW) || (L≥reqW && W≥reqL)`; linear requires the profile/size string (reused
+     from `inventory_items.spec`, no new column) to match and length to be sufficient. Sorted
+     least-waste (smallest sufficient piece) first.
+  2. Reserve up to the required qty (`qty_text`'s leading number, same parse `splitQtyText`
+     already uses) via a conditional `UPDATE ... WHERE status='available'` per piece — the
+     anti-double-booking guard: a piece already claimed by one match can never be won by a second,
+     no wrapping transaction needed (same non-transactional precedent `reserveFromStock` itself
+     already uses at this codebase's scale).
+  3. **Full match** (found = required): no row split — the line itself is force-set
+     `pending_review=1` (permanent), so it never satisfies `getSourcingItems()`'s
+     `pending_review=0` gate and is hidden from Procurement forever, exactly like a manually
+     reserved line today.
+  4. **Partial match**: splits like `reserveFromStock` — original row's qty reduced to the unmet
+     remainder (continues its normal Stores-review → Procure path unchanged), a cloned row carries
+     the matched qty with `pending_review=1` forced. The reserved pieces point at the clone.
+  5. **No match**: the line is untouched, proceeds exactly as before this feature existed.
+  - **`reserveFromStock`'s split-clone bug, fixed as a side effect** — the original split INSERT
+    (§5e) silently dropped `item_id`/`category`/`category_fields_json` on the fulfilled clone. Both
+    callers now share one `cloneBomItemForSplit()` helper (`lib/procurement.js`) that carries them
+    forward; `pending_review` stays a caller-supplied param so `reserveFromStock`'s own existing
+    behavior (clone defaults to `pending_review=0`, unchanged) is untouched.
+- **Two BOM-visibility queries had to learn about `stock_pieces.status='reserved'` directly**,
+  because `purchase_status` alone can't represent "matched but not yet cut" without breaking an
+  existing invariant: Stores' Open Requests (`getOpenBomItems`) and Production's BOM view
+  (`GET /api/projects/[id]/bom`) are deliberately **mutually exclusive by `purchase_status`** (open
+  vs. Received/In-Stock) — that's the whole point of the status column. A matched-but-not-cut line
+  is simultaneously "Stores should see this is handled" and "Production should be able to cut it
+  right now," which neither existing query's status filter alone can express. Fixed by adding a
+  `reserved_piece_count` signal to both queries (a `stock_pieces` subquery, `purchase_status`
+  itself never touched by matching) instead of inventing a new `purchase_status` value — Stores'
+  Open Requests shows a **"Remnant reserved"** badge in place of "Stores Review" (no Procure
+  button — it's already fulfilled) computed from that count; Production's BOM `GET` route
+  `OR EXISTS`s the same reservation so the line appears there too, before `purchase_status` ever
+  changes.
+- **UI, minimal, reuses every existing primitive (Dialog/Card/Table/Select/Badge)** —
+  `components/StoresWorkspace.jsx` gets a "Pieces" (layers icon) action per dimensional inventory
+  row → a dialog listing pieces (code · dims · weight · status badge) with **Add piece** (receiving)
+  and **Release** (un-reserve, e.g. after a cancelled BOM line) actions; `components/WorkersPanel.jsx`'s
+  `ProductionBomTab` gets a **Cutting & remnant** list (dimensional lines only) with a **Cut**
+  action — pre-filled with the reserved piece + required dims when matched, a manual
+  stock-line-then-piece picker otherwise, live-computed Used/Remnant/Scrap weight preview as the
+  operator types, submit disabled if used+remnant would exceed the source. `components/PrWorkspace.jsx`'s
+  category-field dimension inputs (length/width/thickness) are now `type="number"` and required
+  once a dimensional category is picked — the data matching actually needs, enforced going forward
+  without touching historical rows.
+- **Confirmed scope boundary**: matching only ever runs on BOM lines that already carry a
+  structured `category` + numeric dims — i.e. lines entered through the PR/BOM composer with the
+  category fields filled in. The dominant way Design actually populates a BOM, bulk PMB Excel
+  import (§5a), writes pure free text and is completely unaffected — no regression, matching is
+  simply never attempted on those rows. No 2D nesting/bin-packing (one sufficient piece per
+  required unit, least-waste first — never combining several remnants to cover one oversized
+  requirement); no mandatory dimension-confirm gate on import.
+- **Self-check** (no JS test framework, same in-memory-libsql precedent as
+  `scripts/advance-status-selfcheck.mjs`, since `lib/*.js` uses ESM `import` only loadable through
+  Next's bundler): `node scripts/remnant-cutting-selfcheck.mjs` — weight formula (1000×2000×10 mild
+  steel = 157 kg), full cut round-trip (used+remnant+scrap conserves the source weight, lineage
+  correct), matching (thickness-mismatch rejection, rotated-fit acceptance, least-waste ordering,
+  double-booking impossibility, partial-qty split correctness including the clone carrying its
+  category link forward). `node scripts/seed-remnant-demo.mjs` seeds one demo project + one
+  piece-tracked inventory line for an end-to-end browser walkthrough. Verified live against the
+  real dev DB: a qty-2 demo BOM line with one matching remnant in stock → Release BOM reserved 1 of
+  2 automatically and the line never appeared in Procurement's Enquiry queue → Stores' Open
+  Requests showed "Remnant reserved" for the matched unit and a normal open line for the shortfall
+  → Production's Cut (pre-filled 1800×900×10) produced a 127.17 kg used piece + a 15.7 kg remnant
+  (back in Stores, available) + 14.13 kg scrap, summing exactly back to the 157 kg source, and the
+  BOM line flipped to `In-Stock`.
+
+### Item Master → Item Code, finished (2026-08-19 addendum)
+
+§3.2 built the join key (`items.id`) but left `item_code` itself unusable (blank on all but 1 of
+2,773 rows) and nothing downstream actually preferred catalog identity over free text. Closed, additively:
+
+- **Every `items` row now has a real, unique code** — `IM-000042`-style sequential backfill for
+  every previously-blank row (the 1 real pre-existing code, `ADBL0000001`, untouched), plus a
+  partial `UNIQUE` index (`WHERE item_code IS NOT NULL`) so a duplicate can no longer be created —
+  DB-enforced, not a convention. `bom_items.item_id`/`inventory_items.item_id` also got a one-time
+  retroactive backfill using the exact same case/space-insensitive exact-name match the PMB
+  import's own auto-link already trusted live (§5a) — reused, not reinvented. All one guarded
+  migration (`backfillItemMasterIdentity`, `system_migrations` key `item_master_identity_v1`).
+- **Remnant matching now checks Item Master identity before the moc-string fallback**
+  (`lib/remnant-match.js`): `bom_items.item_id === inventory_items.item_id` is the strong signal
+  when both sides are catalog-linked (real identity, not a guess) — dimensions/thickness/rotation
+  are still checked after, unchanged. Either side missing `item_id` falls back to the existing
+  normalized-moc comparison exactly as before, so free-typed BOM/stock lines keep matching exactly
+  as they did pre-this-round; nothing regresses.
+- **Display reuses dormant UI, not new UI**: `PrWorkspace`'s and `StoresWorkspace`'s catalog
+  pickers already rendered `item_code` — silently blank until now purely because the data was
+  blank. `getProjectBom`/`getInventoryItems`/`getOpenBomItems`/Production's BOM route now each
+  `LEFT JOIN items` for a `catalog_item_code`, shown as a small muted line under the description in
+  `BomTable`, Stores' Inventory table, and Production's Cutting & remnant list — no new column, no
+  new component, same "reuse before building" pattern as everything else in §5k.
+- **Deliberately not built**: no in-app "create a new Item Master row" flow (2,773 real rows
+  already exist; free-typed lines simply stay free text until picked from the catalog, exactly
+  today's behavior) — matches the explicit instruction not to invent a new identity for every BOM
+  occurrence. `pr_items`/`po_items`/`stock_pieces`/`job_cards` get no new `item_id` column — each
+  already reaches Item Master identity transitively through `bom_item_id`/`inventory_item_id`, so
+  adding a redundant denormalized column would duplicate, not reuse.
+
+### BOM creation → release baseline → templates (2026-08-19 addendum)
+
+Closes the loop from BOM authoring through to a traceable production baseline, reusing calc_drawings
+(Design's existing drawing system) and bom_templates (§5h) rather than inventing either concept fresh.
+
+- **Drawing linking** — `bom_items.drawing_id` (live FK to `calc_drawings`, nullable, "where
+  applicable"). `calc_drawings` never had a revision field at all; added one (`revision TEXT`,
+  free text like every other spec field here) rather than a parallel drawing system — the "drawing
+  number" is just the drawing's own existing `name`. Set per project-split row in the Raise PR
+  composer (a drawing is inherently one project's; a line can still split across several), fetched
+  lazily via the existing Design/Engineering-gated `GET /api/calc-drawings` — a Stores user raising
+  a line simply never sees the picker, no error. `getProjectBom`/Production's BOM route now surface
+  it (`drawing_name`/`drawing_revision`), shown inline in `BomTable` under the description.
+- **Release baseline** — `projects.bom_release_revision` (increments once per Release BOM click) +
+  `bom_items.released_at_revision` (stamped on every live line at that moment). No new table, no
+  new workflow: "Work Order" traceability is just {project, this revision number,
+  `bom_items.drawing_id`, job_cards via project_id/milestone_id/bom_item_id} — relationships that
+  already existed. Deliberately a live FK to the drawing, not a frozen snapshot (calc_sheets'
+  `calc_snapshots` is the pattern to reuse if a hard freeze is ever needed — not built here).
+- **Release BOM readiness summary** — the GET status route now also returns `drawingLinked` and
+  `nextRevision`; the tab shows "N BOM items · M drawings linked · K not linked" before the button.
+  Informational only, never a hard gate — not every line needs a drawing.
+- **Templates now carry the same identity a BOM line does** — `bom_template_items` gained
+  `item_id`/`category`/`category_fields_json` (was material_description/moc/size_spec/qty_text
+  only, so an applied line could never be remnant-matched or catalog-linked). The template composer
+  reuses `ItemSearchField`/`CATEGORY_LABEL`/`CATEGORY_FIELD_DEFS` as-is. Drawing/revision
+  deliberately NOT stored on templates — project-specific, never standard across boiler models.
+  The apply route now also runs `matchAndReserve` per dimensional item when the target project's
+  BOM is already released, the same late-add coverage the single bom-item POST route already had.
+- **"Use template" moved into Raise PR** (`UseTemplateDialog`) — a compact modal (template picker +
+  project picker + Apply) using the same `/api/bom-templates(/apply)` endpoints, so applying one
+  doesn't mean leaving Raise PR. The Templates tab itself (create/manage) is unchanged.
+- **`app/pr/page.js` header/sidebar bug fixed** — carried the same leftover pre-sidebar-redesign
+  `PageHeader` + `<main>` wrapper `app/stores/page.js` was already fixed for (§ "Below-minimum
+  filter" note); removed, same as that fix.
+- **Real bug found and fixed live**: the drawing picker's async fetch (`onProjectChange`) closed
+  over `line` from the render that triggered it — resolving after the user's own project-pick
+  commit silently rolled it back. Fixed with a `lineRef` mirror read only by that one post-await
+  update; every synchronous handler is untouched.
 
 ## 6. Customer Portal (read-only, external)
 

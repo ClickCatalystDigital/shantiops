@@ -43,7 +43,12 @@ const COLUMN_WIDTHS = {
   grn_ref: 'w-32', grn_qty_text: 'w-20', pending_qty_text: 'w-24', bqtc_ref: 'w-20',
   issued_ref: 'w-24', received_ref: 'w-24', production_done: 'w-20', remarks: 'w-40',
 };
-export default function BomTable({ projectId, bom, pendingIds = [], editableFields = [], department, canCancel = false }) {
+// `onSaved` (optional): fires alongside router.refresh() after any successful mutation — additive,
+// every existing caller keeps working unchanged (router.refresh() alone refreshes server-rendered
+// props). Needed by callers whose `bom` is client-fetched local state instead (ReleaseBomTab, same
+// as ProductionBomTab already is) — router.refresh() can't touch that state, so nothing but this
+// callback ever tells them to refetch.
+export default function BomTable({ projectId, bom, pendingIds = [], editableFields = [], department, canCancel = false, onSaved }) {
   const router = useRouter();
   const [q, setQ] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -107,6 +112,7 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
     try {
       await api(`/api/bom-items/${item.id}`, { method: 'PATCH', body: { purchase_status: value === 'none' ? '' : value } });
       router.refresh();
+      onSaved?.();
     } catch (err) { showToast(err.message, 'error'); }
   }
 
@@ -116,6 +122,7 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
     try {
       await api(`/api/bom-items/${item.id}`, { method: 'PATCH', body: { production_done: checked ? 1 : 0 } });
       router.refresh();
+      onSaved?.();
     } catch (err) { showToast(err.message, 'error'); }
   }
 
@@ -135,6 +142,7 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
       }
       setEditing(null);
       router.refresh();
+      onSaved?.();
     } catch (err) { showToast(err.message, 'error'); }
     setBusy(false);
   }
@@ -145,6 +153,7 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
       await api(`/api/bom-items/${item.id}`, { method: 'DELETE' });
       showToast('Item deleted');
       router.refresh();
+      onSaved?.();
     } catch (err) { showToast(err.message, 'error'); }
   }
 
@@ -154,6 +163,7 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
       await api(`/api/bom-items/${item.id}/cancel`, { method: 'POST' });
       showToast('Item cancelled');
       router.refresh();
+      onSaved?.();
     } catch (err) { showToast(err.message, 'error'); }
   }
 
@@ -227,6 +237,17 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
                 <TableCell className="sticky left-0 z-10 w-12 bg-background tnum text-muted-foreground">{bom.indexOf(r) + 1}</TableCell>
                 <TableCell className="sticky left-12 z-10 w-64 min-w-64 max-w-64 break-words bg-background font-medium">
                   {r.material_description}
+                  {/* Item Master identity (§3.2) — the catalog's own code, shown only when this
+                      line is actually linked (item_id), never a free-typed value. */}
+                  {(r.catalog_item_code || r.drawing_name || r.template_name) && (
+                    <div className="text-xs font-normal text-muted-foreground">
+                      {[
+                        r.catalog_item_code,
+                        r.drawing_name && `Drg DWG-${String(r.drawing_id).padStart(4, '0')} · ${r.drawing_name}${r.drawing_revision ? ` (${r.drawing_revision})` : ''}`,
+                        r.template_name && `via ${r.template_name}`,
+                      ].filter(Boolean).join(' · ')}
+                    </div>
+                  )}
                   {/* Derived from selected_quote_id (§5a) — set via the Procurement workspace's
                       supplier selection, not editable here. */}
                   {r.selected_supplier_name && (

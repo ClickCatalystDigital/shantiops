@@ -26,11 +26,11 @@ export async function POST(req) {
   if (!description) return NextResponse.json({ error: 'Description is required' }, { status: 400 });
 
   const { lastId } = await execute(
-    `INSERT INTO inventory_items (description, spec, on_hand, location, reorder_point, item_code, item_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO inventory_items (description, spec, on_hand, location, reorder_point, item_code, item_id, category, moc)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [description, b.spec || null, Number(b.on_hand) || 0, b.location || null,
       b.reorder_point != null && b.reorder_point !== '' ? Number(b.reorder_point) : null, b.item_code || null,
-      b.item_id ? Number(b.item_id) : null]
+      b.item_id ? Number(b.item_id) : null, b.category || null, b.moc || null]
   );
   await audit('inventory_item_created', { actor: user.username, detail: description });
   return NextResponse.json({ id: Number(lastId) });

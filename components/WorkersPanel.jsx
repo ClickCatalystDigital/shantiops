@@ -18,7 +18,7 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectGroup, SelectItem,
 } from '@/components/ui/select';
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table';
-import { PlusIcon, HouseIcon, ClipboardListIcon, UsersIcon, HardHatIcon, PackageIcon } from 'lucide-react';
+import { PlusIcon, HouseIcon, ClipboardListIcon, UsersIcon, HardHatIcon, PackageIcon, ScissorsIcon, TrashIcon } from 'lucide-react';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 import JobCardBoard from '@/components/JobCardBoard';
 import BomTable from '@/components/BomTable';
@@ -49,6 +49,217 @@ export default function WorkersPanel({ date, sheet, workers, projects, trades, j
   );
 }
 
+const DIMENSIONAL_CATEGORIES = new Set(['plate', 'ms_section', 'angle']);
+
+function parseNum(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function round2(n) { return Math.round(n * 100) / 100; }
+
+function pieceDimsLabel(p) {
+  if (p.status === 'scrap') return '—'; // scrap is a residual weight only, never a real shape
+  return p.kind === 'plate' ? `${p.length_mm}×${p.width_mm}×${p.thickness_mm} mm` : `${p.length_mm} mm`;
+}
+
+// Weight preview mirrors lib/stock-pieces.js's pieceWeight exactly (client-side, so the operator
+// sees the scrap number update live as they type — the server recomputes and is the real source of
+// truth at submit).
+function previewWeight(source, row) {
+  if (source.kind === 'plate') {
+    const L = parseNum(row.length_mm), W = parseNum(row.width_mm), T = parseNum(row.thickness_mm);
+    if (!(L > 0 && W > 0 && T > 0)) return 0;
+    return (L / 1000) * (W / 1000) * (T / 1000) * (source.density || 7850);
+  }
+  const L = parseNum(row.length_mm);
+  if (!(L > 0)) return 0;
+  return (L / 1000) * (source.kg_per_m || 0);
+}
+
+// The BOM line's own required dims (category_fields_json — CALC-CHANGES2.md §F) prefill the first
+// "Used" row, whether or not lib/remnant-match.js actually found a piece for it: the requirement is
+// the same either way, matching just decides which source piece (if any) already covers it.
+function requiredDimsFromBomItem(b) {
+  if (!b.category_fields_json) return {};
+  try {
+    const f = JSON.parse(b.category_fields_json);
+    return b.category === 'plate'
+      ? { length_mm: f.length || '', width_mm: f.width || '', thickness_mm: f.thickness || '' }
+      : { length_mm: f.length || '' };
+  } catch { return {}; }
+}
+
+function DimRows({ label, kind, rows, setRows }) {
+  function update(idx, field, value) {
+    setRows(rows.map((r, i) => (i === idx ? { ...r, [field]: value } : r)));
+  }
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center justify-between">
+        <Label>{label}</Label>
+        <Button type="button" size="sm" variant="ghost" onClick={() => setRows([...rows, {}])}><PlusIcon />Add</Button>
+      </div>
+      {rows.length === 0 && <p className="text-xs text-muted-foreground">None</p>}
+      {rows.map((r, idx) => (
+        <div key={idx} className="flex items-center gap-2">
+          <Input type="number" placeholder="Length (mm)" className="w-32 shrink-0" value={r.length_mm ?? ''} onChange={e => update(idx, 'length_mm', e.target.value)} />
+          {kind === 'plate' && (
+            <>
+              <Input type="number" placeholder="Width (mm)" className="w-32 shrink-0" value={r.width_mm ?? ''} onChange={e => update(idx, 'width_mm', e.target.value)} />
+              <Input type="number" placeholder="Thickness (mm)" className="w-36 shrink-0" value={r.thickness_mm ?? ''} onChange={e => update(idx, 'thickness_mm', e.target.value)} />
+            </>
+          )}
+          <Button type="button" size="icon-sm" variant="ghost" onClick={() => setRows(rows.filter((_, i) => i !== idx))}><TrashIcon /></Button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Cutting & Remnant Management's shop-floor moment — the operator declares what was used and what
+// usable remnant they kept; everything else (weight, scrap, the remnant going back into stock,
+// lineage) is computed server-side (lib/stock-pieces.js's cutPiece). A line lib/remnant-match.js
+// already reserved a piece for pre-fills the source automatically; otherwise the operator picks one
+// manually from the same category's available stock — same Cut action either way.
+function CutDialog({ bomItem, projectId, onClose, router, onDone }) {
+  const [reservedPieces, setReservedPieces] = useState(null); // null = loading
+  const [inventoryOptions, setInventoryOptions] = useState(null);
+  const [inventoryItemId, setInventoryItemId] = useState('');
+  const [availablePieces, setAvailablePieces] = useState(null);
+  const [sourcePieceId, setSourcePieceId] = useState('');
+  const [source, setSource] = useState(null);
+  const [used, setUsed] = useState([requiredDimsFromBomItem(bomItem)]);
+  const [remnants, setRemnants] = useState([]);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    api(`/api/stock-pieces?bom_item_id=${bomItem.id}`).then(rows => {
+      const reserved = rows.filter(p => p.status === 'reserved');
+      setReservedPieces(reserved);
+      if (reserved.length === 1) { setSourcePieceId(String(reserved[0].id)); setSource(reserved[0]); }
+    }).catch(err => showToast(err.message, 'error'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function loadInventoryOptions() {
+    const rows = await api('/api/inventory-items');
+    setInventoryOptions(rows.filter(i => i.category === bomItem.category));
+  }
+
+  async function pickInventoryItem(id) {
+    setInventoryItemId(id);
+    setSourcePieceId(''); setSource(null);
+    const rows = await api(`/api/stock-pieces?inventory_item_id=${id}`);
+    setAvailablePieces(rows.filter(p => p.status === 'available'));
+  }
+
+  function pickSourcePiece(id, pool) {
+    setSourcePieceId(id);
+    setSource((pool || []).find(p => String(p.id) === id) || null);
+  }
+
+  const usedWeight = source ? used.reduce((s, r) => s + previewWeight(source, r), 0) : 0;
+  const remnantWeight = source ? remnants.reduce((s, r) => s + previewWeight(source, r), 0) : 0;
+  const scrapWeight = source ? Math.max(0, round2(source.weight_kg - usedWeight - remnantWeight)) : 0;
+  const overBudget = !!source && (usedWeight + remnantWeight) > source.weight_kg + 0.01;
+
+  async function submit() {
+    if (!source) return showToast('Pick a source piece', 'error');
+    setSaving(true);
+    try {
+      const toDims = rows => rows.filter(r => parseNum(r.length_mm) > 0).map(r => ({
+        length_mm: parseNum(r.length_mm), width_mm: parseNum(r.width_mm), thickness_mm: parseNum(r.thickness_mm),
+      }));
+      await api(`/api/stock-pieces/${sourcePieceId}/cut`, {
+        method: 'POST',
+        body: { used: toDims(used), remnants: toDims(remnants), project_id: projectId, bom_item_id: bomItem.id },
+      });
+      showToast('Cut recorded');
+      await onDone?.();
+      router.refresh();
+      onClose();
+    } catch (err) { showToast(err.message, 'error'); }
+    setSaving(false);
+  }
+
+  return (
+    <Dialog open onOpenChange={o => !o && onClose()}>
+      <DialogContent className="max-w-xl">
+        <DialogHeader><DialogTitle>Cut — {bomItem.material_description}</DialogTitle></DialogHeader>
+        <div className="flex flex-col gap-4">
+          {reservedPieces === null ? (
+            <p className="text-sm text-muted-foreground">Loading…</p>
+          ) : reservedPieces.length > 0 ? (
+            <div className="flex flex-col gap-1.5">
+              <Label>Source piece</Label>
+              {reservedPieces.length === 1 ? (
+                <p className="text-sm">
+                  {reservedPieces[0].code} — {pieceDimsLabel(reservedPieces[0])} · {reservedPieces[0].weight_kg} kg{' '}
+                  <span className="text-muted-foreground">(reserved for this line)</span>
+                </p>
+              ) : (
+                <Select value={sourcePieceId} onValueChange={v => pickSourcePiece(v, reservedPieces)}>
+                  <SelectTrigger><SelectValue placeholder="Choose a reserved piece" /></SelectTrigger>
+                  <SelectContent><SelectGroup>
+                    {reservedPieces.map(p => <SelectItem key={p.id} value={String(p.id)}>{p.code} — {pieceDimsLabel(p)} · {p.weight_kg} kg</SelectItem>)}
+                  </SelectGroup></SelectContent>
+                </Select>
+              )}
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              <p className="text-sm text-muted-foreground">No remnant was auto-matched for this line — pick a source piece manually.</p>
+              {inventoryOptions === null ? (
+                <Button size="sm" variant="outline" onClick={loadInventoryOptions}>Find stock</Button>
+              ) : (
+                <>
+                  <Select value={inventoryItemId} onValueChange={pickInventoryItem}>
+                    <SelectTrigger><SelectValue placeholder="Stock line" /></SelectTrigger>
+                    <SelectContent><SelectGroup>
+                      {inventoryOptions.length === 0
+                        ? <div className="px-2 py-1.5 text-sm text-muted-foreground">No matching stock line</div>
+                        : inventoryOptions.map(i => <SelectItem key={i.id} value={String(i.id)}>{i.description} {i.spec ? `· ${i.spec}` : ''}</SelectItem>)}
+                    </SelectGroup></SelectContent>
+                  </Select>
+                  {availablePieces && (
+                    <Select value={sourcePieceId} onValueChange={v => pickSourcePiece(v, availablePieces)}>
+                      <SelectTrigger><SelectValue placeholder="Piece" /></SelectTrigger>
+                      <SelectContent><SelectGroup>
+                        {availablePieces.length === 0
+                          ? <div className="px-2 py-1.5 text-sm text-muted-foreground">No available pieces</div>
+                          : availablePieces.map(p => <SelectItem key={p.id} value={String(p.id)}>{p.code} — {pieceDimsLabel(p)} · {p.weight_kg} kg</SelectItem>)}
+                      </SelectGroup></SelectContent>
+                    </Select>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {source && (
+            <>
+              <DimRows label="Used (→ this project)" kind={source.kind} rows={used} setRows={setUsed} />
+              <DimRows label="Kept as remnant (→ stock)" kind={source.kind} rows={remnants} setRows={setRemnants} />
+              <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm tnum">
+                <div className="flex justify-between"><span className="text-muted-foreground">Source</span><span>{source.weight_kg} kg</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Used</span><span>{round2(usedWeight)} kg</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Remnant</span><span>{round2(remnantWeight)} kg</span></div>
+                <div className="flex justify-between font-medium"><span>Scrap (auto)</span><span>{overBudget ? '—' : `${scrapWeight} kg`}</span></div>
+              </div>
+              {overBudget && <p className="text-xs text-danger">Used + remnant exceeds the source piece — reduce a dimension.</p>}
+            </>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={submit} disabled={saving || !source || overBudget}>{saving ? 'Cutting…' : 'Cut'}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // Every project has its own Master BOM (§5a) — what's arrived from Stores, what's still pending —
 // which Production needs while deciding what a job card can actually start on. Cross-project here
 // (unlike the project page's BomPanel), so a project picker comes first. Reuses the existing
@@ -63,6 +274,8 @@ function ProductionBomTab({ projects }) {
   const [loading, setLoading] = useState(false);
   const [issueForm, setIssueForm] = useState({ bom_item_id: '', qty: '' });
   const [busy, setBusy] = useState(false);
+  const [cutFor, setCutFor] = useState(null);
+  const router = useRouter();
 
   async function loadAll() {
     const [{ items }, prog, iss] = await Promise.all([
@@ -157,8 +370,31 @@ function ProductionBomTab({ projects }) {
             )}
           </div>
 
+          {bom.some(b => DIMENSIONAL_CATEGORIES.has(b.category)) && (
+            <div className="flex flex-col gap-2">
+              <p className="text-sm font-medium">Cutting &amp; remnant</p>
+              <div className="flex flex-col gap-1">
+                {bom.filter(b => DIMENSIONAL_CATEGORIES.has(b.category)).map(b => (
+                  <div key={b.id} className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm">
+                    <div className="flex flex-col">
+                      <span>{b.material_description} {b.size_spec ? `· ${b.size_spec}` : ''}</span>
+                      <span className="text-xs text-muted-foreground">{b.catalog_item_code ? `${b.catalog_item_code} · ` : ''}{b.qty_text || '—'}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {b.reserved_piece_count > 0 && <Badge className="border-info/30 bg-info-surface text-info">Reserved — ready to cut</Badge>}
+                      <Button size="sm" variant="outline" onClick={() => setCutFor(b)}><ScissorsIcon />Cut</Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <BomTable projectId={Number(projectId)} bom={bom} editableFields={BOM_FIELD_OWNERS.Production} department="Production" />
         </>
+      )}
+      {cutFor && (
+        <CutDialog bomItem={cutFor} projectId={Number(projectId)} router={router} onClose={() => setCutFor(null)} onDone={loadAll} />
       )}
     </div>
   );

@@ -5,6 +5,7 @@ import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { notifyDepartment } from '@/lib/notify';
 import { BOM_FIELDS } from '@/lib/bom-fields.mjs';
+import { matchAndReserve } from '@/lib/remnant-match';
 
 // Add a single BOM item in-app (materials get added mid-project — the BOM definition is
 // Engineering's, so this is Engineering/PM-gated like upload).
@@ -46,5 +47,19 @@ export async function POST(req) {
       dedupe_key: `bom_item:${Number(res.lastId)}`,
     });
   } catch (err) { /* notification is best-effort */ }
+
+  // Cutting & Remnant Management — a line added after the project's own bulk release still deserves
+  // the same automatic check; release_bom itself only runs matchProjectBom once, at that moment.
+  try {
+    const released = await queryOne(
+      `SELECT 1 FROM milestones WHERE project_id = ? AND milestone_key = 'release_bom' AND status = 'done'`,
+      [b.project_id]
+    );
+    if (released) {
+      const item = await queryOne('SELECT * FROM bom_items WHERE id = ?', [Number(res.lastId)]);
+      await matchAndReserve(item, user.username);
+    }
+  } catch (err) { /* best-effort, same stance as the release-bom hook */ }
+
   return NextResponse.json({ id: Number(res.lastId) });
 }

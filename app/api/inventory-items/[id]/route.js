@@ -8,7 +8,7 @@ import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 
-const FIELDS = ['description', 'spec', 'on_hand', 'location', 'reorder_point', 'item_code', 'item_id'];
+const FIELDS = ['description', 'spec', 'on_hand', 'location', 'reorder_point', 'item_code', 'item_id', 'category', 'moc'];
 const NUMERIC = new Set(['on_hand', 'reorder_point', 'item_id']);
 
 export async function PATCH(req, { params }) {

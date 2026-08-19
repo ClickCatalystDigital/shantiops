@@ -5,7 +5,6 @@
 import { redirect } from 'next/navigation';
 import { getFreshSessionUser, canAccessDepartment, headDepartments, isPM, roleHome } from '@/lib/auth';
 import { getActiveProjectsList, getInventoryItems } from '@/lib/data';
-import PageHeader from '@/components/PageHeader';
 import PrWorkspace from '@/components/PrWorkspace';
 
 export const dynamic = 'force-dynamic';
@@ -23,10 +22,10 @@ export default async function PrPage() {
     getActiveProjectsList(), getInventoryItems(),
   ]);
 
-  return (
-    <main className="container flex flex-col gap-6 py-8">
-      <PageHeader title="Requests" description="Raise purchase requisitions, release a project's BOM, and manage reusable BOM templates" />
-      <PrWorkspace departments={departments} projects={projects} inventoryItems={inventoryItems} />
-    </main>
-  );
+  // No PageHeader/<main container> here — PrWorkspace owns the full sidebar layout itself (its
+  // own WorkspaceSidebar header already renders the "Requests" title), same rule every other
+  // WorkspaceSidebar-based page follows (app/stores/page.js, app/qc/page.js, ...). This page
+  // carried the old pre-sidebar-redesign PageHeader forward by mistake, same bug already fixed on
+  // Stores — it rendered behind/above the fixed sidebar instead of in a real header row.
+  return <PrWorkspace departments={departments} projects={projects} inventoryItems={inventoryItems} />;
 }

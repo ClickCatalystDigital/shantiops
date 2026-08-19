@@ -129,10 +129,11 @@ export async function POST(req) {
         // reserves it from stock or clicks Procure (the unify decision was "no accept step",
         // this doesn't reintroduce one — it's a Stores-only gate, not a Procurement one).
         const { lastId: bomItemId } = await execute(
-          `INSERT INTO bom_items (project_id, material_description, moc, size_spec, qty_text, purchase_status, pr_item_id, category, category_fields_json, origin, pending_review, item_id)
-           VALUES (?, ?, ?, ?, ?, 'Enquiry', ?, ?, ?, ?, 1, ?)`,
+          `INSERT INTO bom_items (project_id, material_description, moc, size_spec, qty_text, purchase_status, pr_item_id, category, category_fields_json, origin, pending_review, item_id, drawing_id)
+           VALUES (?, ?, ?, ?, ?, 'Enquiry', ?, ?, ?, ?, 1, ?, ?)`,
           [p.project_id, line.material_description.trim(), line.moc || null, line.size_spec || null,
-            p.qty_text.trim(), Number(prItemId), category, categoryFieldsJson, origin, itemId]
+            p.qty_text.trim(), Number(prItemId), category, categoryFieldsJson, origin, itemId,
+            p.drawing_id ? Number(p.drawing_id) : null]
         );
         bomItemIds.push(Number(bomItemId));
       }

@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server';
 import { execute, queryOne, queryAll } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
 import { notifyDepartment } from '@/lib/notify';
+import { matchAndReserve } from '@/lib/remnant-match';
 
 const TEMPLATE_DEPARTMENTS = ['Engineering', 'Design', 'Stores'];
 function canTouch(user) { return TEMPLATE_DEPARTMENTS.some(d => canAccessDepartment(user, d)); }
@@ -20,17 +21,51 @@ export async function POST(req, { params }) {
   const items = await queryAll('SELECT * FROM bom_template_items WHERE template_id = ? ORDER BY sort_order, id', [params.id]);
   if (!items.length) return NextResponse.json({ error: 'This template has no items' }, { status: 400 });
 
+  // Applying is always additive (project material lines below never get deleted/replaced — the
+  // point of "apply Template A, then Template B, then Template C" is a bigger BOM, not a swapped
+  // one) — but re-applying the same or an overlapping template onto a project it's already been
+  // applied to is very likely a mistake, not intent. Detect via item_id (the real catalog identity,
+  // §3.2/§5k) rather than description text, and require an explicit confirm before inserting a
+  // second copy of something already on the BOM.
+  const itemIds = items.map(it => it.item_id).filter(Boolean);
+  if (itemIds.length && !b.confirm) {
+    const dupes = await queryAll(
+      `SELECT DISTINCT it.item_name FROM bom_items bi JOIN items it ON it.id = bi.item_id
+        WHERE bi.project_id = ? AND bi.item_id IN (${itemIds.map(() => '?').join(',')})`,
+      [b.project_id, ...itemIds]
+    );
+    if (dupes.length) {
+      return NextResponse.json({ needsConfirm: true, duplicates: dupes.map(d => d.item_name) });
+    }
+  }
+
   // Continue the project's own sort_order sequence rather than restarting at 0, so applied items
   // land after whatever's already on the BOM instead of interleaving at the top.
   const maxRow = await queryOne('SELECT MAX(sort_order) AS m FROM bom_items WHERE project_id = ?', [b.project_id]);
   let n = (maxRow?.m ?? -1) + 1;
+  // Cutting & Remnant Management (§5k) — a template item's category/dims/item_id (now carried
+  // through, same fields a hand-composed BOM line gets) is what makes an applied line remnant-
+  // matchable at all; if the project's BOM was already released, run the exact same late-add
+  // check the single bom-item POST route already does, so a template applied after Release BOM
+  // isn't a silent gap in matching coverage.
+  const released = await queryOne(
+    `SELECT 1 FROM milestones WHERE project_id = ? AND milestone_key = 'release_bom' AND status = 'done'`,
+    [b.project_id]
+  );
   for (const it of items) {
-    await execute(
-      `INSERT INTO bom_items (project_id, section, material_description, moc, size_spec, qty_text, purchase_status, pending_review, sort_order)
-       VALUES (?, ?, ?, ?, ?, ?, 'Enquiry', 1, ?)`,
-      [b.project_id, it.section, it.material_description, it.moc, it.size_spec, it.qty_text, n]
+    const { lastId } = await execute(
+      `INSERT INTO bom_items (project_id, section, material_description, moc, size_spec, qty_text, purchase_status, pending_review, sort_order, item_id, category, category_fields_json, template_id)
+       VALUES (?, ?, ?, ?, ?, ?, 'Enquiry', 1, ?, ?, ?, ?, ?)`,
+      [b.project_id, it.section, it.material_description, it.moc, it.size_spec, it.qty_text, n,
+        it.item_id, it.category, it.category_fields_json, Number(params.id)]
     );
     n++;
+    if (released) {
+      try {
+        const bomItem = await queryOne('SELECT * FROM bom_items WHERE id = ?', [Number(lastId)]);
+        await matchAndReserve(bomItem, user.username);
+      } catch (err) { /* best-effort, same stance as the release-bom hook */ }
+    }
   }
   const inserted = n - ((maxRow?.m ?? -1) + 1);
   if (inserted > 0) {

@@ -8,6 +8,7 @@ import {
   UserPlusIcon, Building2Icon, MegaphoneIcon, TrendingUpIcon, PhoneIcon, BarChart3Icon,
   UserRoundIcon, UserCheckIcon, Clock3Icon, IndianRupeeIcon, ReceiptIcon, ShieldCheckIcon,
   ListChecksIcon, MessageSquareIcon, WrenchIcon, BellIcon, TagIcon, InboxIcon, UndoIcon,
+  ScissorsIcon,
 } from 'lucide-react';
 
 // Milestone Tracker (2026-08-17) — most milestones now complete themselves off a real event
@@ -113,6 +114,16 @@ const FEATURE_FOUNDATIONS = {
     outcome: 'GRN reference, date, received quantity, pending quantity, and certificate reference tell the same story.',
     checklist: ['Match the delivery to the PO and BOM line.', 'Enter actual received quantity and date.', 'Recheck the pending balance after partial receipts.'],
     watchOut: 'Do not enter the ordered total in a received field or leave a partial delivery looking complete.',
+  },
+  remnant: {
+    value: 'Cutting & Remnant Matching turns a leftover plate or section offcut into real, reusable stock instead of scrap. The moment a BOM releases, the system checks it against what is actually sitting in Stores and reserves a fit automatically — nobody has to remember to go looking.',
+    outcome: 'A BOM line a remnant can cover never reaches Procurement. The piece it used stays traceable from purchase through every cut, all the way to scrap, and its weight is always computed from its dimensions — never guessed or hand-typed.',
+    checklist: [
+      'This only works on a BOM line with a Category (Plate / MS Section / Angle), MOC, and numeric dimensions filled in.',
+      'A matched line needs no action from you — the system already found and reserved the fit.',
+      'A line with no Category or blank dimensions is invisible to matching, not an error — it simply goes to Procurement exactly as before.',
+    ],
+    watchOut: 'Do not assume every plate/section line got checked. Only lines entered with Category + dimensions filled in are ever matched — free-text-only lines (most bulk-imported BOMs) are skipped silently.',
   },
   sas: {
     value: 'In-Stock and Sold-As-Such flows let the business source and use material that is not tied to a normal customer project without inventing a fake project history.',
@@ -402,10 +413,20 @@ export const DEPARTMENT_HELP = {
         ],
       },
       feature('bom', 'Material definition and BOM', ClipboardListIcon, ['Define the material description, MOC, size/specification, make, quantity, section, and group label. Engineering/Design owns the technical definition; downstream teams add purchasing and receipt information.', 'Import the PMB workbook, review detected rows and skipped rows, then confirm. Never replace a live BOM without checking the revision preview.']),
+      feature('remnant', 'Cutting & Remnant Matching', ScissorsIcon, [
+        'For any plate, MS section, or angle line, Category + numeric dimensions are what let the system automatically check that line against remnants already sitting in Stores the moment you release the BOM.',
+        'A match reserves the physical piece and quietly keeps that line out of Procurement — it still looks like a normal BOM line to you, nothing extra to check or click on your side.',
+      ], {
+        checklist: [
+          'When you add a plate/section BOM line, pick its Category and fill in Length/Width/Thickness (and MOC) — a line without these is simply invisible to matching, no error, it just goes to Procurement like before.',
+          'Release the BOM the normal way: Requests → Release BOM → pick the project → Release BOM. Matching runs automatically the instant you release — there is no separate step or button for it.',
+          'You do not need to check whether a line matched. Stores sees a "Remnant reserved" badge and Production sees a ready-to-cut piece; your BOM view looks the same either way.',
+        ],
+      }),
       milestoneTrackerFeature([
         ['Design', 'Explicit action', 'The Design Head clicks "Approve Design" on the project\'s Design tab — an internal sign-off with no other data signal to detect it from.'],
         ['Submit Design Approval', 'Automatic', 'Completes once every customer-visible drawing on the project has been approved by the customer — the same per-drawing approval already tracked in the Drawings panel, just rolled up.'],
-        ['Release BOM / PR', 'Explicit action', 'Design or Engineering clicks "Release BOM" on the Requests → Release BOM tab, once the project actually has BOM items to release.'],
+        ['Release BOM / PR', 'Explicit action', 'Design or Engineering clicks "Release BOM" on the Requests → Release BOM tab, once the project actually has BOM items to release — this is also the moment Cutting & Remnant Matching checks every plate/section line against Stores.'],
         ['Release All Drawings', 'Manual only', 'No automatic or explicit-button trigger yet — close it from the milestone drawer once every drawing is genuinely released.'],
       ]),
       feature('tasks', 'Tasks and handoffs', ListChecksIcon, ['Use Tasks for small follow-ups that do not deserve a milestone. Raise a cross-department task when another team needs to act.', 'When a milestone closes, check the next team’s notification and task signal. Do not rely only on memory or a private note.']),
@@ -563,6 +584,17 @@ export const DEPARTMENT_HELP = {
         watchOut: 'Procure cannot be undone by re-clicking it — once a line reaches Procurement, treat any further change (need less, cancel outright) as a normal request to Procurement, not something to fix by reversing this button.',
       }),
       feature('receipt', 'GRN and receipt fields', PackageCheckIcon, ['On the BOM, record GRN reference, quantity received, pending quantity, and BQ-TC reference. These fields tell the rest of the system what physically arrived.', 'Use clear dates and quantities; do not write a total in a field that means pending balance.']),
+      feature('remnant', 'Cutting & Remnant Matching', ScissorsIcon, [
+        'A plate or section line in Inventory can hold real physical pieces instead of one plain quantity — each piece has its own dimensions, a computed weight, and a status (available, reserved, consumed, or scrap).',
+        'The moment Design releases a matching BOM, a fitting piece reserves itself automatically. You will see it in Open Requests, not as something you did.',
+      ], {
+        checklist: [
+          'Give a plate/section stock line a Category and MOC — New item, or edit an existing one — this is what matching checks against, the same as the BOM line\'s own Category/MOC.',
+          'Add each physical piece under that line: click the layers icon next to it → Add piece → enter length/width/thickness for a plate (or length + kg per metre for a section) and density.',
+          'Watch for the "Remnant reserved" badge in Open Requests — that line already found its match and needs nothing from you. A plain "Stores Review" line still needs your usual Reserve/Procure decision.',
+          'If a matched line\'s requirement changes or gets cancelled, open its piece (layers icon) and click Release to free it back to available stock for the next match.',
+        ],
+      }),
       feature('sas', 'In-Stock and SAS material', BoxesIcon, ['Stock and Sold-As-Such items can follow the same sourcing and status flow without being attached to a normal project milestone chain.', 'Check the source and project context before issuing stock so the inventory movement remains auditable.', 'SAS is Sales-initiated, not Stores-initiated — Sales raises a trade request against their own Sale Order (from their Sale Orders tab) and it lands directly in your Requests queue. You no longer raise a SAS line yourself; only Build stock requests (source \'stock\') are still something Stores raises through Requests.']),
       feature('notifications', 'Notifications', BellIcon, [
         'You receive a notification the moment new material demand exists, from any of two sources: Engineering/Design importing a BOM workbook or adding a single BOM item, or any department raising a purchase requisition line — including Sales pushing a SAS material request against their own Sale Order.',
@@ -601,6 +633,18 @@ export const DEPARTMENT_HELP = {
     features: [
       feature('jobcards', 'Job Card board', HardHatIcon, ['Create a card against a real project milestone — the picker is Project then Milestone, not a typed description — and it carries an operation, workstation, and planned quantity if you know them yet.', 'Click a card to log hours against a named worker (filtered to their trade), add consumables like rods or gas, update planned/done/rejected quantity, pause and resume, and see the labor cost run as hours are logged.', 'Mark a card Outside for subcontracted work or Site for work done at the customer’s location instead of the shop — both show as a badge on the card so they are never mistaken for ordinary shop-floor work.', 'A failed test or a rejected quantity does not need a new form from scratch — Create rework card on the original card spins up a linked pending card against the same milestone.']),
       feature('bom', 'BOM, fabrication progress, and material issue', ClipboardListIcon, ['Pick a project to see its Master BOM, scoped to the fields Production owns (issued/received references) — the same table Engineering, Procurement, and Stores see, just field-scoped to what you are allowed to change.', 'The fabrication progress bars on this tab come directly from Job Card completion per milestone, so they only move when real cards are actually being closed out.', 'Issue material against a BOM line here when it leaves Stores for the shop floor — Production can record this now, the same authority you already had over issued/received references, just structured instead of free text.']),
+      feature('remnant', 'Cutting & Remnant Matching', ScissorsIcon, [
+        'Every plate or section BOM line shows in a "Cutting & remnant" list on the BOM tab. A "Reserved — ready to cut" badge means the system already found a matching piece in Stores for you.',
+        'You only ever declare what you actually cut — how much was used and what usable offcut you kept. Weight, scrap, and the stock update are all computed for you.',
+      ], {
+        checklist: [
+          'Open Job Card → BOM, pick the project, and find the "Cutting & remnant" list — every plate/section line shows here, whether or not it was matched.',
+          'A "Reserved — ready to cut" badge means a piece is already waiting — click Cut and the source piece plus its exact required size are pre-filled for you.',
+          'No badge just means pick a source piece yourself — click Cut, then Find stock, choose the stock line, then the piece.',
+          'Confirm the pre-filled Used dimensions (or adjust to what was actually cut), and add a Remnant row for any usable offcut you are keeping — weight for both updates live as you type.',
+          'Click Cut. The remnant goes straight back into Stores as available, the leftover becomes scrap automatically, and you never calculate a weight by hand.',
+        ],
+      }),
       feature('milestones', 'Production milestones', RouteIcon, ['Start a milestone when work really begins and close it only when the deliverable is actually complete; closing late asks for a reason so the project history explains the delay.', 'Use Stages under a milestone for repeatable checklist steps instead of inventing a new milestone for every variation.']),
       feature('tests', 'Hydro Test', FlaskConicalIcon, ['Hydro Test now belongs to Production end to end — you own the milestone and the test record itself (result, reference number, inspector, tested-on date), which you did not before.', 'Every other test type — radiography/NDE, material test certificates, freeform — stays QC’s; this tab only ever shows and creates Hydro Test records.']),
       milestoneTrackerFeature([
