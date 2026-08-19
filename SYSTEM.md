@@ -2348,6 +2348,120 @@ folded in here rather than a second dated section, since none of it is new archi
   branching relationship worth drawing: Work Order vs. ad hoc Job Card, both converging into the same
   execution/milestone-completion path.
 
+## 5m. Production — target navigation & module architecture (2026-08-19, documentation only — nothing in this section is built; do not treat any workspace/tab named here as existing until it has its own dated as-built section like §5l's)
+
+The source of truth for **where a new Production capability belongs**, written down now so a
+future chat doesn't have to re-derive it or guess. This section is the target shape; §5g/§5l/§5l's
+addendum above are what's actually built today, and §8's "Production's next layer" paragraph is the
+prioritized roadmap this architecture organizes. Nothing here changes the current UI — Production
+today is still one workspace (Work Orders/Job Card/BOM/Forecast/Daily Sheet/Workers Roster, per
+§5l's addendum), and stays that way until a specific future round explicitly builds one of the
+workspaces below and gets its own as-built write-up.
+
+**The model: two navigation levels, not one flat list.**
+1. **Main tabs** — major business workspaces with distinct ownership, decisions, and end-to-end
+   workflow (the top nav bar today: Home/Operations/Projects/Production/Procurement/etc., §3).
+2. **Sidebar tabs** — operational views/functions belonging to one workspace (Production's own
+   `WorkspaceSidebar` today: Work Orders, Job Card, BOM, Forecast, Daily Sheet, Workers Roster).
+
+Do not create a new main tab for every feature or every new table. A capability earns a main tab
+only by passing the test at the end of this section — otherwise it stays a sidebar tab, a
+supporting indicator (same precedent §5l's addendum already set: Route/Operations, Material,
+Labour, Costing, Forecast, and Change Notes are indicator chips around the Production lifecycle,
+not stages or tabs of their own), or a contextual feature inside an existing workspace.
+
+### Target main workspaces
+
+**PRODUCTION — shop-floor execution (exists today, §5g/§5l).** "What is being produced and what is
+happening on the factory floor?" Sidebar, target shape: Work Orders, Job Cards, Daily Sheet,
+Workers, BOM/Materials, Operations — close to what's built now (§5l's addendum's actual current
+order is Work Orders/Job Card/BOM/Forecast/Daily Sheet/Workers Roster; Forecast moves to the
+Planning workspace once that exists, per below, and Operations/Materials are today folded into BOM
+and the route card rather than split out — no change to today's sidebar from this section alone).
+Owns the execution lifecycle documented in §5l's addendum: **Production Ready → Work Order Created
+→ Work Order Released → Job Cards → Execution → QC/Rework → Completed**. Route/Operations, material
+consumption, labour, and costing stay supporting layers around this lifecycle, never separate
+primary stages — and the existing link chain, **Project → Work Order → Job Cards**
+(`work_orders.project_id`, `job_cards.work_order_id`, both already real columns, §5l), must stay
+intact through any future change here.
+
+**PLANNING — production planning and control (not built; §8 roadmap items 1-2).** Create as a
+separate main workspace *only once* the planning capabilities below are actually implemented — not
+before. Target sidebar: Production Schedule, Capacity, Bottlenecks, Material Availability/Pegging,
+Forecast. Purpose: "What should we produce, when, where, and do we have the capacity and materials
+to do it?" This is where §8's roadmap items 1 (finite production scheduling + capacity/bottleneck
+management) and 2 (material shortage/availability pegging) belong, plus Forecast itself — moved out
+of Production's own sidebar once Planning exists, since Forecast is inherently a look-ahead/what-if
+surface, not shop-floor execution. Build extends `getProductionForecast()` (§5l — already computes
+workstation load and material demand) rather than a second forecasting engine; capacity/bottleneck
+work extends the same `overloaded` signal that function already flags, not a parallel one.
+
+**QUALITY — quality control and manufacturing quality (partially built as QC's own department,
+§5b; roadmap items 3-5 not built).** Quality stays QC's own department-level workspace — it does
+**not** become a Production sidebar tab, now or later. Target sidebar (extending QC's existing
+`qc_records` module, §5b, not replacing it): Inspections, ITP, NCR/Disposition, Test Certificates,
+Traceability. Production hands work to Quality (a Job Card, a route step's `quality_checkpoint`);
+Quality returns a pass/fail/rework/disposition decision back to Production (today: `qc_records` +
+Job Cards' `rework_of_job_card_id`/`qc_record_id` lineage, §5g). §8's roadmap items 3 (formal
+NCR/disposition/ITP), 4 (material heat/lot traceability), and 5 (welding/fabrication traceability)
+belong here, extending `qc_records` and the Test Certificate bank (§5d) — never a duplicate
+quality-record table living inside Production.
+
+**MAINTENANCE — equipment reliability (not built; §8 roadmap item 7).** Create as a separate main
+workspace once implemented. Target sidebar: Machines/Equipment, Maintenance Schedule, Breakdown/
+Downtime, OEE. Maintenance owns equipment availability and reliability; Production *consumes*
+machine/workstation availability (extending the existing `workstations` master, §5g, which today
+only carries `name`/`machine_hour_rate`) rather than duplicating maintenance records inside
+Production.
+
+### Capabilities that must not become their own main tab
+
+Each of these extends an existing workflow instead — naming the real table/function each should
+extend, not a fresh one:
+
+- Material traceability → extends `stock_pieces`' existing piece-level lineage (§5k)
+- Heat/lot traceability → extends the same `stock_pieces` lineage, a new field, not a new module
+- Welding traceability → attaches to Welding Job Cards (`job_cards.operation_id`) + Quality records
+- WPS/PQR/welder qualification → Production/Quality context, not a standalone workspace
+- Subcontract/outside process → extends `job_cards.is_outside`/`outside_vendor` (§5g), not a new flow
+- Labour/time tracking → stays on Job Cards (`job_card_time_logs`, §5g)
+- Costing → stays on Work Orders/Job Cards (`getWorkOrderCosting`/`getProjectCosting`, §5l)
+- Route/Operations → stays on Work Orders/Job Cards (`work_order_operations`, §5l)
+- Material consumption → stays on BOM/Job Cards (`material_issues`, §5g)
+- Forecast → moves to the Planning workspace once it exists (extends `getProductionForecast()`)
+- Bottleneck indicators → Planning workspace (extends Forecast's `overloaded` signal)
+- Machine availability → Planning + Maintenance integration, not a Production-owned record
+
+### Navigation rule — apply before adding any new tab
+
+> Does this capability have its own business owner, decisions, records, and end-to-end workflow?
+
+**Yes** → consider a main tab. **No** → it stays a sidebar tab, a supporting indicator, or a
+contextual feature inside the appropriate existing main workspace. Never create navigation merely
+because a new database table or feature exists — §5l's own relaunch is the precedent: Route/
+Operations and Material were demoted from primary lifecycle stages to indicator chips specifically
+because they failed this test against the Production lifecycle.
+
+### Implementation rules for whoever builds any of this
+
+- Preserve the existing premium, minimal, responsive navigation style (`WorkspaceSidebar`,
+  `Nav.jsx` — same components, not a redesign).
+- Do not duplicate existing workflow logic, status logic, APIs, or data sources — extend
+  `work_orders`/`job_cards`/`qc_records`/`getProductionForecast()`/etc. wherever the capability
+  already has a natural home, per the mappings above.
+- Do not build any of PLANNING/QUALITY-as-expanded/MAINTENANCE merely to satisfy this
+  documentation — each becomes real only when a future round actually implements it, and that round
+  gets its own dated as-built section (same pattern as §5l) rather than silently editing this one.
+- This section is the *target* architecture; current implementation status is tracked separately
+  (§5g/§5l/§5l's addendum for what's built, §8 for what's roadmapped but not built) and must stay
+  accurate on its own — don't let this section's "target" framing bleed into claiming something is
+  built.
+- When a future chat asks where a new Production capability belongs, this section is the answer —
+  check it before adding a sidebar tab, a main tab, or a new indicator chip.
+- Do not silently turn a roadmap capability into a new sidebar or main tab without updating this
+  architecture section first, so it stays the accurate source of truth rather than drifting stale
+  the way STERP.md's Job Card entries once did (§5l's own "what this corrects" note above).
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own
