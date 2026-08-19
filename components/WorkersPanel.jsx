@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { api, showToast } from '@/lib/client';
 import { formatDate } from '@/lib/format';
 import { todayISO } from '@/lib/date';
@@ -29,9 +29,21 @@ import ProductionForecastPanel from '@/components/ProductionForecastPanel';
 
 // Renamed from "Workers" to "Job Card" (PRODUCTION-MODULE-DESIGN.md §3.1 nav decision) — job cards
 // get touched far more often per day than the roster/attendance sub-tabs, so work planning is the
-// default landing view and people-admin moves underneath it, not the reverse.
+// default landing view and people-admin moves underneath it, not the reverse. The workspace itself
+// is renamed again, top-level only, from "Job Card" to "Production" (2026-08-19) — Work Orders/
+// BOM/Forecast/Daily Sheet/Workers Roster all live here too now, so the workspace name needs to
+// cover the whole thing; Job Card stays exactly as it was, just as the default sub-tab, same
+// "workspace name ≠ default sub-tab" shape every other department tab already has.
+const WORKSPACE_TABS = ['jobcards', 'workorders', 'bom', 'forecast', 'sheet', 'roster'];
+
 export default function WorkersPanel({ date, sheet, workers, projects, trades, jobCards, operations, workstations }) {
-  const [tab, setTab] = useState('jobcards');
+  // Operations' Production pipeline glance (ProductionFlow.jsx) links a stage straight into a
+  // specific sub-tab (and, for Work Orders, a specific status) — read once off the URL the same way
+  // DepartmentHelpWorkspace.jsx already does for its own ?dept=&page=, not a new pattern.
+  const searchParams = useSearchParams();
+  const urlTab = searchParams.get('tab');
+  const [tab, setTab] = useState(WORKSPACE_TABS.includes(urlTab) ? urlTab : 'jobcards');
+  const initialWoStatus = searchParams.get('wostatus');
   const navItems = [
     { key: 'jobcards', label: 'Job Card', icon: HardHatIcon },
     { key: 'workorders', label: 'Work Orders', icon: ClipboardIcon },
@@ -42,11 +54,11 @@ export default function WorkersPanel({ date, sheet, workers, projects, trades, j
   ];
 
   return (
-    <WorkspaceSidebar title="Job Card" icon={HardHatIcon} items={navItems} activeKey={tab} onChange={setTab}>
+    <WorkspaceSidebar title="Production" icon={HardHatIcon} items={navItems} activeKey={tab} onChange={setTab}>
       {tab === 'jobcards' && (
         <JobCardBoard jobCards={jobCards} operations={operations} workstations={workstations} projects={projects} workers={workers} />
       )}
-      {tab === 'workorders' && <WorkOrdersPanel projects={projects} operations={operations} workstations={workstations} />}
+      {tab === 'workorders' && <WorkOrdersPanel projects={projects} operations={operations} workstations={workstations} initialStatus={initialWoStatus} />}
       {tab === 'bom' && <ProductionBomTab projects={projects} />}
       {tab === 'forecast' && <ProductionForecastPanel />}
       {tab === 'sheet' && <DailySheetWorkspace date={date} sheet={sheet} projects={projects} />}

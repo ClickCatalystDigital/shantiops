@@ -26,28 +26,55 @@ const STATUS_VARIANT = {
 const NEXT_STATUS = { draft: 'released', released: 'in_progress', in_progress: 'completed' };
 const NEXT_LABEL = { draft: 'Release', released: 'Start', in_progress: 'Complete' };
 
+const STATUS_OPTIONS = [
+  { value: 'draft', label: 'Draft' },
+  { value: 'released', label: 'Released' },
+  { value: 'in_progress', label: 'In progress' },
+  { value: 'completed', label: 'Completed' },
+  { value: 'cancelled', label: 'Cancelled' },
+];
+
 // Work Orders (STERP items 21-23/27-29, SYSTEM.md §5l) — the parent production-control entity
 // above Job Cards. List + create here; the rest (route card, materials, change notes, costing,
-// job-card generation) lives in the detail sheet below.
-export default function WorkOrdersPanel({ projects, operations, workstations }) {
+// job-card generation) lives in the detail sheet below. initialStatus (from Operations' pipeline
+// glance, ProductionFlow.jsx, via WorkersPanel's own ?wostatus= read) preselects the same status
+// filter GET /api/work-orders already supports server-side — a stage there is "drill into the
+// Work Orders behind this count," not a separate filtered view.
+export default function WorkOrdersPanel({ projects, operations, workstations, initialStatus = null }) {
   const router = useRouter();
   const [workOrders, setWorkOrders] = useState(null);
   const [openId, setOpenId] = useState(null);
+  const [status, setStatus] = useState(STATUS_OPTIONS.some(o => o.value === initialStatus) ? initialStatus : 'all');
 
-  async function load() {
-    setWorkOrders(await api('/api/work-orders'));
+  async function load(statusFilter = status) {
+    setWorkOrders(await api(`/api/work-orders${statusFilter !== 'all' ? `?status=${statusFilter}` : ''}`));
   }
   useEffect(() => { load().catch(err => showToast(err.message, 'error')); }, []);
 
+  function changeStatus(next) {
+    setStatus(next);
+    setWorkOrders(null);
+    load(next).catch(err => showToast(err.message, 'error'));
+  }
+
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex justify-end">
+      <div className="flex items-center justify-between gap-2">
+        <Select value={status} onValueChange={changeStatus}>
+          <SelectTrigger className="w-44"><SelectValue placeholder="All statuses" /></SelectTrigger>
+          <SelectContent><SelectGroup>
+            <SelectItem value="all">All statuses</SelectItem>
+            {STATUS_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+          </SelectGroup></SelectContent>
+        </Select>
         <NewWorkOrderDialog projects={projects} onCreated={id => { load(); setOpenId(id); }} />
       </div>
       {!workOrders ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : workOrders.length === 0 ? (
-        <Card><CardContent className="py-10 text-center text-muted-foreground">No Work Orders yet — create the first one.</CardContent></Card>
+        <Card><CardContent className="py-10 text-center text-muted-foreground">
+          {status === 'all' ? 'No Work Orders yet — create the first one.' : `No ${STATUS_OPTIONS.find(o => o.value === status)?.label.toLowerCase()} Work Orders.`}
+        </CardContent></Card>
       ) : (
         <Card><CardContent className="p-0">
           <Table>

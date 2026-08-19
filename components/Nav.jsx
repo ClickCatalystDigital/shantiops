@@ -49,9 +49,11 @@ export default function Nav({ user }) {
     if (depts.some(d => tabDepartments.includes(d))) deptTabs.push({ href, label, icon });
   };
   // Tasks (/production) dropped — identical content to Home for a Production head, kept as a
-  // compatibility URL only (SYSTEM.md nav history). Workers renamed Job Card: work planning is
-  // now the daily-use surface, roster/attendance are sub-tabs beneath it (PRODUCTION-MODULE-DESIGN.md §3.1).
-  addDeptTab(['Production'], '/production/workers', 'Job Card', HardHatIcon);
+  // compatibility URL only (SYSTEM.md nav history). Workers renamed Job Card, then the top-level
+  // tab renamed again to Production (2026-08-19) once Work Orders/BOM/Forecast/Daily Sheet/Workers
+  // Roster all lived under it too — Job Card is now just its default sub-tab (WorkersPanel.jsx),
+  // same "workspace name ≠ default sub-tab name" pattern every other department tab already uses.
+  addDeptTab(['Production'], '/production/workers', 'Production', HardHatIcon);
   addDeptTab(['Procurement'], '/procurement', 'Procurement', ShoppingCartIcon);
   addDeptTab(['Stores'], '/stores', 'Inventory', WarehouseIcon);
   addDeptTab(['Sales', 'Marketing'], '/sales', 'Sales', TagIcon);
