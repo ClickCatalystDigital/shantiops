@@ -2278,6 +2278,76 @@ a new layer on top, not a replacement.
   milestone-scoped cards, time logs, qty done/rejected, rework lineage — before this round even
   started; STERP.md's own labels were stale, not the app. Fixed in this pass (see STERP.md).
 
+### Workspace UX pass, Operations pipeline card, and help doc (2026-08-19 addendum)
+
+Same day, several follow-on rounds once the base Work Order build above landed and got used —
+folded in here rather than a second dated section, since none of it is new architecture.
+
+- **Workspace rename + sidebar order.** The top-level nav tab and `WorkspaceSidebar` title changed
+  from **Job Card** to **Production** (`components/Nav.jsx`, `components/WorkersPanel.jsx`) — it
+  now holds Work Orders/Job Card/BOM/Forecast/Daily Sheet/Workers Roster, not just the board. Job
+  Card stays exactly as it was as a sub-tab, just reordered second (after Work Orders, the
+  production-order control view) instead of first — same "workspace name ≠ default sub-tab" shape
+  every other department tab already has. `/production/workers` (URL) and the default landing tab
+  (`jobcards`) were deliberately left unchanged — only the label and ordering moved.
+- **Work Orders / Job Cards get real filters**, both reusing existing server support rather than new
+  endpoints: `WorkOrdersPanel.jsx` adds a Project filter next to the existing status filter —
+  `GET /api/work-orders` already read `?project_id=`/`?status=`, just unused in the UI until now.
+  `JobCardBoard.jsx` adds Project and Work Order filters, client-side only (the board's `jobCards`
+  prop is already the full unfiltered list) — picking a Work Order auto-derives its project from the
+  same `/api/work-orders` list, so a head isn't picking the same project twice. Cards and the detail
+  sheet now show Project → Work Order → Operation context explicitly (`wo_no`/`wo_product_description`
+  joined in).
+- **Real bug fixed while wiring the above**: `getJobCards()`/`getJobCardDetail()` (§5g, predates
+  Work Orders) inner-joined `projects` — an against_stock Work Order's generated cards
+  (`job_cards.project_id` nullable, this section) would silently never appear on the board or in any
+  project-filtered query. Both now `LEFT JOIN projects`, plus a new `LEFT JOIN work_orders` for the
+  `wo_no`/`product_description` context above.
+- **Operations' Production pipeline card** (`components/ProductionFlow.jsx`, `getProductionFlowCounts()`
+  in `lib/data.js`) — new, same slot/precedent as `ProcurementFlow.jsx`/`StoresFlow.jsx`/`DesignFlow.jsx`
+  on the shared Operations surface (§7's `app/page.js`, also serving `/ops`). Two spines:
+  1. **The primary lifecycle** — after one relaunch this session to match the real end-to-end flow —
+     is **Production Ready → Work Order Created → Work Order Released → Job Cards → Execution →
+     QC/Rework → Completed**, aggregate counts across every active project/Work Order, not a
+     per-project view. **Production Ready** is genuinely new logic, not a rename: an active project
+     counts only once *every* BOM line at its current `bom_release_revision` has reached a real
+     terminal `purchase_status` (`Received`/`In-Stock`/`Cancelled` — reusing `lib/bom-fields.mjs`'s
+     own `EXIT_STAGES`, not a parallel vocabulary), a project-level readiness state, not a BOM-line
+     count. The rest of the spine reads straight off `work_orders.status` and `job_cards.status`
+     (WO-linked only — ad hoc cards are the secondary spine below), open Hydro Tests, and open rework
+     cards. Every stage is a real drill-through `Link` into the actual filtered view behind its
+     number (Work Orders' status filter above, the Job Card board, or the Projects list) — read the
+     number, click it, land on the real records.
+  2. **The secondary Job Card status spine** (unchanged throughout) — every Job Card, work-order-linked
+     or ad hoc, by status (Pending/In Progress/Done), with open Rework as a branch off Done. Ad hoc
+     cards skip the lifecycle spine entirely (no Work Order behind them), so this is where they stay
+     visible.
+  **Route/Operations, Material, Labour, Costing, Forecast, and Change Notes are supporting/control
+  indicator chips above both spines, not sequence stages** — Execution already covers route
+  operations, labour, and material consumption/cutting happening underneath it; Labour/Costing have
+  no cheap existing aggregate across every open Work Order to reuse, so those two chips are plain
+  links into where the real per-Work-Order numbers already live (open a Work Order, Load Costing),
+  same precedent Costing always used.
+  Both spines wrap left-to-right at any width (flex-wrap, one box+arrow per flex item) instead of
+  horizontal scroll — a box that no longer fits drops to the next row on its own, arrow included.
+- **`/help` doc caught up** (`components/department-help-content.jsx`, `components/DepartmentHelpWorkspace.jsx`):
+  Production's Work Orders/Forecast feature pages got real tailored content (they were falling back
+  to the generic per-feature boilerplate every other department's untouched features still use).
+  **How To** was split from one generic 7-step chain into **11 focused per-action walkthroughs**
+  (Create a Job Card, Set up a Work Order, Log work on a card, Cut material, Record a Hydro Test,
+  Start/close a milestone, Handle exceptions, Add a worker, Mark attendance, Raise a handoff, Close
+  the day), ordered as a real workflow sequence — same visual pattern as the Notifications
+  Customer/Departmental group (§5f-adjacent), generalized into a reusable `guide.howToGroups` shape
+  in the shared renderer (opt-in — every other department's flat `guide.howTo` is untouched). Caught
+  a real positional bug doing this: the renderer's "why this step matters"/"before you continue" text
+  was matched to steps by array *index*, not content — expanding Production's step count silently
+  mismatched the pairing; fixed by giving Production's own steps explicit `why`/`verify` text, which
+  the renderer already preferred over the positional fallback. The Introduction page also gained an
+  opt-in `guide.introFlow` — a small boxes-and-arrows diagram (plain Tailwind flexbox, no charting
+  library, matching this app's existing hand-built-diagram precedent) showing the one genuinely
+  branching relationship worth drawing: Work Order vs. ad hoc Job Card, both converging into the same
+  execution/milestone-completion path.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own
@@ -2400,6 +2470,47 @@ genuinely small: no HR form field to set an individual `employees.company` (API-
 way to pre-assign a worker to a job card before they log hours (matches ERPNext's own model, left
 alone on purpose, not a regression); and the Workers Roster's inline trade-edit dropdown only picks
 up a trade added via `QuickAddInline` after a page refresh, not live in the same session.
+
+**Production's next layer — manufacturing intelligence + boiler-specific traceability (2026-08-19,
+none of this built).** With Work Orders (§5l) landed, Production has a real, coherent
+production-control lifecycle (BOM readiness → Work Order → route → Job Cards → execution →
+QC/rework → completion, plus costing/forecasting/change-control around it) — the gap left isn't more
+generic ERP surface area, it's the deeper control/intelligence layer a manufacturing ERP eventually
+needs, sharpest for a boiler/pressure-equipment fabricator specifically. Roughly in priority order,
+each noting what already exists as a seed to extend rather than starting cold:
+1. **Finite production scheduling + capacity/bottleneck management.** `getProductionForecast()`
+   (§5l) already flags a workstation `overloaded` against a flat single-shift assumption — real,
+   but a look-ahead glance, not a scheduler. There's no "what should run next, on which machine,
+   given everything else queued" engine, and no answer to "what's actually blocking this late Work
+   Order" beyond reading its route card by hand.
+2. **Material shortage / availability pegging.** Forecast's `materialDemand` already shows
+   outstanding quantity per material across open Work Orders — the missing half is
+   available-vs-ordered-vs-shortage per line, and which specific projects/Work Orders a shortage is
+   blocking. Procurement/Stores own the purchasing side; Production needs the impact view.
+3. **Formal Quality: NCR / disposition / ITP.** `qc_records` (§5b/§5g) covers freeform tests, MTC,
+   radiography, and Hydro Test (`result`: pending/pass/fail) with rework lineage on a fail — real,
+   but there's no formal non-conformance record, no disposition path beyond rework (repair/scrap/
+   use-as-is aren't modeled), no inspection/test-plan checkpoints tied to a route step, and no
+   hold/release gate.
+4. **Material heat/lot traceability.** `stock_pieces` (§5k) already gives a real piece-level
+   traceability chain — `PL-0007` → `-U1`/`-R1`/`-S1` (used/remnant/scrap) — but there's no heat/lot
+   number field, and no automatic link from a cut piece back to its Test Certificate (§5d's
+   certificate bank is a manual, not automatic, link today). For pressure equipment this is a real
+   gap, not a nice-to-have.
+5. **Welding/fabrication traceability.** A Job Card's `operation_id` can tag "Welding" generically;
+   there is no per-joint weld ID, no WPS/welder-qualification record, no consumable-batch link, and
+   no NDT-to-joint linkage — welding is currently "Job Card = Done," not a manufacturing history.
+6. **Subcontract / outside-process control.** `job_cards.is_outside`/`outside_vendor` (§5g) is a
+   flag, not a workflow — no tracked quantity sent, expected-return date, actual receipt, or vendor
+   cost (§5l's own costing section already notes outside job cards are listed, never priced).
+7. **Machine maintenance / downtime / OEE.** `workstations` (§5g) carries a name and
+   `machine_hour_rate`, nothing else — no availability calendar, maintenance schedule, breakdown
+   log, or OEE rollup.
+
+Deliberately not attempted as a batch of new sidebar tabs — the same "primary lifecycle vs.
+supporting/control layer" split §5l's relaunch just applied (Route/Operations, Material, Labour,
+Costing, Forecast, and Change Notes all sit as indicator chips around the lifecycle, not stages in
+it) is the shape any of the above should take too, whenever picked up.
 
 ---
 
