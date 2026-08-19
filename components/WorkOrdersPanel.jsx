@@ -45,35 +45,55 @@ export default function WorkOrdersPanel({ projects, operations, workstations, in
   const [workOrders, setWorkOrders] = useState(null);
   const [openId, setOpenId] = useState(null);
   const [status, setStatus] = useState(STATUS_OPTIONS.some(o => o.value === initialStatus) ? initialStatus : 'all');
+  const [projectFilter, setProjectFilter] = useState('all');
 
-  async function load(statusFilter = status) {
-    setWorkOrders(await api(`/api/work-orders${statusFilter !== 'all' ? `?status=${statusFilter}` : ''}`));
+  async function load(statusFilter = status, projectIdFilter = projectFilter) {
+    const params = new URLSearchParams();
+    if (statusFilter !== 'all') params.set('status', statusFilter);
+    if (projectIdFilter !== 'all') params.set('project_id', projectIdFilter);
+    const qs = params.toString();
+    setWorkOrders(await api(`/api/work-orders${qs ? `?${qs}` : ''}`));
   }
   useEffect(() => { load().catch(err => showToast(err.message, 'error')); }, []);
 
   function changeStatus(next) {
     setStatus(next);
     setWorkOrders(null);
-    load(next).catch(err => showToast(err.message, 'error'));
+    load(next, projectFilter).catch(err => showToast(err.message, 'error'));
+  }
+
+  function changeProject(next) {
+    setProjectFilter(next);
+    setWorkOrders(null);
+    load(status, next).catch(err => showToast(err.message, 'error'));
   }
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-2">
-        <Select value={status} onValueChange={changeStatus}>
-          <SelectTrigger className="w-44"><SelectValue placeholder="All statuses" /></SelectTrigger>
-          <SelectContent><SelectGroup>
-            <SelectItem value="all">All statuses</SelectItem>
-            {STATUS_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
-          </SelectGroup></SelectContent>
-        </Select>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Select value={projectFilter} onValueChange={changeProject}>
+            <SelectTrigger className="w-52"><SelectValue placeholder="All Projects" /></SelectTrigger>
+            <SelectContent><SelectGroup>
+              <SelectItem value="all">All Projects</SelectItem>
+              {projects.map(p => <SelectItem key={p.id} value={String(p.id)}>{p.project_no} · {p.customer_name}</SelectItem>)}
+            </SelectGroup></SelectContent>
+          </Select>
+          <Select value={status} onValueChange={changeStatus}>
+            <SelectTrigger className="w-44"><SelectValue placeholder="All statuses" /></SelectTrigger>
+            <SelectContent><SelectGroup>
+              <SelectItem value="all">All statuses</SelectItem>
+              {STATUS_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+            </SelectGroup></SelectContent>
+          </Select>
+        </div>
         <NewWorkOrderDialog projects={projects} onCreated={id => { load(); setOpenId(id); }} />
       </div>
       {!workOrders ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : workOrders.length === 0 ? (
         <Card><CardContent className="py-10 text-center text-muted-foreground">
-          {status === 'all' ? 'No Work Orders yet — create the first one.' : `No ${STATUS_OPTIONS.find(o => o.value === status)?.label.toLowerCase()} Work Orders.`}
+          {status === 'all' && projectFilter === 'all' ? 'No Work Orders yet — create the first one.' : 'No Work Orders match this filter.'}
         </CardContent></Card>
       ) : (
         <Card><CardContent className="p-0">

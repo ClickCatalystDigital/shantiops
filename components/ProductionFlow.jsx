@@ -85,30 +85,6 @@ function StageBox({ value, label, help, tone = 'plain', small = false, href }) {
   );
 }
 
-function FlowArrow({ atPercent }) {
-  return (
-    <ChevronRightIcon className="absolute top-1/2 z-10 size-3.5 -translate-x-1/2 -translate-y-1/2 text-muted-foreground/50"
-      style={{ left: `${atPercent}%` }} />
-  );
-}
-
-function StageRowVertical({ value, label, help, tone, isLast, href }) {
-  const t = TONE_CLASSES[tone];
-  const Wrapper = href ? Link : 'div';
-  return (
-    <div className="relative flex gap-3 pb-6 last:pb-0">
-      {!isLast && <div className="absolute left-[11px] top-6 bottom-0 w-px bg-border" />}
-      <Wrapper href={href} className={`z-10 flex size-6 shrink-0 items-center justify-center rounded-full border ${t.box}`}>
-        <span className={`text-[10px] font-semibold tnum ${t.value}`}>{value}</span>
-      </Wrapper>
-      <div className="flex flex-1 items-center gap-2 pt-0.5">
-        <span className={`text-sm ${t.label}`}>{href ? <Link href={href} className="hover:underline">{label}</Link> : label}</span>
-        <InfoButton label={label} help={help} tone={tone} />
-      </div>
-    </div>
-  );
-}
-
 // The info popover sits outside the Link (not nested inside it) — an interactive trigger nested
 // inside an anchor is exactly the a11y/click-conflict trap StageBox's own InfoButton avoids by
 // living beside its box's Link, not inside one.
@@ -135,10 +111,6 @@ function IndicatorChip({ label, value, help, href }) {
 
 export default function ProductionFlow({ counts }) {
   const lc = counts.lifecycle || {};
-  const secNodeX = SECONDARY_STAGES.map((_, i) => (i + 0.5) * (100 / SECONDARY_STAGES.length));
-  const secMidpoints = secNodeX.slice(0, -1).map((x, i) => (x + secNodeX[i + 1]) / 2);
-  const secFirstX = secNodeX[0];
-  const secLastX = secNodeX[secNodeX.length - 1];
 
   return (
     <Card>
@@ -177,42 +149,22 @@ export default function ProductionFlow({ counts }) {
         </div>
 
         {/* Secondary metric — every Job Card by status, work-order-linked or ad hoc (unchanged
-            from the original pipeline; ad hoc cards skip the lifecycle above entirely). */}
+            from the original pipeline; ad hoc cards skip the lifecycle above entirely). Same
+            wrapping flex pattern as the lifecycle row above; Rework is a branch off Done, marked
+            with a down-chevron instead of a right-chevron rather than absolute-positioned SVG
+            geometry, so it wraps with everything else instead of needing fixed coordinates. */}
         <div className="border-t pt-4">
           <p className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">Job Card status (secondary)</p>
-          <div className="hidden overflow-x-auto sm:block">
-            <div className="mx-auto flex min-w-[36rem] flex-col items-center gap-3">
-              <div className="relative grid w-full" style={{ gridTemplateColumns: `repeat(${SECONDARY_STAGES.length}, minmax(0, 1fr))` }}>
-                <div className="absolute top-1/2 h-px -translate-y-1/2 bg-border" style={{ left: `${secFirstX}%`, right: `${100 - secLastX}%` }} />
-                {secMidpoints.map(x => <FlowArrow key={x} atPercent={x} />)}
-                {SECONDARY_STAGES.map(s => (
-                  <div key={s.key} className="flex items-center justify-center">
-                    <StageBox value={counts[s.key] || 0} label={s.label} help={s.help} tone={s.tone} href="/production/workers?tab=jobcards" />
-                  </div>
-                ))}
+          <div className="flex flex-wrap items-center gap-y-4">
+            {SECONDARY_STAGES.map((s, i) => (
+              <div key={s.key} className="flex items-center">
+                <StageBox value={counts[s.key] || 0} label={s.label} help={s.help} tone={s.tone} href="/production/workers?tab=jobcards" />
+                {i < SECONDARY_STAGES.length - 1 && <ChevronRightIcon className="mx-1.5 size-4 shrink-0 text-muted-foreground/40" />}
               </div>
-              <div className="relative h-10 w-full">
-                <svg viewBox="0 0 100 40" preserveAspectRatio="none" className="absolute inset-0 h-full w-full">
-                  <path d={`M${secLastX},0 L${secLastX},40`} vectorEffect="non-scaling-stroke"
-                    className="fill-none stroke-danger/30" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-                <ChevronDownIcon className="absolute bottom-0 z-10 size-3.5 -translate-x-1/2 translate-y-1/2 text-danger/50"
-                  style={{ left: `${secLastX}%` }} />
-              </div>
-              <div className="relative h-16 w-full">
-                <div className="absolute top-0 -translate-x-1/2" style={{ left: `${secLastX}%` }}>
-                  <StageBox value={counts.rework || 0} label="Rework (open)" help={REWORK_HELP} tone="danger" small href="/production/workers?tab=jobcards" />
-                </div>
-              </div>
-            </div>
-          </div>
-          <div className="sm:hidden">
-            <div className="flex flex-col">
-              {SECONDARY_STAGES.map((s, i) => (
-                <StageRowVertical key={s.key} value={counts[s.key] || 0} label={s.label} help={s.help}
-                  tone={s.tone} isLast={false} href="/production/workers?tab=jobcards" />
-              ))}
-              <StageRowVertical value={counts.rework || 0} label="Rework (open)" help={REWORK_HELP} tone="danger" isLast href="/production/workers?tab=jobcards" />
+            ))}
+            <div className="flex items-center">
+              <ChevronDownIcon className="mx-1.5 size-4 shrink-0 text-danger/40" />
+              <StageBox value={counts.rework || 0} label="Rework (open)" help={REWORK_HELP} tone="danger" href="/production/workers?tab=jobcards" />
             </div>
           </div>
         </div>

@@ -15,7 +15,8 @@ export async function GET(req) {
   const params = new URL(req.url).searchParams;
   const projectId = params.get('project_id');
   const status = params.get('status');
-  return NextResponse.json(await getJobCards({ projectId, status }));
+  const workOrderId = params.get('work_order_id');
+  return NextResponse.json(await getJobCards({ projectId, status, workOrderId }));
 }
 
 export async function POST(req) {

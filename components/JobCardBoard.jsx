@@ -27,23 +27,71 @@ const COLUMNS = [
 
 // The daily-use board (PRODUCTION-MODULE-DESIGN.md §3.1) — three columns by status, a card per job
 // card, click through to a detail sheet for status/qty changes, logging hours, and consumables.
+// Project/Work Order filters (2026-08-19) are client-side only — `jobCards` is already the full
+// unfiltered list (server component prop), and picking a Work Order derives its project from the
+// same list `/api/work-orders` already returns, rather than a second filtered fetch.
 export default function JobCardBoard({ jobCards, operations, workstations, projects, workers }) {
   const router = useRouter();
   const [openCard, setOpenCard] = useState(null);
+  const [workOrders, setWorkOrders] = useState([]);
+  const [projectFilter, setProjectFilter] = useState('all');
+  const [workOrderFilter, setWorkOrderFilter] = useState('all');
 
+  useEffect(() => { api('/api/work-orders').then(setWorkOrders).catch(() => {}); }, []);
+
+  function changeWorkOrderFilter(next) {
+    setWorkOrderFilter(next);
+    // Selecting a Work Order narrows straight to its own project too, so a head doesn't have to
+    // pick both — reuses the project_id already sitting on the fetched Work Order row.
+    if (next !== 'all') {
+      const wo = workOrders.find(w => String(w.id) === next);
+      setProjectFilter(wo?.project_id ? String(wo.project_id) : 'all');
+    }
+  }
+
+  function changeProjectFilter(next) {
+    setProjectFilter(next);
+    // A project change that contradicts the current Work Order filter clears it, rather than
+    // leaving two filters silently disagreeing about which cards should show.
+    const wo = workOrders.find(w => String(w.id) === workOrderFilter);
+    if (wo && String(wo.project_id || '') !== next) setWorkOrderFilter('all');
+  }
+
+  const filteredCards = jobCards.filter(jc =>
+    (projectFilter === 'all' || String(jc.project_id || '') === projectFilter) &&
+    (workOrderFilter === 'all' || String(jc.work_order_id || '') === workOrderFilter)
+  );
   const byStatus = COLUMNS.reduce((acc, c) => {
-    acc[c.key] = jobCards.filter(j => j.status === c.key);
+    acc[c.key] = filteredCards.filter(j => j.status === c.key);
     return acc;
   }, {});
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Select value={projectFilter} onValueChange={changeProjectFilter}>
+            <SelectTrigger className="w-52"><SelectValue placeholder="All Projects" /></SelectTrigger>
+            <SelectContent><SelectGroup>
+              <SelectItem value="all">All Projects</SelectItem>
+              {projects.map(p => <SelectItem key={p.id} value={String(p.id)}>{p.project_no} · {p.customer_name}</SelectItem>)}
+            </SelectGroup></SelectContent>
+          </Select>
+          <Select value={workOrderFilter} onValueChange={changeWorkOrderFilter}>
+            <SelectTrigger className="w-52"><SelectValue placeholder="All Work Orders" /></SelectTrigger>
+            <SelectContent><SelectGroup>
+              <SelectItem value="all">All Work Orders</SelectItem>
+              {workOrders.map(wo => (
+                <SelectItem key={wo.id} value={String(wo.id)}>{wo.wo_no} · {wo.project_no || wo.product_description || 'Stock'}</SelectItem>
+              ))}
+            </SelectGroup></SelectContent>
+          </Select>
+        </div>
         <NewJobCardDialog router={router} operations={operations} workstations={workstations} projects={projects} />
       </div>
-      {jobCards.length === 0 ? (
+      {filteredCards.length === 0 ? (
         <Card><CardContent className="py-10 text-center text-muted-foreground">
-          No job cards yet — create the first one.
+          {jobCards.length === 0 ? 'No job cards yet — create the first one.' : 'No job cards match this filter.'}
         </CardContent></Card>
       ) : (
         <div className="grid gap-4 md:grid-cols-3">
@@ -71,7 +119,9 @@ function JobCardTile({ jc, onOpen }) {
     <Card className="cursor-pointer transition-colors hover:border-foreground/30" onClick={onOpen}>
       <CardContent className="flex flex-col gap-2 py-3">
         <div className="flex items-center justify-between gap-2">
-          <span className="text-xs text-muted-foreground">{jc.project_no} · {jc.section}</span>
+          <span className="text-xs text-muted-foreground">
+            {jc.project_no || jc.wo_product_description || 'Stock'}{jc.wo_no ? ` · WO ${jc.wo_no}` : ''} · {jc.section}
+          </span>
           <div className="flex gap-1">
             {jc.is_site ? <Badge variant="outline">Site</Badge> : null}
             {jc.is_paused ? <Badge variant="outline">Paused</Badge> : null}
@@ -319,7 +369,9 @@ function JobCardDetailSheet({ id, onClose, router, workers }) {
               <SheetTitle>{detail.operation_name} · {detail.section}</SheetTitle>
             </SheetHeader>
             <p className="-mt-3 text-sm text-muted-foreground">
-              {detail.project_no} · {detail.customer_name}{detail.workstation_name ? ` · ${detail.workstation_name}` : ''}
+              {detail.project_no ? `${detail.project_no} · ${detail.customer_name}` : (detail.wo_product_description || 'Stock')}
+              {detail.wo_no ? ` · WO ${detail.wo_no}` : ''}
+              {detail.workstation_name ? ` · ${detail.workstation_name}` : ''}
             </p>
 
             <div className="flex flex-wrap items-center gap-2">

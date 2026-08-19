@@ -44,9 +44,12 @@ export default function WorkersPanel({ date, sheet, workers, projects, trades, j
   const urlTab = searchParams.get('tab');
   const [tab, setTab] = useState(WORKSPACE_TABS.includes(urlTab) ? urlTab : 'jobcards');
   const initialWoStatus = searchParams.get('wostatus');
+  // Sidebar order: Work Orders first (the production-order control view), Job Card second (its
+  // execution sub-tab) — Forecast/Daily Sheet/Workers Roster stay separate operational tools, not
+  // folded into the Work Order/Job Card workflow (2026-08-19 UX refinement).
   const navItems = [
-    { key: 'jobcards', label: 'Job Card', icon: HardHatIcon },
     { key: 'workorders', label: 'Work Orders', icon: ClipboardIcon },
+    { key: 'jobcards', label: 'Job Card', icon: HardHatIcon },
     { key: 'bom', label: 'BOM', icon: PackageIcon },
     { key: 'forecast', label: 'Forecast', icon: TrendingUpIcon },
     { key: 'sheet', label: 'Daily Sheet', icon: ClipboardListIcon },
