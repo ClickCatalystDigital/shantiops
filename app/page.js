@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import ProductionTodayPage from './production/page';
-import { getMyWork, getBomWork, getDepartmentTasks, getStageBottlenecks, getSourcingItems, getProcurementFlowCounts, getDesignFlowCounts, getDesignWork, getSalesFlowCounts, getStoresFlowCounts } from '@/lib/data';
+import { getMyWork, getBomWork, getDepartmentTasks, getStageBottlenecks, getSourcingItems, getProcurementFlowCounts, getDesignFlowCounts, getDesignWork, getSalesFlowCounts, getStoresFlowCounts, getProductionFlowCounts } from '@/lib/data';
 import { getFreshSessionUser, isCustomer, isManager, isHead, headDepartments, canAccessDepartment, roleHome } from '@/lib/auth';
 import StatusBadge from '@/components/StatusBadge';
 import DispatchBoard from '@/components/DispatchBoard';
@@ -11,6 +11,7 @@ import TicketsPanel from '@/components/TicketsPanel';
 import ProcurementFlow from '@/components/ProcurementFlow';
 import SalesFlow from '@/components/SalesFlow';
 import StoresFlow from '@/components/StoresFlow';
+import ProductionFlow from '@/components/ProductionFlow';
 import MasterBomTable from '@/components/MasterBomTable';
 import DesignOperationsSection from '@/components/DesignOperationsSection';
 import OperationsAttentionSection from '@/components/OperationsAttentionSection';
@@ -96,6 +97,8 @@ export async function OperationsPage({ searchParams }) {
   const salesFlow = deptsToShow.includes('Sales') ? await getSalesFlowCounts() : null;
   // Stores' pipeline glance (STORES-SALES-CHANGES.md follow-up) — same slot/precedent as Procurement's.
   const storesFlow = deptsToShow.includes('Stores') ? await getStoresFlowCounts() : null;
+  // Production's pipeline glance (§5l) — same slot/precedent as Procurement's.
+  const productionFlow = deptsToShow.includes('Production') ? await getProductionFlowCounts() : null;
   // Design's pipeline glance (§E) — same slot/precedent as Procurement's.
   const designFlow = deptsToShow.includes('Design') ? await getDesignFlowCounts() : null;
   const designWork = deptsToShow.includes('Design') ? await getDesignWork() : [];
@@ -129,6 +132,7 @@ export async function OperationsPage({ searchParams }) {
       {procurementFlow && <ProcurementFlow counts={procurementFlow} />}
       {salesFlow && <SalesFlow counts={salesFlow} />}
       {storesFlow && <StoresFlow counts={storesFlow} />}
+      {productionFlow && <ProductionFlow counts={productionFlow} />}
       {designFlow && (
         <DesignOperationsSection groups={groups} counts={designFlow} designWork={designWork}
           outgoing={designOutgoing} incoming={designIncoming} sourcingItems={sourcingItems} />
