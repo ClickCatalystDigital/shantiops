@@ -3,20 +3,20 @@
 
 // Operations' Production pipeline glance — same node/spine shapes as ProcurementFlow.jsx/
 // StoresFlow.jsx (copied, not abstracted, same precedent those files already state). Two spines:
-//   1. The primary lifecycle (2026-08-19 upgrade) — the real factory-wide, aggregate WO-driven
-//      flow: BOM Released → Work Order Created → Route/Operations → Work Order Released →
-//      Job Cards → Material Issued/Cut → Production Execution → QC/Testing/Rework → Job Cards
-//      Completed → Work Order Completed. Every count and every stage's `href` comes straight from
+//   1. The primary lifecycle (2026-08-19 relaunch) — the real factory-wide, aggregate WO-driven
+//      flow: Production Ready → Work Order Created → Work Order Released → Job Cards → Execution
+//      → QC/Rework → Completed. Route/Operations, Material, Labour, Costing, Forecasting, and
+//      Change Notes are supporting/control layers around this (the indicator chips below), not
+//      separate primary stages — Execution already covers route operations, labour, and material
+//      consumption/cutting happening underneath it, and Job Cards stays one stage (not split by
+//      operation type). Every count and every stage's `href` comes straight from
 //      getProductionFlowCounts() (lib/data.js) — each stage links into the real filtered view
-//      behind its number (Work Orders' own status filter, the Job Card board, or the BOM tab), so
-//      a head can click through to the actual projects/Work Orders a count represents instead of
-//      just reading a number.
-//   2. The secondary Job Card status spine (unchanged from the original pipeline) — every Job
-//      Card, work-order-linked or ad hoc, by status — since ad hoc cards skip the lifecycle above
-//      entirely and still need to be visible somewhere.
-// Forecast/Costing/Change Notes are supporting indicators (small linked chips), not sequence
-// nodes — Work Order Costing and Change Notes are inherently per-Work-Order, not a single
-// aggregate stage, and Forecast is a look-ahead, not a stage anything sits "in."
+//      behind its number (Work Orders' own status filter, the Job Card board, or the Projects
+//      list), so a head can click through to the actual projects/Work Orders a count represents
+//      instead of just reading a number.
+//   2. The secondary Job Card status spine (unchanged) — every Job Card, work-order-linked or ad
+//      hoc, by status — since ad hoc cards skip the lifecycle above entirely and still need to be
+//      visible somewhere.
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from './ui/card';
 import { Button } from './ui/button';
@@ -24,16 +24,13 @@ import { Popover, PopoverTrigger, PopoverContent } from './ui/popover';
 import { InfoIcon, ChevronRightIcon, ChevronDownIcon } from 'lucide-react';
 
 const LIFECYCLE = [
-  { key: 'bomReleased', label: 'BOM Released', tone: 'plain', help: 'Active projects with a released BOM baseline — the precondition for raising a Work Order against an order.' },
-  { key: 'workOrderCreated', label: 'Work Order Created', tone: 'plain', help: 'Work Orders in draft — created, not yet released.' },
-  { key: 'route', label: 'Route/Operations', tone: 'enquiry', help: 'Draft Work Orders whose Process Route Card already has at least one step defined.' },
-  { key: 'workOrderReleased', label: 'Work Order Released', tone: 'comparison', help: 'Work Orders released — the route and materials are locked as the baseline.' },
-  { key: 'jobCards', label: 'Job Cards', tone: 'ordered', help: 'Work-Order-generated Job Cards not yet started.' },
-  { key: 'materialIssued', label: 'Material Issued/Cut', tone: 'ordered', help: 'Material issued from Stores to WIP, plus plate/section pieces actually cut, across active projects.' },
-  { key: 'execution', label: 'Production Execution', tone: 'warning', help: 'Work Orders in progress — hours currently being logged against their Job Cards.' },
-  { key: 'qc', label: 'QC/Testing/Rework', tone: 'warning', help: 'Open Hydro Tests awaiting a result, plus open rework cards spawned from a failed test or rejected quantity.' },
-  { key: 'jobCardsCompleted', label: 'Job Cards Completed', tone: 'received', help: 'Work-Order-generated Job Cards marked Done.' },
-  { key: 'workOrderCompleted', label: 'Work Order Completed', tone: 'received', help: 'Work Orders marked Completed.' },
+  { key: 'productionReady', label: 'Production Ready', tone: 'plain', help: 'Active projects whose released BOM is fully ready for Production — every line at the current release is Received, In-Stock, or Cancelled. A project-level readiness state, not a BOM-line count.' },
+  { key: 'workOrderCreated', label: 'Work Order Created', tone: 'plain', help: 'Work Orders in draft — a production order exists, linked to its project/order or a stock requirement, not yet released.' },
+  { key: 'workOrderReleased', label: 'Work Order Released', tone: 'comparison', help: 'Work Orders released — the production baseline is approved and execution can begin.' },
+  { key: 'jobCards', label: 'Job Cards', tone: 'ordered', help: 'Work-Order-generated Job Cards not yet started — the work has been broken into executable production jobs.' },
+  { key: 'execution', label: 'Execution', tone: 'warning', help: 'Work Orders in progress — active production work: route operations, labour, and material consumption/cutting.' },
+  { key: 'qc', label: 'QC/Rework', tone: 'warning', help: 'Open Hydro Tests awaiting a result, plus open rework cards spawned from a failed test or rejected quantity — inspection, testing, rejection, and rework being handled.' },
+  { key: 'completed', label: 'Completed', tone: 'received', help: 'Work Orders marked Completed — the required production quantity/work is done and closed.' },
 ];
 
 const SECONDARY_STAGES = [
@@ -123,12 +120,22 @@ export default function ProductionFlow({ counts }) {
         </CardAction>
       </CardHeader>
       <CardContent className="flex flex-col gap-5">
-        {/* Supporting control/intelligence indicators — not sequence nodes, see file header. */}
+        {/* Supporting/control layers around the lifecycle, not sequence nodes — Route/Operations
+            and Material used to be primary stages (2026-08-19 relaunch demoted them here, same
+            underlying counts, just repositioned); Labour/Costing have no cheap existing aggregate
+            to reuse across every open Work Order, so they stay plain links into where the real
+            per-Work-Order numbers already live, same precedent Costing always used. */}
         <div className="flex flex-wrap items-center gap-2">
-          <IndicatorChip label="Forecast" href="/production/workers?tab=forecast"
-            help="Upcoming Work Orders, workstation load, and outstanding material demand for the next 30 days." />
+          <IndicatorChip label="Route/Operations" value={counts.route?.value ?? 0} href={counts.route?.href}
+            help="Draft Work Orders whose Process Route Card already has at least one step defined." />
+          <IndicatorChip label="Material" value={counts.material?.value ?? 0} href={counts.material?.href}
+            help="Material issued from Stores to WIP, plus plate/section pieces actually cut, across active projects." />
+          <IndicatorChip label="Labour" href="/production/workers?tab=workorders"
+            help="Logged hours and labor cost per Job Card and Work Order — open a Work Order and Load Costing." />
           <IndicatorChip label="Costing" href="/production/workers?tab=workorders"
             help="Planned vs. actual material and labor — open a Work Order and Load Costing." />
+          <IndicatorChip label="Forecast" href="/production/workers?tab=forecast"
+            help="Upcoming Work Orders, workstation load, and outstanding material demand for the next 30 days." />
           <IndicatorChip label="Change Notes" value={counts.changeNotes ?? 0} href="/production/workers?tab=workorders"
             help="Controlled baseline changes logged against released Work Orders (quantity, dates, product description)." />
         </div>
