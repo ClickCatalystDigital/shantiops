@@ -2,9 +2,11 @@ I audited the STERP list against the current Shanti Ops codebase and counted equ
 
 Strict count: 101 named capabilities.
 
-- 27 already present
+- 38 already present (2026-08-20: +5 — Purchase Returns, Multi-Level BOM, Where-Used, Common/Uncommon,
+  Engineering Change Note; +6 more same day — Incoming/Finished Goods/Subassembly/Job-Work
+  Inspection, Instrument + Jigs/Fixtures Calibration)
 - 13 partially present or covered by an adjacent workflow
-- 61 currently missing
+- 50 currently missing
 
 The finance, GST, statutory payroll, and accounting items are not accidental gaps. They were intentionally deferred in the current product decision toward ERPNext/accounting integration.
 
@@ -50,8 +52,10 @@ These exist in some form but do not yet match the full STERP capability:
 - GIR  
   Receiving and GRN data exist, but there is no formal Gate Inward Receipt document and gate-entry workflow.
 
-- Incoming and In-Process QC  
-  QC test records and milestones exist, but inspection is not yet deeply linked to PO receipt, operation, route card, or work order stages.
+- Incoming and In-Process QC — mostly closed 2026-08-20 (SYSTEM.md §5p)  
+  Incoming Inspection now links to PO receipt (auto-suggested on the Received transition), Finished
+  Goods Inspection links to Work Orders, and Subassembly Inspection links to BOM assemblies. Not
+  linked to the Process Route Card's individual operation steps — that finer granularity is still open.
 
 - Service Reports  
   General CRM and executive reports exist, but there is no service-specific reporting layer.
@@ -107,9 +111,12 @@ These can reuse the current CRM, procurement, inventory, and reporting models.
    Shipped as Procurement's Suppliers → Analysis, By Item view: every logged quote for one material
    across every supplier and project, with a price-trend line once there's enough history.
 
-7. Service Reports
+7. Service Reports — BUILT (2026-08-19, SYSTEM.md §5n), together with item 38 below
 
-   Add reports around installation milestones, site tasks, delays, customer issues, and commissioning completion.
+   Installation milestones, delays, and commissioning completion, plus (once Service Calls/Contracts
+   existed — items 36/37 below) service call aging, SLA compliance, technician performance, and
+   contract renewals — one Reports tab under Installation's new `/installation` workspace, not two
+   separate features. See item 38's note for why these were built together.
 
 8. Minimum Stock Level — BUILT, already existed before this audit
 
@@ -120,9 +127,12 @@ These can reuse the current CRM, procurement, inventory, and reporting models.
    Stores' Inventory tab, plus the existing "low stock" summary chip now actually engages it
    instead of just jumping to a tab you're already on.
 
-9. Basic Auto-Indent Suggestions
+9. Basic Auto-Indent Suggestions — BUILT (2026-08-19, SYSTEM.md §5e)
 
-   Generate suggested procurement requests when available stock drops below the minimum level. Keep human approval before creating a real request.
+   Derived list (no new table): every item at or below its `reorder_point`, minus anything already
+   being replenished, with an editable suggested quantity. Create request posts to the same
+   Build-stock path (`source='stock'`) Stores' own stock-request flow already used — nothing is
+   auto-created, the click is the approval.
 
 10. Sales Offices and Branches — DEFERRED, by explicit decision (2026-08-18)
 
@@ -151,40 +161,61 @@ These require new tables, permissions, and some cross-module logic.
    reusing the existing stock-increment pattern — or scrap), and a plain credit-note reference
    field (no ledger posting; that's the separate Tally-integration doc). Live-verified end to end.
 
-13. Purchase Returns
+13. Purchase Returns — BUILT (2026-08-20, SYSTEM.md §5o)
 
-   Add supplier return records linked to PO/GRN lines, returned quantity, reason, replacement/refund status, and stock adjustment.
+   New `purchase_returns` table + Procurement's Returns tab: direct schema/UI mirror of the
+   already-built Sales Returns (item 12 above) — PO/PO-line link, qty, reason, inspection outcome
+   (pending/accepted/rejected), stock action (removed_from_stock — decrements real inventory
+   on-hand, the opposite direction of Sales Returns' credit — or replaced), and a debit-note
+   reference field. Live-verified end to end as procurement_head.
 
-14. Formal GIR
+14. Formal GIR — BUILT (2026-08-19, SYSTEM.md §5e)
 
-   Add Gate Inward Receipt with vehicle, supplier, driver, entry time, material reference, security check, and GRN linkage.
+   New `gate_inward_receipts` table + Stores tab: vehicle, supplier, driver, entry time, material
+   reference, seal/documents security checks, and GRN-ref/close-out linkage. A standalone
+   gate/security-desk log, outside the reserve/available inventory model.
 
-15. Returnable and Non-Returnable Gate Pass
+15. Returnable and Non-Returnable Gate Pass — BUILT (2026-08-19, SYSTEM.md §5e)
 
-   Add gate-pass records, item lists, expected return date, responsible person, approval, and returned/overdue status.
+   New `gate_passes`/`gate_pass_items` tables + Stores tab: item list, expected return date
+   (returnable only), responsible person, a separate approval action key, and derived
+   returned/overdue status — overdue computed live, never stored.
 
-16. Multi-Level BOM
+16. Multi-Level BOM — BUILT (2026-08-20, SYSTEM.md §5o)
 
-   Extend the current flat BOM into parent/subassembly relationships with roll-up quantities and drill-down views.
+   New `bom_assemblies` table (project-scoped, self-referencing parent/child, per-level qty
+   multiplier) + `bom_items.assembly_id` (nullable — every existing flat BOM keeps working
+   unchanged, no migration attempted). Roll-up quantity computed live, never stored. Editing lives
+   on the project's BOM table (assign an item to an assembly via its Edit dialog); browsing/building
+   the tree with roll-up drill-down lives on the new Engineering workspace's BOM Structure tab.
+   Live-verified: a 2-level nested assembly with a real BOM item rolled up correctly (200 Kgs × 2 =
+   400).
 
-17. Where-Used List
+17. Where-Used List — BUILT (2026-08-20, SYSTEM.md §5o)
 
-   Once multi-level BOM exists, show every product/project/subassembly where a component is used.
+   Cross-project search: for a part, every project (and assembly, where assigned) it appears in.
+   Hybrid identity match — catalog `item_id` when a line was picked from search, normalized
+   description/MOC/size as fallback for free-typed or bulk-imported rows (PMB import never sets
+   item_id, so this fallback covers the dominant real-world case). Engineering workspace's
+   Where-Used tab. Live-verified against real multi-project data.
 
-18. Common/Uncommon List
+18. Common/Uncommon List — BUILT (2026-08-20, SYSTEM.md §5o)
 
-   Add material classification and cross-project usage analysis to identify commonly reused versus one-off parts.
+   Same identity matching as Where-Used, grouped and classified: Common = used on 2+ projects,
+   Uncommon = used on exactly one. Engineering workspace's Common/Uncommon tab.
 
-19. Engineering Change Note
+19. Engineering Change Note — BUILT (2026-08-20, SYSTEM.md §5o), v1 scope
 
-   Add controlled BOM/design changes with:
-
-   - Change reason
-   - Affected projects
-   - Old/new values
-   - Approval
-   - Effective revision
-   - Downstream impact
+   New `bom_change_notes` table: reason, old/new value, requesting user, Head approval (the one
+   Head-gated action in this round), and effective revision (reuses the project's existing
+   `bom_release_revision` counter, §5a — not a new one). Downstream impact (which POs, packing
+   lines, tasks, and drawing reference the changed item) computed live off existing links, shown on
+   approval. This is the release/approval workflow for BOM revisions that §5a's v1 explicitly
+   deferred. **v1 boundary:** approving an ECN updates the named BOM field, but does not yet force
+   every other BOM edit through the ECN gate — a logged, approvable trail now exists; hard-gating
+   every edit is the noted upgrade path, not built this round. Live-verified: raised and approved
+   end to end, all fields (status/approved_by/decided_at/effective_revision) confirmed correct via
+   direct API read.
 
 20. Production Forecasting — BUILT (2026-08-19, SYSTEM.md §5l)
 
@@ -251,41 +282,60 @@ were stale, not the app.
 
 ### Priority 4 — Quality and service expansion
 
-30. Incoming Inspection Against PO
+30. Incoming Inspection Against PO — BUILT (2026-08-20, SYSTEM.md §5p)
 
-   Automatically create or suggest QC inspections when material is received against a PO/GRN.
+   `app/api/bom-items/[id]/route.js` auto-inserts a Pending `qc_records` row on the transition into
+   `purchase_status='Received'` — same transition-guard idiom the same route already uses for its
+   Stores-notify and reservation-release guards. QC can still add one by hand for anything missed.
 
-31. Finished Goods Inspection
+31. Finished Goods Inspection — BUILT (2026-08-20, SYSTEM.md §5p)
 
-   Add final inspection tied to completed production orders and dispatch eligibility.
+   `qc_records.work_order_id`-linked inspection + `dispatch_eligible` (mirrors
+   `bom_items.production_done` — a plain per-record boolean gate, not a new status enum) for
+   Dispatch's packing flow to read. Set manually by QC, not auto-derived from result.
 
-32. Semi-Finished/Subassembly Inspection
+32. Semi-Finished/Subassembly Inspection — BUILT (2026-08-20, SYSTEM.md §5p)
 
-   Add inspection records for intermediate assemblies before they move to the next operation.
+   `qc_records.assembly_id`-linked inspection, hung off `bom_assemblies` (§5o) — the real
+   intermediate stage to inspect against.
 
-33. Job-Work Inspection
+33. Job-Work Inspection — BUILT (2026-08-20, SYSTEM.md §5p)
 
-   Track material sent to an outside job worker, expected return, received quantity, quality result, and variance.
+   New `job_work_inspections` table: job worker (free text, no vendor master — YAGNI), sent/expected-
+   return dates, sent/received qty, result. Variance computed live at read time, never stored.
 
-34. Instrument Calibration
+34. Instrument Calibration — BUILT (2026-08-20, SYSTEM.md §5p), together with item 35 below
 
-   Add instrument master data, calibration schedule, certificate, due date, and blocked/expired status.
+35. Jigs and Fixtures Calibration — BUILT (2026-08-20, SYSTEM.md §5p), together with item 34 above
 
-35. Jigs and Fixtures Calibration
+   One new `calibration_items` table with a `type` column (`instrument`/`jig_fixture`) instead of two
+   entities with an identical shape — splitting them would be pure duplication. Not project-scoped
+   (equipment, not a project record) — lives on the QC workspace's own new Calibration tab. Status
+   (ok/due_soon/expired/blocked) is derived live from due_date; `blocked` is a manual override.
 
-   Add the same control for fixtures and shop-floor tooling.
+36. Service Call Management — BUILT (2026-08-19, SYSTEM.md §5n)
 
-36. Service Call Management
+   New `service_calls`/`service_call_visits` tables + Installation's new `/installation` workspace,
+   Service Calls tab: priority, SLA target (hours), status (open → assigned → in_progress →
+   resolved → closed, `resolved_at`/`closed_at` stamped by the transition itself), assignment,
+   diagnosis, resolution, closure evidence (free text), and a separate visit-history log per call.
 
-   Add customer complaints/service calls with priority, SLA, assignment, diagnosis, visit history, resolution, and closure evidence.
+37. Service Contracts — BUILT (2026-08-19, SYSTEM.md §5n)
 
-37. Service Contracts
+   New `service_contracts` table + Installation's Service Contracts tab: coverage window, visit
+   frequency, entitlement (free text — what's covered), and renewal (creates a new linked contract
+   row, `renewed_from_id`, never overwrites the old one). Covered equipment is the linked project —
+   this app has no separate equipment master, an order/boiler IS a project. Service history for a
+   contract is `service_calls` filtered to the same project, not a second copy of the data.
 
-   Add contract dates, covered equipment, visit frequency, entitlement, renewal, and service history.
+38. Dedicated Service Reports — BUILT (2026-08-19, SYSTEM.md §5n), together with item 7 above
 
-38. Dedicated Service Reports
-
-   Add service call aging, SLA compliance, repeat complaints, technician performance, contract renewals, and customer service history.
+   Built as ONE Reports feature with item 7, not two: service call aging, SLA compliance,
+   technician performance, and contract renewals sit alongside item 7's installation-milestone
+   reports in the same Reports tab. Repeat complaints is a repeat-customer count off `service_calls`;
+   customer service history is a call's visit list plus its linked contract's service history (see
+   item 37). All four reports are computed live off Service Calls/Contracts data, no separate report
+   table.
 
 ### Priority 5 — Finance, statutory, and regulated accounting
 

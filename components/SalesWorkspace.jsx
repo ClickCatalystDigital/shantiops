@@ -24,7 +24,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/com
 import {
   PlusIcon, TrashIcon, UserPlusIcon, UsersIcon, FileTextIcon, ShoppingCartIcon,
   MegaphoneIcon, CheckSquareIcon, ContactIcon, MessageCircleIcon, MailIcon, TagIcon,
-  InboxIcon, UndoIcon, IndianRupeeIcon,
+  InboxIcon, UndoIcon, IndianRupeeIcon, ReceiptIcon,
 } from 'lucide-react';
 import { api, showToast } from '@/lib/client';
 import { formatMoney } from '@/lib/format';
@@ -662,6 +662,14 @@ function QuotationsTab({ quotations, customers, router }) {
       router.refresh();
     } catch (err) { showToast(err.message, 'error'); } finally { setBusyId(null); }
   }
+  async function convertToInvoice(q) {
+    setBusyId(q.id);
+    try {
+      const res = await api(`/api/quotations/${q.id}/convert-to-invoice`, { method: 'POST', body: {} });
+      showToast(`Sales Invoice ${res.invoice_no} created`);
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); } finally { setBusyId(null); }
+  }
 
   return (
     <Card>
@@ -690,7 +698,12 @@ function QuotationsTab({ quotations, customers, router }) {
                     </Select>
                   </TableCell>
                   <TableCell>
-                    {q.status === 'accepted' && <Button size="sm" variant="outline" disabled={busyId === q.id} onClick={() => convert(q)}>Convert to SO</Button>}
+                    {q.status === 'accepted' && (
+                      <div className="flex gap-2">
+                        <Button size="sm" variant="outline" disabled={busyId === q.id} onClick={() => convert(q)}>Convert to SO</Button>
+                        <Button size="sm" variant="outline" disabled={busyId === q.id} onClick={() => convertToInvoice(q)}>Convert to Invoice</Button>
+                      </div>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}
@@ -700,6 +713,118 @@ function QuotationsTab({ quotations, customers, router }) {
       </CardContent>
       {dialogOpen && <NewQuotationDialog customers={customers} router={router} onClose={() => setDialogOpen(false)} />}
     </Card>
+  );
+}
+
+// --- Sales Invoices + Credit Notes (ACCOUNTING-IMPLEMENTATION-PLAN.md Phase 2) ---------------------
+
+const INVOICE_STATUSES = ['draft', 'issued', 'paid', 'cancelled'];
+
+function CreditNoteDialog({ invoice, onClose, router }) {
+  const [reason, setReason] = useState('');
+  const [items, setItems] = useState([{ item_description: '', amount: '' }]);
+  const [saving, setSaving] = useState(false);
+
+  function updateItem(i, patch) { setItems(prev => prev.map((it, idx) => idx === i ? { ...it, ...patch } : it)); }
+  function addRow() { setItems(prev => [...prev, { item_description: '', amount: '' }]); }
+  function removeRow(i) { setItems(prev => prev.filter((_, idx) => idx !== i)); }
+
+  async function save() {
+    const cleanItems = items.filter(it => it.item_description.trim() && it.amount !== '').map(it => ({ ...it, amount: Number(it.amount) }));
+    if (!cleanItems.length) return showToast('At least one line item is required', 'error');
+    setSaving(true);
+    try {
+      const res = await api(`/api/sales-invoices/${invoice.id}/credit-note`, { method: 'POST', body: { reason, items: cleanItems } });
+      showToast(`Credit Note ${res.credit_note_no} created`);
+      router.refresh();
+      onClose();
+    } catch (err) { showToast(err.message, 'error'); } finally { setSaving(false); }
+  }
+
+  return (
+    <Dialog open onOpenChange={o => !o && onClose()}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader><DialogTitle>Credit Note against {invoice.invoice_no}</DialogTitle></DialogHeader>
+        <div className="flex flex-col gap-3">
+          <div className="grid gap-1.5"><Label>Reason</Label><Input value={reason} onChange={e => setReason(e.target.value)} /></div>
+          <div className="flex flex-col gap-2">
+            <Label>Line items</Label>
+            {items.map((it, i) => (
+              <div key={i} className="flex items-start gap-2">
+                <Input placeholder="Description" value={it.item_description} onChange={e => updateItem(i, { item_description: e.target.value })} />
+                <Input placeholder="Amount" type="number" value={it.amount} onChange={e => updateItem(i, { amount: e.target.value })} className="w-32" />
+                <Button size="sm" variant="ghost" onClick={() => removeRow(i)}><TrashIcon className="size-4" /></Button>
+              </div>
+            ))}
+            <Button size="sm" variant="outline" onClick={addRow}><PlusIcon />Add line</Button>
+          </div>
+        </div>
+        <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Create Credit Note'}</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function InvoicesTab({ invoices, creditNotes, router }) {
+  const [busyId, setBusyId] = useState(null);
+  const [creditNoteFor, setCreditNoteFor] = useState(null);
+
+  async function setStatus(inv, status) {
+    setBusyId(inv.id);
+    try {
+      await api(`/api/sales-invoices/${inv.id}`, { method: 'PATCH', body: { status } });
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); } finally { setBusyId(null); }
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Card>
+        <CardHeader><CardTitle>Sales Invoices</CardTitle></CardHeader>
+        <CardContent>
+          {invoices.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No invoices yet — convert an accepted Quotation from the Quotations tab.</p> : (
+            <Table>
+              <TableHeader><TableRow><TableHead>Invoice No.</TableHead><TableHead>Customer</TableHead><TableHead>Company</TableHead><TableHead>Total</TableHead><TableHead>Status</TableHead><TableHead /></TableRow></TableHeader>
+              <TableBody>
+                {invoices.map(inv => (
+                  <TableRow key={inv.id}>
+                    <TableCell className="font-medium">{inv.invoice_no}</TableCell>
+                    <TableCell>{inv.customer_name}</TableCell>
+                    <TableCell>{inv.company}</TableCell>
+                    <TableCell className="tnum">{formatMoney(inv.total)}</TableCell>
+                    <TableCell>
+                      <Select value={inv.status} onValueChange={v => setStatus(inv, v)} disabled={busyId === inv.id}>
+                        <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
+                        <SelectContent>{INVOICE_STATUSES.map(s => <SelectItem key={s} value={s} className="capitalize">{s}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </TableCell>
+                    <TableCell>
+                      <Button size="sm" variant="outline" onClick={() => setCreditNoteFor(inv)}>Credit Note</Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader><CardTitle>Credit Notes</CardTitle></CardHeader>
+        <CardContent>
+          {creditNotes.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No credit notes yet.</p> : (
+            <div className="flex flex-col divide-y">
+              {creditNotes.map(cn => (
+                <div key={cn.id} className="flex justify-between py-2 text-sm">
+                  <span>{cn.credit_note_no} — against {cn.invoice_no}{cn.reason ? ` (${cn.reason})` : ''}</span>
+                  <span className="tnum font-medium">{formatMoney(cn.amount)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+      {creditNoteFor && <CreditNoteDialog invoice={creditNoteFor} router={router} onClose={() => setCreditNoteFor(null)} />}
+    </div>
   );
 }
 
@@ -1365,13 +1490,14 @@ const PANELS = [
   { key: 'quotations', label: 'Quotations', icon: FileTextIcon, description: 'Proposals sent to customers', salesOnly: true },
   { key: 'price_lists', label: 'Price Lists', icon: TagIcon, description: 'Customer/product rates and validity', salesOnly: true },
   { key: 'sale_orders', label: 'Sale Orders', icon: ShoppingCartIcon, description: 'Accepted orders', salesOnly: true },
+  { key: 'invoices', label: 'Invoices', icon: ReceiptIcon, description: 'Sales Invoices and Credit Notes', salesOnly: true },
   { key: 'returns', label: 'Returns', icon: UndoIcon, description: 'Returned material against a Sale Order', salesOnly: true },
   { key: 'campaigns', label: 'Campaigns', icon: MegaphoneIcon, description: 'Marketing initiatives', salesOnly: false },
   { key: 'tasks', label: 'Tasks', icon: CheckSquareIcon, description: 'Every to-do across leads, deals and customers', salesOnly: false },
   { key: 'team', label: 'Team', icon: ContactIcon, description: 'Auto-assign new leads round-robin', salesOnly: false },
 ];
 
-export default function SalesWorkspace({ saleOrders, leads, customers, quotations, campaigns, priceLists = [], returns = [], inventoryItems = [], departments = ['Sales', 'Marketing'], users = [], savedViews = [], canCreateProject = false }) {
+export default function SalesWorkspace({ saleOrders, leads, customers, quotations, campaigns, priceLists = [], returns = [], inventoryItems = [], invoices = [], creditNotes = [], departments = ['Sales', 'Marketing'], users = [], savedViews = [], canCreateProject = false }) {
   const router = useRouter();
   const [panel, setPanel] = useState('leads');
   // Customers/Quotations/Sale Orders are the commercial fulfilment chain — Sales-owned. Marketing
@@ -1433,6 +1559,7 @@ export default function SalesWorkspace({ saleOrders, leads, customers, quotation
           {activePanel.key === 'quotations' && <QuotationsTab quotations={quotations} customers={customers} router={router} />}
           {activePanel.key === 'price_lists' && <PriceListsTab priceLists={priceLists} customers={customers} router={router} />}
           {activePanel.key === 'sale_orders' && <SaleOrdersTab saleOrders={saleOrders} router={router} canCreateProject={canCreateProject} />}
+          {activePanel.key === 'invoices' && <InvoicesTab invoices={invoices} creditNotes={creditNotes} router={router} />}
           {activePanel.key === 'returns' && <ReturnsTab returns={returns} saleOrders={saleOrders} inventoryItems={inventoryItems} router={router} />}
           {activePanel.key === 'campaigns' && <CampaignsTab campaigns={campaigns} router={router} />}
           {activePanel.key === 'tasks' && <AllTasksTab users={users} />}

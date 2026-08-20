@@ -7,6 +7,7 @@ import { queryOne, queryAll, execute } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
 import { markMilestoneDone } from '@/lib/milestone-auto';
 import { matchProjectBom } from '@/lib/remnant-match';
+import { getAllocationMode, matchProjectPlainStock, notifyProcurementIfShortfall } from '@/lib/procurement';
 import { audit } from '@/lib/usb';
 
 function canRelease(user) {
@@ -67,5 +68,25 @@ export async function POST(req, { params }) {
   let matched = [];
   try { matched = await matchProjectBom(params.id, user.username); } catch (err) { /* best-effort */ }
 
-  return NextResponse.json({ ok: true, remnantMatches: matched.length, revision });
+  // Auto mode's plain-stock counterpart — the moment the release makes every line real demand,
+  // the same "check available inventory first" pass runs for ordinary catalog-linked lines, not
+  // just dimensional ones. Manual mode: every fresh line is already pending_review=1 (see the
+  // import/add routes), so this naturally finds nothing to do — no mode check needed here.
+  let plainMatched = [];
+  try { plainMatched = await matchProjectPlainStock(params.id, user.username); } catch (err) { /* best-effort */ }
+
+  // Task §17's "Procurement receives a new shortage" — one notification per line that's actually
+  // visible to Procurement post-match (pending_review=0), covering all three AUTO outcomes: a
+  // partial-match shortfall, a fully-unmatched line, or (via the function's own dedupe_key) simply
+  // a no-op repeat on a line already notified by an earlier release/edit.
+  try {
+    const openLines = await queryAll(
+      `SELECT id FROM bom_items WHERE project_id = ? AND source = 'bom' AND pending_review = 0
+         AND COALESCE(purchase_status, 'Enquiry') NOT IN ('Received','Cancelled','In-Stock')`,
+      [params.id]
+    );
+    for (const line of openLines) await notifyProcurementIfShortfall(line.id);
+  } catch (err) { /* best-effort */ }
+
+  return NextResponse.json({ ok: true, remnantMatches: matched.length, autoReserved: plainMatched.length, revision });
 }

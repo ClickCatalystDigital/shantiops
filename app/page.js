@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import ProductionTodayPage from './production/page';
-import { getMyWork, getBomWork, getDepartmentTasks, getStageBottlenecks, getSourcingItems, getProcurementFlowCounts, getDesignFlowCounts, getDesignWork, getSalesFlowCounts, getStoresFlowCounts, getProductionFlowCounts } from '@/lib/data';
+import { getMyWork, getBomWork, getDepartmentTasks, getStageBottlenecks, getSourcingItems, getProcurementFlowCounts, getDesignFlowCounts, getDesignWork, getSalesFlowCounts, getStoresFlowCounts, getProductionFlowCounts, getDispatchFlowCounts, getInstallationFlowCounts, getHrFlowCounts, getEngineeringFlowCounts, getQcFlowCounts } from '@/lib/data';
 import { getFreshSessionUser, isCustomer, isManager, isHead, headDepartments, canAccessDepartment, roleHome } from '@/lib/auth';
 import StatusBadge from '@/components/StatusBadge';
 import DispatchBoard from '@/components/DispatchBoard';
@@ -12,6 +12,11 @@ import ProcurementFlow from '@/components/ProcurementFlow';
 import SalesFlow from '@/components/SalesFlow';
 import StoresFlow from '@/components/StoresFlow';
 import ProductionFlow from '@/components/ProductionFlow';
+import DispatchFlow from '@/components/DispatchFlow';
+import InstallationFlow from '@/components/InstallationFlow';
+import HrFlow from '@/components/HrFlow';
+import EngineeringFlow from '@/components/EngineeringFlow';
+import QcFlow from '@/components/QcFlow';
 import MasterBomTable from '@/components/MasterBomTable';
 import DesignOperationsSection from '@/components/DesignOperationsSection';
 import OperationsAttentionSection from '@/components/OperationsAttentionSection';
@@ -71,10 +76,12 @@ export async function OperationsPage({ searchParams }) {
     // Cross-project BOM items, so a Dispatch head raising a "Cancel BOM item" request from
     // Operations gets the same picker the project page's Raise dialog offers.
     const sourcingItems = deptsToShow.length ? await getSourcingItems() : [];
+    const dispatchFlow = await getDispatchFlowCounts();
     return (
       <main className="container flex flex-col gap-6 py-8">
         <PageHeader title="Packing &amp; Dispatch"
           description="Packing lists generated from each project's BOM — Pending → Ready → Dispatched." />
+        <DispatchFlow counts={dispatchFlow} />
         <DispatchBoard />
         {deptsToShow.length > 0 && <TicketsPanel department="Dispatch" tasks={dispatchTasks} bom={sourcingItems} canRaise />}
       </main>
@@ -101,6 +108,11 @@ export async function OperationsPage({ searchParams }) {
   const productionFlow = deptsToShow.includes('Production') ? await getProductionFlowCounts() : null;
   // Design's pipeline glance (§E) — same slot/precedent as Procurement's.
   const designFlow = deptsToShow.includes('Design') ? await getDesignFlowCounts() : null;
+  // Installation/HR/Engineering/QC pipeline glances (§3d) — same slot/precedent as Procurement's.
+  const installationFlow = deptsToShow.includes('Installation') ? await getInstallationFlowCounts() : null;
+  const hrFlow = deptsToShow.includes('HR') ? await getHrFlowCounts() : null;
+  const engineeringFlow = deptsToShow.includes('Engineering') ? await getEngineeringFlowCounts() : null;
+  const qcFlow = deptsToShow.includes('QC') ? await getQcFlowCounts() : null;
   const designWork = deptsToShow.includes('Design') ? await getDesignWork() : [];
   // Same direction-split the old standalone incident cards used, just precomputed here now that
   // DesignOperationsCard needs both lists as props instead of an inline IIFE further down.
@@ -133,6 +145,10 @@ export async function OperationsPage({ searchParams }) {
       {salesFlow && <SalesFlow counts={salesFlow} />}
       {storesFlow && <StoresFlow counts={storesFlow} />}
       {productionFlow && <ProductionFlow counts={productionFlow} />}
+      {installationFlow && <InstallationFlow counts={installationFlow} />}
+      {hrFlow && <HrFlow counts={hrFlow} />}
+      {engineeringFlow && <EngineeringFlow counts={engineeringFlow} />}
+      {qcFlow && <QcFlow counts={qcFlow} />}
       {designFlow && (
         <DesignOperationsSection groups={groups} counts={designFlow} designWork={designWork}
           outgoing={designOutgoing} incoming={designIncoming} sourcingItems={sourcingItems} />

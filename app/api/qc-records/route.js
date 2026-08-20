@@ -31,10 +31,13 @@ export async function POST(req) {
 
   const result = ['pass', 'fail', 'pending'].includes(b.result) ? b.result : 'pending';
   const res = await execute(
-    `INSERT INTO qc_records (project_id, test_type, reference_no, result, inspector, tested_on, notes, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO qc_records (project_id, test_type, reference_no, result, inspector, tested_on, notes, created_by,
+       bom_item_id, work_order_id, assembly_id, dispatch_eligible)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [b.project_id, b.test_type.trim(), b.reference_no?.trim() || null, result,
-      b.inspector?.trim() || null, b.tested_on || null, b.notes?.trim() || null, user.username]);
+      b.inspector?.trim() || null, b.tested_on || null, b.notes?.trim() || null, user.username,
+      b.bom_item_id ? Number(b.bom_item_id) : null, b.work_order_id ? Number(b.work_order_id) : null,
+      b.assembly_id ? Number(b.assembly_id) : null, b.dispatch_eligible ? 1 : 0]);
 
   await audit('qc_record_add', {
     actor: user.username,

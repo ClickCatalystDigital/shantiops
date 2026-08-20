@@ -8,20 +8,22 @@ import { useMemo, useState } from 'react';
 import WorkspaceSidebar from './WorkspaceSidebar';
 import TcBank from './TcBank';
 import StatutoryDocsPanel from './StatutoryDocsPanel';
+import CalibrationPanel from './CalibrationPanel';
 import SearchableSelect from './SearchableSelect';
 import { QC_SERIES } from '@/lib/qc-series';
-import { FlaskConicalIcon, FileTextIcon } from 'lucide-react';
+import { FlaskConicalIcon, FileTextIcon, GaugeIcon } from 'lucide-react';
 
 const ITEMS = [
   { key: 'tc', label: 'Test Certificates', icon: FlaskConicalIcon },
   { key: 'docs', label: 'Documents', icon: FileTextIcon },
+  { key: 'calibration', label: 'Calibration', icon: GaugeIcon },
 ];
 
 const SERIES_ITEMS = QC_SERIES.map(s => ({ id: s, label: s }));
 
 const certProjectIds = c => (c.project_ids ? String(c.project_ids).split(',').map(Number) : []);
 
-export default function QcWorkspace({ projects = [], certificates = [], documents = [], initialTab, initialProject }) {
+export default function QcWorkspace({ projects = [], certificates = [], documents = [], calibrationItems = [], initialTab, initialProject }) {
   const [tab, setTab] = useState(ITEMS.some(i => i.key === initialTab) ? initialTab : 'tc');
 
   const initProject = initialProject && projects.some(p => String(p.id) === String(initialProject)) ? Number(initialProject) : null;
@@ -69,11 +71,13 @@ export default function QcWorkspace({ projects = [], certificates = [], document
 
   return (
     <WorkspaceSidebar title="Quality Control" icon={FlaskConicalIcon} items={ITEMS}
-      activeKey={tab} onChange={setTab} header={header}>
+      activeKey={tab} onChange={setTab} header={tab === 'calibration' ? null : header}>
       {tab === 'tc' ? (
         <TcBank certificates={shownCerts} projects={projectsSorted} defaultProjectIds={projectId != null ? [projectId] : []} />
-      ) : (
+      ) : tab === 'docs' ? (
         <StatutoryDocsPanel projectId={projectId} documents={shownDocs} canEdit showProject />
+      ) : (
+        <CalibrationPanel items={calibrationItems} canEdit />
       )}
     </WorkspaceSidebar>
   );

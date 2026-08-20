@@ -22,6 +22,11 @@ function GuideBody({ item }) {
           <p className="mt-2 text-sm leading-7 text-muted-foreground">{item.value}</p>
         </section>
       )}
+      {item.diagram && (
+        <section>
+          <pre className="overflow-x-auto rounded-lg border bg-muted/20 p-4 text-xs leading-5 text-foreground">{item.diagram}</pre>
+        </section>
+      )}
       {item.body && (
         <section>
           <h2 className="text-base font-semibold">{item.bodyHeading || 'How it works in Shanti Ops'}</h2>

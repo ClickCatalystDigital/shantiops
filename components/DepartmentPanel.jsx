@@ -12,6 +12,7 @@ import PackingPanel from './PackingPanel';
 import BomTable from './BomTable';
 import QcPanel from './QcPanel';
 import QcProjectSummary from './QcProjectSummary';
+import JobWorkPanel from './JobWorkPanel';
 import TicketsPanel from './TicketsPanel';
 import StagesPanel from './StagesPanel';
 import ProcurementQueue from './ProcurementQueue';
@@ -32,9 +33,10 @@ const CANCEL_DEPARTMENTS = ['Engineering', 'Design'];
 
 export default function DepartmentPanel({
   department, milestones, head = false,
-  projectId, bom = [], pending = [], packingLists = [], canUploadBom = false, canPack = false,
+  projectId, bom = [], pending = [], packingLists = [], bomAssemblies = [], canUploadBom = false, canPack = false,
   bomFields = [], bomImports = [], qcRecords = [], canEditQc = false, canEditProductionQc = false,
   qcDocuments = [], qcSummary = {},
+  jobWorkInspections = [], workOrders = [],
   tasks = [], canRaiseTickets = false,
   stages = [], stageTemplates = [], stageTemplateItems = [], canManageStages = false,
   designSummary = null,
@@ -64,7 +66,7 @@ export default function DepartmentPanel({
         <>
           <ScopeOfSupplyPanel projectId={projectId} scopeOfSupply={scopeOfSupply} canEdit={canEditScope} />
           <BomPanel projectId={projectId} bom={bom} pending={pending} canUpload={canUploadBom}
-            editableFields={bomFields} imports={bomImports} canCancel={canCancel} />
+            editableFields={bomFields} imports={bomImports} canCancel={canCancel} assemblies={bomAssemblies} />
         </>
       )}
 
@@ -141,8 +143,21 @@ export default function DepartmentPanel({
           {/* Hydro-test rows excluded — QC can still see them lower down if needed via the project
               summary, but the edit/delete controls here would 403 now that Production owns them
               (found as a real bug: this block previously showed unfiltered records with live
-              controls that quietly stopped working instead of being visibly QC's or not). */}
-          <QcPanel projectId={projectId} records={qcRecords.filter(r => !/hydro/i.test(r.test_type))} canEdit={canEditQc} />
+              controls that quietly stopped working instead of being visibly QC's or not). Incoming/
+              Finished Goods/Subassembly Inspection (STERP items 30-32, §5p) are excluded from this
+              generic list too, each getting their own stage-linked panel below instead. */}
+          <QcPanel projectId={projectId}
+            records={qcRecords.filter(r => !/hydro/i.test(r.test_type) && !['Incoming Inspection', 'Finished Goods Inspection', 'Subassembly Inspection'].includes(r.test_type))}
+            canEdit={canEditQc} />
+          <QcPanel projectId={projectId} title="Incoming Inspection" defaultTestType="Incoming Inspection"
+            records={qcRecords.filter(r => r.test_type === 'Incoming Inspection')} canEdit={canEditQc} />
+          <QcPanel projectId={projectId} title="Finished Goods Inspection" defaultTestType="Finished Goods Inspection"
+            records={qcRecords.filter(r => r.test_type === 'Finished Goods Inspection')} canEdit={canEditQc}
+            linkField="work_order_id" linkOptions={workOrders.map(w => ({ id: w.id, label: w.wo_no }))} showDispatchToggle />
+          <QcPanel projectId={projectId} title="Subassembly Inspection" defaultTestType="Subassembly Inspection"
+            records={qcRecords.filter(r => r.test_type === 'Subassembly Inspection')} canEdit={canEditQc}
+            linkField="assembly_id" linkOptions={bomAssemblies.map(a => ({ id: a.id, label: a.name }))} />
+          <JobWorkPanel projectId={projectId} records={jobWorkInspections} canEdit={canEditQc} />
           <QcProjectSummary projectId={projectId} summary={qcSummary} canManage={canEditQc} />
         </>
       )}

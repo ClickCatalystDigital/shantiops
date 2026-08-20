@@ -1,7 +1,7 @@
 // app/projects/[id]/page.js
 
 import { notFound, redirect } from 'next/navigation';
-import { getProjectDetail, getProjectBom, getProjectPackingLists, getQcRecords, getQcDocuments, getQcProjectSummary, getProjectTasks, getProjectStages, getStageTemplates, getProjectDesignSummary, getScopeOfSupply, activeDepartmentStatus } from '@/lib/data';
+import { getProjectDetail, getProjectBom, getProjectPackingLists, getQcRecords, getQcDocuments, getQcProjectSummary, getProjectTasks, getProjectStages, getStageTemplates, getProjectDesignSummary, getScopeOfSupply, activeDepartmentStatus, getBomAssembliesFlat, getJobWorkInspections, getWorkOrders } from '@/lib/data';
 import { getFreshSessionUser, isCustomer, isPM, isHead, isDesignHead, headDepartments, canAccessDepartment, roleHome } from '@/lib/auth';
 import { canPerformAction } from '@/lib/action-permissions';
 import { DEPARTMENTS } from '@/lib/milestones';
@@ -24,10 +24,13 @@ export default async function ProjectDetail({ params }) {
   if (!data) notFound();
   const { project, milestones, health, blocker } = data;
   const { bom, pending, imports } = await getProjectBom(params.id);
+  const bomAssemblies = await getBomAssembliesFlat(params.id); // STERP item 16, §5o — assign-to-assembly picker
   const packingLists = await getProjectPackingLists(params.id);
   const qcRecords = await getQcRecords(params.id);
   const qcDocuments = await getQcDocuments(params.id);
   const qcSummary = await getQcProjectSummary(params.id);
+  const jobWorkInspections = await getJobWorkInspections(params.id); // STERP item 33, §5p
+  const workOrders = await getWorkOrders({ projectId: params.id }); // STERP item 31's dispatch-eligibility link, §5p
   const tasks = await getProjectTasks(project.id);
   const stages = await getProjectStages(project.id);
   const { templates: stageTemplates, items: stageTemplateItems } = await getStageTemplates();
@@ -50,12 +53,13 @@ export default async function ProjectDetail({ params }) {
 
   // Shared data every DepartmentPanel/tab needs.
   const panelData = {
-    milestones, head, projectId: project.id, bom, pending, packingLists,
+    milestones, head, projectId: project.id, bom, pending, packingLists, bomAssemblies,
     canUploadBom: canAccessDepartment(user, 'Engineering'),
     canPack: canAccessDepartment(user, 'Dispatch'),
     bomFields: editableBomFields(user), // field-level BOM edit scope (enforced again in the API)
     bomImports: imports,
     qcRecords, qcDocuments, qcSummary, canEditQc: canAccessDepartment(user, 'QC'),
+    jobWorkInspections, workOrders,
     canEditProductionQc: canAccessDepartment(user, 'Production'),
     // One query for all 8 tabs — DepartmentPanel filters client-side, same as it already does for
     // milestones. A head only ever sees their own department's panel, and a PM's canAccessDepartment

@@ -5,6 +5,7 @@ import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { notifyDepartment } from '@/lib/notify';
 import { parsePmb } from '@/lib/pmb.mjs';
+import { getAllocationMode } from '@/lib/procurement';
 
 // PMB (.xlsx) import — Engineering (or PM) only. One stateless route, two phases:
 //   POST file                      → parse only, return a preview (nothing written)
@@ -93,13 +94,17 @@ export async function POST(req, { params }) {
   // same as any row nobody's linked yet.
   const catalog = await queryAll('SELECT id, item_name FROM items');
   const catalogByName = new Map(catalog.map(c => [c.item_name.trim().toLowerCase().replace(/\s+/g, ' '), c.id]));
+  // Allocation Mode gate, refined 2026-08-20 — applies only to genuinely fresh rows (a row
+  // carrying a real historical status from the client's own PMB export, e.g. already Received,
+  // skips it entirely; it doesn't need Stores' review, it's already resolved). Manual mode keeps
+  // every fresh row gated (pending_review=1, the original behavior); Auto mode leaves them open
+  // (0) so release-bom's auto-match pass (matchProjectBom / matchProjectPlainStock) decides.
+  const allocationMode = await getAllocationMode();
+  const freshPendingReview = allocationMode === 'manual' ? 1 : 0;
 
   let n = 0;
   for (const sheet of parsed.sheets) {
     for (const it of sheet.items) {
-      // Manual-mode gate (STORES-SALES-CHANGES.md) applies only to genuinely fresh rows — a row
-      // carrying a real historical status from the client's own PMB export (already Received/
-      // Closed etc.) skips it; it doesn't need Stores' review, it's already resolved.
       const itemId = catalogByName.get(String(it.material_description || '').trim().toLowerCase().replace(/\s+/g, ' ')) || null;
       await execute(
         `INSERT INTO bom_items
@@ -110,7 +115,7 @@ export async function POST(req, { params }) {
         [params.id, it.material_description, it.moc, it.size_spec, n, it.section, it.group_label,
           it.make, it.qty_text, it.purchase_status, it.pr_ref, it.po_ref, it.grn_ref,
           it.grn_qty_text, it.pending_qty_text, it.bqtc_ref, it.issued_ref, it.received_ref,
-          it.remarks, importId, it.purchase_status ? 0 : 1, itemId]);
+          it.remarks, importId, it.purchase_status ? 0 : freshPendingReview, itemId]);
       n++;
     }
   }

@@ -18,6 +18,8 @@ import { execute, queryOne, nextCounterValue } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
 import { audit } from '@/lib/usb';
 import { notifyDepartment } from '@/lib/notify';
+import { getAllocationMode, autoReserveFromStock, notifyProcurementIfShortfall } from '@/lib/procurement';
+import { matchAndReserve } from '@/lib/remnant-match';
 
 const PR_DEPARTMENTS = ['Engineering', 'Design', 'Stores', 'Sales'];
 const SAS_RAISERS = new Set(['Sales']);
@@ -73,6 +75,16 @@ export async function POST(req) {
     [prNo, raisedByDept, user.username]
   );
 
+  // Allocation Mode gate, refined 2026-08-20 — 'bom'/'sas' lines used to always gate behind
+  // pending_review=1 (Stores review of every line, regardless of what's actually in stock). Auto
+  // mode instead inserts open (0) and immediately tries the same auto-match reuse/matchAndReserve
+  // already does for the release-bom/single-add paths — SAS demand goes through the identical
+  // allocation mechanism as project BOM demand, per the redesign (Sales still owns raising it, this
+  // is only about how it gets fulfilled). 'stock' is unaffected — Stores' own Build-stock request
+  // already skipped this gate entirely before this change.
+  const allocationMode = await getAllocationMode();
+  const gatedPendingReview = allocationMode === 'manual' ? 1 : 0;
+
   const bomItemIds = [];
   for (const [i, line] of lines.entries()) {
     const source = line.source || 'bom';
@@ -113,29 +125,41 @@ export async function POST(req) {
       const { lastId: bomItemId } = await execute(
         `INSERT INTO bom_items (project_id, material_description, moc, size_spec, qty_text, purchase_status,
                                  pr_item_id, source, sale_order_no, category, category_fields_json, origin, pending_review, item_id)
-         VALUES (?, ?, ?, ?, ?, 'Enquiry', ?, 'sas', ?, ?, ?, ?, 1, ?)`,
+         VALUES (?, ?, ?, ?, ?, 'Enquiry', ?, 'sas', ?, ?, ?, ?, ?, ?)`,
         [sentinel.id, line.material_description.trim(), line.moc || null, line.size_spec || null,
-          line.qty_text.trim(), Number(prItemId), line.sale_order_no.trim(), category, categoryFieldsJson, origin, itemId]
+          line.qty_text.trim(), Number(prItemId), line.sale_order_no.trim(), category, categoryFieldsJson, origin, gatedPendingReview, itemId]
       );
       bomItemIds.push(Number(bomItemId));
+      if (allocationMode === 'auto') {
+        const item = await queryOne('SELECT * FROM bom_items WHERE id = ?', [Number(bomItemId)]);
+        const dimResult = await matchAndReserve(item, user.username);
+        if (dimResult.matched === 0) await autoReserveFromStock(item, user.username);
+        await notifyProcurementIfShortfall(Number(bomItemId));
+      }
     } else {
       for (const p of line.projects) {
         await execute(
           'INSERT INTO pr_item_projects (pr_item_id, project_id, qty_text) VALUES (?, ?, ?)',
           [Number(prItemId), p.project_id, p.qty_text.trim()]
         );
-        // Materializes immediately — this line×project pair is the real procurement need, but
-        // stays out of Procurement's Enquiry queue (pending_review=1) until Stores explicitly
-        // reserves it from stock or clicks Procure (the unify decision was "no accept step",
-        // this doesn't reintroduce one — it's a Stores-only gate, not a Procurement one).
+        // Materializes immediately — this line×project pair is the real procurement need. Manual
+        // mode keeps it out of Procurement's Enquiry queue until Stores explicitly reserves it or
+        // clicks Procure; Auto mode tries the same allocation the release-bom/single-add paths use,
+        // right here (the unify decision was "no accept step", this doesn't reintroduce one).
         const { lastId: bomItemId } = await execute(
           `INSERT INTO bom_items (project_id, material_description, moc, size_spec, qty_text, purchase_status, pr_item_id, category, category_fields_json, origin, pending_review, item_id, drawing_id)
-           VALUES (?, ?, ?, ?, ?, 'Enquiry', ?, ?, ?, ?, 1, ?, ?)`,
+           VALUES (?, ?, ?, ?, ?, 'Enquiry', ?, ?, ?, ?, ?, ?, ?)`,
           [p.project_id, line.material_description.trim(), line.moc || null, line.size_spec || null,
-            p.qty_text.trim(), Number(prItemId), category, categoryFieldsJson, origin, itemId,
+            p.qty_text.trim(), Number(prItemId), category, categoryFieldsJson, origin, gatedPendingReview, itemId,
             p.drawing_id ? Number(p.drawing_id) : null]
         );
         bomItemIds.push(Number(bomItemId));
+        if (allocationMode === 'auto') {
+          const item = await queryOne('SELECT * FROM bom_items WHERE id = ?', [Number(bomItemId)]);
+          const dimResult = await matchAndReserve(item, user.username);
+          if (dimResult.matched === 0) await autoReserveFromStock(item, user.username);
+          await notifyProcurementIfShortfall(Number(bomItemId));
+        }
       }
     }
   }

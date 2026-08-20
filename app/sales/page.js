@@ -5,7 +5,7 @@
 // CalcWorkspace's page.
 import { redirect } from 'next/navigation';
 import { getFreshSessionUser, canAccessDepartment, headDepartments, isPM, isDesignHead, roleHome } from '@/lib/auth';
-import { getSaleOrders, getLeads, getCustomers, getQuotations, getCampaigns, getFunctionalHeads, getPriceLists, getSalesReturns, getInventoryItems } from '@/lib/data';
+import { getSaleOrders, getLeads, getCustomers, getQuotations, getCampaigns, getFunctionalHeads, getPriceLists, getSalesReturns, getInventoryItems, getSalesInvoices, getSalesCreditNotes } from '@/lib/data';
 import { queryAll } from '@/lib/db';
 import SalesWorkspace from '@/components/SalesWorkspace';
 
@@ -22,8 +22,9 @@ export default async function SalesPage() {
   // "departments the viewer holds" shape as app/pipeline/page.js.
   const departments = isPM(user) ? CRM_DEPARTMENTS : headDepartments(user).filter(d => CRM_DEPARTMENTS.includes(d));
 
-  const [saleOrders, leads, customers, quotations, campaigns, priceLists, returns, inventoryItems, heads, savedViewRows] = await Promise.all([
+  const [saleOrders, leads, customers, quotations, campaigns, priceLists, returns, inventoryItems, invoices, creditNotes, heads, savedViewRows] = await Promise.all([
     getSaleOrders(), getLeads(), getCustomers(), getQuotations(), getCampaigns(), getPriceLists(), getSalesReturns(), getInventoryItems(),
+    getSalesInvoices(), getSalesCreditNotes(),
     getFunctionalHeads(),
     queryAll('SELECT * FROM crm_saved_views WHERE user = ? AND entity = ? ORDER BY pinned DESC, created_at DESC', [user.username, 'leads']),
   ]);
@@ -34,6 +35,6 @@ export default async function SalesPage() {
   const savedViews = savedViewRows.map(r => ({ ...r, filters: JSON.parse(r.filters || '{}') }));
 
   return (
-    <SalesWorkspace saleOrders={saleOrders} leads={leads} customers={customers} quotations={quotations} campaigns={campaigns} priceLists={priceLists} returns={returns} inventoryItems={inventoryItems} departments={departments} users={crmUsers} savedViews={savedViews} canCreateProject={isDesignHead(user)} />
+    <SalesWorkspace saleOrders={saleOrders} leads={leads} customers={customers} quotations={quotations} campaigns={campaigns} priceLists={priceLists} returns={returns} inventoryItems={inventoryItems} invoices={invoices} creditNotes={creditNotes} departments={departments} users={crmUsers} savedViews={savedViews} canCreateProject={isDesignHead(user)} />
   );
 }

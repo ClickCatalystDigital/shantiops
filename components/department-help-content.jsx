@@ -8,7 +8,9 @@ import {
   UserPlusIcon, Building2Icon, MegaphoneIcon, TrendingUpIcon, PhoneIcon, BarChart3Icon,
   UserRoundIcon, UserCheckIcon, Clock3Icon, IndianRupeeIcon, ReceiptIcon, ShieldCheckIcon,
   ListChecksIcon, MessageSquareIcon, WrenchIcon, BellIcon, TagIcon, InboxIcon, UndoIcon,
-  ScissorsIcon, ClipboardIcon,
+  ScissorsIcon, ClipboardIcon, AlertTriangleIcon, LogInIcon, FileOutputIcon,
+  HeadsetIcon, FileSignatureIcon, LayersIcon, Repeat2Icon, FileEditIcon, Undo2Icon,
+  LandmarkIcon, PercentIcon, BookIcon,
 } from 'lucide-react';
 
 // Milestone Tracker (2026-08-17) — most milestones now complete themselves off a real event
@@ -48,6 +50,30 @@ const FEATURE_FOUNDATIONS = {
     outcome: 'Every required line has a usable description, specification, quantity, section, and ownership-aware downstream fields.',
     checklist: ['Preview imports before confirming them.', 'Check description, MOC, size/specification, make, quantity, section, and group.', 'Leave Procurement, Stores, and Production-owned operational fields to those teams.'],
     watchOut: 'Do not fix a technical mistake by creating a duplicate line. Correct the source definition and review the impact on quotes, receipts, and packing.',
+  },
+  bomStructure: {
+    value: 'Multi-Level BOM turns a flat list of parts into real assemblies and sub-assemblies with a quantity multiplier, so a boiler’s "2 ID Fans, each with 1 Drive sub-assembly" is a structure the system can roll up, not just three separate lines a reader has to mentally group.',
+    outcome: 'Every assembly shows the multiplied quantity of everything nested under it, computed live from the tree — never hand-typed and never out of date when a parent quantity changes.',
+    checklist: ['Create the assembly (or sub-assembly, nested under a parent) before assigning items to it.', 'Assign a BOM item to its assembly from the Edit dialog on the project’s BOM table, not here.', 'Check the roll-up quantity, not just the item’s own qty_text, before treating a count as final.'],
+    watchOut: 'A BOM item left unassigned (no assembly) still works exactly as before — assigning it to a structure is optional, not a requirement to keep using the BOM.',
+  },
+  whereUsed: {
+    value: 'Where-Used answers "if I change this part, what else does it affect?" across every project at once — the question a flat, per-project BOM can never answer on its own.',
+    outcome: 'A search returns every project, and the assembly within it, that carries a matching part — grouped by real identity (the catalog item when the line was picked from search) or by normalized description/MOC/size when it was typed or bulk-imported.',
+    checklist: ['Search by description; the match is case- and spacing-insensitive.', 'Treat a catalog-linked result and a free-typed result as potentially the same part even if they never grouped together — they only merge automatically once both carry the same catalog item.'],
+    watchOut: 'Most real BOM lines arrive by bulk PMB import, which never sets a catalog link — so two truly identical parts can still show as separate rows if their free text differs even slightly (extra space, different capitalization is fine; a genuinely different spec string is not).',
+  },
+  commonUncommon: {
+    value: 'Common/Uncommon tells you which parts are worth stocking proactively (reused across many projects) versus which are one-off buys — a judgment call Procurement and Stores previously had to make from memory.',
+    outcome: 'Every part in the system is classified Common (used on 2 or more projects) or Uncommon (used on exactly one), with a project count and list.',
+    checklist: ['Use Common parts as candidates for minimum-stock levels or auto-indent suggestions.', 'Don’t treat Uncommon as "unimportant" — it just means no reuse signal exists yet, not that the part is disposable.'],
+    watchOut: 'Same identity-matching ceiling as Where-Used: classification is only as good as how consistently a part’s description/MOC/size was entered, unless it was picked from the catalog.',
+  },
+  ecn: {
+    value: 'An Engineering Change Note is the difference between "someone quietly edited a BOM field" and a real, accountable change: who asked, why, what the old and new values were, and who approved it — the release/approval workflow this module never had before.',
+    outcome: 'A change has a reason on record, a Head’s explicit approval before it takes effect, the release revision it became effective at, and a visible list of every PO, packing line, task, and drawing the changed item touches.',
+    checklist: ['Raise the ECN with the actual field, old value, new value, and a real business reason — not just "spec update".', 'Check the downstream-impact list before approving — a change to an item already on an issued PO or a packing list needs those teams told separately.', 'Only a department Head can approve or reject — raising one is open to any Engineering member.'],
+    watchOut: 'Approving an ECN updates the BOM field it named, but does not yet block other, non-ECN edits to that same field — it is a logged approval trail, not (yet) a hard gate on every BOM edit.',
   },
   tasks: {
     value: 'Tasks convert a vague follow-up into an owned action with a due date and history. They are the system’s memory for work that does not deserve a full milestone.',
@@ -96,6 +122,12 @@ const FEATURE_FOUNDATIONS = {
     outcome: 'The visible stage reflects the real sourcing situation and contains enough references for the next team to act.',
     checklist: ['Read the item history, not just the status label.', 'Keep PR, quote, supplier, and PO references readable.', 'Move to Received only when Stores confirms the physical receipt.'],
     watchOut: 'Do not use a status change to hide missing paperwork or a delivery problem. Record the evidence that supports the stage.',
+  },
+  purchaseReturns: {
+    value: 'Purchase Returns is the record of material sent back to a supplier — wrong spec, damage on receipt, over-supply — the Procurement-side mirror of Sales Returns.',
+    outcome: 'Every return has an inspection outcome (pending/accepted/rejected), a stock action once accepted (removed from stock, or replaced with no stock change), and a debit-note reference for the credit trail.',
+    checklist: ['Raise the return against the actual issuing PO.', 'Only remove stock once inspection is Accepted and you’ve picked the real inventory item — that decrement only fires once, even if you edit the row again later.', 'Record the debit note reference once the supplier confirms it.'],
+    watchOut: 'A return sitting at Pending inspection has not adjusted stock at all — do not assume material is already off the books until Accepted + a stock action is set.',
   },
   inventory: {
     value: 'Inventory is the cross-project view of physical stock. It prevents the team from promising the same material twice and separates on-hand quantity from committed quantity.',
@@ -504,6 +536,10 @@ export const DEPARTMENT_HELP = {
       }),
       feature('requests', 'Material requests', FileTextIcon, ['Use Requests for a new item or a quantity that must be sourced. Add enough technical detail for a buyer to obtain comparable quotes.', 'If an existing BOM line is wrong, correct the definition first; do not create a duplicate request to work around bad data.']),
       feature('milestones', 'Milestones and tasks', ListChecksIcon, ['Use milestones for major Engineering deliverables and Tasks for small follow-ups. Close both with real dates so downstream teams see the handoff clearly.']),
+      feature('bomStructure', 'BOM Structure (assemblies)', LayersIcon, ['Open the Engineering tab (top nav) → BOM Structure to build and browse a project’s assembly tree — nest sub-assemblies, set a quantity multiplier per level, and see roll-up quantity computed live.', 'Assign a BOM item to an assembly from the project page’s BOM table (Edit item → Assembly), not from the Engineering tab itself.']),
+      feature('whereUsed', 'Where-Used', SearchIcon, ['Open the Engineering tab → Where-Used, search a part description, and see every project (and assembly, where assigned) that carries a matching part.']),
+      feature('commonUncommon', 'Common / Uncommon', Repeat2Icon, ['Open the Engineering tab → Common/Uncommon to see which parts are reused across 2+ projects versus used on exactly one — a starting point for stocking decisions, not a Stores action in itself.']),
+      feature('ecn', 'Engineering Change Notes', FileEditIcon, ['Raise an ECN from the Engineering tab (or the project’s BOM table) whenever a released BOM field needs a controlled change — field, old value, new value, and a real reason.', 'A department Head approves or rejects; approval applies the new value and stamps the project’s current release revision.']),
     ],
     howTo: [
       { title: 'Read the order', body: 'Open the project, review Scope of Supply, and check the project description and Sale Order context before starting calculations.' },
@@ -525,6 +561,7 @@ export const DEPARTMENT_HELP = {
       feature('supplier', 'Supplier selection', Building2Icon, ['Select the supplier only after checking price, validity, terms, and technical fit. The selected quote becomes the basis for the draft PO.', 'If the requirement changes, update the BOM or request and leave a note rather than silently changing the supplier decision.']),
       feature('po', 'Purchase Orders', FileTextIcon, ['Review draft PO lines, issue the PO when the commercial details are correct, and generate the PDF for the supplier.', 'A PO issue moves the item into the next operational stage. Treat unissue/void actions as controlled corrections, not casual edits.']),
       feature('status', 'Status and delivery', TruckIcon, ['Use the status view to follow Enquiry, Comparison, Ordered, Transit, Received, Cancelled, and In-Stock. The summary also considers quote and supplier signals when the editable status cell is behind.', 'Keep PR/PO references readable because Stores and Production use them downstream.']),
+      feature('purchaseReturns', 'Purchase Returns', Undo2Icon, ['Use the Returns tab to raise a return against an issued PO — wrong spec, damage, over-supply — and track it through inspection to a stock action and debit note.']),
       feature('requests', 'New-item requests', ClipboardListIcon, ['Requests land directly in the Enquiry flow. Accept the requirement by sourcing it, not by creating a second manual record.', 'Ask the requesting team for missing technical information through a task so the request remains traceable.']),
       {
         key: 'suppliers', label: 'Suppliers', icon: Building2Icon, group: true,
@@ -599,15 +636,40 @@ export const DEPARTMENT_HELP = {
     features: [
       feature('inventory', 'Inventory', BoxesIcon, ['Inventory shows on-hand quantity and the quantity reserved for active project requirements. Available stock is the usable balance after reservations.', 'Keep item names and units consistent so the same stock is not entered twice under slightly different names.', 'Set a minimum stock level per item (New item / edit) to get a "Low" flag once available stock drops to or below it. Click the low-stock count — on the card title or the "low stock" chip above it — to filter the table down to just those items; toggle it off the same way.']),
       feature('reserve', 'Reservations', ClipboardCheckIcon, ['Reserve stock against a BOM requirement when material is committed to a project. A reservation reduces available stock without pretending the material has already been issued.', 'Release a reservation when the requirement is cancelled or fulfilled another way — this fully frees the quantity back to available; there is no separate "reassign to a different project" action, releasing and reserving again is how you move committed stock to a different requirement.', 'A green "✓" badge under a request\'s description is a real match — both sides were picked from the item catalog (search when raising the request, or search in the New Item dialog) and share the same underlying item. A muted "≈" badge is the older, weaker signal: plain keyword overlap, not automated, when no catalog link exists on one or both sides. Trust the ✓; still eyeball the ≈ before reserving.', 'Reserving does not change the BOM line\'s purchase status by itself — only Issue does. Procurement sees a "Reserved from stock" badge on the line the moment you reserve, so they know not to duplicate the sourcing work, but the line still technically shows as open until you actually Issue it.', 'Reservations work identically whichever kind of demand you\'re reserving against — a normal project BOM line, a Stock request, or a SAS trade request all draw from the same available pool, no special cases.']),
-      feature('review', 'Manual review (Stores Review / Procure)', ClipboardCheckIcon, [
-        'A fresh BOM or SAS line (not a Build stock request you raised yourself) lands in Stores Review first — a "Stores Review" badge instead of the usual status, and it stays invisible to Procurement entirely. It does not reach Enquiry until you act on it.',
-        'You have two ways forward: Reserve from stock, same as any other request, which fulfills it from inventory and it never needs Procurement at all — or Procure, which sends it straight to Procurement\'s Enquiry queue with one click and notifies Procurement directly that a new Enquiry item is waiting on them — no separate approval step on their end, and no more silent arrival.',
-        'The Manual / Auto toggle at the top of Inventory is not a real setting yet — Auto (matching lines reserving themselves automatically) shows a "coming soon" note; only Manual is actually built, and it is what runs regardless of which one is selected.',
-        'A request that predates this feature, or one you raised on yourself as Build stock, skips this entirely and behaves exactly as before — only genuinely new bom/SAS demand gets the Stores Review badge.',
-        'If you Reserve a Stores Review line and later have to Release that reservation — stock needed elsewhere, a mistake, anything — the line goes back to needing a decision, and you get a fresh notification saying so. It does not just silently sit there waiting to be noticed on a later sweep.',
+      feature('review', 'Allocation Mode (Automatic / Stores Review)', ClipboardCheckIcon, [
+        'Every material requirement — a released Project BOM line or a Sales SAS/trade request — follows the company\'s Allocation Mode. Stores is the inventory authority for both; it is not a mandatory approval step every requirement has to pass through just because Stores exists.',
+        'Automatic (the default, recommended mode): the moment a requirement is created, the system checks it against an exact catalog match in Inventory. Full stock available → the whole line reserves itself and never reaches Procurement. Partial stock → the available part reserves itself and only the shortfall becomes a Procurement requirement. No matching stock → the full requirement goes straight to Procurement. You never have to click Reserve or Procure for a line Auto already resolved — an "Auto-reserved" badge (or "Remnant reserved" for plate/section stock, which was already automatic) marks it done, no action needed.',
+        'Stores Review / Manual: every new BOM/SAS requirement instead waits in Stores Review — a "Stores Review" badge, invisible to Procurement until you act — and you choose Reserve from stock or Procure per line, exactly as before.',
+        'Switch modes from the toggle at the top of Inventory — Stores-only, takes effect immediately for every new requirement from that point on (it does not retroactively re-decide requirements that already landed).',
+        'Auto does not mean Stores loses control. You can always Reserve/Procure a line yourself, and Release any reservation — including one Auto made — the same way you always could. Auto means "allocate automatically unless Stores intervenes," not "Stores is out of the loop."',
+        'If you Release a reservation Auto made (stock needed elsewhere, wrong match, damaged material, anything) the line goes back to needing a decision and you get a fresh notification saying so — same as releasing a manually-made reservation.',
+        'Only an exact catalog match (the same real, non-fuzzy "✓" signal Reservations below already trusts) is ever auto-reserved — a plain keyword-overlap "≈" match is never safe to auto-commit physical stock against, so those lines still need your eye.',
       ], {
-        value: 'Before this, every new BOM line landed in Procurement\'s queue the instant it was released, whether or not Stores already had the material sitting in Inventory — Procurement had no way to know, and nothing stopped duplicate sourcing work. This closes that gap: Stores gets the first look, and only sends demand to Procurement that Stores has actually confirmed it can\'t fulfill itself.',
-        outcome: 'Every fresh line gets an explicit Stores decision — Reserve or Procure — before Procurement ever sees it, and that decision is visible on the line itself, not buried in a status change nobody else can read. Procurement is told the moment that decision lands on them; Stores is told again if a reservation it was counting on falls through.',
+        diagram:
+`                 DEMAND
+            ┌──────┴──────┐
+            │             │
+          PROJECT        SAS
+            │             │
+            └──────┬──────┘
+                   ▼
+             BOM / REQUEST
+                   │
+                   ▼
+          ┌─────────────────┐
+          │ Allocation Mode │
+          └───────┬─────────┘
+                  │
+       AUTO ──────┼────── MANUAL
+         │                     │
+         ▼                     ▼
+ Reserve stock            Stores decides
+         │                     │
+         ├── Available → Reserved    ├── Reserve
+         │                           └── Procure
+         └── Shortage → Procurement`,
+        value: 'Project BOMs and Sales SAS requests create material demand. The system then follows the company\'s Allocation Mode. In Automatic mode, available Stores inventory is reserved automatically and only shortages go to Procurement. In Manual mode, Stores reviews the requirement and decides whether to reserve stock or send it to Procurement. Before this, every new line landed in Procurement\'s queue the instant it was released, whether or not Stores already had the material — Automatic mode closes that gap without turning Stores into an approval queue for every ordinary line.',
+        outcome: 'In Automatic mode, only requirements Stores actually needs to act on — a genuine shortfall, an exception, an override — ever need a click. Procurement only ever sees the unmet quantity, never the part Stores already reserved. In Manual mode, every fresh line still gets an explicit Stores decision before Procurement sees it.',
         checklist: [
           'Check Inventory (or the possible-match badge) before deciding — Procure is a real choice, not a default to fall back on when unsure.',
           'Do not sit on a Stores Review line — it is genuinely invisible to Procurement until you act, so a forgotten line delays the project silently.',
@@ -628,7 +690,7 @@ export const DEPARTMENT_HELP = {
           'If a matched line\'s requirement changes or gets cancelled, open its piece (layers icon) and click Release to free it back to available stock for the next match.',
         ],
       }),
-      feature('sas', 'In-Stock and SAS material', BoxesIcon, ['Stock and Sold-As-Such items can follow the same sourcing and status flow without being attached to a normal project milestone chain.', 'Check the source and project context before issuing stock so the inventory movement remains auditable.', 'SAS is Sales-initiated, not Stores-initiated — Sales raises a trade request against their own Sale Order (from their Sale Orders tab) and it lands directly in your Requests queue. You no longer raise a SAS line yourself; only Build stock requests (source \'stock\') are still something Stores raises through Requests.']),
+      feature('sas', 'In-Stock and SAS material', BoxesIcon, ['Stock and Sold-As-Such items can follow the same sourcing and status flow without being attached to a normal project milestone chain.', 'Check the source and project context before issuing stock so the inventory movement remains auditable.', 'SAS is Sales-initiated, not Stores-initiated — Sales raises a trade request against their own Sale Order (from their Sale Orders tab) and it lands directly in your Requests queue. You no longer raise a SAS line yourself; only Build stock requests (source \'stock\') are still something Stores raises through Requests.', 'A SAS request goes through the exact same Allocation Mode as a Project BOM line — in Automatic mode it tries to reserve itself against stock the same way, only a shortfall reaches Procurement.']),
       feature('notifications', 'Notifications', BellIcon, [
         'You receive a notification the moment new material demand exists, from any of two sources: Engineering/Design importing a BOM workbook or adding a single BOM item, or any department raising a purchase requisition line — including Sales pushing a SAS material request against their own Sale Order.',
         'A SAS request from Sales reaches you the same way any new demand does: same Requests queue, same notification, no separate inbox to check and no need for Sales to message you separately.',
@@ -647,14 +709,35 @@ export const DEPARTMENT_HELP = {
         watchOut: 'The notification tells you demand exists or material arrived; it does not tell you whether stock is available or already reserved. Still check Inventory (or the possible-match badge) before promising anything back to the requester.',
       }),
       feature('issues', 'Material issued to WIP', PackageCheckIcon, ['Log material leaving Stores for the shop floor — pick the project, the BOM item, and the quantity. This is a separate action from Reserve→Issue: it does not touch on-hand or purchase status, it is purely a record of what physically went to WIP and when.', 'Production can log the same event from their own BOM view — either side recording it is fine, there is no duplicate-entry conflict since each is just an append-only log row, not a status change.']),
+      feature('reorder', 'Reorder suggestions', AlertTriangleIcon, [
+        'Every item at or below its minimum stock level (the same "Low" flag Inventory already shows) appears here with a suggested replenishment quantity — minimum minus available, editable before you commit.',
+        'Create request turns a suggestion into a real Build stock request through the same flow Inventory\'s own stock-request path already uses — it lands in Open Requests as an ordinary Enquiry line, same as if you\'d raised it by hand.',
+        'Nothing is created automatically. A suggestion stays a suggestion — visible, editable, ignorable — until you click Create request; and once you do, that item drops off this list until it needs reordering again.',
+      ]),
+      feature('gir', 'Gate Inward Receipts (GIR)', LogInIcon, [
+        'Log every vehicle that enters the gate with material: vehicle number, supplier, driver, a material reference (PO/DC/BOM), and the two security checks (seal intact, documents verified) plus any remarks.',
+        'A GIR is the gate-entry record, not the GRN — it exists independently of whether the material has been formally received yet. Attach the GRN reference and close the GIR once receipt is confirmed.',
+        'This is a standalone security-desk log, not part of the reserve/available inventory model — creating a GIR never touches on-hand stock by itself.',
+      ]),
+      feature('gatepass', 'Gate Passes', FileOutputIcon, [
+        'Raise a Returnable or Non-returnable gate pass before material or tooling leaves the gate — party/destination, responsible person, purpose, and an item list. A returnable pass also takes an expected return date; a non-returnable one does not.',
+        'Approve, then Issue — a pass only leaves draft once someone with approval authority signs off. Cancel is available before issue.',
+        'Once issued, tick each item off as it actually comes back — the pass itself flips to Returned automatically the moment every item on it is ticked, and back to Issued if you un-tick one by mistake.',
+        'A returnable pass still out past its expected return date shows an Overdue badge — computed live, not something you have to check for; it clears the moment the pass is fully returned.',
+      ]),
       feature('tasks', 'Tasks and handoffs', ListChecksIcon, ['Use Tasks for a missing document, a receipt question, or a delivery follow-up. Close the task when the physical or documentary action is complete.', 'Operations now shows Outgoing and Incoming Incidents for Stores, split by direction — same pattern Procurement already has. Raising one from either card sends a real notification to the other department immediately; there is nothing extra to do beyond filling in the Raise dialog.']),
     ],
     howTo: [
       { title: 'Receive material', body: 'Match the delivered material to the PO/BOM, record GRN reference and date, enter quantity received, and update the pending balance.' },
       { title: 'Reserve stock', body: 'Find the project requirement, choose the inventory item, enter the quantity, and confirm the reservation. Check available balance before promising stock.' },
+      { title: 'Check what Automatic mode already did', body: 'In Automatic mode, before reserving anything by hand, check Open Requests for an "Auto-reserved" or "Remnant reserved" badge — that line already resolved itself and needs nothing from you. Only lines still showing "Stores Review", or genuinely unmatched lines Procurement is now sourcing, are real candidates for a manual Reserve.' },
       { title: 'Issue material', body: 'From Active reservations, click Issue once material actually leaves Stores for a reserved requirement — it decrements on-hand and marks that BOM line In-Stock. For material that arrived the normal way (not via a stock reservation) and is now physically leaving for the shop floor, use Material issued to WIP instead — pick the project and BOM item and log the quantity.' },
       { title: 'Handle a mismatch', body: 'Do not force a receipt into the wrong line. Raise a task to Procurement or Engineering with the PO, material description, and actual quantity.' },
       { title: 'Close the loop', body: 'Make sure the BOM receipt fields, inventory quantity, and reservation state agree before closing the Stores task.' },
+      { title: 'Act on a reorder suggestion', body: 'Open Reorder Suggestions, check the suggested quantity against what you actually want to hold, adjust it if needed, and click Create request. Reserve from stock first if a request in Open Requests could be filled from what you already have — Reorder Suggestions is for topping up depleted stock, not a substitute for reserving.' },
+      { title: 'Log a Gate Inward Receipt', body: 'The moment a vehicle enters with material, log a GIR: vehicle, supplier, driver, a material reference, and the two security checks. Enter at least a vehicle number or supplier — a blank GIR is not a real record.' },
+      { title: 'Close a GIR', body: 'Once the material is actually received (via Procurement\'s GRN or your own confirmation), enter the GRN reference on the GIR row and click Close. Close is disabled until a GRN reference exists — a closed GIR always means the receipt is real, not just that the gate visit is over.' },
+      { title: 'Issue and close out a Gate Pass', body: 'Raise the pass (Returnable or Non-returnable), get it Approved, then Issue it the moment material actually leaves. For a returnable pass, tick each item off as it comes back — the pass flips to Returned on its own once every item is ticked. An overdue returnable pass shows a badge automatically; there is nothing else to check for it.' },
     ],
   },
   Production: {
@@ -906,6 +989,19 @@ export const DEPARTMENT_HELP = {
         watchOut: 'This notification tracks Procurement clearing every BOM line — it does not mean material has physically arrived at Stores or that fabrication has started. Check the project\'s actual status before treating it as a cue to test anything.',
       }),
       feature('handoff', 'Release and sign-off', ShieldCheckIcon, ['Make the result and supporting references clear for Production, Dispatch, Management, and the customer-facing record. Keep rework visible instead of silently editing a passed record.']),
+      feature('stageInspections', 'Incoming / Finished Goods / Subassembly Inspection', ClipboardCheckIcon, [
+        'Incoming Inspection is auto-suggested (Pending) the moment a BOM item you\'re buying reaches Received — you don\'t have to notice the receipt yourself, just fill in the result. You can still add one by hand for anything the auto-suggestion misses.',
+        'Finished Goods Inspection is tied to a Work Order. Pass it and flip "Dispatch eligible" once you\'re satisfied the completed goods are fit to ship — Dispatch\'s packing flow reads that flag.',
+        'Subassembly Inspection is tied to a BOM assembly (Engineering tab → BOM Structure) — use it for an intermediate stage check before the sub-assembly moves on, not the finished product.',
+      ]),
+      feature('jobWork', 'Job-Work Inspection', TruckIcon, [
+        'Log material sent to an outside job worker: who, quantity sent, expected return date. Fill in received quantity and date once it comes back — variance (sent minus received) is calculated for you.',
+        'A job worker is just a name and contact, not a vendor record — there\'s no separate master to maintain.',
+      ]),
+      feature('calibration', 'Calibration', BadgeCheckIcon, [
+        'The Calibration tab (QC workspace, not a project) tracks instruments and jigs/fixtures: due date, certificate reference, and a status of OK, Due soon, Expired, or Blocked.',
+        'Block an item to take it out of service before its due date — Blocked always overrides the date-based status.',
+      ]),
     ],
     howTo: [
       { title: 'Create the inspection record', body: 'Open the project QC area, choose the test type, enter reference and inspector details, and leave the result Pending until the check is complete.' },
@@ -913,6 +1009,8 @@ export const DEPARTMENT_HELP = {
       { title: 'Store evidence', body: 'Add or find the relevant Test Certificate or statutory document and check that the PDF uses the saved data.' },
       { title: 'Raise rework', body: 'If the result fails, record the reason and raise a task for the responsible department. Do not hide the failure by deleting the record.' },
       { title: 'Close the QC handoff', body: 'Close the QC milestone only when the inspection and evidence are complete, then confirm the next department can find the references.' },
+      { title: 'Clear a Work Order for dispatch', body: 'Once a Finished Goods Inspection passes, flip its "Dispatch eligible" flag so Dispatch can see the Work Order is cleared to pack.' },
+      { title: 'Keep calibration current', body: 'Check the Calibration tab regularly for items going Due soon or Expired, and Block anything pulled out of service.' },
     ],
   },
   Dispatch: {
@@ -943,13 +1041,27 @@ export const DEPARTMENT_HELP = {
     title: 'Installation', icon: MapPinIcon,
     intro: [
       'Installation tracks the work that happens at the customer site after manufacturing and dispatch. The project record should show what is planned, what the site team completed, and what is still waiting on the customer or another department.',
-      'Use Operations for your open site work, Projects for the order record, and Tasks for site-specific follow-ups.',
+      'Use Operations for your open site work, Projects for the order record, Tasks for site-specific follow-ups, and the Installation tab (Service Calls, Service Contracts, Reports) for post-handover customer service.',
     ],
     features: [
       feature('milestones', 'Site milestones', RouteIcon, ['Start and close installation, commissioning, and site milestones with actual dates. Use planned dates to make the expected visit visible early.', 'If a date moves, record the reason so the customer-facing progress story remains honest.']),
       feature('tasks', 'Site tasks', ListChecksIcon, ['Use tasks for access arrangements, foundation readiness, customer documents, travel, tools, and punch-list items.', 'Assign each task to a person or receiving department and include the project in the task.']),
       feature('handoff', 'Handoffs', MessageSquareIcon, ['Use cross-department tasks when Installation needs Dispatch, QC, Production, or Management to act. Close the task only after the receiving action is confirmed.', 'Keep customer commitments in the project record, not only in a private message.', 'Marking Commissioning & Handover complete is different from every other milestone close: there is no next department in the chain for it to hand off to, so it notifies Sales and every PM-tier account directly instead — the project is now fully done, not just past Installation.']),
       feature('progress', 'Customer progress', FolderKanbanIcon, ['The customer portal reads project progress from milestones. Accurate actual dates and delay reasons improve the customer view without extra reporting work.']),
+      feature('service-calls', 'Service Calls', HeadsetIcon, [
+        'Log a customer complaint or service call against the project (its "covered equipment"), with priority and an optional SLA target in hours.',
+        'Manage a call to move it through Open → Assigned → In Progress → Resolved → Closed, assign a technician, and record diagnosis, resolution, and closure evidence.',
+        'Visit history is a separate log on the call — add one row per site visit (technician, date, notes) independent of the call\'s own status.',
+      ]),
+      feature('service-contracts', 'Service Contracts', FileSignatureIcon, [
+        'Create a contract against a project — customer, coverage window, visit frequency, and entitlement (what\'s actually covered).',
+        'Renew a contract to create a new contract row linked to the old one, which moves to Renewed; the old record is never overwritten. Cancel is available on an active contract.',
+        'A contract within 30 days of its end date is flagged "Expiring soon" on the list.',
+      ]),
+      feature('service-reports', 'Reports', BarChart3Icon, [
+        'Read-only reports covering installation milestones and delays, commissioning completion, service call aging and SLA compliance, technician performance, and contract renewals.',
+        'Every number is computed live off the same Service Calls, Service Contracts, and milestone data — there is nothing to enter separately.',
+      ]),
       milestoneTrackerFeature([
         ['Site Installation', 'Explicit action', 'Click "Mark complete" on the project\'s Installation tab — nothing else in the app logs a site visit, so there\'s no data signal to auto-detect this from.'],
         ['Commissioning & Handover', 'Explicit action', 'Same "Mark complete" action, once site installation is done.'],
@@ -961,6 +1073,8 @@ export const DEPARTMENT_HELP = {
       { title: 'Manage a blocker', body: 'Record the delay reason and raise the task to the right department. Do not close the milestone while the blocker is unresolved.' },
       { title: 'Complete commissioning', body: 'Enter actual end date, close the milestone, and ensure any punch-list task is either completed or clearly assigned.' },
       { title: 'Confirm the customer view', body: 'Check that the project progress and estimated dates now tell the same story as the site record.' },
+      { title: 'Handle a post-handover complaint', body: 'Log a Service Call against the project, set priority and an SLA target, then Manage it through assignment, diagnosis, and resolution as work happens.' },
+      { title: 'Track a maintenance contract', body: 'Create a Service Contract against the project with its coverage window and entitlement; renew it before it expires rather than letting it lapse.' },
     ],
   },
   Sales: {
@@ -1068,6 +1182,67 @@ export const DEPARTMENT_HELP = {
       { title: 'Hand off a ready deal', body: 'Add a useful note and next step, assign the opportunity if needed, and let Sales handle customer, quotation, and Sale Order paperwork.' },
     ],
   },
+  Accounts: {
+    title: 'Accounts', icon: LandmarkIcon,
+    intro: [
+      'Accounts owns the full books for both legal entities (Shanti Boilers & Pressure Vessels (P) Ltd and Shanti Techno Fab) — chart of accounts, journal entries, GST compliance, and the derived Trial Balance/P&L/Balance Sheet. Shanti Ops is the system of record here, not a document trail feeding an external accounting package; Tally, if ever connected, would be an optional sync target reading from this ledger, not the other way round.',
+      'Most of the ledger fills itself in: issuing a Sales Invoice, approving a Vendor Bill, raising a Credit/Debit Note, or marking a Salary Slip paid each post their own journal entry automatically. Your day-to-day work is mostly settlement (receipts/payments), GST compliance (returns and reconciliation), and the exceptions nothing else already covers (Manual Journal Entry, bank reconciliation).',
+    ],
+    features: [
+      feature('settings', 'Company Settings', Building2Icon, ['One row per legal entity — GSTIN, PAN, registered address, state code, and invoice series prefix. Every document number (invoice, credit note, receipt…) and every GST split (CGST+SGST vs IGST) is computed from this record, so keep it accurate before relying on anything downstream.']),
+      feature('rates', 'GST & TDS Rates', PercentIcon, ['HSN → GST rate and TDS section → rate/threshold masters, effective-dated like Payroll’s own statutory rates. A rate with no row here falls back to whatever flat percentage the originating document typed by hand — add the real rate before trusting an automatic split.']),
+      feature('ledger', 'Chart of Accounts & General Ledger', LayersIcon, ['Each company’s chart is seeded with the accounts every auto-posting trigger needs (AR, AP, GST Input/Output, Raw Material Inventory, Salary Expense, and the rest) — add an account only when a real new use needs one, not speculatively.', 'Trial Balance, Profit & Loss, and Balance Sheet are read-only rollups off the ledger, not separate records — if they look wrong, the fix is always in what posted to the ledger, never in the report itself.']),
+      feature('journal', 'Manual Journal Entry', FileEditIcon, [
+        'Use this only for what no document already covers — every Sales Invoice, Vendor Bill, Credit/Debit Note, Salary Slip, receipt, payment, and Material Issue posts itself. A Manual Journal Entry is for a real adjustment nothing else models.',
+        'A new entry saves as a draft and does not touch the Trial Balance until you Post it — debits and credits must match before it can be posted at all. Once posted it is immutable; a mistake is corrected with Reverse, which posts a new offsetting entry, never an edit to the original.',
+      ], {
+        outcome: 'The adjustment is posted, the Trial Balance still balances, and anyone reading the ledger later can see exactly what was entered and why — never a silent edit to history.',
+        checklist: [
+          'Confirm this adjustment genuinely isn’t already covered by an existing document flow before typing it by hand.',
+          'Add every line with the correct account and amount; the draft won’t let you Post until total debits equal total credits.',
+          'Post only once you’re sure — a posted entry is immutable. Found a mistake after posting? Reverse it, then post the correct entry.',
+        ],
+        watchOut: 'A posted entry cannot be edited or deleted, on purpose — that immutability is what makes the ledger trustworthy. If a posted entry is wrong, reverse it and post the correct one; do not go looking for a way around the lock.',
+      }),
+      feature('settlement', 'AR / AP settlement', ReceiptIcon, ['Record a customer receipt against an issued Sales Invoice or a vendor payment against an approved Vendor Bill — pick the real document from the list, not a free-text reference. Each one posts Bank & Cash against Accounts Receivable/Payable and moves the parent document to Paid once it is genuinely fully settled.', 'A receipt or payment cannot exceed the real balance still due — the amount is checked against everything already recorded against that document, not just typed and trusted.'], {
+        outcome: 'Accounts Receivable/Payable reflects real cash movement, not just document status — the invoice or bill shows Paid only once it genuinely is.',
+        checklist: [
+          'Pick the real invoice or bill from the list — not a typed reference — so the receipt/payment links to the document it actually settles.',
+          'Enter the amount actually received or paid; a partial settlement is fine and keeps the document open until the balance reaches zero.',
+          'Check the document flipped to Paid once the balance is fully settled — if it didn’t, the amount entered was short.',
+        ],
+      }),
+      feature('gst-returns', 'GST Returns', FileTextIcon, [
+        'Outward: GSTR-1 (or IFF, the same report, filed monthly instead of quarterly under QRMP) is generated live from issued Sales Invoices for the period you pick — B2B and HSN summaries, nothing to re-key.',
+        'Inward: upload the GST portal’s own GSTR-2B download for the period; add a manual line only for a genuine exception the upload didn’t capture. Accept or reject each line under IMS — an untouched line is deemed accepted on the portal before the GSTR-3B due date, so don’t leave one sitting on Pending by habit.',
+        'GSTR-3B nets GSTR-1’s outward tax against ITC Reconciliation’s eligible ITC automatically — check that reconciliation, not just the GSTR-3B number, if the net payable looks wrong.',
+      ], {
+        outcome: 'The period’s outward and inward GST position is correct and traceable before anyone files anything on the actual GST portal.',
+        checklist: [
+          'Pick the right company and period before reading or uploading anything — GST return numbering and periods are per-entity.',
+          'Upload the period’s real GSTR-2B download rather than defaulting to manual entry for everything; use manual lines only for the exceptions the upload missed.',
+          'Action every IMS line (accept or reject) instead of leaving it Pending, then check GSTR-3B’s net payable against the ITC reconciliation behind it before treating the number as final.',
+        ],
+        watchOut: 'GSTR-2B is evidence to reconcile against, not a replacement purchase register — Shanti Ops’ own Vendor Bills stay the real accounting record even after a GSTR-2B line is matched and accepted.',
+      }),
+      feature('bank-rec', 'Bank Reconciliation', GitCompareIcon, ['Every posting against the Bank & Cash account — salary payouts, receipts, payments, any manual entry that touched it — shows here for you to tick off against the real bank statement, one line at a time.'], {
+        outcome: 'The reconciled balance genuinely matches what has cleared on the real bank statement, and the unreconciled list is a true, current exception queue — not a guess.',
+        checklist: [
+          'Pull up the real bank statement for the period alongside this list before ticking anything off.',
+          'Match each ledger line to the statement one at a time; leave anything that hasn’t actually cleared unticked.',
+          'Treat a persistently unreconciled line as a real exception to chase, not something to tick off anyway to clear the list.',
+        ],
+        watchOut: 'This is a manual tick-off against the ledger, not a bank-statement import — there is no file upload here and no separate bank-account master yet. Match each line by hand against the real statement.',
+      }),
+    ],
+    howTo: [
+      { title: 'Confirm the company and period first', body: 'Pick the legal entity (Shanti Boilers or Shanti Techno Fab) and the period before doing anything else — invoice numbering, GST return periods, and every report are scoped to that pair, and picking the wrong one is the easiest way to post or read the wrong company’s books.' },
+      { title: 'Let documents post themselves; use Manual Journal Entry only for the rest', body: 'Issuing a Sales Invoice, approving a Vendor Bill, raising a Credit/Debit Note, and marking a Salary Slip paid all post their own journal entry automatically. Reach for a Manual Journal Entry only for a real adjustment none of those cover.' },
+      { title: 'Settle what has actually been paid', body: 'Record a customer receipt or vendor payment against the real invoice or bill so Accounts Receivable/Payable reflects real cash movement, not just document status.' },
+      { title: 'Reconcile GST and the bank statement', body: 'Upload the period’s GSTR-2B and action every IMS line (accept/reject) instead of leaving it Pending; tick off Bank & Cash postings against the real bank statement.' },
+      { title: 'Check the Trial Balance before calling a period closed', body: 'Trial Balance, P&L, and Balance Sheet are read-only rollups off the ledger — if debit and credit don’t match, or a balance looks wrong, the fix is in what posted upstream, never in the report itself.' },
+    ],
+  },
   HR: {
     title: 'Human Resources', icon: UsersIcon,
     intro: ['HR keeps the people record accurate from joining to leaving: employee details, onboarding, attendance, leave, payroll inputs, expenses, advances, and separation.', 'HR data is sensitive. Check the employee and date before saving changes, and use the workflow status instead of deleting history.'],
@@ -1092,4 +1267,4 @@ export const DEPARTMENT_HELP = {
 enrichHowTo();
 
 // Keep the department list in one place for the Help renderer and simple future additions.
-export const DEPARTMENT_HELP_ORDER = ['Design', 'Engineering', 'Procurement', 'Stores', 'Production', 'QC', 'Dispatch', 'Installation', 'Sales', 'Marketing', 'HR'];
+export const DEPARTMENT_HELP_ORDER = ['Design', 'Engineering', 'Procurement', 'Stores', 'Production', 'QC', 'Dispatch', 'Installation', 'Sales', 'Marketing', 'HR', 'Accounts'];

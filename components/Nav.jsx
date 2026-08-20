@@ -7,7 +7,8 @@ import {
   SunIcon, MoonIcon, SettingsIcon, LogOutIcon, LayoutGridIcon, BarChart3Icon,
   LayoutDashboardIcon, FolderKanbanIcon, PackageIcon, ShieldCheckIcon, InfoIcon,
   CalendarDaysIcon, HardHatIcon, ShoppingCartIcon, InboxIcon, FlaskConicalIcon,
-  TagIcon, WarehouseIcon, TrendingUpIcon, UsersIcon, CalculatorIcon,
+  TagIcon, WarehouseIcon, TrendingUpIcon, UsersIcon, CalculatorIcon, MapPinIcon, NetworkIcon,
+  LandmarkIcon,
 } from 'lucide-react';
 import { DEPARTMENTS } from '@/lib/milestones';
 import { cn } from '@/lib/utils';
@@ -61,8 +62,15 @@ export default function Nav({ user }) {
   addDeptTab(['Sales', 'Marketing'], '/crm-reports', 'Reports', BarChart3Icon);
   addDeptTab(['HR'], '/hr', 'HR', UsersIcon);
   addDeptTab(['Design', 'Engineering'], '/calc', 'Calc Sheets', CalculatorIcon);
+  // STERP items 16-19 (§5o) — BOM Structure/Where-Used/Common-Uncommon/ECN. Deliberately gated to
+  // the same ['Design','Engineering'] pair as Calc Sheets above (the owner's ask: one shared tab
+  // today, split-ready later) rather than 'Engineering' alone — every route/action key underneath
+  // it still keys to 'Engineering' specifically, so a future split only touches this one line.
+  addDeptTab(['Design', 'Engineering'], '/engineering', 'Engineering', NetworkIcon);
   addDeptTab(['QC'], '/qc', 'QC', FlaskConicalIcon);
   addDeptTab(['Dispatch'], '/ops?dept=Dispatch', 'Dispatch', PackageIcon);
+  addDeptTab(['Installation'], '/installation', 'Installation', MapPinIcon);
+  addDeptTab(['Accounts'], '/accounts', 'Accounts', LandmarkIcon);
   if (canSeeRequests) deptTabs.push({ href: '/pr', label: 'Requests', icon: InboxIcon });
 
   // Primary tabs (top bar on desktop, bottom bar on mobile). No Packing tab — it's Dispatch-scoped.

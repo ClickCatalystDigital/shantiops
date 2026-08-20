@@ -5,7 +5,7 @@ import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { syncHydroTestMilestone } from '@/lib/milestone-auto';
 
-const EDITABLE = ['test_type', 'reference_no', 'result', 'inspector', 'tested_on', 'notes'];
+const EDITABLE = ['test_type', 'reference_no', 'result', 'inspector', 'tested_on', 'notes', 'dispatch_eligible'];
 
 // Hydro Test ownership transferred QC -> Production (lib/milestones.js, PRODUCTION-MODULE-DESIGN.md
 // §3.5) — completely, not shared: a hydro-test record is Production's to edit/delete, everything
@@ -39,6 +39,7 @@ export async function PATCH(req, { params }) {
 
   const changed = {};
   for (const k of keys) {
+    if (k === 'dispatch_eligible') { changed[k] = b[k] ? 1 : 0; continue; }
     let v = typeof b[k] === 'string' ? b[k].trim() : b[k];
     if (v === '') v = null;
     changed[k] = v;

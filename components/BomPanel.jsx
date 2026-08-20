@@ -21,7 +21,7 @@ function parseBom(text) {
   }).filter(r => r.material_description);
 }
 
-export default function BomPanel({ projectId, bom, pending, canUpload, editableFields = [], imports = [], canCancel = false }) {
+export default function BomPanel({ projectId, bom, pending, canUpload, editableFields = [], imports = [], canCancel = false, assemblies = [] }) {
   const router = useRouter();
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
@@ -44,7 +44,14 @@ export default function BomPanel({ projectId, bom, pending, canUpload, editableF
     <Card>
       <CardHeader>
         <CardTitle>Bill of Materials</CardTitle>
-        {canUpload && <CardAction><BomImport projectId={projectId} /></CardAction>}
+        {canUpload && (
+          <CardAction className="flex items-center gap-2">
+            {/* STERP item 16, §5o — assemblies are built/browsed on the Engineering workspace;
+                items are assigned to one from this table's Edit dialog (Assembly field below). */}
+            <a href="/engineering?tab=structure" className="text-sm text-primary hover:underline">Manage assemblies</a>
+            <BomImport projectId={projectId} />
+          </CardAction>
+        )}
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {bom.length === 0 ? (
@@ -53,7 +60,7 @@ export default function BomPanel({ projectId, bom, pending, canUpload, editableF
           </p>
         ) : (
           <BomTable projectId={projectId} bom={bom} pendingIds={pending.map(p => p.id)}
-            editableFields={editableFields} department="Engineering" canCancel={canCancel} />
+            editableFields={editableFields} department="Engineering" canCancel={canCancel} assemblies={assemblies} />
         )}
 
         {imports.length > 0 && (

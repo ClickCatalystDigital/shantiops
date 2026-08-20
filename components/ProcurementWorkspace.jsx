@@ -22,13 +22,14 @@ import { Label } from './ui/label';
 import { Badge } from './ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from './ui/dialog';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import PdfPreview from './PdfPreview';
 import PaymentTermsField from './PaymentTermsField';
 import CreateRfqDialog from './CreateRfqDialog';
 import { PURCHASE_STATUSES as BOM_STATUSES, CLOSED_STATUSES, STATUS_TONE, DEFAULT_PURCHASE_STATUS } from '@/lib/bom-fields.mjs';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 import SupplierAnalysis from '@/components/SupplierAnalysis';
-import { SearchIcon, GitCompareIcon, FileTextIcon, ListChecksIcon, Building2Icon, ShoppingCartIcon, BarChart3Icon, LayoutDashboardIcon } from 'lucide-react';
+import { SearchIcon, GitCompareIcon, FileTextIcon, ListChecksIcon, Building2Icon, ShoppingCartIcon, BarChart3Icon, LayoutDashboardIcon, Undo2Icon, PlusIcon, ReceiptIcon, TrashIcon } from 'lucide-react';
 
 // Enquiry/Selection are for items still working toward a PO — once one's issued (Ordered, Phase
 // 5.1 — was Transit pre-5.1) or closed out, it's Status's job to show it, not theirs.
@@ -211,8 +212,9 @@ function EnquiryRow({ it, quotes, suppliers, router, rfqSummary, selected, onTog
             <ItemContext it={it} />
           </div>
           {it.reserved_qty > 0 && (
-            <Badge className="border-success/30 bg-success-surface text-success" title="Stores has already reserved stock against this line — check before sourcing it again.">
-              Reserved from stock
+            <Badge className="border-success/30 bg-success-surface text-success"
+              title={`Partial stock — Stores already reserved ${it.reserved_qty} from inventory. This line's quantity (${it.qty_text || 'remaining'}) is only the unreserved shortfall; do not source the reserved portion again.`}>
+              Partial stock — {it.reserved_qty} reserved, this line is the shortfall
             </Badge>
           )}
           {(quotes.length > 0 || rfqSummary) && (
@@ -561,8 +563,9 @@ function EditPoLinesDialog({ po, suppliers, onClose, onPoGone, router }) {
 // renders regardless of the browser's own PDF-viewer/download settings, plus real width for a dense
 // PO. Every status action lives in the footer alongside the shared Download button. Reuses whatever
 // handler/busy state the parent (PurchaseOrders) passes down — no duplicated logic, just relocated.
-function PODrawer({ po, suppliers, router, onClose, onIssue, onUnissue, onCancel, busy }) {
+function PODrawer({ po, suppliers, router, onClose, onIssue, onUnissue, onCancel, busy, tdsRates = [] }) {
   const [editing, setEditing] = useState(false);
+  const [recordingBill, setRecordingBill] = useState(false);
   return (
     <>
       <PdfPreview
@@ -591,6 +594,13 @@ function PODrawer({ po, suppliers, router, onClose, onIssue, onUnissue, onCancel
             {po.status === 'issued' && (
               <Button variant="outline" disabled={busy} onClick={() => onUnissue(po)}>Cancel Issue</Button>
             )}
+            {/* ACCOUNTING-IMPLEMENTATION-PLAN.md Phase 3 — same relationship a GRN already has to a
+                PO: record the supplier's bill once goods are physically in. Available any time the
+                PO is issued rather than gated on a per-line receipt status, which lives on the
+                linked bom_items, not the PO itself. */}
+            {po.status === 'issued' && (
+              <Button variant="outline" disabled={busy} onClick={() => setRecordingBill(true)}>Record Bill</Button>
+            )}
             {po.status !== 'cancelled' && (
               <Button variant="ghost" className="text-destructive hover:text-destructive" disabled={busy} onClick={() => onCancel(po)}>Cancel PO</Button>
             )}
@@ -601,11 +611,172 @@ function PODrawer({ po, suppliers, router, onClose, onIssue, onUnissue, onCancel
         <EditPoLinesDialog po={po} suppliers={suppliers} router={router}
           onClose={() => setEditing(false)} onPoGone={onClose} />
       )}
+      {recordingBill && (
+        <RecordBillDialog po={po} tdsRates={tdsRates} router={router} onClose={() => setRecordingBill(false)} />
+      )}
     </>
   );
 }
 
-function PurchaseOrders({ orders, q, view, suppliers }) {
+// --- Vendor Bills + Debit Notes (ACCOUNTING-IMPLEMENTATION-PLAN.md Phase 3) ------------------------
+
+function RecordBillDialog({ po, tdsRates, onClose, router }) {
+  const [billNo, setBillNo] = useState('');
+  const [billDate, setBillDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [gstRatePct, setGstRatePct] = useState('18');
+  const [tdsRateId, setTdsRateId] = useState('none');
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    if (!billNo.trim()) return showToast('Bill number is required', 'error');
+    setSaving(true);
+    try {
+      const res = await api(`/api/purchase-orders/${po.id}/record-bill`, {
+        method: 'POST',
+        body: { bill_no: billNo, bill_date: billDate, gst_rate_pct: Number(gstRatePct) || 0, tds_rate_id: tdsRateId === 'none' ? null : Number(tdsRateId) },
+      });
+      showToast(`Vendor Bill ${res.bill_no} recorded`);
+      router.refresh();
+      onClose();
+    } catch (err) { showToast(err.message, 'error'); } finally { setSaving(false); }
+  }
+
+  return (
+    <Dialog open onOpenChange={o => !o && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader><DialogTitle>Record Bill against {po.po_no}</DialogTitle></DialogHeader>
+        <div className="flex flex-col gap-3">
+          <div className="grid gap-1.5"><Label>Supplier's bill number</Label><Input value={billNo} onChange={e => setBillNo(e.target.value)} /></div>
+          <div className="grid gap-1.5"><Label>Bill date</Label><Input type="date" value={billDate} onChange={e => setBillDate(e.target.value)} /></div>
+          <div className="grid gap-1.5"><Label>GST %</Label><Input type="number" value={gstRatePct} onChange={e => setGstRatePct(e.target.value)} /></div>
+          <div className="grid gap-1.5">
+            <Label>Vendor TDS (optional)</Label>
+            <Select value={tdsRateId} onValueChange={setTdsRateId}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No TDS deduction</SelectItem>
+                {tdsRates.map(r => <SelectItem key={r.id} value={String(r.id)}>{r.section} — {r.rate_pct}%{r.description ? ` (${r.description})` : ''}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? 'Recording…' : 'Record Bill'}</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function DebitNoteDialog({ bill, onClose, router }) {
+  const [reason, setReason] = useState('');
+  const [items, setItems] = useState([{ item_description: '', amount: '' }]);
+  const [saving, setSaving] = useState(false);
+
+  function updateItem(i, patch) { setItems(prev => prev.map((it, idx) => idx === i ? { ...it, ...patch } : it)); }
+  function addRow() { setItems(prev => [...prev, { item_description: '', amount: '' }]); }
+  function removeRow(i) { setItems(prev => prev.filter((_, idx) => idx !== i)); }
+
+  async function save() {
+    const cleanItems = items.filter(it => it.item_description.trim() && it.amount !== '').map(it => ({ ...it, amount: Number(it.amount) }));
+    if (!cleanItems.length) return showToast('At least one line item is required', 'error');
+    setSaving(true);
+    try {
+      const res = await api(`/api/vendor-bills/${bill.id}/debit-note`, { method: 'POST', body: { reason, items: cleanItems } });
+      showToast(`Debit Note ${res.debit_note_no} created`);
+      router.refresh();
+      onClose();
+    } catch (err) { showToast(err.message, 'error'); } finally { setSaving(false); }
+  }
+
+  return (
+    <Dialog open onOpenChange={o => !o && onClose()}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader><DialogTitle>Debit Note against {bill.bill_no}</DialogTitle></DialogHeader>
+        <div className="flex flex-col gap-3">
+          <div className="grid gap-1.5"><Label>Reason</Label><Input value={reason} onChange={e => setReason(e.target.value)} /></div>
+          <div className="flex flex-col gap-2">
+            <Label>Line items</Label>
+            {items.map((it, i) => (
+              <div key={i} className="flex items-start gap-2">
+                <Input placeholder="Description" value={it.item_description} onChange={e => updateItem(i, { item_description: e.target.value })} />
+                <Input placeholder="Amount" type="number" value={it.amount} onChange={e => updateItem(i, { amount: e.target.value })} className="w-32" />
+                <Button size="sm" variant="ghost" onClick={() => removeRow(i)}><TrashIcon className="size-4" /></Button>
+              </div>
+            ))}
+            <Button size="sm" variant="outline" onClick={addRow}><PlusIcon />Add line</Button>
+          </div>
+        </div>
+        <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Create Debit Note'}</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+const BILL_STATUSES = ['draft', 'approved', 'paid', 'cancelled'];
+
+function VendorBillsTab({ vendorBills, debitNotes, router }) {
+  const [busyId, setBusyId] = useState(null);
+  const [debitNoteFor, setDebitNoteFor] = useState(null);
+
+  async function setStatus(bill, status) {
+    setBusyId(bill.id);
+    try {
+      await api(`/api/vendor-bills/${bill.id}`, { method: 'PATCH', body: { status } });
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); } finally { setBusyId(null); }
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Card>
+        <CardHeader><CardTitle>Vendor Bills</CardTitle></CardHeader>
+        <CardContent>
+          {vendorBills.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No bills recorded yet — open an issued PO and use Record Bill.</p> : (
+            <Table>
+              <TableHeader><TableRow><TableHead>Bill No.</TableHead><TableHead>PO</TableHead><TableHead>Supplier</TableHead><TableHead>Payable</TableHead><TableHead>Status</TableHead><TableHead /></TableRow></TableHeader>
+              <TableBody>
+                {vendorBills.map(vb => (
+                  <TableRow key={vb.id}>
+                    <TableCell className="font-medium">{vb.bill_no}</TableCell>
+                    <TableCell>{vb.po_no}</TableCell>
+                    <TableCell>{vb.supplier_name}</TableCell>
+                    <TableCell className="tnum">{formatMoney(vb.payable_amount)}{vb.tds_amount > 0 && <span className="ml-1 text-xs text-muted-foreground">(TDS {formatMoney(vb.tds_amount)})</span>}</TableCell>
+                    <TableCell>
+                      <Select value={vb.status} onValueChange={v => setStatus(vb, v)} disabled={busyId === vb.id}>
+                        <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
+                        <SelectContent>{BILL_STATUSES.map(s => <SelectItem key={s} value={s} className="capitalize">{s}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </TableCell>
+                    <TableCell>
+                      <Button size="sm" variant="outline" onClick={() => setDebitNoteFor(vb)}>Debit Note</Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader><CardTitle>Debit Notes</CardTitle></CardHeader>
+        <CardContent>
+          {debitNotes.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No debit notes yet.</p> : (
+            <div className="flex flex-col divide-y">
+              {debitNotes.map(dn => (
+                <div key={dn.id} className="flex justify-between py-2 text-sm">
+                  <span>{dn.debit_note_no} — against {dn.bill_no}{dn.reason ? ` (${dn.reason})` : ''}</span>
+                  <span className="tnum font-medium">{formatMoney(dn.amount)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+      {debitNoteFor && <DebitNoteDialog bill={debitNoteFor} router={router} onClose={() => setDebitNoteFor(null)} />}
+    </div>
+  );
+}
+
+function PurchaseOrders({ orders, q, view, suppliers, tdsRates = [] }) {
   const router = useRouter();
   const [busy, setBusy] = useState(null);
   const [viewingId, setViewingId] = useState(null);
@@ -695,7 +866,7 @@ function PurchaseOrders({ orders, q, view, suppliers }) {
       </CardContent>
       {viewing && (
         <PODrawer po={viewing} suppliers={suppliers} router={router} onClose={() => setViewingId(null)}
-          onIssue={issue} onUnissue={unissue} onCancel={cancel} busy={busy === viewing.id} />
+          onIssue={issue} onUnissue={unissue} onCancel={cancel} busy={busy === viewing.id} tdsRates={tdsRates} />
       )}
     </Card>
   );
@@ -903,6 +1074,126 @@ function Suppliers({ suppliers, quotes, q: search }) {
 
 // One search placeholder per tab — same input, same position, different meaning depending on what's
 // active (§4, point 4). Keyed by tab value.
+// --- Purchase Returns (STERP item 13, §5o) — direct mirror of SalesWorkspace's ReturnsTab, same
+// lifecycle shape, opposite stock direction (removes from on-hand instead of crediting it back). --
+
+function AddPurchaseReturnDialog({ purchaseOrders, onClose, router }) {
+  const [poId, setPoId] = useState('');
+  const [description, setDescription] = useState('');
+  const [qty, setQty] = useState('');
+  const [reason, setReason] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    if (!poId) return showToast('Purchase Order is required', 'error');
+    if (!description.trim()) return showToast('Item description is required', 'error');
+    if (!(Number(qty) > 0)) return showToast('Quantity must be a positive number', 'error');
+    setSaving(true);
+    try {
+      await api('/api/purchase-returns', {
+        method: 'POST',
+        body: { po_id: poId, item_description: description.trim(), qty: Number(qty), reason: reason.trim() || null },
+      });
+      showToast('Return raised');
+      router.refresh();
+      onClose();
+    } catch (err) { showToast(err.message, 'error'); } finally { setSaving(false); }
+  }
+
+  return (
+    <Dialog open onOpenChange={o => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Raise a Purchase Return</DialogTitle></DialogHeader>
+        <div className="flex flex-col gap-3">
+          <div className="grid gap-1.5">
+            <Label>Purchase Order</Label>
+            <Select value={poId} onValueChange={setPoId}>
+              <SelectTrigger><SelectValue placeholder="Choose Purchase Order" /></SelectTrigger>
+              <SelectContent>{purchaseOrders.map(po => <SelectItem key={po.id} value={String(po.id)}>{po.po_no}{po.supplier_name ? ` · ${po.supplier_name}` : ''}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          <div className="grid gap-1.5"><Label>Item description</Label><Input value={description} onChange={e => setDescription(e.target.value)} autoFocus /></div>
+          <div className="grid gap-1.5 sm:w-32"><Label>Quantity</Label><Input type="number" value={qty} onChange={e => setQty(e.target.value)} /></div>
+          <div className="grid gap-1.5"><Label>Reason (optional)</Label><Input value={reason} onChange={e => setReason(e.target.value)} placeholder="Wrong spec, damaged on receipt, over-supply…" /></div>
+        </div>
+        <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Raise Return'}</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function PurchaseReturnRow({ ret, inventoryItems, router }) {
+  const [busy, setBusy] = useState(false);
+  const [invPick, setInvPick] = useState(ret.inventory_item_id ? String(ret.inventory_item_id) : '');
+  const [debitRef, setDebitRef] = useState(ret.debit_note_ref || '');
+
+  async function patch(body) {
+    setBusy(true);
+    try {
+      await api(`/api/purchase-returns/${ret.id}`, { method: 'PATCH', body });
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+    setBusy(false);
+  }
+
+  return (
+    <TableRow>
+      <TableCell className="font-medium">{ret.po_no}<div className="text-xs font-normal text-muted-foreground">{ret.supplier_name}</div></TableCell>
+      <TableCell>{ret.item_description}<div className="text-xs text-muted-foreground">{ret.reason || '—'}</div></TableCell>
+      <TableCell className="tnum">{ret.qty}</TableCell>
+      <TableCell>
+        <Select value={ret.inspection_outcome} onValueChange={v => patch({ inspection_outcome: v })} disabled={busy}>
+          <SelectTrigger className="h-7 w-28"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {['pending', 'accepted', 'rejected'].map(s => <SelectItem key={s} value={s}><Badge variant={{ pending: 'outline', accepted: 'default', rejected: 'destructive' }[s]}>{s}</Badge></SelectItem>)}
+          </SelectContent>
+        </Select>
+      </TableCell>
+      <TableCell>
+        {ret.inspection_outcome === 'accepted' ? (
+          ret.stock_action === 'removed_from_stock' ? (
+            <span className="text-xs text-success">Removed from stock — {ret.inventory_description || '—'}</span>
+          ) : (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Select value={invPick} onValueChange={setInvPick} disabled={busy}>
+                <SelectTrigger className="h-7 w-40"><SelectValue placeholder="Inventory item…" /></SelectTrigger>
+                <SelectContent>{inventoryItems.map(i => <SelectItem key={i.id} value={String(i.id)}>{i.description}</SelectItem>)}</SelectContent>
+              </Select>
+              <Button size="sm" variant="outline" disabled={busy || !invPick} onClick={() => patch({ stock_action: 'removed_from_stock', inventory_item_id: invPick })}>Remove from stock</Button>
+              <Button size="sm" variant="ghost" disabled={busy} onClick={() => patch({ stock_action: 'replaced' })}>Replaced (no stock change)</Button>
+            </div>
+          )
+        ) : <span className="text-xs text-muted-foreground">{ret.stock_action === 'replaced' ? 'Replaced' : '—'}</span>}
+      </TableCell>
+      <TableCell>
+        <Input value={debitRef} onChange={e => setDebitRef(e.target.value)} onBlur={() => debitRef !== (ret.debit_note_ref || '') && patch({ debit_note_ref: debitRef })}
+          placeholder="Debit note #" className="h-7 w-32" disabled={busy} />
+      </TableCell>
+    </TableRow>
+  );
+}
+
+function PurchaseReturnsTab({ returns, purchaseOrders, inventoryItems, router }) {
+  const [dialogOpen, setDialogOpen] = useState(false);
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Purchase Returns</CardTitle>
+        <CardAction><Button size="sm" onClick={() => setDialogOpen(true)}><PlusIcon />Raise Return</Button></CardAction>
+      </CardHeader>
+      <CardContent>
+        {returns.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No returns raised yet.</p> : (
+          <Table>
+            <TableHeader><TableRow><TableHead>Purchase Order</TableHead><TableHead>Item</TableHead><TableHead>Qty</TableHead><TableHead>Inspection</TableHead><TableHead>Stock action</TableHead><TableHead>Debit note</TableHead></TableRow></TableHeader>
+            <TableBody>{returns.map(r => <PurchaseReturnRow key={r.id} ret={r} inventoryItems={inventoryItems} router={router} />)}</TableBody>
+          </Table>
+        )}
+      </CardContent>
+      {dialogOpen && <AddPurchaseReturnDialog purchaseOrders={purchaseOrders} router={router} onClose={() => setDialogOpen(false)} />}
+    </Card>
+  );
+}
+
 const SEARCH_PLACEHOLDER = {
   enquiry: 'Search description or project…',
   selection: 'Search description or project…',
@@ -910,9 +1201,11 @@ const SEARCH_PLACEHOLDER = {
   state: 'Search description, project, PO…',
   'suppliers-roster': 'Search supplier name…',
   'suppliers-analysis': 'Search supplier or item…',
+  returns: 'Search PO number or item…',
+  vendor_bills: 'Search bill number, PO, or supplier…',
 };
 
-export default function ProcurementWorkspace({ sourcingItems, suppliers, purchaseOrders, quotes, rfqSummaryByItem = {} }) {
+export default function ProcurementWorkspace({ sourcingItems, suppliers, purchaseOrders, quotes, rfqSummaryByItem = {}, purchaseReturns = [], inventoryItems = [], vendorBills = [], debitNotes = [], tdsRates = [] }) {
   const router = useRouter();
   const [tab, setTab] = useState('enquiry');
   const [search, setSearch] = useState('');
@@ -946,6 +1239,8 @@ export default function ProcurementWorkspace({ sourcingItems, suppliers, purchas
     { key: 'selection', label: 'Selection', icon: GitCompareIcon },
     { key: 'orders', label: 'Purchase Orders', icon: FileTextIcon },
     { key: 'state', label: 'Status', icon: ListChecksIcon },
+    { key: 'returns', label: 'Returns', icon: Undo2Icon },
+    { key: 'vendor_bills', label: 'Vendor Bills', icon: ReceiptIcon },
     {
       key: 'suppliers', label: 'Suppliers', icon: Building2Icon, group: true,
       children: [
@@ -1003,10 +1298,22 @@ export default function ProcurementWorkspace({ sourcingItems, suppliers, purchas
       </div>
       {tab === 'enquiry' && <Enquiry items={projectItems} quotesByItem={quotesByItem} suppliers={suppliers} rfqSummaryByItem={rfqSummaryByItem} router={router} q={search} />}
       {tab === 'selection' && <Selection items={projectItems} quotesByItem={quotesByItem} router={router} q={search} />}
-      {tab === 'orders' && <PurchaseOrders orders={purchaseOrders} q={search} view={poView} suppliers={suppliers} />}
+      {tab === 'orders' && <PurchaseOrders orders={purchaseOrders} q={search} view={poView} suppliers={suppliers} tdsRates={tdsRates} />}
       {tab === 'state' && <State items={sourcingItems} router={router} q={search} statusFilter={statusFilter} />}
       {tab === 'suppliers-roster' && <Suppliers suppliers={suppliers} quotes={quotes} q={search} />}
       {tab === 'suppliers-analysis' && <SupplierAnalysis view={analysisView} suppliers={suppliers} quotes={quotes} purchaseOrders={purchaseOrders} q={search} />}
+      {tab === 'returns' && (
+        <PurchaseReturnsTab
+          returns={purchaseReturns.filter(r => !search.trim() || [r.po_no, r.item_description, r.supplier_name].some(v => (v || '').toLowerCase().includes(search.trim().toLowerCase())))}
+          purchaseOrders={purchaseOrders} inventoryItems={inventoryItems} router={router}
+        />
+      )}
+      {tab === 'vendor_bills' && (
+        <VendorBillsTab
+          vendorBills={vendorBills.filter(vb => !search.trim() || [vb.bill_no, vb.po_no, vb.supplier_name].some(v => (v || '').toLowerCase().includes(search.trim().toLowerCase())))}
+          debitNotes={debitNotes} router={router}
+        />
+      )}
     </WorkspaceSidebar>
   );
 }

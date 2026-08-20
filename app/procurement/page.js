@@ -4,7 +4,7 @@
 // same material gets bought once for several boilers, not per project.
 import { redirect } from 'next/navigation';
 import { getFreshSessionUser, canAccessDepartment, roleHome } from '@/lib/auth';
-import { getSourcingItems, getSuppliers, getPurchaseOrders, getAllQuotes, getRfqSummaryByItem } from '@/lib/data';
+import { getSourcingItems, getSuppliers, getPurchaseOrders, getAllQuotes, getRfqSummaryByItem, getPurchaseReturns, getInventoryItems, getVendorBills, getPurchaseDebitNotes, getVendorTdsRates } from '@/lib/data';
 import ProcurementWorkspace from '@/components/ProcurementWorkspace';
 
 export const dynamic = 'force-dynamic';
@@ -13,12 +13,17 @@ export default async function ProcurementPage() {
   const user = await getFreshSessionUser();
   if (!canAccessDepartment(user, 'Procurement')) redirect(roleHome(user));
 
-  const [sourcingItems, suppliers, purchaseOrders, quotes, rfqSummaryByItem] = await Promise.all([
+  const [sourcingItems, suppliers, purchaseOrders, quotes, rfqSummaryByItem, purchaseReturns, inventoryItems, vendorBills, debitNotes, tdsRates] = await Promise.all([
     getSourcingItems(),
     getSuppliers(),
     getPurchaseOrders(),
     getAllQuotes(),
     getRfqSummaryByItem(),
+    getPurchaseReturns(),
+    getInventoryItems(),
+    getVendorBills(),
+    getPurchaseDebitNotes(),
+    getVendorTdsRates(),
   ]);
 
   return (
@@ -29,6 +34,11 @@ export default async function ProcurementPage() {
         purchaseOrders={purchaseOrders}
         quotes={quotes}
         rfqSummaryByItem={rfqSummaryByItem}
+        purchaseReturns={purchaseReturns}
+        inventoryItems={inventoryItems}
+        vendorBills={vendorBills}
+        debitNotes={debitNotes}
+        tdsRates={tdsRates}
       />
     </main>
   );

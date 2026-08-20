@@ -7,7 +7,10 @@
 // by mistake — it rendered behind/above the fixed sidebar instead of in a real header row.
 import { redirect } from 'next/navigation';
 import { getFreshSessionUser, canAccessDepartment, roleHome } from '@/lib/auth';
-import { getInventoryItems, getOpenBomItems, getActiveReservations, getActiveProjectsList } from '@/lib/data';
+import {
+  getInventoryItems, getOpenBomItems, getActiveReservations, getActiveProjectsList,
+  getReorderSuggestions, getGateInwardReceipts, getGatePasses,
+} from '@/lib/data';
 import StoresWorkspace from '@/components/StoresWorkspace';
 
 export const dynamic = 'force-dynamic';
@@ -16,9 +19,11 @@ export default async function StoresPage() {
   const user = await getFreshSessionUser();
   if (!canAccessDepartment(user, 'Stores')) redirect(roleHome(user));
 
-  const [inventoryItems, openRequests, activeReservations, projects] = await Promise.all([
+  const [inventoryItems, openRequests, activeReservations, projects, reorderSuggestions, gateInwardReceipts, gatePasses] = await Promise.all([
     getInventoryItems(), getOpenBomItems(), getActiveReservations(), getActiveProjectsList(),
+    getReorderSuggestions(), getGateInwardReceipts(), getGatePasses(),
   ]);
 
-  return <StoresWorkspace inventoryItems={inventoryItems} openRequests={openRequests} activeReservations={activeReservations} projects={projects} />;
+  return <StoresWorkspace inventoryItems={inventoryItems} openRequests={openRequests} activeReservations={activeReservations}
+    projects={projects} reorderSuggestions={reorderSuggestions} gateInwardReceipts={gateInwardReceipts} gatePasses={gatePasses} />;
 }

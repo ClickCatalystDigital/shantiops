@@ -20,7 +20,7 @@ import {
 } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { PlusIcon, PencilIcon, PackageCheckIcon, UndoIcon, TruckIcon, PackageIcon, ClipboardListIcon, LayersIcon } from 'lucide-react';
+import { PlusIcon, PencilIcon, PackageCheckIcon, UndoIcon, TruckIcon, PackageIcon, ClipboardListIcon, LayersIcon, AlertTriangleIcon, LogInIcon, FileOutputIcon, CheckIcon, XIcon } from 'lucide-react';
 import { api, showToast } from '@/lib/client';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 
@@ -511,18 +511,23 @@ function OpenRequestsCard({ openRequests, inventoryItems, router }) {
                     <TableCell>
                       {r.reserved_piece_count > 0
                         ? <Badge className="border-info/30 bg-info-surface text-info" title="Cutting & Remnant Management matched this line to stock automatically — ready for Production to cut. No action needed here.">Remnant reserved</Badge>
+                        : r.reserved_qty > 0
+                        ? <Badge className="border-info/30 bg-info-surface text-info" title="Allocation Mode: Auto already reserved this from stock the moment the requirement was created. No action needed here.">Auto-reserved</Badge>
                         : r.pending_review
                         ? <Badge className="border-warning/30 bg-warning-surface text-warning" title="Not visible to Procurement yet — Reserve or Procure it.">Stores Review</Badge>
                         : <Badge variant="secondary">{r.purchase_status || 'Enquiry'}</Badge>}
                     </TableCell>
                     <TableCell className="flex justify-end gap-1">
-                      {!(r.reserved_piece_count > 0) && (
+                      {!(r.reserved_piece_count > 0) && !(r.reserved_qty > 0) && (
                         <>
-                          <Button size="sm" variant="outline" disabled={!inventoryItems.length} onClick={() => setReserveFor(r)}>
+                          {/* Reserve is the default action — Stores shouldn't procure new material
+                              when existing stock can cover the line, so Reserve gets the solid/
+                              primary button and Procure (a real choice, not a fallback) is outline. */}
+                          <Button size="sm" disabled={!inventoryItems.length} onClick={() => setReserveFor(r)}>
                             Reserve from stock
                           </Button>
                           {r.pending_review === 1 && (
-                            <Button size="sm" disabled={busyId === r.id} onClick={() => procure(r)}>
+                            <Button size="sm" variant="outline" disabled={busyId === r.id} onClick={() => procure(r)}>
                               {busyId === r.id ? 'Sending…' : 'Procure'}
                             </Button>
                           )}
@@ -692,32 +697,470 @@ function ActiveReservationsCard({ activeReservations, router }) {
   );
 }
 
-// STORES-SALES-CHANGES.md — Manual is the only mode that's actually built (the Reserve/Procure
-// buttons on Open requests below). Auto (matching lines reserve themselves the moment a BOM/SAS
-// line releases) is deliberately not built yet — today's only match signal is the possible-match
-// badge's plain keyword overlap, not safe to auto-commit physical stock against. This toggle is
-// UI-only: picking Auto doesn't change any real behavior, it just shows that it's not ready. Real
-// Auto mode is worth building once §3.2's item_code catalog gives a trustworthy exact-match signal.
-function ReservationModeToggle() {
-  const [mode, setMode] = useState('manual');
+// Allocation Mode redesign (2026-08-20) — real now, not a stub: persisted in app_settings (one
+// global row, see lib/procurement.js getAllocationMode/setAllocationMode), read on mount and
+// written through PATCH /api/settings/allocation-mode. Auto is the default and the recommended
+// mode — it reserves an exact catalog-identity match (item_id, the same real signal
+// possibleMatches()'s green "✓" badge already trusts) automatically the moment a BOM/SAS line is
+// created, splitting on partial availability exactly like Cutting & Remnant Management already
+// does for dimensional stock; only a genuine shortfall (or an unmatched line) ever reaches
+// Procurement or needs a Stores decision. Manual keeps the original always-review behavior.
+function ReservationModeToggle({ router }) {
+  const [mode, setMode] = useState(null); // null = loading
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    api('/api/settings/allocation-mode').then(r => setMode(r.mode)).catch(() => setMode('auto'));
+  }, []);
+
+  async function choose(next) {
+    if (next === mode || saving) return;
+    setSaving(true);
+    try {
+      await api('/api/settings/allocation-mode', { method: 'PATCH', body: { mode: next } });
+      setMode(next);
+      showToast(`Allocation Mode set to ${next === 'auto' ? 'Automatic' : 'Stores Review / Manual'}`);
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+    setSaving(false);
+  }
+
+  if (mode === null) return null;
   return (
     <div className="flex flex-col gap-2">
       <div className="inline-flex w-fit rounded-lg border p-0.5">
-        <button type="button" onClick={() => setMode('manual')}
-          className={`rounded-md px-3 py-1 text-sm font-medium transition-colors ${mode === 'manual' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
-          Manual
-        </button>
-        <button type="button" onClick={() => setMode('auto')}
+        <button type="button" disabled={saving} onClick={() => choose('auto')}
           className={`rounded-md px-3 py-1 text-sm font-medium transition-colors ${mode === 'auto' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
-          Auto
+          Automatic
+        </button>
+        <button type="button" disabled={saving} onClick={() => choose('manual')}
+          className={`rounded-md px-3 py-1 text-sm font-medium transition-colors ${mode === 'manual' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
+          Stores Review / Manual
         </button>
       </div>
-      {mode === 'auto' && (
-        <div className="rounded-lg border border-dashed bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-          Auto mode — coming soon. Matching lines will reserve themselves automatically once item-code matching lands; for now everything below still works the Manual way.
-        </div>
-      )}
+      <div className="rounded-lg border border-dashed bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+        {mode === 'auto'
+          ? 'Automatic (recommended) — matching lines reserve themselves the moment a requirement is created; only a shortfall ever reaches Procurement. You can still override or release any allocation below.'
+          : 'Stores Review / Manual — every new BOM/SAS requirement waits for you to Reserve or Procure it individually.'}
+      </div>
     </div>
+  );
+}
+
+// STERP item 9, Auto-Indent Suggestions — the action on top of the below-minimum filter/badge
+// (already in the Inventory tab): a derived list (lib/data.js getReorderSuggestions, no new
+// table), each row one click from becoming a real Build-stock request via the same
+// purchase-requisitions endpoint the Inventory tab's existing stock-request flow already uses.
+// Nothing is auto-created — this is the suggestion, the click is the approval.
+function ReorderSuggestionsCard({ reorderSuggestions, router }) {
+  const [qtyById, setQtyById] = useState({});
+  const [busyId, setBusyId] = useState(null);
+
+  function suggestedQty(it) {
+    const raw = Math.max(1, Math.ceil((it.reorder_point || 0) - it.available));
+    return qtyById[it.id] ?? raw;
+  }
+
+  async function createRequest(it) {
+    const qty = Number(suggestedQty(it));
+    if (!qty || qty <= 0) return showToast('Enter a quantity', 'error');
+    setBusyId(it.id);
+    try {
+      await api('/api/purchase-requisitions', {
+        method: 'POST',
+        body: {
+          raised_by_dept: 'Stores',
+          lines: [{ material_description: it.description, moc: it.moc, source: 'stock', inventory_item_id: it.id, qty }],
+        },
+      });
+      showToast('Replenishment request created');
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+    setBusyId(null);
+  }
+
+  return (
+    <Card>
+      <CardHeader><CardTitle>Reorder suggestions</CardTitle></CardHeader>
+      <CardContent>
+        {reorderSuggestions.length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">Nothing below its minimum right now.</p>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Description</TableHead>
+                <TableHead>Available</TableHead>
+                <TableHead>Minimum</TableHead>
+                <TableHead>Suggested qty</TableHead>
+                <TableHead></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {reorderSuggestions.map(it => (
+                <TableRow key={it.id}>
+                  <TableCell className="font-medium">{it.description}</TableCell>
+                  <TableCell><Badge variant="destructive">{it.available}</Badge></TableCell>
+                  <TableCell className="text-muted-foreground">{it.reorder_point}</TableCell>
+                  <TableCell>
+                    <Input type="number" className="w-24" value={suggestedQty(it)}
+                      onChange={e => setQtyById({ ...qtyById, [it.id]: e.target.value })} />
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button size="sm" disabled={busyId === it.id} onClick={() => createRequest(it)}>
+                      {busyId === it.id ? 'Creating…' : 'Create request'}
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// STERP item 14, Formal GIR — Gate Inward Receipt. Standalone gate/security log, not part of the
+// reserve/available inventory model above; Stores owns it because no separate gate department
+// exists. grn_ref links back to the ordinary GRN paperwork once Procurement/Stores actually
+// receives what came through the gate.
+function GirFormDialog({ onClose, router }) {
+  const [form, setForm] = useState({ vehicle_no: '', supplier_name: '', driver_name: '', material_ref: '', security_seal_ok: false, security_docs_ok: false, security_remarks: '' });
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    setSaving(true);
+    try {
+      const result = await api('/api/gate-inward-receipts', { method: 'POST', body: form });
+      showToast(`GIR-${result.gir_no} logged`);
+      router.refresh();
+      onClose();
+    } catch (err) { showToast(err.message, 'error'); }
+    setSaving(false);
+  }
+
+  return (
+    <Dialog open onOpenChange={o => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>New Gate Inward Receipt</DialogTitle></DialogHeader>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-1.5">
+            <Label>Vehicle no.</Label>
+            <Input value={form.vehicle_no} onChange={e => setForm({ ...form, vehicle_no: e.target.value })} autoFocus />
+          </div>
+          <div className="grid gap-1.5">
+            <Label>Supplier</Label>
+            <Input value={form.supplier_name} onChange={e => setForm({ ...form, supplier_name: e.target.value })} />
+          </div>
+          <div className="grid gap-1.5">
+            <Label>Driver</Label>
+            <Input value={form.driver_name} onChange={e => setForm({ ...form, driver_name: e.target.value })} />
+          </div>
+          <div className="grid gap-1.5">
+            <Label>Material reference</Label>
+            <Input value={form.material_ref} onChange={e => setForm({ ...form, material_ref: e.target.value })} placeholder="PO / DC / BOM ref" />
+          </div>
+          <div className="col-span-2 flex flex-wrap gap-4 pt-1">
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={form.security_seal_ok} onChange={e => setForm({ ...form, security_seal_ok: e.target.checked })} />
+              Seal intact
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={form.security_docs_ok} onChange={e => setForm({ ...form, security_docs_ok: e.target.checked })} />
+              Documents verified
+            </label>
+          </div>
+          <div className="col-span-2 grid gap-1.5">
+            <Label>Security remarks (optional)</Label>
+            <Input value={form.security_remarks} onChange={e => setForm({ ...form, security_remarks: e.target.value })} />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={save} disabled={saving}>{saving ? 'Logging…' : 'Log entry'}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function GateInwardReceiptsCard({ gateInwardReceipts, router }) {
+  const [adding, setAdding] = useState(false);
+  const [busyId, setBusyId] = useState(null);
+  const [grnById, setGrnById] = useState({});
+
+  // Closing requires a GRN reference — the app-layer guard on the PATCH route (a close with no
+  // grn_ref anywhere, existing or in this same call, 400s) so "closed" always means "actually
+  // received," not just "gate entry acknowledged."
+  async function close(g) {
+    const grn_ref = grnById[g.id];
+    setBusyId(g.id);
+    try {
+      await api(`/api/gate-inward-receipts/${g.id}`, { method: 'PATCH', body: { close: true, ...(grn_ref ? { grn_ref } : {}) } });
+      showToast('GIR closed');
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+    setBusyId(null);
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Gate Inward Receipts</CardTitle>
+        <CardAction><Button size="sm" onClick={() => setAdding(true)}><PlusIcon />New GIR</Button></CardAction>
+      </CardHeader>
+      <CardContent>
+        {gateInwardReceipts.length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">No gate entries logged yet.</p>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>GIR #</TableHead>
+                <TableHead>Vehicle</TableHead>
+                <TableHead>Supplier</TableHead>
+                <TableHead>Driver</TableHead>
+                <TableHead>Security</TableHead>
+                <TableHead>GRN ref</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {gateInwardReceipts.map(g => (
+                <TableRow key={g.id}>
+                  <TableCell className="font-medium">GIR-{g.gir_no}</TableCell>
+                  <TableCell>{g.vehicle_no || '—'}</TableCell>
+                  <TableCell className="text-muted-foreground">{g.supplier_name || '—'}</TableCell>
+                  <TableCell className="text-muted-foreground">{g.driver_name || '—'}</TableCell>
+                  <TableCell>
+                    {g.security_seal_ok ? <Badge className="bg-success/10 text-success ring-success/20 mr-1">Seal</Badge> : null}
+                    {g.security_docs_ok ? <Badge className="bg-success/10 text-success ring-success/20">Docs</Badge> : null}
+                    {!g.security_seal_ok && !g.security_docs_ok && '—'}
+                  </TableCell>
+                  <TableCell>
+                    {g.status === 'open' ? (
+                      <Input className="w-32" placeholder="GRN ref" defaultValue={g.grn_ref || ''}
+                        onChange={e => setGrnById({ ...grnById, [g.id]: e.target.value })} />
+                    ) : (g.grn_ref || '—')}
+                  </TableCell>
+                  <TableCell><Badge variant={g.status === 'closed' ? 'secondary' : 'outline'}>{g.status}</Badge></TableCell>
+                  <TableCell className="text-right">
+                    {g.status === 'open' && (
+                      <Button size="sm" variant="outline" disabled={busyId === g.id || !(grnById[g.id] ?? g.grn_ref)} onClick={() => close(g)}
+                        title={(grnById[g.id] ?? g.grn_ref) ? undefined : 'Enter a GRN reference before closing'}>
+                        Close
+                      </Button>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+      {adding && <GirFormDialog router={router} onClose={() => setAdding(false)} />}
+    </Card>
+  );
+}
+
+// STERP item 15, Returnable / Non-Returnable Gate Pass. Overdue is computed server-side
+// (lib/data.js getGatePasses, is_overdue) — never a client-side date check that could drift from
+// what got saved.
+const GATE_PASS_STATUS = {
+  draft: { cls: '', label: 'Draft' },
+  approved: { cls: 'bg-info/10 text-info ring-info/20', label: 'Approved' },
+  issued: { cls: 'bg-warning/10 text-warning ring-warning/20', label: 'Issued' },
+  returned: { cls: 'bg-success/10 text-success ring-success/20', label: 'Returned' },
+  cancelled: { cls: 'bg-muted text-muted-foreground ring-border', label: 'Cancelled' },
+};
+
+function GatePassFormDialog({ onClose, router }) {
+  const [type, setType] = useState('returnable');
+  const [party, setParty] = useState('');
+  const [responsiblePerson, setResponsiblePerson] = useState('');
+  const [purpose, setPurpose] = useState('');
+  const [expectedReturnDate, setExpectedReturnDate] = useState('');
+  const [items, setItems] = useState([{ description: '', qty_text: '' }]);
+  const [saving, setSaving] = useState(false);
+
+  function updateItem(i, patch) {
+    setItems(items.map((it, idx) => idx === i ? { ...it, ...patch } : it));
+  }
+
+  async function save() {
+    const cleanItems = items.filter(it => it.description.trim());
+    if (!cleanItems.length) return showToast('Add at least one item', 'error');
+    setSaving(true);
+    try {
+      const result = await api('/api/gate-passes', {
+        method: 'POST',
+        body: {
+          type, party, responsible_person: responsiblePerson, purpose,
+          expected_return_date: type === 'returnable' ? expectedReturnDate || null : null,
+          items: cleanItems,
+        },
+      });
+      showToast(`GP-${result.gp_no} created`);
+      router.refresh();
+      onClose();
+    } catch (err) { showToast(err.message, 'error'); }
+    setSaving(false);
+  }
+
+  return (
+    <Dialog open onOpenChange={o => !o && onClose()}>
+      <DialogContent className="max-w-xl">
+        <DialogHeader><DialogTitle>New Gate Pass</DialogTitle></DialogHeader>
+        <div className="flex flex-col gap-3">
+          <div className="inline-flex w-fit rounded-lg border p-0.5">
+            <button type="button" onClick={() => setType('returnable')}
+              className={`rounded-md px-3 py-1 text-sm font-medium transition-colors ${type === 'returnable' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
+              Returnable
+            </button>
+            <button type="button" onClick={() => setType('non_returnable')}
+              className={`rounded-md px-3 py-1 text-sm font-medium transition-colors ${type === 'non_returnable' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
+              Non-returnable
+            </button>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-1.5">
+              <Label>Party / destination</Label>
+              <Input value={party} onChange={e => setParty(e.target.value)} autoFocus />
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Responsible person</Label>
+              <Input value={responsiblePerson} onChange={e => setResponsiblePerson(e.target.value)} />
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Purpose</Label>
+              <Input value={purpose} onChange={e => setPurpose(e.target.value)} />
+            </div>
+            {type === 'returnable' && (
+              <div className="grid gap-1.5">
+                <Label>Expected return date</Label>
+                <Input type="date" value={expectedReturnDate} onChange={e => setExpectedReturnDate(e.target.value)} />
+              </div>
+            )}
+          </div>
+          <div className="grid gap-2">
+            <Label>Items</Label>
+            {items.map((it, i) => (
+              <div key={i} className="flex gap-2">
+                <Input placeholder="Description" value={it.description} onChange={e => updateItem(i, { description: e.target.value })} />
+                <Input placeholder="Qty" className="w-24" value={it.qty_text} onChange={e => updateItem(i, { qty_text: e.target.value })} />
+              </div>
+            ))}
+            <Button size="sm" variant="outline" className="w-fit" onClick={() => setItems([...items, { description: '', qty_text: '' }])}>
+              <PlusIcon />Add item
+            </Button>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={save} disabled={saving}>{saving ? 'Creating…' : 'Create gate pass'}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function GatePassesCard({ gatePasses, router }) {
+  const [adding, setAdding] = useState(false);
+  const [busyId, setBusyId] = useState(null);
+
+  async function act(id, action) {
+    setBusyId(id);
+    try {
+      await api(`/api/gate-passes/${id}`, { method: 'PATCH', body: { action } });
+      showToast(`Gate pass ${action}d`);
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+    setBusyId(null);
+  }
+
+  async function toggleItem(gpId, item) {
+    setBusyId(gpId);
+    try {
+      await api(`/api/gate-passes/${gpId}`, { method: 'PATCH', body: { item_id: item.id, returned: !item.returned } });
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+    setBusyId(null);
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Gate Passes</CardTitle>
+        <CardAction><Button size="sm" onClick={() => setAdding(true)}><PlusIcon />New gate pass</Button></CardAction>
+      </CardHeader>
+      <CardContent>
+        {gatePasses.length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">No gate passes yet.</p>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>GP #</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Party</TableHead>
+                <TableHead>Responsible</TableHead>
+                <TableHead>Items</TableHead>
+                <TableHead>Return by</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {gatePasses.map(gp => (
+                <TableRow key={gp.id}>
+                  <TableCell className="font-medium">GP-{gp.gp_no}</TableCell>
+                  <TableCell className="text-muted-foreground">{gp.type === 'returnable' ? 'Returnable' : 'Non-returnable'}</TableCell>
+                  <TableCell>{gp.party || '—'}</TableCell>
+                  <TableCell className="text-muted-foreground">{gp.responsible_person || '—'}</TableCell>
+                  <TableCell>
+                    <div className="flex flex-col gap-1">
+                      {gp.items.map(it => (
+                        <div key={it.id} className="flex items-center gap-1.5 text-xs">
+                          {gp.type === 'returnable' && gp.status === 'issued' ? (
+                            <button type="button" disabled={busyId === gp.id} onClick={() => toggleItem(gp.id, it)}
+                              className={it.returned ? 'text-success' : 'text-muted-foreground'} title="Toggle returned">
+                              {it.returned ? <CheckIcon className="size-3" /> : <XIcon className="size-3" />}
+                            </button>
+                          ) : null}
+                          <span>{it.description}{it.qty_text ? ` · ${it.qty_text}` : ''}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {gp.expected_return_date || '—'}
+                    {gp.is_overdue ? <Badge variant="destructive" className="ml-2">Overdue</Badge> : null}
+                  </TableCell>
+                  <TableCell><Badge className={GATE_PASS_STATUS[gp.status]?.cls}>{GATE_PASS_STATUS[gp.status]?.label || gp.status}</Badge></TableCell>
+                  <TableCell className="flex justify-end gap-1">
+                    {gp.status === 'draft' && (
+                      <>
+                        <Button size="sm" disabled={busyId === gp.id} onClick={() => act(gp.id, 'approve')}>Approve</Button>
+                        <Button size="sm" variant="outline" disabled={busyId === gp.id} onClick={() => act(gp.id, 'cancel')}>Cancel</Button>
+                      </>
+                    )}
+                    {gp.status === 'approved' && (
+                      <>
+                        <Button size="sm" disabled={busyId === gp.id} onClick={() => act(gp.id, 'issue')}>Issue</Button>
+                        <Button size="sm" variant="outline" disabled={busyId === gp.id} onClick={() => act(gp.id, 'cancel')}>Cancel</Button>
+                      </>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+      {adding && <GatePassFormDialog router={router} onClose={() => setAdding(false)} />}
+    </Card>
   );
 }
 
@@ -731,6 +1174,9 @@ const NAV_ITEMS = (counts) => [
   { key: 'requests', label: 'Open Requests', icon: ClipboardListIcon, badge: counts.requests || null },
   { key: 'reservations', label: 'Active Reservations', icon: PackageCheckIcon, badge: counts.reservations || null },
   { key: 'issued', label: 'Material Issued to WIP', icon: TruckIcon },
+  { key: 'reorder', label: 'Reorder Suggestions', icon: AlertTriangleIcon, badge: counts.reorder || null },
+  { key: 'gir', label: 'Gate Inward (GIR)', icon: LogInIcon },
+  { key: 'gatepasses', label: 'Gate Passes', icon: FileOutputIcon, badge: counts.overdueGatePasses || null },
 ];
 
 function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavigate }) {
@@ -743,7 +1189,7 @@ function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavi
 
   return (
     <div className="flex flex-col gap-6">
-      <ReservationModeToggle />
+      <ReservationModeToggle router={router} />
       <TodaySummary inventoryItems={inventoryItems} openRequests={openRequests} activeReservations={activeReservations}
         onNavigate={onNavigate} onShowLowStock={() => setLowOnly(true)} />
       <Card>
@@ -815,13 +1261,18 @@ function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavi
   );
 }
 
-export default function StoresWorkspace({ inventoryItems, openRequests = [], activeReservations = [], projects = [] }) {
+export default function StoresWorkspace({
+  inventoryItems, openRequests = [], activeReservations = [], projects = [],
+  reorderSuggestions = [], gateInwardReceipts = [], gatePasses = [],
+}) {
   const router = useRouter();
   const [tab, setTab] = useState('inventory');
   const navItems = NAV_ITEMS({
     lowStock: inventoryItems.filter(isLowStock).length,
     requests: openRequests.length,
     reservations: activeReservations.length,
+    reorder: reorderSuggestions.length,
+    overdueGatePasses: gatePasses.filter(g => g.is_overdue).length,
   });
 
   return (
@@ -836,6 +1287,9 @@ export default function StoresWorkspace({ inventoryItems, openRequests = [], act
         <ActiveReservationsCard activeReservations={activeReservations} router={router} />
       )}
       {tab === 'issued' && <MaterialIssuesCard projects={projects} />}
+      {tab === 'reorder' && <ReorderSuggestionsCard reorderSuggestions={reorderSuggestions} router={router} />}
+      {tab === 'gir' && <GateInwardReceiptsCard gateInwardReceipts={gateInwardReceipts} router={router} />}
+      {tab === 'gatepasses' && <GatePassesCard gatePasses={gatePasses} router={router} />}
     </WorkspaceSidebar>
   );
 }

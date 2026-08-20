@@ -133,6 +133,16 @@ function SalarySlipSheet({ slipId, onClose }) {
     } catch (err) { showToast(err.message, 'error'); } finally { setBusy(false); }
   }
 
+  const EXPORT_NEXT = { not_exported: 'exported', exported: 'reconciled' };
+  async function setExportStatus(payroll_export_status) {
+    setBusy(true);
+    try {
+      await api(`/api/salary-slips/${slipId}`, { method: 'PATCH', body: { payroll_export_status } });
+      setDetail(await api(`/api/salary-slips/${slipId}`));
+      showToast('Updated');
+    } catch (err) { showToast(err.message, 'error'); } finally { setBusy(false); }
+  }
+
   return (
     <Sheet open onOpenChange={o => !o && onClose()}>
       <SheetContent className="w-full sm:max-w-lg">
@@ -142,6 +152,9 @@ function SalarySlipSheet({ slipId, onClose }) {
             <div className="grid grid-cols-2 gap-2 text-sm">
               <div><span className="text-muted-foreground">Payment days</span><div className="font-medium tnum">{detail.payment_days} / {detail.working_days}</div></div>
               <div><span className="text-muted-foreground">Status</span><div><Badge variant={detail.status === 'paid' ? 'default' : 'outline'} className="capitalize">{detail.status}</Badge></div></div>
+              {/* ACCOUNTING-IMPLEMENTATION-PLAN.md Phase 4 — whether this slip has been pushed to
+                  the accounting system yet. */}
+              <div><span className="text-muted-foreground">Accounting export</span><div><Badge variant={detail.payroll_export_status === 'reconciled' ? 'default' : 'outline'} className="capitalize">{detail.payroll_export_status.replace('_', ' ')}</Badge></div></div>
             </div>
             <Table>
               <TableHeader><TableRow><TableHead>Component</TableHead><TableHead>Type</TableHead><TableHead className="text-right">Amount</TableHead></TableRow></TableHeader>
@@ -164,6 +177,11 @@ function SalarySlipSheet({ slipId, onClose }) {
               <Button size="sm" variant="outline" asChild><a href={`/api/salary-slips/${slipId}/pdf`} target="_blank" rel="noreferrer">Download PDF</a></Button>
               {detail.status === 'draft' && <Button size="sm" disabled={busy} onClick={() => setStatus('submitted')}>Submit</Button>}
               {detail.status === 'submitted' && <Button size="sm" disabled={busy} onClick={() => setStatus('paid')}>Mark Paid</Button>}
+              {EXPORT_NEXT[detail.payroll_export_status] && (
+                <Button size="sm" variant="outline" disabled={busy} onClick={() => setExportStatus(EXPORT_NEXT[detail.payroll_export_status])}>
+                  Mark {EXPORT_NEXT[detail.payroll_export_status] === 'exported' ? 'Exported' : 'Reconciled'}
+                </Button>
+              )}
             </div>
           </div>
         )}
@@ -181,7 +199,7 @@ function SalarySlipsTab({ salarySlips }) {
       <CardContent>
         {salarySlips.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No slips yet — run payroll to generate some.</p> : (
           <Table>
-            <TableHeader><TableRow><TableHead>Employee</TableHead><TableHead>Period</TableHead><TableHead>Type</TableHead><TableHead className="text-right">Net Pay</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
+            <TableHeader><TableRow><TableHead>Employee</TableHead><TableHead>Period</TableHead><TableHead>Type</TableHead><TableHead className="text-right">Net Pay</TableHead><TableHead>Status</TableHead><TableHead>Export</TableHead></TableRow></TableHeader>
             <TableBody>
               {salarySlips.map(s => (
                 <TableRow key={s.id} className="cursor-pointer" onClick={() => setSelectedId(s.id)}>
@@ -190,6 +208,7 @@ function SalarySlipsTab({ salarySlips }) {
                   <TableCell className="capitalize text-muted-foreground">{s.slip_type}</TableCell>
                   <TableCell className="text-right tnum">{fmt(s.net_pay)}</TableCell>
                   <TableCell><Badge variant={s.status === 'paid' ? 'default' : 'outline'} className="capitalize">{s.status}</Badge></TableCell>
+                  <TableCell><Badge variant={s.payroll_export_status === 'reconciled' ? 'default' : 'outline'} className="capitalize">{s.payroll_export_status.replace('_', ' ')}</Badge></TableCell>
                 </TableRow>
               ))}
             </TableBody>

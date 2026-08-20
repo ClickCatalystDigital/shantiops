@@ -95,6 +95,20 @@ export async function PATCH(req, { params }) {
       });
     } catch (err) { /* notification is best-effort */ }
   }
+  // STERP item 30 (§5p) — Incoming Inspection Against PO: same "only fire on the transition into
+  // Received" guard as the Stores notification above, mirrored rather than reinvented. Auto-suggests
+  // a pending qc_records row against the received item instead of QC having to notice and log it
+  // themselves; QC can still edit/delete it like any other record.
+  if (item.purchase_status !== 'Received' && changed.purchase_status === 'Received') {
+    const already = await queryOne(
+      "SELECT id FROM qc_records WHERE bom_item_id = ? AND test_type = 'Incoming Inspection'", [item.id]);
+    if (!already) {
+      await execute(
+        `INSERT INTO qc_records (project_id, test_type, reference_no, result, bom_item_id, notes, created_by)
+         VALUES (?, 'Incoming Inspection', ?, 'pending', ?, ?, ?)`,
+        [item.project_id, item.po_ref || null, item.id, `Auto-suggested on receipt of ${item.material_description}`, 'system']);
+    }
+  }
 
   await audit('bom_item_edit', {
     actor: user.username,

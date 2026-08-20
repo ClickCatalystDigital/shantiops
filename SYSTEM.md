@@ -557,6 +557,128 @@ for **this one project** — deliberately not on the department-filtered Operati
   `stage_template_created`/`renamed`/`defaulted`/`deleted` and `stage_template_item_added`/
   `renamed`/`removed` for the template side) via the shared `audit()`.
 
+## 3d. Operations tab — standards for every department's dashboard card
+
+Each department that shows up on `/` (Operations) gets one Card near the top of its filtered view —
+Procurement, Sales, Stores, Production, and Design shipped first (in that order) and set the pattern
+documented here. This section exists so the *next* department's card is built to the same rules
+instead of reinvented — every file below says so in its own header ("same node/spine shapes as
+X.jsx, copied not abstracted").
+
+### Flow diagram
+
+The centerpiece of a department's card is a **flow diagram**: an ordered row of stage boxes
+connected by a spine, each box showing a **live count of real rows currently in that state** — never
+a static/decorative diagram. It answers "where do things stand right now" at a glance, and every
+number is a real query result, not a placeholder.
+
+**Ground rule — a stage must be a real, queryable DB state.** Before adding a department's flow
+diagram, find the actual status column/lifecycle its data already has (`bom_change_notes.status`,
+`work_orders.status`, a packing list's `Pending → Ready → Dispatched`, etc). If a department's real
+data is a flat list or a tree with no forward-progressing status field, it does **not** get a
+multi-stage spine — inventing stages that don't correspond to a real column is worse than no
+diagram. (Engineering is the one department this ruled out for the 2026-08-20 rollout — see §5o;
+its only real state machine is ECN's 3-way pending/approved/rejected split, not a spine.)
+
+**Shape, copied file-to-file (`components/{Dept}Flow.jsx`):**
+
+- `STAGES` (or `LIFECYCLE`) array of `{ key, label, tone, help }`, in real pipeline order.
+- `TONE_CLASSES` — a fixed small vocabulary (`plain`/`enquiry`/`comparison`/`ordered`/`transit`/
+  `warning`/`received`/`danger`/`in_stock`) reused verbatim across every flow file, and matching the
+  same tone names `lib/bom-fields.mjs`'s `STAGE_BAR_COLORS`, `BomStageBar.jsx`, and
+  `PortfolioDelayTimeline.jsx` use — one color vocabulary across the whole app, not a new palette per
+  department. A "bad" stage (Cancelled, Rework) gets a faint background wash and label-color change
+  only — never a heavier border/size — so no stage reads as visually alarming relative to its
+  siblings (explicit client feedback on Procurement's Cancelled box, honored everywhere since).
+- `StageBox` — one node shape, same border/size/shape regardless of tone; a value number, a label,
+  and an `InfoButton` (a `Popover` with the stage's `help` text) beside the label. Every stage gets a
+  `help` string explaining exactly what real-world state puts a row in that bucket — this is the
+  only place that meaning is written down, so write it precisely.
+- Desktop: a horizontal spine — node centers evenly spaced via `(i + 0.5) * (100 / STAGES.length)`
+  (never hand-placed pixel positions), a border-color connecting line, and a small `ChevronRightIcon`
+  arrow at each midpoint.
+- Mobile (`sm:hidden`): the same stages as a vertical stack of numbered circles connected by a
+  vertical line (`StageRowVertical`) — never just hidden or horizontally scrolled on narrow screens.
+- Card chrome: `CardHeader` with the department name as `CardTitle` and a `CardAction` button linking
+  to that department's own workspace ("Open {Dept} workspace →").
+
+**Extensions, used only when the real pipeline actually needs them — don't add one speculatively:**
+
+- **Branches** (Procurement's Cancelled, Production's Rework) — an SVG connector off the main spine
+  for a real alternate/terminal outcome, not a new primary stage. Any SVG path in one of these files
+  must set `vectorEffect="non-scaling-stroke"` — the connector SVG's `viewBox` is stretched
+  non-uniformly to the diagram's pixel width, so stroke width scales with that transform unless
+  pinned (ProcurementFlow.jsx's v4→v5 history is the record of this bug and its fix — don't
+  reintroduce it).
+- **A small "Sources" row** (Stores) — when a pipeline has more than one real entry point, list them
+  as small plain-tone boxes above the spine with a `ChevronDownIcon` into it, rather than drawing
+  literal multi-source merge geometry.
+- **Two spines in one card** (Production) — a primary cross-project lifecycle plus a secondary
+  status spine for records that can skip the primary one entirely (ad hoc Job Cards). Labeled
+  "(secondary)" and visually separated by a `border-t`, not blended into one row.
+- **`href` per stage, making the count a drill-through link** (Production) — when a stage's count
+  corresponds to a real filtered view/list elsewhere in the app, link the value+label into it
+  (`/production/workers?tab=workorders`, etc). `InfoButton` must stay a sibling of the link, never
+  nested inside it — a `<button>` (the Popover trigger) inside an `<a>` is invalid HTML and breaks
+  click handling.
+- **Non-stage indicator chips** (Production's Route/Material/Labour/Costing/Forecast row) — small
+  pill links for real supporting metrics that aren't sequential pipeline stages, sitting above the
+  spine, not merged into it.
+- **`bare` + dual `counts`/`activeStage` modes** (Design) — `bare` renders the diagram's content
+  without the Card wrapper, for embedding inside another card. `activeStage` (single-project view)
+  swaps the value-number boxes for done/current/upcoming state (check / ring-highlight / dimmed) —
+  used on the project page; `counts` (cross-project Operations view) is the default aggregate mode.
+  Only add this when a department genuinely needs both a per-project and a cross-project view of the
+  same pipeline — most departments only need `counts`.
+
+**Wiring a new one in:**
+
+1. A `get{Dept}FlowCounts()` function in `lib/data.js`, next to the existing five, doing the real
+   `GROUP BY status`-shaped queries against `lib/db.js`'s schema.
+2. Import + render in `app/page.js`'s Operations view, gated the same way as the existing five:
+   `deptsToShow.includes('{Dept}') ? await get{Dept}FlowCounts() : null`, rendered right after the
+   KPI chips and before the per-project breakdown — the flow diagram is the highest-value thing on
+   this page for "where do things stand," so it goes first.
+
+### 2026-08-20 rollout — the remaining six departments
+
+Applied the ground rule above to each of Engineering/QC/Dispatch/Installation/HR/Marketing before
+building anything — the real schema decided the shape, not the template:
+
+- **Dispatch** (`DispatchFlow.jsx`, `getDispatchFlowCounts`) — the plainest case: one table
+  (`packing_lists`), one status column, 3 literal values (`draft`/`packed`/`dispatched`), no
+  branch/cancel concept. Rendered inside the Dispatch department view itself (`app/page.js`'s
+  `dept=Dispatch` branch, right above `DispatchBoard`) rather than as a separate workspace link,
+  since that view already *is* the Dispatch workspace.
+- **Installation** (`InstallationFlow.jsx`, `getInstallationFlowCounts`) — a real 5-state spine off
+  `service_calls.status` (`open → assigned → in_progress → resolved → closed`, an enforced state
+  machine in `app/api/service-calls/[id]/route.js`). Service Contracts is deliberately **not** a
+  second spine — a contract's real states are terminal outcomes
+  (`active → expired/renewed/cancelled`), and `renewed` inserts a brand-new contract row rather than
+  advancing the same one — so it surfaces as four small count chips above the spine instead (the
+  "non-stage indicator chips" extension).
+- **HR** (`HrFlow.jsx`, `getHrFlowCounts`) — a real 4-stage headcount spine
+  (`onboarding → active → separation → exited`) off `employee_onboarding`/`employee_separation`/
+  `employees.active`. Recruitment (`job_applicants`) and payroll runs are real pipelines too but a
+  different axis entirely (who's hired vs. who's on payroll this run) — left as candidates for their
+  own smaller widgets later, not merged into this spine.
+- **QC** (`QcFlow.jsx`, `getQcFlowCounts`) — the statutory-document pipeline
+  (`test_certificates` uploaded → allocated via `certificate_projects` → `qc_documents` with parts
+  still unlinked → finalized), read cross-project like `/qc` itself, not project-scoped like
+  `QcPanel`. `qc_records` (hydro test/NDE/MTC results) is a flat pending/pass/fail tally, not a
+  lifecycle — it rides as a secondary row (same precedent as Production's secondary Job Card spine)
+  instead of being stretched into fake stages on the main one.
+- **Engineering** (`EngineeringFlow.jsx`, `getEngineeringFlowCounts`) — deliberately the smallest of
+  all six: `bom_change_notes.status` (ECN) is Engineering's only real state machine, a 3-way
+  pending/approved/rejected split, not a multi-stage spine. BOM structure building, Where-Used, and
+  Common/Uncommon are tree/classification views with no forward-progressing status column, so this
+  ground rule excluded them rather than inventing stages for them. Calc Sheets stays entirely
+  `DesignFlow.jsx`'s own — this card covers only Engineering's own ECN data, on the shared
+  `/engineering` tab (Design/Engineering also share `/calc`).
+- **Marketing** — no new card. It shares Sales' entire workspace and `SalesFlow.jsx` already renders
+  whenever a Marketing head's `deptsToShow` includes 'Sales' via the same shared-tab mechanism
+  Nav.jsx uses (`addDeptTab(['Sales', 'Marketing'], ...)`) — a second card would just duplicate it.
+
 ## 4. Executive view
 
 Order, top to bottom:
@@ -1268,6 +1390,179 @@ first step, not an afterthought this round.
   hidden).
 - **Help page**: three new Sales feature entries ("Enquiry," "Costing," "Returns"), standard
   Why/How/Work-through/Avoid/Done-when framework.
+
+### As of 2026-08-19 — Stores' last three STERP items: Auto-Indent, GIR, Gate Pass
+
+Closed STERP.md's remaining Stores backlog (Priority 1 item 9, Priority 2 items 14/15). Checked the
+codebase against STERP's own labels first, not just trusted them — same discipline the "Minimum Stock
+Level" miss above (this section, `reorder_point`) already forced once. Auto-Indent turned out to be a
+genuine gap and the real next step past the existing below-minimum filter; GIR/Gate Pass turned out to
+be genuinely new — no prior coverage under any name.
+
+- **Auto-Indent Suggestions (STERP item 9)** — `getReorderSuggestions()` (`lib/data.js`), a **derived**
+  list, no new table: every `inventory_items` row at or below its `reorder_point`
+  (the same `isLowStock` condition the Inventory tab's badge/filter already reads), excluding any
+  item that already has an open `source='stock'` `bom_items` line in flight — the same
+  `NOT IN (Received,Cancelled,In-Stock)` guard `getOpenBomItems` uses — so a suggestion doesn't keep
+  re-appearing after Stores has already acted on it. New "Reorder Suggestions" tab in
+  `StoresWorkspace.jsx`: suggested qty is `reorder_point - available`, editable, and **Create
+  request** posts to the existing `POST /api/purchase-requisitions` with `source='stock'` — the exact
+  same Build-stock path the Inventory tab's own stock-request flow already used. No new route, no new
+  action key, nothing auto-created — human approval is the click itself.
+- **Formal GIR / Gate Inward Receipt (STERP item 14)** — new `gate_inward_receipts` table (`lib/db.js`):
+  vehicle, supplier, driver, entry time, a free-text material reference, two security checkboxes
+  (seal/docs) + remarks, and a `grn_ref`/`status` pair for closing it out once receipt is confirmed.
+  `gir_no` via `nextCounterValue('gir_no')`. New action key `stores.gir.write`. Routes:
+  `app/api/gate-inward-receipts/route.js` (list/create), `[id]/route.js` (attach GRN ref / close).
+  Standalone gate/security-desk log — deliberately outside the reserve/available inventory model;
+  creating or closing a GIR never touches `on_hand`.
+- **Returnable / Non-Returnable Gate Pass (STERP item 15)** — new `gate_passes` + `gate_pass_items`
+  tables: type, party, responsible person, purpose, expected return date (returnable only), and a
+  status machine (`draft → approved → issued → returned/cancelled`). Approval is its own action key
+  (`stores.gatepass.approve`), separate from `stores.gatepass.write` (create/issue/item-return-tick) —
+  STERP calls out approval as a distinct step, so it's a distinct authority, not folded into write.
+  **Overdue is derived, not stored**: returnable + not returned/cancelled + past `expected_return_date`,
+  computed in `getGatePasses()`'s SELECT — same reasoning as `available` on `inventory_items`, a stored
+  flag would drift the moment "today" moves. Per-item returned ticks auto-flip the pass to `returned`
+  the moment every line is ticked (and back to `issued` if one gets un-ticked), so there's no separate
+  "mark whole pass returned" action to forget.
+- **Live-verified end to end** (`stores_head`, dev server): reorder suggestion → Create request →
+  appeared in Open Requests as an ordinary `source='stock'` Enquiry line, suggestion list emptied
+  itself, dedup confirmed on reload. GIR created with both security checks → listed correctly → closed.
+  Returnable gate pass created with a past return date → Overdue badge shown on Draft → Approve →
+  Issue → item return-tick → pass auto-flipped to Returned, Overdue cleared. Non-returnable pass
+  created separately → confirmed no return-date field, no overdue logic, "—" shown for Return by.
+  One environment wrinkle hit during verification, not a code bug: a `403 Forbidden` mid-flow traced to
+  the session being swapped out from under the tab — this repo's dev server points at the shared
+  Turso DB (see the dev-server/Turso memory note), and concurrent activity on it can invalidate a
+  logged-in session; re-authenticating as `stores_head` and retrying the same click succeeded (`200`).
+- **Docs**: three new Stores feature entries in `department-help-content.jsx` ("Reorder suggestions,"
+  "Gate Inward Receipts (GIR)," "Gate Passes"); STERP.md items 9/14/15 marked BUILT with this
+  subsection as the reference.
+
+### Follow-up (same day, 2026-08-19) — gaps found on review, demo data, help-page `howTo`
+
+A second pass, prompted by direct product review rather than a new build:
+
+- **Reserve was the visually secondary button, Procure the primary one** (`OpenRequestsCard`,
+  `StoresWorkspace.jsx`) — backwards from the actual intent (don't procure what's already in stock).
+  Swapped: Reserve is now the solid/primary action, Procure outline/secondary.
+- **Two real server-side gaps**, both UI-only guards with no route-level enforcement:
+  1. Gate Pass's per-item returned-tick (`PATCH /api/gate-passes/[id]`) never checked the parent
+     pass's status — callable directly (bypassing the buttons the UI actually shows) to tick an item
+     returned on a `draft`/`cancelled`/`approved` pass. Fixed with a `409` guard, `issued`/`returned`
+     only. Verified via a direct `fetch()` call, not just the UI.
+  2. GIR's `close` action had no precondition at all — a GIR could close with no `grn_ref`, breaking
+     the "closed means actually received" invariant the route's own header comment claimed. Fixed:
+     `close` now 400s without a `grn_ref` (existing or in the same call), and repeat-close is blocked.
+     UI grew an inline GRN-ref input on each open row, Close disabled (with a tooltip) until one
+     exists.
+  3. GIR creation had no required fields at all (a fully blank GIR was allowed) — now requires at
+     least a vehicle number or a supplier.
+- **Demo data** — `scripts/seed-stores-gate-demo.mjs` (new), scoped to `gate_inward_receipts`/
+  `gate_passes`/`gate_pass_items` only, re-runnable (wipes its own scope first). Seeds 2 GIRs and 6
+  Gate Passes covering every status the UI exercises, including one genuinely overdue row. Reorder
+  Suggestions needed no seed — the pre-existing MS Angle 50x50x5 row (8/10) already triggers it.
+  `4.5-DATA-INVENTORY.md` updated to match (new dated section + classification-table rows).
+- **`howTo` was never updated** — the three new features only ever got `features` entries; Stores'
+  flat `howTo` list (5 generic steps) said nothing about any of them, next to Production's much
+  denser `howToGroups`. Added 4 new `howTo` entries: acting on a reorder suggestion, logging a GIR,
+  closing a GIR, and the full Gate Pass issue→return lifecycle.
+- **§7 ER diagram** (this file) was missing `inventory_items`/`inventory_reservations` entirely (a
+  pre-existing gap, not introduced this round) alongside the three new tables — all four lines added.
+
+### 2026-08-20 — Stores Allocation & Procurement Workflow redesign (Auto/Manual made real)
+
+Audited before writing anything (per the working spec's own instruction): the reservation core
+(`reserveFromStock`), the partial-match-split mechanic (`splitQtyText`/`cloneBomItemForSplit`), and
+dimensional auto-matching (`lib/remnant-match.js`'s `matchAndReserve`/`matchProjectBom`, wired into
+BOM release and single-item add) already did everything the redesign asked for — for plate/section
+stock only. The `pending_review` gate and `getSourcingItems`'s `reserved_qty` badge already existed
+too. What was actually missing: (1) no automatic path for **plain** (non-dimensional) inventory —
+`reserveFromStock` was reachable only via Stores' manual Reserve click; (2) SAS lines got no
+auto-matching of any kind; (3) the Manual/Auto toggle (`ReservationModeToggle`) was a dead
+client-only `useState`, not a real setting. No new procurement lifecycle, no new demand table, no
+duplicate reservation system — this was entirely new write-path wiring around the existing one.
+
+- **`app_settings`** (`lib/db.js`) — one global key/value row, not a settings subsystem. Backs
+  `getAllocationMode()`/`setAllocationMode()` (`lib/procurement.js`), default `'auto'`. New route
+  `GET/PATCH /api/settings/allocation-mode` (GET is `isInternal`, PATCH is Stores-gated,
+  `stores.allocation_mode.write`).
+- **`autoReserveFromStock(bomItem, username)`** (`lib/procurement.js`) — the plain-quantity sibling
+  of `matchAndReserve`, reusing the exact same shared helpers (`reserveFromStock`,
+  `splitQtyText`/`cloneBomItemForSplit`). Only ever matches on an **exact catalog identity**
+  (`bom_item.item_id === inventory_items.item_id`) — the same real, non-fuzzy signal
+  `possibleMatches()`'s green "✓" badge already trusts client-side; never the fuzzy keyword-overlap
+  fallback (already rejected once for this exact reason, STORES-SALES-CHANGES.md §3.1). Full match:
+  no clone, so the bom_item itself is force-gated `pending_review=1` (mirrors `matchAndReserve`'s
+  full-match branch exactly). Partial match: the reserved clone gets the same gate; the original row
+  (now carrying just the shortfall) is left alone — already `pending_review=0` from the insert, so
+  it's immediately visible to Procurement, no Stores click needed. `matchProjectPlainStock(projectId,
+  username)` is release-bom's whole-project sweep, the plain-stock counterpart to `matchProjectBom`.
+- **Insert-time `pending_review` now respects the mode**, at every line-creation point: PMB import
+  (`app/api/projects/[id]/bom/import/route.js`, fresh rows only — historical-status rows are
+  unaffected, unchanged), single-item add (`app/api/bom-items/route.js`), and the PR route's
+  `'bom'`/`'sas'` branches (`app/api/purchase-requisitions/route.js` — `'stock'` was already
+  ungated, unchanged). Manual mode: always `1`, the original always-review behavior, byte-for-byte.
+  Auto mode: always `0` at insert, then `matchAndReserve` (dimensional) followed by
+  `autoReserveFromStock` (plain) decide whether anything actually needs re-gating. This is also why
+  SAS lines now auto-match — same call, right after insert, same as the BOM paths.
+  `release-bom`'s POST also now runs `matchProjectPlainStock` right alongside its existing
+  `matchProjectBom` call.
+- **Stores UI** — `OpenRequestsCard` treats a plain auto-reservation (`reserved_qty > 0`, new column
+  on `getOpenBomItems`, same subquery shape `getSourcingItems` already used) exactly like a remnant
+  match: an "Auto-reserved" badge, no Reserve/Procure buttons — it's already resolved, nothing to
+  do. `ReservationModeToggle` now fetches/persists the real mode instead of a dead local toggle;
+  relabeled "Automatic" / "Stores Review / Manual" to match the working spec's own wording, with an
+  inline explanation of what each mode actually does.
+- **Procurement UI** — `EnquiryRow`'s existing "Reserved from stock" badge was informational only;
+  relabeled to spell out the actual numbers ("Partial stock — N reserved, this line is the
+  shortfall") per the working spec's "don't rely only on disabled buttons, explain the reason"
+  principle. No functional gating needed adding — Procurement already can't over-source a partial
+  line because `reserveFromStock`'s split already shrinks `qty_text` down to just the shortfall, and
+  a full match's `pending_review=1` already removes the line from `getSourcingItems()` entirely, so
+  "Procurement cannot buy already-fulfilled stock" was already structurally true, not something this
+  round had to add.
+- **Notifications** — the one new one: `notifyProcurementIfShortfall(bomItemId)`
+  (`lib/procurement.js`), fired only in Auto mode (Manual mode's existing Procure-click notification
+  is unchanged and unaffected), `dedupe_key: auto_shortage:<id>` so a line already notified never
+  re-fires on a later release/edit. This closes a real gap Auto mode would otherwise have left open:
+  Procurement previously only ever heard about new demand via Stores' explicit Procure click, which
+  Auto mode never makes. No new notification for a *fully* auto-reserved line — the working spec's
+  own instruction ("do not spam Stores every time AUTO successfully reserves a normal item") applies
+  symmetrically to Procurement: nothing to act on, nothing to notify about.
+- **Help page**: the old "Manual review (Stores Review / Procure)" feature became "Allocation Mode
+  (Automatic / Stores Review)", carrying the working spec's own ASCII diagram (new `diagram` field
+  + `<pre>` rendering added to `DepartmentHelpWorkspace.jsx`'s `GuideBody`, since no prior feature
+  needed monospace rendering) and an explanation of both modes. `sas` feature and one `howTo` entry
+  updated to match. STERP.md item 9 (Auto-Indent Suggestions, already BUILT 2026-08-19) is a
+  distinct, unrelated feature — reorder suggestions for restocking depleted inventory — not
+  superseded or duplicated by this allocation-mode work.
+
+### Known gaps in Stores (2026-08-20, not built — raised in review, tracked here rather than silently deferred)
+
+Found while reviewing GIR/Gate Pass (§5e's 2026-08-19 entry above) and the Allocation Mode redesign
+(2026-08-20 entry above) against real usage. None of these block the current feature set; all are
+real, scoped follow-ups, not oversights being hidden:
+
+1. **No printable Gate Pass slip.** Every other outbound document in this app (PO, Quotation) gets a
+   PDF; a Gate Pass is physically handed to a security guard and today only exists as a screen.
+2. **No edit route on GIR or Gate Pass beyond status transitions.** `PATCH /api/gate-passes/[id]`
+   and `PATCH /api/gate-inward-receipts/[id]` only ever move status (approve/issue/cancel/close) or
+   tick an item returned — a mistyped vehicle number, driver name, or party has no fix path short of
+   cancelling and re-raising.
+3. **An overdue Gate Pass fires no notification.** It's a derived badge (`getGatePasses()`'s
+   `is_overdue`) you only see by opening the tab — unlike Stores Review or a released reservation,
+   which both notify. Same "meaningful cross-department event" bar the rest of §5e's notifications
+   already clear; this one doesn't yet.
+4. **No search/filter on GIR or Gate Pass tables.** Inventory has "Below minimum only"; these two
+   have nothing once they grow past a screenful.
+5. **GIR and Procurement's own Received status are unlinked.** `gate_inward_receipts.grn_ref` and
+   `bom_items.grn_ref` are both free text with no FK or cross-check between them — nothing forces a
+   closed GIR and a Received BOM line describing the same physical delivery to actually agree.
+
+(Purchase Returns — originally flagged alongside these — is no longer a gap; see §5o, built
+independently as a Procurement-side feature.)
 
 ## 5f. Calc Sheets — engineering calculation engine
 
@@ -2462,6 +2757,402 @@ because they failed this test against the Production lifecycle.
   architecture section first, so it stays the accurate source of truth rather than drifting stale
   the way STERP.md's Job Card entries once did (§5l's own "what this corrects" note above).
 
+## 5n. Installation — Service Calls, Service Contracts, Service Reports (2026-08-19, STERP items 7/36/37/38, no separate working-spec doc — folded straight in here)
+
+Before this round, Installation had no workspace at all — a project's Installation tab (`InstallationMilestoneActions.jsx`) and its "Mark complete" action (§5i) were the entire department surface. This round built the rest of STERP's Installation scope: **Service Call Management** (item 36), **Service Contracts** (item 37), and **Service Reports** (items 7 and 38 — STERP lists "Service Reports" twice, once as installation-milestone-level reporting and once as dedicated service-call/contract reporting; both are the same ask at two levels of detail, built as one feature, not two).
+
+**New top-level tab** — `/installation` (`app/installation/page.js` → `components/InstallationWorkspace.jsx`), added to `Nav.jsx`'s `addDeptTab` list (Installation previously had none). Same `WorkspaceSidebar` shell as every other department workspace (§5c/§5g precedent), three flat tabs: Service Calls, Service Contracts, Reports.
+
+**Data model** (`lib/db.js`) — three new tables, same conventions as Stores' GIR/Gate Pass pair (§8's "As of 2026-08-19" entry) that this round's schema block sits directly after:
+- `service_calls` — `project_id` is the "covered equipment" link (an order/boiler IS a project in this app; no separate equipment master exists or was invented). `priority`/`sla_hours`/`status` (open → assigned → in_progress → resolved → closed) drive the aging/SLA report; `resolved_at`/`closed_at` are stamped by the status-transition route itself (`app/api/service-calls/[id]/route.js`), never hand-entered, so they can't drift from the real status.
+- `service_call_visits` — one row per site visit against a call (technician, date, notes), independent of the call's own status.
+- `service_contracts` — `project_id`/`customer_name`, coverage window, `visit_frequency`, `entitlement` (free text — what's actually covered). `renewed_from_id` links a renewal to the contract it replaces; renewing never mutates the old row (`status='renewed'`), it inserts a new one — same "record what happened, don't rewrite it" idiom as `gate_inward_receipts`/`gate_passes`. Service *history* for a contract (STERP item 37) is just `service_calls` filtered to the same `project_id` — no second copy of that data.
+
+**Routes** — `app/api/service-calls/route.js` (GET isInternal-gated, POST Installation-only), `app/api/service-calls/[id]/route.js` (field edits + status transitions, stamping `resolved_at`/`closed_at`), `app/api/service-calls/[id]/visits/route.js` (POST a visit), `app/api/service-contracts/route.js` (GET/POST), `app/api/service-contracts/[id]/route.js` (field edits, plus `action: 'renew'|'cancel'|'expire'`). Two new `action_permissions.js` keys: `installation.service_call.write`, `installation.contract.write` (alongside the pre-existing `installation.milestone.complete`).
+
+**Reports tab** — four stacked `ReportShell`/`BarList`/`StatRow` cards (`components/ReportKit.jsx`, the same building blocks `CrmReportsWorkspace.jsx` uses — reused directly rather than extended into a third department group, since Installation's reports don't share any data or navigation with Sales/Marketing's), all computed client-side off data already fetched for the workspace, no new report-specific endpoint:
+1. **Installation Milestones** — Site Installation/Commissioning milestone counts by status, delay reasons, commissioning completion rate. Reads `getInstallationMilestones()` (`lib/data.js`), `milestones` filtered to `department = 'Installation'`.
+2. **Service Call Aging & SLA Compliance** — open-call count by priority, SLA compliance % (resolved/closed calls within their `sla_hours`), repeat-customer count.
+3. **Technician Performance** — assigned/resolved counts and average resolution time per `assigned_to`.
+4. **Service Contracts & Renewals** — active contract count, contracts expiring within 30 days, renewal rate (`renewed` / (`renewed`+`expired`+`active`)).
+
+**Live-verified end to end** (installation_head): create a service call with a linked project (customer auto-fills from the project) → Manage it to Assigned with a technician → log a visit → all four reports render real numbers off that data. Create a service contract → Renew it (new SVC-1002 active, old SVC-1001 flips to renewed) → Contracts report shows the resulting renewal rate. No app bugs found; one 403 seen mid-testing was a shared-browser cross-session cookie collision on `localhost` (unrelated to this feature — cookies aren't port-scoped, so a concurrent session's dev server on another port can overwrite this one's session cookie), confirmed by re-authenticating and re-issuing the same request directly.
+
+Not built, on purpose: no file/photo upload for closure evidence (`closure_evidence` is a plain text reference, same convention as `sales_returns.credit_note_ref` — no document-store system exists anywhere in this app to hang a real upload on, see §8); no SMS/email notification on SLA breach (§8, Priority 6, explicitly out of scope this round); no separate "equipment" master distinct from `projects` (would be a speculative entity with no confirmed need, same reasoning STERP already gave for deferring Sales Offices/Branches).
+
+## 5o. Engineering — Multi-Level BOM, Where-Used, Common/Uncommon, Engineering Change Note, + Purchase Returns (2026-08-19/20, STERP items 16-19 and 13)
+
+STERP's own note says items 16-19 are interlinked and must be designed together — Where-Used depends on Multi-Level BOM existing first. Built together as one round, plus Purchase Returns (item 13) as an independent Procurement-side track raised in the same session.
+
+**New top-level tab** — `/engineering` (`app/engineering/page.js` → `components/EngineeringWorkspace.jsx`), gated to `canAccessDepartment(user,'Design') || canAccessDepartment(user,'Engineering')` — the one deliberately-combined gate in this whole round (everything underneath keys to the `'Engineering'` string alone, so a future Design/Engineering split only touches this one nav line, per the owner's ask). Four flat tabs: BOM Structure, Where-Used, Common/Uncommon, Change Notes. Per-project BOM *editing* stays where it already was — the project page's Engineering panel (`BomPanel`/`BomTable`) — this workspace is the cross-project oversight surface, same split Installation draws (§5n) between a project-page action and its own workspace.
+
+**Data model** (`lib/db.js`):
+- `bom_assemblies` — `project_id`, `parent_id` (nullable, self-referencing — the nesting), `name`, `qty` (multiplier). Generalizes the BOM's existing flat `section`/`group_label` text grouping into a real tree **without touching `bom_items`' leaf-row shape** — every `bom_items` row must stay a packable leaf (packing reconciliation joins `packing_items.bom_item_id -> bom_items.id`; a non-packable "container" row would break that). `bom_items.assembly_id` (nullable FK) is the only new column on the BOM itself — null keeps every existing BOM's flat behavior exactly as it was, no migration or backfill attempted. Declared Engineering-owned in `BOM_FIELD_OWNERS` (`lib/bom-fields.mjs`), so it's PATCHable through the existing `bom-items/[id]` route with no new trust-boundary code.
+- `bom_change_notes` — `project_id`, `bom_item_id` (nullable), `field_changed`/`old_value`/`new_value`, `reason`, `status` (pending/approved/rejected), `requested_by`/`approved_by`, `effective_revision`. This is the "release/approval workflow for BOM revisions" §5a's v1 explicitly deferred ("Deliberately not built... release/approval workflow for BOM revisions") — now built. `effective_revision` reuses `projects.bom_release_revision` (shipped 2026-08-19, §5a) rather than inventing a second revision counter — stamped with the project's *current* value at approval time.
+- `purchase_returns` — direct schema mirror of `sales_returns` (§5e): `po_id`/`po_item_id` instead of `sale_order_id`, `debit_note_ref` instead of `credit_note_ref`, `stock_action` values `none`/`removed_from_stock`/`replaced` (removed_from_stock decrements `inventory_items.on_hand` — the opposite direction of Sales Returns' credit).
+- One seeded `action_permissions` row: `('Engineering','engineering.ecn.approve',1)` — the only Head-gated key in this round, inserted `INSERT OR IGNORE` since every other row in that table is admin-configured after the fact via Settings. Live-testing this exposed a **real pre-existing seed gap**: every `<dept>_head` demo account (`HEAD_USERS`, `lib/db.js`) was created with `department_roles` left NULL, which `departmentRole()` silently reads as Member tier, not Head — it never mattered before because no Engineering action had ever actually required Head tier. Fixed at the root: the `HEAD_USERS` seed loop now sets `department_roles={dept:'head'}` for fresh DBs, plus an idempotent live-DB backfill migration (`UPDATE users SET department_roles=... WHERE department_roles IS NULL`) for every already-seeded DB, this one included.
+
+**Identity matching** (Where-Used, Common/Uncommon) — hybrid, not string-only: `bom_items.item_id` (the confirmed real catalog key — a comment on that column notes `item_code` was tried and rejected against real data, only 1 of 2,773 rows populated) when set; normalized `material_description`+`moc`+`size_spec` (`normalizeMaterial()`, inlined into the new `lib/bom-structure.mjs` rather than imported from `lib/remnant-match.js`, which drags in the whole DB client and would break plain-`node` self-checkability) as fallback. `item_id` is only set when a row is picked from catalog search — PMB bulk import, "the dominant way Design actually populates a BOM" (§5a), leaves it NULL — so an item_id row and a string-only row never cross-match even on identical text; coverage improves naturally as more lines get catalog-picked, no backfill needed.
+
+**Sentinel-project labeling** — Where-Used/Common-Uncommon read across every project including the sentinel system project stock/sas BOM lines point at (§5c D7); reuses `ProcurementWorkspace.jsx`'s existing `projectLabel()` convention ("Stock"/"SO #...") rather than showing the sentinel's literal placeholder `project_no`.
+
+**Pure logic split out** — `lib/bom-structure.mjs` (roll-up qty math, identity keying, the ECN approve/reject guard, the Purchase-Return stock-decrement guard) is dependency-free on purpose, same precedent as `lib/bom-fields.mjs`/`lib/pmb.mjs`: plain `node lib/bom-structure-selfcheck.mjs` runs real `assert` checks against it (roll-up multiplication through a 3-level chain, item_id-vs-string cross-match exclusion, both transition guards) without booting the app.
+
+**ECN v1 scope, on purpose**: a logged, approvable record + a downstream-impact view (which POs/packing lines/tasks/drawing reference the changed item, all read live off existing FKs — no impact table). It does **not** yet force every post-release BOM edit through the ECN gate — that's a bigger behavior change touching every `PATCH /api/bom-items/[id]`, left as the noted upgrade path. STERP's stated requirement (reason, affected project, old/new values, approval, effective revision, downstream impact) is fully met by what shipped.
+
+**Purchase Returns UI** — new `Returns` tab in `components/ProcurementWorkspace.jsx`, direct component mirror of `SalesWorkspace.jsx`'s `ReturnsTab`/`ReturnRow` (same dialog shape, same inline inspection-outcome/stock-action/reference-field pattern).
+
+**Live-verified end to end** (engg_head / procurement_head): created a nested assembly (ID Fan Assembly ×2 → Drive Sub-assembly ×1), assigned a real BOM item to it from the project page, confirmed roll-up qty (200 Kgs × 2 = 400) — Multi-Level BOM. Searched Where-Used for a reused part, got results across 3 real projects plus a Stock-sourced row correctly labeled "Stock" not the sentinel placeholder. Raised an ECN on a real project's BOM item, approved it as `engg_head` (only visible/succeeds after the `department_roles` backfill above), confirmed `status=approved`, `approved_by`, `decided_at`, `effective_revision=0` all stamped correctly via direct API read. Raised a Purchase Return against a real issued PO as `procurement_head`, flipped inspection to Accepted, confirmed the row updates live.
+
+Explicitly out of scope this round (STERP Priority 5/6, per the brief): accounting/GST integration, native mobile, automated email/SMS.
+
+## 5p. QC — Incoming/Finished Goods/Subassembly/Job-Work Inspection + Calibration (2026-08-20, STERP Priority 4, items 30-35)
+
+Closes out QC's remaining STERP list. All six build on `qc_records`/`QcPanel.jsx` (§5b) rather than inventing parallel entities — only Job-Work Inspection (item 33, an entity that never existed anywhere in this app) and Calibration (items 34/35, not project-scoped) got real new tables.
+
+**`qc_records` extended, not replaced** — three nullable link columns (`bom_item_id`, `work_order_id`, `assembly_id`) plus `dispatch_eligible` (mirrors `bom_items.production_done` — a plain per-record boolean, not a new status enum). Incoming/Finished Goods/Subassembly Inspection are all just `qc_records` rows with a different `test_type` string and whichever link column applies — same whole-row QC ownership as every other test type, same `QcPanel.jsx` UI, extended with an optional link picker (`linkField`/`linkOptions` props) and a dispatch-eligibility toggle pill (`showDispatchToggle`).
+
+- **Incoming Inspection Against PO (item 30)** — `app/api/bom-items/[id]/route.js`'s PATCH route auto-inserts a Pending `qc_records` row (`bom_item_id` set, `created_by='system'`) on the transition into `purchase_status='Received'` — same "only fire on the transition, guarded on the *prior* status" idiom the same route already uses for the Stores-notify and Cancelled-reservation-release guards just above it. QC can still add one by hand for anything the auto-suggestion misses.
+- **Finished Goods Inspection (item 31)** — `work_order_id`-linked `qc_records` row (project page's QC tab, Work Order picker sourced from `getWorkOrders({projectId})`, §5l). `dispatch_eligible` is the one field Dispatch's packing flow can read — set manually by QC once satisfied, not auto-derived from `result` (a pass doesn't always mean cleared to ship; QC decides).
+- **Subassembly Inspection (item 32)** — `assembly_id`-linked `qc_records` row (picker sourced from `bom_assemblies`, §5o) — the real intermediate "stage" to inspect against, not a second hierarchy.
+- **Job-Work Inspection (item 33)** — new `job_work_inspections` table + `components/JobWorkPanel.jsx`: `job_worker_name`/`job_worker_contact` (free text — no vendor master, YAGNI), `sent_date`/`expected_return_date`/`sent_qty`, `received_date`/`received_qty`/`result`. Variance (`sent_qty - received_qty`) is computed live at read time (`lib/data.js`'s `getJobWorkInspections`), never stored — same "never stored" precedent as Multi-Level BOM's roll-up qty (§5o).
+- **Instrument + Jigs/Fixtures Calibration (items 34/35)** — one new `calibration_items` table with a `type` column (`instrument`/`jig_fixture`) instead of two entities with an identical shape. Not project-scoped (equipment, not a project record) — lives on the QC workspace's own new **Calibration** tab (`components/QcWorkspace.jsx`, `components/CalibrationPanel.jsx`), not a project tab, `GET /api/calibration-items` `isInternal`-gated same reasoning as `/api/inventory-items`. Status (`ok`/`due_soon`/`expired`/`blocked`) is derived live from `due_date` vs. today (`due_soon` = within 30 days) — `blocked` is the one manual override, an instrument pulled out of service before its due date, and always wins over the date.
+
+**Action Permissions** — four new keys, `qc.jobwork.write`/`.delete` and `qc.calibration.write`/`.delete`, open by default (no seeded Head-gate row) — inspection logging doesn't carry the same release-authority weight ECN approval does (§5o).
+
+**Pure logic split out** — `lib/qc-inspections.mjs` (`jobWorkVariance`, `calibrationStatus`), dependency-free, same precedent as `lib/bom-structure.mjs`: `node lib/qc-inspections-selfcheck.mjs` runs real `assert` checks (variance math, expired/due-soon/ok/blocked transitions) without booting the app.
+
+**Live-verified** (as `qc_head` against the real dev DB): calibration item created with a past `due_date`, confirmed `status='expired'` via direct API GET; job-work inspection created (`sent_qty=10`, `received_qty=8`), confirmed the project page renders `JobWorkPanel` (variance=2) with no error; `qc_records` row created with `test_type='Finished Goods Inspection'` and `dispatch_eligible=true` via API, confirmed the write and the project page's QC tab both render cleanly with all four new panels in place. Test rows deleted after verification.
+
+## 5q. Accounts — Phase 0: Decisions & Foundation (2026-08-20, ACCOUNTING-IMPLEMENTATION-PLAN.md)
+
+New department, added the same way Sales/Marketing/HR were: `DEPARTMENTS` (`lib/milestones.js`), `HEAD_USERS`/guarded one-off `accounts_head` insert (`lib/db.js`), a Nav tab (`/accounts`, `LandmarkIcon`), and a `d-login` demo entry — no milestones (same "works through its own module, not the milestone tracker" precedent as Sales/Marketing/HR).
+
+**Architecture decision (supersedes the plan's original framing):** Shanti Ops is the system of record for the full Accounts workflow — ledger, chart of accounts, journal postings, trial balance, P&L, balance sheet, GST returns — not just the document trail. Tally is an optional sync target, not the book of record; ERPNext is out. Both readiness/plan docs were rewritten to match (ACCOUNTING-READINESS.md §7/§8, ACCOUNTING-IMPLEMENTATION-PLAN.md's architecture note + a new Phase 5 "General Ledger & Financial Statements" replacing the old Tally/ERPNext export phase, which becomes Phase 6 "Optional Tally Sync"). e-invoicing confirmed not required now, deferred. Both entities' real GSTIN/PAN/address not available — `company_settings` seeded with placeholder values, flagged in its own UI until filled in.
+
+- **`company_settings`** — one row per legal entity (`company`, `legal_name`, `gstin`, `pan`, `registered_address`, `state`, `state_code`, `invoice_prefix`), seeded for Shanti Boilers & Pressure Vessels (P) Ltd and Shanti Techno Fab with placeholder GSTIN/PAN/address.
+- **`company` column backfilled** onto `quotations`, `purchase_orders`, `po_items` (nullable, `addColumn`) — closes the readiness register's §3 gap ("even a perfectly GST-accurate PO is useless to Accounting if it can't say which company issued it"). Not yet populated per-row or exposed in those documents' own UI — that's a Phase 1+ retrofit, not Phase 0's job.
+- **`components/AccountsWorkspace.jsx`** — one tab so far, Company Settings, editable per company via `PATCH /api/company-settings` (`accounts.company_settings.write`, open by default, same "no seeded Head-gate row" rule as HR's inspection-logging keys). Placeholder rows show an inline warning until GSTIN/PAN/address are filled in.
+
+**Live-verified** (as `accounts_head` against the real dev DB, direct API calls): login returns `departments: ["Accounts"]` (confirms the generic `department_roles` backfill loop picked up the new `HEAD_USERS` entry with no code change needed); `GET /api/company-settings` returns both seeded rows; `GET /accounts` returns 200; `PATCH /api/company-settings` updates a field and is visible on the next GET. Test edit reverted after verification.
+
+## 5r. Accounts — Phase 1: GST & TDS Rate Masters (2026-08-20, ACCOUNTING-IMPLEMENTATION-PLAN.md)
+
+- **`gst_rates`** — HSN → rate, effective-dated (`effective_from`/`effective_to`), same versioning shape as `income_tax_slabs`. No seed rows — unlike PT/income-tax slabs there's no one universal government schedule to default to; real HSN→rate mapping depends on the company's actual products.
+- **`vendor_tds_rates`** — section (194C/194J)/rate/threshold, effective-dated. Seeded with best-known current defaults (194C 1%/2%, 194J 10%, ₹30,000 threshold) — same "seed a real default, flag it as unverified" idiom as `income_tax_slabs`. Rate table only, no per-vendor cumulative threshold tracking (deferred to Phase 3, needs Vendor Bills to exist to deduct against).
+- **UI** — `AccountsWorkspace.jsx`'s new "GST & TDS Rates" tab, same add-a-row-plus-list shape as `PayrollWorkspace.jsx`'s `PtSlabsCard`/`TaxSlabsCard`. `POST /api/gst-rates` / `POST /api/vendor-tds-rates`, gated by new `accounts.gst_rate.write` / `accounts.tds_rate.write` keys (open by default, same rule as every other Accounts action so far).
+
+**Retrofit investigated and deferred:** the plan called "let Quotation/PO look up `tax_pct` from `gst_rates` by HSN" a small, recommended addition. It isn't small — `hsn_code` exists in the `quotation_items`/`po_items` schema but neither `SalesWorkspace.jsx`'s quotation form nor the PO item editor (`BomPanel.jsx`/`BomTable.jsx`) collects it anywhere today; the Quotation form takes one flat GST% for the whole document. A real retrofit needs new HSN input UI on both forms first. Both plan docs updated to reflect this as its own future phase, not bundled into Phase 1.
+
+**Live-verified** (as `accounts_head` against the real dev DB, direct API calls): `GET /api/vendor-tds-rates` returns the three seeded 194C/194J rows; `GET /api/gst-rates` returns empty; `POST /api/gst-rates` with a real HSN (7309, pressure vessel steel) creates a row, confirmed on the next GET; `/accounts` returns 200. Test row deleted after verification (via a direct Turso HTTP API call, since there's no DELETE route yet and the dev DB is remote — see `dev-server-uses-remote-turso` in session memory).
+
+## 5s. Accounts — Phase 2: Sales Invoice + Credit Note (2026-08-20, ACCOUNTING-IMPLEMENTATION-PLAN.md)
+
+**Real GSTIN/PAN/address found, not missing.** Phase 0 seeded `company_settings` with placeholder
+values because both were reported "not available" — turned out `lib/qc-doc-pdf.js`'s
+`COMPANY_PROFILES` already carried both entities' real GSTIN and address, used on QC document PDFs
+already issued to customers. Backfilled `company_settings` with the real values (PAN derived from
+the GSTIN's own embedded PAN) and updated the fresh-DB seed to match — both readiness/plan docs'
+Phase 0 decision 2 corrected.
+
+- **`sales_invoices`/`sales_invoice_items`** — mirrors `quotations`/`quotation_items`'s shape
+  (subtotal/tax/total, same item columns), plus `company`, a real sequential `invoice_no`
+  (`<prefix>/<seq>/<FY>`, e.g. `SB/1/2026-27` — matches the real invoice-number style already seen
+  in `packing_lists` demo data), `sale_order_id`/`quotation_id` links, and a genuine CGST/SGST/IGST
+  split instead of one flat `tax_pct`.
+- **`lib/gst-calc.mjs`** (+ `lib/gst-calc-selfcheck.mjs`) — the one real calc in this phase:
+  `financialYear()` (April–March FY labeling) and `gstSplit()` (intra-state → CGST+SGST,
+  inter-state or unknown customer state → IGST, never guesses intra-state on missing data).
+  Dependency-free, same precedent as `lib/bom-structure.mjs`.
+- **`sales_credit_notes`/`sales_credit_note_items`** — real linked document (`credit_note_no`,
+  line items, amount, reason, status) that `sales_returns.credit_note_ref`'s free text can now
+  point at by number. `sales_returns` itself untouched, no structural FK yet — just a real document
+  to reference instead of nothing.
+- **UI** — `SalesWorkspace.jsx`'s new "Invoices" tab (list + status + payment_ref, "Credit Note"
+  dialog), and a "Convert to Invoice" button next to "Convert to SO" on an accepted Quotation
+  (`app/api/quotations/[id]/convert-to-invoice`, same "accept → auto-create the next record"
+  playbook as the existing Quotation → Sale Order convert route).
+- **Action Permissions** — `sales.invoice.create`, `sales.invoice.status`, `sales.credit_note.write`
+  in the `Sales` block (not `Accounts` — the plan calls for this UI to live on the Sales workspace,
+  same department boundary as Quotations/Sale Orders).
+
+**Non-goals kept:** no e-invoice/IRN fields (Phase 0 confirmed not required), no partial/
+installment billing, no per-vendor TDS deduction (that's Phase 3, purchase side).
+
+**Live-verified** (as `admin` against the real dev DB, direct API calls): created a quotation for
+a customer with no `state_code` on file, accepted it, converted to invoice — confirmed IGST-only
+split (missing customer state correctly falls to inter-state, never guesses intra-state), correct
+`invoice_no` format and total. Marked `issued` with a `payment_ref`, confirmed on the next GET.
+Created a credit note against it, confirmed it lists under `/api/sales-credit-notes` with the
+right linked `invoice_no`. `/sales` page returns 200. All test rows deleted after verification (via
+the Turso HTTP API, same reason as Phase 1 — no DELETE route, remote dev DB).
+
+## 5t. Accounts — Phase 3: Vendor Bill + Debit Note (2026-08-20, ACCOUNTING-IMPLEMENTATION-PLAN.md)
+
+Direct mirror of Phase 2 on the purchase side.
+
+- **`vendor_bills`/`vendor_bill_items`** — `bill_no` is the *supplier's* own number (free text,
+  not unique — we don't control their series, unlike our own `invoice_no`), `po_id` link, CGST/
+  SGST/IGST split (`lib/gst-calc.mjs`'s `gstSplit()`, same function Phase 2 uses — direction just
+  reverses: supplier's `state_code` vs the issuing company's), and Phase 1's `vendor_tds_rates`
+  finally gets consumed: `tdsAmount()` deducts a flat section rate into `payable_amount`. Still no
+  per-vendor cumulative threshold tracking (deliberately deferred — real stateful complexity,
+  separable from getting a correct-enough bill recorded).
+- **`purchase_debit_notes`/`purchase_debit_note_items`** — mirrors Phase 2's Credit Note; the real
+  document `purchase_returns.debit_note_ref`'s free text can now point at by number.
+  `purchase_returns` itself untouched, same "add the document, don't redesign the return flow"
+  precedent as Phase 2.
+- **UI** — "Record Bill" button on `PODrawer` (any `issued` PO — not gated on a per-line receipt
+  status, since that lives on the linked `bom_items`, not the PO itself), a new "Vendor Bills" tab
+  on `ProcurementWorkspace.jsx` with status/payment_ref and a "Debit Note" dialog. `vendor_tds_rates`
+  is passed down as a page-level prop (`app/procurement/page.js`) rather than fetched client-side,
+  since its own API route is gated to the `Accounts` department and Procurement heads need to read
+  it here.
+- **Action Permissions** — `procurement.vendor_bill.write`, `procurement.vendor_bill.status`,
+  `procurement.debit_note.write` in the `Procurement` block.
+
+**Live-verified** (as `admin` against the real dev DB, direct API calls): issued a draft PO,
+recorded a bill against it — confirmed correct CGST+SGST split (supplier and company both state
+code 36, intra-state). Recorded a second bill on the same PO with a 194C TDS section selected —
+confirmed `tds_amount` = 1% of `total`, `payable_amount` = `total` − `tds_amount` exactly. Marked
+a bill `approved` with a `payment_ref`, created a debit note against it, confirmed it lists under
+`/api/purchase-debit-notes` with the right linked `bill_no`. `/procurement` returns 200. All test
+rows deleted and the PO reverted to `draft` after verification (Turso HTTP API, no DELETE route,
+remote dev DB — same reason as every other phase this session).
+
+## 5u. Accounts — Phase 4: Payroll → Accounting Export (2026-08-20, ACCOUNTING-IMPLEMENTATION-PLAN.md)
+
+The cheapest phase on the whole plan — `salary_slips` was already the best-prepared table (its
+schema comment has said "ACCOUNTING INTEGRATION POINT for a future sync to read" since before this
+plan started), and `employees.company` already routes it to the right entity's books.
+
+- **`salary_slips.payroll_export_status`** — `not_exported`/`exported`/`reconciled`, defaulting
+  `not_exported`. Same vocabulary Phase 6 (optional Tally sync) will reuse for every other document
+  type — introduced here first since Payroll is the simplest case to prove it on.
+- **UI** — the existing `SalarySlipSheet` (Payroll workspace, `PayrollWorkspace.jsx`) gets a second
+  status line and a "Mark Exported"/"Mark Reconciled" button next to the existing Submit/Mark Paid
+  actions; the Salary Slips list gets a matching Export column. Same `PATCH /api/salary-slips/[id]`
+  route as the existing status update — HR already owns this UI, no new Accounts-facing surface for
+  one field.
+- **No new financial computation** — the PF/ESI/PT/TDS amounts were already correct before this
+  phase (Payroll's own statutory rates predate this plan entirely).
+
+**Live-verified** (as `admin` against the real dev DB, direct API calls): a test salary slip
+defaulted to `payroll_export_status='not_exported'` with `company` correctly routed via its
+employee; PATCH to `exported` then `reconciled` both persisted correctly on the next GET. `/hr`
+returns 200. Test slip deleted after verification.
+
+### Gap audit addendum (2026-08-20, after Phase 4)
+
+While handing off a Phase 5 prompt, audited Phases 0–4 for gaps before starting Phase 5. Found and
+fixed one real bug:
+
+- **Credit/debit note number collision across companies.** `sales_credit_notes.credit_note_no` and
+  `purchase_debit_notes.debit_note_no` are globally `UNIQUE`, but their sequence counters are keyed
+  per-company (`credit_note_no:<company>:<fy>`) and the generated number itself
+  (`CN/<seq>/<fy>`/`DN/<seq>/<fy>`) never included which company it was for. Two companies' first
+  credit note (or debit note) of the same financial year both produced the identical string
+  (`CN/1/2026-27`) — the second `INSERT` would throw a `UNIQUE` constraint violation the first time
+  Shanti Techno Fab issued one in a year Shanti Boilers already had. Fixed in both routes
+  (`app/api/sales-invoices/[id]/credit-note/route.js`,
+  `app/api/vendor-bills/[id]/debit-note/route.js`) by folding the company's own `invoice_prefix`
+  into the number, matching `invoice_no`'s own pattern: `SB/CN/1/2026-27` /
+  `STF/DN/1/2026-27`. Live-verified by creating one of each for both companies in the same FY back
+  to back — confirmed distinct numbers, no collision. Test rows deleted after.
+
+No other correctness issues found — permission gating (`requireDepartment`/`canAccessCrm`/
+`requireAction`) is consistent across every new route, no duplicate `ACTION_CATALOG` keys, and a
+DB sweep confirmed no leftover test rows from any phase's verification pass.
+
+**Known, deliberately unaddressed limitation:** neither the Quotation→Invoice convert flow nor the
+PO→Vendor-Bill Record Bill flow expose a company picker in their UI — both silently default to the
+derived/first company when none is passed, same limitation the pre-existing Quotation→Sale-Order
+convert route already has. Not a regression from this session's work; flagging it as a known gap
+rather than fixing it, since it means redesigning UI outside this plan's scope.
+
+## 5v. Accounts — Phase 5: General Ledger & GST Compliance (2026-08-20, ACCOUNTING-IMPLEMENTATION-PLAN.md)
+
+The first phase where "post a journal entry" and "compute a balance" are actually in scope, per
+the 2026-08-20 architecture decision that Shanti Ops (not Tally/ERPNext) owns the full ledger. Two
+sub-steps, both built and live-verified this session.
+
+**Sub-step 1 — Chart of Accounts + posting engine + financial statements:**
+- **`chart_of_accounts`** — per-`company`, 14 accounts seeded (Assets/Liabilities/Equity/Income/
+  Expense), admin-editable. AR/AP are single control accounts (2026-08-20 decision — no
+  per-customer/per-vendor sub-accounts; that detail comes from querying `journal_entry_lines` by
+  source document instead). Raw Material Inventory is a real asset account — Vendor Bills debit it
+  — but consumption is **not** auto-posted out of it: `material_issues` carries qty but no unit
+  cost anywhere in the schema, so valuing consumption would mean inventing a costing method
+  (FIFO/weighted-average) that doesn't exist yet. Flagged as a known gap, not silently skipped.
+- **`journal_entries`** / **`journal_entry_lines`** — double-entry, `UNIQUE(source_type,
+  source_id)` so a repeated status PATCH can't double-post. `lib/ledger.mjs` (+ selfcheck) holds
+  the pure per-trigger account mapping (`salesInvoiceLines`, `vendorBillLines`,
+  `salesCreditNoteLines`, `purchaseDebitNoteLines`, `salarySlipLines`) and the Trial
+  Balance/P&L/Balance Sheet rollups; `lib/ledger-post.js` does the DB-touching orchestration
+  (idempotent upsert-style guard, not just relying on the `UNIQUE` constraint throwing).
+- **Auto-post triggers** (2026-08-20 decision: fires on issue, not a separate review step) — Sales
+  Invoice `status→issued` (or a direct jump to `paid`), Vendor Bill `status→approved` (its "issued"
+  equivalent) or `paid`, Credit Note / Debit Note at creation (both are created already-issued, no
+  draft stage), Salary Slip `status→paid`.
+- **Reports** — Trial Balance / P&L / Balance Sheet, derived read-only rollups per company per date
+  range (`app/api/reports/{trial-balance,profit-loss,balance-sheet}`). Balance Sheet's equity
+  figure includes net profit since inception as unclosed retained earnings — no automated
+  period-close/lock exists or is planned (Phase 5's own non-goal); the report just derives it live.
+- **UI** — `AccountsWorkspace.jsx`'s new "General Ledger" tab: Chart of Accounts (add-a-row), and
+  the three reports, per company.
+
+**Live-verified** (as `admin`/`accounts_head` against the real dev DB): converted a real accepted
+quotation → Sales Invoice → issued it, confirmed the journal entry posted correctly (AR 41,30,000 =
+Revenue 35,00,000 + GST Payable 6,30,000) and re-issuing didn't double-post; issued a Credit Note
+against it (reversed Revenue/AR by the credit amount — see gstr1/ledger notes below on why credit
+notes don't reverse GST separately); issued a real PO → recorded a Vendor Bill with TDS deducted →
+approved it (Inventory + GST Input = AP + TDS Payable) → raised a Debit Note against it; seeded one
+salary slip and marked it paid (Salary Expense = gross + employer PF/ESI share, net pay hit
+Bank/Cash, every statutory deduction its own payable). Trial Balance balanced exactly
+(debit=credit) after all five postings. **Demo rows left in the DB per instruction** (not cleaned
+up like every prior phase's verification — this session's Salary Slip #10, Sales Invoice #4,
+Vendor Bill #3, and their notes, are real persistent demo data, not test rows).
+
+**Sub-step 2 — GST compliance (2026-08-20 terminology pass — current model, not the old
+GSTR-1/2/3 model; see ACCOUNTING-READINESS.md §7 / ACCOUNTING-IMPLEMENTATION-PLAN.md Phase 5 for
+the full outward/inward flow and the source note on where the terminology comes from):**
+- **Outward — GSTR-1 / GSTR-1A / IFF.** One generator (`lib/gst-return.mjs`'s `gstr1Summary()`),
+  fed by `lib/data.js`'s `getGstr1Lines()` (`sales_invoice_items` joined to its invoice's
+  document-level CGST/SGST/IGST split, apportioned per line by taxable share — there's no per-line
+  split stored anywhere). B2B (by customer GSTIN) and HSN summaries. IFF is the identical report,
+  just filed monthly instead of quarterly under QRMP (`company_settings.gst_return_frequency`,
+  new column, default `monthly`) — not a separate document type. GSTR-1A ("amend an already-filed
+  GSTR-1") isn't modeled as its own document either — `gst_filings` is a plain "we filed this"
+  marker with zero enforcement (deliberately, Phase 5's own non-goal), so an amendment is just
+  re-running the same live report after that date; the portal handles the amendment mechanics.
+- **Inward — GSTR-2B + IMS, replacing the old "GSTR-2" idea.** GSTR-2 was never notified as a
+  filable return; `gstr2b_lines` holds the government's actual recipient-side ITC statement.
+  **Intake (2026-08-20 decision): Excel/CSV upload of the portal's own GSTR-2B download is the
+  normal path** (`lib/gstr2b-import.mjs`, header-anchor parser same shape as
+  `lib/master-import.mjs`, built against the portal's published B2B-sheet column layout — not a
+  real sample file, same caveat Phase 6's Tally-import note already carries); **manual entry/edit
+  is the exception path** for individual corrections (`app/api/gstr2b` POST/PATCH), not the normal
+  workflow. Each line carries `ims_status` (`pending`/`accepted`/`rejected`/`deemed_accepted`) —
+  the recipient's own Invoice Management System action, actioned via PATCH (`app/api/gstr2b/[id]`).
+  Re-uploading a period replaces only that period's `source='upload'` rows — manual corrections for
+  the same period survive a re-upload.
+- **ITC reconciliation** (`lib/gst-return.mjs`'s `itcReconciliation()`) — matches GSTR-2B lines
+  against `vendor_bills` for the same period by `(supplier GSTIN, invoice number)` (no fuzzy
+  amount/date matching — an unmatched pair is a manual-check exception, same as any bank-recon
+  queue). Eligible ITC = lines where the portal marked `itc_availability='Yes'` **and** IMS status
+  is accepted/deemed-accepted; everything else (portal says "No", or rejected in IMS) is an
+  excluded amount — **not** run through a Rule 42/43 proportional-reversal calculation, a real
+  additional complexity out of scope for this pass. Shanti Ops' own Vendor Bill ledger stays the
+  accounting source of truth throughout — GSTR-2B/IMS is external reconciliation evidence, never a
+  purchase-register replacement.
+- **GSTR-3B** (`lib/gst-return.mjs`'s `gstr3bSummary()`) — the actual operative monthly return
+  (GSTR-3, the full return it was meant to replace, was suspended and never revived). Nets GSTR-1's
+  outward tax against ITC reconciliation's eligible ITC; negative nets show as ITC carried forward,
+  not a negative payable.
+- **UI** — `AccountsWorkspace.jsx`'s new "GST Returns" tab: company + month picker, GSTR-1/IFF
+  summary with "Mark filed" buttons for each, GSTR-2B upload + manual-add row + accept/reject
+  actions per line, ITC reconciliation summary (with an unmatched-Vendor-Bill warning), GSTR-3B net
+  payable/carried-forward.
+- **Explicitly not built**: e-invoicing/IRN/QR/IRP integration (Phase 0's decision stands
+  unchanged — not required at the current turnover bracket); a live GST-portal/API connection for
+  GSTR-2B (file upload only, per the 2026-08-20 decision); Rule 42/43 proportional ITC reversal.
+
+**Live-verified** (as `admin` against the real dev DB): GSTR-1 report for 2026-08 correctly showed
+the Himalayan Dairy invoice as IGST-only (interstate) in both B2B and HSN summary; uploaded a real
+synthetic `.xlsx` GSTR-2B file (two B2B rows, one legend/total row correctly skipped) via
+`POST /api/gstr2b/upload`'s preview→confirm flow; accepted one line via IMS PATCH, rejected the
+other; ITC reconciliation correctly matched the accepted line to the real Vendor Bill (by invoice
+number, supplier GSTIN blank on both sides) and its eligible ITC (₹8,856) matched that bill's own
+GST Input Credit postings exactly; GSTR-3B net payable (₹6,21,144) = outward tax (₹6,30,000) −
+eligible ITC (₹8,856); `gst_filings` POST/GET round-tripped; manual GSTR-2B add + delete worked,
+and deleting an upload-sourced line was correctly refused. `/accounts`'s new "GST Returns" tab
+confirmed rendering all four cards correctly in the browser. Demo rows (GSTR-2B lines, the
+`gst_filings` row) left in the DB per instruction, same as sub-step 1.
+
+## 5w. Accounts — Phase 5 completion: Manual Journals, Inventory Costing, AR/AP Settlement, Bank Reconciliation (2026-08-20, ACCOUNTING-IMPLEMENTATION-PLAN.md)
+
+Closed the four remaining Phase 5 gaps flagged after the GST-compliance sub-step (§5v): no manual
+journal entry path, no inventory consumption costing, no payment/receipt entity, no bank
+reconciliation. All four reuse the existing `chart_of_accounts`/`journal_entries`/
+`journal_entry_lines` ledger and posting pattern (`lib/ledger-post.js`) — no parallel system.
+Inspected each area first (Stores/material-issue costing, sales_invoices/vendor_bills payment
+tracking, banking) before building, per instruction — findings below.
+
+- **Manual Journal Entry** — `journal_entries.status` (`draft`/`posted`, default `posted` so every
+  pre-existing auto-posted row is unaffected) + `reversal_of_id`. `lib/ledger-post.js`:
+  `createDraftJournalEntry()` / `updateDraftJournalEntry()` / `postDraftJournalEntry()` /
+  `reverseJournalEntry()`; `lib/ledger.mjs`'s `reversedLines()` swaps debit/credit on every line, a
+  pure transform. `app/api/journal-entries` (POST creates a draft), `[id]` (PATCH edits a draft or
+  posts it, DELETE removes an unposted draft), `[id]/reverse` (POST — posted + `source_type='manual'`
+  only; an auto-posted document already has its own correction mechanism, Credit/Debit Note).
+  `lib/data.js`'s `getLedgerLines()` (feeds Trial Balance/P&L/Balance Sheet) now hardcodes
+  `status = 'posted'` — a draft can never reach a financial statement.
+- **Inventory consumption costing** — inspected first: confirmed by reading `inventory_items`/
+  `material_issues`/`vendor_bill_items` and grepping for "costing"/"avg_cost"/"FIFO" that **no
+  valuation method existed anywhere** (`work_order_materials.unit_cost` is a manually-typed
+  planning figure for Work Order Costing, unrelated to inventory value). Weighted-average adopted
+  (`lib/inventory-costing.mjs` + selfcheck) as the one method, not a second parallel system.
+  `inventory_items.avg_cost` (running per-unit cost) + `vendor_bill_items.bom_item_id` (carries the
+  PO line's own `bom_item_id` one hop further, additive column — `po_items` already had it) let a
+  Vendor Bill line resolve `bom_items.item_id -> inventory_items.item_id`. Vendor Bill
+  approval/paid (`app/api/vendor-bills/[id]/route.js`) now also receives stock into every
+  resolvable line at `weightedAverageCost()`, guarded on the bill's *previous* status so a repeated
+  PATCH can't double-receive. Material Issue (`app/api/material-issues/route.js`) resolves the same
+  join, decrements `on_hand`, and posts Dr Material Consumed (5100) / Cr Raw Material Inventory
+  (1200) at `consumptionCost()` — `material_issues.unit_cost`/`total_cost` record what was
+  computed, `null` when unresolvable (never guessed). A line/issue with no traceable `item_id`
+  (the common case per the readiness register's own data-quality note) simply isn't costed.
+- **AR/AP settlement** — inspected first: confirmed `sales_invoices`/`vendor_bills` had only a
+  `status` flag and a free-text `payment_ref`, no payment entity, no partial-payment tracking.
+  Built the minimum: `customer_receipts`/`vendor_payments`, same numbered-document shape as
+  `sales_credit_notes`/`purchase_debit_notes` (real per-company per-FY series via `counters`).
+  `app/api/sales-invoices/[id]/receipts` / `app/api/vendor-bills/[id]/payments` (POST) post
+  Bank & Cash against AR/AP (`customerReceiptLines()`/`vendorPaymentLines()`, `lib/ledger.mjs`),
+  reject an amount exceeding the live balance due (summed from prior receipts/payments, not a
+  stored running total — avoids sync drift), and auto-flip the parent document to `paid` once fully
+  settled by a direct `UPDATE` (not the status PATCH route, so it can't re-trigger that document's
+  own already-idempotent GL entry).
+- **Bank reconciliation** — inspected first: confirmed no `bank_accounts` table or reconciliation
+  concept exists at all; docs (ACCOUNTING-READINESS.md, ACCOUNTING-IMPLEMENTATION-PLAN.md Phase 7)
+  already scope a real bank-account master as Cheque Printing's job, untouched here. Minimum
+  workflow only: `journal_entry_lines.reconciled`/`reconciled_at`, a report listing every posted
+  line against the Bank & Cash control account (1001) with running reconciled/unreconciled
+  balances (`app/api/reports/bank-reconciliation`), and a toggle
+  (`app/api/journal-entry-lines/[id]/reconcile`). No statement import, no bank-account entity —
+  deliberately not a duplicate banking system.
+- **UI** — `AccountsWorkspace.jsx`'s General Ledger tab gained "Manual Journal Entries" (new-entry
+  dialog with dynamic account/debit/credit rows, Post/Reverse/Delete) and "AR / AP settlement"
+  (pick an issued invoice or approved bill from a dropdown, enter an amount) cards; a new "Bank
+  Reconciliation" tab (per-company tick-off list with balances).
+- **New action-permission keys** — `accounts.journal_entry.write`/`.post`,
+  `accounts.bank_reconciliation.write`, `sales.invoice.receipt.write` (Sales, mirrors
+  `sales.credit_note.write`), `procurement.vendor_bill.payment.write` (Procurement, mirrors
+  `procurement.debit_note.write`).
+- **GST compliance (§5v) left untouched** — no live API/e-invoicing added, no Rule 42/43 work, per
+  instruction.
+
+**Verified**: `npm run build` succeeds clean. All five selfchecks pass
+(`lib/ledger-selfcheck.mjs`, `lib/gst-return-selfcheck.mjs`, `lib/gstr2b-import-selfcheck.mjs`,
+`lib/inventory-costing-selfcheck.mjs`). Live, against the real dev DB (as `admin`): an unbalanced
+manual JE was rejected; a balanced draft didn't move the Trial Balance until posted (+10,000/+10,000
+exactly); a posted entry rejected a direct edit ("immutable — use reverse"); reversing it restored
+the Bank & Cash balance to its pre-JE figure while both gross totals grew by the same 10,000 (a real
+reversal, not a delete); re-posting or re-reversing an already-settled entry was rejected. Linked a
+real PO item to a new test catalog item + inventory row, recorded and approved a Vendor Bill against
+it (`on_hand` 0→120, `avg_cost` 0→410, first receipt = its own unit cost), then issued 20 units
+(`on_hand`→100, cost 20×410=8,200 posted to Material Consumed/Inventory) — Trial Balance balanced
+exactly throughout (4,432,737=4,432,737). Recorded a partial then full customer receipt against a
+real Sales Invoice (over-payment correctly rejected, invoice auto-flipped to `paid` on full
+settlement) and a full vendor payment against a real Vendor Bill (same auto-flip). Bank
+reconciliation report listed every one of the session's Bank & Cash postings correctly; toggling one
+line's `reconciled` flag moved it between the reconciled/unreconciled running balances correctly.
+Trial Balance, P&L, and Balance Sheet cross-checked consistent after all of the above (Assets =
+Liabilities + Equity held exactly). Confirmed all four new UI sections (Manual Journal Entries,
+AR/AP settlement, Bank Reconciliation, updated Chart of Accounts) render correctly in the browser.
+**Demo/test rows left in the DB** (the JE + its reversal, the receipts/payments, the test catalog
+item and inventory row, the material issue) — not cleaned up, per this session's now-established
+"keep demo data" precedent (§5v).
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own
@@ -2496,6 +3187,10 @@ milestones ──< job_cards ──< job_card_time_logs  (§5g — the shop-floo
 job_cards ──< job_card_consumables               (§5g — welding rods/gas/discs, free text, no price)
 job_cards ──> job_cards (rework_of, self)        (§5g — QC-fail/rejected-qty rework lineage)
 bom_items ──< material_issues                    (§5g — structured Stores/Production→WIP consumption, job_card_id optional)
+inventory_items ──< inventory_reservations       (§5e — Reserve/Issue two-step; qty commits against `available`, on_hand untouched until Issue)
+bom_items.inventory_item_id → inventory_items    (§5e — set once a reservation issues, or a source='stock' item materializes against a named line)
+gate_passes ──< gate_pass_items                  (§5e, 2026-08-19 — Returnable/Non-Returnable Gate Pass; item list is free text, no inventory_item_id link)
+gate_inward_receipts                              (§5e, 2026-08-19 — standalone gate/security log; grn_ref is free text, no FK into bom_items/purchase_orders)
 operations / workstations / trades               (§5g/§3a — flat masters; workstations carries machine_hour_rate, employees.trade_id-equivalent is the free-text `employees.trade` validated against `trades`)
 work_orders ──< work_order_operations             (§5l — the Process Route Card; operation_id/workstation_id/milestone_id all optional pointers into existing masters)
 work_orders ──< work_order_materials               (§5l — bom_item_id link for against_order, or its own item_id/description + manual qty_issued for against_stock)
@@ -2504,6 +3199,7 @@ work_orders ──< job_cards (work_order_id, work_order_operation_id, both opti
 work_orders ──> projects / sale_orders (project_id, sale_order_id, both optional)  (§5l — against_order vs. against_stock)
 sale_orders ──< projects                          (company decided at the Sale Order — the commercial commitment — and copied onto the project at creation; projects.company is the denormalized read)
 users (role + departments CSV + project_ids CSV [customer scoping, one-or-more] + pending flag)
+app_settings (key/value)                          (§5e, 2026-08-20 — one global row so far: stores_allocation_mode = auto/manual; not a settings subsystem, same "smallest thing that works" precedent as `counters`)
 ```
 
 `bom_items` carries the spreadsheet-mirror columns — `section` (sheet), `group_label` (assembly

@@ -1,0 +1,589 @@
+<title>Accounting Readiness Register</title>
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Arvo:wght@400;700&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+  :root {
+    --paper: #eef0ea;
+    --paper-raised: #f7f8f4;
+    --ink: #1b241f;
+    --ink-soft: #4d584f;
+    --ink-faint: #7c877e;
+    --line: #cdd4c7;
+    --line-strong: #a9b2a1;
+    --accent: #a84a26;
+    --accent-ink: #ffffff;
+    --accent-tint: #f3e2d8;
+    --status-built-fg: #2f6b48;
+    --status-built-bg: #dfeee2;
+    --status-partial-fg: #8a5f10;
+    --status-partial-bg: #f3e6c8;
+    --status-missing-fg: #a03f24;
+    --status-missing-bg: #f5ddd3;
+    --shadow: 0 1px 0 rgba(27,36,31,0.06);
+    --radius: 3px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #14181a;
+      --paper-raised: #1b2124;
+      --ink: #e7ece5;
+      --ink-soft: #aab5ac;
+      --ink-faint: #7c877e;
+      --line: #333d38;
+      --line-strong: #48544d;
+      --accent: #d97a4f;
+      --accent-ink: #14181a;
+      --accent-tint: #2c211b;
+      --status-built-fg: #7fd39a;
+      --status-built-bg: #1c3226;
+      --status-partial-fg: #e3bd6c;
+      --status-partial-bg: #372c14;
+      --status-missing-fg: #e79274;
+      --status-missing-bg: #3a2219;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #14181a;
+    --paper-raised: #1b2124;
+    --ink: #e7ece5;
+    --ink-soft: #aab5ac;
+    --ink-faint: #7c877e;
+    --line: #333d38;
+    --line-strong: #48544d;
+    --accent: #d97a4f;
+    --accent-ink: #14181a;
+    --accent-tint: #2c211b;
+    --status-built-fg: #7fd39a;
+    --status-built-bg: #1c3226;
+    --status-partial-fg: #e3bd6c;
+    --status-partial-bg: #372c14;
+    --status-missing-fg: #e79274;
+    --status-missing-bg: #3a2219;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'Public Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection { background: var(--accent-tint); color: var(--ink); }
+
+  .sheet {
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 3.5rem 1.75rem 6rem;
+    display: flex;
+    flex-direction: column;
+    gap: 3rem;
+  }
+
+  /* ---------- Masthead ---------- */
+  .masthead {
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+    padding-bottom: 2rem;
+    border-bottom: 3px double var(--line-strong);
+  }
+  .masthead .eyebrow {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    display: flex;
+    gap: 0.6em;
+    align-items: baseline;
+  }
+  .masthead .eyebrow span.sep { color: var(--line-strong); }
+  h1 {
+    font-family: 'Arvo', 'Georgia', serif;
+    font-weight: 700;
+    font-size: clamp(1.9rem, 4vw, 2.6rem);
+    line-height: 1.15;
+    margin: 0;
+    text-wrap: balance;
+    letter-spacing: -0.01em;
+  }
+  .masthead .dek {
+    font-size: 1.05rem;
+    color: var(--ink-soft);
+    max-width: 62ch;
+    text-wrap: pretty;
+  }
+  .masthead .meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1.4rem;
+    margin-top: 0.3rem;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.78rem;
+    color: var(--ink-faint);
+  }
+  .masthead .meta-row b { color: var(--ink-soft); font-weight: 600; }
+
+  /* ---------- Nav chips ---------- */
+  .toc {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .toc a {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.74rem;
+    text-decoration: none;
+    color: var(--ink-soft);
+    border: 1px solid var(--line);
+    padding: 0.32rem 0.7rem;
+    border-radius: var(--radius);
+    background: var(--paper-raised);
+    transition: border-color 0.15s ease, color 0.15s ease;
+  }
+  .toc a:hover, .toc a:focus-visible { border-color: var(--accent); color: var(--accent); outline: none; }
+
+  /* ---------- Sections ---------- */
+  section { display: flex; flex-direction: column; gap: 1.1rem; scroll-margin-top: 1.5rem; }
+  .section-head {
+    display: flex;
+    align-items: baseline;
+    gap: 0.85rem;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 0.55rem;
+  }
+  .section-num {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--accent);
+    font-weight: 600;
+  }
+  h2 {
+    font-family: 'Arvo', 'Georgia', serif;
+    font-size: 1.4rem;
+    font-weight: 700;
+    margin: 0;
+    letter-spacing: -0.005em;
+  }
+  h3 {
+    font-family: 'Public Sans', sans-serif;
+    font-size: 1rem;
+    font-weight: 700;
+    margin: 0.2rem 0 0;
+    color: var(--ink);
+  }
+  p { margin: 0; max-width: 68ch; }
+  p + p { margin-top: 0.85rem; }
+  .lede { font-size: 1.02rem; color: var(--ink-soft); max-width: 66ch; }
+  ul.plain { margin: 0; padding-left: 1.25rem; display: flex; flex-direction: column; gap: 0.45rem; max-width: 66ch; }
+  code {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.86em;
+    background: var(--paper-raised);
+    border: 1px solid var(--line);
+    padding: 0.05em 0.35em;
+    border-radius: 3px;
+    color: var(--ink);
+  }
+
+  /* ---------- Stamp / boundary callout ---------- */
+  .stamp {
+    border: 2px solid var(--ink);
+    border-radius: var(--radius);
+    padding: 1.1rem 1.3rem;
+    background: var(--paper-raised);
+    position: relative;
+    max-width: 68ch;
+  }
+  .stamp::before {
+    content: attr(data-label);
+    position: absolute;
+    top: -0.65rem;
+    left: 1rem;
+    background: var(--paper);
+    padding: 0 0.5rem;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .stamp p { color: var(--ink-soft); font-size: 0.95rem; }
+  .stamp p + p { margin-top: 0.6rem; }
+  .stamp code { font-size: 0.82em; }
+
+  /* ---------- Tables ---------- */
+  .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper-raised); }
+  table { width: 100%; border-collapse: collapse; font-size: 0.88rem; min-width: 640px; }
+  thead th {
+    text-align: left;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.68rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    font-weight: 600;
+    padding: 0.7rem 0.9rem;
+    border-bottom: 1px solid var(--line-strong);
+    white-space: nowrap;
+  }
+  tbody td {
+    padding: 0.75rem 0.9rem;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+    color: var(--ink-soft);
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody td.primary { color: var(--ink); font-weight: 600; }
+  tbody td code { font-size: 0.8em; }
+  .field-list { font-family: 'IBM Plex Mono', monospace; font-size: 0.78rem; line-height: 1.7; }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35em;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 0.22em 0.6em;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+  .pill::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .pill.built { color: var(--status-built-fg); background: var(--status-built-bg); }
+  .pill.partial { color: var(--status-partial-fg); background: var(--status-partial-bg); }
+  .pill.missing { color: var(--status-missing-fg); background: var(--status-missing-bg); }
+  .pill.na { color: var(--ink-faint); background: var(--paper-raised); border: 1px solid var(--line); }
+
+  /* ---------- Precedent card ---------- */
+  .precedent {
+    border-left: 3px solid var(--status-built-fg);
+    background: var(--paper-raised);
+    border-radius: 0 var(--radius) var(--radius) 0;
+    padding: 0.9rem 1.1rem;
+    max-width: 66ch;
+  }
+  .precedent .k { font-family: 'IBM Plex Mono', monospace; font-size: 0.72rem; color: var(--status-built-fg); text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600; }
+  .precedent p { margin-top: 0.4rem; font-size: 0.92rem; }
+
+  .gap {
+    border-left: 3px solid var(--status-missing-fg);
+    background: var(--paper-raised);
+    border-radius: 0 var(--radius) var(--radius) 0;
+    padding: 0.9rem 1.1rem;
+    max-width: 66ch;
+  }
+  .gap .k { font-family: 'IBM Plex Mono', monospace; font-size: 0.72rem; color: var(--status-missing-fg); text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600; }
+  .gap p { margin-top: 0.4rem; font-size: 0.92rem; }
+
+  /* ---------- Two-col grid for entity note ---------- */
+  .entity-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 1rem;
+    max-width: 68ch;
+  }
+  .entity-card {
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 0.9rem 1.05rem;
+    background: var(--paper-raised);
+  }
+  .entity-card .tag {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.68rem;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 600;
+  }
+  .entity-card h3 { margin-top: 0.35rem; font-size: 0.98rem; }
+  .entity-card p { font-size: 0.86rem; color: var(--ink-soft); margin-top: 0.3rem; }
+
+  /* ---------- Closing ---------- */
+  .closing {
+    border-top: 3px double var(--line-strong);
+    padding-top: 1.6rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+  }
+  .closing p { color: var(--ink-soft); max-width: 66ch; }
+  .closing .signoff { font-family: 'IBM Plex Mono', monospace; font-size: 0.76rem; color: var(--ink-faint); margin-top: 0.6rem; }
+
+  @media (max-width: 600px) {
+    .sheet { padding: 2.25rem 1.1rem 4rem; gap: 2.25rem; }
+    table { min-width: 560px; }
+  }
+</style>
+
+<div class="sheet">
+
+  <header class="masthead">
+    <div class="eyebrow">SHANTI OPS <span class="sep">/</span> INTERNAL REFERENCE <span class="sep">/</span> ACCOUNTS SCOPING</div>
+    <h1>Accounting Readiness Register</h1>
+    <p class="dek">Where money-moving documents live today, what they're missing before Accounting can trust them, and which numbers behind every tax and payroll figure change on their own schedule and need to be kept current.</p>
+    <div class="meta-row">
+      <span><b>Scope</b> STERP Priority 5 (items 39&ndash;64)</span>
+      <span><b>Companies</b> Shanti Boilers &amp; Pressure Vessels · Shanti Techno Fab</span>
+      <span><b>Status</b> discovery only &mdash; nothing built</span>
+    </div>
+  </header>
+
+  <nav class="toc">
+    <a href="#framing">1. Two separate problems</a>
+    <a href="#boundary">2. The existing boundary</a>
+    <a href="#entities">3. Two books, not one</a>
+    <a href="#documents">4. Document trail</a>
+    <a href="#numbers">5. Variable-input registry</a>
+    <a href="#pattern">6. The pattern already here</a>
+    <a href="#coverage">7. Full Priority 5 coverage map</a>
+    <a href="#next">8. Where this leaves you</a>
+  </nav>
+
+  <section id="framing">
+    <div class="section-head"><span class="section-num">01</span><h2>Two separate problems</h2></div>
+    <p class="lede">"Make Accounting accurate" is really two independent audits, and they fail for different reasons. Keep them apart when you plan the build.</p>
+    <div class="entity-grid">
+      <div class="entity-card">
+        <div class="tag">Problem A</div>
+        <h3>The document trail</h3>
+        <p>Every place the app creates or should create a paper record with money on it &mdash; quotation, PO, invoice, credit note, payslip. Fails when a document is missing entirely, or exists but its numbers were never meant to be ledger-grade.</p>
+      </div>
+      <div class="entity-card">
+        <div class="tag">Problem B</div>
+        <h3>The variable inputs</h3>
+        <p>The rates, slabs and thresholds those documents multiply against &mdash; GST%, PF/ESI%, income-tax slabs, professional tax. Fails when the government or market moves a number and nothing in the app notices.</p>
+      </div>
+    </div>
+    <p>Section 4 maps Problem A. Section 5 maps Problem B. They intersect &mdash; a Sales Invoice needs both a document shape <em>and</em> a correct live GST rate &mdash; but building one doesn't solve the other.</p>
+  </section>
+
+  <section id="boundary">
+    <div class="section-head"><span class="section-num">02</span><h2>The existing boundary</h2></div>
+    <p class="lede">Every tax-bearing document already in Shanti Ops was built against one deliberate, explicit limit &mdash; not an oversight.</p>
+    <div class="stamp" data-label="Hard boundary, as written in the code">
+      <p>Quotations, Purchase Orders, and Scope of Supply each store a flat <code>tax_pct</code> / <code>gst_pct</code> typed once per document (or once per line, on a purchase order) purely so the PDF can print &ldquo;GST @ 18%.&rdquo; None of them split IGST from CGST/SGST, none look a rate up from an HSN code, and none post anything to a ledger.</p>
+      <p><code>quotation_items.hsn_code</code> is annotated in the schema itself: <em>&ldquo;stored reference string only, never a tax-rate lookup.&rdquo;</em> The same boundary is repeated at <code>po_items.hsn_code</code> and in the PDF generator&rsquo;s own comments.</p>
+    </div>
+    <p>That boundary was the right call for a document that only ever had to <em>look</em> correct on a printed PDF. It is the wrong shape for a document Accounting has to post from. Crossing it &mdash; real HSN&rarr;rate lookups, real IGST/CGST/SGST splits, real ledger postings &mdash; is the actual size of the accounting build, underneath whatever UI gets designed on top.</p>
+  </section>
+
+  <section id="entities">
+    <div class="section-head"><span class="section-num">03</span><h2>Two books, not one</h2></div>
+    <p class="lede">Every accounting document eventually has to say which legal entity it belongs to &mdash; separate GSTIN, separate invoice series, separate books.</p>
+    <div class="entity-grid">
+      <div class="entity-card">
+        <div class="tag">Entity A</div>
+        <h3>Shanti Boilers &amp; Pressure Vessels (P) Ltd</h3>
+        <p>The default entity. Every <code>company</code> column in the schema defaults here.</p>
+      </div>
+      <div class="entity-card">
+        <div class="tag">Entity B</div>
+        <h3>Shanti Techno Fab</h3>
+        <p>Routed today only by a maker-code convention (<code>STF-</code> prefix) on statutory documents &mdash; not a first-class field most places.</p>
+      </div>
+    </div>
+    <p><code>company</code> already exists on <code>projects</code>, <code>sale_orders</code>, <code>employees</code>, and <code>qc_documents</code>. It does <strong>not</strong> exist on <code>quotations</code>, <code>purchase_orders</code>, <code>po_items</code>, or any payroll table &mdash; so today, nothing forces a PO or a payslip to declare which entity's books it belongs to. That's a gap independent of tax logic: even a perfectly GST-accurate PO is useless to Accounting if it can't say which company issued it.</p>
+  </section>
+
+  <section id="documents">
+    <div class="section-head"><span class="section-num">04</span><h2>Document trail</h2></div>
+    <p class="lede">Every place in the app today that carries, or should carry, a real money figure &mdash; and what stands between it and something Accounting could post from.</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Document</th><th>Lives in</th><th>Money fields today</th><th>Gap for real accounting</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="primary">Quotation</td>
+            <td><span class="pill built">exists</span><br><code>quotations</code></td>
+            <td class="field-list">subtotal<br>tax_pct, tax_amount<br>total</td>
+            <td>Flat tax% for the whole document; HSN stored, never priced from. No conversion into an Invoice &mdash; it's a dead end once accepted.</td>
+          </tr>
+          <tr>
+            <td class="primary">Sale Order</td>
+            <td><span class="pill partial">thin</span><br><code>sale_orders</code></td>
+            <td class="field-list">so_no, customer_name<br>description &mdash; <em>no amount fields at all</em></td>
+            <td>Carries no value of its own; the Quotation is the only place the number lives. A Sale Order can't be billed against because it isn't priced.</td>
+          </tr>
+          <tr>
+            <td class="primary">Sales Invoice</td>
+            <td><span class="pill missing">missing</span><br>no table</td>
+            <td class="field-list">&mdash;</td>
+            <td>STERP #39. Doesn't exist as its own entity. Nothing in the app plays the role of "the document that recognizes revenue" &mdash; no numbering series, no partial/progressive billing, no e-invoice/IRN fields.</td>
+          </tr>
+          <tr>
+            <td class="primary">Purchase Order</td>
+            <td><span class="pill built">exists</span><br><code>purchase_orders</code> / <code>po_items</code></td>
+            <td class="field-list">discount_pct<br>gst_pct (flat, default 18)<br>rate, amount per line</td>
+            <td>Same flat-rate boundary as Quotation. No <code>company</code> column &mdash; can't say which entity issued it.</td>
+          </tr>
+          <tr>
+            <td class="primary">Vendor Bill / Purchase Invoice</td>
+            <td><span class="pill missing">missing</span><br>no table</td>
+            <td class="field-list">&mdash;</td>
+            <td>STERP #41 (Accounts Payable). A GRN records receipt of goods; nothing records receipt of a supplier's <em>bill</em>, which is a different date, a different number, and the actual AP trigger.</td>
+          </tr>
+          <tr>
+            <td class="primary">Sales Return / Credit Note</td>
+            <td><span class="pill partial">thin</span><br><code>sales_returns</code></td>
+            <td class="field-list">qty<br>credit_note_ref &mdash; <em>free text</em></td>
+            <td>The credit note itself isn't a document, just a reference string typed by hand. No amount, no ledger tie, no numbering.</td>
+          </tr>
+          <tr>
+            <td class="primary">Purchase Return / Debit Note</td>
+            <td><span class="pill partial">thin</span><br><code>purchase_returns</code></td>
+            <td class="field-list">qty<br>debit_note_ref &mdash; <em>free text</em></td>
+            <td>Direct mirror of Sales Returns &mdash; same gap, same free-text reference.</td>
+          </tr>
+          <tr>
+            <td class="primary">Payroll / Salary Slip</td>
+            <td><span class="pill built">best-prepared</span><br><code>salary_slips</code></td>
+            <td class="field-list">gross_earnings, net_pay<br>pf_employee/employer<br>esi_employee/employer<br>pt_amount, tds_amount</td>
+            <td>Real computed figures already, and the schema comment on this table literally says <em>&ldquo;ACCOUNTING INTEGRATION POINT for a future sync to read.&rdquo;</em> Nearest thing in the app to accounting-grade today &mdash; missing only a <code>company</code> column and a journal-entry mapping.</td>
+          </tr>
+          <tr>
+            <td class="primary">Scope of Supply</td>
+            <td><span class="pill built">exists</span><br><code>scope_of_supply</code></td>
+            <td class="field-list">tax_pct (flat, default 18)</td>
+            <td>Reference document, not a billing instrument &mdash; not a real gap, just not usable as one either.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="numbers">
+    <div class="section-head"><span class="section-num">05</span><h2>Variable-input registry</h2></div>
+    <p class="lede">The numbers every document above multiplies against &mdash; and whether the app has anywhere for them to live and be updated when the government or market moves them.</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Input</th><th>Governs</th><th>Current state</th><th>Update path today</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="primary">PF / ESI rates &amp; ceilings</td>
+            <td>Payroll deductions</td>
+            <td><span class="pill built">has a table</span><br><code>statutory_rates</code></td>
+            <td>Settings &rarr; Payroll &rarr; Rates form. Single row, admin-editable.</td>
+          </tr>
+          <tr>
+            <td class="primary">Professional Tax slabs</td>
+            <td>Payroll deductions</td>
+            <td><span class="pill partial">Telangana only</span><br><code>professional_tax_slabs</code></td>
+            <td>Same Rates form. Add a state's slabs by hand before hiring there.</td>
+          </tr>
+          <tr>
+            <td class="primary">Income Tax slabs</td>
+            <td>Payroll TDS</td>
+            <td><span class="pill partial">new regime, FY2026&ndash;27 only</span><br><code>income_tax_slabs</code></td>
+            <td>Same Rates form, per financial year. Old-regime declarations (HRA, 80C) explicitly out of scope.</td>
+          </tr>
+          <tr>
+            <td class="primary">GST rate</td>
+            <td>Every sales &amp; purchase document</td>
+            <td><span class="pill missing">no table</span><br>hand-typed per document</td>
+            <td>None. Each document defaults its own flat % (PO defaults 18, Quotation defaults 0, Scope of Supply defaults 18) &mdash; no HSN&rarr;rate master, no effective-dating, no CGST/SGST split. The single largest gap on this page.</td>
+          </tr>
+          <tr>
+            <td class="primary">Vendor TDS (194C / 194J&hellip;)</td>
+            <td>Payments to suppliers</td>
+            <td><span class="pill missing">doesn't exist</span></td>
+            <td>None. Only employee TDS is modeled anywhere in the app.</td>
+          </tr>
+          <tr>
+            <td class="primary">Import duty / customs</td>
+            <td>Imported material</td>
+            <td><span class="pill missing">doesn't exist</span></td>
+            <td>N/A unless the company actually imports &mdash; confirm before scoping.</td>
+          </tr>
+          <tr>
+            <td class="primary">Forex rates</td>
+            <td>Export invoices, foreign vendors</td>
+            <td><span class="pill missing">doesn't exist</span></td>
+            <td>None. STERP #57 (Forex Gain/Loss) already flags this as missing.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="pattern">
+    <div class="section-head"><span class="section-num">06</span><h2>The pattern already here</h2></div>
+    <p class="lede">Payroll already solved "keep a government number current" once &mdash; and it's a real template, not a fresh design problem.</p>
+    <div class="precedent">
+      <div class="k">What already works</div>
+      <p><code>statutory_rates</code> / <code>professional_tax_slabs</code> / <code>income_tax_slabs</code> are each a small, seedable table with a known-good default, edited through one admin form (<code>components/PayrollWorkspace.jsx</code>'s Rates tab), versioned by financial year where the number genuinely changes yearly. A GST-rate master &mdash; HSN code, rate, effective-from date &mdash; is the same shape, not a new invention.</p>
+    </div>
+    <div class="gap">
+      <div class="k">What it doesn't solve</div>
+      <p>A table plus a form only answers <em>where the number lives</em>. It does not answer <em>who notices the government changed it</em>. Nothing in this app watches the GST portal, the income-tax department, or an RBI feed &mdash; that's a standing process (someone checks, quarterly or on notification) or a genuinely separate integration, not a side effect of building the table.</p>
+    </div>
+  </section>
+
+  <section id="coverage">
+    <div class="section-head"><span class="section-num">07</span><h2>Full Priority 5 coverage map</h2></div>
+    <p class="lede">STERP's own Priority 5 list runs 26 items (39&ndash;64) &mdash; invoicing through GST returns through depreciation. Sections 4&ndash;5 grouped by function instead of walking that list item by item; this traces every one of the 26 back, so nothing on the original list is unaccounted for by omission.</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>#</th><th>STERP item</th><th>Shanti Ops dependency</th><th>Where</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="primary">39</td><td>Sales Invoicing</td><td><span class="pill missing">gap</span></td><td>&sect;4 &mdash; document doesn't exist</td></tr>
+          <tr><td class="primary">40</td><td>Accounts Receivable</td><td><span class="pill partial">depends on §4</span></td><td>Derived from Sales Invoice + payments &mdash; no separate document of its own needed</td></tr>
+          <tr><td class="primary">41</td><td>Accounts Payable</td><td><span class="pill missing">gap</span></td><td>&sect;4 &mdash; Vendor Bill doesn't exist</td></tr>
+          <tr><td class="primary">42</td><td>General Ledger</td><td><span class="pill na">n/a</span></td><td>Pure ERPNext output, zero Shanti Ops dependency</td></tr>
+          <tr><td class="primary">43</td><td>Multi-Level Chart of Accounts</td><td><span class="pill na">n/a</span></td><td>Pure ERPNext config, zero Shanti Ops dependency</td></tr>
+          <tr><td class="primary">44</td><td>Cost Centres</td><td><span class="pill built">existing asset</span></td><td><strong>Missed above.</strong> <code>projects</code> / <code>work_orders</code> already are a real cost-centre axis &mdash; not a gap, a head start.</td></tr>
+          <tr><td class="primary">45</td><td>Budgeting</td><td><span class="pill built">existing asset</span></td><td><strong>Missed above.</strong> Work Order Costing (SYSTEM.md &sect;5l) already computes planned-vs-actual material &amp; labour &mdash; that <em>is</em> budget-vs-actual at the project level.</td></tr>
+          <tr><td class="primary">46</td><td>Bank Reconciliation</td><td><span class="pill na">n/a</span></td><td>Pure ERPNext, needs a bank statement feed, zero Shanti Ops dependency</td></tr>
+          <tr><td class="primary">47</td><td>Trial Balance</td><td><span class="pill na">n/a</span></td><td>Pure ERPNext output</td></tr>
+          <tr><td class="primary">48</td><td>Profit and Loss</td><td><span class="pill na">n/a</span></td><td>Pure ERPNext output (a project-level P&amp;L could reuse <code>getProjectCosting()</code>, but that's a nice-to-have, not a dependency)</td></tr>
+          <tr><td class="primary">49</td><td>Balance Sheet</td><td><span class="pill na">n/a</span></td><td>Pure ERPNext output</td></tr>
+          <tr><td class="primary">50</td><td>Cash Flow / Fund Flow</td><td><span class="pill partial">depends on §4</span></td><td>Needs Sales Invoice/AR timing to exist first</td></tr>
+          <tr><td class="primary">51</td><td>Credit Notes and Debit Notes</td><td><span class="pill partial">thin</span></td><td>&sect;4 &mdash; <code>credit_note_ref</code>/<code>debit_note_ref</code> are free text only</td></tr>
+          <tr><td class="primary">52</td><td>Sales Returns linked to accounting</td><td><span class="pill partial">thin</span></td><td>&sect;4</td></tr>
+          <tr><td class="primary">53</td><td>Purchase Returns linked to accounting</td><td><span class="pill partial">thin</span></td><td>&sect;4</td></tr>
+          <tr><td class="primary">54</td><td>Cheque Printing</td><td><span class="pill missing">gap</span></td><td><strong>Missed above entirely.</strong> Unlike GL/Balance Sheet this is arguably a Shanti Ops document (a payment voucher) &mdash; no bank-account master or voucher table exists anywhere.</td></tr>
+          <tr><td class="primary">55</td><td>Fixed Assets</td><td><span class="pill partial">adjacent only</span></td><td><strong>Missed above.</strong> <code>workstations</code>/<code>calibration_items</code> are physical-asset-adjacent; no financial fixed-asset register exists.</td></tr>
+          <tr><td class="primary">56</td><td>Depreciation &amp; journal generation</td><td><span class="pill na">n/a</span></td><td>Pure ERPNext output</td></tr>
+          <tr><td class="primary">57</td><td>Forex Gain/Loss</td><td><span class="pill missing">gap</span></td><td>&sect;5 &mdash; no forex-rate input anywhere</td></tr>
+          <tr><td class="primary">58</td><td>GSTR1</td><td><span class="pill partial">depends on §4 + §5</span></td><td>Generated from Sales Invoice line data at the correct GST rate &mdash; the actual payoff of fixing both</td></tr>
+          <tr><td class="primary">59</td><td>GSTR2</td><td><span class="pill partial">depends on §4 + §5</span></td><td>Same, from Vendor Bill line data</td></tr>
+          <tr><td class="primary">60</td><td>GSTR3 monthly return</td><td><span class="pill partial">depends on 58/59</span></td><td>Downstream of GSTR1/2 being correct first</td></tr>
+          <tr><td class="primary">61</td><td>GSTR7 / TDS return</td><td><span class="pill missing">gap</span></td><td>&sect;5 &mdash; vendor TDS has no rate or table anywhere</td></tr>
+          <tr><td class="primary">62</td><td>PF Registers</td><td><span class="pill partial">depends on §4</span></td><td>Generated from <code>salary_slips</code>, already the best-prepared table &mdash; needs a <code>company</code> column, not new data</td></tr>
+          <tr><td class="primary">63</td><td>ESI Registers</td><td><span class="pill partial">depends on §4</span></td><td>Same as PF Registers</td></tr>
+          <tr><td class="primary">64</td><td>Salary Auto-JV to Accounts</td><td><span class="pill built">ready</span></td><td>&sect;4 &mdash; <code>salary_slips</code> is explicitly commented as the integration point already</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="next">
+    <div class="section-head"><span class="section-num">08</span><h2>Where this leaves you</h2></div>
+    <p class="lede">Not a build plan &mdash; deliberately. Two things worth deciding before scoping the first line of code:</p>
+    <ul class="plain">
+      <li><strong>Document trail (§4):</strong> which of the missing entities &mdash; Sales Invoice, Vendor Bill, real Credit/Debit Notes &mdash; actually need to live inside Shanti Ops, versus being the ERPNext integration's job (the app already has one seam for this: <code>erp_snapshot</code>, built to receive numbers Shanti Ops "never computes itself.")</li>
+      <li><strong>Variable inputs (§5):</strong> whether a GST-rate master gets built the same way Payroll's rates were &mdash; a table plus a Settings form, someone still checking manually &mdash; or whether it's worth a real external rate feed once volume justifies it.</li>
+    </ul>
+  </section>
+
+  <div class="closing">
+    <p>Everything above is read directly off the current schema and code comments, not inferred &mdash; every "missing" and "flat-rate only" claim in this register can be re-checked against <code>lib/db.js</code> and the STERP.md Priority 5 list at any time.</p>
+    <div class="signoff">Compiled from lib/db.js, STERP.md, SYSTEM.md &mdash; 2026-08-20</div>
+  </div>
+
+</div>

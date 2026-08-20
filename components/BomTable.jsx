@@ -29,7 +29,7 @@ const FIELD_LABELS = {
   purchase_status: 'Status', pr_ref: 'PR No. & Date', po_ref: 'PO No. & Date',
   grn_ref: 'GRN No. & Date', grn_qty_text: 'GRN Qty', pending_qty_text: 'Pending Qty',
   bqtc_ref: 'BQ-TC', issued_ref: 'Issued', received_ref: 'Received',
-  production_done: 'Prod. Done', remarks: 'Remarks',
+  production_done: 'Prod. Done', remarks: 'Remarks', assembly_id: 'Assembly',
 };
 // Visible data columns, in spreadsheet order (section/group render as divider rows instead).
 const COLUMNS = ['moc', 'size_spec', 'make', 'qty_text', 'pr_ref', 'po_ref',
@@ -48,7 +48,7 @@ const COLUMN_WIDTHS = {
 // props). Needed by callers whose `bom` is client-fetched local state instead (ReleaseBomTab, same
 // as ProductionBomTab already is) — router.refresh() can't touch that state, so nothing but this
 // callback ever tells them to refetch.
-export default function BomTable({ projectId, bom, pendingIds = [], editableFields = [], department, canCancel = false, onSaved }) {
+export default function BomTable({ projectId, bom, pendingIds = [], editableFields = [], department, canCancel = false, onSaved, assemblies = [] }) {
   const router = useRouter();
   const [q, setQ] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -327,8 +327,20 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
               {dialogFields.map(f => (
                 <div key={f} className="flex flex-col gap-1">
                   <Label htmlFor={`bom-${f}`}>{FIELD_LABELS[f]}</Label>
-                  <Input id={`bom-${f}`} name={f} defaultValue={editing[f] || ''}
-                    required={f === 'material_description'} />
+                  {f === 'assembly_id' ? (
+                    // Plain native <select> (not the Radix Select used elsewhere) so the
+                    // uncontrolled FormData collection saveDialog already does for every other
+                    // field keeps working unchanged for this one too — a name+value native
+                    // control is all FormData needs.
+                    <select id="bom-assembly_id" name="assembly_id" defaultValue={editing.assembly_id || ''}
+                      className="h-9 rounded-md border bg-background px-3 text-sm">
+                      <option value="">— none —</option>
+                      {assemblies.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                    </select>
+                  ) : (
+                    <Input id={`bom-${f}`} name={f} defaultValue={editing[f] || ''}
+                      required={f === 'material_description'} />
+                  )}
                 </div>
               ))}
               <DialogFooter>

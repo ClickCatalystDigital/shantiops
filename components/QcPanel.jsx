@@ -41,10 +41,10 @@ function ResultPill({ value, onChange, disabled }) {
   );
 }
 
-function AddRecordDialog({ projectId, router, defaultTestType }) {
+function AddRecordDialog({ projectId, router, defaultTestType, linkField, linkOptions }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [form, setForm] = useState({ test_type: defaultTestType || '', reference_no: '', result: 'pending', inspector: '', tested_on: '', notes: '' });
+  const [form, setForm] = useState({ test_type: defaultTestType || '', reference_no: '', result: 'pending', inspector: '', tested_on: '', notes: '', [linkField || '_link']: '' });
 
   function set(field) { return e => setForm(f => ({ ...f, [field]: e.target.value })); }
 
@@ -52,9 +52,11 @@ function AddRecordDialog({ projectId, router, defaultTestType }) {
     if (!form.test_type.trim()) return showToast('Test type is required', 'error');
     setBusy(true);
     try {
-      await api('/api/qc-records', { method: 'POST', body: { project_id: projectId, ...form } });
+      const body = { project_id: projectId, ...form };
+      if (linkField && body[linkField]) body[linkField] = Number(body[linkField]);
+      await api('/api/qc-records', { method: 'POST', body });
       showToast('Record added');
-      setForm({ test_type: defaultTestType || '', reference_no: '', result: 'pending', inspector: '', tested_on: '', notes: '' });
+      setForm({ test_type: defaultTestType || '', reference_no: '', result: 'pending', inspector: '', tested_on: '', notes: '', [linkField || '_link']: '' });
       setOpen(false);
       router.refresh();
     } catch (err) { showToast(err.message, 'error'); }
@@ -104,6 +106,17 @@ function AddRecordDialog({ projectId, router, defaultTestType }) {
               <Input type="date" value={form.tested_on} onChange={set('tested_on')} />
             </div>
           </div>
+          {linkField && linkOptions && (
+            <div className="flex flex-col gap-1.5">
+              <Label>{linkField === 'work_order_id' ? 'Work Order' : linkField === 'assembly_id' ? 'Assembly' : 'Linked to'}</Label>
+              <Select value={form[linkField]} onValueChange={v => setForm(f => ({ ...f, [linkField]: v }))}>
+                <SelectTrigger className="w-full"><SelectValue placeholder="Select…" /></SelectTrigger>
+                <SelectContent>
+                  {linkOptions.map(o => <SelectItem key={o.id} value={String(o.id)}>{o.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div className="flex flex-col gap-1.5">
             <Label>Notes</Label>
             <Textarea rows={2} value={form.notes} onChange={set('notes')} />
@@ -119,14 +132,22 @@ function AddRecordDialog({ projectId, router, defaultTestType }) {
 
 export default function QcPanel({
   projectId, records = [], canEdit = false, title = 'QC Records', defaultTestType = null,
-  reworkMilestoneId = null,
+  reworkMilestoneId = null, linkField = null, linkOptions = null, showDispatchToggle = false,
 }) {
   const router = useRouter();
   const [reworking, setReworking] = useState(null);
+  const linkLabel = id => linkOptions?.find(o => String(o.id) === String(id))?.label;
 
   async function setResult(id, result) {
     try {
       await api(`/api/qc-records/${id}`, { method: 'PATCH', body: { result } });
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+  }
+
+  async function toggleDispatchEligible(id, value) {
+    try {
+      await api(`/api/qc-records/${id}`, { method: 'PATCH', body: { dispatch_eligible: value } });
       router.refresh();
     } catch (err) { showToast(err.message, 'error'); }
   }
@@ -159,7 +180,7 @@ export default function QcPanel({
     <Card>
       <CardHeader>
         <CardTitle>{title}</CardTitle>
-        {canEdit && <CardAction><AddRecordDialog projectId={projectId} router={router} defaultTestType={defaultTestType} /></CardAction>}
+        {canEdit && <CardAction><AddRecordDialog projectId={projectId} router={router} defaultTestType={defaultTestType} linkField={linkField} linkOptions={linkOptions} /></CardAction>}
       </CardHeader>
       <CardContent className="flex flex-col divide-y">
         {records.length === 0 && (
@@ -171,7 +192,17 @@ export default function QcPanel({
           <div key={r.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5 text-sm">
             <span className="font-medium">{r.test_type}</span>
             {r.reference_no && <span className="text-muted-foreground">{r.reference_no}</span>}
+            {linkField && r[linkField] && linkLabel(r[linkField]) && (
+              <span className="rounded-full bg-muted px-2 py-0.5 text-xs">{linkLabel(r[linkField])}</span>
+            )}
             <ResultPill value={r.result} disabled={!canEdit} onChange={v => setResult(r.id, v)} />
+            {showDispatchToggle && (
+              <button type="button" disabled={!canEdit}
+                onClick={() => canEdit && toggleDispatchEligible(r.id, !r.dispatch_eligible)}
+                className={`rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${r.dispatch_eligible ? 'bg-success/10 text-success ring-success/20' : 'bg-muted text-muted-foreground ring-border'}`}>
+                {r.dispatch_eligible ? 'Dispatch eligible' : 'Not dispatch eligible'}
+              </button>
+            )}
             {canEdit && reworkMilestoneId && r.result === 'fail' && (
               <Button size="sm" variant="outline" disabled={reworking === r.id} onClick={() => createRework(r)}>
                 {reworking === r.id ? 'Creating…' : 'Create rework card'}
