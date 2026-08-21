@@ -1,3 +1,5 @@
+//  components/PdfInlinePreview.jsx
+
 'use client';
 
 // V2-CHANGES.md Group 1 — a lighter sibling of PdfPreview.jsx: renders directly inline (no Dialog
@@ -48,12 +50,19 @@ export default function PdfInlinePreview({ file, url }) {
         canvas.height = viewport.height;
         canvas.style.width = '100%';
         canvas.style.height = 'auto';
+        // Re-check right before touching the DOM — enough async work (fetch/import/getPage) has
+        // happened since the top of this effect that CertForm's Sheet can easily have closed and
+        // detached this node by now (e.g. right after a successful PDF upload), which is what threw
+        // "removeChild: not a child of this node" when we mutated a container React had already
+        // torn down.
+        if (cancelled || !container.isConnected) return;
         container.innerHTML = '';
         container.appendChild(canvas);
         await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
         if (cancelled) return;
         setStatus('ready');
       } catch (e) {
+        if (e?.name === 'NotFoundError') return; // DOM detached mid-render — nothing left to show
         if (!cancelled) { setError(e.message || 'Could not render PDF'); setStatus('error'); }
       }
     })();

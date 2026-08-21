@@ -39,36 +39,81 @@ export default function PdfPreview({ open, onOpenChange, url, title, description
     // height so only one page is visible and scroll-snap lands on the next. Measured against the
     // scroller's ACTUAL size (via ResizeObserver) so it's correct after the open animation and on
     // mobile / rotation — measuring too early gave a stale width and overflowed the page sideways.
-    async function renderPages() {
+    // async function renderPages() {
+    //   const pdf = pdfRef.current;
+    //   const scroller = scrollRef.current;
+    //   const container = containerRef.current;
+    //   if (!pdf || !scroller || !container) return;
+    //   const my = ++seq;
+    //   const availW = Math.max(200, scroller.clientWidth - 32);
+    //   const availH = Math.max(200, scroller.clientHeight - 16);
+    //   const dpr = window.devicePixelRatio || 1;
+    //   container.innerHTML = '';
+    //   for (let i = 1; i <= pdf.numPages; i++) {
+    //     if (cancelled || my !== seq) return;   // a newer render superseded this one
+    //     const page = await pdf.getPage(i);
+    //     const base = page.getViewport({ scale: 1 });
+    //     const cssScale = Math.min(availW / base.width, availH / base.height);
+    //     const viewport = page.getViewport({ scale: cssScale * dpr });
+    //     const canvas = document.createElement('canvas');
+    //     canvas.width = viewport.width;
+    //     canvas.height = viewport.height;
+    //     canvas.style.width = `${base.width * cssScale}px`;
+    //     canvas.style.height = `${base.height * cssScale}px`;
+    //     canvas.className = 'rounded-md border shadow-sm bg-white';
+    //     const slide = document.createElement('div');
+    //     slide.className = 'flex shrink-0 items-center justify-center';
+    //     slide.style.height = `${availH}px`;
+    //     slide.style.scrollSnapAlign = 'center';
+    //     slide.appendChild(canvas);
+    //     if (my !== seq) return;
+    //     container.appendChild(slide);
+    //     await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+    //   }
+    // }
+
+        async function renderPages() {
       const pdf = pdfRef.current;
       const scroller = scrollRef.current;
       const container = containerRef.current;
       if (!pdf || !scroller || !container) return;
+      // Guard against a debounced resize firing after the dialog has started closing/unmounting —
+      // touching a detached node here is exactly what threw "removeChild: not a child of this
+      // node" when React unmounted the tree out from under an in-flight render (e.g. CertForm
+      // closing the Sheet right after a PDF upload while this loop was still running).
+      if (cancelled || !container.isConnected) return;
       const my = ++seq;
       const availW = Math.max(200, scroller.clientWidth - 32);
       const availH = Math.max(200, scroller.clientHeight - 16);
       const dpr = window.devicePixelRatio || 1;
-      container.innerHTML = '';
-      for (let i = 1; i <= pdf.numPages; i++) {
-        if (cancelled || my !== seq) return;   // a newer render superseded this one
-        const page = await pdf.getPage(i);
-        const base = page.getViewport({ scale: 1 });
-        const cssScale = Math.min(availW / base.width, availH / base.height);
-        const viewport = page.getViewport({ scale: cssScale * dpr });
-        const canvas = document.createElement('canvas');
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-        canvas.style.width = `${base.width * cssScale}px`;
-        canvas.style.height = `${base.height * cssScale}px`;
-        canvas.className = 'rounded-md border shadow-sm bg-white';
-        const slide = document.createElement('div');
-        slide.className = 'flex shrink-0 items-center justify-center';
-        slide.style.height = `${availH}px`;
-        slide.style.scrollSnapAlign = 'center';
-        slide.appendChild(canvas);
-        if (my !== seq) return;
-        container.appendChild(slide);
-        await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+      try {
+        container.innerHTML = '';
+        for (let i = 1; i <= pdf.numPages; i++) {
+          if (cancelled || my !== seq || !container.isConnected) return;   // superseded, or we're gone
+          const page = await pdf.getPage(i);
+          const base = page.getViewport({ scale: 1 });
+          const cssScale = Math.min(availW / base.width, availH / base.height);
+          const viewport = page.getViewport({ scale: cssScale * dpr });
+          const canvas = document.createElement('canvas');
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+          canvas.style.width = `${base.width * cssScale}px`;
+          canvas.style.height = `${base.height * cssScale}px`;
+          canvas.className = 'rounded-md border shadow-sm bg-white';
+          const slide = document.createElement('div');
+          slide.className = 'flex shrink-0 items-center justify-center';
+          slide.style.height = `${availH}px`;
+          slide.style.scrollSnapAlign = 'center';
+          slide.appendChild(canvas);
+          if (cancelled || my !== seq || !container.isConnected) return;
+          container.appendChild(slide);
+          await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+        }
+      } catch (err) {
+        // Belt-and-suspenders: swallow a DOM race that slips past the checks above (e.g. the
+        // container gets detached between the isConnected check and the mutation itself). Nothing
+        // to preview anymore once we're here, so there's nothing useful to surface to the user.
+        if (err?.name !== 'NotFoundError') throw err;
       }
     }
 
