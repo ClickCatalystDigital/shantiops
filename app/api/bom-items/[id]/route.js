@@ -109,6 +109,38 @@ export async function PATCH(req, { params }) {
         [item.project_id, item.po_ref || null, item.id, `Auto-suggested on receipt of ${item.material_description}`, 'system']);
     }
   }
+  // Materials-received activation signals. Same transition guard as the two blocks above. Both
+  // self-dedupe on a per-project key: QC hears once when the first item lands (incoming inspection
+  // can begin — it's per-item, so QC starts at first receipt, not last), and both QC + Production
+  // hear once when the project's BOM is fully received (cleared to build). ponytail: keyed on
+  // project only — a reopen→re-receive cycle won't re-fire; add a completion counter if that's ever
+  // needed.
+  if (item.purchase_status !== 'Received' && changed.purchase_status === 'Received') {
+    try {
+      const proj = await queryOne('SELECT project_no FROM projects WHERE id = ?', [item.project_id]);
+      const pno = proj?.project_no || '';
+      await notifyDepartment('QC', {
+        kind: 'qc_incoming', title: `Materials arriving — ${pno}`,
+        body: 'Incoming inspection can start as items are received.',
+        dedupe_key: `qc_incoming:${item.project_id}`,
+      });
+      // "closed" mirrors getBomRollupAll's definition exactly (Received/Cancelled/In-Stock) — a
+      // cancelled item isn't coming, so it counts as "as complete as it'll get."
+      const roll = await queryOne(
+        `SELECT COUNT(*) AS total,
+                SUM(CASE WHEN purchase_status IN ('Received','Cancelled','In-Stock') THEN 1 ELSE 0 END) AS closed
+           FROM bom_items WHERE project_id = ?`, [item.project_id]);
+      if (roll && roll.total > 0 && Number(roll.closed) === Number(roll.total)) {
+        for (const dept of ['Production', 'QC']) {
+          await notifyDepartment(dept, {
+            kind: 'materials_complete', title: `All materials received — ${pno}`,
+            body: 'BOM fully received — cleared to start production & inspection.',
+            dedupe_key: `materials_complete:${item.project_id}`,
+          });
+        }
+      }
+    } catch (err) { /* notification is best-effort */ }
+  }
 
   await audit('bom_item_edit', {
     actor: user.username,

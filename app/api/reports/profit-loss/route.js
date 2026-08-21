@@ -7,6 +7,13 @@ import { getLedgerLines } from '@/lib/data';
 import { profitAndLoss } from '@/lib/ledger.mjs';
 import { COMPANY_NAMES } from '@/lib/qc-doc-pdf.js';
 
+// Exported so the Report Engine's PDF export (lib/reports/catalog.js) computes the exact same
+// result this JSON route returns — ground rule: one computed result, three renderers.
+export async function computeProfitLoss(company, { from, to } = {}) {
+  const rows = await getLedgerLines(company, { from, to });
+  return profitAndLoss(rows);
+}
+
 export async function GET(req) {
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Accounts');
@@ -15,6 +22,5 @@ export async function GET(req) {
   const company = COMPANY_NAMES.includes(searchParams.get('company')) ? searchParams.get('company') : COMPANY_NAMES[0];
   const from = searchParams.get('from') || undefined;
   const to = searchParams.get('to') || undefined;
-  const rows = await getLedgerLines(company, { from, to });
-  return NextResponse.json(profitAndLoss(rows));
+  return NextResponse.json(await computeProfitLoss(company, { from, to }));
 }

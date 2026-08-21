@@ -29,7 +29,7 @@ import CreateRfqDialog from './CreateRfqDialog';
 import { PURCHASE_STATUSES as BOM_STATUSES, CLOSED_STATUSES, STATUS_TONE, DEFAULT_PURCHASE_STATUS } from '@/lib/bom-fields.mjs';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 import SupplierAnalysis from '@/components/SupplierAnalysis';
-import { SearchIcon, GitCompareIcon, FileTextIcon, ListChecksIcon, Building2Icon, ShoppingCartIcon, BarChart3Icon, LayoutDashboardIcon, Undo2Icon, PlusIcon, ReceiptIcon, TrashIcon } from 'lucide-react';
+import { SearchIcon, GitCompareIcon, FileTextIcon, ListChecksIcon, Building2Icon, ShoppingCartIcon, BarChart3Icon, LayoutDashboardIcon, Undo2Icon, PlusIcon, ReceiptIcon, TrashIcon, DownloadIcon } from 'lucide-react';
 
 // Enquiry/Selection are for items still working toward a PO — once one's issued (Ordered, Phase
 // 5.1 — was Transit pre-5.1) or closed out, it's Status's job to show it, not theirs.
@@ -746,7 +746,10 @@ function VendorBillsTab({ vendorBills, debitNotes, router }) {
                         <SelectContent>{BILL_STATUSES.map(s => <SelectItem key={s} value={s} className="capitalize">{s}</SelectItem>)}</SelectContent>
                       </Select>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="flex gap-2">
+                      <Button asChild size="sm" variant="outline">
+                        <a href={`/api/vendor-bills/${vb.id}/pdf`} target="_blank" rel="noreferrer"><DownloadIcon data-icon="inline-start" />PDF</a>
+                      </Button>
                       <Button size="sm" variant="outline" onClick={() => setDebitNoteFor(vb)}>Debit Note</Button>
                     </TableCell>
                   </TableRow>

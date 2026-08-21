@@ -1,8 +1,9 @@
 import Link from 'next/link';
-import { getProjectsWithStatus, getCustomers } from '@/lib/data';
+import { getProjectsWithStatus, getCustomers, getSaleOrders } from '@/lib/data';
 import { getFreshSessionUser, isDesignHead } from '@/lib/auth';
 import StatusBadge from '@/components/StatusBadge';
 import NewProjectForm from '@/components/NewProjectForm';
+import ConvertSaleOrderButton from '@/components/ConvertSaleOrderButton';
 import PageHeader from '@/components/PageHeader';
 import { DepartmentPills, DepartmentProgress } from '@/components/DepartmentStatus';
 import { Card, CardContent } from '@/components/ui/card';
@@ -13,13 +14,15 @@ export const dynamic = 'force-dynamic';
 export default async function Projects() {
   const user = await getFreshSessionUser();
   const canCreate = isDesignHead(user);
-  const [projects, customers] = await Promise.all([
-    getProjectsWithStatus(), canCreate ? getCustomers() : [],
+  const [projects, customers, saleOrders] = await Promise.all([
+    getProjectsWithStatus(), canCreate ? getCustomers() : [], canCreate ? getSaleOrders() : [],
   ]);
+  const openSaleOrders = saleOrders.filter(so => !so.project_id && so.item_count > 0);
 
   return (
     <main className="container flex flex-col gap-6 py-8">
       <PageHeader title="Projects" description="Every customer order, design → commissioning">
+        {canCreate && <ConvertSaleOrderButton saleOrders={openSaleOrders} />}
         {canCreate && <NewProjectForm customers={customers} />}
       </PageHeader>
 

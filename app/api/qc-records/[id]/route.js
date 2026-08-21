@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
+import { notifyDepartment } from '@/lib/notify';
 import { audit } from '@/lib/usb';
 import { syncHydroTestMilestone } from '@/lib/milestone-auto';
 
@@ -52,6 +53,23 @@ export async function PATCH(req, { params }) {
   const result = changed.result ?? record.result;
   if (/hydro/i.test(testType) && result === 'pass') {
     await syncHydroTestMilestone(record.project_id, user.username);
+  }
+  // QC failure signal. Only fires on the pending/pass -> fail transition (dedupe_key one-shot per
+  // record; ponytail: a fail->retest->fail cycle won't re-fire — add a counter to the key if that's
+  // ever needed). A failed *incoming* inspection (bom_item_id set) is bad material for Procurement
+  // to replace; any other failure is a build defect for Production to rework.
+  if (record.result !== 'fail' && result === 'fail') {
+    try {
+      const proj = await queryOne('SELECT project_no FROM projects WHERE id = ?', [record.project_id]);
+      const pno = proj?.project_no || '';
+      const dept = record.bom_item_id ? 'Procurement' : 'Production';
+      await notifyDepartment(dept, {
+        kind: 'qc_fail', title: `QC FAILED: ${testType} — ${pno}`,
+        body: record.bom_item_id ? 'Incoming inspection failed — material needs replacement.'
+                                 : 'Inspection failed — rework required.',
+        dedupe_key: `qc_fail:${record.id}`,
+      });
+    } catch (err) { /* notification is best-effort */ }
   }
 
   await audit('qc_record_edit', {

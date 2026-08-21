@@ -5,6 +5,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { getFreshSessionUser, isInternal, needsDeviceEnrollment, isDemoUser, hasSafePass } from '@/lib/auth';
 import { getMyMachine } from '@/lib/data';
+import { REPORT_DEPARTMENTS } from '@/lib/reports/catalog';
 
 export const metadata = {
   title: `${process.env.BRAND_PREFIX || 'SB'} Ops — Shanti Boilers`,
@@ -28,7 +29,7 @@ export default async function RootLayout({ children }) {
       <head><script dangerouslySetInnerHTML={{ __html: themeInit }} /></head>
       <body className="min-h-screen bg-background text-foreground">
         <TooltipProvider delayDuration={200}>
-          {isInternal(user) && !needsDeviceSetup && <Nav user={user} />}
+          {isInternal(user) && !needsDeviceSetup && <Nav user={user} reportDepartments={REPORT_DEPARTMENTS} />}
           {/* Extra bottom padding on mobile so content clears the fixed bottom tab bar (internal only). */}
           <div className={isInternal(user) ? 'pb-20 md:pb-0' : ''}>
             {needsDeviceSetup ? <DeviceSetupGate machine={machine} /> : children}

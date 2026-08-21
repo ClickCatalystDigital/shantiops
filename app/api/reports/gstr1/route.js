@@ -9,13 +9,20 @@ import { gstr1Summary } from '@/lib/gst-return.mjs';
 import { COMPANY_NAMES } from '@/lib/qc-doc-pdf.js';
 import { todayISO } from '@/lib/date';
 
+// Exported so the Report Engine's PDF export (lib/reports/catalog.js) computes the exact same
+// result this JSON route returns — ground rule: one computed result, three renderers.
+export async function computeGstr1(company, { period } = {}) {
+  const p = period || todayISO().slice(0, 7);
+  const rows = await getGstr1Lines(company, p);
+  return { period: p, ...gstr1Summary(rows) };
+}
+
 export async function GET(req) {
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Accounts');
   if (denied) return denied;
   const { searchParams } = new URL(req.url);
   const company = COMPANY_NAMES.includes(searchParams.get('company')) ? searchParams.get('company') : COMPANY_NAMES[0];
-  const period = searchParams.get('period') || todayISO().slice(0, 7);
-  const rows = await getGstr1Lines(company, period);
-  return NextResponse.json({ period, ...gstr1Summary(rows) });
+  const period = searchParams.get('period') || undefined;
+  return NextResponse.json(await computeGstr1(company, { period }));
 }

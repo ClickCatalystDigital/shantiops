@@ -10,24 +10,31 @@ import { gstr1Summary, itcReconciliation, gstr3bSummary } from '@/lib/gst-return
 import { COMPANY_NAMES } from '@/lib/qc-doc-pdf.js';
 import { todayISO } from '@/lib/date';
 
+// Exported so the Report Engine's PDF export (lib/reports/catalog.js) computes the exact same
+// result this JSON route returns — ground rule: one computed result, three renderers.
+export async function computeGstr3b(company, { period } = {}) {
+  const p = period || todayISO().slice(0, 7);
+  const [gstr1Lines, gstr2bLines, vendorBills] = await Promise.all([
+    getGstr1Lines(company, p),
+    getGstr2bLines(company, p),
+    getVendorBillsForPeriod(company, p),
+  ]);
+  const outward = gstr1Summary(gstr1Lines);
+  const itc = itcReconciliation({ gstr2bLines, vendorBills });
+  return {
+    period: p,
+    outwardTax: outward.totalTax,
+    eligibleItc: itc.eligibleItc,
+    ...gstr3bSummary({ outwardTax: outward.totalTax, eligibleItc: itc.eligibleItc }),
+  };
+}
+
 export async function GET(req) {
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Accounts');
   if (denied) return denied;
   const { searchParams } = new URL(req.url);
   const company = COMPANY_NAMES.includes(searchParams.get('company')) ? searchParams.get('company') : COMPANY_NAMES[0];
-  const period = searchParams.get('period') || todayISO().slice(0, 7);
-  const [gstr1Lines, gstr2bLines, vendorBills] = await Promise.all([
-    getGstr1Lines(company, period),
-    getGstr2bLines(company, period),
-    getVendorBillsForPeriod(company, period),
-  ]);
-  const outward = gstr1Summary(gstr1Lines);
-  const itc = itcReconciliation({ gstr2bLines, vendorBills });
-  return NextResponse.json({
-    period,
-    outwardTax: outward.totalTax,
-    eligibleItc: itc.eligibleItc,
-    ...gstr3bSummary({ outwardTax: outward.totalTax, eligibleItc: itc.eligibleItc }),
-  });
+  const period = searchParams.get('period') || undefined;
+  return NextResponse.json(await computeGstr3b(company, { period }));
 }

@@ -493,12 +493,22 @@ milestone reopen — there's nothing to reopen.
   earlier rounds). Nothing reads or writes it anymore; a `ponytail:` comment in `lib/db.js` marks it
   safe to `DROP TABLE` once nobody needs that history to make sense of old `usb_audit`
   `ticket_status_change` entries.
+- **BOM-received / QC-fail notification triggers — built (2026-08-21).** No longer deferred.
+  `app/api/bom-items/[id]/route.js`: on the transition of any BOM line into `Received`, QC is
+  notified once per project on first receipt ("materials arriving, incoming inspection can start")
+  and Production+QC are both notified once when the project's BOM is fully
+  `Received`/`Cancelled`/`In-Stock` ("cleared to start production & inspection") — same
+  transition-guard idiom as the pre-existing Stores `bom_received` notification right above it in
+  the same route. `app/api/qc-records/[id]/route.js`: a record's `result` flipping to `fail`
+  notifies Procurement (if `bom_item_id` is set — a rejected incoming material, replace it) or
+  Production (any other failure — rework), one-shot per record via the usual `dedupe_key`. Both
+  live-verified end to end on a real project (SB-1023 repositioned as the showcase — see the
+  10-project demo lineup note in `4.5-DATA-INVENTORY.md`'s 2026-08-21 entry).
 - **Deliberately deferred, not built yet:** notify-the-raiser-on-resolution and overdue-task
   notifications (next, see §8); a mobile bottom-bar fix for heads with several department tabs;
-  BOM-received / QC-fail as new notification triggers (blocked on BOM/QC refinement); **Workflow
-  Stages** — a reusable, department-defined checklist layer *under* a milestone (Open → Current →
-  Closed swimlanes, auto-completing the milestone when all stages close) — discussed and scoped as a
-  distinct follow-on, not started; see the plan notes from this session if picking it up.
+  **Workflow Stages** — a reusable, department-defined checklist layer *under* a milestone (Open →
+  Current → Closed swimlanes, auto-completing the milestone when all stages close) — discussed and
+  scoped as a distinct follow-on, not started; see the plan notes from this session if picking it up.
 
 ## 3c. Workflow Stages — a reusable checklist layer under a milestone
 
@@ -1070,9 +1080,17 @@ and "Next" below.
   `WorkspaceSidebar`: **Test Certificates** (`TcBank.jsx`) and **Documents**
   (`StatutoryDocsPanel.jsx`, cross-project here). Header has two **searchable** selectors
   (`components/SearchableSelect.jsx`): **Model** (left) narrows the **Project** list; picking a
-  project auto-selects its model; neither set → everything. Projects sorted newest-first. Certs are
+  project auto-selects its model; neither set → every QC-relevant project (see below), not literally
+  every active project. Projects sorted newest-first. Certs are
   cross-project with project chips; adding a cert is always available (project(s) optional, multi-
   select). Creating a **document still requires a project** (a folder is 1:1 with a boiler/project).
+- **QC project filter (2026-08-21).** The `/qc` project picker used to list every active project —
+  including ones Engineering hasn't even imported a BOM for yet, which QC has no real business
+  with. `app/qc/page.js` now scopes it to `getReceivedProjectIds()` (`lib/data.js` — any project
+  with ≥1 `bom_items` row at `Received`/`In-Stock`, the point Stores starts handing QC material to
+  inspect), unioned with any project already in the cert/doc bank so nothing already worked-on ever
+  drops out of the list. Live-verified: the picker narrowed from 12 active projects to the 5 that
+  actually have received material.
 - **Project → QC tab** (`components/DepartmentPanel.jsx`, `department === 'QC'`) shows `QcPanel`
   (§5b, the pass/fail test log — a different job) **+** `components/QcProjectSummary.jsx`: a read-only
   roll-up (certs uploaded / with PDF, docs finalized / total) with **Manage** buttons that deep-link
@@ -1563,6 +1581,31 @@ real, scoped follow-ups, not oversights being hidden:
 
 (Purchase Returns — originally flagged alongside these — is no longer a gap; see §5o, built
 independently as a Procurement-side feature.)
+
+### 2026-08-21 — SO→Project conversion: reachability fix for Design head
+
+The "Convert to Project" button (above, STORES-SALES-CHANGES.md §2b/§4) lived only on `/sales`,
+which is gated on `canAccessDepartment(user, 'Sales'/'Marketing')`. The button's own client gate and
+the `POST /api/projects` server gate were both `isDesignHead` (PM or Design head) — but a
+**Design-only** head, the common case, has neither Sales nor Marketing access and was silently
+redirected off `/sales` before ever seeing the button. Confirmed live: `design_head` (Design-only in
+the demo access matrix) hit `/sales` and was bounced to their home page.
+
+Fixed by adding a second entry point where a Design head actually lands: **`ConvertSaleOrderButton.jsx`**,
+next to "+ New Project" on `/projects` (`app/projects/page.js`). Same `POST /api/projects` +
+`sale_order_id` call as before — not a new flow, a second door to the existing one. The picker only
+lists Sale Orders with `item_count > 0` (a new additive column on `getSaleOrders()`, `lib/data.js`)
+— the real "ready for a Project" signal, since only a Quotation→convert SO ever gets real line
+items; the quick-add "New Sale Order" dialog never did. No new Sales-side button/status was added
+for this — checked first and the Quotation-convert flow already notifies Design+PMs at the right
+moment (see the "SO converted to Project" notification above).
+
+The old Sales-side `ConvertToProjectDialog` (`SalesWorkspace.jsx`) was then **removed** as
+redundant — `canCreateProject` prop plumbing deleted from `SalesWorkspace.jsx`/`app/sales/page.js`
+too. Live-verified both ways: `design_head` converts a real Sale Order to a Project entirely from
+`/projects` (produced project **SB-1039**, Scope of Supply auto-populated, correct
+`sos_created`/`project_created` notifications fired); `admin`'s `/sales` Sale Orders tab now shows
+only Costing + Request-from-Stores per row, no Convert button, nothing else broken.
 
 ## 5f. Calc Sheets — engineering calculation engine
 
@@ -3243,10 +3286,10 @@ authoring, supplier analytics). Installation and Design still just get their mil
 has its own test-record module (§5b); Procurement/Stores/Production have the Master BOM.
 
 **Cross-department signals (§3b), next up:** notify-the-original-raiser when their raised task is
-marked done, and overdue-task notifications — both named next, no new schema needed. After that,
-distinct and later: BOM-received / QC-fail as new notification triggers, once BOM and QC get
-refined. The old re-notify-on-redo-and-reclose limitation is **fixed** (§3b) — not listed here
-anymore. **Workflow Stages is built** (§3c) — no longer listed here.
+marked done, and overdue-task notifications — both named next, no new schema needed. The old
+re-notify-on-redo-and-reclose limitation is **fixed** (§3b) — not listed here anymore. **Workflow
+Stages is built** (§3c) — no longer listed here. **BOM-received / QC-fail notification triggers are
+built** (§3b, 2026-08-21) — no longer listed here.
 
 **Also deferred:** a PM-oversight cross-department view for the Tasks calendar (§3a — PMs currently
 have no Tasks tab at all, same as before); the multi-department "combined heads" dashboard for

@@ -18,7 +18,7 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectGroup, SelectItem,
 } from '@/components/ui/select';
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table';
-import { PlusIcon, TrashIcon, IndianRupeeIcon } from 'lucide-react';
+import { PlusIcon, TrashIcon, IndianRupeeIcon, DownloadIcon } from 'lucide-react';
 
 const STATUS_VARIANT = {
   draft: 'outline', released: 'secondary', in_progress: 'default', completed: 'default', cancelled: 'destructive',
@@ -464,6 +464,13 @@ function WorkOrderDetail({ id, projects, operations, workstations, onClose, onCh
               <div className="flex items-center justify-between">
                 <p className="text-sm font-medium">Costing</p>
                 {!costing && <Button size="sm" variant="outline" onClick={loadCosting}><IndianRupeeIcon />Load</Button>}
+                {costing && (
+                  <Button asChild size="sm" variant="outline">
+                    <a href={`/api/work-orders/${id}/costing-pdf`} target="_blank" rel="noreferrer">
+                      <DownloadIcon data-icon="inline-start" />PDF
+                    </a>
+                  </Button>
+                )}
               </div>
               {costing && (
                 <div className="flex flex-col gap-1 text-sm">

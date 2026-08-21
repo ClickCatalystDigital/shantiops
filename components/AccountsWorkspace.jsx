@@ -13,8 +13,9 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { LandmarkIcon, Building2Icon, PlusIcon, PercentIcon, ReceiptIcon, BookIcon, FileTextIcon, CheckIcon, XIcon } from 'lucide-react';
 import { api, showToast } from '@/lib/client';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
-
-function fmt(n) { return (n ?? 0).toLocaleString('en-IN'); }
+import TrialBalanceCard, { AccountRow, fmt } from '@/components/reports/TrialBalanceCard';
+import ProfitLossCard from '@/components/reports/ProfitLossCard';
+import BalanceSheetCard from '@/components/reports/BalanceSheetCard';
 
 const FIELDS = [
   ['gstin', 'GSTIN'], ['pan', 'PAN'], ['state', 'State'], ['state_code', 'State code'],
@@ -168,16 +169,6 @@ function RatesTab({ gstRates, tdsRates, router }) {
   );
 }
 
-function AccountRow({ a }) {
-  return (
-    <div className="flex justify-between py-1.5 text-sm">
-      <span className="tnum text-muted-foreground">{a.account_code ?? a.code}</span>
-      <span className="flex-1 px-2">{a.account_name ?? a.name}</span>
-      <span className="tnum font-medium">{fmt(a.balance)}</span>
-    </div>
-  );
-}
-
 function ChartOfAccountsCard({ company }) {
   const [accounts, setAccounts] = useState([]);
   const [code, setCode] = useState('');
@@ -222,84 +213,6 @@ function ChartOfAccountsCard({ company }) {
             </div>
           ))}
           {!accounts.length && <p className="py-2 text-sm text-muted-foreground">No accounts.</p>}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function TrialBalanceCard({ company }) {
-  const [data, setData] = useState(null);
-  useEffect(() => {
-    api(`/api/reports/trial-balance?company=${encodeURIComponent(company)}`).then(setData).catch(err => showToast(err.message, 'error'));
-  }, [company]);
-  if (!data) return null;
-  return (
-    <Card>
-      <CardHeader><CardTitle>Trial Balance</CardTitle></CardHeader>
-      <CardContent className="flex flex-col gap-1">
-        {data.accounts.map(a => <AccountRow key={a.account_code} a={a} />)}
-        <div className="flex justify-between border-t pt-2 text-sm font-medium">
-          <span>Total</span>
-          <span className="tnum">Dr {fmt(data.totalDebit)} / Cr {fmt(data.totalCredit)}</span>
-        </div>
-        {!data.accounts.length && <p className="py-2 text-sm text-muted-foreground">No postings yet.</p>}
-      </CardContent>
-    </Card>
-  );
-}
-
-function ProfitLossCard({ company }) {
-  const [data, setData] = useState(null);
-  useEffect(() => {
-    api(`/api/reports/profit-loss?company=${encodeURIComponent(company)}`).then(setData).catch(err => showToast(err.message, 'error'));
-  }, [company]);
-  if (!data) return null;
-  return (
-    <Card>
-      <CardHeader><CardTitle>Profit &amp; Loss</CardTitle></CardHeader>
-      <CardContent className="flex flex-col gap-3">
-        <div>
-          <p className="mb-1 text-xs font-medium text-muted-foreground">Income</p>
-          {data.income.map(a => <AccountRow key={a.account_code} a={a} />)}
-        </div>
-        <div>
-          <p className="mb-1 text-xs font-medium text-muted-foreground">Expense</p>
-          {data.expense.map(a => <AccountRow key={a.account_code} a={a} />)}
-        </div>
-        <div className="flex justify-between border-t pt-2 text-sm font-medium">
-          <span>Net Profit</span>
-          <span className="tnum">{fmt(data.netProfit)}</span>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function BalanceSheetCard({ company }) {
-  const [data, setData] = useState(null);
-  useEffect(() => {
-    api(`/api/reports/balance-sheet?company=${encodeURIComponent(company)}`).then(setData).catch(err => showToast(err.message, 'error'));
-  }, [company]);
-  if (!data) return null;
-  return (
-    <Card>
-      <CardHeader><CardTitle>Balance Sheet</CardTitle></CardHeader>
-      <CardContent className="flex flex-col gap-3">
-        <div>
-          <p className="mb-1 text-xs font-medium text-muted-foreground">Assets</p>
-          {data.assets.map(a => <AccountRow key={a.account_code} a={a} />)}
-          <div className="flex justify-between pt-1 text-sm font-medium"><span>Total Assets</span><span className="tnum">{fmt(data.totalAssets)}</span></div>
-        </div>
-        <div>
-          <p className="mb-1 text-xs font-medium text-muted-foreground">Liabilities</p>
-          {data.liabilities.map(a => <AccountRow key={a.account_code} a={a} />)}
-          <div className="flex justify-between pt-1 text-sm font-medium"><span>Total Liabilities</span><span className="tnum">{fmt(data.totalLiabilities)}</span></div>
-        </div>
-        <div>
-          <p className="mb-1 text-xs font-medium text-muted-foreground">Equity (incl. retained earnings)</p>
-          {data.equity.map(a => <AccountRow key={a.account_code} a={a} />)}
-          <div className="flex justify-between pt-1 text-sm font-medium"><span>Total Equity</span><span className="tnum">{fmt(data.totalEquity)}</span></div>
         </div>
       </CardContent>
     </Card>

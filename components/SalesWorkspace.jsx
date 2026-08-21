@@ -24,7 +24,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/com
 import {
   PlusIcon, TrashIcon, UserPlusIcon, UsersIcon, FileTextIcon, ShoppingCartIcon,
   MegaphoneIcon, CheckSquareIcon, ContactIcon, MessageCircleIcon, MailIcon, TagIcon,
-  InboxIcon, UndoIcon, IndianRupeeIcon, ReceiptIcon,
+  InboxIcon, UndoIcon, IndianRupeeIcon, ReceiptIcon, DownloadIcon,
 } from 'lucide-react';
 import { api, showToast } from '@/lib/client';
 import { formatMoney } from '@/lib/format';
@@ -798,7 +798,10 @@ function InvoicesTab({ invoices, creditNotes, router }) {
                         <SelectContent>{INVOICE_STATUSES.map(s => <SelectItem key={s} value={s} className="capitalize">{s}</SelectItem>)}</SelectContent>
                       </Select>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="flex gap-2">
+                      <Button asChild size="sm" variant="outline">
+                        <a href={`/api/sales-invoices/${inv.id}/pdf`} target="_blank" rel="noreferrer"><DownloadIcon data-icon="inline-start" />PDF</a>
+                      </Button>
                       <Button size="sm" variant="outline" onClick={() => setCreditNoteFor(inv)}>Credit Note</Button>
                     </TableCell>
                   </TableRow>
@@ -1059,39 +1062,6 @@ function SoCompanyCell({ so, router }) {
   );
 }
 
-// STORES-SALES-CHANGES.md §2b/§4 — Sales' own "Convert to Project" instead of an out-of-band ask
-// to a PM. Server-gated to isDesignHead (PM or a Design head) — canCreateProject just hides the
-// button for anyone else, same "hide, don't rely on hiding" precedent as the rest of the app.
-function ConvertToProjectDialog({ so, onClose, router }) {
-  const [description, setDescription] = useState('');
-  const [orderDate, setOrderDate] = useState('');
-  const [saving, setSaving] = useState(false);
-  async function save() {
-    setSaving(true);
-    try {
-      const { id } = await api('/api/projects', {
-        method: 'POST',
-        body: { customer_name: so.customer_name || '', description: description.trim() || null, order_date: orderDate || null, sale_order_id: so.id },
-      });
-      showToast('Project created');
-      router.push(`/projects/${id}`);
-    } catch (err) { showToast(err.message, 'error'); setSaving(false); }
-  }
-  return (
-    <Dialog open onOpenChange={o => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>Convert {so.so_no} to a Project</DialogTitle></DialogHeader>
-        <div className="flex flex-col gap-3">
-          <div className="grid gap-1.5"><Label>Customer</Label><Input value={so.customer_name || ''} disabled /></div>
-          <div className="grid gap-1.5"><Label>Description</Label><Input value={description} onChange={e => setDescription(e.target.value)} placeholder="3 TPH Solid Fuel Boiler" /></div>
-          <div className="grid gap-1.5"><Label>Order Date</Label><Input type="date" value={orderDate} onChange={e => setOrderDate(e.target.value)} /></div>
-        </div>
-        <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? 'Creating…' : 'Create Project'}</Button></DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 // STORES-SALES-CHANGES.md §2b/§4 — the SAS "push to Stores" Sales was missing: same source='sas'
 // PR line Stores already raises against a Sale Order (app/api/purchase-requisitions/route.js),
 // just initiated from Sales' own side instead.
@@ -1128,8 +1098,8 @@ function RequestFromStoresDialog({ so, onClose, router }) {
 
 // STERP "Sales Costing" (SYSTEM.md §5e) — post-sale only, real numbers: actual issued-PO spend +
 // actual labor cost against the Project vs. the Sale Order's quoted total. Only ever shown once a
-// Project exists (canCreateProject's own !so.project_id gate proves the button below is correct) —
-// there's no honest cost data before that point, see lib/data.js's getProjectCosting comment.
+// Project exists (the button below is gated on so.project_id) — there's no honest cost data before
+// that point, see lib/data.js's getProjectCosting comment.
 function CostingSheet({ so, onClose }) {
   const [costing, setCosting] = useState(null);
   useEffect(() => { api(`/api/projects/${so.project_id}/costing`).then(setCosting).catch(() => {}); }, [so.project_id]);
@@ -1152,15 +1122,26 @@ function CostingSheet({ so, onClose }) {
             </>
           )}
         </div>
-        <SheetFooter><Button variant="outline" onClick={onClose}>Close</Button></SheetFooter>
+        <SheetFooter className="flex-row justify-end gap-2">
+          <Button asChild variant="outline">
+            <a href={`/api/projects/${so.project_id}/costing-pdf`} target="_blank" rel="noreferrer">
+              <DownloadIcon data-icon="inline-start" />PDF
+            </a>
+          </Button>
+          <Button variant="outline" onClick={onClose}>Close</Button>
+        </SheetFooter>
       </SheetContent>
     </Sheet>
   );
 }
 
-function SaleOrdersTab({ saleOrders, router, canCreateProject = false }) {
+// Convert-to-Project used to live here (STORES-SALES-CHANGES.md §2b/§4) but was only reachable by
+// a Design head who also held Sales/Marketing access — /sales itself is gated on those departments,
+// so a Design-only head (the common case) could never reach it despite the button/API both being
+// gated on isDesignHead. Moved to Design's own Projects tab (ConvertSaleOrderButton.jsx), the
+// surface every Design head can actually reach; not duplicated here.
+function SaleOrdersTab({ saleOrders, router }) {
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [convertSo, setConvertSo] = useState(null);
   const [sasSo, setSasSo] = useState(null);
   const [costingSo, setCostingSo] = useState(null);
   return (
@@ -1185,7 +1166,6 @@ function SaleOrdersTab({ saleOrders, router, canCreateProject = false }) {
                   <TableCell className="flex justify-end gap-2">
                     {so.project_id && <Button size="sm" variant="outline" onClick={() => setCostingSo(so)}><IndianRupeeIcon />Costing</Button>}
                     <Button size="sm" variant="outline" onClick={() => setSasSo(so)}>Request from Stores</Button>
-                    {canCreateProject && !so.project_id && <Button size="sm" variant="outline" onClick={() => setConvertSo(so)}>Convert to Project</Button>}
                   </TableCell>
                 </TableRow>
               ))}
@@ -1194,7 +1174,6 @@ function SaleOrdersTab({ saleOrders, router, canCreateProject = false }) {
         )}
       </CardContent>
       {dialogOpen && <AddSaleOrderDialog router={router} onClose={() => setDialogOpen(false)} />}
-      {convertSo && <ConvertToProjectDialog so={convertSo} router={router} onClose={() => setConvertSo(null)} />}
       {sasSo && <RequestFromStoresDialog so={sasSo} router={router} onClose={() => setSasSo(null)} />}
       {costingSo && <CostingSheet so={costingSo} onClose={() => setCostingSo(null)} />}
     </Card>
@@ -1497,7 +1476,7 @@ const PANELS = [
   { key: 'team', label: 'Team', icon: ContactIcon, description: 'Auto-assign new leads round-robin', salesOnly: false },
 ];
 
-export default function SalesWorkspace({ saleOrders, leads, customers, quotations, campaigns, priceLists = [], returns = [], inventoryItems = [], invoices = [], creditNotes = [], departments = ['Sales', 'Marketing'], users = [], savedViews = [], canCreateProject = false }) {
+export default function SalesWorkspace({ saleOrders, leads, customers, quotations, campaigns, priceLists = [], returns = [], inventoryItems = [], invoices = [], creditNotes = [], departments = ['Sales', 'Marketing'], users = [], savedViews = [] }) {
   const router = useRouter();
   const [panel, setPanel] = useState('leads');
   // Customers/Quotations/Sale Orders are the commercial fulfilment chain — Sales-owned. Marketing
@@ -1558,7 +1537,7 @@ export default function SalesWorkspace({ saleOrders, leads, customers, quotation
           {activePanel.key === 'customers' && <CustomersTab customers={customers} router={router} />}
           {activePanel.key === 'quotations' && <QuotationsTab quotations={quotations} customers={customers} router={router} />}
           {activePanel.key === 'price_lists' && <PriceListsTab priceLists={priceLists} customers={customers} router={router} />}
-          {activePanel.key === 'sale_orders' && <SaleOrdersTab saleOrders={saleOrders} router={router} canCreateProject={canCreateProject} />}
+          {activePanel.key === 'sale_orders' && <SaleOrdersTab saleOrders={saleOrders} router={router} />}
           {activePanel.key === 'invoices' && <InvoicesTab invoices={invoices} creditNotes={creditNotes} router={router} />}
           {activePanel.key === 'returns' && <ReturnsTab returns={returns} saleOrders={saleOrders} inventoryItems={inventoryItems} router={router} />}
           {activePanel.key === 'campaigns' && <CampaignsTab campaigns={campaigns} router={router} />}

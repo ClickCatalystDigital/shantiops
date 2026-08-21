@@ -4,7 +4,7 @@
 // No PageHeader/<main container> — SalesWorkspace owns the full sidebar layout itself, same as
 // CalcWorkspace's page.
 import { redirect } from 'next/navigation';
-import { getFreshSessionUser, canAccessDepartment, headDepartments, isPM, isDesignHead, roleHome } from '@/lib/auth';
+import { getFreshSessionUser, canAccessDepartment, headDepartments, isPM, roleHome } from '@/lib/auth';
 import { getSaleOrders, getLeads, getCustomers, getQuotations, getCampaigns, getFunctionalHeads, getPriceLists, getSalesReturns, getInventoryItems, getSalesInvoices, getSalesCreditNotes } from '@/lib/data';
 import { queryAll } from '@/lib/db';
 import SalesWorkspace from '@/components/SalesWorkspace';
@@ -35,6 +35,6 @@ export default async function SalesPage() {
   const savedViews = savedViewRows.map(r => ({ ...r, filters: JSON.parse(r.filters || '{}') }));
 
   return (
-    <SalesWorkspace saleOrders={saleOrders} leads={leads} customers={customers} quotations={quotations} campaigns={campaigns} priceLists={priceLists} returns={returns} inventoryItems={inventoryItems} invoices={invoices} creditNotes={creditNotes} departments={departments} users={crmUsers} savedViews={savedViews} canCreateProject={isDesignHead(user)} />
+    <SalesWorkspace saleOrders={saleOrders} leads={leads} customers={customers} quotations={quotations} campaigns={campaigns} priceLists={priceLists} returns={returns} inventoryItems={inventoryItems} invoices={invoices} creditNotes={creditNotes} departments={departments} users={crmUsers} savedViews={savedViews} />
   );
 }

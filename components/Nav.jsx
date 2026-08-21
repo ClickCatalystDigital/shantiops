@@ -20,7 +20,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import NotificationBell from './NotificationBell';
 
-export default function Nav({ user }) {
+export default function Nav({ user, reportDepartments = [] }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -28,8 +28,12 @@ export default function Nav({ user }) {
   const [brand, setBrand] = useState({ prefix: 'SB'});
 
   const isPMUser = user && ['admin', 'manager', 'executive'].includes(user.role);
+  // Executive keeps the Executive/Approvals/Operations-filter surface but not the per-department
+  // operational workspace tabs (Procurement, Stores, Sales, ...) — those stay admin/manager only.
+  // Help (`isPM()`-gated, unchanged) still shows executive every department's guide.
+  const isDeptPM = user && ['admin', 'manager'].includes(user.role);
   const departments = user?.departments || [];
-  const tabDepartments = isPMUser ? DEPARTMENTS : departments;
+  const tabDepartments = isDeptPM ? DEPARTMENTS : departments;
   // Departments the user can browse: PM → all; head → their granted list. Packing lives under Dispatch.
   const accessibleDepts = isPMUser ? DEPARTMENTS : departments;
   const activeDept = searchParams.get('dept');
@@ -38,7 +42,7 @@ export default function Nav({ user }) {
   // Group 5 Bundle A — the unified PR flow's shared "Requests" surface for Eng/Design/Stores.
   // A PM sees it as part of the all-department oversight tabs; a dual-role head with Procurement
   // access keeps the existing single Procurement workspace experience.
-  const canSeeRequests = isPMUser || (
+  const canSeeRequests = isDeptPM || (
     !departments.includes('Procurement') && ['Engineering', 'Design', 'Stores'].some(d => departments.includes(d))
   );
   // Workspace tabs are derived from current department grants. Shared Sales/Marketing and
@@ -46,7 +50,7 @@ export default function Nav({ user }) {
   // the user's tab set on the next render without hard-coded per-user roles.
   const deptTabs = [];
   const addDeptTab = (depts, href, label, icon) => {
-    if (isPMUser && (href === '/production' || href === '/production/workers')) return;
+    if (isDeptPM && (href === '/production' || href === '/production/workers')) return;
     if (depts.some(d => tabDepartments.includes(d))) deptTabs.push({ href, label, icon });
   };
   // Tasks (/production) dropped — identical content to Home for a Production head, kept as a
@@ -71,6 +75,17 @@ export default function Nav({ user }) {
   addDeptTab(['Dispatch'], '/ops?dept=Dispatch', 'Dispatch', PackageIcon);
   addDeptTab(['Installation'], '/installation', 'Installation', MapPinIcon);
   addDeptTab(['Accounts'], '/accounts', 'Accounts', LandmarkIcon);
+  // Catalog-driven (lib/reports/catalog.js via reportDepartments, computed server-side in
+  // app/layout.js — the catalog itself pulls in server-only DB code and can't be imported here): a
+  // "Reports" tab only for departments that actually have >=1 report. One call per department so
+  // this needs no further Nav edits as the catalog grows; today that's just Accounts.
+  // KNOWN, DELIBERATE OVERLAP: Sales/Marketing already has its own "Reports" tab (line above,
+  // /crm-reports — a different, pre-existing browser-print mechanism, not this catalog). A PM/
+  // executive/admin user who sees every department tab will see "Reports" twice, pointing
+  // different places, until /crm-reports is folded into this catalog (REPORT-ENGINE-PLAN: deferred
+  // cleanup, not done in this pass). A single-department head never sees both. Not fixed here —
+  // merging them is real scope beyond the frame/catalog/Trial-Balance proof this pass covers.
+  for (const dept of reportDepartments) addDeptTab([dept], `/reports?dept=${dept}`, 'Reports', BarChart3Icon);
   if (canSeeRequests) deptTabs.push({ href: '/pr', label: 'Requests', icon: InboxIcon });
 
   // Primary tabs (top bar on desktop, bottom bar on mobile). No Packing tab — it's Dispatch-scoped.
