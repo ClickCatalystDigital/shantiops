@@ -16,6 +16,7 @@ export default function PdfInlinePreview({ file, url, onPick, extracting, replac
   const scrollRef = useRef(null);
   const pdfRef = useRef(null);
   const canvasRefs = useRef([]);
+  const renderTasksRef = useRef([]); // in-flight pdf.js RenderTask per page, so a second paint pass can cancel it
   const inputRef = useRef(null);
   const [status, setStatus] = useState(file || url ? 'loading' : 'empty'); // empty | loading | ready | error
   const [error, setError] = useState(null);
@@ -39,7 +40,19 @@ export default function PdfInlinePreview({ file, url, onPick, extracting, replac
       canvas.height = viewport.height;
       canvas.style.width = `${base.width * cssScale}px`;
       canvas.style.height = `${base.height * cssScale}px`;
-      await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+
+      // pdf.js throws "Cannot use the same canvas during multiple render() operations" if a second
+      // render() starts before the first finishes — which happens for real under StrictMode's
+      // double-invoked effects, and again on any resize that fires mid-paint. Cancel whatever's
+      // already running on this canvas before claiming it.
+      renderTasksRef.current[i - 1]?.cancel();
+      const task = page.render({ canvasContext: canvas.getContext('2d'), viewport });
+      renderTasksRef.current[i - 1] = task;
+      try {
+        await task.promise;
+      } catch (err) {
+        if (err?.name !== 'RenderingCancelledException') throw err;
+      }
     }
   }, []);
 
@@ -51,6 +64,7 @@ export default function PdfInlinePreview({ file, url, onPick, extracting, replac
     setError(null);
     pdfRef.current = null;
     canvasRefs.current = [];
+    renderTasksRef.current = [];
     setNumPages(0);
 
     (async () => {

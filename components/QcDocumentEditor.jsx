@@ -1,3 +1,5 @@
+// components/QcDocumentEditor.jsx
+
 'use client';
 
 // Document editor (/projects/[id]/qc/[docId]) — Form IV A only in V1. The right column of every

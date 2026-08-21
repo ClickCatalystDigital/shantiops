@@ -12,7 +12,9 @@
 // narrow, fast-scanning column (30%) grouped into cards so eyes don't have to hunt for the next
 // field during daily entry.
 import { useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { api, showToast } from '@/lib/client';
+import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -83,6 +85,21 @@ function PickOrType({ label, value, options, onChange }) {
         </Select>
       )}
     </div>
+  );
+}
+
+// Floats as its own panel to the left of the form Sheet instead of living inside it — portaled
+// straight to <body>, positioned above the Sheet's own dim/blur overlay (z-[60] beats the overlay's
+// z-50), reusing the exact glass/ring/blur tokens SheetContent itself uses so it reads as part of
+// the same system rather than a bolted-on extra. It has no open/close animation or focus trap of
+// its own — it's a passive companion; the Sheet still owns Escape and overlay-click-to-close.
+function FloatingPdfPanel({ open, children }) {
+  if (!open || typeof document === 'undefined') return null;
+  return createPortal(
+    <div className="fixed inset-y-6 left-6 z-[60] flex w-[min(52vw,820px)] flex-col gap-2 overflow-hidden rounded-xl border bg-popover/85 p-4 text-sm text-popover-foreground shadow-lg ring-1 ring-foreground/10 backdrop-blur-xl">
+      {children}
+    </div>,
+    document.body
   );
 }
 
@@ -189,38 +206,31 @@ export default function CertForm({ open, onOpenChange, certificate = null, certi
   }
 
   return (
-    <Sheet open={open} onOpenChange={o => { onOpenChange(o); if (!o) reset(); }}>
-      {/* Near-fullscreen instead of a narrow max-w-3xl panel: the PDF is what's being transcribed
-          from, so it needs to actually be readable, not a cramped thumbnail. Stacks to one column
-          (PDF on top, form below) on mobile, where a side-by-side split has no room to breathe. */}
-      <SheetContent className="flex w-full flex-col gap-0 p-0 sm:max-w-none md:w-[92vw] lg:w-[1320px]">
-        <SheetHeader className="shrink-0 border-b px-6 py-4">
-          <SheetTitle>{editing ? 'Edit Test Certificate' : 'Add Test Certificate'}</SheetTitle>
-        </SheetHeader>
+    <>
+      <FloatingPdfPanel open={open}>
+        <div className="flex shrink-0 items-baseline justify-between gap-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Source PDF</p>
+          {!editing && (
+            <p className="text-xs text-muted-foreground">AI fills the fields on the right — always review before saving.</p>
+          )}
+        </div>
+        <div className="min-h-0 flex-1">
+          <PdfInlinePreview
+            file={pdfFile}
+            url={!pdfFile && certificate?.pdf_key ? `/api/test-certificates/${certificate.id}/pdf` : undefined}
+            onPick={pickPdf}
+            extracting={extracting}
+          />
+        </div>
+      </FloatingPdfPanel>
 
-        <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-          {/* Left — PDF, 70% width, full height. Add-flow: picking a file also triggers AI populate
-              (best-effort; failure just leaves the form for manual entry, per the header note). */}
-          <div className="flex min-h-[380px] flex-col gap-2 border-b bg-muted/10 p-4 md:min-h-0 md:w-[70%] md:shrink-0 md:border-b-0 md:border-r md:p-6">
-            <div className="flex shrink-0 items-baseline justify-between gap-3">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Source PDF</p>
-              {!editing && (
-                <p className="text-xs text-muted-foreground">AI fills the fields on the right — always review before saving.</p>
-              )}
-            </div>
-            <div className="min-h-0 flex-1">
-              <PdfInlinePreview
-                file={pdfFile}
-                url={!pdfFile && certificate?.pdf_key ? `/api/test-certificates/${certificate.id}/pdf` : undefined}
-                onPick={pickPdf}
-                extracting={extracting}
-              />
-            </div>
-          </div>
+      <Sheet open={open} onOpenChange={o => { onOpenChange(o); if (!o) reset(); }}>
+        <SheetContent className="flex w-full flex-col gap-0 p-0 sm:max-w-md">
+          <SheetHeader className="shrink-0 border-b px-6 py-4">
+            <SheetTitle>{editing ? 'Edit Test Certificate' : 'Add Test Certificate'}</SheetTitle>
+          </SheetHeader>
 
-          {/* Right — form, 30% width, its own scroll region so a long cert never pushes the footer
-              off-screen or shrinks the PDF panel. */}
-          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:w-[30%]">
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
             <div className="flex flex-col gap-4 p-4 md:p-6">
               <Section title="Identity">
                 <div className="flex flex-col gap-1.5">
@@ -313,16 +323,16 @@ export default function CertForm({ open, onOpenChange, certificate = null, certi
               </Section>
             </div>
           </div>
-        </div>
 
-        <SheetFooter className="flex-row items-center justify-end gap-2 border-t px-6 py-4">
-          {editing && (
-            <Button variant="outline" disabled={busy} className="mr-auto text-destructive" onClick={del}>Delete</Button>
-          )}
-          <Button variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button disabled={busy} onClick={submit}>{busy ? 'Saving…' : editing ? 'Save changes' : 'Add certificate'}</Button>
-        </SheetFooter>
-      </SheetContent>
-    </Sheet>
+          <SheetFooter className="flex-row items-center justify-end gap-2 border-t px-6 py-4">
+            {editing && (
+              <Button variant="outline" disabled={busy} className="mr-auto text-destructive" onClick={del}>Delete</Button>
+            )}
+            <Button variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button disabled={busy} onClick={submit}>{busy ? 'Saving…' : editing ? 'Save changes' : 'Add certificate'}</Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+    </>
   );
 }

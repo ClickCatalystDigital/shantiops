@@ -1,3 +1,5 @@
+// app/projects/[id]/qc/[docId]/page.js
+
 import { notFound, redirect } from 'next/navigation';
 import { queryOne } from '@/lib/db';
 import { getQcDocumentDetail, getTestCertificates } from '@/lib/data';
