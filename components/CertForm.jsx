@@ -13,7 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
-import { UploadIcon, SparklesIcon, XIcon } from 'lucide-react';
+import { XIcon } from 'lucide-react';
 import PdfInlinePreview from './PdfInlinePreview';
 import SearchableSelect from './SearchableSelect';
 
@@ -63,7 +63,6 @@ export default function CertForm({ open, onOpenChange, certificate = null, certi
   const [form, setForm] = useState(() => (editing ? { ...EMPTY, ...certificate } : EMPTY));
   const [projectIds, setProjectIds] = useState(() => parseProjectIds(certificate, defaultProjectIds));
   const [busy, setBusy] = useState(false);
-  const fileRef = useRef(null);
   const [pdfFile, setPdfFile] = useState(null);   // newly picked, not yet uploaded
   const [extracting, setExtracting] = useState(false);
 
@@ -88,9 +87,7 @@ export default function CertForm({ open, onOpenChange, certificate = null, certi
   // Add-flow only (see file header note): auto-fills empty fields from the AI's best-effort read of
   // the PDF. Edit-flow still lets you attach/replace a PDF, just without silently overwriting
   // already-correct saved values on pick.
-  async function pickPdf(e) {
-    const f = e.target.files?.[0];
-    e.target.value = '';
+    async function pickPdf(f) {
     if (!f) return;
     setPdfFile(f);
     if (editing) return;
@@ -177,15 +174,15 @@ export default function CertForm({ open, onOpenChange, certificate = null, certi
               effort; failure just leaves the form for manual entry, per the header note). */}
           <div className="flex flex-col gap-2 md:order-1">
             <p className="text-xs font-medium text-muted-foreground">SOURCE PDF</p>
-            <input ref={fileRef} type="file" accept=".pdf" className="hidden" onChange={pickPdf} />
-            <Button type="button" variant="outline" size="sm" disabled={extracting} onClick={() => fileRef.current?.click()}>
-              {extracting ? <><SparklesIcon data-icon="inline-start" className="animate-pulse" />Reading PDF…</>
-                : <><UploadIcon data-icon="inline-start" />{pdfFile || certificate?.pdf_key ? 'Replace PDF' : 'Upload PDF'}</>}
-            </Button>
+            <PdfInlinePreview
+              file={pdfFile}
+              url={!pdfFile && certificate?.pdf_key ? `/api/test-certificates/${certificate.id}/pdf` : undefined}
+              onPick={pickPdf}
+              extracting={extracting}
+            />
             {!editing && (
               <p className="text-xs text-muted-foreground">AI fills the fields on the right — always review before saving.</p>
             )}
-            <PdfInlinePreview file={pdfFile} url={!pdfFile && certificate?.pdf_key ? `/api/test-certificates/${certificate.id}/pdf` : undefined} />
           </div>
 
           <div className="flex flex-col gap-4 md:order-2">

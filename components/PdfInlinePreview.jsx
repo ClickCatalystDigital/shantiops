@@ -2,24 +2,26 @@
 
 'use client';
 
-// V2-CHANGES.md Group 1 — a lighter sibling of PdfPreview.jsx: renders directly inline (no Dialog
-// chrome), for the left column of CertForm's overlay rather than a popup. Same pdfjs-dist
-// legacy-build + static-worker approach as PdfPreview (SYSTEM.md §5d's build-gotcha note applies
-// here too), but reads bytes straight from a local File (no round-trip to the server needed before
-// the certificate row even exists) or, once one's saved, from `url` (the proxied
-// /api/test-certificates/[id]/pdf route). First page only — certificate scans are effectively
-// always single-page; a page-count note covers the rare multi-page case rather than building a
-// full pager for a narrow overlay column.
+// V2-CHANGES.md Group 1 — inline PDF preview + click-to-upload/replace, for CertForm's SOURCE PDF
+// column. The canvas is a real React-owned node (`<canvas ref={canvasRef} />`, always present in
+// JSX) — we only ever mutate its pixels/width/height via the 2D context, never insert or remove DOM
+// nodes imperatively. That's the actual fix for the "removeChild: not a child of this node" crash:
+// the old version did `container.innerHTML = ''` / `container.appendChild(canvas)` on a node React
+// also tracked, which silently desynced React's fiber tree from the real DOM. It only surfaced once
+// an ancestor (CertForm's Sheet, closing right after upload) tried to unmount that subtree and React
+// went to remove children that were no longer where it expected.
 import { useEffect, useRef, useState } from 'react';
+import { UploadIcon, FileTextIcon, SparklesIcon } from 'lucide-react';
 
-export default function PdfInlinePreview({ file, url }) {
-  const containerRef = useRef(null);
-  const [status, setStatus] = useState('loading'); // loading | ready | error
+export default function PdfInlinePreview({ file, url, onPick, extracting, replaceLabel = 'Replace' }) {
+  const canvasRef = useRef(null);
+  const inputRef = useRef(null);
+  const [status, setStatus] = useState(file || url ? 'loading' : 'empty'); // empty | loading | ready | error
   const [error, setError] = useState(null);
   const [pageCount, setPageCount] = useState(null);
 
   useEffect(() => {
-    if (!file && !url) return;
+    if (!file && !url) { setStatus('empty'); return; }
     let cancelled = false;
     setStatus('loading');
     setError(null);
@@ -36,33 +38,23 @@ export default function PdfInlinePreview({ file, url }) {
         if (cancelled) return;
         setPageCount(pdf.numPages);
 
-        const container = containerRef.current;
-        if (!container) return;
         const page = await pdf.getPage(1);
-        const targetWidth = Math.max(160, Math.round(container.clientWidth));
+        const canvas = canvasRef.current;
+        if (!canvas || cancelled) return; // component unmounted mid-fetch — nothing to draw into
+
+        const targetWidth = Math.max(160, Math.round(canvas.parentElement.clientWidth));
         const dpr = window.devicePixelRatio || 1;
         const baseViewport = page.getViewport({ scale: 1 });
         const scale = (targetWidth / baseViewport.width) * dpr;
         const viewport = page.getViewport({ scale });
 
-        const canvas = document.createElement('canvas');
+        // Only ever touch this canvas's own attributes/pixels — never its position in the tree.
         canvas.width = viewport.width;
         canvas.height = viewport.height;
-        canvas.style.width = '100%';
-        canvas.style.height = 'auto';
-        // Re-check right before touching the DOM — enough async work (fetch/import/getPage) has
-        // happened since the top of this effect that CertForm's Sheet can easily have closed and
-        // detached this node by now (e.g. right after a successful PDF upload), which is what threw
-        // "removeChild: not a child of this node" when we mutated a container React had already
-        // torn down.
-        if (cancelled || !container.isConnected) return;
-        container.innerHTML = '';
-        container.appendChild(canvas);
         await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
         if (cancelled) return;
         setStatus('ready');
       } catch (e) {
-        if (e?.name === 'NotFoundError') return; // DOM detached mid-render — nothing left to show
         if (!cancelled) { setError(e.message || 'Could not render PDF'); setStatus('error'); }
       }
     })();
@@ -70,22 +62,66 @@ export default function PdfInlinePreview({ file, url }) {
     return () => { cancelled = true; };
   }, [file, url]);
 
-  if (!file && !url) {
-    return (
-      <div className="flex h-full min-h-[220px] items-center justify-center rounded-md border border-dashed text-center text-xs text-muted-foreground">
-        No PDF attached yet
-      </div>
-    );
+  function pick(e) {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (f) onPick?.(f);
   }
 
+  const hasContent = status !== 'empty';
+
   return (
-    <div className="flex flex-col gap-1.5">
-      <div ref={containerRef} className="min-h-[220px] overflow-hidden rounded-md border bg-muted/20">
-        {status === 'loading' && <p className="p-4 text-center text-xs text-muted-foreground">Rendering…</p>}
-        {status === 'error' && <p className="p-4 text-center text-xs text-danger">{error}</p>}
-      </div>
-      {status === 'ready' && pageCount > 1 && (
-        <p className="text-center text-xs text-muted-foreground">Page 1 of {pageCount}</p>
+    <div className="group relative flex aspect-[3/4] w-full flex-col overflow-hidden rounded-xl border bg-muted/20 transition-colors hover:border-muted-foreground/30">
+      <input ref={inputRef} type="file" accept=".pdf" className="hidden" onChange={pick} />
+
+      {!hasContent && (
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          className="flex flex-1 flex-col items-center justify-center gap-2 text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <UploadIcon className="size-5" />
+          <span className="text-xs font-medium">Upload PDF</span>
+          <span className="text-[11px] text-muted-foreground/70">Click to attach</span>
+        </button>
+      )}
+
+      {hasContent && (
+        <>
+          <div className="relative flex flex-1 items-center justify-center p-2">
+            <canvas ref={canvasRef} className="max-h-full max-w-full rounded-md shadow-sm" style={{ width: status === 'ready' ? '100%' : 0, height: 'auto' }} />
+            {status === 'loading' && (
+              <div className="absolute inset-0 flex items-center justify-center bg-muted/40">
+                <span className="text-xs text-muted-foreground">Rendering…</span>
+              </div>
+            )}
+            {status === 'error' && (
+              <div className="absolute inset-0 flex items-center justify-center bg-muted/40 p-3 text-center">
+                <span className="text-xs text-destructive">{error}</span>
+              </div>
+            )}
+          </div>
+
+          {status === 'ready' && pageCount > 1 && (
+            <span className="absolute right-2 top-2 rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white">
+              1 / {pageCount}
+            </span>
+          )}
+
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1.5 bg-gradient-to-t from-black/70 to-transparent py-2.5 text-xs font-medium text-white opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"
+          >
+            <FileTextIcon className="size-3.5" />{replaceLabel}
+          </button>
+        </>
+      )}
+
+      {extracting && (
+        <span className="absolute left-2 top-2 flex items-center gap-1 rounded-full bg-black/60 px-2 py-1 text-[10px] font-medium text-white">
+          <SparklesIcon className="size-3 animate-pulse" />Reading…
+        </span>
       )}
     </div>
   );

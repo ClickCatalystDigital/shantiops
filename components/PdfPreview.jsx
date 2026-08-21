@@ -3,119 +3,52 @@
 
 'use client';
 
-// In-app PDF preview, rendered to <canvas> via PDF.js rather than an embedded <iframe>/browser
-// plugin — the native iframe approach depends on the browser's own PDF viewer being enabled, and
-// some browsers/settings download instead of showing it inline. Canvas rendering works the same
-// way regardless of the viewer's PDF/download configuration.
-//
-// Centered, large modal rather than a side drawer — a dense statutory table (18 columns on Form
-// IV A) needs real width. One page per screen: each page is scaled to CONTAIN within the scroll
-// viewport (both width and height) and sits in a slide exactly the viewport's height, with
-// scroll-snap, so exactly one whole page shows and scrolling lands on the next. Re-renders on resize
-// so it stays one-page-per-screen on mobile / rotation too.
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { DownloadIcon } from 'lucide-react';
 
 export default function PdfPreview({ open, onOpenChange, url, title, description, filename, actions }) {
-  const scrollRef = useRef(null);     // the overflow-y-auto viewport we size pages against
-  const containerRef = useRef(null);  // canvases mount here; never given JSX children (see note)
-  const pdfRef = useRef(null);        // the parsed PDF, kept so a resize can re-render without refetch
-  const [status, setStatus] = useState('loading'); // loading | ready | error
+  const scrollRef = useRef(null);
+  const pdfRef = useRef(null);
+  const canvasRefs = useRef([]);
+  const [status, setStatus] = useState('loading');
   const [error, setError] = useState(null);
+  const [numPages, setNumPages] = useState(0);
 
+  // Paints into each page's own canvas — mutates width/height/pixels only, never the DOM tree.
+  // The canvases themselves are mounted/unmounted purely by the numPages-driven map in the JSX below.
+  const renderPages = useCallback(async () => {
+    const pdf = pdfRef.current;
+    const scroller = scrollRef.current;
+    if (!pdf || !scroller) return;
+    const availW = Math.max(200, scroller.clientWidth - 32);
+    const availH = Math.max(200, scroller.clientHeight - 16);
+    const dpr = window.devicePixelRatio || 1;
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const canvas = canvasRefs.current[i - 1];
+      if (!canvas) continue;
+      const page = await pdf.getPage(i);
+      const base = page.getViewport({ scale: 1 });
+      const cssScale = Math.min(availW / base.width, availH / base.height);
+      const viewport = page.getViewport({ scale: cssScale * dpr });
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      canvas.style.width = `${base.width * cssScale}px`;
+      canvas.style.height = `${base.height * cssScale}px`;
+      await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+    }
+  }, []);
+
+  // Fetch + parse only — no DOM work here.
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    let seq = 0;      // guards against two re-renders (e.g. resize during render) interleaving
-    let ro, t;
     setStatus('loading');
     setError(null);
     pdfRef.current = null;
-
-    // Lay out every page at "one page per viewport": scale to fit inside the scroll viewport's
-    // width AND height (so a whole page shows, never cut off), in a slide exactly the viewport's
-    // height so only one page is visible and scroll-snap lands on the next. Measured against the
-    // scroller's ACTUAL size (via ResizeObserver) so it's correct after the open animation and on
-    // mobile / rotation — measuring too early gave a stale width and overflowed the page sideways.
-    // async function renderPages() {
-    //   const pdf = pdfRef.current;
-    //   const scroller = scrollRef.current;
-    //   const container = containerRef.current;
-    //   if (!pdf || !scroller || !container) return;
-    //   const my = ++seq;
-    //   const availW = Math.max(200, scroller.clientWidth - 32);
-    //   const availH = Math.max(200, scroller.clientHeight - 16);
-    //   const dpr = window.devicePixelRatio || 1;
-    //   container.innerHTML = '';
-    //   for (let i = 1; i <= pdf.numPages; i++) {
-    //     if (cancelled || my !== seq) return;   // a newer render superseded this one
-    //     const page = await pdf.getPage(i);
-    //     const base = page.getViewport({ scale: 1 });
-    //     const cssScale = Math.min(availW / base.width, availH / base.height);
-    //     const viewport = page.getViewport({ scale: cssScale * dpr });
-    //     const canvas = document.createElement('canvas');
-    //     canvas.width = viewport.width;
-    //     canvas.height = viewport.height;
-    //     canvas.style.width = `${base.width * cssScale}px`;
-    //     canvas.style.height = `${base.height * cssScale}px`;
-    //     canvas.className = 'rounded-md border shadow-sm bg-white';
-    //     const slide = document.createElement('div');
-    //     slide.className = 'flex shrink-0 items-center justify-center';
-    //     slide.style.height = `${availH}px`;
-    //     slide.style.scrollSnapAlign = 'center';
-    //     slide.appendChild(canvas);
-    //     if (my !== seq) return;
-    //     container.appendChild(slide);
-    //     await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
-    //   }
-    // }
-
-        async function renderPages() {
-      const pdf = pdfRef.current;
-      const scroller = scrollRef.current;
-      const container = containerRef.current;
-      if (!pdf || !scroller || !container) return;
-      // Guard against a debounced resize firing after the dialog has started closing/unmounting —
-      // touching a detached node here is exactly what threw "removeChild: not a child of this
-      // node" when React unmounted the tree out from under an in-flight render (e.g. CertForm
-      // closing the Sheet right after a PDF upload while this loop was still running).
-      if (cancelled || !container.isConnected) return;
-      const my = ++seq;
-      const availW = Math.max(200, scroller.clientWidth - 32);
-      const availH = Math.max(200, scroller.clientHeight - 16);
-      const dpr = window.devicePixelRatio || 1;
-      try {
-        container.innerHTML = '';
-        for (let i = 1; i <= pdf.numPages; i++) {
-          if (cancelled || my !== seq || !container.isConnected) return;   // superseded, or we're gone
-          const page = await pdf.getPage(i);
-          const base = page.getViewport({ scale: 1 });
-          const cssScale = Math.min(availW / base.width, availH / base.height);
-          const viewport = page.getViewport({ scale: cssScale * dpr });
-          const canvas = document.createElement('canvas');
-          canvas.width = viewport.width;
-          canvas.height = viewport.height;
-          canvas.style.width = `${base.width * cssScale}px`;
-          canvas.style.height = `${base.height * cssScale}px`;
-          canvas.className = 'rounded-md border shadow-sm bg-white';
-          const slide = document.createElement('div');
-          slide.className = 'flex shrink-0 items-center justify-center';
-          slide.style.height = `${availH}px`;
-          slide.style.scrollSnapAlign = 'center';
-          slide.appendChild(canvas);
-          if (cancelled || my !== seq || !container.isConnected) return;
-          container.appendChild(slide);
-          await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
-        }
-      } catch (err) {
-        // Belt-and-suspenders: swallow a DOM race that slips past the checks above (e.g. the
-        // container gets detached between the isConnected check and the mutation itself). Nothing
-        // to preview anymore once we're here, so there's nothing useful to surface to the user.
-        if (err?.name !== 'NotFoundError') throw err;
-      }
-    }
+    canvasRefs.current = [];
+    setNumPages(0);
 
     (async () => {
       try {
@@ -127,27 +60,31 @@ export default function PdfPreview({ open, onOpenChange, url, title, description
         const buf = await res.arrayBuffer();
         if (cancelled) return;
 
-        // legacy/ build (not build/) — the modern build leans on syntax some bundler pipelines
-        // can't parse. The worker is served as a plain static file from public/ (kept in sync by
-        // scripts/copy-pdf-worker.js on every `npm install`).
         const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
         pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
 
         const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
         if (cancelled) return;
         pdfRef.current = pdf;
-        setStatus('ready');   // reveal the scroll viewport so it has a real size to observe
-
-        // ResizeObserver fires once on observe (initial render) and again on every real size change.
-        ro = new ResizeObserver(() => { clearTimeout(t); t = setTimeout(renderPages, 80); });
-        ro.observe(scrollRef.current);
+        setNumPages(pdf.numPages);
+        setStatus('ready');
       } catch (err) {
         if (!cancelled) { setError(err.message); setStatus('error'); }
       }
     })();
 
-    return () => { cancelled = true; clearTimeout(t); ro?.disconnect(); };
+    return () => { cancelled = true; };
   }, [open, url]);
+
+  // Paint once canvases exist, and repaint on resize — decoupled from fetching so a resize never refetches.
+  useEffect(() => {
+    if (status !== 'ready' || !numPages || !scrollRef.current) return;
+    let t;
+    renderPages();
+    const ro = new ResizeObserver(() => { clearTimeout(t); t = setTimeout(renderPages, 80); });
+    ro.observe(scrollRef.current);
+    return () => { clearTimeout(t); ro.disconnect(); };
+  }, [status, numPages, renderPages]);
 
   async function download() {
     try {
@@ -171,9 +108,11 @@ export default function PdfPreview({ open, onOpenChange, url, title, description
         <div ref={scrollRef} className="-mx-4 flex min-h-0 flex-1 snap-y snap-mandatory flex-col overflow-y-auto border-y bg-muted/30 px-4">
           {status === 'loading' && <p className="py-12 text-center text-sm text-muted-foreground">Rendering PDF…</p>}
           {status === 'error' && <p className="py-12 text-center text-sm text-destructive">{error}</p>}
-          {/* React never gives this div JSX children, so it never tries to reconcile/remove the
-              canvases the effect appends imperatively. */}
-          <div ref={containerRef} className="flex flex-col" />
+          {Array.from({ length: numPages }).map((_, i) => (
+            <div key={i} className="flex shrink-0 items-center justify-center" style={{ minHeight: 200, scrollSnapAlign: 'center' }}>
+              <canvas ref={el => { canvasRefs.current[i] = el; }} className="rounded-md border shadow-sm bg-white" />
+            </div>
+          ))}
         </div>
         <DialogFooter className="flex-row justify-end gap-2">
           {actions}
