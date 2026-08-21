@@ -6,14 +6,19 @@
 // "+ Add certificate" escape hatch inside the document editor's link picker, so the hard gate never
 // dead-ends). Three field groups in the sample's own order/vocabulary (QC-CHANGES.md §2): identity,
 // chemical analysis (per cast/heat), physical analysis (per rolled plate).
-import { useMemo, useRef, useState } from 'react';
+//
+// V3-CHANGES.md — layout rebuilt as a real 70/30 split: the source PDF is the thing people are
+// transcribing from, so it gets the width (70%) and full-height multi-page scrolling; the form is a
+// narrow, fast-scanning column (30%) grouped into cards so eyes don't have to hunt for the next
+// field during daily entry.
+import { useMemo, useState } from 'react';
 import { api, showToast } from '@/lib/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
-import { XIcon } from 'lucide-react';
+import { XIcon, AlertTriangleIcon } from 'lucide-react';
 import PdfInlinePreview from './PdfInlinePreview';
 import SearchableSelect from './SearchableSelect';
 
@@ -27,12 +32,35 @@ const EMPTY = {
   size_t: '', size_w: '', size_l: '',
   chem_c: '', chem_mn: '', chem_p: '', chem_s: '', chem_si: '',
   ys: '', uts: '', elongation: '', bend_test: 'OK',
+  steel_making_process: '', heat_treatment: '',
 };
 
 // certificate.project_ids comes back from getTestCertificates as a "2,6" concatenation.
 function parseProjectIds(certificate, fallback) {
   if (!certificate?.project_ids) return fallback.map(Number).filter(Boolean);
   return String(certificate.project_ids).split(',').map(Number).filter(Boolean);
+}
+
+// A card wrapper for each field group — gives daily-use scanning a clear rhythm (title, then
+// fields) instead of the fields all running together in one long column.
+function Section({ title, children }) {
+  return (
+    <section className="flex flex-col gap-3 rounded-lg border bg-card/40 p-4">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{title}</p>
+      {children}
+    </section>
+  );
+}
+
+// A compact input with its own small label above it — placeholders alone (the old "C" / "Mn" style)
+// vanish the moment you type, which makes a dense grid of numbers hard to audit later.
+function LabeledInput({ label, ...props }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-[11px] font-medium text-muted-foreground">{label}</span>
+      <Input {...props} />
+    </div>
+  );
 }
 
 // A Select seeded from the bank's existing distinct values, with a "+ Custom" escape hatch — same
@@ -162,134 +190,136 @@ export default function CertForm({ open, onOpenChange, certificate = null, certi
 
   return (
     <Sheet open={open} onOpenChange={o => { onOpenChange(o); if (!o) reset(); }}>
-      {/* Widened from max-w-md: the PDF column needs real width alongside the form, on desktop —
-          stacks to one column on mobile (client asked for "left side of the overlay," which only
-          means something once there's room for two). */}
-      <SheetContent className="w-full sm:max-w-3xl">
-        <SheetHeader>
+      {/* Near-fullscreen instead of a narrow max-w-3xl panel: the PDF is what's being transcribed
+          from, so it needs to actually be readable, not a cramped thumbnail. Stacks to one column
+          (PDF on top, form below) on mobile, where a side-by-side split has no room to breathe. */}
+      <SheetContent className="flex w-full flex-col gap-0 p-0 sm:max-w-none md:w-[92vw] lg:w-[1320px]">
+        <SheetHeader className="shrink-0 border-b px-6 py-4">
           <SheetTitle>{editing ? 'Edit Test Certificate' : 'Add Test Certificate'}</SheetTitle>
         </SheetHeader>
-        <div className="grid grid-cols-1 gap-4 overflow-y-auto px-4 md:grid-cols-2">
-          {/* Left — PDF upload/preview. Add-flow: picking a file also triggers AI populate (best-
-              effort; failure just leaves the form for manual entry, per the header note). */}
-          <div className="flex flex-col gap-2 md:order-1">
-            <p className="text-xs font-medium text-muted-foreground">SOURCE PDF</p>
-            <PdfInlinePreview
-              file={pdfFile}
-              url={!pdfFile && certificate?.pdf_key ? `/api/test-certificates/${certificate.id}/pdf` : undefined}
-              onPick={pickPdf}
-              extracting={extracting}
-            />
-            {!editing && (
-              <p className="text-xs text-muted-foreground">AI fills the fields on the right — always review before saving.</p>
-            )}
-          </div>
 
-          <div className="flex flex-col gap-4 md:order-2">
-          <div className="flex flex-col gap-3">
-            <p className="text-xs font-medium text-muted-foreground">IDENTITY</p>
-            <div className="flex flex-col gap-1.5">
-              <Label>Projects <span className="text-muted-foreground">(optional — add now or later)</span></Label>
-              {projectIds.length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
-                  {projectIds.map(pid => {
-                    const p = projects.find(x => x.id === pid);
-                    return (
-                      <span key={pid} className="inline-flex items-center gap-1 rounded-full border bg-muted/50 px-2 py-0.5 text-xs">
-                        {p ? p.project_no : `#${pid}`}
-                        <button type="button" aria-label="Remove project"
-                          onClick={() => setProjectIds(ids => ids.filter(x => x !== pid))}>
-                          <XIcon className="size-3 text-muted-foreground hover:text-foreground" />
-                        </button>
-                      </span>
-                    );
-                  })}
-                </div>
+        <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+          {/* Left — PDF, 70% width, full height. Add-flow: picking a file also triggers AI populate
+              (best-effort; failure just leaves the form for manual entry, per the header note). */}
+          <div className="flex min-h-[380px] flex-col gap-2 border-b bg-muted/10 p-4 md:min-h-0 md:w-[70%] md:shrink-0 md:border-b-0 md:border-r md:p-6">
+            <div className="flex shrink-0 items-baseline justify-between gap-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Source PDF</p>
+              {!editing && (
+                <p className="text-xs text-muted-foreground">AI fills the fields on the right — always review before saving.</p>
               )}
-              <SearchableSelect
-                items={projects.filter(p => !projectIds.includes(p.id))}
-                value={null}
-                onChange={id => id != null && setProjectIds(ids => [...ids, Number(id)])}
-                getLabel={p => p.project_no} getSub={p => p.customer_name}
-                triggerPlaceholder="Add a project…" placeholder="Search projects…" className="w-full" />
             </div>
-            <div className="flex flex-col gap-1.5">
-              <Label>Certificate No.</Label>
-              <Input value={form.certificate_no} onChange={set('certificate_no')} placeholder="RCL/MTL/PLM/80839164" />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="flex flex-col gap-1.5">
-                <Label>Cast No.</Label>
-                <Input value={form.cast_no} onChange={set('cast_no')} />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label>Plate No.</Label>
-                <Input value={form.plate_no} onChange={set('plate_no')} />
-              </div>
-            </div>
-            {dupe && (
-              <p className="text-xs text-warning">
-                ⚠ Already in the bank — same certificate, cast and plate ({dupe.material_spec}, {dupe.steel_maker}).
-              </p>
-            )}
-            <PickOrType label="Steel Maker" value={form.steel_maker} options={makers} onChange={v => setForm(f => ({ ...f, steel_maker: v }))} />
-            <PickOrType label="Material Spec" value={form.material_spec} options={specs} onChange={v => setForm(f => ({ ...f, material_spec: v }))} />
-            <div className="flex flex-col gap-1.5">
-              <Label>Size (mm)</Label>
-              <div className="grid grid-cols-3 gap-2">
-                <Input value={form.size_t} onChange={set('size_t')} placeholder="T" />
-                <Input value={form.size_w} onChange={set('size_w')} placeholder="W" />
-                <Input value={form.size_l} onChange={set('size_l')} placeholder="L" />
-              </div>
+            <div className="min-h-0 flex-1">
+              <PdfInlinePreview
+                file={pdfFile}
+                url={!pdfFile && certificate?.pdf_key ? `/api/test-certificates/${certificate.id}/pdf` : undefined}
+                onPick={pickPdf}
+                extracting={extracting}
+              />
             </div>
           </div>
 
-          <div className="flex flex-col gap-3">
-            <p className="text-xs font-medium text-muted-foreground">CHEMICAL ANALYSIS — of the cast (%)</p>
-            <div className="grid grid-cols-5 gap-2">
-              <Input value={form.chem_c} onChange={set('chem_c')} placeholder="C" />
-              <Input value={form.chem_mn} onChange={set('chem_mn')} placeholder="Mn" />
-              <Input value={form.chem_p} onChange={set('chem_p')} placeholder="P" />
-              <Input value={form.chem_s} onChange={set('chem_s')} placeholder="S" />
-              <Input value={form.chem_si} onChange={set('chem_si')} placeholder="Si" />
-            </div>
-          </div>
+          {/* Right — form, 30% width, its own scroll region so a long cert never pushes the footer
+              off-screen or shrinks the PDF panel. */}
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:w-[30%]">
+            <div className="flex flex-col gap-4 p-4 md:p-6">
+              <Section title="Identity">
+                <div className="flex flex-col gap-1.5">
+                  <Label>Projects <span className="font-normal text-muted-foreground">(optional — add now or later)</span></Label>
+                  {projectIds.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {projectIds.map(pid => {
+                        const p = projects.find(x => x.id === pid);
+                        return (
+                          <span key={pid} className="inline-flex items-center gap-1 rounded-full border bg-muted/50 px-2 py-0.5 text-xs">
+                            {p ? p.project_no : `#${pid}`}
+                            <button type="button" aria-label="Remove project"
+                              onClick={() => setProjectIds(ids => ids.filter(x => x !== pid))}>
+                              <XIcon className="size-3 text-muted-foreground hover:text-foreground" />
+                            </button>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
+                  <SearchableSelect
+                    items={projects.filter(p => !projectIds.includes(p.id))}
+                    value={null}
+                    onChange={id => id != null && setProjectIds(ids => [...ids, Number(id)])}
+                    getLabel={p => p.project_no} getSub={p => p.customer_name}
+                    triggerPlaceholder="Add a project…" placeholder="Search projects…" className="w-full" />
+                </div>
 
-          <div className="flex flex-col gap-3">
-            <p className="text-xs font-medium text-muted-foreground">PHYSICAL ANALYSIS — of this plate</p>
-            <div className="grid grid-cols-3 gap-2">
-              <Input value={form.ys} onChange={set('ys')} placeholder="Y.S (MPa)" />
-              <Input value={form.uts} onChange={set('uts')} placeholder="UTS (MPa)" />
-              <Input value={form.elongation} onChange={set('elongation')} placeholder="Elongation %" />
+                <div className="flex flex-col gap-1.5">
+                  <Label>Certificate No.</Label>
+                  <Input value={form.certificate_no} onChange={set('certificate_no')} placeholder="RCL/MTL/PLM/80839164" />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <LabeledInput label="Cast No." value={form.cast_no} onChange={set('cast_no')} />
+                  <LabeledInput label="Plate No." value={form.plate_no} onChange={set('plate_no')} />
+                </div>
+
+                {dupe && (
+                  <div className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
+                    <AlertTriangleIcon className="mt-0.5 size-3.5 shrink-0" />
+                    <span>Already in the bank — same certificate, cast and plate ({dupe.material_spec}, {dupe.steel_maker}).</span>
+                  </div>
+                )}
+
+                <PickOrType label="Steel Maker" value={form.steel_maker} options={makers} onChange={v => setForm(f => ({ ...f, steel_maker: v }))} />
+                <PickOrType label="Material Spec" value={form.material_spec} options={specs} onChange={v => setForm(f => ({ ...f, material_spec: v }))} />
+
+                <div className="flex flex-col gap-1.5">
+                  <Label>Size (mm)</Label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <LabeledInput label="T" value={form.size_t} onChange={set('size_t')} />
+                    <LabeledInput label="W" value={form.size_w} onChange={set('size_w')} />
+                    <LabeledInput label="L" value={form.size_l} onChange={set('size_l')} />
+                  </div>
+                </div>
+              </Section>
+
+              <Section title="Chemical analysis — of the cast (%)">
+                <div className="grid grid-cols-5 gap-2">
+                  <LabeledInput label="C" value={form.chem_c} onChange={set('chem_c')} />
+                  <LabeledInput label="Mn" value={form.chem_mn} onChange={set('chem_mn')} />
+                  <LabeledInput label="P" value={form.chem_p} onChange={set('chem_p')} />
+                  <LabeledInput label="S" value={form.chem_s} onChange={set('chem_s')} />
+                  <LabeledInput label="Si" value={form.chem_si} onChange={set('chem_si')} />
+                </div>
+              </Section>
+
+              <Section title="Physical analysis — of this plate">
+                <div className="grid grid-cols-3 gap-2">
+                  <LabeledInput label="Y.S (MPa)" value={form.ys} onChange={set('ys')} />
+                  <LabeledInput label="UTS (MPa)" value={form.uts} onChange={set('uts')} />
+                  <LabeledInput label="Elongation %" value={form.elongation} onChange={set('elongation')} />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label>Bend / Flat test</Label>
+                  <Select value={form.bend_test} onValueChange={v => setForm(f => ({ ...f, bend_test: v }))}>
+                    <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="OK">OK</SelectItem>
+                      <SelectItem value="NOT OK">NOT OK</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {/* Form III A extras (only that form uses them; blank is fine for IV A-only certs). */}
+                <div className="grid grid-cols-2 gap-2">
+                  <LabeledInput label="Steel Making Process" value={form.steel_making_process} onChange={set('steel_making_process')} placeholder="e.g. BASIC OXYGEN" />
+                  <LabeledInput label="Heat Treatment" value={form.heat_treatment} onChange={set('heat_treatment')} placeholder="e.g. NORMALISED" />
+                </div>
+              </Section>
             </div>
-            <div className="flex flex-col gap-1.5">
-              <Label>Bend / Flat test</Label>
-              <Select value={form.bend_test} onValueChange={v => setForm(f => ({ ...f, bend_test: v }))}>
-                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="OK">OK</SelectItem>
-                  <SelectItem value="NOT OK">NOT OK</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            {/* Form III A extras (only that form uses them; blank is fine for IV A-only certs). */}
-            <div className="grid grid-cols-2 gap-2">
-              <div className="flex flex-col gap-1.5">
-                <Label>Steel Making Process</Label>
-                <Input value={form.steel_making_process || ''} onChange={set('steel_making_process')} placeholder="e.g. BASIC OXYGEN" />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label>Heat Treatment</Label>
-                <Input value={form.heat_treatment || ''} onChange={set('heat_treatment')} placeholder="e.g. NORMALISED" />
-              </div>
-            </div>
-          </div>
           </div>
         </div>
-        <SheetFooter>
+
+        <SheetFooter className="flex-row items-center justify-end gap-2 border-t px-6 py-4">
           {editing && (
             <Button variant="outline" disabled={busy} className="mr-auto text-destructive" onClick={del}>Delete</Button>
           )}
+          <Button variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button disabled={busy} onClick={submit}>{busy ? 'Saving…' : editing ? 'Save changes' : 'Add certificate'}</Button>
         </SheetFooter>
       </SheetContent>

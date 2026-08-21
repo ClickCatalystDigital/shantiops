@@ -2,29 +2,56 @@
 
 'use client';
 
-// V2-CHANGES.md Group 1 — inline PDF preview + click-to-upload/replace, for CertForm's SOURCE PDF
-// column. The canvas is a real React-owned node (`<canvas ref={canvasRef} />`, always present in
-// JSX) — we only ever mutate its pixels/width/height via the 2D context, never insert or remove DOM
-// nodes imperatively. That's the actual fix for the "removeChild: not a child of this node" crash:
-// the old version did `container.innerHTML = ''` / `container.appendChild(canvas)` on a node React
-// also tracked, which silently desynced React's fiber tree from the real DOM. It only surfaced once
-// an ancestor (CertForm's Sheet, closing right after upload) tried to unmount that subtree and React
-// went to remove children that were no longer where it expected.
-import { useEffect, useRef, useState } from 'react';
+// V3-CHANGES.md — full multi-page preview for CertForm's SOURCE PDF panel, now that the panel
+// gets real screen real estate (70% width). Rendering approach borrowed directly from PdfPreview.jsx
+// (one canvas per page, painted via 2D context, canvases mounted/unmounted only by the numPages-
+// driven map below — never touched with innerHTML/appendChild) so the same "never desync React's
+// fiber tree from the real DOM" guarantee holds here. On top of that we keep the click-to-upload /
+// replace affordance the old thumbnail version had, since this is still the live drop target for a
+// new file, not just a viewer.
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { UploadIcon, FileTextIcon, SparklesIcon } from 'lucide-react';
 
 export default function PdfInlinePreview({ file, url, onPick, extracting, replaceLabel = 'Replace' }) {
-  const canvasRef = useRef(null);
+  const scrollRef = useRef(null);
+  const pdfRef = useRef(null);
+  const canvasRefs = useRef([]);
   const inputRef = useRef(null);
   const [status, setStatus] = useState(file || url ? 'loading' : 'empty'); // empty | loading | ready | error
   const [error, setError] = useState(null);
-  const [pageCount, setPageCount] = useState(null);
+  const [numPages, setNumPages] = useState(0);
 
+  // Paint into each page's own canvas — mutates width/height/pixels only, never the DOM tree.
+  const renderPages = useCallback(async () => {
+    const pdf = pdfRef.current;
+    const scroller = scrollRef.current;
+    if (!pdf || !scroller) return;
+    const availW = Math.max(160, scroller.clientWidth - 24);
+    const dpr = window.devicePixelRatio || 1;
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const canvas = canvasRefs.current[i - 1];
+      if (!canvas) continue;
+      const page = await pdf.getPage(i);
+      const base = page.getViewport({ scale: 1 });
+      const cssScale = availW / base.width;
+      const viewport = page.getViewport({ scale: cssScale * dpr });
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      canvas.style.width = `${base.width * cssScale}px`;
+      canvas.style.height = `${base.height * cssScale}px`;
+      await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+    }
+  }, []);
+
+  // Fetch + parse only — no DOM work here.
   useEffect(() => {
     if (!file && !url) { setStatus('empty'); return; }
     let cancelled = false;
     setStatus('loading');
     setError(null);
+    pdfRef.current = null;
+    canvasRefs.current = [];
+    setNumPages(0);
 
     (async () => {
       try {
@@ -36,23 +63,8 @@ export default function PdfInlinePreview({ file, url, onPick, extracting, replac
 
         const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
         if (cancelled) return;
-        setPageCount(pdf.numPages);
-
-        const page = await pdf.getPage(1);
-        const canvas = canvasRef.current;
-        if (!canvas || cancelled) return; // component unmounted mid-fetch — nothing to draw into
-
-        const targetWidth = Math.max(160, Math.round(canvas.parentElement.clientWidth));
-        const dpr = window.devicePixelRatio || 1;
-        const baseViewport = page.getViewport({ scale: 1 });
-        const scale = (targetWidth / baseViewport.width) * dpr;
-        const viewport = page.getViewport({ scale });
-
-        // Only ever touch this canvas's own attributes/pixels — never its position in the tree.
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-        await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
-        if (cancelled) return;
+        pdfRef.current = pdf;
+        setNumPages(pdf.numPages);
         setStatus('ready');
       } catch (e) {
         if (!cancelled) { setError(e.message || 'Could not render PDF'); setStatus('error'); }
@@ -61,6 +73,16 @@ export default function PdfInlinePreview({ file, url, onPick, extracting, replac
 
     return () => { cancelled = true; };
   }, [file, url]);
+
+  // Paint once canvases exist, and repaint on resize — decoupled from fetching so a resize never refetches.
+  useEffect(() => {
+    if (status !== 'ready' || !numPages || !scrollRef.current) return;
+    let t;
+    renderPages();
+    const ro = new ResizeObserver(() => { clearTimeout(t); t = setTimeout(renderPages, 80); });
+    ro.observe(scrollRef.current);
+    return () => { clearTimeout(t); ro.disconnect(); };
+  }, [status, numPages, renderPages]);
 
   function pick(e) {
     const f = e.target.files?.[0];
@@ -71,47 +93,49 @@ export default function PdfInlinePreview({ file, url, onPick, extracting, replac
   const hasContent = status !== 'empty';
 
   return (
-    <div className="group relative flex aspect-[3/4] w-full flex-col overflow-hidden rounded-xl border bg-muted/20 transition-colors hover:border-muted-foreground/30">
+    <div className="group relative flex h-full min-h-0 w-full flex-col overflow-hidden rounded-xl border bg-muted/10">
       <input ref={inputRef} type="file" accept=".pdf" className="hidden" onChange={pick} />
 
       {!hasContent && (
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
-          className="flex flex-1 flex-col items-center justify-center gap-2 text-muted-foreground transition-colors hover:text-foreground"
+          className="flex flex-1 flex-col items-center justify-center gap-2 text-muted-foreground transition-colors hover:bg-muted/30 hover:text-foreground"
         >
-          <UploadIcon className="size-5" />
-          <span className="text-xs font-medium">Upload PDF</span>
-          <span className="text-[11px] text-muted-foreground/70">Click to attach</span>
+          <UploadIcon className="size-6" />
+          <span className="text-sm font-medium">Upload PDF</span>
+          <span className="text-xs text-muted-foreground/70">Click to attach, or drop it here</span>
         </button>
       )}
 
       {hasContent && (
         <>
-          <div className="relative flex flex-1 items-center justify-center p-2">
-            <canvas ref={canvasRef} className="max-h-full max-w-full rounded-md shadow-sm" style={{ width: status === 'ready' ? '100%' : 0, height: 'auto' }} />
-            {status === 'loading' && (
-              <div className="absolute inset-0 flex items-center justify-center bg-muted/40">
-                <span className="text-xs text-muted-foreground">Rendering…</span>
-              </div>
-            )}
-            {status === 'error' && (
-              <div className="absolute inset-0 flex items-center justify-center bg-muted/40 p-3 text-center">
-                <span className="text-xs text-destructive">{error}</span>
-              </div>
-            )}
+          <div
+            ref={scrollRef}
+            className="flex min-h-0 flex-1 snap-y snap-mandatory flex-col items-center gap-3 overflow-y-auto bg-muted/30 p-3"
+          >
+            {status === 'loading' && <p className="py-12 text-center text-sm text-muted-foreground">Rendering PDF…</p>}
+            {status === 'error' && <p className="py-12 text-center text-sm text-destructive">{error}</p>}
+            {Array.from({ length: numPages }).map((_, i) => (
+              <canvas
+                key={i}
+                ref={el => { canvasRefs.current[i] = el; }}
+                className="shrink-0 rounded-md border bg-white shadow-sm"
+                style={{ scrollSnapAlign: 'start' }}
+              />
+            ))}
           </div>
 
-          {status === 'ready' && pageCount > 1 && (
-            <span className="absolute right-2 top-2 rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white">
-              1 / {pageCount}
+          {status === 'ready' && numPages > 1 && (
+            <span className="pointer-events-none absolute right-3 top-3 rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-medium text-white">
+              {numPages} pages
             </span>
           )}
 
           <button
             type="button"
             onClick={() => inputRef.current?.click()}
-            className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1.5 bg-gradient-to-t from-black/70 to-transparent py-2.5 text-xs font-medium text-white opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"
+            className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1.5 bg-gradient-to-t from-black/70 to-transparent py-3 text-xs font-medium text-white opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"
           >
             <FileTextIcon className="size-3.5" />{replaceLabel}
           </button>
@@ -119,7 +143,7 @@ export default function PdfInlinePreview({ file, url, onPick, extracting, replac
       )}
 
       {extracting && (
-        <span className="absolute left-2 top-2 flex items-center gap-1 rounded-full bg-black/60 px-2 py-1 text-[10px] font-medium text-white">
+        <span className="absolute left-3 top-3 flex items-center gap-1 rounded-full bg-black/60 px-2 py-1 text-[11px] font-medium text-white">
           <SparklesIcon className="size-3 animate-pulse" />Reading…
         </span>
       )}
