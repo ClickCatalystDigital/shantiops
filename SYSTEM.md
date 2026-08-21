@@ -3196,6 +3196,65 @@ AR/AP settlement, Bank Reconciliation, updated Chart of Accounts) render correct
 item and inventory row, the material issue) — not cleaned up, per this session's now-established
 "keep demo data" precedent (§5v).
 
+## 5x. Report Engine — shared PDF frame + catalog-driven "Reports" tab, 23 documents (2026-08-22, REPORT-ENGINE-PLAN.md)
+
+Built the reusable reporting layer REPORT-ENGINE-PLAN.md proposed, deliberately smaller than that
+doc's original config-DSL idea (see the plan's own §0/§5 — the 9 pre-existing PDFs aren't
+tabular-generic enough for one generic template to render them all).
+
+- **Shared frame** — `lib/report-pdf.js`: uniform identity header (company/GSTIN + title), uniform
+  footer (page X of Y, timestamp), a `<ReportTable>` primitive whose header row repeats on every
+  page (none of the pre-existing PDFs needed this — none spanned more than a page or two; report
+  tables regularly do), streamed (`renderToStream`) not buffered. `lib/company-profiles.js` split
+  out of `lib/qc-doc-pdf.js` (pure data, no JSX) so the frame and its selfcheck run under plain
+  `node`, not just Next's transformed runtime.
+- **Catalog** — `lib/reports/catalog.js`: one entry per report — `compute` is the exact function the
+  report's own JSON route already imports (ground rule: one computed result, three renderers, never
+  three calculations, enforced by construction). `toTable`/`totals` are small hand-written functions
+  per report, not a generic mapper — result shapes differ too much (Trial Balance is flat
+  `{accounts, totals}`, GSTR-1 is two separate tables matching the GST portal's own B2B/HSN split,
+  GSTR-3B is pure totals with no table at all).
+- **Nav** — `app/reports/page.js` + `components/ReportsWorkspace.jsx`: a department only gets a
+  "Reports" tab if it has ≥1 catalog entry (`REPORT_DEPARTMENTS`, computed server-side in
+  `app/layout.js`, passed into `components/Nav.jsx` as a prop — the catalog pulls in server-only DB
+  code and can't be imported client-side).
+- **19 catalog reports**: Accounts (Trial Balance, Customer/Vendor Ledger, P&L, Balance Sheet,
+  GSTR-1/3B, ITC Reconciliation, AR/AP Aging, Cash/Bank Book, Journal Register, Bank Reconciliation
+  Statement), Stores (Stock Valuation/Aging/Ledger), Procurement (Purchase Register), Sales (Sales
+  Register), Production (Material Consumption Report). Plus **4 per-record PDFs** outside the
+  catalog — Project/Work Order Costing, Sales Invoice, Vendor Bill — reached from their own
+  record's page (like the existing BOM/PO PDF pattern), not picked off a Reports-tab list.
+- **Shared math, not copies** — `lib/ledger.mjs`'s `customerLedger()` generalized to
+  `runningLedger()` once Vendor Ledger/Cash Book/Stock Ledger needed the identical running-balance
+  rollup (quantity instead of money for Stock Ledger — same math); a new `agingBuckets()` shared by
+  Receivables/Payables/Inventory Aging.
+- **Migrated onto the shared frame**: `lib/bom-pdf.js`, `lib/packing-pdf.js`, `lib/payslip-pdf.js`.
+  **Left untouched, as planned**: `lib/po-pdf.js`, `lib/qc-doc-pdf.js`, `lib/qc-folder-pdf.js` —
+  statutory/sample-matched, migrate only once re-verified against the real sample.
+- **Bugs found and fixed while verifying, not shipped silently**: seeded sales invoices missing
+  their GST split (`cgst/sgst/igst_amount` left at schema-default 0 despite a real `tax_amount`) —
+  fixed the seed script (`scripts/seed-sales-marketing-demo.mjs`) and the two live rows; same-day
+  ledger rows sorting alphabetically by document kind instead of business precedence (a credit note
+  before its own invoice, a stock issue before the receipt that stocked it) — fixed with an explicit
+  `sort_rank` column (SQLite forbids a `CASE` expression directly in a compound/`UNION ALL` query's
+  `ORDER BY`); the generic PDF export route wasn't forwarding `supplier_id`/`item_id` to
+  `compute()`, caught live when Vendor Ledger's PDF button 400'd.
+- **Excel deliberately deferred** — `xlsx` (already installed) is the free SheetJS build, no cell
+  styling; `lib/reports/render.js`'s `toTable()` split means adding it later is a second consumer of
+  already-shaped data, not a rewrite.
+
+**Verified**: both selfchecks pass (`lib/ledger-selfcheck.mjs`, `lib/report-pdf-selfcheck.mjs` —
+the latter asserts a real multi-page PDF whose repeating table header actually repeats). All 19
+catalog reports + 4 per-record PDFs checked screen-JSON-PDF against real data on the dev DB (not
+just code review) — numbers cross-checked to agree exactly per report (e.g. Trial Balance's PDF
+total matched its screen card and JSON route bit-for-bit). Additive seed data added for thin
+Procurement tables (`scripts/seed-report-demo-extra.mjs`, kept per instruction — useful for demo).
+See `REPORT-ENGINE-PLAN.md` §0 for the full build log and `REPORT-ENGINE-MATURITY.md` for what's
+left before this reads as fully mature (Excel, a real Monthly Management Report composite, report-
+access audit logging, Production's still-thin coverage) plus concrete visual-polish gaps already
+found (numeric columns aren't right-aligned in any report table, no currency symbol, negative
+balances don't use accounting-style parentheses) — polish work is in progress as of this writing.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own
