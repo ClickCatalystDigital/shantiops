@@ -1,3 +1,5 @@
+// app/api/test-certificates/[id]/pdf/route.js
+
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';

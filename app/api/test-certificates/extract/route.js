@@ -1,3 +1,5 @@
+// app/api/test-certificates/extract/route.js
+
 import { NextResponse } from 'next/server';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { extractFields } from '@/lib/extract';

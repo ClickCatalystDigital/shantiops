@@ -1,3 +1,6 @@
+//  components/PdfPreview.jsx
+
+
 'use client';
 
 // In-app PDF preview, rendered to <canvas> via PDF.js rather than an embedded <iframe>/browser

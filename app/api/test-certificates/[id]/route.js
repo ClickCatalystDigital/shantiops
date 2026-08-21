@@ -1,3 +1,5 @@
+// app/api/test-certificates/[id]/route.js
+
 import { NextResponse } from 'next/server';
 import { execute, queryOne, queryAll } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';

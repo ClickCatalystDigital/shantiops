@@ -1,3 +1,5 @@
+// components/CertPicker.jsx
+
 'use client';
 
 // Link picker — the document editor's core interaction. Cert + cast + plate are always shown
