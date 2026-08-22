@@ -32,6 +32,14 @@ import InventoryAgingCard from '@/components/reports/InventoryAgingCard';
 import StockLedgerCard from '@/components/reports/StockLedgerCard';
 import MaterialConsumptionCard from '@/components/reports/MaterialConsumptionCard';
 import BankReconciliationReportCard from '@/components/reports/BankReconciliationReportCard';
+import WorkOrderRegisterCard from '@/components/reports/WorkOrderRegisterCard';
+import ProductionCostVarianceCard from '@/components/reports/ProductionCostVarianceCard';
+import ReworkRejectionCard from '@/components/reports/ReworkRejectionCard';
+import MaterialUtilizationCard from '@/components/reports/MaterialUtilizationCard';
+import LabourUtilizationCard from '@/components/reports/LabourUtilizationCard';
+import MaterialShortageCard from '@/components/reports/MaterialShortageCard';
+import DrawingRegisterCard from '@/components/reports/DrawingRegisterCard';
+import EcnRegisterCard from '@/components/reports/EcnRegisterCard';
 
 const SCREEN = {
   'trial-balance': TrialBalanceCard,
@@ -53,6 +61,14 @@ const SCREEN = {
   'stock-ledger': StockLedgerCard,
   'material-consumption': MaterialConsumptionCard,
   'bank-reconciliation': BankReconciliationReportCard,
+  'work-order-register': WorkOrderRegisterCard,
+  'production-cost-variance': ProductionCostVarianceCard,
+  'rework-rejection': ReworkRejectionCard,
+  'material-utilization': MaterialUtilizationCard,
+  'labour-utilization': LabourUtilizationCard,
+  'material-shortage': MaterialShortageCard,
+  'drawing-register': DrawingRegisterCard,
+  'ecn-register': EcnRegisterCard,
 };
 
 export default function ReportsWorkspace({ department, reports, companies }) {

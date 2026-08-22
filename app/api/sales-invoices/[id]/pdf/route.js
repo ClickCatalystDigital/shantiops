@@ -15,7 +15,7 @@ export async function GET(req, { params }) {
   const invoice = await getSalesInvoiceDetail(params.id);
   if (!invoice) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  const pdf = await renderSalesInvoicePdf(invoice, invoice.items);
+  const pdf = await renderSalesInvoicePdf(invoice, invoice.items, user.username);
   return new NextResponse(pdf, {
     headers: {
       'Content-Type': 'application/pdf',

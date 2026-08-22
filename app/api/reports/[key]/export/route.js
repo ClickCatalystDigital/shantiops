@@ -7,18 +7,9 @@ import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { COMPANY_NAMES } from '@/lib/qc-doc-pdf.js';
 import { getReport } from '@/lib/reports/catalog';
 import { renderCatalogPdf } from '@/lib/reports/render';
+import { currentFyBounds } from '@/lib/date';
 
 export const runtime = 'nodejs';
-
-// Current Indian financial year (Apr 1 – Mar 31) as ISO bounds — the default date range for a
-// row-heavy report's PDF export when no range is given, instead of the screen's "omit both = all
-// time" (see catalog.js's `heavy` flag: an unbounded General Ledger roll-up could be hundreds of
-// pages as a PDF).
-function currentFyBounds() {
-  const now = new Date();
-  const y = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
-  return { from: `${y}-04-01`, to: `${y + 1}-03-31` };
-}
 
 export async function GET(req, { params }) {
   const report = getReport(params.key);
@@ -44,10 +35,11 @@ export async function GET(req, { params }) {
   const itemId = searchParams.get('item_id') || undefined;
   const asOf = searchParams.get('as_of') || undefined;
   const period = searchParams.get('period') || undefined;
+  const horizonDays = searchParams.get('horizon_days') || undefined;
 
   let result;
   try {
-    result = await report.compute(company, { from, to, customerId, supplierId, itemId, asOf, period });
+    result = await report.compute(company, { from, to, customerId, supplierId, itemId, asOf, period, horizonDays });
   } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 400 });
   }
@@ -59,6 +51,7 @@ export async function GET(req, { params }) {
 
   const stream = await renderCatalogPdf({
     company, title: report.title.toUpperCase(), subtitle, table, totals,
+    generatedBy: user.username, orientation: report.orientation,
   });
 
   return new NextResponse(stream, {

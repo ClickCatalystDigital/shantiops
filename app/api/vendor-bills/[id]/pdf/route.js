@@ -15,7 +15,7 @@ export async function GET(req, { params }) {
   const bill = await getVendorBillDetail(params.id);
   if (!bill) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  const pdf = await renderVendorBillPdf(bill, bill.items);
+  const pdf = await renderVendorBillPdf(bill, bill.items, user.username);
   return new NextResponse(pdf, {
     headers: {
       'Content-Type': 'application/pdf',
