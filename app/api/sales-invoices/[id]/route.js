@@ -58,7 +58,7 @@ export async function PATCH(req, { params }) {
       sourceType: 'sales_invoice',
       sourceId: invoice.id,
       description: `Sales Invoice ${invoice.invoice_no}`,
-      lines: salesInvoiceLines({ subtotal: invoice.subtotal, taxAmount: invoice.tax_amount, total: invoice.total }),
+      lines: salesInvoiceLines({ subtotal: invoice.subtotal, taxAmount: invoice.tax_amount, total: invoice.total, isReverseCharge: !!invoice.is_reverse_charge }),
       createdBy: user.username,
     });
   }

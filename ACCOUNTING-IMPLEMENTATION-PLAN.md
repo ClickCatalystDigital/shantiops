@@ -303,19 +303,170 @@ correct without this phase; it exists purely for interoperability.
 
 ## Phase 7 — Nice / Later (build opportunistically, not on this critical path)
 
-No fixed order among these three; pull whichever one a real, current need justifies. None of them
-block Phases 0–6 or are blocked by them.
+**Update (2026-08-22): Fixed Assets shipped in §5aa/§5z, no longer "later"** — real financial asset
+ledger, depreciation (SLM/WDV), and disposal all exist. What's still genuinely missing from that
+area is a **Fixed Asset Register + Depreciation Schedule as proper Report Engine entries** (right
+now `fixed_assets`/`depreciation_runs` only have a workspace tab, no catalog report/PDF) — folded
+into Phase 8 below rather than left here.
 
-- **Fixed Assets register** — a real financial asset ledger is genuinely new territory (nothing in
-  the app is asset-shaped today; `workstations`/`calibration_items` are operational records, not
-  a depreciation-bearing register). Small table (asset, cost, purchase date, useful life,
-  location) is enough to start; depreciation *calculation* stays the downstream accounting
-  system's job, same "don't cross the ledger line" rule as everywhere else.
+No fixed order among the remaining two; pull whichever one a real, current need justifies. Neither
+blocks Phases 0–6 or is blocked by them.
+
 - **Cheque Printing** — needs a `bank_accounts` table (account, IFSC, bank name, per-company) and
   a payment-voucher entity first; the printing itself is a PDF template, same pattern as every
   other PDF in this app (`lib/*-pdf.js`).
 - **Forex Gain/Loss** — only relevant if there are actual export invoices or foreign-currency
   vendor bills; confirm real need before building a currency-rate table nobody uses.
+
+---
+
+## V1 completeness roadmap (2026-08-22) — closing the accountant's daily-use loop
+
+A second AI scored the current build ~7/10 toward "a real Indian manufacturing company could run
+its Accounts department on this without needing Tally for core bookkeeping," and proposed stopping
+V1 at ~8/10. Verified against what's actually built (SYSTEM.md §5q–§5aa, `lib/reports/catalog.js`)
+rather than taken at face value — the score's direction is right, but not all of its "gaps" are
+real gaps. Two of the three it named are deliberate, already-made scope decisions, not
+incompleteness:
+
+- **"GST return filing automation" / "live GST portal API"** — scored low, but this was a
+  deliberate standing decision (§5v/§7 above): GSTR-2B comes in via manual upload same as the GST
+  portal's own export flow, filing stays manual. Mature products don't self-serve this either —
+  Tally's own "connected GST filing" goes through a GSP, same as this app would if it ever needed
+  it (see Phase 9). Not a V1 gap to close by building more; a boundary already correctly placed.
+- **"GST reconciliation / 2B workflow"** — GSTR-2B upload + IMS accept/reject + ITC reconciliation
+  against Vendor Bills is already built and live-verified (§5v/§5w). Scored low against a fuller
+  automation this app deliberately doesn't attempt, not because the workflow is missing.
+
+Two gaps are real and worth closing for V1:
+
+### Phase 8 — Bank reconciliation: statement import + matching
+
+**Status: built 2026-08-22, code-reviewed + smoke-tested — see SYSTEM.md §5ab.** Matcher
+(`lib/bank-match.mjs`), parser (`lib/bank-statement-import.mjs`), import + quick-JE routes, and UI
+all built. **Known gap, by explicit user decision**: not yet exercised against a real bank
+statement file or the real dev DB — the parser's header-alias map is pinned only to a synthetic
+CSV, not a real export. Live-verify whenever a real statement file becomes available; not treated
+as a blocker for the rest of the roadmap.
+
+**No paid service needed for this.** The instinct to reach for a bank API is the wrong shape of
+fix — even Tally's own reconciliation is file-import-based (a statement the user downloads from
+netbanking, in CSV/OFX/MT940), not a live bank API; live feeds are an enterprise-tier feature even
+there. The free, standard-practice path: parse a downloaded statement file, match rows against
+already-recorded `journal_entry_lines` on the Bank & Cash account (by date + amount, ±few days
+tolerance for float), surface unmatched rows on both sides for manual tie-off. This *extends* the
+existing manual tick-off (§5w) rather than replacing it — auto-match confidently, still allow
+manual reconciliation for whatever doesn't match.
+
+**Build**: a statement-row parser (start with one bank's real CSV export — do not design the
+column-mapping speculatively, same rule Phase 6 already uses for Tally imports); a matching
+function (pure, testable, own selfcheck) scoring candidate matches by date-proximity + exact
+amount; an "Import Statement" action in the existing Bank Reconciliation tab showing matched/
+unmatched, with one-click confirm on high-confidence matches and manual pairing for the rest.
+
+**Prompt to hand a fresh chat for Phase 8:**
+
+```
+Read SYSTEM.md fully first (§5w for the existing manual Bank Reconciliation tab, §5z/§5aa for the
+most recent Accounts work), then ACCOUNTING-IMPLEMENTATION-PLAN.md's Phase 8 section. Don't
+re-derive anything already built — company_settings, chart_of_accounts, journal_entries/
+journal_entry_lines (with a `reconciled`/`reconciled_at` pair already on journal_entry_lines per
+§5w), and the existing Bank Reconciliation tab in AccountsWorkspace.jsx all already exist.
+
+Build statement import + auto-match on top of that, not a replacement for the manual tick-off.
+Before writing any parser, get one real bank statement export (CSV, from whichever bank the user
+actually uses) — do not design the column mapping from assumptions, same rule this doc's Phase 6
+already uses for Tally imports. Ask the user for that file before starting if it isn't in the
+repo already.
+
+Real design questions to resolve with the user first, not assumed:
+1. Which bank(s) — one format to start, or does a real multi-bank need exist now?
+2. Match tolerance — same-day exact-amount only, or a few days' float tolerance? What should happen
+   to a statement row that matches no ledger line (a bank charge/interest never recorded)?
+3. Does a "high-confidence match" auto-reconcile, or does everything still need a human click even
+   when the match is obviously correct?
+
+This is real financial reconciliation logic — leave a runnable selfcheck for the matching function
+(pure, no DB), same as `lib/depreciation.mjs`/`lib/ledger.mjs`'s pattern this session. Live-verify
+against the real dev DB (remote Turso — see the dev-server-uses-remote-turso note) using the user's
+real statement file, not fabricated bank rows.
+```
+
+### Phase 9 — Report depth: Fixed Asset Register, Depreciation Schedule, Cash Flow Statement
+
+**Status: all three built AND live-verified against the real dev DB, 2026-08-22 — see SYSTEM.md
+§5ac.** Cash Flow Statement's design questions were resolved with the user before writing code:
+indirect method; categorization by account type + a Fixed-Assets/Accumulated-Depreciation code
+exception, overridable per account via a new `chart_of_accounts.cash_flow_category` column — not
+per-transaction tagging. Live verification (real fixed-asset purchase/depreciation/disposal cycle,
+real ledger data) confirmed the compliance-critical invariant — computed Cash Flow ties to the
+actual Bank & Cash movement to the rupee — held exactly across every scenario tested, including
+the account-level override and its revert. One cosmetic PDF bug (a wrapping column) found and
+fixed while verifying. An on-screen browser gap was also found (no `SCREEN`-map card for any of the
+three, plus the pre-existing TDS Deduction Register) and closed the same day per the user's "no
+gaps" instruction — see SYSTEM.md §5ad. All four now render real data on-screen, browser-verified.
+
+**No paid service needed for this either** — pure computation over data already captured.
+- **Fixed Asset Register** + **Depreciation Schedule** — wire `fixed_assets`/`depreciation_runs`
+  into `lib/reports/catalog.js` like every other report (one `compute()`, screen/JSON/PDF share
+  it, ground rule already established). Asset Register: one row per asset, cost/method/accumulated
+  dep/book value/status. Depreciation Schedule: one row per asset per period run, tying back to
+  `depreciation_run_lines`.
+- **Cash Flow Statement** — genuinely not built (Cash/Bank Book is a ledger, not operating/
+  investing/financing categorized cash flow). Needs a real design decision first (direct vs.
+  indirect method; how to categorize each `journal_entry_lines` row by activity) — resolve that
+  with a human before writing code, same as Phase 5's account-mapping questions were resolved
+  up front rather than guessed.
+
+### Phase 10 — Government-connected compliance (e-invoice, e-way bill, TDS 26Q workflow)
+
+**Trigger check (2026-08-22): none fired.** Asked the user directly, per this phase's own rule
+(don't build speculatively) — turnover hasn't crossed the e-invoicing threshold, dispatch volume
+isn't near the e-way-bill threshold, and there are no exempt supplies yet (so Rule 42/43 isn't
+relevant). **Status: still correctly deferred, nothing built.** Re-ask this question next time this
+phase comes up rather than assuming last check's answer still holds.
+
+**Explicitly deferred, build only when a real trigger hits — do not build speculatively:**
+- **E-invoicing/IRN** — only if turnover crosses the mandatory threshold (confirm with your CA
+  first). **Paid service genuinely needed then**: production API access requires GSTIN-based
+  registration as an Intermediary/API integrator through one of the government-sanctioned IRPs
+  (ClearTax/Cygnet/IRIS-style commercial IRPs, or NIC's own portal) — not casual free self-service,
+  confirmed via direct research (§5aa). **Correction (2026-08-22, second research pass)**: at least
+  one IRP (IRIS) publishes onboarding APIs specifically for solution providers/ERP vendors — GSTIN
+  OTP verification, setting IRP credentials, granting API access per client GSTIN — so a future
+  Shanti Ops connector could plausibly drive customer onboarding itself rather than only wrapping a
+  GSP's own UI. Doesn't change the trigger condition (still gated on turnover), only the
+  practicality once that trigger fires. Architecture readiness (§5z, not yet acted on): keep the
+  Sales Invoice model extendable with an IRN/signed-QR slot later, don't build something that has
+  to be redesigned if e-invoicing ever gets switched on. Credentials/connection state, if ever
+  built, belong per-company in Shanti Ops (`company_settings`-adjacent) — never in
+  statutory-rates-hub, which only distributes identical-for-everyone rate data and holds no
+  per-company secrets or transactional state.
+- **E-way bill generation** — only if dispatching goods above the state threshold (usually
+  ₹50,000/consignment). **Paid service genuinely needed then**: production API access requires GSP
+  registration, same story as e-invoicing. **Correction (2026-08-22)**: eligibility for direct
+  (non-GSP) API access is volume-based — roughly 1,000 e-way bills/day or 10,000 transactions/month
+  per GSTIN, per the EWB portal's own prerequisites — not restricted by industry/business type as
+  previously assumed. Still not a real trigger today (nothing indicates dispatch volume is near
+  that), so still deferred; noted so it isn't mis-scoped as "industry-ineligible" later. Same
+  per-company placement as e-invoicing above if ever built — not statutory-rates-hub.
+- **TDS 26Q e-filing** — the TDS Deduction Register (§5z) already gives the data; actual TRACES-
+  format filing has no clean API for a self-service integration at any price — stays a CA/return-
+  prep-software task regardless of budget.
+- **TCS (206C(1H))** — needs the same cumulative per-customer threshold tracking vendor TDS
+  deliberately doesn't have yet; building it without that tracking would be wrong, not incomplete.
+- **Rule 42/43 proportional ITC reversal** — real accounting nuance, only matters with exempt
+  supplies.
+
+### On the statutory-rates-hub and paid rate-data feeds
+
+Already solved without a paid service (`statutory-rates-hub`, SYSTEM.md §5y): a central,
+human-verified rate registry your team updates after reading real notifications (Budget, GST
+Council meetings), distributed to every tenant install automatically. No reliable free *or* paid
+API exists for "the current correct GST/TDS rate" as a live feed — a paid compliance-data
+subscription (e.g. ClearTax's GST rate API) could reduce the manual-checking labor if that
+tradeoff is ever worth it, but it's optional, not a gap. Nothing here needs it to function
+correctly today.
 
 ---
 
@@ -334,7 +485,14 @@ Phase 5  General Ledger & Financial Statements  ← Shanti Ops owns the books;
 
 Phase 6  Optional Tally Sync                    ← genuinely optional, build only if/when needed
 
-Phase 7  Fixed Assets / Cheque Printing / Forex  ← opportunistic, anytime, no dependency
+Phase 7  Cheque Printing / Forex                 ← opportunistic, anytime, no dependency
+                                                    (Fixed Assets shipped 2026-08-22, see §5aa/§5z)
+
+Phase 8  Bank reconciliation: statement import   ← real V1 gap, no paid service needed, do next
+Phase 9  Report depth: Asset Register /            ← real V1 gap, no paid service needed
+         Depreciation Schedule / Cash Flow
+Phase 10 Government-connected compliance          ← explicitly deferred — build only when a real
+         (e-invoice / e-way bill / 26Q)              threshold/business need actually triggers it
 ```
 
 Phases 2 and 3 can run in either order or in parallel once 0–1 are done — pick whichever side

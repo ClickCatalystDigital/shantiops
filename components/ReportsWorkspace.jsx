@@ -41,6 +41,8 @@ import MaterialShortageCard from '@/components/reports/MaterialShortageCard';
 import DrawingRegisterCard from '@/components/reports/DrawingRegisterCard';
 import EcnRegisterCard from '@/components/reports/EcnRegisterCard';
 import OpenPoAgingCard from '@/components/reports/OpenPoAgingCard';
+import { FixedAssetRegisterCard, DepreciationScheduleCard, TdsRegisterCard } from '@/components/reports/FixedAssetReportCards';
+import CashFlowStatementCard from '@/components/reports/CashFlowStatementCard';
 import ManagementReportCard from '@/components/executive/ManagementReportCard';
 import ProjectProfitabilityCard from '@/components/executive/ProjectProfitabilityCard';
 import CustomerProfitabilityCard from '@/components/executive/CustomerProfitabilityCard';
@@ -79,6 +81,10 @@ export const SCREEN = {
   'drawing-register': DrawingRegisterCard,
   'ecn-register': EcnRegisterCard,
   'open-po-aging': OpenPoAgingCard,
+  'fixed-asset-register': FixedAssetRegisterCard,
+  'depreciation-schedule': DepreciationScheduleCard,
+  'tds-register': TdsRegisterCard,
+  'cash-flow': CashFlowStatementCard,
   // Management reports (app/api/executive/*) — folded into the consolidated admin/manager view via
   // `hasOwnControls: true` on their catalog-shaped entries below (app/reports/page.js); these cards
   // already manage their own company switcher + PDF button, same as the standalone

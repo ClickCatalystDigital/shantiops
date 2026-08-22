@@ -12,6 +12,7 @@ export function middleware(req) {
   if (
     PUBLIC_PATHS.some(p => pathname === p) ||
     pathname.startsWith('/api/agent') || // USB agents send Bearer, no cookie; handler verifies the JWT
+    pathname === '/api/statutory-rates/sync' || // cron-triggered; handler checks x-sync-key itself
     pathname.startsWith('/rfq/') ||      // supplier portal page (V2-CHANGES.md Phase 5.1, D12) — token is the auth, no login
     pathname.startsWith('/api/rfq/') ||  // ...and its API — singular, distinct segment from the authenticated /api/rfqs
     pathname.startsWith("/_next") ||

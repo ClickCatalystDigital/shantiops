@@ -49,15 +49,19 @@ export async function POST(req, { params }) {
     companyStateCode: companyRow?.state_code,
     customerStateCode: quotation.customer_state_code,
   });
-  const total = quotation.subtotal + split.taxAmount;
+  // Reverse charge: the customer self-assesses GST entirely, so nothing is charged to them for it —
+  // the invoice total is just the taxable value (lib/ledger.mjs's salesInvoiceLines() posts nothing
+  // to GST Output Payable in this case either).
+  const isReverseCharge = !!b.is_reverse_charge;
+  const total = isReverseCharge ? quotation.subtotal : quotation.subtotal + split.taxAmount;
 
   const { lastId } = await execute(
     `INSERT INTO sales_invoices
        (invoice_no, company, customer_id, sale_order_id, quotation_id, invoice_date, due_date,
-        subtotal, cgst_amount, sgst_amount, igst_amount, tax_amount, total, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        subtotal, cgst_amount, sgst_amount, igst_amount, tax_amount, total, is_reverse_charge, created_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [invoiceNo, company, quotation.customer_id, saleOrder?.id ?? null, quotation.id, invoiceDate, b.due_date ?? null,
-      quotation.subtotal, split.cgst, split.sgst, split.igst, split.taxAmount, total, user.username]
+      quotation.subtotal, split.cgst, split.sgst, split.igst, split.taxAmount, total, isReverseCharge ? 1 : 0, user.username]
   );
   const invoiceId = Number(lastId);
   let sortOrder = 0;

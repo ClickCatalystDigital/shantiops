@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -646,6 +647,8 @@ export function NewQuotationDialog({ customers, opportunityId = null, initialCus
 function QuotationsTab({ quotations, customers, router }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [busyId, setBusyId] = useState(null);
+  const [rcmQuotation, setRcmQuotation] = useState(null);
+  const [isReverseCharge, setIsReverseCharge] = useState(false);
 
   async function setStatus(q, status) {
     setBusyId(q.id);
@@ -662,13 +665,13 @@ function QuotationsTab({ quotations, customers, router }) {
       router.refresh();
     } catch (err) { showToast(err.message, 'error'); } finally { setBusyId(null); }
   }
-  async function convertToInvoice(q) {
+  async function convertToInvoice(q, isReverseCharge = false) {
     setBusyId(q.id);
     try {
-      const res = await api(`/api/quotations/${q.id}/convert-to-invoice`, { method: 'POST', body: {} });
+      const res = await api(`/api/quotations/${q.id}/convert-to-invoice`, { method: 'POST', body: { is_reverse_charge: isReverseCharge } });
       showToast(`Sales Invoice ${res.invoice_no} created`);
       router.refresh();
-    } catch (err) { showToast(err.message, 'error'); } finally { setBusyId(null); }
+    } catch (err) { showToast(err.message, 'error'); } finally { setBusyId(null); setRcmQuotation(null); }
   }
 
   return (
@@ -701,7 +704,7 @@ function QuotationsTab({ quotations, customers, router }) {
                     {q.status === 'accepted' && (
                       <div className="flex gap-2">
                         <Button size="sm" variant="outline" disabled={busyId === q.id} onClick={() => convert(q)}>Convert to SO</Button>
-                        <Button size="sm" variant="outline" disabled={busyId === q.id} onClick={() => convertToInvoice(q)}>Convert to Invoice</Button>
+                        <Button size="sm" variant="outline" disabled={busyId === q.id} onClick={() => { setIsReverseCharge(false); setRcmQuotation(q); }}>Convert to Invoice</Button>
                       </div>
                     )}
                   </TableCell>
@@ -712,6 +715,23 @@ function QuotationsTab({ quotations, customers, router }) {
         )}
       </CardContent>
       {dialogOpen && <NewQuotationDialog customers={customers} router={router} onClose={() => setDialogOpen(false)} />}
+      {rcmQuotation && (
+        <Dialog open onOpenChange={o => !o && setRcmQuotation(null)}>
+          <DialogContent className="max-w-md">
+            <DialogHeader><DialogTitle>Convert {rcmQuotation.quotation_no} to Invoice</DialogTitle></DialogHeader>
+            <div className="flex items-center gap-2">
+              <Checkbox id="inv-rcm" checked={isReverseCharge} onCheckedChange={v => setIsReverseCharge(!!v)} />
+              <Label htmlFor="inv-rcm" className="font-normal">Reverse charge (RCM) — customer self-assesses GST, we charge taxable value only</Label>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setRcmQuotation(null)}>Cancel</Button>
+              <Button onClick={() => convertToInvoice(rcmQuotation, isReverseCharge)} disabled={busyId === rcmQuotation.id}>
+                {busyId === rcmQuotation.id ? 'Creating…' : 'Create Invoice'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </Card>
   );
 }

@@ -59,7 +59,7 @@ export async function PATCH(req, { params }) {
       sourceType: 'vendor_bill',
       sourceId: bill.id,
       description: `Vendor Bill ${bill.bill_no}`,
-      lines: vendorBillLines({ subtotal: bill.subtotal, taxAmount: bill.tax_amount, tdsAmount: bill.tds_amount, payableAmount: bill.payable_amount }),
+      lines: vendorBillLines({ subtotal: bill.subtotal, taxAmount: bill.tax_amount, tdsAmount: bill.tds_amount, payableAmount: bill.payable_amount, isReverseCharge: !!bill.is_reverse_charge }),
       createdBy: user.username,
     });
 

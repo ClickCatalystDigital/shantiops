@@ -20,6 +20,7 @@ import { Input } from './ui/input';
 import { Textarea } from './ui/textarea';
 import { Label } from './ui/label';
 import { Badge } from './ui/badge';
+import { Checkbox } from './ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from './ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
@@ -625,6 +626,7 @@ function RecordBillDialog({ po, tdsRates, onClose, router }) {
   const [billDate, setBillDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [gstRatePct, setGstRatePct] = useState('18');
   const [tdsRateId, setTdsRateId] = useState('none');
+  const [isReverseCharge, setIsReverseCharge] = useState(false);
   const [saving, setSaving] = useState(false);
 
   async function save() {
@@ -633,7 +635,7 @@ function RecordBillDialog({ po, tdsRates, onClose, router }) {
     try {
       const res = await api(`/api/purchase-orders/${po.id}/record-bill`, {
         method: 'POST',
-        body: { bill_no: billNo, bill_date: billDate, gst_rate_pct: Number(gstRatePct) || 0, tds_rate_id: tdsRateId === 'none' ? null : Number(tdsRateId) },
+        body: { bill_no: billNo, bill_date: billDate, gst_rate_pct: Number(gstRatePct) || 0, tds_rate_id: tdsRateId === 'none' ? null : Number(tdsRateId), is_reverse_charge: isReverseCharge },
       });
       showToast(`Vendor Bill ${res.bill_no} recorded`);
       router.refresh();
@@ -655,9 +657,13 @@ function RecordBillDialog({ po, tdsRates, onClose, router }) {
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">No TDS deduction</SelectItem>
-                {tdsRates.map(r => <SelectItem key={r.id} value={String(r.id)}>{r.section} — {r.rate_pct}%{r.description ? ` (${r.description})` : ''}</SelectItem>)}
+                {tdsRates.map(r => <SelectItem key={r.id} value={String(r.id)}>{r.section}{r.legacy_section ? ` (${r.legacy_section})` : ''} — {r.rate_pct}%{r.description ? ` (${r.description})` : ''}</SelectItem>)}
               </SelectContent>
             </Select>
+          </div>
+          <div className="flex items-center gap-2">
+            <Checkbox id="vb-rcm" checked={isReverseCharge} onCheckedChange={v => setIsReverseCharge(!!v)} />
+            <Label htmlFor="vb-rcm" className="font-normal">Reverse charge (RCM) — vendor's invoice carries no GST, we self-assess it</Label>
           </div>
         </div>
         <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? 'Recording…' : 'Record Bill'}</Button></DialogFooter>

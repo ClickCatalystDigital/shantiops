@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
-import { execute } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
-import { getProfessionalTaxSlabs } from '@/lib/data';
+import { getProfessionalTaxSlabs, insertProfessionalTaxSlab } from '@/lib/data';
+import { audit } from '@/lib/usb';
 
 export async function GET() {
   const user = await getFreshSessionUser();
@@ -18,12 +18,11 @@ export async function POST(req) {
   const actionDenied = await requireAction(user, 'HR', 'hr.statutory.write');
   if (actionDenied) return actionDenied;
   const b = await req.json();
-  if (!b.state || b.min_gross == null || b.amount == null) {
-    return NextResponse.json({ error: 'state, min_gross, amount are required' }, { status: 400 });
+  try {
+    const id = await insertProfessionalTaxSlab(b);
+    await audit('professional_tax_slab_added', { actor: user.username, detail: `${b.state}: ${b.min_gross}+ @ ${b.amount}` });
+    return NextResponse.json({ id });
+  } catch (e) {
+    return NextResponse.json({ error: e.message }, { status: 400 });
   }
-  const { lastId } = await execute(
-    'INSERT INTO professional_tax_slabs (state, min_gross, max_gross, amount) VALUES (?, ?, ?, ?)',
-    [b.state, b.min_gross, b.max_gross ?? null, b.amount]
-  );
-  return NextResponse.json({ id: Number(lastId) });
 }

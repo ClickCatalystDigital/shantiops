@@ -12,14 +12,19 @@ set of user accounts:
    blocks USB drives, CDs/DVDs, phones, and websites on employee machines until a manager approves,
    via the same dashboard.
 
-**Product decision, do not reopen (`V3_CHANGES.md` §12):** regulated accounting/GST/TDS/statutory
-payroll are permanently deferred — ERPNext-integration territory, an option not a dependency. CRM,
-Selling, and HR (incl. Recruitment) are built natively to real ERPNext feature depth instead. See
-`V3_CHANGES.md` §12 for the full decision, boundary, and capability matrix before touching anything
-CRM/Selling/HR/Finance shaped.
+**Product decision, superseded — do not act on this paragraph, see §5q:** `V3_CHANGES.md` §12
+originally deferred regulated accounting/GST/TDS/statutory payroll as ERPNext-integration
+territory. That decision was reversed 2026-08-20 (§5q): Shanti Ops is now the system of record for
+the full Accounts workflow (ledger, GST, TDS, fixed assets, payroll export), built out through §5z
+and §5aa — not a stub, not an ERPNext dependency. Left here only so a reader who finds the old
+`V3_CHANGES.md` §12 text elsewhere knows it's stale. CRM, Selling, and HR (incl. Recruitment) are
+still built natively to real ERPNext feature depth, unaffected by this reversal.
 
-Everything in this file reflects the **current, working build** as of 2026-08-03. Most recent round:
-a **full Procurement redesign** — the working spec lived in `PROCUREMENT-CHANGES.md` during the
+Everything in this file reflects the **current, working build**, updated as work lands — most
+recently 2026-08-22 (§5aa, the TDS Section 393 fix + fixed-asset disposal + RCM sales-side pass).
+The paragraph below is itself a dated snapshot from 2026-08-03, describing what was the most recent
+round **at that time**: a **full Procurement redesign** — the working spec lived in
+`PROCUREMENT-CHANGES.md` during the
 build and is now folded in here (§5c); that file stays as the historical record of the investigation
 and decisions, marked done. Five phases, each verified live and committed separately: (1) a clean
 demo dataset replaced 780 rows of imported PMB Excel that had zero suppliers/quotes ever logged
@@ -3359,6 +3364,551 @@ department reports), all off existing compute functions — no new ledger math:
 - **A transient dev-server glitch, not a bug**: `/reports?dept=Procurement` 500'd once with
   `Cannot read properties of null (reading 'useContext')` — the same first-compile HMR error seen
   earlier this session; an immediate retry returned 200 with both reports rendering correctly.
+
+## 5y. Statutory-rates-hub sync + TDS master fix (2026-08-22)
+
+New sibling repo `~/Developer/statutory-rates-hub` (Next.js + `@libsql/client`, not part of this
+repo) — a central, human-verified registry of Indian statutory rates (GST/TDS/PF/ESI/income-tax/PT
+slabs), built multi-tenant from day one (per-tenant API keys) since a second real deployment is
+expected and retrofitting tenant auth later is worse than building it in now. One generic
+`rate_changes` table (category + JSON payload + effective dates), draft → approve (`approved_at`
+timestamp, not a status machine) → tenant pull via `GET /api/rates/since?cursor=`. Deliberately not
+built: any scraper/change-detection against government sites — no reliable free official GST/TDS
+API exists (checked live), and getting a compliance number wrong unattended is worse than a human
+checking around known trigger dates (Budget, GST Council meetings). See its own README.md.
+
+**This repo's side** — `lib/rate-sync.js` (`syncRatesFromHub()`) + `app/api/statutory-rates/sync`
+(POST, `x-sync-key` header auth since a cron has no session — added to `middleware.js`'s
+`PUBLIC_PATHS`-adjacent exception list) + `hub_sync_state` single-row cursor table. Reuses the exact
+insert/patch functions the admin routes already used — `insertGstRate`/`insertVendorTdsRate`
+(`lib/data.js`), `insertIncomeTaxSlab`/`insertProfessionalTaxSlab` (`lib/data.js`),
+`patchStatutoryRates` (`lib/payroll.js`) — extracted from what was inline SQL in each POST/PATCH
+route so a rate entered by hand and one pulled from the hub go through identical validation.
+`STATUTORY_RATES_HUB_URL`/`STATUTORY_RATES_HUB_API_KEY`/`RATE_SYNC_KEY` env vars. **Update
+(2026-08-22, same day):** hub repo pushed to `github.com/clickcatalyst-digital/statutory-rates-hub`,
+wired to its own real Turso DB (migrated clean, confirmed empty), a "Shanti Ops" tenant row created
+there and its API key set as `STATUTORY_RATES_HUB_API_KEY` in this repo's `.env.local`.
+**Update (2026-08-22, later same day):** hub deployed to Render
+(`statutory-rates-hub.onrender.com`), `STATUTORY_RATES_HUB_URL` set for real. Full pipeline now
+live-verified end to end: `POST /api/statutory-rates/sync` against the real deployed hub returned
+`{pulled:0, applied:0, cursor:0}` — correct, since nothing's been approved in the hub yet. Caught and
+fixed a real bug along the way: adding `.env.local` auto-loading to the hub's `lib/db.js` (so plain
+`node scripts/*.mjs` runs pick up Turso creds, not just Next's own runtime) briefly broke
+`selfcheck`'s local-file isolation, and it wrote one fake test row into the real Turso DB before
+this was caught and fixed (`DB_PATH` now always wins over `TURSO_URL` when set) — deleted the stray
+row, confirmed `rate_changes: 0` on Turso afterward.
+
+**Live-verified**: hub side fully — `npm run selfcheck` (draft→approve→pull→no duplicate pull) plus
+a real browser round-trip (login as admin, save draft, approve, confirm `GET /rates/since` returns
+it) against the hub's own dev DB. This repo's insert functions verified for real: two missing
+**194I (rent)** TDS rows — land/building/furniture 10%, plant/machinery/equipment 2%, both
+threshold ₹2,40,000/yr — added through the actual `accounts_head` login + `AccountsWorkspace.jsx`
+"GST & TDS Rates" tab (found missing while auditing what's actually seeded vs. current law;
+`vendor_tds_rates` previously only had 194C ×2 and 194J). This went through the real Turso prod DB,
+confirmed in the UI list afterward. The `/api/statutory-rates/sync` HTTP path itself was later
+fully verified too, against the real deployed hub (see §5z) — `{pulled:0, applied:0, cursor:0}`,
+correct since nothing was approved in the hub yet. (Separately: a genuinely fresh local shanti-ops
+DB throws `no such table: crm_notes` on boot — `migrate()` has apparently never been exercised
+against a truly empty DB, everyone always points at the shared Turso instance. Orthogonal
+pre-existing bug, not chased down, not this feature's fault.)
+
+**Also found, not fixed**: `gst_rates` (HSN→rate master) was completely empty. Confirmed via
+`grep` that nothing reads it in a live calculation path yet (`app/accounts/page.js` only, per §5r —
+Sales Invoice/Vendor Bill GST is still manually entered per line), so this wasn't producing wrong
+invoices, just an unpopulated admin table. Left empty rather than inventing HSN codes for products
+I don't have a real catalog for.
+
+## 5z. Compliance pass — audit trail, period lock, fixed assets, TDS register, RCM (2026-08-22)
+
+Prompted by an honest compliance tally (below) that found real gaps against Companies Act /
+Income Tax Act requirements. **Correction made along the way**: an earlier claim that this app had
+"no audit trail" was wrong — `usb_audit` already is one (215 call sites, see §10's "system-wide
+audit trail" note); the real gaps were narrower.
+
+**Built this pass:**
+- **Rate-master audit logging** — the 5 rate-master routes (`gst-rates`, `vendor-tds-rates`,
+  `income-tax-slabs`, `professional-tax-slabs`, `statutory-rates`) now call `audit()` like almost
+  every other mutation route already did.
+- **Audit Log viewer** — `AccountsWorkspace.jsx`'s new tab, `GET /api/audit-log` (search by
+  action/actor/detail, latest 200 default). `usb_audit` had 215 writers and zero readers before
+  this; first UI onto it.
+- **Books lock** — `company_period_locks` (one row per company). Enforced at the single choke
+  point every journal posting funnels through (`lib/ledger-post.js`'s `insertEntryWithLines()` +
+  `postDraftJournalEntry()`), so auto-posted documents, manual journals, reversals, fixed-asset
+  purchases, and depreciation runs are all covered by one check, not five. Drafts are exempt (they
+  don't touch the ledger). `lib/period-lock.js`, `app/api/company-period-lock`. **Currently set to
+  2020-01-01 on Shanti Boilers from live-verification testing — this is a placeholder, not a real
+  close date. Move it to the actual last-closed period before relying on it.**
+- **Fixed Assets + Schedule II depreciation** — `fixed_assets`, `depreciation_runs`,
+  `depreciation_run_lines` tables; `lib/depreciation.mjs` (pure SLM/WDV math, own selfcheck,
+  `scripts/depreciation-selfcheck.mjs`, monthly granularity only — no day-proration, see its own
+  `ponytail:` comment); `lib/fixed-assets.js` (DB orchestration, mirrors `lib/ledger-post.js`'s
+  split). New chart-of-accounts codes 1400/1410/5300 (Fixed Assets / Accumulated Depreciation /
+  Depreciation Expense) — backfilled onto both existing companies (new codes added to
+  `DEFAULT_CHART_OF_ACCOUNTS` after the one-time seed need this `else` backfill branch in
+  `lib/db.js`; a brand-new company today only gets created by editing `lib/db.js` directly, no API
+  route exists for that, so this is the only backfill path that matters right now). New "Fixed
+  Assets" tab. **Update (§5aa, same day)**: disposal — genuinely not built when this paragraph was
+  first written — is now built; see §5aa for the gain/loss-on-disposal posting and why there's
+  still no "edit" flow.
+- **TDS Deduction Register** — new report (`getTdsDeductionRegisterLines()` in `lib/data.js`,
+  wired into the existing catalog same as every other report). Gives you what's already been
+  deducted, grouped by FY/quarter/section/PAN, for handing to whoever files the quarterly 26Q —
+  **does not generate the TRACES-format return itself**, no API exists for that, it's normally a
+  CA/return-prep-software task.
+- **RCM (reverse charge) on Vendor Bills** — new checkbox on Record Bill; when set, GST isn't
+  added to what's owed the vendor and is instead self-assessed (`GST_OUTPUT_PAYABLE` credited
+  alongside the usual `GST_INPUT_CREDIT` debit — `lib/ledger.mjs`'s `vendorBillLines()`). **Update
+  (§5aa, same day)**: sales-side RCM is now built too — see §5aa. "Only wired on the purchase side"
+  below was true when written, corrected here so it isn't read as still-true.
+
+**Explicitly not built, and why:**
+- **E-way bill generation** — real gap if you dispatch goods above the state threshold (usually
+  ₹50,000/consignment). No simple government API; would go through a paid GSP
+  (ClearTax/Cygnet/Vayana-style), not a direct integration.
+- **E-invoicing / IRN** — only matters if turnover crosses the mandatory threshold (confirm with
+  your CA). Same GSP-mediated story as e-way bill if it does apply.
+- **TCS (Section 206C(1H))** — needs the same cumulative per-customer threshold tracking that
+  vendor TDS deliberately doesn't have yet (§5r) — building it without that tracking would be
+  wrong, not just incomplete.
+- **Rule 42/43 proportional ITC reversal** — real accounting nuance, matters if you have exempt
+  supplies; deferred since §5v, still deferred.
+- **Live GST portal API / automated filing** — deliberate standing decision (§5v/§7): GSTR-2B
+  comes in via manual upload same as the GST portal's own export flow; actual filing stays manual.
+
+**Live-verified**: rate-master audit logging + viewer (real data, 814 pre-existing rows read back
+correctly), books lock (locked Shanti Boilers, confirmed a backdated draft still creates but
+posting it is rejected with the right message, cleaned up the test entry), fixed assets tab
+renders (caught and fixed a real bug — missing `Select` import crashed the tab), zero-asset
+depreciation run completes cleanly with no bogus posting. **Not live-verified**: TDS Deduction
+Register (code-reviewed only, reuses the already-proven report-engine pattern) and RCM's actual
+journal posting (verified the math balances by hand, not clicked through a real PO→bill→approve
+cycle — didn't want to fabricate a fake vendor transaction in the real books).
+
+## 5aa. TDS Section 393 modernization + fixed-asset disposal + RCM sales-side (2026-08-22)
+
+Prompted by a second AI's critique of §5z, independently fact-checked via web search before acting
+on it (not taken on faith) — two of its three concrete claims held up, one was overstated.
+
+**Confirmed and acted on**: the Income Tax Act 2025 replaces TDS sections 194C/194J/194I (and most
+of the old 194-series) with a single consolidated Section 393, effective for any transaction dated
+on/after 2026-04-01 — which is now, not a future concern (today is 2026-08-22, FY2026-27 already
+underway). The 5 `vendor_tds_rates` rows added in §5r/§5y all cited the now-superseded law for
+their own effective period.
+
+**Overstated, not acted on**: the critique said official e-invoice/e-way bill APIs exist directly
+from government-linked IRPs/NIC, not only via paid GSPs — true, confirmed by search, but production
+access still needs GSTIN-based registration as an Intermediary/API integrator, not casual
+self-service. Doesn't change anything in the code; noted for the user's own research.
+
+**Built:**
+- **TDS section fix** — `vendor_tds_rates.legacy_section` column (the old 194-series label, kept
+  for human recognition); `section` now holds the correct Section 393 table reference (194C →
+  `393(1) Sl.6(i).D(a)/(b)`, 194J → `393(1) Sl.6(iii).D(a)`, 194I → `393(1) Sl.2(ii).D(a)/(b)`).
+  One-time idempotent migration `migrateTdsSection393()` (`lib/db.js`, `system_migrations`-guarded,
+  same idiom as `migrateScopeOfSupplyToDocumentShape`/`migrateCalcProjectHierarchy`) rewrote the 5
+  existing rows, disambiguating 194C/194I's two sub-rates by matching keywords in `description`.
+  Confirmed safe first: `vendor_bills.tds_section` is a frozen text snapshot at bill-recording time,
+  no FK to this table, so correcting the rate master couldn't disturb the one existing bill that
+  already snapshotted `"194C"`. Seed data for a fresh install updated to match. Display updated in
+  `AccountsWorkspace.jsx`'s TDS card and `ProcurementWorkspace.jsx`'s Record Bill dropdown — both
+  show `section` with `(formerly {legacy_section})` when present. The TDS Deduction Register (§5z)
+  needed no change — it reads bills' own frozen snapshot, which is inherently correct for whatever
+  was true when each bill was recorded.
+- **Fixed asset disposal** — `lib/ledger.mjs`'s `fixedAssetDisposalLines()` (standard disposal
+  entry: clear cost and accumulated depreciation, record what came in, plug the difference as
+  gain/loss into new account `4200` "Gain/Loss on Asset Disposal" — income-type, nets negative for
+  a loss, same convention as Accumulated Depreciation). `lib/fixed-assets.js`'s
+  `disposeFixedAsset()`, `POST /api/fixed-assets/[id]/dispose`, a Dispose button + inline form per
+  asset in `AccountsWorkspace.jsx` (disposed assets move to a struck-through section, not deleted).
+  Deliberately no "edit a fixed asset" flow — matches this app's existing principle that a posted
+  entry is corrected with a new document, never mutated in place; disposing a mis-entered asset at
+  ₹0 **is** the correction mechanism.
+- **RCM on Sales Invoices** — `salesInvoiceLines()` gained an `isReverseCharge` param: under
+  outward-supply RCM the supplier neither collects nor remits any GST at all (unlike purchase-side
+  RCM, which still claims Input Credit), so it's just AR/Revenue for the taxable value, no
+  `GST_OUTPUT_PAYABLE` line. `sales_invoices.is_reverse_charge` column, wired through
+  `convert-to-invoice` and the issue-time posting in `sales-invoices/[id]/route.js`. UI: a small
+  confirm dialog now sits in front of Quotations' one-click "Convert to Invoice" button in
+  `SalesWorkspace.jsx` (there wasn't one before) with the RCM checkbox.
+
+**Live-verified**: the TDS migration, against the real Turso DB — all 5 rows show the correct
+Section 393 reference + `(formerly 194X)` label, disambiguation matched correctly (194C's
+individual/HUF vs others sub-rate, 194I's plant/machinery vs land/building sub-rate), and it proved
+idempotent in practice (the dev server restarted once mid-session, `migrate()` ran twice, labels
+stayed correct — not double-mangled). The RCM confirm dialog on Sales renders correctly against a
+real accepted quotation, closed without submitting (didn't want to force-create a real invoice as a
+side effect of a UI check). Fixed Assets tab still renders with the new Dispose button present in
+code, but there's no real asset yet to click it against, so that's a render-only check, not exercised.
+All of `vendorBillLines`/`salesInvoiceLines`/`fixedAssetDisposalLines`'s new branches (RCM both
+sides, disposal gain, disposal loss, exact-book-value no-op, ₹0 mistake-correction) verified by a
+new `scripts/ledger-selfcheck.mjs` — pure-function checks, no DB, no fake data ever written anywhere
+— chosen specifically so "live verification" didn't mean planting a fabricated real transaction in
+the books to prove the math.
+
+## 5ab. Bank reconciliation — statement import + auto-match (2026-08-22, ACCOUNTING-IMPLEMENTATION-PLAN.md Phase 8)
+
+Extends the manual Bank & Cash tick-off (§5w) with statement import and auto-matching — it does
+not replace it, anything not confidently auto-matched still falls back to the existing per-line
+`reconciled` toggle.
+
+**Design decisions (confirmed with user before building, per the plan's own rule):** multi-bank
+support from the start (not a single hardcoded format); match tolerance is exact amount within a
+few days (±3 default) rather than same-day-only, for real clearing lag; a match auto-reconciles
+only when **mutually unique** (exactly one eligible candidate on each side within tolerance) —
+ambiguous candidates always fall to manual review, never guessed; an unmatched statement row (a
+bank charge or interest never recorded) gets a one-click quick-create journal entry rather than
+staying a dead-end list item.
+
+**Built:**
+- **`lib/bank-match.mjs`** — pure matching function, no DB. Normalizes both sides to a signed net
+  amount (ledger: debit − credit; statement: deposit − withdrawal) and only considers
+  already-**unreconciled** ledger lines as candidates. `confidence: 'high'` requires mutual
+  uniqueness within the date window; everything else surfaces as `'low'` (closest-by-date
+  suggestion) for a manual click, never auto-reconciled. Own selfcheck,
+  `scripts/bank-match-selfcheck.mjs` — 8 pure assertions (exact match, in-window match,
+  out-of-window miss, sign mismatch, ambiguous-candidates stays low, unmatched statement row,
+  unmatched ledger line, an already-reconciled line is never a candidate) — all pass.
+- **`lib/bank-statement-import.mjs`** — same header-anchor parsing shape as
+  `lib/gstr2b-import.mjs`/`lib/master-import.mjs` (`xlsx`, already a dep). A header-alias registry
+  (not N hardcoded per-bank parsers) covers common Indian netbanking CSV column shapes — separate
+  Withdrawal/Deposit columns, a single signed Amount, or Amount + Dr/Cr indicator — collapsed to one
+  signed `amount` field matching the matcher's ledger-sign convention. Date parsing covers
+  `DD/MM/YYYY`, `DD-MM-YYYY`, `DD-Mon-YYYY`, and ISO. **Marked with a `ponytail:` comment naming the
+  real ceiling: the header-alias map is a reasonable superset, not verified against any actual bank
+  export yet** — smoke-tested only against a synthetic CSV built by hand, confirmed the header
+  detection, date normalization, and amount-sign collapsing all work end-to-end on that synthetic
+  file. `node lib/bank-statement-import.mjs <file>` dumps detected columns/sample rows, the intended
+  first step against a real file per bank.
+- **`POST /api/reports/bank-reconciliation/import`** — two-phase (preview, then `confirm=1`), same
+  shape as `app/api/gstr2b/upload/route.js`. Preview parses + matches against the real dev DB's
+  current unreconciled Bank & Cash lines and returns high/low/unmatched groups, nothing written.
+  Confirm reconciles every high-confidence line and audits it. Deliberately **stateless** — raw
+  statement rows are never persisted; re-importing just re-matches against current ledger state
+  (already-reconciled lines drop out of the candidate pool, so no double-reconcile risk). `ponytail:`
+  comment naming the upgrade path (an import-history table) if that's ever actually needed.
+- **`POST /api/reports/bank-reconciliation/quick-je`** — for an unmatched statement row, posts a
+  2-line Bank & Cash vs. chosen-counter-account entry via the existing manual-JE engine
+  (`createDraftJournalEntry`/`postDraftJournalEntry`, `lib/ledger-post.js` — already
+  period-lock-aware, no new posting logic written) and marks the new Bank & Cash line reconciled.
+  New `5400` Bank Charges expense account added to `DEFAULT_CHART_OF_ACCOUNTS`
+  (`lib/ledger.mjs`) as the dropdown's default, backfilling onto both existing companies via the
+  same `else` branch §5z's Fixed Assets codes used (`lib/db.js` — codes added to
+  `DEFAULT_CHART_OF_ACCOUNTS` after the one-time seed self-backfill on next `migrate()`).
+- **UI** — `AccountsWorkspace.jsx`'s Bank Reconciliation tab gained an "Import Statement" card above
+  the existing tick-off list: upload → preview dialog (auto-matched / needs-review with a
+  per-line Reconcile button / unmatched-statement rows each with an inline quick-JE form) →
+  "Confirm & reconcile" for the auto-matched group. Reuses the existing per-line reconcile toggle
+  and chart-of-accounts fetch already on the tab.
+- **Reused `accounts.bank_reconciliation.write`** for both new routes — same permission gate as the
+  existing manual toggle, since this is the same workflow, not a new one. No new
+  `ACTION_CATALOG` entry.
+- **Also updated `ACCOUNTING-IMPLEMENTATION-PLAN.md` Phase 10** with two research corrections
+  surfaced while scoping this phase (a second AI's e-invoice/e-way-bill research, independently
+  checked): at least one IRP (IRIS) publishes onboarding APIs aimed at solution providers/ERP
+  vendors, and e-way-bill direct-API eligibility is volume-based (~1,000/day or ~10,000/month per
+  GSTIN), not industry-restricted as previously assumed. Neither changes the phase's deferred
+  status — no real trigger (turnover/volume threshold) has fired — and neither belongs in
+  `statutory-rates-hub`: any future connector's credentials/state are inherently per-company
+  transactional data, which is Shanti Ops' job, not the hub's (the hub only ever distributes
+  identical-for-everyone rate data, no per-tenant secrets).
+
+**Verified**: `npm run build` succeeds clean, including the two new routes.
+`scripts/bank-match-selfcheck.mjs` (8 assertions) and every pre-existing selfcheck
+(`lib/ledger-selfcheck.mjs`, `lib/depreciation-selfcheck.mjs`, etc.) still pass. The parser was
+smoke-tested against a synthetic CSV (not a real bank export) — header detection, multi-format date
+parsing, and deposit/withdrawal-to-signed-amount collapsing all worked correctly on it.
+
+**Known gap, not live-verified — stated honestly, not papered over**: this entire feature has
+**not** been exercised against a real bank statement file or the real dev DB (remote Turso). Per
+the plan's own rule ("get one real export sample, build the parser against that real file"), the
+header-alias map in `lib/bank-statement-import.mjs` is code-reviewed and synthetic-smoke-tested
+only — a real bank's actual column headings, date format, or amount-sign convention could differ
+from what's mapped and would need a quick alias-map fix, not a rewrite (the header-anchor approach
+already tolerates column reordering and stray rows). The two new API routes and the UI have not
+been clicked through against real Bank & Cash postings either. **Explicit user decision
+(2026-08-22): do not block on acquiring a real statement file — document this gap and move on.**
+Live-verification against a real statement and the real dev DB is the natural next step whenever a
+real export becomes available, not a blocker for the rest of the Accounts roadmap.
+
+## 5ac. Fixed Asset Register + Depreciation Schedule reports (2026-08-22, ACCOUNTING-IMPLEMENTATION-PLAN.md Phase 9, part 1 of 2)
+
+Wires `fixed_assets`/`depreciation_runs`/`depreciation_run_lines` (§5z) into the Report Engine
+catalog (§5x) like every other report — pure computation over data already captured, no new
+calculation logic, so no design decision needed before building (unlike this same phase's Cash Flow
+Statement, still pending — see below).
+
+**Built:**
+- **Fixed Asset Register** — `app/api/reports/fixed-asset-register/route.js`'s
+  `computeFixedAssetRegister()` reuses `getFixedAssets()` (`lib/fixed-assets.js`, already existed)
+  and adds the one new derived field, book value (`cost − accumulated_depreciation`). One row per
+  asset: asset no, name, category, purchase date, method, cost, accumulated depreciation, book
+  value, status. Not marked `heavy` — an asset list is naturally bounded, same reasoning as
+  Customer Ledger.
+- **Depreciation Schedule** — new `getDepreciationScheduleLines()` (`lib/data.js`), a plain join
+  (`depreciation_run_lines` → `depreciation_runs` → `fixed_assets`) — the amount was already
+  computed once by `lib/depreciation.mjs`'s `monthlyDepreciation()` at run time, never recomputed
+  here. One row per asset per period run. Marked `heavy` (a growing per-period history), same
+  precedent as TDS Deduction Register.
+- Both wired into `lib/reports/catalog.js` (imports, `toTable`/`totals`) and
+  `lib/reports/render.js` (`FIXED_ASSET_REGISTER_COLS`/`DEPRECIATION_SCHEDULE_COLS`) — no UI changes
+  needed beyond that, the Reports tab is catalog-driven (`app/reports/page.js`'s
+  `reportsForDepartment()`), confirmed by reading it rather than assumed.
+
+**Verified**: `npm run build` succeeds clean, both new routes present in the route manifest. Every
+existing selfcheck (`ledger-selfcheck.mjs`, `depreciation-selfcheck.mjs`,
+`bank-match-selfcheck.mjs`, etc.) still passes — no regression.
+
+**Update (2026-08-22, later same day) — live-verified against the real dev DB.** Per the user's
+explicit "this is compliance, everything should be perfect" instruction, both reports (plus Cash
+Flow — see below) were fully live-verified, not left at build-verified-only. As `accounts_head`
+against the real remote Turso dev DB: created a real test fixed asset (`FA-1001
+"PHASE9-LIVE-VERIFY-TEST-ASSET (safe to ignore)"`, Shanti Boilers, cost 12,000, salvage 2,000,
+useful life 5y, SLM) via the actual `POST /api/fixed-assets` route — `fixed_assets` had been
+genuinely empty until now, the first real row this table has ever held. Fixed Asset Register
+correctly showed cost 12,000 / accumulated depreciation 0 / book value 12,000 / status active
+immediately after purchase. Ran a real depreciation period (`POST
+/api/fixed-assets/depreciation-run`, 2026-08) — computed 166.67 (= (12,000−2,000)/5/12 exactly,
+by hand), Depreciation Schedule showed the one line correctly, Fixed Asset Register updated to
+accumulated depreciation 166.67 / book value 11,833.33. Disposed the same asset at a loss
+(`POST /api/fixed-assets/[id]/dispose`, disposal_amount 9,500) — register correctly flipped to
+status disposed, disposed_at, disposal_amount, with book value still showing its pre-disposal
+figure (11,833.33) as an audit-trail value, not an error — the same convention every real fixed
+asset register uses to show what a disposed asset was worth immediately before disposal. **PDF
+export verified for both** (`GET /api/reports/.../export?format=pdf`) — real PDFs (`%PDF-1.3`
+magic bytes confirmed), correct Indian lakh/crore number formatting, all figures matching the JSON
+exactly. One cosmetic bug caught and fixed while checking the PDF: the Fixed Asset Register's
+`Status` column was too narrow, wrapping "disposed" onto two lines — widened (`Name` 26→22,
+`Status` 8→12 in `lib/reports/render.js`), re-verified clean on one line. **On-screen gap found and
+closed same day**: neither report (nor the pre-existing TDS Deduction Register) had a dedicated
+on-screen card in `ReportsWorkspace.jsx`'s `SCREEN` map — clicking any of them in the browser showed
+"No report selected", PDF export was the only working view. Per the user's explicit "no gaps"
+instruction, fixed properly rather than left standing — see the follow-up entry below. Test asset
+intentionally named/left in the DB (disposed, harmless) per this
+session's established "keep demo/test data, name it obviously" precedent (§5v/§5w/§5z/§5aa).
+
+**Update, same day — Cash Flow Statement built.** Design decisions resolved with the user first,
+per the plan's own rule for this report: **indirect method** (start from net profit, adjust for
+non-cash items and working-capital changes — not a direct listing of cash receipts/payments); and
+**account-level categorization** into Operating/Investing/Financing, defaulted by account type with
+a code-based exception for Fixed Assets/Accumulated Depreciation, overridable per account — not
+per-transaction tagging.
+
+- **`lib/cash-flow.mjs`**'s `indirectCashFlow(periodRows, investingCashLines, {categoryOverrides})`
+  — pure, no DB, same precedent as `lib/ledger.mjs`. Default categorization
+  (`defaultCashFlowCategory()`): Bank & Cash itself is excluded (it's the balance being explained,
+  not a flow line); Fixed Assets (1400) / Accumulated Depreciation (1410) → Investing (a code
+  exception — their balance change isn't their cash effect, see below); `account_type === 'equity'`
+  → Financing; everything else → Operating. An explicit `chart_of_accounts.cash_flow_category`
+  (new nullable column, `lib/db.js`) overrides the default for that one account — Bank & Cash's
+  category is structurally fixed regardless, never overridable.
+  - **Operating** = Net Profit (`profitAndLoss()`, already computed) + Depreciation Expense
+    add-back (non-cash) + a full reversal of the Gain/Loss on Disposal account's period balance
+    (already inside Net Profit as income-type, but its real cash effect is captured in Investing
+    instead — reversing here avoids double-counting) + the signed cash effect of every
+    Operating-categorized asset/liability account's period balance change (the classic
+    working-capital adjustment: `trialBalance()`'s already-signed `balance` field needs just one
+    type-dependent flip — asset increase = cash used, liability increase = cash sourced).
+  - **Investing** reads the real Bank & Cash lines from `fixed_asset`/`fixed_asset_disposal`
+    -sourced journal entries directly (new `getFixedAssetCashLines()`, `lib/data.js`), not a
+    generic account-balance-change loop — a disposal removes cost at book value, not at what was
+    actually received, so Fixed Assets/Accumulated Depreciation's own balance change is the wrong
+    number for this section; the actual cash lines are always correct.
+  - **Financing** = the signed cash effect of every Financing-categorized account's period balance
+    change (same formula as Operating's working-capital loop, generalized).
+  - **Selfcheck** (`scripts/cash-flow-selfcheck.mjs`) builds one realistic mixed period by hand
+    (partial customer collection, partial vendor payment, direct-paid salary, a fixed-asset
+    purchase, a depreciation run, a disposal at a loss, a disposal at a gain, an equity injection)
+    and proves the real invariant an indirect statement must satisfy: **its computed net change in
+    cash equals the actual net change in the Bank & Cash account for the same rows** — not just
+    that the arithmetic runs. Also proves the account-level override actually moves a line between
+    sections without changing the total. All assertions pass.
+- **`app/api/reports/cash-flow/route.js`**'s `computeCashFlow()` — wired into
+  `lib/reports/catalog.js` (new `cash-flow` entry) and `lib/reports/render.js`'s `cashFlowTable()`
+  (three named sections — Operating/Investing/Financing — same multi-section shape GSTR-1 already
+  established for a report with more than one logical table).
+- **`PATCH /api/chart-of-accounts/[id]`** — new, narrow: the one editable field on an existing
+  account is `cash_flow_category` (code/name/account_type stay immutable, per the parent route's
+  existing convention). UI: `ChartOfAccountsCard` (`AccountsWorkspace.jsx`) gained a per-account
+  "Auto/Operating/Investing/Financing" select (hidden for Bank & Cash, whose category is
+  structural).
+- `DEBIT_NORMAL_TYPES` exported from `lib/ledger.mjs` (was a private const) — `lib/cash-flow.mjs`
+  needed the same debit/credit-normal convention `trialBalance()` already encodes, not a second
+  copy of it.
+
+**Verified**: `npm run build` succeeds clean, all new routes present. `scripts/cash-flow-selfcheck.mjs`
+and every pre-existing selfcheck still pass.
+
+**Update (2026-08-22, later same day) — live-verified against the real dev DB, including the
+compliance-critical invariant.** As `accounts_head` against the real remote Turso dev DB, using
+Shanti Boilers' real pre-existing ledger activity (a full realistic day already in the books:
+sales invoice, credit note, two vendor bills, a debit note, a salary slip, a manual JE + its
+reversal, a material issue, two customer receipts, a vendor payment) plus the fixed-asset
+purchase/depreciation/disposal sequence from the Fixed Asset Register verification above:
+- **Baseline day (2026-08-20, before any Phase 9 test data)**: `GET /api/reports/cash-flow`
+  returned Net Profit 33,38,375 / working-capital total 6,86,944 / Net Cash from Operating
+  40,25,319, Investing/Financing both 0, Net Change in Cash 40,25,319 — checked by hand against
+  every individual account's real ledger rows (AR, Raw Material Inventory, GST Input Credit,
+  Accounts Payable, GST Output Payable, TDS/PF/ESI/PT Payable) and against the actual real
+  Bank & Cash movement for that day (sum of every real `1001`-coded line): **exact match to the
+  rupee**, no rounding drift.
+- **The fixed-asset day (2026-08-22) in isolation**: before disposal, Net Operating 0 (depreciation
+  fully non-cash, correctly added back), Investing −12,000 (the purchase), Net Change −12,000 —
+  matches the real Bank & Cash movement for that day exactly. After disposal, Investing −2,500
+  (−12,000 purchase + 9,500 disposal proceeds), the loss's `disposalReversal` correctly added back
+  2,333.33 into Operating (fully offsetting the loss so Operating still nets to 0 for a day with no
+  other real economic activity), Net Change −2,500 — again an exact match to the real ledger.
+- **Combined 3-day range (2026-08-20 to 2026-08-22)**: Net Change in Cash 40,22,819.00 — exactly
+  the baseline day's 40,25,319 plus the fixed-asset day's −2,500, proving multi-day aggregation is
+  correct, not just single-day.
+- **Account-level override, on the real chart of accounts**: `PATCH /api/chart-of-accounts/[id]`
+  set GST Output Payable's `cash_flow_category` to `financing`. Recomputing the baseline day moved
+  exactly 6,30,000 from Operating's working capital into Financing (Operating 40,25,319→33,95,319,
+  Financing 0→6,30,000) while **Net Change in Cash stayed exactly 40,25,319** — proving the override
+  only changes presentation, never the total. Reverted the override (`cash_flow_category: null`)
+  and recomputed once more: output matched the original baseline exactly, confirming a clean revert
+  with no residual side effect. The override was left reverted (Auto) — this was a mechanism test,
+  not an intended real reclassification of that account.
+- **PDF export verified** for Cash Flow Statement too — a real PDF, correct three-section layout
+  (Operating/Investing/Financing), correct Indian number formatting with parenthesized negatives,
+  figures matching the JSON exactly for the full-FY default range.
+
+This is the strongest verification standard this session could apply short of running a second,
+independent implementation: every number was either checked by hand against the real ledger rows
+that produced it, or checked against an actual real cash movement it's supposed to explain — not
+just "the request returned 200." **No discrepancies found.**
+
+## 5ad. Closing the on-screen report gap (2026-08-22, same day) — Fixed Asset Register, Depreciation Schedule, TDS Deduction Register, Cash Flow Statement
+
+Found while live-verifying §5ac/above: none of these four reports had an entry in
+`ReportsWorkspace.jsx`'s `SCREEN` map, so selecting any of them in the browser rendered "No report
+selected" — a working `compute()`/`toTable()`/PDF export existed, but no on-screen view. TDS
+Deduction Register's gap predates this session (built in an earlier pass, §5z); the other three
+were this session's own new reports. Per the user's explicit "I don't want any gaps in the works"
+instruction, closed properly rather than left as a documented limitation.
+
+**Built** — two new card files, following this codebase's existing per-report-card convention
+(`components/reports/TrialBalanceCard.jsx`, `ProfitLossCard.jsx`, etc.) rather than a generic
+reflection-based renderer (this app's own stated position: report shapes differ too much for one
+generic mapper to be honest — REPORT-ENGINE-PLAN's reasoning, still followed here):
+- **`components/reports/FixedAssetReportCards.jsx`** — one shared `ListReportCard` inner component
+  (columns passed as props) plus three thin exports (`FixedAssetRegisterCard`,
+  `DepreciationScheduleCard`, `TdsRegisterCard`) — same "one shared renderer, thin per-report
+  wrappers" shape `components/reports/AgingCard.jsx` already established for Receivables/Payables
+  Aging, extended here to three structurally-similar-but-not-identical flat-list reports instead of
+  two identical ones.
+- **`components/reports/CashFlowStatementCard.jsx`** — bespoke (three named sections with
+  presentation rows, not raw ledger rows — closer to `ProfitLossCard`'s Income/Expense split than to
+  a flat list, so it didn't fit the shared `ListReportCard`).
+- Wired into `ReportsWorkspace.jsx`'s `SCREEN` map (4 new entries) and its import list.
+
+**Live-verified in the browser** (not just build-verified) — as `accounts_head`, real dev DB, same
+Shanti Boilers data as §5ac's Cash Flow verification: all four reports clicked through and
+confirmed rendering real, correct data on-screen — Fixed Asset Register showed FA-1001's real
+cost/accumulated depreciation/book value/status; Depreciation Schedule showed its one real line
+(166.67); TDS Deduction Register showed the real TESTBILL-001 line (58,056 gross / 580.56 TDS);
+Cash Flow Statement rendered all three sections with the exact same figures already hand-verified
+against real ledger rows in §5ac, including the final **Net Change in Cash: 40,22,819** tying to
+the actual Bank & Cash movement. `npm run build` clean, every selfcheck still passes.
+
+**Also fixed along the way**: the dev machine's disk was nearly full (135 MiB free of 228 GiB),
+which broke `npm run build` with `ENOSPC` — cleared the regenerable `.next` build cache (freed
+~1 GiB) to unblock verification; this is a host-level disk-space issue, not a code bug, and is
+worth the user's own attention if it recurs (the machine is at ~97% disk usage even after this
+cleanup).
+
+## 5ae. Company Entities — statutory/registration profile per legal entity (2026-08-22)
+
+New Accounts tab (additive — the plain "Company Settings" tab from Phase 0 is untouched) turning
+`company_settings` into the ERP's real company-applicability layer, per the confirmed architecture
+rule: `statutory-rates-hub` stays a national-statutory-rate source only; every company-specific
+fact (a GSTIN's own registration status, whether PF/ESI/PT actually applies to *this* company) is
+Shanti Ops' job, computed or stored here, never delegated to the hub.
+
+**Research finding, before building anything**: a Sandbox (Quicko) GSTIN-verification client
+(`lib/sandbox.js`) and a tenant-authed passthrough route (`app/api/gstin/verify`) already exist —
+but in the hub repo, not here, and were never mentioned in either repo's docs. Ran them live against
+both real GSTINs during design (not guessed field names) — full real responses captured: legal/trade
+name, GST status, taxpayer type, registration date, constitution, jurisdiction, e-invoice-enabled
+status, nature of business, and (a genuine find) a real additional registered premises for Shanti
+Techno Fab neither company_settings nor anyone on this project had on record. PAN is not a separate
+Sandbox field — derived from the GSTIN itself (chars 2–12), same precedent §5z already used. PF/ESI/PT
+registration numbers and applicability have no API at all; applicability is a local computation
+(employee headcount vs. statutory thresholds, already-existing `professional_tax_slabs`), never a
+fetch.
+
+**Built:**
+- **`company_settings` schema extension** (`lib/db.js`, `addColumn`-idempotent) — trade_name,
+  gst_status, gst_taxpayer_type, gst_registration_date, gst_constitution (new value columns), each
+  paired with its own `_source`('sandbox'|'manual')/`_updated_at`; the same provenance pair
+  retrofitted onto the pre-existing legal_name/gstin/pan/state fields, backfilled `'manual'` for
+  both real companies' existing rows (confirmed live — see below) since none of that was ever
+  fetched. Fields Sandbox only ever returns as one atomic snapshot (jurisdiction, cancellation date,
+  e-invoice status, nature of business, additional premises) share one `gst_extra_source`/
+  `gst_extra_fetched_at` pair rather than five redundant identical ones — a deliberate scoping call,
+  confirmed with the user before building. PF/ESI/PT: `{pf,esi,pt}_applicable_override` (NULL = use
+  the computed value), `{pf,esi,pt}_{establishment_code,employer_code,registration_no}` (pure
+  user-entry, no API exists), `{pf,esi,pt}_updated_at`.
+- **`lib/company-entity.mjs`** (pure, own selfcheck per this codebase's ground rules) —
+  `mapSandboxResponse()` shapes a raw Sandbox reply onto our columns; `diffCompanyEntity()` is the
+  actual "must not silently overwrite" enforcement: classifies each trackable field
+  unchanged/new/safe (prior value itself came from a fetch)/**manual-conflict** (prior value was a
+  human correction — and, deliberately conservative, an *unset* provenance on a non-empty value is
+  also treated as manual-conflict, never assumed safe); `computeApplicability()` returns
+  `{computed, override, effective}` for PF/ESI/PT — never collapsed into one boolean, per explicit
+  instruction, so the UI can always show *why* a value is what it is, not just the final answer.
+- **Two-phase preview/confirm GSTIN refresh** (`app/api/company-settings/[id]/verify-gstin`), same
+  shape as `gstr2b/upload` and `bank-reconciliation/import`: preview fetches fresh + diffs, writes
+  nothing; confirm **re-fetches server-side** (never trusts client-supplied fetched values for a
+  compliance-relevant write) and applies only the caller-selected fields, each stamped
+  `source='sandbox'`. Calls the hub's *existing* `/api/gstin/verify` with the same
+  `STATUTORY_RATES_HUB_API_KEY` already used for rate sync — no hub changes needed or made.
+- **`GET /api/company-settings/[id]/applicability`** — wraps `computeApplicability()` over real
+  headcount (`employees.company`, active only) and `professional_tax_slabs` state coverage.
+- **`PATCH /api/company-settings`** extended — any hand-edited trackable field now stamps
+  `source='manual'` + `updated_at`, which is what protects it from a later refresh; PF/ESI/PT
+  overrides and registration numbers write through the same route.
+- **UI** (`AccountsWorkspace.jsx`, new "Company Entities" tab) — entity switcher; a GST Registration
+  card showing every trackable field with a "Sandbox, {date}" / "Manual, {date}" tag and a **Refresh
+  from GST** button opening the diff dialog (unchanged fields hidden; `new`/`safe` fields pre-checked;
+  `manual-conflict` fields **unchecked by default**, flagged "will overwrite a manual entry"); the
+  fetch-only GST-detail snapshot (jurisdiction, e-invoice status, nature of business, additional
+  premises) shown read-only with its one shared timestamp; a PF/ESI/Professional Tax card showing
+  the computed reasoning, an explicit Auto/Override selector (never a bare checkbox — the exact
+  "six months later nobody knows why" failure mode named during design), and registration-number
+  inputs.
+
+**Bug found and fixed while live-verifying, not shipped silently**: `verify-gstin`'s hub-fetch
+helper called `res.json()` unconditionally and crashed with `"Unexpected token '<'..."` on a non-JSON
+response instead of surfacing a clean error. Fixed to catch the parse failure and return an actionable
+message instead — a real defensive-coding gap in this repo's own new code, not the finding below.
+
+**External finding, not a Shanti Ops defect — flagged, not worked around**: the hub's
+`app/api/gstin/verify` route and `lib/sandbox.js` are **untracked in the hub's git repo** (`git
+status` shows `??`) — never committed, never pushed, therefore never deployed to the live Render
+instance (`statutory-rates-hub.onrender.com`) Shanti Ops actually talks to. Confirmed directly: a
+real `curl` against the deployed hub's `/api/gstin/verify` returns a genuine Next.js 404 page, not
+JSON. Per instruction, the hub was not modified, committed, or deployed by this work — that's the
+separate "hub lifecycle hardening" effort's job. Once that lands, the GSTIN refresh flow needs no
+further Shanti Ops changes to start working end-to-end; everything on this side is already built
+and correct up to that boundary.
+
+**Live-verified against the real dev DB** (as `accounts_head`, real Turso): schema migration and
+backfill applied cleanly — both companies' pre-existing legal_name/gstin/state/pan correctly stamped
+`source='manual'` with `updated_at` = their original `created_at`. Applicability computation
+verified against real data: Shanti Boilers (31 real active employees) correctly shows PF and ESI
+applicable with the exact headcount reasoning; Shanti Techno Fab (0 employees currently recorded
+under that company in `employees` — a real data observation, not a bug, out of this task's scope to
+correct) correctly shows PF/ESI not applicable while Professional Tax still applies (state-based,
+correctly independent of headcount). The override mechanism verified through all three states —
+override=true, override=false (effective genuinely diverging from computed=true, the case that
+matters), and reverted to auto — with computed/override/effective all independently correct and
+visible at every step, then reverting exactly to the original baseline. Registration-number save and
+manual-edit provenance stamping (`trade_name` hand-entered → `trade_name_source='manual'` with a
+real timestamp) both confirmed. The GSTIN-refresh preview/diff/confirm flow itself is code-reviewed
+and defensively correct (confirmed via the clean-error path above) but **not** exercised end-to-end
+against a real Sandbox response — blocked entirely on the external hub-deployment gap above, not on
+anything still to do here.
 
 ## 6. Customer Portal (read-only, external)
 

@@ -51,15 +51,18 @@ export async function POST(req, { params }) {
       tdsAmt = tdsAmount({ payableAmount: total, ratePct: rate.rate_pct, thresholdAmount: rate.threshold_amount });
     }
   }
-  const payableAmount = total - tdsAmt;
+  // Reverse charge: vendor invoice carries no GST, so what's actually owed to the vendor excludes
+  // the tax portion too (lib/ledger.mjs's vendorBillLines() posts the self-assessed liability).
+  const isReverseCharge = !!b.is_reverse_charge;
+  const payableAmount = (isReverseCharge ? subtotal : total) - tdsAmt;
 
   const { lastId } = await execute(
     `INSERT INTO vendor_bills
        (bill_no, po_id, company, bill_date, due_date, subtotal, cgst_amount, sgst_amount, igst_amount,
-        tax_amount, total, tds_section, tds_rate_pct, tds_amount, payable_amount, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        tax_amount, total, tds_section, tds_rate_pct, tds_amount, payable_amount, is_reverse_charge, created_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [b.bill_no, po.id, company, billDate, b.due_date ?? null, subtotal, split.cgst, split.sgst, split.igst,
-      split.taxAmount, total, tdsSection, tdsRatePct, tdsAmt, payableAmount, user.username]
+      split.taxAmount, total, tdsSection, tdsRatePct, tdsAmt, payableAmount, isReverseCharge ? 1 : 0, user.username]
   );
   const billId = Number(lastId);
   let sortOrder = 0;
