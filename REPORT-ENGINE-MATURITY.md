@@ -265,3 +265,34 @@ Performance metric to unblock it faster. Don't build the Monthly Management Repo
 duplicate reports wearing a trenchcoat. The system doesn't need more reports to feel mature right
 now — it needs the ones that exist to be trustworthy (audited, complete inputs) and legible
 (aligned, currency-marked, parenthesized negatives) more than it needs raw count.
+
+## 5. Maturity scorecard (2026-08-22, end of this round)
+
+Self-assessment at the close of this session's work, scoping to the reporting layer specifically
+(not the whole ERP). Recorded here so the next chat picking this up doesn't have to re-derive it —
+and so it can be re-scored honestly later rather than assumed still accurate.
+
+**Overall: 82/100.**
+
+| Category | Score | Why |
+|---|---|---|
+| Coverage | 9/10 | 33 reports across 7 groups (Accounts 13, Production 7, Management 5, Stores 3, Design 2, Procurement 2, Sales 1). Only real gap: QC has zero — deferred by explicit user call this session, not an oversight (§1.9). |
+| Correctness | 9/10 | "One computed result, three renderers" enforced by construction. Every report built this session was cross-checked screen=JSON=PDF against real data, not just code review. Real bugs were caught and fixed under that verification, not shipped: two font-glyph bugs (`₹`/`→` silently rendering as garbage in react-pdf's base-14 Helvetica), a wrong inventory column name, a double-counting bug in material yield, a Recharts v3 label-wrap bug. |
+| Visual polish | 8/10 | §2's 6 of 7 items shipped (right-align, currency, parens, generated-by, empty-state, landscape). Page-break control at section boundaries (§2 item 7) is the one gap, and it's minor — only shows on long multi-section documents. |
+| Structural completeness | 6/10 | Two real, acknowledged gaps: **Excel export** (§1.1, deliberately deferred pending an `xlsx` vs `exceljs` decision) and **report-access audit logging** (§1.3 — every write path audits, no report export does). Supplier Performance stays correctly blocked on genuinely missing source data (§1.5), not a shortcut. |
+| UX/Nav maturity | 8/10 | §3's admin/manager consolidation (7 identically-labeled "Reports" tabs → 1) just shipped. One known, still-open duplication remains: `/crm-reports` vs. the catalog's own Sales Reports tab (§1.7), same label, different mechanism, flagged since the original plan. |
+| Underlying data quality | 6/10 | Not a Report Engine defect, but it caps real-world trust today: Project/Customer Profitability read as ~100% margin because POs aren't marked `issued` and job-card time isn't logged on this dataset (§1.11's own honest-limitation note). The report is accurately surfacing thin cost-tracking, not miscalculating — but reading it without knowing that draws the wrong conclusion. |
+
+**Why not higher:** Excel and audit logging are real gaps for a system whose own framing (§0) is
+*authoritative documents from real data* — an Accounts user who wants to reconcile in a spreadsheet,
+or an auditor asking "who pulled this and when," genuinely can't today.
+
+**Why not lower:** everything that *is* built has been verified against live data repeatedly, not
+just written and assumed correct — the harder, more expensive kind of maturity, and it's real here.
+
+**For the next chat**: re-score this rather than trust it blindly once real time has passed or new
+work has landed — this is a snapshot, not a standing fact. The fastest path to a higher score, in
+order: (1) report-access audit logging (§1.3, cheap — one `audit()` call, generic by construction),
+(2) an actual `xlsx` vs `exceljs` decision for Excel (§1.1), (3) closing the `/crm-reports`
+duplication (§1.7). QC's reports (§1.9) and the underlying cost-data thinness are real but larger,
+separate decisions — not quick wins.
