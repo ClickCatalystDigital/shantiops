@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { DownloadIcon } from 'lucide-react';
 import { api, showToast } from '@/lib/client';
 import { formatMoney } from '@/lib/format';
+import { RankedSpendChart } from './charts';
 
 export default function ProcurementSpendCard({ companies }) {
   const [company, setCompany] = useState(companies[0]?.company);
@@ -39,15 +40,20 @@ export default function ProcurementSpendCard({ companies }) {
           </Button>
         </CardAction>
       </CardHeader>
-      <CardContent className="flex flex-col divide-y">
-        {data?.lines.map(s => (
-          <div key={s.supplier_name} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-1.5 text-sm">
-            <span className="flex-1 truncate font-medium">{s.supplier_name}</span>
-            <span className="text-xs text-muted-foreground">{s.billCount} bills</span>
-            <span className="tnum font-medium">{formatMoney(s.payable)}</span>
-          </div>
-        ))}
-        {data && !data.lines.length && <p className="py-2 text-sm text-muted-foreground">No spend in range.</p>}
+      <CardContent className="flex flex-col gap-4">
+        {data && data.lines.length > 0 && (
+          <RankedSpendChart items={data.lines.map(s => ({ label: s.supplier_name, value: s.payable }))} />
+        )}
+        <div className="flex flex-col divide-y">
+          {data?.lines.map(s => (
+            <div key={s.supplier_name} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-1.5 text-sm">
+              <span className="flex-1 truncate font-medium">{s.supplier_name}</span>
+              <span className="text-xs text-muted-foreground">{s.billCount} bills</span>
+              <span className="tnum font-medium">{formatMoney(s.payable)}</span>
+            </div>
+          ))}
+          {data && !data.lines.length && <p className="py-2 text-sm text-muted-foreground">No spend in range.</p>}
+        </div>
       </CardContent>
     </Card>
   );

@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { DownloadIcon } from 'lucide-react';
 import { api, showToast } from '@/lib/client';
 import { formatMoney } from '@/lib/format';
+import { RankedMarginChart } from './charts';
 
 export default function CustomerProfitabilityCard({ companies }) {
   const [company, setCompany] = useState(companies[0]?.company);
@@ -39,18 +40,23 @@ export default function CustomerProfitabilityCard({ companies }) {
           </Button>
         </CardAction>
       </CardHeader>
-      <CardContent className="flex flex-col divide-y">
-        {data?.lines.map(c => (
-          <div key={c.customer_name} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-1.5 text-sm">
-            <span className="flex-1 truncate font-medium">{c.customer_name}</span>
-            <span className="text-xs text-muted-foreground">{c.projectCount} projects</span>
-            <span className="tnum text-xs text-muted-foreground">{formatMoney(c.sellingValue)} sold</span>
-            <span className={`tnum font-medium ${c.margin < 0 ? 'text-danger' : 'text-success'}`}>
-              {formatMoney(c.margin)} ({c.marginPct == null ? '—' : `${c.marginPct}%`})
-            </span>
-          </div>
-        ))}
-        {data && !data.lines.length && <p className="py-2 text-sm text-muted-foreground">No customers in range.</p>}
+      <CardContent className="flex flex-col gap-4">
+        {data && data.lines.length > 0 && (
+          <RankedMarginChart items={data.lines.map(c => ({ label: c.customer_name, value: c.margin }))} />
+        )}
+        <div className="flex flex-col divide-y">
+          {data?.lines.map(c => (
+            <div key={c.customer_name} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-1.5 text-sm">
+              <span className="flex-1 truncate font-medium">{c.customer_name}</span>
+              <span className="text-xs text-muted-foreground">{c.projectCount} projects</span>
+              <span className="tnum text-xs text-muted-foreground">{formatMoney(c.sellingValue)} sold</span>
+              <span className={`tnum font-medium ${c.margin < 0 ? 'text-danger' : 'text-success'}`}>
+                {formatMoney(c.margin)} ({c.marginPct == null ? '—' : `${c.marginPct}%`})
+              </span>
+            </div>
+          ))}
+          {data && !data.lines.length && <p className="py-2 text-sm text-muted-foreground">No customers in range.</p>}
+        </div>
       </CardContent>
     </Card>
   );

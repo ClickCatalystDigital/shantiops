@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { DownloadIcon } from 'lucide-react';
 import { api, showToast } from '@/lib/client';
 import { formatMoney } from '@/lib/format';
+import { PnlComparisonChart } from './charts';
 
 export default function ManagementReportCard({ companies }) {
   const [company, setCompany] = useState(companies[0]?.company);
@@ -53,7 +54,7 @@ export default function ManagementReportCard({ companies }) {
           </Button>
         </CardAction>
       </CardHeader>
-      <CardContent>
+      <CardContent className="flex flex-col gap-4">
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {tiles.map(t => (
             <div key={t.label} className="rounded-lg border p-3">
@@ -62,6 +63,7 @@ export default function ManagementReportCard({ companies }) {
             </div>
           ))}
         </div>
+        {data && <PnlComparisonChart mtd={data.mtdPnl} fytd={data.fytdPnl} />}
       </CardContent>
     </Card>
   );

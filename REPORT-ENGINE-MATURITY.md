@@ -213,7 +213,51 @@ the running dev server, not just eyeballed in isolation.
 and narrowing `Description` from 32% to 28% in both `lib/sales-invoice-pdf.js` and
 `lib/vendor-bill-pdf.js`.
 
-## 3. What NOT to do
+## 3. Charting + one consolidated Reports view for admin/manager (2026-08-22, same-day follow-up)
+
+- **First real charting dependency, added deliberately.** Every existing screen visual in this app
+  (Calc Sheets' validation donut, margin gauge, sensitivity sweep line) is hand-rolled inline SVG —
+  a documented anti-dependency precedent. The 5 Management report screen cards needed enough real
+  charts (ranked bars, grouped comparison, status donut, planned-vs-actual) that hand-rolling all of
+  them would have been the larger, worse-maintained option. Installed via the project's own shadcn
+  CLI (`npx shadcn add chart`, same install path as every other UI primitive here) — Recharts
+  underneath, `components/ui/chart.jsx` (the shadcn wrapper) + `components/executive/charts.jsx`
+  (5 chart components: `RankedMarginChart`, `RankedSpendChart`, `PnlComparisonChart`,
+  `WorkOrderStatusPie`, `CostVarianceChart`), wired into all 5 Management report cards.
+  - **A real Recharts v3 bug, caught only by looking at a rendered chart, not the self-check**: a
+    category-axis label longer than its allocated column width doesn't clip or overflow, it
+    auto-wraps into multiple `tspan` lines — a full customer/supplier name (vs. a short project
+    code) wrapped 3 lines deep and crushed the plot area down to nothing, rendering as a stack of
+    words with no visible bars. Fixed with a `tickFormatter` that truncates well inside the column
+    width (not just under it — v3 wraps *before* the label visually overflows, so truncating to
+    "exactly fits" still wraps).
+  - **`computeManufacturingPerformance()` gained `notStartedWO`/`cancelledWO`** so the new Work
+    Order status donut has a genuinely mutually-exclusive set of slices — `delayed` is a
+    cross-cutting flag an `in_progress` WO can also carry, not its own status; using it as a slice
+    would double-count and sum past `totalWO`.
+- **One consolidated "Reports" tab for admin/manager.** Was: one identically-labeled "Reports" tab
+  per department (6 of them) plus a 7th separate one for Management reports — a wall of tabs a
+  user can't tell apart without opening each. Now: bare `/reports` (no `?dept=`) renders every
+  department's reports plus the Management reports in one sidebar, grouped by department
+  (`components/WorkspaceSidebar.jsx`'s existing `groups` prop — no new sidebar primitive needed).
+  `ReportsWorkspace.jsx` gained a `hasOwnControls` flag for reports whose own screen card already
+  manages its company switcher + PDF button (the 5 Management reports) — the parent renders neither
+  for those, and passes `companies` instead of a single controlled `company` string.
+  - Single-department heads and the pure `executive` role are **unaffected**: a head's own Nav tab
+    always carries `?dept=`, which still hits the original single-department code path unchanged;
+    `executive` keeps its own dedicated `/executive/reports` tab (it has no department access to
+    consolidate into).
+  - **Verified live** (not just code review): `/reports` as admin returns every department's real
+    report titles (Trial Balance, Stock Valuation, Work Order Register, Drawing Register, ...) each
+    under its own sidebar group label, plus Management Report/Project Profitability/etc. under a
+    "Management" group; `/reports?dept=Accounts` still renders the original single-department title
+    and report set, confirming the refactor didn't regress the existing per-department tabs.
+- **`SYSTEM.md` deliberately not updated in this pass** — another session has it under active edit
+  right now (TDS register, fixed assets, audit log, period lock, rate sync). Updating it here would
+  either collide with or silently drop that in-flight work; this round's SYSTEM.md addendum should
+  land once that lands, not raced against it.
+
+## 4. What NOT to do
 
 Matching the plan's own restraint: don't build Excel just to check a box (§9's real question —
 `xlsx` vs `exceljs` — needs an actual answer first, not a rushed default). Don't invent a Supplier

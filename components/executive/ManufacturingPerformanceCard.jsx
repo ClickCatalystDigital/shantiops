@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { DownloadIcon } from 'lucide-react';
 import { api, showToast } from '@/lib/client';
 import { formatMoney } from '@/lib/format';
+import { WorkOrderStatusPie, CostVarianceChart } from './charts';
 
 export default function ManufacturingPerformanceCard({ companies }) {
   const [company, setCompany] = useState(companies[0]?.company);
@@ -20,13 +21,14 @@ export default function ManufacturingPerformanceCard({ companies }) {
   }, [company]);
 
   const tiles = data ? [
-    { label: 'Work Orders (Total / In Progress / Delayed / Completed)', value: `${data.totalWO} / ${data.inProgressWO} / ${data.delayedWO} / ${data.completedWO}` },
-    { label: 'Rejection Rate', value: data.rejectionRatePct == null ? '—' : `${data.rejectionRatePct}%` },
-    { label: 'QC Failures', value: String(data.qcFailures) },
+    { label: 'Total Work Orders', value: String(data.totalWO) },
+    { label: 'Delayed', value: String(data.delayedWO), danger: data.delayedWO > 0 },
+    { label: 'Rejection Rate', value: data.rejectionRatePct == null ? '—' : `${data.rejectionRatePct}%`, danger: data.rejectionRatePct > 10 },
+    { label: 'QC Failures', value: String(data.qcFailures), danger: data.qcFailures > 0 },
     { label: 'Material Yield', value: data.overallYieldPct == null ? '—' : `${data.overallYieldPct}%` },
     { label: 'Labour Hours / Cost', value: `${data.totalLabourHours}h / ${formatMoney(data.totalLabourCost)}` },
-    { label: 'Cost Variance', value: `${data.totalCostVariance >= 0 ? '+' : ''}${Math.round(data.totalCostVariance).toLocaleString('en-IN')}` },
-    { label: 'Material Lines Blocking Production (30d)', value: String(data.outstandingMaterialLines) },
+    { label: 'Cost Variance', value: `${data.totalCostVariance >= 0 ? '+' : ''}${Math.round(data.totalCostVariance).toLocaleString('en-IN')}`, danger: data.totalCostVariance > 0 },
+    { label: 'Material Lines Blocking Production (30d)', value: String(data.outstandingMaterialLines), danger: data.outstandingMaterialLines > 0 },
   ] : [];
 
   return (
@@ -46,15 +48,32 @@ export default function ManufacturingPerformanceCard({ companies }) {
           </Button>
         </CardAction>
       </CardHeader>
-      <CardContent>
+      <CardContent className="flex flex-col gap-4">
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {tiles.map(t => (
             <div key={t.label} className="rounded-lg border p-3">
-              <div className="text-lg font-bold tnum">{t.value}</div>
+              <div className={`text-lg font-bold tnum ${t.danger ? 'text-danger' : ''}`}>{t.value}</div>
               <div className="text-xs text-muted-foreground">{t.label}</div>
             </div>
           ))}
         </div>
+        {data && (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <p className="mb-1 text-xs font-medium text-muted-foreground">Work Order Status</p>
+              <WorkOrderStatusPie
+                inProgress={data.inProgressWO}
+                completed={data.completedWO}
+                notStarted={data.notStartedWO}
+                cancelled={data.cancelledWO}
+              />
+            </div>
+            <div>
+              <p className="mb-1 text-xs font-medium text-muted-foreground">Planned vs Actual Cost</p>
+              <CostVarianceChart planned={data.totalPlannedCost} actual={data.totalActualCost} />
+            </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

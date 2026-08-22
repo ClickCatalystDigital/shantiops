@@ -41,8 +41,16 @@ import MaterialShortageCard from '@/components/reports/MaterialShortageCard';
 import DrawingRegisterCard from '@/components/reports/DrawingRegisterCard';
 import EcnRegisterCard from '@/components/reports/EcnRegisterCard';
 import OpenPoAgingCard from '@/components/reports/OpenPoAgingCard';
+import ManagementReportCard from '@/components/executive/ManagementReportCard';
+import ProjectProfitabilityCard from '@/components/executive/ProjectProfitabilityCard';
+import CustomerProfitabilityCard from '@/components/executive/CustomerProfitabilityCard';
+import ProcurementSpendCard from '@/components/executive/ProcurementSpendCard';
+import ManufacturingPerformanceCard from '@/components/executive/ManufacturingPerformanceCard';
 
-const SCREEN = {
+// Exported so app/reports/page.js's consolidated admin/manager view (all departments' reports in
+// one sidebar, see the `groups` prop below) can reuse the exact same key→component mapping instead
+// of a second copy that would drift the moment a new report is added here.
+export const SCREEN = {
   'trial-balance': TrialBalanceCard,
   'customer-ledger': CustomerLedgerCard,
   'stock-valuation': StockValuationCard,
@@ -71,36 +79,58 @@ const SCREEN = {
   'drawing-register': DrawingRegisterCard,
   'ecn-register': EcnRegisterCard,
   'open-po-aging': OpenPoAgingCard,
+  // Management reports (app/api/executive/*) — folded into the consolidated admin/manager view via
+  // `hasOwnControls: true` on their catalog-shaped entries below (app/reports/page.js); these cards
+  // already manage their own company switcher + PDF button, same as the standalone
+  // ExecutiveReportsWorkspace.jsx that still serves the pure 'executive' role's own tab.
+  'management-report': ManagementReportCard,
+  'project-profitability': ProjectProfitabilityCard,
+  'customer-profitability': CustomerProfitabilityCard,
+  'procurement-spend': ProcurementSpendCard,
+  'manufacturing-performance': ManufacturingPerformanceCard,
 };
 
-export default function ReportsWorkspace({ department, reports, companies }) {
-  const [key, setKey] = useState(reports[0]?.key);
+// `groups` (optional): [{ department, reports }] — the consolidated admin/manager view
+// (app/reports/page.js, no ?dept= query) lists every department's reports in one sidebar instead
+// of the one-tab-per-department wall Nav.jsx used to produce for that audience. Omit it (pass
+// `department`/`reports` instead) for the existing single-department behavior. A report can carry
+// `hasOwnControls: true` (currently only the Management reports folded into this view) to mean "my
+// own Screen component renders its own company switcher and PDF button" — the parent then renders
+// neither and passes `companies` (the full list) instead of a single controlled `company` string.
+export default function ReportsWorkspace({ department, reports, groups, companies }) {
+  const allReports = groups ? groups.flatMap(g => g.reports) : reports;
+  const [key, setKey] = useState(allReports[0]?.key);
   const [company, setCompany] = useState(companies[0]?.company);
-  const active = reports.find(r => r.key === key) || reports[0];
+  const active = allReports.find(r => r.key === key) || allReports[0];
   const Screen = active ? SCREEN[active.key] : null;
-  const items = reports.map(r => ({ key: r.key, label: r.title, icon: BarChart3Icon }));
-  const showCompanySwitcher = active?.needsCompany !== false;
+  const showCompanySwitcher = !active?.hasOwnControls && active?.needsCompany !== false;
+
+  const sidebarProps = groups
+    ? { groups: groups.map(g => ({ label: g.department, items: g.reports.map(r => ({ key: r.key, label: r.title, icon: BarChart3Icon })) })) }
+    : { items: reports.map(r => ({ key: r.key, label: r.title, icon: BarChart3Icon })) };
 
   return (
-    <WorkspaceSidebar title={`${department} Reports`} icon={BarChart3Icon} items={items} activeKey={key} onChange={setKey}>
+    <WorkspaceSidebar title={groups ? 'All Reports' : `${department} Reports`} icon={BarChart3Icon} {...sidebarProps} activeKey={key} onChange={setKey}>
       <div className="flex flex-col gap-4">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex gap-2">
-            {showCompanySwitcher && companies.map(c => (
-              <Button key={c.company} size="sm" variant={company === c.company ? 'default' : 'outline'} onClick={() => setCompany(c.company)}>
-                {c.legal_name}
+        {!active?.hasOwnControls && (
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex gap-2">
+              {showCompanySwitcher && companies.map(c => (
+                <Button key={c.company} size="sm" variant={company === c.company ? 'default' : 'outline'} onClick={() => setCompany(c.company)}>
+                  {c.legal_name}
+                </Button>
+              ))}
+            </div>
+            {active && !active.hasOwnPdfControl && (
+              <Button asChild size="sm" variant="outline">
+                <a href={`/api/reports/${active.key}/export?format=pdf${showCompanySwitcher ? `&company=${encodeURIComponent(company)}` : ''}`} target="_blank" rel="noreferrer">
+                  <DownloadIcon data-icon="inline-start" />PDF
+                </a>
               </Button>
-            ))}
+            )}
           </div>
-          {active && !active.hasOwnPdfControl && (
-            <Button asChild size="sm" variant="outline">
-              <a href={`/api/reports/${active.key}/export?format=pdf${showCompanySwitcher ? `&company=${encodeURIComponent(company)}` : ''}`} target="_blank" rel="noreferrer">
-                <DownloadIcon data-icon="inline-start" />PDF
-              </a>
-            </Button>
-          )}
-        </div>
-        {Screen ? <Screen company={company} /> : <p className="text-sm text-muted-foreground">No report selected.</p>}
+        )}
+        {Screen ? (active?.hasOwnControls ? <Screen companies={companies} /> : <Screen company={company} />) : <p className="text-sm text-muted-foreground">No report selected.</p>}
       </div>
     </WorkspaceSidebar>
   );

@@ -78,14 +78,22 @@ export default function Nav({ user, reportDepartments = [] }) {
   // Catalog-driven (lib/reports/catalog.js via reportDepartments, computed server-side in
   // app/layout.js — the catalog itself pulls in server-only DB code and can't be imported here): a
   // "Reports" tab only for departments that actually have >=1 report. One call per department so
-  // this needs no further Nav edits as the catalog grows; today that's just Accounts.
+  // this needs no further Nav edits as the catalog grows.
+  // isDeptPM (admin/manager) skips this loop entirely — with every department granted, it would
+  // build one identically-labeled "Reports" tab per department (a wall of tabs a user can't tell
+  // apart). They get ONE consolidated "/reports" tab instead (below, all departments + Management
+  // in one sidebar, app/reports/page.js) — same reasoning as Executive's own gate above.
   // KNOWN, DELIBERATE OVERLAP: Sales/Marketing already has its own "Reports" tab (line above,
-  // /crm-reports — a different, pre-existing browser-print mechanism, not this catalog). A PM/
-  // executive/admin user who sees every department tab will see "Reports" twice, pointing
-  // different places, until /crm-reports is folded into this catalog (REPORT-ENGINE-PLAN: deferred
-  // cleanup, not done in this pass). A single-department head never sees both. Not fixed here —
-  // merging them is real scope beyond the frame/catalog/Trial-Balance proof this pass covers.
-  for (const dept of reportDepartments) addDeptTab([dept], `/reports?dept=${dept}`, 'Reports', BarChart3Icon);
+  // /crm-reports — a different, pre-existing browser-print mechanism, not this catalog). A
+  // single-department head with Sales access sees both, pointing different places, until
+  // /crm-reports is folded into this catalog (REPORT-ENGINE-PLAN: deferred cleanup, not done in
+  // this pass). Not fixed here — merging them is real scope beyond the frame/catalog/Trial-Balance
+  // proof this pass covers.
+  if (isDeptPM) {
+    deptTabs.push({ href: '/reports', label: 'Reports', icon: BarChart3Icon });
+  } else {
+    for (const dept of reportDepartments) addDeptTab([dept], `/reports?dept=${dept}`, 'Reports', BarChart3Icon);
+  }
   if (canSeeRequests) deptTabs.push({ href: '/pr', label: 'Requests', icon: InboxIcon });
 
   // Primary tabs (top bar on desktop, bottom bar on mobile). No Packing tab — it's Dispatch-scoped.
@@ -94,11 +102,11 @@ export default function Nav({ user, reportDepartments = [] }) {
     { href: '/ops', label: 'Operations', icon: LayoutDashboardIcon },
     { href: '/projects', label: 'Projects', icon: FolderKanbanIcon },
     ...(isPMUser ? [{ href: '/executive', label: 'Executive', icon: BarChart3Icon }] : []),
-    // Deliberately its own top-level tab, not folded into the deptTabs/reportDepartments loop below
-    // — that loop is gated to isDeptPM's DEPARTMENTS list (admin/manager), which excludes the
-    // 'executive' role by design (see isDeptPM comment above). This one document should reach
-    // every isPMUser, same audience as the Executive/Approvals tabs either side of it.
-    ...(isPMUser ? [{ href: '/executive/reports', label: 'Reports', icon: LandmarkIcon }] : []),
+    // Only the pure 'executive' role (isPMUser but not isDeptPM) — admin/manager get the same 5
+    // Management reports folded into their consolidated "/reports" tab instead (below), so this
+    // would otherwise be a second, differently-scoped "Reports" tab sitting right next to it.
+    // 'executive' has no department access to consolidate, so this stays its only Reports surface.
+    ...(isPMUser && !isDeptPM ? [{ href: '/executive/reports', label: 'Reports', icon: LandmarkIcon }] : []),
     ...(isPMUser ? [{ href: '/approvals', label: 'Approvals', icon: ShieldCheckIcon }] : []),
     ...deptTabs,
   ];

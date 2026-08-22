@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { DownloadIcon } from 'lucide-react';
 import { api, showToast } from '@/lib/client';
 import { formatMoney } from '@/lib/format';
+import { RankedMarginChart } from './charts';
 
 export default function ProjectProfitabilityCard({ companies }) {
   const [company, setCompany] = useState(companies[0]?.company);
@@ -39,18 +40,23 @@ export default function ProjectProfitabilityCard({ companies }) {
           </Button>
         </CardAction>
       </CardHeader>
-      <CardContent className="flex flex-col divide-y">
-        {data?.lines.map(p => (
-          <div key={p.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-1.5 text-sm">
-            <span className="w-20 shrink-0 font-medium">{p.project_no}</span>
-            <span className="flex-1 truncate text-muted-foreground">{p.customer_name}</span>
-            <span className="tnum text-xs text-muted-foreground">{formatMoney(p.sellingValue)} sold</span>
-            <span className={`tnum font-medium ${p.margin < 0 ? 'text-danger' : 'text-success'}`}>
-              {formatMoney(p.margin)} ({p.marginPct == null ? '—' : `${p.marginPct}%`})
-            </span>
-          </div>
-        ))}
-        {data && !data.lines.length && <p className="py-2 text-sm text-muted-foreground">No projects in range.</p>}
+      <CardContent className="flex flex-col gap-4">
+        {data && data.lines.length > 0 && (
+          <RankedMarginChart items={data.lines.map(p => ({ label: p.project_no, value: p.margin }))} />
+        )}
+        <div className="flex flex-col divide-y">
+          {data?.lines.map(p => (
+            <div key={p.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-1.5 text-sm">
+              <span className="w-20 shrink-0 font-medium">{p.project_no}</span>
+              <span className="flex-1 truncate text-muted-foreground">{p.customer_name}</span>
+              <span className="tnum text-xs text-muted-foreground">{formatMoney(p.sellingValue)} sold</span>
+              <span className={`tnum font-medium ${p.margin < 0 ? 'text-danger' : 'text-success'}`}>
+                {formatMoney(p.margin)} ({p.marginPct == null ? '—' : `${p.marginPct}%`})
+              </span>
+            </div>
+          ))}
+          {data && !data.lines.length && <p className="py-2 text-sm text-muted-foreground">No projects in range.</p>}
+        </div>
       </CardContent>
     </Card>
   );
