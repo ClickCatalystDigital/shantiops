@@ -3619,17 +3619,39 @@ staying a dead-end list item.
 smoke-tested against a synthetic CSV (not a real bank export) — header detection, multi-format date
 parsing, and deposit/withdrawal-to-signed-amount collapsing all worked correctly on it.
 
-**Known gap, not live-verified — stated honestly, not papered over**: this entire feature has
-**not** been exercised against a real bank statement file or the real dev DB (remote Turso). Per
-the plan's own rule ("get one real export sample, build the parser against that real file"), the
-header-alias map in `lib/bank-statement-import.mjs` is code-reviewed and synthetic-smoke-tested
-only — a real bank's actual column headings, date format, or amount-sign convention could differ
-from what's mapped and would need a quick alias-map fix, not a rewrite (the header-anchor approach
-already tolerates column reordering and stray rows). The two new API routes and the UI have not
-been clicked through against real Bank & Cash postings either. **Explicit user decision
-(2026-08-22): do not block on acquiring a real statement file — document this gap and move on.**
-Live-verification against a real statement and the real dev DB is the natural next step whenever a
-real export becomes available, not a blocker for the rest of the Accounts roadmap.
+**Live-verified against the real dev DB (2026-08-23, follow-up pass)** — the plumbing this feature
+depends on, distinct from the parser's header-alias mapping (still open, see below). As
+`accounts_head`, real Turso DB, real posted Bank & Cash lines for Shanti Boilers: a correctly
+RBI/netbanking-shaped CSV (`Date,Narration,Withdrawal Amt,Deposit Amt,Balance`, `DD/MM/YYYY` dates
+— exercising the header-alias map's multi-column withdrawal/deposit path and one of its date
+formats, not a made-up shape) containing two rows engineered to match two real unreconciled lines
+(a ₹20,00,000 receipt, a ₹58,056 payment) plus one with no match (a ₹250 bank charge):
+- **Preview** (`POST .../import`, no `confirm`) correctly returned both real lines as `high`
+  confidence (mutually unique within tolerance) and the ₹250 row as `unmatchedStatement`, with
+  every other real unreconciled line correctly left in `unmatchedLedger`. Nothing written.
+- **Confirm** (`confirm=1`) reconciled exactly those two real lines — confirmed directly against
+  the DB (`reconciled=1`, real timestamp) — and left everything else untouched.
+- **Quick-JE** on the unmatched ₹250 row posted a real, balanced 2-line entry (Bank & Cash 1001 /
+  Bank Charges 5400) via the existing manual-JE engine and correctly reconciled the new Bank & Cash
+  line.
+- **UI**: clicked through to the Bank Reconciliation tab in the browser — Import Statement card
+  renders, and the tick-off list below correctly shows exactly those three lines checked
+  (everything else unchecked), reconciled/unreconciled balances matching the API exactly.
+- Test rows left in the DB, per this session's established "keep demo/test data" precedent
+  (§5v/§5w) — real, correctly-posted entries, not noise.
+
+**Remaining gap, still genuinely open — not closeable without a real file**: the header-alias
+map's coverage of an *actual* bank's column headings, date format, and amount-sign convention is
+still only code-reviewed + tested against hand-built CSVs (a synthetic one on 2026-08-22, a
+correctly-shaped-but-still-hand-built one above). Per the plan's own rule ("get one real export
+sample, build the parser against that real file") and this session's explicit instruction ("no
+work arounds, just compliant work"), this cannot be honestly closed by constructing a more
+convincing fake — it needs one real netbanking CSV/XLS export per bank actually in use. Everything
+downstream of parsing (matching, reconcile, quick-JE, UI) is now proven correct against real
+ledger data; only the parser's real-world column/date/sign mapping remains unverified. Run
+`node lib/bank-statement-import.mjs <real-file>` against each real export first — it will either
+confirm the existing alias map or point at the exact one or two aliases/date formats that need
+adding, per the header-anchor design's own tolerance for this.
 
 ## 5ac. Fixed Asset Register + Depreciation Schedule reports (2026-08-22, ACCOUNTING-IMPLEMENTATION-PLAN.md Phase 9, part 1 of 2)
 
@@ -3892,6 +3914,14 @@ JSON. Per instruction, the hub was not modified, committed, or deployed by this 
 separate "hub lifecycle hardening" effort's job. Once that lands, the GSTIN refresh flow needs no
 further Shanti Ops changes to start working end-to-end; everything on this side is already built
 and correct up to that boundary.
+
+**Update (2026-08-23)**: this external blocker is resolved — a direct `curl` against the deployed
+hub's `/api/gstin/verify` now returns a real `401 {"error":"Unauthorized"}` instead of a 404, i.e.
+the route is deployed and reachable, just correctly rejecting the unauthenticated probe. Not
+re-exercised end-to-end with a real GSTIN + the actual `STATUTORY_RATES_HUB_API_KEY` in this pass
+(a real Sandbox/Quicko lookup is a paid, rate-limited call and this check was incidental to a
+different task) — the deployment boundary this section named is gone, but a full live GSTIN-refresh
+click-through is still worth doing once there's a real reason to touch that flow.
 
 **Live-verified against the real dev DB** (as `accounts_head`, real Turso): schema migration and
 backfill applied cleanly — both companies' pre-existing legal_name/gstin/state/pan correctly stamped
