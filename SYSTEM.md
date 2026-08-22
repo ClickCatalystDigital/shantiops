@@ -4047,6 +4047,59 @@ incident; `insertIncomeTaxSlab`'s hardcoded `regime='new'` (noted above); the al
 deliberately-deferred 206C(1H)/TCS cumulative-threshold-tracking gap from §5z, not re-litigated
 here.
 
+## 5ag. Production-ready daily rate-sync cron endpoint (2026-08-23)
+
+§5af proved `syncRatesFromHub()` correct and idempotent by hand — this pass turns it into a job
+suitable for an actual daily Cloudflare Cron Trigger to call, per instruction: idempotent apply
+(already had this), cursor advanced only after success (already had this), plus what was still
+missing — a post-write **verification** step, a persisted **heartbeat** distinguishing "the cron
+isn't firing" from "the cron fires and keeps failing," differentiated **non-2xx** status codes, and
+a **securely authenticated** endpoint. The Cloudflare Trigger itself is explicitly not created —
+this is the endpoint a future Worker's `scheduled()` handler would `fetch()`.
+
+**Built:**
+- **`hub_sync_state` schema** (`lib/db.js`, `addColumn`-idempotent, additive) — three new columns
+  alongside the existing `cursor`/`last_synced_at`: `last_run_at` (every attempt, success or
+  failure — the actual heartbeat), `last_status` (`'success'`|`'error'`), `last_error` (message on
+  failure). Kept `last_synced_at` semantics unchanged (only moves on a successful pull) so it still
+  answers "when did data last actually change" separately from "is the job still running at all."
+- **`lib/rate-sync.js`** — `syncRatesFromHub()` gained a **verification** step: after the cursor
+  `UPDATE`, a read-back confirms the persisted value matches `nextCursor`, throwing loudly on
+  mismatch rather than reporting success on a write that silently didn't land — a real, not
+  hypothetical, risk given the ETIMEDOUT flakiness this exact pipeline hit in §5af. A new
+  `HubSyncError` class tags hub-communication failures (unreachable, non-2xx) distinctly from
+  internal ones (a bad insert, a failed verification), so the route can pick 502 vs 500. New
+  `runRateSyncJob()` wraps the sync with the heartbeat write — success or failure, best-effort even
+  if the DB write itself is what's struggling — and rethrows so the route still returns non-2xx. New
+  `getRateSyncHeartbeat()` for the read side.
+- **`app/api/statutory-rates/sync/route.js`** — auth now uses `crypto.timingSafeEqual` (constant-time
+  comparison) instead of `!==`, since this is a long-lived static secret sitting behind no
+  login-style rate limiting. `POST` runs the job (`ok:true/false` + `200`/`502`/`500`/`401`,
+  `audit()`-logged both ways as `actor: 'system:rate-sync-cron'`). New `GET` (same auth) returns the
+  heartbeat row without triggering a sync — for a monitoring check to confirm the cron is actually
+  firing, not just that the endpoint exists.
+- **Retry safety, unchanged and re-confirmed**: every insert already dedupes on its natural key
+  (§5af), the cursor still only advances once per successful batch, so a Worker retry after a
+  transient failure — or two overlapping invocations — replays safely. No new locking added:
+  idempotency already makes concurrent runs safe without one, and a lock table for a once-daily job
+  would be complexity with no real failure mode behind it (ponytail: add a lock only if overlapping
+  runs are ever observed to actually collide on something idempotency doesn't cover).
+
+**Live-verified against the real dev DB and the real deployed hub**: migration applied cleanly (new
+columns present, existing `cursor`/`last_synced_at` untouched). Auth rejects a wrong or missing key
+on both `GET` and `POST` with `401`. A real successful run against the live hub returned
+`{ok:true, pulled:0, applied:0, cursor:239}` and the heartbeat correctly showed `last_run_at`
+freshly stamped, `last_status:'success'`, `last_error:null`. Pointing `STATUTORY_RATES_HUB_URL` at
+an unreachable address (real network failure, not simulated) returned a clean `502` with the actual
+fetch error message, and the heartbeat correctly recorded `last_status:'error'` with that message
+while `cursor`/`last_synced_at` stayed untouched — confirming a failed run neither corrupts state
+nor silently disappears. Restoring the real hub URL and re-running recovered cleanly back to
+`last_status:'success'`. All pre-existing selfchecks pass; `npm run build` clean under Node 23.9.0
+(see §5af for why the environment's default Node 18.16.0 can't run the build).
+
+**Explicitly not done, per instruction**: no Cloudflare Cron Trigger or Worker created — this is
+the endpoint such a Worker would call, nothing on the Cloudflare side exists yet.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own
