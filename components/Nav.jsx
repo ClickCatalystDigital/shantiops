@@ -98,7 +98,7 @@ export default function Nav({ user, reportDepartments = [] }) {
     // — that loop is gated to isDeptPM's DEPARTMENTS list (admin/manager), which excludes the
     // 'executive' role by design (see isDeptPM comment above). This one document should reach
     // every isPMUser, same audience as the Executive/Approvals tabs either side of it.
-    ...(isPMUser ? [{ href: '/executive/reports', label: 'Management Report', icon: LandmarkIcon }] : []),
+    ...(isPMUser ? [{ href: '/executive/reports', label: 'Reports', icon: LandmarkIcon }] : []),
     ...(isPMUser ? [{ href: '/approvals', label: 'Approvals', icon: ShieldCheckIcon }] : []),
     ...deptTabs,
   ];

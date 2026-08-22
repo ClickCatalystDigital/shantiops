@@ -40,6 +40,7 @@ import LabourUtilizationCard from '@/components/reports/LabourUtilizationCard';
 import MaterialShortageCard from '@/components/reports/MaterialShortageCard';
 import DrawingRegisterCard from '@/components/reports/DrawingRegisterCard';
 import EcnRegisterCard from '@/components/reports/EcnRegisterCard';
+import OpenPoAgingCard from '@/components/reports/OpenPoAgingCard';
 
 const SCREEN = {
   'trial-balance': TrialBalanceCard,
@@ -69,6 +70,7 @@ const SCREEN = {
   'material-shortage': MaterialShortageCard,
   'drawing-register': DrawingRegisterCard,
   'ecn-register': EcnRegisterCard,
+  'open-po-aging': OpenPoAgingCard,
 };
 
 export default function ReportsWorkspace({ department, reports, companies }) {

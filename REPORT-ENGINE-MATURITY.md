@@ -147,6 +147,31 @@ of how much it would actually change how someone uses this:
       Profitability — a project *is* its Sale Order here, would be a near-duplicate view) and a
       separate "Company Performance Report" (no clearer definition than the Management Report
       already gives) — both flagged and explicitly skipped, not overlooked.
+12. **Manufacturing Performance Summary, filled out (2026-08-22, same-day follow-up).** Nav tab
+    renamed "Management Report" → "Reports" (matches the department Reports tabs' own label).
+    Research pass against `SYSTEM.md` in full (Procurement §5c, Stores §5e, Production's own
+    intelligence-gap list §8) to answer "what's obviously missing for a mature manufacturing
+    reporting layer":
+    - **Two real oversights in the report just shipped, fixed**: `qcFailures` and labour data were
+      computed in `computeManufacturingPerformance()` but never rendered — `qcFailures` sat unused
+      in the return object, and labour wasn't fetched at all despite Production's own Labour
+      Utilization report existing. Both now real tiles (QC Failures; Labour Hours/Cost, reusing
+      `getLabourUtilizationLines()`), plus a new **Material Lines Blocking Production (30d)** tile
+      reusing the standalone Material Shortage report's forecast data — "what's currently blocking
+      the shop floor," a real director question the summary was missing entirely.
+    - **Open PO Aging — new Procurement department report.** Issued POs with ≥1 line still
+      `TRANSIT`, aged by days since `issued_at`. Real gap: neither Purchase Register (only exists
+      once a Vendor Bill is raised) nor Procurement Spend (financial roll-up) answers "what's stuck
+      in the pipeline right now." Distinct from the blocked Supplier Performance metric
+      (REPORT-ENGINE-PLAN.md §9 — that needs a *promised* date vs. actual, inconsistently
+      populated) — this only needs *issued* date, which always exists. `lib/data.js`'s
+      `getOpenPoAgingLines()`.
+    - **§8's "Production's next layer" list (scheduling, formal NCR, heat/lot traceability, welding
+      traceability, subcontract cost, OEE) is explicitly a capture gap, not a report gap** — the
+      document itself says none of this data exists yet (`workstations` has no downtime log, no
+      per-joint weld ID, no NCR table). No report can surface a number that was never recorded;
+      building any of these means building the capture UI first, a separate, larger scope decision
+      — correctly not attempted here.
 
 ## 2. Polishing the reports that already exist (visual/UX) — DONE (2026-08-22), except #7
 

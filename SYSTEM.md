@@ -3337,6 +3337,29 @@ department reports), all off existing compute functions — no new ledger math:
   project *is* its Sale Order here) and a separate "Company Performance Report" (no clearer
   definition than the Management Report already gives).
 
+### Manufacturing Performance Summary filled out + Open PO Aging (2026-08-22, same-day follow-up)
+
+- Nav tab renamed "Management Report" → "Reports" (matches the department Reports tabs' own label).
+- **Two real oversights fixed in Manufacturing Performance Summary**: `qcFailures` and labour data
+  were computed but never rendered. Now real tiles (QC Failures; Labour Hours/Cost, reusing
+  `getLabourUtilizationLines()`), plus a new **Material Lines Blocking Production (30d)** tile off
+  the Material Shortage report's forecast data.
+- **Open PO Aging — new Procurement department report** (`lib/data.js`'s `getOpenPoAgingLines()`):
+  issued POs with ≥1 line still `TRANSIT`, aged by days since `issued_at`. Neither Purchase
+  Register (bill-based) nor Procurement Spend (financial roll-up) answers "what's stuck in the
+  pipeline right now" — this does, off data already captured. Distinct from the blocked Supplier
+  Performance metric (needs a *promised* date, inconsistently populated) — this only needs
+  *issued* date.
+- **Research pass against this file (§5c/§5e/§8) to answer "what else is obviously missing for a
+  mature manufacturing reporting layer"** — conclusion: §8's own "Production's next layer" list
+  (scheduling, formal NCR, heat/lot traceability, welding traceability, subcontract cost, OEE) is a
+  **capture gap, not a report gap** — the section explicitly says none of that data is recorded yet.
+  No report can surface a number that was never captured; building any of it means building the
+  capture UI first, a separate scope decision, correctly not attempted here.
+- **A transient dev-server glitch, not a bug**: `/reports?dept=Procurement` 500'd once with
+  `Cannot read properties of null (reading 'useContext')` — the same first-compile HMR error seen
+  earlier this session; an immediate retry returned 200 with both reports rendering correctly.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own

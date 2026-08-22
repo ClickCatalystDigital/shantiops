@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/componen
 import { Button } from '@/components/ui/button';
 import { DownloadIcon } from 'lucide-react';
 import { api, showToast } from '@/lib/client';
+import { formatMoney } from '@/lib/format';
 
 export default function ManufacturingPerformanceCard({ companies }) {
   const [company, setCompany] = useState(companies[0]?.company);
@@ -21,8 +22,11 @@ export default function ManufacturingPerformanceCard({ companies }) {
   const tiles = data ? [
     { label: 'Work Orders (Total / In Progress / Delayed / Completed)', value: `${data.totalWO} / ${data.inProgressWO} / ${data.delayedWO} / ${data.completedWO}` },
     { label: 'Rejection Rate', value: data.rejectionRatePct == null ? '—' : `${data.rejectionRatePct}%` },
+    { label: 'QC Failures', value: String(data.qcFailures) },
     { label: 'Material Yield', value: data.overallYieldPct == null ? '—' : `${data.overallYieldPct}%` },
+    { label: 'Labour Hours / Cost', value: `${data.totalLabourHours}h / ${formatMoney(data.totalLabourCost)}` },
     { label: 'Cost Variance', value: `${data.totalCostVariance >= 0 ? '+' : ''}${Math.round(data.totalCostVariance).toLocaleString('en-IN')}` },
+    { label: 'Material Lines Blocking Production (30d)', value: String(data.outstandingMaterialLines) },
   ] : [];
 
   return (

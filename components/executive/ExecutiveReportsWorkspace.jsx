@@ -38,7 +38,7 @@ export default function ExecutiveReportsWorkspace({ companies }) {
   const [key, setKey] = useState(ITEMS[0].key);
   const Screen = SCREEN[key];
   return (
-    <WorkspaceSidebar title="Management Reports" icon={LandmarkIcon} items={ITEMS} activeKey={key} onChange={setKey}>
+    <WorkspaceSidebar title="Reports" icon={LandmarkIcon} items={ITEMS} activeKey={key} onChange={setKey}>
       <Screen companies={companies} />
     </WorkspaceSidebar>
   );
