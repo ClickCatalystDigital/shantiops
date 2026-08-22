@@ -3910,6 +3910,113 @@ and defensively correct (confirmed via the clean-error path above) but **not** e
 against a real Sandbox response — blocked entirely on the external hub-deployment gap above, not on
 anything still to do here.
 
+## 5af. Hub → Shanti Ops statutory-rate pipeline — production-readiness pass (2026-08-23)
+
+`lib/rate-sync.js`'s `syncRatesFromHub()` (built §5y) had existed since 2026-08-20 but was only
+ever live-verified once, against an empty hub (`{pulled:0, applied:0, cursor:0}`). The hub now
+carries a real, substantial approved dataset for the first time, which is exactly when the
+pipeline's two structural weaknesses would actually bite. This pass proved the pipeline correct
+end-to-end against that real data and fixed both defects — no new features, no hub changes beyond
+its own normal human-approval workflow API.
+
+**One real bug found and fixed, not part of the original plan**: `syncRatesFromHub()` never merged
+a hub row's top-level `effective_from`/`effective_to` fields into the payload it hands to
+`insertGstRate`/`insertVendorTdsRate` — both require `effective_from`, so every prior "verified"
+run silently never exercised this path (an empty hub has no rows to expose it). Found live on this
+run's first real non-empty batch. Fixed with a one-line merge in the apply loop.
+
+**Two structural defects found and fixed** (both required to satisfy the task's own idempotency/
+no-partial-corruption bar, not scope creep):
+1. **None of `insertGstRate`/`insertVendorTdsRate`/`insertIncomeTaxSlab`/`insertProfessionalTaxSlab`
+   (`lib/data.js`) were idempotent** — plain `INSERT`, no dedup, no unique constraint in the schema
+   either. Re-running a sync with an unchanged cursor would have inserted every row a second time.
+   `patchStatutoryRates` (`lib/payroll.js`) was already safe (single-row `UPDATE`).
+2. **A mid-batch failure, combined with (1), would duplicate rows on retry**: `syncRatesFromHub()`
+   applies each row as its own statement (no transaction) and only advances
+   `hub_sync_state.cursor` once, after the whole loop succeeds. If row N throws, rows before it are
+   already committed but the cursor never moves — the next attempt re-pulls the same batch and,
+   without dedup, re-inserts rows 1..N-1. With defect (1) fixed this self-heals: a retry's dedup
+   check skips what already landed and only applies from where it actually failed. No transaction
+   wrapping or cursor-timing change needed.
+
+**Fix**: a `SELECT ... WHERE <natural key> LIMIT 1` guard before each `INSERT` in all four
+functions, no-op (return the existing id) on an exact match — never a fuzzy merge, a genuinely
+different payload for the same identity (e.g. a corrected threshold at the same `effective_from`)
+still inserts as a new row, matching how these tables are already versioned (insert, never
+update-in-place). Natural keys: `gst_rates` (hsn_code, effective_from, effective_to, rate_pct),
+`vendor_tds_rates` (section, effective_from, effective_to, rate_pct, threshold_amount),
+`income_tax_slabs` (regime='new' hardcoded, financial_year, min_income, max_income, rate_pct) —
+`insertIncomeTaxSlab` still hardcodes `regime='new'` regardless of what the hub might send, a
+latent gap named honestly, not fixed speculatively since no old-regime row exists yet to test
+against — `professional_tax_slabs` (state, min_gross, max_gross, amount).
+
+**Real, organic evidence of the pre-fix defect**: before this pass, the local DB already carried
+one 194H `vendor_tds_rate` row and one Maharashtra 0–7,500 `professional_tax_slabs` row from an
+earlier, unlogged partial sync attempt — `hub_sync_state.cursor` was still `0` despite their
+presence, the exact failure signature defect (2) describes. The dedup guard correctly treated both
+as already-applied during the real run below, rather than duplicating them.
+
+**Live-verified, end to end, against the real deployed hub and the real Shanti Ops Turso DB** (no
+mocked hub rows in the production data path — the one exception, isolated and cleaned up, is
+noted below):
+- **Controlled failure-path proof** (a genuine gap in the "how do we prove no-partial-corruption"
+  story without planting a bad row in the real hub): pointed `STATUTORY_RATES_HUB_URL` at a
+  throwaway local HTTP server for one test cycle (Next dev auto-reloads `.env.local`, confirmed via
+  server logs), serving one good synthetic row + one deliberately malformed row (missing
+  `rate_pct`) through the *real* `POST /api/statutory-rates/sync` route — the actual production
+  code path, not a reimplementation. First call: clean `400` (`"section, rate_pct, effective_from
+  are required"`), the good row committed, cursor untouched. Second call (bad row now fixed, same
+  "already-applied" good row still in the batch): the good row was correctly skipped (no
+  duplicate), only the fix landed, cursor advanced. Synthetic rows deleted and
+  `hub_sync_state.cursor` restored to its pre-test value before touching the real hub.
+- **Run A** (real hub, cursor 0 → 231): `{pulled:14, applied:14, cursor:231}` — 2 `gst_rate`
+  (HSN 9983/9984), 8 `vendor_tds_rate` (194C×2/194H/194J×2/194Q/206AA-206CC/194T), 1
+  `statutory_rate` patch, 3 `professional_tax_slab` (Maharashtra×2/Karnataka). Confirmed the two
+  already-present rows (194H, Maharashtra 0–7,500) deduped correctly, not doubled; every other row
+  landed exactly once. The retracted 206C(1H)/194A-wrong-threshold rows (ids 215/216) correctly
+  never appeared (excluded server-side by the hub's own `retracted_at IS NULL` filter).
+- **Run B** (immediately after A): `{pulled:0, applied:0, cursor:231}` — first idempotency proof,
+  zero row-count change confirmed across all three tables.
+- **Approved hub id 239** (194A correction — rate 10%, threshold ₹10,000, effective 2026-04-01,
+  replacing retracted id 216's wrong ₹5,000 threshold) via the hub's own
+  `POST /api/rates/:id/approve` after confirming its payload matched the expected correction
+  exactly — normal human-approval usage, not a hub modification. **Done only after explicit
+  user confirmation** — auto-mode's safety classifier correctly flagged this as a real,
+  hub-wide-visible action against a live production system and paused for approval before
+  proceeding.
+- **Run C**: `{pulled:1, applied:1, cursor:239}` — the new 194A row landed exactly once, correct
+  values. **Run D** (immediately after C): `{pulled:0, applied:0, cursor:239}` — second idempotency
+  proof, confirming new data doesn't get re-applied either.
+- **Calculation checks against what actually landed** (honest about what's testable —
+  `gst_rates`/`vendor_tds_rates` have no automatic effective-date resolution anywhere in this
+  codebase, confirmed by grep; `vendor_tds_rates` is only ever consumed by explicit row-id
+  selection, `gst_rates` isn't consumed in any live calc path at all, per §5r/§5y's own admission,
+  unchanged by this pass): `lib/gst-calc.mjs`'s `tdsAmount()` against the real synced 194A/194H/
+  194Q/206AA-206CC rows all correct (e.g. 194A on ₹50,000 → ₹5,000 deducted, below-threshold →
+  ₹0); `lib/payroll.js`'s Professional Tax slab resolution against the newly-synced Maharashtra/
+  Karnataka bands all correct. Income-tax slab resolution for FY2026-27 was **not** exercised
+  against synced data — the hub has no approved `income_tax_slab` rows yet, only drafts; local
+  seed data (independent of the hub) is what's actually in use, stated honestly rather than
+  claimed as tested.
+- **Auth/error-handling**: wrong or missing `x-sync-key` → clean `401`, no state change. Wrong
+  `STATUTORY_RATES_HUB_API_KEY` → clean `400` (`"Hub returned 401"`), no partial writes (fails
+  before the loop starts) — confirmed cursor and row counts unchanged afterward. Both hub env vars
+  restored to their real values immediately after each test.
+- **Regression check**: every existing selfcheck passes (one unrelated, pre-existing exception —
+  `lib/report-pdf-selfcheck.mjs` fails to run under plain `node` on this machine's Node 18.16.0 due
+  to a CJS/ESM interop issue in a JSX-bearing file; unrelated to this change, not touched).
+  `npm run build` failed outright under the environment's default Node 18.16.0 (Next 14.2.5 requires
+  ≥18.17.0) — re-run against a second, newer Node install already present on the machine
+  (`/opt/homebrew/bin/node`, v23.9.0) and completed clean.
+
+**Remaining, honestly-stated gaps** (not this pass's job to close): no HSN/section-based automatic
+rate resolution anywhere in the live calc paths yet (pre-existing, deferred since §5r); the hub's
+retraction model doesn't push a correction to a tenant that already pulled a rate *before* it was
+retracted — a real model limitation, worth naming, not worth a speculative fix absent a real
+incident; `insertIncomeTaxSlab`'s hardcoded `regime='new'` (noted above); the already-known,
+deliberately-deferred 206C(1H)/TCS cumulative-threshold-tracking gap from §5z, not re-litigated
+here.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own
