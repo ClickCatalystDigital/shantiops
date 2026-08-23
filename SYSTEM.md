@@ -4846,6 +4846,13 @@ path still succeeds; the JobCardBoard-only raise path (no `qc_record_id`, `job_c
 link) is unaffected. Disposable test rows reversed, zero residue. `npm run build`, `npm run lint`,
 and every `scripts/*-selfcheck.mjs` clean.
 
+**One more found on the same pass, lower severity** — `receivePiece()` (`lib/stock-pieces.js`)
+already validates `inventoryItemId` exists (throws `'Inventory item not found'`) but the
+`test_certificate_id` added for heat/lot traceability (§5ao) got no equivalent check — an
+inconsistency within the same function, not reachable via the built UI (`CertPicker` only ever
+offers real certs) but a real gap for any direct API caller. Fixed: same-shape existence check,
+`'Test certificate not found'`. Live-verified: a bogus id 400s, a real one still succeeds.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own
