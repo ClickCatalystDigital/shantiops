@@ -73,6 +73,24 @@ export async function POST(req) {
     if (dup) return NextResponse.json({ error: `Already covered by NCR #${dup.id}` }, { status: 409 });
   }
 
+  // Hold-point linkage guard (2026-08-23 hardening pass) — qc_records carries no job_card_id column
+  // of its own, so an NCR raised from a failed test (QcPanel's "Raise NCR" button) has no automatic
+  // way to know which held job card, if any, it's about. Rather than silently letting that link go
+  // missing whenever the project actually has a card on hold, require the caller to either name the
+  // affected job_card_id or explicitly confirm the NCR isn't hold-related — real server-side
+  // enforcement, not just a UI nicety (the UI only makes the common no-holds-in-project case fast).
+  if (b.qc_record_id && !b.job_card_id && !b.not_hold_related) {
+    const held = await queryOne(
+      "SELECT id FROM job_cards WHERE project_id = ? AND requires_qc_hold = 1 AND qc_released_at IS NULL LIMIT 1",
+      [projectId]
+    );
+    if (held) {
+      return NextResponse.json({
+        error: 'This project has a job card on QC hold — link this NCR to the affected job card, or confirm it is unrelated.',
+      }, { status: 400 });
+    }
+  }
+
   const ncrNo = await nextNumber('ncr_no', 'NCR');
   const { lastId } = await execute(
     `INSERT INTO ncr_records

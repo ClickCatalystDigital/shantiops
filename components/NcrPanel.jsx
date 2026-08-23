@@ -4,7 +4,7 @@
 // exported standalone so both QC (QcPanel.jsx, from a failed test row) and Production
 // (WorkersPanel.jsx, from a job card) can raise one — same access decision as POST /api/ncrs
 // ("QC and Production"), and the UI has to actually reach both, not just the API.
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, showToast, formatDate } from '@/lib/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -30,20 +30,43 @@ const DISPOSITION_LABEL = { rework: 'Rework', repair: 'Repair', scrap: 'Scrap', 
 
 // Reusable raise dialog — pass whichever single link this NCR is against (qcRecordId, jobCardId,
 // bomItemId, workOrderId, or a bare projectId for a field-found defect with no upstream link yet).
-export function RaiseNcrDialog({ open, onOpenChange, projectId, qcRecordId, jobCardId, bomItemId, workOrderId, onRaised }) {
+//
+// showHoldPicker (2026-08-23 hardening pass): pass true when raising from a failed qc_record
+// (QcPanel) — qc_records carries no job_card_id of its own, so there's no automatic way to know
+// which held job card, if any, a failed test is actually about. When the project has one, the
+// picker forces an explicit choice (the affected card, or "not related") rather than letting that
+// link go silently missing; POST /api/ncrs enforces this same requirement server-side regardless of
+// what the UI does. Not needed when jobCardId is already known (raised from JobCardBoard itself).
+export function RaiseNcrDialog({ open, onOpenChange, projectId, qcRecordId, jobCardId, bomItemId, workOrderId, showHoldPicker = false, onRaised }) {
   const router = useRouter();
   const [description, setDescription] = useState('');
   const [severity, setSeverity] = useState('minor');
   const [busy, setBusy] = useState(false);
+  const [heldCards, setHeldCards] = useState(null); // null = not loaded yet, [] = none held
+  const [pickedCardId, setPickedCardId] = useState(''); // '' unset, 'none' = not hold-related, else a job_card_id string
+
+  useEffect(() => {
+    if (!open || !showHoldPicker || !projectId) return;
+    setHeldCards(null);
+    setPickedCardId('');
+    api(`/api/job-cards?project_id=${projectId}`)
+      .then(cards => setHeldCards(cards.filter(c => c.requires_qc_hold && !c.qc_released_at)))
+      .catch(() => setHeldCards([])); // best-effort — a fetch failure shouldn't block raising an unrelated NCR
+  }, [open, showHoldPicker, projectId]);
+
+  const needsPick = showHoldPicker && heldCards && heldCards.length > 0;
 
   async function submit() {
     if (!description.trim()) return showToast('Description is required', 'error');
+    if (needsPick && !pickedCardId) return showToast('Select the affected job card, or confirm this is not hold-related', 'error');
     setBusy(true);
     try {
       await api('/api/ncrs', {
         method: 'POST',
         body: {
-          project_id: projectId, qc_record_id: qcRecordId, job_card_id: jobCardId,
+          project_id: projectId, qc_record_id: qcRecordId,
+          job_card_id: jobCardId || (pickedCardId && pickedCardId !== 'none' ? Number(pickedCardId) : undefined),
+          not_hold_related: pickedCardId === 'none' || undefined,
           bom_item_id: bomItemId, work_order_id: workOrderId, description, severity,
         },
       });
@@ -76,9 +99,24 @@ export function RaiseNcrDialog({ open, onOpenChange, projectId, qcRecordId, jobC
               </SelectContent>
             </Select>
           </div>
+          {needsPick && (
+            <div className="flex flex-col gap-1.5">
+              <Label>Which job card does this affect? <span className="text-danger">*</span></Label>
+              <Select value={pickedCardId} onValueChange={setPickedCardId}>
+                <SelectTrigger className="w-full"><SelectValue placeholder="Select one" /></SelectTrigger>
+                <SelectContent>
+                  {heldCards.map(c => (
+                    <SelectItem key={c.id} value={String(c.id)}>#{c.id} · {c.section}{c.wo_no ? ` · ${c.wo_no}` : ''}</SelectItem>
+                  ))}
+                  <SelectItem value="none">Not related to a hold</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">This project has a job card on QC hold — link this NCR if it's the reason, so the hold can't be released around it.</p>
+            </div>
+          )}
         </div>
         <DialogFooter>
-          <Button disabled={busy} onClick={submit}>{busy ? 'Raising…' : 'Raise NCR'}</Button>
+          <Button disabled={busy || (showHoldPicker && heldCards === null)} onClick={submit}>{busy ? 'Raising…' : 'Raise NCR'}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -140,10 +178,20 @@ function DispositionDialog({ ncr, onClose, router }) {
   );
 }
 
-export default function NcrPanel({ ncrs = [], canDisposition = false }) {
+export default function NcrPanel({ ncrs = [], canDisposition = false, canVerify = false, canClose = false }) {
   const router = useRouter();
   const [dispositioning, setDispositioning] = useState(null);
   const [busyId, setBusyId] = useState(null);
+
+  async function verify(id) {
+    setBusyId(id);
+    try {
+      await api(`/api/ncrs/${id}/verify`, { method: 'POST' });
+      showToast('NCR verified');
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+    setBusyId(null);
+  }
 
   async function close(id) {
     setBusyId(id);
@@ -170,13 +218,21 @@ export default function NcrPanel({ ncrs = [], canDisposition = false }) {
               <span className={`rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${STATUS_TONE[n.status]}`}>
                 {n.status === 'dispositioned' ? `Dispositioned — ${DISPOSITION_LABEL[n.disposition] || n.disposition}` : n.status}
               </span>
+              {n.status === 'dispositioned' && n.qc_verified_at && (
+                <span className="rounded-full bg-success/10 px-2 py-0.5 text-xs font-medium text-success ring-1 ring-inset ring-success/20">QC-verified</span>
+              )}
               <span className="ml-auto text-xs text-muted-foreground tnum">{formatDate(n.raised_at)}</span>
             </div>
             <p className="text-muted-foreground">{n.description}</p>
             {canDisposition && n.status === 'open' && (
               <Button size="sm" variant="outline" className="self-start" onClick={() => setDispositioning(n)}>Disposition</Button>
             )}
-            {canDisposition && n.status === 'dispositioned' && (
+            {canVerify && n.status === 'dispositioned' && !n.qc_verified_at && (
+              <Button size="sm" variant="outline" className="self-start" disabled={busyId === n.id} onClick={() => verify(n.id)}>
+                {busyId === n.id ? 'Verifying…' : 'Verify'}
+              </Button>
+            )}
+            {canClose && n.status === 'dispositioned' && n.qc_verified_at && (
               <Button size="sm" variant="outline" className="self-start" disabled={busyId === n.id} onClick={() => close(n.id)}>Close</Button>
             )}
           </div>

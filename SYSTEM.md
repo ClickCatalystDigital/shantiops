@@ -22,7 +22,11 @@ a reader who finds the old `V3_CHANGES.md` §12 text elsewhere knows it's stale.
 reversal.
 
 Everything in this file reflects the **current, working build**, updated as work lands — most
-recently 2026-08-23 (§5ao, a full QC NCR/disposition/heat-lot/hold-point workflow, 5 new Dispatch/QC
+recently 2026-08-23 (§5ap, a hardening pass on §5ao's NCR workflow following a second-opinion
+review: a distinct QC-verification step now required before an NCR can close, and a real
+server-side guard closing the one structural gap the review found — a failed-test-originated NCR
+could otherwise never link to the held job card it was actually about; §5ao, a full QC
+NCR/disposition/heat-lot/hold-point workflow, 5 new Dispatch/QC
 reports, a dual-department Reports nav fix, and two demo-data bug fixes; §5an, a proper Marketing/
 Sales nav-label fix plus the full CRM-Reports→Report-
 Engine merge that closes a gap §5c had explicitly documented and deferred — Marketing is now a real
@@ -4762,6 +4766,67 @@ children and inserts a real `certificate_projects` row on cut into a project; al
 return real data with correct department gating (Production 403s on a Dispatch report) and correct
 company scoping. `npm run build` and `npm run lint` both clean throughout.
 
+## 5ap. NCR hardening pass: QC verification before close, hold-point linkage guard (2026-08-23)
+
+A structured external review of §5ao's NCR/hold-point implementation (not this session's own
+self-audit — a second opinion asked for explicitly) surfaced two real, concrete gaps and correctly
+identified two more items as already covered rather than missing. Both real gaps were fixed and
+live-verified; here's exactly what changed and why.
+
+**Gap 1 — "Production finished rework" was standing in for "QC verified it."** Before this pass,
+`POST /api/ncrs/[id]/close` was the only gate between a dispositioned NCR and `status='closed'`, and
+it checked only that a linked rework job card had reached `status='done'` — a Production fact, not a
+quality sign-off. The review's critique of this was not entirely accurate (Close was never
+*automatic* — it always required an explicit, separate QC-department-gated POST, so "Production
+finishing rework silently closes the NCR" never actually happened), but the underlying concern was
+real: nothing distinguished "the shop floor says it's done" from "QC actually re-inspected it." Fix:
+`ncr_records` gained `qc_verified_at`/`qc_verified_by` (additive `addColumn`); a new
+`POST /api/ncrs/[id]/verify` (gated `qc.ncr.verify`, new `ACTION_CATALOG` key, default open like the
+other 3 non-disposition NCR actions) is now a distinct, required QC action — it owns the
+rework-job-card-done check that Close used to own alone, stamps `qc_verified_at`/`by`, and Close now
+refuses with `"NCR must be QC-verified before closing"` unless that's already set. Close *also* kept
+its own independent rework-done recheck (defense in depth — a card could in principle regress from
+`done` back to `progress` between verify and close; unlikely, cheap to guard anyway).
+`components/NcrPanel.jsx` gained a distinct "Verify" button (shown once dispositioned, before
+`qc_verified_at`) and the "Close" button now only appears once verified; both gated by their own
+server-computed `canVerify`/`canClose` props (`canPerformAction(user,'QC','qc.ncr.verify'/'close')`),
+not reusing `canDisposition`. NCR closure's Head-vs-any-QC-member authority stays exactly as
+designed — configurable per action key via Settings' existing `ActionPermissionsPanel` (which
+already generically renders every `ACTION_CATALOG` entry including the 2 new ones), not hardcoded;
+this was flagged as a possible gap in review but was already true before this pass.
+
+**Gap 2 — a failed QC record could raise an NCR with no way to know which held job card it was
+about.** `qc_records` carries no `job_card_id` column of its own (it's a project-level test log, not
+a job-card-scoped one), and `QcPanel.jsx`'s "Raise NCR" button on a failed test row only ever
+prefilled `qc_record_id`. Meaning `qc-release`'s `WHERE job_card_id = ?` open-NCR check could
+never see an NCR raised this way — a real, structural gap the review correctly caught (the
+JobCardBoard-raised path, which does set `job_card_id`, was never at risk; this was specific to the
+QcPanel path). Fix, enforced server-side, not just in the UI: `POST /api/ncrs` now checks, when
+`qc_record_id` is set and neither `job_card_id` nor a new `not_hold_related: true` flag is supplied,
+whether the NCR's project currently has any job card with `requires_qc_hold=1 AND qc_released_at IS
+NULL` — if so, 400 `"This project has a job card on QC hold — link this NCR to the affected job
+card, or confirm it is unrelated."` This is a real guarantee, not a client-side nicety: a direct API
+call skipping the UI hits the same check. `GET /api/job-cards` was widened to also allow QC-
+department read access (previously Production-only) so the picker has something to query.
+`RaiseNcrDialog`'s new `showHoldPicker` prop (passed only from `QcPanel.jsx`, not from
+`JobCardBoard.jsx` where `job_card_id` is already known) fetches the project's held cards on open and
+— only when at least one exists — renders a required "Which job card does this affect?" select (plus
+a "Not related to a hold" option) before Raise NCR can submit; when a project has no held cards, the
+flow is completely unchanged, matching the common case.
+
+**Live-verified end to end against the real dev DB** (disposable test rows, all reversed afterward,
+zero residue confirmed by direct query) — the exact sequence asked for: a route step with
+`quality_checkpoint` generates a held job card → a failed `qc_record` in that project → raising an
+NCR from it *without* linking gets 400 (guard fires); with `not_hold_related: true` it's accepted
+with `job_card_id` null; with an explicit `job_card_id` it's correctly linked → `qc-release` 400s
+while that NCR is open → `production_head` gets 403 on `verify` → `close` 400s
+`"NCR must be QC-verified before closing"` before verification → `qc_head` verifies successfully →
+double-verify 400s `"Already verified"` → close now succeeds → `qc-release` now succeeds. Every
+negative path the review asked for was proven, not assumed: NCR can't close pre-verification, an
+open NCR blocks hold release, Production can't verify, and a failed-test-originated NCR can't reach
+a state where it silently fails to gate the hold it's actually about. `npm run build`, `npm run
+lint`, and every `scripts/*-selfcheck.mjs` clean throughout.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own
@@ -4878,6 +4943,7 @@ projects ──< ncr_records                          (§5ao — Non-Conformance
 ncr_records ──> job_cards (rework_job_card_id)     (§5ao — set by a rework/repair disposition; the card also carries ncr_id back to the NCR)
 job_cards.requires_qc_hold / qc_released_at/by     (§5ao — derived from work_order_operations.quality_checkpoint at generate-job-cards time; deliberately not PATCH-editable, only POST /api/job-cards/[id]/qc-release can clear it)
 stock_pieces.heat_no / test_certificate_id → test_certificates  (§5ao — captured once at receivePiece(), inherited by every cutPiece() child for free; linking a cert here auto-inserts a certificate_projects row on cut into a project)
+ncr_records.qc_verified_at / qc_verified_by            (§5ap — a distinct fact from status='closed'; POST /api/ncrs/[id]/close refuses unless this is already set, POST /api/ncrs/[id]/verify is the only thing that sets it)
 ```
 
 `bom_items` carries the spreadsheet-mirror columns — `section` (sheet), `group_label` (assembly

@@ -27,7 +27,7 @@ const SERIES_ITEMS = QC_SERIES.map(s => ({ id: s, label: s }));
 
 const certProjectIds = c => (c.project_ids ? String(c.project_ids).split(',').map(Number) : []);
 
-export default function QcWorkspace({ projects = [], certificates = [], documents = [], calibrationItems = [], ncrs = [], holdPoints = [], canDisposition = false, initialTab, initialProject }) {
+export default function QcWorkspace({ projects = [], certificates = [], documents = [], calibrationItems = [], ncrs = [], holdPoints = [], canDisposition = false, canVerify = false, canClose = false, initialTab, initialProject }) {
   const [tab, setTab] = useState(ITEMS.some(i => i.key === initialTab) ? initialTab : 'tc');
 
   const initProject = initialProject && projects.some(p => String(p.id) === String(initialProject)) ? Number(initialProject) : null;
@@ -86,7 +86,7 @@ export default function QcWorkspace({ projects = [], certificates = [], document
       ) : tab === 'docs' ? (
         <StatutoryDocsPanel projectId={projectId} documents={shownDocs} canEdit showProject />
       ) : tab === 'ncr' ? (
-        <NcrPanel ncrs={shownNcrs} canDisposition={canDisposition} />
+        <NcrPanel ncrs={shownNcrs} canDisposition={canDisposition} canVerify={canVerify} canClose={canClose} />
       ) : tab === 'holds' ? (
         <QcHoldPanel holdPoints={holdPoints} />
       ) : (

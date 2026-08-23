@@ -13,7 +13,7 @@ export default async function QcPage({ searchParams }) {
   if (!canAccessDepartment(user, 'QC')) redirect(roleHome(user));
 
   const sp = await searchParams;
-  const [allProjects, certificates, documents, calibrationItems, receivedIds, ncrs, holdPoints, canDisposition] = await Promise.all([
+  const [allProjects, certificates, documents, calibrationItems, receivedIds, ncrs, holdPoints, canDisposition, canVerify, canClose] = await Promise.all([
     getActiveProjectsList(),
     getTestCertificates(),
     getAllQcDocuments(),
@@ -22,6 +22,8 @@ export default async function QcPage({ searchParams }) {
     getNcrs(),
     getQcHoldPoints(),
     canPerformAction(user, 'QC', 'qc.ncr.disposition'),
+    canPerformAction(user, 'QC', 'qc.ncr.verify'),
+    canPerformAction(user, 'QC', 'qc.ncr.close'),
   ]);
 
   // A project is QC's business once Stores starts receiving its materials — filter the project
@@ -34,6 +36,7 @@ export default async function QcPage({ searchParams }) {
   const projects = allProjects.filter(p => relevant.has(p.id));
 
   return <QcWorkspace projects={projects} certificates={certificates} documents={documents}
-    calibrationItems={calibrationItems} ncrs={ncrs} holdPoints={holdPoints} canDisposition={canDisposition}
+    calibrationItems={calibrationItems} ncrs={ncrs} holdPoints={holdPoints}
+    canDisposition={canDisposition} canVerify={canVerify} canClose={canClose}
     initialTab={sp?.tab} initialProject={sp?.project} />;
 }

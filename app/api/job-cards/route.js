@@ -3,15 +3,19 @@
 // server-side from the milestone, not taken from the client, so they can never drift out of sync.
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
-import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
+import { getFreshSessionUser, requireDepartment, canAccessDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { getJobCards } from '@/lib/data';
 import { audit } from '@/lib/usb';
 
 export async function GET(req) {
   const user = await getFreshSessionUser();
-  const denied = requireDepartment(user, 'Production');
-  if (denied) return denied;
+  // Read access also extends to QC (2026-08-23 hardening pass) — QC needs to see a project's job
+  // cards to link an NCR to the one actually on hold when raising it from a failed test, not just
+  // from Production's own board. Write access below stays Production-only, unchanged.
+  if (!canAccessDepartment(user, 'Production') && !canAccessDepartment(user, 'QC')) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
   const params = new URL(req.url).searchParams;
   const projectId = params.get('project_id');
   const status = params.get('status');

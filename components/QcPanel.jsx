@@ -228,7 +228,7 @@ export default function QcPanel({
       </CardContent>
       {raisingNcrFor && (
         <RaiseNcrDialog open onOpenChange={o => !o && setRaisingNcrFor(null)}
-          projectId={projectId} qcRecordId={raisingNcrFor.id} onRaised={() => setRaisingNcrFor(null)} />
+          projectId={projectId} qcRecordId={raisingNcrFor.id} showHoldPicker onRaised={() => setRaisingNcrFor(null)} />
       )}
     </Card>
   );
