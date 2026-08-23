@@ -4853,6 +4853,39 @@ inconsistency within the same function, not reachable via the built UI (`CertPic
 offers real certs) but a real gap for any direct API caller. Fixed: same-shape existence check,
 `'Test certificate not found'`. Live-verified: a bogus id 400s, a real one still succeeds.
 
+## 5aq. Management report chart tooltips + Reports sidebar search (2026-08-23)
+
+Two UI-polish fixes, both direct user feedback on §5an's Recharts work and the Reports sidebar
+accordion.
+
+**Chart tooltips showed raw, unit-less numbers with no series label.** The actual root cause was
+more specific than "needs a currency symbol": `components/ui/chart.jsx`'s `ChartTooltipContent`
+treats its `formatter` prop as replacing the *entire* tooltip row — the color swatch and series name
+included, not just the value — and `components/executive/charts.jsx` had been passing a bare
+`(v) => v.toLocaleString('en-IN')`, which silently dropped the swatch and name on every currency
+chart, leaving tooltips like a naked `75,97,666.67`. Fixed with a shared `moneyTooltipFormatter`
+that reconstructs the swatch+name+value row `ChartTooltipContent`'s own default branch renders, but
+routes the value through `lib/format.js`'s existing `formatMoney()` (₹42L / ₹4.2Cr, the same
+convention every report's row list beneath these charts already used — the chart and the numbers
+under it were inconsistent with each other before this). `formatMoney()` itself gained proper
+negative handling (`-₹1.2L`, sign before the symbol) since a project's margin can run negative and
+previously rendered as a bare unsigned number past 1L. `RankedMarginChart`/`RankedSpendChart` also
+gained an explicit `name` prop on their `<Bar>` (previously defaulted to the raw `dataKey`, e.g.
+literally `"value"`, once the formatter fix started actually rendering it). Live-verified in the
+browser: Management Report's PnL bars now show "Revenue / MTD ₹76L" with a color swatch; Project
+Profitability's ranked bars show "Margin ₹86.8L", matching the exact figures in the row list below.
+
+**No way to find one report among 9 departments / 40+ buttons behind the accordion.** Added a search
+box to `WorkspaceSidebar`'s `groups` render mode (the mode `/reports`' consolidated admin/manager/
+multi-department-head view uses — the only sidebar in the app with this many items behind an
+accordion; a flat `items` sidebar, including the `executive` role's own separate 5-item
+`/executive/reports`, is short enough to not need it). Typing filters every group's items by label
+match and hides empty groups; while a query is active, every group with a match force-expands
+(bypassing the normal one-open-at-a-time accordion) so all hits are visible without extra clicks; an
+empty result shows "No reports match…"; clearing the box reverts to the last manually-opened group.
+Live-verified: typing "freight" narrows to Dispatch → Freight Cost Summary alone; a nonsense query
+shows the empty state; clearing restores the default view. `npm run build`/`npm run lint` clean.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own

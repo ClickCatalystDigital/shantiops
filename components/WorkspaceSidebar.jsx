@@ -8,7 +8,8 @@ import {
   SidebarTrigger, SidebarInset, SidebarRail,
 } from '@/components/ui/sidebar';
 import { Separator } from '@/components/ui/separator';
-import { LayoutPanelTopIcon, ChevronRightIcon } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { LayoutPanelTopIcon, ChevronRightIcon, SearchIcon, XIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // Shared shell for workspace-level navigation. The content stays owned by each workspace;
@@ -30,6 +31,20 @@ export default function WorkspaceSidebar({ title, icon: TitleIcon = LayoutPanelT
   // reports never surprises you by collapsing your own place.
   const defaultOpenGroup = groups?.find(g => g.items.some(i => i.key === activeKey))?.label ?? groups?.[0]?.label;
   const [openGroup, setOpenGroup] = useState(defaultOpenGroup);
+
+  // Search across groups (2026-08-23) — only meaningful for the `groups` render mode: a flat
+  // `items` sidebar is short enough to scan by eye, but Reports' consolidated admin/manager/
+  // multi-department view can run 9 departments / 40+ report buttons behind the accordion, which
+  // is exactly what search needs to cut through. Matching groups auto-expand while a query is
+  // active (bypassing the normal one-open-at-a-time accordion) so every hit is visible at once
+  // without extra clicking; clearing the box reverts to the last manually-opened group.
+  const [query, setQuery] = useState('');
+  const needle = query.trim().toLowerCase();
+  const searchedGroups = groups && needle
+    ? groups
+        .map(g => ({ ...g, items: g.items.filter(i => i.label.toLowerCase().includes(needle)) }))
+        .filter(g => g.items.length > 0)
+    : groups;
 
   if (nested) {
     return (
@@ -77,8 +92,24 @@ export default function WorkspaceSidebar({ title, icon: TitleIcon = LayoutPanelT
           </div>
         </SidebarHeader>
         <SidebarContent>
-          {groups ? groups.map(group => {
-            const isOpen = openGroup === group.label;
+          {groups && (
+            <div className="relative px-2 pb-2 pt-1 group-data-[collapsible=icon]:hidden">
+              <SearchIcon className="pointer-events-none absolute left-4.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search reports…"
+                className="h-8 pl-7 pr-7 text-sm" />
+              {query && (
+                <button type="button" aria-label="Clear search" onClick={() => setQuery('')}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                  <XIcon className="size-3.5" />
+                </button>
+              )}
+            </div>
+          )}
+          {groups && needle && searchedGroups.length === 0 && (
+            <p className="px-4 py-3 text-xs text-muted-foreground">No reports match "{query.trim()}".</p>
+          )}
+          {searchedGroups ? searchedGroups.map(group => {
+            const isOpen = needle ? true : openGroup === group.label;
             return (
             <SidebarGroup key={group.label}>
               <SidebarGroupLabel asChild>

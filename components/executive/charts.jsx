@@ -9,6 +9,7 @@ import {
   Pie, PieChart, Legend,
 } from 'recharts';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
+import { formatMoney } from '@/lib/format';
 
 const SUCCESS = 'var(--color-success)';
 const DANGER = 'var(--color-danger)';
@@ -25,6 +26,24 @@ function truncateLabel(s, max = 13) {
   return s && s.length > max ? `${s.slice(0, max - 1)}…` : s;
 }
 
+// ChartTooltipContent's `formatter` prop replaces the ENTIRE row (color swatch + series name +
+// value), not just the value — passing a bare `(v) => string` formatter, as this file used to,
+// silently dropped the indicator dot and the series name from every tooltip, leaving only an
+// unlabeled, unit-less number. Reusable ReactNode formatter fixes it, matching the default row's
+// own layout (components/ui/chart.jsx's un-formatted branch) but with an actual ₹/L/Cr unit.
+function moneyTooltipFormatter(value, name, item) {
+  const color = item?.color ?? item?.payload?.fill;
+  return (
+    <div className="flex w-full flex-1 items-center justify-between gap-2 leading-none">
+      <span className="flex items-center gap-1.5 text-muted-foreground">
+        {color && <span className="size-2.5 shrink-0 rounded-[2px]" style={{ backgroundColor: color }} />}
+        {name}
+      </span>
+      <span className="font-mono font-medium text-foreground tabular-nums">{formatMoney(value)}</span>
+    </div>
+  );
+}
+
 // Horizontal ranked bar chart — margin by project/customer, colored by sign. Top N only (a full
 // project list can run long; the chart is a glance, the row list beneath it still has everything).
 export function RankedMarginChart({ items, valueKey = 'value', labelKey = 'label', limit = 8 }) {
@@ -37,12 +56,12 @@ export function RankedMarginChart({ items, valueKey = 'value', labelKey = 'label
         <XAxis type="number" hide />
         <YAxis type="category" dataKey={labelKey} width={170} tickLine={false} axisLine={false}
           tick={{ fontSize: 11 }} tickFormatter={truncateLabel} interval={0} />
-        <ChartTooltip content={<ChartTooltipContent formatter={(v) => Number(v).toLocaleString('en-IN')} />} />
-        <Bar dataKey={valueKey} radius={4}>
+        <ChartTooltip content={<ChartTooltipContent formatter={moneyTooltipFormatter} />} />
+        <Bar dataKey={valueKey} name="Margin" radius={4}>
           {data.map((d) => (
             <Cell key={d[labelKey]} fill={d[valueKey] < 0 ? DANGER : SUCCESS} />
           ))}
-          <LabelList dataKey={valueKey} position="right" formatter={(v) => Number(v).toLocaleString('en-IN')} className="fill-foreground text-[10px]" />
+          <LabelList dataKey={valueKey} position="right" formatter={(v) => formatMoney(v)} className="fill-foreground text-[10px]" />
         </Bar>
       </BarChart>
     </ChartContainer>
@@ -60,9 +79,9 @@ export function RankedSpendChart({ items, valueKey = 'value', labelKey = 'label'
         <XAxis type="number" hide />
         <YAxis type="category" dataKey={labelKey} width={170} tickLine={false} axisLine={false}
           tick={{ fontSize: 11 }} tickFormatter={truncateLabel} interval={0} />
-        <ChartTooltip content={<ChartTooltipContent formatter={(v) => Number(v).toLocaleString('en-IN')} />} />
-        <Bar dataKey={valueKey} fill={CHART1} radius={4}>
-          <LabelList dataKey={valueKey} position="right" formatter={(v) => Number(v).toLocaleString('en-IN')} className="fill-foreground text-[10px]" />
+        <ChartTooltip content={<ChartTooltipContent formatter={moneyTooltipFormatter} />} />
+        <Bar dataKey={valueKey} name="Spend" fill={CHART1} radius={4}>
+          <LabelList dataKey={valueKey} position="right" formatter={(v) => formatMoney(v)} className="fill-foreground text-[10px]" />
         </Bar>
       </BarChart>
     </ChartContainer>
@@ -85,7 +104,7 @@ export function PnlComparisonChart({ mtd, fytd }) {
         <CartesianGrid vertical={false} strokeDasharray="3 3" />
         <XAxis dataKey="metric" tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
         <YAxis hide />
-        <ChartTooltip content={<ChartTooltipContent formatter={(v) => Number(v).toLocaleString('en-IN')} />} />
+        <ChartTooltip content={<ChartTooltipContent formatter={moneyTooltipFormatter} />} />
         <Legend wrapperStyle={{ fontSize: 11 }} />
         <Bar dataKey="MTD" fill={CHART1} radius={4} />
         <Bar dataKey="FY to date" fill={SUCCESS} radius={4} />
@@ -131,13 +150,13 @@ export function CostVarianceChart({ planned, actual }) {
         <CartesianGrid horizontal={false} strokeDasharray="3 3" />
         <XAxis type="number" hide />
         <YAxis type="category" dataKey="metric" hide />
-        <ChartTooltip content={<ChartTooltipContent formatter={(v) => Number(v).toLocaleString('en-IN')} />} />
+        <ChartTooltip content={<ChartTooltipContent formatter={moneyTooltipFormatter} />} />
         <Legend wrapperStyle={{ fontSize: 11 }} />
         <Bar dataKey="Planned" fill={CHART1} radius={4} barSize={20}>
-          <LabelList dataKey="Planned" position="right" formatter={(v) => Number(v).toLocaleString('en-IN')} className="fill-foreground text-[10px]" />
+          <LabelList dataKey="Planned" position="right" formatter={(v) => formatMoney(v)} className="fill-foreground text-[10px]" />
         </Bar>
         <Bar dataKey="Actual" fill={overran ? DANGER : SUCCESS} radius={4} barSize={20}>
-          <LabelList dataKey="Actual" position="right" formatter={(v) => Number(v).toLocaleString('en-IN')} className="fill-foreground text-[10px]" />
+          <LabelList dataKey="Actual" position="right" formatter={(v) => formatMoney(v)} className="fill-foreground text-[10px]" />
         </Bar>
       </BarChart>
     </ChartContainer>
