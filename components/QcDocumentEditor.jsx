@@ -273,8 +273,19 @@ export default function QcDocumentEditor({ project, document, parts, certificate
   const [boilerOpen, setBoilerOpen] = useState(false);
   const [pdfOpen, setPdfOpen] = useState(false);
   const [addPartOpen, setAddPartOpen] = useState(false);
+  const [visBusy, setVisBusy] = useState(false);
 
   const unlinked = parts.filter(p => !p.test_certificate_id);
+  // Zero parts is vacuously zero unlinked — not actually complete. Same reasoning as the server
+  // gates (PDF route, PATCH customer_visible).
+  const incomplete = parts.length === 0 || unlinked.length > 0;
+  async function setCustomerVisible(v) {
+    setVisBusy(true);
+    try {
+      await api(`/api/qc-documents/${document.id}`, { method: 'PATCH', body: { customer_visible: v } });
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); } finally { setVisBusy(false); }
+  }
   const byFilter = filter === 'unlinked' ? unlinked : parts;
   const needle = q.trim().toLowerCase();
   const shown = needle
@@ -336,12 +347,24 @@ export default function QcDocumentEditor({ project, document, parts, certificate
         <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">Draft</span>
         <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">{document.company}</span>
         <div className="ml-auto flex items-center gap-2">
-          {unlinked.length > 0 && (
+          {parts.length === 0 ? (
+            <span className="text-xs text-warning">No parts on this document yet</span>
+          ) : unlinked.length > 0 && (
             <span className="text-xs text-warning">{unlinked.length} part{unlinked.length === 1 ? '' : 's'} still need a certificate</span>
           )}
-          <Button disabled={unlinked.length > 0} onClick={() => setPdfOpen(true)}>Preview PDF</Button>
+          <Button disabled={incomplete} onClick={() => setPdfOpen(true)}>Preview PDF</Button>
         </div>
       </div>
+
+      {canEdit && (
+        <div className="flex items-center gap-2">
+          <Checkbox id="qc-doc-customer-visible" checked={!!document.customer_visible} disabled={visBusy || incomplete}
+            onCheckedChange={(v) => setCustomerVisible(!!v)} />
+          <Label htmlFor="qc-doc-customer-visible" className="font-normal text-xs">
+            Share with customer{incomplete ? ' (link every part first)' : document.customer_visible ? ' — visible in their portal' : ' (not shown in the portal)'}
+          </Label>
+        </div>
+      )}
 
       <Card>
         <CardHeader>

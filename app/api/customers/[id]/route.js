@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { execute } from '@/lib/db';
+import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, isInternal, canAccessDepartment, isPM } from '@/lib/auth';
 import { getCustomerDetail } from '@/lib/data';
 import { audit } from '@/lib/usb';
@@ -30,6 +30,17 @@ export async function PATCH(req, { params }) {
   if (!fields.length) return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
   args.push(params.id);
   await execute(`UPDATE customers SET ${fields.join(', ')} WHERE id = ?`, args);
+
+  // A deactivated customer must not keep live portal access — mirror the flag onto their linked
+  // login (and restore it symmetrically on reactivation, same assumption). Deliberately not
+  // touching portal_enabled/email prefs, only whether the account can log in at all.
+  if (b.active !== undefined) {
+    const customer = await queryOne('SELECT portal_user_id FROM customers WHERE id = ?', [params.id]);
+    if (customer?.portal_user_id) {
+      await execute('UPDATE users SET active = ? WHERE id = ?', [b.active ? 1 : 0, customer.portal_user_id]);
+    }
+  }
+
   await audit(b.active === 0 ? 'customer_deactivated' : 'customer_updated', { actor: user.username, detail: `#${params.id}` });
   return NextResponse.json({ ok: true });
 }

@@ -9,7 +9,7 @@ import { redirect } from 'next/navigation';
 import { getFreshSessionUser, canAccessDepartment, roleHome } from '@/lib/auth';
 import {
   getInventoryItems, getOpenBomItems, getActiveReservations, getActiveProjectsList,
-  getReorderSuggestions, getGateInwardReceipts, getGatePasses,
+  getReorderSuggestions, getGateInwardReceipts, getGatePasses, getTestCertificates,
 } from '@/lib/data';
 import StoresWorkspace from '@/components/StoresWorkspace';
 
@@ -19,11 +19,12 @@ export default async function StoresPage() {
   const user = await getFreshSessionUser();
   if (!canAccessDepartment(user, 'Stores')) redirect(roleHome(user));
 
-  const [inventoryItems, openRequests, activeReservations, projects, reorderSuggestions, gateInwardReceipts, gatePasses] = await Promise.all([
+  const [inventoryItems, openRequests, activeReservations, projects, reorderSuggestions, gateInwardReceipts, gatePasses, certificates] = await Promise.all([
     getInventoryItems(), getOpenBomItems(), getActiveReservations(), getActiveProjectsList(),
-    getReorderSuggestions(), getGateInwardReceipts(), getGatePasses(),
+    getReorderSuggestions(), getGateInwardReceipts(), getGatePasses(), getTestCertificates(),
   ]);
 
   return <StoresWorkspace inventoryItems={inventoryItems} openRequests={openRequests} activeReservations={activeReservations}
-    projects={projects} reorderSuggestions={reorderSuggestions} gateInwardReceipts={gateInwardReceipts} gatePasses={gatePasses} />;
+    projects={projects} reorderSuggestions={reorderSuggestions} gateInwardReceipts={gateInwardReceipts} gatePasses={gatePasses}
+    certificates={certificates} />;
 }

@@ -66,7 +66,7 @@ export async function PATCH(req, { params }) {
       await notifyDepartment(dept, {
         kind: 'qc_fail', title: `QC FAILED: ${testType} — ${pno}`,
         body: record.bom_item_id ? 'Incoming inspection failed — material needs replacement.'
-                                 : 'Inspection failed — rework required.',
+                                 : 'Inspection failed — raise an NCR.',
         dedupe_key: `qc_fail:${record.id}`,
       });
     } catch (err) { /* notification is best-effort */ }

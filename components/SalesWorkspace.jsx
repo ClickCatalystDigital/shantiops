@@ -411,11 +411,21 @@ function CustomerDetailSheet({ customerId, onClose, router }) {
   const [contactName, setContactName] = useState('');
   const [addrLine1, setAddrLine1] = useState('');
   const [note, setNote] = useState('');
+  const [portalBusy, setPortalBusy] = useState(false);
 
   function load() {
     api(`/api/customers/${customerId}`).then(setDetail).catch(err => showToast(err.message, 'error'));
   }
   useEffect(load, [customerId]);
+
+  async function togglePortal(enabled) {
+    setPortalBusy(true);
+    try {
+      await api(`/api/customers/${customerId}/portal`, { method: 'POST', body: { enabled } });
+      showToast(enabled ? 'Portal login created — credentials email sent' : 'Portal email turned off');
+      load(); router.refresh();
+    } catch (err) { showToast(err.message, 'error'); } finally { setPortalBusy(false); }
+  }
 
   async function addContact() {
     if (!contactName.trim()) return;
@@ -448,6 +458,21 @@ function CustomerDetailSheet({ customerId, onClose, router }) {
             <div className="flex items-center justify-between text-sm text-muted-foreground">
               <span>{detail.gst_no || 'No GST on file'}</span>
               <ContactLinks phone={detail.phone} email={detail.email} />
+            </div>
+
+            <div>
+              <div className="mb-2 text-sm font-semibold">Customer Portal</div>
+              <div className="flex items-center gap-2">
+                <Checkbox id={`portal-${detail.id}`} checked={!!detail.portal_enabled} disabled={portalBusy}
+                  onCheckedChange={(v) => togglePortal(!!v)} />
+                <Label htmlFor={`portal-${detail.id}`} className="font-normal text-xs">
+                  {detail.portal_enabled
+                    ? `Portal email on${detail.initial_email_sent_at ? ` — invited ${detail.initial_email_sent_at.slice(0, 10)}` : ''}`
+                    : detail.portal_user_id
+                      ? 'Portal login exists — email off'
+                      : 'Not on the portal yet — enabling creates a login and emails setup instructions'}
+                </Label>
+              </div>
             </div>
 
             <div>

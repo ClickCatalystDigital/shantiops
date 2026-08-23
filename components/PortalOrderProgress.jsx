@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { CheckIcon, LoaderIcon, ClockIcon, ChevronDownIcon } from 'lucide-react';
+import { CheckIcon, LoaderIcon, ClockIcon, ChevronDownIcon, DownloadIcon, FileTextIcon } from 'lucide-react';
 
 const STATUS_LABEL = { under_review: 'Ready for your review', approved: 'Approved', as_built: 'As built' };
 
@@ -101,6 +101,23 @@ function DrawingRow({ drawing, onChanged }) {
   );
 }
 
+// A plain document — QC certificate, packing list — with nothing for the customer to act on,
+// unlike a drawing (no approve/comment). One consistent row style: icon, name, a Download button
+// that forces a save instead of an in-browser preview.
+function DocumentRow({ name, href }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
+      <div className="flex min-w-0 items-center gap-2">
+        <FileTextIcon className="size-4 shrink-0 text-muted-foreground" />
+        <span className="truncate text-sm font-medium">{name}</span>
+      </div>
+      <Button asChild variant="outline" size="sm" className="shrink-0">
+        <a href={href} download><DownloadIcon className="size-3.5" data-icon="inline-start" />Download</a>
+      </Button>
+    </div>
+  );
+}
+
 function PhaseRow({ ph, index, expandable, expanded, onToggle }) {
   const icon = ph.status === 'done' ? <CheckIcon className="size-4" />
     : ph.status === 'awaiting_customer' ? <ClockIcon className="size-4" />
@@ -143,14 +160,25 @@ function PhaseRow({ ph, index, expandable, expanded, onToggle }) {
   );
 }
 
-export default function PortalOrderProgress({ phases, drawings, pct }) {
+export default function PortalOrderProgress({ phases, drawings, qcCertificates = [], packingLists = [], pct }) {
   const [items, setItems] = useState(drawings);
-  const [expanded, setExpanded] = useState(false);
+  // One open section at a time, tracked by phase key — 'design' keeps its old default-collapsed
+  // behavior, just generalized to any phase that has documents to show.
+  const [openPhase, setOpenPhase] = useState(null);
 
   async function refreshOne(id) {
     // Re-fetching the full list is overkill for one field flip — flag it locally instead.
     setItems(prev => prev.map(d => d.id === id ? { ...d, customerApprovedAt: new Date().toISOString() } : d));
   }
+
+  // Real, honest phase links only — a Sales Invoice has no phase in the data model (it can be
+  // issued at booking, mid-project, or at dispatch), so it deliberately isn't here; see the
+  // separate Billing card on the portal page instead of a fabricated mapping.
+  const phaseDocs = {
+    design: items.length,
+    testing: qcCertificates.length,
+    packing: packingLists.length,
+  };
 
   return (
     <Card>
@@ -160,18 +188,36 @@ export default function PortalOrderProgress({ phases, drawings, pct }) {
           <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${pct}%` }} />
         </div>
         <ol className="flex flex-col">
-          {phases.map((ph, i) => (
-            <Fragment key={ph.key}>
-              <PhaseRow ph={ph} index={i}
-                expandable={ph.key === 'design' && items.length > 0}
-                expanded={expanded} onToggle={() => setExpanded(v => !v)} />
-              {ph.key === 'design' && expanded && items.length > 0 && (
-                <li className="flex flex-col gap-3 border-b py-3 pl-10">
-                  {items.map(d => <DrawingRow key={d.id} drawing={d} onChanged={() => refreshOne(d.id)} />)}
-                </li>
-              )}
-            </Fragment>
-          ))}
+          {phases.map((ph, i) => {
+            const count = phaseDocs[ph.key] || 0;
+            const expanded = openPhase === ph.key;
+            return (
+              <Fragment key={ph.key}>
+                <PhaseRow ph={ph} index={i}
+                  expandable={count > 0}
+                  expanded={expanded} onToggle={() => setOpenPhase(v => v === ph.key ? null : ph.key)} />
+                {ph.key === 'design' && expanded && (
+                  <li className="flex flex-col gap-3 border-b py-3 pl-10">
+                    {items.map(d => <DrawingRow key={d.id} drawing={d} onChanged={() => refreshOne(d.id)} />)}
+                  </li>
+                )}
+                {ph.key === 'testing' && expanded && (
+                  <li className="flex flex-col gap-3 border-b py-3 pl-10">
+                    {qcCertificates.map(doc => (
+                      <DocumentRow key={doc.id} name={`QC Certificate — ${doc.doc_id}`} href={`/api/qc-documents/${doc.id}/pdf`} />
+                    ))}
+                  </li>
+                )}
+                {ph.key === 'packing' && expanded && (
+                  <li className="flex flex-col gap-3 border-b py-3 pl-10">
+                    {packingLists.map(pl => (
+                      <DocumentRow key={pl.id} name={`Packing List — ${pl.packingNo}`} href={`/api/packing/${pl.id}/pdf`} />
+                    ))}
+                  </li>
+                )}
+              </Fragment>
+            );
+          })}
         </ol>
       </CardContent>
     </Card>

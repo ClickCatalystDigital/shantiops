@@ -10,7 +10,7 @@ import {
   ListChecksIcon, MessageSquareIcon, WrenchIcon, BellIcon, TagIcon, InboxIcon, UndoIcon,
   ScissorsIcon, ClipboardIcon, AlertTriangleIcon, LogInIcon, FileOutputIcon,
   HeadsetIcon, FileSignatureIcon, LayersIcon, Repeat2Icon, FileEditIcon, Undo2Icon,
-  LandmarkIcon, PercentIcon, BookIcon,
+  LandmarkIcon, PercentIcon, BookIcon, LockIcon,
 } from 'lucide-react';
 
 // Milestone Tracker (2026-08-17) — most milestones now complete themselves off a real event
@@ -1002,14 +1002,32 @@ export const DEPARTMENT_HELP = {
         'The Calibration tab (QC workspace, not a project) tracks instruments and jigs/fixtures: due date, certificate reference, and a status of OK, Due soon, Expired, or Blocked.',
         'Block an item to take it out of service before its due date — Blocked always overrides the date-based status.',
       ]),
+      feature('ncr', 'NCR & Disposition', AlertTriangleIcon, [
+        'Raise an NCR (Non-Conformance Report) for any defect — a failed test result, or a field-found problem with no test behind it yet. Both QC and Production can raise one; only the QC Head can disposition it.',
+        'Disposition is one of four choices: Rework (only available when the NCR is against a job card — creates a new rework job card automatically), Repair (same, a lighter fix than a full rework), Scrap (only if the NCR is against a tracked stock piece — flips it to Scrap and rolls the inventory count down), or Use as-is (accept the non-conformance, no material action). Scrap and Use as-is both require written notes explaining the decision — the form will not submit without them.',
+        'Close the NCR once its disposition is actually carried out — if it produced a rework job card, that card has to reach Done first; the Close action refuses otherwise.',
+      ]),
+      feature('holds', 'Hold Points', LockIcon, [
+        'A Process Route Card step that names a QC checkpoint automatically becomes a hold point on every job card generated from it — Production cannot mark that card Done until QC releases it here.',
+        'Release requires that any NCR raised against the card is already closed — an open NCR blocks the release, by design.',
+      ]),
+      feature('heatlot', 'Heat/Lot Traceability', BadgeCheckIcon, [
+        'Stores captures a piece\'s heat number and, optionally, a linked test certificate once, at receipt — every piece cut from it afterward inherits both automatically, with no re-entry at cut time.',
+        'Linking a certificate through Stores\' picker allocates it to the project the same way linking one in a statutory document does — it shows up as "used on this project" either way.',
+      ]),
+      feature('reports', 'Reports', BarChart3Icon, [
+        'Test Certificate Register lists every certificate with its mechanical properties, joined to the project(s) it\'s allocated to. Inspection Pass/Fail Summary groups test records by type. NCR Register lists every NCR with its severity, status, and disposition.',
+        'Every report reads live off the same certificate, test, and NCR data — there is nothing to enter separately for reporting.',
+      ]),
     ],
     howTo: [
       { title: 'Create the inspection record', body: 'Open the project QC area, choose the test type, enter reference and inspector details, and leave the result Pending until the check is complete.' },
       { title: 'Record a result', body: 'Enter the tested date and result, then add notes that explain any failure, limitation, re-test, or acceptance condition.' },
       { title: 'Store evidence', body: 'Add or find the relevant Test Certificate or statutory document and check that the PDF uses the saved data.' },
-      { title: 'Raise rework', body: 'If the result fails, record the reason and raise a task for the responsible department. Do not hide the failure by deleting the record.' },
+      { title: 'Raise an NCR', body: 'On a failed test row (or directly from Production\'s job card), raise an NCR instead of silently reworking — it keeps the non-conformance on record until it\'s actually dispositioned and closed.' },
       { title: 'Close the QC handoff', body: 'Close the QC milestone only when the inspection and evidence are complete, then confirm the next department can find the references.' },
       { title: 'Clear a Work Order for dispatch', body: 'Once a Finished Goods Inspection passes, flip its "Dispatch eligible" flag so Dispatch can see the Work Order is cleared to pack.' },
+      { title: 'Release a hold point', body: 'Once the checkpoint is actually verified and any NCR against the card is closed, release it from the Hold Points tab so Production can mark the card Done.' },
       { title: 'Keep calibration current', body: 'Check the Calibration tab regularly for items going Due soon or Expired, and Block anything pulled out of service.' },
     ],
   },
@@ -1025,6 +1043,10 @@ export const DEPARTMENT_HELP = {
       feature('packing', 'Packing details', BoxesIcon, ['Add box number, quantity, unit, MOC, size/spec, item code, ibr number, make, and scanned quantity as applicable.', 'Scanned quantity is a physical check; it should not silently exceed the BOM quantity without an explanation.']),
       feature('pdf', 'Packing PDFs', FileTextIcon, ['Generate the customer-facing PDF when the list is Ready. Use the pending-list PDF when you need a list of lines still waiting to be packed.', 'Check customer name, address, invoice/DC details, vehicle, and dispatch method before issuing the document.']),
       feature('reconcile', 'BOM reconciliation', ClipboardCheckIcon, ['A packing item keeps a link to its BOM line. Use that link to explain what was carried, what remains pending, and why a partial list was created.']),
+      feature('reports', 'Reports', BarChart3Icon, [
+        'Dispatch Register lists every dispatched shipment with its freight and e-way bill details. E-Way Bill Register narrows that to shipments carrying an e-way bill number. Freight Cost Summary groups freight spend by who paid it and by month. Pending vs Dispatched Aging is the flip side of the Register — shipments still sitting, by how long.',
+        'Every report reads live off the same packing list data — there is nothing to enter separately for reporting.',
+      ]),
       milestoneTrackerFeature([
         ['Packing', 'Automatic', 'Completes once a packing list for the project reaches Packed or Dispatched status — a Draft list doesn\'t count yet.'],
       ]),
@@ -1035,6 +1057,7 @@ export const DEPARTMENT_HELP = {
       { title: 'Complete the header', body: 'Enter customer/address, invoice or DC, vehicle, contact, and dispatch-through details before changing the status.' },
       { title: 'Release the document', body: 'Move the list to Ready only after the contents and header are checked, then generate the PDF.' },
       { title: 'Close dispatch', body: 'After the vehicle leaves, move the list to Dispatched and keep the PDF with the customer/order record.' },
+      { title: 'Check aging', body: 'Use Pending vs Dispatched Aging to spot lists sitting in Draft or Ready too long before they actually ship.' },
     ],
   },
   Installation: {

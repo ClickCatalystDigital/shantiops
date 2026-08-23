@@ -6,6 +6,7 @@ import { getFreshSessionUser, canAccessDepartment, isPM } from '@/lib/auth';
 import { requireCrmAction } from '@/lib/action-permissions';
 import { getSalesInvoiceDetail } from '@/lib/data';
 import { audit } from '@/lib/usb';
+import { notifyProjectCustomers } from '@/lib/notify';
 import { postJournalEntry } from '@/lib/ledger-post';
 import { salesInvoiceLines } from '@/lib/ledger.mjs';
 
@@ -68,5 +69,17 @@ export async function PATCH(req, { params }) {
   args.push(params.id);
   await execute(`UPDATE sales_invoices SET ${fields.join(', ')} WHERE id = ?`, args);
   await audit('sales_invoice_updated', { actor: user.username, detail: `#${params.id}${b.status ? `: ${b.status}` : ''}` });
+
+  // Real draft->issued/paid flip only — the moment this invoice first becomes a real document a
+  // customer can see in their portal (§6). No project_id (an invoice not tied to a project) has no
+  // one to notify.
+  if (invoice.status === 'draft' && ['issued', 'paid'].includes(b.status) && invoice.project_id) {
+    await notifyProjectCustomers(invoice.project_id, {
+      kind: 'invoice_issued',
+      title: 'A new invoice is available',
+      body: `Invoice ${invoice.invoice_no} — ₹${invoice.total.toLocaleString('en-IN')}`,
+      dedupe_key: `invoice_issued:${invoice.id}`,
+    });
+  }
   return NextResponse.json({ ok: true });
 }

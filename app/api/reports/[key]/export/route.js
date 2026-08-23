@@ -18,6 +18,12 @@ export async function GET(req, { params }) {
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, report.department);
   if (denied) return denied;
+  // hasOwnControls reports (CRM analytics, Management reports) render their own screen with no
+  // compute()/toTable() pair — the UI never renders a PDF button for them (ReportsWorkspace.jsx),
+  // but guard the route directly too rather than letting `report.compute(...)` throw on an
+  // undefined function if it's ever hit by URL. After the auth check, not before — no reason to
+  // tell an unauthorized/unauthenticated caller anything about a report's shape.
+  if (report.hasOwnControls) return NextResponse.json({ error: 'This report has no PDF export' }, { status: 400 });
 
   const { searchParams } = new URL(req.url);
   const format = searchParams.get('format') || 'pdf';

@@ -7,6 +7,7 @@ import { requireAction } from '@/lib/action-permissions';
 import { getJobCardDetail } from '@/lib/data';
 import { audit } from '@/lib/usb';
 import { syncProductionMilestoneById } from '@/lib/milestone-auto';
+import { notifyDepartment } from '@/lib/notify';
 
 const STATUSES = ['pending', 'progress', 'done'];
 const EDITABLE = ['workstation_id', 'qty_planned', 'qty_done', 'qty_rejected', 'status', 'is_paused', 'planned_start', 'planned_end', 'notes'];
@@ -27,7 +28,8 @@ export async function PATCH(req, { params }) {
   const actionDenied = await requireAction(user, 'Production', 'production.jobcard.edit');
   if (actionDenied) return actionDenied;
 
-  const card = await queryOne('SELECT id, status, milestone_id FROM job_cards WHERE id = ?', [params.id]);
+  const card = await queryOne(
+    'SELECT id, status, milestone_id, project_id, requires_qc_hold, qc_released_at FROM job_cards WHERE id = ?', [params.id]);
   if (!card) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   const b = await req.json();
@@ -35,6 +37,19 @@ export async function PATCH(req, { params }) {
   if (!keys.length) return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
   if (keys.includes('status') && !STATUSES.includes(b.status)) {
     return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
+  }
+  // Hold-point gate (plan §5d) — requires_qc_hold is deliberately not in EDITABLE, so Production
+  // can never clear it directly; only POST /api/job-cards/[id]/qc-release can. The block below
+  // doubles as the real "ready for inspection" signal to QC — Production hitting this wall is the
+  // moment the piece is actually done and waiting on QC, not an earlier point in the flow.
+  if (keys.includes('status') && b.status === 'done' && card.requires_qc_hold && !card.qc_released_at) {
+    try {
+      await notifyDepartment('QC', {
+        kind: 'qc_hold', title: `Job card #${params.id} ready for QC hold-point release`,
+        project_id: card.project_id, dedupe_key: `qc_hold:${params.id}`,
+      });
+    } catch (err) { /* notification is best-effort */ }
+    return NextResponse.json({ error: 'Held for QC — awaiting QC release' }, { status: 400 });
   }
   if (b.is_paused && card.status !== 'progress' && b.status !== 'progress') {
     return NextResponse.json({ error: 'Only an in-progress card can be paused' }, { status: 400 });

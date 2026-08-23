@@ -13,7 +13,15 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
-import { BarChart3Icon, DownloadIcon } from 'lucide-react';
+import {
+  BarChart3Icon, DownloadIcon, ScaleIcon, BookUserIcon, TrendingUpIcon, Building2Icon,
+  FileOutputIcon, FileCheck2Icon, CheckCheckIcon, ArrowDownCircleIcon, ArrowUpCircleIcon,
+  UsersIcon, WalletIcon, BookOpenIcon, PercentIcon, BoxIcon, TrendingDownIcon, WavesIcon,
+  LandmarkIcon, WarehouseIcon, PackageSearchIcon, ListOrderedIcon, ClipboardListIcon, ClockIcon,
+  ReceiptIcon, FilterIcon, PieChartIcon, UserRoundIcon, Share2Icon, MegaphoneIcon, TruckIcon,
+  PackageMinusIcon, FileSpreadsheetIcon, ActivityIcon, RotateCcwIcon, GaugeIcon, HardHatIcon,
+  AlertTriangleIcon, PencilRulerIcon, FileEditIcon, ShoppingCartIcon,
+} from 'lucide-react';
 import TrialBalanceCard from '@/components/reports/TrialBalanceCard';
 import CustomerLedgerCard from '@/components/reports/CustomerLedgerCard';
 import StockValuationCard from '@/components/reports/StockValuationCard';
@@ -48,6 +56,10 @@ import ProjectProfitabilityCard from '@/components/executive/ProjectProfitabilit
 import CustomerProfitabilityCard from '@/components/executive/CustomerProfitabilityCard';
 import ProcurementSpendCard from '@/components/executive/ProcurementSpendCard';
 import ManufacturingPerformanceCard from '@/components/executive/ManufacturingPerformanceCard';
+import {
+  LeadFunnelReport, LeadsBySourceReport, CampaignPerformanceReport,
+  SalesPipelineReport, ByDepartmentReport, AgentPerformanceReport,
+} from '@/components/CrmReportPanels';
 
 // Exported so app/reports/page.js's consolidated admin/manager view (all departments' reports in
 // one sidebar, see the `groups` prop below) can reuse the exact same key→component mapping instead
@@ -94,6 +106,42 @@ export const SCREEN = {
   'customer-profitability': CustomerProfitabilityCard,
   'procurement-spend': ProcurementSpendCard,
   'manufacturing-performance': ManufacturingPerformanceCard,
+  // CRM analytics (2026-08-23, §5an) — also `hasOwnControls: true`, but takes `crmData` (leads/
+  // opportunities/campaigns/stages/tasks/notes/users) instead of `companies`; see the render below.
+  'sales_pipeline': SalesPipelineReport,
+  'by_department': ByDepartmentReport,
+  'agent_performance': AgentPerformanceReport,
+  'lead_funnel': LeadFunnelReport,
+  'leads_by_source': LeadsBySourceReport,
+  'campaign_performance': CampaignPerformanceReport,
+};
+
+// Per-report sidebar icon (2026-08-23) — every entry used to render with the same BarChart3Icon,
+// making a 44-report sidebar unscannable. Management's 5 reuse the exact icons
+// components/executive/ExecutiveReportsWorkspace.jsx already assigned them, so the two surfaces
+// showing the same reports stay visually consistent. Falls back to BarChart3Icon for anything new
+// added here without a specific choice yet — never a hard error over a missing icon.
+const ICON = {
+  'trial-balance': ScaleIcon, 'customer-ledger': BookUserIcon, 'profit-loss': TrendingUpIcon,
+  'balance-sheet': Building2Icon, 'gstr1': FileOutputIcon, 'gstr3b': FileCheck2Icon,
+  'itc-reconciliation': CheckCheckIcon, 'ar-aging': ArrowDownCircleIcon, 'ap-aging': ArrowUpCircleIcon,
+  'vendor-ledger': UsersIcon, 'cash-book': WalletIcon, 'journal-register': BookOpenIcon,
+  'tds-register': PercentIcon, 'fixed-asset-register': BoxIcon, 'depreciation-schedule': TrendingDownIcon,
+  'cash-flow': WavesIcon, 'bank-reconciliation': LandmarkIcon,
+  'stock-valuation': WarehouseIcon, 'inventory-aging': PackageSearchIcon, 'stock-ledger': ListOrderedIcon,
+  'purchase-register': ClipboardListIcon, 'open-po-aging': ClockIcon,
+  'sales-register': ReceiptIcon, 'sales_pipeline': FilterIcon, 'by_department': PieChartIcon,
+  'agent_performance': UserRoundIcon,
+  'lead_funnel': UsersIcon, 'leads_by_source': Share2Icon, 'campaign_performance': MegaphoneIcon,
+  'dispatch-register': TruckIcon,
+  'material-consumption': PackageMinusIcon, 'work-order-register': FileSpreadsheetIcon,
+  'production-cost-variance': ActivityIcon, 'rework-rejection': RotateCcwIcon,
+  'material-utilization': GaugeIcon, 'labour-utilization': HardHatIcon,
+  'material-shortage': AlertTriangleIcon,
+  'drawing-register': PencilRulerIcon, 'ecn-register': FileEditIcon,
+  'management-report': LandmarkIcon, 'project-profitability': TrendingUpIcon,
+  'customer-profitability': UsersIcon, 'procurement-spend': ShoppingCartIcon,
+  'manufacturing-performance': HardHatIcon,
 };
 
 // `groups` (optional): [{ department, reports }] — the consolidated admin/manager view
@@ -103,7 +151,7 @@ export const SCREEN = {
 // `hasOwnControls: true` (currently only the Management reports folded into this view) to mean "my
 // own Screen component renders its own company switcher and PDF button" — the parent then renders
 // neither and passes `companies` (the full list) instead of a single controlled `company` string.
-export default function ReportsWorkspace({ department, reports, groups, companies }) {
+export default function ReportsWorkspace({ department, reports, groups, companies, crmData, title }) {
   const allReports = groups ? groups.flatMap(g => g.reports) : reports;
   const [key, setKey] = useState(allReports[0]?.key);
   const [company, setCompany] = useState(companies[0]?.company);
@@ -112,11 +160,11 @@ export default function ReportsWorkspace({ department, reports, groups, companie
   const showCompanySwitcher = !active?.hasOwnControls && active?.needsCompany !== false;
 
   const sidebarProps = groups
-    ? { groups: groups.map(g => ({ label: g.department, items: g.reports.map(r => ({ key: r.key, label: r.title, icon: BarChart3Icon })) })) }
-    : { items: reports.map(r => ({ key: r.key, label: r.title, icon: BarChart3Icon })) };
+    ? { groups: groups.map(g => ({ label: g.department, items: g.reports.map(r => ({ key: r.key, label: r.title, icon: ICON[r.key] || BarChart3Icon })) })) }
+    : { items: reports.map(r => ({ key: r.key, label: r.title, icon: ICON[r.key] || BarChart3Icon })) };
 
   return (
-    <WorkspaceSidebar title={groups ? 'All Reports' : `${department} Reports`} icon={BarChart3Icon} {...sidebarProps} activeKey={key} onChange={setKey}>
+    <WorkspaceSidebar title={groups ? (title || 'All Reports') : `${department} Reports`} icon={BarChart3Icon} {...sidebarProps} activeKey={key} onChange={setKey}>
       <div className="flex flex-col gap-4">
         {!active?.hasOwnControls && (
           <div className="flex items-center justify-between gap-2">
@@ -136,7 +184,7 @@ export default function ReportsWorkspace({ department, reports, groups, companie
             )}
           </div>
         )}
-        {Screen ? (active?.hasOwnControls ? <Screen companies={companies} /> : <Screen company={company} />) : <p className="text-sm text-muted-foreground">No report selected.</p>}
+        {Screen ? (active?.hasOwnControls ? <Screen companies={companies} {...crmData} /> : <Screen company={company} />) : <p className="text-sm text-muted-foreground">No report selected.</p>}
       </div>
     </WorkspaceSidebar>
   );

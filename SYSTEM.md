@@ -22,10 +22,24 @@ a reader who finds the old `V3_CHANGES.md` §12 text elsewhere knows it's stale.
 reversal.
 
 Everything in this file reflects the **current, working build**, updated as work lands — most
-recently 2026-08-23 (§5aj, Dispatch's first accounting integration — freight cost, real invoice
-linkage, e-way bill capture, a new Report Engine entry; §5ai, an RCM real-transaction test that
-found and fixed two real ledger-posting bugs; §5ah, the statutory-rate sync's daily Cloudflare Cron
-Trigger going live).
+recently 2026-08-23 (§5ao, a full QC NCR/disposition/heat-lot/hold-point workflow, 5 new Dispatch/QC
+reports, a dual-department Reports nav fix, and two demo-data bug fixes; §5an, a proper Marketing/
+Sales nav-label fix plus the full CRM-Reports→Report-
+Engine merge that closes a gap §5c had explicitly documented and deferred — Marketing is now a real
+catalog department with its own tab, not a permanent second "Reports" tab pointing somewhere else;
+§5am, a demo-readiness pass — verified the one still-untested link in the
+lifecycle chain, Lead→Customer conversion; gave every demo customer a working portal login without
+ever emailing anything; reordered admin's nav to read as the actual pipeline; §5al, two rounds of an
+explicitly-requested robustness sweep over the portal/
+notification/email surface §5ak+§6 had just built — a perf regression, a missing deep-link column, two
+notification events that were never actually wired up, a self-introduced-and-self-caught crash bug, a
+vacuous-truth completeness gate, a portal-only-shows-latest-packing-list bug, and My Orders gaining
+sort+pagination, among others; §5ak, a full disposable order run through every department end to end,
+which found and fixed a real bug — sales invoices never carried `project_id` — plus the Customer
+Portal's document exposure and per-customer email/credentials system, §6; §5aj, Dispatch's first
+accounting integration — freight cost, real invoice linkage, e-way bill capture, a new Report Engine
+entry; §5ai, an RCM real-transaction test that found and fixed two real ledger-posting bugs; §5ah, the
+statutory-rate sync's daily Cloudflare Cron Trigger going live).
 The paragraph below is itself a dated snapshot from 2026-08-03, describing what was the most recent
 round **at that time**: a **full Procurement redesign** — the working spec lived in
 `PROCUREMENT-CHANGES.md` during the
@@ -2743,16 +2757,16 @@ surface, not shop-floor execution. Build extends `getProductionForecast()` (§5l
 workstation load and material demand) rather than a second forecasting engine; capacity/bottleneck
 work extends the same `overloaded` signal that function already flags, not a parallel one.
 
-**QUALITY — quality control and manufacturing quality (partially built as QC's own department,
-§5b; roadmap items 3-5 not built).** Quality stays QC's own department-level workspace — it does
-**not** become a Production sidebar tab, now or later. Target sidebar (extending QC's existing
+**QUALITY — quality control and manufacturing quality (built as QC's own department, §5b/§5ao;
+roadmap items 3-4 now built, item 5 still not).** Quality stays QC's own department-level workspace
+— it does **not** become a Production sidebar tab. Target sidebar (extending QC's existing
 `qc_records` module, §5b, not replacing it): Inspections, ITP, NCR/Disposition, Test Certificates,
-Traceability. Production hands work to Quality (a Job Card, a route step's `quality_checkpoint`);
-Quality returns a pass/fail/rework/disposition decision back to Production (today: `qc_records` +
-Job Cards' `rework_of_job_card_id`/`qc_record_id` lineage, §5g). §8's roadmap items 3 (formal
-NCR/disposition/ITP), 4 (material heat/lot traceability), and 5 (welding/fabrication traceability)
-belong here, extending `qc_records` and the Test Certificate bank (§5d) — never a duplicate
-quality-record table living inside Production.
+Traceability — all five now real (§5ao added NCR/Disposition, the hold-point gate as ITP's
+release/hold mechanism, and heat/lot traceability; Inspections/Test Certificates were already built,
+§5b/§5d). Production hands work to Quality (a Job Card, a route step's `quality_checkpoint`); Quality
+returns a pass/fail/rework/disposition decision back to Production (`qc_records` + `ncr_records` +
+Job Cards' `rework_of_job_card_id`/`qc_record_id`/`ncr_id` lineage). §8's roadmap item 5
+(welding/fabrication traceability) is the one piece of this section still not built.
 
 **MAINTENANCE — equipment reliability (not built; §8 roadmap item 7).** Create as a separate main
 workspace once implemented. Target sidebar: Machines/Equipment, Maintenance Schedule, Breakdown/
@@ -2767,7 +2781,7 @@ Each of these extends an existing workflow instead — naming the real table/fun
 extend, not a fresh one:
 
 - Material traceability → extends `stock_pieces`' existing piece-level lineage (§5k)
-- Heat/lot traceability → extends the same `stock_pieces` lineage, a new field, not a new module
+- Heat/lot traceability → extends the same `stock_pieces` lineage — built, §5ao
 - Welding traceability → attaches to Welding Job Cards (`job_cards.operation_id`) + Quality records
 - WPS/PQR/welder qualification → Production/Quality context, not a standalone workspace
 - Subcontract/outside process → extends `job_cards.is_outside`/`outside_vendor` (§5g), not a new flow
@@ -4322,16 +4336,503 @@ packing list was then deleted and Trial Balance confirmed back to exactly 8,645,
 — before recreating a second, permanent example (`PL-1009`, customer name tagged "(safe to ignore)")
 left in the database for demo purposes, per instruction (see `4.5-DATA-INVENTORY.md`).
 
+## 5ak. Full order-lifecycle pass — every department, one disposable order, end to end (2026-08-23)
+
+Every phase in this app up to now had been verified department-by-department, live but in
+isolation. This pass proved the whole thing behaves as one coherent pipeline, not a set of
+independently-correct modules: one disposable, clearly-labeled customer/project
+(`E2E-DEMO-DELETE-ME`) run through Sales → Design/Engineering → Procurement → Stores → Production →
+QC → Dispatch → Accounts → Customer Portal, entirely through the real API routes against the real
+dev DB (shared Turso instance, §1's `dev-server-uses-remote-turso` note), then **fully reversed**.
+
+**What ran, real API calls, in order** (full step-by-step is the separate demo-script deliverable,
+not duplicated here): `POST /api/customers` → `POST /api/quotations` → accept → `POST
+/api/quotations/[id]/convert` (Sale Order) → `POST /api/projects` (auto-seeded milestones + Scope of
+Supply) → `POST /api/bom-items` (Engineering) → `POST /api/supplier-quotes` → `POST
+/api/bom-items/[id]/select-supplier` → `POST /api/purchase-orders` → issue → `PATCH
+/api/bom-items/[id]` (`purchase_status: Received`, which auto-spawned a QC Incoming Inspection
+record — §3b's BOM-received trigger, confirmed still firing) → `POST /api/material-issues` → `POST
+/api/job-cards` → progress → done (confirmed the parent milestone auto-closed, §5g/§5l's
+`syncProductionMilestoneById`) → QC incoming inspection flipped to pass, a Hydro Test record logged
+→ a full 54-part Form IV A statutory document created, one Test Certificate logged, all 54 parts
+bulk-linked, marked customer-visible (§6) → `POST /api/quotations/[id]/convert-to-invoice` → issued
+→ `POST /api/packing/from-bom` → invoice linked, freight set, e-way bill number set → packed →
+dispatched → freight posted.
+
+**One real bug found and fixed**: `POST /api/quotations/[id]/convert-to-invoice`
+(`app/api/quotations/[id]/convert-to-invoice/route.js`) never set `sales_invoices.project_id` —
+every invoice silently had it NULL. Invisible until this pass, because nothing had ever queried
+invoices by project before; the Customer Portal's new invoice list (§6, built the same session) was
+the first caller to do that, and it came back empty for a customer who very much had one. Fixed by
+resolving the project via the existing `projects.sale_order_id` link (the same lookup the route
+already did for `sale_order_id` itself) and passing it through the INSERT. The one pre-existing test
+invoice was backfilled by hand to confirm the portal then showed it correctly; the fix itself covers
+every future invoice — there is no other code path that creates a `sales_invoices` row.
+
+**Accounting verified by the numbers, not by inspection.** Baseline Trial Balance (Shanti Boilers):
+8,649,709.67 both sides. After the invoice (Dr AR 1,770,000 / Cr Sales Revenue 1,500,000 / Cr GST
+Output 270,000) and the freight posting (Dr Freight Expense 3,500 / Cr Bank & Cash 3,500), both
+independently confirmed balanced via `GET /api/journal-entries`: **10,423,209.67** — exactly
++1,773,500 on both sides, matching the two postings exactly.
+
+**Full reversal, verified by a wide baseline diff, not a spot check.** A new
+`scripts/e2e-baseline.mjs` (row counts across every table this pass could touch, every `counters`
+row, per-item `inventory_items.on_hand`/`avg_cost`, and Trial Balance for both companies) was run
+before and after. Every created row was deleted in FK-safe order (journal entries → packing →
+invoice → QC document/parts/certificate → QC records → job card → material issue → supplier
+quote/PO/items → BOM item → Scope of Supply → milestones → project → sale order → quotation →
+customer/portal login), and the six advanced `counters` rows (`project_no`, `quotation_no`,
+`sale_order_no`, `po_no`, `packing_no`, `invoice_no:Shanti Boilers:2026-27`) were restored to their
+pre-run values — an explicit, deliberate exception to the general rule against ever rolling back a
+real invoice-numbering sequence (§5ai's sales-side RCM note): this is a disposable test with every
+trace removed, not a real business record leaving a gap, so restoring the counter lets the number be
+issued cleanly to a real future invoice instead of leaving a permanent hole. First diff pass caught
+one real miss — 39 notification rows fired during the run that weren't reachable through the
+milestone/task cleanup query (many `kind`s, e.g. `sale_order_created`/`sos_created`, carry neither
+`milestone_id` nor `task_id`) — found and deleted by timestamp, not silently left behind. Second diff
+pass: **identical** — every table count, every counter, both companies' Trial Balances, and every
+`inventory_items` row match the pre-run baseline exactly.
+
+**What this pass did NOT touch, honestly**: e-way bill *generation* (capture-only, standing
+deferral, §5aj/§7); GTA reverse-charge GST on the freight leg (§5aj's stated simplification); a real
+customer-facing credentials email (§6 — the toggle and login creation are real and verified, the
+send itself is blocked on your provider decision); sales-side RCM on a real transaction (§5ai's own
+stated deferral, unrelated to this pass). `npm run build` and every `scripts/*-selfcheck.mjs` pass.
+
+## 5al. Portal/notification robustness pass — a second and third look, on request (2026-08-23)
+
+After §5ak's lifecycle pass, explicitly asked to keep auditing the portal/QC/email surface built
+this session and fix what's found — two rounds, real bugs each time, not a clean-code pass.
+
+**Confirmed, not a gap: department heads can already view any customer's portal.** Investigated on
+request. `/portal/[id]/page.js` only redirects when the viewer *is* a customer without access to
+that project — an internal user (any department, any project) passes straight through, and
+`ProjectHeader.jsx`'s "Customer view ↗" link is unconditional. Live-verified as `qc_head` (granted
+only QC, zero relation to Sales/Dispatch): `/projects/17` and `/portal/17` both 200'd with real
+content. Consistent with the rest of the app's model — department scoping limits *write* actions,
+never *read* visibility across projects.
+
+**Round 1 — bugs found by re-reading the code just written:**
+1. **Perf regression in `notifyUser()`** — the customer-email lookup (§5ak/§6) ran unconditionally
+   on every call, including `notifyDepartment`/`notifyPMs`, which cover the vast majority of
+   notification traffic and are exclusively internal recipients. Every internal handoff notification
+   was paying an extra remote-DB round-trip that could never match. Fixed with an explicit
+   `isCustomerRecipient` opt-in hint from callers that already know the recipient is a customer (the
+   one real call site, `lib/calc.js`'s `sweepDrawingNotifications`, updated to pass it) — internal
+   traffic no longer touches the `customers` table at all.
+2. **New notification kinds had no way to deep-link.** `qc_document_shared`/`invoice_issued` (added
+   this round, see below) carry neither `milestone_id` nor `task_id`, so `getNotifications`'s
+   existing `COALESCE(m.project_id, tk.project_id)` join resolved nothing — clicking the bell would
+   land on generic "My Orders", not the order. Rather than borrow an unrelated milestone the way the
+   pre-existing `drawing_shared` notification has to, added a real `notifications.project_id` column
+   (additive) and widened the `COALESCE` to `n.project_id` first — a proper general fix any future
+   portal-document type can reuse, not a per-case workaround.
+3. **QC-share and invoice-issue never actually notified anyone** — the whole point of "ongoing
+   status updates" wasn't wired up. Added `notifyProjectCustomers(projectId, note)` (`lib/notify.js`)
+   — the one choke point for "every customer who owns this project", reused instead of re-deriving
+   the `project_ids` CSV match a third time — called from `PATCH /api/qc-documents/[id]` on a real
+   `customer_visible` 0→1 flip and from `PATCH /api/sales-invoices/[id]` on a real `draft→issued/paid`
+   flip. Both deduped (`qc_document_shared:<id>`, `invoice_issued:<id>`), both project-linked via the
+   new column, both live-verified against the real DB (toggled a real document off/on, confirmed a
+   correctly-linked notification row landed for the right customer, and confirmed email was correctly
+   *not* attempted for a login that predates the portal_user_id linkage — see point 6).
+4. **Wasteful/risky re-toggle** — clicking the portal switch on an already-enabled customer silently
+   regenerated and resent a fresh setup link, which could invalidate a link the customer was mid-way
+   through using. `POST /api/customers/[id]/portal` now no-ops if already enabled.
+5. **A real crash bug, self-introduced and self-caught**: fixing #4 left `username = ...` (no `let`)
+   inside the account-creation branch — an assignment to an undeclared variable, which throws under
+   ES module strict mode. Caught by re-reading the diff, not by any build tool (`next build` and
+   `check-syntax.mjs` both stayed clean — neither catches this class of error). Live-tested the
+   account-creation path for the first time as a result (a disposable test customer, created →
+   correctly failed at the expected mail-not-configured boundary with no half-created state → cleaned
+   up) — it had never been exercised live before this.
+6. **Data inconsistency**: `asian_brown`'s login predates `customers.portal_user_id` entirely, so the
+   Sales UI showed it as "not on the portal" despite a working login. Backfilled the one real link
+   (customer #4 → user #9, `portal_enabled` left off — no consent to actually email a demo address).
+   `hkm_charitable`/`virchow_biotech` predate the CRM `customers` table itself and have no customer
+   record to link to at all — flagged, not fabricated a record to force a fix.
+7. **Missing sync**: a customer's `project_ids` was set once, at first portal-enable, and never
+   again — a genuine second order would silently never appear in "My Orders". `POST /api/projects`
+   now appends the new project id onto an existing linked portal login's `project_ids`, best-effort,
+   same pattern as the notification side-effects already in that route.
+
+**Round 2 — asked to keep digging:**
+8. **`/api/set-password` didn't check `active`** — a deactivated customer could still activate their
+   account through a stale-but-unexpired setup link. Added `AND active = 1` to the token lookup.
+9. **Deactivating a customer didn't cascade to their portal login** — `PATCH /api/customers/[id]`
+   with `active: 0` only ever touched the `customers` row; a "deactivated" customer kept live portal
+   access indefinitely. Now mirrors the flag onto `users.active` for the linked `portal_user_id`
+   (both directions — reactivating the customer reactivates the login). Confirmed
+   `getFreshSessionUser()` already re-checks `active = 1` on every request, so this takes effect on
+   the customer's very next page load, not just at their next login attempt.
+10. **Vacuous-truth bug in the QC "complete" gate — pre-existing, made consequential by this
+    session's new customer exposure.** The hard gate everywhere (`PDF` route, and the new
+    `customer_visible` toggle) was "zero unlinked parts" — true for a document with *zero parts at
+    all*, which is exactly how `SF-2026-018` was found in the first place (§6 investigation, before
+    the seed template ever ran against it). A document could be shared, then have every part removed,
+    and stay marked shared with a PDF route that still "succeeds" producing an effectively empty
+    certificate. Fixed the actual gate — `total parts > 0 AND unlinked = 0` — in both
+    `GET /api/qc-documents/[id]/pdf/route.js` and `PATCH /api/qc-documents/[id]/route.js`, plus the
+    UI (`QcDocumentEditor.jsx`'s `incomplete` now gates both the Preview PDF button and the Share
+    checkbox identically, with its own "No parts on this document yet" message). Regression-checked
+    live: the real shared document (1 part, linked) still returns 200; a disposable 54-part seeded
+    test document round-tripped clean with no residue.
+11. **Portal only ever showed the *latest* packing list, silently dropping earlier ones.**
+    `getCustomerView()`'s packing query had a bare `ORDER BY created_at DESC LIMIT 1` — found live on
+    SB-1018, which genuinely has two (`PKL-1005` ready, `PL-1009` dispatched); only the second ever
+    reached the portal. Fixed to return every past-draft packing list, same "past draft" rule the
+    page-level gate already enforces, same array pattern invoices/QC certs already used correctly.
+    Live-verified both now render under the Packing phase.
+12. **"My Orders" had no sort or pagination** — `orders` was in whatever order `users.project_ids`
+    happened to list them (append-order after fix #7, i.e. oldest-first). Sorted newest-first by
+    `project.id` (monotonic, always set — `order_date` can be null) and paginated at 10/page with
+    Prev/Next, `?page=` server-side, no new UI dependency (plain `Button`+`Link`, matching the app's
+    existing no-pagination-library-anywhere convention).
+
+**Every fix in both rounds live-verified against the real dev DB, and `npm run build` +
+`npm run lint` + every `scripts/*-selfcheck.mjs` re-run clean after each round.**
+
+## 5am. Demo-readiness pass — Lead→Project verified live, portal logins for every demo customer, pipeline-ordered nav (2026-08-23)
+
+Requested directly: verify the one link in the order-lifecycle chain that had never been exercised,
+give every demo customer a working (not emailed) portal login for live-call use, and reorder the
+admin nav to read as the pipeline itself.
+
+- **Lead → Customer conversion — the one real gap in prior verification, now closed.** §5ak's full
+  lifecycle pass started from an already-existing customer (`POST /api/customers`), never exercising
+  `POST /api/leads` → `POST /api/leads/[id]/convert`. Ran it for real, as `sales_head` (not admin —
+  confirms Sales' own access): lead created → converted to a real Customer + Opportunity → Quotation
+  → accepted → converted to Sale Order → converted to Project, milestones (25 rows) and Scope of
+  Supply auto-seeded correctly. Fully reversed afterward in FK-safe order (leads before opportunities
+  — `leads.converted_opportunity_id` forward-references it) and the three advanced counters
+  (`project_no`/`quotation_no`/`sale_order_no`) restored to their exact pre-run values, same
+  disposable-test precedent §5ak established. Trial Balance untouched throughout (this chain never
+  reaches the ledger) — confirmed identical before/after.
+- **Every demo customer now has a real, working Customer Portal login — deliberately NOT through the
+  real-customer email flow.** Clarified on request: this is about *access*, not *email* — a
+  customer's login already works purely from a `users` row + `project_ids`; `customers.portal_enabled`
+  only gates whether email is attempted, and is orthogonal to whether the login works. All 12 rows in
+  `customers` use `.example` addresses (RFC 2606, permanently non-routable) — confirmed this table
+  has never held real business data, so simple discoverable demo passwords carry zero real-customer
+  risk. `scripts/seed-customer-portal-demo.mjs` (idempotent, skips any customer with `portal_user_id`
+  already set) gave the 9 remaining project-linked demo customers a login on the same
+  `<slug>`/`<slug>123` convention the original 3 demo accounts already used — **not** routed through
+  `POST /api/customers/[id]/portal` (that flow requires a successful email send before it will ever
+  set anything, which a demo login has no need to wait on). `portal_enabled` stays `0` for all of
+  them — access works, nothing is ever emailed. Live-verified: logged in as the new
+  `konkan_sugars_ltd` login, `/portal` returned real content.
+- **Admin/PM nav reordered to read as the actual pipeline** (`components/Nav.jsx`) — was
+  add-order/historical (Production, Procurement, Stores, Sales, Pipeline, CRM Reports, HR, Calc
+  Sheets, Engineering, QC, Dispatch, Installation, Accounts), now Sales/Marketing → Design/Engineering
+  → Procurement → Stores → Production → QC → Dispatch → Installation → Accounts → HR (HR last,
+  orthogonal to the boiler pipeline). Pure reorder of the existing `addDeptTab()` calls — no gating
+  logic touched. Live-verified the resulting tab strip at 1400px width.
+- **Explicitly scoped out, on request: a "view as department head" simulation mode for admin/PM.**
+  The cog's department picker already filters Operations/project pages via `?dept=`, but keeps the
+  PM's full UI (complete milestone editor, every nav tab) rather than the reduced view a real head
+  gets. Logging into the actual head account already shows the exact true view with zero new code —
+  kept that as the answer rather than building a parallel UI-simulation layer.
+- **One-page live-demo reference card produced** (both `.md` and a designed `.html` version,
+  delivered directly, not duplicated in this file) — the golden-path click sequence, every login
+  above, a "jump straight to this department's stage" table keyed to real example projects (see
+  `4.5-DATA-INVENTORY.md`'s matching update), and the honest list of what to say if a client asks
+  about email delivery, e-way bill generation, or GTA reverse charge.
+
+## 5an. Marketing tab label + Reports merge — closing a previously-documented, deliberately-deferred gap (2026-08-23)
+
+Two follow-on questions from the pipeline-nav reorder above, both real:
+
+**"Doesn't the pipeline start with Marketing as its own thing?"** — Marketing and Sales *were*
+already properly differentiated in content and permissions (`SalesWorkspace.jsx`'s `inSales` split:
+a Marketing-only head gets the "Marketing" sidebar header and only Enquiry/Leads/Campaigns/Tasks/
+Team — never Customers/Quotations/Invoices/Sale Orders/Returns/Price Lists). The one real gap was
+cosmetic but genuinely confusing: `components/Nav.jsx`'s top tab always said "Sales" regardless of
+which of the two departments actually granted access. Fixed — the tab label now follows the same
+`inSales` logic the page itself already uses (`tabDepartments.includes('Sales') ? 'Sales' :
+'Marketing'`). Live-verified as `marketing_head`: both the desktop and mobile-bottom nav now say
+"Marketing".
+
+**"Admin has two Reports tabs — weren't we combining them?"** — real, and previously *documented as
+a known, deliberately-deferred gap* (the old §5c/REPORT-ENGINE-PLAN comment in `Nav.jsx`: "merging
+them is real scope beyond... this pass covers"). Two genuinely different systems had been coexisting:
+`/reports` is the catalog-driven PDF Report Engine (one `compute`/`toTable` pair per entry, a shared
+PDF-export frame); `/crm-reports` was an interactive analytics dashboard (bar charts, KPI tiles, no
+PDF at all, six views: Sales Pipeline/By Department/Agent Performance/Lead Funnel/Leads by Source/
+Campaign Performance). Confirmed with the user this affects more than just admin/manager — any
+single Sales-department head already saw both tabs too, since Sales already had one real catalog
+entry (Sales Register); asked for and got the full merge, not a cosmetic patch:
+
+- **`components/CrmReportPanels.jsx`** (new) — the 6 report bodies extracted out of
+  `CrmReportsWorkspace.jsx` verbatim, so there is exactly one implementation, imported by both the
+  legacy compatibility route and the new catalog entries. `CrmReportsWorkspace.jsx`/`/crm-reports`
+  itself is kept working (in case anything has it bookmarked) but no longer linked from `Nav.jsx`.
+- **6 new `lib/reports/catalog.js` entries** (`sales_pipeline`/`by_department`/`agent_performance`
+  → `department: 'Sales'`; `lead_funnel`/`leads_by_source`/`campaign_performance` → `department:
+  'Marketing'`), each `hasOwnControls: true` — the same escape hatch Management Reports already used
+  (a catalog entry with no `compute`/`toTable` pair, whose own Screen component renders itself and
+  never gets the generic PDF-export button). This is also what makes **Marketing a real catalog
+  department for the first time** — `REPORT_DEPARTMENTS` is derived from the catalog, so
+  `Nav.jsx`'s existing per-department Reports loop (unchanged) now gives a Marketing-only head their
+  own `/reports?dept=Marketing` tab automatically, no special-casing needed.
+- **`components/ReportsWorkspace.jsx`** — SCREEN map gained the 6 keys; `hasOwnControls` screens now
+  receive a new `crmData` prop (`{leads, opportunities, campaigns, stages, tasks, notes, users}`)
+  spread alongside `companies`, so Management Report cards (which only destructure `companies`)
+  ignore the extra props harmlessly and CRM report cards get what they actually need.
+- **`app/reports/page.js`** — fetches the same CRM data `/crm-reports` always fetched (`getLeads`,
+  `getOpportunities`, `getCampaigns`, `getSalesStages`, `getCrmTasks`, `getLeadNotes`,
+  `getFunctionalHeads`), unconditionally for admin/manager's consolidated view, conditionally
+  (`department in ['Sales','Marketing']`) for a single-department head — no wasted queries on an
+  Accounts-only Reports view. Both report-mapping blocks now also pass `hasOwnControls` through,
+  which the original code silently dropped for every non-Management entry.
+- **`app/api/reports/[key]/export/route.js`** — explicit 400 guard for `hasOwnControls` reports hit
+  directly (previously would have thrown calling `undefined.compute()`, caught by the existing
+  try/catch into an unhelpful 400 anyway — this just makes the message honest).
+- **`components/Nav.jsx`** — the standalone `/crm-reports` tab and its "known, deliberate overlap"
+  comment are gone; the pre-existing per-department Reports loop now covers Sales and Marketing like
+  every other department, no special case left.
+
+**Live-verified** for all three access paths against the real dev DB: `sales_head` at
+`/reports?dept=Sales` sees all 4 Sales reports (3 CRM analytics + Sales Register) in one sidebar;
+`marketing_head` at `/reports?dept=Marketing` sees its 3, with a real chart rendering real numbers
+(Lead Funnel: 16 total leads, 69% conversion, 2 SLA-overdue) and the generic PDF-export bar correctly
+suppressed (only the report's own native print-to-PDF, via `ReportShell`, shows); admin's
+consolidated `/reports` shows "Sales" and "Marketing" as two distinct sidebar groups, not merged.
+`npm run build` and `npm run lint` both clean.
+
+**Two more gaps found on a follow-up self-audit, one fixed, one flagged honestly:**
+1. **Fixed** — the export route's new `hasOwnControls` guard originally ran *before* the
+   `requireDepartment` auth check, so an unauthenticated caller hitting
+   `/api/reports/sales_pipeline/export` got back `400 "This report has no PDF export"` — confirming
+   the report's existence and shape with zero authentication. Reordered to run after the auth check;
+   re-verified live: unauthenticated now correctly 401s before ever reaching that guard, an
+   authenticated Sales user still gets the clean 400.
+2. **Flagged, not fixed — a pre-existing limitation, not a regression from this merge specifically.**
+   A head granted *both* Sales and Marketing would previously get one unified `/crm-reports` page
+   (both groups in one sidebar); now they'd get two separate top-level "Reports" tabs (`?dept=Sales`,
+   `?dept=Marketing`) via `Nav.jsx`'s existing per-department loop — reintroducing a milder version
+   of the exact problem this section just fixed, for that one pair specifically. Checked: zero
+   current demo accounts are granted both departments, so nothing live is affected. Also checked:
+   this exact same loop already produced duplicate "Reports" tabs for *any* other dual-department
+   head whose departments both carry catalog entries (e.g. a hypothetical Procurement+Stores head)
+   **before this session touched anything** — not something newly introduced here. A real fix (one
+   consolidated Reports view for any multi-department non-PM head, not just admin/manager) is
+   broader pre-existing scope, left as a known gap rather than silently expanded into.
+
+**Follow-up UX fixes, same session, on direct feedback** — three real issues in the merged Reports
+sidebar, none cosmetic-only:
+1. **Management was last, not first**, in the consolidated admin/manager view's group order — the
+   group a PM actually opens most, buried after 8 other departments. `app/reports/page.js`: moved to
+   the front of the `groups` array.
+2. **The sidebar was one long flat list — 9 groups, 44 items, all always expanded**, so "navigate to
+   a department's reports" meant scrolling past everything else first. `components/
+   WorkspaceSidebar.jsx`'s `groups` render mode (used only by Reports — confirmed no other caller of
+   this specific prop, safe to change) is now a real accordion: one department open at a time, each
+   group label is a clickable toggle with a chevron + item count, defaulting to whichever group holds
+   the active report so switching reports never collapses your own place.
+3. **Every one of the 44 reports rendered with the identical `BarChart3Icon`** — the sidebar item
+   builder in `ReportsWorkspace.jsx` hardcoded one icon for every entry regardless of key. Added a
+   44-entry `ICON` map, one real icon per report key (falls back to `BarChart3Icon` for anything
+   added later without a specific choice yet, never a hard error) — the 5 Management entries reuse
+   the exact icons `components/executive/ExecutiveReportsWorkspace.jsx` already assigned them, so the
+   two surfaces stay visually consistent rather than picking differently.
+
+Live-verified as admin: Management opens first and expanded by default with 5 distinct icons; every
+other group (Accounts 17, Stores 3, Procurement 2, Sales 4, Marketing 3, Dispatch 1, Production 7,
+Design 2 — 44 total) sits collapsed to a one-line label+count; clicking Sales correctly collapses
+Management and expands Sales with 4 visibly distinct icons (Receipt/Filter/Pie chart/User).
+`npm run build` and `npm run lint` clean.
+
+## 5ao. Full QC NCR + disposition + heat/lot + hold-point workflow, dual-department Reports nav fix, Dispatch/QC report additions, demo-data fixes (2026-08-23)
+
+A self-audit against a user-requested "plan robustly, without gaps" pass flagged five areas; all
+five were scoped, planned (with two explicit gap-review rounds against the plan document itself
+before any code was written), implemented, and live-verified this session.
+
+**Demo-data fixes** — two real, pre-existing bugs, not new work: `virchow_biotech` and
+`hkm_charitable` portal logins pointed at no project / an unrelated customer's project respectively
+— deactivated (`users.active = 0`) rather than fabricating projects for them. Two projects (SB-1032,
+SB-1039) had a NULL `customer_id` FK, matched only by free-text name — backfilled to the real
+customer id now that the match was confirmed. Both fixes are DB-only, no schema change.
+
+**Dual-department Reports nav fix** (`app/reports/page.js`, `components/Nav.jsx`) — a non-PM head
+granted 2+ report-bearing departments (a real but previously-latent case, zero live accounts hit it)
+used to get two tabs both labeled "Reports". `app/reports/page.js`'s consolidated-view branch is now
+built from `headDepartments(user)` intersected with `REPORT_DEPARTMENTS` for any non-PM head, not
+just `isDeptPM`; `Nav.jsx` collapses to one `/reports` tab (no `?dept=`) once a head's own
+report-bearing departments exceed one. `ReportsWorkspace.jsx` takes a `title` prop instead of
+hardcoding "All Reports" from `groups` alone, so a partial multi-department view reads correctly
+("Sales & Marketing Reports", not "All Reports").
+
+**Dispatch + QC report additions** (`lib/reports/catalog.js`, `lib/reports/render.js`, 5 new
+`app/api/reports/<key>/route.js` files, `lib/data.js`) — E-Way Bill Register, Freight Cost Summary,
+and Pending vs Dispatched Aging (Dispatch); Test Certificate Register and Inspection Pass/Fail
+Summary (QC), plus an NCR Register (QC, landed alongside the NCR workflow below rather than with an
+empty register). Same "flat register + totals" pattern as the existing Drawing/ECN/Dispatch
+registers — no new schema, all sourced from existing `packing_lists`/`test_certificates`/
+`qc_records`/`ncr_records` columns. Every `compute()` joins through `projects.company` for
+correct company scoping (none of the source tables carry `company` directly) — live-verified by
+linking a certificate to a Shanti Boilers project and confirming it appears under that company's
+report and not Shanti Techno Fab's. This is also **QC's first-ever Report Engine entry** —
+`REPORT_DEPARTMENTS` is catalog-derived, so QC automatically gets its own `/reports?dept=QC` tab via
+the existing per-department Nav loop, no Nav.jsx change needed.
+
+**Full NCR + disposition + heat/lot + ITP/hold-point workflow** — the substantial new piece.
+Grounded in two things the schema already had: `work_order_operations.quality_checkpoint TEXT`
+(Process Route Card, §5l) already names a QC checkpoint per route step, so a hold point is *derived*
+from it rather than needing a new ITP document type; and `stock_pieces.status` already had a real,
+written `'scrap'` value (`cutPiece()`'s own scrap children), so the scrap disposition reuses that
+precedent instead of inventing a new status.
+
+- **Schema** (`lib/db.js`, all additive): new `ncr_records` table (`ncr_no` via the same
+  `nextNumber('ncr_no','NCR')` counters-table idiom as `project_no`/`po_no`; nullable
+  `qc_record_id`/`bom_item_id`/`work_order_id`/`job_card_id`/`stock_piece_id` link fields;
+  `status` open→dispositioned→closed; `disposition` rework/repair/scrap/use_as_is). `job_cards`
+  gained `requires_qc_hold`, `qc_released_at`, `qc_released_by`, `ncr_id`. `stock_pieces` gained
+  `heat_no`, `test_certificate_id`. `lib/action-permissions.js` gained 4 QC action keys
+  (`qc.ncr.write`, `qc.ncr.disposition`, `qc.ncr.close`, `qc.hold.release`); `qc.ncr.disposition` is
+  seeded `requires_head=1` in `migrate()` (same explicit `INSERT OR IGNORE` idiom as
+  `engineering.ecn.approve`) — disposition is a real authority decision (scrapping material,
+  accepting non-conforming product), never open-by-default. Live-confirmed via `PRAGMA table_info`
+  and a direct `action_permissions` query against the real dev DB.
+- **Heat/lot traceability** (`lib/stock-pieces.js`) — `receivePiece()` captures `heat_no`/
+  `test_certificate_id` once, at receipt; `cutPiece()` copies both onto every used/remnant/scrap
+  child for free — zero re-entry at cut time. Cutting into a real project auto-inserts the matching
+  `certificate_projects` row (`INSERT OR IGNORE`), the same "linking a cert *is* what allocates it to
+  a project" convention `app/api/qc-documents/[id]/link-parts/route.js` already established — closes
+  a gap the plan review caught (Stores' picker linking a cert wouldn't otherwise show up as "used on
+  this project" the way the QC statutory-document editor's linking already does).
+  `components/StoresWorkspace.jsx`'s `AddPieceDialog` gained a Heat No. field and a "Link test
+  certificate" button reusing `CertPicker.jsx` unchanged; `PiecesDialog`'s table gained a Heat/Cert
+  column (`listPieces()` now joins `test_certificates`).
+- **NCR core** (`app/api/ncrs/route.js`, `app/api/ncrs/[id]/route.js`,
+  `app/api/ncrs/[id]/disposition/route.js`, `app/api/ncrs/[id]/close/route.js`) — access is **QC and
+  Production** for raise/edit/view (a foreman can raise an NCR directly for a field-found defect, no
+  test result required first), **QC Head only** for disposition and close regardless of who raised
+  it. `project_id` is always server-derived, never trusted from the client, in priority order
+  `qc_record_id → bom_item_id → work_order_id → job_card_id → bare project_id`. A duplicate-NCR guard
+  (409) blocks a second open/dispositioned NCR against the same `qc_record_id`. Disposition: rework/
+  repair (requires the NCR be linked to a job card — 400 otherwise) creates a real rework job card
+  carrying `ncr_id`/`rework_of_job_card_id`, inherits the source card's milestone/section/operation/
+  workstation, and explicitly sets `requires_qc_hold = 0` (a gap the plan review caught — this card
+  is reactive rework, not route-generated, and must not silently inherit a hold flag); scrap and
+  use_as_is both hard-require non-blank `disposition_notes`, server-checked, not just a client
+  required field. Close refuses while a linked rework card isn't `status='done'` yet — the real
+  enforcement, not just a status flip. All writes happen inside `withTransaction` where multiple rows
+  move together (the rework-card-insert-plus-NCR-update, and the scrap-status-plus-rollup-plus-NCR-
+  update); notify/audit calls stay outside, per the codebase's own stated convention.
+- **Hold-point gate** — `generate-job-cards` sets `requires_qc_hold = 1` whenever the route step it's
+  generating from names a `quality_checkpoint`. `job-cards/[id]` PATCH refuses a transition to
+  `status='done'` while `requires_qc_hold && !qc_released_at` (`requires_qc_hold` is deliberately
+  never in the route's own `EDITABLE` array — Production cannot clear it directly) — hitting that
+  wall also fires the real "ready for QC" notification to the QC department, doubling as the signal
+  rather than needing a separate one. `POST /api/job-cards/[id]/qc-release` (new, QC-Head-gated via
+  `qc.hold.release`) refuses while any linked `ncr_records` row is still open — the real NCR↔hold
+  link — then stamps `qc_released_at`/`qc_released_by` and notifies Production.
+- **UI** — `components/NcrPanel.jsx` (new: the NCR register + a standalone exported
+  `RaiseNcrDialog` + a QC-only disposition dialog with the client+server notes-required double-gate
+  for scrap/use_as_is) and `components/QcHoldPanel.jsx` (new: held job cards + a Release button) are
+  QC workspace tabs (`components/QcWorkspace.jsx`). `components/QcPanel.jsx` gained a "Raise NCR"
+  button on failed test rows. **The gap the plan review caught and fixed before it shipped**: the
+  access decision was explicitly "QC and Production", but the only raise-NCR UI initially planned
+  (`QcPanel.jsx`) only renders on a QC-gated surface a Production-only head never sees — so
+  `RaiseNcrDialog` was built reusable from the start and wired a second time into
+  `components/JobCardBoard.jsx`'s job-card detail sheet (Production's own board, prefilling
+  `job_card_id` instead of `qc_record_id`), plus a "Held for QC" badge on both the detail sheet and
+  the kanban tile. `canDisposition` is computed server-side (`canPerformAction(user, 'QC',
+  'qc.ncr.disposition')`, same precedent as Engineering's `canApproveEcn`) and passed down — a QC
+  Member sees the register but not a Disposition button, matching the server-side gate exactly rather
+  than relying on the 403 alone.
+- **Help page** (`components/department-help-content.jsx`) — QC gained NCR & Disposition, Hold
+  Points, and Heat/Lot Traceability feature entries plus a Reports entry (Test Certificate Register/
+  Inspection Pass-Fail/NCR Register); Dispatch gained a Reports entry (Dispatch Register/E-Way Bill
+  Register/Freight Cost Summary/Pending vs Dispatched Aging).
+
+**Live-verified end-to-end against the real dev DB** (disposable test rows, all reversed
+afterward, zero residue confirmed by direct query): an NCR raised by `production_head` directly
+against a job card is visible to `qc_head` and immediately 403s `production_head` on the
+disposition route; a second NCR against the same `qc_record_id` gets 409; `use_as_is`/`scrap`
+without notes gets 400, with notes gets 200; closing before a linked rework card reaches `done` gets
+400; a route step with `quality_checkpoint` set produces a job card with `requires_qc_hold=1` via
+`generate-job-cards`; that card's PATCH to `done` gets 400 "Held for QC" until released;
+`qc-release` gets 400 while a linked NCR is open, 200 once it's closed, after which the PATCH to
+`done` succeeds; a rework disposition creates a new job card with `requires_qc_hold=0`,
+`rework_of_job_card_id`, `ncr_id`, and the source card's milestone/section/operation all correctly
+inherited; a stock piece received with `heat_no`+`test_certificate_id` propagates both onto its cut
+children and inserts a real `certificate_projects` row on cut into a project; all 5 new reports
+return real data with correct department gating (Production 403s on a Dispatch report) and correct
+company scoping. `npm run build` and `npm run lint` both clean throughout.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own
   (`users.project_ids` CSV, `canAccessProject()` in `lib/auth.js`), even when they only have one.
-  Clicking a card opens the per-order view.
+  Clicking a card opens the per-order view. **Sorted newest-first by project id, paginated 10/page**
+  (`?page=`, §5al #12) — no sort/pagination existed before, and `users.project_ids` append-order
+  (oldest-first after §5al #7's fix) would otherwise have been the visible order.
 - Business-language **phase stepper** (Order Received → … → Commissioning), overall %, est. dispatch.
-- A packing-list link that opens a **read-only document view** (Print / Generate PDF only) — no
-  editing, and only once the list is past draft (≥ Ready). Enforced at the route and API level.
+  **QC Certificates and Packing Lists now nest under their real phase** (Quality Testing, Packing —
+  same expandable-row pattern Design's drawings already used), not a flat list below the stepper;
+  every past-draft packing list shows, not just the latest (§5al #11). A Sales Invoice deliberately
+  does **not** nest under any phase — nothing in the data model ties an invoice to a milestone (it
+  can be issued at booking, mid-project, or dispatch), so it lives in its own **Billing** card instead
+  of a fabricated phase mapping. Every document link **forces a download** (`<a download>`) rather
+  than an in-browser preview.
 - A customer only ever sees their own project(s) — every portal/packing route checks
   `canAccessProject`, never a bare `project_id` equality.
+- **Sales Invoices and QC statutory documents added to the portal (2026-08-23, §5ak/§5al).**
+  Investigated before assuming anything was missing: the portal previously exposed only the packing
+  list. Real gaps found and closed:
+  - **Sales Invoices** — `getCustomerView()` (`lib/data.js`) now lists every non-draft invoice for
+    the project (`sales_invoices.project_id`, status ≠ draft), each linking straight to
+    `/api/sales-invoices/[id]/pdf`. No approval/comment step — an issued invoice is just shown, same
+    as the existing packing-list link.
+  - **QC statutory documents** — gated the same way Design's drawings already gate customer
+    visibility (`calc_drawings.customer_visible`, §5f), not just "every part linked": a new
+    `qc_documents.customer_visible`/`customer_visible_at` pair, toggled only by whoever can already
+    edit that document (QC has no separate junior/head split — `canAccessDepartment(user,'QC')` is
+    already `qc_head` or PM, the same "Head approval" gate a Design Head would apply to a drawing).
+    The server (`PATCH /api/qc-documents/[id]`) re-enforces the pre-existing all-parts-linked hard
+    gate before the flag can ever be set to true — a document can't reach the customer partway
+    through being built, whether or not the UI's own disabled state is bypassed. UI: a "Share with
+    customer" checkbox in `QcDocumentEditor.jsx`, same pattern/copy as Design's own toggle.
+  - Both `/api/sales-invoices/[id]/pdf` and `/api/qc-documents/[id]/pdf` widened to also allow
+    `isCustomer(user) && canAccessProject(...)`, mirroring the existing packing-PDF route's
+    internal-vs-customer branch exactly — no new access-control shape invented.
+- **Per-customer Customer Portal login + email (2026-08-23, §5ak) — built the plumbing, real
+  sending still blocked on a provider decision.** Investigated first: there was no path anywhere
+  (UI or API) that created a `role='customer'` login — `POST /api/users` hardcodes `role='operator'`,
+  `POST /api/register` explicitly forbids customer self-registration, and the three demo customer
+  logins were inserted directly by a seed script. Real, confirmed gap, not assumed.
+  - **Per-customer switch, not a global one** (explicit product decision, not the default single
+    `app_settings` flag this app usually reaches for) — real customer contact data varies in
+    quality, so a PM/Sales opts each customer in by hand rather than one toggle emailing every row
+    in `customers` the moment sending goes live. `customers.portal_enabled` /
+    `customers.portal_user_id` / `customers.initial_email_sent_at`, toggled from the Customer
+    Portal checkbox in `SalesWorkspace.jsx`'s customer detail sheet, `POST
+    /api/customers/[id]/portal`.
+  - Turning it on for a customer with no login yet is what **creates** the login: `role='customer'`,
+    `project_ids` resolved from `projects.customer_id`/`customer_name` (whichever real projects
+    already exist for that customer), and a **random, unusable placeholder password** — the account
+    can't log in until the customer follows a **password-setup link** (`users.password_setup_token`/
+    `password_setup_expires`, 7-day expiry; public `/set-password` page + `POST /api/set-password`,
+    both added to `middleware.js`'s `PUBLIC_PATHS`). No predictable username/password pattern, no
+    plaintext credential ever emailed, matches the standing requirement this section was built
+    against.
+  - **Status-update email reuses the existing notification fan-out instead of inventing a second
+    event system** — every customer-facing notification already flows through one function,
+    `notifyUser()` (`lib/notify.js`; the pre-existing `drawing_shared` sweep, §5f, is one caller).
+    That function now also emails a customer with `portal_enabled=1`, best-effort — a real
+    in-app notification always lands regardless of whether email sends.
+  - **`lib/mail.js` is a deliberate seam, not a fake implementation.** The user has an existing
+    provider but hadn't decided the sending identity (which address customer mail comes from) when
+    this was built — per instruction ("no workarounds"), `sendMail()` throws a clear, actionable
+    error until `MAIL_PROVIDER`/`MAIL_FROM` are set, rather than silently pretending an email went
+    out. **Live-verified this actually happens**: toggling a real customer's portal switch on
+    created the login and returned `502` with the exact "email isn't configured" message — the
+    login was NOT left silently claiming success, and the test toggle was fully reverted (login
+    deleted, `portal_enabled` cleared) afterward. To wire up the real provider once the sending
+    identity is decided: implement the dispatch branch in `lib/mail.js` and set the two env vars —
+    no other file changes.
 
 ## 7. Operations-platform data model
 
@@ -4344,6 +4845,7 @@ projects ──< qc_records                          (§5b — QC-owned test log
 projects ──< tasks                               (§3a/§3b — every department's to-dos AND cross-department raises; project_id optional, null for Operations-level asks)
 milestones ──< notifications                     (§3b — a handoff/reopen notification's milestone_id; notifications fan out one row per recipient)
 tasks ──< notifications                          (§3b — a cross-department task raise's task_id, the other notification link target)
+projects ──< notifications                        (§5al — a third, direct link target: portal-document events (QC shared, invoice issued) have no honest milestone/task to anchor to, unlike handoffs/raised tasks)
 tickets                                          (§3b — dead, kept only for notifications.ticket_id FK + pre-collapse history; nothing reads/writes it)
 milestones ──< milestone_stages                  (§3c — one row per stage per milestone instance, status Open/Current/Closed)
 stage_templates ──< stage_template_items         (§3c — named, reusable per department + milestone_key; one is_default auto-copies at project creation)
@@ -4367,8 +4869,15 @@ work_orders ──< work_order_change_notes           (§5l — field/old/new/re
 work_orders ──< job_cards (work_order_id, work_order_operation_id, both optional)  (§5l — generated execution records; job_cards.project_id is nullable for against_stock Work Orders with no project)
 work_orders ──> projects / sale_orders (project_id, sale_order_id, both optional)  (§5l — against_order vs. against_stock)
 sale_orders ──< projects                          (company decided at the Sale Order — the commercial commitment — and copied onto the project at creation; projects.company is the denormalized read)
-users (role + departments CSV + project_ids CSV [customer scoping, one-or-more] + pending flag)
+users (role + departments CSV + project_ids CSV [customer scoping, one-or-more] + pending flag + password_setup_token/expires [§5ak, customer credential-setup link])
+customers.portal_user_id → users                  (§5ak — set once the per-customer Customer Portal switch creates the login; portal_enabled/initial_email_sent_at ride alongside)
+sales_invoices.project_id → projects               (§5ak — via sale_orders, previously always NULL; a real bug found and fixed by the full-lifecycle pass)
+qc_documents.customer_visible                      (§5ak/§6 — QC Head's opt-in to share a statutory folder with the portal, same idiom as calc_drawings.customer_visible)
 app_settings (key/value)                          (§5e, 2026-08-20 — one global row so far: stores_allocation_mode = auto/manual; not a settings subsystem, same "smallest thing that works" precedent as `counters`)
+projects ──< ncr_records                          (§5ao — Non-Conformance Report; nullable qc_record_id/bom_item_id/work_order_id/job_card_id/stock_piece_id link fields, ncr_no via the same counters idiom as project_no)
+ncr_records ──> job_cards (rework_job_card_id)     (§5ao — set by a rework/repair disposition; the card also carries ncr_id back to the NCR)
+job_cards.requires_qc_hold / qc_released_at/by     (§5ao — derived from work_order_operations.quality_checkpoint at generate-job-cards time; deliberately not PATCH-editable, only POST /api/job-cards/[id]/qc-release can clear it)
+stock_pieces.heat_no / test_certificate_id → test_certificates  (§5ao — captured once at receivePiece(), inherited by every cutPiece() child for free; linking a cert here auto-inserts a certificate_projects row on cut into a project)
 ```
 
 `bom_items` carries the spreadsheet-mirror columns — `section` (sheet), `group_label` (assembly
@@ -4403,10 +4912,15 @@ rule (`STF-` project-number prefix → Shanti Techno Fab, §5d) rather than a bl
 
 ## 8. Operations-platform deferred items
 
-Dependency graph / auto critical-path (`depends_on_key` column in place), an **activity feed UI**
-(the underlying data now exists — `usb_audit`, §16 — just no page renders it yet), file/photo
+Dependency graph / auto critical-path (`depends_on_key` column in place). **Activity feed UI —
+built, not deferred** (this line was stale): `AccountsWorkspace.jsx`'s `AuditLogTab` +
+`GET /api/audit-log` (§5z) already renders `usb_audit` globally, search over 218+ action kinds,
+gated to Accounts + PMs — no longer listed here. File/photo
 uploads (the PMB blob in §5a is the only stored file — there is still no general document store),
-barcode/QR validation at dispatch, email/WhatsApp notifications, and the §5a "deliberately not
+barcode/QR validation at dispatch, WhatsApp notifications, real email delivery (§5ak/§6 — the
+Customer Portal's per-customer login/email plumbing, `lib/mail.js`'s provider seam, and the
+notification-email hook are all built and live-verified; the one missing piece is a decided sending
+identity, blocked on the user), and the §5a "deliberately not
 built" list (drawings/IBR document management, BOM release workflow, Excel export, in-app BOM
 authoring, supplier analytics). Installation and Design still just get their milestone list; QC now
 has its own test-record module (§5b); Procurement/Stores/Production have the Master BOM.
@@ -4466,16 +4980,16 @@ each noting what already exists as a seed to extend rather than starting cold:
    outstanding quantity per material across open Work Orders — the missing half is
    available-vs-ordered-vs-shortage per line, and which specific projects/Work Orders a shortage is
    blocking. Procurement/Stores own the purchasing side; Production needs the impact view.
-3. **Formal Quality: NCR / disposition / ITP.** `qc_records` (§5b/§5g) covers freeform tests, MTC,
-   radiography, and Hydro Test (`result`: pending/pass/fail) with rework lineage on a fail — real,
-   but there's no formal non-conformance record, no disposition path beyond rework (repair/scrap/
-   use-as-is aren't modeled), no inspection/test-plan checkpoints tied to a route step, and no
-   hold/release gate.
-4. **Material heat/lot traceability.** `stock_pieces` (§5k) already gives a real piece-level
-   traceability chain — `PL-0007` → `-U1`/`-R1`/`-S1` (used/remnant/scrap) — but there's no heat/lot
-   number field, and no automatic link from a cut piece back to its Test Certificate (§5d's
-   certificate bank is a manual, not automatic, link today). For pressure equipment this is a real
-   gap, not a nice-to-have.
+3. **Formal Quality: NCR / disposition / ITP — built, §5ao, no longer listed here.** A real
+   `ncr_records` table (open→dispositioned→closed, all four dispositions modeled — rework/repair
+   create a lineage-carrying job card, scrap/use_as_is require server-checked notes), a hold/release
+   gate derived from `work_order_operations.quality_checkpoint` (no separate ITP document type
+   needed), and raise access for both QC and Production. `qc_records` (§5b/§5g) still covers the
+   underlying freeform test log unchanged — NCR sits on top of it, not instead of it.
+4. **Material heat/lot traceability — built, §5ao, no longer listed here.** `stock_pieces` gained
+   `heat_no`/`test_certificate_id`, captured once at receipt and inherited by every cut child
+   automatically; linking a cert here now auto-associates it to the project via `certificate_projects`,
+   the same convention the QC statutory-document editor already used.
 5. **Welding/fabrication traceability.** A Job Card's `operation_id` can tag "Welding" generically;
    there is no per-joint weld ID, no WPS/welder-qualification record, no consumable-batch link, and
    no NDT-to-joint linkage — welding is currently "Job Card = Done," not a manufacturing history.
@@ -4709,9 +5223,11 @@ the operations-platform's core mutations — `milestone_edit` (project/key/chang
 `access_matrix_edit` / `user_reactivated` / `user_deactivated`, `project_created`,
 `packing_created` / `packing_status_change`, plus the BOM (`bom_import`/`bom_replace`/
 `bom_item_edit`/`bom_item_delete`) and people (`user_registered`/`user_approved`/`user_rejected`)
-actions from §2a/§5a. **No UI viewer exists yet** — it's queryable (`sqlite3`/Turso CLI) but not
-surfaced in the app; add an Activity view once it's clear who needs to read it day-to-day (PM-only
-global log? per-project history tab?).
+actions from §2a/§5a. **A UI viewer exists** (this line was stale) — `AccountsWorkspace.jsx`'s
+`AuditLogTab` + `GET /api/audit-log` (§5z, 2026-08-22), a global search view, gated to Accounts
+department + PMs (`canAccessDepartment` passes PMs through for any department). Not project-scoped
+— a per-project history tab would need a new `project_id` column threaded through the highest-value
+writers, not attempted; the global view is real and answers "who did what" today.
 
 ## 17. Approval-platform deferred items
 

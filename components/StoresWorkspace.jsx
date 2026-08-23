@@ -23,6 +23,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { PlusIcon, PencilIcon, PackageCheckIcon, UndoIcon, TruckIcon, PackageIcon, ClipboardListIcon, LayersIcon, AlertTriangleIcon, LogInIcon, FileOutputIcon, CheckIcon, XIcon } from 'lucide-react';
 import { api, showToast } from '@/lib/client';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
+import CertPicker from '@/components/CertPicker';
 
 function isLowStock(item) {
   return item.reorder_point != null && item.available <= item.reorder_point;
@@ -251,14 +252,18 @@ function ItemFormDialog({ item, onClose, router }) {
 // PrWorkspace's guessCategory uses (plate is its own shape; ms_section/angle are both "linear" —
 // cut by length, weight = length × kg/m, since a non-rectangular profile's cross-section isn't
 // L×W×T).
-function AddPieceDialog({ inventoryItem, onClose, router, onAdded }) {
+function AddPieceDialog({ inventoryItem, onClose, router, onAdded, certificates = [] }) {
   const kind = inventoryItem.category === 'plate' ? 'plate' : 'linear';
   const [length, setLength] = useState('');
   const [width, setWidth] = useState('');
   const [thickness, setThickness] = useState('');
   const [density, setDensity] = useState('7850');
   const [kgPerM, setKgPerM] = useState('');
+  const [heatNo, setHeatNo] = useState('');
+  const [certId, setCertId] = useState(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const cert = certificates.find(c => c.id === certId);
 
   async function save() {
     setSaving(true);
@@ -272,6 +277,8 @@ function AddPieceDialog({ inventoryItem, onClose, router, onAdded }) {
           thickness_mm: kind === 'plate' ? Number(thickness) : null,
           density: kind === 'plate' ? Number(density) : null,
           kg_per_m: kind === 'linear' ? Number(kgPerM) : null,
+          heat_no: heatNo.trim() || null,
+          test_certificate_id: certId,
         },
       });
       showToast(`${result.code} added — ${result.weight_kg} kg`);
@@ -312,12 +319,38 @@ function AddPieceDialog({ inventoryItem, onClose, router, onAdded }) {
               <Input type="number" value={kgPerM} onChange={e => setKgPerM(e.target.value)} />
             </div>
           )}
+          <div className="grid gap-1.5">
+            <Label>Heat No.</Label>
+            <Input value={heatNo} onChange={e => setHeatNo(e.target.value)} placeholder="e.g. H-4471" />
+          </div>
+          <div className="grid gap-1.5 col-span-2">
+            <Label>Test certificate</Label>
+            {cert ? (
+              <div className="flex items-center justify-between rounded-md border px-3 py-2 text-sm">
+                <span>{cert.certificate_no} · {cert.cast_no}</span>
+                <Button size="sm" variant="ghost" onClick={() => { setCertId(null); }}>Remove</Button>
+              </div>
+            ) : (
+              <Button size="sm" variant="outline" onClick={() => setPickerOpen(true)}>Link test certificate</Button>
+            )}
+          </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button onClick={save} disabled={saving}>{saving ? 'Adding…' : 'Add piece'}</Button>
         </DialogFooter>
       </DialogContent>
+      <CertPicker
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        title="Link test certificate"
+        certificates={certificates}
+        onPick={id => {
+          setCertId(id);
+          const picked = certificates.find(c => c.id === id);
+          if (picked?.cast_no && !heatNo) setHeatNo(picked.cast_no);
+        }}
+      />
     </Dialog>
   );
 }
@@ -325,7 +358,7 @@ function AddPieceDialog({ inventoryItem, onClose, router, onAdded }) {
 // The observer side of Cutting & Remnant Management (Production owns Cut; Stores just sees the
 // outcome): every piece under one inventory line, its lineage-derived status, and a Release action
 // for a 'reserved' piece whose BOM line got cancelled/edited before Production ever cut it.
-function PiecesDialog({ inventoryItem, onClose, router }) {
+function PiecesDialog({ inventoryItem, onClose, router, certificates = [] }) {
   const [pieces, setPieces] = useState(null);
   const [adding, setAdding] = useState(false);
   const [busyId, setBusyId] = useState(null);
@@ -367,6 +400,7 @@ function PiecesDialog({ inventoryItem, onClose, router }) {
                       <TableHead>Code</TableHead>
                       <TableHead>Dimensions</TableHead>
                       <TableHead>Weight</TableHead>
+                      <TableHead>Heat/Cert</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead></TableHead>
                     </TableRow>
@@ -377,6 +411,9 @@ function PiecesDialog({ inventoryItem, onClose, router }) {
                         <TableCell className="font-medium">{p.code}</TableCell>
                         <TableCell className="text-muted-foreground">{pieceDimsLabel(p)}</TableCell>
                         <TableCell className="tnum">{p.weight_kg} kg</TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {p.heat_no || p.certificate_no ? [p.heat_no, p.certificate_no].filter(Boolean).join(' · ') : '—'}
+                        </TableCell>
                         <TableCell><Badge className={PIECE_STATUS[p.status]?.cls}>{PIECE_STATUS[p.status]?.label || p.status}</Badge></TableCell>
                         <TableCell>
                           {p.status === 'reserved' && (
@@ -393,7 +430,7 @@ function PiecesDialog({ inventoryItem, onClose, router }) {
           <DialogFooter><Button variant="outline" onClick={onClose}>Close</Button></DialogFooter>
         </DialogContent>
       </Dialog>
-      {adding && <AddPieceDialog inventoryItem={inventoryItem} router={router} onClose={() => setAdding(false)} onAdded={load} />}
+      {adding && <AddPieceDialog inventoryItem={inventoryItem} router={router} certificates={certificates} onClose={() => setAdding(false)} onAdded={load} />}
     </>
   );
 }
@@ -1179,7 +1216,7 @@ const NAV_ITEMS = (counts) => [
   { key: 'gatepasses', label: 'Gate Passes', icon: FileOutputIcon, badge: counts.overdueGatePasses || null },
 ];
 
-function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavigate }) {
+function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavigate, certificates }) {
   const router = useRouter();
   const [dialogItem, setDialogItem] = useState(undefined); // undefined = closed, null = add, {} = edit
   const [piecesFor, setPiecesFor] = useState(null);
@@ -1256,14 +1293,14 @@ function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavi
           <ItemFormDialog item={dialogItem} router={router} onClose={() => setDialogItem(undefined)} />
         )}
       </Card>
-      {piecesFor && <PiecesDialog inventoryItem={piecesFor} router={router} onClose={() => setPiecesFor(null)} />}
+      {piecesFor && <PiecesDialog inventoryItem={piecesFor} router={router} certificates={certificates} onClose={() => setPiecesFor(null)} />}
     </div>
   );
 }
 
 export default function StoresWorkspace({
   inventoryItems, openRequests = [], activeReservations = [], projects = [],
-  reorderSuggestions = [], gateInwardReceipts = [], gatePasses = [],
+  reorderSuggestions = [], gateInwardReceipts = [], gatePasses = [], certificates = [],
 }) {
   const router = useRouter();
   const [tab, setTab] = useState('inventory');
@@ -1278,7 +1315,7 @@ export default function StoresWorkspace({
   return (
     <WorkspaceSidebar title="Inventory" icon={PackageIcon} items={navItems} activeKey={tab} onChange={setTab}>
       {tab === 'inventory' && (
-        <InventoryTab inventoryItems={inventoryItems} openRequests={openRequests} activeReservations={activeReservations} onNavigate={setTab} />
+        <InventoryTab inventoryItems={inventoryItems} openRequests={openRequests} activeReservations={activeReservations} onNavigate={setTab} certificates={certificates} />
       )}
       {tab === 'requests' && (
         <OpenRequestsCard openRequests={openRequests} inventoryItems={inventoryItems} router={router} />

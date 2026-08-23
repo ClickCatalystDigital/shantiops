@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getQcDocumentDetail } from '@/lib/data';
 import { queryOne } from '@/lib/db';
-import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
+import { getFreshSessionUser, requireDepartment, isCustomer, canAccessProject } from '@/lib/auth';
 import { renderQcFolderPdf } from '@/lib/qc-folder-pdf';
 
 export const runtime = 'nodejs';
@@ -12,12 +12,25 @@ export const runtime = 'nodejs';
 // directly.
 export async function GET(req, { params }) {
   const user = await getFreshSessionUser();
-  const denied = requireDepartment(user, 'QC');
-  if (denied) return denied;
-
   const detail = await getQcDocumentDetail(params.id);
   if (!detail) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
+  // A customer may only view their own project's folder, and only once QC Head has shared it
+  // (customer_visible — §6) — the completeness gate below still applies to everyone.
+  if (isCustomer(user)) {
+    if (!canAccessProject(user, detail.document.project_id) || !detail.document.customer_visible) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+  } else {
+    const denied = requireDepartment(user, 'QC');
+    if (denied) return denied;
+  }
+
+  // A document with zero parts trivially has zero unlinked parts — "complete" has to mean
+  // something was actually certified, not just that nothing is missing.
+  if (!detail.parts.length) {
+    return NextResponse.json({ error: 'This document has no parts yet' }, { status: 409 });
+  }
   const unlinked = detail.parts.filter(p => !p.test_certificate_id);
   if (unlinked.length) {
     return NextResponse.json(

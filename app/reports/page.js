@@ -10,10 +10,23 @@
 // own Nav tab always carries ?dept=, and 'executive' keeps its own /executive/reports tab (it has
 // no department access to consolidate).
 import { redirect } from 'next/navigation';
-import { getFreshSessionUser, canAccessDepartment, roleHome } from '@/lib/auth';
-import { getCompanySettings } from '@/lib/data';
+import { getFreshSessionUser, canAccessDepartment, headDepartments, roleHome } from '@/lib/auth';
+import { getCompanySettings, getLeads, getOpportunities, getCampaigns, getSalesStages, getCrmTasks, getLeadNotes, getFunctionalHeads } from '@/lib/data';
 import { reportsForDepartment, REPORT_DEPARTMENTS } from '@/lib/reports/catalog';
 import ReportsWorkspace from '@/components/ReportsWorkspace';
+
+const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
+
+// Same data the standalone /crm-reports page fetches (app/crm-reports/page.js) — the 6 CRM
+// analytics catalog entries (lib/reports/catalog.js, §5an) need it, fetched only when a Sales or
+// Marketing report could actually be in view, not on every unrelated department's Reports tab.
+async function getCrmData() {
+  const [leads, opportunities, campaigns, stages, tasks, notes, heads] = await Promise.all([
+    getLeads(), getOpportunities(), getCampaigns(), getSalesStages(), getCrmTasks(), getLeadNotes(), getFunctionalHeads(),
+  ]);
+  const users = heads.filter(h => h.active && h.departments.some(d => CRM_DEPARTMENTS.includes(d)));
+  return { leads, opportunities, campaigns, stages, tasks, notes, users };
+}
 
 export const dynamic = 'force-dynamic';
 
@@ -38,21 +51,37 @@ export default async function ReportsPage({ searchParams }) {
   const companies = await getCompanySettings();
 
   if (!department) {
-    if (!isDeptPM(user)) redirect(roleHome(user));
+    // Generalized (2026-08-23, plan §3) beyond admin/manager: a non-PM head granted 2+ departments
+    // that each have catalog reports also lands here, scoped to just their own departments — the
+    // alternative (Nav.jsx building one "Reports" tab per department) produced N identically-labeled
+    // tabs. isDeptPM still gets every department; everyone else gets the intersection with their own
+    // grants, and redirects home only if that intersection is empty.
+    const isPmView = isDeptPM(user);
+    const myReportDepts = isPmView ? REPORT_DEPARTMENTS : REPORT_DEPARTMENTS.filter(d => headDepartments(user).includes(d));
+    if (myReportDepts.length === 0) redirect(roleHome(user));
     const groups = [
-      ...REPORT_DEPARTMENTS.map((dept) => ({
+      // Management first — the group a PM/admin actually opens most on this consolidated view,
+      // not buried after 8 other departments' worth of scrolling. PM-only, never shown to a head.
+      ...(isPmView ? [{ department: 'Management', reports: MANAGEMENT_REPORTS }] : []),
+      ...myReportDepts.map((dept) => ({
         department: dept,
         reports: reportsForDepartment(dept).map((r) => ({
           key: r.key, title: r.title,
           needsCompany: r.needsCompany !== false,
           hasOwnPdfControl: !!r.hasOwnPdfControl,
+          hasOwnControls: !!r.hasOwnControls,
         })),
       })),
-      { department: 'Management', reports: MANAGEMENT_REPORTS },
     ];
+    // Only fetch CRM data when Sales/Marketing is actually in view — same guard the
+    // single-department branch below already uses, not assumed just because this is the
+    // multi-department branch.
+    const crmData = myReportDepts.some(d => CRM_DEPARTMENTS.includes(d)) ? await getCrmData() : undefined;
+    // Title reflects what's actually shown — "All Reports" only when it truly is all of them.
+    const title = isPmView ? 'All Reports' : `${myReportDepts.join(' & ')} Reports`;
     return (
       <main className="min-h-[calc(100svh-3.5rem)]">
-        <ReportsWorkspace groups={groups} companies={companies} />
+        <ReportsWorkspace groups={groups} companies={companies} crmData={crmData} title={title} />
       </main>
     );
   }
@@ -63,12 +92,15 @@ export default async function ReportsPage({ searchParams }) {
     key: r.key, title: r.title,
     needsCompany: r.needsCompany !== false,
     hasOwnPdfControl: !!r.hasOwnPdfControl,
+    hasOwnControls: !!r.hasOwnControls,
   }));
   if (!reports.length) redirect(roleHome(user));
 
+  const crmData = CRM_DEPARTMENTS.includes(department) ? await getCrmData() : undefined;
+
   return (
     <main className="min-h-[calc(100svh-3.5rem)]">
-      <ReportsWorkspace department={department} reports={reports} companies={companies} />
+      <ReportsWorkspace department={department} reports={reports} companies={companies} crmData={crmData} />
     </main>
   );
 }

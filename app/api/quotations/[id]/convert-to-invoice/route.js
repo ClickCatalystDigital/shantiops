@@ -37,6 +37,11 @@ export async function POST(req, { params }) {
   const company = COMPANY_NAMES.includes(b.company) ? b.company : COMPANY_NAMES[0];
   const companyRow = await queryOne('SELECT * FROM company_settings WHERE company = ?', [company]);
   const saleOrder = await queryOne('SELECT id FROM sale_orders WHERE quotation_id = ?', [params.id]);
+  // The project this invoice belongs to, if one exists yet — via the same sale_order_id link
+  // projects.sale_order_id already carries (§7). Found missing while live-testing the Customer
+  // Portal's new invoice list (§6): without this, every invoice silently had project_id NULL and
+  // never showed up for the customer who owns that exact order.
+  const project = saleOrder ? await queryOne('SELECT id FROM projects WHERE sale_order_id = ?', [saleOrder.id]) : null;
 
   const invoiceDate = b.invoice_date || todayISO();
   const fy = financialYear(invoiceDate);
@@ -57,10 +62,10 @@ export async function POST(req, { params }) {
 
   const { lastId } = await execute(
     `INSERT INTO sales_invoices
-       (invoice_no, company, customer_id, sale_order_id, quotation_id, invoice_date, due_date,
+       (invoice_no, company, customer_id, sale_order_id, quotation_id, project_id, invoice_date, due_date,
         subtotal, cgst_amount, sgst_amount, igst_amount, tax_amount, total, is_reverse_charge, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [invoiceNo, company, quotation.customer_id, saleOrder?.id ?? null, quotation.id, invoiceDate, b.due_date ?? null,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [invoiceNo, company, quotation.customer_id, saleOrder?.id ?? null, quotation.id, project?.id ?? null, invoiceDate, b.due_date ?? null,
       quotation.subtotal, split.cgst, split.sgst, split.igst, split.taxAmount, total, isReverseCharge ? 1 : 0, user.username]
   );
   const invoiceId = Number(lastId);

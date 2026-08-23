@@ -58,23 +58,30 @@ export default function Nav({ user, reportDepartments = [] }) {
   // tab renamed again to Production (2026-08-19) once Work Orders/BOM/Forecast/Daily Sheet/Workers
   // Roster all lived under it too — Job Card is now just its default sub-tab (WorkersPanel.jsx),
   // same "workspace name ≠ default sub-tab name" pattern every other department tab already uses.
-  addDeptTab(['Production'], '/production/workers', 'Production', HardHatIcon);
-  addDeptTab(['Procurement'], '/procurement', 'Procurement', ShoppingCartIcon);
-  addDeptTab(['Stores'], '/stores', 'Inventory', WarehouseIcon);
-  addDeptTab(['Sales', 'Marketing'], '/sales', 'Sales', TagIcon);
+  // Ordered to match the actual order-lifecycle pipeline (Marketing/Sales → Design/Engineering →
+  // Procurement → Stores → Production → QC → Dispatch → Installation → Accounts), not alphabetical
+  // or historical add-order — makes the tab strip itself read as the pipeline during a live demo.
+  // HR is orthogonal to the boiler pipeline, kept last among department tabs.
+  // Label follows the same inSales split SalesWorkspace.jsx's own sidebar header already uses — a
+  // Marketing-only head (no Sales grant) gets a tab that actually says "Marketing", matching what
+  // they see the moment they click in, instead of an always-"Sales" label regardless of which of
+  // the two departments actually granted them access.
+  addDeptTab(['Sales', 'Marketing'], '/sales', tabDepartments.includes('Sales') ? 'Sales' : 'Marketing', TagIcon);
   addDeptTab(['Sales', 'Marketing'], '/pipeline', 'Pipeline', TrendingUpIcon);
-  addDeptTab(['Sales', 'Marketing'], '/crm-reports', 'Reports', BarChart3Icon);
-  addDeptTab(['HR'], '/hr', 'HR', UsersIcon);
   addDeptTab(['Design', 'Engineering'], '/calc', 'Calc Sheets', CalculatorIcon);
   // STERP items 16-19 (§5o) — BOM Structure/Where-Used/Common-Uncommon/ECN. Deliberately gated to
   // the same ['Design','Engineering'] pair as Calc Sheets above (the owner's ask: one shared tab
   // today, split-ready later) rather than 'Engineering' alone — every route/action key underneath
   // it still keys to 'Engineering' specifically, so a future split only touches this one line.
   addDeptTab(['Design', 'Engineering'], '/engineering', 'Engineering', NetworkIcon);
+  addDeptTab(['Procurement'], '/procurement', 'Procurement', ShoppingCartIcon);
+  addDeptTab(['Stores'], '/stores', 'Inventory', WarehouseIcon);
+  addDeptTab(['Production'], '/production/workers', 'Production', HardHatIcon);
   addDeptTab(['QC'], '/qc', 'QC', FlaskConicalIcon);
   addDeptTab(['Dispatch'], '/ops?dept=Dispatch', 'Dispatch', PackageIcon);
   addDeptTab(['Installation'], '/installation', 'Installation', MapPinIcon);
   addDeptTab(['Accounts'], '/accounts', 'Accounts', LandmarkIcon);
+  addDeptTab(['HR'], '/hr', 'HR', UsersIcon);
   // Catalog-driven (lib/reports/catalog.js via reportDepartments, computed server-side in
   // app/layout.js — the catalog itself pulls in server-only DB code and can't be imported here): a
   // "Reports" tab only for departments that actually have >=1 report. One call per department so
@@ -83,16 +90,22 @@ export default function Nav({ user, reportDepartments = [] }) {
   // build one identically-labeled "Reports" tab per department (a wall of tabs a user can't tell
   // apart). They get ONE consolidated "/reports" tab instead (below, all departments + Management
   // in one sidebar, app/reports/page.js) — same reasoning as Executive's own gate above.
-  // KNOWN, DELIBERATE OVERLAP: Sales/Marketing already has its own "Reports" tab (line above,
-  // /crm-reports — a different, pre-existing browser-print mechanism, not this catalog). A
-  // single-department head with Sales access sees both, pointing different places, until
-  // /crm-reports is folded into this catalog (REPORT-ENGINE-PLAN: deferred cleanup, not done in
-  // this pass). Not fixed here — merging them is real scope beyond the frame/catalog/Trial-Balance
-  // proof this pass covers.
+  // The old standalone /crm-reports tab and its "known, deliberate overlap" with this loop are gone
+  // (2026-08-23, §5an) — Sales' and Marketing's CRM analytics are now real catalog entries
+  // (lib/reports/catalog.js), so this loop already covers them like every other department, no
+  // special case left.
   if (isDeptPM) {
     deptTabs.push({ href: '/reports', label: 'Reports', icon: BarChart3Icon });
   } else {
-    for (const dept of reportDepartments) addDeptTab([dept], `/reports?dept=${dept}`, 'Reports', BarChart3Icon);
+    // A head granted 2+ report-bearing departments gets ONE consolidated tab (app/reports/page.js's
+    // now-generalized !department branch handles the "some but not all departments" view), same as
+    // PM — not one identically-labeled "Reports" tab per department (2026-08-23, plan §3).
+    const myReportDepts = reportDepartments.filter(d => departments.includes(d));
+    if (myReportDepts.length > 1) {
+      deptTabs.push({ href: '/reports', label: 'Reports', icon: BarChart3Icon });
+    } else if (myReportDepts.length === 1) {
+      addDeptTab(myReportDepts, `/reports?dept=${myReportDepts[0]}`, 'Reports', BarChart3Icon);
+    }
   }
   if (canSeeRequests) deptTabs.push({ href: '/pr', label: 'Requests', icon: InboxIcon });
 

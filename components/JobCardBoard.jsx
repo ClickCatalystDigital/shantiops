@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/select';
 import { PlusIcon } from 'lucide-react';
 import QuickAddInline from '@/components/QuickAddInline';
+import { RaiseNcrDialog } from '@/components/NcrPanel';
 
 const COLUMNS = [
   { key: 'pending', label: 'Pending' },
@@ -125,6 +126,7 @@ function JobCardTile({ jc, onOpen }) {
           <div className="flex gap-1">
             {jc.is_site ? <Badge variant="outline">Site</Badge> : null}
             {jc.is_paused ? <Badge variant="outline">Paused</Badge> : null}
+            {jc.requires_qc_hold && !jc.qc_released_at ? <Badge className="bg-warning/10 text-warning ring-warning/20">Held for QC</Badge> : null}
           </div>
         </div>
         <span className="text-sm font-medium">{jc.operation_name}</span>
@@ -285,6 +287,7 @@ function JobCardDetailSheet({ id, onClose, router, workers }) {
   const [busy, setBusy] = useState(false);
   const [hoursForm, setHoursForm] = useState({ employee_id: '', minutes: '', fromTime: '', toTime: '' });
   const [consumableForm, setConsumableForm] = useState({ item_name: '', qty: '', unit: '' });
+  const [raisingNcr, setRaisingNcr] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -393,9 +396,17 @@ function JobCardDetailSheet({ id, onClose, router, workers }) {
                 <Badge variant="outline">Outside{detail.outside_vendor ? `: ${detail.outside_vendor}` : ''}</Badge>
               ) : null}
               {detail.is_site ? <Badge variant="outline">Site work</Badge> : null}
-              <Button size="sm" variant="outline" className="ml-auto" disabled={busy} onClick={createRework}>
-                Create rework card
-              </Button>
+              {detail.requires_qc_hold ? (
+                detail.qc_released_at
+                  ? <Badge variant="outline">QC released</Badge>
+                  : <Badge className="bg-warning/10 text-warning ring-warning/20">Held for QC</Badge>
+              ) : null}
+              <span className="ml-auto flex gap-2">
+                <Button size="sm" variant="outline" onClick={() => setRaisingNcr(true)}>Raise NCR</Button>
+                <Button size="sm" variant="outline" disabled={busy} onClick={createRework}>
+                  Create rework card
+                </Button>
+              </span>
             </div>
 
             <div className="grid grid-cols-3 gap-2">
@@ -479,6 +490,10 @@ function JobCardDetailSheet({ id, onClose, router, workers }) {
           </div>
         )}
       </SheetContent>
+      {raisingNcr && detail && (
+        <RaiseNcrDialog open onOpenChange={setRaisingNcr}
+          projectId={detail.project_id} jobCardId={detail.id} onRaised={refresh} />
+      )}
     </Sheet>
   );
 }

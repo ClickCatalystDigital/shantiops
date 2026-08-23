@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { nextNumber, createProjectMilestones, withTransaction, queryOne } from '@/lib/db';
-import { getFreshSessionUser, isDesignHead, isCustomer, canAccessProject } from '@/lib/auth';
+import { nextNumber, createProjectMilestones, withTransaction, queryOne, execute } from '@/lib/db';
+import { getFreshSessionUser, isDesignHead, isCustomer, canAccessProject, parseProjectIds } from '@/lib/auth';
 import { getActiveProjectsList } from '@/lib/data';
 import { isValidSeries } from '@/lib/qc-series';
 import { audit } from '@/lib/usb';
@@ -122,6 +122,22 @@ export async function POST(req) {
         await notifyDepartment('Sales', convertNote);
         await notifyPMs(convertNote, { except: user.id });
       } catch (err) { /* notification is best-effort */ }
+    }
+
+    // Keep an existing Customer Portal login in sync with new orders (§6, 2026-08-23). A
+    // customer's project_ids is only ever set directly here and once at portal-enable time
+    // (POST /api/customers/[id]/portal) — without this, a customer's *second* real order would
+    // silently never appear in their "My Orders" list.
+    if (b.customer_id) {
+      try {
+        const cust = await queryOne('SELECT portal_user_id FROM customers WHERE id = ?', [b.customer_id]);
+        if (cust?.portal_user_id) {
+          const portalUser = await queryOne('SELECT project_ids FROM users WHERE id = ?', [cust.portal_user_id]);
+          const ids = new Set(parseProjectIds(portalUser?.project_ids));
+          ids.add(String(projectId));
+          await execute('UPDATE users SET project_ids = ? WHERE id = ?', [[...ids].join(','), cust.portal_user_id]);
+        }
+      } catch (err) { /* best-effort, same as the notifications above */ }
     }
 
     await audit('project_created', { actor: user.username, detail: `${project_no} · ${b.customer_name.trim()}` });

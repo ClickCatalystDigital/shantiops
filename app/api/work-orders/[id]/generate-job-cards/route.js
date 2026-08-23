@@ -36,13 +36,15 @@ export async function POST(req, { params }) {
   let created = 0;
   for (const op of ops) {
     const section = op.department || op.operation_name || `Work Order route step #${op.seq}`;
+    // Hold-point gate (plan §5d) — a route step that already names a QC checkpoint IS a hold point,
+    // no separate ITP document type needed.
     await execute(
       `INSERT INTO job_cards
          (project_id, milestone_id, section, operation_id, workstation_id, qty_planned, work_order_id,
-          work_order_operation_id, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          work_order_operation_id, requires_qc_hold, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [wo.project_id, op.milestone_id, section, op.operation_id, op.workstation_id, wo.qty_planned,
-        wo.id, op.id, user.username]
+        wo.id, op.id, op.quality_checkpoint ? 1 : 0, user.username]
     );
     created++;
   }

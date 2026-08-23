@@ -2,7 +2,8 @@
 // (Test Certificates + Documents), rendered by one client workspace component.
 import { redirect } from 'next/navigation';
 import { getFreshSessionUser, canAccessDepartment, roleHome } from '@/lib/auth';
-import { getTestCertificates, getAllQcDocuments, getActiveProjectsList, getCalibrationItems, getReceivedProjectIds } from '@/lib/data';
+import { canPerformAction } from '@/lib/action-permissions';
+import { getTestCertificates, getAllQcDocuments, getActiveProjectsList, getCalibrationItems, getReceivedProjectIds, getNcrs, getQcHoldPoints } from '@/lib/data';
 import QcWorkspace from '@/components/QcWorkspace';
 
 export const dynamic = 'force-dynamic';
@@ -12,12 +13,15 @@ export default async function QcPage({ searchParams }) {
   if (!canAccessDepartment(user, 'QC')) redirect(roleHome(user));
 
   const sp = await searchParams;
-  const [allProjects, certificates, documents, calibrationItems, receivedIds] = await Promise.all([
+  const [allProjects, certificates, documents, calibrationItems, receivedIds, ncrs, holdPoints, canDisposition] = await Promise.all([
     getActiveProjectsList(),
     getTestCertificates(),
     getAllQcDocuments(),
     getCalibrationItems(), // STERP items 34/35, §5p — not project-scoped, so not filtered below
     getReceivedProjectIds(),
+    getNcrs(),
+    getQcHoldPoints(),
+    canPerformAction(user, 'QC', 'qc.ncr.disposition'),
   ]);
 
   // A project is QC's business once Stores starts receiving its materials — filter the project
@@ -30,5 +34,6 @@ export default async function QcPage({ searchParams }) {
   const projects = allProjects.filter(p => relevant.has(p.id));
 
   return <QcWorkspace projects={projects} certificates={certificates} documents={documents}
-    calibrationItems={calibrationItems} initialTab={sp?.tab} initialProject={sp?.project} />;
+    calibrationItems={calibrationItems} ncrs={ncrs} holdPoints={holdPoints} canDisposition={canDisposition}
+    initialTab={sp?.tab} initialProject={sp?.project} />;
 }

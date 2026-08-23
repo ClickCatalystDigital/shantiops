@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import {
   SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarGroup, SidebarGroupLabel,
   SidebarGroupContent, SidebarMenu, SidebarMenuItem, SidebarMenuButton,
@@ -7,7 +8,7 @@ import {
   SidebarTrigger, SidebarInset, SidebarRail,
 } from '@/components/ui/sidebar';
 import { Separator } from '@/components/ui/separator';
-import { LayoutPanelTopIcon } from 'lucide-react';
+import { LayoutPanelTopIcon, ChevronRightIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // Shared shell for workspace-level navigation. The content stays owned by each workspace;
@@ -23,6 +24,12 @@ import { cn } from '@/lib/utils';
 export default function WorkspaceSidebar({ title, icon: TitleIcon = LayoutPanelTopIcon, items, groups, activeKey, onChange, children, nested = false, hideHeader = false, header }) {
   const flatItems = groups ? groups.flatMap(g => g.items) : items.flatMap(item => item.group ? item.children : item);
   const activeItem = flatItems.find(item => item.key === activeKey) || flatItems[0];
+  // Accordion, one department open at a time — a `groups` sidebar with many sections (e.g. Reports'
+  // 9 departments, 44 items total) used to render every group fully expanded, so "navigate" meant
+  // scroll past everything else. Default open = whichever group holds the active item, so switching
+  // reports never surprises you by collapsing your own place.
+  const defaultOpenGroup = groups?.find(g => g.items.some(i => i.key === activeKey))?.label ?? groups?.[0]?.label;
+  const [openGroup, setOpenGroup] = useState(defaultOpenGroup);
 
   if (nested) {
     return (
@@ -70,9 +77,18 @@ export default function WorkspaceSidebar({ title, icon: TitleIcon = LayoutPanelT
           </div>
         </SidebarHeader>
         <SidebarContent>
-          {groups ? groups.map(group => (
+          {groups ? groups.map(group => {
+            const isOpen = openGroup === group.label;
+            return (
             <SidebarGroup key={group.label}>
-              <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+              <SidebarGroupLabel asChild>
+                <button type="button" className="flex w-full items-center gap-1.5 text-left" onClick={() => setOpenGroup(isOpen ? null : group.label)}>
+                  <ChevronRightIcon className={cn('size-3.5 shrink-0 transition-transform', isOpen && 'rotate-90')} />
+                  <span className="flex-1 truncate">{group.label}</span>
+                  <span className="text-[10px] tabular-nums text-muted-foreground/70">{group.items.length}</span>
+                </button>
+              </SidebarGroupLabel>
+              {isOpen && (
               <SidebarGroupContent>
                 <SidebarMenu>
                   {group.items.map(item => {
@@ -89,8 +105,9 @@ export default function WorkspaceSidebar({ title, icon: TitleIcon = LayoutPanelT
                   })}
                 </SidebarMenu>
               </SidebarGroupContent>
+              )}
             </SidebarGroup>
-          )) : (
+          );}) : (
             <SidebarGroup>
               <SidebarGroupContent>
                 <SidebarMenu>

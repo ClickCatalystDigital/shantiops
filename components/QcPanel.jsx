@@ -16,6 +16,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger,
 } from '@/components/ui/dialog';
 import { PlusIcon, XIcon } from 'lucide-react';
+import { RaiseNcrDialog } from './NcrPanel';
 
 const RESULT_TONE = {
   pass: 'bg-success/10 text-success ring-success/20',
@@ -136,6 +137,7 @@ export default function QcPanel({
 }) {
   const router = useRouter();
   const [reworking, setReworking] = useState(null);
+  const [raisingNcrFor, setRaisingNcrFor] = useState(null);
   const linkLabel = id => linkOptions?.find(o => String(o.id) === String(id))?.label;
 
   async function setResult(id, result) {
@@ -208,6 +210,9 @@ export default function QcPanel({
                 {reworking === r.id ? 'Creating…' : 'Create rework card'}
               </Button>
             )}
+            {canEdit && r.result === 'fail' && (
+              <Button size="sm" variant="outline" onClick={() => setRaisingNcrFor(r)}>Raise NCR</Button>
+            )}
             <span className="ml-auto flex items-center gap-3 text-xs text-muted-foreground">
               {r.inspector && <span>{r.inspector}</span>}
               {r.tested_on && <span className="tnum">{formatDate(r.tested_on)}</span>}
@@ -221,6 +226,10 @@ export default function QcPanel({
           </div>
         ))}
       </CardContent>
+      {raisingNcrFor && (
+        <RaiseNcrDialog open onOpenChange={o => !o && setRaisingNcrFor(null)}
+          projectId={projectId} qcRecordId={raisingNcrFor.id} onRaised={() => setRaisingNcrFor(null)} />
+      )}
     </Card>
   );
 }

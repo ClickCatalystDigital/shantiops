@@ -4,7 +4,7 @@
 // in the root layout via lib/auth.js's getSessionUser().
 import { NextResponse } from 'next/server';
 
-const PUBLIC_PATHS = ['/login', '/d-login', '/api/login', '/api/config/brand', '/api/register'];
+const PUBLIC_PATHS = ['/login', '/d-login', '/api/login', '/api/config/brand', '/api/register', '/set-password', '/api/set-password'];
 
 export function middleware(req) {
   const { pathname } = req.nextUrl;
