@@ -3483,7 +3483,10 @@ renders (caught and fixed a real bug — missing `Select` import crashed the tab
 depreciation run completes cleanly with no bogus posting. **Not live-verified**: TDS Deduction
 Register (code-reviewed only, reuses the already-proven report-engine pattern) and RCM's actual
 journal posting (verified the math balances by hand, not clicked through a real PO→bill→approve
-cycle — didn't want to fabricate a fake vendor transaction in the real books).
+cycle — didn't want to fabricate a fake vendor transaction in the real books). **Update (§5ah,
+2026-08-23)**: that real cycle was run — as a disposable, deleted-afterward test, not a standing
+verification — and it found two real bugs the hand-verified math had missed; both fixed. RCM is
+still not considered "closed" until a genuine business RCM transaction happens, per instruction.
 
 ## 5aa. TDS Section 393 modernization + fixed-asset disposal + RCM sales-side (2026-08-22)
 
@@ -3539,7 +3542,10 @@ idempotent in practice (the dev server restarted once mid-session, `migrate()` r
 stayed correct — not double-mangled). The RCM confirm dialog on Sales renders correctly against a
 real accepted quotation, closed without submitting (didn't want to force-create a real invoice as a
 side effect of a UI check). Fixed Assets tab still renders with the new Dispose button present in
-code, but there's no real asset yet to click it against, so that's a render-only check, not exercised.
+code, but there's no real asset yet to click it against, so that's a render-only check, not exercised
+(superseded — a real asset was created and disposed later, see §5ac/§5ad, so this render-only caveat
+no longer applies to Fixed Assets; it's quoted here only for the RCM-on-Sales sentence above, which
+is still accurate as of §5ah — sales-side RCM remains code-reviewed only, never a real invoice).
 All of `vendorBillLines`/`salesInvoiceLines`/`fixedAssetDisposalLines`'s new branches (RCM both
 sides, disposal gain, disposal loss, exact-book-value no-op, ₹0 mistake-correction) verified by a
 new `scripts/ledger-selfcheck.mjs` — pure-function checks, no DB, no fake data ever written anywhere
@@ -4099,6 +4105,71 @@ nor silently disappears. Restoring the real hub URL and re-running recovered cle
 
 **Explicitly not done, per instruction**: no Cloudflare Cron Trigger or Worker created — this is
 the endpoint such a Worker would call, nothing on the Cloudflare side exists yet.
+
+## 5ah. RCM real-transaction test — two real bugs found and fixed (2026-08-23)
+
+§5z/§5aa's RCM (reverse charge) support had only ever been verified via pure-function math checks
+(`ledger-selfcheck.mjs`) — never a real PO→Vendor Bill→Approve cycle, deliberately, to avoid
+fabricating a fake transaction in the real books. This session ran that real cycle for the first
+time (a clearly-labeled, disposable test PO/bill against a real supplier, no BOM/inventory linkage
+so it couldn't touch real stock) — and it immediately failed with `Journal entry not balanced:
+debit 118000 != credit 100000`. **Per explicit instruction, this checklist item is intentionally
+NOT being marked "done"** — real verification only counts when a real business RCM transaction
+happens; this test only proves the code path isn't broken.
+
+**Bug 1 — `vendorBillLines()` double-excluded tax under RCM** (`lib/ledger.mjs`). The caller
+(`record-bill` route) already computes `payableAmount = subtotal - tdsAmt` under RCM (tax already
+excluded, since RCM means the vendor is never owed the tax portion at all). `vendorBillLines()` then
+subtracted `taxAmount` from that *again* before crediting Accounts Payable — a real RCM+TDS bill
+(subtotal ₹1,00,000, tax ₹18,000, TDS ₹2,360) posted AP at ₹79,640 instead of the correct ₹97,640,
+throwing the entry off by exactly the tax amount. The existing pure-function selfcheck never caught
+this because its hand-picked `payableAmount` (1170, for a 1000/180/10 case) didn't match what the
+real route actually produces for RCM (990) — the test was internally consistent but not
+representative of real input. Fixed by removing the double-subtraction; `AccountsPayable` now
+credits `payableAmount` as-is, since the caller has already done the tax exclusion. Selfcheck's test
+data corrected to use a realistic `payableAmount`, with a comment explaining why the old value
+masked the bug.
+
+**Bug 2 — status flips to "approved" even when the GL post fails**
+(`app/api/vendor-bills/[id]/route.js`, `app/api/sales-invoices/[id]/route.js`). Both routes ran the
+`UPDATE ... SET status = 'approved'/'issued'` *before* calling `postJournalEntry()`. When Bug 1
+threw on the first real test, the bill had already been marked `approved` in the DB — with no
+ledger entry at all. Worse, the vendor-bill route's own re-post guard
+(`!['approved','paid'].includes(bill.status)`) then read that corrupted status and concluded the
+bill was "already settled," permanently skipping any future posting attempt — no retry could ever
+fix it. `postJournalEntry()` itself is correctly idempotent (checks for an existing entry by
+`source_type`/`source_id` before inserting), so the actual fix was reordering: both routes now call
+`postJournalEntry()` (and, for vendor bills, the inventory-costing loop) *before* the status/field
+`UPDATE`. A future posting failure now leaves the document status untouched, so a retry lands on the
+same "not yet settled" branch and can post cleanly — no permanently-stuck documents.
+
+**Verified for real** (Shanti Boilers, real supplier, disposable test PO/bill/items — no BOM or
+inventory_items link, so the inventory-costing branch never fired, confirmed by inspection): after
+both fixes, the same RCM+TDS bill posted a fully balanced entry — Dr Raw Material Inventory 100,000,
+Dr GST Input Credit 18,000, Cr Accounts Payable 97,640, Cr GST Output Payable 18,000, Cr TDS Payable
+2,360 (118,000 = 118,000) — exactly the expected RCM accounting treatment. Trial Balance moved from
+8,645,209.67 to 8,763,209.67 (exactly +118,000 on both sides) with the test entry in place, then
+**all test artifacts deleted** (journal entry + lines, vendor bill + items, PO + item) per
+instruction, and Trial Balance confirmed back to exactly 8,645,209.67 — zero residue.
+
+**Sales-side RCM checked by inspection, not live-tested this pass**: `salesInvoiceLines()`
+(`lib/ledger.mjs`) doesn't rely on any caller-precomputed tax-exclusive figure the way
+`vendorBillLines()` did — its RCM branch posts `subtotal` straight to both AR and Revenue, no second
+subtraction possible, and sales invoices have no TDS interaction to combine with. Code review found
+no equivalent bug. Left un-exercised with a real invoice deliberately: converting a real accepted
+quotation would consume a real sequential invoice number from the actual GST-numbering series, and
+deleting the invoice afterward would leave an unexplained gap in that series — a real compliance-
+hygiene cost the Vendor Bill side doesn't have (bill numbers are free text, not a controlled
+sequence). Do this only when a real sales RCM transaction is actually needed, per the same
+real-only philosophy this section holds RCM to overall.
+
+**Related risk found by inspection, not live-tested, not fixed — flagged honestly**: the same
+"state-changing UPDATE before the risky `postJournalEntry()` call" shape also exists in
+`app/api/material-issues/route.js` (inventory `on_hand` is decremented before the GL post attempt)
+and `app/api/salary-slips/[id]/route.js` (status updated before posting). Neither was exercised or
+touched this session — surfacing this now rather than treating "found two, matching the pattern
+against a couple of siblings" as license to silently patch everything nearby without live-testing
+each one.
 
 ## 6. Customer Portal (read-only, external)
 

@@ -40,17 +40,20 @@ export async function PATCH(req, { params }) {
     if (b[key] !== undefined) { fields.push(`${key} = ?`); args.push(b[key]); }
   }
   if (!fields.length) return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
-  fields.push('updated_at = CURRENT_TIMESTAMP');
-  args.push(params.id);
-  await execute(`UPDATE vendor_bills SET ${fields.join(', ')} WHERE id = ?`, args);
-  await audit('vendor_bill_updated', { actor: user.username, detail: `#${params.id}${b.status ? `: ${b.status}` : ''}` });
 
   // ACCOUNTING-IMPLEMENTATION-PLAN.md Phase 5 — 'approved' is a Vendor Bill's "issued" equivalent
   // (the point AP is actually recognized); also fires on a direct draft->paid jump, same reasoning
-  // as the Sales Invoice route. postJournalEntry() is idempotent per source document. Guarded on
-  // the bill's PREVIOUS status (fetched above, before this PATCH's UPDATE ran) so a bill that was
-  // already approved/paid doesn't get its GL entry or inventory receipt reprocessed by a repeated
-  // PATCH to the same status.
+  // as the Sales Invoice route. Guarded on the bill's PREVIOUS status (fetched above) so a bill
+  // that's already approved/paid doesn't get its GL entry or inventory receipt reprocessed by a
+  // repeated PATCH to the same status.
+  //
+  // Posting runs BEFORE the status UPDATE below, not after — a real RCM+TDS test bill exposed why:
+  // this used to update status first, so a postJournalEntry() failure (e.g. an unbalanced entry —
+  // see lib/ledger.mjs's vendorBillLines() fix) left the bill permanently marked "approved" with no
+  // ledger entry at all, and no retry could ever fix it since this same status-based guard then
+  // read "already settled" and skipped posting forever. postJournalEntry() is itself idempotent
+  // (checks for an existing entry by source_type/source_id before inserting), so if it throws here,
+  // nothing has been written yet and a clean retry will try again from the same unsettled state.
   const firstTimeSettled = !['approved', 'paid'].includes(bill.status) && ['approved', 'paid'].includes(b.status);
   if (firstTimeSettled) {
     await postJournalEntry({
@@ -82,5 +85,10 @@ export async function PATCH(req, { params }) {
       await execute('UPDATE inventory_items SET on_hand = on_hand + ?, avg_cost = ? WHERE id = ?', [it.qty, newAvgCost, it.inventory_item_id]);
     }
   }
+
+  fields.push('updated_at = CURRENT_TIMESTAMP');
+  args.push(params.id);
+  await execute(`UPDATE vendor_bills SET ${fields.join(', ')} WHERE id = ?`, args);
+  await audit('vendor_bill_updated', { actor: user.username, detail: `#${params.id}${b.status ? `: ${b.status}` : ''}` });
   return NextResponse.json({ ok: true });
 }

@@ -18,12 +18,17 @@ function lineFor(lines, code) { return lines.find(l => l.accountCode === code); 
 }
 
 // --- vendorBillLines: reverse charge — AP excludes tax, self-assessed liability posted --------
+// payableAmount here (990) is what the real caller (record-bill route) actually computes under RCM:
+// subtotal - tdsAmt = 1000 - 10, NOT total - tdsAmt (1170) — an earlier version of this test used
+// 1170, which happened to make vendorBillLines()'s now-removed double tax-subtraction look correct
+// in isolation while it actually threw "not balanced" on a real RCM+TDS vendor bill in production
+// testing (subtotal 100000/tax 18000/TDS 2360/payableAmount 97640 — same shape, different bug).
 {
-  const lines = vendorBillLines({ subtotal: 1000, taxAmount: 180, tdsAmount: 10, payableAmount: 1170, isReverseCharge: true });
+  const lines = vendorBillLines({ subtotal: 1000, taxAmount: 180, tdsAmount: 10, payableAmount: 990, isReverseCharge: true });
   assertBalanced(lines);
   assert.equal(lineFor(lines, '1300').debit, 180, 'Input Credit still claimed under RCM');
   assert.equal(lineFor(lines, '2200').credit, 180, 'GST Output Payable (self-assessed) must equal the tax amount');
-  assert.equal(lineFor(lines, '2100').credit, 990, 'AP must exclude tax (1170 payable - 180 tax = 990)');
+  assert.equal(lineFor(lines, '2100').credit, 990, 'AP must equal payableAmount as-is (already tax-excluded by the caller)');
 }
 
 // --- salesInvoiceLines: normal case ------------------------------------------------------------

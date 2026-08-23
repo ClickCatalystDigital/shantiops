@@ -43,14 +43,15 @@ export async function PATCH(req, { params }) {
     if (b[key] !== undefined) { fields.push(`${key} = ?`); args.push(b[key]); }
   }
   if (!fields.length) return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
-  fields.push('updated_at = CURRENT_TIMESTAMP');
-  args.push(params.id);
-  await execute(`UPDATE sales_invoices SET ${fields.join(', ')} WHERE id = ?`, args);
-  await audit('sales_invoice_updated', { actor: user.username, detail: `#${params.id}${b.status ? `: ${b.status}` : ''}` });
 
   // ACCOUNTING-IMPLEMENTATION-PLAN.md Phase 5 — auto-post on issue (2026-08-20 decision). Also
   // fires on a direct draft->paid jump so an invoice can't skip the ledger just because "issued"
   // was never set explicitly; postJournalEntry() is idempotent per source document either way.
+  //
+  // Runs BEFORE the status UPDATE below (mirrors the same fix in vendor-bills/[id]/route.js, found
+  // via a real RCM test transaction): if postJournalEntry() throws, nothing should be written yet,
+  // so the invoice stays in its prior status and a retry can post cleanly — not left permanently
+  // marked issued/paid with no corresponding ledger entry.
   if (['issued', 'paid'].includes(b.status)) {
     await postJournalEntry({
       company: invoice.company,
@@ -62,5 +63,10 @@ export async function PATCH(req, { params }) {
       createdBy: user.username,
     });
   }
+
+  fields.push('updated_at = CURRENT_TIMESTAMP');
+  args.push(params.id);
+  await execute(`UPDATE sales_invoices SET ${fields.join(', ')} WHERE id = ?`, args);
+  await audit('sales_invoice_updated', { actor: user.username, detail: `#${params.id}${b.status ? `: ${b.status}` : ''}` });
   return NextResponse.json({ ok: true });
 }
