@@ -4827,6 +4827,25 @@ open NCR blocks hold release, Production can't verify, and a failed-test-origina
 a state where it silently fails to gate the hold it's actually about. `npm run build`, `npm run
 lint`, and every `scripts/*-selfcheck.mjs` clean throughout.
 
+**Follow-up gap-finding pass, same day — found and fixed a real bypass of the guard just added.**
+`POST /api/ncrs` derives `project_id` from whichever link field resolves it first
+(`qc_record_id` > `bom_item_id` > `work_order_id` > `job_card_id` > bare `project_id`), but never
+cross-checked a *lower*-priority link field supplied *alongside* a higher-priority one that actually
+did the resolving — e.g. `qc_record_id` resolving `project_id`, with an unrelated `job_card_id` from
+a *different* project also present in the body. **Live-confirmed exploitable**: raised an NCR from a
+real failed `qc_record` in a project with a genuinely held job card, supplying an unrelated job
+card's id from a different project; the hold-linkage guard (which only checks `!b.job_card_id`) saw
+a truthy `job_card_id` and skipped, the NCR was created pointing at the wrong card, and
+`qc-release` on the *real* held card then succeeded with zero blocking NCR against it — the entire
+hardening pass fixed above would have been silently bypassable by any client not going through the
+UI's own picker. Fixed: `POST /api/ncrs` now cross-checks `job_card_id` (and, for the same "never
+trust the client" reason, `bom_item_id`/`work_order_id`) against the resolved `project_id`, 400 if
+mismatched. Re-verified live: the same exploit attempt now 400s
+`"job_card_id does not belong to this NCR's project"`; the legitimate linked-to-the-real-held-card
+path still succeeds; the JobCardBoard-only raise path (no `qc_record_id`, `job_card_id` as the sole
+link) is unaffected. Disposable test rows reversed, zero residue. `npm run build`, `npm run lint`,
+and every `scripts/*-selfcheck.mjs` clean.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own

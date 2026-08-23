@@ -63,6 +63,33 @@ export async function POST(req) {
   const projectId = await resolveProjectId(b);
   if (!projectId) return NextResponse.json({ error: "Couldn't determine which project this NCR belongs to" }, { status: 400 });
 
+  // Any link field can be supplied alongside a higher-priority one that actually resolved
+  // projectId (e.g. qc_record_id resolves it, but job_card_id/bom_item_id/work_order_id are also in
+  // the body) — cross-check each supplied one actually belongs to that same project. For
+  // job_card_id this is a real security gap, not just tidiness: without it a client could satisfy
+  // the hold-linkage guard below with an unrelated job card from a different project while the real
+  // held card in this project gets no gating NCR at all (found live: qc-release on the real held
+  // card then succeeded with zero blocking NCR against it). bom_item_id/work_order_id don't gate
+  // anything today but get the same check for the same "never trust the client" reason.
+  if (b.job_card_id) {
+    const jc = await queryOne('SELECT project_id FROM job_cards WHERE id = ?', [Number(b.job_card_id)]);
+    if (!jc || jc.project_id !== projectId) {
+      return NextResponse.json({ error: "job_card_id does not belong to this NCR's project" }, { status: 400 });
+    }
+  }
+  if (b.bom_item_id) {
+    const bi = await queryOne('SELECT project_id FROM bom_items WHERE id = ?', [Number(b.bom_item_id)]);
+    if (!bi || bi.project_id !== projectId) {
+      return NextResponse.json({ error: "bom_item_id does not belong to this NCR's project" }, { status: 400 });
+    }
+  }
+  if (b.work_order_id) {
+    const wo = await queryOne('SELECT project_id FROM work_orders WHERE id = ?', [Number(b.work_order_id)]);
+    if (!wo || wo.project_id !== projectId) {
+      return NextResponse.json({ error: "work_order_id does not belong to this NCR's project" }, { status: 400 });
+    }
+  }
+
   // Duplicate guard — without this, QC and Production could each raise a separate NCR against the
   // same failed test.
   if (b.qc_record_id) {
