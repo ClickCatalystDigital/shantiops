@@ -15,14 +15,17 @@ set of user accounts:
 **Product decision, superseded — do not act on this paragraph, see §5q:** `V3_CHANGES.md` §12
 originally deferred regulated accounting/GST/TDS/statutory payroll as ERPNext-integration
 territory. That decision was reversed 2026-08-20 (§5q): Shanti Ops is now the system of record for
-the full Accounts workflow (ledger, GST, TDS, fixed assets, payroll export), built out through §5z
-and §5ai — not a stub, not an ERPNext dependency. Left here only so a reader who finds the old
-`V3_CHANGES.md` §12 text elsewhere knows it's stale. CRM, Selling, and HR (incl. Recruitment) are
-still built natively to real ERPNext feature depth, unaffected by this reversal.
+the full Accounts workflow (ledger, GST, TDS, fixed assets, payroll export, Dispatch freight/e-way
+capture), built out through §5z and §5aj — not a stub, not an ERPNext dependency. Left here only so
+a reader who finds the old `V3_CHANGES.md` §12 text elsewhere knows it's stale. CRM, Selling, and HR
+(incl. Recruitment) are still built natively to real ERPNext feature depth, unaffected by this
+reversal.
 
 Everything in this file reflects the **current, working build**, updated as work lands — most
-recently 2026-08-23 (§5ai, an RCM real-transaction test that found and fixed two real ledger-posting
-bugs; §5ah, the statutory-rate sync's daily Cloudflare Cron Trigger going live).
+recently 2026-08-23 (§5aj, Dispatch's first accounting integration — freight cost, real invoice
+linkage, e-way bill capture, a new Report Engine entry; §5ai, an RCM real-transaction test that
+found and fixed two real ledger-posting bugs; §5ah, the statutory-rate sync's daily Cloudflare Cron
+Trigger going live).
 The paragraph below is itself a dated snapshot from 2026-08-03, describing what was the most recent
 round **at that time**: a **full Procurement redesign** — the working spec lived in
 `PROCUREMENT-CHANGES.md` during the
@@ -4235,6 +4238,89 @@ and `app/api/salary-slips/[id]/route.js` (status updated before posting). Neithe
 touched this session — surfacing this now rather than treating "found two, matching the pattern
 against a couple of siblings" as license to silently patch everything nearby without live-testing
 each one.
+
+## 5aj. Dispatch — accounting integration: freight cost, invoice linkage, e-way bill, register (2026-08-23)
+
+Dispatch (`packing_lists`) had **zero accounting integration** until this pass — `invoice_no`/`dc_no`
+were free-text fields with no FK to the real `sales_invoices` row, no freight cost field existed
+anywhere despite the *inbound* (Procurement) side already tracking freight terms
+(`purchase_orders.freight`), no e-way bill capture, and Dispatch had zero Report Engine entries while
+every other department had at least one. Built per the user's explicit instruction to make the
+necessary design calls without their input and demo the result.
+
+**Decisions made (own judgment, flagged for the demo, not hidden as the only possible answer):**
+1. **No new revenue-recognition trigger on dispatch** — under GST, the invoice (not delivery) governs
+   tax timing (Rule 55 requires the invoice to accompany the movement); by dispatch time the invoice
+   and its GL posting already exist. Dispatch needed *linkage*, not a second posting event.
+2. **Freight cost, only when the company bears it, posts Dr Freight Expense (new code `5500`) / Cr
+   Bank & Cash** — paid immediately, mirroring the Bank Reconciliation quick-JE precedent exactly.
+   Swapping the credit side to Accounts Payable (if the real practice is paying the transporter on
+   credit terms) is a one-line change to `dispatchFreightLines()`.
+3. **Freight posting is a separate, explicit action** (`POST /api/packing/[id]/freight`), not a side
+   effect of the generic packing-list PATCH — deliberately avoiding the exact bug class just found in
+   RCM (§5ai): a state-changing update racing ahead of `postJournalEntry()`. `postJournalEntry()`'s
+   own idempotency (existing-entry check by `source_type`/`source_id`) is the only "already posted"
+   signal — no separate flag to drift out of sync.
+4. **E-way bill: capture only**, no generation (needs a paid GSP, standing deferral since §5z/§7).
+5. **No GTA reverse-charge GST on freight** — a real Indian tax nuance (freight paid to a transporter
+   is frequently RCM-liable), deliberately not modeled, same class of stated simplification as the
+   already-accepted Rule 42/43 ITC-reversal deferral. `dispatchFreightLines()` posts a flat,
+   non-GST expense.
+6. **One `sales_invoice_id` per packing list** — doesn't model a shipment split across multiple
+   invoices; flagged, not built, absent evidence real shipments actually split that way.
+
+**Built:**
+- **Schema** (`lib/db.js`, additive `addColumn`) — `packing_lists.sales_invoice_id` (real FK,
+  replacing reliance on the free-text `invoice_no` for anything that needs the actual invoice),
+  `freight_amount`, `freight_paid_by` ('us'|'customer'), `eway_bill_no`, `eway_bill_date`,
+  `dispatched_at` (stamped once on the first transition to `'dispatched'` — `updated_at` changes on
+  every edit and can't answer "when did this actually ship", needed for the register below).
+- **New account `5500` "Freight & Transportation Expense"** (`lib/ledger.mjs`) — backfilled onto both
+  companies automatically via the existing `else` branch in `lib/db.js` (no new backfill code
+  needed). New `dispatchFreightLines({amount})`, own selfcheck assertion in
+  `scripts/ledger-selfcheck.mjs`.
+- **`POST /api/packing/[id]/freight`** — reads the already-saved `freight_amount` (single source of
+  truth for what's displayed vs. posted), rejects if `freight_paid_by !== 'us'` or no amount set,
+  posts via the existing `postJournalEntry()`. Idempotent by construction.
+- **`app/api/packing/[id]/route.js`** — new fields added to `EDITABLE`; a guard rejects (`409`)
+  editing `freight_amount` once a `dispatch_freight` journal entry already exists for that packing
+  list, pointing at Accounts' manual Journal Entry correction flow instead of silently accepting a
+  number `postJournalEntry`'s own dedup would then never actually re-post; `dispatched_at` stamped on
+  first dispatch in the same update.
+- **`lib/data.js`** — `getPackingDetail()` gained a computed `freightPosted` flag (checks
+  `journal_entries` directly, not a separate status column); `getSalesInvoices()` gained an optional
+  `projectId` filter; new `getDispatchRegisterLines()`.
+- **`GET /api/sales-invoices`** — widened to also allow Dispatch (previously only Sales/Marketing/
+  Accounts — a `dispatch_head` calling it as originally planned would have 403'd), plus the new
+  `?project_id=` filter so the packing-list invoice picker only lists that project's invoices.
+- **New action** `dispatch.packing.freight` (`lib/action-permissions.js`).
+- **UI** (`components/PackingDetail.jsx`) — e-way bill fields in the existing generic edit-field
+  loop; a `freight_paid_by` Select and a `sales_invoice_id` Select (populated from the new
+  project-filtered endpoint) alongside it; `freight_amount` becomes disabled once posted; a small
+  card with a "Post Freight Expense" button, shown only when `freight_paid_by === 'us'` and an
+  amount is set, hidden once posted (optimistic local-state update, no full reload).
+- **Dispatch Register** — Dispatch's first-ever Report Engine entry (`app/api/reports/dispatch-
+  register/route.js`, `lib/reports/render.js`'s `DISPATCH_REGISTER_COLS`/`dispatchRegisterTable`,
+  `lib/reports/catalog.js`), visible to both Dispatch and Accounts (mirrors `vendor-bills`'
+  cross-department read access). `dispatched_at` falls back to `updated_at` via `COALESCE` for any
+  packing list dispatched before this column existed — a real approximation for historical rows, not
+  a data claim, noted on the report itself.
+
+**Live-verified against the real dev DB**, as `dispatch_head`/`accounts_head`: `npm run build` clean;
+`dispatchFreightLines()` selfcheck passes; created a disposable test packing list under a real
+project (17, Shanti Boilers), linked a real sales invoice (SB/13/2026-27), set a real freight amount
+and e-way bill number, dispatched it (confirmed `dispatched_at` stamped), posted the freight expense
+— the JE posted exactly Dr Freight Expense 4,500 / Cr Bank & Cash 4,500, Trial Balance moved by
+exactly that amount both sides (8,645,209.67 → 8,649,709.67). Re-posting returned the same journal
+entry id (idempotency confirmed, no duplicate). Editing `freight_amount` after posting correctly
+rejected with `409`. The Dispatch Register report rendered the shipment correctly with the right
+totals, visible to both `dispatch_head` and `accounts_head`. `GET /api/sales-invoices?project_id=`
+correctly returned only that project's invoice for a `dispatch_head` caller (previously would have
+403'd). Clicked through the actual `PackingDetail` UI — freight card, disabled amount field with the
+correction message, linked-invoice Select, e-way bill fields all rendered correctly. That first test
+packing list was then deleted and Trial Balance confirmed back to exactly 8,645,209.67 — zero residue
+— before recreating a second, permanent example (`PL-1009`, customer name tagged "(safe to ignore)")
+left in the database for demo purposes, per instruction (see `4.5-DATA-INVENTORY.md`).
 
 ## 6. Customer Portal (read-only, external)
 

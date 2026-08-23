@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { api, showToast, formatDate } from '@/lib/client';
 import { Card, CardContent } from '@/components/ui/card';
@@ -20,7 +20,9 @@ const HEADER_FIELDS = [
   ['invoice_no', 'Invoice No', 'text'], ['invoice_date', 'Invoice Date', 'date'],
   ['dc_no', 'D.C. No', 'text'], ['dc_date', 'D.C. Date', 'date'],
   ['dispatch_through', 'Dispatch Through', 'text'], ['vehicle_no', 'Vehicle No', 'text'],
+  ['eway_bill_no', 'E-Way Bill No', 'text'], ['eway_bill_date', 'E-Way Bill Date', 'date'],
 ];
+const FREIGHT_PAID_BY = [['us', 'We pay'], ['customer', 'Customer pays']];
 
 export default function PackingDetail({ list: initialList, items: initialItems, readOnly = false }) {
   const [list, setList] = useState(initialList);
@@ -28,6 +30,13 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
   const [f, setF] = useState(BLANK);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(initialList);
+  const [invoices, setInvoices] = useState([]);
+  const [postingFreight, setPostingFreight] = useState(false);
+
+  useEffect(() => {
+    if (!list.project_id) return;
+    api(`/api/sales-invoices?project_id=${list.project_id}`).then(setInvoices).catch(() => {});
+  }, [list.project_id]);
 
   async function addItem(e) {
     e.preventDefault();
@@ -49,15 +58,30 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
   }
   async function saveHeader(e) {
     e.preventDefault();
-    const body = {};
+    const body = { freight_paid_by: draft.freight_paid_by || '', sales_invoice_id: draft.sales_invoice_id || '' };
     HEADER_FIELDS.forEach(([k]) => { body[k] = draft[k] || ''; });
+    // Once posted, freight_amount is read-only (disabled input above) — leave it out of the body
+    // entirely rather than resending the unchanged figure, which would otherwise trip the server's
+    // own already-posted guard and block every OTHER field in this same save.
+    if (list.freightPosted) delete body.freight_amount;
     try { await api(`/api/packing/${list.id}`, { method: 'PATCH', body }); setList(l => ({ ...l, ...body })); setEditing(false); showToast('Details saved'); }
     catch (err) { showToast(err.message, 'error'); }
+  }
+  async function postFreight() {
+    setPostingFreight(true);
+    try {
+      await api(`/api/packing/${list.id}/freight`, { method: 'POST' });
+      setList(l => ({ ...l, freightPosted: true }));
+      showToast('Freight expense posted to the ledger');
+    } catch (err) { showToast(err.message, 'error'); }
+    finally { setPostingFreight(false); }
   }
 
   const Meta = ({ label, value }) => (
     <div><dt className="text-xs text-muted-foreground">{label}</dt><dd className="text-sm font-medium">{value || '—'}</dd></div>
   );
+
+  const linkedInvoice = invoices.find(i => i.id === list.sales_invoice_id);
 
   return (
     <main className="container flex flex-col gap-6 py-8">
@@ -90,9 +114,44 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
                     <Input type={type} value={draft[k] || ''} onChange={e => setDraft({ ...draft, [k]: e.target.value })} />
                   </div>
                 ))}
+                <div className="flex flex-col gap-1.5">
+                  <Label>Linked Invoice</Label>
+                  <Select value={draft.sales_invoice_id ? String(draft.sales_invoice_id) : ''} onValueChange={v => setDraft({ ...draft, sales_invoice_id: Number(v) })}>
+                    <SelectTrigger><SelectValue placeholder="Not linked" /></SelectTrigger>
+                    <SelectContent>
+                      {invoices.map(i => <SelectItem key={i.id} value={String(i.id)}>{i.invoice_no} · {i.total}</SelectItem>)}
+                      {!invoices.length && <SelectItem value="none" disabled>No invoices for this project</SelectItem>}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label>Freight Amount</Label>
+                  <Input type="number" min="0" step="any" disabled={!!list.freightPosted}
+                    value={draft.freight_amount || ''} onChange={e => setDraft({ ...draft, freight_amount: e.target.value })} />
+                  {list.freightPosted && <p className="text-xs text-muted-foreground">Already posted — correct via a manual Journal Entry in Accounts, not here.</p>}
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label>Freight Paid By</Label>
+                  <Select value={draft.freight_paid_by || ''} onValueChange={v => setDraft({ ...draft, freight_paid_by: v })}>
+                    <SelectTrigger><SelectValue placeholder="Not set" /></SelectTrigger>
+                    <SelectContent>{FREIGHT_PAID_BY.map(([v, label]) => <SelectItem key={v} value={v}>{label}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
               </div>
               <div><Button type="submit">Save</Button></div>
             </form>
+          </CardContent>
+        </Card>
+      )}
+
+      {!readOnly && list.freight_amount > 0 && list.freight_paid_by === 'us' && (
+        <Card className="no-print">
+          <CardContent className="flex items-center justify-between py-4">
+            <div>
+              <p className="text-sm font-medium">Freight expense: {list.freight_amount}</p>
+              <p className="text-xs text-muted-foreground">{list.freightPosted ? 'Posted to the ledger.' : 'Not yet posted to the ledger.'}</p>
+            </div>
+            {!list.freightPosted && <Button size="sm" disabled={postingFreight} onClick={postFreight}>{postingFreight ? 'Posting…' : 'Post Freight Expense'}</Button>}
           </CardContent>
         </Card>
       )}
@@ -111,12 +170,14 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
             <Meta label="Packing No" value={list.packing_no} />
             <Meta label="Address" value={list.customer_address} />
             <Meta label="Package Type" value={list.package_type} />
-            <Meta label="Invoice No" value={list.invoice_no} />
+            <Meta label="Invoice No" value={linkedInvoice?.invoice_no || list.invoice_no} />
             <Meta label="Invoice Date" value={list.invoice_date && formatDate(list.invoice_date)} />
             <Meta label="D.C. No" value={list.dc_no} />
             <Meta label="D.C. Date" value={list.dc_date && formatDate(list.dc_date)} />
             <Meta label="Dispatch Through" value={list.dispatch_through} />
             <Meta label="Vehicle No" value={list.vehicle_no} />
+            <Meta label="E-Way Bill No" value={list.eway_bill_no} />
+            <Meta label="E-Way Bill Date" value={list.eway_bill_date && formatDate(list.eway_bill_date)} />
           </dl>
 
           <div className="overflow-x-auto">

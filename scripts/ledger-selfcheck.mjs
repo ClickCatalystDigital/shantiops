@@ -1,10 +1,10 @@
 // scripts/ledger-selfcheck.mjs — node scripts/ledger-selfcheck.mjs
 // Pure-function checks for lib/ledger.mjs's per-trigger line builders that don't already have
 // their own selfcheck: vendorBillLines (normal + RCM), salesInvoiceLines (normal + RCM),
-// fixedAssetDisposalLines (gain + loss). No DB, no fake data — every posted amount here is
-// invented purely to exercise the math, never written anywhere.
+// fixedAssetDisposalLines (gain + loss), dispatchFreightLines. No DB, no fake data — every posted
+// amount here is invented purely to exercise the math, never written anywhere.
 import { strict as assert } from 'node:assert';
-import { assertBalanced, vendorBillLines, salesInvoiceLines, fixedAssetDisposalLines } from '../lib/ledger.mjs';
+import { assertBalanced, vendorBillLines, salesInvoiceLines, fixedAssetDisposalLines, dispatchFreightLines, ACCOUNT_CODES } from '../lib/ledger.mjs';
 
 function sum(lines, key) { return lines.reduce((s, l) => s + (l[key] || 0), 0); }
 function lineFor(lines, code) { return lines.find(l => l.accountCode === code); }
@@ -82,6 +82,15 @@ function lineFor(lines, code) { return lines.find(l => l.accountCode === code); 
   const lines = fixedAssetDisposalLines({ cost: 50000, accumulatedDepreciation: 0, disposalAmount: 0 });
   assertBalanced(lines);
   assert.equal(lineFor(lines, '4200').debit, 50000, 'disposing a fresh mistake at 0 is a full loss of its cost, correctly reversing the purchase');
+}
+
+// --- dispatchFreightLines: freight cost the company itself bears ------------------------------
+{
+  const lines = dispatchFreightLines({ amount: 4500 });
+  assertBalanced(lines);
+  assert.equal(lineFor(lines, ACCOUNT_CODES.FREIGHT_EXPENSE).debit, 4500, 'Freight Expense must be debited the full amount');
+  assert.equal(lineFor(lines, ACCOUNT_CODES.BANK_CASH).credit, 4500, 'Bank & Cash must be credited the full amount (paid immediately)');
+  assert.equal(lines.length, 2, 'dispatch freight is exactly two lines: Freight Expense and Bank & Cash');
 }
 
 console.log('ledger-selfcheck OK');

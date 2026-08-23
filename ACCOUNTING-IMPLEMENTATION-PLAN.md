@@ -459,6 +459,19 @@ phase comes up rather than assuming last check's answer still holds.
 - **Rule 42/43 proportional ITC reversal** — real accounting nuance, only matters with exempt
   supplies.
 
+### Phase 11 — Dispatch accounting integration
+
+**Status: built 2026-08-23 — see SYSTEM.md §5aj.** Not in this plan's original phase list — Dispatch
+had zero accounting integration at all (free-text `invoice_no`/`dc_no`, no freight field, no e-way
+bill capture, no Report Engine entry), found and closed in one pass rather than left implicit.
+Built: a real `sales_invoice_id` FK on `packing_lists` (replacing reliance on free text), freight
+cost capture with an explicit posting action (new account `5500`, Dr Freight Expense / Cr Bank &
+Cash, only when the company bears the cost), e-way bill number/date capture (no generation — same
+paid-GSP deferral as this phase's own e-way-bill entry above), and a new Dispatch Register report.
+No GTA reverse-charge GST modeled on freight — a real, deliberately deferred simplification, same
+class as this document's own Rule 42/43 deferral. Live-verified against the real dev DB, including a
+disposable test cycle proving the JE balances and Trial Balance returns to exact baseline on delete.
+
 ### On the statutory-rates-hub and paid rate-data feeds
 
 Already solved without a paid service (`statutory-rates-hub`, SYSTEM.md §5y): a central,
