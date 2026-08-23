@@ -1,0 +1,14 @@
+name = "shanti-ops-rate-sync-cron"
+main = "src/index.js"
+compatibility_date = "2024-09-23"
+
+# Off-hours for a Hyderabad-based business: 21:00 UTC = 02:30 IST (next day). Cloudflare Cron
+# Triggers run in UTC and use standard 5-field cron syntax.
+[triggers]
+crons = ["0 21 * * *"]
+
+# Not secret — the endpoint address itself is already public-facing. The actual credential
+# (RATE_SYNC_KEY) and the healthcheck ping URL (HEALTHCHECK_URL) are set as Worker secrets instead
+# (wrangler secret put), never committed here.
+[vars]
+SYNC_URL = "https://shantiops.onrender.com/api/statutory-rates/sync"
