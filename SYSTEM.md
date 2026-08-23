@@ -4886,6 +4886,45 @@ empty result shows "No reports match…"; clearing the box reverts to the last m
 Live-verified: typing "freight" narrows to Dispatch → Freight Cost Summary alone; a nonsense query
 shows the empty state; clearing restores the default view. `npm run build`/`npm run lint` clean.
 
+## 5ar. All 7 Dispatch/QC reports actually rendered on screen — a real "no report justice" gap (2026-08-23)
+
+A direct question — "did we do all reports justice?" — surfaced a serious gap: **6 of §5ao's 7
+new reports (all of QC's 3, and 3 of Dispatch's 4) had a working `compute()`/`toTable()`/PDF export
+via `lib/reports/catalog.js`, but no entry in `ReportsWorkspace.jsx`'s `SCREEN` map** — so selecting
+any of them in the browser rendered nothing but "No report selected." The PDF export (a separate
+code path) was the only thing that ever actually worked; the on-screen card, the entire reason a
+Report Engine department tab exists, was dead for every one of these except Dispatch Register. And
+Dispatch Register itself — shipped *earlier* this session, before this bug pattern was known — had
+the exact same gap, undetected until now.
+
+This is a known bug shape in this codebase, not a novel one: `components/reports/
+FixedAssetReportCards.jsx`'s own header comment documents finding and fixing the identical gap for
+3 Accounts reports (SYSTEM.md §5ac) — a report can have a real `compute()`/PDF pair and still be
+invisible on screen, because `SCREEN[key]` and the catalog entry are two separate, easy-to-forget
+registrations. That fix built a small reusable `ListReportCard` (columns as props, for "a flat list
+of rows with one or two closing totals" reports) but left it as a private, non-exported function —
+so when the identical gap turned up again this session, there was nothing to import.
+
+Fixed: extracted `ListReportCard` into its own `components/reports/ListReportCard.jsx` (gained an
+optional `subtitle` prop for a plain-text summary line, e.g. "3 pass · 1 fail · 1 pending", alongside
+its existing `totals` prop for money totals routed through `fmt()`); `FixedAssetReportCards.jsx` now
+imports it instead of keeping its own copy. Built `components/reports/DispatchReportCards.jsx`
+(`DispatchRegisterCard` — the pre-existing gap — plus `EwayBillRegisterCard`,
+`FreightCostSummaryCard`, `DispatchAgingCard`) and `components/reports/QcReportCards.jsx`
+(`TestCertificateRegisterCard`, `QcInspectionSummaryCard`, `NcrRegisterCard`), all built on the
+shared component. Wired all 7 into `ReportsWorkspace.jsx`'s `SCREEN` map, and gave each a distinct
+sidebar icon (they'd been falling back to the generic `BarChart3Icon` too — the exact "all reports
+look the same" bug §5an's icon map was built to prevent, recurring for the same reason: a report
+added after that map was built with no icon assigned).
+
+**Live-verified all 7 in the browser, as the real department heads** (`dispatch_head`, `qc_head`):
+Dispatch Register shows 1 shipment with real freight/e-way-bill data; E-Way Bill Register shows the
+same shipment's e-way bill; Freight Cost Summary shows ₹4,500 total with the correct Paid-By split;
+Pending vs Dispatched Aging shows 2 real pending packing lists; Test Certificate Register/Inspection
+Pass-Fail Summary/NCR Register all render their real tables (Inspection Summary: "3 pass · 1 fail ·
+1 pending" across Hydro Test/Incoming Inspection/Material Test Certificate, matching the numbers
+already live-verified via curl in §5ao). `npm run build`/`npm run lint` clean.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own

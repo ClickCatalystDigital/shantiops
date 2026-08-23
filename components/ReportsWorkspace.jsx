@@ -21,6 +21,7 @@ import {
   ReceiptIcon, FilterIcon, PieChartIcon, UserRoundIcon, Share2Icon, MegaphoneIcon, TruckIcon,
   PackageMinusIcon, FileSpreadsheetIcon, ActivityIcon, RotateCcwIcon, GaugeIcon, HardHatIcon,
   AlertTriangleIcon, PencilRulerIcon, FileEditIcon, ShoppingCartIcon,
+  ScrollTextIcon, BanknoteIcon, HourglassIcon, FlaskConicalIcon, ClipboardCheckIcon, ShieldAlertIcon,
 } from 'lucide-react';
 import TrialBalanceCard from '@/components/reports/TrialBalanceCard';
 import CustomerLedgerCard from '@/components/reports/CustomerLedgerCard';
@@ -51,6 +52,8 @@ import EcnRegisterCard from '@/components/reports/EcnRegisterCard';
 import OpenPoAgingCard from '@/components/reports/OpenPoAgingCard';
 import { FixedAssetRegisterCard, DepreciationScheduleCard, TdsRegisterCard } from '@/components/reports/FixedAssetReportCards';
 import CashFlowStatementCard from '@/components/reports/CashFlowStatementCard';
+import { DispatchRegisterCard, EwayBillRegisterCard, FreightCostSummaryCard, DispatchAgingCard } from '@/components/reports/DispatchReportCards';
+import { TestCertificateRegisterCard, QcInspectionSummaryCard, NcrRegisterCard } from '@/components/reports/QcReportCards';
 import ManagementReportCard from '@/components/executive/ManagementReportCard';
 import ProjectProfitabilityCard from '@/components/executive/ProjectProfitabilityCard';
 import CustomerProfitabilityCard from '@/components/executive/CustomerProfitabilityCard';
@@ -97,6 +100,16 @@ export const SCREEN = {
   'depreciation-schedule': DepreciationScheduleCard,
   'tds-register': TdsRegisterCard,
   'cash-flow': CashFlowStatementCard,
+  // Dispatch/QC report additions (2026-08-23, plan §4/§5f) — dispatch-register closes a
+  // pre-existing gap (it shipped earlier this session before this on-screen-card requirement was
+  // rediscovered); the other 5 are this session's own new reports.
+  'dispatch-register': DispatchRegisterCard,
+  'eway-bill-register': EwayBillRegisterCard,
+  'freight-cost-summary': FreightCostSummaryCard,
+  'dispatch-aging': DispatchAgingCard,
+  'test-certificate-register': TestCertificateRegisterCard,
+  'qc-inspection-summary': QcInspectionSummaryCard,
+  'ncr-register': NcrRegisterCard,
   // Management reports (app/api/executive/*) — folded into the consolidated admin/manager view via
   // `hasOwnControls: true` on their catalog-shaped entries below (app/reports/page.js); these cards
   // already manage their own company switcher + PDF button, same as the standalone
@@ -133,7 +146,9 @@ const ICON = {
   'sales-register': ReceiptIcon, 'sales_pipeline': FilterIcon, 'by_department': PieChartIcon,
   'agent_performance': UserRoundIcon,
   'lead_funnel': UsersIcon, 'leads_by_source': Share2Icon, 'campaign_performance': MegaphoneIcon,
-  'dispatch-register': TruckIcon,
+  'dispatch-register': TruckIcon, 'eway-bill-register': ScrollTextIcon, 'freight-cost-summary': BanknoteIcon,
+  'dispatch-aging': HourglassIcon, 'test-certificate-register': FlaskConicalIcon,
+  'qc-inspection-summary': ClipboardCheckIcon, 'ncr-register': ShieldAlertIcon,
   'material-consumption': PackageMinusIcon, 'work-order-register': FileSpreadsheetIcon,
   'production-cost-variance': ActivityIcon, 'rework-rejection': RotateCcwIcon,
   'material-utilization': GaugeIcon, 'labour-utilization': HardHatIcon,
