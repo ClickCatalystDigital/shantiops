@@ -8,7 +8,7 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { DownloadIcon } from 'lucide-react';
+import { DownloadIcon, FileSpreadsheetIcon } from 'lucide-react';
 import { api, showToast } from '@/lib/client';
 import { fmt } from './TrialBalanceCard';
 
@@ -49,10 +49,15 @@ export default function CustomerLedgerCard({ company }) {
       <CardHeader>
         <CardTitle>Customer Ledger</CardTitle>
         {customer && (
-          <CardAction>
+          <CardAction className="flex gap-2">
             <Button asChild size="sm" variant="outline">
               <a href={`/api/reports/customer-ledger/export?format=pdf&company=${encodeURIComponent(company)}&customer_id=${customer.id}`} target="_blank" rel="noreferrer">
                 <DownloadIcon data-icon="inline-start" />PDF
+              </a>
+            </Button>
+            <Button asChild size="sm" variant="outline">
+              <a href={`/api/reports/customer-ledger/export?format=xlsx&company=${encodeURIComponent(company)}&customer_id=${customer.id}`}>
+                <FileSpreadsheetIcon data-icon="inline-start" />Excel
               </a>
             </Button>
           </CardAction>

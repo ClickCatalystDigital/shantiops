@@ -1,12 +1,13 @@
-// app/api/reports/[key]/export/route.js — the one PDF export endpoint for every Report Engine
-// report (?format=pdf only for now; Excel deferred, see REPORT-ENGINE-PLAN). Looks the report up in
-// lib/reports/catalog.js and computes it via the exact same function its JSON route already
-// imports — ground rule: one computed result, three renderers, never three calculations.
+// app/api/reports/[key]/export/route.js — the one PDF/Excel export endpoint for every Report
+// Engine report (?format=pdf|xlsx). Looks the report up in lib/reports/catalog.js and computes it
+// via the exact same function its JSON route already imports — ground rule: one computed result,
+// three renderers, never three calculations.
 import { NextResponse } from 'next/server';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { COMPANY_NAMES } from '@/lib/qc-doc-pdf.js';
 import { getReport } from '@/lib/reports/catalog';
 import { renderCatalogPdf } from '@/lib/reports/render';
+import { toWorkbook } from '@/lib/reports/excel';
 import { currentFyBounds } from '@/lib/date';
 
 export const runtime = 'nodejs';
@@ -27,7 +28,7 @@ export async function GET(req, { params }) {
 
   const { searchParams } = new URL(req.url);
   const format = searchParams.get('format') || 'pdf';
-  if (format !== 'pdf') return NextResponse.json({ error: 'Only format=pdf is supported' }, { status: 400 });
+  if (!['pdf', 'xlsx'].includes(format)) return NextResponse.json({ error: 'format must be pdf or xlsx' }, { status: 400 });
 
   const company = COMPANY_NAMES.includes(searchParams.get('company')) ? searchParams.get('company') : COMPANY_NAMES[0];
   let from = searchParams.get('from') || undefined;
@@ -54,6 +55,16 @@ export async function GET(req, { params }) {
   const subtitle = report.subtitle
     ? report.subtitle(result, { from, to, asOf, period })
     : (from && to ? `${from} to ${to}` : undefined);
+
+  if (format === 'xlsx') {
+    const buf = toWorkbook({ table });
+    return new NextResponse(buf, {
+      headers: {
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'Content-Disposition': `attachment; filename="${report.key}.xlsx"`,
+      },
+    });
+  }
 
   const stream = await renderCatalogPdf({
     company, title: report.title.toUpperCase(), subtitle, table, totals,

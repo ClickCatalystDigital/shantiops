@@ -12,12 +12,17 @@ screens — is now real for Accounts/Stores/Procurement/Sales (21 documents, scr
 agree). What's still missing before the *reporting layer itself* reads as mature, roughly in order
 of how much it would actually change how someone uses this:
 
-1. **Excel.** Deferred by explicit choice, but it's the single biggest remaining gap for an
-   Accounts user who wants to pivot/filter/reconcile a report rather than just read it. `xlsx`
-   (free build, already installed) gets structure — column widths, number formats, merges — but no
-   cell styling (no bold header row, no borders, no fill). `exceljs` is the real fix if/when this
-   gets picked up; `lib/reports/render.js`'s `toTable()` split means adding it is "a second
-   consumer of data already shaped for the table," not a rewrite.
+1. **Excel — DONE (2026-08-24).** Shipped on the already-installed `xlsx` build, exactly the "second
+   consumer of `toTable()`'s data" this note anticipated (`lib/reports/excel.js`,
+   `app/api/reports/[key]/export/route.js`'s `format=xlsx` branch). Still no cell styling (no bold
+   header row, no borders, no fill) — that part of the gap is real and `exceljs` is still the fix if
+   it's ever wanted. What this round did add on top of "just dump `toTable()`'s display strings":
+   right-aligned (money/qty) columns write real JS numbers, not the PDF's `fmt()`-formatted text, so
+   Excel's own SUM/sort/pivot work natively — verified by `scripts/reports-excel-selfcheck.mjs` and a
+   live downloaded workbook. Excel button sits next to PDF on every catalog report with a table,
+   including the 6 `hasOwnPdfControl` cards; GSTR-3B (the one genuinely tableless report) has neither
+   button reachable through it, confirmed by grepping every `toTable()` for another `cols: []` case
+   and finding none.
 2. **A real Monthly Management Report — DONE (2026-08-22).** One page a director opens: Liquidity
    (Cash & Bank, AR/AP outstanding, net position), P&L headline (MTD + FY-to-date), Balance Sheet
    headline (Assets/Liabilities/Equity). Per-company (matches every other report's pattern — two
@@ -100,12 +105,13 @@ of how much it would actually change how someone uses this:
      `->`. Worth noting as a pattern now, not just an isolated fix: **any non-ASCII character in PDF
      body text is a live risk** with this font setup, not just currency symbols — checked the rest
      of the render/PDF code for other arrows/checkmarks/bullets and found none remaining.
-9. **QC's Reports gap — deliberately deferred, not forgotten.** Real candidates identified and
-   scoped, off existing data with no schema change, but explicitly held back this round: **QC
-   Inspection Summary** (`qc_records` by test_type/result over a period — the full-picture
-   complement to Rework/Rejection, which only shows fails), **Calibration Due/Status**
-   (`calibration_items`' derived expired/due_soon/ok/blocked state — a real compliance report),
-   **Job-Work Inspection Register** (`job_work_inspections`' sent/received qty variance by period).
+9. **QC's Reports gap — DONE.** All 3 candidates named here have shipped, closing QC out at 5
+   reports total (Test Certificate Register was also added, off the same "no schema change" bar):
+   **QC Inspection Summary** (`qc_records` by test_type/result — shipped a later session, before
+   this note was updated), **Calibration Due/Status** and **Job-Work Inspection Register** — DONE
+   (2026-08-24), `app/api/reports/calibration-status`/`job-work-inspection-register`, both
+   seeded (`scripts/seed-qc-inspections-demo.mjs` — both source tables were at 0 rows) and
+   browser-verified (screen/PDF/Excel).
 10. **`/executive/reports` sidebar — DONE (2026-08-22), now genuinely populated.** Graduated from a
     single card to `ExecutiveReportsWorkspace.jsx`'s `WorkspaceSidebar`, same round as items 8/9
     above — and immediately filled with 4 more Management reports the same day (below), so the
@@ -295,4 +301,24 @@ work has landed — this is a snapshot, not a standing fact. The fastest path to
 order: (1) report-access audit logging (§1.3, cheap — one `audit()` call, generic by construction),
 (2) an actual `xlsx` vs `exceljs` decision for Excel (§1.1), (3) closing the `/crm-reports`
 duplication (§1.7). QC's reports (§1.9) and the underlying cost-data thinness are real but larger,
+
+**Re-score addendum (2026-08-24)** — Excel (§1.1) and QC's reports (§1.9) both shipped, so 2 of this
+scorecard's 3 named gaps are closed; this round did not touch report-access audit logging (§1.3) or
+the `/crm-reports` duplication (§1.7), which stay open exactly as scored. Coverage moves to **10/10**
+(QC's 0→5 was the table's one named gap; catalog is now ~41 reports across 8 groups — Accounts 17,
+Production 7, QC 5, Management 5, Sales 4, Dispatch 4, Marketing 3, Stores 3, Procurement 2, Design
+2). Structural completeness moves to **8/10** (Excel closed; audit logging is the one item left
+here, same as before). Underlying data quality note is now partially addressed as a side effect —
+Production's `job_card_time_logs`/employee `cost_rate_per_hour` were previously near-zero DB-wide
+(not just thin on this dataset), which is exactly the kind of gap that made Project/Customer
+Profitability's margin numbers read as fabricated-looking 100%; seeding real cost rates + time logs
+(`scripts/seed-production-demo.mjs`) gives those reports genuine non-zero labour cost to work with
+for the first time, though it doesn't fully resolve the note's PO-`issued`-status half of the
+caveat. One extra, unscored fix worth recording: `getOpenPoAgingLines` (`lib/data.js`) compared
+`bom_items.purchase_status` against `'TRANSIT'` (uppercase) when the real stored value is `'Transit'`
+everywhere else in the codebase — SQLite string comparison is case-sensitive, so Open PO Aging was
+silently empty regardless of real Transit-status data. Found and fixed while seeding Procurement data
+for this pass, not by a targeted audit — worth remembering that a report showing "no data" can mean
+"the query is subtly wrong," not just "there's nothing to show," the next time a report reads
+suspiciously empty.
 separate decisions — not quick wins.

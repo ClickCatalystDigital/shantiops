@@ -35,10 +35,11 @@ render them, exactly as §9 already suspected. What got built instead:
   (opportunistic — verified against real production PDFs before/after). **Left untouched, as
   planned**: `lib/po-pdf.js`, `lib/qc-doc-pdf.js`, `lib/qc-folder-pdf.js` — statutory/sample-matched,
   migrate only once re-verified against the real sample.
-- **Excel deferred** — not built. `package.json`'s `xlsx` is the free SheetJS build (column
-  widths/number formats/merges only, no cell styling); revisit `xlsx` vs. adding `exceljs` when
-  Excel is actually picked up. `lib/reports/render.js` is structured so Excel only needs a second
-  consumer of each report's `toTable()`, not a rewrite.
+- **Excel — DONE (2026-08-24), see REPORT-ENGINE-MATURITY.md §1.1.** Shipped on the already-installed
+  `xlsx` (SheetJS) build via `lib/reports/excel.js`, exactly the "second consumer of `toTable()`"
+  shape anticipated here — no rewrite. Right-aligned columns write real numeric cells (not the PDF's
+  formatted display string), so Excel's own SUM/sort work; `exceljs`/cell-styling is still the
+  unaddressed half of the original gap.
 - **Project Costing / Work Order Costing turned out to be per-record documents**, not catalog-style
   reports — reached from a project's/work order's own page (like the BOM/PO PDF pattern), not picked
   off a Reports-tab list. They're `lib/project-costing-pdf.js` / `lib/work-order-costing-pdf.js` +

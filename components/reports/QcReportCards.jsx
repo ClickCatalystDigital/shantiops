@@ -69,3 +69,48 @@ export function NcrRegisterCard({ company }) {
     />
   );
 }
+
+const CALIBRATION_STATUS_VARIANT = { expired: 'destructive', due_soon: 'secondary', ok: 'outline', blocked: 'destructive' };
+
+// Company-agnostic (calibration_items is one shared equipment bank, catalog.js's needsCompany:
+// false — same convention as StockValuationCard) — no `company` prop, and ListReportCard omits the
+// query param entirely when it isn't passed.
+export function CalibrationStatusCard() {
+  return (
+    <ListReportCard
+      endpoint="calibration-status" title="Calibration Due/Status" rowsKey="items"
+      emptyLabel="No calibration items tracked yet."
+      subtitle={d => `${d.expired} expired · ${d.due_soon} due soon · ${d.ok} ok · ${d.blocked} blocked`}
+      columns={[
+        { label: 'Type', key: 'type', render: i => i.type === 'jig_fixture' ? 'Jig/Fixture' : 'Instrument' },
+        { label: 'Name', key: 'name' },
+        { label: 'Identifier', key: 'identifier', render: i => i.identifier || '—' },
+        { label: 'Due Date', key: 'due_date', render: i => i.due_date?.slice(0, 10) || '—' },
+        { label: 'Status', key: 'status', render: i => (
+          <Badge variant={CALIBRATION_STATUS_VARIANT[i.status] || 'outline'}>
+            {i.status.replace('_', ' ')}
+          </Badge>
+        ) },
+      ]}
+    />
+  );
+}
+
+export function JobWorkInspectionRegisterCard({ company }) {
+  return (
+    <ListReportCard
+      company={company} endpoint="job-work-inspection-register" title="Job-Work Inspection Register" rowsKey="lines"
+      emptyLabel="No job-work inspections logged yet."
+      subtitle={d => `${d.total} record(s) · sent ${d.totalSent} · received ${d.totalReceived} · variance ${d.totalVariance}`}
+      columns={[
+        { label: 'Project', key: 'project_no' },
+        { label: 'Job Worker', key: 'job_worker_name' },
+        { label: 'Sent', key: 'sent_date', render: j => j.sent_date?.slice(0, 10) || '—' },
+        { label: 'Sent Qty', key: 'sent_qty', align: 'right' },
+        { label: 'Received Qty', key: 'received_qty', align: 'right' },
+        { label: 'Variance', key: 'variance_qty', align: 'right', render: j => j.variance_qty ?? '—' },
+        { label: 'Result', key: 'result' },
+      ]}
+    />
+  );
+}

@@ -7,7 +7,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { DownloadIcon } from 'lucide-react';
+import { DownloadIcon, FileSpreadsheetIcon } from 'lucide-react';
 import { api, showToast } from '@/lib/client';
 
 export default function StockLedgerCard() {
@@ -37,10 +37,15 @@ export default function StockLedgerCard() {
       <CardHeader>
         <CardTitle>Stock Ledger</CardTitle>
         {item && (
-          <CardAction>
+          <CardAction className="flex gap-2">
             <Button asChild size="sm" variant="outline">
               <a href={`/api/reports/stock-ledger/export?format=pdf&item_id=${item.id}`} target="_blank" rel="noreferrer">
                 <DownloadIcon data-icon="inline-start" />PDF
+              </a>
+            </Button>
+            <Button asChild size="sm" variant="outline">
+              <a href={`/api/reports/stock-ledger/export?format=xlsx&item_id=${item.id}`}>
+                <FileSpreadsheetIcon data-icon="inline-start" />Excel
               </a>
             </Button>
           </CardAction>

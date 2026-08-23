@@ -11,10 +11,15 @@ import { api, showToast } from '@/lib/client';
 import { fmt } from './TrialBalanceCard';
 
 // columns: [{ label, key, render?, align? }] — render(row) overrides plain row[key] display.
+// `company` is optional — omitted entirely for needsCompany: false reports (e.g. Calibration Due/
+// Status, an equipment bank shared across companies, same "company-agnostic" convention
+// StockValuationCard documents), so the request never carries a stray `?company=` for a report the
+// server-side compute() doesn't scope by company anyway.
 export function ListReportCard({ company, endpoint, title, subtitle, columns, rowsKey, emptyLabel, totals }) {
   const [data, setData] = useState(null);
   useEffect(() => {
-    api(`/api/reports/${endpoint}?company=${encodeURIComponent(company)}`).then(setData).catch(err => showToast(err.message, 'error'));
+    const qs = company ? `?company=${encodeURIComponent(company)}` : '';
+    api(`/api/reports/${endpoint}${qs}`).then(setData).catch(err => showToast(err.message, 'error'));
   }, [company, endpoint]);
   if (!data) return null;
   const rows = data[rowsKey] || [];

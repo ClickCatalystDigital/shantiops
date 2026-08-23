@@ -22,6 +22,7 @@ import {
   PackageMinusIcon, FileSpreadsheetIcon, ActivityIcon, RotateCcwIcon, GaugeIcon, HardHatIcon,
   AlertTriangleIcon, PencilRulerIcon, FileEditIcon, ShoppingCartIcon,
   ScrollTextIcon, BanknoteIcon, HourglassIcon, FlaskConicalIcon, ClipboardCheckIcon, ShieldAlertIcon,
+  CalendarClockIcon, PackageCheckIcon,
 } from 'lucide-react';
 import TrialBalanceCard from '@/components/reports/TrialBalanceCard';
 import CustomerLedgerCard from '@/components/reports/CustomerLedgerCard';
@@ -53,7 +54,7 @@ import OpenPoAgingCard from '@/components/reports/OpenPoAgingCard';
 import { FixedAssetRegisterCard, DepreciationScheduleCard, TdsRegisterCard } from '@/components/reports/FixedAssetReportCards';
 import CashFlowStatementCard from '@/components/reports/CashFlowStatementCard';
 import { DispatchRegisterCard, EwayBillRegisterCard, FreightCostSummaryCard, DispatchAgingCard } from '@/components/reports/DispatchReportCards';
-import { TestCertificateRegisterCard, QcInspectionSummaryCard, NcrRegisterCard } from '@/components/reports/QcReportCards';
+import { TestCertificateRegisterCard, QcInspectionSummaryCard, NcrRegisterCard, CalibrationStatusCard, JobWorkInspectionRegisterCard } from '@/components/reports/QcReportCards';
 import ManagementReportCard from '@/components/executive/ManagementReportCard';
 import ProjectProfitabilityCard from '@/components/executive/ProjectProfitabilityCard';
 import CustomerProfitabilityCard from '@/components/executive/CustomerProfitabilityCard';
@@ -110,6 +111,8 @@ export const SCREEN = {
   'test-certificate-register': TestCertificateRegisterCard,
   'qc-inspection-summary': QcInspectionSummaryCard,
   'ncr-register': NcrRegisterCard,
+  'calibration-status': CalibrationStatusCard,
+  'job-work-inspection-register': JobWorkInspectionRegisterCard,
   // Management reports (app/api/executive/*) — folded into the consolidated admin/manager view via
   // `hasOwnControls: true` on their catalog-shaped entries below (app/reports/page.js); these cards
   // already manage their own company switcher + PDF button, same as the standalone
@@ -149,6 +152,7 @@ const ICON = {
   'dispatch-register': TruckIcon, 'eway-bill-register': ScrollTextIcon, 'freight-cost-summary': BanknoteIcon,
   'dispatch-aging': HourglassIcon, 'test-certificate-register': FlaskConicalIcon,
   'qc-inspection-summary': ClipboardCheckIcon, 'ncr-register': ShieldAlertIcon,
+  'calibration-status': CalendarClockIcon, 'job-work-inspection-register': PackageCheckIcon,
   'material-consumption': PackageMinusIcon, 'work-order-register': FileSpreadsheetIcon,
   'production-cost-variance': ActivityIcon, 'rework-rejection': RotateCcwIcon,
   'material-utilization': GaugeIcon, 'labour-utilization': HardHatIcon,
@@ -191,11 +195,20 @@ export default function ReportsWorkspace({ department, reports, groups, companie
               ))}
             </div>
             {active && !active.hasOwnPdfControl && (
-              <Button asChild size="sm" variant="outline">
-                <a href={`/api/reports/${active.key}/export?format=pdf${showCompanySwitcher ? `&company=${encodeURIComponent(company)}` : ''}`} target="_blank" rel="noreferrer">
-                  <DownloadIcon data-icon="inline-start" />PDF
-                </a>
-              </Button>
+              <div className="flex gap-2">
+                <Button asChild size="sm" variant="outline">
+                  <a href={`/api/reports/${active.key}/export?format=pdf${showCompanySwitcher ? `&company=${encodeURIComponent(company)}` : ''}`} target="_blank" rel="noreferrer">
+                    <DownloadIcon data-icon="inline-start" />PDF
+                  </a>
+                </Button>
+                {!active.noTable && (
+                  <Button asChild size="sm" variant="outline">
+                    <a href={`/api/reports/${active.key}/export?format=xlsx${showCompanySwitcher ? `&company=${encodeURIComponent(company)}` : ''}`}>
+                      <FileSpreadsheetIcon data-icon="inline-start" />Excel
+                    </a>
+                  </Button>
+                )}
+              </div>
             )}
           </div>
         )}

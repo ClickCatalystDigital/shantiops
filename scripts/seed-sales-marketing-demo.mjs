@@ -43,6 +43,11 @@ async function wipeOwnRows() {
   await run(`DELETE FROM sales_credit_note_items WHERE sales_credit_note_id IN (SELECT id FROM sales_credit_notes WHERE created_by = ?)`, [MARK]);
   await run(`DELETE FROM sales_credit_notes WHERE created_by = ?`, [MARK]);
   await run(`DELETE FROM sales_invoice_items WHERE sales_invoice_id IN (SELECT id FROM sales_invoices WHERE created_by = ?)`, [MARK]);
+  // A Dispatch-side demo packing list (not created_by=MARK, so untouched by this script otherwise)
+  // links back to one of these invoices via packing_lists.sales_invoice_id (no ON DELETE action on
+  // that FK) — clear the link first, same defensive pattern as the campaign_id clears below, or a
+  // re-run's sales_invoices delete fails.
+  await run(`UPDATE packing_lists SET sales_invoice_id = NULL WHERE sales_invoice_id IN (SELECT id FROM sales_invoices WHERE created_by = ?)`, [MARK]);
   await run(`DELETE FROM sales_invoices WHERE created_by = ?`, [MARK]);
   await run(`DELETE FROM sales_returns WHERE created_by = ?`, [MARK]);
   await run(`DELETE FROM sale_order_items WHERE sale_order_id IN (SELECT id FROM sale_orders WHERE created_by = ?)`, [MARK]);
@@ -104,6 +109,11 @@ async function main() {
     narmada: await getCustomerId('Narmada Chemicals Ltd'),
     malwaSteel: await getCustomerId('Malwa Steel Industries'),
     bharatSugar: await getCustomerId('Bharat Sugar Mills Ltd'),
+    konkanSugars: await getCustomerId('Konkan Sugars Ltd'),
+    vindhyaPaper: await getCustomerId('Vindhya Paper Mills Ltd'),
+    deccanSugar: await getCustomerId('Deccan Sugar Works'),
+    coromandelTextiles: await getCustomerId('Coromandel Textiles Pvt Ltd'),
+    kaveriSpinning: await getCustomerId('Kaveri Spinning Mills'),
   };
 
   // -----------------------------------------------------------------------------------------
@@ -364,6 +374,42 @@ async function main() {
     `INSERT INTO sales_credit_note_items (sales_credit_note_id, item_description, qty, rate, amount) VALUES (?,?,?,?,?)`,
     [cnDraft, 'Freight adjustment', 1, 50000, 50000]
   );
+
+  // Report Engine (2026-08-24) — Sales Register was only reading 2 distinct customers' worth of
+  // invoices; getSalesRegisterLines() has no sale_order_id/project_id requirement (both nullable on
+  // sales_invoices), so these are standalone invoices against 5 more customers instead of needing
+  // fresh SOs/projects to hang them off. Every one of these customers' GSTIN state code (24/27/23/
+  // 33) differs from Shanti Boilers' own (36 — Telangana), so all are interstate -> IGST only, same
+  // as the two existing seed invoices above.
+  console.log('Seeding additional sales_invoices for Sales Register coverage...');
+  const extraInvoices = [
+    [cust.konkanSugars, '2026-07-18', 2450000, 'paid'],
+    [cust.vindhyaPaper, '2026-07-29', 1875000, 'paid'],
+    [cust.deccanSugar, '2026-08-08', 3120000, 'issued'],
+    [cust.coromandelTextiles, '2026-08-15', 980000, 'issued'],
+    [cust.kaveriSpinning, '2026-08-22', 1540000, 'draft'],
+  ];
+  for (const [i, [customerId, invoiceDate, subtotal, status]] of extraInvoices.entries()) {
+    const seq = await (async () => {
+      const r = await run(
+        `INSERT INTO counters (name, value) VALUES ('invoice_no:Shanti Boilers:2026-27', ?)
+         ON CONFLICT(name) DO UPDATE SET value = value + 1
+         RETURNING value`,
+        [5 + i]
+      );
+      return r.rows[0].value;
+    })();
+    const igst = Math.round(subtotal * 0.18);
+    const inv = await insert(
+      `INSERT INTO sales_invoices (invoice_no, company, customer_id, invoice_date, due_date, status, subtotal, igst_amount, tax_amount, total, created_by)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+      [`SB/${seq}/2026-27`, 'Shanti Boilers', customerId, invoiceDate, null, status, subtotal, igst, igst, subtotal + igst, MARK]
+    );
+    await run(
+      `INSERT INTO sales_invoice_items (sales_invoice_id, item_description, qty, uom, rate, amount, gst_rate_pct, sort_order) VALUES (?,?,?,?,?,?,?,?)`,
+      [inv, 'Boiler & accessories per contract', 1, 'No', subtotal, subtotal, 18, 0]
+    );
+  }
 
   // -----------------------------------------------------------------------------------------
   // 7. Master/config gaps — contacts, assignment rules, price lists.
