@@ -342,12 +342,13 @@ Two gaps are real and worth closing for V1:
 
 ### Phase 8 — Bank reconciliation: statement import + matching
 
-**Status: built 2026-08-22, code-reviewed + smoke-tested — see SYSTEM.md §5ab.** Matcher
+**Status: built 2026-08-22, plumbing live-verified 2026-08-23 — see SYSTEM.md §5ab.** Matcher
 (`lib/bank-match.mjs`), parser (`lib/bank-statement-import.mjs`), import + quick-JE routes, and UI
-all built. **Known gap, by explicit user decision**: not yet exercised against a real bank
-statement file or the real dev DB — the parser's header-alias map is pinned only to a synthetic
-CSV, not a real export. Live-verify whenever a real statement file becomes available; not treated
-as a blocker for the rest of the roadmap.
+all built. The import/match/reconcile/quick-JE chain and the UI have since been proven against real
+posted Bank & Cash lines in the real dev DB (not just a synthetic smoke test). **One gap remains, by
+explicit user decision**: the parser's header-alias map is still pinned only to a hand-built CSV,
+never an actual bank export — that specific piece can't be closed without a real statement file.
+Not treated as a blocker for the rest of the roadmap.
 
 **No paid service needed for this.** The instinct to reach for a bank API is the wrong shape of
 fix — even Tally's own reconciliation is file-import-based (a statement the user downloads from

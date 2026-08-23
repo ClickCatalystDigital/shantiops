@@ -16,12 +16,13 @@ set of user accounts:
 originally deferred regulated accounting/GST/TDS/statutory payroll as ERPNext-integration
 territory. That decision was reversed 2026-08-20 (§5q): Shanti Ops is now the system of record for
 the full Accounts workflow (ledger, GST, TDS, fixed assets, payroll export), built out through §5z
-and §5aa — not a stub, not an ERPNext dependency. Left here only so a reader who finds the old
+and §5ai — not a stub, not an ERPNext dependency. Left here only so a reader who finds the old
 `V3_CHANGES.md` §12 text elsewhere knows it's stale. CRM, Selling, and HR (incl. Recruitment) are
 still built natively to real ERPNext feature depth, unaffected by this reversal.
 
 Everything in this file reflects the **current, working build**, updated as work lands — most
-recently 2026-08-22 (§5aa, the TDS Section 393 fix + fixed-asset disposal + RCM sales-side pass).
+recently 2026-08-23 (§5ai, an RCM real-transaction test that found and fixed two real ledger-posting
+bugs; §5ah, the statutory-rate sync's daily Cloudflare Cron Trigger going live).
 The paragraph below is itself a dated snapshot from 2026-08-03, describing what was the most recent
 round **at that time**: a **full Procurement redesign** — the working spec lived in
 `PROCUREMENT-CHANGES.md` during the
@@ -3422,8 +3423,9 @@ I don't have a real catalog for.
 
 Prompted by an honest compliance tally (below) that found real gaps against Companies Act /
 Income Tax Act requirements. **Correction made along the way**: an earlier claim that this app had
-"no audit trail" was wrong — `usb_audit` already is one (215 call sites, see §10's "system-wide
-audit trail" note); the real gaps were narrower.
+"no audit trail" was wrong — `usb_audit` already is one (215 call sites at the time, see §10's
+"system-wide audit trail" note — 229 as of §5ai, keeps growing with every new mutation route, not
+re-counted at every section); the real gaps were narrower.
 
 **Built this pass:**
 - **Rate-master audit logging** — the 5 rate-master routes (`gst-rates`, `vendor-tds-rates`,
@@ -3483,7 +3485,7 @@ renders (caught and fixed a real bug — missing `Select` import crashed the tab
 depreciation run completes cleanly with no bogus posting. **Not live-verified**: TDS Deduction
 Register (code-reviewed only, reuses the already-proven report-engine pattern) and RCM's actual
 journal posting (verified the math balances by hand, not clicked through a real PO→bill→approve
-cycle — didn't want to fabricate a fake vendor transaction in the real books). **Update (§5ah,
+cycle — didn't want to fabricate a fake vendor transaction in the real books). **Update (§5ai,
 2026-08-23)**: that real cycle was run — as a disposable, deleted-afterward test, not a standing
 verification — and it found two real bugs the hand-verified math had missed; both fixed. RCM is
 still not considered "closed" until a genuine business RCM transaction happens, per instruction.
@@ -3545,7 +3547,7 @@ side effect of a UI check). Fixed Assets tab still renders with the new Dispose 
 code, but there's no real asset yet to click it against, so that's a render-only check, not exercised
 (superseded — a real asset was created and disposed later, see §5ac/§5ad, so this render-only caveat
 no longer applies to Fixed Assets; it's quoted here only for the RCM-on-Sales sentence above, which
-is still accurate as of §5ah — sales-side RCM remains code-reviewed only, never a real invoice).
+is still accurate as of §5ai — sales-side RCM remains code-reviewed only, never a real invoice).
 All of `vendorBillLines`/`salesInvoiceLines`/`fixedAssetDisposalLines`'s new branches (RCM both
 sides, disposal gain, disposal loss, exact-book-value no-op, ₹0 mistake-correction) verified by a
 new `scripts/ledger-selfcheck.mjs` — pure-function checks, no DB, no fake data ever written anywhere
@@ -4103,10 +4105,73 @@ nor silently disappears. Restoring the real hub URL and re-running recovered cle
 `last_status:'success'`. All pre-existing selfchecks pass; `npm run build` clean under Node 23.9.0
 (see §5af for why the environment's default Node 18.16.0 can't run the build).
 
-**Explicitly not done, per instruction**: no Cloudflare Cron Trigger or Worker created — this is
-the endpoint such a Worker would call, nothing on the Cloudflare side exists yet.
+**Update (§5ah, same day)**: the Cloudflare Worker and Cron Trigger described as "not done" below
+were built, deployed, and live-verified later this same session — see §5ah for the full record.
+This section's own scope (the endpoint itself) is unchanged by that; leaving the original text
+below for the historical record of what this specific pass did and didn't include.
 
-## 5ah. RCM real-transaction test — two real bugs found and fixed (2026-08-23)
+**Explicitly not done in this pass**: no Cloudflare Cron Trigger or Worker created yet — this is
+the endpoint such a Worker would call, nothing on the Cloudflare side existed at this point.
+
+## 5ah. Cloudflare Worker + Cron Trigger deployed — daily rate-sync now live (2026-08-23)
+
+§5ag built the endpoint; this pass actually stood up the scheduler in front of it, per explicit
+instruction and only after confirming exact setup steps first. Sync logic untouched throughout.
+
+**Built** (`workers/rate-sync-cron/`, a standalone Worker project, separate toolchain from the
+Next.js app):
+- `src/index.js` — `scheduled()` calls `POST /api/statutory-rates/sync` with `x-sync-key`, treats
+  any non-2xx as a failed run, and reports success/failure to a healthchecks.io dead-man's-switch
+  (ping on success, `/fail` ping on failure — healthchecks.io's own missed-check timeout is what
+  catches "the cron stopped firing entirely," which no amount of code inside the Worker itself could
+  ever detect). A `fetch()` handler, gated by the same shared secret, allows a manual test trigger
+  without waiting for the schedule.
+- `wrangler.toml` — `crons = ["0 21 * * *"]` (21:00 UTC = 02:30 IST daily, off-hours for the
+  Hyderabad-based business), `SYNC_URL` as a plain var (not sensitive — it's the already-public
+  endpoint address).
+- Config validated locally (`wrangler deploy --dry-run`) before any Cloudflare account was touched.
+
+**Deployed**, into the same Cloudflare account as the existing R2 storage (`pshantiops@gmail.com`,
+account `61917184e194dc4b792e0a20bca421b3`) — confirmed intentionally, not assumed. Required
+registering a first-ever `workers.dev` subdomain on that account (`pshantiops.workers.dev`) as a
+one-time prerequisite. Worker live at
+`https://shanti-ops-rate-sync-cron.pshantiops.workers.dev`. **Cron Trigger registered as
+`0 21 * * *`** — confirmed directly in Cloudflare's own deploy response, not just local config.
+Both `RATE_SYNC_KEY` and `HEALTHCHECK_URL` stored as Cloudflare Worker secrets (`wrangler secret
+put`, interactive prompt only — never passed as a command argument, never logged).
+
+**Security incident during setup, handled**: the user pasted the real `RATE_SYNC_KEY` value in
+plaintext into the chat while reporting a manual-trigger result. Flagged immediately as compromised
+(chat transcripts may be logged/stored); the user rotated it in Render, Cloudflare, and local
+`.env.local`. The exposed value was never repeated, reused, or stored by the assistant, and is now
+dead everywhere it existed.
+
+**Real operational finding, not a bug**: the statutory-rates-hub (`statutory-rates-hub.onrender.com`)
+runs on Render's free tier and cold-starts (~23s) after inactivity, which produced two transient 502s
+during manual-trigger testing before the hub was warm. Self-resolves once warm, but since the cron
+fires once daily the hub will likely be cold on most real runs — some daily runs may see this delay,
+or an occasional false-failure ping to healthchecks.io. Not fixed (no request was made to retry or
+to move the hub off the free tier); noted for awareness.
+
+**Live-verified, full chain, real data**: a manual trigger through the Worker (`x-trigger-key`,
+never exposed) returned `{"ok":true,"status":200,...}`; the production `hub_sync_state` heartbeat
+advanced (`last_run_at` moved, `last_status:'success'`) confirmed by direct DB read (no secret
+needed); the user independently confirmed a fresh success ping appeared on the healthchecks.io check
+page. All three links of the chain — Worker → sync endpoint → heartbeat → healthchecks.io — verified
+with real requests against the real production deployment, not simulated.
+
+**Post-deployment data-integrity check** (a follow-up "make sure nothing broke" pass, same day):
+direct read-only queries against the real Turso DB confirmed zero duplicates in any rate-master
+table despite the day's multiple retries including the two cold-start 502 failures (`gst_rates` 2,
+`vendor_tds_rates` 14, `professional_tax_slabs` 6, `statutory_rates` 1 — all exactly matching the
+pre-existing known-good counts from §5af); Trial Balance for Shanti Boilers exactly balanced
+(₹86,45,209.67 = ₹86,45,209.67); zero unbalanced individual journal entries; zero orphaned
+`journal_entry_lines`; `journal_entries`/`journal_entry_lines` row counts unchanged by the failed
+502 attempts (confirming they failed *before* touching the DB, exactly as designed); all of this
+session's own earlier test entries (bank-reconciliation reconciled flags, the quick-JE test) still
+exactly as left, not double-posted by the repeated Worker triggers. No corruption found anywhere.
+
+## 5ai. RCM real-transaction test — two real bugs found and fixed (2026-08-23)
 
 §5z/§5aa's RCM (reverse charge) support had only ever been verified via pure-function math checks
 (`ledger-selfcheck.mjs`) — never a real PO→Vendor Bill→Approve cycle, deliberately, to avoid
