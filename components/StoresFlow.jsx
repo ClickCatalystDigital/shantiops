@@ -107,23 +107,16 @@ function StoresFlowVertical({ counts }) {
   );
 }
 
-export default function StoresFlow({ counts }) {
+export default function StoresFlow({ counts, bare = false }) {
   const nodeX = STAGES.map((_, i) => (i + 0.5) * (100 / STAGES.length));
   const midpoints = nodeX.slice(0, -1).map((x, i) => (x + nodeX[i + 1]) / 2);
   const firstX = nodeX[0];
   const lastX = nodeX[nodeX.length - 1];
 
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Stores</CardTitle>
-        <CardAction>
-          <Button asChild size="sm" variant="outline">
-            <Link href="/stores">Open Stores workspace →</Link>
-          </Button>
-        </CardAction>
-      </CardHeader>
-      <CardContent>
+  // Shared between the standalone Card (default) and the bare content used inside
+  // OperationsCard's Row 1 (Operations page unified card).
+  const content = (
+    <>
         <div className="hidden sm:block">
           <div className="mx-auto flex min-w-[36rem] flex-col items-center gap-3">
             <div className="flex flex-wrap items-center justify-center gap-3">
@@ -152,7 +145,22 @@ export default function StoresFlow({ counts }) {
         <div className="sm:hidden">
           <StoresFlowVertical counts={counts} />
         </div>
-      </CardContent>
+    </>
+  );
+
+  if (bare) return content;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Stores</CardTitle>
+        <CardAction>
+          <Button asChild size="sm" variant="outline">
+            <Link href="/stores">Open Stores workspace →</Link>
+          </Button>
+        </CardAction>
+      </CardHeader>
+      <CardContent>{content}</CardContent>
     </Card>
   );
 }

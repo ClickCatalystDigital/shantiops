@@ -24,7 +24,13 @@ import { PlusIcon, PencilIcon, PackageCheckIcon, UndoIcon, TruckIcon, PackageIco
 import { api, showToast } from '@/lib/client';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 import CertPicker from '@/components/CertPicker';
+import DimensionInput from '@/components/DimensionInput';
+import SearchableSelect from '@/components/SearchableSelect';
 import { normalizeWords } from '@/lib/match-utils';
+import { pieceWeight } from '@/lib/piece-weight';
+import {
+  CATEGORY_LABEL, GEOMETRY_SHAPES, ROLLED_CATEGORIES, OTHER_SIZE, STANDARD_SECTIONS, geometrySizeLabel,
+} from '@/lib/section-shapes';
 
 function isLowStock(item) {
   return item.reorder_point != null && item.available <= item.reorder_point;
@@ -33,11 +39,11 @@ function isLowStock(item) {
 // Cutting & Remnant Management — plate/section stock, layered on top of the plain on_hand number
 // above (lib/stock-pieces.js). category mirrors bom_items' own taxonomy (components/PrWorkspace.jsx
 // CATEGORY_LABEL) — the profile-family key lib/remnant-match.js matches a BOM line against.
-const DIMENSIONAL_CATEGORIES = [
-  { value: 'plate', label: 'Plate' },
-  { value: 'ms_section', label: 'MS Section' },
-  { value: 'angle', label: 'Angle' },
-];
+// Same taxonomy the PR/BOM composer's category dropdown uses (lib/section-shapes.js) — 'standard'
+// excluded, it's a BOM-only "item master reference + qty" tag, not a physical stockable shape.
+const DIMENSIONAL_CATEGORIES = Object.entries(CATEGORY_LABEL)
+  .filter(([value]) => value !== 'standard')
+  .map(([value, label]) => ({ value, label }));
 
 const PIECE_STATUS = {
   available: { cls: 'bg-success/10 text-success ring-success/20', label: 'Available' },
@@ -114,6 +120,82 @@ function possibleMatches(request, inventoryItems) {
     .map(m => ({ item: m.item, exact: false }));
 }
 
+// Same size picker the PR/BOM composer uses (components/PrWorkspace.jsx's CategoryFieldsBlock) —
+// a rolled section (angle/beam/channel) picks a commonly-stocked size from STANDARD_SECTIONS
+// (lib/section-shapes.js) or types a custom one; a geometry shape (flat/round/square/octagonal)
+// enters its cross-section dimensions and the spec string is generated the same way
+// (geometrySizeLabel) the composer generates a matching BOM line's size — the exact-string compare
+// lib/remnant-match.js's parseDims does is only reliable when both sides build the string
+// identically, instead of two people typing "ISMB150" vs "ISMB 150". An inventory item has no
+// length of its own (that's per stock_pieces row, entered in Add piece below), so geometry shapes
+// only ask for the cross-section here.
+function SpecField({ category, spec, onChange }) {
+  const presets = STANDARD_SECTIONS[category];
+  const shape = GEOMETRY_SHAPES[category];
+  // Cross-section dims are ephemeral UI state, not persisted (an inventory item stores only the
+  // resulting spec string) — declared unconditionally, same component instance, so switching
+  // category doesn't break the rules of hooks.
+  const [dims, setDims] = useState({});
+
+  if (presets) {
+    // Picking "Other" sets spec to the OTHER_SIZE sentinel (not '') so isOther stays true and the
+    // custom-size box actually appears — clearing straight to '' would immediately collapse isOther
+    // back to false (empty spec looks the same as "nothing picked yet") and hide the box that's
+    // supposed to show. save() below strips a stray sentinel if the box is left blank.
+    const isOther = spec === OTHER_SIZE || (!!spec && !presets.some(p => p.size === spec));
+    return (
+      <div className="grid gap-1.5">
+        <Label>Spec (size)</Label>
+        <SearchableSelect value={isOther ? OTHER_SIZE : (spec || '')} placeholder="Type to search a size…"
+          onChange={v => onChange(v === OTHER_SIZE ? OTHER_SIZE : v)}
+          options={[...presets.map(p => ({ value: p.size, label: p.size })), { value: OTHER_SIZE, label: 'Other / custom size' }]} />
+        {isOther && (
+          <Input className="mt-1" value={spec === OTHER_SIZE ? '' : spec}
+            onChange={e => onChange(e.target.value)} placeholder="e.g. ISMB 150" autoFocus />
+        )}
+      </div>
+    );
+  }
+
+  if (shape) {
+    function apply(patch) {
+      const next = { ...dims, ...patch };
+      setDims(next);
+      const label = geometrySizeLabel(category, next);
+      if (label) onChange(label);
+    }
+    return (
+      <div className="col-span-2 grid gap-1.5">
+        <Label>Cross-section</Label>
+        {shape.sizePresets && (
+          <SearchableSelect className="w-48" value="" placeholder="Type to search a size…"
+            onChange={label => apply(shape.sizePresets.find(p => p.label === label)?.values || {})}
+            options={shape.sizePresets.map(p => ({ value: p.label, label: p.label }))} />
+        )}
+        {/* flex-wrap with a fixed per-field width, not a fixed grid-cols-3 — a 1- or 2-field shape
+            (round/square/octagonal have just one) would otherwise sit in mostly-empty grid tracks,
+            squeezing the placeholder illegible instead of just using the room it doesn't need. */}
+        <div className="flex flex-wrap gap-3">
+          {shape.dims.filter(d => d.key !== 'length').map(d => (
+            <div key={d.key} className="flex w-36 flex-col gap-1">
+              <Label className="text-xs font-normal text-muted-foreground">{d.label}</Label>
+              <DimensionInput valueMm={dims[d.key] || ''} onChangeMm={v => apply({ [d.key]: v })} />
+            </div>
+          ))}
+        </div>
+        <p className="text-xs text-muted-foreground">Spec: <span className="tnum">{spec || '—'}</span></p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-1.5">
+      <Label>Spec (optional)</Label>
+      <Input value={spec} onChange={e => onChange(e.target.value)} placeholder={category === 'tee' ? 'e.g. Tee 50x50x6' : undefined} />
+    </div>
+  );
+}
+
 function ItemFormDialog({ item, onClose, router }) {
   const editing = !!item;
   const [description, setDescription] = useState(item?.description || '');
@@ -154,8 +236,9 @@ function ItemFormDialog({ item, onClose, router }) {
     if (!description.trim()) return showToast('Description is required', 'error');
     setSaving(true);
     try {
+      const cleanSpec = spec === OTHER_SIZE ? '' : spec;
       const body = {
-        description: description.trim(), spec: spec.trim() || null, on_hand: onHand,
+        description: description.trim(), spec: cleanSpec.trim() || null, on_hand: onHand,
         location: location.trim() || null, reorder_point: reorderPoint === '' ? null : reorderPoint,
         item_code: itemCode.trim() || null, item_id: itemId,
         category: category || null, moc: moc.trim() || null,
@@ -196,26 +279,21 @@ function ItemFormDialog({ item, onClose, router }) {
             )}
           </div>
           <div className="grid gap-1.5">
-            <Label>Spec (optional)</Label>
-            <Input value={spec} onChange={e => setSpec(e.target.value)}
-              placeholder={['ms_section', 'angle'].includes(category) ? 'Section size, e.g. ISMB 150 or 50x50x6' : undefined} />
-          </div>
-          <div className="grid gap-1.5">
             <Label>Item code (optional)</Label>
             <Input value={itemCode} onChange={e => setItemCode(e.target.value)} />
           </div>
           <div className="grid gap-1.5">
             <Label>Category (optional)</Label>
-            <Select value={category || '__none'} onValueChange={v => setCategory(v === '__none' ? '' : v)}>
-              <SelectTrigger><SelectValue placeholder="Not dimensional" /></SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  <SelectItem value="__none">Not dimensional</SelectItem>
-                  {DIMENSIONAL_CATEGORIES.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
+            <SearchableSelect value={category || ''} placeholder="Not dimensional"
+              options={[{ value: '', label: 'Not dimensional' }, ...DIMENSIONAL_CATEGORIES]}
+              onChange={v => { setCategory(v); setSpec(''); }} />
           </div>
+          {category ? <SpecField category={category} spec={spec} onChange={setSpec} /> : (
+            <div className="grid gap-1.5">
+              <Label>Spec (optional)</Label>
+              <Input value={spec} onChange={e => setSpec(e.target.value)} />
+            </div>
+          )}
           <div className="grid gap-1.5">
             <Label>Material / grade (optional)</Label>
             <Input value={moc} onChange={e => setMoc(e.target.value)} placeholder="e.g. IS 2062 E250" />
@@ -246,10 +324,10 @@ function ItemFormDialog({ item, onClose, router }) {
 }
 
 // Receiving new dimensional stock (a bought plate/section, not a remnant — those are created by
-// Production's Cut action instead). kind follows the inventory line's own category, same mapping
-// PrWorkspace's guessCategory uses (plate is its own shape; ms_section/angle are both "linear" —
+// Production's Cut action instead). kind follows the inventory line's own category: plate is its
+// own shape (L×W×T×density); every other category (lib/section-shapes.js's taxonomy) is "linear" —
 // cut by length, weight = length × kg/m, since a non-rectangular profile's cross-section isn't
-// L×W×T).
+// L×W×T.
 function AddPieceDialog({ inventoryItem, onClose, router, onAdded, certificates = [] }) {
   const kind = inventoryItem.category === 'plate' ? 'plate' : 'linear';
   const [length, setLength] = useState('');
@@ -262,6 +340,10 @@ function AddPieceDialog({ inventoryItem, onClose, router, onAdded, certificates 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const cert = certificates.find(c => c.id === certId);
+  const weightKg = pieceWeight({
+    kind, length_mm: length, width_mm: width, thickness_mm: thickness,
+    density: kind === 'plate' ? density : null, kg_per_m: kind === 'linear' ? kgPerM : null,
+  });
 
   async function save() {
     setSaving(true);
@@ -293,30 +375,34 @@ function AddPieceDialog({ inventoryItem, onClose, router, onAdded, certificates 
         <DialogHeader><DialogTitle>Add piece — {inventoryItem.description}</DialogTitle></DialogHeader>
         <div className="grid grid-cols-2 gap-3">
           <div className="grid gap-1.5">
-            <Label>Length (mm)</Label>
-            <Input type="number" value={length} onChange={e => setLength(e.target.value)} autoFocus />
+            <Label>Length</Label>
+            <DimensionInput valueMm={length} onChangeMm={setLength} autoFocus />
           </div>
           {kind === 'plate' ? (
             <>
               <div className="grid gap-1.5">
-                <Label>Width (mm)</Label>
-                <Input type="number" value={width} onChange={e => setWidth(e.target.value)} />
+                <Label>Width</Label>
+                <DimensionInput valueMm={width} onChangeMm={setWidth} />
               </div>
               <div className="grid gap-1.5">
-                <Label>Thickness (mm)</Label>
-                <Input type="number" value={thickness} onChange={e => setThickness(e.target.value)} />
+                <Label>Thickness</Label>
+                <DimensionInput valueMm={thickness} onChangeMm={setThickness} />
               </div>
               <div className="grid gap-1.5">
                 <Label>Density (kg/m³)</Label>
-                <Input type="number" value={density} onChange={e => setDensity(e.target.value)} />
+                <Input type="number" min="0" step="any" value={density} onChange={e => setDensity(e.target.value)} />
               </div>
             </>
           ) : (
             <div className="grid gap-1.5">
               <Label>Weight per metre (kg/m)</Label>
-              <Input type="number" value={kgPerM} onChange={e => setKgPerM(e.target.value)} />
+              <Input type="number" min="0" step="any" value={kgPerM} onChange={e => setKgPerM(e.target.value)} />
             </div>
           )}
+          <div className="col-span-2 rounded-md border bg-muted/30 px-3 py-2 text-sm">
+            <span className="text-muted-foreground">Estimated weight </span>
+            <span className="tnum font-medium">{weightKg > 0 ? `${Math.round(weightKg * 100) / 100} kg` : '—'}</span>
+          </div>
           <div className="grid gap-1.5">
             <Label>Heat No.</Label>
             <Input value={heatNo} onChange={e => setHeatNo(e.target.value)} placeholder="e.g. H-4471" />
@@ -356,9 +442,29 @@ function AddPieceDialog({ inventoryItem, onClose, router, onAdded, certificates 
 // The observer side of Cutting & Remnant Management (Production owns Cut; Stores just sees the
 // outcome): every piece under one inventory line, its lineage-derived status, and a Release action
 // for a 'reserved' piece whose BOM line got cancelled/edited before Production ever cut it.
-function PiecesDialog({ inventoryItem, onClose, router, certificates = [] }) {
+// Cut children (used/remnant/scrap) point back at their source piece via parent_id but load flat,
+// sorted id DESC — regroup client-side so a piece's lineage reads together instead of scattered
+// among every other piece on this inventory line.
+function groupPiecesByLineage(pieces) {
+  const childrenByParent = new Map();
+  for (const p of pieces) {
+    if (!p.parent_id) continue;
+    if (!childrenByParent.has(p.parent_id)) childrenByParent.set(p.parent_id, []);
+    childrenByParent.get(p.parent_id).push(p);
+  }
+  const rows = [];
+  for (const p of pieces) {
+    if (p.parent_id) continue; // rendered under its parent below
+    rows.push({ piece: p, indent: false });
+    for (const child of childrenByParent.get(p.id) || []) rows.push({ piece: child, indent: true, parentCode: p.code });
+  }
+  return rows;
+}
+
+function PiecesDialog({ inventoryItem, onClose, router, certificates = [], projects = [] }) {
   const [pieces, setPieces] = useState(null);
   const [adding, setAdding] = useState(false);
+  const [reservingPiece, setReservingPiece] = useState(null);
   const [busyId, setBusyId] = useState(null);
 
   async function load() {
@@ -377,10 +483,12 @@ function PiecesDialog({ inventoryItem, onClose, router, certificates = [] }) {
     setBusyId(null);
   }
 
+  const rows = pieces ? groupPiecesByLineage(pieces) : [];
+
   return (
     <>
       <Dialog open onOpenChange={o => !o && onClose()}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-3xl">
           <DialogHeader><DialogTitle>Pieces — {inventoryItem.description}</DialogTitle></DialogHeader>
           {!pieces ? (
             <p className="text-sm text-muted-foreground">Loading…</p>
@@ -399,23 +507,33 @@ function PiecesDialog({ inventoryItem, onClose, router, certificates = [] }) {
                       <TableHead>Dimensions</TableHead>
                       <TableHead>Weight</TableHead>
                       <TableHead>Heat/Cert</TableHead>
+                      <TableHead>For</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {pieces.map(p => (
+                    {rows.map(({ piece: p, indent, parentCode }) => (
                       <TableRow key={p.id}>
-                        <TableCell className="font-medium">{p.code}</TableCell>
+                        <TableCell className={`font-medium ${indent ? 'pl-6' : ''}`}>
+                          {p.code}
+                          {indent && <div className="text-xs font-normal text-muted-foreground">cut from {parentCode}</div>}
+                        </TableCell>
                         <TableCell className="text-muted-foreground">{pieceDimsLabel(p)}</TableCell>
                         <TableCell className="tnum">{p.weight_kg} kg</TableCell>
                         <TableCell className="text-muted-foreground">
                           {p.heat_no || p.certificate_no ? [p.heat_no, p.certificate_no].filter(Boolean).join(' · ') : '—'}
                         </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {p.bom_description ? [p.project_no, p.bom_description].filter(Boolean).join(' · ') : '—'}
+                        </TableCell>
                         <TableCell><Badge className={PIECE_STATUS[p.status]?.cls}>{PIECE_STATUS[p.status]?.label || p.status}</Badge></TableCell>
                         <TableCell>
                           {p.status === 'reserved' && (
                             <Button size="sm" variant="outline" disabled={busyId === p.id} onClick={() => release(p.id)}>Release</Button>
+                          )}
+                          {p.status === 'available' && (
+                            <Button size="sm" variant="outline" onClick={() => setReservingPiece(p)}>Reserve</Button>
                           )}
                         </TableCell>
                       </TableRow>
@@ -429,7 +547,82 @@ function PiecesDialog({ inventoryItem, onClose, router, certificates = [] }) {
         </DialogContent>
       </Dialog>
       {adding && <AddPieceDialog inventoryItem={inventoryItem} router={router} certificates={certificates} onClose={() => setAdding(false)} onAdded={load} />}
+      {reservingPiece && (
+        <ReservePieceDialog piece={reservingPiece} projects={projects} router={router}
+          onClose={() => setReservingPiece(null)} onReserved={load} />
+      )}
     </>
+  );
+}
+
+// Stores' manual counterpart to the automatic remnant match (lib/remnant-match.js) — pick a
+// project, then one of its open BOM lines, for a specific available piece. Same project->BOM-line
+// select shape as MaterialIssuesCard above, reused here instead of a new pattern.
+function ReservePieceDialog({ piece, projects, onClose, onReserved, router }) {
+  const [projectId, setProjectId] = useState('');
+  const [bomItems, setBomItems] = useState(null);
+  const [bomItemId, setBomItemId] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!projectId) { setBomItems(null); setBomItemId(''); return; }
+    setBomItems(null);
+    setBomItemId('');
+    api(`/api/projects/${projectId}/bom?all=1`)
+      .then(({ items }) => setBomItems(items))
+      .catch(err => showToast(err.message, 'error'));
+  }, [projectId]);
+
+  async function reserve() {
+    if (!bomItemId) return showToast('Pick a BOM line', 'error');
+    setSaving(true);
+    try {
+      await api(`/api/stock-pieces/${piece.id}/reserve`, {
+        method: 'POST', body: { project_id: Number(projectId), bom_item_id: Number(bomItemId) },
+      });
+      showToast('Piece reserved');
+      await onReserved?.();
+      router.refresh();
+      onClose();
+    } catch (err) { showToast(err.message, 'error'); }
+    setSaving(false);
+  }
+
+  return (
+    <Dialog open onOpenChange={o => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Reserve {piece.code} — {pieceDimsLabel(piece)}</DialogTitle></DialogHeader>
+        <div className="flex flex-col gap-3">
+          <div className="grid gap-1.5">
+            <Label>Project</Label>
+            <Select value={projectId} onValueChange={setProjectId}>
+              <SelectTrigger className="w-full"><SelectValue placeholder="Choose a project…" /></SelectTrigger>
+              <SelectContent><SelectGroup>
+                {projects.map(p => <SelectItem key={p.id} value={String(p.id)}>{p.project_no} · {p.customer_name}</SelectItem>)}
+              </SelectGroup></SelectContent>
+            </Select>
+          </div>
+          {projectId && (
+            <div className="grid gap-1.5">
+              <Label>BOM line</Label>
+              <Select value={bomItemId} onValueChange={setBomItemId} disabled={!bomItems}>
+                <SelectTrigger className="w-full"><SelectValue placeholder={bomItems ? 'Choose a BOM line…' : 'Loading…'} /></SelectTrigger>
+                <SelectContent><SelectGroup>
+                  {(bomItems || []).length === 0 && bomItems && (
+                    <div className="px-2 py-1.5 text-sm text-muted-foreground">No BOM lines on this project</div>
+                  )}
+                  {(bomItems || []).map(b => <SelectItem key={b.id} value={String(b.id)}>{b.material_description}</SelectItem>)}
+                </SelectGroup></SelectContent>
+              </Select>
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={reserve} disabled={saving || !bomItemId}>{saving ? 'Reserving…' : 'Reserve'}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -1214,7 +1407,7 @@ const NAV_ITEMS = (counts) => [
   { key: 'gatepasses', label: 'Gate Passes', icon: FileOutputIcon, badge: counts.overdueGatePasses || null },
 ];
 
-function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavigate, certificates }) {
+function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavigate, certificates, projects }) {
   const router = useRouter();
   const [dialogItem, setDialogItem] = useState(undefined); // undefined = closed, null = add, {} = edit
   const [piecesFor, setPiecesFor] = useState(null);
@@ -1291,7 +1484,7 @@ function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavi
           <ItemFormDialog item={dialogItem} router={router} onClose={() => setDialogItem(undefined)} />
         )}
       </Card>
-      {piecesFor && <PiecesDialog inventoryItem={piecesFor} router={router} certificates={certificates} onClose={() => setPiecesFor(null)} />}
+      {piecesFor && <PiecesDialog inventoryItem={piecesFor} router={router} certificates={certificates} projects={projects} onClose={() => setPiecesFor(null)} />}
     </div>
   );
 }
@@ -1313,7 +1506,7 @@ export default function StoresWorkspace({
   return (
     <WorkspaceSidebar title="Inventory" icon={PackageIcon} items={navItems} activeKey={tab} onChange={setTab}>
       {tab === 'inventory' && (
-        <InventoryTab inventoryItems={inventoryItems} openRequests={openRequests} activeReservations={activeReservations} onNavigate={setTab} certificates={certificates} />
+        <InventoryTab inventoryItems={inventoryItems} openRequests={openRequests} activeReservations={activeReservations} onNavigate={setTab} certificates={certificates} projects={projects} />
       )}
       {tab === 'requests' && (
         <OpenRequestsCard openRequests={openRequests} inventoryItems={inventoryItems} router={router} />

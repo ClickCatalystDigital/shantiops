@@ -1,0 +1,228 @@
+<title>Live Demo Reference</title>
+<style>
+:root{
+  --ink:#1a2036; --ink-soft:#3d4260; --paper:#f5f4f0; --surface:#ffffff;
+  --line:#dcd9d0; --line-soft:#eae8e1;
+  --primary:#3346c9; --primary-soft:#e8ebfa;
+  --accent:#d9601f; --accent-soft:#fbe7d8;
+  --good:#1f8a5f; --good-soft:#e2f3ea;
+  --warn:#b8860b; --warn-soft:#faf1d9;
+  --muted:#6b7183;
+  --mono-bg:#eef0e8;
+  --font-display:'Archivo',system-ui,sans-serif;
+  --font-body:'IBM Plex Sans',system-ui,sans-serif;
+  --font-mono:'IBM Plex Mono',ui-monospace,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ink:#eceaf5; --ink-soft:#c3c4d6; --paper:#14151f; --surface:#1b1c29;
+    --line:#33344a; --line-soft:#25263a;
+    --primary:#8b9bf5; --primary-soft:#242850;
+    --accent:#ef9257; --accent-soft:#3a2517;
+    --good:#5fd8a3; --good-soft:#153427;
+    --warn:#e8c458; --warn-soft:#3a2f10;
+    --muted:#9295ac;
+    --mono-bg:#20212f;
+  }
+}
+:root[data-theme="dark"]{
+  --ink:#eceaf5; --ink-soft:#c3c4d6; --paper:#14151f; --surface:#1b1c29;
+  --line:#33344a; --line-soft:#25263a;
+  --primary:#8b9bf5; --primary-soft:#242850;
+  --accent:#ef9257; --accent-soft:#3a2517;
+  --good:#5fd8a3; --good-soft:#153427;
+  --warn:#e8c458; --warn-soft:#3a2f10;
+  --muted:#9295ac;
+  --mono-bg:#20212f;
+}
+*{box-sizing:border-box;}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:var(--font-body); font-size:15px; line-height:1.5;
+  padding:2.5rem 1.5rem 4rem;
+}
+.wrap{max-width:920px; margin:0 auto; display:flex; flex-direction:column; gap:2rem;}
+
+.masthead{display:flex; align-items:baseline; justify-content:space-between; flex-wrap:wrap; gap:.5rem 1.5rem; border-bottom:3px solid var(--ink); padding-bottom:1rem;}
+.masthead h1{font-family:var(--font-display); font-weight:700; font-size:1.9rem; margin:0; letter-spacing:-0.01em; text-wrap:balance;}
+.masthead .sub{font-family:var(--font-mono); font-size:.78rem; color:var(--muted); text-transform:uppercase; letter-spacing:.08em;}
+
+.callout{
+  background:var(--accent-soft); border:1px solid var(--accent); border-radius:6px;
+  padding:.85rem 1.1rem; font-size:.92rem; color:var(--ink);
+}
+.callout b{color:var(--accent);}
+
+section{display:flex; flex-direction:column; gap:.9rem;}
+h2{
+  font-family:var(--font-display); font-size:1.05rem; font-weight:700;
+  margin:0; padding-bottom:.4rem; border-bottom:1px solid var(--line);
+  display:flex; align-items:baseline; gap:.6rem;
+}
+h2 .tag{
+  font-family:var(--font-mono); font-size:.68rem; font-weight:500; color:var(--muted);
+  text-transform:uppercase; letter-spacing:.07em; border:1px solid var(--line); border-radius:3px; padding:.1rem .4rem;
+}
+
+/* Golden path */
+.path{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:0;}
+.path li{
+  display:grid; grid-template-columns:2.1rem 1fr; gap:.9rem;
+  padding:.7rem 0; border-bottom:1px solid var(--line-soft);
+}
+.path li:last-child{border-bottom:none;}
+.path .n{
+  font-family:var(--font-display); font-weight:700; font-size:1rem; color:var(--surface);
+  background:var(--primary); border-radius:50%; width:2.1rem; height:2.1rem;
+  display:flex; align-items:center; justify-content:center; font-variant-numeric:tabular-nums;
+}
+.path .step b{font-weight:600;}
+.path .step .where{font-family:var(--font-mono); font-size:.78rem; color:var(--primary); margin-left:.35rem;}
+.path .step p{margin:.2rem 0 0; color:var(--ink-soft); font-size:.88rem;}
+
+/* tables */
+.tblwrap{overflow-x:auto; border:1px solid var(--line); border-radius:8px;}
+table{width:100%; border-collapse:collapse; font-size:.86rem; background:var(--surface);}
+th{
+  text-align:left; font-family:var(--font-display); font-weight:600; font-size:.72rem;
+  text-transform:uppercase; letter-spacing:.06em; color:var(--muted);
+  background:var(--line-soft); padding:.55rem .8rem; white-space:nowrap;
+}
+td{padding:.55rem .8rem; border-top:1px solid var(--line-soft); vertical-align:top;}
+.cred{font-family:var(--font-mono); font-size:.83rem; white-space:nowrap;}
+.pill{
+  display:inline-block; font-family:var(--font-mono); font-size:.72rem; padding:.1rem .5rem;
+  border-radius:999px; font-weight:500;
+}
+.pill.flagship{background:var(--accent-soft); color:var(--accent); border:1px solid var(--accent);}
+.pill.good{background:var(--good-soft); color:var(--good);}
+.pill.thin{background:var(--warn-soft); color:var(--warn);}
+
+.grid2{display:grid; grid-template-columns:1fr 1fr; gap:1.5rem;}
+@media (max-width:640px){.grid2{grid-template-columns:1fr;}}
+
+.notebox{
+  background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:1rem 1.2rem;
+  font-size:.86rem; color:var(--ink-soft); display:flex; flex-direction:column; gap:.5rem;
+}
+.notebox ul{margin:0; padding-left:1.1rem; display:flex; flex-direction:column; gap:.35rem;}
+
+footer{border-top:1px solid var(--line); padding-top:1rem; font-size:.78rem; color:var(--muted); font-family:var(--font-mono);}
+</style>
+
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<div class="wrap">
+
+  <div class="masthead">
+    <div>
+      <h1>Live Demo Reference — Shanti Boilers Ops</h1>
+      <div class="sub">One page · keep open on a second screen during the call</div>
+    </div>
+  </div>
+
+  <div class="callout">
+    <b>Golden path is live-verified end to end</b> (real API calls against the real dev DB, 2026-08-23) —
+    Lead → Customer → Opportunity → Quotation → Sale Order → Project, then the full department chain through
+    Dispatch and the Customer Portal. Every login below is real and works right now.
+  </div>
+
+  <section>
+    <h2>The golden path <span class="tag">click this live, front to back</span></h2>
+    <ol class="path">
+      <li><span class="n">1</span><div class="step"><b>New Lead</b><span class="where">/sales → Leads tab</span><p>"+ New Lead" — company, contact, phone, email, source. Save.</p></div></li>
+      <li><span class="n">2</span><div class="step"><b>Convert to Customer + Opportunity</b><span class="where">Leads tab</span><p>Click "Convert" on the row — one click creates both records.</p></div></li>
+      <li><span class="n">3</span><div class="step"><b>Quotation</b><span class="where">/sales → Quotations tab</span><p>New quotation against the opportunity — add line items, save.</p></div></li>
+      <li><span class="n">4</span><div class="step"><b>Accept → Convert to SO</b><span class="where">Quotations tab</span><p>Flip status to Accepted, then "Convert to SO" — same row.</p></div></li>
+      <li><span class="n">5</span><div class="step"><b>Convert to Project</b><span class="where">/projects (as design_head/admin)</span><p>"Convert Sale Order" button — auto-seeds the full milestone chain + Scope of Supply.</p></div></li>
+      <li><span class="n">6</span><div class="step"><b>Engineering → BOM</b><span class="where">Project page → Engineering tab</span><p>Add a BOM line. Or jump straight to a project already mid-BOM — see the stage map below.</p></div></li>
+      <li><span class="n">7</span><div class="step"><b>Procurement → Stores → Production → QC</b><span class="where">/procurement, /stores, /production, /qc</span><p>Each has its own live pipeline board. Use the stage map to open a project already sitting at that exact stage instead of building one live.</p></div></li>
+      <li><span class="n">8</span><div class="step"><b>Dispatch</b><span class="where">/ops?dept=Dispatch</span><p>Pack → link the Sales Invoice → set freight + e-way bill → dispatch → post freight to the ledger.</p></div></li>
+      <li><span class="n">9</span><div class="step"><b>Customer Portal</b><span class="where">/portal (as the customer)</span><p>Log in as that customer — phase stepper, nested QC certificate + packing list, Billing card with the invoice. This is the payoff moment.</p></div></li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>Jump straight to a department <span class="tag">skip the build-up</span></h2>
+    <div class="tblwrap">
+      <table>
+        <thead><tr><th>Project</th><th>Customer</th><th>Best for showing</th><th>What's there</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="cred">SB-1018</td><td>Asian Brown Bleachchem</td>
+            <td><span class="pill flagship">Flagship — every stage</span></td>
+            <td>22 BOM lines · 2 job cards · QC pass+fail history · shared QC certificate · 2 packing lists (one ready, one dispatched w/ freight+invoice+e-way) · issued invoice</td>
+          </tr>
+          <tr><td class="cred">SB-1023</td><td>Konkan Sugars</td><td>Engineering — BOM just released</td><td>5 BOM lines, nothing sourced yet</td></tr>
+          <tr><td class="cred">SB-1024</td><td>Vindhya Paper Mills</td><td>Engineering — BOM just released</td><td>6 BOM lines, nothing sourced yet</td></tr>
+          <tr><td class="cred">SB-1025</td><td>Deccan Sugar Works</td><td>Procurement — PO issued</td><td>2 BOM lines, 1 PO issued</td></tr>
+          <tr><td class="cred">SB-1027</td><td>Malwa Steel Industries</td><td>Production — job card running</td><td>2 BOM lines, 1 job card</td></tr>
+          <tr><td class="cred">SB-1028</td><td>Godavari Agro Processors</td><td>QC — inspection logged</td><td>1 BOM line, 1 QC record</td></tr>
+          <tr><td class="cred">SB-1029</td><td>Narmada Chemicals</td><td>Dispatch — packed, not yet shipped</td><td>3 BOM, 1 job card, 1 packing list (ready)</td></tr>
+          <tr><td class="cred">SB-1030</td><td>Kaveri Spinning Mills</td><td>QC — inspection logged</td><td>3 BOM lines, 1 QC record</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <div class="grid2">
+    <section>
+      <h2>Internal logins <span class="tag">password = username + 123</span></h2>
+      <div class="tblwrap">
+        <table>
+          <thead><tr><th>Role</th><th>Username</th></tr></thead>
+          <tbody>
+            <tr><td>PM / admin</td><td class="cred">admin</td></tr>
+            <tr><td>Sales</td><td class="cred">sales_head</td></tr>
+            <tr><td>Marketing</td><td class="cred">marketing_head</td></tr>
+            <tr><td>Design</td><td class="cred">design_head</td></tr>
+            <tr><td>Engineering</td><td class="cred">engg_head</td></tr>
+            <tr><td>Procurement</td><td class="cred">procurement_head</td></tr>
+            <tr><td>Stores</td><td class="cred">stores_head</td></tr>
+            <tr><td>Production</td><td class="cred">production_head</td></tr>
+            <tr><td>QC</td><td class="cred">qc_head</td></tr>
+            <tr><td>Dispatch</td><td class="cred">dispatch_head</td></tr>
+            <tr><td>Installation</td><td class="cred">installation_head</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <h2>Customer portal logins <span class="tag">same password rule</span></h2>
+      <div class="tblwrap">
+        <table>
+          <thead><tr><th>Order</th><th>Username</th></tr></thead>
+          <tbody>
+            <tr><td>SB-1018 <span class="pill flagship">flagship</span></td><td class="cred">asian_brown</td></tr>
+            <tr><td>SB-1023</td><td class="cred">konkan_sugars_ltd</td></tr>
+            <tr><td>SB-1024</td><td class="cred">vindhya_paper_mills_ltd</td></tr>
+            <tr><td>SB-1025</td><td class="cred">deccan_sugar_works</td></tr>
+            <tr><td>SB-1026</td><td class="cred">coromandel_textiles_pvt_ltd</td></tr>
+            <tr><td>SB-1027</td><td class="cred">malwa_steel_industries</td></tr>
+            <tr><td>SB-1028</td><td class="cred">godavari_agro_processors</td></tr>
+            <tr><td>SB-1029</td><td class="cred">narmada_chemicals_ltd</td></tr>
+            <tr><td>SB-1030</td><td class="cred">kaveri_spinning_mills</td></tr>
+            <tr><td>SB-1031</td><td class="cred">himalayan_dairy_pvt_ltd</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <section>
+    <h2>If the client asks about this, say so plainly <span class="tag">honest limits</span></h2>
+    <div class="notebox">
+      <ul>
+        <li><b>Customer credential emails aren't sending yet</b> — the login/portal system is fully built and working (as shown above); actually emailing a real customer their password-setup link is blocked on picking a sending identity/provider. Every login you demo with was created directly, not emailed.</li>
+        <li><b>E-way bill is capture-only</b> — the field exists and is real, but generating one against the government GSP API needs a paid integration, not built.</li>
+        <li><b>GTA reverse-charge GST on freight</b> isn't modeled — freight posts as a flat expense.</li>
+        <li>If asked to invent a brand-new example live: fastest safe path is the golden path above on a
+          throwaway name — don't overwrite one of the named example projects mid-call.</li>
+      </ul>
+    </div>
+  </section>
+
+  <footer>Generated 2026-08-23 · SYSTEM.md §5al/§5ak is the full technical record behind every line here.</footer>
+
+</div>

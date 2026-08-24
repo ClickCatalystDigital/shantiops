@@ -1,71 +1,54 @@
 'use client';
 
-// Controlled searchable single-select over an in-memory list — a Popover trigger showing the current
-// selection, a filter input, and a scrollable list. Modeled on CalcWorkspace's InlineSwitcher but
-// controlled (visible value) and fed items directly. Used for the QC workspace's Series and Project
-// pickers and CertForm's project add.
+// A type-to-filter dropdown for a local list of options — Category and Size pickers (PrWorkspace's
+// CategoryFieldsBlock/LineCard, StoresWorkspace's ItemFormDialog/SpecField) went from a handful of
+// items to lists as long as 25 (ISA angle sizes) or 23 (flat bar combos); a plain Select forces
+// scrolling through all of them with no way to type "50" and jump straight to it. Same
+// type-then-pick-from-a-list-below interaction this codebase already uses for the item catalog
+// (ItemSearchField in this file, StoresWorkspace/SalesWorkspace's own copies) — reused here for a
+// local `options` array instead of a server search, not a second interaction pattern to learn.
 import { useState } from 'react';
-import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { ChevronsUpDownIcon, CheckIcon } from 'lucide-react';
+import { Input } from './ui/input';
 import { cn } from '@/lib/utils';
 
-export default function SearchableSelect({
-  value, items = [], onChange,
-  getKey = i => i.id, getLabel = i => i.label, getSub = () => null,
-  placeholder = 'Search…', triggerPlaceholder = 'Select…',
-  allOption = null,            // e.g. { label: 'All projects' } — selecting it calls onChange(null)
-  className, disabled = false,
-}) {
+export default function SearchableSelect({ value, onChange, options, placeholder = 'Search…', className }) {
+  const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
-  const [q, setQ] = useState('');
+  const selected = options.find(o => o.value === value);
+  const filtered = query.trim()
+    ? options.filter(o => o.label.toLowerCase().includes(query.trim().toLowerCase()))
+    : options;
 
-  const selected = value != null ? items.find(i => String(getKey(i)) === String(value)) : null;
-  const t = q.trim().toLowerCase();
-  const filtered = items.filter(i => !t || getLabel(i).toLowerCase().includes(t) || (getSub(i) || '').toLowerCase().includes(t));
-
-  function pick(key) { onChange(key); setOpen(false); setQ(''); }
+  function pick(opt) {
+    onChange(opt.value);
+    setQuery('');
+    setOpen(false);
+  }
 
   return (
-    <Popover open={open} onOpenChange={o => { setOpen(o); if (!o) setQ(''); }}>
-      <PopoverTrigger asChild>
-        <Button type="button" variant="outline" role="combobox" disabled={disabled}
-          className={cn('justify-between font-normal', className)}>
-          <span className={cn('truncate', !selected && !allOption?.selectedLabel && 'text-muted-foreground')}>
-            {selected ? getLabel(selected) : (value == null && allOption ? allOption.label : triggerPlaceholder)}
-          </span>
-          <ChevronsUpDownIcon className="ml-2 size-4 shrink-0 opacity-50" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent align="start" className="w-[var(--radix-popover-trigger-width)] min-w-56 p-0">
-        <div className="p-1">
-          <Input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder={placeholder} className="h-8" />
-        </div>
-        <div className="max-h-64 overflow-auto p-1 pt-0">
-          {allOption && !t && (
-            <Row active={value == null} label={allOption.label} onClick={() => pick(null)} />
-          )}
-          {filtered.map(i => (
-            <Row key={getKey(i)} active={String(getKey(i)) === String(value)}
-              label={getLabel(i)} sub={getSub(i)} onClick={() => pick(getKey(i))} />
+    <div className={cn('relative', className)}>
+      <Input
+        value={open ? query : (selected?.label || '')}
+        onChange={e => { setQuery(e.target.value); setOpen(true); }}
+        onFocus={() => { setQuery(''); setOpen(true); }}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        placeholder={selected?.label || placeholder}
+      />
+      {open && (
+        <div className="absolute top-full z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-md border bg-popover shadow-md">
+          {filtered.length === 0 ? (
+            <div className="px-2.5 py-1.5 text-sm text-muted-foreground">No match</div>
+          ) : filtered.map(o => (
+            <button key={o.value} type="button" onMouseDown={() => pick(o)}
+              className={cn(
+                'flex w-full items-center px-2.5 py-1.5 text-left text-sm hover:bg-muted/40',
+                o.value === value && 'bg-muted/60 font-medium'
+              )}>
+              {o.label}
+            </button>
           ))}
-          {filtered.length === 0 && <p className="px-2 py-3 text-center text-xs text-muted-foreground">No matches</p>}
         </div>
-      </PopoverContent>
-    </Popover>
-  );
-}
-
-function Row({ active, label, sub, onClick }) {
-  return (
-    <button type="button" onClick={onClick}
-      className="flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted/60">
-      <CheckIcon className={cn('mt-0.5 size-4 shrink-0', active ? 'opacity-100' : 'opacity-0')} />
-      <span className="flex min-w-0 flex-col">
-        <span className="truncate">{label}</span>
-        {sub && <span className="truncate text-xs text-muted-foreground">{sub}</span>}
-      </span>
-    </button>
+      )}
+    </div>
   );
 }

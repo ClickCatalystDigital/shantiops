@@ -25,7 +25,36 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { TrashIcon, PlusIcon, ClipboardListIcon, PackageCheckIcon, LayoutTemplateIcon, CheckIcon, DownloadIcon, UndoIcon } from 'lucide-react';
 import WorkspaceSidebar from './WorkspaceSidebar';
 import BomTable from './BomTable';
+import DimensionInput from './DimensionInput';
+import SearchableSelect from './SearchableSelect';
+import QtyInput from './QtyInput';
 import { BOM_FIELD_OWNERS } from '@/lib/bom-fields.mjs';
+import {
+  CATEGORY_LABEL, GEOMETRY_SHAPES, ROLLED_CATEGORIES, OTHER_SIZE, STANDARD_SECTIONS, DEFAULT_DENSITY,
+  STANDARD_MOC, geometrySizeLabel, categoryWeightKg, categoryDisplaySpec,
+} from '@/lib/section-shapes';
+
+// Same "pick from a curated list, free text as the escape hatch" treatment as Size — MOC is the
+// literal text lib/remnant-match.js's matching compares, so "MS" vs "Mild Steel" typed two ways is
+// a real, silent cause of missed matches, same class of problem the size lists already fixed.
+const OTHER_MOC = '__other_moc__';
+const MOC_OPTIONS = [...STANDARD_MOC.map(m => ({ value: m, label: m })), { value: OTHER_MOC, label: 'Other / custom' }];
+
+// Density only matters for the shapes weight is computed from geometry for (plate + everything in
+// GEOMETRY_SHAPES) — rolled sections/tee already carry their own kg/m (picked or typed), no density
+// involved. Seeded at 7850 (mild steel) the moment one of those categories is picked, editable from
+// there — this is the client's own plate formula (L x W x T x "specified weight") made real: a
+// different material is a different number here, not a different formula.
+function defaultCategoryFields(category) {
+  return category === 'plate' || GEOMETRY_SHAPES[category] ? { density: String(DEFAULT_DENSITY) } : {};
+}
+
+// Ten categories is one too many to scan by eye every time — SearchableSelect (type to filter)
+// everywhere this list is picked from, not just a plain Select.
+const CATEGORY_OPTIONS = [
+  { value: '', label: 'Uncategorized' },
+  ...Object.entries(CATEGORY_LABEL).map(([value, label]) => ({ value, label })),
+];
 
 let nextKey = 1;
 function emptyLine() {
@@ -41,29 +70,10 @@ function emptyLine() {
 // CALC-CHANGES2.md §F — category tags a "project material" line with its physical shape, plus a
 // small set of category-specific dimension fields (category_fields_json — same "shape varies,
 // read/written whole" idiom calc_tables/calc_snapshots already use, not a wide sparse column set).
-// Optional: a line can stay uncategorized, same as it does today.
-const CATEGORY_LABEL = { plate: 'Plate', ms_section: 'MS Section', angle: 'Angle', standard: 'Standard / Fitting' };
-// length/width/thickness carry `numeric: true` (rendered as number inputs, required below) — those
-// are exactly the fields lib/remnant-match.js's parseDims reads to auto-match this line against
-// stock/remnants at BOM release. A category picked without them just never gets matched (skipped,
-// not blocked), so this is required going forward without touching any existing free-text row.
-const CATEGORY_FIELD_DEFS = {
-  plate: [
-    { key: 'material', label: 'Material' }, { key: 'length', label: 'Length (mm)', numeric: true },
-    { key: 'width', label: 'Width (mm)', numeric: true }, { key: 'thickness', label: 'Thickness (mm)', numeric: true },
-    { key: 'weight', label: 'Weight' },
-  ],
-  ms_section: [
-    { key: 'section_type', label: 'Section type' }, { key: 'size', label: 'Size, e.g. ISMB 150' },
-    { key: 'length', label: 'Length (mm)', numeric: true }, { key: 'weight', label: 'Weight' },
-  ],
-  angle: [
-    { key: 'size', label: 'Size, e.g. 50×50×6' }, { key: 'length', label: 'Length (mm)', numeric: true }, { key: 'weight', label: 'Weight' },
-  ],
-  standard: [
-    { key: 'item_master_ref', label: 'Item master reference' }, { key: 'qty', label: 'Qty' },
-  ],
-};
+// Optional: a line can stay uncategorized, same as it does today. CATEGORY_LABEL/GEOMETRY_SHAPES/
+// ROLLED_CATEGORIES live in lib/section-shapes.js — shared with Stores' matching inventory-item
+// picker (components/StoresWorkspace.jsx) so a BOM line's size and a stock item's spec are always
+// generated the same way, which is what lib/remnant-match.js's plain-text matching relies on.
 
 // Item Master's `group_name` (e.g. "MS PLATES", "SQUARE RODS", "FLANGES") suggests a category on
 // pick — confident keyword matches only, same "don't invent, only match" precedent as
@@ -72,10 +82,154 @@ const CATEGORY_FIELD_DEFS = {
 // leaving it for the user to pick.
 function guessCategory(groupName) {
   const g = (groupName || '').toUpperCase();
-  if (g.includes('PLATE')) return 'plate';
+  if (g.includes('PLATE') || g.includes('SHEET')) return 'plate';
+  if (/\bFLAT\b|\bHOOP\b/.test(g)) return 'flat';
+  if (/\bROUND\b|\bROD\b/.test(g)) return 'round';
+  if (/\bSQUARE\b/.test(g)) return 'square';
+  if (/OCTAGON/.test(g)) return 'octagonal';
   if (g.includes('ANGLE')) return 'angle';
-  if (/SECTION|CHANNEL|BEAM|JOIST|\bBAR\b|\bROD\b/.test(g)) return 'ms_section';
+  if (/CHANNEL/.test(g)) return 'channel';
+  if (/BEAM|JOIST/.test(g)) return 'beam';
+  if (/\bTEE\b/.test(g)) return 'tee';
   return '';
+}
+
+function round2(n) { return Math.round(n * 100) / 100; }
+
+// Weight-per-metre needed before a category's weight can be shown/validated: computed straight
+// from geometry for GEOMETRY_SHAPES categories (no input, never wrong), picked from
+// STANDARD_SECTIONS or typed by hand for ROLLED_CATEGORIES/tee.
+function validateCategoryFields(category, fields) {
+  if (category === 'standard') return Number(fields.qty) > 0 ? null : 'needs a quantity';
+  if (category === 'plate') {
+    return (Number(fields.length) > 0 && Number(fields.width) > 0 && Number(fields.thickness) > 0)
+      ? null : 'needs its length/width/thickness filled in';
+  }
+  if (GEOMETRY_SHAPES[category]) {
+    return GEOMETRY_SHAPES[category].dims.every(d => Number(fields[d.key]) > 0) ? null : 'needs its dimensions filled in';
+  }
+  if (ROLLED_CATEGORIES.includes(category) || category === 'tee') {
+    if (!fields.size || fields.size === OTHER_SIZE) return 'needs a size';
+    if (!(Number(fields.kg_per_m) > 0)) return 'needs a weight per metre (kg/m)';
+    if (!(Number(fields.length) > 0)) return 'needs a length';
+    return null;
+  }
+  return null;
+}
+
+// category_fields as typed/picked -> what actually gets stored. Geometry categories get their
+// `size` (what lib/remnant-match.js's parseDims compares against Stores' stock) generated from the
+// dimensions, not typed — see lib/section-shapes.js's geometrySizeLabel, the same generator
+// Stores' own item form uses. Rolled/tee categories get a defensive strip of the OTHER_SIZE
+// sentinel — RaisePrTab's submit() blocks on it via validateCategoryFields before this ever runs,
+// but NewTemplateDialog.save() has no such gate, so "picked Other, left it blank" would otherwise
+// persist the literal sentinel token into a template's category_fields_json.
+function finalizeCategoryFields(category, fields) {
+  if (GEOMETRY_SHAPES[category]) return { ...fields, size: geometrySizeLabel(category, fields) };
+  if ((ROLLED_CATEGORIES.includes(category) || category === 'tee') && fields.size === OTHER_SIZE) {
+    return { ...fields, size: '' };
+  }
+  return fields;
+}
+
+// The category's own fields — dimensions (geometry shapes), a size pick + kg/m (rolled sections),
+// size + kg/m (tee, no preset table), or item ref + qty (standard) — plus, for anything with real
+// weight, a live computed label right under the grid so the number is visible while filling the
+// form instead of only after saving.
+function CategoryFieldsBlock({ category, fields, onChange }) {
+  const set = patch => onChange({ ...fields, ...patch });
+
+  if (category === 'standard') {
+    return (
+      <div className="grid grid-cols-2 gap-3 rounded-md border border-dashed p-2.5">
+        <div className="flex flex-col gap-1.5">
+          <Label className="text-xs">Item master reference</Label>
+          <Input value={fields.item_master_ref || ''} onChange={e => set({ item_master_ref: e.target.value })} />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label className="text-xs">Qty<span className="text-danger"> *</span></Label>
+          <Input type="number" min="0" step="any" required value={fields.qty || ''} onChange={e => set({ qty: e.target.value })} />
+        </div>
+      </div>
+    );
+  }
+
+  const weightKg = categoryWeightKg(category, fields);
+  const weightLabel = weightKg > 0 ? `${round2(weightKg)} kg` : '—';
+
+  if (category === 'plate' || GEOMETRY_SHAPES[category]) {
+    const dims = category === 'plate'
+      ? [{ key: 'length', label: 'Length' }, { key: 'width', label: 'Width' }, { key: 'thickness', label: 'Thickness' }]
+      : GEOMETRY_SHAPES[category].dims;
+    const presets = GEOMETRY_SHAPES[category]?.sizePresets;
+    return (
+      <div className="flex flex-col gap-2 rounded-md border border-dashed p-2.5">
+        {presets && (
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs">Quick pick a stocked size</Label>
+            <SearchableSelect className="w-48" value="" placeholder="Type to search a size…"
+              onChange={label => set(presets.find(p => p.label === label)?.values || {})}
+              options={presets.map(p => ({ value: p.label, label: p.label }))} />
+          </div>
+        )}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          {dims.map(d => (
+            <div key={d.key} className="flex flex-col gap-1.5">
+              <Label className="text-xs">{d.label}<span className="text-danger"> *</span></Label>
+              <DimensionInput required valueMm={fields[d.key] || ''} onChangeMm={v => set({ [d.key]: v })} />
+            </div>
+          ))}
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs">Density (kg/m³)</Label>
+            <Input type="number" min="0" step="any" value={fields.density ?? ''}
+              onChange={e => set({ density: e.target.value })} placeholder={String(DEFAULT_DENSITY)} />
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground">Estimated weight: <span className="tnum font-medium text-foreground">{weightLabel}</span></p>
+      </div>
+    );
+  }
+
+  if (ROLLED_CATEGORIES.includes(category) || category === 'tee') {
+    const presets = STANDARD_SECTIONS[category] || [];
+    const isOther = fields.size === OTHER_SIZE || (!!fields.size && !presets.some(p => p.size === fields.size));
+    return (
+      <div className="flex flex-col gap-2 rounded-md border border-dashed p-2.5">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs">Size<span className="text-danger"> *</span></Label>
+            {presets.length > 0 ? (
+              <SearchableSelect value={isOther ? OTHER_SIZE : (fields.size || '')} placeholder="Type to search a size…"
+                onChange={v => v === OTHER_SIZE
+                  ? set({ size: OTHER_SIZE, kg_per_m: '' })
+                  : set({ size: v, kg_per_m: String(presets.find(p => p.size === v)?.kg_per_m ?? '') })}
+                options={[...presets.map(p => ({ value: p.size, label: p.size })), { value: OTHER_SIZE, label: 'Other / custom size' }]} />
+            ) : (
+              <Input required value={fields.size === OTHER_SIZE ? '' : fields.size || ''} onChange={e => set({ size: e.target.value })} placeholder="e.g. Tee 50x50x6" />
+            )}
+          </div>
+          {presets.length > 0 && isOther && (
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs">Custom size</Label>
+              <Input required value={fields.size === OTHER_SIZE ? '' : fields.size || ''} onChange={e => set({ size: e.target.value })} placeholder="e.g. ISMB 150" />
+            </div>
+          )}
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs">Weight per metre (kg/m){(isOther || presets.length === 0) && <span className="text-danger"> *</span>}</Label>
+            <Input type="number" min="0" step="any" required={isOther || presets.length === 0}
+              value={fields.kg_per_m || ''} onChange={e => set({ kg_per_m: e.target.value })} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs">Length<span className="text-danger"> *</span></Label>
+            <DimensionInput required valueMm={fields.length || ''} onChangeMm={v => set({ length: v })} />
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground">Estimated weight: <span className="tnum font-medium text-foreground">{weightLabel}</span></p>
+      </div>
+    );
+  }
+
+  return null;
 }
 
 // Search-as-you-type over the Item Master catalog (GET /api/items) — picking a match autofills the
@@ -102,7 +256,7 @@ function ItemSearchField({ line, onChange }) {
     onChange({
       material_description: item.item_name, size_spec: item.detail_desc || '', uomHint: item.uom || '',
       item_id: item.id,
-      ...(category && { category, categoryFields: {} }),
+      ...(category && { category, categoryFields: defaultCategoryFields(category) }),
     });
     setOpen(false);
   }
@@ -131,13 +285,19 @@ function ItemSearchField({ line, onChange }) {
 
 const SOURCE_LABEL = { bom: 'Project material', stock: 'Build stock' };
 
-function LineCard({ line, projects, inventoryItems, showSourcePicker, onChange, onRemove, removable }) {
+function LineCard({ line, index, projects, inventoryItems, showSourcePicker, onChange, onRemove, removable }) {
   // A ref mirror of the latest `line`, read only by the async drawing fetch below — without it,
   // the fetch's post-await update would close over the `line` from the render that kicked it off
   // and silently roll back any edit (e.g. the project pick itself) made to the same line while the
   // fetch was in flight. Every synchronous handler still reads `line` directly as before.
   const lineRef = useRef(line);
   lineRef.current = line;
+  // Local, not derived from `line.moc` on every render — so picking "Other" reveals the custom box
+  // without ever writing a sentinel token into the real field (unlike the size pickers' OTHER_SIZE,
+  // which needs defensive stripping elsewhere because it round-trips through the value itself).
+  // Initialized (not just defaulted to false) from whether the line already has a non-preset moc —
+  // a catalog pick or a template can seed one before this ever renders.
+  const [mocCustomOpen, setMocCustomOpen] = useState(() => !!line.moc && !MOC_OPTIONS.some(o => o.value === line.moc));
 
   function setLine(patch) { onChange({ ...line, ...patch }); }
   function setProject(pkey, patch) {
@@ -162,6 +322,11 @@ function LineCard({ line, projects, inventoryItems, showSourcePicker, onChange, 
 
   return (
     <div className="flex flex-col gap-3 rounded-md border p-3">
+      {/* This numbers the lines within the current submission only, so it's always known and
+          correct — the eventual BOM row number a line lands on depends on how many items the
+          target project already has (and anyone else raising a PR against it concurrently), which
+          this form has no reliable way to predict before Raise PR actually runs. */}
+      <span className="text-xs font-medium text-muted-foreground">Item {index}</span>
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1"><ItemSearchField line={line} onChange={setLine} /></div>
         {removable && (
@@ -171,8 +336,17 @@ function LineCard({ line, projects, inventoryItems, showSourcePicker, onChange, 
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-1.5">
           <Label>MOC {line.category ? <span className="text-danger">*</span> : '(optional)'}</Label>
-          <Input value={line.moc} onChange={e => setLine({ moc: e.target.value })} placeholder="e.g. MS"
-            required={!!line.category} />
+          <SearchableSelect value={mocCustomOpen ? '' : (line.moc || '')} placeholder="Type to search a material…"
+            options={MOC_OPTIONS}
+            onChange={v => {
+              if (v === OTHER_MOC) { setMocCustomOpen(true); return; }
+              setMocCustomOpen(false);
+              setLine({ moc: v });
+            }} />
+          {mocCustomOpen && (
+            <Input className="mt-1" value={line.moc} onChange={e => setLine({ moc: e.target.value })}
+              placeholder="e.g. IS 2062 E250" required={!!line.category} autoFocus />
+          )}
         </div>
         <div className="flex flex-col gap-1.5">
           <Label>Size / spec (optional)</Label>
@@ -195,41 +369,36 @@ function LineCard({ line, projects, inventoryItems, showSourcePicker, onChange, 
       {line.source === 'bom' && (
         <div className="flex flex-col gap-1.5">
           <Label>Category (optional)</Label>
-          <Select value={line.category || '__none__'} onValueChange={v => setLine({ category: v === '__none__' ? '' : v, categoryFields: {} })}>
-            <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__none__">Uncategorized</SelectItem>
-              {Object.entries(CATEGORY_LABEL).map(([v, label]) => <SelectItem key={v} value={v}>{label}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <SearchableSelect className="w-56" value={line.category || ''} options={CATEGORY_OPTIONS}
+            onChange={v => setLine({ category: v, categoryFields: defaultCategoryFields(v) })} />
         </div>
       )}
 
       {line.source === 'bom' && line.category && (
-        <div className="grid grid-cols-2 gap-3 rounded-md border border-dashed p-2.5 sm:grid-cols-3">
-          {CATEGORY_FIELD_DEFS[line.category].map(f => (
-            <div key={f.key} className="flex flex-col gap-1.5">
-              <Label className="text-xs">{f.label}{f.numeric && <span className="text-danger"> *</span>}</Label>
-              <Input type={f.numeric ? 'number' : 'text'} required={f.numeric}
-                value={line.categoryFields[f.key] || ''}
-                onChange={e => setLine({ categoryFields: { ...line.categoryFields, [f.key]: e.target.value } })} />
-            </div>
-          ))}
-        </div>
+        // Size/spec (bom_items.size_spec) is what every downstream department actually sees in the
+        // Master BOM table — category_fields_json (dims/size/kg_per_m/density) drives weight + stock
+        // matching but is never itself displayed there. Suggest it from the dimensions so the two
+        // don't silently diverge, but only while it's still blank — a value the user already typed
+        // (or already edited) is never overwritten.
+        <CategoryFieldsBlock category={line.category} fields={line.categoryFields}
+          onChange={categoryFields => setLine({
+            categoryFields,
+            size_spec: line.size_spec || categoryDisplaySpec(line.category, categoryFields),
+          })} />
       )}
 
       {line.source === 'bom' && (
         <div className="flex flex-col gap-1.5">
-          <Label>Projects &amp; quantity</Label>
+          <Label>Projects &amp; quantity<span className="text-danger"> *</span></Label>
           {line.projects.map(p => (
             <div key={p.key} className="flex items-center gap-2">
               <Select value={p.project_id} onValueChange={v => onProjectChange(p.key, v)}>
-                <SelectTrigger className="w-48"><SelectValue placeholder="Project…" /></SelectTrigger>
+                <SelectTrigger className="w-48" aria-invalid={!p.project_id}><SelectValue placeholder="Project…" /></SelectTrigger>
                 <SelectContent>
                   {projects.map(pr => <SelectItem key={pr.id} value={String(pr.id)}>{pr.project_no}</SelectItem>)}
                 </SelectContent>
               </Select>
-              <Input className="flex-1" value={p.qty_text} onChange={e => setProject(p.key, { qty_text: e.target.value })} placeholder="e.g. 4 Nos" />
+              <QtyInput value={p.qty_text} onChange={v => setProject(p.key, { qty_text: v })} />
               {p.drawingOptions?.length > 0 && (
                 <Select value={p.drawing_id} onValueChange={v => setProject(p.key, { drawing_id: v === '__none__' ? '' : v })}>
                   <SelectTrigger className="w-40"><SelectValue placeholder="Drawing (optional)" /></SelectTrigger>
@@ -274,85 +443,149 @@ function LineCard({ line, projects, inventoryItems, showSourcePicker, onChange, 
 // Moved in from the Templates tab so using one doesn't mean leaving Raise PR — the Templates tab
 // itself is unchanged (creating/managing templates is still its own concern). Same
 // /api/bom-templates(/apply) endpoints, just a compact modal instead of a separate page.
-// Never replaces — apply is always an append (app/api/bom-templates/[id]/apply/route.js only ever
-// INSERTs). Staying open after a successful apply (instead of auto-closing) is what actually lets
-// someone do Template A -> apply -> Template B -> apply -> Template C -> apply -> Done, each one
-// landing on top of the last instead of requiring a re-open per template. A duplicate item_id
-// already on the project (e.g. re-applying the same template, or two templates sharing a line)
-// prompts a plain confirm() before inserting a second copy — same lightweight pattern this file
-// already uses for template delete.
-function UseTemplateDialog({ projects, onClose, router }) {
+// A PR template carries no project (that's the whole point — the same lines can feed any number
+// of projects, chosen at Raise PR time, not baked in). "Using" one is never a direct write: it
+// loads the template's items into the Raise PR form below, fully editable, and nothing happens to
+// the database until Raise PR actually runs — same real /api/purchase-requisitions flow as typing
+// every line by hand. Converts a bom_template_items row into an emptyLine()-shaped line one field
+// at a time, checked against both shapes: material_description/moc/size_spec/category/item_id copy
+// straight across (both sides already use identical names); categoryFields comes back out of the
+// stored JSON string the same way finalizeCategoryFields' result went in; the one projects row
+// starts with project_id blank (nothing to prefill) and qty_text seeded from the template item's
+// own qty_text as an editable starting suggestion.
+function templateItemToLine(it) {
+  return {
+    key: nextKey++, source: 'bom',
+    material_description: it.material_description || '', moc: it.moc || '', size_spec: it.size_spec || '', uomHint: '',
+    projects: [{ key: nextKey++, project_id: '', qty_text: it.qty_text || '', drawing_id: '', drawingOptions: null }],
+    inventory_item_id: '', qty: '',
+    category: it.category || '', categoryFields: it.category_fields_json ? JSON.parse(it.category_fields_json) : {},
+    item_id: it.item_id || null,
+  };
+}
+
+function isBlankLine(l) {
+  return !l.material_description.trim() && !l.moc.trim() && !l.category
+    && l.projects.every(p => !p.project_id && !p.qty_text.trim());
+}
+
+// Replaces the form outright only when it's still the untouched single default blank line — once
+// there's real content, merging means appending, same "Template A -> apply -> Template B -> apply"
+// precedent BOM-template apply already established (never silently discards what's there).
+function mergeTemplateItemsIntoLines(existingLines, items) {
+  const newLines = items.map(templateItemToLine);
+  if (existingLines.length === 1 && isBlankLine(existingLines[0])) return newLines;
+  return [...existingLines, ...newLines];
+}
+
+function PrTemplatePicker({ onClose, onPick }) {
   const [templates, setTemplates] = useState(null);
   const [templateId, setTemplateId] = useState('');
-  const [projectId, setProjectId] = useState('');
-  const [applying, setApplying] = useState(false);
-  const [appliedCount, setAppliedCount] = useState(0);
+  const [loading, setLoading] = useState(false);
 
-  useEffect(() => { api('/api/bom-templates').then(setTemplates).catch(err => showToast(err.message, 'error')); }, []);
+  useEffect(() => { api('/api/bom-templates?kind=pr').then(setTemplates).catch(err => showToast(err.message, 'error')); }, []);
 
-  async function apply(confirm = false) {
+  async function use() {
     if (!templateId) return showToast('Choose a template', 'error');
-    if (!projectId) return showToast('Choose a project', 'error');
-    setApplying(true);
+    setLoading(true);
     try {
-      const res = await api(`/api/bom-templates/${templateId}/apply`, { method: 'POST', body: { project_id: Number(projectId), confirm } });
-      if (res.needsConfirm) {
-        setApplying(false);
-        if (window.confirm(`This project already has: ${res.duplicates.join(', ')}. Add this template's items anyway?`)) await apply(true);
-        return;
-      }
-      showToast(`${res.inserted} item(s) added to the project's BOM`);
-      setAppliedCount(c => c + 1);
-      setTemplateId('');
-      router.refresh();
-    } catch (err) { showToast(err.message, 'error'); } finally { setApplying(false); }
+      const full = await api(`/api/bom-templates/${templateId}`);
+      onPick(full.items);
+      onClose();
+    } catch (err) { showToast(err.message, 'error'); } finally { setLoading(false); }
   }
 
   return (
     <Dialog open onOpenChange={o => !o && onClose()}>
       <DialogContent>
-        <DialogHeader><DialogTitle>Use a template</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>Use a PR template</DialogTitle></DialogHeader>
         <div className="flex flex-col gap-3">
-          <div className="flex flex-col gap-1.5">
-            <Label>Template</Label>
-            <Select value={templateId} onValueChange={setTemplateId}>
-              <SelectTrigger><SelectValue placeholder={templates === null ? 'Loading…' : 'Choose a template'} /></SelectTrigger>
-              <SelectContent><SelectGroup>
-                {templates?.length === 0
-                  ? <div className="px-2 py-1.5 text-sm text-muted-foreground">No templates yet</div>
-                  : templates?.map(t => <SelectItem key={t.id} value={String(t.id)}>{t.name} · {t.item_count} item{t.item_count === 1 ? '' : 's'}</SelectItem>)}
-              </SelectGroup></SelectContent>
-            </Select>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label>Project</Label>
-            <Select value={projectId} onValueChange={setProjectId}>
-              <SelectTrigger><SelectValue placeholder="Select a project" /></SelectTrigger>
-              <SelectContent><SelectGroup>
-                {projects.map(p => <SelectItem key={p.id} value={String(p.id)}>{p.project_no} · {p.customer_name}</SelectItem>)}
-              </SelectGroup></SelectContent>
-            </Select>
-          </div>
-          {appliedCount > 0 && (
-            <p className="text-xs text-success">{appliedCount} template{appliedCount === 1 ? '' : 's'} applied so far — pick another to add more, or Done.</p>
-          )}
+          <Select value={templateId} onValueChange={setTemplateId}>
+            <SelectTrigger><SelectValue placeholder={templates === null ? 'Loading…' : 'Choose a template'} /></SelectTrigger>
+            <SelectContent><SelectGroup>
+              {templates?.length === 0
+                ? <div className="px-2 py-1.5 text-sm text-muted-foreground">No PR templates yet</div>
+                : templates?.map(t => <SelectItem key={t.id} value={String(t.id)}>{t.name} · {t.item_count} item{t.item_count === 1 ? '' : 's'}</SelectItem>)}
+            </SelectGroup></SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">Adds this template's items to the form below — nothing is submitted until you Raise PR.</p>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>{appliedCount > 0 ? 'Done' : 'Cancel'}</Button>
-          <Button disabled={applying || !templates?.length} onClick={() => apply(false)}>{applying ? 'Applying…' : 'Apply to project'}</Button>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button disabled={loading || !templates?.length} onClick={use}>{loading ? 'Loading…' : 'Use template'}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
 
-function RaisePrTab({ departments, projects, inventoryItems = [] }) {
+// Release BOM's own template action (§ new) — a BOM template applied while already looking at one
+// project's BOM, so the project is fixed (no picker, unlike TemplatesTab's own Apply which starts
+// with no project context at all). Same apply mechanics as ApplyTemplateDialog below, just scoped.
+function ApplyBomTemplateDialog({ projectId, onClose, router, onApplied }) {
+  const [templates, setTemplates] = useState(null);
+  const [templateId, setTemplateId] = useState('');
+  const [applying, setApplying] = useState(false);
+
+  useEffect(() => { api('/api/bom-templates?kind=bom').then(setTemplates).catch(err => showToast(err.message, 'error')); }, []);
+
+  async function apply(confirm = false) {
+    if (!templateId) return showToast('Choose a template', 'error');
+    setApplying(true);
+    try {
+      const res = await api(`/api/bom-templates/${templateId}/apply`, { method: 'POST', body: { project_id: projectId, confirm } });
+      if (res.needsConfirm) {
+        setApplying(false);
+        if (window.confirm(`This project already has: ${res.duplicates.join(', ')}. Add this template's items anyway?`)) await apply(true);
+        return;
+      }
+      showToast(`${res.inserted} item(s) added to the project's BOM`);
+      router.refresh();
+      await onApplied?.();
+      onClose();
+    } catch (err) { showToast(err.message, 'error'); } finally { setApplying(false); }
+  }
+
+  return (
+    <Dialog open onOpenChange={o => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Apply a BOM template</DialogTitle></DialogHeader>
+        <Select value={templateId} onValueChange={setTemplateId}>
+          <SelectTrigger><SelectValue placeholder={templates === null ? 'Loading…' : 'Choose a template'} /></SelectTrigger>
+          <SelectContent><SelectGroup>
+            {templates?.length === 0
+              ? <div className="px-2 py-1.5 text-sm text-muted-foreground">No BOM templates yet</div>
+              : templates?.map(t => <SelectItem key={t.id} value={String(t.id)}>{t.name} · {t.item_count} item{t.item_count === 1 ? '' : 's'}</SelectItem>)}
+          </SelectGroup></SelectContent>
+        </Select>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button disabled={applying || !templates?.length} onClick={() => apply(false)}>{applying ? 'Applying…' : 'Apply'}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function RaisePrTab({ departments, projects, inventoryItems = [], prTemplatePrefill, onPrefillConsumed }) {
   const router = useRouter();
   const [dept, setDept] = useState(departments[0] || '');
   const [lines, setLines] = useState([emptyLine()]);
   const [busy, setBusy] = useState(false);
-  const [usingTemplate, setUsingTemplate] = useState(false);
+  const [pickingTemplate, setPickingTemplate] = useState(false);
   const showSourcePicker = dept === 'Stores';
+
+  // Templates tab's "Use in Raise PR" hands its items down through the parent (PrWorkspace) as
+  // prTemplatePrefill, since that action starts on a different tab — this is the other half of
+  // that handoff, consumed exactly once (onPrefillConsumed clears it so switching tabs away and
+  // back doesn't re-apply it). "Use template" below (this tab's own button) skips this prop
+  // entirely — it's already here, so it merges straight into `lines` via the same helper.
+  useEffect(() => {
+    if (!prTemplatePrefill) return;
+    setLines(ls => mergeTemplateItemsIntoLines(ls, prTemplatePrefill));
+    onPrefillConsumed();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prTemplatePrefill]);
 
   function updateLine(key, next) { setLines(ls => ls.map(l => l.key === key ? next : l)); }
   function addLine() { setLines(ls => [...ls, emptyLine()]); }
@@ -371,9 +604,8 @@ function RaisePrTab({ departments, projects, inventoryItems = [] }) {
       }
       if (source === 'bom' && l.category) {
         if (!l.moc.trim()) return showToast(`${CATEGORY_LABEL[l.category]} needs an MOC — that's what remnant matching checks against`, 'error');
-        if (CATEGORY_FIELD_DEFS[l.category].some(f => f.numeric && !(Number(l.categoryFields[f.key]) > 0))) {
-          return showToast(`${CATEGORY_LABEL[l.category]} needs its dimensions (length/width/thickness) filled in`, 'error');
-        }
+        const err = validateCategoryFields(l.category, l.categoryFields);
+        if (err) return showToast(`${CATEGORY_LABEL[l.category]} ${err}`, 'error');
       }
     }
     setBusy(true);
@@ -387,7 +619,7 @@ function RaisePrTab({ departments, projects, inventoryItems = [] }) {
             const base = { material_description: l.material_description, moc: l.moc || undefined, size_spec: l.size_spec || undefined, source, item_id: l.item_id || undefined };
             if (source === 'stock') return { ...base, inventory_item_id: Number(l.inventory_item_id), qty: Number(l.qty) };
             return {
-              ...base, category: l.category || undefined, category_fields: l.category ? l.categoryFields : undefined,
+              ...base, category: l.category || undefined, category_fields: l.category ? finalizeCategoryFields(l.category, l.categoryFields) : undefined,
               projects: l.projects.map(p => ({ project_id: Number(p.project_id), qty_text: p.qty_text, drawing_id: p.drawing_id ? Number(p.drawing_id) : undefined })),
             };
           }),
@@ -404,7 +636,7 @@ function RaisePrTab({ departments, projects, inventoryItems = [] }) {
     <Card>
       <CardHeader>
         <CardTitle>Raise a purchase requisition</CardTitle>
-        <CardAction><Button size="sm" variant="outline" onClick={() => setUsingTemplate(true)}><LayoutTemplateIcon data-icon="inline-start" />Use template</Button></CardAction>
+        <CardAction><Button size="sm" variant="outline" onClick={() => setPickingTemplate(true)}><LayoutTemplateIcon data-icon="inline-start" />Use template</Button></CardAction>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {departments.length > 1 && (
@@ -416,8 +648,8 @@ function RaisePrTab({ departments, projects, inventoryItems = [] }) {
             </Select>
           </div>
         )}
-        {lines.map(l => (
-          <LineCard key={l.key} line={l} projects={projects} inventoryItems={inventoryItems}
+        {lines.map((l, i) => (
+          <LineCard key={l.key} index={i + 1} line={l} projects={projects} inventoryItems={inventoryItems}
             showSourcePicker={showSourcePicker} onChange={next => updateLine(l.key, next)}
             onRemove={() => removeLine(l.key)} removable={lines.length > 1} />
         ))}
@@ -428,7 +660,10 @@ function RaisePrTab({ departments, projects, inventoryItems = [] }) {
           {busy ? 'Raising…' : 'Raise PR'}
         </Button>
       </CardContent>
-      {usingTemplate && <UseTemplateDialog projects={projects} router={router} onClose={() => setUsingTemplate(false)} />}
+      {pickingTemplate && (
+        <PrTemplatePicker onClose={() => setPickingTemplate(false)}
+          onPick={items => setLines(ls => mergeTemplateItemsIntoLines(ls, items))} />
+      )}
     </Card>
   );
 }
@@ -448,6 +683,7 @@ function ReleaseBomTab({ projects, departments = [] }) {
   const [loading, setLoading] = useState(false);
   const [releasing, setReleasing] = useState(false);
   const [unreleasing, setUnreleasing] = useState(false);
+  const [applyingTemplate, setApplyingTemplate] = useState(false);
   const editableFields = departments.flatMap(d => BOM_FIELD_OWNERS[d] || []);
 
   function loadStatus() {
@@ -501,6 +737,9 @@ function ReleaseBomTab({ projects, departments = [] }) {
         <CardTitle>Release BOM</CardTitle>
         {status && (
           <CardAction className="flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={() => setApplyingTemplate(true)}>
+              <LayoutTemplateIcon data-icon="inline-start" />Apply template
+            </Button>
             <a href={`/api/projects/${projectId}/bom/pdf`} target="_blank" rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
               <DownloadIcon className="size-4" />PDF
@@ -556,6 +795,10 @@ function ReleaseBomTab({ projects, departments = [] }) {
           </>
         )}
       </CardContent>
+      {applyingTemplate && (
+        <ApplyBomTemplateDialog projectId={Number(projectId)} router={router}
+          onClose={() => setApplyingTemplate(false)} onApplied={() => Promise.all([loadStatus(), loadBom()])} />
+      )}
     </Card>
   );
 }
@@ -569,10 +812,10 @@ function emptyTemplateItem() {
 
 // Templates store the same reusable identity a BOM line does — Item Code (via item_id, §3.2),
 // category + dimensions (so a template-applied line is remnant-matchable from day one, not just
-// hand-typed rows). Reuses ItemSearchField/CATEGORY_LABEL/CATEGORY_FIELD_DEFS as-is — no second
-// picker implementation. Deliberately NOT stored: drawing/revision — those are project-specific,
-// never standard across boiler models (confirmed by how this codebase already scopes drawings to
-// one project, calc_drawings.project_id NOT NULL).
+// hand-typed rows). Reuses ItemSearchField/CategoryFieldsBlock as-is — no second picker
+// implementation. Deliberately NOT stored: drawing/revision — those are project-specific, never
+// standard across boiler models (confirmed by how this codebase already scopes drawings to one
+// project, calc_drawings.project_id NOT NULL).
 function TemplateItemsEditor({ items, onChange }) {
   function update(i, patch) { onChange(items.map((it, idx) => idx === i ? { ...it, ...patch } : it)); }
   function add() { onChange([...items, emptyTemplateItem()]); }
@@ -590,25 +833,15 @@ function TemplateItemsEditor({ items, onChange }) {
           <div className="grid grid-cols-4 gap-2">
             <Input placeholder="MOC" value={it.moc} onChange={e => update(i, { moc: e.target.value })} />
             <Input placeholder="Size / spec" value={it.size_spec} onChange={e => update(i, { size_spec: e.target.value })} />
-            <Select value={it.category || '__none__'} onValueChange={v => update(i, { category: v === '__none__' ? '' : v, categoryFields: {} })}>
-              <SelectTrigger><SelectValue placeholder="Category" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none__">Uncategorized</SelectItem>
-                {Object.entries(CATEGORY_LABEL).map(([v, label]) => <SelectItem key={v} value={v}>{label}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <SearchableSelect value={it.category || ''} placeholder="Category" options={CATEGORY_OPTIONS}
+              onChange={v => update(i, { category: v, categoryFields: defaultCategoryFields(v) })} />
             <Input placeholder="Qty, e.g. 4 Nos" value={it.qty_text} onChange={e => update(i, { qty_text: e.target.value })} />
           </div>
           {it.category && (
-            <div className="grid grid-cols-3 gap-2 rounded-md border border-dashed p-2">
-              {CATEGORY_FIELD_DEFS[it.category].map(f => (
-                <div key={f.key} className="flex flex-col gap-1">
-                  <Label className="text-xs">{f.label}{f.numeric && <span className="text-danger"> *</span>}</Label>
-                  <Input type={f.numeric ? 'number' : 'text'} value={it.categoryFields?.[f.key] || ''}
-                    onChange={e => update(i, { categoryFields: { ...it.categoryFields, [f.key]: e.target.value } })} />
-                </div>
-              ))}
-            </div>
+            <CategoryFieldsBlock category={it.category} fields={it.categoryFields || {}}
+              onChange={categoryFields => update(i, {
+                categoryFields, size_spec: it.size_spec || categoryDisplaySpec(it.category, categoryFields),
+              })} />
           )}
         </div>
       ))}
@@ -617,35 +850,59 @@ function TemplateItemsEditor({ items, onChange }) {
   );
 }
 
-function NewTemplateDialog({ onClose, router }) {
+// Create (no templateId) and edit (templateId given) share this one form — an edit that's opened
+// and left untouched is what "view a template's items" actually is, no separate read-only viewer
+// needed. `kind` is fixed by which section's "+ New" button opened it for create; on edit it's
+// whatever the template already is (never re-picked here — no reason a template should switch
+// kind mid-life, and the loaded value is only ever echoed back unchanged since PATCH doesn't
+// accept it).
+function TemplateFormDialog({ templateId, kind, onClose, router }) {
+  const editing = !!templateId;
+  const [loading, setLoading] = useState(editing);
   const [name, setName] = useState('');
   const [series, setSeries] = useState('');
   const [items, setItems] = useState([emptyTemplateItem()]);
   const [saving, setSaving] = useState(false);
 
+  useEffect(() => {
+    if (!editing) return;
+    api(`/api/bom-templates/${templateId}`).then(t => {
+      setName(t.name || '');
+      setSeries(t.series || '');
+      setItems(t.items.length ? t.items.map(it => ({
+        material_description: it.material_description || '', moc: it.moc || '', size_spec: it.size_spec || '',
+        section: it.section || '', qty_text: it.qty_text || '', item_id: it.item_id || null, uomHint: '',
+        category: it.category || '', categoryFields: it.category_fields_json ? JSON.parse(it.category_fields_json) : {},
+      })) : [emptyTemplateItem()]);
+    }).catch(err => showToast(err.message, 'error')).finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing, templateId]);
+
   async function save() {
     if (!name.trim()) return showToast('Name is required', 'error');
     setSaving(true);
     try {
-      await api('/api/bom-templates', {
-        method: 'POST',
-        body: {
-          name: name.trim(), series: series.trim() || undefined,
-          items: items.filter(i => i.material_description.trim()).map(i => ({
-            material_description: i.material_description, moc: i.moc, size_spec: i.size_spec, qty_text: i.qty_text,
-            item_id: i.item_id || undefined, category: i.category || undefined, category_fields: i.category ? i.categoryFields : undefined,
-          })),
-        },
-      });
-      showToast('Template created');
+      const body = {
+        name: name.trim(), series: series.trim() || undefined,
+        items: items.filter(i => i.material_description.trim()).map(i => ({
+          material_description: i.material_description, moc: i.moc, size_spec: i.size_spec, qty_text: i.qty_text,
+          item_id: i.item_id || undefined, category: i.category || undefined,
+          category_fields: i.category ? finalizeCategoryFields(i.category, i.categoryFields || {}) : undefined,
+        })),
+      };
+      if (editing) await api(`/api/bom-templates/${templateId}`, { method: 'PATCH', body });
+      else await api('/api/bom-templates', { method: 'POST', body: { ...body, kind } });
+      showToast(editing ? 'Template saved' : 'Template created');
       router.refresh();
       onClose();
     } catch (err) { showToast(err.message, 'error'); } finally { setSaving(false); }
   }
 
+  if (loading) return <Card><CardContent className="py-10 text-center text-sm text-muted-foreground">Loading…</CardContent></Card>;
+
   return (
     <Card>
-      <CardHeader><CardTitle>New template</CardTitle></CardHeader>
+      <CardHeader><CardTitle>{editing ? 'Edit template' : `New ${kind === 'pr' ? 'PR' : 'BOM'} template`}</CardTitle></CardHeader>
       <CardContent className="flex flex-col gap-3">
         <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col gap-1.5">
@@ -660,7 +917,7 @@ function NewTemplateDialog({ onClose, router }) {
         <TemplateItemsEditor items={items} onChange={setItems} />
         <div className="flex justify-end gap-2">
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button disabled={saving} onClick={save}>{saving ? 'Saving…' : 'Create template'}</Button>
+          <Button disabled={saving} onClick={save}>{saving ? 'Saving…' : editing ? 'Save changes' : 'Create template'}</Button>
         </div>
       </CardContent>
     </Card>
@@ -706,14 +963,54 @@ function ApplyTemplateDialog({ template, projects, onClose, router }) {
   );
 }
 
-function TemplatesTab({ projects }) {
+// One section (a card + list) per kind, reused for both — same row actions either way except the
+// one action whose meaning genuinely differs (Apply direct-inserts a BOM template; a PR template
+// has no equivalent single-project action, so it hands off to Raise PR instead).
+function TemplateSection({ title, kind, templates, onNew, onEdit, onDelete, onApply, onUseInRaisePr }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+        <CardAction><Button size="sm" onClick={onNew}><PlusIcon data-icon="inline-start" />New</Button></CardAction>
+      </CardHeader>
+      <CardContent className="flex flex-col divide-y p-0">
+        {!templates ? (
+          <p className="px-4 py-6 text-center text-sm text-muted-foreground">Loading…</p>
+        ) : templates.length === 0 ? (
+          <p className="px-4 py-6 text-center text-sm text-muted-foreground">
+            No {kind === 'pr' ? 'PR' : 'BOM'} templates yet.
+          </p>
+        ) : templates.map(t => (
+          <div key={t.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
+            <div>
+              <span className="text-sm font-medium">{t.name}</span>
+              {t.series && <Badge variant="outline" className="ml-2 text-xs font-normal">{t.series}</Badge>}
+              <span className="ml-2 text-xs text-muted-foreground">{t.item_count} item{t.item_count === 1 ? '' : 's'}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <Button size="sm" variant="outline" onClick={() => onEdit(t)}>View/Edit</Button>
+              {kind === 'bom'
+                ? <Button size="sm" variant="outline" onClick={() => onApply(t)}>Apply</Button>
+                : <Button size="sm" variant="outline" onClick={() => onUseInRaisePr(t)}>Use in Raise PR</Button>}
+              <Button size="icon-sm" variant="ghost" className="text-danger" onClick={() => onDelete(t)}><TrashIcon className="size-3.5" /></Button>
+            </div>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+function TemplatesTab({ projects, onUseInRaisePr }) {
   const router = useRouter();
-  const [templates, setTemplates] = useState(null);
-  const [creating, setCreating] = useState(false);
-  const [applyTarget, setApplyTarget] = useState(null);
+  const [prTemplates, setPrTemplates] = useState(null);
+  const [bomTemplates, setBomTemplates] = useState(null);
+  const [formTarget, setFormTarget] = useState(null); // { templateId?, kind }
+  const [applyTarget, setApplyTarget] = useState(null); // a BOM template
 
   function load() {
-    api('/api/bom-templates').then(setTemplates).catch(err => showToast(err.message, 'error'));
+    api('/api/bom-templates?kind=pr').then(setPrTemplates).catch(err => showToast(err.message, 'error'));
+    api('/api/bom-templates?kind=bom').then(setBomTemplates).catch(err => showToast(err.message, 'error'));
   }
   useEffect(load, []);
 
@@ -726,55 +1023,56 @@ function TemplatesTab({ projects }) {
     } catch (err) { showToast(err.message, 'error'); }
   }
 
-  if (creating) {
-    return <NewTemplateDialog router={router} onClose={() => { setCreating(false); load(); }} />;
+  async function useInRaisePr(t) {
+    try {
+      const full = await api(`/api/bom-templates/${t.id}`);
+      onUseInRaisePr(full.items);
+    } catch (err) { showToast(err.message, 'error'); }
+  }
+
+  if (formTarget) {
+    return <TemplateFormDialog templateId={formTarget.templateId} kind={formTarget.kind} router={router}
+      onClose={() => { setFormTarget(null); load(); }} />;
   }
   if (applyTarget) {
     return <ApplyTemplateDialog template={applyTarget} projects={projects} router={router} onClose={() => setApplyTarget(null)} />;
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>BOM Templates</CardTitle>
-        <CardAction><Button size="sm" onClick={() => setCreating(true)}><PlusIcon data-icon="inline-start" />New template</Button></CardAction>
-      </CardHeader>
-      <CardContent className="flex flex-col divide-y p-0">
-        {!templates ? (
-          <p className="px-4 py-6 text-center text-sm text-muted-foreground">Loading…</p>
-        ) : templates.length === 0 ? (
-          <p className="px-4 py-6 text-center text-sm text-muted-foreground">No templates yet — create one from a project's material list.</p>
-        ) : templates.map(t => (
-          <div key={t.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
-            <div>
-              <span className="text-sm font-medium">{t.name}</span>
-              {t.series && <Badge variant="outline" className="ml-2 text-xs font-normal">{t.series}</Badge>}
-              <span className="ml-2 text-xs text-muted-foreground">{t.item_count} item{t.item_count === 1 ? '' : 's'}</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <Button size="sm" variant="outline" onClick={() => setApplyTarget(t)}>Apply to project</Button>
-              <Button size="icon-sm" variant="ghost" className="text-danger" onClick={() => remove(t)}><TrashIcon className="size-3.5" /></Button>
-            </div>
-          </div>
-        ))}
-      </CardContent>
-    </Card>
+    <div className="flex flex-col gap-4">
+      <TemplateSection title="PR Templates" kind="pr" templates={prTemplates}
+        onNew={() => setFormTarget({ kind: 'pr' })} onEdit={t => setFormTarget({ templateId: t.id, kind: 'pr' })}
+        onDelete={remove} onUseInRaisePr={useInRaisePr} />
+      <TemplateSection title="BOM Templates" kind="bom" templates={bomTemplates}
+        onNew={() => setFormTarget({ kind: 'bom' })} onEdit={t => setFormTarget({ templateId: t.id, kind: 'bom' })}
+        onDelete={remove} onApply={setApplyTarget} />
+    </div>
   );
 }
 
 export default function PrWorkspace({ departments, projects, inventoryItems = [] }) {
-  const [tab, setTab] = useState('raise');
+  const [tab, setTab] = useState('templates');
+  const [prTemplatePrefill, setPrTemplatePrefill] = useState(null);
   const navItems = [
+    { key: 'templates', label: 'Templates', icon: LayoutTemplateIcon },
+    { key: '__divider__', divider: true },
     { key: 'raise', label: 'Raise PR', icon: ClipboardListIcon },
     { key: 'release', label: 'Release BOM', icon: PackageCheckIcon },
-    { key: 'templates', label: 'Templates', icon: LayoutTemplateIcon },
   ];
+
+  function useInRaisePr(items) {
+    setPrTemplatePrefill(items);
+    setTab('raise');
+  }
 
   return (
     <WorkspaceSidebar title="Requests" icon={ClipboardListIcon} items={navItems} activeKey={tab} onChange={setTab}>
-      {tab === 'raise' && <RaisePrTab departments={departments} projects={projects} inventoryItems={inventoryItems} />}
+      {tab === 'raise' && (
+        <RaisePrTab departments={departments} projects={projects} inventoryItems={inventoryItems}
+          prTemplatePrefill={prTemplatePrefill} onPrefillConsumed={() => setPrTemplatePrefill(null)} />
+      )}
       {tab === 'release' && <ReleaseBomTab projects={projects} departments={departments} />}
-      {tab === 'templates' && <TemplatesTab projects={projects} />}
+      {tab === 'templates' && <TemplatesTab projects={projects} onUseInRaisePr={useInRaisePr} />}
     </WorkspaceSidebar>
   );
 }

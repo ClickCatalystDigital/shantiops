@@ -106,20 +106,14 @@ function IndicatorChip({ label, value, help, href }) {
   );
 }
 
-export default function ProductionFlow({ counts }) {
+export default function ProductionFlow({ counts, bare = false }) {
   const lc = counts.lifecycle || {};
 
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Production</CardTitle>
-        <CardAction>
-          <Button asChild size="sm" variant="outline">
-            <Link href="/production/workers">Open Job Card workspace →</Link>
-          </Button>
-        </CardAction>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-5">
+  // Shared between the standalone Card (default) and the bare content used inside
+  // OperationsCard's Row 1 (Operations page unified card) — carries both spines and the
+  // indicator-chip row, not just the primary lifecycle, so embedding never silently drops content.
+  const content = (
+    <div className="flex flex-col gap-5">
         {/* Supporting/control layers around the lifecycle, not sequence nodes — Route/Operations
             and Material used to be primary stages (2026-08-19 relaunch demoted them here, same
             underlying counts, just repositioned); Labour/Costing have no cheap existing aggregate
@@ -175,7 +169,22 @@ export default function ProductionFlow({ counts }) {
             </div>
           </div>
         </div>
-      </CardContent>
+    </div>
+  );
+
+  if (bare) return content;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Production</CardTitle>
+        <CardAction>
+          <Button asChild size="sm" variant="outline">
+            <Link href="/production/workers">Open Job Card workspace →</Link>
+          </Button>
+        </CardAction>
+      </CardHeader>
+      <CardContent>{content}</CardContent>
     </Card>
   );
 }

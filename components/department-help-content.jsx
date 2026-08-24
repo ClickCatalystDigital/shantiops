@@ -48,8 +48,8 @@ const FEATURE_FOUNDATIONS = {
   bom: {
     value: 'The BOM is the material contract between technical design and execution. It tells Procurement what to source and gives Stores, Production, QC, and Dispatch a common item identity.',
     outcome: 'Every required line has a usable description, specification, quantity, section, and ownership-aware downstream fields.',
-    checklist: ['Preview imports before confirming them.', 'Check description, MOC, size/specification, make, quantity, section, and group.', 'Leave Procurement, Stores, and Production-owned operational fields to those teams.'],
-    watchOut: 'Do not fix a technical mistake by creating a duplicate line. Correct the source definition and review the impact on quotes, receipts, and packing.',
+    checklist: ['Preview imports before confirming them.', 'Check description, MOC, size/specification, make, quantity, section, and group.', 'Link a line to its Item Master catalog entry if the import missed it — use the "Not linked to catalog" filter to find them.', 'Leave Procurement, Stores, and Production-owned operational fields to those teams.'],
+    watchOut: 'Do not fix a technical mistake by creating a duplicate line. Correct the source definition and review the impact on quotes, receipts, and packing. A line that already has a receipt or issue against it can\'t be re-linked to a different catalog item — that protection is intentional, not a bug.',
   },
   bomStructure: {
     value: 'Multi-Level BOM turns a flat list of parts into real assemblies and sub-assemblies with a quantity multiplier, so a boiler’s "2 ID Fans, each with 1 Drive sub-assembly" is a structure the system can roll up, not just three separate lines a reader has to mentally group.',
@@ -217,8 +217,8 @@ const FEATURE_FOUNDATIONS = {
   statutory: {
     value: 'Statutory documents turn inspection and design data into formal evidence. Keeping header data and part rows together makes the generated PDF defensible.',
     outcome: 'Required fields are complete, the saved record matches the PDF, and the document is ready for the intended review or submission.',
-    checklist: ['Complete company, customer, project, and equipment details.', 'Check every part row and reference.', 'Generate and inspect the PDF before treating it as final.'],
-    watchOut: 'Do not advance an incomplete statutory record just because a PDF can be generated.',
+    checklist: ['Complete company, customer, project, and equipment details.', 'Check every part row and reference.', 'Link each part to its BOM line first if you want a certificate suggestion — an unlinked part never gets one, by design.', 'Generate and inspect the PDF before treating it as final.'],
+    watchOut: 'Do not advance an incomplete statutory record just because a PDF can be generated. A suggested certificate is a nudge, never a substitute for checking the material spec yourself — pick the right one even when a suggestion is showing.',
   },
   board: {
     value: 'The packing board gives Dispatch one place to see what is still being prepared, what is ready, and what has already left the site.',
@@ -289,7 +289,7 @@ const FEATURE_FOUNDATIONS = {
   reports: {
     value: 'Reports turn the quality of CRM data into decisions about pipeline, sources, departments, and campaigns. They are useful only when the records beneath them are maintained.',
     outcome: 'The team can explain the numbers, the date range, and the source fields behind the result.',
-    checklist: ['Choose the correct report and date/filter context.', 'Investigate missing source, campaign, or stage data.', 'Use the result to assign an action, not only to observe it.'],
+    checklist: ['Choose the correct report and date/filter context.', 'Investigate missing source, campaign, or stage data.', 'Use the result to assign an action, not only to observe it.', 'Use the Excel button next to PDF on any catalog report when the numbers need to go into a spreadsheet — it writes real numbers, not formatted text, so sums and sorts work in Excel.'],
     watchOut: 'Do not present a report as truth while key attribution or stage fields are blank.',
   },
   campaigns: {
@@ -518,7 +518,11 @@ export const DEPARTMENT_HELP = {
       feature('scope', 'Scope of Supply', FileInputIcon, ['Review the released scope before starting detailed work. If the scope is unclear, raise the question as a task instead of silently making a commercial assumption.']),
       feature('calc', 'Calculation workspace', CalculatorIcon, ['Use Methodology for approved formulas, Variables for inputs, Tables for reference data, Validations for guardrails, and Snapshots for frozen calculation results.', 'A snapshot preserves the calculation as it was run. Use Reproduce or the Audit area when someone asks why a result changed.']),
       feature('drawings', 'Drawings and release', RulerIcon, ['Track drawing numbers, revisions, approvals, and as-built status with the project. Upload the file only after checking that the revision label matches the record.', 'Released calculations and drawings are the handoff signal to the shop; do not leave the project in an ambiguous review state.']),
-      feature('bom', 'Master BOM', ClipboardListIcon, ['Import a PMB workbook and inspect the preview before confirming. Technical columns include description, MOC, size/spec, make, quantity, section, group, and remarks.', 'Procurement owns purchase status and references; Stores owns receipt fields; Production owns issued/received fields. Do not overwrite another department’s operational fields.']),
+      feature('bom', 'Master BOM', ClipboardListIcon, [
+        'Import a PMB workbook and inspect the preview before confirming. Technical columns include description, MOC, size/spec, make, quantity, section, group, and remarks.',
+        'Procurement owns purchase status and references; Stores owns receipt fields; Production owns issued/received fields. Do not overwrite another department’s operational fields.',
+        'Import already tries to auto-link each line to the Item Master catalog on an exact name match — a line that doesn\'t show a catalog code (under the description) missed it, usually a typo, abbreviation, or formatting difference. Search and pick the real catalog entry for it — plain search only, no automatic suggestion, since a wrong guess here would feed Where-Used, Common/Uncommon, Inventory Aging, and Stock Ledger the wrong identity. Use the "Not linked to catalog" filter to find every line still needing this.',
+      ]),
       feature('notifications', 'Notifications', BellIcon, [
         'You receive a notification the moment a new order reaches Engineering: converting a confirmed Sale Order into a Project (a Design Head or PM does the converting) notifies Engineering and Design at the same time, since a fresh Scope of Supply now exists for both to work from.',
         'You receive a notification when a BOM template is applied to a project — a reusable per-boiler-model starting BOM (Requests → Templates), applied by Design, Stores, or Engineering itself. If someone else applied it, this is how Engineering learns a BOM has taken shape without opening the project to check. If Engineering applied it, no notification is sent for that own action — same "you don\'t get pinged for your own work" pattern as Sales\' own Sale Order creation.',
@@ -973,7 +977,11 @@ export const DEPARTMENT_HELP = {
     features: [
       feature('tests', 'Test records', ClipboardCheckIcon, ['Create a record for hydro tests, NDE/radiography, MTC checks, and other inspections. Include test type, reference number, result, inspector, date, and notes.', 'Use Pending until the check is actually completed. A clear Fail result should include the reason or next action.']),
       feature('certificates', 'Test Certificate bank', BadgeCheckIcon, ['Enter a certificate once with its certificate number, maker/cast/plate details, material data, and uploaded PDF when available.', 'Link certificates to the relevant project or part so the same material evidence can be found later without duplicate entry.']),
-      feature('statutory', 'Statutory documents', FileTextIcon, ['Use the statutory document editor for the supported Form IV A workflow. Header data and part rows are kept together so the PDF reflects the saved record.', 'Do not advance a document with missing required fields; the PDF gate is there to prevent incomplete evidence being treated as final.']),
+      feature('statutory', 'Statutory documents', FileTextIcon, [
+        'Use the statutory document editor for the supported form workflows — Form IV A for the standard CF/MF/OF/SF/SIB/PRS boiler folder, or Form III + Form III-H for a standalone Header/Desuperheater/Tank component shipped without a complete boiler (model HEADERS). Header data and part rows are kept together so the PDF reflects the saved record.',
+        'Do not advance a document with missing required fields; the PDF gate is there to prevent incomplete evidence being treated as final.',
+        'Linking a part to its BOM line (the small "Link to BOM item"/"Suggested" control under the part\'s size, or the dropdown when unlinked) unlocks certificate suggestions above the search box in the Link Certificate dialog — a ✓✓ badge means this material/maker pairing has been approved 3+ times before, ✓ means the material spec matches exactly, ≈ means only a partial text match. All three are one-click nudges, never automatic — a part with no BOM link, or one whose BOM line has no real material spec to compare against, shows no suggestion at all rather than a guess.',
+      ]),
       feature('milestones', 'QC milestones', RouteIcon, ['Start and close QC milestones with actual dates. When work is late or failed, record the reason and create the follow-up task.', 'A QC result and a milestone are related but not identical: use the test record for the evidence and the milestone for project progress.']),
       feature('notifications', 'Notifications', BellIcon, [
         'You receive a notification once every BOM item on a project has cleared Procurement — the "Procured" milestone completing, the same automatic signal Procurement\'s own status queue relies on. The notification tells you the project is ready for QC to start preparing inspection records, before Production even starts fabricating.',
@@ -1017,7 +1025,8 @@ export const DEPARTMENT_HELP = {
       ]),
       feature('reports', 'Reports', BarChart3Icon, [
         'Test Certificate Register lists every certificate with its mechanical properties, joined to the project(s) it\'s allocated to. Inspection Pass/Fail Summary groups test records by type. NCR Register lists every NCR with its severity, status, and disposition.',
-        'Every report reads live off the same certificate, test, and NCR data — there is nothing to enter separately for reporting.',
+        'Calibration Due/Status mirrors the Calibration tab\'s own OK/Due soon/Expired/Blocked logic as a printable report. Job-Work Inspection Register lists every job-work dispatch with sent/received quantities and the calculated variance.',
+        'Every report reads live off the same certificate, test, NCR, and calibration data — there is nothing to enter separately for reporting.',
       ]),
     ],
     howTo: [
@@ -1210,6 +1219,7 @@ export const DEPARTMENT_HELP = {
     intro: [
       'Accounts owns the full books for both legal entities (Shanti Boilers & Pressure Vessels (P) Ltd and Shanti Techno Fab) — chart of accounts, journal entries, GST compliance, and the derived Trial Balance/P&L/Balance Sheet. Shanti Ops is the system of record here, not a document trail feeding an external accounting package; Tally, if ever connected, would be an optional sync target reading from this ledger, not the other way round.',
       'Most of the ledger fills itself in: issuing a Sales Invoice, approving a Vendor Bill, raising a Credit/Debit Note, or marking a Salary Slip paid each post their own journal entry automatically. Your day-to-day work is mostly settlement (receipts/payments), GST compliance (returns and reconciliation), and the exceptions nothing else already covers (Manual Journal Entry, bank reconciliation).',
+      'Operations has a glance view now (the same kind of pipeline diagram Procurement, Sales, Design, and Stores already have) — but Accounts isn\'t one pipeline, so it shows three independent spines instead: Purchase → Pay (Bill Draft → Approved → Paid, with Debit notes off to the side), Order → Cash (Invoice Draft → Issued → Paid, with Credit notes off to the side), and Period Close (JE Draft → Posted → Reconciled, with GST returns filed off to the side). All three read live off the ledger; there is nothing to enter here.',
     ],
     features: [
       feature('settings', 'Company Settings', Building2Icon, ['One row per legal entity — GSTIN, PAN, registered address, state code, and invoice series prefix. Every document number (invoice, credit note, receipt…) and every GST split (CGST+SGST vs IGST) is computed from this record, so keep it accurate before relying on anything downstream.']),

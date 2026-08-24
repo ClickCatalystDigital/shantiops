@@ -16,6 +16,14 @@ export async function POST(req, { params }) {
   const b = await req.json();
   if (!b.project_id) return NextResponse.json({ error: 'project_id is required' }, { status: 400 });
 
+  // 'pr' templates never reach here through the UI (Templates tab hands them to "Use in Raise PR",
+  // which pre-fills the Raise PR form and submits through /api/purchase-requisitions instead) — a
+  // direct insert would silently skip the real PR record that kind is supposed to produce, so it's
+  // rejected outright rather than only relied on the UI never offering the button.
+  const template = await queryOne('SELECT kind FROM bom_templates WHERE id = ?', [params.id]);
+  if (!template) return NextResponse.json({ error: 'Template not found' }, { status: 404 });
+  if (template.kind !== 'bom') return NextResponse.json({ error: 'This is a PR template — use "Use in Raise PR" instead' }, { status: 400 });
+
   const project = await queryOne('SELECT id FROM projects WHERE id = ?', [b.project_id]);
   if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
   const items = await queryAll('SELECT * FROM bom_template_items WHERE template_id = ? ORDER BY sort_order, id', [params.id]);

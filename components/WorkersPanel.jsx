@@ -26,6 +26,9 @@ import { BOM_FIELD_OWNERS } from '@/lib/bom-fields.mjs';
 import QuickAddInline from '@/components/QuickAddInline';
 import WorkOrdersPanel from '@/components/WorkOrdersPanel';
 import ProductionForecastPanel from '@/components/ProductionForecastPanel';
+import DimensionInput from '@/components/DimensionInput';
+import { pieceWeight } from '@/lib/piece-weight';
+import { DIMENSIONAL_CATEGORIES as SHAPE_CATEGORIES } from '@/lib/bom-fields.mjs';
 
 // Renamed from "Workers" to "Job Card" (PRODUCTION-MODULE-DESIGN.md §3.1 nav decision) — job cards
 // get touched far more often per day than the roster/attendance sub-tabs, so work planning is the
@@ -70,7 +73,9 @@ export default function WorkersPanel({ date, sheet, workers, projects, trades, j
   );
 }
 
-const DIMENSIONAL_CATEGORIES = new Set(['plate', 'ms_section', 'angle']);
+// Same taxonomy the PR/BOM composer's category dropdown uses (lib/bom-fields.mjs's
+// DIMENSIONAL_CATEGORIES, the shared list also gating lib/remnant-match.js/lib/procurement.js).
+const DIMENSIONAL_CATEGORIES = new Set(SHAPE_CATEGORIES);
 
 function parseNum(v) {
   const n = Number(v);
@@ -84,18 +89,12 @@ function pieceDimsLabel(p) {
   return p.kind === 'plate' ? `${p.length_mm}×${p.width_mm}×${p.thickness_mm} mm` : `${p.length_mm} mm`;
 }
 
-// Weight preview mirrors lib/stock-pieces.js's pieceWeight exactly (client-side, so the operator
-// sees the scrap number update live as they type — the server recomputes and is the real source of
-// truth at submit).
+// Weight preview — the operator sees the scrap number update live as they type; the server
+// recomputes and is the real source of truth at submit. Shares lib/piece-weight.js's pieceWeight
+// with every other weight preview in the app (Production's Cut dialog, the PR/BOM composer,
+// Stores' Add piece dialog) instead of a second hand-maintained copy of the formula.
 function previewWeight(source, row) {
-  if (source.kind === 'plate') {
-    const L = parseNum(row.length_mm), W = parseNum(row.width_mm), T = parseNum(row.thickness_mm);
-    if (!(L > 0 && W > 0 && T > 0)) return 0;
-    return (L / 1000) * (W / 1000) * (T / 1000) * (source.density || 7850);
-  }
-  const L = parseNum(row.length_mm);
-  if (!(L > 0)) return 0;
-  return (L / 1000) * (source.kg_per_m || 0);
+  return pieceWeight({ kind: source.kind, ...row, density: source.density, kg_per_m: source.kg_per_m });
 }
 
 // The BOM line's own required dims (category_fields_json — CALC-CHANGES2.md §F) prefill the first
@@ -124,11 +123,11 @@ function DimRows({ label, kind, rows, setRows }) {
       {rows.length === 0 && <p className="text-xs text-muted-foreground">None</p>}
       {rows.map((r, idx) => (
         <div key={idx} className="flex items-center gap-2">
-          <Input type="number" placeholder="Length (mm)" className="w-32 shrink-0" value={r.length_mm ?? ''} onChange={e => update(idx, 'length_mm', e.target.value)} />
+          <DimensionInput placeholder="Length" className="w-40 shrink-0" valueMm={r.length_mm ?? ''} onChangeMm={v => update(idx, 'length_mm', v)} />
           {kind === 'plate' && (
             <>
-              <Input type="number" placeholder="Width (mm)" className="w-32 shrink-0" value={r.width_mm ?? ''} onChange={e => update(idx, 'width_mm', e.target.value)} />
-              <Input type="number" placeholder="Thickness (mm)" className="w-36 shrink-0" value={r.thickness_mm ?? ''} onChange={e => update(idx, 'thickness_mm', e.target.value)} />
+              <DimensionInput placeholder="Width" className="w-40 shrink-0" valueMm={r.width_mm ?? ''} onChangeMm={v => update(idx, 'width_mm', v)} />
+              <DimensionInput placeholder="Thickness" className="w-44 shrink-0" valueMm={r.thickness_mm ?? ''} onChangeMm={v => update(idx, 'thickness_mm', v)} />
             </>
           )}
           <Button type="button" size="icon-sm" variant="ghost" onClick={() => setRows(rows.filter((_, i) => i !== idx))}><TrashIcon /></Button>

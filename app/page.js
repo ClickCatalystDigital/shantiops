@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import ProductionTodayPage from './production/page';
-import { getMyWork, getBomWork, getDepartmentTasks, getStageBottlenecks, getSourcingItems, getProcurementFlowCounts, getDesignFlowCounts, getDesignWork, getSalesFlowCounts, getStoresFlowCounts, getProductionFlowCounts, getDispatchFlowCounts, getInstallationFlowCounts, getHrFlowCounts, getEngineeringFlowCounts, getQcFlowCounts } from '@/lib/data';
+import { getMyWork, getBomWork, bucketBomWork, getDepartmentTasks, getStageBottlenecks, getSourcingItems, getProcurementFlowCounts, getDesignFlowCounts, getDesignWork, getSalesFlowCounts, getStoresFlowCounts, getProductionFlowCounts, getDispatchFlowCounts, getInstallationFlowCounts, getHrFlowCounts, getEngineeringFlowCounts, getQcFlowCounts, getAccountsFlowCounts } from '@/lib/data';
 import { getFreshSessionUser, isCustomer, isManager, isHead, headDepartments, canAccessDepartment, roleHome } from '@/lib/auth';
 import StatusBadge from '@/components/StatusBadge';
 import DispatchBoard from '@/components/DispatchBoard';
@@ -17,8 +17,9 @@ import InstallationFlow from '@/components/InstallationFlow';
 import HrFlow from '@/components/HrFlow';
 import EngineeringFlow from '@/components/EngineeringFlow';
 import QcFlow from '@/components/QcFlow';
-import MasterBomTable from '@/components/MasterBomTable';
-import DesignOperationsSection from '@/components/DesignOperationsSection';
+import AccountsFlow from '@/components/AccountsFlow';
+import DesignFlow from '@/components/DesignFlow';
+import OperationsFilterBar from '@/components/OperationsFilterBar';
 import OperationsAttentionSection from '@/components/OperationsAttentionSection';
 import PageHeader from '@/components/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
@@ -28,15 +29,36 @@ import { ArrowRightIcon } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 
-// function StatChip({ label, value, dot }) {
-//   return (
-//     <div className="flex items-center gap-2 rounded-full border bg-card px-3 py-1.5 text-sm shadow-sm">
-//       <span className={`size-2 rounded-full ${dot}`} />
-//       <span className="font-semibold tnum">{value}</span>
-//       <span className="text-muted-foreground">{label}</span>
-//     </div>
-//   );
-// }
+// Departments on the shared unified Operations card (operations-tab-changes.md, generalizing
+// DESIGN-OPS-REDESIGN.md's pattern). A single-department view of any of these hides the generic
+// Open Actions grid below — the card's own table Bottleneck column + the project page's own Open
+// Actions card already cover that ground, same precedent Design's card set. PM/multi-department
+// views keep the grid (still the only cross-department aggregate there).
+const UNIFIED_DEPTS = ['Procurement', 'Stores', 'Production', 'Design', 'Engineering'];
+
+// Column specs for the four BOM-owning departments' unified table — plain data, not render
+// functions (this file is a Server Component; a function prop can't cross into the Client
+// Component tree). `field: 'progress'` reads the `{ done, total }` pair every BOM-bucketed work
+// row is normalized to below.
+const BOM_WORK_COLUMNS = [
+  { key: 'progress', label: 'Progress', width: 'w-40', kind: 'progress', field: 'progress' },
+  { key: 'bottleneck', label: 'Bottleneck', width: 'w-36', kind: 'bottleneckChip' },
+];
+const DESIGN_WORK_COLUMNS = [
+  { key: 'progress', label: 'Design Progress', width: 'w-40', kind: 'progress', field: 'designProgress' },
+  { key: 'bottleneck', label: 'Bottleneck', width: '', kind: 'text', field: 'bottleneck' },
+  { key: 'calc', label: 'Calc Status', width: 'w-28', kind: 'ratioText', field: 'calcStatus' },
+  { key: 'drawings', label: 'Drawings', width: 'w-24', kind: 'ratioText', field: 'drawings' },
+];
+
+// Same outgoing/incoming split every unified card uses — pulled out once instead of copied per
+// department (this used to be five near-identical inline IIFEs).
+function splitIncidents(tasks, dept) {
+  return {
+    outgoing: tasks.filter(t => t.from_department === dept && !t.bom_item_id),
+    incoming: tasks.filter(t => t.department === dept && t.from_department && t.from_department !== dept && !t.bom_item_id),
+  };
+}
 
 export async function OperationsPage({ searchParams }) {
   const user = await getFreshSessionUser();
@@ -64,11 +86,7 @@ export async function OperationsPage({ searchParams }) {
   // [] for them) — their cross-department raise/oversight surface is the project page's
   // all-departments tab strip instead (app/projects/[id]/page.js), which they always get.
   const deptsToShow = manager ? [] : (deptFilter ? [deptFilter] : headDepartments(user));
-  // Design's Operations view is now one unified card (DesignOperationsCard) whose master table +
-  // the project page's own Open Actions card already surface what the generic per-project
-  // "needs attention" grid below would otherwise duplicate — see DESIGN-OPS-REDESIGN.md. Other
-  // departments haven't had this pass yet, so the grid stays for them.
-  const isDesignOnlyView = deptsToShow.length === 1 && deptsToShow[0] === 'Design';
+  const isUnifiedOnlyView = deptsToShow.length === 1 && UNIFIED_DEPTS.includes(deptsToShow[0]);
 
   // Dispatch department view = the packing board (§ "packing within department").
   if (deptFilter === 'Dispatch') {
@@ -96,41 +114,83 @@ export async function OperationsPage({ searchParams }) {
   // way DepartmentPanel threads a project's own bom into TicketsPanel on the project page.
   const sourcingItems = deptsToShow.length ? await getSourcingItems() : [];
   const bottlenecks = deptsToShow.includes('Production') ? await getStageBottlenecks('Production') : [];
-  // Procurement's pipeline glance (§2 of the redesign) — replaces the old Sourcing/PO-placed/
-  // In-transit tiles. Positioned right after the stat chips, ahead of the per-project breakdown
-  // below, which is the least useful thing on this page for a quick "where do things stand" glance.
-  const procurementFlow = deptsToShow.includes('Procurement') ? await getProcurementFlowCounts() : null;
-  // Sales' pipeline glance (STORES-SALES-CHANGES.md follow-up) — same slot/precedent as Procurement's.
+  // Sales/Installation/HR/QC/Accounts pipeline glances — outside this pass's unified-card rollout
+  // (no per-project master table exists for any of them yet, see operations-tab-changes.md), so
+  // they keep their original standalone-Card treatment.
   const salesFlow = deptsToShow.includes('Sales') ? await getSalesFlowCounts() : null;
-  // Stores' pipeline glance (STORES-SALES-CHANGES.md follow-up) — same slot/precedent as Procurement's.
-  const storesFlow = deptsToShow.includes('Stores') ? await getStoresFlowCounts() : null;
-  // Production's pipeline glance (§5l) — same slot/precedent as Procurement's.
-  const productionFlow = deptsToShow.includes('Production') ? await getProductionFlowCounts() : null;
-  // Design's pipeline glance (§E) — same slot/precedent as Procurement's.
-  const designFlow = deptsToShow.includes('Design') ? await getDesignFlowCounts() : null;
-  // Installation/HR/Engineering/QC pipeline glances (§3d) — same slot/precedent as Procurement's.
   const installationFlow = deptsToShow.includes('Installation') ? await getInstallationFlowCounts() : null;
   const hrFlow = deptsToShow.includes('HR') ? await getHrFlowCounts() : null;
-  const engineeringFlow = deptsToShow.includes('Engineering') ? await getEngineeringFlowCounts() : null;
   const qcFlow = deptsToShow.includes('QC') ? await getQcFlowCounts() : null;
-  const designWork = deptsToShow.includes('Design') ? await getDesignWork() : [];
-  // Same direction-split the old standalone incident cards used, just precomputed here now that
-  // DesignOperationsCard needs both lists as props instead of an inline IIFE further down.
-  const designTasks = deptsToShow.includes('Design') ? (tasksByDept[deptsToShow.indexOf('Design')] || []) : [];
-  const designOutgoing = designTasks.filter(t => t.from_department === 'Design' && !t.bom_item_id);
-  const designIncoming = designTasks.filter(t => t.department === 'Design' && t.from_department && t.from_department !== 'Design' && !t.bom_item_id);
-  // Open Master-BOM work for BOM-owning departments (Engineering: missing BOMs; Procurement /
-  // Stores / Production: items not yet closed). Fills the once-empty Engineering attention list.
+  const accountsFlow = deptsToShow.includes('Accounts') ? await getAccountsFlowCounts() : null;
+
+  // Open Master-BOM work for the four BOM-owning departments — one shared query, bucketed per
+  // department below (bucketBomWork, lib/data.js) rather than everyone sharing one combined table.
   const bomWork = deptFilter && deptFilter !== 'Engineering' && !['Procurement', 'Stores', 'Production'].includes(deptFilter)
     ? [] : await getBomWork(user);
+
+  // Assemble the unified-card list (operations-tab-changes.md) — one entry per department in
+  // deptsToShow that's on the shared pattern, in a fixed order, each self-contained: its own flow,
+  // its own outgoing/incoming split, its own filtered table.
+  const cards = [];
+  if (deptsToShow.includes('Procurement')) {
+    const counts = await getProcurementFlowCounts();
+    const { outgoing, incoming } = splitIncidents(tasksByDept[deptsToShow.indexOf('Procurement')] || [], 'Procurement');
+    const work = bucketBomWork(bomWork, 'Procurement').map(w => ({ ...w, progress: { done: w.closed, total: w.total } }));
+    cards.push({
+      dept: 'Procurement', flow: <ProcurementFlow counts={counts} bare />, outgoing, incoming,
+      work, columns: BOM_WORK_COLUMNS, sourcingItems, emptyMessage: 'Nothing open in Procurement.',
+      href: '/procurement', linkLabel: 'Open Procurement workspace →',
+    });
+  }
+  if (deptsToShow.includes('Stores')) {
+    const counts = await getStoresFlowCounts();
+    const { outgoing, incoming } = splitIncidents(tasksByDept[deptsToShow.indexOf('Stores')] || [], 'Stores');
+    const work = bucketBomWork(bomWork, 'Stores').map(w => ({ ...w, progress: { done: w.closed, total: w.total } }));
+    cards.push({
+      dept: 'Stores', flow: <StoresFlow counts={counts} bare />, outgoing, incoming,
+      work, columns: BOM_WORK_COLUMNS, sourcingItems, emptyMessage: 'Nothing in transit right now.',
+      href: '/stores', linkLabel: 'Open Stores workspace →',
+    });
+  }
+  if (deptsToShow.includes('Production')) {
+    const counts = await getProductionFlowCounts();
+    const { outgoing, incoming } = splitIncidents(tasksByDept[deptsToShow.indexOf('Production')] || [], 'Production');
+    const work = bucketBomWork(bomWork, 'Production').map(w => ({ ...w, progress: { done: w.closed, total: w.total } }));
+    cards.push({
+      dept: 'Production', flow: <ProductionFlow counts={counts} bare />, outgoing, incoming,
+      work, columns: BOM_WORK_COLUMNS, sourcingItems, emptyMessage: 'Nothing received and awaiting production yet.',
+      href: '/production/workers', linkLabel: 'Open Job Card workspace →',
+    });
+  }
+  if (deptsToShow.includes('Engineering')) {
+    const counts = await getEngineeringFlowCounts();
+    const { outgoing, incoming } = splitIncidents(tasksByDept[deptsToShow.indexOf('Engineering')] || [], 'Engineering');
+    const work = bucketBomWork(bomWork, 'Engineering').map(w => ({ ...w, progress: { done: w.closed, total: w.total } }));
+    cards.push({
+      dept: 'Engineering', flow: <EngineeringFlow counts={counts} bare />, outgoing, incoming,
+      work, columns: BOM_WORK_COLUMNS, sourcingItems, emptyMessage: 'No missing BOMs.',
+      href: '/engineering', linkLabel: 'Open Engineering workspace →',
+    });
+  }
+  if (deptsToShow.includes('Design')) {
+    const counts = await getDesignFlowCounts();
+    const work = await getDesignWork();
+    const { outgoing, incoming } = splitIncidents(tasksByDept[deptsToShow.indexOf('Design')] || [], 'Design');
+    cards.push({
+      dept: 'Design', flow: <DesignFlow counts={counts} bare />, outgoing, incoming,
+      work, columns: DESIGN_WORK_COLUMNS, sourcingItems, emptyMessage: 'No active design work yet.',
+      href: '/calc', linkLabel: 'Open Calc Sheets →',
+    });
+  }
+
   const title = deptFilter || (manager ? "Today's Factory" : null);
   const total = groups.reduce((a, g) => a + g.items.length, 0);
-  // Chip counts now live inside OperationsAttentionSection (it needs them anyway to build the
-  // pill options), so the standalone `chips` calc here is gone — nothing else on the page used it.
+  // Chip counts now live inside OperationsAttentionSection/OperationsFilterBar (they need them
+  // anyway to build the pill options), so the standalone `chips` calc here is gone.
   return (
     <main className="container flex flex-col gap-6 py-8">
       <PageHeader title={title}
-        description={`${manager ? 'Everything needing attention across all projects' : `Assigned to @${user?.username}`} `}> 
+        description={`${manager ? 'Everything needing attention across all projects' : `Assigned to @${user?.username}`} `}>
         {/* · ${total} item${total !== 1 ? 's' : ''}`}> */}
         {manager && (
           <Button asChild variant="outline" size="sm">
@@ -139,27 +199,22 @@ export async function OperationsPage({ searchParams }) {
         )}
       </PageHeader>
 
-      {/* Procurement's pipeline glance sits right after the KPI chips — ahead of the per-project
-          breakdown below, which is the least useful thing here for a quick status check. */}
-      {procurementFlow && <ProcurementFlow counts={procurementFlow} />}
+      {/* Unified cards (flow + incidents + table each) — highest-value thing on this page for
+          "where do things stand," so they go first, one shared pill row above all of them. */}
+      {cards.length > 0 && <OperationsFilterBar groups={groups} cards={cards} />}
+
+      {/* Sales/Installation/HR/QC/Accounts — not on the unified-card pattern yet (no per-project
+          master table for any of them), so they keep their original standalone flow cards. */}
       {salesFlow && <SalesFlow counts={salesFlow} />}
-      {storesFlow && <StoresFlow counts={storesFlow} />}
-      {productionFlow && <ProductionFlow counts={productionFlow} />}
       {installationFlow && <InstallationFlow counts={installationFlow} />}
       {hrFlow && <HrFlow counts={hrFlow} />}
-      {engineeringFlow && <EngineeringFlow counts={engineeringFlow} />}
       {qcFlow && <QcFlow counts={qcFlow} />}
-      {designFlow && (
-        <DesignOperationsSection groups={groups} counts={designFlow} designWork={designWork}
-          outgoing={designOutgoing} incoming={designIncoming} sourcingItems={sourcingItems} />
-      )}
-
-      <MasterBomTable bomWork={bomWork} />
+      {accountsFlow && <AccountsFlow counts={accountsFlow} />}
 
       {/* "Open Actions" (renamed from "Needs Attention") — each project card now splits into
           Urgent (not yet delayed, closest deadline first) on top and Needs Attention (already
           overdue/blocked) below, instead of one severity-sorted list. */}
-      {!isDesignOnlyView && <OperationsAttentionSection groups={groups} manager={manager} />}
+      {!isUnifiedOnlyView && <OperationsAttentionSection groups={groups} manager={manager} />}
 
       {bottlenecks.length > 0 && (
         <Card>
@@ -175,69 +230,11 @@ export async function OperationsPage({ searchParams }) {
         </Card>
       )}
 
-      {/* Cross-department "incidents" card per department. Procurement is special-cased below into
-          two direction-split cards (V2-CHANGES.md Group 4b — moved back here from the Requests tab,
-          which now only holds the New-item/Cancel acceptance inbox). "Waiting on" (delay_category
-          grouping) stays removed — near-unused across the whole app and redundant with Open Actions. */}
-      {deptsToShow.map((d, i) => d !== 'Procurement' && d !== 'Design' && d !== 'Stores' && (
+      {/* Cross-department "incidents" card per department — departments on the unified-card
+          pattern get their own outgoing/incoming split inside their card above instead. */}
+      {deptsToShow.map((d, i) => !UNIFIED_DEPTS.includes(d) && (
         <TicketsPanel key={d} title={d} department={d} canRaise tasks={tasksByDept[i]} bom={sourcingItems} />
       ))}
-
-      {/* Procurement's incident cards, direction-split (V2-CHANGES.md Group 4b / D15). Same
-          from_department filter the Requests page used; reuses the already-fetched Procurement
-          tasks rather than a second query. Outgoing = raised by Procurement toward others; Incoming
-          = raised toward Procurement by others. bom_item_id-linked tasks are cancel-requests, shown
-          in the Requests inbox / Procurement queue, not here. */}
-      {(() => {
-        const pi = deptsToShow.indexOf('Procurement');
-        if (pi === -1) return null;
-        const procTasks = tasksByDept[pi] || [];
-        const outgoing = procTasks.filter(t => t.from_department === 'Procurement' && !t.bom_item_id);
-        const incoming = procTasks.filter(t => t.department === 'Procurement' && t.from_department && t.from_department !== 'Procurement' && !t.bom_item_id);
-        return (
-          <div className="grid gap-4 md:grid-cols-2">
-            <TicketsPanel title="Outgoing Incidents" department="Procurement" canRaise showDepartment
-              tasks={outgoing} bom={sourcingItems} />
-            <TicketsPanel title="Incoming Incidents" department="Procurement" tasks={incoming} />
-          </div>
-        );
-      })()}
-
-      {/* Stores' incident cards, direction-split — same exact pattern as Procurement's above,
-          reusing the already-fetched Stores tasks. TicketsPanel's raise dialog already fires a
-          real notification to the target department (same mechanism every other Raise does), so
-          this gets Stores real incoming/outgoing notifications for free — nothing extra to wire. */}
-      {(() => {
-        const si = deptsToShow.indexOf('Stores');
-        if (si === -1) return null;
-        const storesTasks = tasksByDept[si] || [];
-        const outgoing = storesTasks.filter(t => t.from_department === 'Stores' && !t.bom_item_id);
-        const incoming = storesTasks.filter(t => t.department === 'Stores' && t.from_department && t.from_department !== 'Stores' && !t.bom_item_id);
-        return (
-          <div className="grid gap-4 md:grid-cols-2">
-            <TicketsPanel title="Outgoing Incidents" department="Stores" canRaise showDepartment
-              tasks={outgoing} bom={sourcingItems} />
-            <TicketsPanel title="Incoming Incidents" department="Stores" tasks={incoming} />
-          </div>
-        );
-      })()}
-
-      {/* Design's incident cards, direction-split (§E) — same exact pattern as Procurement's just
-          above, reusing the already-fetched Design tasks rather than a second query. */}
-      {/* {(() => {
-        const di = deptsToShow.indexOf('Design');
-        if (di === -1) return null;
-        const designTasks = tasksByDept[di] || [];
-        const outgoing = designTasks.filter(t => t.from_department === 'Design' && !t.bom_item_id);
-        const incoming = designTasks.filter(t => t.department === 'Design' && t.from_department && t.from_department !== 'Design' && !t.bom_item_id);
-        return (
-          <div className="grid gap-4 md:grid-cols-2">
-            <TicketsPanel title="Outgoing Incidents" department="Design" canRaise showDepartment
-              tasks={outgoing} bom={sourcingItems} />
-            <TicketsPanel title="Incoming Incidents" department="Design" tasks={incoming} />
-          </div>
-        );
-      })()} */}
     </main>
   );
 }

@@ -20,12 +20,15 @@ import { audit } from '@/lib/usb';
 import { notifyDepartment } from '@/lib/notify';
 import { getAllocationMode, autoReserveFromStock, notifyProcurementIfShortfall } from '@/lib/procurement';
 import { matchAndReserve } from '@/lib/remnant-match';
+import { DIMENSIONAL_CATEGORIES } from '@/lib/bom-fields.mjs';
 
 const PR_DEPARTMENTS = ['Engineering', 'Design', 'Stores', 'Sales'];
 const SAS_RAISERS = new Set(['Sales']);
 // CALC-CHANGES2.md §F — category tag, 'bom'-source lines only (stock/sas are inventory/trade
-// lines, not physical-material categories).
-const CATEGORIES = new Set(['plate', 'ms_section', 'angle', 'standard']);
+// lines, not physical-material categories). DIMENSIONAL_CATEGORIES is the shared, single source of
+// truth (lib/remnant-match.js) for every shape the composer can tag a line with; 'standard' is the
+// one non-dimensional category (an item-master reference + qty, no geometry to match on).
+const CATEGORIES = new Set([...DIMENSIONAL_CATEGORIES, 'standard']);
 
 export async function POST(req) {
   const user = await getFreshSessionUser();

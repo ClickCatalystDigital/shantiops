@@ -83,3 +83,36 @@ export async function POST(req, { params }) {
   });
   return NextResponse.json({ ok: true, linked: ownIds.length });
 }
+
+// Clear a part's certificate link without deleting the part — the trash-can button deletes the
+// whole row (a real removal), this only reverts a part back to "unlinked" so it can be re-linked.
+export async function DELETE(req, { params }) {
+  const user = await getFreshSessionUser();
+  const denied = requireDepartment(user, 'QC');
+  if (denied) return denied;
+  const actionDenied = await requireAction(user, 'QC', 'qc.document.write');
+  if (actionDenied) return actionDenied;
+
+  const document = await queryOne('SELECT id FROM qc_documents WHERE id = ?', [params.id]);
+  if (!document) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
+  const b = await req.json();
+  const partIds = Array.isArray(b.part_ids) ? b.part_ids.filter(Boolean) : [];
+  if (!partIds.length) return NextResponse.json({ error: 'No parts selected' }, { status: 400 });
+
+  const own = await queryAll(
+    `SELECT id FROM qc_document_parts WHERE document_id = ? AND id IN (${partIds.map(() => '?').join(',')})`,
+    [params.id, ...partIds]);
+  if (!own.length) return NextResponse.json({ error: 'Parts not found on this document' }, { status: 404 });
+  const ownIds = own.map(r => r.id);
+
+  await execute(
+    `UPDATE qc_document_parts SET test_certificate_id = NULL WHERE id IN (${ownIds.map(() => '?').join(',')})`,
+    ownIds);
+
+  await audit('qc_document_unlink_parts', {
+    actor: user.username,
+    detail: JSON.stringify({ qc_document_id: Number(params.id), part_ids: ownIds }),
+  });
+  return NextResponse.json({ ok: true, unlinked: ownIds.length });
+}

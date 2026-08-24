@@ -8,13 +8,19 @@ import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
 
 const TEMPLATE_DEPARTMENTS = ['Engineering', 'Design', 'Stores'];
 function canTouch(user) { return TEMPLATE_DEPARTMENTS.some(d => canAccessDepartment(user, d)); }
+const KINDS = new Set(['pr', 'bom']);
 
-export async function GET() {
+export async function GET(req) {
   const user = await getFreshSessionUser();
   if (!canTouch(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const kindParam = new URL(req.url).searchParams.get('kind');
+  const kind = KINDS.has(kindParam) ? kindParam : null;
   const templates = await queryAll(
     `SELECT t.*, (SELECT COUNT(*) FROM bom_template_items i WHERE i.template_id = t.id) AS item_count
-       FROM bom_templates t ORDER BY t.name`
+       FROM bom_templates t
+      ${kind ? 'WHERE t.kind = ?' : ''}
+      ORDER BY t.name`,
+    kind ? [kind] : []
   );
   return NextResponse.json(templates);
 }
@@ -25,10 +31,11 @@ export async function POST(req) {
   const b = await req.json();
   const name = String(b.name || '').trim();
   if (!name) return NextResponse.json({ error: 'Name is required' }, { status: 400 });
+  const kind = KINDS.has(b.kind) ? b.kind : 'bom';
 
   const { lastId } = await execute(
-    'INSERT INTO bom_templates (name, series, description, created_by) VALUES (?, ?, ?, ?)',
-    [name, b.series?.trim() || null, b.description?.trim() || null, user.username]
+    'INSERT INTO bom_templates (name, series, description, created_by, kind) VALUES (?, ?, ?, ?, ?)',
+    [name, b.series?.trim() || null, b.description?.trim() || null, user.username, kind]
   );
   const templateId = Number(lastId);
 

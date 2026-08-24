@@ -5,7 +5,7 @@ import {
   SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarGroup, SidebarGroupLabel,
   SidebarGroupContent, SidebarMenu, SidebarMenuItem, SidebarMenuButton,
   SidebarMenuSub, SidebarMenuSubItem, SidebarMenuSubButton,
-  SidebarTrigger, SidebarInset, SidebarRail,
+  SidebarTrigger, SidebarInset, SidebarRail, SidebarSeparator,
 } from '@/components/ui/sidebar';
 import { Separator } from '@/components/ui/separator';
 import { Input } from '@/components/ui/input';
@@ -23,7 +23,9 @@ import { cn } from '@/lib/utils';
 // `header` (optional): custom node rendered in a pinned bar above scrollable children, replacing
 // the default mobile-only trigger bar with one that's visible at every breakpoint.
 export default function WorkspaceSidebar({ title, icon: TitleIcon = LayoutPanelTopIcon, items, groups, activeKey, onChange, children, nested = false, hideHeader = false, header }) {
-  const flatItems = groups ? groups.flatMap(g => g.items) : items.flatMap(item => item.group ? item.children : item);
+  const flatItems = groups
+    ? groups.flatMap(g => g.items)
+    : items.filter(item => !item.divider).flatMap(item => item.group ? item.children : item);
   const activeItem = flatItems.find(item => item.key === activeKey) || flatItems[0];
   // Accordion, one department open at a time — a `groups` sidebar with many sections (e.g. Reports'
   // 9 departments, 44 items total) used to render every group fully expanded, so "navigate" meant
@@ -143,6 +145,9 @@ export default function WorkspaceSidebar({ title, icon: TitleIcon = LayoutPanelT
               <SidebarGroupContent>
                 <SidebarMenu>
                   {items.map(item => {
+                    if (item.divider) return (
+                      <SidebarMenuItem key={item.key}><SidebarSeparator className="my-1" /></SidebarMenuItem>
+                    );
                     const Icon = item.icon || LayoutPanelTopIcon;
                     if (item.group) return (
                       <SidebarMenuItem key={item.key}>

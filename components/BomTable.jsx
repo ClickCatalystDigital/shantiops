@@ -23,6 +23,65 @@ import { ChevronLeftIcon, ChevronRightIcon, XCircleIcon } from 'lucide-react';
 // gate.
 const CANCELLABLE = new Set(['Enquiry', 'Comparison', 'Ordered']);
 
+// Link-to-Item-Master — the fix for the real gap bulk import leaves behind: an exact-name match at
+// import time (bom/import/route.js) auto-links most lines, but a line that misses it (typo,
+// abbreviation, different formatting) had no edit path anywhere. Plain search-and-pick, deliberately
+// no fuzzy auto-suggestion on top — same /api/items?search= idiom this codebase already has four
+// independent copies of (PrWorkspace/StoresWorkspace/SalesWorkspace x2), not force-shared across a
+// fifth different line shape, per this codebase's own documented reasoning for not sharing those.
+// Server-side (app/api/bom-items/[id]/link-item) is the real gate — this is convenience UI, same
+// division of responsibility as everything else in this file.
+function LinkItemControl({ bomItemId, router }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const [results, setResults] = useState([]);
+  const [busy, setBusy] = useState(false);
+
+  async function onType(v) {
+    setQ(v);
+    if (v.trim().length < 2) { setResults([]); return; }
+    try { setResults(await api(`/api/items?search=${encodeURIComponent(v.trim())}`)); }
+    catch { /* catalog search is best-effort, same idiom as every other copy of this widget */ }
+  }
+
+  async function pick(item) {
+    setBusy(true);
+    try {
+      await api(`/api/bom-items/${bomItemId}/link-item`, { method: 'POST', body: { item_id: item.id } });
+      showToast(`Linked to ${item.item_code || item.item_name}`);
+      setOpen(false); setQ(''); setResults([]);
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+    setBusy(false);
+  }
+
+  if (!open) {
+    return (
+      <button type="button" onClick={() => setOpen(true)} className="text-xs text-info hover:underline">
+        Link to Item Master
+      </button>
+    );
+  }
+  return (
+    <div className="relative">
+      <Input value={q} onChange={e => onType(e.target.value)} placeholder="Search catalog…" autoFocus
+        className="h-7 w-56 text-xs" onBlur={() => setTimeout(() => setOpen(false), 150)} />
+      {results.length > 0 && (
+        <div className="absolute z-20 mt-1 max-h-48 w-64 overflow-y-auto rounded-md border bg-popover p-1 shadow-md">
+          {results.map(it => (
+            // onMouseDown (not onClick) so the pick fires before the input's onBlur closes the dropdown.
+            <button key={it.id} type="button" disabled={busy} onMouseDown={() => pick(it)}
+              className="flex w-full flex-col rounded-sm px-2 py-1 text-left text-xs hover:bg-muted">
+              <span className="font-medium">{it.item_name}</span>
+              <span className="text-muted-foreground">{it.item_code} · {it.uom}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const FIELD_LABELS = {
   section: 'Section', group_label: 'Group', material_description: 'Description',
   moc: 'MOC / Material Spec', size_spec: 'Size / Spec', make: 'Make', qty_text: 'Qty',
@@ -52,6 +111,7 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
   const router = useRouter();
   const [q, setQ] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [unlinkedOnly, setUnlinkedOnly] = useState(false);
   const [editing, setEditing] = useState(null); // item row | {__new, section} | null
   const [busy, setBusy] = useState(false);
   const scrollerRef = useRef(null);
@@ -82,6 +142,7 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
       const st = b.purchase_status || DEFAULT_PURCHASE_STATUS; // blank counts as Enquiry
       if (st !== statusFilter) return false;
     }
+    if (unlinkedOnly && b.item_id) return false;
     if (!needle) return true;
     return ['material_description', 'moc', 'size_spec', 'make', 'group_label', 'pr_ref', 'po_ref', 'grn_ref', 'remarks']
       .some(f => String(b[f] || '').toLowerCase().includes(needle));
@@ -179,6 +240,12 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
             {BOM_STATUSES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
           </SelectContent>
         </Select>
+        {/* Visible to every department viewing this table (plain display filter over data already
+            shown); only the Link action itself, below, is Engineering-gated. */}
+        <Button size="sm" variant={unlinkedOnly ? 'secondary' : 'outline'} className="h-8"
+          onClick={() => setUnlinkedOnly(v => !v)}>
+          Not linked to catalog
+        </Button>
         <span className="text-xs text-muted-foreground tnum">{rows.length} of {bom.length} items</span>
         {/* Jump the wide table left/right without hunting for the scrollbar at the bottom of the page. */}
         <div className="flex items-center gap-1">
@@ -252,6 +319,9 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
                       supplier selection, not editable here. */}
                   {r.selected_supplier_name && (
                     <div className="text-xs font-normal text-muted-foreground">Supplier: {r.selected_supplier_name}</div>
+                  )}
+                  {canStructure && !r.item_id && (
+                    <div className="mt-1"><LinkItemControl bomItemId={r.id} router={router} /></div>
                   )}
                 </TableCell>
                 <TableCell className={`w-32 bg-background md:sticky md:left-[19rem] md:z-10 ${!showPacking && !hasActions ? 'md:border-r' : ''}`}>

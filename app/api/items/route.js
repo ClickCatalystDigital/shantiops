@@ -23,7 +23,7 @@ export async function GET(req) {
   if (!q) return NextResponse.json([]);
   const needle = `%${q}%`;
   // group_name added (CALC-CHANGES2.md §F follow-up) — PrWorkspace's ItemSearchField uses it to
-  // suggest a §F category (plate/ms_section/angle) on pick, a confident-match-only guess.
+  // suggest a §F category (lib/section-shapes.js's taxonomy) on pick, a confident-match-only guess.
   const rows = await queryAll(
     `SELECT id, item_code, item_name, detail_desc, uom, group_name
        FROM items

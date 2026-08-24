@@ -161,7 +161,7 @@ function ProcurementFlowVertical({ counts }) {
   );
 }
 
-export default function ProcurementFlow({ counts }) {
+export default function ProcurementFlow({ counts, bare = false }) {
   // Evenly spaced column centers for the N main-spine nodes — generalized so the layout doesn't
   // need a hand-maintained position per stage key.
   const nodeX = STAGES.map((_, i) => (i + 0.5) * (100 / STAGES.length));
@@ -172,17 +172,10 @@ export default function ProcurementFlow({ counts }) {
     key, x: nodeX[STAGES.findIndex(s => s.key === key)], count: counts.cancelledFrom?.[key] || 0,
   }));
 
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Procurement</CardTitle>
-        <CardAction>
-          <Button asChild size="sm" variant="outline">
-            <Link href="/procurement">Open Procurement workspace →</Link>
-          </Button>
-        </CardAction>
-      </CardHeader>
-      <CardContent>
+  // Shared between the standalone Card (default) and the bare content used inside
+  // OperationsCard's Row 1 (Operations page unified card).
+  const content = (
+    <>
         {/* Nodes have a min-width (StageBox) that would otherwise get crushed into truncated
             labels on a narrow screen once 6 of them share one row — scroll horizontally instead
             of squeezing, same trade-off any dashboard makes for a wide stat row on mobile. */}
@@ -248,7 +241,22 @@ export default function ProcurementFlow({ counts }) {
         <div className="sm:hidden">
           <ProcurementFlowVertical counts={counts} />
         </div>
-      </CardContent>
+    </>
+  );
+
+  if (bare) return content;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Procurement</CardTitle>
+        <CardAction>
+          <Button asChild size="sm" variant="outline">
+            <Link href="/procurement">Open Procurement workspace →</Link>
+          </Button>
+        </CardAction>
+      </CardHeader>
+      <CardContent>{content}</CardContent>
     </Card>
   );
 }

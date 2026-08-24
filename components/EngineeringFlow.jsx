@@ -87,23 +87,16 @@ function EngineeringFlowVertical({ counts }) {
   );
 }
 
-export default function EngineeringFlow({ counts }) {
+export default function EngineeringFlow({ counts, bare = false }) {
   const nodeX = STAGES.map((_, i) => (i + 0.5) * (100 / STAGES.length));
   const midpoints = nodeX.slice(0, -1).map((x, i) => (x + nodeX[i + 1]) / 2);
   const firstX = nodeX[0];
   const lastX = nodeX[nodeX.length - 1];
 
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Engineering — Change Notes</CardTitle>
-        <CardAction>
-          <Button asChild size="sm" variant="outline">
-            <Link href="/engineering">Open Engineering workspace →</Link>
-          </Button>
-        </CardAction>
-      </CardHeader>
-      <CardContent>
+  // Shared between the standalone Card (default) and the bare content used inside
+  // OperationsCard's Row 1 (Operations page unified card).
+  const content = (
+    <>
         <div className="hidden overflow-x-auto sm:block">
           <div className="mx-auto flex min-w-[24rem] flex-col items-center">
             <div className="relative grid w-full" style={{ gridTemplateColumns: `repeat(${STAGES.length}, minmax(0, 1fr))` }}>
@@ -120,7 +113,22 @@ export default function EngineeringFlow({ counts }) {
         <div className="sm:hidden">
           <EngineeringFlowVertical counts={counts} />
         </div>
-      </CardContent>
+    </>
+  );
+
+  if (bare) return content;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Engineering — Change Notes</CardTitle>
+        <CardAction>
+          <Button asChild size="sm" variant="outline">
+            <Link href="/engineering">Open Engineering workspace →</Link>
+          </Button>
+        </CardAction>
+      </CardHeader>
+      <CardContent>{content}</CardContent>
     </Card>
   );
 }

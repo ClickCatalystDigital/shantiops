@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
-import { execute, queryOne } from '@/lib/db';
+import { queryOne, withTransaction } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { SF_FORM_IVA_PARTS } from '@/lib/qc-template.mjs';
 import { COMPANY_NAMES } from '@/lib/qc-doc-pdf.js';
+import { syncQcPartsFromBom } from '@/lib/qc-bom-sync';
 
 const HEADER_FIELDS = [
   'doc_id', 'makers_no', 'year_of_make', 'boiler_type', 'length_overall', 'internal_diameter',
@@ -41,28 +42,39 @@ export async function POST(req) {
     const v = b[f];
     return typeof v === 'string' ? (v.trim() || null) : (v ?? null);
   });
-  const res = await execute(
-    `INSERT INTO qc_documents (project_id, series, ${HEADER_FIELDS.join(', ')}, created_by)
-     VALUES (?, ?, ${HEADER_FIELDS.map(() => '?').join(', ')}, ?)`,
-    [b.project_id, series, ...values, user.username]);
-  const documentId = Number(res.lastId);
 
-  // The 54-part SF template only applies to SF filings — every other series (incl. HEADERS) has
-  // genuinely different part counts/numbering per real job, so there's no fixed list to seed; QC adds
-  // parts by hand via the document's own Add Part UI instead (POST .../parts).
-  if (series === 'SF') {
-    for (let i = 0; i < SF_FORM_IVA_PARTS.length; i++) {
-      const p = SF_FORM_IVA_PARTS[i];
-      await execute(
-        `INSERT INTO qc_document_parts (document_id, part_no, part_name, size_t, size_w, size_l, qty, sort_order)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [documentId, p.part_no, p.part_name, p.size_t, p.size_w, p.size_l, p.qty, i]);
+  const { documentId, partsSeeded } = await withTransaction(async tx => {
+    const res = await tx.execute({
+      sql: `INSERT INTO qc_documents (project_id, series, ${HEADER_FIELDS.join(', ')}, created_by)
+            VALUES (?, ?, ${HEADER_FIELDS.map(() => '?').join(', ')}, ?)`,
+      args: [b.project_id, series, ...values, user.username],
+    });
+    const documentId = Number(res.lastInsertRowid);
+
+    // The 54-part SF template only applies to SF filings — every other series (incl. HEADERS) has
+    // genuinely different part counts/numbering per real job, so there's no fixed list to seed;
+    // instead they're auto-populated from the project's BOM (client-confirmed) — see
+    // lib/qc-bom-sync.js. QC can still add/remove parts by hand afterward either way.
+    let partsSeeded;
+    if (series === 'SF') {
+      for (let i = 0; i < SF_FORM_IVA_PARTS.length; i++) {
+        const p = SF_FORM_IVA_PARTS[i];
+        await tx.execute({
+          sql: `INSERT INTO qc_document_parts (document_id, part_no, part_name, size_t, size_w, size_l, qty, sort_order)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          args: [documentId, p.part_no, p.part_name, p.size_t, p.size_w, p.size_l, p.qty, i],
+        });
+      }
+      partsSeeded = SF_FORM_IVA_PARTS.length;
+    } else {
+      partsSeeded = await syncQcPartsFromBom(tx, documentId, b.project_id);
     }
-  }
+    return { documentId, partsSeeded };
+  });
 
   await audit('qc_document_add', {
     actor: user.username,
     detail: JSON.stringify({ qc_document_id: documentId, project_id: b.project_id, doc_id: b.doc_id.trim() }),
   });
-  return NextResponse.json({ id: documentId, series, partsSeeded: series === 'SF' ? SF_FORM_IVA_PARTS.length : 0 });
+  return NextResponse.json({ id: documentId, series, partsSeeded });
 }

@@ -19,7 +19,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
-import { ChevronLeftIcon, AlertTriangleIcon, SearchIcon, PlusIcon, Trash2Icon } from 'lucide-react';
+import { ChevronLeftIcon, AlertTriangleIcon, SearchIcon, PlusIcon, Trash2Icon, XIcon, RefreshCwIcon } from 'lucide-react';
 import CertPicker from './CertPicker';
 import PdfPreview from './PdfPreview';
 import { suggestCertificates, suggestBomItem } from '@/lib/tc-match';
@@ -124,7 +124,7 @@ function BomItemLink({ part, bomItems, onLink, canEdit }) {
   );
 }
 
-function PartRow({ part, selected, onToggle, onOpenPicker, onRemove, onLinkBomItem, bomItems, canEdit }) {
+function PartRow({ part, selected, onToggle, onOpenPicker, onRemove, onUnlink, onLinkBomItem, bomItems, canEdit }) {
   const linked = !!part.test_certificate_id;
   return (
     <div className="flex items-start gap-3 py-2.5 text-sm">
@@ -134,21 +134,32 @@ function PartRow({ part, selected, onToggle, onOpenPicker, onRemove, onLinkBomIt
         <span className="text-xs text-muted-foreground">{sizeText(part)} · qty {part.qty}</span>
         <BomItemLink part={part} bomItems={bomItems} onLink={onLinkBomItem} canEdit={canEdit} />
       </div>
-      <button onClick={() => onOpenPicker([part.id])} className="flex min-w-0 flex-1 flex-col items-end text-right hover:opacity-80">
-        {linked ? (
-          <>
-            <span className="font-medium">{part.certificate_no} · {part.tc_cast_no}{part.tc_plate_no ? ` · ${part.tc_plate_no}` : ''}</span>
-            <span className="text-xs text-muted-foreground">{part.material_spec} · {part.steel_maker}</span>
-            <span className="text-xs text-muted-foreground">
-              C {part.chem_c} Mn {part.chem_mn} … Y.S {part.ys} UTS {part.uts}
+      <div className="flex min-w-0 flex-1 items-start justify-end gap-1">
+        <button onClick={() => onOpenPicker([part.id])} className="flex min-w-0 flex-col items-end text-right hover:opacity-80">
+          {linked ? (
+            <>
+              <span className="font-medium">{part.certificate_no} · {part.tc_cast_no}{part.tc_plate_no ? ` · ${part.tc_plate_no}` : ''}</span>
+              <span className="text-xs text-muted-foreground">{part.material_spec} · {part.steel_maker}</span>
+              <span className="text-xs text-muted-foreground">
+                C {part.chem_c} Mn {part.chem_mn} … Y.S {part.ys} UTS {part.uts}
+              </span>
+            </>
+          ) : (
+            <span className="flex items-center gap-1 text-warning">
+              <AlertTriangleIcon className="size-3.5" />No certificate — Link…
             </span>
-          </>
-        ) : (
-          <span className="flex items-center gap-1 text-warning">
-            <AlertTriangleIcon className="size-3.5" />No certificate — Link…
-          </span>
+          )}
+        </button>
+        {canEdit && linked && (
+          <button
+            aria-label="Unlink certificate"
+            onClick={e => { e.stopPropagation(); onUnlink(part.id); }}
+            className="mt-0.5 shrink-0 text-muted-foreground hover:text-destructive"
+          >
+            <XIcon className="size-3.5" />
+          </button>
         )}
-      </button>
+      </div>
       {canEdit && (
         <button
           aria-label="Remove part"
@@ -308,6 +319,7 @@ export default function QcDocumentEditor({ project, document, parts, certificate
   const [pdfOpen, setPdfOpen] = useState(false);
   const [addPartOpen, setAddPartOpen] = useState(false);
   const [visBusy, setVisBusy] = useState(false);
+  const [syncBusy, setSyncBusy] = useState(false);
 
   const unlinked = parts.filter(p => !p.test_certificate_id);
   // Zero parts is vacuously zero unlinked — not actually complete. Same reasoning as the server
@@ -393,6 +405,24 @@ export default function QcDocumentEditor({ project, document, parts, certificate
     } catch (err) { showToast(err.message, 'error'); }
   }
 
+  async function unlinkPart(partId) {
+    try {
+      await api(`/api/qc-documents/${document.id}/link-parts`, { method: 'DELETE', body: { part_ids: [partId] } });
+      showToast('Certificate unlinked');
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+  }
+
+  async function syncBom() {
+    setSyncBusy(true);
+    try {
+      const res = await api(`/api/qc-documents/${document.id}/sync-bom`, { method: 'POST' });
+      showToast(res.added > 0 ? `Added ${res.added} part${res.added === 1 ? '' : 's'} from BOM` : 'Already up to date');
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+    setSyncBusy(false);
+  }
+
   async function removePart(part) {
     if (!window.confirm(`Remove "${part.part_name}" from this document?`)) return;
     try {
@@ -468,6 +498,11 @@ export default function QcDocumentEditor({ project, document, parts, certificate
             <Button size="sm" variant="outline" disabled={shown.length === 0} onClick={toggleSelectShown}>
               {allShownSelected ? 'Deselect all' : 'Select all'}
             </Button>
+            {canEdit && document.series !== 'SF' && (
+              <Button size="sm" variant="outline" disabled={syncBusy} onClick={syncBom}>
+                <RefreshCwIcon data-icon="inline-start" />{syncBusy ? 'Syncing…' : 'Sync from BOM'}
+              </Button>
+            )}
             {canEdit && (
               <Button size="sm" variant="outline" onClick={() => setAddPartOpen(true)}>
                 <PlusIcon data-icon="inline-start" />Add part
@@ -478,7 +513,7 @@ export default function QcDocumentEditor({ project, document, parts, certificate
             {shown.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">No matches.</p>}
             {shown.map(p => (
               <PartRow key={p.id} part={p} selected={selected.has(p.id)} onToggle={toggle} onOpenPicker={openPicker}
-                onRemove={removePart} onLinkBomItem={linkBomItem} bomItems={bomItems} canEdit={canEdit} />
+                onRemove={removePart} onUnlink={unlinkPart} onLinkBomItem={linkBomItem} bomItems={bomItems} canEdit={canEdit} />
             ))}
           </div>
         </CardContent>
