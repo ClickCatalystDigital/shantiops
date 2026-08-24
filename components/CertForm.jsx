@@ -252,11 +252,12 @@ export default function CertForm({ open, onOpenChange, certificate = null, certi
                     </div>
                   )}
                   <SearchableSelect
-                    items={projects.filter(p => !projectIds.includes(p.id))}
+                    options={projects.filter(p => !projectIds.includes(p.id)).map(p => ({
+                      value: p.id, label: p.customer_name ? `${p.project_no} — ${p.customer_name}` : p.project_no,
+                    }))}
                     value={null}
                     onChange={id => id != null && setProjectIds(ids => [...ids, Number(id)])}
-                    getLabel={p => p.project_no} getSub={p => p.customer_name}
-                    triggerPlaceholder="Add a project…" placeholder="Search projects…" className="w-full" />
+                    placeholder="Add a project…" className="w-full" />
                 </div>
 
                 <div className="flex flex-col gap-1.5">

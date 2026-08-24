@@ -23,7 +23,7 @@ const ITEMS = [
   { key: 'calibration', label: 'Calibration', icon: GaugeIcon },
 ];
 
-const SERIES_ITEMS = QC_SERIES.map(s => ({ id: s, label: s }));
+const SERIES_OPTIONS = [{ value: null, label: 'All models' }, ...QC_SERIES.map(s => ({ value: s, label: s }))];
 
 const certProjectIds = c => (c.project_ids ? String(c.project_ids).split(',').map(Number) : []);
 
@@ -69,12 +69,13 @@ export default function QcWorkspace({ projects = [], certificates = [], document
 
   const header = (
     <div className="flex flex-wrap items-center gap-2">
-      <SearchableSelect items={SERIES_ITEMS} value={series} onChange={pickSeries}
-        allOption={{ label: 'All models' }} triggerPlaceholder="Model" placeholder="Search models…"
-        className="w-40" />
-      <SearchableSelect items={projectsForSeries} value={projectId} onChange={pickProject}
-        allOption={{ label: 'All projects' }} triggerPlaceholder="Project" placeholder="Search projects…"
-        getLabel={p => p.project_no} getSub={p => p.customer_name} className="w-64" />
+      <SearchableSelect options={SERIES_OPTIONS} value={series} onChange={pickSeries}
+        placeholder="Search models…" className="w-40" />
+      <SearchableSelect
+        options={[{ value: null, label: 'All projects' }, ...projectsForSeries.map(p => ({
+          value: p.id, label: p.customer_name ? `${p.project_no} — ${p.customer_name}` : p.project_no,
+        }))]}
+        value={projectId} onChange={pickProject} placeholder="Search projects…" className="w-64" />
     </div>
   );
 
