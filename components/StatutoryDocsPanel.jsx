@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { PlusIcon, ChevronRightIcon, Trash2Icon } from 'lucide-react';
+import { docIdAbbr, modelConfig, FORM_LABELS } from '@/lib/qc-models.js';
 
 const EMPTY = {
   doc_id: '', makers_no: '', year_of_make: '', boiler_type: '', length_overall: '',
@@ -28,12 +29,15 @@ const COMPANIES = [
   { value: 'Shanti Techno Fab', prefix: 'STF' },
 ];
 
-// V1 covers the SF series only (QC-CHANGES.md §4/§7) — no series picker, since building one for
-// series we haven't seen a sample of yet would be inventing requirements.
-function NewDocumentSheet({ open, onOpenChange, projectId, router }) {
+// Series/model is resolved server-side from the project's own `projects.series` (app/api/qc-documents
+// POST) — no picker here, this sheet just needs to suggest a doc_id abbreviation that matches it.
+function NewDocumentSheet({ open, onOpenChange, projectId, projectSeries, router }) {
   const [form, setForm] = useState(EMPTY);
   const [docIdTouched, setDocIdTouched] = useState(false);
   const [busy, setBusy] = useState(false);
+  // The internal series value doesn't always match the real filed abbreviation (HEADERS -> "SH") —
+  // docIdAbbr() is the single source of truth for that mapping, shared with the server-side default.
+  const seriesAbbr = docIdAbbr(projectSeries || 'SF');
 
   function set(field) {
     return e => {
@@ -46,7 +50,7 @@ function NewDocumentSheet({ open, onOpenChange, projectId, router }) {
         if (field === 'makers_no' && !docIdTouched) {
           const digits = v.replace(/\D/g, '');
           const prefix = COMPANIES.find(c => c.value === f.company)?.prefix || COMPANIES[0].prefix;
-          next.doc_id = digits ? `${prefix}-${digits}-SF-` : '';
+          next.doc_id = digits ? `${prefix}-${digits}-${seriesAbbr}-` : '';
         }
         return next;
       });
@@ -61,7 +65,7 @@ function NewDocumentSheet({ open, onOpenChange, projectId, router }) {
       if (!docIdTouched) {
         const digits = f.makers_no.replace(/\D/g, '');
         const prefix = COMPANIES.find(c => c.value === company)?.prefix || COMPANIES[0].prefix;
-        next.doc_id = digits ? `${prefix}-${digits}-SF-` : '';
+        next.doc_id = digits ? `${prefix}-${digits}-${seriesAbbr}-` : '';
       }
       return next;
     });
@@ -73,7 +77,9 @@ function NewDocumentSheet({ open, onOpenChange, projectId, router }) {
     setBusy(true);
     try {
       const res = await api('/api/qc-documents', { method: 'POST', body: { project_id: projectId, ...form } });
-      showToast('Document created — 54 Form IV A parts seeded from the SF template');
+      showToast(res.partsSeeded
+        ? `Document created — ${res.partsSeeded} Form IV A parts seeded from the SF template`
+        : 'Document created — add parts from the document page');
       onOpenChange(false);
       setForm(EMPTY);
       setDocIdTouched(false);
@@ -86,7 +92,7 @@ function NewDocumentSheet({ open, onOpenChange, projectId, router }) {
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full sm:max-w-md">
         <SheetHeader>
-          <SheetTitle>New statutory document — SF series</SheetTitle>
+          <SheetTitle>New statutory document — {projectSeries || 'SF'} series</SheetTitle>
         </SheetHeader>
         <div className="flex flex-col gap-3 overflow-y-auto px-4">
           <div className="flex flex-col gap-1.5">
@@ -163,7 +169,7 @@ function NewDocumentSheet({ open, onOpenChange, projectId, router }) {
 // each doc's own `d.project_id` so this also works as the /qc workspace's cross-project Docs list —
 // pass projectId=null there to keep New disabled until a project is picked. `showProject` labels the
 // owning project per row (only useful in the cross-project list).
-export default function StatutoryDocsPanel({ projectId = null, documents = [], canEdit = false, showProject = false }) {
+export default function StatutoryDocsPanel({ projectId = null, projectSeries = null, documents = [], canEdit = false, showProject = false }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
 
@@ -201,7 +207,7 @@ export default function StatutoryDocsPanel({ projectId = null, documents = [], c
                 <span className="font-medium">{d.doc_id}</span>
                 <span className="text-xs text-muted-foreground">
                   {showProject && d.project_no && <>{d.project_no} · </>}
-                  {d.series} series · Form IV A · {d.company} · {d.linked_parts} of {d.total_parts} parts linked
+                  {d.series} series · {modelConfig(d.series).forms.map(f => FORM_LABELS[f] || f).join(' + ')} · {d.company} · {d.linked_parts} of {d.total_parts} parts linked
                 </span>
               </div>
               <ChevronRightIcon className="ml-auto size-4 text-muted-foreground" />
@@ -214,7 +220,7 @@ export default function StatutoryDocsPanel({ projectId = null, documents = [], c
           </div>
         ))}
       </CardContent>
-      {canEdit && projectId && <NewDocumentSheet open={open} onOpenChange={setOpen} projectId={projectId} router={router} />}
+      {canEdit && projectId && <NewDocumentSheet open={open} onOpenChange={setOpen} projectId={projectId} projectSeries={projectSeries} router={router} />}
     </Card>
   );
 }

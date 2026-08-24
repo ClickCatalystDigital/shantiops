@@ -2,7 +2,7 @@
 
 import { notFound, redirect } from 'next/navigation';
 import { queryOne } from '@/lib/db';
-import { getQcDocumentDetail, getTestCertificates } from '@/lib/data';
+import { getQcDocumentDetail, getTestCertificates, getBomItemsForProject, getTcMatchApprovals } from '@/lib/data';
 import { getFreshSessionUser, canAccessDepartment, roleHome } from '@/lib/auth';
 import QcDocumentEditor from '@/components/QcDocumentEditor';
 
@@ -21,6 +21,8 @@ export default async function QcDocumentPage({ params }) {
   // The whole bank is linkable: picking a cert for a part auto-associates it with this project
   // (handled in link-parts). certificate_projects is many-to-many, so a shared plate is reusable.
   const certificates = await getTestCertificates();
+  const bomItems = await getBomItemsForProject(params.id);
+  const approvals = await getTcMatchApprovals();
 
   return (
     <QcDocumentEditor
@@ -29,6 +31,8 @@ export default async function QcDocumentPage({ params }) {
       parts={detail.parts}
       mountings={detail.mountings}
       certificates={certificates}
+      bomItems={bomItems}
+      approvals={approvals}
       canEdit={canAccessDepartment(user, 'QC')}
     />
   );

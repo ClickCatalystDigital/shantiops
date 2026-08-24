@@ -84,7 +84,8 @@ export default function QcWorkspace({ projects = [], certificates = [], document
       {tab === 'tc' ? (
         <TcBank certificates={shownCerts} projects={projectsSorted} defaultProjectIds={projectId != null ? [projectId] : []} />
       ) : tab === 'docs' ? (
-        <StatutoryDocsPanel projectId={projectId} documents={shownDocs} canEdit showProject />
+        <StatutoryDocsPanel projectId={projectId} documents={shownDocs} canEdit showProject
+          projectSeries={projects.find(p => p.id === projectId)?.series} />
       ) : tab === 'ncr' ? (
         <NcrPanel ncrs={shownNcrs} canDisposition={canDisposition} canVerify={canVerify} canClose={canClose} />
       ) : tab === 'holds' ? (

@@ -22,6 +22,8 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@
 import { ChevronLeftIcon, AlertTriangleIcon, SearchIcon, PlusIcon, Trash2Icon } from 'lucide-react';
 import CertPicker from './CertPicker';
 import PdfPreview from './PdfPreview';
+import { suggestCertificates, suggestBomItem } from '@/lib/tc-match';
+import { normalizeMaterial } from '@/lib/match-utils';
 
 const HEADER_FIELDS = [
   ['company', 'Company'], ['makers_no', "Maker's No."], ['year_of_make', 'Year of Make'],
@@ -91,7 +93,38 @@ function BoilerDetailsSheet({ open, onOpenChange, document, router }) {
   );
 }
 
-function PartRow({ part, selected, onToggle, onOpenPicker, onRemove, canEdit }) {
+// "Link to BOM item" — minimal addition (plain native <select>, no new dialog component): what
+// lib/tc-match.js needs to have a real material spec to suggest certificates against (plan Step 1).
+// Unlinked stays unlinked by default — no guessing which BOM line a part means; the dropdown itself
+// is untouched (every BOM line, plain list). The one addition is a fuzzy-matched hint underneath —
+// suggestBomItem() (lib/tc-match.js), same idiom as the certificate suggestions below it — so linking
+// isn't a blind scan through every project BOM line when there's an obvious match. Still one click to
+// confirm, never auto-applied.
+function BomItemLink({ part, bomItems, onLink, canEdit }) {
+  const current = bomItems.find(b => b.id === part.bom_item_id);
+  if (!canEdit) return current ? <span className="text-xs text-muted-foreground">BOM: {current.material_description}</span> : null;
+  const suggestion = suggestBomItem(part, bomItems);
+  return (
+    <div className="flex flex-col gap-0.5">
+      <select
+        className="w-full max-w-56 truncate rounded border bg-transparent px-1 py-0.5 text-xs text-muted-foreground"
+        value={part.bom_item_id || ''}
+        onChange={e => onLink(part.id, e.target.value ? Number(e.target.value) : null)}
+      >
+        <option value="">Link to BOM item…</option>
+        {bomItems.map(b => <option key={b.id} value={b.id}>{b.material_description}</option>)}
+      </select>
+      {suggestion && (
+        <button type="button" onClick={() => onLink(part.id, suggestion.id)}
+          className="truncate text-left text-xs text-info hover:underline">
+          Suggested: {suggestion.material_description}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function PartRow({ part, selected, onToggle, onOpenPicker, onRemove, onLinkBomItem, bomItems, canEdit }) {
   const linked = !!part.test_certificate_id;
   return (
     <div className="flex items-start gap-3 py-2.5 text-sm">
@@ -99,6 +132,7 @@ function PartRow({ part, selected, onToggle, onOpenPicker, onRemove, canEdit }) 
       <div className="flex min-w-0 flex-1 flex-col">
         <span className="font-medium">{part.part_no}. {part.part_name}</span>
         <span className="text-xs text-muted-foreground">{sizeText(part)} · qty {part.qty}</span>
+        <BomItemLink part={part} bomItems={bomItems} onLink={onLinkBomItem} canEdit={canEdit} />
       </div>
       <button onClick={() => onOpenPicker([part.id])} className="flex min-w-0 flex-1 flex-col items-end text-right hover:opacity-80">
         {linked ? (
@@ -260,7 +294,7 @@ function MountingsCard({ documentId, mountings, canEdit, router }) {
   );
 }
 
-export default function QcDocumentEditor({ project, document, parts, certificates, mountings = [], canEdit }) {
+export default function QcDocumentEditor({ project, document, parts, certificates, mountings = [], bomItems = [], approvals = [], canEdit }) {
   const router = useRouter();
   // parts comes straight from the server prop, no local copy — router.refresh() after linking
   // re-fetches it server-side and flows the new value straight back in, same as QcPanel does for
@@ -316,13 +350,45 @@ export default function QcDocumentEditor({ project, document, parts, certificate
     setPickerOpen(true);
   }
 
+  // Only meaningful for a single-part picker open — a bulk selection can span parts with different
+  // bom_item_id links, so there's no one BOM item to suggest against (see PartRow's per-part
+  // "Link to BOM item" instead). lib/tc-match.js already returns [] for a missing/unmatched bomItem.
+  const pickerPart = pickerTargets.length === 1 ? parts.find(p => p.id === pickerTargets[0]) : null;
+  const pickerBomItem = pickerPart ? bomItems.find(b => b.id === pickerPart.bom_item_id) : null;
+  const suggestions = pickerPart ? suggestCertificates(pickerPart, pickerBomItem, certificates, approvals) : [];
+
   async function link(certId) {
     try {
+      // Two suggested certs can share the same normalized (material_spec, steel_maker) — e.g. two
+      // casts from the same mill/spec, a common real case since exact-tier doesn't key on cast — so
+      // dedupe before sending, or one link click would double-count that key's approval/rejection.
+      const seenKeys = new Set();
+      const shownCandidates = suggestions
+        .filter(s => pickerBomItem?.inventory_item_id)
+        .filter(s => {
+          const key = `${normalizeMaterial(s.certificate.material_spec)}|${normalizeMaterial(s.certificate.steel_maker)}`;
+          if (seenKeys.has(key)) return false;
+          seenKeys.add(key);
+          return true;
+        })
+        .map(s => ({
+          material_spec: s.certificate.material_spec, steel_maker: s.certificate.steel_maker,
+          inventory_item_id: pickerBomItem.inventory_item_id,
+        }));
       await api(`/api/qc-documents/${document.id}/link-parts`, {
-        method: 'POST', body: { part_ids: pickerTargets, test_certificate_id: certId },
+        method: 'POST', body: { part_ids: pickerTargets, test_certificate_id: certId, shown_candidates: shownCandidates },
       });
       showToast(`Linked ${pickerTargets.length} part${pickerTargets.length === 1 ? '' : 's'}`);
       setSelected(new Set());
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+  }
+
+  async function linkBomItem(partId, bomItemId) {
+    try {
+      await api(`/api/qc-documents/${document.id}/parts/${partId}/link-bom-item`, {
+        method: 'POST', body: { bom_item_id: bomItemId },
+      });
       router.refresh();
     } catch (err) { showToast(err.message, 'error'); }
   }
@@ -412,7 +478,7 @@ export default function QcDocumentEditor({ project, document, parts, certificate
             {shown.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">No matches.</p>}
             {shown.map(p => (
               <PartRow key={p.id} part={p} selected={selected.has(p.id)} onToggle={toggle} onOpenPicker={openPicker}
-                onRemove={removePart} canEdit={canEdit} />
+                onRemove={removePart} onLinkBomItem={linkBomItem} bomItems={bomItems} canEdit={canEdit} />
             ))}
           </div>
         </CardContent>
@@ -434,6 +500,7 @@ export default function QcDocumentEditor({ project, document, parts, certificate
         certificates={certificates}
         project={project}
         usedIds={usedIds}
+        suggestions={suggestions}
         onPick={link}
       />
       <BoilerDetailsSheet open={boilerOpen} onOpenChange={setBoilerOpen} document={document} router={router} />

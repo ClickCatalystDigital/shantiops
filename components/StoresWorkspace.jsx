@@ -24,6 +24,7 @@ import { PlusIcon, PencilIcon, PackageCheckIcon, UndoIcon, TruckIcon, PackageIco
 import { api, showToast } from '@/lib/client';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 import CertPicker from '@/components/CertPicker';
+import { normalizeWords } from '@/lib/match-utils';
 
 function isLowStock(item) {
   return item.reorder_point != null && item.available <= item.reorder_point;
@@ -66,9 +67,6 @@ function leadingQty(qtyText) {
 // auto-reserves. §3.2 built the real fix on top: when both sides were picked from the item catalog
 // (ItemSearchField / Stores' New Item dialog), request.item_id === inventory row's item_id is an
 // actual match, not a guess — possibleMatches() below prefers that whenever it exists.
-function normalizeWords(s) {
-  return String(s || '').toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length >= 3);
-}
 // STORES-SALES-CHANGES.md §2c — Stores' entire workspace used to be three plain, disconnected
 // tables with no "here's what needs your attention today" signal and no cross-referencing between
 // them. This is that signal: a one-glance summary computed from the same three lists already on

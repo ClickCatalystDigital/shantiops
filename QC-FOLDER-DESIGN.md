@@ -73,7 +73,7 @@ Each form is a sheet in the model's workbook. **This is the biggest per-model di
 | SF | II(1) + III + III A + IV A (+ Mountings sheet) | SB (STF drawings) | Boiler |
 | **SIB** | **Form XVII** + III A + IV A | SB | Small Industrial Boiler |
 | **PRS** | Form III + IV A ("4A") | SB | Pressure Reducing Station |
-| **HEADERS** | Form III + IV A ("4A") | STF | Steam Header |
+| **HEADERS** | Form III + Form III-H (2026-08-24, real sample SB-IBR-SH-1100A/B, entity SB) — see note below | SB / STF | Steam Header |
 | FCB, FAB | **unknown — no sample yet** | ? | ? |
 
 Form roles:
@@ -165,8 +165,65 @@ and most of the covering letter.
 ## 7. Open items (need client)
 
 - **FCB, FAB** — no sample; unknown form set / product noun.
-- **HEADERS** appears in samples but is **not** in the defined model list (CF/MF/OF/SF/SIB/PRS/FCB/FAB)
-  — is it a model, a product line, or a sub-type?
+- ~~**HEADERS** appears in samples but is **not** in the defined model list...~~ **RESOLVED
+  (2026-08-24).** It's a model — added to `QC_SERIES`/`MODEL_CONFIG`, `forms: ['III', 'IIIH']`. Full
+  writeup: SYSTEM.md §5as.
 - **Label MODEL code** and **project-number** formats — both manual for now, formalize later.
 - Whether TC-by-type counts should be auto-derived (needs a part-type/category on certs) or stay
   manual on the covering letter.
+
+## 8. Form III-A (Pipes) — scoped and ready to build, blocked only on one client confirmation
+
+**Do this section first if a future session is asked to "add the fourth form" / "add pipe
+certification."** The spec below is complete enough to build against without re-deriving anything —
+the only missing piece is a yes/no from the client's compliance contact (see the gate at the bottom).
+
+**Naming collision to resolve before touching code:** this app already has an entry called
+`'Form III A'` (`lib/reports/... ` no — `lib/qc-folder-pdf.js`'s `IIIA_COLS`, used by CF/MF/OF/SF/SIB),
+described in §3/§4 above as "same shape as IV A but for one named part." **That is almost certainly
+NOT the same document as the IBR regulation's own Form III-A** — the real regulation's Form III-A is
+titled *"Certificate of Manufacture and Test for Pipes"* (regulation 4(e)), a raw-material pipe
+certificate, structurally different from the app's existing per-part-TC-table "Form III A". Confirm
+which one the client actually means before writing any code — don't assume they're interchangeable
+just because the label matches.
+
+**Real source**: `/Users/pujan/Developer/FOLDER SAMPLE - FOR APP/IBR CERTIFICATES-FORMS index
+(official list, all forms).pdf`, pages 22-23 — the authoritative blank form, not a filled sample (no
+real client Form III-A sample exists yet; get one before finalizing pixel-level layout, same "don't
+design speculatively" rule as everything else in this doc). Full field list already extracted:
+
+- Header: Certificate No., Date, Name of part & Quantity, Drawing No., Maker's name and address,
+  Customer's Name & Address, Design pressure (Kg/cm²), Design temperature (°C).
+- **RAW MATERIAL** block: Process of manufacture, Fully Killed/rimmed, Chemical composition, Heat
+  Number, Size, Test Certificate No. & Date, Name of the Steel Maker, Name of Inspecting Authority.
+- **PIPES** block: Process of manufacture, Main dimensions, Tolerances, Specification, Bend test on
+  pipe or weld, Flattening test, Other tests, Tensile strength, Chemical Composition, Heat treatment,
+  Hydraulic test (Kg/cm²).
+- Identification mark of Inspecting Authority/Well Known Pipe Maker.
+- A metal-temperature stress table (columns 250°C through 600°C; rows Eₜ/Sc/Sr/MAWP) — only required
+  when a pipe's working metal temperature exceeds 454°C (850°F) per the form's own note; likely `NA`
+  for every real job so far (Header samples run at 185°C).
+- Certification paragraph (working pressure/temp/test date, prose, same pattern as Form III-H's own)
+  + two-stage sign-off: Maker's Representative/Maker, then Competent Person/Inspecting Authority-or-
+  Well-Known-Pipe-Maker — same shape as `SignIIIH` (`lib/qc-folder-pdf.js`), reuse or clone it.
+- **Real regulatory constraints, not just layout**: Note (3) on the form — *"For stock and sale
+  purpose, one Form shall be issued for not more than five pipes"* (a real batching rule, not
+  optional); Note (2) — fabrications made from pipes sourced elsewhere must cite that pipe's own
+  Form III-A/cert, not restate its raw-material data.
+
+**Build shape, mirroring exactly how Form III-H was added** (same session, same pattern — copy it):
+1. `lib/qc-models.js` — extend `HEADERS`'s (or whichever model's) `forms` array with a new key, e.g.
+   `'IIIA_PIPES'` (NOT `'IIIA'` — that key is taken by the unrelated existing form); add its
+   `FORM_LABELS` entry.
+2. `lib/qc-folder-pdf.js` — new dedicated page component (follow `FormIIIHPage`'s precedent: don't
+   force it through the generic `FormTablePage`, this header block is too rich), new cols array for
+   the per-pipe/lot table, wire a new `case` into `Folder()`'s `formPage()` switch.
+3. Data: no new schema needed for the header fields (reuses `qc_documents` columns the same way
+   III-H does); the ≤5-pipes-per-form batching rule (Note 3) may need UI/validation if it's actually
+   enforced in practice, not just a formality — confirm with the client before building that part.
+
+**The gate**: confirm with the user's compliance contact whether a standalone Form III-A is actually
+issued for the pipes inside a Header/component assembly in practice, or whether Form III/III-H's own
+tables (which already carry pipe rows, per the real SB-IBR-SH-1100A sample) are what's actually filed
+— see the live conversation where this was first raised (2026-08-24) for the exact ambiguity. If
+confirmed yes, this section has everything needed to build it in one pass, no further research.

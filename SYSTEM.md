@@ -4925,6 +4925,174 @@ Pass-Fail Summary/NCR Register all render their real tables (Inspection Summary:
 1 pending" across Hydro Test/Incoming Inspection/Material Test Certificate, matching the numbers
 already live-verified via curl in §5ao). `npm run build`/`npm run lint` clean.
 
+## 5as. HEADERS model + Form III-H — a standalone (non-boiler) component filing, from a real client sample (2026-08-24)
+
+Client sent a real, filled sample (`FORMIIIIVA_1100_3H.xlsx`, maker's no `SB-IBR-SH-1100A`/`-1100B`)
+showing how a Steam Header — a component shipped **without a complete boiler** — is actually filed:
+**Form III (a component-shaped variant) + Form III-H**, not the full CF/MF/OF/SF folder (`II(1)+III+
+IIIA+IVA`). Cross-checked against the authoritative IBR forms index (saved locally, see "Reference
+material" below) — Form III-H is the regulation's own purpose-built certificate for exactly this case
+("Certificate of Manufacture and Test for Headers, Desuperheaters/Attemperator, Blowdown Tank, Feed
+Water Tanks, Accumulator, Deaerator", regulation 4). Resolves §7's open item in `QC-FOLDER-DESIGN.md`
+("HEADERS appears in samples but is not in the defined model list — is it a model, a product line, or
+a sub-type?") — it's a model, added to `QC_SERIES`/`MODEL_CONFIG` alongside CF/MF/OF/SF/SIB/PRS.
+
+**Two real bugs found and fixed while building this, neither related to HEADERS specifically:**
+1. **`app/api/qc-documents/route.js` hardcoded `series: 'SF'` on every new document, regardless of
+   the project's actual model.** `lib/qc-folder-pdf.js` already correctly read `project.series` to
+   pick the form set — but nothing upstream ever produced a document whose own series matched, so
+   this was silently dead code for any project not literally named SF. Fixed to read the resolved
+   project series (falling back to SF only for legacy/unset projects); the 54-part SF template is now
+   only auto-seeded when the resolved series is actually SF.
+2. **`projects.series` was `NULL` on every single project in the dev DB.** The QC workspace's Model
+   filter (`SearchableSelect`) was reported broken ("I filter with SF or CF and see nothing") —
+   investigated and confirmed the filter code itself is correct; there was simply no real data to
+   filter. The obvious fix — re-run the existing backfill script `scripts/qc-reassign-certs.mjs` — was
+   a dead end: it infers the model from a structured `project_no` format (`STF-IBR-045-CF-400-15`)
+   that **no real project in this system's `SB-NNNN` auto-numbering scheme has ever used**. Fixed by
+   backfilling `series` directly on 3 real demo projects (`SB-1018`→SF, `SB-1023`→CF, `SB-1024`→PRS).
+
+**A second, related gap found only by testing the filter live, not by code review:** setting
+`projects.series` alone gets a project *into* the Model dropdown/project list, but doesn't give it any
+actual certificates or documents — selecting "CF" correctly filtered down to `SB-1023`, then correctly
+showed "no certificates yet," because there genuinely weren't any. Not a filter bug, a seed-data gap
+this same round introduced by only populating real content for the HEADERS case. Fixed: added 2-3
+real-*looking* certificates (reusing this DB's own existing real material specs/steel makers — `IS
+2062 E250`/SAIL, `SA 106 Gr.B`/Maharashtra Seamless — with realistic per-maker cert-number formats
+like `SAIL/IBR/3152/2026`, not a mechanical `{docId}-TC1` placeholder) and a document for each of
+SB-1023 (CF) and SB-1024 (PRS), plus 2 more linked parts added to SB-1018's (SF) existing but
+previously-unlinked document. Live-verified in the browser: all 4 series (CF/SF/PRS/HEADERS) now
+return real, correctly-scoped, non-empty results.
+
+**Two real re-runnability bugs in the seed script itself, both an FK-collision class, found by
+actually running the script twice in a row rather than trusting it after one clean run:** the
+original HEADERS-only cleanup block did a blanket `DELETE FROM test_certificates WHERE created_by =
+MARK`, which — once the same `MARK` started tagging CF/SF/PRS certs too — collided with certs still
+linked to those other projects and threw a foreign-key error partway through a rerun. A related
+`cleanupProjectDocs()` helper unlinked a project's own certs from `certificate_projects` but never
+deleted the `test_certificates` rows themselves, silently orphaning rows on every rerun. Both fixed to
+scope deletes to exactly the certs each block owns (queried via the live `certificate_projects` link
+at cleanup time, not a blanket tag match); added a defensive sweep at the top of the script that
+removes any already-orphaned `MARK`-tagged cert (zero `certificate_projects` links) as a safety net
+for any future interrupted run. Verified stable — 12 total seeded certs, 0 orphans, across 4
+consecutive runs.
+
+**Rendering** (`lib/qc-folder-pdf.js`): new `FormIIIHPage` (not built on the generic `FormTablePage` —
+the real sample's header block is richer than IIIA/IVA's plain doc-id line, so forcing it through the
+generic page would have silently dropped real fields), a component variant of `FormIIIPage` (branches
+on `model.noun !== 'Boiler'`: swaps "Type of Boiler" for "Description", NAs the boiler-only fields,
+adds the sample's own "Parts Manufactured at the Constructor's Site" block + its own 9-column parts
+table), and `SignIIIH` (the real two-stage sign-off — Maker's Representative/Maker, then a *separate*
+Competent Person/Inspecting Authority attestation with its own paragraph — genuinely different from
+every other form's shared `Sign()`, which stays untouched for CF/MF/OF/SF).
+
+**Verified against the client's real PDF, field by field** (the user generated and shared the actual
+rendered output): every part row, every spec/process/steel-maker, both sign-off blocks, and the
+covering letter's manifest matched exactly. Found and fixed one real cosmetic bug this way — "Year of
+Make: 2026.0" (the seed script inserted a JS number, Turso round-tripped it as a float; fixed by
+inserting it as a string, matching how the real create-document form already submits it). Two things
+flagged as genuinely open, not silently resolved: the client's own two source sheets disagree on
+Working Pressure (17 vs 17.5 Kg/Sqcm — one shared field renders 17.5 on both forms today), and Form
+III-H's own "T.C. No." field doesn't cleanly map to `doc_id` (one real sample shows it as a *different*
+specific certificate's own number) — defaulted to `doc_id` for now, flagged to the user to confirm.
+
+**Reference material saved locally for future sessions** (not just this conversation's context):
+- `/Users/pujan/Developer/FOLDER SAMPLE - FOR APP/HEADERS/STEAM HEADER FORM-III,III-H 1100A-1100B-sample.xlsx`
+  — the client's real sample this round was built from (3 sheets: Form III, and Form III-H for both
+  1100A and 1100B).
+- `/Users/pujan/Developer/FOLDER SAMPLE - FOR APP/IBR CERTIFICATES-FORMS index (official list, all forms).pdf`
+  — the authoritative IBR forms index (Maharashtra Boiler Directorate), 84 pages, every form I-XIX
+  with its regulation reference and blank layout. Used to confirm Form III-H's exact title/field set
+  and to identify Form III-A ("Certificate of Manufacture and Test for Pipes") as the likely real
+  meaning behind a separate client mention of pipe certification — not yet built or confirmed needed,
+  see the open item below.
+
+**Genuinely deferred, not forgotten:** Form III-A (Pipes) — the client separately mentioned needing
+something for pipes; the IBR index confirms a real, purpose-built form for exactly that ("one Form per
+≤5 pipes" per its own Note 3), but neither real Header sample shows one being issued separately (both
+fold pipe data into Form III/III-H's own tables instead). Not built — waiting on the user to confirm
+with their compliance contact whether a standalone Form III-A is actually issued in practice before
+scoping it in. **Full field spec, exact file/line targets, and the naming collision with the app's
+existing unrelated "Form III A" already written up ready-to-build in `QC-FOLDER-DESIGN.md` §8** — a
+future session doesn't need to re-derive any of this, just get the one yes/no and go. The other 5 item
+types Form III-H covers (Desuperheater/Attemperator, Blowdown Tank, Feed Water Tank, Accumulator,
+Deaerator) are also not built — no real sample for any of them yet, same "don't design speculatively"
+rule this whole area already follows.
+
+`npm run build`/`npm run lint` clean throughout.
+
+## 5at. QC TC↔BOM-item suggestion + approval-history promotion — "system suggests, human approves" (2026-08-24)
+
+Certificate linking (`app/api/qc-documents/[id]/link-parts/route.js`) was 100% manual — no scoring
+anywhere, and `qc_document_parts` had no link to `bom_items` at all, so there was nothing to compare a
+TC's attributes against. Built following the two matching precedents this codebase already had proven
+working (`StoresWorkspace.jsx`'s `possibleMatches()` — exact `item_id` wins outright, fuzzy
+keyword-overlap otherwise, top 2, non-binding — and `lib/remnant-match.js`'s dimensional matching):
+never invented a third pattern.
+
+**New pieces:**
+- `qc_document_parts.bom_item_id` — nullable, additive, no backfill (existing links untouched). Set
+  via a small native `<select>` in `QcDocumentEditor.jsx`'s `PartRow` (new endpoint
+  `.../parts/[partId]/link-bom-item`), plus a one-click fuzzy "Suggested: X" hint under it
+  (`suggestBomItem()`, `lib/tc-match.js`) — the dropdown itself stays untouched.
+- `lib/tc-match.js`'s `suggestCertificates()` — tiers: exact (`bom_items.moc`==`cert.material_spec`,
+  gated on `bom_items.make`==`cert.steel_maker` only when the BOM line actually recorded a maker),
+  fuzzy (keyword overlap), promoted (see below). `qc_document_parts.size_t/w/l` vs
+  `test_certificates.size_t/w/l` — same columns, same units — is an extra free signal, independent of
+  whether the BOM line ever got structured `category_fields_json`.
+- `tc_item_match_approvals` table — frequency counting, not statistical/ML learning, same low-tech
+  idiom as everything else here. Key: `(material_spec, steel_maker) → inventory_item_id`. Written only
+  from the single-row Link path (never bulk, which can span parts with different `bom_item_id` links —
+  no single "shown suggestion" to score honestly there) using the *full* shown-candidates array, so
+  picking suggestion #2 over #1 correctly reads as "#1 rejected," not a no-signal event.
+- **Promotion is Laplace-smoothed confidence, not a bare count**: `(approvals+1)/(approvals+rejections+2)
+  >= 0.75` and `approvals >= 3` — a shaky 3-approval/2-rejection pattern doesn't read the same as a
+  clean 3/0 one, and a bad promotion self-corrects within a few future rejections instead of being
+  permanent. **Never auto-applies** — QC is a compliance surface, a wrong material match has real
+  consequences unlike Stores' stock reservation; promotion only floats the suggestion and marks it
+  high-confidence (✓✓ badge). User-confirmed decision, not a default assumption.
+- `lib/match-utils.js` (new, dependency-free — no `./db` import, so client components can use it) —
+  `normalizeWords` and `normalizeMaterial` pulled out of `StoresWorkspace.jsx`/`lib/remnant-match.js`
+  respectively, now shared three ways.
+
+**Two real bugs found and fixed during live verification, not just code review:**
+1. Two suggested certificates commonly share the same normalized `(material_spec, steel_maker)` (two
+   casts from the same mill/spec) — a naive per-candidate score let one link click double-count a
+   single key's approval, silently letting a pattern reach the promotion floor after 2 real actions
+   instead of 3. Fixed with a dedupe-by-key pass both client-side and server-side.
+2. `confidenceByKey`/`promotedKeys` were originally built from *all* approval rows keyed only by
+   `material_spec|steel_maker`, ignoring `inventory_item_id` — two different Item Master rows can
+   legitimately share the same spec+maker pattern (an explicitly-designed case), and a plain `Map`
+   silently let one collide the other's confidence (last-write-wins). Fixed by scoping to the current
+   BOM item's `inventory_item_id` before keying.
+
+**`suggestBomItem()` itself needed two live-verified corrections** (caught by the user asking "are you
+sure that's already mapped?", not by testing in advance): a boiler-parts template's vocabulary
+("Shell Plate", "End Plate") is generic enough that a single shared word like "plate" matched nearly
+every plate-type BOM line with zero discriminating power — it tied 1-1 between a plain "MS PLATE" (no
+Item Master link) and the actual boiler-grade "BQ PLATE ... SA 516 GR 70 ... FORM IV TC" line, and a
+naive best-score-wins pick silently took the wrong one. Raising the threshold to 2 shared words wasn't
+enough by itself — a part's required cut dimension (`size_w: "2000.0"`) coincidentally matched a BOM
+line's unrelated raw stock size text (`"2000 X 6000 X 10 THK"`), faking a second "match" out of a
+category error (required dimension vs. stock dimension aren't the same kind of number). Fixed by
+dropping size fields from this specific comparison entirely — text-only (`part_name` vs
+`material_description`), 2+ shared words, ties refused outright (return null rather than guess).
+
+**`normalizeMaterial()` tightened while verifying the above**: was whitespace-collapse only, so a real
+certificate's `"SA516 Gr.70"` (no space) and a real BOM line's `"SA 516 GR 70"` (spaced) — both live
+data, not test fixtures — failed exact-tier and fell to the weaker fuzzy tier purely on formatting.
+Now strips all punctuation/whitespace before comparing (`sa51670` either way) — still strict equality,
+never a substring/contains check, so it can't start matching things that aren't really the same spec.
+Strengthens `lib/remnant-match.js`'s stock-reservation matching for free, since it shares the function.
+
+**Known, accepted limitations** (not building around): no decay on old approvals; counts aren't
+per-user (one person can promote/demote a pairing alone, bounded by rejection self-correction);
+`inventory_item_id` FK has no `ON DELETE` clause, consistent with an existing gap elsewhere
+(`inventory_reservations.bom_item_id`, §1265) — not solved fresh here.
+
+`npm run build`/`npm run lint` clean; every claim above verified live against real (not fabricated)
+project/BOM/certificate data in the dev DB, test data cleaned up after each pass.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own
@@ -5168,6 +5336,22 @@ Deliberately not attempted as a batch of new sidebar tabs — the same "primary 
 supporting/control layer" split §5l's relaunch just applied (Route/Operations, Material, Labour,
 Costing, Forecast, and Change Notes all sit as indicator chips around the lifecycle, not stages in
 it) is the shape any of the above should take too, whenever picked up.
+
+**BOM procurement-category taxonomy + delayed-milestone-by-category report (2026-08-24, raised in
+conversation, not started).** User's real ask: a management report showing, for delayed procurement
+milestones, which *category* of item's suppliers are the recurring bottleneck (e.g. "pipes keep
+slipping," "valve suppliers are the pattern"). Genuinely blocked on a bigger prerequisite than it
+looks: `bom_items.category` today only covers the small dimensional subset entered via the PR/BOM
+composer (`plate`/`ms_section`/`angle`, §5at's neighbor `lib/remnant-match.js`) — the dominant
+bulk-Excel-import path leaves it `NULL` for the vast majority of real BOM lines (confirmed live,
+§5at). A category report needs a category on *every* line, not just the structured minority, so this
+needs: (1) a broader procurement-facing taxonomy (pipes/tubes, valves, instruments, rotating
+equipment, fasteners, etc. — distinct from the narrow dimensional-matching enum, which stays as-is for
+its own purpose), (2) a backfill/assignment story for the existing NULL-category majority (retroactive
+tagging, or only report on newly-tagged data going forward — a real product decision, not a technical
+one), and (3) the report itself, joining category against whichever delay signal Procurement's
+milestone/PR data already carries. Scoped as its own session — not a label bolted onto the TC-match
+work above.
 
 ---
 
