@@ -209,8 +209,8 @@ QC's own statutory-document work is already mid-flight and follows exactly this 
 folding into the same engine rather than treating as separate:
 
 - **Shipped**: Test Certificate bank (reusable material certificates) + **Form IV A** — a real,
-  landscape PDF (`lib/qc-doc-pdf.js`, 18-column part table, `lib/qc-template.mjs`'s 54-part
-  hardcoded template) generated from the saved statutory-document record.
+  landscape PDF (`lib/qc-doc-pdf.js`, 18-column part table, parts auto-populated from the
+  project's own BOM via `lib/qc-bom-sync.js`) generated from the saved statutory-document record.
 - **In progress, blocked**: a complete statutory folder is more than Form IV A alone — the filed
   order for CF/MF/OF boilers is **Form II(1) + III + III A + IV A** (SF adds a Mountings sheet);
   PRS/Steam Header units file **Form III + Form IV A**. Form III A (per-part TC table, one named

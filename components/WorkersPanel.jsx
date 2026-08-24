@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api, showToast } from '@/lib/client';
 import { formatDate } from '@/lib/format';
@@ -110,7 +110,12 @@ function requiredDimsFromBomItem(b) {
   } catch { return {}; }
 }
 
-function DimRows({ label, kind, rows, setRows }) {
+// `partOptions` (only ever passed for the "Used" rows — a remnant isn't a finished named part) —
+// the named-part breakdown Design attached to this BOM line (bom_items.named_parts_json), so the
+// operator can say which physical piece fulfills which named part right where they're already
+// declaring dimensions. Optional and per-row: not every used piece needs one, and a line with no
+// breakdown at all just doesn't get the column.
+function DimRows({ label, kind, rows, setRows, partOptions }) {
   function update(idx, field, value) {
     setRows(rows.map((r, i) => (i === idx ? { ...r, [field]: value } : r)));
   }
@@ -122,13 +127,21 @@ function DimRows({ label, kind, rows, setRows }) {
       </div>
       {rows.length === 0 && <p className="text-xs text-muted-foreground">None</p>}
       {rows.map((r, idx) => (
-        <div key={idx} className="flex items-center gap-2">
+        <div key={idx} className="flex flex-wrap items-center gap-2">
           <DimensionInput placeholder="Length" className="w-40 shrink-0" valueMm={r.length_mm ?? ''} onChangeMm={v => update(idx, 'length_mm', v)} />
           {kind === 'plate' && (
             <>
               <DimensionInput placeholder="Width" className="w-40 shrink-0" valueMm={r.width_mm ?? ''} onChangeMm={v => update(idx, 'width_mm', v)} />
               <DimensionInput placeholder="Thickness" className="w-44 shrink-0" valueMm={r.thickness_mm ?? ''} onChangeMm={v => update(idx, 'thickness_mm', v)} />
             </>
+          )}
+          {partOptions?.length > 0 && (
+            <Select value={r.part_name || ''} onValueChange={v => update(idx, 'part_name', v)}>
+              <SelectTrigger className="w-44 shrink-0"><SelectValue placeholder="Part (optional)" /></SelectTrigger>
+              <SelectContent><SelectGroup>
+                {partOptions.map(name => <SelectItem key={name} value={name}>{name}</SelectItem>)}
+              </SelectGroup></SelectContent>
+            </Select>
           )}
           <Button type="button" size="icon-sm" variant="ghost" onClick={() => setRows(rows.filter((_, i) => i !== idx))}><TrashIcon /></Button>
         </div>
@@ -143,6 +156,10 @@ function DimRows({ label, kind, rows, setRows }) {
 // already reserved a piece for pre-fills the source automatically; otherwise the operator picks one
 // manually from the same category's available stock — same Cut action either way.
 function CutDialog({ bomItem, projectId, onClose, router, onDone }) {
+  const namedParts = useMemo(() => {
+    if (!bomItem.named_parts_json) return [];
+    try { return JSON.parse(bomItem.named_parts_json).map(p => p.name).filter(Boolean); } catch { return []; }
+  }, [bomItem.named_parts_json]);
   const [reservedPieces, setReservedPieces] = useState(null); // null = loading
   const [inventoryOptions, setInventoryOptions] = useState(null);
   const [inventoryItemId, setInventoryItemId] = useState('');
@@ -188,12 +205,13 @@ function CutDialog({ bomItem, projectId, onClose, router, onDone }) {
     if (!source) return showToast('Pick a source piece', 'error');
     setSaving(true);
     try {
-      const toDims = rows => rows.filter(r => parseNum(r.length_mm) > 0).map(r => ({
+      const toDims = (rows, withPart) => rows.filter(r => parseNum(r.length_mm) > 0).map(r => ({
         length_mm: parseNum(r.length_mm), width_mm: parseNum(r.width_mm), thickness_mm: parseNum(r.thickness_mm),
+        ...(withPart && r.part_name ? { part_name: r.part_name } : {}),
       }));
       await api(`/api/stock-pieces/${sourcePieceId}/cut`, {
         method: 'POST',
-        body: { used: toDims(used), remnants: toDims(remnants), project_id: projectId, bom_item_id: bomItem.id },
+        body: { used: toDims(used, true), remnants: toDims(remnants), project_id: projectId, bom_item_id: bomItem.id },
       });
       showToast('Cut recorded');
       await onDone?.();
@@ -205,7 +223,7 @@ function CutDialog({ bomItem, projectId, onClose, router, onDone }) {
 
   return (
     <Dialog open onOpenChange={o => !o && onClose()}>
-      <DialogContent className="max-w-xl">
+      <DialogContent className="max-w-4xl">
         <DialogHeader><DialogTitle>Cut — {bomItem.material_description}</DialogTitle></DialogHeader>
         <div className="flex flex-col gap-4">
           {reservedPieces === null ? (
@@ -259,7 +277,7 @@ function CutDialog({ bomItem, projectId, onClose, router, onDone }) {
 
           {source && (
             <>
-              <DimRows label="Used (→ this project)" kind={source.kind} rows={used} setRows={setUsed} />
+              <DimRows label="Used (→ this project)" kind={source.kind} rows={used} setRows={setUsed} partOptions={namedParts} />
               <DimRows label="Kept as remnant (→ stock)" kind={source.kind} rows={remnants} setRows={setRemnants} />
               <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm tnum">
                 <div className="flex justify-between"><span className="text-muted-foreground">Source</span><span>{source.weight_kg} kg</span></div>

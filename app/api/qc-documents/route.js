@@ -3,21 +3,18 @@ import { queryOne, withTransaction } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
-import { SF_FORM_IVA_PARTS } from '@/lib/qc-template.mjs';
 import { COMPANY_NAMES } from '@/lib/qc-doc-pdf.js';
 import { syncQcPartsFromBom } from '@/lib/qc-bom-sync';
+import { CORE_FIELDS } from '@/lib/qc-document-fields';
 
-const HEADER_FIELDS = [
-  'doc_id', 'makers_no', 'year_of_make', 'boiler_type', 'length_overall', 'internal_diameter',
-  'design_pressure', 'hydro_test_pressure', 'heating_surface', 'evaporation_capacity', 'steam_temp',
-  'drawing_no', 'company',
-];
+const HEADER_FIELDS = CORE_FIELDS.map(f => f.key);
 
 // New statutory document. `series` is resolved from the project's real Model (projects.series), not
-// hardcoded — SF filings get the 54-part template auto-seeded (client-confirmed, §8 assumption 1) so
-// a fresh SF document is immediately a real, linkable table; every other series (incl. HEADERS) seeds
-// zero parts, since real non-SF jobs have genuinely different part lists per job — see the document's
-// own Add Part UI instead.
+// hardcoded. Every series (SF included) auto-populates its Form IV A parts from the project's own
+// BOM (see lib/qc-bom-sync.js) — SF used to seed a fixed 54-row template transcribed from one real
+// sample boiler (Maker's No. SB-1037), but that baked one project's exact sizes/qty/part list into
+// every other SF document regardless of what that boiler's BOM actually contains. QC can still
+// add/remove parts by hand afterward either way.
 export async function POST(req) {
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
@@ -27,7 +24,6 @@ export async function POST(req) {
 
   const b = await req.json();
   if (!b.project_id) return NextResponse.json({ error: 'project_id is required' }, { status: 400 });
-  if (!String(b.doc_id || '').trim()) return NextResponse.json({ error: 'Document ID is required' }, { status: 400 });
   const project = await queryOne('SELECT id, company, series FROM projects WHERE id = ?', [b.project_id]);
   if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
   // Defaults to the project's own company now (§2.6 fix) rather than always Shanti Boilers —
@@ -37,6 +33,12 @@ export async function POST(req) {
   // so lib/qc-folder-pdf.js's series-driven form-set selection never got the real series to read.
   // SF stays the fallback for legacy/unset projects — not a behavior change for existing users.
   const series = project.series || 'SF';
+
+  // The UI gate (lib/qc-document-fields.js's `required`) is never the real enforcement — mirrored
+  // here against the same list, same shape as the doc_id-only check this replaced.
+  for (const f of CORE_FIELDS) {
+    if (!String(b[f.key] || '').trim()) return NextResponse.json({ error: `${f.label} is required` }, { status: 400 });
+  }
 
   const values = HEADER_FIELDS.map(f => {
     const v = b[f];
@@ -50,25 +52,10 @@ export async function POST(req) {
       args: [b.project_id, series, ...values, user.username],
     });
     const documentId = Number(res.lastInsertRowid);
-
-    // The 54-part SF template only applies to SF filings — every other series (incl. HEADERS) has
-    // genuinely different part counts/numbering per real job, so there's no fixed list to seed;
-    // instead they're auto-populated from the project's BOM (client-confirmed) — see
-    // lib/qc-bom-sync.js. QC can still add/remove parts by hand afterward either way.
-    let partsSeeded;
-    if (series === 'SF') {
-      for (let i = 0; i < SF_FORM_IVA_PARTS.length; i++) {
-        const p = SF_FORM_IVA_PARTS[i];
-        await tx.execute({
-          sql: `INSERT INTO qc_document_parts (document_id, part_no, part_name, size_t, size_w, size_l, qty, sort_order)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          args: [documentId, p.part_no, p.part_name, p.size_t, p.size_w, p.size_l, p.qty, i],
-        });
-      }
-      partsSeeded = SF_FORM_IVA_PARTS.length;
-    } else {
-      partsSeeded = await syncQcPartsFromBom(tx, documentId, b.project_id);
-    }
+    // Bought-out Items (Mountings & Fittings) deliberately stay manual-sync-only for now (the
+    // MountingsCard "Sync from BOM" button, lib/qc-bom-sync.js's syncMountingsFromBom) — not
+    // auto-seeded at creation like Form IV A. See SYSTEM.md §5d for why.
+    const partsSeeded = await syncQcPartsFromBom(tx, documentId, b.project_id);
     return { documentId, partsSeeded };
   });
 

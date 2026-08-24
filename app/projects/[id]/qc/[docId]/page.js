@@ -34,6 +34,7 @@ export default async function QcDocumentPage({ params }) {
       bomItems={bomItems}
       approvals={approvals}
       canEdit={canAccessDepartment(user, 'QC')}
+      currentUserName={user.display_name || user.username}
     />
   );
 }

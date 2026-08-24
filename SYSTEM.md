@@ -1124,8 +1124,20 @@ and "Next" below.
   into the `/qc` workspace (`?tab=&project=`), gated to QC-access users. The full add/edit lives in
   the workspace now, not this tab.
 - **Statutory documents** (`qc_documents` + `qc_document_parts`) — per-boiler. **New document** seeds
-  the Form IV A part list from a hardcoded template (`lib/qc-template.mjs`, 54 parts, SF sample) —
-  every part starts unlinked. The editor (`QcDocumentEditor.jsx`, `/projects/[id]/qc/[docId]`) has
+  the Form IV A part list from the project's own BOM (`lib/qc-bom-sync.js` — `moc`-bearing,
+  non-Cancelled lines), for every series including SF. (2026-08-25: SF used to seed a fixed 54-row
+  template transcribed from one real sample boiler (now deleted, `lib/qc-template.mjs`), which baked
+  that boiler's exact sizes/qty/part list into every other SF document regardless of its own BOM —
+  replaced with the same BOM sync every other series already used. The demo-only copy of that seed
+  data, `lib/db.js`'s `seedQcDemoData`, is also removed for the same reason — it bypassed the real
+  creation API and duplicated/conflicted with `scripts/seed-demo-pipeline.mjs`'s own SB-1018 QC
+  seed, which now derives its demo parts from its own seeded BOM instead of unrelated hand-picked
+  names.) A synced part now also carries real `size_t`/`size_w`/`size_l` when its BOM line was
+  entered through the category composer (`category_fields_json`'s `{length,width,thickness}`,
+  remapped) — falls back to the old single `size_l = size_spec` behavior otherwise, since most live
+  BOM rows (manual/imported) don't carry that structured data. A "Sync from BOM" button re-runs it
+  after BOM edits, additive-only. Every part starts unlinked. The editor (`QcDocumentEditor.jsx`,
+  `/projects/[id]/qc/[docId]`) has
   search, an Unlinked filter, and multi-select **bulk-link to one certificate**; the picker
   (`CertPicker.jsx`) reaches the whole bank, shows cert+cast+plate+spec+maker together, and has
   inline **"+ Add certificate"**. Company/letterhead per document comes from a two-value list in
@@ -1137,6 +1149,73 @@ and "Next" below.
 - **The hard gate**: *Preview PDF* is disabled while any part is unlinked, and
   `app/api/qc-documents/[id]/pdf/route.js` re-checks server-side and 409s — the UI gate is never the
   real enforcement.
+- **Named boiler parts — Form IV A's part-level granularity (shipped 2026-08-25).** Was: `lib/
+  qc-bom-sync.js` synced one `qc_document_parts` row per qualifying **BOM line** — fine for bought/
+  fitting-type components, but genuinely wrong for major structural plates: a real, current 2026
+  Form IV A sample (`STF-IBR-045-SB-CF-400-15B-sample.xlsx`, `/Users/pujan/Developer/FOLDER SAMPLE -
+  FOR APP/BOILER CF SERIES/`) lists `SHELL BELT-I`, `SHELL BELT-IIA`, `SHELL BELT-IIB` as three
+  separately-named rows sharing the *exact same* cast/plate/certificate — three physically distinct
+  fabricated parts cut from one purchased plate, which "MS Plate × 2" alone can't express. Checked
+  every existing data source before concluding it needed new capability (none of `bom_items.
+  material_description`/`group_label`, `bom_imports`, `calc_variables`, `calc_drawings`, or
+  `job_cards.section` carry part identity — see git history for the full evidence trail this entry
+  used to hold).
+
+  **Shipped as three connected pieces, not a single feature** — matching which department already
+  knows which half of this:
+  - **Design plans it.** `bom_items.named_parts_json` / `bom_template_items.named_parts_json`
+    (`[{name, qty}, ...]`) — optional, set via `components/PrWorkspace.jsx`'s `NamedPartsEditor` on
+    a BOM/template line. Defining it on a *template* item carries the breakdown into every project
+    built from that boiler model, not just the one it was typed on.
+  - **Production tags physical reality.** `stock_pieces.part_name` — `components/WorkersPanel.jsx`'s
+    `CutDialog` offers an optional "Part" picker per "used" row, populated from the line's own
+    `named_parts_json`, when cutting. Each cut piece still gets its own id/status/lineage exactly as
+    before (`lib/stock-pieces.js`'s `cutPiece()`, unchanged) — this only adds which named part it
+    fulfills.
+  - **QC reconciles the two.** `qc_document_parts.stock_piece_id` + `lib/qc-bom-sync.js`'s
+    `reconcilePartsCertificates` (run at the end of every sync, not just on newly-inserted rows —
+    so a part synced before Production cuts anything still links once they do, via QC re-clicking
+    the existing "Sync from BOM"). Matches *every* `stock_pieces` row sharing `(bom_item_id,
+    part_name)`, not just one — links only when they agree on one certificate (partial fulfillment
+    with agreement still links; a genuine cast mismatch across re-cuts stays unlinked rather than
+    guessed between). `stock_piece_id` is always a representative reference for display, never the
+    source of truth for that decision. Never overwrites a certificate a human already linked
+    (`WHERE test_certificate_id IS NULL` on the auto-link) — manual link/unlink
+    (`app/api/qc-documents/[id]/link-parts/route.js`) both clear `stock_piece_id` so the two
+    mechanisms never leave a stale or contradictory reference behind.
+
+  No new tables — every addition above is a nullable column on a table that already did the
+  adjacent job. `lib/tc-match.js`'s spec-similarity certificate suggestions are untouched; this adds
+  a second, more precise link alongside them for the parts that have one.
+
+  Full walkthrough (flowchart + how-to per department + FAQ): `NAMED-PARTS-GUIDE.md`. Verified live
+  end to end (2026-08-25): a named-parts template applied to a real project, cut and tagged by
+  Production, correctly synced into separate QC rows with a live "N of Q cut" badge — plus a
+  reconciliation self-check, `scripts/selfcheck-named-parts.mjs`, covering partial fulfillment,
+  conflicting casts, and the never-overwrite-a-manual-link rule.
+
+- **Bought-out Items (Mountings & Fittings) — manual "Sync from BOM" added (2026-08-25, shipped
+  with known gaps, not yet live-verified).** Same additive shape as Form IV A's sync — `qc_mountings`
+  gained a `bom_item_id` column + partial unique index, `lib/qc-bom-sync.js`'s
+  `syncMountingsFromBom` inserts one row per qualifying BOM line via `INSERT OR IGNORE`, a button on
+  `MountingsCard` (`components/QcDocumentEditor.jsx`) triggers it on demand. **Deliberately not
+  auto-seeded at document creation** (unlike Form IV A) — left manual-only pending a proper review
+  of whether that's wanted here too. Three real, open gaps, written down rather than silently
+  shipped:
+  - **Not live-verified.** Written and reasoned through, never actually clicked end-to-end in a
+    browser — unlike every other change in this pass.
+  - **Qualifying filter is `moc` unset** (the mirror of Form IV A's `moc`-set filter) — checked
+    against live data: `section = 'MOUNTINGS'` would be a cleaner signal in principle but is
+    `NULL` on 45 of 61 real BOM rows (misses most genuine mounting items — safety valves, pressure
+    gauges, tubular gauge glasses all currently have no `section` tag), so `!moc` stays the more
+    complete signal. It has one confirmed live false positive: a `bom_items` row named
+    `"MS Angle 50x50x5"` has `moc` mistakenly blank (a raw-material data-entry gap, not a real
+    fitting) and would wrongly sync into this table. Same class of trade-off the Form IV A filter
+    already accepts, just not previously checked against real data before shipping this side.
+  - **Deleting a wrongly-synced row doesn't stick.** The unique index only blocks re-inserting a
+    `bom_item_id` that's *currently present* — if QC manually removes a mistaken row (existing
+    bulk-replace Save) and later clicks "Sync from BOM" again, it silently reappears. No tombstone/
+    soft-delete concept exists to prevent this; needs its own design pass, not a bolt-on fix.
 
 ### PDF rendering (still Form IV A only)
 

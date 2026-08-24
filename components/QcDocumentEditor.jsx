@@ -22,22 +22,10 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@
 import { ChevronLeftIcon, AlertTriangleIcon, SearchIcon, PlusIcon, Trash2Icon, XIcon, RefreshCwIcon } from 'lucide-react';
 import CertPicker from './CertPicker';
 import PdfPreview from './PdfPreview';
+import QcHeaderField from './QcHeaderField';
 import { suggestCertificates, suggestBomItem } from '@/lib/tc-match';
 import { normalizeMaterial } from '@/lib/match-utils';
-
-const HEADER_FIELDS = [
-  ['company', 'Company'], ['makers_no', "Maker's No."], ['year_of_make', 'Year of Make'],
-  ['design_pressure', 'Design Pressure'], ['hydro_test_pressure', 'Hydro Test Pressure'],
-  ['boiler_type', 'Boiler Type'], ['length_overall', 'Length Overall'],
-  ['internal_diameter', 'Internal Dia'], ['heating_surface', 'Heating Surface'],
-  ['evaporation_capacity', 'Evaporation Cap.'], ['steam_temp', 'Steam Outlet Temp.'],
-  ['drawing_no', 'Drawing No.'], ['doc_id', 'Document ID'],
-  // Full-folder fields (QC-FOLDER-DESIGN.md) — label, covering letter, Form II(1).
-  ['working_pressure', 'Working Pressure'], ['drawing_no_from', 'Drawing No. From'],
-  ['drawing_no_to', 'Drawing No. To'], ['label_model_code', 'Label Model Code'],
-  ['submission_date', 'Submission Date'], ['signer_name', 'Signed By (QC)'],
-  ['recipient_name', 'Recipient (blank = Director)'], ['recipient_address', 'Recipient Address'],
-];
+import { QC_HEADER_FIELDS } from '@/lib/qc-document-fields';
 
 // V2-CHANGES.md Group 2 — same two companies as StatutoryDocsPanel.jsx's NewDocumentSheet; this
 // sheet only needs the plain names (doc-ID prefix derivation is a creation-time concern, not an
@@ -48,12 +36,22 @@ function sizeText(p) {
   return [p.size_t, p.size_w, p.size_l].filter(Boolean).join(' × ') || '—';
 }
 
-function BoilerDetailsSheet({ open, onOpenChange, document, router }) {
-  const [form, setForm] = useState(() => Object.fromEntries(HEADER_FIELDS.map(([k]) => [k, document[k] || ''])));
+function todayIso() { return new Date().toISOString().slice(0, 10); }
+
+function BoilerDetailsSheet({ open, onOpenChange, document, currentUserName, router }) {
+  const [form, setForm] = useState(() => {
+    const init = Object.fromEntries(QC_HEADER_FIELDS.map(f => [f.key, document[f.key] || '']));
+    // "signer = QC user", "date defaults to today" (QC-FOLDER-DESIGN.md §4.3) — pre-filled on first
+    // open for a document that has neither set yet, stays a normal editable field afterward.
+    if (!init.submission_date) init.submission_date = todayIso();
+    if (!init.signer_name && currentUserName) init.signer_name = currentUserName;
+    return init;
+  });
   const [busy, setBusy] = useState(false);
 
   async function submit() {
-    if (!form.doc_id.trim()) return showToast('Document ID cannot be empty', 'error');
+    const missing = QC_HEADER_FIELDS.find(f => f.required && !String(form[f.key] || '').trim());
+    if (missing) return showToast(`${missing.label} is required`, 'error');
     setBusy(true);
     try {
       await api(`/api/qc-documents/${document.id}`, { method: 'PATCH', body: form });
@@ -66,23 +64,24 @@ function BoilerDetailsSheet({ open, onOpenChange, document, router }) {
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-md">
+      <SheetContent className="w-full data-[side=right]:sm:max-w-2xl">
         <SheetHeader><SheetTitle>Edit boiler details</SheetTitle></SheetHeader>
         <div className="grid grid-cols-2 gap-3 overflow-y-auto px-4">
-          {HEADER_FIELDS.map(([k, label]) => (
-            <div key={k} className="flex flex-col gap-1.5">
-              <Label>{label}</Label>
-              {k === 'company' ? (
-                <Select value={form.company} onValueChange={v => setForm(f => ({ ...f, company: v }))}>
+          {QC_HEADER_FIELDS.map(f => (
+            f.kind === 'select' ? (
+              <div key={f.key} className="flex flex-col gap-1.5">
+                <Label>{f.label}<span className="text-danger"> *</span></Label>
+                <Select value={form.company} onValueChange={v => setForm(fm => ({ ...fm, company: v }))}>
                   <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {COMPANIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                   </SelectContent>
                 </Select>
-              ) : (
-                <Input value={form[k]} onChange={e => setForm(f => ({ ...f, [k]: e.target.value }))} />
-              )}
-            </div>
+              </div>
+            ) : (
+              <QcHeaderField key={f.key} field={f} value={form[f.key]}
+                onChange={v => setForm(fm => ({ ...fm, [f.key]: v }))} />
+            )
           ))}
         </div>
         <SheetFooter>
@@ -126,12 +125,23 @@ function BomItemLink({ part, bomItems, onLink, canEdit }) {
 
 function PartRow({ part, selected, onToggle, onOpenPicker, onRemove, onUnlink, onLinkBomItem, bomItems, canEdit }) {
   const linked = !!part.test_certificate_id;
+  // A real named part (Design's breakdown, components/PrWorkspace.jsx's NamedPartsEditor) is any
+  // row whose name differs from its own BOM line's material_description — the plain single-row
+  // fallback always shares that text (lib/qc-bom-sync.js's namedPartRows). Only those get the
+  // physical-cut-piece reconciliation status; a bought/generic line was never taggable at Cut time
+  // in the first place (Production's CutDialog only offers a Part picker when a breakdown exists).
+  const isNamedPart = part.bom_item_id && part.part_name !== part.bom_material_description;
   return (
     <div className="flex items-start gap-3 py-2.5 text-sm">
       <Checkbox className="mt-0.5" checked={selected} onCheckedChange={() => onToggle(part.id)} />
       <div className="flex min-w-0 flex-1 flex-col">
         <span className="font-medium">{part.part_no}. {part.part_name}</span>
         <span className="text-xs text-muted-foreground">{sizeText(part)} · qty {part.qty}</span>
+        {isNamedPart && (
+          <span className="text-xs text-muted-foreground">
+            {part.pieces_cut}/{part.qty} cut{part.linked_piece_code ? ` · matched to ${part.linked_piece_code}` : ''}
+          </span>
+        )}
         <BomItemLink part={part} bomItems={bomItems} onLink={onLinkBomItem} canEdit={canEdit} />
       </div>
       <div className="flex min-w-0 flex-1 items-start justify-end gap-1">
@@ -242,25 +252,39 @@ const EMPTY_MOUNT = { description: '', size: '', moc: '', serial_numbers: '', ma
 function MountingsCard({ documentId, mountings, canEdit, router }) {
   const [rows, setRows] = useState(() => mountings.map(m => ({ ...m })));
   const [busy, setBusy] = useState(false);
+  const [syncBusy, setSyncBusy] = useState(false);
   const setCell = (i, k) => e => setRows(rs => rs.map((r, j) => (j === i ? { ...r, [k]: e.target.value } : r)));
 
   async function save() {
     setBusy(true);
     try {
       await api(`/api/qc-documents/${documentId}/mountings`, { method: 'POST', body: { rows } });
-      showToast('Mountings saved');
+      showToast('Bought-out items saved');
       router.refresh();
     } catch (err) { showToast(err.message, 'error'); }
     setBusy(false);
   }
 
+  async function syncBom() {
+    setSyncBusy(true);
+    try {
+      const res = await api(`/api/qc-documents/${documentId}/sync-mountings`, { method: 'POST' });
+      showToast(res.added > 0 ? `Added ${res.added} item${res.added === 1 ? '' : 's'} from BOM` : 'Already up to date');
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+    setSyncBusy(false);
+  }
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Mountings &amp; Fittings</CardTitle>
+        <CardTitle>Bought-out Items (Mountings &amp; Fittings)</CardTitle>
         {canEdit && (
           <CardAction>
             <div className="flex items-center gap-1">
+              <Button size="sm" variant="outline" disabled={syncBusy} onClick={syncBom}>
+                <RefreshCwIcon data-icon="inline-start" />{syncBusy ? 'Syncing…' : 'Sync from BOM'}
+              </Button>
               <Button size="sm" variant="outline" onClick={() => setRows(rs => [...rs, { ...EMPTY_MOUNT }])}>
                 <PlusIcon data-icon="inline-start" />Add row
               </Button>
@@ -270,7 +294,7 @@ function MountingsCard({ documentId, mountings, canEdit, router }) {
         )}
       </CardHeader>
       <CardContent className="overflow-x-auto">
-        {rows.length === 0 && <p className="py-4 text-sm text-muted-foreground">No mountings listed yet.</p>}
+        {rows.length === 0 && <p className="py-4 text-sm text-muted-foreground">No bought-out items listed yet.</p>}
         {rows.length > 0 && (
           <table className="w-full min-w-[720px] text-sm">
             <thead>
@@ -305,7 +329,7 @@ function MountingsCard({ documentId, mountings, canEdit, router }) {
   );
 }
 
-export default function QcDocumentEditor({ project, document, parts, certificates, mountings = [], bomItems = [], approvals = [], canEdit }) {
+export default function QcDocumentEditor({ project, document, parts, certificates, mountings = [], bomItems = [], approvals = [], canEdit, currentUserName }) {
   const router = useRouter();
   // parts comes straight from the server prop, no local copy — router.refresh() after linking
   // re-fetches it server-side and flows the new value straight back in, same as QcPanel does for
@@ -436,7 +460,7 @@ export default function QcDocumentEditor({ project, document, parts, certificate
   return (
     <main className="container flex flex-col gap-6 py-8">
       <div className="flex items-center gap-3">
-        <Link href={`/projects/${project.id}?dept=QC`} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+        <Link href={`/qc?tab=docs&project=${project.id}`} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
           <ChevronLeftIcon className="size-4" />QC
         </Link>
         <h1 className="text-xl font-bold tracking-tight">{document.doc_id}</h1>
@@ -464,17 +488,17 @@ export default function QcDocumentEditor({ project, document, parts, certificate
 
       <Card>
         <CardHeader>
-          <CardTitle>Boiler details</CardTitle>
+          <CardTitle>
+            Form II(1) &amp; III{' '}
+            <span className="font-normal text-muted-foreground">
+              (Maker's No. {document.makers_no || '—'} · Year {document.year_of_make || '—'} ·
+              {' '}Design {document.design_pressure || '—'} · Hydro {document.hydro_test_pressure || '—'})
+            </span>
+          </CardTitle>
           {canEdit && (
             <CardAction><Button size="sm" variant="ghost" onClick={() => setBoilerOpen(true)}>Edit</Button></CardAction>
           )}
         </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">
-            Maker's No. {document.makers_no || '—'} · Year {document.year_of_make || '—'} ·
-            {' '}Design {document.design_pressure || '—'} · Hydro {document.hydro_test_pressure || '—'}
-          </p>
-        </CardContent>
       </Card>
 
       <Card>
@@ -498,7 +522,7 @@ export default function QcDocumentEditor({ project, document, parts, certificate
             <Button size="sm" variant="outline" disabled={shown.length === 0} onClick={toggleSelectShown}>
               {allShownSelected ? 'Deselect all' : 'Select all'}
             </Button>
-            {canEdit && document.series !== 'SF' && (
+            {canEdit && (
               <Button size="sm" variant="outline" disabled={syncBusy} onClick={syncBom}>
                 <RefreshCwIcon data-icon="inline-start" />{syncBusy ? 'Syncing…' : 'Sync from BOM'}
               </Button>
@@ -519,7 +543,7 @@ export default function QcDocumentEditor({ project, document, parts, certificate
         </CardContent>
       </Card>
 
-      <MountingsCard documentId={document.id} mountings={mountings} canEdit={canEdit} router={router} />
+      <MountingsCard key={mountings.length} documentId={document.id} mountings={mountings} canEdit={canEdit} router={router} />
 
       {selected.size > 0 && (
         <div className="sticky bottom-4 flex items-center justify-between rounded-xl bg-popover p-3 text-sm shadow-lg ring-1 ring-foreground/10">
@@ -538,7 +562,7 @@ export default function QcDocumentEditor({ project, document, parts, certificate
         suggestions={suggestions}
         onPick={link}
       />
-      <BoilerDetailsSheet open={boilerOpen} onOpenChange={setBoilerOpen} document={document} router={router} />
+      <BoilerDetailsSheet open={boilerOpen} onOpenChange={setBoilerOpen} document={document} currentUserName={currentUserName} router={router} />
       <AddPartDialog open={addPartOpen} onOpenChange={setAddPartOpen} documentId={document.id} router={router} />
       <PdfPreview
         open={pdfOpen}

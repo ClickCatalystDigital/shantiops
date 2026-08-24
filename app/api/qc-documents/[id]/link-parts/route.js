@@ -35,8 +35,11 @@ export async function POST(req, { params }) {
   if (!own.length) return NextResponse.json({ error: 'Parts not found on this document' }, { status: 404 });
   const ownIds = own.map(r => r.id);
 
+  // Clears stock_piece_id alongside the cert — a manual spec-based pick isn't a claim about which
+  // exact physical piece it came from (only lib/qc-bom-sync.js's reconcilePartsCertificates makes
+  // that claim), so a stale "matched to piece …" reference must not survive a human overriding it.
   await execute(
-    `UPDATE qc_document_parts SET test_certificate_id = ? WHERE id IN (${ownIds.map(() => '?').join(',')})`,
+    `UPDATE qc_document_parts SET test_certificate_id = ?, stock_piece_id = NULL WHERE id IN (${ownIds.map(() => '?').join(',')})`,
     [cert.id, ...ownIds]);
 
   // Auto-associate: using a cert on this project's document means the cert belongs to this project
@@ -106,8 +109,10 @@ export async function DELETE(req, { params }) {
   if (!own.length) return NextResponse.json({ error: 'Parts not found on this document' }, { status: 404 });
   const ownIds = own.map(r => r.id);
 
+  // Clears stock_piece_id too — a following sync/reconcile pass is then free to re-link this row
+  // from scratch instead of showing a stale "matched to piece …" reference the human just detached.
   await execute(
-    `UPDATE qc_document_parts SET test_certificate_id = NULL WHERE id IN (${ownIds.map(() => '?').join(',')})`,
+    `UPDATE qc_document_parts SET test_certificate_id = NULL, stock_piece_id = NULL WHERE id IN (${ownIds.map(() => '?').join(',')})`,
     ownIds);
 
   await audit('qc_document_unlink_parts', {

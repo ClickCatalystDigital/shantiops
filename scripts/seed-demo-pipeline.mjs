@@ -407,8 +407,29 @@ console.log('=== Step 4: near-complete project — rebuilt SB-1018 ===');
     [projectId]
   );
   const docId = Number(docR.lastInsertRowid);
-  await run(`INSERT INTO qc_document_parts (document_id, part_no, part_name, qty, test_certificate_id, sort_order) VALUES (?, 'P-01', 'Shell Plate', '2 Nos', ?, 0)`, [docId, certIds[0]]);
-  await run(`INSERT INTO qc_document_parts (document_id, part_no, part_name, qty, test_certificate_id, sort_order) VALUES (?, 'P-02', 'End Plate', '2 Nos', ?, 1)`, [docId, certIds[1]]);
+  // Parts mirror what a real "Sync from BOM" would produce for this project's own BOM (moc-set,
+  // non-cancelled lines only) — bom_item_id-linked, so the demo document is honest about where its
+  // rows came from instead of hand-picked names with no relationship to the seeded BOM. Same
+  // qualifying rule as lib/qc-bom-sync.js's syncQcPartsFromBom (moc set, not cancelled) — kept as a
+  // local copy since this script can't import app lib files; update both if that rule changes.
+  const qcQualifies = it => it.moc && String(it.moc).trim() && it.status !== 'Cancelled';
+  const qcParts = bomItems.map((it, i) => ({ it, bomId: bomIds[i] })).filter(({ it }) => qcQualifies(it));
+  let qcSort = 0;
+  const qcPartIds = [];
+  for (const { it, bomId } of qcParts) {
+    const r = await run(
+      `INSERT INTO qc_document_parts (document_id, part_no, part_name, size_l, qty, bom_item_id, sort_order)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [docId, String(qcSort + 1), it.desc, it.size, it.qty, bomId, qcSort]
+    );
+    qcPartIds.push(Number(r.lastInsertRowid));
+    qcSort++;
+  }
+  // Link as many parts to certs as there are certs (leaves the rest unlinked, same "something live
+  // to link" demo purpose the old hand-picked version served).
+  for (let i = 0; i < Math.min(certIds.length, qcPartIds.length); i++) {
+    await run('UPDATE qc_document_parts SET test_certificate_id = ? WHERE id = ?', [certIds[i], qcPartIds[i]]);
+  }
 
   console.log('  seeding Job Cards — done');
   const shellWeldingMilestone = await run("SELECT id FROM milestones WHERE project_id = ? AND milestone_key = 'shell_welding'", [projectId]);

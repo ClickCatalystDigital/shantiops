@@ -93,10 +93,19 @@ function PickOrType({ label, value, options, onChange }) {
 // z-50), reusing the exact glass/ring/blur tokens SheetContent itself uses so it reads as part of
 // the same system rather than a bolted-on extra. It has no open/close animation or focus trap of
 // its own — it's a passive companion; the Sheet still owns Escape and overlay-click-to-close.
+//
+// Two real consequences of being a *sibling* portal, not a child of the Sheet's own Dialog.Content —
+// found live (Upload PDF had stopped responding to clicks):
+// 1. Radix's modal Dialog sets `document.body.style.pointerEvents = 'none'` while open, to block
+//    interaction with anything outside its own content — this panel is a `<body>` child too, so it
+//    silently inherited that and swallowed every click. `pointer-events-auto` here overrides it.
+// 2. Once clicks reach it again, Radix's DismissableLayer still treats a click landing here as an
+//    "outside" pointer-down and closes the Sheet — `[data-pdf-panel]` + the `onPointerDownOutside`
+//    guard on <SheetContent> below tells it not to.
 function FloatingPdfPanel({ open, children }) {
   if (!open || typeof document === 'undefined') return null;
   return createPortal(
-    <div className="fixed inset-y-6 left-6 z-[60] flex w-[min(52vw,820px)] flex-col gap-2 overflow-hidden rounded-xl border bg-popover/85 p-4 text-sm text-popover-foreground shadow-lg ring-1 ring-foreground/10 backdrop-blur-xl">
+    <div data-pdf-panel className="pointer-events-auto fixed inset-y-6 left-6 z-[60] flex w-[min(52vw,820px)] flex-col gap-2 overflow-hidden rounded-xl border bg-popover/85 p-4 text-sm text-popover-foreground shadow-lg ring-1 ring-foreground/10 backdrop-blur-xl">
       {children}
     </div>,
     document.body
@@ -225,7 +234,8 @@ export default function CertForm({ open, onOpenChange, certificate = null, certi
       </FloatingPdfPanel>
 
       <Sheet open={open} onOpenChange={o => { onOpenChange(o); if (!o) reset(); }}>
-        <SheetContent className="flex w-full flex-col gap-0 p-0 sm:max-w-md">
+        <SheetContent className="flex w-full flex-col gap-0 p-0 sm:max-w-md"
+          onPointerDownOutside={e => { if (e.target.closest('[data-pdf-panel]')) e.preventDefault(); }}>
           <SheetHeader className="shrink-0 border-b px-6 py-4">
             <SheetTitle>{editing ? 'Edit Test Certificate' : 'Add Test Certificate'}</SheetTitle>
           </SheetHeader>

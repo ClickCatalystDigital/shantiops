@@ -525,7 +525,7 @@ function PiecesDialog({ inventoryItem, onClose, router, certificates = [], proje
                           {p.heat_no || p.certificate_no ? [p.heat_no, p.certificate_no].filter(Boolean).join(' · ') : '—'}
                         </TableCell>
                         <TableCell className="text-muted-foreground">
-                          {p.bom_description ? [p.project_no, p.bom_description].filter(Boolean).join(' · ') : '—'}
+                          {p.bom_description ? [p.project_no, p.bom_description, p.part_name].filter(Boolean).join(' · ') : '—'}
                         </TableCell>
                         <TableCell><Badge className={PIECE_STATUS[p.status]?.cls}>{PIECE_STATUS[p.status]?.label || p.status}</Badge></TableCell>
                         <TableCell>

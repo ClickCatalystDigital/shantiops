@@ -62,7 +62,7 @@ function emptyLine() {
     key: nextKey++, source: 'bom', material_description: '', moc: '', size_spec: '', uomHint: '',
     projects: [{ key: nextKey++, project_id: '', qty_text: '', drawing_id: '', drawingOptions: null }],
     inventory_item_id: '', qty: '',
-    category: '', categoryFields: {},
+    category: '', categoryFields: {}, namedParts: [],
     item_id: null, // §3.2 — set only when picked from the catalog search; cleared on any hand-edit
   };
 }
@@ -130,6 +130,44 @@ function finalizeCategoryFields(category, fields) {
     return { ...fields, size: '' };
   }
   return fields;
+}
+
+// A line's own dimensions describe what was *bought* — this is optionally how it's meant to be
+// *cut*: one purchased plate can become several separately-named fabricated parts (e.g. a real
+// Form IV A sample lists SHELL BELT-I/IIA/IIB, three named shell segments sharing one purchased
+// plate). Stored on the BOM/template line (bom_items.named_parts_json), so it's defined once —
+// especially on a template item, where it then carries into every project built from that boiler
+// model — rather than left to whoever fills the statutory form by hand each time. Purely optional;
+// collapsed by default so a line that doesn't need this stays exactly as simple as it is today.
+// Downstream: lib/qc-bom-sync.js syncs one qc_document_parts row per named part here instead of one
+// generic row per BOM line, then reconciles each against whichever stock_pieces row Production tags
+// with that same name at Cut time (components/WorkersPanel.jsx's CutDialog).
+function NamedPartsEditor({ parts, onChange }) {
+  const [open, setOpen] = useState(parts.length > 0);
+  function update(idx, patch) { onChange(parts.map((p, i) => i === idx ? { ...p, ...patch } : p)); }
+  function add() { onChange([...parts, { name: '', qty: 1 }]); setOpen(true); }
+  function remove(idx) { onChange(parts.filter((_, i) => i !== idx)); }
+
+  if (!open) {
+    return (
+      <Button type="button" size="sm" variant="ghost" className="w-fit text-muted-foreground" onClick={add}>
+        <PlusIcon data-icon="inline-start" />Named parts (optional — for QC statutory forms)
+      </Button>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-1.5 rounded-md border border-dashed p-2.5">
+      <Label className="text-xs">Named parts (optional — for QC statutory forms)</Label>
+      {parts.map((p, i) => (
+        <div key={i} className="flex items-center gap-2">
+          <Input className="flex-1" placeholder="e.g. SHELL BELT-I" value={p.name} onChange={e => update(i, { name: e.target.value })} />
+          <Input type="number" min="1" step="1" className="w-20 shrink-0" placeholder="Qty" value={p.qty ?? ''} onChange={e => update(i, { qty: e.target.value })} />
+          <Button type="button" size="icon-sm" variant="ghost" onClick={() => remove(i)}><TrashIcon className="size-4" /></Button>
+        </div>
+      ))}
+      <Button type="button" size="sm" variant="outline" className="w-fit" onClick={add}><PlusIcon data-icon="inline-start" />Add part</Button>
+    </div>
+  );
 }
 
 // The category's own fields — dimensions (geometry shapes), a size pick + kg/m (rolled sections),
@@ -387,6 +425,10 @@ function LineCard({ line, index, projects, inventoryItems, showSourcePicker, onC
           })} />
       )}
 
+      {line.source === 'bom' && line.category && (
+        <NamedPartsEditor parts={line.namedParts || []} onChange={namedParts => setLine({ namedParts })} />
+      )}
+
       {line.source === 'bom' && (
         <div className="flex flex-col gap-1.5">
           <Label>Projects &amp; quantity<span className="text-danger"> *</span></Label>
@@ -460,6 +502,7 @@ function templateItemToLine(it) {
     projects: [{ key: nextKey++, project_id: '', qty_text: it.qty_text || '', drawing_id: '', drawingOptions: null }],
     inventory_item_id: '', qty: '',
     category: it.category || '', categoryFields: it.category_fields_json ? JSON.parse(it.category_fields_json) : {},
+    namedParts: it.named_parts_json ? JSON.parse(it.named_parts_json) : [],
     item_id: it.item_id || null,
   };
 }
@@ -620,6 +663,7 @@ function RaisePrTab({ departments, projects, inventoryItems = [], prTemplatePref
             if (source === 'stock') return { ...base, inventory_item_id: Number(l.inventory_item_id), qty: Number(l.qty) };
             return {
               ...base, category: l.category || undefined, category_fields: l.category ? finalizeCategoryFields(l.category, l.categoryFields) : undefined,
+              named_parts: l.category && l.namedParts?.length ? l.namedParts : undefined,
               projects: l.projects.map(p => ({ project_id: Number(p.project_id), qty_text: p.qty_text, drawing_id: p.drawing_id ? Number(p.drawing_id) : undefined })),
             };
           }),
@@ -807,7 +851,7 @@ function ReleaseBomTab({ projects, departments = [] }) {
 // instead of a blank Raise PR form every time. No prior template concept existed in the BOM/PR
 // code (confirmed by search); this is a genuinely new page, not a rename of an existing one.
 function emptyTemplateItem() {
-  return { material_description: '', moc: '', size_spec: '', section: '', qty_text: '', item_id: null, uomHint: '', category: '', categoryFields: {} };
+  return { material_description: '', moc: '', size_spec: '', section: '', qty_text: '', item_id: null, uomHint: '', category: '', categoryFields: {}, namedParts: [] };
 }
 
 // Templates store the same reusable identity a BOM line does — Item Code (via item_id, §3.2),
@@ -843,6 +887,9 @@ function TemplateItemsEditor({ items, onChange }) {
                 categoryFields, size_spec: it.size_spec || categoryDisplaySpec(it.category, categoryFields),
               })} />
           )}
+          {it.category && (
+            <NamedPartsEditor parts={it.namedParts || []} onChange={namedParts => update(i, { namedParts })} />
+          )}
         </div>
       ))}
       <Button size="sm" variant="outline" className="w-fit" onClick={add}><PlusIcon data-icon="inline-start" />Add item</Button>
@@ -873,6 +920,7 @@ function TemplateFormDialog({ templateId, kind, onClose, router }) {
         material_description: it.material_description || '', moc: it.moc || '', size_spec: it.size_spec || '',
         section: it.section || '', qty_text: it.qty_text || '', item_id: it.item_id || null, uomHint: '',
         category: it.category || '', categoryFields: it.category_fields_json ? JSON.parse(it.category_fields_json) : {},
+        namedParts: it.named_parts_json ? JSON.parse(it.named_parts_json) : [],
       })) : [emptyTemplateItem()]);
     }).catch(err => showToast(err.message, 'error')).finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -888,6 +936,7 @@ function TemplateFormDialog({ templateId, kind, onClose, router }) {
           material_description: i.material_description, moc: i.moc, size_spec: i.size_spec, qty_text: i.qty_text,
           item_id: i.item_id || undefined, category: i.category || undefined,
           category_fields: i.category ? finalizeCategoryFields(i.category, i.categoryFields || {}) : undefined,
+          named_parts: i.category && i.namedParts?.length ? i.namedParts : undefined,
         })),
       };
       if (editing) await api(`/api/bom-templates/${templateId}`, { method: 'PATCH', body });

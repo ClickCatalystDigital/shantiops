@@ -41,12 +41,13 @@ export async function PATCH(req, { params }) {
     let sortOrder = 0;
     for (const it of items) {
       const categoryFieldsJson = it.category && it.category_fields ? JSON.stringify(it.category_fields) : null;
+      const namedPartsJson = it.category && it.named_parts?.length ? JSON.stringify(it.named_parts) : null;
       await tx.execute({
-        sql: `INSERT INTO bom_template_items (template_id, section, material_description, moc, size_spec, qty_text, sort_order, item_id, category, category_fields_json)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        sql: `INSERT INTO bom_template_items (template_id, section, material_description, moc, size_spec, qty_text, sort_order, item_id, category, category_fields_json, named_parts_json)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         args: [params.id, it.section?.trim() || null, it.material_description.trim(), it.moc?.trim() || null,
           it.size_spec?.trim() || null, it.qty_text?.trim() || null, sortOrder++,
-          it.item_id ? Number(it.item_id) : null, it.category || null, categoryFieldsJson],
+          it.item_id ? Number(it.item_id) : null, it.category || null, categoryFieldsJson, namedPartsJson],
       });
     }
   });

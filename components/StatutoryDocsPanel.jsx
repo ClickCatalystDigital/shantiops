@@ -14,12 +14,14 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/com
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { PlusIcon, ChevronRightIcon, Trash2Icon } from 'lucide-react';
 import { docIdAbbr, modelConfig, FORM_LABELS } from '@/lib/qc-models.js';
+import QcHeaderField from './QcHeaderField';
+import { CORE_FIELDS } from '@/lib/qc-document-fields';
 
-const EMPTY = {
-  doc_id: '', makers_no: '', year_of_make: '', boiler_type: '', length_overall: '',
-  internal_diameter: '', design_pressure: '', hydro_test_pressure: '', heating_surface: '',
-  evaporation_capacity: '', steam_temp: '', drawing_no: '', company: 'Shanti Boilers',
-};
+const EMPTY = Object.fromEntries(CORE_FIELDS.map(f => [f.key, '']));
+EMPTY.company = 'Shanti Boilers';
+// Fields rendered with their own custom handling below (doc_id derivation, company prefix lookup)
+// rather than the shared QcHeaderField — everything else in CORE_FIELDS renders off the shared list.
+const CUSTOM_KEYS = new Set(['company', 'makers_no', 'doc_id']);
 
 // V2-CHANGES.md Group 2 — the two companies this build knows about, and each one's doc-ID prefix
 // (client-confirmed 2026-08-04: STF- for Shanti Techno Fab, same "-SF-" suffix as Shanti Boilers'
@@ -72,13 +74,13 @@ function NewDocumentSheet({ open, onOpenChange, projectId, projectSeries, router
   }
 
   async function submit() {
-    if (!form.doc_id.trim()) return showToast('Document ID is required', 'error');
-    if (!form.makers_no.trim()) return showToast("Maker's No. is required", 'error');
+    const missing = CORE_FIELDS.find(f => !String(form[f.key] || '').trim());
+    if (missing) return showToast(`${missing.label} is required`, 'error');
     setBusy(true);
     try {
       const res = await api('/api/qc-documents', { method: 'POST', body: { project_id: projectId, ...form } });
       showToast(res.partsSeeded
-        ? `Document created — ${res.partsSeeded} Form IV A parts seeded from the SF template`
+        ? `Document created — ${res.partsSeeded} Form IV A part${res.partsSeeded === 1 ? '' : 's'} auto-populated from the project's BOM`
         : 'Document created — add parts from the document page');
       onOpenChange(false);
       setForm(EMPTY);
@@ -90,13 +92,13 @@ function NewDocumentSheet({ open, onOpenChange, projectId, projectSeries, router
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-md">
+      <SheetContent className="w-full data-[side=right]:sm:max-w-2xl">
         <SheetHeader>
           <SheetTitle>New statutory document — {projectSeries || 'SF'} series</SheetTitle>
         </SheetHeader>
-        <div className="flex flex-col gap-3 overflow-y-auto px-4">
-          <div className="flex flex-col gap-1.5">
-            <Label>Company</Label>
+        <div className="grid grid-cols-2 gap-3 overflow-y-auto px-4">
+          <div className="col-span-2 flex flex-col gap-1.5">
+            <Label>Company<span className="text-danger"> *</span></Label>
             <Select value={form.company} onValueChange={setCompany}>
               <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -104,58 +106,18 @@ function NewDocumentSheet({ open, onOpenChange, projectId, projectSeries, router
               </SelectContent>
             </Select>
           </div>
-          <div className="flex flex-col gap-1.5">
-            <Label>Maker's No.</Label>
+          <div className="col-span-2 flex flex-col gap-1.5">
+            <Label>Maker's No.<span className="text-danger"> *</span></Label>
             <Input value={form.makers_no} onChange={set('makers_no')} placeholder="SB-1037" />
           </div>
-          <div className="flex flex-col gap-1.5">
-            <Label>Document ID</Label>
+          <div className="col-span-2 flex flex-col gap-1.5">
+            <Label>Document ID<span className="text-danger"> *</span></Label>
             <Input value={form.doc_id} onChange={e => { setDocIdTouched(true); set('doc_id')(e); }} placeholder="SBH-1037-SF-WB-300-17" />
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1.5">
-              <Label>Year of Make</Label>
-              <Input value={form.year_of_make} onChange={set('year_of_make')} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label>Drawing No.</Label>
-              <Input value={form.drawing_no} onChange={set('drawing_no')} />
-            </div>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label>Boiler Type</Label>
-            <Input value={form.boiler_type} onChange={set('boiler_type')} placeholder="HORIZONTAL MULTITUBULAR SHELL TYPE SMOKE TUBE WET BACK BOILER" />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1.5">
-              <Label>Length Overall</Label>
-              <Input value={form.length_overall} onChange={set('length_overall')} placeholder="3673 mm" />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label>Internal Dia</Label>
-              <Input value={form.internal_diameter} onChange={set('internal_diameter')} placeholder="2450 mm (ID)" />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label>Design Pressure</Label>
-              <Input value={form.design_pressure} onChange={set('design_pressure')} placeholder="17.00 Kg/cm² (g)" />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label>Hydro Test Pressure</Label>
-              <Input value={form.hydro_test_pressure} onChange={set('hydro_test_pressure')} placeholder="25.50 Kg/cm² (g)" />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label>Heating Surface</Label>
-              <Input value={form.heating_surface} onChange={set('heating_surface')} placeholder="105.24 Sq.mtrs." />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label>Evaporation Cap.</Label>
-              <Input value={form.evaporation_capacity} onChange={set('evaporation_capacity')} placeholder="3000 Kg./hr." />
-            </div>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label>Steam Outlet Temp.</Label>
-            <Input value={form.steam_temp} onChange={set('steam_temp')} placeholder="195° C" />
-          </div>
+          {CORE_FIELDS.filter(f => !CUSTOM_KEYS.has(f.key)).map(f => (
+            <QcHeaderField key={f.key} field={f} value={form[f.key]}
+              onChange={v => setForm(fm => ({ ...fm, [f.key]: v }))} />
+          ))}
         </div>
         <SheetFooter>
           <Button disabled={busy} onClick={submit}>{busy ? 'Creating…' : 'Create document'}</Button>

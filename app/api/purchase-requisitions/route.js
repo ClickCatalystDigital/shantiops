@@ -96,15 +96,20 @@ export async function POST(req) {
     // not produced by anything this round.
     const category = source === 'bom' && CATEGORIES.has(line.category) ? line.category : null;
     const categoryFieldsJson = category && line.category_fields ? JSON.stringify(line.category_fields) : null;
+    // Design's optional named-part breakdown (one purchased line -> several separately-named
+    // fabricated parts) — see components/PrWorkspace.jsx's NamedPartsEditor. Same shape as
+    // category_fields_json: carried on every INSERT below, consumed later by
+    // lib/qc-bom-sync.js's syncQcPartsFromBom.
+    const namedPartsJson = category && line.named_parts?.length ? JSON.stringify(line.named_parts) : null;
     const origin = line.origin === 'bom' ? 'bom' : 'manual';
     // pr_items has no separate uom column — like bom_items.qty_text everywhere else in this app,
     // quantity and unit are one free-text field ("4 Nos"), typed per-project below since that's
     // where the real quantity actually lives (a PR line's qty is the sum of its project splits,
     // never entered as one number up front).
     const { lastId: prItemId } = await execute(
-      `INSERT INTO pr_items (pr_id, material_description, moc, size_spec, sort_order, category, category_fields_json, origin)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [Number(prId), line.material_description.trim(), line.moc || null, line.size_spec || null, i, category, categoryFieldsJson, origin]
+      `INSERT INTO pr_items (pr_id, material_description, moc, size_spec, sort_order, category, category_fields_json, named_parts_json, origin)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [Number(prId), line.material_description.trim(), line.moc || null, line.size_spec || null, i, category, categoryFieldsJson, namedPartsJson, origin]
     );
 
     // §3.2 — only ever set when the line was actually picked from the catalog search
@@ -117,20 +122,20 @@ export async function POST(req) {
       const sentinel = await queryOne('SELECT id FROM projects WHERE is_system = 1 LIMIT 1');
       const { lastId: bomItemId } = await execute(
         `INSERT INTO bom_items (project_id, material_description, moc, size_spec, qty_text, purchase_status,
-                                 pr_item_id, source, inventory_item_id, inventory_qty, category, category_fields_json, origin, item_id)
-         VALUES (?, ?, ?, ?, ?, 'Enquiry', ?, 'stock', ?, ?, ?, ?, ?, ?)`,
+                                 pr_item_id, source, inventory_item_id, inventory_qty, category, category_fields_json, named_parts_json, origin, item_id)
+         VALUES (?, ?, ?, ?, ?, 'Enquiry', ?, 'stock', ?, ?, ?, ?, ?, ?, ?)`,
         [sentinel.id, line.material_description.trim(), line.moc || null, line.size_spec || null,
-          String(line.qty), Number(prItemId), Number(line.inventory_item_id), Number(line.qty), category, categoryFieldsJson, origin, itemId]
+          String(line.qty), Number(prItemId), Number(line.inventory_item_id), Number(line.qty), category, categoryFieldsJson, namedPartsJson, origin, itemId]
       );
       bomItemIds.push(Number(bomItemId));
     } else if (source === 'sas') {
       const sentinel = await queryOne('SELECT id FROM projects WHERE is_system = 1 LIMIT 1');
       const { lastId: bomItemId } = await execute(
         `INSERT INTO bom_items (project_id, material_description, moc, size_spec, qty_text, purchase_status,
-                                 pr_item_id, source, sale_order_no, category, category_fields_json, origin, pending_review, item_id)
-         VALUES (?, ?, ?, ?, ?, 'Enquiry', ?, 'sas', ?, ?, ?, ?, ?, ?)`,
+                                 pr_item_id, source, sale_order_no, category, category_fields_json, named_parts_json, origin, pending_review, item_id)
+         VALUES (?, ?, ?, ?, ?, 'Enquiry', ?, 'sas', ?, ?, ?, ?, ?, ?, ?)`,
         [sentinel.id, line.material_description.trim(), line.moc || null, line.size_spec || null,
-          line.qty_text.trim(), Number(prItemId), line.sale_order_no.trim(), category, categoryFieldsJson, origin, gatedPendingReview, itemId]
+          line.qty_text.trim(), Number(prItemId), line.sale_order_no.trim(), category, categoryFieldsJson, namedPartsJson, origin, gatedPendingReview, itemId]
       );
       bomItemIds.push(Number(bomItemId));
       if (allocationMode === 'auto') {
@@ -150,10 +155,10 @@ export async function POST(req) {
         // clicks Procure; Auto mode tries the same allocation the release-bom/single-add paths use,
         // right here (the unify decision was "no accept step", this doesn't reintroduce one).
         const { lastId: bomItemId } = await execute(
-          `INSERT INTO bom_items (project_id, material_description, moc, size_spec, qty_text, purchase_status, pr_item_id, category, category_fields_json, origin, pending_review, item_id, drawing_id)
-           VALUES (?, ?, ?, ?, ?, 'Enquiry', ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO bom_items (project_id, material_description, moc, size_spec, qty_text, purchase_status, pr_item_id, category, category_fields_json, named_parts_json, origin, pending_review, item_id, drawing_id)
+           VALUES (?, ?, ?, ?, ?, 'Enquiry', ?, ?, ?, ?, ?, ?, ?, ?)`,
           [p.project_id, line.material_description.trim(), line.moc || null, line.size_spec || null,
-            p.qty_text.trim(), Number(prItemId), category, categoryFieldsJson, origin, gatedPendingReview, itemId,
+            p.qty_text.trim(), Number(prItemId), category, categoryFieldsJson, namedPartsJson, origin, gatedPendingReview, itemId,
             p.drawing_id ? Number(p.drawing_id) : null]
         );
         bomItemIds.push(Number(bomItemId));

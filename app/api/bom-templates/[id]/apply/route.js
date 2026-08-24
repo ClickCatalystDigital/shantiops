@@ -62,10 +62,10 @@ export async function POST(req, { params }) {
   );
   for (const it of items) {
     const { lastId } = await execute(
-      `INSERT INTO bom_items (project_id, section, material_description, moc, size_spec, qty_text, purchase_status, pending_review, sort_order, item_id, category, category_fields_json, template_id)
-       VALUES (?, ?, ?, ?, ?, ?, 'Enquiry', 1, ?, ?, ?, ?, ?)`,
+      `INSERT INTO bom_items (project_id, section, material_description, moc, size_spec, qty_text, purchase_status, pending_review, sort_order, item_id, category, category_fields_json, named_parts_json, template_id)
+       VALUES (?, ?, ?, ?, ?, ?, 'Enquiry', 1, ?, ?, ?, ?, ?, ?)`,
       [b.project_id, it.section, it.material_description, it.moc, it.size_spec, it.qty_text, n,
-        it.item_id, it.category, it.category_fields_json, Number(params.id)]
+        it.item_id, it.category, it.category_fields_json, it.named_parts_json, Number(params.id)]
     );
     n++;
     if (released) {

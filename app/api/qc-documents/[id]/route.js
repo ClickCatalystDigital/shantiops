@@ -5,15 +5,11 @@ import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { notifyProjectCustomers } from '@/lib/notify';
 import { COMPANY_NAMES } from '@/lib/qc-doc-pdf.js';
+import { QC_HEADER_FIELDS } from '@/lib/qc-document-fields';
 
-const EDITABLE = [
-  'doc_id', 'makers_no', 'year_of_make', 'boiler_type', 'length_overall', 'internal_diameter',
-  'design_pressure', 'hydro_test_pressure', 'heating_surface', 'evaporation_capacity', 'steam_temp',
-  'drawing_no', 'company',
-  // Full-folder fields (QC-FOLDER-DESIGN.md)
-  'working_pressure', 'drawing_no_from', 'drawing_no_to', 'label_model_code',
-  'submission_date', 'signer_name', 'recipient_name', 'recipient_address', 'manifest_extra',
-];
+const EDITABLE = [...QC_HEADER_FIELDS.map(f => f.key), 'manifest_extra'];
+const REQUIRED_KEYS = new Set(QC_HEADER_FIELDS.filter(f => f.required).map(f => f.key));
+const FIELD_LABEL = Object.fromEntries(QC_HEADER_FIELDS.map(f => [f.key, f.label]));
 
 // Editing the boiler-level header fields (the "edit" link on the Boiler details card) — the part
 // table and its certificate links have their own endpoint (link-parts), not this one.
@@ -45,8 +41,13 @@ export async function PATCH(req, { params }) {
       return NextResponse.json({ error: `${counts.unlinked} part${counts.unlinked === 1 ? '' : 's'} still need${counts.unlinked === 1 ? 's' : ''} a certificate` }, { status: 409 });
     }
   }
-  if (keys.includes('doc_id') && !String(b.doc_id || '').trim()) {
-    return NextResponse.json({ error: 'Document ID cannot be empty' }, { status: 400 });
+  // The UI gate (lib/qc-document-fields.js's `required`) is never the real enforcement. A partial
+  // update that simply omits a required field is fine (`keys` won't include it) — this only rejects
+  // a request that explicitly tries to blank one out.
+  for (const k of keys) {
+    if (REQUIRED_KEYS.has(k) && !String(b[k] || '').trim()) {
+      return NextResponse.json({ error: `${FIELD_LABEL[k]} cannot be empty` }, { status: 400 });
+    }
   }
   if (keys.includes('company') && !COMPANY_NAMES.includes(b.company)) {
     return NextResponse.json({ error: 'Unknown company' }, { status: 400 });
