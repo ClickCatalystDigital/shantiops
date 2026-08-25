@@ -1,12 +1,13 @@
 'use client';
 
 // Engineering (and Design, 2026-08-25) Bill of Materials panel: the shared BOM table (full column
-// set), PMB .xlsx import with preview, CSV import (same 3-column shape as the paste flow, just from
-// a file instead of a textarea — reuses the same POST /bom endpoint, no new route needed),
+// set), PMB .xlsx import with preview, CSV import (same BomImport component/route as .xlsx —
+// parsePmb's XLSX.read() autodetects a plain CSV buffer, so CSV gets the exact same preview/
+// replace-confirmation/revision-history safety net as .xlsx, not a separate weaker path),
 // import/revision history with original-file downloads, and the original paste flow kept as a
-// fallback for non-Excel BOMs. Generating a packing list from the BOM stays a Dispatch action
-// (PackingPanel).
-import { useRef, useState } from 'react';
+// lighter-weight fallback for a few manually-typed rows. Generating a packing list from the BOM
+// stays a Dispatch action (PackingPanel).
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, showToast, formatDate } from '@/lib/client';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
@@ -39,7 +40,6 @@ export default function BomPanel({ projectId, bom, pending, canUpload, editableF
   const router = useRouter();
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
-  const csvRef = useRef(null);
 
   async function submitRows(rows) {
     if (!rows.length) return showToast('No BOM rows found', 'error');
@@ -58,13 +58,6 @@ export default function BomPanel({ projectId, bom, pending, canUpload, editableF
     setText('');
   }
 
-  async function pickCsv(e) {
-    const f = e.target.files?.[0];
-    e.target.value = '';
-    if (!f) return;
-    await submitRows(parseBom(await f.text()));
-  }
-
   return (
     <Card>
       <CardHeader>
@@ -74,11 +67,8 @@ export default function BomPanel({ projectId, bom, pending, canUpload, editableF
             {/* STERP item 16, §5o — assemblies are built/browsed on the Engineering workspace;
                 items are assigned to one from this table's Edit dialog (Assembly field below). */}
             <a href="/engineering?tab=structure" className="text-sm text-primary hover:underline">Manage assemblies</a>
-            <input ref={csvRef} type="file" accept=".csv" className="hidden" onChange={pickCsv} />
-            <Button variant="outline" disabled={busy} onClick={() => csvRef.current?.click()}>
-              {busy ? 'Reading…' : 'Import CSV'}
-            </Button>
-            <BomImport projectId={projectId} />
+            <BomImport projectId={projectId} format="xlsx" />
+            <BomImport projectId={projectId} format="csv" />
           </CardAction>
         )}
       </CardHeader>
@@ -116,7 +106,9 @@ export default function BomPanel({ projectId, bom, pending, canUpload, editableF
             </form>
             <p className="mt-3 text-xs text-muted-foreground">
               CSV format: <code className="rounded bg-muted px-1 py-0.5">{CSV_FORMAT_HINT}</code> — one row per
-              line, comma-separated. A header row matching the column names is fine and gets skipped automatically.{' '}
+              line, comma-separated. A header row matching the column names is recommended (skipped
+              automatically) and this same format also works with the "Import CSV" button above, which shows
+              a preview before anything is saved.{' '}
               <button type="button" onClick={downloadCsvTemplate} className="text-primary hover:underline">
                 Download a sample CSV
               </button>

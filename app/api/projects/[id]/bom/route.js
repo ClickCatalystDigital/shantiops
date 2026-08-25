@@ -1,29 +1,47 @@
 import { NextResponse } from 'next/server';
-import { execute, queryAll } from '@/lib/db';
+import { queryAll, withTransaction } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment, isInternal } from '@/lib/auth';
+import { requireBomAction } from '@/lib/action-permissions';
 import { getProjectBom } from '@/lib/data';
 
+const MAX_PASTE_ROWS = 500; // a human pasting rows has a much lower realistic ceiling than a bulk
+// file import (see bom/import/route.js's MAX_IMPORT_ROWS) — past this, use CSV import instead.
+
 // Engineering or Design (or PM) uploads a flat BOM for a project — Design got the same BOM-entry
-// capability as Engineering (2026-08-25). Rows: material_description, moc, size_spec (Make and IBR
-// No. are NOT on the BOM — the Dispatch head fills those on the packing list, §8).
+// capability as Engineering (2026-08-25). This route now serves only the paste-textarea fallback
+// (BomPanel.jsx) — CSV file uploads moved to bom/import/route.js's shared preview/replace-
+// confirmation pipeline the same day. Rows: material_description, moc, size_spec (Make and IBR No.
+// are NOT on the BOM — the Dispatch head fills those on the packing list, §8).
 export async function POST(req, { params }) {
   const user = await getFreshSessionUser();
   if (!canAccessDepartment(user, 'Engineering') && !canAccessDepartment(user, 'Design')) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
+  const actionDenied = await requireBomAction(user, 'engineering.bom.add_item');
+  if (actionDenied) return actionDenied;
+
   const { rows } = await req.json();
   if (!Array.isArray(rows) || !rows.length) {
     return NextResponse.json({ error: 'No BOM rows provided' }, { status: 400 });
   }
-  let n = 0;
-  for (const r of rows) {
-    if (!r.material_description?.trim()) continue;
-    await execute(
-      'INSERT INTO bom_items (project_id, material_description, moc, size_spec, sort_order) VALUES (?, ?, ?, ?, ?)',
-      [params.id, r.material_description.trim(), r.moc || null, r.size_spec || null, n]
-    );
-    n++;
+  if (rows.length > MAX_PASTE_ROWS) {
+    return NextResponse.json(
+      { error: `${rows.length} rows — the limit here is ${MAX_PASTE_ROWS}. Use CSV import for a larger BOM.` },
+      { status: 400 });
   }
+
+  const n = await withTransaction(async tx => {
+    let n = 0;
+    for (const r of rows) {
+      if (!r.material_description?.trim()) continue;
+      await tx.execute({
+        sql: 'INSERT INTO bom_items (project_id, material_description, moc, size_spec, sort_order) VALUES (?, ?, ?, ?, ?)',
+        args: [params.id, r.material_description.trim(), r.moc || null, r.size_spec || null, n],
+      });
+      n++;
+    }
+    return n;
+  });
   return NextResponse.json({ inserted: n });
 }
 

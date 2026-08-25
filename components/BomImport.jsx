@@ -1,21 +1,24 @@
 'use client';
 
-// PMB (.xlsx) upload with a mandatory human preview: the file is parsed server-side and nothing is
-// written until the user has seen what was detected (per-sheet counts, unmapped columns, skipped
-// rows) and confirms. Replace is explicit and destructive-styled. The same File object is re-posted
-// to confirm — no draft state on the server.
+// PMB (.xlsx) or CSV upload (format prop picks which; both post to the same route — parsePmb
+// autodetects the file's actual format) with a mandatory human preview: the file is parsed
+// server-side and nothing is written until the user has seen what was detected (per-sheet counts,
+// unmapped columns, skipped rows) and confirms. Replace is explicit and destructive-styled. The
+// same File object is re-posted to confirm — no draft state on the server.
 import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, showToast } from '@/lib/client';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
-export default function BomImport({ projectId }) {
+export default function BomImport({ projectId, format = 'xlsx' }) {
   const router = useRouter();
   const fileRef = useRef(null);
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
   const [busy, setBusy] = useState(false);
+  const accept = format === 'csv' ? '.csv' : '.xlsx';
+  const label = format === 'csv' ? 'Import CSV' : 'Import PMB (.xlsx)';
 
   async function pick(e) {
     const f = e.target.files?.[0];
@@ -55,9 +58,9 @@ export default function BomImport({ projectId }) {
 
   return (
     <>
-      <input ref={fileRef} type="file" accept=".xlsx" className="hidden" onChange={pick} />
+      <input ref={fileRef} type="file" accept={accept} className="hidden" onChange={pick} />
       <Button variant="outline" disabled={busy} onClick={() => fileRef.current?.click()}>
-        {busy && !preview ? 'Reading…' : 'Import PMB (.xlsx)'}
+        {busy && !preview ? 'Reading…' : label}
       </Button>
 
       <Dialog open={!!preview} onOpenChange={o => !o && setPreview(null)}>
