@@ -885,12 +885,18 @@ function PurchaseOrders({ orders, q, view, suppliers, tdsRates = [] }) {
 
 function State({ items, router, q, statusFilter }) {
   const [busy, setBusy] = useState(null);
+  const [selected, setSelected] = useState(new Set());
+  const [bulkStatus, setBulkStatus] = useState(DEFAULT_PURCHASE_STATUS);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState(null); // { done, total } while a bulk apply is running
   const needle = q.trim().toLowerCase();
   const shown = items.filter(it => !needle
     || it.material_description.toLowerCase().includes(needle)
     || it.project_no.toLowerCase().includes(needle)
     || (it.po_ref || '').toLowerCase().includes(needle))
     .filter(it => statusFilter === 'all' || (it.purchase_status || DEFAULT_PURCHASE_STATUS) === statusFilter);
+  const shownIds = shown.map(it => it.id);
+  const allShownSelected = shownIds.length > 0 && shownIds.every(id => selected.has(id));
 
   async function setStatus(it, value) {
     setBusy(it.id);
@@ -901,10 +907,69 @@ function State({ items, router, q, statusFilter }) {
     setBusy(null);
   }
 
+  function toggleOne(id, checked) {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (checked) next.add(id); else next.delete(id);
+      return next;
+    });
+  }
+
+  // Select-all always scopes to the currently visible (searched + status-filtered) rows, not the
+  // whole tab — clicking it again with everything shown already selected deselects just that same
+  // visible set, leaving any selection made under a different filter untouched (Gmail-style "select
+  // all" semantics, not a hard reset).
+  function toggleAllShown() {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (allShownSelected) shownIds.forEach(id => next.delete(id));
+      else shownIds.forEach(id => next.add(id));
+      return next;
+    });
+  }
+
+  async function applyBulkStatus() {
+    const ids = [...selected];
+    if (!ids.length) return;
+    setBulkBusy(true);
+    setBulkProgress({ done: 0, total: ids.length });
+    let failed = 0;
+    for (const id of ids) {
+      try {
+        await api(`/api/bom-items/${id}`, { method: 'PATCH', body: { purchase_status: bulkStatus } });
+      } catch { failed++; }
+      setBulkProgress(p => ({ done: p.done + 1, total: p.total }));
+    }
+    setBulkBusy(false);
+    setBulkProgress(null);
+    setSelected(new Set());
+    showToast(failed ? `${ids.length - failed} of ${ids.length} updated — ${failed} failed` : `${ids.length} item${ids.length === 1 ? '' : 's'} updated`,
+      failed ? 'warning' : undefined);
+    router.refresh();
+  }
+
   return (
     <Card>
+      {selected.size > 0 && (
+        <div className="flex items-center gap-2 border-b bg-muted/40 px-4 py-2 text-sm">
+          <span className="font-medium">{selected.size} selected</span>
+          <Select value={bulkStatus} onValueChange={setBulkStatus} disabled={bulkBusy}>
+            <SelectTrigger className="h-7 w-36 text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {BOM_STATUSES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Button size="sm" className="h-7" disabled={bulkBusy} onClick={applyBulkStatus}>
+            {bulkBusy ? `Updating ${bulkProgress?.done ?? 0}/${bulkProgress?.total ?? 0}…` : 'Apply'}
+          </Button>
+          <Button size="sm" variant="ghost" className="h-7" disabled={bulkBusy} onClick={() => setSelected(new Set())}>
+            Clear
+          </Button>
+        </div>
+      )}
       {shown.length > 0 && (
         <div className="flex items-center gap-3 border-b px-4 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          <Checkbox className="shrink-0" checked={allShownSelected} onCheckedChange={toggleAllShown} aria-label="Select all shown" />
           <span className="flex-1">Part Description</span>
           <span className="w-24 shrink-0">Project</span>
           <span className="w-28 shrink-0">PO No.</span>
@@ -916,6 +981,7 @@ function State({ items, router, q, statusFilter }) {
         {shown.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">No items match.</p>}
         {shown.map(it => (
             <div key={it.id} className="flex flex-wrap items-center gap-3 py-2.5 text-sm">
+              <Checkbox className="shrink-0" checked={selected.has(it.id)} onCheckedChange={v => toggleOne(it.id, !!v)} aria-label="Select item" />
               <div className="min-w-0 flex-1">
                 <p className="truncate font-medium">{it.material_description}</p>
                 <p className="truncate text-xs text-muted-foreground">
