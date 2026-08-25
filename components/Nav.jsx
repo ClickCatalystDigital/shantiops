@@ -8,7 +8,7 @@ import {
   LayoutDashboardIcon, FolderKanbanIcon, PackageIcon, ShieldCheckIcon, InfoIcon,
   CalendarDaysIcon, HardHatIcon, ShoppingCartIcon, InboxIcon, FlaskConicalIcon,
   TagIcon, WarehouseIcon, TrendingUpIcon, UsersIcon, CalculatorIcon, MapPinIcon, NetworkIcon,
-  LandmarkIcon,
+  LandmarkIcon, ClipboardListIcon,
 } from 'lucide-react';
 import { DEPARTMENTS } from '@/lib/milestones';
 import { cn } from '@/lib/utils';
@@ -76,7 +76,11 @@ export default function Nav({ user, reportDepartments = [] }) {
   addDeptTab(['Design', 'Engineering'], '/engineering', 'Engineering', NetworkIcon);
   addDeptTab(['Procurement'], '/procurement', 'Procurement', ShoppingCartIcon);
   addDeptTab(['Stores'], '/stores', 'Inventory', WarehouseIcon);
-  addDeptTab(['Production'], '/production/workers', 'Production', HardHatIcon);
+  addDeptTab(['Production'], '/production/workers', 'Shop Floor', HardHatIcon);
+  // Deferred backlog / planning-notes page for Production-side work that needs real scoping before
+  // it's built (starting with the stock-piece Cut UI gap found 2026-08-26) — same department gate
+  // as Shop Floor, deliberately separate from it since it's write-once notes, not a live workspace.
+  addDeptTab(['Production'], '/planning', 'Planning', ClipboardListIcon);
   addDeptTab(['QC'], '/qc', 'QC', FlaskConicalIcon);
   addDeptTab(['Dispatch'], '/ops?dept=Dispatch', 'Dispatch', PackageIcon);
   addDeptTab(['Installation'], '/installation', 'Installation', MapPinIcon);

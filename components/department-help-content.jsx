@@ -745,7 +745,7 @@ export const DEPARTMENT_HELP = {
     ],
   },
   Production: {
-    title: 'Production', icon: HardHatIcon,
+    title: 'Shop Floor', icon: HardHatIcon,
     intro: [
       'Production plans and records shop-floor execution against the real milestone chain used on the shop floor — Marking/Cutting through Drilling, Shell Welding, Site Marking, the FURA-B/RC/AR and Box-Up welds, Tubes & Stay Rods, Pad Plates, Smoke Box, Refractory, and Painting — plus Hydro Test, which moved here from QC because Production is who actually runs it day to day.',
       'Job Card is now your main tab, and it opens on the board by default because that is what gets touched most during the day. Work Orders, BOM, Forecast, Daily Sheet, and Workers Roster sit underneath it as sub-tabs — the old separate Tasks and Home tabs are gone because they showed the same calendar Home already shows everyone.',

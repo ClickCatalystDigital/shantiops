@@ -8,7 +8,7 @@
 // one request (reduces `available`, on_hand untouched) so no other request — bom, stock, or sas —
 // can be promised the same units; Issue is the actual hand-out moment (on_hand decrements, the
 // request's bom_item goes terminal In-Stock). Release undoes an unissued Reserve.
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, Fragment } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -21,16 +21,18 @@ import {
 } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { PlusIcon, PencilIcon, PackageCheckIcon, UndoIcon, TruckIcon, PackageIcon, ClipboardListIcon, LayersIcon, AlertTriangleIcon, LogInIcon, FileOutputIcon, CheckIcon, XIcon, ListChecksIcon } from 'lucide-react';
+import { PlusIcon, PencilIcon, PackageCheckIcon, UndoIcon, TruckIcon, PackageIcon, ClipboardListIcon, LayersIcon, AlertTriangleIcon, LogInIcon, FileOutputIcon, CheckIcon, XIcon, ListChecksIcon, SearchIcon, ChevronRightIcon } from 'lucide-react';
 import { api, showToast } from '@/lib/client';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 import CertPicker from '@/components/CertPicker';
 import DimensionInput from '@/components/DimensionInput';
 import SearchableSelect from '@/components/SearchableSelect';
+import CategoryFieldsBlock, { OTHER_MOC, MOC_OPTIONS } from '@/components/CategoryFieldsBlock';
+import { pieceDimsLabel } from '@/components/CutDialog';
 import { normalizeWords } from '@/lib/match-utils';
 import { pieceWeight } from '@/lib/piece-weight';
 import {
-  CATEGORY_LABEL, GEOMETRY_SHAPES, ROLLED_CATEGORIES, OTHER_SIZE, STANDARD_SECTIONS, geometrySizeLabel,
+  CATEGORY_LABEL, ROLLED_CATEGORIES, OTHER_SIZE, categoryDisplaySpec,
 } from '@/lib/section-shapes';
 
 function isLowStock(item) {
@@ -53,9 +55,15 @@ const PIECE_STATUS = {
   scrap: { cls: 'bg-danger/10 text-danger ring-danger/20', label: 'Scrap' },
 };
 
-function pieceDimsLabel(p) {
-  if (p.status === 'scrap') return '—'; // scrap is a residual weight only, never a real shape
-  return p.kind === 'plate' ? `${p.length_mm}×${p.width_mm}×${p.thickness_mm} mm` : `${p.length_mm} mm`;
+// A cut child's code suffix (rootCode()/cutPiece() in lib/stock-pieces.js) already names exactly
+// what it is — U(sed)/R(emnant)/S(crap) — more precisely than its bare `status` alone can (a "used"
+// child and the root piece post-cut are both just status='consumed'). Read straight from the code
+// instead of re-deriving the same distinction from status+source.
+function pieceKindLabel(p) {
+  if (/-U\d+$/.test(p.code || '')) return 'Used';
+  if (/-R\d+$/.test(p.code || '')) return 'Remnant';
+  if (/-S\d+$/.test(p.code || '')) return 'Scrap';
+  return null;
 }
 
 // Sentinel-project rows (source='stock'/'sas', Phase 6.4) have no real project_no to show.
@@ -121,86 +129,20 @@ function possibleMatches(request, inventoryItems) {
     .map(m => ({ item: m.item, exact: false }));
 }
 
-// Same size picker the PR/BOM composer uses (components/PrWorkspace.jsx's CategoryFieldsBlock) —
-// a rolled section (angle/beam/channel) picks a commonly-stocked size from STANDARD_SECTIONS
-// (lib/section-shapes.js) or types a custom one; a geometry shape (flat/round/square/octagonal)
-// enters its cross-section dimensions and the spec string is generated the same way
-// (geometrySizeLabel) the composer generates a matching BOM line's size — the exact-string compare
-// lib/remnant-match.js's parseDims does is only reliable when both sides build the string
-// identically, instead of two people typing "ISMB150" vs "ISMB 150". An inventory item has no
-// length of its own (that's per stock_pieces row, entered in Add piece below), so geometry shapes
-// only ask for the cross-section here.
-function SpecField({ category, spec, onChange }) {
-  const presets = STANDARD_SECTIONS[category];
-  const shape = GEOMETRY_SHAPES[category];
-  // Cross-section dims are ephemeral UI state, not persisted (an inventory item stores only the
-  // resulting spec string) — declared unconditionally, same component instance, so switching
-  // category doesn't break the rules of hooks.
-  const [dims, setDims] = useState({});
-
-  if (presets) {
-    // Picking "Other" sets spec to the OTHER_SIZE sentinel (not '') so isOther stays true and the
-    // custom-size box actually appears — clearing straight to '' would immediately collapse isOther
-    // back to false (empty spec looks the same as "nothing picked yet") and hide the box that's
-    // supposed to show. save() below strips a stray sentinel if the box is left blank.
-    const isOther = spec === OTHER_SIZE || (!!spec && !presets.some(p => p.size === spec));
-    return (
-      <div className="grid gap-1.5">
-        <Label>Spec (size)</Label>
-        <SearchableSelect value={isOther ? OTHER_SIZE : (spec || '')} placeholder="Type to search a size…"
-          onChange={v => onChange(v === OTHER_SIZE ? OTHER_SIZE : v)}
-          options={[...presets.map(p => ({ value: p.size, label: p.size })), { value: OTHER_SIZE, label: 'Other / custom size' }]} />
-        {isOther && (
-          <Input className="mt-1" value={spec === OTHER_SIZE ? '' : spec}
-            onChange={e => onChange(e.target.value)} placeholder="e.g. ISMB 150" autoFocus />
-        )}
-      </div>
-    );
-  }
-
-  if (shape) {
-    function apply(patch) {
-      const next = { ...dims, ...patch };
-      setDims(next);
-      const label = geometrySizeLabel(category, next);
-      if (label) onChange(label);
-    }
-    return (
-      <div className="col-span-2 grid gap-1.5">
-        <Label>Cross-section</Label>
-        {shape.sizePresets && (
-          <SearchableSelect className="w-48" value="" placeholder="Type to search a size…"
-            onChange={label => apply(shape.sizePresets.find(p => p.label === label)?.values || {})}
-            options={shape.sizePresets.map(p => ({ value: p.label, label: p.label }))} />
-        )}
-        {/* flex-wrap with a fixed per-field width, not a fixed grid-cols-3 — a 1- or 2-field shape
-            (round/square/octagonal have just one) would otherwise sit in mostly-empty grid tracks,
-            squeezing the placeholder illegible instead of just using the room it doesn't need. */}
-        <div className="flex flex-wrap gap-3">
-          {shape.dims.filter(d => d.key !== 'length').map(d => (
-            <div key={d.key} className="flex w-36 flex-col gap-1">
-              <Label className="text-xs font-normal text-muted-foreground">{d.label}</Label>
-              <DimensionInput valueMm={dims[d.key] || ''} onChangeMm={v => apply({ [d.key]: v })} />
-            </div>
-          ))}
-        </div>
-        <p className="text-xs text-muted-foreground">Spec: <span className="tnum">{spec || '—'}</span></p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="grid gap-1.5">
-      <Label>Spec (optional)</Label>
-      <Input value={spec} onChange={e => onChange(e.target.value)} placeholder={category === 'tee' ? 'e.g. Tee 50x50x6' : undefined} />
-    </div>
-  );
+// Structured dims don't round-trip back from a saved flat `spec` string on edit — same pre-existing
+// limitation the old SpecField had for plate/geometry shapes (inventory_items has no columns for
+// length/width/thickness, only the derived string). Rolled/tee categories round-trip fine since
+// their `fields.size` IS the spec string directly.
+function initCategoryFields(category, spec) {
+  if (category && (ROLLED_CATEGORIES.includes(category) || category === 'tee')) return { size: spec || '' };
+  return {};
 }
 
 function ItemFormDialog({ item, onClose, router }) {
   const editing = !!item;
   const [description, setDescription] = useState(item?.description || '');
   const [spec, setSpec] = useState(item?.spec || '');
+  const [categoryFields, setCategoryFields] = useState(() => initCategoryFields(item?.category, item?.spec));
   const [onHand, setOnHand] = useState(item?.on_hand ?? 0);
   const [location, setLocation] = useState(item?.location || '');
   const [reorderPoint, setReorderPoint] = useState(item?.reorder_point ?? '');
@@ -208,9 +150,11 @@ function ItemFormDialog({ item, onClose, router }) {
   const [itemId, setItemId] = useState(item?.item_id || null);
   const [category, setCategory] = useState(item?.category || '');
   const [moc, setMoc] = useState(item?.moc || '');
+  const [mocCustomOpen, setMocCustomOpen] = useState(() => !!item?.moc && !MOC_OPTIONS.some(o => o.value === item.moc));
   const [saving, setSaving] = useState(false);
   const [catalogResults, setCatalogResults] = useState([]);
   const [catalogOpen, setCatalogOpen] = useState(false);
+  const [catalogUom, setCatalogUom] = useState(item?.item_id ? item?.catalog_uom : null);
 
   // §3.2 catalog wiring — same search endpoint/idiom as PrWorkspace's ItemSearchField, so a
   // picked-from-catalog inventory row and a picked-from-catalog BOM/PR line can share item_id for
@@ -218,6 +162,7 @@ function ItemFormDialog({ item, onClose, router }) {
   async function onDescriptionChange(v) {
     setDescription(v);
     setItemId(null);
+    setCatalogUom(null);
     if (v.trim().length < 2) { setCatalogResults([]); setCatalogOpen(false); return; }
     try {
       const rows = await api(`/api/items?search=${encodeURIComponent(v.trim())}`);
@@ -230,6 +175,7 @@ function ItemFormDialog({ item, onClose, router }) {
     setSpec(it.detail_desc || '');
     setItemCode(it.item_code || '');
     setItemId(it.id);
+    setCatalogUom(it.uom || null);
     setCatalogOpen(false);
   }
 
@@ -237,9 +183,10 @@ function ItemFormDialog({ item, onClose, router }) {
     if (!description.trim()) return showToast('Description is required', 'error');
     setSaving(true);
     try {
-      const cleanSpec = spec === OTHER_SIZE ? '' : spec;
+      const finalSpec = category ? (categoryDisplaySpec(category, categoryFields) || null)
+        : ((spec === OTHER_SIZE ? '' : spec).trim() || null);
       const body = {
-        description: description.trim(), spec: cleanSpec.trim() || null, on_hand: onHand,
+        description: description.trim(), spec: finalSpec, on_hand: onHand,
         location: location.trim() || null, reorder_point: reorderPoint === '' ? null : reorderPoint,
         item_code: itemCode.trim() || null, item_id: itemId,
         category: category || null, moc: moc.trim() || null,
@@ -262,10 +209,10 @@ function ItemFormDialog({ item, onClose, router }) {
         <DialogHeader><DialogTitle>{editing ? 'Edit inventory item' : 'New inventory item'}</DialogTitle></DialogHeader>
         <div className="grid grid-cols-2 gap-3">
           <div className="relative col-span-2 grid gap-1.5">
-            <Label>Description</Label>
+            <Label>Description<span className="text-danger"> *</span></Label>
             <Input value={description} onChange={e => onDescriptionChange(e.target.value)}
               onFocus={() => setCatalogOpen(catalogResults.length > 0)} onBlur={() => setTimeout(() => setCatalogOpen(false), 150)}
-              placeholder="Search the item catalog, or just type a description" autoFocus />
+              placeholder="Search the item catalog, or just type a description" required autoFocus />
             {itemId && <p className="text-xs text-success">✓ Linked to catalog — real matching against BOM/PR lines now possible for this item.</p>}
             {catalogOpen && (
               <div className="absolute top-full z-10 mt-1 w-full rounded-md border bg-popover shadow-md">
@@ -287,28 +234,43 @@ function ItemFormDialog({ item, onClose, router }) {
             <Label>Category (optional)</Label>
             <SearchableSelect value={category || ''} placeholder="Not dimensional"
               options={[{ value: '', label: 'Not dimensional' }, ...DIMENSIONAL_CATEGORIES]}
-              onChange={v => { setCategory(v); setSpec(''); }} />
+              onChange={v => { setCategory(v); setSpec(''); setCategoryFields({}); }} />
           </div>
-          {category ? <SpecField category={category} spec={spec} onChange={setSpec} /> : (
+          {category ? (
+            <div className="col-span-2"><CategoryFieldsBlock category={category} fields={categoryFields} onChange={setCategoryFields} /></div>
+          ) : (
             <div className="grid gap-1.5">
               <Label>Spec (optional)</Label>
               <Input value={spec} onChange={e => setSpec(e.target.value)} />
             </div>
           )}
-          <div className="grid gap-1.5">
-            <Label>Material / grade (optional)</Label>
-            <Input value={moc} onChange={e => setMoc(e.target.value)} placeholder="e.g. IS 2062 E250" />
+          <div className="flex flex-col gap-1.5">
+            <Label>Material / grade {category ? <span className="text-danger">*</span> : '(optional)'}</Label>
+            <SearchableSelect value={mocCustomOpen ? '' : (moc || '')} placeholder="Type to search a material…"
+              options={MOC_OPTIONS}
+              onChange={v => {
+                if (v === OTHER_MOC) { setMocCustomOpen(true); return; }
+                setMocCustomOpen(false);
+                setMoc(v);
+              }} />
+            {mocCustomOpen && (
+              <Input className="mt-1" value={moc} onChange={e => setMoc(e.target.value)}
+                placeholder="e.g. IS 2062 E250" required={!!category} autoFocus />
+            )}
           </div>
           {category && <p className="col-span-2 text-xs text-muted-foreground">
             Category + material let Production's Cut action auto-match remnants against this line when a BOM releases. Add plate/section pieces from the Inventory table after saving.
           </p>}
           <div className="grid gap-1.5">
             <Label>On-hand{item?.track_pieces ? ' (piece count)' : ''}</Label>
-            <Input type="number" value={onHand} onChange={e => setOnHand(e.target.value)} disabled={!!item?.track_pieces} />
+            <div className="flex items-center gap-2">
+              <Input type="number" min="0" step="any" value={onHand} onChange={e => setOnHand(e.target.value)} disabled={!!item?.track_pieces} />
+              {catalogUom && <span className="shrink-0 text-xs text-muted-foreground">{catalogUom}</span>}
+            </div>
           </div>
           <div className="grid gap-1.5">
             <Label>Minimum stock level (optional)</Label>
-            <Input type="number" value={reorderPoint} onChange={e => setReorderPoint(e.target.value)} />
+            <Input type="number" min="0" step="any" value={reorderPoint} onChange={e => setReorderPoint(e.target.value)} />
           </div>
           <div className="col-span-2 grid gap-1.5">
             <Label>Location (optional)</Label>
@@ -446,20 +408,60 @@ function AddPieceDialog({ inventoryItem, onClose, router, onAdded, certificates 
 // Cut children (used/remnant/scrap) point back at their source piece via parent_id but load flat,
 // sorted id DESC — regroup client-side so a piece's lineage reads together instead of scattered
 // among every other piece on this inventory line.
-function groupPiecesByLineage(pieces) {
+// One group per originally-received piece (root, `parent_id == null`) — every cut child (used/
+// remnant/scrap) nests under the root it came from, instead of one long flat list interleaving
+// every receipt's pieces together. Children sorted oldest-cut-first (ascending id) for a natural
+// "what happened to this piece" reading order.
+function groupPiecesByRoot(pieces) {
   const childrenByParent = new Map();
   for (const p of pieces) {
     if (!p.parent_id) continue;
     if (!childrenByParent.has(p.parent_id)) childrenByParent.set(p.parent_id, []);
     childrenByParent.get(p.parent_id).push(p);
   }
-  const rows = [];
+  const groups = [];
   for (const p of pieces) {
-    if (p.parent_id) continue; // rendered under its parent below
-    rows.push({ piece: p, indent: false });
-    for (const child of childrenByParent.get(p.id) || []) rows.push({ piece: child, indent: true, parentCode: p.code });
+    if (p.parent_id) continue;
+    const children = (childrenByParent.get(p.id) || []).sort((a, b) => a.id - b.id);
+    groups.push({ root: p, children });
   }
-  return rows;
+  return groups;
+}
+
+// Piece row shared by both the root and its expanded children — kept as one function so the two
+// look consistent rather than two hand-maintained near-duplicates.
+function PieceRow({ p, indent, kindLabel, busyId, onRelease, onReserve }) {
+  return (
+    <TableRow>
+      <TableCell className={`font-medium ${indent ? 'pl-8' : ''}`}>{p.code}</TableCell>
+      <TableCell className="text-muted-foreground">{pieceDimsLabel(p)}</TableCell>
+      <TableCell className="tnum">{p.weight_kg} kg</TableCell>
+      <TableCell className="text-muted-foreground">
+        {p.heat_no || p.certificate_no ? [p.heat_no, p.certificate_no].filter(Boolean).join(' · ') : '—'}
+      </TableCell>
+      <TableCell className="text-muted-foreground">
+        {p.bom_description ? [p.project_no, p.bom_description, p.part_name].filter(Boolean).join(' · ') : '—'}
+      </TableCell>
+      <TableCell>
+        <div className="flex items-center gap-1.5">
+          {/* Scrap's kindLabel and status label are both literally "Scrap" — showing both is just
+              a duplicated badge, not two pieces of information. Suppress the redundant one. */}
+          {kindLabel && kindLabel !== PIECE_STATUS[p.status]?.label && (
+            <Badge variant="outline" className="text-muted-foreground">{kindLabel}</Badge>
+          )}
+          <Badge className={PIECE_STATUS[p.status]?.cls}>{PIECE_STATUS[p.status]?.label || p.status}</Badge>
+        </div>
+      </TableCell>
+      <TableCell>
+        {p.status === 'reserved' && (
+          <Button size="sm" variant="outline" disabled={busyId === p.id} onClick={() => onRelease(p.id)}>Release</Button>
+        )}
+        {p.status === 'available' && (
+          <Button size="sm" variant="outline" onClick={() => onReserve(p)}>Reserve</Button>
+        )}
+      </TableCell>
+    </TableRow>
+  );
 }
 
 function PiecesDialog({ inventoryItem, onClose, router, certificates = [], projects = [] }) {
@@ -467,6 +469,7 @@ function PiecesDialog({ inventoryItem, onClose, router, certificates = [], proje
   const [adding, setAdding] = useState(false);
   const [reservingPiece, setReservingPiece] = useState(null);
   const [busyId, setBusyId] = useState(null);
+  const [expanded, setExpanded] = useState(new Set());
 
   async function load() {
     setPieces(await api(`/api/stock-pieces?inventory_item_id=${inventoryItem.id}`));
@@ -484,23 +487,38 @@ function PiecesDialog({ inventoryItem, onClose, router, certificates = [], proje
     setBusyId(null);
   }
 
-  const rows = pieces ? groupPiecesByLineage(pieces) : [];
+  function toggle(id) {
+    setExpanded(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  const groups = pieces ? groupPiecesByRoot(pieces) : [];
 
   return (
     <>
       <Dialog open onOpenChange={o => !o && onClose()}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="sm:max-w-5xl">
           <DialogHeader><DialogTitle>Pieces — {inventoryItem.description}</DialogTitle></DialogHeader>
           {!pieces ? (
             <p className="text-sm text-muted-foreground">Loading…</p>
           ) : (
-            <div className="flex flex-col gap-3">
+            <div className="flex min-w-0 flex-col gap-3">
               <div className="flex justify-end">
                 <Button size="sm" onClick={() => setAdding(true)}><PlusIcon />Add piece</Button>
               </div>
               {pieces.length === 0 ? (
                 <p className="py-6 text-center text-sm text-muted-foreground">No pieces yet.</p>
               ) : (
+                // min-w-0 is load-bearing here, not decorative — Table already wraps itself in
+                // overflow-x-auto (components/ui/table.jsx), but a flex/grid item's default
+                // min-width is its content's max-content size, so without min-w-0 this div (and
+                // everything above it up to DialogContent) grows to fit the table's full width
+                // instead of clipping it, which is what was pushing "Add piece" outside the
+                // visible dialog card.
+                <div className="min-w-0 overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -514,33 +532,46 @@ function PiecesDialog({ inventoryItem, onClose, router, certificates = [], proje
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {rows.map(({ piece: p, indent, parentCode }) => (
-                      <TableRow key={p.id}>
-                        <TableCell className={`font-medium ${indent ? 'pl-6' : ''}`}>
-                          {p.code}
-                          {indent && <div className="text-xs font-normal text-muted-foreground">cut from {parentCode}</div>}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">{pieceDimsLabel(p)}</TableCell>
-                        <TableCell className="tnum">{p.weight_kg} kg</TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {p.heat_no || p.certificate_no ? [p.heat_no, p.certificate_no].filter(Boolean).join(' · ') : '—'}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {p.bom_description ? [p.project_no, p.bom_description, p.part_name].filter(Boolean).join(' · ') : '—'}
-                        </TableCell>
-                        <TableCell><Badge className={PIECE_STATUS[p.status]?.cls}>{PIECE_STATUS[p.status]?.label || p.status}</Badge></TableCell>
-                        <TableCell>
-                          {p.status === 'reserved' && (
-                            <Button size="sm" variant="outline" disabled={busyId === p.id} onClick={() => release(p.id)}>Release</Button>
-                          )}
-                          {p.status === 'available' && (
-                            <Button size="sm" variant="outline" onClick={() => setReservingPiece(p)}>Reserve</Button>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {groups.map(({ root, children }) => {
+                      if (children.length === 0) {
+                        // Never cut — just a plain, non-expandable row, same as before.
+                        return <PieceRow key={root.id} p={root} busyId={busyId} onRelease={release} onReserve={setReservingPiece} />;
+                      }
+                      const isOpen = expanded.has(root.id);
+                      const counts = children.reduce((acc, c) => {
+                        const label = pieceKindLabel(c) || PIECE_STATUS[c.status]?.label || c.status;
+                        acc[label] = (acc[label] || 0) + 1;
+                        return acc;
+                      }, {});
+                      const summary = Object.entries(counts).map(([label, n]) => `${n} ${label.toLowerCase()}`).join(', ');
+                      return (
+                        <Fragment key={root.id}>
+                          <TableRow className="cursor-pointer hover:bg-muted/40" onClick={() => toggle(root.id)}>
+                            <TableCell className="font-medium">
+                              <div className="flex items-center gap-1.5">
+                                <ChevronRightIcon className={`size-4 shrink-0 text-muted-foreground transition-transform ${isOpen ? 'rotate-90' : ''}`} />
+                                {root.code}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-muted-foreground">{pieceDimsLabel(root)}</TableCell>
+                            <TableCell className="tnum">{root.weight_kg} kg</TableCell>
+                            <TableCell className="text-muted-foreground">
+                              {root.heat_no || root.certificate_no ? [root.heat_no, root.certificate_no].filter(Boolean).join(' · ') : '—'}
+                            </TableCell>
+                            <TableCell />
+                            <TableCell colSpan={2} className="text-xs text-muted-foreground">
+                              {children.length} piece{children.length === 1 ? '' : 's'} cut — {summary}
+                            </TableCell>
+                          </TableRow>
+                          {isOpen && children.map(c => (
+                            <PieceRow key={c.id} p={c} indent kindLabel={pieceKindLabel(c)} busyId={busyId} onRelease={release} onReserve={setReservingPiece} />
+                          ))}
+                        </Fragment>
+                      );
+                    })}
                   </TableBody>
                 </Table>
+                </div>
               )}
             </div>
           )}
@@ -698,6 +729,11 @@ function ReserveDialog({ request, inventoryItems, matches, onClose, router }) {
 function OpenRequestsCard({ openRequests, inventoryItems, router }) {
   const [reserveFor, setReserveFor] = useState(null);
   const [busyId, setBusyId] = useState(null);
+  const [q, setQ] = useState('');
+  const needle = q.trim().toLowerCase();
+  const shown = openRequests.filter(r => !needle
+    || r.material_description.toLowerCase().includes(needle)
+    || (r.project_no || '').toLowerCase().includes(needle));
 
   // Manual-mode gate (STORES-SALES-CHANGES.md) — a pending_review line hasn't been sent to
   // Procurement yet; Procure is the explicit "no, buy it" decision. Reserve already works
@@ -716,8 +752,11 @@ function OpenRequestsCard({ openRequests, inventoryItems, router }) {
     <Card>
       <CardHeader><CardTitle>Open requests</CardTitle></CardHeader>
       <CardContent>
+        {openRequests.length > 0 && <SearchBox value={q} onChange={setQ} placeholder="Search by description or project…" />}
         {openRequests.length === 0 ? (
           <p className="py-6 text-center text-sm text-muted-foreground">Nothing open.</p>
+        ) : shown.length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">No requests match.</p>
         ) : (
           <Table>
             <TableHeader>
@@ -730,7 +769,7 @@ function OpenRequestsCard({ openRequests, inventoryItems, router }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {openRequests.map(r => {
+              {shown.map(r => {
                 const matches = possibleMatches(r, inventoryItems);
                 return (
                   <TableRow key={r.id}>
@@ -1529,13 +1568,28 @@ function BomGrnTab({ bomItems, router }) {
   );
 }
 
+// Shared "premium/minimal" search treatment — pill-shaped, muted fill, inline icon — distinct from
+// Procurement's plain top-bar `<Input>` since this sits inside a card, not a page-level search row.
+function SearchBox({ value, onChange, placeholder }) {
+  return (
+    <div className="relative mb-3 max-w-sm">
+      <SearchIcon className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+      <Input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
+        className="h-10 rounded-full border-transparent bg-muted/50 pl-10 shadow-none transition-colors focus-visible:border-input focus-visible:bg-background" />
+    </div>
+  );
+}
+
 function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavigate, certificates, projects }) {
   const router = useRouter();
   const [dialogItem, setDialogItem] = useState(undefined); // undefined = closed, null = add, {} = edit
   const [piecesFor, setPiecesFor] = useState(null);
   const [lowOnly, setLowOnly] = useState(false);
+  const [q, setQ] = useState('');
+  const needle = q.trim().toLowerCase();
   const lowStockCount = inventoryItems.filter(isLowStock).length;
-  const shown = lowOnly ? inventoryItems.filter(isLowStock) : inventoryItems;
+  const shown = (lowOnly ? inventoryItems.filter(isLowStock) : inventoryItems)
+    .filter(it => !needle || it.description.toLowerCase().includes(needle) || (it.item_code || '').toLowerCase().includes(needle));
 
   return (
     <div className="flex flex-col gap-6">
@@ -1558,10 +1612,13 @@ function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavi
           </CardAction>
         </CardHeader>
         <CardContent>
+          {inventoryItems.length > 0 && <SearchBox value={q} onChange={setQ} placeholder="Search by description or item code…" />}
           {inventoryItems.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">No inventory items yet.</p>
           ) : shown.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">Nothing below its minimum right now.</p>
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              {needle ? 'No items match.' : 'Nothing below its minimum right now.'}
+            </p>
           ) : (
             <Table>
               <TableHeader>
