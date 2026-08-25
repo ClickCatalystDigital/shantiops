@@ -14,8 +14,33 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { PencilIcon, TrashIcon } from '@heroicons/react/24/solid';
 import { ChevronLeftIcon, ChevronRightIcon, XCircleIcon } from 'lucide-react';
+
+// Real PMB data runs long (a hand-typed cell can be 400+ characters — see the CHIMNEY sheet's
+// multi-size plate rows). table-fixed locks each column's width from the header, so overflowing
+// nowrap text has nowhere to go but visually outside its own cell into the next one — this is what
+// truncate (overflow-hidden + ellipsis) fixes. The tooltip only shows the full value when the text
+// is actually cut off (scrollWidth > clientWidth, checked lazily on first hover, not for every cell
+// up front — this table can have 300+ rows) rather than firing on every cell regardless of length.
+function TruncatedCell({ value }) {
+  const ref = useRef(null);
+  const [truncated, setTruncated] = useState(false);
+  const [open, setOpen] = useState(false);
+  const text = value || '—';
+  return (
+    <Tooltip open={open && truncated} onOpenChange={o => {
+      if (o && ref.current) setTruncated(ref.current.scrollWidth > ref.current.clientWidth);
+      setOpen(o);
+    }}>
+      <TooltipTrigger asChild>
+        <span ref={ref} className="block truncate">{text}</span>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-sm text-wrap">{text}</TooltipContent>
+    </Tooltip>
+  );
+}
 
 // D10 (Group 5 Bundle B, Phase 5.4) — cancellable at Enquiry/Comparison/Ordered, blocked once
 // Transit (shipped). Mirrors the API route's own CANCELLABLE set (app/api/bom-items/[id]/cancel) —
@@ -98,9 +123,9 @@ const COLUMNS = ['moc', 'size_spec', 'make', 'qty_text', 'pr_ref', 'po_ref',
 // them to every row in that column — these need to exist for every entry in COLUMNS or that
 // column falls back to an even, too-narrow equal split alongside the others.
 const COLUMN_WIDTHS = {
-  moc: 'w-36', size_spec: 'w-28', make: 'w-20', qty_text: 'w-16', pr_ref: 'w-32', po_ref: 'w-32',
-  grn_ref: 'w-32', grn_qty_text: 'w-20', pending_qty_text: 'w-24', bqtc_ref: 'w-20',
-  issued_ref: 'w-24', received_ref: 'w-24', production_done: 'w-20', remarks: 'w-40',
+  moc: 'w-44', size_spec: 'w-40', make: 'w-28', qty_text: 'w-20', pr_ref: 'w-36', po_ref: 'w-36',
+  grn_ref: 'w-36', grn_qty_text: 'w-24', pending_qty_text: 'w-28', bqtc_ref: 'w-24',
+  issued_ref: 'w-28', received_ref: 'w-28', production_done: 'w-20', remarks: 'w-48',
 };
 // `onSaved` (optional): fires alongside router.refresh() after any successful mutation — additive,
 // every existing caller keeps working unchanged (router.refresh() alone refreshes server-rendered
@@ -370,13 +395,13 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
                   </TableCell>
                 )}
                 {columns.map(c => (
-                  <TableCell key={c} className="whitespace-nowrap text-muted-foreground">
+                  <TableCell key={c} className="overflow-hidden text-muted-foreground">
                     {c === 'production_done' ? (
                       canToggleProductionDone ? (
                         <input type="checkbox" checked={!!r.production_done} aria-label="Production done"
                           onChange={e => toggleProductionDone(r, e.target.checked)} />
                       ) : (r.production_done ? 'Done' : '—')
-                    ) : (r[c] || '—')}
+                    ) : <TruncatedCell value={r[c]} />}
                   </TableCell>
                 ))}
               </TableRow>
