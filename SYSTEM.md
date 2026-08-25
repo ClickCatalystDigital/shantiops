@@ -1688,6 +1688,41 @@ real, scoped follow-ups, not oversights being hidden:
 (Purchase Returns — originally flagged alongside these — is no longer a gap; see §5o, built
 independently as a Procurement-side feature.)
 
+### 2026-08-26 — Stores UI-quality pass (New Item form, search, demo-data cleanup)
+
+Driven by a direct Stores/Dispatch-head interview: the New Item form's Spec/MOC inputs looked
+amateur next to how a BOM line captures the same data, Inventory and Open Requests had no search,
+and three visibly-fake rows ("TEST BOILER TUBE"/`COST-TEST-01`, an item_code literally `90909`)
+undermined confidence in a walkthrough. Explicitly **not** the full D18 company-wide demo-data
+wipe (`scripts/wipe-project-data-d18.mjs`, still user-run-only, unrelated to this) — scoped to only
+what Stores/Dispatch actually saw.
+
+- **`inventory_items.item_code` finished the same way `items.item_code` (§3.2) already was** —
+  backfilled `INV-######` for every blank row, auto-generated (`nextNumber('inventory_item_code',
+  'INV')`, `lib/db.js`) on every new item going forward, shown as a label on every Inventory row and
+  in the Reserve-from-Stock/match-badge pickers. Two of the three fake rows were legitimate demo
+  items with cosmetic problems (a placeholder code, a name saying "(remnant demo)" out loud) —
+  fixed in place, not deleted, since Stores' Reorder Suggestions and remnant-piece-tracking demos
+  need *something* real to point at. The third ("TEST BOILER TUBE") had no script/migration origin
+  (confirmed `git log -S`) and zero references anywhere (verified via `PRAGMA foreign_key_list`
+  across all 6 tables with a real FK into `inventory_items`, not a guess) — deleted outright.
+- **New Item form reuses `CategoryFieldsBlock`/`MOC_OPTIONS`** (extracted from `PrWorkspace.jsx`
+  into `components/CategoryFieldsBlock.jsx` for this — same extraction precedent §5k's Cut Dialog
+  section above follows a week later) instead of the narrower, now-deleted `SpecField` — a plate
+  added from Stores captures Length/Width/Thickness exactly like one added from a BOM line, MOC is
+  a searchable list instead of free text, Description gets a real required-field asterisk (paired
+  with native `required`, though neither this dialog nor `PrWorkspace`'s own is inside an actual
+  `<form>`, so it's the same cosmetic-not-enforcing convention as everywhere else in this codebase
+  — Description is still separately toast-checked in `save()`).
+- **Reserve-from-Stock narrowed to matches.** The picker used to list every inventory item
+  regardless of match quality; now defaults to `possibleMatches()`'s own shortlist (the same
+  ✓/≈ signal the badges already trusted) with a "Show all items" escape hatch, since a request has
+  no guaranteed FK to one specific item and the fuzzy fallback still needs to be reachable.
+- **Search added to Inventory and Open Requests** — plain client-side substring filter (same
+  pattern `ProcurementWorkspace.jsx`'s search boxes already use), styled as a shared `SearchBox`
+  component (pill-shaped, icon-prefixed) deliberately distinct from Procurement's plain top-bar
+  input rather than copying it.
+
 ### 2026-08-21 — SO→Project conversion: reachability fix for Design head
 
 The "Convert to Project" button (above, STORES-SALES-CHANGES.md §2b/§4) lived only on `/sales`,
@@ -1898,7 +1933,11 @@ under `app/api/calc-*`, all gated by `requireCalcAccess`, audited via `lib/usb.j
 Full history/decisions in `PRODUCTION-MODULE-DESIGN.md`, kept as the record — this section is the
 as-built result. Production's own nav tab is renamed **`Job Card`** (was `Workers`); the board is
 the default landing view. The now-redundant `Tasks` tab (`/production` — identical content to
-`Home`) is dropped from `Nav.jsx`. See §3a for the people-side change (roster unification) this
+`Home`) is dropped from `Nav.jsx`. **2026-08-26 addendum:** the *top-level* department nav tab
+(one level up from the `Job Card` sub-tab renamed above) was itself later renamed `Production` →
+`Shop Floor`, with a new sibling `Planning` tab added — see §5k's "Standalone Cut" addendum for
+why and what's on it; the `Production` department key/permission string is untouched everywhere,
+only the two nav labels changed. See §3a for the people-side change (roster unification) this
 module depends on.
 
 - **Job Cards are milestone-scoped, not free-text.** `job_cards.milestone_id` is the primary link —
@@ -2649,6 +2688,77 @@ becoming the actual management surface (not just a summary + button):
   PDF route both passed the whole object where `BomTable`/`bom-pdf.js` expected `bom.map(...)`,
   crashing the table and breaking the PDF download. Fixed both call sites to destructure `.bom`,
   matching every pre-existing caller (`app/projects/[id]/page.js`, `pending-pdf`, `packing/from-bom`).
+
+### Standalone Cut (no BOM line) + collapsible Pieces lineage + two real UI bugs (2026-08-26/27 addendum)
+
+Driven by a live gap found while polishing Stores for a stakeholder interview: cutting a piece
+(`cutPiece()` above) was only ever reachable through `ProductionBomTab`'s BOM/Issue-material flow,
+which requires `lib/remnant-match.js` to have found a category+MOC match to a BOM line first. A
+manually-added Stores item with no MOC set, or a grade nothing currently released needs, had **no
+UI path to cut it at all** — the piece and its inventory row were real, just unreachable.
+
+- **`CutDialog` extracted and generalized.** Was module-private to `WorkersPanel.jsx`
+  (`CutDialog`/`DimRows`/`previewWeight`/`requiredDimsFromBomItem`/`pieceDimsLabel`, ~80 lines) —
+  moved to `components/CutDialog.jsx`, `pieceDimsLabel` deduped (it was independently duplicated in
+  `StoresWorkspace.jsx` too). `bomItem` is now optional; a new `initialSource` prop lets a caller
+  hand it an already-picked piece directly, skipping the reserved-piece lookup and the
+  category-filtered manual picker entirely (both stay `bomItem`-only — they reference
+  `bomItem.category` directly and are simply never rendered when `initialSource` is used instead).
+  **No backend changes** — `cutPiece()`/the `/cut` route already treated `project_id`/`bom_item_id`
+  as fully optional; this was a pure frontend reachability fix.
+- **New `/planning` route** (`app/planning/page.js` → `components/PlanningWorkspace.jsx`, gated
+  `canAccessDepartment(user, 'Production')`, same as Shop Floor) — a `WorkspaceSidebar` with two
+  tabs: **Cut** (`CutStockTab` — pick a `track_pieces=1` item, pick an available piece, cut it,
+  fully unlinked: no project/BOM picker) and **Backlog**, a plain hardcoded array of dated
+  write-ups for things found worth building but not yet scoped (not a DB table — literally a
+  `const BACKLOG = [...]` in `PlanningWorkspace.jsx`, add to it directly). The existing
+  `Production`→`Shop Floor` top nav rename (`Nav.jsx`, `components/WorkersPanel.jsx`'s
+  `WorkspaceSidebar` title, `department-help-content.jsx`'s `title` field — the `Production:` object
+  key and every department-string usage elsewhere are untouched, same decoupled-label precedent
+  `Stores`→`"Inventory"` already set) happened alongside this, since "Production" no longer
+  described only shop-floor execution once Planning existed too.
+- **Pieces dialog (`StoresWorkspace.jsx`) redesigned**: was one flat list interleaving every
+  receipt's pieces with a shallow one-level indent; now `groupPiecesByRoot()` groups by the
+  originally-received piece, collapsed by default with a rollup line ("2 pieces cut — 1 used, 1
+  scrap"), expandable to the real used/remnant/scrap children — `pieceKindLabel()` reads the
+  U/R/S code suffix `cutPiece()` already generates, more precise than `status` alone (a "used"
+  child and the root piece post-cut are both just `status='consumed'`).
+- **Two real bugs found live-verifying this, both fixed**:
+  1. A scrap child's kind badge ("Scrap") and its status badge (`PIECE_STATUS.scrap.label`, also
+     "Scrap") rendered as two overlapping identical badges — suppressed the kind badge whenever it
+     equals the status label.
+  2. **Tailwind gotcha, worth knowing generally, not just here**: `<DialogContent
+     className="max-w-5xl">` silently had **no effect** — the dialog stayed stuck at the shadcn
+     default's `sm:max-w-sm` (384px), pushing content (an "Add piece" button) outside the visible
+     card. `cn()` uses `tailwind-merge`, which only dedupes conflicting classes **within the same
+     variant scope** — a bare `max-w-5xl` (no responsive prefix) and the component's own
+     `sm:max-w-sm` default are different scopes to `twMerge`, so both survive, and `sm:max-w-sm`'s
+     media-query rule wins in the compiled CSS at real screen widths. Fix: match the variant —
+     `sm:max-w-5xl`, not `max-w-5xl`. Confirmed via `getBoundingClientRect()` before/after (384px →
+     1024px). `components/CutDialog.jsx`'s own `max-w-4xl` had the identical latent bug, fixed the
+     same way; **grep for `DialogContent className="max-w-` before trusting any other dialog's
+     width is what the className says it is** — several more in `InstallationWorkspace.jsx`,
+     `ProcurementWorkspace.jsx`, `SalesWorkspace.jsx`, `QcDocumentEditor.jsx` use the same
+     unprefixed pattern and were not audited this pass.
+- **Two gaps found and deliberately logged rather than fixed**, both on Planning's Backlog tab
+  now (full detail there, summarized here so it isn't only in an in-app array):
+  1. A standalone cut with no `project_id` silently skips `cutPiece()`'s `certificate_projects`
+     insert even when the source piece has a real `test_certificate_id` — heat/cert data still
+     copies onto the child pieces, but the cert-to-project link an IBR/pressure-vessel traceability
+     record would want is never created. Checked whether this also breaks cost/consumption
+     reporting — it doesn't, but only because `stock_pieces` was never read by Material Consumption
+     or Production Cost Variance in the first place (both read `material_issues`, which `cutPiece()`
+     never writes to, linked or not — a pre-existing structural gap, not new). Recommendation:
+     don't force linking on every cut, but add an optional project picker, and consider requiring it
+     specifically when the source piece carries a `test_certificate_id`.
+  2. `cutPiece()` marks a remnant `status='available'` the instant the cut is submitted — no
+     physical handoff/receipt step comparable to how `receivePiece()` has Stores do the record and
+     the physical act in the same motion. A remnant becomes reservable/issuable before anyone at
+     Stores has actually put the physical piece back on a shelf. Smaller risk under the old
+     BOM-only Cut flow (supervised, project-scoped); more exposed now that standalone Cut makes
+     cutting easy to do disconnected from any project. Needs real scoping (a pending/in-transit
+     status Stores confirms, mirroring GIR's open→closed pattern, vs. accepting the current
+     behavior) — deliberately not decided here.
 
 ## 5l. Work Orders — production-control layer above Job Cards (2026-08-19, STERP Priority 2/3 items 20-21-22-23-24-27-28-29, no separate working-spec doc — folded straight in here)
 
@@ -5683,6 +5793,16 @@ hierarchy + audit trail was judged sufficient; revisit if that proves too light.
   trailing action silently stacks under the title instead of sitting beside it. Use `CardAction`
   (already exported from `components/ui/card.jsx`, triggers a `grid-cols-[1fr_auto]` rule) for any
   title-row action — don't reach for the flex override again.
+  **Second gotcha, also already hit (2026-08-27):** `cn()` uses `tailwind-merge`, which only dedupes
+  conflicting classes **within the same variant scope** — `<DialogContent className="max-w-5xl">`
+  has **zero effect** against the component's own default `sm:max-w-sm`, because a bare `max-w-*`
+  (no responsive prefix) and an `sm:`-prefixed one are different scopes to `twMerge`; both classes
+  survive the merge and the `sm:` one wins in the compiled CSS at real screen widths, silently
+  capping the dialog at 384px. Always match the variant: `sm:max-w-5xl`, not `max-w-5xl`. Verify
+  with `getBoundingClientRect()` if a dialog looks narrower than its className claims — several
+  `DialogContent className="max-w-*"` call sites elsewhere (`InstallationWorkspace.jsx`,
+  `ProcurementWorkspace.jsx`, `SalesWorkspace.jsx`, `QcDocumentEditor.jsx`) use the same unprefixed
+  pattern and have not been audited.
 - **Responsive layout:** the content column is defined once — an unlayered `.container` rule in
   `app/globals.css` (centered, `max-width: 1760px`, fluid `clamp` padding) — so it's balanced on a
   1920 monitor (symmetric gutters) and comfortable on mobile. **Mobile is app-like:** desktop
@@ -5744,6 +5864,12 @@ own Sourcing/PO-placed/In-transit worklist + cancel-requests accept action, moun
 table on their department panel only, with a link into the workspace below),
 `ProcurementWorkspace.jsx` (§5c, the `/procurement` page's 5-tab client component — Sourcing,
 Selection, Purchase Orders, Status, Suppliers).
+`CategoryFieldsBlock.jsx` (2026-08-26, §5k addendum — extracted out of `PrWorkspace.jsx`, the
+shared dimension/MOC input block both the BOM composer and Stores' New Item form now use).
+`CutDialog.jsx` (2026-08-26, §5k addendum — extracted out of `WorkersPanel.jsx`, generalized to
+support a standalone cut via `initialSource` alongside the original BOM-linked `bomItem` mode).
+`PlanningWorkspace.jsx` (2026-08-26, §5k addendum — the `/planning` page's two-tab client
+component, Cut + Backlog). `app/planning/page.js` is that page's thin server shell.
 `components/ui/` — shadcn primitives, including `popover.jsx` (added this round, same
 `radix-ui` unified-import pattern as the rest).
 `agent/` — the Python Windows agent, its Inno Setup installer, and its own
