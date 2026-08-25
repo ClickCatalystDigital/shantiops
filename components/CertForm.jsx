@@ -45,6 +45,8 @@ function parseProjectIds(certificate, fallback) {
 
 // A card wrapper for each field group — gives daily-use scanning a clear rhythm (title, then
 // fields) instead of the fields all running together in one long column.
+const Req = () => <span className="text-destructive">*</span>;
+
 function Section({ title, children }) {
   return (
     <section className="flex flex-col gap-3 rounded-lg border bg-card/40 p-4">
@@ -68,11 +70,11 @@ function LabeledInput({ label, ...props }) {
 // A Select seeded from the bank's existing distinct values, with a "+ Custom" escape hatch — same
 // idiom as ProcurementWorkspace's PaymentTermsField. Kills the "S" / "SA106 Gr B" typo class the
 // sample already has, without hard-coding a fixed option list this business doesn't have yet.
-function PickOrType({ label, value, options, onChange }) {
+function PickOrType({ label, required, value, options, onChange }) {
   const [custom, setCustom] = useState(!!value && !options.includes(value));
   return (
     <div className="flex flex-col gap-1.5">
-      <Label>{label}</Label>
+      <Label>{label} {required && <Req />}</Label>
       {custom ? (
         <Input value={value} onChange={e => onChange(e.target.value)} placeholder={`Type ${label.toLowerCase()}`} autoFocus />
       ) : (
@@ -118,6 +120,7 @@ export default function CertForm({ open, onOpenChange, certificate = null, certi
   const [projectIds, setProjectIds] = useState(() => parseProjectIds(certificate, defaultProjectIds));
   const [busy, setBusy] = useState(false);
   const [pdfFile, setPdfFile] = useState(null);   // newly picked, not yet uploaded
+  const [pdfRemoved, setPdfRemoved] = useState(false); // already-saved PDF was deleted this session
   const [extracting, setExtracting] = useState(false);
 
   const makers = useMemo(() => [...new Set(certificates.map(c => c.steel_maker).filter(Boolean))].sort(), [certificates]);
@@ -136,6 +139,23 @@ export default function CertForm({ open, onOpenChange, certificate = null, certi
     setForm(editing ? { ...EMPTY, ...certificate } : EMPTY);
     setProjectIds(parseProjectIds(certificate, defaultProjectIds));
     setPdfFile(null);
+    setPdfRemoved(false);
+  }
+
+  // Picking a file (nothing uploaded yet) just drops the local pick — cheap, no API call. An
+  // already-saved PDF is a real R2 object, so removing it deletes it there too (same "don't let
+  // storage quietly accumulate orphans" rule app/api/test-certificates/[id]/route.js's whole-
+  // certificate DELETE already follows), not just clearing the DB pointer.
+  async function removePdf() {
+    if (pdfFile) { setPdfFile(null); return; }
+    if (!editing || !certificate?.pdf_key || pdfRemoved) return;
+    if (!window.confirm('Remove the attached PDF? This deletes it permanently.')) return;
+    try {
+      await api(`/api/test-certificates/${certificate.id}/pdf`, { method: 'DELETE' });
+      setPdfRemoved(true);
+      showToast('PDF removed');
+      router?.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
   }
 
   // Add-flow only (see file header note): auto-fills empty fields from the AI's best-effort read of
@@ -226,15 +246,16 @@ export default function CertForm({ open, onOpenChange, certificate = null, certi
         <div className="min-h-0 flex-1">
           <PdfInlinePreview
             file={pdfFile}
-            url={!pdfFile && certificate?.pdf_key ? `/api/test-certificates/${certificate.id}/pdf` : undefined}
+            url={!pdfFile && !pdfRemoved && certificate?.pdf_key ? `/api/test-certificates/${certificate.id}/pdf` : undefined}
             onPick={pickPdf}
+            onRemove={(pdfFile || (!pdfRemoved && certificate?.pdf_key)) ? removePdf : undefined}
             extracting={extracting}
           />
         </div>
       </FloatingPdfPanel>
 
       <Sheet open={open} onOpenChange={o => { onOpenChange(o); if (!o) reset(); }}>
-        <SheetContent className="flex w-full flex-col gap-0 p-0 sm:max-w-md"
+        <SheetContent className="flex w-full flex-col gap-0 p-0 data-[side=right]:sm:w-[40vw] data-[side=right]:sm:max-w-2xl"
           onPointerDownOutside={e => { if (e.target.closest('[data-pdf-panel]')) e.preventDefault(); }}>
           <SheetHeader className="shrink-0 border-b px-6 py-4">
             <SheetTitle>{editing ? 'Edit Test Certificate' : 'Add Test Certificate'}</SheetTitle>
@@ -271,12 +292,12 @@ export default function CertForm({ open, onOpenChange, certificate = null, certi
                 </div>
 
                 <div className="flex flex-col gap-1.5">
-                  <Label>Certificate No.</Label>
+                  <Label>Certificate No. <Req /></Label>
                   <Input value={form.certificate_no} onChange={set('certificate_no')} placeholder="RCL/MTL/PLM/80839164" />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
-                  <LabeledInput label="Cast No." value={form.cast_no} onChange={set('cast_no')} />
+                  <LabeledInput label={<>Cast No. <Req /></>} value={form.cast_no} onChange={set('cast_no')} />
                   <LabeledInput label="Plate No." value={form.plate_no} onChange={set('plate_no')} />
                 </div>
 
@@ -287,34 +308,34 @@ export default function CertForm({ open, onOpenChange, certificate = null, certi
                   </div>
                 )}
 
-                <PickOrType label="Steel Maker" value={form.steel_maker} options={makers} onChange={v => setForm(f => ({ ...f, steel_maker: v }))} />
-                <PickOrType label="Material Spec" value={form.material_spec} options={specs} onChange={v => setForm(f => ({ ...f, material_spec: v }))} />
+                <PickOrType label="Steel Maker" required value={form.steel_maker} options={makers} onChange={v => setForm(f => ({ ...f, steel_maker: v }))} />
+                <PickOrType label="Material Spec" required value={form.material_spec} options={specs} onChange={v => setForm(f => ({ ...f, material_spec: v }))} />
 
                 <div className="flex flex-col gap-1.5">
                   <Label>Size (mm)</Label>
                   <div className="grid grid-cols-3 gap-2">
-                    <LabeledInput label="T" value={form.size_t} onChange={set('size_t')} />
-                    <LabeledInput label="W" value={form.size_w} onChange={set('size_w')} />
-                    <LabeledInput label="L" value={form.size_l} onChange={set('size_l')} />
+                    <LabeledInput label="T" type="number" inputMode="decimal" value={form.size_t} onChange={set('size_t')} />
+                    <LabeledInput label="W" type="number" inputMode="decimal" value={form.size_w} onChange={set('size_w')} />
+                    <LabeledInput label="L" type="number" inputMode="decimal" value={form.size_l} onChange={set('size_l')} />
                   </div>
                 </div>
               </Section>
 
               <Section title="Chemical analysis — of the cast (%)">
                 <div className="grid grid-cols-5 gap-2">
-                  <LabeledInput label="C" value={form.chem_c} onChange={set('chem_c')} />
-                  <LabeledInput label="Mn" value={form.chem_mn} onChange={set('chem_mn')} />
-                  <LabeledInput label="P" value={form.chem_p} onChange={set('chem_p')} />
-                  <LabeledInput label="S" value={form.chem_s} onChange={set('chem_s')} />
-                  <LabeledInput label="Si" value={form.chem_si} onChange={set('chem_si')} />
+                  <LabeledInput label="C" type="number" inputMode="decimal" value={form.chem_c} onChange={set('chem_c')} />
+                  <LabeledInput label="Mn" type="number" inputMode="decimal" value={form.chem_mn} onChange={set('chem_mn')} />
+                  <LabeledInput label="P" type="number" inputMode="decimal" value={form.chem_p} onChange={set('chem_p')} />
+                  <LabeledInput label="S" type="number" inputMode="decimal" value={form.chem_s} onChange={set('chem_s')} />
+                  <LabeledInput label="Si" type="number" inputMode="decimal" value={form.chem_si} onChange={set('chem_si')} />
                 </div>
               </Section>
 
               <Section title="Physical analysis — of this plate">
                 <div className="grid grid-cols-3 gap-2">
-                  <LabeledInput label="Y.S (MPa)" value={form.ys} onChange={set('ys')} />
-                  <LabeledInput label="UTS (MPa)" value={form.uts} onChange={set('uts')} />
-                  <LabeledInput label="Elongation %" value={form.elongation} onChange={set('elongation')} />
+                  <LabeledInput label="Y.S (MPa)" type="number" inputMode="decimal" value={form.ys} onChange={set('ys')} />
+                  <LabeledInput label="UTS (MPa)" type="number" inputMode="decimal" value={form.uts} onChange={set('uts')} />
+                  <LabeledInput label="Elongation %" type="number" inputMode="decimal" value={form.elongation} onChange={set('elongation')} />
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <Label>Bend / Flat test</Label>

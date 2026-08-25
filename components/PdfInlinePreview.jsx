@@ -10,9 +10,10 @@
 // replace affordance the old thumbnail version had, since this is still the live drop target for a
 // new file, not just a viewer.
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { UploadIcon, FileTextIcon, SparklesIcon } from 'lucide-react';
+import { UploadIcon, FileTextIcon, SparklesIcon, XIcon } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
-export default function PdfInlinePreview({ file, url, onPick, extracting, replaceLabel = 'Replace' }) {
+export default function PdfInlinePreview({ file, url, onPick, onRemove, extracting, replaceLabel = 'Replace' }) {
   const scrollRef = useRef(null);
   const pdfRef = useRef(null);
   const canvasRefs = useRef([]);
@@ -141,9 +142,23 @@ export default function PdfInlinePreview({ file, url, onPick, extracting, replac
           </div>
 
           {status === 'ready' && numPages > 1 && (
-            <span className="pointer-events-none absolute right-3 top-3 rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-medium text-white">
+            <span className={cn(
+              'pointer-events-none absolute top-3 rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-medium text-white',
+              onRemove ? 'right-11' : 'right-3',
+            )}>
               {numPages} pages
             </span>
+          )}
+
+          {onRemove && (
+            <button
+              type="button"
+              aria-label="Remove PDF"
+              onClick={onRemove}
+              className="absolute right-3 top-3 flex items-center justify-center rounded-full bg-black/60 p-1.5 text-white opacity-0 transition-opacity hover:bg-destructive group-hover:opacity-100 focus:opacity-100"
+            >
+              <XIcon className="size-3.5" />
+            </button>
           )}
 
           <button

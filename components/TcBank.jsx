@@ -101,6 +101,7 @@ export default function TcBank({ certificates = [], projects = [], defaultProjec
         </div>
       </CardContent>
       <CertForm
+        key={editing?.id ?? 'new'}
         open={formOpen}
         onOpenChange={setFormOpen}
         certificate={editing}
