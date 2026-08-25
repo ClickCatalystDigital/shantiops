@@ -169,7 +169,7 @@ export default function StatutoryDocsPanel({ projectId = null, projectSeries = n
                 <span className="font-medium">{d.doc_id}</span>
                 <span className="text-xs text-muted-foreground">
                   {showProject && d.project_no && <>{d.project_no} · </>}
-                  {d.series} series · {modelConfig(d.series).forms.map(f => FORM_LABELS[f] || f).join(' + ')} · {d.company} · {d.linked_parts} of {d.total_parts} parts linked
+                  {d.series} series · {[...modelConfig(d.series).forms.map(f => FORM_LABELS[f] || f), 'Mountings & Fittings'].join(' + ')} · {d.company} · {d.linked_parts} of {d.total_parts} parts linked
                 </span>
               </div>
               <ChevronRightIcon className="ml-auto size-4 text-muted-foreground" />

@@ -91,6 +91,7 @@ export async function DELETE(req, { params }) {
   if (!doc) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   await execute('DELETE FROM qc_document_parts WHERE document_id = ?', [params.id]);
+  await execute('DELETE FROM qc_mountings WHERE document_id = ?', [params.id]);
   await execute('DELETE FROM qc_documents WHERE id = ?', [params.id]);
 
   await audit('qc_document_delete', {
