@@ -8,10 +8,11 @@
 // one request (reduces `available`, on_hand untouched) so no other request — bom, stock, or sas —
 // can be promised the same units; Issue is the actual hand-out moment (on_hand decrements, the
 // request's bom_item goes terminal In-Stock). Release undoes an unissued Reserve.
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
@@ -20,7 +21,7 @@ import {
 } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { PlusIcon, PencilIcon, PackageCheckIcon, UndoIcon, TruckIcon, PackageIcon, ClipboardListIcon, LayersIcon, AlertTriangleIcon, LogInIcon, FileOutputIcon, CheckIcon, XIcon } from 'lucide-react';
+import { PlusIcon, PencilIcon, PackageCheckIcon, UndoIcon, TruckIcon, PackageIcon, ClipboardListIcon, LayersIcon, AlertTriangleIcon, LogInIcon, FileOutputIcon, CheckIcon, XIcon, ListChecksIcon } from 'lucide-react';
 import { api, showToast } from '@/lib/client';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 import CertPicker from '@/components/CertPicker';
@@ -626,10 +627,16 @@ function ReservePieceDialog({ piece, projects, onClose, onReserved, router }) {
   );
 }
 
-function ReserveDialog({ request, inventoryItems, onClose, router }) {
+function ReserveDialog({ request, inventoryItems, matches, onClose, router }) {
   const [inventoryItemId, setInventoryItemId] = useState('');
   const [qty, setQty] = useState(leadingQty(request.qty_text));
   const [saving, setSaving] = useState(false);
+  // Default to the possibleMatches() shortlist (already computed by the parent for the row's
+  // badges) instead of every inventory item — a request has no guaranteed FK to one specific item,
+  // so this is the best narrowing available; "show all" is the escape hatch for when the real match
+  // isn't in the (imperfect, word-overlap-based) match set.
+  const [showAll, setShowAll] = useState(matches.length === 0);
+  const pickable = showAll ? inventoryItems : matches.map(m => m.item);
 
   async function reserve() {
     if (!inventoryItemId) return showToast('Choose an inventory item', 'error');
@@ -656,12 +663,19 @@ function ReserveDialog({ request, inventoryItems, onClose, router }) {
         <DialogHeader><DialogTitle>Reserve from stock — {request.material_description}</DialogTitle></DialogHeader>
         <div className="flex flex-col gap-3">
           <div className="grid gap-1.5">
-            <Label>Inventory item</Label>
+            <div className="flex items-center justify-between">
+              <Label>Inventory item</Label>
+              {!showAll && matches.length > 0 && (
+                <button type="button" className="text-xs text-muted-foreground underline" onClick={() => setShowAll(true)}>
+                  Show all items
+                </button>
+              )}
+            </div>
             <Select value={inventoryItemId} onValueChange={setInventoryItemId}>
               <SelectTrigger className="w-full"><SelectValue placeholder="Choose…" /></SelectTrigger>
               <SelectContent>
-                {inventoryItems.map(i => (
-                  <SelectItem key={i.id} value={String(i.id)}>{i.description} · {i.available} available</SelectItem>
+                {pickable.map(i => (
+                  <SelectItem key={i.id} value={String(i.id)}>{i.item_code ? `${i.item_code} · ` : ''}{i.description} · {i.available} available</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -674,7 +688,7 @@ function ReserveDialog({ request, inventoryItems, onClose, router }) {
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={reserve} disabled={saving || !inventoryItems.length}>{saving ? 'Reserving…' : 'Reserve'}</Button>
+          <Button onClick={reserve} disabled={saving || !pickable.length}>{saving ? 'Reserving…' : 'Reserve'}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -728,7 +742,7 @@ function OpenRequestsCard({ openRequests, inventoryItems, router }) {
                             <Badge key={item.id} variant="outline"
                               className={exact ? 'border-success/30 bg-success-surface text-xs font-normal text-success' : 'text-xs font-normal text-muted-foreground'}
                               title={exact ? 'Same catalog item — a real match, not a guess.' : 'Non-binding keyword overlap — confirm before reserving.'}>
-                              {exact ? '✓' : '≈'} {item.description} ({item.available} avail)
+                              {exact ? '✓' : '≈'} {item.item_code ? `${item.item_code} · ` : ''}{item.description} ({item.available} avail)
                             </Badge>
                           ))}
                         </div>
@@ -770,7 +784,8 @@ function OpenRequestsCard({ openRequests, inventoryItems, router }) {
         )}
       </CardContent>
       {reserveFor && (
-        <ReserveDialog request={reserveFor} inventoryItems={inventoryItems} router={router} onClose={() => setReserveFor(null)} />
+        <ReserveDialog request={reserveFor} inventoryItems={inventoryItems} matches={possibleMatches(reserveFor, inventoryItems)}
+          router={router} onClose={() => setReserveFor(null)} />
       )}
     </Card>
   );
@@ -1405,7 +1420,114 @@ const NAV_ITEMS = (counts) => [
   { key: 'reorder', label: 'Reorder Suggestions', icon: AlertTriangleIcon, badge: counts.reorder || null },
   { key: 'gir', label: 'Gate Inward (GIR)', icon: LogInIcon },
   { key: 'gatepasses', label: 'Gate Passes', icon: FileOutputIcon, badge: counts.overdueGatePasses || null },
+  { key: 'bom', label: 'BOM', icon: ListChecksIcon },
 ];
+
+// Stores' own "close this project's BOM" action — mirrors ProcurementWorkspace.jsx's Status tab
+// bulk pattern (project filter + checkbox-select + one bulk PATCH per selected line), but for the
+// fields Stores actually owns (grn_ref/grn_qty_text, BOM_FIELD_OWNERS.Stores) instead of
+// purchase_status. Filling in a GRN ref is itself what feeds checkMaterialsComplete's broadened
+// "line done" check (lib/data.js) — Stores doesn't need purchase_status access to complete its half
+// of the materials-complete handoff to Production/QC.
+function BomGrnTab({ bomItems, router }) {
+  const [project, setProject] = useState('all');
+  const [selected, setSelected] = useState(new Set());
+  const [grnRef, setGrnRef] = useState('');
+  const [grnQty, setGrnQty] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState(null);
+
+  const projects = useMemo(() => [...new Set(bomItems.map(it => it.project_no))].sort(), [bomItems]);
+  const shown = project === 'all' ? [] : bomItems.filter(it => it.project_no === project);
+  const shownIds = shown.map(it => it.id);
+  const allShownSelected = shownIds.length > 0 && shownIds.every(id => selected.has(id));
+
+  function toggleOne(id, checked) {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (checked) next.add(id); else next.delete(id);
+      return next;
+    });
+  }
+
+  function toggleAllShown() {
+    setSelected(new Set(allShownSelected ? [] : shownIds));
+  }
+
+  async function apply() {
+    const ids = [...selected];
+    if (!ids.length) return showToast('Select at least one line', 'error');
+    if (!grnRef.trim()) return showToast('Enter a GRN reference', 'error');
+    setBusy(true);
+    setProgress({ done: 0, total: ids.length });
+    let failed = 0;
+    for (const id of ids) {
+      try {
+        await api(`/api/bom-items/${id}`, { method: 'PATCH', body: { grn_ref: grnRef.trim(), ...(grnQty.trim() ? { grn_qty_text: grnQty.trim() } : {}) } });
+      } catch { failed++; }
+      setProgress(p => ({ done: p.done + 1, total: p.total }));
+    }
+    setBusy(false);
+    setProgress(null);
+    setSelected(new Set());
+    setGrnRef('');
+    setGrnQty('');
+    showToast(failed ? `${ids.length - failed} of ${ids.length} updated — ${failed} failed` : `${ids.length} line${ids.length === 1 ? '' : 's'} updated`,
+      failed ? 'warning' : undefined);
+    router.refresh();
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>BOM — close received lines</CardTitle>
+        <CardAction>
+          <Select value={project} onValueChange={p => { setProject(p); setSelected(new Set()); }}>
+            <SelectTrigger className="h-8 w-44 text-xs"><SelectValue placeholder="Choose a project…" /></SelectTrigger>
+            <SelectContent>
+              {projects.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </CardAction>
+      </CardHeader>
+      {selected.size > 0 && (
+        <div className="flex flex-wrap items-center gap-2 border-y bg-muted/40 px-4 py-2 text-sm">
+          <span className="font-medium">{selected.size} selected</span>
+          <Input value={grnRef} onChange={e => setGrnRef(e.target.value)} placeholder="GRN ref" className="h-7 w-32 text-xs" disabled={busy} />
+          <Input value={grnQty} onChange={e => setGrnQty(e.target.value)} placeholder="GRN qty (optional)" className="h-7 w-36 text-xs" disabled={busy} />
+          <Button size="sm" className="h-7" disabled={busy} onClick={apply}>
+            {busy ? `Updating ${progress?.done ?? 0}/${progress?.total ?? 0}…` : 'Apply'}
+          </Button>
+          <Button size="sm" variant="ghost" className="h-7" disabled={busy} onClick={() => setSelected(new Set())}>Clear</Button>
+        </div>
+      )}
+      <CardContent className="flex flex-col divide-y pt-4">
+        {project === 'all' ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">Choose a project to see its BOM.</p>
+        ) : shown.length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">No BOM lines for that project.</p>
+        ) : (
+          <>
+            <div className="flex items-center gap-3 pb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              <Checkbox className="shrink-0" checked={allShownSelected} onCheckedChange={toggleAllShown} aria-label="Select all shown" />
+              <span className="flex-1">Part Description</span>
+              <span className="w-28 shrink-0">Status</span>
+              <span className="w-36 shrink-0">GRN Ref</span>
+            </div>
+            {shown.map(it => (
+              <div key={it.id} className="flex flex-wrap items-center gap-3 py-2.5 text-sm">
+                <Checkbox className="shrink-0" checked={selected.has(it.id)} onCheckedChange={v => toggleOne(it.id, !!v)} aria-label="Select item" />
+                <span className="min-w-0 flex-1 truncate font-medium">{it.material_description}</span>
+                <span className="w-28 shrink-0 truncate text-xs text-muted-foreground">{it.purchase_status || 'Enquiry'}</span>
+                <span className="w-36 shrink-0 truncate text-xs text-muted-foreground">{it.grn_ref || '—'}</span>
+              </div>
+            ))}
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavigate, certificates, projects }) {
   const router = useRouter();
@@ -1457,6 +1579,7 @@ function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavi
                 {shown.map(it => (
                   <TableRow key={it.id}>
                     <TableCell className="font-medium">
+                      <span className="mr-2 rounded bg-muted px-1.5 py-0.5 font-mono text-xs font-normal text-muted-foreground">{it.item_code || '—'}</span>
                       {it.description}
                       {it.catalog_item_code && <div className="text-xs font-normal text-muted-foreground">{it.catalog_item_code}</div>}
                     </TableCell>
@@ -1491,7 +1614,7 @@ function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavi
 
 export default function StoresWorkspace({
   inventoryItems, openRequests = [], activeReservations = [], projects = [],
-  reorderSuggestions = [], gateInwardReceipts = [], gatePasses = [], certificates = [],
+  reorderSuggestions = [], gateInwardReceipts = [], gatePasses = [], certificates = [], bomItems = [],
 }) {
   const router = useRouter();
   const [tab, setTab] = useState('inventory');
@@ -1518,6 +1641,7 @@ export default function StoresWorkspace({
       {tab === 'reorder' && <ReorderSuggestionsCard reorderSuggestions={reorderSuggestions} router={router} />}
       {tab === 'gir' && <GateInwardReceiptsCard gateInwardReceipts={gateInwardReceipts} router={router} />}
       {tab === 'gatepasses' && <GatePassesCard gatePasses={gatePasses} router={router} />}
+      {tab === 'bom' && <BomGrnTab bomItems={bomItems} router={router} />}
     </WorkspaceSidebar>
   );
 }

@@ -27,7 +27,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import PdfPreview from './PdfPreview';
 import PaymentTermsField from './PaymentTermsField';
 import CreateRfqDialog from './CreateRfqDialog';
-import { PURCHASE_STATUSES as BOM_STATUSES, CLOSED_STATUSES, STATUS_TONE, DEFAULT_PURCHASE_STATUS } from '@/lib/bom-fields.mjs';
+import { PURCHASE_STATUSES as BOM_STATUSES, CLOSED_STATUSES, OPEN_STATUSES, STATUS_TONE, DEFAULT_PURCHASE_STATUS } from '@/lib/bom-fields.mjs';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 import SupplierAnalysis from '@/components/SupplierAnalysis';
 import { SearchIcon, GitCompareIcon, FileTextIcon, ListChecksIcon, Building2Icon, ShoppingCartIcon, BarChart3Icon, LayoutDashboardIcon, Undo2Icon, PlusIcon, ReceiptIcon, TrashIcon, DownloadIcon } from 'lucide-react';
@@ -889,6 +889,7 @@ function State({ items, router, q, statusFilter }) {
   const [bulkStatus, setBulkStatus] = useState(DEFAULT_PURCHASE_STATUS);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkProgress, setBulkProgress] = useState(null); // { done, total } while a bulk apply is running
+  const [closeProject, setCloseProject] = useState('all');
   const needle = q.trim().toLowerCase();
   const shown = items.filter(it => !needle
     || it.material_description.toLowerCase().includes(needle)
@@ -897,6 +898,20 @@ function State({ items, router, q, statusFilter }) {
     .filter(it => statusFilter === 'all' || (it.purchase_status || DEFAULT_PURCHASE_STATUS) === statusFilter);
   const shownIds = shown.map(it => it.id);
   const allShownSelected = shownIds.length > 0 && shownIds.every(id => selected.has(id));
+  // "Close BOM" convenience — every distinct project this tab has any line for, so Procurement can
+  // pick one and select all its still-open lines in a click instead of search+select-all by hand.
+  const allProjects = useMemo(() => [...new Set(items.map(it => it.project_no))].sort(), [items]);
+
+  // Preselects every open-status line in the chosen project; doesn't touch bulkStatus or apply
+  // anything itself — the existing "N selected" bar's status dropdown + Apply button (already
+  // supports Received/Cancelled/In-Stock, all equally "closed") stays the one place that decides
+  // what they close as.
+  function closeBom() {
+    const ids = items.filter(it => it.project_no === closeProject && OPEN_STATUSES.has(it.purchase_status || DEFAULT_PURCHASE_STATUS)).map(it => it.id);
+    if (!ids.length) return showToast('Nothing open in that project', 'warning');
+    if (!window.confirm(`Select all ${ids.length} still-open item${ids.length === 1 ? '' : 's'} in ${closeProject}? You'll still choose the status and confirm below.`)) return;
+    setSelected(new Set(ids));
+  }
 
   async function setStatus(it, value) {
     setBusy(it.id);
@@ -950,6 +965,20 @@ function State({ items, router, q, statusFilter }) {
 
   return (
     <Card>
+      {allProjects.length > 0 && (
+        <div className="flex items-center gap-2 border-b px-4 py-2 text-sm">
+          <Select value={closeProject} onValueChange={setCloseProject}>
+            <SelectTrigger className="h-7 w-44 text-xs"><SelectValue placeholder="Choose a project…" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all" disabled>Choose a project…</SelectItem>
+              {allProjects.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Button size="sm" variant="outline" className="h-7" disabled={closeProject === 'all'} onClick={closeBom}>
+            Close BOM
+          </Button>
+        </div>
+      )}
       {selected.size > 0 && (
         <div className="flex items-center gap-2 border-b bg-muted/40 px-4 py-2 text-sm">
           <span className="font-medium">{selected.size} selected</span>

@@ -2,7 +2,7 @@
 // CRUD. GET is isInternal-gated (Phase 6.4's /pr source picker for 'stock' items needs any
 // department to search inventory, same reasoning as /api/sale-orders' GET); writes are Stores-only.
 import { NextResponse } from 'next/server';
-import { execute } from '@/lib/db';
+import { execute, nextNumber } from '@/lib/db';
 import { getFreshSessionUser, isInternal, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { getInventoryItems } from '@/lib/data';
@@ -25,11 +25,16 @@ export async function POST(req) {
   const description = String(b.description || '').trim();
   if (!description) return NextResponse.json({ error: 'Description is required' }, { status: 400 });
 
+  // Every inventory row gets a real unique label — a user-supplied code wins, otherwise generate
+  // one so nothing is left blank (see lib/db.js's backfillInventoryItemCode for the same rule
+  // applied retroactively to pre-existing rows).
+  const itemCode = b.item_code || await nextNumber('inventory_item_code', 'INV');
+
   const { lastId } = await execute(
     `INSERT INTO inventory_items (description, spec, on_hand, location, reorder_point, item_code, item_id, category, moc)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [description, b.spec || null, Number(b.on_hand) || 0, b.location || null,
-      b.reorder_point != null && b.reorder_point !== '' ? Number(b.reorder_point) : null, b.item_code || null,
+      b.reorder_point != null && b.reorder_point !== '' ? Number(b.reorder_point) : null, itemCode,
       b.item_id ? Number(b.item_id) : null, b.category || null, b.moc || null]
   );
   await audit('inventory_item_created', { actor: user.username, detail: description });

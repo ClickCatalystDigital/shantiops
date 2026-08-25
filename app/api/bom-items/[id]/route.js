@@ -7,6 +7,7 @@ import { editableBomFields, PURCHASE_STATUSES } from '@/lib/bom-fields.mjs';
 import { releaseReservationsForItem } from '@/lib/procurement';
 import { notifyDepartment } from '@/lib/notify';
 import { syncProcurementMilestones } from '@/lib/milestone-auto';
+import { checkMaterialsComplete } from '@/lib/data';
 
 // Field-level department scoping — the trust boundary of the PMB module. A head may only write
 // the columns their department owns (BOM_FIELD_OWNERS); a PM writes anything. Enforced here, not
@@ -124,22 +125,15 @@ export async function PATCH(req, { params }) {
         body: 'Incoming inspection can start as items are received.',
         dedupe_key: `qc_incoming:${item.project_id}`,
       });
-      // "closed" mirrors getBomRollupAll's definition exactly (Received/Cancelled/In-Stock) — a
-      // cancelled item isn't coming, so it counts as "as complete as it'll get."
-      const roll = await queryOne(
-        `SELECT COUNT(*) AS total,
-                SUM(CASE WHEN purchase_status IN ('Received','Cancelled','In-Stock') THEN 1 ELSE 0 END) AS closed
-           FROM bom_items WHERE project_id = ?`, [item.project_id]);
-      if (roll && roll.total > 0 && Number(roll.closed) === Number(roll.total)) {
-        for (const dept of ['Production', 'QC']) {
-          await notifyDepartment(dept, {
-            kind: 'materials_complete', title: `All materials received — ${pno}`,
-            body: 'BOM fully received — cleared to start production & inspection.',
-            dedupe_key: `materials_complete:${item.project_id}`,
-          });
-        }
-      }
+      await checkMaterialsComplete(item.project_id);
     } catch (err) { /* notification is best-effort */ }
+  }
+  // Stores' side of the same handoff — a line Stores has physically logged a GRN against counts as
+  // done for this rollup even if Procurement's purchase_status hasn't (or won't) move, so a project
+  // Stores finishes receiving can also reach Production/QC without waiting on Procurement. Only
+  // fires on the transition into having a grn_ref, same idiom as the Received guards above.
+  if (!item.grn_ref && changed.grn_ref) {
+    try { await checkMaterialsComplete(item.project_id); } catch (err) { /* notification is best-effort */ }
   }
 
   await audit('bom_item_edit', {
