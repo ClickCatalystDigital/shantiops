@@ -1,13 +1,16 @@
 import { NextResponse } from 'next/server';
 import { execute, queryAll } from '@/lib/db';
-import { getFreshSessionUser, requireDepartment, isInternal } from '@/lib/auth';
+import { getFreshSessionUser, canAccessDepartment, isInternal } from '@/lib/auth';
 import { getProjectBom } from '@/lib/data';
 
-// Engineering (or PM) uploads a flat BOM for a project. Rows: material_description, moc, size_spec
-// (Make and IBR No. are NOT on the BOM — the Dispatch head fills those on the packing list, §8).
+// Engineering or Design (or PM) uploads a flat BOM for a project — Design got the same BOM-entry
+// capability as Engineering (2026-08-25). Rows: material_description, moc, size_spec (Make and IBR
+// No. are NOT on the BOM — the Dispatch head fills those on the packing list, §8).
 export async function POST(req, { params }) {
-  const denied = requireDepartment(await getFreshSessionUser(), 'Engineering');
-  if (denied) return denied;
+  const user = await getFreshSessionUser();
+  if (!canAccessDepartment(user, 'Engineering') && !canAccessDepartment(user, 'Design')) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
   const { rows } = await req.json();
   if (!Array.isArray(rows) || !rows.length) {
     return NextResponse.json({ error: 'No BOM rows provided' }, { status: 400 });

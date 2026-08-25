@@ -54,7 +54,7 @@ export default async function ProjectDetail({ params }) {
   // Shared data every DepartmentPanel/tab needs.
   const panelData = {
     milestones, head, projectId: project.id, bom, pending, packingLists, bomAssemblies,
-    canUploadBom: canAccessDepartment(user, 'Engineering'),
+    canUploadBom: canAccessDepartment(user, 'Engineering') || canAccessDepartment(user, 'Design'),
     canPack: canAccessDepartment(user, 'Dispatch'),
     bomFields: editableBomFields(user), // field-level BOM edit scope (enforced again in the API)
     bomImports: imports,

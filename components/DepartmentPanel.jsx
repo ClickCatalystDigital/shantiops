@@ -25,7 +25,10 @@ import { TONE_CLASS } from '@/lib/status-styles';
 
 const APPROVED_DRAWING_STATUSES = new Set(['approved', 'as_built']);
 
-const BOM_DEPARTMENTS = ['Stores', 'Production', 'Design'];
+// Design moved off the read-only "Master BOM" fallback (2026-08-25) — it now gets the same full
+// BomPanel (import/paste/manage) as Engineering, rendered directly in the department === 'Design'
+// branch above, so showing this card there too would just be a duplicate.
+const BOM_DEPARTMENTS = ['Stores', 'Production'];
 // D10 (Group 5 Bundle B) — Eng/Design can cancel a BOM item directly (Enquiry/Comparison/Ordered
 // only, enforced server-side). Design has no BOM_FIELD_OWNERS entry (bomFields comes back empty for
 // them), so this is what grants them anything to do here at all beyond read-only visibility.
@@ -75,8 +78,13 @@ export default function DepartmentPanel({
       )}
 
       {department === 'Design' && (
-        <DesignPanel projectId={projectId} designSummary={designSummary} scopeOfSupply={scopeOfSupply} canEditScope={canEditScope}
-          milestones={deptMs} canApprove={canApproveDesign} />
+        <>
+          <DesignPanel projectId={projectId} designSummary={designSummary} scopeOfSupply={scopeOfSupply} canEditScope={canEditScope}
+            milestones={deptMs} canApprove={canApproveDesign} />
+          <BomPanel projectId={projectId} bom={bom} pending={pending} canUpload={canUploadBom}
+            editableFields={bomFields} imports={bomImports} canCancel={canCancel} assemblies={bomAssemblies}
+            department="Design" />
+        </>
       )}
 
       {showBom && (

@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne, queryAll } from '@/lib/db';
-import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
-import { requireAction } from '@/lib/action-permissions';
+import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
+import { requireBomAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { notifyDepartment } from '@/lib/notify';
 import { parsePmb } from '@/lib/pmb.mjs';
 import { getAllocationMode } from '@/lib/procurement';
 
-// PMB (.xlsx) import — Engineering (or PM) only. One stateless route, two phases:
+// PMB (.xlsx) import — Engineering, Design, or PM (Design got the same BOM-entry capability as
+// Engineering, 2026-08-25). One stateless route, two phases:
 //   POST file                      → parse only, return a preview (nothing written)
 //   POST file + confirm=1          → insert (409 if a BOM already exists)
 //   POST file + confirm=1&replace=1→ wipe this project's bom_items first, then insert
@@ -16,9 +17,10 @@ import { getAllocationMode } from '@/lib/procurement';
 // bom_imports — that row IS the revision record.
 export async function POST(req, { params }) {
   const user = await getFreshSessionUser();
-  const denied = requireDepartment(user, 'Engineering');
-  if (denied) return denied;
-  const actionDenied = await requireAction(user, 'Engineering', 'engineering.bom.import');
+  if (!canAccessDepartment(user, 'Engineering') && !canAccessDepartment(user, 'Design')) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+  const actionDenied = await requireBomAction(user, 'engineering.bom.import');
   if (actionDenied) return actionDenied;
 
   const form = await req.formData();
