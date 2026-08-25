@@ -52,6 +52,56 @@ const BACKLOG = [
        Deliberately not scoped further here — needs its own pass.`,
     ],
   },
+  {
+    title: 'Standalone Cut should be able to (or have to) link a project — certificate traceability silently drops without one',
+    status: 'Needs scoping',
+    added: '2026-08-27',
+    body: [
+      `Found while reviewing the Cut tab above. cutPiece() (lib/stock-pieces.js) only writes a
+       certificate_projects link "if project_id is given AND the source piece has a
+       test_certificate_id" — the standalone Cut tab never asks for a project, so cutting a real
+       heat-numbered/certified plate there silently drops the certificate-to-project link a
+       pressure-vessel/IBR traceability record actually needs. The heat_no/test_certificate_id
+       still copy onto the used/remnant/scrap child pieces themselves, so piece-level traceability
+       isn't lost — only the "this certified material went into this project" record is.`,
+      `Checked whether this also breaks cost/consumption reporting — it doesn't, but only because
+       that reporting was already broken independently: Material Consumption and Production Cost
+       Variance both read material_issues, not stock_pieces, and cutPiece() never writes to
+       material_issues (linked or unlinked, today or before this feature existed). Material
+       Utilization / Remnant & Scrap Report does read stock_pieces but keys only on
+       inventory_item_id, so it shows unlinked cuts exactly like linked ones. Worth fixing
+       separately, but it's not a reason to skip project-linking here.`,
+      `Recommendation from the original design discussion, worth revisiting: don't force linking on
+       every cut (an ad-hoc scrap-reconciliation cut has no real project), but add an optional
+       project picker to the standalone Cut tab, and consider making it required specifically when
+       the source piece actually carries a test_certificate_id (the case that matters for
+       compliance) rather than always. Also add a plain free-text notes field to CutDialog while
+       here — there is currently no "why was this cut" trail anywhere, linked or not.`,
+    ],
+  },
+  {
+    title: "No confirmation step for a cut's remnant actually reaching Stores",
+    status: 'Needs scoping',
+    added: '2026-08-27',
+    body: [
+      `cutPiece() marks a remnant child piece status='available' the instant the cut is submitted —
+       there is no physical handoff/receipt step. A remnant created by Production (via the BOM flow
+       or the new standalone Cut tab) becomes reservable/issuable in Stores' inventory immediately,
+       before anyone at Stores has actually put the physical piece back on a shelf. Contrast with
+       how new purchased material enters stock: Stores themselves run receivePiece() (Add piece),
+       so the record and the physical act happen together, same person, same moment.`,
+      `Risk: another department could reserve or the system could count on-hand for a remnant that
+       physically hasn't left the shop floor yet. This was a smaller risk when cutting only ever
+       happened through the tightly-scoped BOM/Issue-material flow (Production working against a
+       specific, supervised job); it's more exposed now that the standalone Cut tab makes cutting
+       easy to do disconnected from any project or supervision context.`,
+      `Needs scoping, not a quick fix: candidates include a new pending/in-transit status between
+       "cut" and "available" that Stores has to confirm (mirroring Gate Inward Receipt's own
+       open→closed pattern, lib/data.js's getGateInwardReceipts), or accepting the current
+       immediate-available behavior as fine for a company this size and only fixing it if it causes
+       a real reconciliation problem in practice. Deliberately not deciding here.`,
+    ],
+  },
 ];
 
 function BacklogTab() {
