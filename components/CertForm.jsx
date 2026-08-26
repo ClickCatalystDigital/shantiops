@@ -25,12 +25,12 @@ import PdfInlinePreview from './PdfInlinePreview';
 import SearchableSelect from './SearchableSelect';
 
 // Only fields the form actually has — guards against the AI returning an unexpected key.
-const EXTRACTABLE_FIELDS = ['certificate_no', 'cast_no', 'plate_no', 'material_spec', 'steel_maker',
+const EXTRACTABLE_FIELDS = ['certificate_no', 'cast_no', 'heat_no', 'plate_no', 'material_spec', 'steel_maker',
   'size_t', 'size_w', 'size_l', 'chem_c', 'chem_mn', 'chem_p', 'chem_s', 'chem_si',
   'ys', 'uts', 'elongation', 'bend_test'];
 
 const EMPTY = {
-  certificate_no: '', cast_no: '', plate_no: '', material_spec: '', steel_maker: '',
+  certificate_no: '', cast_no: '', heat_no: '', plate_no: '', material_spec: '', steel_maker: '',
   size_t: '', size_w: '', size_l: '',
   chem_c: '', chem_mn: '', chem_p: '', chem_s: '', chem_si: '',
   ys: '', uts: '', elongation: '', bend_test: 'OK',
@@ -296,8 +296,12 @@ export default function CertForm({ open, onOpenChange, certificate = null, certi
                   <Input value={form.certificate_no} onChange={set('certificate_no')} placeholder="RCL/MTL/PLM/80839164" />
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-3 gap-3">
                   <LabeledInput label={<>Cast No. <Req /></>} value={form.cast_no} onChange={set('cast_no')} />
+                  {/* Heat No. (gap-closure round, 2026-08-26, Q1) — the column existed on
+                      test_certificates but was unenterable anywhere; mills routinely state both
+                      heat and cast, and they're not the same identifier. */}
+                  <LabeledInput label="Heat No." value={form.heat_no} onChange={set('heat_no')} />
                   <LabeledInput label="Plate No." value={form.plate_no} onChange={set('plate_no')} />
                 </div>
 

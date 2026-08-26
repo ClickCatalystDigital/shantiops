@@ -57,6 +57,17 @@ export async function POST(req, { params }) {
   const revision = (project.bom_release_revision || 0) + 1;
   await execute('UPDATE projects SET bom_release_revision = ? WHERE id = ?', [revision, params.id]);
   await execute('UPDATE bom_items SET released_at_revision = ? WHERE project_id = ?', [revision, params.id]);
+  // Drawing-revision snapshot (Phase 1, 20.1) — calc_drawings.revision is a single mutable field on
+  // the drawing's own row, not a history table; without this, a later drawing revision would
+  // silently rewrite what an already-released line appears to have been driven by. A point-in-time
+  // copy taken at the exact moment the line's own release baseline is stamped above — never a live
+  // join, so "which drawing revision required this material" stays answerable no matter how many
+  // times the drawing itself is revised afterward.
+  await execute(
+    `UPDATE bom_items SET drawing_revision_at_release = (SELECT revision FROM calc_drawings WHERE calc_drawings.id = bom_items.drawing_id)
+      WHERE project_id = ? AND drawing_id IS NOT NULL`,
+    [params.id]
+  );
 
   await markMilestoneDone(params.id, 'release_bom', user.username);
   await audit('bom_released', { actor: user.username, detail: `project ${params.id} · ${bomCount.n} item(s) · revision ${revision}` });

@@ -13,6 +13,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectGroup, SelectI
 import { PlusIcon, TrashIcon } from 'lucide-react';
 import DimensionInput from '@/components/DimensionInput';
 import { pieceWeight } from '@/lib/piece-weight';
+import PieceLineage from '@/components/PieceLineage';
 
 function parseNum(v) {
   const n = Number(v);
@@ -24,6 +25,13 @@ function round2(n) { return Math.round(n * 100) / 100; }
 export function pieceDimsLabel(p) {
   if (p.status === 'scrap') return '—'; // scrap is a residual weight only, never a real shape
   return p.kind === 'plate' ? `${p.length_mm}×${p.width_mm}×${p.thickness_mm} mm` : `${p.length_mm} mm`;
+}
+
+// Pr1 (gap-closure round, 2026-08-26) — the picker previously showed dims/weight only, even though
+// the underlying /api/stock-pieces rows already carry heat_no/certificate_no (lib/stock-pieces.js's
+// listPieces()). Same conditional string StoresWorkspace.jsx's PieceRow already uses.
+function pieceTraceLabel(p) {
+  return p.heat_no || p.certificate_no ? ` · ${[p.heat_no, p.certificate_no].filter(Boolean).join(' · ')}` : '';
 }
 
 // Weight preview — the operator sees the scrap number update live as they type; the server
@@ -108,6 +116,15 @@ export default function CutDialog({ bomItem = null, initialSource = null, projec
   const [used, setUsed] = useState([bomItem ? requiredDimsFromBomItem(bomItem) : {}]);
   const [remnants, setRemnants] = useState([]);
   const [saving, setSaving] = useState(false);
+  // Pr2 (gap-closure round, 2026-08-26) — read-only genealogy for the selected source piece.
+  // Production previously had no lineage view at all; it lived only in Stores' Pieces dialog. The
+  // full sibling list (all statuses, not just available/reserved) is what PieceLineage needs to
+  // walk root->children, so this is a separate fetch from availablePieces/reservedPieces above.
+  const [lineagePieces, setLineagePieces] = useState(null);
+  useEffect(() => {
+    if (!source?.inventory_item_id) { setLineagePieces(null); return; }
+    api(`/api/stock-pieces?inventory_item_id=${source.inventory_item_id}`).then(setLineagePieces).catch(() => setLineagePieces(null));
+  }, [source?.inventory_item_id]);
 
   useEffect(() => {
     if (!bomItem) return; // standalone mode already has its source — nothing to look up
@@ -177,14 +194,14 @@ export default function CutDialog({ bomItem = null, initialSource = null, projec
               <Label>Source piece</Label>
               {reservedPieces.length === 1 ? (
                 <p className="text-sm">
-                  {reservedPieces[0].code} — {pieceDimsLabel(reservedPieces[0])} · {reservedPieces[0].weight_kg} kg{' '}
+                  {reservedPieces[0].code} — {pieceDimsLabel(reservedPieces[0])} · {reservedPieces[0].weight_kg} kg{pieceTraceLabel(reservedPieces[0])}{' '}
                   <span className="text-muted-foreground">(reserved for this line)</span>
                 </p>
               ) : (
                 <Select value={sourcePieceId} onValueChange={v => pickSourcePiece(v, reservedPieces)}>
                   <SelectTrigger><SelectValue placeholder="Choose a reserved piece" /></SelectTrigger>
                   <SelectContent><SelectGroup>
-                    {reservedPieces.map(p => <SelectItem key={p.id} value={String(p.id)}>{p.code} — {pieceDimsLabel(p)} · {p.weight_kg} kg</SelectItem>)}
+                    {reservedPieces.map(p => <SelectItem key={p.id} value={String(p.id)}>{p.code} — {pieceDimsLabel(p)} · {p.weight_kg} kg{pieceTraceLabel(p)}</SelectItem>)}
                   </SelectGroup></SelectContent>
                 </Select>
               )}
@@ -210,7 +227,7 @@ export default function CutDialog({ bomItem = null, initialSource = null, projec
                       <SelectContent><SelectGroup>
                         {availablePieces.length === 0
                           ? <div className="px-2 py-1.5 text-sm text-muted-foreground">No available pieces</div>
-                          : availablePieces.map(p => <SelectItem key={p.id} value={String(p.id)}>{p.code} — {pieceDimsLabel(p)} · {p.weight_kg} kg</SelectItem>)}
+                          : availablePieces.map(p => <SelectItem key={p.id} value={String(p.id)}>{p.code} — {pieceDimsLabel(p)} · {p.weight_kg} kg{pieceTraceLabel(p)}</SelectItem>)}
                       </SelectGroup></SelectContent>
                     </Select>
                   )}
@@ -218,6 +235,10 @@ export default function CutDialog({ bomItem = null, initialSource = null, projec
               )}
             </div>
           ))}
+
+          {source && lineagePieces && (
+            <PieceLineage pieces={lineagePieces} currentPieceId={source.id} />
+          )}
 
           {source && (
             <>

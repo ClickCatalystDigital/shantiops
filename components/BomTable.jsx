@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import TraceabilityBadges from '@/components/TraceabilityBadges';
 import { PencilIcon, TrashIcon } from '@heroicons/react/24/solid';
 import { ChevronLeftIcon, ChevronRightIcon, XCircleIcon } from 'lucide-react';
 
@@ -114,7 +115,14 @@ const FIELD_LABELS = {
   grn_ref: 'GRN No. & Date', grn_qty_text: 'GRN Qty', pending_qty_text: 'Pending Qty',
   bqtc_ref: 'BQ-TC', issued_ref: 'Issued', received_ref: 'Received',
   production_done: 'Prod. Done', remarks: 'Remarks', assembly_id: 'Assembly',
+  received_heat_no: 'Heat No. (received)', received_mtc_no: 'MTC/Cert No. (received)',
+  received_supplier_batch_no: 'Supplier Batch (received)', received_serial_no: 'Serial No. (received)',
 };
+// Same four names PrWorkspace.jsx's Raise PR checkboxes use — kept editable after creation too
+// (gap found in review: previously these fell into the generic dialogFields text-input branch with
+// no FIELD_LABELS entry, rendering as blank-labeled text boxes instead of checkboxes).
+const TRACEABILITY_FIELDS = ['requires_heat_no', 'requires_mtc', 'requires_supplier_batch', 'requires_serial_no'];
+const TRACEABILITY_LABELS = { requires_heat_no: 'Heat No.', requires_mtc: 'MTC', requires_supplier_batch: 'Supplier batch', requires_serial_no: 'Serial No.' };
 // Visible data columns, in spreadsheet order (section/group render as divider rows instead).
 const COLUMNS = ['moc', 'size_spec', 'make', 'qty_text', 'pr_ref', 'po_ref',
   'grn_ref', 'grn_qty_text', 'pending_qty_text', 'bqtc_ref', 'issued_ref', 'received_ref',
@@ -154,9 +162,11 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
   const canInlineStatus = editableFields.includes('purchase_status');
   const canToggleProductionDone = editableFields.includes('production_done');
   const canStructure = editableFields.includes('material_description');
-  // Dialog fields: the viewer's editable set, minus status and production_done (both get their own
-  // inline control — a text-input dialog is the wrong shape for a boolean toggle).
-  const dialogFields = editableFields.filter(f => f !== 'purchase_status' && f !== 'production_done');
+  const canSetTraceability = TRACEABILITY_FIELDS.some(f => editableFields.includes(f));
+  // Dialog fields: the viewer's editable set, minus status, production_done, and requires_* (all
+  // three get their own dedicated control — a plain text input is the wrong shape for a boolean;
+  // requires_* specifically had been rendering as an unlabeled text box, a real bug found in review).
+  const dialogFields = editableFields.filter(f => f !== 'purchase_status' && f !== 'production_done' && !TRACEABILITY_FIELDS.includes(f));
   // The Actions column exists for edit/delete (dialogFields) OR the D10 cancel button — Design has
   // no editable fields at all (no BOM_FIELD_OWNERS entry) but still needs this column for Cancel.
   const hasActions = dialogFields.length > 0 || canCancel;
@@ -217,6 +227,16 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
     const form = new FormData(e.target);
     const body = {};
     for (const f of dialogFields) body[f] = String(form.get(f) ?? '');
+    // Checkboxes need explicit boolean coercion, same reasoning as toggleProductionDone below —
+    // a native checkbox's FormData value is 'on'/absent, not a value this table's other text fields
+    // ever produce, and the PATCH route's NOT NULL boolean columns need 1/0, not that string.
+    // released_at_revision is a UI hint only (it never clears on reopen, so it can be over-cautious
+    // just after a legitimate reopen) — the server's live-milestone check is the real gate either way,
+    // so simply not sending these fields here is always safe, never wrongly permissive.
+    const frozen = editing?.released_at_revision != null;
+    if (canSetTraceability && !frozen) {
+      for (const f of TRACEABILITY_FIELDS) if (editableFields.includes(f)) body[f] = form.get(f) ? 1 : 0;
+    }
     setBusy(true);
     try {
       if (editing.__new) {
@@ -345,6 +365,11 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
                   {r.selected_supplier_name && (
                     <div className="text-xs font-normal text-muted-foreground">Supplier: {r.selected_supplier_name}</div>
                   )}
+                  {/* Traceability requirements — canonical renderer, shared with
+                      ProcurementWorkspace.jsx and QcDocumentEditor.jsx (see TraceabilityBadges.jsx
+                      for why: those screens never rendered BomTable at all, so the flag was
+                      structurally invisible to them until extracted into one shared component). */}
+                  <TraceabilityBadges item={r} />
                   {canStructure && !r.item_id && (
                     <div className="mt-1"><LinkItemControl bomItemId={r.id} router={router} /></div>
                   )}
@@ -438,6 +463,25 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
                   )}
                 </div>
               ))}
+              {canSetTraceability && (
+                <div className="flex flex-col gap-1.5">
+                  <Label>Traceability required at receipt</Label>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                    {TRACEABILITY_FIELDS.map(f => (
+                      <label key={f} className="flex items-center gap-1.5 text-sm">
+                        <input type="checkbox" name={f} defaultChecked={!!editing[f]}
+                          disabled={editing.released_at_revision != null} />
+                        {TRACEABILITY_LABELS[f]}
+                      </label>
+                    ))}
+                  </div>
+                  {editing.released_at_revision != null && (
+                    <p className="text-xs text-muted-foreground">
+                      Frozen — reopen Release BOM to change these.
+                    </p>
+                  )}
+                </div>
+              )}
               <DialogFooter>
                 <Button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save'}</Button>
               </DialogFooter>

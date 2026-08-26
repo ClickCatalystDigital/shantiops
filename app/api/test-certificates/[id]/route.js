@@ -8,7 +8,7 @@ import { audit } from '@/lib/usb';
 import { deleteObject } from '@/lib/r2';
 
 const EDITABLE = [
-  'certificate_no', 'cast_no', 'plate_no', 'material_spec', 'steel_maker',
+  'certificate_no', 'cast_no', 'heat_no', 'plate_no', 'material_spec', 'steel_maker',
   'size_t', 'size_w', 'size_l', 'chem_c', 'chem_mn', 'chem_p', 'chem_s', 'chem_si',
   'ys', 'uts', 'elongation', 'bend_test',
   'steel_making_process', 'heat_treatment',

@@ -38,6 +38,7 @@ export async function POST(req) {
       inventoryItemId: Number(b.inventory_item_id), kind: b.kind,
       length_mm: b.length_mm, width_mm: b.width_mm, thickness_mm: b.thickness_mm,
       density: b.density, kg_per_m: b.kg_per_m, heat_no: b.heat_no, test_certificate_id: b.test_certificate_id,
+      bomItemId: b.bom_item_id ? Number(b.bom_item_id) : undefined,
       username: user.username,
     });
     await audit('stock_piece_received', { actor: user.username, detail: `${result.code} · ${result.weight_kg} kg` });

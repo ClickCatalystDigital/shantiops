@@ -14,7 +14,8 @@ export async function POST(req, { params }) {
   if (actionDenied) return actionDenied;
 
   try {
-    const res = await issueReservation(Number(params.id));
+    const b = await req.json().catch(() => ({}));
+    const res = await issueReservation(Number(params.id), { username: user.username, jobCardId: b.job_card_id ? Number(b.job_card_id) : undefined });
     await audit('inventory_reservation_issued', {
       actor: user.username, detail: `reservation ${res.id}: bom_item ${res.bom_item_id} -> In-Stock, on_hand -${res.qty}`,
     });

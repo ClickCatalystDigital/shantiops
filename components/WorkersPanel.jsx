@@ -89,18 +89,24 @@ function ProductionBomTab({ projects }) {
   const [progress, setProgress] = useState(null);
   const [issues, setIssues] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [issueForm, setIssueForm] = useState({ bom_item_id: '', qty: '' });
+  const [issueForm, setIssueForm] = useState({ bom_item_id: '', qty: '', job_card_id: '' });
   const [busy, setBusy] = useState(false);
   const [cutFor, setCutFor] = useState(null);
+  const [jobCards, setJobCards] = useState([]);
   const router = useRouter();
 
   async function loadAll() {
-    const [{ items }, prog, iss] = await Promise.all([
+    // jobCards (Phase 3, §0/§7) — optional Job Card picker on Issue-material, so a material_issues
+    // row CAN resolve back to a Work Order via the direct job_card_id -> work_order_id FK chain
+    // instead of only the indirect bom_item_id join. Best-effort: a project with no open cards yet
+    // simply shows no picker, same "don't force data that isn't there" precedent as everywhere else.
+    const [{ items }, prog, iss, cards] = await Promise.all([
       api(`/api/projects/${projectId}/bom`),
       api(`/api/production/fabrication-progress?project_id=${projectId}`),
       api(`/api/material-issues?project_id=${projectId}`),
+      api(`/api/job-cards?project_id=${projectId}&status=progress`).catch(() => []),
     ]);
-    setBom(items); setProgress(prog); setIssues(iss);
+    setBom(items); setProgress(prog); setIssues(iss); setJobCards(cards);
   }
 
   useEffect(() => {
@@ -119,9 +125,12 @@ function ProductionBomTab({ projects }) {
     if (!qty || qty <= 0) return showToast('Enter a quantity', 'error');
     setBusy(true);
     try {
-      await api('/api/material-issues', { method: 'POST', body: { bom_item_id: Number(issueForm.bom_item_id), qty } });
+      await api('/api/material-issues', {
+        method: 'POST',
+        body: { bom_item_id: Number(issueForm.bom_item_id), qty, job_card_id: issueForm.job_card_id ? Number(issueForm.job_card_id) : undefined },
+      });
       showToast('Material issued');
-      setIssueForm({ bom_item_id: '', qty: '' });
+      setIssueForm({ bom_item_id: '', qty: '', job_card_id: '' });
       await loadAll();
     } catch (err) { showToast(err.message, 'error'); }
     setBusy(false);
@@ -173,6 +182,14 @@ function ProductionBomTab({ projects }) {
               </Select>
               <Input type="number" min="0" placeholder="Qty" className="w-24" value={issueForm.qty}
                 onChange={e => setIssueForm({ ...issueForm, qty: e.target.value })} />
+              {jobCards.length > 0 && (
+                <Select value={issueForm.job_card_id} onValueChange={v => setIssueForm({ ...issueForm, job_card_id: v })}>
+                  <SelectTrigger className="w-56"><SelectValue placeholder="Job Card (optional)" /></SelectTrigger>
+                  <SelectContent><SelectGroup>
+                    {jobCards.map(jc => <SelectItem key={jc.id} value={String(jc.id)}>#{jc.id} {jc.section}{jc.wo_no ? ` · ${jc.wo_no}` : ''}</SelectItem>)}
+                  </SelectGroup></SelectContent>
+                </Select>
+              )}
               <Button size="sm" onClick={issueMaterial} disabled={busy}>Issue</Button>
             </div>
             {issues?.length > 0 && (

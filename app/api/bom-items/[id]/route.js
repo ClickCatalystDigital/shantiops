@@ -31,6 +31,25 @@ export async function PATCH(req, { params }) {
   if (keys.includes('material_description') && !String(b.material_description || '').trim()) {
     return NextResponse.json({ error: 'Description cannot be empty' }, { status: 400 });
   }
+  // Traceability flags (I9) — frozen once the project's BOM has actually been released, changeable
+  // only via the existing un-release path (POST /api/milestones/[id]/reopen), same governance as
+  // every other release-baseline field. Deliberately checked against the milestone's LIVE status,
+  // not bom_items.released_at_revision: that column is stamped on every line at Release BOM and
+  // never cleared by a reopen (reopen only resets the milestone row), so checking it directly would
+  // leave a line frozen forever even after a legitimate un-release — reopening would have no visible
+  // effect on this specific field.
+  const TRACEABILITY_FIELDS = ['requires_heat_no', 'requires_mtc', 'requires_supplier_batch', 'requires_serial_no'];
+  if (keys.some(k => TRACEABILITY_FIELDS.includes(k))) {
+    const milestone = await queryOne(
+      `SELECT actual_end, status FROM milestones WHERE project_id = ? AND milestone_key = 'release_bom'`,
+      [item.project_id]
+    );
+    const released = !!(milestone?.actual_end || milestone?.status === 'done');
+    if (released) {
+      return NextResponse.json(
+        { error: 'Traceability requirements are frozen — reopen Release BOM to change them' }, { status: 409 });
+    }
+  }
   // V2-CHANGES.md D4 (Phase 5.0): purchase_status is now a mixed-case enum (Enquiry/Comparison/
   // Ordered/Transit/Received/Cancelled/In-Stock) — no more blind .toUpperCase(), validate against
   // the known list instead so a bad value 400s here rather than landing as silent junk.
@@ -51,6 +70,26 @@ export async function PATCH(req, { params }) {
     if (v === '') v = null;
     changed[k] = v;
   }
+
+  // Traceability enforcement on the free-text GRN path (gap found in review, 2026-08-26) — the
+  // ONLY point in this route that fires: the transition INTO 'Received', never a re-save of an
+  // already-Received row (same "only fire on the transition" idiom every other guard in this route
+  // already uses). `effective()` reads the value this same request is setting when present, so a
+  // caller can supply purchase_status and the received_* field together in one PATCH (the normal
+  // Stores-marks-Received UI flow) without a false rejection.
+  if (changed.purchase_status === 'Received' && item.purchase_status !== 'Received') {
+    const effective = f => (f in changed ? changed[f] : item[f]);
+    const missing = [];
+    if (item.requires_heat_no && !String(effective('received_heat_no') || '').trim()) missing.push('a heat number');
+    if (item.requires_mtc && !String(effective('received_mtc_no') || '').trim()) missing.push('an MTC/certificate number');
+    if (item.requires_supplier_batch && !String(effective('received_supplier_batch_no') || '').trim()) missing.push('a supplier batch number');
+    if (item.requires_serial_no && !String(effective('received_serial_no') || '').trim()) missing.push('a serial number');
+    if (missing.length) {
+      return NextResponse.json(
+        { error: `Can't mark Received — this line needs ${missing.join(', ')} first` }, { status: 400 });
+    }
+  }
+
   await execute(
     `UPDATE bom_items SET ${Object.keys(changed).map(k => `${k} = ?`).join(', ')} WHERE id = ?`,
     [...Object.values(changed), params.id]);

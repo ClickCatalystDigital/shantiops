@@ -23,6 +23,7 @@ function CertRow({ c, onClick, onViewPdf }) {
       <div className="flex items-center gap-2">
         <span className="font-medium">{c.certificate_no}</span>
         <span className="text-muted-foreground">cast {c.cast_no}</span>
+        {c.heat_no && <span className="text-muted-foreground">heat {c.heat_no}</span>}
         {c.plate_no && <span className="text-muted-foreground">plate {c.plate_no}</span>}
         {c.pdf_key && (
           <span
@@ -65,7 +66,7 @@ export default function TcBank({ certificates = [], projects = [], defaultProjec
 
   const needle = q.trim().toLowerCase();
   const shown = certificates.filter(c => !needle || [
-    c.certificate_no, c.cast_no, c.plate_no, c.steel_maker, c.material_spec,
+    c.certificate_no, c.cast_no, c.heat_no, c.plate_no, c.steel_maker, c.material_spec,
   ].some(v => v?.toLowerCase().includes(needle)));
 
   return (

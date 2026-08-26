@@ -29,7 +29,7 @@ import DimensionInput from './DimensionInput';
 import SearchableSelect from './SearchableSelect';
 import QtyInput from './QtyInput';
 import CategoryFieldsBlock, { OTHER_MOC, MOC_OPTIONS } from './CategoryFieldsBlock';
-import { BOM_FIELD_OWNERS } from '@/lib/bom-fields.mjs';
+import { BOM_FIELD_OWNERS, DIMENSIONAL_CATEGORIES } from '@/lib/bom-fields.mjs';
 import {
   CATEGORY_LABEL, GEOMETRY_SHAPES, ROLLED_CATEGORIES, OTHER_SIZE, STANDARD_SECTIONS, DEFAULT_DENSITY,
   geometrySizeLabel, categoryDisplaySpec,
@@ -43,6 +43,29 @@ import {
 function defaultCategoryFields(category) {
   return category === 'plate' || GEOMETRY_SHAPES[category] ? { density: String(DEFAULT_DENSITY) } : {};
 }
+
+// Traceability requirement defaults (Inventory Identity & Traceability, Phase 1). Category can
+// never be the enforcement mechanism (a plate can be pressure-critical on one project and
+// structural filler on another) — this is only ever a starting suggestion Engineering can override
+// per line, before the field even reaches bom_items. A catalog pick's own default_requires_* wins
+// when the item has any set; the category fallback below only applies to free-text lines (no
+// item_id), since a catalog row with all-zero defaults legitimately means "this material has none."
+function defaultTraceabilityFromItem(item) {
+  const any = item.default_requires_heat_no || item.default_requires_mtc || item.default_requires_supplier_batch || item.default_requires_serial_no;
+  if (!any) return null;
+  return {
+    requires_heat_no: !!item.default_requires_heat_no, requires_mtc: !!item.default_requires_mtc,
+    requires_supplier_batch: !!item.default_requires_supplier_batch, requires_serial_no: !!item.default_requires_serial_no,
+  };
+}
+function defaultTraceabilityFromCategory(category) {
+  return DIMENSIONAL_CATEGORIES.includes(category)
+    ? { requires_heat_no: true, requires_mtc: true, requires_supplier_batch: false, requires_serial_no: false }
+    : { requires_heat_no: false, requires_mtc: false, requires_supplier_batch: false, requires_serial_no: false };
+}
+const TRACEABILITY_FLAG_LABELS = {
+  requires_heat_no: 'Heat No.', requires_mtc: 'MTC', requires_supplier_batch: 'Supplier batch', requires_serial_no: 'Serial No.',
+};
 
 // Ten categories is one too many to scan by eye every time — SearchableSelect (type to filter)
 // everywhere this list is picked from, not just a plain Select.
@@ -59,6 +82,7 @@ function emptyLine() {
     inventory_item_id: '', qty: '',
     category: '', categoryFields: {}, namedParts: [],
     item_id: null, // §3.2 — set only when picked from the catalog search; cleared on any hand-edit
+    requires_heat_no: false, requires_mtc: false, requires_supplier_batch: false, requires_serial_no: false,
   };
 }
 
@@ -188,6 +212,10 @@ function ItemSearchField({ line, onChange }) {
       material_description: item.item_name, size_spec: item.detail_desc || '', uomHint: item.uom || '',
       item_id: item.id,
       ...(category && { category, categoryFields: defaultCategoryFields(category) }),
+      // Traceability requirements: the item master's own recommendation wins when it has one set;
+      // otherwise fall back to the category default (or all-off, for a non-dimensional/uncategorized
+      // pick) — always seeded fresh on pick, same as category itself, editable from there.
+      ...(defaultTraceabilityFromItem(item) || defaultTraceabilityFromCategory(category)),
     });
     setOpen(false);
   }
@@ -301,7 +329,13 @@ function LineCard({ line, index, projects, inventoryItems, showSourcePicker, onC
         <div className="flex flex-col gap-1.5">
           <Label>Category (optional)</Label>
           <SearchableSelect className="w-56" value={line.category || ''} options={CATEGORY_OPTIONS}
-            onChange={v => setLine({ category: v, categoryFields: defaultCategoryFields(v) })} />
+            onChange={v => setLine({
+              category: v, categoryFields: defaultCategoryFields(v),
+              // Category-based traceability default only for a free-text line — a catalog pick's
+              // own default_requires_* (set at ItemSearchField.pick, above) already won and must not
+              // be silently overridden by a later category tweak on the same line.
+              ...(!line.item_id && defaultTraceabilityFromCategory(v)),
+            })} />
         </div>
       )}
 
@@ -316,6 +350,23 @@ function LineCard({ line, index, projects, inventoryItems, showSourcePicker, onC
             categoryFields,
             size_spec: line.size_spec || categoryDisplaySpec(line.category, categoryFields),
           })} />
+      )}
+
+      {line.source === 'bom' && (
+        // Traceability requirements — a per-line, per-project judgment (Engineering's call, per
+        // BOM_FIELD_OWNERS), never a catalog-level constant. Pre-checked from the catalog pick or
+        // category default above, but always editable here regardless of where the line came from.
+        <div className="flex flex-col gap-1.5">
+          <Label>Traceability required at receipt (optional)</Label>
+          <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+            {Object.entries(TRACEABILITY_FLAG_LABELS).map(([key, label]) => (
+              <label key={key} className="flex items-center gap-1.5 text-sm">
+                <input type="checkbox" checked={!!line[key]} onChange={e => setLine({ [key]: e.target.checked })} />
+                {label}
+              </label>
+            ))}
+          </div>
+        </div>
       )}
 
       {line.source === 'bom' && line.category && (
@@ -552,7 +603,11 @@ function RaisePrTab({ departments, projects, inventoryItems = [], prTemplatePref
           raised_by_dept: dept,
           lines: lines.map(l => {
             const source = showSourcePicker ? l.source : 'bom';
-            const base = { material_description: l.material_description, moc: l.moc || undefined, size_spec: l.size_spec || undefined, source, item_id: l.item_id || undefined };
+            const base = {
+              material_description: l.material_description, moc: l.moc || undefined, size_spec: l.size_spec || undefined, source, item_id: l.item_id || undefined,
+              requires_heat_no: l.requires_heat_no || undefined, requires_mtc: l.requires_mtc || undefined,
+              requires_supplier_batch: l.requires_supplier_batch || undefined, requires_serial_no: l.requires_serial_no || undefined,
+            };
             if (source === 'stock') return { ...base, inventory_item_id: Number(l.inventory_item_id), qty: Number(l.qty) };
             return {
               ...base, category: l.category || undefined, category_fields: l.category ? finalizeCategoryFields(l.category, l.categoryFields) : undefined,

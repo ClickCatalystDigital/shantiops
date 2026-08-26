@@ -18,6 +18,7 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import TraceabilityBadges from '@/components/TraceabilityBadges';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { ChevronLeftIcon, AlertTriangleIcon, SearchIcon, PlusIcon, Trash2Icon, XIcon, RefreshCwIcon } from 'lucide-react';
 import CertPicker from './CertPicker';
@@ -26,6 +27,7 @@ import QcHeaderField from './QcHeaderField';
 import { suggestCertificates, suggestBomItem } from '@/lib/tc-match';
 import { normalizeMaterial } from '@/lib/match-utils';
 import { QC_HEADER_FIELDS } from '@/lib/qc-document-fields';
+import { modelConfig } from '@/lib/qc-models';
 
 // V2-CHANGES.md Group 2 — same two companies as StatutoryDocsPanel.jsx's NewDocumentSheet; this
 // sheet only needs the plain names (doc-ID prefix derivation is a creation-time concern, not an
@@ -99,9 +101,33 @@ function BoilerDetailsSheet({ open, onOpenChange, document, currentUserName, rou
 // suggestBomItem() (lib/tc-match.js), same idiom as the certificate suggestions below it — so linking
 // isn't a blind scan through every project BOM line when there's an obvious match. Still one click to
 // confirm, never auto-applied.
+// Traceability badges + drawing revision (Q2, gap-closure round 2026-08-26) — QC never renders
+// BomTable.jsx at all, so once a part is linked to a BOM line, this is the one place QC can see
+// whether that line is MTC/heat-flagged and which drawing revision it was released against, without
+// leaving this screen. Same canonical TraceabilityBadges component BomTable.jsx/ProcurementWorkspace
+// use; drawing_name/drawing_revision come straight from getBomItemsForProject's own extended query.
+function LinkedBomItemContext({ item }) {
+  if (!item) return null;
+  return (
+    <div className="flex flex-col gap-0.5">
+      <TraceabilityBadges item={item} className="flex flex-wrap gap-1" />
+      {item.drawing_name && (
+        <span className="text-xs text-muted-foreground">
+          Drg {item.drawing_name}{item.drawing_revision ? ` (${item.drawing_revision})` : ''}
+        </span>
+      )}
+    </div>
+  );
+}
+
 function BomItemLink({ part, bomItems, onLink, canEdit }) {
   const current = bomItems.find(b => b.id === part.bom_item_id);
-  if (!canEdit) return current ? <span className="text-xs text-muted-foreground">BOM: {current.material_description}</span> : null;
+  if (!canEdit) return current ? (
+    <div className="flex flex-col gap-0.5">
+      <span className="text-xs text-muted-foreground">BOM: {current.material_description}</span>
+      <LinkedBomItemContext item={current} />
+    </div>
+  ) : null;
   const suggestion = suggestBomItem(part, bomItems);
   return (
     <div className="flex flex-col gap-0.5">
@@ -119,6 +145,7 @@ function BomItemLink({ part, bomItems, onLink, canEdit }) {
           Suggested: {suggestion.material_description}
         </button>
       )}
+      <LinkedBomItemContext item={current} />
     </div>
   );
 }
@@ -148,11 +175,24 @@ function PartRow({ part, selected, onToggle, onOpenPicker, onRemove, onUnlink, o
         <button onClick={() => onOpenPicker([part.id])} className="flex min-w-0 flex-col items-end text-right hover:opacity-80">
           {linked ? (
             <>
-              <span className="font-medium">{part.certificate_no} · {part.tc_cast_no}{part.tc_plate_no ? ` · ${part.tc_plate_no}` : ''}</span>
+              <span className="font-medium">
+                {part.certificate_no} · {part.tc_cast_no}
+                {/* Heat No. (Q1, gap-closure round 2026-08-26) — existed on test_certificates,
+                    unwired end-to-end until this fix; shown alongside cast_no, its usual sibling. */}
+                {part.tc_heat_no ? ` · heat ${part.tc_heat_no}` : ''}
+                {part.tc_plate_no ? ` · ${part.tc_plate_no}` : ''}
+              </span>
               <span className="text-xs text-muted-foreground">{part.material_spec} · {part.steel_maker}</span>
               <span className="text-xs text-muted-foreground">
                 C {part.chem_c} Mn {part.chem_mn} … Y.S {part.ys} UTS {part.uts}
               </span>
+              {/* Receipt provenance (Q3) — which delivery/supplier the inspected piece came from,
+                  previously only answerable via a raw SQL join outside the app. */}
+              {(part.receipt_inward_batch_no || part.receipt_supplier_name) && (
+                <span className="text-xs text-muted-foreground">
+                  Received via {[part.receipt_inward_batch_no, part.receipt_supplier_name].filter(Boolean).join(' · ')}
+                </span>
+              )}
             </>
           ) : (
             <span className="flex items-center gap-1 text-warning">
@@ -243,6 +283,202 @@ function AddPartDialog({ open, onOpenChange, documentId, router }) {
   );
 }
 
+// Form III A groups — a per-named-sub-assembly certificate (real sample SB-1097's "Feed pipeline"),
+// distinct from Form IV A's full parts table (lib/qc-folder-pdf.js). New/delete here, header fields
+// per group, and parts move in/out via the always-works manual path — "Sync from BOM" reuses the
+// same global sync-bom endpoint Form IV A uses (lib/qc-bom-sync.js already routes a material line
+// into whichever group matches its assembly_id/group_label).
+const IIIA_HEADER_FIELDS = [
+  ['design_pressure', 'Design Pressure (Kgf/cm²)'], ['design_temp', 'Design Temperature'],
+  ['process_of_manufacture', 'Process of Manufacture'], ['mode_of_flange_attachment', 'Mode of Flange Attachment'],
+  ['flange_particulars', 'Flange Particulars'], ['size_of_branch', 'Size of Branch & Attachment'],
+  ['heat_treatment', 'Heat Treatment'], ['identification_marks', 'Identification Marks'],
+  ['drawing_no', 'Drawing No.'], ['hydro_test_pressure', 'Hydro Test Pressure (Kgf/cm²)'], ['hydro_test_date', 'Hydro Test Date'],
+];
+
+function NewIiiaGroupDialog({ open, onOpenChange, documentId, assemblies, groupLabels, router }) {
+  const EMPTY = { name: '', assembly_id: '', group_label: '' };
+  const [form, setForm] = useState(EMPTY);
+  const [busy, setBusy] = useState(false);
+  const set = k => e => setForm(f => ({ ...f, [k]: e.target?.value ?? e }));
+
+  async function submit() {
+    if (!form.name.trim()) return showToast('Group name is required', 'error');
+    setBusy(true);
+    try {
+      await api(`/api/qc-documents/${documentId}/iiia-groups`, {
+        method: 'POST', body: { name: form.name.trim(), assembly_id: form.assembly_id || null, group_label: form.group_label || null },
+      });
+      showToast('Form III A group added');
+      setForm(EMPTY);
+      onOpenChange(false);
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+    setBusy(false);
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={o => { onOpenChange(o); if (!o) setForm(EMPTY); }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader><DialogTitle>New Form III A group</DialogTitle></DialogHeader>
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1.5">
+            <Label>Name</Label>
+            <Input value={form.name} onChange={set('name')} placeholder="e.g. Feed pipeline" autoFocus />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label>BOM assembly (optional — auto-pulls its material lines)</Label>
+            <Select value={form.assembly_id} onValueChange={set('assembly_id')}>
+              <SelectTrigger><SelectValue placeholder="None" /></SelectTrigger>
+              <SelectContent>
+                {assemblies.map(a => <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label>Or BOM group label (optional)</Label>
+            <Select value={form.group_label} onValueChange={set('group_label')}>
+              <SelectTrigger><SelectValue placeholder="None" /></SelectTrigger>
+              <SelectContent>
+                {groupLabels.map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button disabled={busy} onClick={submit}>{busy ? 'Adding…' : 'Add group'}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function IiiaGroupCard({ group: g, parts, ungroupedParts, canEdit, documentId, router }) {
+  const [form, setForm] = useState(() => Object.fromEntries(IIIA_HEADER_FIELDS.map(([k]) => [k, g[k] || ''])));
+  const [busy, setBusy] = useState(false);
+  const [addPartId, setAddPartId] = useState('');
+  const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
+
+  async function save() {
+    setBusy(true);
+    try {
+      await api(`/api/qc-documents/${documentId}/iiia-groups/${g.id}`, { method: 'PATCH', body: form });
+      showToast('Group saved');
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+    setBusy(false);
+  }
+
+  async function removeGroup() {
+    if (!window.confirm(`Delete "${g.name}"? Its parts move back to Form IV A.`)) return;
+    try {
+      await api(`/api/qc-documents/${documentId}/iiia-groups/${g.id}`, { method: 'DELETE' });
+      showToast('Group deleted');
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+  }
+
+  async function addPart() {
+    if (!addPartId) return;
+    try {
+      await api(`/api/qc-documents/${documentId}/iiia-groups/${g.id}/parts`, { method: 'POST', body: { part_id: Number(addPartId) } });
+      setAddPartId('');
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+  }
+
+  async function removePart(partId) {
+    try {
+      await api(`/api/qc-documents/${documentId}/iiia-groups/${g.id}/parts`, { method: 'DELETE', body: { part_id: partId } });
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+  }
+
+  return (
+    <div className="flex flex-col gap-3 rounded-lg border p-3">
+      <div className="flex items-center justify-between">
+        <span className="font-medium text-sm">{g.name}</span>
+        {canEdit && <Button size="icon-sm" variant="ghost" aria-label="Delete group" onClick={removeGroup}><Trash2Icon className="size-3.5" /></Button>}
+      </div>
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+        {IIIA_HEADER_FIELDS.map(([k, l]) => (
+          <div key={k} className="flex flex-col gap-1">
+            <Label className="text-xs font-normal text-muted-foreground">{l}</Label>
+            <Input value={form[k]} onChange={set(k)} disabled={!canEdit} className="h-8" />
+          </div>
+        ))}
+      </div>
+      {canEdit && <Button size="sm" disabled={busy} onClick={save} className="w-fit">{busy ? 'Saving…' : 'Save header'}</Button>}
+      <div className="flex flex-col divide-y text-sm">
+        {parts.length === 0 && <p className="py-2 text-xs text-muted-foreground">No parts in this group yet.</p>}
+        {parts.map(p => (
+          <div key={p.id} className="flex items-center justify-between py-1.5">
+            <span>{p.part_name} {p.qty ? <span className="text-muted-foreground">× {p.qty}</span> : null}</span>
+            {canEdit && <Button size="icon-sm" variant="ghost" aria-label="Move back to Form IV A" onClick={() => removePart(p.id)}><XIcon className="size-3.5" /></Button>}
+          </div>
+        ))}
+      </div>
+      {canEdit && ungroupedParts.length > 0 && (
+        <div className="flex items-center gap-1">
+          <Select value={addPartId} onValueChange={setAddPartId}>
+            <SelectTrigger className="h-8"><SelectValue placeholder="Move a Form IV A part into this group" /></SelectTrigger>
+            <SelectContent>
+              {ungroupedParts.map(p => <SelectItem key={p.id} value={String(p.id)}>{p.part_name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Button size="sm" variant="outline" disabled={!addPartId} onClick={addPart}>Add</Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function IiiaGroupsCard({ documentId, groups, parts, assemblies, bomItems, canEdit, router }) {
+  const [newOpen, setNewOpen] = useState(false);
+  const [syncBusy, setSyncBusy] = useState(false);
+  const groupLabels = useMemo(() => [...new Set(bomItems.map(b => b.group_label).filter(Boolean))], [bomItems]);
+  const ungrouped = parts.filter(p => !p.iiia_group_id);
+
+  async function syncBom() {
+    setSyncBusy(true);
+    try {
+      const res = await api(`/api/qc-documents/${documentId}/sync-bom`, { method: 'POST' });
+      showToast(res.added > 0 ? `Added ${res.added} part${res.added === 1 ? '' : 's'} from BOM` : 'Already up to date');
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+    setSyncBusy(false);
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Form III A — Certificate of Manufacture and Test</CardTitle>
+        {canEdit && (
+          <CardAction>
+            <div className="flex items-center gap-1">
+              <Button size="sm" variant="outline" disabled={syncBusy} onClick={syncBom}>
+                <RefreshCwIcon data-icon="inline-start" />{syncBusy ? 'Syncing…' : 'Sync from BOM'}
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setNewOpen(true)}>
+                <PlusIcon data-icon="inline-start" />New group
+              </Button>
+            </div>
+          </CardAction>
+        )}
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        {groups.length === 0 && <p className="py-2 text-sm text-muted-foreground">No Form III A groups yet — this boiler files only Form IV A until one is added.</p>}
+        {groups.map(g => (
+          <IiiaGroupCard key={g.id} group={g} parts={parts.filter(p => p.iiia_group_id === g.id)}
+            ungroupedParts={ungrouped} canEdit={canEdit} documentId={documentId} router={router} />
+        ))}
+      </CardContent>
+      <NewIiiaGroupDialog open={newOpen} onOpenChange={setNewOpen} documentId={documentId} assemblies={assemblies} groupLabels={groupLabels} router={router} />
+    </Card>
+  );
+}
+
 // Mountings & fittings list editor (QC-FOLDER-DESIGN.md §4.2) — a small editable table, saved whole
 // via the bulk-replace endpoint. serial_numbers is free text (one description can have several).
 const MOUNT_COLS = [['description', 'Description'], ['size', 'Size'], ['moc', 'MOC'],
@@ -329,7 +565,7 @@ function MountingsCard({ documentId, mountings, canEdit, router }) {
   );
 }
 
-export default function QcDocumentEditor({ project, document, parts, certificates, mountings = [], bomItems = [], approvals = [], canEdit, currentUserName }) {
+export default function QcDocumentEditor({ project, document, parts, certificates, mountings = [], groups = [], bomItems = [], approvals = [], assemblies = [], canEdit, currentUserName }) {
   const router = useRouter();
   // parts comes straight from the server prop, no local copy — router.refresh() after linking
   // re-fetches it server-side and flows the new value straight back in, same as QcPanel does for
@@ -345,10 +581,16 @@ export default function QcDocumentEditor({ project, document, parts, certificate
   const [visBusy, setVisBusy] = useState(false);
   const [syncBusy, setSyncBusy] = useState(false);
 
+  // "Unlinked"/"complete" cover every part on the document, Form III A's included — a grouped part
+  // still needs a certificate just as much as a Form IV A one; only the CARD's own list (below) is
+  // scoped to ungrouped parts, since grouped ones show on their own Form III A card instead.
   const unlinked = parts.filter(p => !p.test_certificate_id);
   // Zero parts is vacuously zero unlinked — not actually complete. Same reasoning as the server
   // gates (PDF route, PATCH customer_visible).
   const incomplete = parts.length === 0 || unlinked.length > 0;
+  const ivaParts = parts.filter(p => !p.iiia_group_id);
+  const ivaUnlinked = unlinked.filter(p => !p.iiia_group_id);
+  const showIiia = modelConfig(project.series).forms.includes('IIIA');
   async function setCustomerVisible(v) {
     setVisBusy(true);
     try {
@@ -356,10 +598,10 @@ export default function QcDocumentEditor({ project, document, parts, certificate
       router.refresh();
     } catch (err) { showToast(err.message, 'error'); } finally { setVisBusy(false); }
   }
-  const byFilter = filter === 'unlinked' ? unlinked : parts;
+  const byFilter = filter === 'unlinked' ? ivaUnlinked : ivaParts;
   const needle = q.trim().toLowerCase();
   const shown = needle
-    ? byFilter.filter(p => [p.part_no, p.part_name, p.certificate_no, p.tc_cast_no, p.tc_plate_no, p.material_spec, p.steel_maker]
+    ? byFilter.filter(p => [p.part_no, p.part_name, p.certificate_no, p.tc_cast_no, p.tc_heat_no, p.tc_plate_no, p.material_spec, p.steel_maker]
         .some(v => v && String(v).toLowerCase().includes(needle)))
     : byFilter;
   const usedIds = useMemo(() => new Set(parts.filter(p => p.test_certificate_id).map(p => p.test_certificate_id)), [parts]);
@@ -506,9 +748,9 @@ export default function QcDocumentEditor({ project, document, parts, certificate
           <CardTitle>Form IV A — Material Test Certificates</CardTitle>
           <CardAction>
             <div className="flex items-center gap-1">
-              <Button size="xs" variant={filter === 'all' ? 'secondary' : 'ghost'} onClick={() => setFilter('all')}>All ({parts.length})</Button>
+              <Button size="xs" variant={filter === 'all' ? 'secondary' : 'ghost'} onClick={() => setFilter('all')}>All ({ivaParts.length})</Button>
               <Button size="xs" variant={filter === 'unlinked' ? 'secondary' : 'ghost'} onClick={() => setFilter('unlinked')}>
-                Unlinked ({unlinked.length})
+                Unlinked ({ivaUnlinked.length})
               </Button>
             </div>
           </CardAction>
@@ -542,6 +784,11 @@ export default function QcDocumentEditor({ project, document, parts, certificate
           </div>
         </CardContent>
       </Card>
+
+      {showIiia && (
+        <IiiaGroupsCard documentId={document.id} groups={groups} parts={parts} assemblies={assemblies}
+          bomItems={bomItems} canEdit={canEdit} router={router} />
+      )}
 
       <MountingsCard key={mountings.length} documentId={document.id} mountings={mountings} canEdit={canEdit} router={router} />
 

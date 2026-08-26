@@ -2760,6 +2760,124 @@ UI path to cut it at all** — the piece and its inventory row were real, just u
      status Stores confirms, mirroring GIR's open→closed pattern, vs. accepting the current
      behavior) — deliberately not decided here.
 
+### Inventory Identity & Traceability — Phases 0-3 (2026-08-26, no separate working-spec doc — the
+### working design lived in a plan file across the round; this is the as-built record)
+
+A client conversation about `INV-000012`/`PL-0042`/`PL-0045` — what each identifier actually means,
+and why supplier-provided data (heat number, MTC, batch, serial) had no enforced place to live —
+led to a from-scratch audit of physical-material identity across the whole app, then four build
+rounds. Confirmed first, not assumed: the identity stack was already architecturally sound —
+`items.item_code` (catalog, import-only, unpopulated on all but 1 of 2,773 rows so never a real key),
+`inventory_items.item_code` (`INV-####`, a Stores stock *line*), `stock_pieces.code` (`PL-`/`LN-`, a
+physical *piece*, real `parent_id` genealogy) were each doing the right job. The actual gaps were:
+(a) no way to require or capture heat/MTC/batch/serial data, (b) no model at all for bulk/consumable
+or discrete-equipment material (only dimensional plates/sections were piece-tracked), and — found
+only after Phases 0-2 shipped — (c) the receipt-side work was never wired into *consumption*.
+
+**Phase 0 — `cutPiece()` correctness** (`lib/stock-pieces.js`). Two real bugs, found by deliberately
+trying to break the design before building on top of it: the status-flip to `'consumed'` was a plain
+`UPDATE`, not compare-and-swap, so two concurrent cuts of the same piece could both proceed and
+double-materialize children; a used/remnant entry with invalid dimensions was silently `continue`d
+past rather than rejected, letting a typo's material vanish into the scrap residual. Both fixed
+(CAS `UPDATE ... WHERE status IN (...)`, hard `throw` on invalid input) — `scripts/remnant-cutting-selfcheck.mjs`
+now asserts both (A0.1/A0.2) alongside the pre-existing weight-conservation check (A0.3).
+
+**Phase 1 — BOM-line traceability requirements.** `bom_items` gained four independent boolean flags
+— `requires_heat_no`, `requires_mtc`, `requires_supplier_batch`, `requires_serial_no` (separate
+checkboxes, not one bundle: a valve needs serial+MTC, a plate needs heat+MTC, a bolt needs neither) —
+settable in `PrWorkspace.jsx`'s Raise-PR composer, seeded from `items.default_requires_*` on a
+catalog pick or a category fallback (dimensional categories pre-check heat+MTC) otherwise, frozen
+once the project's `release_bom` milestone is done (checked live, not via the persistent
+`released_at_revision` column, which a reopen never clears). Four matching `received_*` capture
+columns close the loop: `app/api/bom-items/[id]/route.js`'s PATCH route blocks `purchase_status`
+transitioning to `'Received'` if a flagged field is missing — enforced on the **free-text GRN path**
+(`grn_ref`/`purchase_status`), the actual dominant real-world receiving path, not only the opt-in
+piece-tracking flow. `bom_items.drawing_revision_at_release` snapshots `calc_drawings.revision` at
+Release BOM so a later drawing revision can never silently rewrite what an already-released line was
+driven by (`lib/data.js`'s `getProjectBom` prefers the snapshot once one exists, live otherwise).
+
+**Phase 2 — the three-way physical-stock model.** `inventory_items.tracking_mode`
+(`scalar|piece|batch|serial`) is the single discriminator for which sibling table (if any) a stock
+line's physical instances live in — enforced by `lib/tracking-mode.js`'s `assertTrackingMode()`
+(auto-adopts on first receipt, same UX `track_pieces` already had; rejects a mismatched kind
+thereafter) and `setTrackingMode()` (blocks a mode switch once any child row exists). `stock_receipts`
+(`lib/stock-receipts.js`) is a pure event header — inward batch no., supplier, PO, GRN ref, no
+material data ever — one supplier per receipt enforced by construction (no update path for
+`supplier_id` exists). `inventory_batches` (`lib/inventory-batches.js`) is the bulk/consumable sibling
+(bolts, gaskets, electrodes): a decrementing qty *pool* per receipt lot, never a per-unit row.
+`inventory_serials` (`lib/inventory-serials.js`) is the discrete-equipment sibling (valves, pumps,
+instruments): one row per physical unit, `SR-####` alongside the manufacturer's own serial number as
+a strictly separate column. A cut remnant now starts `status='pending_receipt'` (not `'available'`)
+until Stores clicks "Confirm receipt" (`POST /api/stock-pieces/[id]/confirm-receipt`) — the same
+open→confirmed idea GIR already uses; every existing `status='available'` filter (the auto-matcher,
+`reservePiece`) needed zero changes to correctly exclude it.
+
+**Departmental integration pass.** A five-department UI audit (Engineering/Procurement/Stores/
+Production/QC, each traced against "what should this department see/enter/never touch") found the
+backend above was real but substantially unreachable: Procurement's actual working screen
+(`ProcurementWorkspace.jsx`) never rendered `BomTable.jsx` at all, so the new requirement badges were
+structurally invisible to it; `stock_receipts`/`inventory_batches`/`inventory_serials` had zero UI
+callers anywhere; QC's `test_certificates.heat_no` was a dead column end-to-end (schema only — no
+form field, no API accept, no list display, no join). Closed via three small shared components
+reused across screens rather than duplicated — `TraceabilityBadges.jsx` (the red/green requirement
+badge, now used by `BomTable.jsx`, `ProcurementWorkspace.jsx`, and `QcDocumentEditor.jsx`),
+`ReceiptPicker.jsx` (pick-or-create a `stock_receipts` row, used by `AddPieceDialog` and the new
+Batches/Serials receiving dialogs), `PieceLineage.jsx` (the parent→child genealogy view, extracted
+from `StoresWorkspace.jsx` so `CutDialog.jsx` gets a read-only version too) — plus `heat_no` wired
+into `CertForm`/`TcBank`/the test-certificates API, and a smart inventory search
+(`GET /api/inventory-items/lookup-code`, `lib/data.js`'s `findInventoryItemIdByCode`) that resolves
+an exact `PL-`/`LN-`/`SR-`/`IM-` code to the one stock line that owns it, since those codes don't sit
+on the `inventory_items` row a plain description/item_code filter already matched. `stock_receipts`
+gained an optional `gate_inward_receipt_id` — GIR stays its own security log, cross-referenced, not
+merged.
+
+**Phase 3 — batch/serial consumption.** Phases above wired *receipt* correctly but left *consumption*
+untouched: `reserveFromStock`/`issueReservation` (`lib/procurement.js`) and the `material_issues`
+route were tracking-mode-blind, still raw-decrementing `on_hand` regardless of what Phase 2 had built.
+Auditing Production's real Work Order → Job Card → Material Issue flow alongside this surfaced that
+"Indent" as a formal document doesn't exist anywhere in the app (already self-acknowledged in
+`PlanningWorkspace.jsx`'s own backlog) and that `material_issues.job_card_id` — a real column — was
+never once populated by the only UI that creates the row, so consumption traced back to a Work Order
+only indirectly via `bom_item_id`. Closed the directly-relevant piece of that (job_card_id now
+accepted end-to-end, `WorkersPanel.jsx` gained an optional Job Card picker on Issue-material) and left
+the rest (a `jc_no` code for Job Cards, a real Indent workflow) explicitly out of scope, named for a
+future round rather than silently dropped.
+
+For consumption itself: `inventory_batch_allocations` (new table) bridges a reservation to the
+specific batch(es) it draws from — a batch is a pool, so one reservation can legitimately span
+several batches/heats, allocated FIFO by receipt date inside a transaction. Serial reservation needed
+no new table at all: `reserveSerial`/`issueSerial`/`releaseSerial` (built in Phase 2, previously
+zero callers) operate directly on `inventory_serials.status`, mirroring how `stock_pieces` was
+already reserved without a header row. `reserveFromStock` now rejects piece/serial-tracked lines
+outright (they have their own reserve actions) instead of silently accepting them through the
+generic, qty-blind path. The harder question — "which specific batch/heat did a `material_issues` row
+actually consume?" — resolved via `lib/consume-stock.js`'s `consumeStock()`, the one function both
+`issueReservation()` and the direct-issue shortcut now call: it creates the `material_issues` row
+itself and stamps `material_issue_id` onto whichever allocation/serial it issues, so every unit of
+batch/serial stock ever consumed resolves back to exactly one `material_issues` row. Investigating
+this surfaced that `issueReservation()` and `material_issues` were two independent, non-communicating
+consumption records all along (the former never created the latter) — invisible for scalar stock (an
+opaque number can silently double-decrement) but impossible to leave unresolved once a specific batch
+can't physically be consumed twice; a line already satisfied via Reserve→Issue now makes any later
+`material_issues` log audit-only (no second allocation, no quantity touch). Also found and fixed
+while designing this: `issueBatch()`'s quantity decrement was a stale read-then-write, not
+CAS-guarded — the exact race Phase 0 had already fixed once for `cutPiece()`, reintroduced here
+because this function predated that lesson; now a single `UPDATE ... WHERE qty >= ?` statement.
+`scripts/batch-serial-consumption-selfcheck.mjs` covers the full set (multi-batch allocation and
+issue, concurrent-issue CAS proof, release self-healing, serial CAS terminality, cancellation
+releasing both batch allocations and reserved serials, the direct-issue shortcut's own allocation,
+full heat/MTC traceability, the job_card→work_order chain, and the no-double-consumption guard).
+
+**Deliberately not built, named rather than dropped:** auto-matching a released BOM line to an
+existing batch/serial the way `lib/remnant-match.js` already does for pieces; a `jc_no` code for Job
+Cards; a formal Indent/Material Requisition document; dedicated Reserve/Issue buttons in the Serials
+dialog (the backend is fully correct and reachable via API — `reserveSerial`/`issueSerial` — just not
+yet click-wired into that one dialog); the pre-existing cut-code lineage-renumbering cosmetic issue
+(`PL-0042-R1` cut again reads `PL-0042-R1-U1` instead of the flatter `PL-0042-U2` — genealogy via
+`parent_id` is unaffected either way), logged to a new Stores-side Backlog tab (`StoresWorkspace.jsx`,
+mirroring `PlanningWorkspace.jsx`'s existing pattern, kept separate since the gap is Stores/Cutting
+domain, not Production's).
+
 ## 5l. Work Orders — production-control layer above Job Cards (2026-08-19, STERP Priority 2/3 items 20-21-22-23-24-27-28-29, no separate working-spec doc — folded straight in here)
 
 Closes out Production's remaining STERP list. Job Cards (§5g) were already the shop-floor execution

@@ -21,7 +21,7 @@ import {
 } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { PlusIcon, PencilIcon, PackageCheckIcon, UndoIcon, TruckIcon, PackageIcon, ClipboardListIcon, LayersIcon, AlertTriangleIcon, LogInIcon, FileOutputIcon, CheckIcon, XIcon, ListChecksIcon, SearchIcon, ChevronRightIcon } from 'lucide-react';
+import { PlusIcon, PencilIcon, PackageCheckIcon, UndoIcon, TruckIcon, PackageIcon, ClipboardListIcon, LayersIcon, AlertTriangleIcon, LogInIcon, FileOutputIcon, CheckIcon, XIcon, ListChecksIcon, SearchIcon, ChevronRightIcon, ListTodoIcon, BoxesIcon, HashIcon } from 'lucide-react';
 import { api, showToast } from '@/lib/client';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 import CertPicker from '@/components/CertPicker';
@@ -29,6 +29,8 @@ import DimensionInput from '@/components/DimensionInput';
 import SearchableSelect from '@/components/SearchableSelect';
 import CategoryFieldsBlock, { OTHER_MOC, MOC_OPTIONS } from '@/components/CategoryFieldsBlock';
 import { pieceDimsLabel } from '@/components/CutDialog';
+import { pieceKindLabel, groupPiecesByRoot } from '@/components/PieceLineage';
+import ReceiptPicker from '@/components/ReceiptPicker';
 import { normalizeWords } from '@/lib/match-utils';
 import { pieceWeight } from '@/lib/piece-weight';
 import {
@@ -53,18 +55,10 @@ const PIECE_STATUS = {
   reserved: { cls: 'bg-warning/10 text-warning ring-warning/20', label: 'Reserved' },
   consumed: { cls: 'bg-muted text-muted-foreground ring-border', label: 'Consumed' },
   scrap: { cls: 'bg-danger/10 text-danger ring-danger/20', label: 'Scrap' },
+  // A freshly cut remnant (Phase 2, design 18.4) — not yet reservable/matchable until Stores
+  // confirms the physical piece is actually back on the shelf, same open->confirmed idea GIR uses.
+  pending_receipt: { cls: 'bg-info/10 text-info ring-info/20', label: 'Pending receipt' },
 };
-
-// A cut child's code suffix (rootCode()/cutPiece() in lib/stock-pieces.js) already names exactly
-// what it is — U(sed)/R(emnant)/S(crap) — more precisely than its bare `status` alone can (a "used"
-// child and the root piece post-cut are both just status='consumed'). Read straight from the code
-// instead of re-deriving the same distinction from status+source.
-function pieceKindLabel(p) {
-  if (/-U\d+$/.test(p.code || '')) return 'Used';
-  if (/-R\d+$/.test(p.code || '')) return 'Remnant';
-  if (/-S\d+$/.test(p.code || '')) return 'Scrap';
-  return null;
-}
 
 // Sentinel-project rows (source='stock'/'sas', Phase 6.4) have no real project_no to show.
 function requestLabel(item) {
@@ -301,6 +295,7 @@ function AddPieceDialog({ inventoryItem, onClose, router, onAdded, certificates 
   const [heatNo, setHeatNo] = useState('');
   const [certId, setCertId] = useState(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [receiptId, setReceiptId] = useState(null);
   const [saving, setSaving] = useState(false);
   const cert = certificates.find(c => c.id === certId);
   const weightKg = pieceWeight({
@@ -322,6 +317,7 @@ function AddPieceDialog({ inventoryItem, onClose, router, onAdded, certificates 
           kg_per_m: kind === 'linear' ? Number(kgPerM) : null,
           heat_no: heatNo.trim() || null,
           test_certificate_id: certId,
+          receipt_id: receiptId || undefined,
         },
       });
       showToast(`${result.code} added — ${result.weight_kg} kg`);
@@ -337,6 +333,9 @@ function AddPieceDialog({ inventoryItem, onClose, router, onAdded, certificates 
       <DialogContent>
         <DialogHeader><DialogTitle>Add piece — {inventoryItem.description}</DialogTitle></DialogHeader>
         <div className="grid grid-cols-2 gap-3">
+          <div className="col-span-2">
+            <ReceiptPicker value={receiptId} onChange={setReceiptId} />
+          </div>
           <div className="grid gap-1.5">
             <Label>Length</Label>
             <DimensionInput valueMm={length} onChangeMm={setLength} autoFocus />
@@ -407,30 +406,13 @@ function AddPieceDialog({ inventoryItem, onClose, router, onAdded, certificates 
 // for a 'reserved' piece whose BOM line got cancelled/edited before Production ever cut it.
 // Cut children (used/remnant/scrap) point back at their source piece via parent_id but load flat,
 // sorted id DESC — regroup client-side so a piece's lineage reads together instead of scattered
-// among every other piece on this inventory line.
-// One group per originally-received piece (root, `parent_id == null`) — every cut child (used/
-// remnant/scrap) nests under the root it came from, instead of one long flat list interleaving
-// every receipt's pieces together. Children sorted oldest-cut-first (ascending id) for a natural
-// "what happened to this piece" reading order.
-function groupPiecesByRoot(pieces) {
-  const childrenByParent = new Map();
-  for (const p of pieces) {
-    if (!p.parent_id) continue;
-    if (!childrenByParent.has(p.parent_id)) childrenByParent.set(p.parent_id, []);
-    childrenByParent.get(p.parent_id).push(p);
-  }
-  const groups = [];
-  for (const p of pieces) {
-    if (p.parent_id) continue;
-    const children = (childrenByParent.get(p.id) || []).sort((a, b) => a.id - b.id);
-    groups.push({ root: p, children });
-  }
-  return groups;
-}
+// among every other piece on this inventory line. groupPiecesByRoot/pieceKindLabel now live in
+// components/PieceLineage.jsx (gap-closure round, 2026-08-26) — shared with Production's read-only
+// lineage view (CutDialog.jsx), single source of truth for both.
 
 // Piece row shared by both the root and its expanded children — kept as one function so the two
 // look consistent rather than two hand-maintained near-duplicates.
-function PieceRow({ p, indent, kindLabel, busyId, onRelease, onReserve }) {
+function PieceRow({ p, indent, kindLabel, busyId, onRelease, onReserve, onConfirmReceipt }) {
   return (
     <TableRow>
       <TableCell className={`font-medium ${indent ? 'pl-8' : ''}`}>{p.code}</TableCell>
@@ -438,6 +420,12 @@ function PieceRow({ p, indent, kindLabel, busyId, onRelease, onReserve }) {
       <TableCell className="tnum">{p.weight_kg} kg</TableCell>
       <TableCell className="text-muted-foreground">
         {p.heat_no || p.certificate_no ? [p.heat_no, p.certificate_no].filter(Boolean).join(' · ') : '—'}
+        {/* Receipt provenance (S5) — which delivery this piece actually arrived on, folded into the
+            same cell rather than a new column (table is already wide). A cut child never has one of
+            its own (inherits traceability by copy, not via a receipt) — correctly renders nothing. */}
+        {(p.receipt_inward_batch_no || p.receipt_supplier_name) && (
+          <div className="text-xs">{[p.receipt_inward_batch_no, p.receipt_supplier_name].filter(Boolean).join(' · ')}</div>
+        )}
       </TableCell>
       <TableCell className="text-muted-foreground">
         {p.bom_description ? [p.project_no, p.bom_description, p.part_name].filter(Boolean).join(' · ') : '—'}
@@ -458,6 +446,9 @@ function PieceRow({ p, indent, kindLabel, busyId, onRelease, onReserve }) {
         )}
         {p.status === 'available' && (
           <Button size="sm" variant="outline" onClick={() => onReserve(p)}>Reserve</Button>
+        )}
+        {p.status === 'pending_receipt' && (
+          <Button size="sm" variant="outline" disabled={busyId === p.id} onClick={() => onConfirmReceipt(p.id)}>Confirm receipt</Button>
         )}
       </TableCell>
     </TableRow>
@@ -481,6 +472,17 @@ function PiecesDialog({ inventoryItem, onClose, router, certificates = [], proje
     try {
       await api(`/api/stock-pieces/${id}/release`, { method: 'POST' });
       showToast('Piece released back to stock');
+      await load();
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+    setBusyId(null);
+  }
+
+  async function confirmReceipt(id) {
+    setBusyId(id);
+    try {
+      await api(`/api/stock-pieces/${id}/confirm-receipt`, { method: 'POST' });
+      showToast('Receipt confirmed — remnant is now available');
       await load();
       router.refresh();
     } catch (err) { showToast(err.message, 'error'); }
@@ -535,7 +537,7 @@ function PiecesDialog({ inventoryItem, onClose, router, certificates = [], proje
                     {groups.map(({ root, children }) => {
                       if (children.length === 0) {
                         // Never cut — just a plain, non-expandable row, same as before.
-                        return <PieceRow key={root.id} p={root} busyId={busyId} onRelease={release} onReserve={setReservingPiece} />;
+                        return <PieceRow key={root.id} p={root} busyId={busyId} onRelease={release} onReserve={setReservingPiece} onConfirmReceipt={confirmReceipt} />;
                       }
                       const isOpen = expanded.has(root.id);
                       const counts = children.reduce((acc, c) => {
@@ -557,6 +559,9 @@ function PiecesDialog({ inventoryItem, onClose, router, certificates = [], proje
                             <TableCell className="tnum">{root.weight_kg} kg</TableCell>
                             <TableCell className="text-muted-foreground">
                               {root.heat_no || root.certificate_no ? [root.heat_no, root.certificate_no].filter(Boolean).join(' · ') : '—'}
+                              {(root.receipt_inward_batch_no || root.receipt_supplier_name) && (
+                                <div className="text-xs">{[root.receipt_inward_batch_no, root.receipt_supplier_name].filter(Boolean).join(' · ')}</div>
+                              )}
                             </TableCell>
                             <TableCell />
                             <TableCell colSpan={2} className="text-xs text-muted-foreground">
@@ -564,7 +569,7 @@ function PiecesDialog({ inventoryItem, onClose, router, certificates = [], proje
                             </TableCell>
                           </TableRow>
                           {isOpen && children.map(c => (
-                            <PieceRow key={c.id} p={c} indent kindLabel={pieceKindLabel(c)} busyId={busyId} onRelease={release} onReserve={setReservingPiece} />
+                            <PieceRow key={c.id} p={c} indent kindLabel={pieceKindLabel(c)} busyId={busyId} onRelease={release} onReserve={setReservingPiece} onConfirmReceipt={confirmReceipt} />
                           ))}
                         </Fragment>
                       );
@@ -584,6 +589,226 @@ function PiecesDialog({ inventoryItem, onClose, router, certificates = [], proje
           onClose={() => setReservingPiece(null)} onReserved={load} />
       )}
     </>
+  );
+}
+
+// Batch receiving (S2, gap-closure round 2026-08-26) — the bulk/consumable sibling to
+// AddPieceDialog above: bolts, gaskets, electrodes — a decrementing qty pool, never a per-unit
+// piece. Mirrors AddPieceDialog's shape closely (ReceiptPicker + CertPicker reused identically).
+function BatchesDialog({ inventoryItem, onClose, router, certificates = [] }) {
+  const [batches, setBatches] = useState(null);
+  const [adding, setAdding] = useState(false);
+
+  function load() {
+    return api(`/api/inventory-batches?inventory_item_id=${inventoryItem.id}`).then(setBatches).catch(err => showToast(err.message, 'error'));
+  }
+  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <Dialog open onOpenChange={o => !o && onClose()}>
+      <DialogContent className="sm:max-w-2xl">
+        <DialogHeader><DialogTitle>Batches — {inventoryItem.description}</DialogTitle></DialogHeader>
+        <div className="flex justify-end"><Button size="sm" onClick={() => setAdding(true)}><PlusIcon data-icon="inline-start" />Receive batch</Button></div>
+        {batches === null ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">Loading…</p>
+        ) : batches.length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">No batches yet.</p>
+        ) : (
+          <Table>
+            <TableHeader><TableRow>
+              <TableHead>Qty</TableHead><TableHead>Heat / Supplier Batch</TableHead><TableHead>Cert</TableHead><TableHead>Status</TableHead>
+            </TableRow></TableHeader>
+            <TableBody>
+              {batches.map(b => (
+                <TableRow key={b.id}>
+                  <TableCell className="tnum">{b.qty}</TableCell>
+                  <TableCell className="text-muted-foreground">{[b.heat_no, b.supplier_batch_no].filter(Boolean).join(' · ') || '—'}</TableCell>
+                  <TableCell className="text-muted-foreground">{b.certificate_no || '—'}</TableCell>
+                  <TableCell><Badge className={PIECE_STATUS[b.status]?.cls}>{PIECE_STATUS[b.status]?.label || b.status}</Badge></TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+        <DialogFooter><Button variant="outline" onClick={onClose}>Close</Button></DialogFooter>
+      </DialogContent>
+      {adding && <ReceiveBatchDialog inventoryItem={inventoryItem} certificates={certificates} router={router} onClose={() => setAdding(false)} onAdded={load} />}
+    </Dialog>
+  );
+}
+
+function ReceiveBatchDialog({ inventoryItem, onClose, router, onAdded, certificates = [] }) {
+  const [qty, setQty] = useState('');
+  const [heatNo, setHeatNo] = useState('');
+  const [supplierBatchNo, setSupplierBatchNo] = useState('');
+  const [certId, setCertId] = useState(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [receiptId, setReceiptId] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const cert = certificates.find(c => c.id === certId);
+
+  async function save() {
+    if (!(Number(qty) > 0)) return showToast('Enter a valid quantity', 'error');
+    setSaving(true);
+    try {
+      await api('/api/inventory-batches', {
+        method: 'POST',
+        body: {
+          inventory_item_id: inventoryItem.id, qty: Number(qty),
+          heat_no: heatNo.trim() || undefined, supplier_batch_no: supplierBatchNo.trim() || undefined,
+          test_certificate_id: certId || undefined, receipt_id: receiptId || undefined,
+        },
+      });
+      showToast('Batch received');
+      await onAdded?.();
+      router.refresh();
+      onClose();
+    } catch (err) { showToast(err.message, 'error'); }
+    setSaving(false);
+  }
+
+  return (
+    <Dialog open onOpenChange={o => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Receive batch — {inventoryItem.description}</DialogTitle></DialogHeader>
+        <div className="flex flex-col gap-3">
+          <ReceiptPicker value={receiptId} onChange={setReceiptId} />
+          <div className="grid gap-1.5">
+            <Label>Quantity</Label>
+            <Input type="number" min="0" step="any" value={qty} onChange={e => setQty(e.target.value)} autoFocus />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-1.5">
+              <Label>Heat No. (optional)</Label>
+              <Input value={heatNo} onChange={e => setHeatNo(e.target.value)} />
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Supplier batch no. (optional)</Label>
+              <Input value={supplierBatchNo} onChange={e => setSupplierBatchNo(e.target.value)} />
+            </div>
+          </div>
+          <div className="grid gap-1.5">
+            <Label>Test certificate (optional)</Label>
+            {cert ? (
+              <div className="flex items-center justify-between rounded-md border px-3 py-2 text-sm">
+                <span>{cert.certificate_no} · {cert.cast_no}</span>
+                <Button size="sm" variant="ghost" onClick={() => setCertId(null)}>Remove</Button>
+              </div>
+            ) : (
+              <Button size="sm" variant="outline" onClick={() => setPickerOpen(true)}>Link test certificate</Button>
+            )}
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={save} disabled={saving}>{saving ? 'Receiving…' : 'Receive'}</Button>
+        </DialogFooter>
+      </DialogContent>
+      <CertPicker open={pickerOpen} onOpenChange={setPickerOpen} title="Link test certificate" certificates={certificates} onPick={setCertId} />
+    </Dialog>
+  );
+}
+
+// Serial receiving (S3, gap-closure round 2026-08-26) — the discrete-equipment sibling: valves,
+// pumps, instruments — one row per physical unit, an ERP-generated SR-#### code alongside the
+// manufacturer's own serial number (kept as two clearly separate columns, never confused).
+function SerialsDialog({ inventoryItem, onClose, router, certificates = [] }) {
+  const [serials, setSerials] = useState(null);
+  const [adding, setAdding] = useState(false);
+
+  function load() {
+    return api(`/api/inventory-serials?inventory_item_id=${inventoryItem.id}`).then(setSerials).catch(err => showToast(err.message, 'error'));
+  }
+  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <Dialog open onOpenChange={o => !o && onClose()}>
+      <DialogContent className="sm:max-w-2xl">
+        <DialogHeader><DialogTitle>Serials — {inventoryItem.description}</DialogTitle></DialogHeader>
+        <div className="flex justify-end"><Button size="sm" onClick={() => setAdding(true)}><PlusIcon data-icon="inline-start" />Receive serial</Button></div>
+        {serials === null ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">Loading…</p>
+        ) : serials.length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">No serials yet.</p>
+        ) : (
+          <Table>
+            <TableHeader><TableRow>
+              <TableHead>Code</TableHead><TableHead>Serial No.</TableHead><TableHead>Cert</TableHead><TableHead>Status</TableHead>
+            </TableRow></TableHeader>
+            <TableBody>
+              {serials.map(s => (
+                <TableRow key={s.id}>
+                  <TableCell className="font-medium">{s.code}</TableCell>
+                  <TableCell className="text-muted-foreground">{s.serial_no || '—'}</TableCell>
+                  <TableCell className="text-muted-foreground">{s.certificate_no || '—'}</TableCell>
+                  <TableCell><Badge className={PIECE_STATUS[s.status]?.cls}>{PIECE_STATUS[s.status]?.label || s.status}</Badge></TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+        <DialogFooter><Button variant="outline" onClick={onClose}>Close</Button></DialogFooter>
+      </DialogContent>
+      {adding && <ReceiveSerialDialog inventoryItem={inventoryItem} certificates={certificates} router={router} onClose={() => setAdding(false)} onAdded={load} />}
+    </Dialog>
+  );
+}
+
+function ReceiveSerialDialog({ inventoryItem, onClose, router, onAdded, certificates = [] }) {
+  const [serialNo, setSerialNo] = useState('');
+  const [certId, setCertId] = useState(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [receiptId, setReceiptId] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const cert = certificates.find(c => c.id === certId);
+
+  async function save() {
+    setSaving(true);
+    try {
+      const result = await api('/api/inventory-serials', {
+        method: 'POST',
+        body: {
+          inventory_item_id: inventoryItem.id, serial_no: serialNo.trim() || undefined,
+          test_certificate_id: certId || undefined, receipt_id: receiptId || undefined,
+        },
+      });
+      showToast(`${result.code} received`);
+      await onAdded?.();
+      router.refresh();
+      onClose();
+    } catch (err) { showToast(err.message, 'error'); }
+    setSaving(false);
+  }
+
+  return (
+    <Dialog open onOpenChange={o => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Receive serial — {inventoryItem.description}</DialogTitle></DialogHeader>
+        <div className="flex flex-col gap-3">
+          <ReceiptPicker value={receiptId} onChange={setReceiptId} />
+          <div className="grid gap-1.5">
+            <Label>Manufacturer serial no. (optional)</Label>
+            <Input value={serialNo} onChange={e => setSerialNo(e.target.value)} autoFocus />
+          </div>
+          <div className="grid gap-1.5">
+            <Label>Test certificate (optional)</Label>
+            {cert ? (
+              <div className="flex items-center justify-between rounded-md border px-3 py-2 text-sm">
+                <span>{cert.certificate_no} · {cert.cast_no}</span>
+                <Button size="sm" variant="ghost" onClick={() => setCertId(null)}>Remove</Button>
+              </div>
+            ) : (
+              <Button size="sm" variant="outline" onClick={() => setPickerOpen(true)}>Link test certificate</Button>
+            )}
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={save} disabled={saving}>{saving ? 'Receiving…' : 'Receive'}</Button>
+        </DialogFooter>
+      </DialogContent>
+      <CertPicker open={pickerOpen} onOpenChange={setPickerOpen} title="Link test certificate" certificates={certificates} onPick={setCertId} />
+    </Dialog>
   );
 }
 
@@ -730,6 +955,11 @@ function OpenRequestsCard({ openRequests, inventoryItems, router }) {
   const [reserveFor, setReserveFor] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [q, setQ] = useState('');
+  // Phase 3 (G3) — piece/serial-tracked lines are never reserved through this generic, qty-blind
+  // dialog; they already have (or, for serial, now gain) their own Reserve action in the
+  // Pieces/Serials dialogs. reserveFromStock() rejects these server-side too (defense in depth) —
+  // this filter just keeps the picker from offering an option that would only ever error.
+  const reservableInventoryItems = inventoryItems.filter(it => it.tracking_mode !== 'piece' && it.tracking_mode !== 'serial');
   const needle = q.trim().toLowerCase();
   const shown = openRequests.filter(r => !needle
     || r.material_description.toLowerCase().includes(needle)
@@ -770,7 +1000,7 @@ function OpenRequestsCard({ openRequests, inventoryItems, router }) {
             </TableHeader>
             <TableBody>
               {shown.map(r => {
-                const matches = possibleMatches(r, inventoryItems);
+                const matches = possibleMatches(r, reservableInventoryItems);
                 return (
                   <TableRow key={r.id}>
                     <TableCell className="font-medium">
@@ -804,7 +1034,7 @@ function OpenRequestsCard({ openRequests, inventoryItems, router }) {
                           {/* Reserve is the default action — Stores shouldn't procure new material
                               when existing stock can cover the line, so Reserve gets the solid/
                               primary button and Procure (a real choice, not a fallback) is outline. */}
-                          <Button size="sm" disabled={!inventoryItems.length} onClick={() => setReserveFor(r)}>
+                          <Button size="sm" disabled={!reservableInventoryItems.length} onClick={() => setReserveFor(r)}>
                             Reserve from stock
                           </Button>
                           {r.pending_review === 1 && (
@@ -823,7 +1053,7 @@ function OpenRequestsCard({ openRequests, inventoryItems, router }) {
         )}
       </CardContent>
       {reserveFor && (
-        <ReserveDialog request={reserveFor} inventoryItems={inventoryItems} matches={possibleMatches(reserveFor, inventoryItems)}
+        <ReserveDialog request={reserveFor} inventoryItems={reservableInventoryItems} matches={possibleMatches(reserveFor, reservableInventoryItems)}
           router={router} onClose={() => setReserveFor(null)} />
       )}
     </Card>
@@ -1446,6 +1676,73 @@ function GatePassesCard({ gatePasses, router }) {
   );
 }
 
+// Inventory Identity & Traceability design review (2026-08-26) — two gaps found and deliberately
+// logged rather than fixed in Phase 0-2, same "log it, don't silently drop it" pattern
+// PlanningWorkspace.jsx's own BACKLOG already uses for Production-side gaps. This is the
+// Stores-side equivalent: Planning's backlog is explicitly Production/Cut-domain, and these two are
+// Stores/Cutting-identity domain instead, so they get their own list rather than living in the
+// wrong department's workspace. Plain array, not a DB table — same lightweight precedent.
+const BACKLOG = [
+  {
+    title: 'Cut-code lineage renumbering: PL-0042-R1 cut again should read PL-0042-U2/-R2, not PL-0042-R1-U1/-R1',
+    status: 'Deferred — needs its own atomic counter first',
+    added: '2026-08-26',
+    body: [
+      `cutPiece() (lib/stock-pieces.js) builds a child's code by string-appending onto the immediate
+       PARENT's code (\`\${source.code}-U\${n}\`), not the ROOT's. Cutting PL-0042 directly gives the
+       intended PL-0042-U1/PL-0042-R1. But cutting that remnant again gives PL-0042-R1-U1/PL-0042-R1-R1
+       — compounding with every generation — instead of the lineage-flat PL-0042-U2/PL-0042-R2 the
+       client actually wants. The genealogy underneath is NOT affected: stock_pieces.parent_id is a
+       real FK, correct at every level regardless of what the code string says — this is purely a
+       display/ID-generation issue, never a traceability gap.`,
+      `Deliberately not fixed alongside Phase 0's cutPiece() correctness fix: computing "the nth used/
+       remnant descendant anywhere under this root" requires walking parent_id up to the root (or
+       storing a denormalized root_id) and a NEW per-root atomic counter — a plain
+       \`SELECT MAX(...)+1\` over sibling codes would reintroduce exactly the kind of race Phase 0 just
+       closed for the status flip. When this is picked up, reuse the same pattern the global
+       \`counters\` table already proves out (INSERT...ON CONFLICT DO UPDATE...RETURNING), keyed by
+       root piece id, not a bare MAX query.`,
+    ],
+  },
+  {
+    title: 'Reserve-from-Stock has no server-side material match — only an advisory, bypassable shortlist',
+    status: 'Deferred — blocked on wider item_id catalog coverage',
+    added: '2026-08-26',
+    body: [
+      `possibleMatches() (this file) computes a soft, client-side shortlist for the Reserve dialog —
+       exact item_id match first, keyword-overlap fallback — but it's advisory only: "Show all items"
+       always bypasses it, and reserveFromStock() (lib/procurement.js) performs zero server-side check
+       that the chosen inventory row's material actually matches the BOM line's requirement. Nothing
+       stops reserving, say, a stainless flange's inventory row against a carbon-steel plate BOM line.`,
+      `Deliberately not hardened yet: item_id (the one reliable signal) is nullable on both
+       bom_items and inventory_items with no backfill for free-typed rows — the overwhelming majority
+       today. A hard filter keyed on item_id alone would incorrectly block most real reservations
+       until catalog linkage is much more broadly adopted. Revisit once that coverage improves.`,
+    ],
+  },
+];
+
+function BacklogTab() {
+  return (
+    <div className="flex flex-col gap-4">
+      {BACKLOG.map(item => (
+        <Card key={item.title}>
+          <CardHeader>
+            <CardTitle className="flex flex-wrap items-center gap-2">
+              {item.title}
+              <Badge variant="outline">{item.status}</Badge>
+              <span className="text-xs font-normal text-muted-foreground">added {item.added}</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3 text-sm text-muted-foreground">
+            {item.body.map((p, i) => <p key={i}>{p.replace(/\s+/g, ' ').trim()}</p>)}
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
 // STORES-SALES-CHANGES.md follow-up — the workspace outgrew one long scrolling page (today
 // chips, Inventory, Open requests, Active reservations, Material issued, all stacked). Same
 // sidebar-workspace pattern as Production's Job Card panel (WorkersPanel.jsx): one section per
@@ -1460,6 +1757,7 @@ const NAV_ITEMS = (counts) => [
   { key: 'gir', label: 'Gate Inward (GIR)', icon: LogInIcon },
   { key: 'gatepasses', label: 'Gate Passes', icon: FileOutputIcon, badge: counts.overdueGatePasses || null },
   { key: 'bom', label: 'BOM', icon: ListChecksIcon },
+  { key: 'backlog', label: 'Backlog', icon: ListTodoIcon },
 ];
 
 // Stores' own "close this project's BOM" action — mirrors ProcurementWorkspace.jsx's Status tab
@@ -1584,12 +1882,33 @@ function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavi
   const router = useRouter();
   const [dialogItem, setDialogItem] = useState(undefined); // undefined = closed, null = add, {} = edit
   const [piecesFor, setPiecesFor] = useState(null);
+  const [batchesFor, setBatchesFor] = useState(null);
+  const [serialsFor, setSerialsFor] = useState(null);
   const [lowOnly, setLowOnly] = useState(false);
   const [q, setQ] = useState('');
+  const [codeMatchId, setCodeMatchId] = useState(null);
   const needle = q.trim().toLowerCase();
   const lowStockCount = inventoryItems.filter(isLowStock).length;
-  const shown = (lowOnly ? inventoryItems.filter(isLowStock) : inventoryItems)
-    .filter(it => !needle || it.description.toLowerCase().includes(needle) || (it.item_code || '').toLowerCase().includes(needle));
+  // Matches description, INV-#### (item_code), and IM-#### (catalog_item_code) directly — all three
+  // already sit on every row. A physical piece (PL-/LN-) or serial (SR-) code doesn't, since pieces
+  // live in a separate per-item table; codeMatchId (below) is the smart fallback for those.
+  const localMatches = it => it.description.toLowerCase().includes(needle)
+    || (it.item_code || '').toLowerCase().includes(needle)
+    || (it.catalog_item_code || '').toLowerCase().includes(needle);
+  const filtered = (lowOnly ? inventoryItems.filter(isLowStock) : inventoryItems).filter(it => !needle || localMatches(it));
+  // Smart code search (2026-08-26) — if nothing matched locally and the query looks like a real
+  // identifier (contains a hyphen, e.g. "PL-0045"), ask the server whether that exact code belongs
+  // to a piece/serial/catalog item elsewhere, and surface just that one line if so. Deliberately
+  // exact-match only (lib/data.js's findInventoryItemIdByCode) — never a fuzzy guess.
+  useEffect(() => {
+    if (filtered.length > 0 || !needle.includes('-') || needle.length < 4) { setCodeMatchId(null); return; }
+    let cancelled = false;
+    api(`/api/inventory-items/lookup-code?code=${encodeURIComponent(q.trim())}`)
+      .then(({ inventory_item_id }) => { if (!cancelled) setCodeMatchId(inventory_item_id); })
+      .catch(() => { if (!cancelled) setCodeMatchId(null); });
+    return () => { cancelled = true; };
+  }, [needle]); // eslint-disable-line react-hooks/exhaustive-deps
+  const shown = filtered.length > 0 || !codeMatchId ? filtered : inventoryItems.filter(it => it.id === codeMatchId);
 
   return (
     <div className="flex flex-col gap-6">
@@ -1612,7 +1931,12 @@ function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavi
           </CardAction>
         </CardHeader>
         <CardContent>
-          {inventoryItems.length > 0 && <SearchBox value={q} onChange={setQ} placeholder="Search by description or item code…" />}
+          {inventoryItems.length > 0 && <SearchBox value={q} onChange={setQ} placeholder="Search by description, item code, or a PL-/LN-/SR-/IM- code…" />}
+          {filtered.length === 0 && codeMatchId && (
+            <p className="pb-2 text-xs text-muted-foreground">
+              No direct match — showing the stock line that owns piece/serial/catalog code "{q.trim()}".
+            </p>
+          )}
           {inventoryItems.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">No inventory items yet.</p>
           ) : shown.length === 0 ? (
@@ -1652,6 +1976,16 @@ function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavi
                       {(DIMENSIONAL_CATEGORIES.some(c => c.value === it.category) || it.track_pieces) && (
                         <Button size="icon-sm" variant="ghost" title="Pieces" onClick={() => setPiecesFor(it)}><LayersIcon /></Button>
                       )}
+                      {/* Batch/Serial receiving (S2/S3, gap-closure round 2026-08-26) — hidden once a
+                          line is already piece-tracked (a different, mutually exclusive model,
+                          lib/tracking-mode.js); shown for everything else, since tracking_mode
+                          auto-adopts on first receive rather than needing an explicit picker. */}
+                      {!it.track_pieces && (
+                        <>
+                          <Button size="icon-sm" variant="ghost" title="Batches" onClick={() => setBatchesFor(it)}><BoxesIcon /></Button>
+                          <Button size="icon-sm" variant="ghost" title="Serials" onClick={() => setSerialsFor(it)}><HashIcon /></Button>
+                        </>
+                      )}
                       <Button size="icon-sm" variant="ghost" onClick={() => setDialogItem(it)}><PencilIcon /></Button>
                     </TableCell>
                   </TableRow>
@@ -1665,6 +1999,8 @@ function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavi
         )}
       </Card>
       {piecesFor && <PiecesDialog inventoryItem={piecesFor} router={router} certificates={certificates} projects={projects} onClose={() => setPiecesFor(null)} />}
+      {batchesFor && <BatchesDialog inventoryItem={batchesFor} router={router} certificates={certificates} onClose={() => setBatchesFor(null)} />}
+      {serialsFor && <SerialsDialog inventoryItem={serialsFor} router={router} certificates={certificates} onClose={() => setSerialsFor(null)} />}
     </div>
   );
 }
@@ -1699,6 +2035,7 @@ export default function StoresWorkspace({
       {tab === 'gir' && <GateInwardReceiptsCard gateInwardReceipts={gateInwardReceipts} router={router} />}
       {tab === 'gatepasses' && <GatePassesCard gatePasses={gatePasses} router={router} />}
       {tab === 'bom' && <BomGrnTab bomItems={bomItems} router={router} />}
+      {tab === 'backlog' && <BacklogTab />}
     </WorkspaceSidebar>
   );
 }

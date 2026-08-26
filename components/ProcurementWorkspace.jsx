@@ -30,6 +30,7 @@ import CreateRfqDialog from './CreateRfqDialog';
 import { PURCHASE_STATUSES as BOM_STATUSES, CLOSED_STATUSES, OPEN_STATUSES, STATUS_TONE, DEFAULT_PURCHASE_STATUS } from '@/lib/bom-fields.mjs';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 import SupplierAnalysis from '@/components/SupplierAnalysis';
+import TraceabilityBadges from '@/components/TraceabilityBadges';
 import { SearchIcon, GitCompareIcon, FileTextIcon, ListChecksIcon, Building2Icon, ShoppingCartIcon, BarChart3Icon, LayoutDashboardIcon, Undo2Icon, PlusIcon, ReceiptIcon, TrashIcon, DownloadIcon } from 'lucide-react';
 
 // Enquiry/Selection are for items still working toward a PO — once one's issued (Ordered, Phase
@@ -948,17 +949,26 @@ function State({ items, router, q, statusFilter }) {
     if (!ids.length) return;
     setBulkBusy(true);
     setBulkProgress({ done: 0, total: ids.length });
-    let failed = 0;
+    // Per-line rejection reasons (gap-closure round, 2026-08-26, P1) — a traceability-blocked line
+    // ("needs a heat number") used to vanish into a bare failure count with no way to tell it apart
+    // from any other kind of failure. Same err.message already available per iteration; just kept.
+    const reasons = [];
     for (const id of ids) {
       try {
         await api(`/api/bom-items/${id}`, { method: 'PATCH', body: { purchase_status: bulkStatus } });
-      } catch { failed++; }
+      } catch (err) {
+        const item = items.find(it => it.id === id);
+        reasons.push(`${item?.material_description || `#${id}`}: ${err.message}`);
+      }
       setBulkProgress(p => ({ done: p.done + 1, total: p.total }));
     }
     setBulkBusy(false);
     setBulkProgress(null);
     setSelected(new Set());
-    showToast(failed ? `${ids.length - failed} of ${ids.length} updated — ${failed} failed` : `${ids.length} item${ids.length === 1 ? '' : 's'} updated`,
+    const failed = reasons.length;
+    showToast(failed
+      ? `${ids.length - failed} of ${ids.length} updated — ${failed} failed:\n${reasons.join('\n')}`
+      : `${ids.length} item${ids.length === 1 ? '' : 's'} updated`,
       failed ? 'warning' : undefined);
     router.refresh();
   }
@@ -1009,18 +1019,28 @@ function State({ items, router, q, statusFilter }) {
       <CardContent className="flex flex-col divide-y pt-4">
         {shown.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">No items match.</p>}
         {shown.map(it => (
-            <div key={it.id} className="flex flex-wrap items-center gap-3 py-2.5 text-sm">
-              <Checkbox className="shrink-0" checked={selected.has(it.id)} onCheckedChange={v => toggleOne(it.id, !!v)} aria-label="Select item" />
+            // items-start, not items-center (gap-closure round, 2026-08-26) — the description column
+            // grew a third line (TraceabilityBadges) once a line is flagged; items-center was
+            // vertically centering the short columns (Project/PO/Make/Status) against the middle of
+            // that now-taller block instead of its top, which read as the badges floating loose
+            // rather than sitting cleanly below the description.
+            <div key={it.id} className="flex flex-wrap items-start gap-3 py-2.5 text-sm">
+              <Checkbox className="mt-0.5 shrink-0" checked={selected.has(it.id)} onCheckedChange={v => toggleOne(it.id, !!v)} aria-label="Select item" />
               <div className="min-w-0 flex-1">
                 <p className="truncate font-medium">{it.material_description}</p>
                 <p className="truncate text-xs text-muted-foreground">
                   {it.moc || '—'} · {it.size_spec || '—'} · {it.qty_text || '—'}
                   {it.pr_ref && ` · PR ${it.pr_ref}`}
                 </p>
+                {/* Traceability requirements (gap-closure round, 2026-08-26, P1) — this screen is
+                    Procurement's actual working view and never rendered BomTable.jsx at all, so the
+                    requires_X / received_X badges were structurally invisible here before this fix.
+                    Same canonical renderer BomTable.jsx and QcDocumentEditor.jsx use. */}
+                <TraceabilityBadges item={it} className="mt-1 flex flex-wrap gap-1" />
               </div>
-              <span className="w-24 shrink-0 truncate text-xs text-muted-foreground">{projectLabel(it)}</span>
-              <span className="w-28 shrink-0 truncate text-xs text-muted-foreground">{it.po_ref || '—'}</span>
-              <span className="w-32 shrink-0 truncate text-xs text-muted-foreground">{it.selected_supplier_name || '—'}</span>
+              <span className="mt-0.5 w-24 shrink-0 truncate text-xs text-muted-foreground">{projectLabel(it)}</span>
+              <span className="mt-0.5 w-28 shrink-0 truncate text-xs text-muted-foreground">{it.po_ref || '—'}</span>
+              <span className="mt-0.5 w-32 shrink-0 truncate text-xs text-muted-foreground">{it.selected_supplier_name || '—'}</span>
               <Select value={it.purchase_status || DEFAULT_PURCHASE_STATUS} disabled={busy === it.id} onValueChange={v => setStatus(it, v)}>
                 <SelectTrigger className="h-7 w-28 shrink-0 text-xs">
                   <SelectValue>

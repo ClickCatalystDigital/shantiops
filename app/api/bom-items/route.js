@@ -27,12 +27,13 @@ export async function POST(req) {
   const max = await queryOne(
     'SELECT MAX(sort_order) AS m FROM bom_items WHERE project_id = ?', [b.project_id]);
   const fields = ['material_description', ...BOM_FIELDS.filter(f => f !== 'material_description')];
-  // production_done is bom_items' one NOT NULL boolean field in this list (everything else here is
-  // free text, where an unset value legitimately means NULL) — coercing it to NULL like the text
-  // fields violated the column's own NOT NULL constraint and 500'd every single-item add that
-  // didn't explicitly pass it. Found live verifying the Allocation Mode redesign, unrelated to it.
+  // NOT NULL boolean fields in this otherwise-all-free-text list — coercing them to NULL like the
+  // text fields violates their own NOT NULL constraint and 500s the add (found live for
+  // production_done during the Allocation Mode redesign; the four requires_* flags are the same
+  // column shape, added here rather than repeating that bug).
+  const BOOLEAN_FIELDS = new Set(['production_done', 'requires_heat_no', 'requires_mtc', 'requires_supplier_batch', 'requires_serial_no']);
   const values = fields.map(f =>
-    f === 'production_done' ? (b[f] ? 1 : 0)
+    BOOLEAN_FIELDS.has(f) ? (b[f] ? 1 : 0)
     : typeof b[f] === 'string' && b[f].trim() ? b[f].trim() : null);
   values[0] = b.material_description.trim();
 

@@ -2,7 +2,7 @@
 
 import { notFound, redirect } from 'next/navigation';
 import { queryOne } from '@/lib/db';
-import { getQcDocumentDetail, getTestCertificates, getBomItemsForProject, getTcMatchApprovals } from '@/lib/data';
+import { getQcDocumentDetail, getTestCertificates, getBomItemsForProject, getTcMatchApprovals, getBomAssembliesFlat } from '@/lib/data';
 import { getFreshSessionUser, canAccessDepartment, roleHome } from '@/lib/auth';
 import QcDocumentEditor from '@/components/QcDocumentEditor';
 
@@ -12,7 +12,7 @@ export default async function QcDocumentPage({ params }) {
   const user = await getFreshSessionUser();
   if (!canAccessDepartment(user, 'QC')) redirect(roleHome(user));
 
-  const project = await queryOne('SELECT id, project_no, customer_name FROM projects WHERE id = ?', [params.id]);
+  const project = await queryOne('SELECT id, project_no, customer_name, series FROM projects WHERE id = ?', [params.id]);
   if (!project) notFound();
 
   const detail = await getQcDocumentDetail(params.docId);
@@ -23,6 +23,7 @@ export default async function QcDocumentPage({ params }) {
   const certificates = await getTestCertificates();
   const bomItems = await getBomItemsForProject(params.id);
   const approvals = await getTcMatchApprovals();
+  const assemblies = await getBomAssembliesFlat(params.id);
 
   return (
     <QcDocumentEditor
@@ -30,9 +31,11 @@ export default async function QcDocumentPage({ params }) {
       document={detail.document}
       parts={detail.parts}
       mountings={detail.mountings}
+      groups={detail.groups}
       certificates={certificates}
       bomItems={bomItems}
       approvals={approvals}
+      assemblies={assemblies}
       canEdit={canAccessDepartment(user, 'QC')}
       currentUserName={user.display_name || user.username}
     />

@@ -39,7 +39,7 @@ export async function GET(req, { params }) {
   }
 
   const project = await queryOne('SELECT id, project_no, customer_name, series FROM projects WHERE id = ?', [detail.document.project_id]);
-  const pdf = await renderQcFolderPdf(detail.document, detail.parts, detail.mountings, project);
+  const pdf = await renderQcFolderPdf(detail.document, detail.parts, detail.mountings, project, detail.groups);
   return new NextResponse(pdf, {
     headers: {
       'Content-Type': 'application/pdf',

@@ -8,15 +8,20 @@
 // at 578 in lib/db.js).
 import { NextResponse } from 'next/server';
 import { execute, queryAll, nextCounterValue } from '@/lib/db';
-import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
+import { getFreshSessionUser, requireDepartment, canAccessDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { getPurchaseOrders } from '@/lib/data';
 import { audit } from '@/lib/usb';
 
+// GET is also Stores-readable (gap-closure round, 2026-08-26) — ReceiptPicker.jsx needs to let
+// Stores optionally reference "which PO did this delivery arrive against" when creating a
+// stock_receipts row. Same multi-department-read precedent as GET /api/items
+// (CATALOG_SEARCH_DEPARTMENTS) — reading a PO to reference it is a different concern from owning it.
 export async function GET(req) {
   const user = await getFreshSessionUser();
-  const denied = requireDepartment(user, 'Procurement');
-  if (denied) return denied;
+  if (!canAccessDepartment(user, 'Procurement') && !canAccessDepartment(user, 'Stores')) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
   const { searchParams } = new URL(req.url);
   const filter = {};
   if (searchParams.get('status')) filter.status = searchParams.get('status');
