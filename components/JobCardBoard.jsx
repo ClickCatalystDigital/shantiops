@@ -129,7 +129,7 @@ function JobCardTile({ jc, onOpen }) {
             {jc.requires_qc_hold && !jc.qc_released_at ? <Badge className="bg-warning/10 text-warning ring-warning/20">Held for QC</Badge> : null}
           </div>
         </div>
-        <span className="text-sm font-medium">{jc.operation_name}</span>
+        <span className="text-sm font-medium">{jc.jc_no}{jc.operation_name ? ` · ${jc.operation_name}` : ''}</span>
         <span className="text-xs text-muted-foreground">{jc.workstation_name || '—'}</span>
         <div className="flex items-center gap-2">
           <div className="flex -space-x-1.5">
@@ -369,7 +369,7 @@ function JobCardDetailSheet({ id, onClose, router, workers }) {
         ) : (
           <div className="flex flex-col gap-5 p-4">
             <SheetHeader className="p-0">
-              <SheetTitle>{detail.operation_name} · {detail.section}</SheetTitle>
+              <SheetTitle>{detail.jc_no} · {detail.operation_name || detail.section}{detail.operation_name ? ` · ${detail.section}` : ''}</SheetTitle>
             </SheetHeader>
             <p className="-mt-3 text-sm text-muted-foreground">
               {detail.project_no ? `${detail.project_no} · ${detail.customer_name}` : (detail.wo_product_description || 'Stock')}

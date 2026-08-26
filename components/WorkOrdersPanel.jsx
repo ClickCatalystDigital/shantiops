@@ -425,7 +425,7 @@ function WorkOrderDetail({ id, projects, operations, workstations, onClose, onCh
               {detail.jobCards.length === 0 && <p className="text-xs text-muted-foreground">None generated yet.</p>}
               {detail.jobCards.map(jc => (
                 <div key={jc.id} className="flex items-center justify-between text-xs">
-                  <span>#{jc.id} {jc.section}{jc.workstation_name ? ` · ${jc.workstation_name}` : ''}</span>
+                  <span>{jc.jc_no || `#${jc.id}`} {jc.section}{jc.workstation_name ? ` · ${jc.workstation_name}` : ''}</span>
                   <span className="text-muted-foreground tnum">{jc.status} · {jc.qty_done}/{jc.qty_planned}</span>
                 </div>
               ))}

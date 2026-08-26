@@ -20,7 +20,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/com
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import TraceabilityBadges from '@/components/TraceabilityBadges';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
-import { ChevronLeftIcon, AlertTriangleIcon, SearchIcon, PlusIcon, Trash2Icon, XIcon, RefreshCwIcon } from 'lucide-react';
+import { ChevronLeftIcon, ChevronDownIcon, AlertTriangleIcon, SearchIcon, PlusIcon, Trash2Icon, XIcon, RefreshCwIcon } from 'lucide-react';
 import CertPicker from './CertPicker';
 import PdfPreview from './PdfPreview';
 import QcHeaderField from './QcHeaderField';
@@ -28,6 +28,7 @@ import { suggestCertificates, suggestBomItem } from '@/lib/tc-match';
 import { normalizeMaterial } from '@/lib/match-utils';
 import { QC_HEADER_FIELDS } from '@/lib/qc-document-fields';
 import { modelConfig } from '@/lib/qc-models';
+import SearchableSelect from './SearchableSelect';
 
 // V2-CHANGES.md Group 2 — same two companies as StatutoryDocsPanel.jsx's NewDocumentSheet; this
 // sheet only needs the plain names (doc-ID prefix derivation is a creation-time concern, not an
@@ -39,6 +40,26 @@ function sizeText(p) {
 }
 
 function todayIso() { return new Date().toISOString().slice(0, 10); }
+
+// Splits a free-text BOM quantity/size value ("2 Nos", "40 SQ MTR", "1300 mm(ID)") into its leading
+// number and trailing unit — there's no dedicated uom column on bom_items, this is the only place a
+// unit is ever recorded. Used to show the unit as a label next to a numeric input instead of making
+// the user retype it.
+function parseUnit(text) {
+  const m = String(text || '').trim().match(/^-?[\d.]+\s*(.*)$/);
+  return m ? m[1].trim() : '';
+}
+
+// Shared collapse toggle — expanded state renders each card's own header/content exactly as before
+// (this button is additive, nothing else changes), collapsed state swaps CardContent for a one-line
+// summary the card itself computes, so the design stays a normal Card in both states.
+function CollapseButton({ open, onToggle, label }) {
+  return (
+    <Button size="icon-sm" variant="ghost" aria-label={open ? `Collapse ${label}` : `Expand ${label}`} onClick={onToggle}>
+      <ChevronDownIcon className={`size-4 transition-transform ${open ? '' : '-rotate-90'}`} />
+    </Button>
+  );
+}
 
 function BoilerDetailsSheet({ open, onOpenChange, document, currentUserName, router }) {
   const [form, setForm] = useState(() => {
@@ -131,14 +152,13 @@ function BomItemLink({ part, bomItems, onLink, canEdit }) {
   const suggestion = suggestBomItem(part, bomItems);
   return (
     <div className="flex flex-col gap-0.5">
-      <select
-        className="w-full max-w-56 truncate rounded border bg-transparent px-1 py-0.5 text-xs text-muted-foreground"
-        value={part.bom_item_id || ''}
-        onChange={e => onLink(part.id, e.target.value ? Number(e.target.value) : null)}
-      >
-        <option value="">Link to BOM item…</option>
-        {bomItems.map(b => <option key={b.id} value={b.id}>{b.material_description}</option>)}
-      </select>
+      <SearchableSelect
+        className="w-full max-w-56 text-xs"
+        value={part.bom_item_id ? String(part.bom_item_id) : ''}
+        onChange={id => onLink(part.id, id ? Number(id) : null)}
+        options={bomItems.map(b => ({ value: String(b.id), label: b.material_description }))}
+        placeholder="Link to BOM item…"
+      />
       {suggestion && (
         <button type="button" onClick={() => onLink(part.id, suggestion.id)}
           className="truncate text-left text-xs text-info hover:underline">
@@ -226,18 +246,34 @@ function PartRow({ part, selected, onToggle, onOpenPicker, onRemove, onUnlink, o
 // V2-CHANGES.md Group 2 — manage per-document exceptions (client point 1): the SF template's 54
 // parts are the default, but a specific boiler may need one added or removed. Deliberately a small
 // Dialog, not a full Sheet — this is a handful of short fields, not the boiler-details form.
-function AddPartDialog({ open, onOpenChange, documentId, router }) {
-  const EMPTY = { part_no: '', part_name: '', size_t: '', size_w: '', size_l: '', qty: '' };
+// Linking to a BOM item at creation (not just afterward via PartRow's own BomItemLink select) is what
+// lets a manually-added part benefit from the rest of the architecture immediately: Form III A group
+// routing (link-bom-item's route now re-runs reconcileIiiaGroups), and lib/tc-match.js's certificate
+// suggestions, which need a real bom_item to compare against. Optional — a genuinely off-BOM addition
+// (an IBR-mandated attachment that was never a BOM line) still works with the fields typed by hand.
+function AddPartDialog({ open, onOpenChange, documentId, bomItems, router }) {
+  const EMPTY = { part_no: '', part_name: '', size_t: '', size_w: '', size_l: '', qty: '', bom_item_id: '' };
   const [form, setForm] = useState(EMPTY);
   const [busy, setBusy] = useState(false);
 
   function set(field) { return e => setForm(f => ({ ...f, [field]: e.target.value })); }
 
+  function pickBomItem(id) {
+    const item = bomItems.find(b => String(b.id) === id);
+    setForm(f => ({
+      ...f, bom_item_id: id,
+      part_name: item ? item.material_description : f.part_name,
+      size_l: item?.size_spec && !f.size_t && !f.size_w ? item.size_spec : f.size_l,
+    }));
+  }
+
   async function submit() {
     if (!form.part_name.trim()) return showToast('Part name is required', 'error');
     setBusy(true);
     try {
-      await api(`/api/qc-documents/${documentId}/parts`, { method: 'POST', body: form });
+      await api(`/api/qc-documents/${documentId}/parts`, {
+        method: 'POST', body: { ...form, bom_item_id: form.bom_item_id ? Number(form.bom_item_id) : null },
+      });
       showToast('Part added — link it to a certificate before the PDF can be previewed');
       setForm(EMPTY);
       onOpenChange(false);
@@ -251,6 +287,12 @@ function AddPartDialog({ open, onOpenChange, documentId, router }) {
       <DialogContent className="max-w-md">
         <DialogHeader><DialogTitle>Add part</DialogTitle></DialogHeader>
         <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1.5">
+            <Label>From BOM item (optional — fills in the name below, and enables certificate suggestions)</Label>
+            <SearchableSelect value={form.bom_item_id} onChange={pickBomItem}
+              options={bomItems.map(b => ({ value: String(b.id), label: b.material_description }))}
+              placeholder="None — off-BOM addition" />
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
               <Label>Part No.</Label>
@@ -306,10 +348,10 @@ function NewIiiaGroupDialog({ open, onOpenChange, documentId, assemblies, groupL
     if (!form.name.trim()) return showToast('Group name is required', 'error');
     setBusy(true);
     try {
-      await api(`/api/qc-documents/${documentId}/iiia-groups`, {
+      const res = await api(`/api/qc-documents/${documentId}/iiia-groups`, {
         method: 'POST', body: { name: form.name.trim(), assembly_id: form.assembly_id || null, group_label: form.group_label || null },
       });
-      showToast('Form III A group added');
+      showToast(res.moved > 0 ? `Group added — pulled in ${res.moved} existing part${res.moved === 1 ? '' : 's'}` : 'Form III A group added');
       setForm(EMPTY);
       onOpenChange(false);
       router.refresh();
@@ -328,21 +370,13 @@ function NewIiiaGroupDialog({ open, onOpenChange, documentId, assemblies, groupL
           </div>
           <div className="flex flex-col gap-1.5">
             <Label>BOM assembly (optional — auto-pulls its material lines)</Label>
-            <Select value={form.assembly_id} onValueChange={set('assembly_id')}>
-              <SelectTrigger><SelectValue placeholder="None" /></SelectTrigger>
-              <SelectContent>
-                {assemblies.map(a => <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <SearchableSelect value={form.assembly_id} onChange={set('assembly_id')}
+              options={assemblies.map(a => ({ value: String(a.id), label: a.name }))} placeholder="None" />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label>Or BOM group label (optional)</Label>
-            <Select value={form.group_label} onValueChange={set('group_label')}>
-              <SelectTrigger><SelectValue placeholder="None" /></SelectTrigger>
-              <SelectContent>
-                {groupLabels.map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <SearchableSelect value={form.group_label} onChange={set('group_label')}
+              options={groupLabels.map(l => ({ value: l, label: l }))} placeholder="None" />
           </div>
         </div>
         <DialogFooter>
@@ -421,12 +455,9 @@ function IiiaGroupCard({ group: g, parts, ungroupedParts, canEdit, documentId, r
       </div>
       {canEdit && ungroupedParts.length > 0 && (
         <div className="flex items-center gap-1">
-          <Select value={addPartId} onValueChange={setAddPartId}>
-            <SelectTrigger className="h-8"><SelectValue placeholder="Move a Form IV A part into this group" /></SelectTrigger>
-            <SelectContent>
-              {ungroupedParts.map(p => <SelectItem key={p.id} value={String(p.id)}>{p.part_name}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <SearchableSelect value={addPartId} onChange={setAddPartId} className="h-8"
+            options={ungroupedParts.map(p => ({ value: String(p.id), label: p.part_name }))}
+            placeholder="Move a Form IV A part into this group" />
           <Button size="sm" variant="outline" disabled={!addPartId} onClick={addPart}>Add</Button>
         </div>
       )}
@@ -437,8 +468,10 @@ function IiiaGroupCard({ group: g, parts, ungroupedParts, canEdit, documentId, r
 function IiiaGroupsCard({ documentId, groups, parts, assemblies, bomItems, canEdit, router }) {
   const [newOpen, setNewOpen] = useState(false);
   const [syncBusy, setSyncBusy] = useState(false);
+  const [open, setOpen] = useState(true);
   const groupLabels = useMemo(() => [...new Set(bomItems.map(b => b.group_label).filter(Boolean))], [bomItems]);
   const ungrouped = parts.filter(p => !p.iiia_group_id);
+  const groupedPartCount = parts.length - ungrouped.length;
 
   async function syncBom() {
     setSyncBusy(true);
@@ -454,26 +487,39 @@ function IiiaGroupsCard({ documentId, groups, parts, assemblies, bomItems, canEd
     <Card>
       <CardHeader>
         <CardTitle>Form III A — Certificate of Manufacture and Test</CardTitle>
-        {canEdit && (
-          <CardAction>
-            <div className="flex items-center gap-1">
-              <Button size="sm" variant="outline" disabled={syncBusy} onClick={syncBom}>
-                <RefreshCwIcon data-icon="inline-start" />{syncBusy ? 'Syncing…' : 'Sync from BOM'}
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => setNewOpen(true)}>
-                <PlusIcon data-icon="inline-start" />New group
-              </Button>
-            </div>
-          </CardAction>
-        )}
+        <CardAction>
+          <div className="flex items-center gap-1">
+            {canEdit && (
+              <>
+                <Button size="sm" variant="outline" disabled={syncBusy} onClick={syncBom}>
+                  <RefreshCwIcon data-icon="inline-start" />{syncBusy ? 'Syncing…' : 'Sync from BOM'}
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => setNewOpen(true)}>
+                  <PlusIcon data-icon="inline-start" />New group
+                </Button>
+              </>
+            )}
+            <CollapseButton open={open} onToggle={() => setOpen(o => !o)} label="Form III A groups" />
+          </div>
+        </CardAction>
       </CardHeader>
-      <CardContent className="flex flex-col gap-3">
-        {groups.length === 0 && <p className="py-2 text-sm text-muted-foreground">No Form III A groups yet — this boiler files only Form IV A until one is added.</p>}
-        {groups.map(g => (
-          <IiiaGroupCard key={g.id} group={g} parts={parts.filter(p => p.iiia_group_id === g.id)}
-            ungroupedParts={ungrouped} canEdit={canEdit} documentId={documentId} router={router} />
-        ))}
-      </CardContent>
+      {!open && (
+        <CardContent>
+          <p className="text-sm text-muted-foreground">
+            {groups.length === 0 ? 'No groups yet' : `${groups.length} group${groups.length === 1 ? '' : 's'} · ${groupedPartCount} part${groupedPartCount === 1 ? '' : 's'}`}
+            {groups.length > 0 && ` — ${groups.map(g => g.name).slice(0, 3).join(', ')}${groups.length > 3 ? ', …' : ''}`}
+          </p>
+        </CardContent>
+      )}
+      {open && (
+        <CardContent className="flex flex-col gap-3">
+          {groups.length === 0 && <p className="py-2 text-sm text-muted-foreground">No Form III A groups yet — this boiler files only Form IV A until one is added.</p>}
+          {groups.map(g => (
+            <IiiaGroupCard key={g.id} group={g} parts={parts.filter(p => p.iiia_group_id === g.id)}
+              ungroupedParts={ungrouped} canEdit={canEdit} documentId={documentId} router={router} />
+          ))}
+        </CardContent>
+      )}
       <NewIiiaGroupDialog open={newOpen} onOpenChange={setNewOpen} documentId={documentId} assemblies={assemblies} groupLabels={groupLabels} router={router} />
     </Card>
   );
@@ -485,11 +531,28 @@ const MOUNT_COLS = [['description', 'Description'], ['size', 'Size'], ['moc', 'M
   ['serial_numbers', 'Serial No(s)'], ['make', 'Make'], ['qty', 'Qty']];
 const EMPTY_MOUNT = { description: '', size: '', moc: '', serial_numbers: '', make: '', qty: '' };
 
-function MountingsCard({ documentId, mountings, canEdit, router }) {
+function MountingsCard({ documentId, mountings, bomItems, canEdit, router }) {
   const [rows, setRows] = useState(() => mountings.map(m => ({ ...m })));
   const [busy, setBusy] = useState(false);
   const [syncBusy, setSyncBusy] = useState(false);
+  const [open, setOpen] = useState(true);
   const setCell = (i, k) => e => setRows(rs => rs.map((r, j) => (j === i ? { ...r, [k]: e.target.value } : r)));
+  // Same reasoning as Form IV A's BomItemLink — a manually-added or manually-edited row that stays
+  // tied to a real bom_items row keeps benefiting from the architecture (the canonical
+  // inventory_serials lookup lib/qc-bom-sync.js's mountingSerials does at the next sync, and
+  // certificate suggestions), instead of becoming a disconnected free-text island. Picking an item
+  // also fills in whatever fields are still blank — the whole point of a searchable dropdown over a
+  // free-text box is not re-typing what was just selected; already-typed values are left alone.
+  function setBomLink(i, id) {
+    const item = id ? bomItems.find(b => b.id === id) : null;
+    setRows(rs => rs.map((r, j) => (j !== i ? r : {
+      ...r, bom_item_id: id,
+      description: r.description || item?.material_description || r.description,
+      size: r.size || item?.size_spec || r.size,
+      moc: r.moc || item?.moc || r.moc,
+      make: r.make || item?.make || r.make,
+    })));
+  }
 
   async function save() {
     setBusy(true);
@@ -515,20 +578,32 @@ function MountingsCard({ documentId, mountings, canEdit, router }) {
     <Card>
       <CardHeader>
         <CardTitle>Bought-out Items (Mountings &amp; Fittings)</CardTitle>
-        {canEdit && (
-          <CardAction>
-            <div className="flex items-center gap-1">
-              <Button size="sm" variant="outline" disabled={syncBusy} onClick={syncBom}>
-                <RefreshCwIcon data-icon="inline-start" />{syncBusy ? 'Syncing…' : 'Sync from BOM'}
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => setRows(rs => [...rs, { ...EMPTY_MOUNT }])}>
-                <PlusIcon data-icon="inline-start" />Add row
-              </Button>
-              <Button size="sm" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save'}</Button>
-            </div>
-          </CardAction>
-        )}
+        <CardAction>
+          <div className="flex items-center gap-1">
+            {canEdit && (
+              <>
+                <Button size="sm" variant="outline" disabled={syncBusy} onClick={syncBom}>
+                  <RefreshCwIcon data-icon="inline-start" />{syncBusy ? 'Syncing…' : 'Sync from BOM'}
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => setRows(rs => [{ ...EMPTY_MOUNT }, ...rs])}>
+                  <PlusIcon data-icon="inline-start" />Add row
+                </Button>
+                <Button size="sm" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save'}</Button>
+              </>
+            )}
+            <CollapseButton open={open} onToggle={() => setOpen(o => !o)} label="bought-out items" />
+          </div>
+        </CardAction>
       </CardHeader>
+      {!open && (
+        <CardContent>
+          <p className="text-sm text-muted-foreground">
+            {rows.length} item{rows.length === 1 ? '' : 's'}
+            {rows.length > 0 && ` — ${[...new Set(rows.map(r => r.make).filter(Boolean))].slice(0, 4).join(', ')}${new Set(rows.map(r => r.make).filter(Boolean)).size > 4 ? ', …' : ''}`}
+          </p>
+        </CardContent>
+      )}
+      {open && (
       <CardContent className="overflow-x-auto">
         {rows.length === 0 && <p className="py-4 text-sm text-muted-foreground">No bought-out items listed yet.</p>}
         {rows.length > 0 && (
@@ -542,11 +617,33 @@ function MountingsCard({ documentId, mountings, canEdit, router }) {
             <tbody>
               {rows.map((r, i) => (
                 <tr key={i} className="border-t">
-                  {MOUNT_COLS.map(([k]) => (
+                  {MOUNT_COLS.map(([k]) => {
+                    // The unit ("Nos", "SQ MTR"...) comes from whatever BOM item this row is linked
+                    // to — there's no separate uom column, only the free-text qty_text it was parsed
+                    // from (parseUnit, above). Shown as a label, not stored as its own field.
+                    const qtyUnit = k === 'qty' ? parseUnit(bomItems.find(b => b.id === r.bom_item_id)?.qty_text) : '';
+                    return (
                     <td key={k} className="px-1 py-1">
-                      <Input value={r[k] || ''} onChange={setCell(i, k)} disabled={!canEdit} className="h-8" />
+                      <div className="relative">
+                        <Input value={r[k] || ''} onChange={setCell(i, k)} disabled={!canEdit}
+                          className={`h-8 ${qtyUnit ? 'pr-12' : ''}`}
+                          type={k === 'qty' ? 'number' : 'text'} inputMode={k === 'qty' ? 'decimal' : undefined} />
+                        {qtyUnit && (
+                          <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">{qtyUnit}</span>
+                        )}
+                      </div>
+                      {k === 'description' && canEdit && (
+                        <SearchableSelect
+                          className="mt-1 w-full max-w-56 text-xs"
+                          value={r.bom_item_id ? String(r.bom_item_id) : ''}
+                          onChange={id => setBomLink(i, id ? Number(id) : null)}
+                          options={bomItems.map(b => ({ value: String(b.id), label: b.material_description }))}
+                          placeholder="Link to BOM item…"
+                        />
+                      )}
                     </td>
-                  ))}
+                    );
+                  })}
                   {canEdit && (
                     <td className="px-1 py-1">
                       <Button size="icon-sm" variant="ghost" aria-label="Remove row"
@@ -561,6 +658,7 @@ function MountingsCard({ documentId, mountings, canEdit, router }) {
           </table>
         )}
       </CardContent>
+      )}
     </Card>
   );
 }
@@ -580,6 +678,7 @@ export default function QcDocumentEditor({ project, document, parts, certificate
   const [addPartOpen, setAddPartOpen] = useState(false);
   const [visBusy, setVisBusy] = useState(false);
   const [syncBusy, setSyncBusy] = useState(false);
+  const [ivaOpen, setIvaOpen] = useState(true);
 
   // "Unlinked"/"complete" cover every part on the document, Form III A's included — a grouped part
   // still needs a certificate just as much as a Form IV A one; only the CARD's own list (below) is
@@ -714,19 +813,31 @@ export default function QcDocumentEditor({ project, document, parts, certificate
           ) : unlinked.length > 0 && (
             <span className="text-xs text-warning">{unlinked.length} part{unlinked.length === 1 ? '' : 's'} still need a certificate</span>
           )}
+          {/* This model's form set requires Form III A (lib/qc-models.js) but no group exists yet —
+              the PDF silently omits the page rather than dumping every part onto it (that would just
+              reproduce the III A == IV A bug), so this is the only place that surfaces the gap before
+              a folder goes out missing a required statutory form. */}
+          {showIiia && groups.length === 0 && (
+            <span className="flex items-center gap-1 text-xs text-warning">
+              <AlertTriangleIcon className="size-3.5" />Form III A required — no groups defined yet
+            </span>
+          )}
           <Button disabled={incomplete} onClick={() => setPdfOpen(true)}>Preview PDF</Button>
+          {canEdit && (
+            <div className="flex items-center gap-1.5">
+              <button type="button" role="switch" aria-checked={!!document.customer_visible}
+                aria-label="Share with customer" disabled={visBusy || incomplete}
+                onClick={() => setCustomerVisible(!document.customer_visible)}
+                className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${document.customer_visible ? 'bg-primary' : 'bg-muted-foreground/25'}`}>
+                <span className={`inline-block size-4 translate-x-0.5 rounded-full bg-white shadow transition-transform ${document.customer_visible ? 'translate-x-4' : ''}`} />
+              </button>
+              <span className="text-xs text-muted-foreground">
+                Share with customer{incomplete ? ' (link every part first)' : document.customer_visible ? ' — visible in portal' : ''}
+              </span>
+            </div>
+          )}
         </div>
       </div>
-
-      {canEdit && (
-        <div className="flex items-center gap-2">
-          <Checkbox id="qc-doc-customer-visible" checked={!!document.customer_visible} disabled={visBusy || incomplete}
-            onCheckedChange={(v) => setCustomerVisible(!!v)} />
-          <Label htmlFor="qc-doc-customer-visible" className="font-normal text-xs">
-            Share with customer{incomplete ? ' (link every part first)' : document.customer_visible ? ' — visible in their portal' : ' (not shown in the portal)'}
-          </Label>
-        </div>
-      )}
 
       <Card>
         <CardHeader>
@@ -743,6 +854,11 @@ export default function QcDocumentEditor({ project, document, parts, certificate
         </CardHeader>
       </Card>
 
+      {showIiia && (
+        <IiiaGroupsCard documentId={document.id} groups={groups} parts={parts} assemblies={assemblies}
+          bomItems={bomItems} canEdit={canEdit} router={router} />
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle>Form IV A — Material Test Certificates</CardTitle>
@@ -752,9 +868,18 @@ export default function QcDocumentEditor({ project, document, parts, certificate
               <Button size="xs" variant={filter === 'unlinked' ? 'secondary' : 'ghost'} onClick={() => setFilter('unlinked')}>
                 Unlinked ({ivaUnlinked.length})
               </Button>
+              <CollapseButton open={ivaOpen} onToggle={() => setIvaOpen(o => !o)} label="Form IV A" />
             </div>
           </CardAction>
         </CardHeader>
+        {!ivaOpen && (
+          <CardContent>
+            <p className="text-sm text-muted-foreground">
+              {ivaParts.length} part{ivaParts.length === 1 ? '' : 's'} · {ivaUnlinked.length} unlinked
+            </p>
+          </CardContent>
+        )}
+        {ivaOpen && (
         <CardContent className="flex flex-col gap-3">
           <div className="flex items-center gap-2">
             <div className="relative flex-1">
@@ -783,14 +908,10 @@ export default function QcDocumentEditor({ project, document, parts, certificate
             ))}
           </div>
         </CardContent>
+        )}
       </Card>
 
-      {showIiia && (
-        <IiiaGroupsCard documentId={document.id} groups={groups} parts={parts} assemblies={assemblies}
-          bomItems={bomItems} canEdit={canEdit} router={router} />
-      )}
-
-      <MountingsCard key={mountings.length} documentId={document.id} mountings={mountings} canEdit={canEdit} router={router} />
+      <MountingsCard key={mountings.length} documentId={document.id} mountings={mountings} bomItems={bomItems} canEdit={canEdit} router={router} />
 
       {selected.size > 0 && (
         <div className="sticky bottom-4 flex items-center justify-between rounded-xl bg-popover p-3 text-sm shadow-lg ring-1 ring-foreground/10">
@@ -810,7 +931,7 @@ export default function QcDocumentEditor({ project, document, parts, certificate
         onPick={link}
       />
       <BoilerDetailsSheet open={boilerOpen} onOpenChange={setBoilerOpen} document={document} currentUserName={currentUserName} router={router} />
-      <AddPartDialog open={addPartOpen} onOpenChange={setAddPartOpen} documentId={document.id} router={router} />
+      <AddPartDialog open={addPartOpen} onOpenChange={setAddPartOpen} documentId={document.id} bomItems={bomItems} router={router} />
       <PdfPreview
         open={pdfOpen}
         onOpenChange={setPdfOpen}

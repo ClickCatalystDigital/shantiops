@@ -2869,14 +2869,46 @@ releasing both batch allocations and reserved serials, the direct-issue shortcut
 full heat/MTC traceability, the job_card→work_order chain, and the no-double-consumption guard).
 
 **Deliberately not built, named rather than dropped:** auto-matching a released BOM line to an
-existing batch/serial the way `lib/remnant-match.js` already does for pieces; a `jc_no` code for Job
-Cards; a formal Indent/Material Requisition document; dedicated Reserve/Issue buttons in the Serials
-dialog (the backend is fully correct and reachable via API — `reserveSerial`/`issueSerial` — just not
-yet click-wired into that one dialog); the pre-existing cut-code lineage-renumbering cosmetic issue
+existing batch/serial the way `lib/remnant-match.js` already does for pieces; a formal Indent/
+Material Requisition document; dedicated Reserve/Issue buttons in the Serials dialog (correction,
+2026-08-26: `reserveSerial`/`issueSerial` are correct lib functions but neither has an API route at
+all yet, let alone UI wiring — confirmed live, not just "not click-wired" as first written here); the
+pre-existing cut-code lineage-renumbering cosmetic issue
 (`PL-0042-R1` cut again reads `PL-0042-R1-U1` instead of the flatter `PL-0042-U2` — genealogy via
 `parent_id` is unaffected either way), logged to a new Stores-side Backlog tab (`StoresWorkspace.jsx`,
 mirroring `PlanningWorkspace.jsx`'s existing pattern, kept separate since the gap is Stores/Cutting
 domain, not Production's).
+
+### Phase 3 live verification + Job Card codes (2026-08-26, same-day follow-up)
+
+Everything in Phase 3 above had only ever been proven against `batch-serial-consumption-selfcheck.mjs`'s
+hand-mirrored in-memory DB, not the real one. This pass proved the four riskiest paths live against
+the actual Turso dev DB (disposable test project/BOM lines/batches, torn down after — zero GL entries
+needed reversing, since the test items had no cost basis), then shipped one of the three "deliberately
+not built" items above.
+
+**Live verification, 4/4 pass.** Direct-issue FIFO with no prior reservation correctly consumes the
+oldest-receipt batch first and writes `reservation_id=NULL`/`status='issued'`. I11's no-double-
+consumption guard, re-tested end to end: re-issuing against an already-issued `bom_item` creates only
+a bare audit-only `material_issues` row — zero new allocations, zero `on_hand`/batch-qty change, the
+original allocation untouched. The Stores UI's tracking-mode filtering genuinely excludes piece/
+serial-tracked items from the Reserve dialog's picker (not just rejected server-side). The serial
+reserve→issue cycle was verified at the SQL level directly (no UI/API route reaches `reserveSerial()`,
+confirmed still true — see the corrected paragraph above) and surfaced one detail worth remembering:
+`reserveSerial()` never calls `rollUpOnHand`, so `on_hand` stays at its pre-reserve value through the
+whole `reserved` state and only recomputes at issue — matches the source exactly, not a bug, but
+worth knowing if `on_hand` ever looks stale mid-reservation for a serial-tracked line.
+
+**Job Card codes — shipped.** `job_cards.jc_no` (`JC-####`, via the existing `nextNumber()`
+convention already used for `WO`/`NCR`/`INV`, `lib/db.js`), stamped at creation and backfilled for
+any pre-existing rows via the same `addColumn` + id-derived-code pattern `inventory_items.item_code`
+already used. Rendered everywhere a job card is shown: `WorkOrdersPanel.jsx` (the Work-Order-scoped
+list), and — found only by verifying live as `production_head` rather than trusting the original
+grep-based audit — `JobCardBoard.jsx`, the actual primary Shop Floor job card board, which had
+rendered **no** card identifier at all before this fix, on either the tile or the detail sheet title.
+The original audit missed it because there was no `#{id}` pattern there to grep for; worth remembering
+that "no identifier shown" is a gap the same shape of search won't surface, only a live click-through
+will.
 
 ## 5l. Work Orders — production-control layer above Job Cards (2026-08-19, STERP Priority 2/3 items 20-21-22-23-24-27-28-29, no separate working-spec doc — folded straight in here)
 

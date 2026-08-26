@@ -2,7 +2,7 @@
 // Scoped to a real Production milestone (lib/milestones.js) — project_id/section are derived
 // server-side from the milestone, not taken from the client, so they can never drift out of sync.
 import { NextResponse } from 'next/server';
-import { execute, queryOne } from '@/lib/db';
+import { execute, queryOne, nextNumber } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment, canAccessDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { getJobCards } from '@/lib/data';
@@ -42,12 +42,13 @@ export async function POST(req) {
     return NextResponse.json({ error: 'Job cards can only be raised against a Production milestone' }, { status: 400 });
   }
 
+  const jcNo = await nextNumber('jc_no', 'JC');
   const { lastId } = await execute(
     `INSERT INTO job_cards
        (project_id, milestone_id, section, bom_item_id, operation_id, workstation_id, qty_planned,
         planned_start, planned_end, is_outside, outside_vendor, is_site, rework_of_job_card_id,
-        qc_record_id, notes, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        qc_record_id, notes, created_by, jc_no)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       milestone.project_id, milestoneId, milestone.milestone_label,
       b.bom_item_id ? Number(b.bom_item_id) : null, b.operation_id ? Number(b.operation_id) : null,
@@ -56,9 +57,9 @@ export async function POST(req) {
       b.is_outside ? (String(b.outside_vendor || '').trim() || null) : null, b.is_site ? 1 : 0,
       b.rework_of_job_card_id ? Number(b.rework_of_job_card_id) : null,
       b.qc_record_id ? Number(b.qc_record_id) : null,
-      String(b.notes || '').trim() || null, user.username,
+      String(b.notes || '').trim() || null, user.username, jcNo,
     ]
   );
-  await audit('job_card_created', { actor: user.username, detail: `#${lastId} · ${milestone.milestone_label}` });
-  return NextResponse.json({ id: Number(lastId) });
+  await audit('job_card_created', { actor: user.username, detail: `${jcNo} · ${milestone.milestone_label}` });
+  return NextResponse.json({ id: Number(lastId), jc_no: jcNo });
 }

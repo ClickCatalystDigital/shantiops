@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
-import { execute, queryOne } from '@/lib/db';
+import { execute, queryOne, withTransaction } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
+import { reconcileIiiaGroups } from '@/lib/qc-bom-sync';
 
 // Links a QC part to a BOM line so lib/tc-match.js has a real material spec to suggest certificates
 // against — see the plan's Step 1. Purely a lookup link, doesn't touch test_certificate_id.
@@ -29,6 +30,11 @@ export async function POST(req, { params }) {
   }
 
   await execute('UPDATE qc_document_parts SET bom_item_id = ? WHERE id = ?', [bomItemId, part.id]);
+
+  // A manually-linked part deserves the same Form III A group routing "Sync from BOM" already gives
+  // an auto-inserted one — otherwise linking a part to a BOM line that belongs to an existing group
+  // leaves it stranded on Form IV A until the next full sync happens to touch it.
+  if (bomItemId) await withTransaction(tx => reconcileIiiaGroups(tx, params.id));
 
   await audit('qc_document_part_link_bom_item', {
     actor: user.username,
