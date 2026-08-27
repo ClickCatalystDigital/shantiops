@@ -29,7 +29,14 @@ export async function POST(req, { params }) {
     bomItemId = bomItem.id;
   }
 
-  await execute('UPDATE qc_document_parts SET bom_item_id = ? WHERE id = ?', [bomItemId, part.id]);
+  // part_name (optional) — the editor's title field is now the same searchable BOM picker as the
+  // link itself (picking a BOM item IS naming the part), so the two are set together in one call
+  // rather than needing a second endpoint just to rename.
+  if (typeof b.part_name === 'string' && b.part_name.trim()) {
+    await execute('UPDATE qc_document_parts SET bom_item_id = ?, part_name = ? WHERE id = ?', [bomItemId, b.part_name.trim(), part.id]);
+  } else {
+    await execute('UPDATE qc_document_parts SET bom_item_id = ? WHERE id = ?', [bomItemId, part.id]);
+  }
 
   // A manually-linked part deserves the same Form III A group routing "Sync from BOM" already gives
   // an auto-inserted one — otherwise linking a part to a BOM line that belongs to an existing group

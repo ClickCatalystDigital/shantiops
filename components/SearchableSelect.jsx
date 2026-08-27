@@ -11,10 +11,29 @@ import { useState } from 'react';
 import { Input } from './ui/input';
 import { cn } from '@/lib/utils';
 
-export default function SearchableSelect({ value, onChange, options, placeholder = 'Search…', className }) {
+// `displayValue` + `onTextChange` (both optional, both opt-in) turn this into a hybrid field for a
+// title that's sometimes a real BOM link and sometimes free-typed text with no matching option at
+// all (QcDocumentEditor's Mountings row description) — plain `value`/`selected?.label` can only ever
+// show an OPTION's label, so an unlinked row's real text would otherwise have nowhere to display
+// except the placeholder slot (which reads as "empty" even though there's real data there).
+// `displayValue` is the current real text regardless of whether it matches an option; `onTextChange`
+// fires on every keystroke so the caller can save free typing as-is, separately from `onChange`
+// (which still only fires when an option is actually picked). Neither prop touches any existing
+// caller: `currentText` reduces to exactly `selected?.label ?? ''` when `displayValue` is omitted,
+// and the blank-on-focus behavior only changes when `onTextChange` is provided.
+// `className` sizes/positions the wrapper (width, margins) — it lands on the outer `relative` div,
+// which is where every existing caller's `w-*` sizing already needed to apply. Text/border/background
+// styling on the *input itself* (font size, ghost-until-focused borders, etc.) needs a real second
+// hook, since those Tailwind classes on the wrapper never reached the actual `<input>` — `text-sm` on
+// a parent div doesn't override the child Input's own explicit `text-base md:text-sm` classes, and a
+// border/bg utility on the wrapper never touched the input's own border/bg at all. `inputClassName`
+// is that hook, applied straight onto the `<Input>` via the same `cn()` merge (later classes win), so
+// existing callers relying on the input's default look are unaffected by adding this optional prop.
+export default function SearchableSelect({ value, onChange, options, placeholder = 'Search…', className, inputClassName, displayValue, onTextChange }) {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const selected = options.find(o => o.value === value);
+  const currentText = displayValue ?? selected?.label ?? '';
   const filtered = query.trim()
     ? options.filter(o => o.label.toLowerCase().includes(query.trim().toLowerCase()))
     : options;
@@ -28,11 +47,12 @@ export default function SearchableSelect({ value, onChange, options, placeholder
   return (
     <div className={cn('relative', className)}>
       <Input
-        value={open ? query : (selected?.label || '')}
-        onChange={e => { setQuery(e.target.value); setOpen(true); }}
-        onFocus={() => { setQuery(''); setOpen(true); }}
+        className={inputClassName}
+        value={open ? query : currentText}
+        onChange={e => { setQuery(e.target.value); setOpen(true); onTextChange?.(e.target.value); }}
+        onFocus={() => { setQuery(onTextChange ? currentText : ''); setOpen(true); }}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
-        placeholder={selected?.label || placeholder}
+        placeholder={currentText || placeholder}
       />
       {open && (
         <div className="absolute top-full z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-md border bg-popover shadow-md">

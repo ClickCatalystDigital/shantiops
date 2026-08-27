@@ -13,6 +13,352 @@ import {
   LandmarkIcon, PercentIcon, BookIcon, LockIcon,
 } from 'lucide-react';
 
+// System-architecture diagrams (2026-08-27) — verified against the actual schema/routes, not the
+// hand-drawn reference diagram it was requested from. Three corrections worth remembering, since a
+// future edit could easily "fix" these back to the more obvious-looking wrong shape:
+//   1. Drawing / Calc Sheet / BOM Line / Reservation / Material Issue have NO generated business
+//      code anywhere — they're identified by their own free-text name (drawing/calc sheet) or a
+//      plain numeric row id (BOM line, reservation, material issue, inventory_batches). Only
+//      Project (SB-####), PR (PR-####), PO (NNN/SB/YYYY-YY), Job Card (JC-####), inward receipt
+//      (INW-####), stock piece (PL-#### plate / LN-#### linear), serial (SR-####), and NCR
+//      (NCR-####) are real generated codes (lib/db.js's nextNumber()/nextCounterValue()).
+//   2. A BOM line usually already exists before Procurement ever sees it (bulk PMB import from
+//      Design) — a Purchase Requisition (PR-####) is the minority path, raised by Eng/Design/Stores
+//      to CREATE a new bom_items row, not something every BOM line passes through.
+//   3. A Job Card is not downstream of a Material Issue — it's created independently against a
+//      Production milestone (or generated in bulk from a Work Order route card) and only linked
+//      when a Material Issue optionally stamps job_card_id onto it.
+// PL-#### is also a real prefix collision, left as-is rather than smoothed over: a stock piece
+// (lib/stock-pieces.js) and a Dispatch packing list (nextNumber('packing_no','PL')) both generate
+// "PL-####" from unrelated counters — genuinely ambiguous out of context, not a typo here.
+const END_TO_END_TRACEABILITY_DIAGRAM =
+`PROJECT  (project_no, e.g. SB-1040)
+   │
+   ├──────────────────────┬───────────────────────┐
+   ▼                       ▼                       │
+DRAWING                 CALC SHEET                 │
+(calc_drawings:         (calc_sheets:               │
+ name + revision —       name — no generated        │
+ no generated code)      code)                       │
+   │                       │                         │
+   └───────────┬───────────┘                         │
+               ▼                                     │
+        BOM LINE  (bom_items — plain row id,          │
+                    no generated code)                │
+        material / qty / spec                        │
+        drawing_revision_at_release  (frozen snapshot)│
+        requires: heat no · MTC · supplier batch · serial no
+               │
+          Release BOM  (freezes the drawing-revision snapshot above)
+               │
+   ┌───────────┴──────────────────┐
+   ▼                               ▼
+already a BOM line          raised as a NEW need
+(bulk PMB import —          (Eng / Design / Stores)
+ the common path)           PURCHASE REQUISITION  PR-####
+   │                        → itself creates the BOM line
+   └───────────┬──────────────────┘
+               ▼
+   Enquiry → Comparison → Ordered → Transit   (purchase_status ladder)
+               │
+      select supplier, issue PO
+               ▼
+   PURCHASE ORDER   po_no = NNN/SB/YYYY-YY
+               │
+         material arrives
+               ▼
+┌─────────────────────────────────────────────────────────────┐
+│                            STORES                            │
+│  STOCK RECEIPT  (stock_receipts.inward_batch_no, INW-####)   │
+│               │                                              │
+│      tracking_mode on the inventory line                     │
+│  ┌────────┬────────────────┬─────────────────┬────────────┐ │
+│  ▼        ▼                ▼                  ▼            │ │
+│ scalar   PIECE            BATCH              SERIAL         │ │
+│ on_hand  stock_pieces     inventory_batches  inventory_     │ │
+│          PL-#### plate    heat_no /          serials        │ │
+│          LN-#### linear   supplier_batch_no  SR-####        │ │
+│          (row-id code)    (NO code — row id  (row-id code)  │ │
+│                            only)                             │ │
+│  └────────┴────────────────┴─────────────────┴────────────┘ │
+│      requires_heat_no / _mtc / _supplier_batch / _serial_no  │
+│      (from the BOM line) — missing data blocks receiving     │
+└──────────────────────────────┬────────────────────────────────┘
+                                ▼
+                RESERVE  (inventory_reservations — row id,
+                           no code)  — scalar / batch only
+                piece → reservePiece · serial → reserveSerial
+                (serial: lib function exists, no UI/API route yet)
+                                ▼
+                MATERIAL ISSUE  (material_issues — row id, no code)
+                optionally stamps job_card_id
+                batch: inventory_batch_allocations bridges the issue
+                to the specific batch(es), FIFO by receipt date
+                already-issued line? → any further issue is
+                audit-only, no second allocation (I11)
+                                ▼
+┌─────────────────────────────────────────────────────────────┐
+│                          PRODUCTION                           │
+│  JOB CARD  jc_no = JC-####                                    │
+│  created against a Production milestone, or generated in      │
+│  bulk from a Work Order's route card — NOT created by the     │
+│  Material Issue above; the two only link via job_card_id      │
+│               │                                                │
+│      piece-tracked line? ── yes ──► CUT                       │
+│               │                     stock_pieces parent_id     │
+│               │                     lineage: used / remnant    │
+│               │                     (pending_receipt → Stores  │
+│               │                     confirms → available) /    │
+│               │                     scrap                      │
+└───────────────┼────────────────────────────────────────────────┘
+                ▼
+┌─────────────────────────────────────────────────────────────┐
+│                              QC                                │
+│  QC DOCUMENT  doc_id  (e.g. SBH-1037-SF-WB-300-17)             │
+│    ├── qc_document_parts → TEST CERTIFICATE                    │
+│    │     (certificate_no — captured from a real cert, never    │
+│    │      generated)                                           │
+│    ├── qc_iiia_groups  (Form IIIA groups — row id, no          │
+│    │      generated business code)                             │
+│    └── heat / MTC / drawing revision carried through from       │
+│          the piece / batch / serial above                       │
+│                                                                 │
+│  separate shop-floor quality trail:                            │
+│    NCR  ncr_no = NCR-####  — against a Job Card or a piece     │
+│    Hold Points — gate a Job Card's Done status until released  │
+└─────────────────────────────────────────────────────────────┘`;
+
+const DESIGN_ENGINEERING_DIAGRAM =
+`RECEIVES:  a confirmed Sale Order → PROJECT  (project_no, SB-####)
+               │
+               ▼
+        SCOPE OF SUPPLY  (released — the technical boundary of the order)
+               │
+      ┌────────┴────────┐
+      ▼                 ▼
+   DRAWING            CALC SHEET
+   calc_drawings:     calc_sheets:
+   name + revision    name
+   (no generated       (no generated
+    code — the          code)
+    name IS the
+    "drawing number")
+      │                 │
+      └────────┬────────┘
+               ▼
+        BOM LINE  (bom_items — plain row id, no code)
+        via PMB import (bulk, the common path)
+        or a raised Purchase Requisition (PR-####)
+               │
+        set material description, MOC, size/spec, section,
+        and the 4 traceability flags:
+          requires_heat_no · requires_mtc ·
+          requires_supplier_batch · requires_serial_no
+               │
+        RELEASE BOM
+        → snapshots drawing revision onto the BOM line
+          (bom_items.drawing_revision_at_release) — a later
+          drawing revision can never silently rewrite it
+               │
+               ▼
+HANDS OFF TO PROCUREMENT: every open BOM line, each carrying
+its own frozen drawing revision + traceability requirements.
+
+TRACEABILITY PRESERVED: the drawing revision a part was actually
+built against survives every later drawing change, because it
+was copied onto the BOM line at the moment of release, not
+looked up live.`;
+
+const PROCUREMENT_DIAGRAM =
+`RECEIVES:  an open BOM line (from Design's PMB import, or a
+           Purchase Requisition raised by Eng/Design/Stores)
+               │
+               ▼
+        purchase_status ladder on the BOM line:
+        Enquiry → Comparison → Ordered → Transit → Received
+        (Cancelled / In-Stock are the other closed states)
+               │
+      ┌────────┴────────┐
+      ▼                 ▼
+   supplier quotes    a Stores "Reserve from stock" badge
+   recorded per         means Stores may already cover this
+   requirement           line — check before sourcing it
+      │
+   select supplier
+      ▼
+   PURCHASE ORDER
+   po_no = NNN/SB/YYYY-YY  (real business numbering, not a
+                             plain nextNumber() sequence)
+   one supplier per PO — every line on it must share one
+      │
+      ▼
+HANDS OFF TO STORES: the PO reference travels with the delivery;
+Stores' GRN/receipt step matches against it and the BOM line's
+own traceability requirements (heat/MTC/batch/serial), which
+Procurement never enters itself — only Stores captures the
+physical evidence at receipt.
+
+TRACEABILITY PRESERVED: po_no + the BOM line id are both on the
+purchase_orders/bom_items rows, so a later receipt can always be
+traced back to which PO and which requirement it satisfied.`;
+
+const STORES_DIAGRAM =
+`RECEIVES:  material arriving against a PO reference (or a
+           direct/no-PO delivery), for a specific BOM line
+               │
+               ▼
+        STOCK RECEIPT  (stock_receipts.inward_batch_no,
+                         INW-####)  — supplier, PO, GRN ref,
+                         received_at; one supplier per receipt
+               │
+        tracking_mode on the inventory line decides which
+        sibling table this receipt materializes into:
+               │
+   ┌─────────┬─────────────────┬──────────────────┬──────────┐
+   ▼         ▼                 ▼                    ▼         │
+ scalar     PIECE             BATCH                SERIAL     │
+ on_hand    stock_pieces      inventory_batches    inventory_ │
+ (a plain   PL-#### plate     a decrementing qty   serials    │
+  number)   LN-#### linear    POOL per lot —       SR-####    │
+            weight always     heat_no /            one row    │
+            computed from     supplier_batch_no    per        │
+            dimensions,       — NO generated code,  physical  │
+            never typed       identified by row id  unit      │
+   └─────────┴─────────────────┴──────────────────┴──────────┘
+               │
+        VALIDATION — the receiving BOM line's own flags:
+        requires_heat_no · requires_mtc ·
+        requires_supplier_batch · requires_serial_no
+               │
+        missing required data  ──►  REJECT the receipt
+               │  (data present)
+               ▼
+        stock is now on hand — available for
+        RESERVE (scalar/batch, inventory_reservations) or
+        MATERIAL ISSUE (direct FIFO, no prior reservation)
+               │
+HANDS OFF TO PRODUCTION: a Reserve → Issue creates the
+MATERIAL ISSUE row Production's Job Card can link to
+(job_card_id); a Cut against a piece is Production's own action
+against stock this department received, not something Stores
+does.
+
+TRACEABILITY PRESERVED: heat_no / supplier_batch_no / serial_no
+and the receipt row all stay attached to the physical batch or
+serial through every later allocation or issue — a
+material_issues row can always be traced back to the exact
+batch(es)/serial it drew from (inventory_batch_allocations, or
+inventory_serials.material_issue_id).`;
+
+const PRODUCTION_DIAGRAM =
+`RECEIVES:  a released BOM line with material available/reserved
+           in Stores, plus a Production milestone to work against
+               │
+               ▼
+        JOB CARD   jc_no = JC-####
+        created against a real Project + Milestone, or generated
+        in bulk from a Work Order's Process Route Card (wo_no,
+        WO-####) — NOT created by a Material Issue
+               │
+      ┌────────┴────────┐
+      ▼                 ▼
+  MATERIAL ISSUE      piece-tracked line?
+  (from Stores'          │
+   Reserve→Issue or       ▼
+   a direct FIFO       CUT  (lib/stock-pieces.js)
+   issue) — optionally  stock_pieces parent_id lineage:
+   stamped with this    parent PL-#### → used / remnant / scrap
+   card's job_card_id   remnant starts pending_receipt until
+                        Stores confirms it back to available
+               │
+        log hours, consumables, and qty done/rejected
+        on the Job Card as work happens
+               │
+        Job Card reaches Done
+        → its Production milestone auto-completes once every
+          card raised against it is Done
+               │
+        QC Hold Point on this route step? ── yes ──► card
+        cannot reach Done until QC releases the hold
+               ▼
+HANDS OFF TO QC: the Job Card, its consumed Material Issue(s),
+and any Cut piece lineage — QC's statutory record and heat/MTC
+trace read straight through this chain, nothing re-entered.
+
+TRACEABILITY PRESERVED: job_card_id on the Material Issue and
+parent_id on any cut piece both survive into QC's provenance
+lookup — "what was this Job Card actually built from" is always
+answerable from these two links, not from memory.`;
+
+const QC_DIAGRAM =
+`RECEIVES:  a Job Card's consumed material (batch/serial/piece,
+           each carrying its heat/MTC/cast/batch/serial identity
+           from Stores) plus the project's frozen drawing revision
+               │
+               ▼
+        QC DOCUMENT  doc_id  (e.g. SBH-1037-SF-WB-300-17 —
+                     a statutory boiler-document series, one per
+                     boiler, not a generic sequence)
+               │
+      ┌────────┴────────────────────┐
+      ▼                              ▼
+  qc_document_parts               qc_iiia_groups
+  one row per statutory part      Form IIIA per-sub-assembly
+  (Form IV A's 54-part            groups (e.g. "Feed pipeline")
+   template, seeded whole)         — row id, no generated code
+      │                              │
+      ▼                              │
+  TEST CERTIFICATE                   │
+  certificate_no — captured from     │
+  a real supplier/mill cert PDF,     │
+  never generated by this app        │
+      │                              │
+      └──────────────┬───────────────┘
+                      ▼
+        PDF gate: every part must be linked to a certificate
+        before the statutory PDF can be generated — an
+        unlinked part blocks it, not a soft warning
+
+        separately, shop-floor quality (not the statutory
+        document above):
+          NCR  ncr_no = NCR-####  — raised against a Job Card
+          or a stock piece; disposition (Rework/Repair/Scrap/
+          Use-as-is) drives the next action
+          Hold Points — release lets a gated Job Card reach Done
+
+HANDS OFF TO: Dispatch (a passed Finished Goods Inspection flips
+"Dispatch eligible"); the customer portal (a QC Head can make a
+finished document customer_visible).
+
+TRACEABILITY PRESERVED: this is the terminus of the chain — a QC
+document's parts resolve back through test_certificates to the
+original heat/cast, and through qc_document_parts/qc_iiia_groups
+to the exact BOM lines and drawing revision they were built
+against.`;
+
+// One feature per department: the shared end-to-end map (identical everywhere, so any two
+// departments can compare the same picture) plus that department's own focused slice. Built as a
+// raw object, same shape the grouped 'notifications' entries already use — GuideBody only needs
+// key/label/icon/body/diagram/value/outcome/checklist/watchOut, not the feature() wrapper.
+function architectureFeature(deptName, deptDiagram) {
+  const divider = '═'.repeat(65);
+  return {
+    key: 'architecture', label: 'System Architecture', icon: GitCompareIcon,
+    body: [
+      `This page has two parts: the same end-to-end material-traceability map every department sees — so you can follow a part into or out of ${deptName} — and a focused diagram of what ${deptName} itself receives, creates, and hands off.`,
+      'An ID shown as a real code (e.g. JC-####, PR-####) is generated by the app. Anything marked "no generated code" is identified only by its own free-text name or a plain database row id — do not expect a code for it anywhere else in the app.',
+    ],
+    diagram: `${END_TO_END_TRACEABILITY_DIAGRAM}\n\n\n${divider}\n${deptName.toUpperCase()} — YOUR SLICE OF THE SAME SYSTEM\n${divider}\n\n${deptDiagram}`,
+    value: 'One system, one material trail — every department\'s records point at the same underlying Project/BOM/Batch/Serial/Piece identity, just entered and read from a different screen.',
+    outcome: 'You can point at any record in your own workspace and know exactly which upstream record produced it and which downstream record consumes it next.',
+    checklist: [
+      'Use this page to answer "where did this material actually come from" or "what happens to this after I hand it off" — not as a data-entry screen.',
+      'Treat "no generated code" literally — do not go looking for a Drawing ID, BOM Item code, Reservation code, or Material Issue code elsewhere; none exists.',
+    ],
+    watchOut: 'This diagram reflects the app as actually built and verified against the real schema and routes, not an idealized or planned architecture. If your screen ever shows something this diagram doesn\'t, trust the screen and flag the diagram for correction.',
+  };
+}
+
 // Milestone Tracker (2026-08-17) — most milestones now complete themselves off a real event
 // instead of waiting for someone to open the status drawer (lib/milestone-auto.js is the single
 // source of truth this table mirrors). Shared shape so every manufacturing department's guide
@@ -418,6 +764,7 @@ export const DEPARTMENT_HELP = {
       'Use Home for your assigned work, Operations for the wider department view, and Projects when you need the complete order history. The Help sections below follow the normal Design flow from scope to release.',
     ],
     features: [
+      architectureFeature('Design', DESIGN_ENGINEERING_DIAGRAM),
       feature('scope', 'Scope of Supply', FileInputIcon, ['Read the work order created from a confirmed Sale Order. Confirm what the boiler, equipment, or package includes before detailed design starts.', 'Keep the scope clear and practical: what is included, what is excluded, and what the customer must provide. Release it only after Design and Engineering agree.']),
       feature('calc', 'Calculation Sheets', CalculatorIcon, ['Open Calc Sheets from the Design or Engineering tab and choose the project. Inputs, formulas, validations, snapshots, and review status stay attached to that project.', 'Save a snapshot when a calculation is ready for review. A snapshot is the frozen record of the exact inputs and formula versions used.']),
       feature('drawings', 'Drawings', RulerIcon, ['Use the Drawings panel to keep drawing files and their status with the calculation work. This is a release tracker, not a CAD editor.', 'Use clear drawing numbers and revision notes so Production can tell which file is current.']),
@@ -515,6 +862,7 @@ export const DEPARTMENT_HELP = {
       'Keep technical facts in the project record, not only in email or personal files. A good Engineering record makes the next department’s job obvious.',
     ],
     features: [
+      architectureFeature('Engineering', DESIGN_ENGINEERING_DIAGRAM),
       feature('scope', 'Scope of Supply', FileInputIcon, ['Review the released scope before starting detailed work. If the scope is unclear, raise the question as a task instead of silently making a commercial assumption.']),
       feature('calc', 'Calculation workspace', CalculatorIcon, ['Use Methodology for approved formulas, Variables for inputs, Tables for reference data, Validations for guardrails, and Snapshots for frozen calculation results.', 'A snapshot preserves the calculation as it was run. Use Reproduce or the Audit area when someone asks why a result changed.']),
       feature('drawings', 'Drawings and release', RulerIcon, ['Track drawing numbers, revisions, approvals, and as-built status with the project. Upload the file only after checking that the revision label matches the record.', 'Released calculations and drawings are the handoff signal to the shop; do not leave the project in an ambiguous review state.']),
@@ -560,6 +908,7 @@ export const DEPARTMENT_HELP = {
       'The key habit is to keep the commercial trail complete: request, comparison, supplier, PO, transit, and receipt should be understandable to someone who was not present when the decision was made.',
     ],
     features: [
+      architectureFeature('Procurement', PROCUREMENT_DIAGRAM),
       feature('enquiry', 'Enquiry queue', SearchIcon, ['Start with Enquiry items and Requests from Engineering, Design, or Stores. Confirm the technical description before contacting suppliers.', 'Use the project and source fields to separate normal project demand from In-Stock or Sold-As-Such demand.', 'A "Reserved from stock" badge means Stores has already committed inventory against that line — check with Stores before spending time sourcing it. The line still shows here because Reserve alone doesn\'t close it out; Stores only marks it In-Stock once they actually Issue the material.', 'A fresh BOM/SAS line does not reach this queue automatically anymore — Stores reviews it first (their Manual review step) and only sends it here by clicking Procure, which notifies you directly the moment it happens. You no longer need to check back speculatively for whether something new has landed.']),
       feature('quotes', 'Comparison and quotes', GitCompareIcon, ['Record each supplier quote with price, unit, payment terms, validity, and notes. Multiple quotes create a comparison trail rather than one unexplained price.', 'Do not delete a quote just because it lost; the history helps explain the final choice.']),
       feature('supplier', 'Supplier selection', Building2Icon, ['Select the supplier only after checking price, validity, terms, and technical fit. The selected quote becomes the basis for the draft PO.', 'If the requirement changes, update the BOM or request and leave a note rather than silently changing the supplier decision.']),
@@ -638,6 +987,7 @@ export const DEPARTMENT_HELP = {
       'Operations has a Stores pipeline diagram now (the same kind of glance Procurement, Sales, and Design already have) — SAS/Trade, BOM Released, and Build Stock as the three sources feeding in, then Requests → Stores Review → Reserved → In-Stock, with Received (via Procurement) as the one outcome from Procurement\'s own pipeline Stores actually needs to see.',
     ],
     features: [
+      architectureFeature('Stores', STORES_DIAGRAM),
       feature('inventory', 'Inventory', BoxesIcon, ['Inventory shows on-hand quantity and the quantity reserved for active project requirements. Available stock is the usable balance after reservations.', 'Keep item names and units consistent so the same stock is not entered twice under slightly different names.', 'Set a minimum stock level per item (New item / edit) to get a "Low" flag once available stock drops to or below it. Click the low-stock count — on the card title or the "low stock" chip above it — to filter the table down to just those items; toggle it off the same way.', 'Every item shows its own code (auto-generated if you do not set one) — use it and the search box above the table to find an item fast once the list grows past a screenful.', 'New item now captures dimensions and material the same way a BOM line does — pick a Category to get real Length/Width/Thickness (or size) fields instead of typing a spec string by hand, and Material/grade is a searchable list instead of free text.']),
       feature('reserve', 'Reservations', ClipboardCheckIcon, ['Reserve stock against a BOM requirement when material is committed to a project. A reservation reduces available stock without pretending the material has already been issued.', 'Release a reservation when the requirement is cancelled or fulfilled another way — this fully frees the quantity back to available; there is no separate "reassign to a different project" action, releasing and reserving again is how you move committed stock to a different requirement.', 'A green "✓" badge under a request\'s description is a real match — both sides were picked from the item catalog (search when raising the request, or search in the New Item dialog) and share the same underlying item. A muted "≈" badge is the older, weaker signal: plain keyword overlap, not automated, when no catalog link exists on one or both sides. Trust the ✓; still eyeball the ≈ before reserving.', 'Reserving does not change the BOM line\'s purchase status by itself — only Issue does. Procurement sees a "Reserved from stock" badge on the line the moment you reserve, so they know not to duplicate the sourcing work, but the line still technically shows as open until you actually Issue it.', 'Reservations work identically whichever kind of demand you\'re reserving against — a normal project BOM line, a Stock request, or a SAS trade request all draw from the same available pool, no special cases.']),
       feature('review', 'Allocation Mode (Automatic / Stores Review)', ClipboardCheckIcon, [
@@ -782,6 +1132,7 @@ export const DEPARTMENT_HELP = {
       ],
     },
     features: [
+      architectureFeature('Production', PRODUCTION_DIAGRAM),
       feature('jobcards', 'Job Card board', HardHatIcon, ['Create a card against a real project milestone — the picker is Project then Milestone, not a typed description — and it carries an operation, workstation, and planned quantity if you know them yet.', 'Click a card to log hours against a named worker (filtered to their trade), add consumables like rods or gas, update planned/done/rejected quantity, pause and resume, and see the labor cost run as hours are logged.', 'Mark a card Outside for subcontracted work or Site for work done at the customer’s location instead of the shop — both show as a badge on the card so they are never mistaken for ordinary shop-floor work.', 'A failed test or a rejected quantity does not need a new form from scratch — Create rework card on the original card spins up a linked pending card against the same milestone.']),
       feature('workorders', 'Work Orders', ClipboardIcon, [
         'A Work Order is the production-control record that sits above Job Cards — either Against a customer order (linked to a Project/Sale Order and its released BOM) or Against stock (a replenishment run with no customer project).',
@@ -988,6 +1339,7 @@ export const DEPARTMENT_HELP = {
       'Use project QC for work on a specific order, the Certificate bank for reusable material certificates, and the milestone/task views for daily inspection work.',
     ],
     features: [
+      architectureFeature('QC', QC_DIAGRAM),
       feature('tests', 'Test records', ClipboardCheckIcon, ['Create a record for hydro tests, NDE/radiography, MTC checks, and other inspections. Include test type, reference number, result, inspector, date, and notes.', 'Use Pending until the check is actually completed. A clear Fail result should include the reason or next action.']),
       feature('certificates', 'Test Certificate bank', BadgeCheckIcon, ['Enter a certificate once with its certificate number, maker/cast/plate details, material data, and uploaded PDF when available.', 'Link certificates to the relevant project or part so the same material evidence can be found later without duplicate entry.']),
       feature('statutory', 'Statutory documents', FileTextIcon, [
