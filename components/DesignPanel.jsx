@@ -81,7 +81,7 @@ export default function DesignPanel({ projectId, designSummary, scopeOfSupply = 
           <CardContent className="flex flex-col divide-y p-0">
             {calcSheets.map((s) => (
               <div key={s.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
-                <span className="text-sm font-medium">{s.name}</span>
+                <span className="text-sm font-medium">{s.csNo && <span className="text-muted-foreground">{s.csNo} · </span>}{s.name}</span>
                 <div className="flex items-center gap-2">
                   <Badge className={SHEET_STATUS_STYLE[s.status].cls} variant="outline">{SHEET_STATUS_STYLE[s.status].label}</Badge>
                   <Button asChild size="sm" variant="ghost"><Link href={`/calc/project/${projectId}/${s.id}`}>Open</Link></Button>
@@ -100,7 +100,7 @@ export default function DesignPanel({ projectId, designSummary, scopeOfSupply = 
           <CardContent className="flex flex-col divide-y p-0">
             {drawings.map((d) => (
               <div key={d.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
-                <span className="text-sm font-medium">{d.name}</span>
+                <span className="text-sm font-medium">{d.dgNo && <span className="text-muted-foreground">{d.dgNo} · </span>}{d.name}</span>
                 <Badge className={DRAWING_STATUS_STYLE[d.status].cls} variant="outline">{DRAWING_STATUS_STYLE[d.status].label}</Badge>
               </div>
             ))}

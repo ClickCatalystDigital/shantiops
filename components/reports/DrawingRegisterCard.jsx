@@ -23,6 +23,7 @@ export default function DrawingRegisterCard({ company }) {
         {data.lines.map(d => (
           <div key={d.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm">
             <span className="w-20 shrink-0 text-xs text-muted-foreground">{d.project_no}</span>
+            <span className="w-20 shrink-0 text-xs text-muted-foreground">{d.dg_no || '—'}</span>
             <span className="flex-1 truncate">{d.name}</span>
             <span className="text-xs text-muted-foreground">{d.assigned_to || '—'}</span>
             <span className="text-xs text-muted-foreground">{d.due_date || '—'}</span>

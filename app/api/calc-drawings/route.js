@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
 import { getFreshSessionUser } from '@/lib/auth';
-import { requireCalcAccess, getCalcDrawings, addDrawing } from '@/lib/calc';
+import { requireCalcAccess, requireCalcReadAccess, getCalcDrawings, addDrawing } from '@/lib/calc';
 import { audit } from '@/lib/usb';
 
 // CALC-CHANGES2.md §B — list/create drawings for a project. Mirrors calc-notes' route shape.
 export async function GET(req) {
   const user = await getFreshSessionUser();
-  const denied = requireCalcAccess(user);
+  const denied = requireCalcReadAccess(user);
   if (denied) return denied;
 
   const { searchParams } = new URL(req.url);

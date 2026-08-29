@@ -43,6 +43,7 @@ export async function POST(req) {
     return NextResponse.json({ error: 'A valid due date is required' }, { status: 400 });
   }
   const projectId = b.project_id ? Number(b.project_id) : null;
+  const body = String(b.body || '').trim() || null;
 
   // A cancel-request (§ Procurement cancel-request flow) — a task with bom_item_id set, always
   // aimed at Procurement, the only department that owns purchase_status. Validated against the
@@ -62,9 +63,9 @@ export async function POST(req) {
   // department board is one nobody owns, so it falls back to whoever created it.
   const assignedTo = String(b.assigned_to || '').trim() || user.username;
   const { lastId } = await execute(
-    `INSERT INTO tasks (title, due_date, department, assigned_to, created_by, from_department, project_id, bom_item_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [title, dueDate, department, assignedTo, user.username, fromDepartment, projectId, bomItemId]
+    `INSERT INTO tasks (title, due_date, department, assigned_to, created_by, from_department, project_id, bom_item_id, body)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [title, dueDate, department, assignedTo, user.username, fromDepartment, projectId, bomItemId, body]
   );
   const taskId = Number(lastId);
 

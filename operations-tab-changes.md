@@ -37,6 +37,18 @@ Production = `Received`. `getBomWork`'s own filter was widened to also keep full
 rows (previously dropped once `open === 0`) — otherwise Production's bucket would always be
 empty for a project that's fully received.
 
+## PM/admin's combined Master BOM table is preserved
+
+`deptsToShow` is always `[]` for a PM/admin/executive on "Today's Factory" (deliberate — their
+cross-department raise/oversight surface is the project page's all-departments tab strip instead,
+not this page). The per-department `cards` array is built entirely from `deptsToShow.includes(...)`
+checks, so it never populates for a PM — found live-testing this pass, since the original
+`MasterBomTable` render was unconditional (gated on `bomWork`, not `deptsToShow`) and would have
+silently disappeared for PM/admin otherwise. Fixed by keeping a `pmBomWork` fallback in
+`app/page.js`: when `manager` is true, render one more `MasterWorkTable` with the full unbucketed
+`bomWork` (every open item across all four departments together) in a plain `Card`, the same
+combined view `MasterBomTable` gave PM/admin before this pass.
+
 ## The Open Actions grid rule
 
 A single-department view of Design/Procurement/Stores/Production/Engineering hides

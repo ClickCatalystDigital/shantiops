@@ -390,7 +390,7 @@ function LineCard({ line, index, projects, inventoryItems, showSourcePicker, onC
                   <SelectTrigger className="w-40"><SelectValue placeholder="Drawing (optional)" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__none__">No drawing</SelectItem>
-                    {p.drawingOptions.map(d => <SelectItem key={d.id} value={String(d.id)}>DWG-{String(d.id).padStart(4, '0')} · {d.name}{d.revision ? ` · ${d.revision}` : ''}</SelectItem>)}
+                    {p.drawingOptions.map(d => <SelectItem key={d.id} value={String(d.id)}>{d.dgNo || `DWG-${String(d.id).padStart(4, '0')}`} · {d.name}{d.revision ? ` · ${d.revision}` : ''}</SelectItem>)}
                   </SelectContent>
                 </Select>
               )}

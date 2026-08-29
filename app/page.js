@@ -20,6 +20,7 @@ import QcFlow from '@/components/QcFlow';
 import AccountsFlow from '@/components/AccountsFlow';
 import DesignFlow from '@/components/DesignFlow';
 import OperationsFilterBar from '@/components/OperationsFilterBar';
+import MasterWorkTable from '@/components/MasterWorkTable';
 import OperationsAttentionSection from '@/components/OperationsAttentionSection';
 import PageHeader from '@/components/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
@@ -183,6 +184,15 @@ export async function OperationsPage({ searchParams }) {
     });
   }
 
+  // PM/admin's "Today's Factory" never populates deptsToShow (see comment above — their raise/
+  // oversight surface is the project page instead), so the per-department cards above never build
+  // for them. They still get the combined Master BOM table — every open BOM item across all 4
+  // BOM-owning departments, unbucketed — the same visibility MasterBomTable gave them before this
+  // pass, just on the shared table component now.
+  const pmBomWork = manager && bomWork.length
+    ? bomWork.map(w => ({ ...w, progress: { done: w.closed, total: w.total } }))
+    : null;
+
   const title = deptFilter || (manager ? "Today's Factory" : null);
   const total = groups.reduce((a, g) => a + g.items.length, 0);
   // Chip counts now live inside OperationsAttentionSection/OperationsFilterBar (they need them
@@ -210,6 +220,18 @@ export async function OperationsPage({ searchParams }) {
       {hrFlow && <HrFlow counts={hrFlow} />}
       {qcFlow && <QcFlow counts={qcFlow} />}
       {accountsFlow && <AccountsFlow counts={accountsFlow} />}
+
+      {pmBomWork && (
+        <Card>
+          <CardHeader className="py-4">
+            <CardTitle className="text-base">Master BOM</CardTitle>
+            <CardAction className="text-xs text-muted-foreground tnum">{pmBomWork.length} project{pmBomWork.length !== 1 ? 's' : ''}</CardAction>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <MasterWorkTable work={pmBomWork} columns={BOM_WORK_COLUMNS} emptyMessage="Nothing open." />
+          </CardContent>
+        </Card>
+      )}
 
       {/* "Open Actions" (renamed from "Needs Attention") — each project card now splits into
           Urgent (not yet delayed, closest deadline first) on top and Needs Attention (already

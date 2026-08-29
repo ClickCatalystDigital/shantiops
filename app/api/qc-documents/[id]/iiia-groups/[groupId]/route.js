@@ -9,7 +9,7 @@ import { audit } from '@/lib/usb';
 // certificate content, not re-scoping which BOM lines match.
 const FIELDS = ['design_pressure', 'design_temp', 'hydro_test_pressure', 'hydro_test_date',
   'process_of_manufacture', 'mode_of_flange_attachment', 'flange_particulars', 'size_of_branch',
-  'heat_treatment', 'identification_marks', 'drawing_no'];
+  'heat_treatment', 'identification_marks', 'drawing_no', 'calc_drawing_id'];
 
 export async function PATCH(req, { params }) {
   const user = await getFreshSessionUser();

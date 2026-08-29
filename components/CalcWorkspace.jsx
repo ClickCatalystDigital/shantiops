@@ -35,6 +35,8 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Textarea } from '@/components/ui/textarea';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 import { TONE_CLASS } from '@/lib/status-styles';
+import LinkifiedText from '@/components/LinkifiedText';
+import { findEntityRefTokens } from '@/lib/entity-ref-tokens';
 
 const TYPE_STYLE = {
   input: { label: 'Input', cls: TONE_CLASS.info },
@@ -202,14 +204,14 @@ export default function CalcWorkspace({ initialState, sheetId, sheetChain, user,
                     <InlineSwitcher
                       trigger={
                         <span className="flex min-w-0 items-center gap-1">
-                          <span className="truncate text-xs font-medium text-sidebar-foreground/80">{sheetChain.sheetName}</span>
+                          <span className="truncate text-xs font-medium text-sidebar-foreground/80">{sheetChain.csNo && `${sheetChain.csNo} · `}{sheetChain.sheetName}</span>
                           <ChevronDown className="size-3 shrink-0 text-sidebar-foreground/40" />
                         </span>
                       }
                       triggerClassName="-mx-1 flex w-full min-w-0 max-w-full rounded-md px-1 py-0.5 hover:bg-sidebar-accent"
                       placeholder="Search sheets…"
                       loadItems={async () => (await api(`/api/calc-sheets?project_id=${sheetChain.projectId}`)).sheets}
-                      getKey={(s) => s.id} getLabel={(s) => s.name} getSub={() => null}
+                      getKey={(s) => s.id} getLabel={(s) => s.cs_no ? `${s.cs_no} · ${s.name}` : s.name} getSub={() => null}
                       onPick={(s) => router.push(`/calc/project/${sheetChain.projectId}/${s.id}`)}
                     />
                   </div>
@@ -2158,6 +2160,17 @@ function DrawingCard({ drawing, router, canApprove, designTeam }) {
   const [fileBusy, setFileBusy] = useState(null);
   const [comments, setComments] = useState(null); // null = not yet loaded
   const [commentDraft, setCommentDraft] = useState('');
+  // Entity-reference tagging (lib/entity-refs.js) — same batched-resolve pattern TicketsPanel.jsx
+  // uses: one resolve call per comment thread, not one per comment.
+  const [refs, setRefs] = useState({});
+  useEffect(() => {
+    if (!comments) return;
+    const codes = [...new Set(comments.flatMap((c) => findEntityRefTokens(c.body)))];
+    if (codes.length === 0) { setRefs({}); return; }
+    api(`/api/entity-refs/resolve?codes=${encodeURIComponent(codes.join(','))}`)
+      .then((d) => setRefs(d.refs || {}))
+      .catch(() => setRefs({}));
+  }, [comments]);
   const [form, setForm] = useState({ status: drawing.status, assignedTo: drawing.assignedTo || '', dueDate: drawing.dueDate || '', notes: drawing.notes || '' });
   const loadComments = async () => { if (comments) return; try { setComments(await api(`/api/calc-drawings/${drawing.id}/comments`)); } catch (err) { showToast(err.message, 'error'); } };
   const postComment = async () => {
@@ -2185,7 +2198,7 @@ function DrawingCard({ drawing, router, canApprove, designTeam }) {
   };
   return <Card>
     <button className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left" onClick={() => setOpen((v) => !v)}>
-      <div className="min-w-0"><div className="text-sm font-medium">{drawing.name}</div>{drawing.drawingType && <div className="text-xs text-muted-foreground">{drawing.drawingType}</div>}</div>
+      <div className="min-w-0"><div className="text-sm font-medium">{drawing.dgNo && <span className="text-muted-foreground">{drawing.dgNo} · </span>}{drawing.name}</div>{drawing.drawingType && <div className="text-xs text-muted-foreground">{drawing.drawingType}</div>}</div>
       <div className="flex shrink-0 items-center gap-2">{drawing.customerApprovedAt && <Badge variant="outline" className="border-success text-success">Customer approved {formatDate(drawing.customerApprovedAt)}</Badge>}<Badge className={DRAWING_STATUS_STYLE[drawing.status].cls} variant="outline">{DRAWING_STATUS_STYLE[drawing.status].label}</Badge><ChevronDown className={`size-3.5 transition-transform ${open ? 'rotate-180' : ''}`} /></div>
     </button>
     {open && <CardContent className="flex flex-col gap-3 border-t pt-3">
@@ -2227,7 +2240,7 @@ function DrawingCard({ drawing, router, canApprove, designTeam }) {
               <div key={c.id} className="text-xs">
                 <span className="font-medium">{c.author_name}</span>{c.author_type === 'customer' && <Badge variant="outline" className="ml-1.5 text-[10px]">Customer</Badge>}{' '}
                 <span className="text-muted-foreground">{formatDate(c.created_at)}</span>
-                <p className="mt-0.5">{c.body}</p>
+                <LinkifiedText text={c.body} refs={refs} className="mt-0.5 block" />
               </div>
             ))}
             <div className="flex gap-2 pt-1">

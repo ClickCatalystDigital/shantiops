@@ -17,7 +17,7 @@ export default async function CalcSheetWorkspace({ params }) {
 
   const [state, drawings, designTeam] = await Promise.all([getCalcState(params.sheetId), getCalcDrawings(sheet.project_id), getDesignTeamMembers()]);
   const sheetChain = {
-    sheetId: sheet.id, projectId: sheet.project_id, projectNo: sheet.project_no, customerName: sheet.customer_name, sheetName: sheet.name,
+    sheetId: sheet.id, projectId: sheet.project_id, projectNo: sheet.project_no, customerName: sheet.customer_name, sheetName: sheet.name, csNo: sheet.cs_no,
   };
 
   return <CalcWorkspace initialState={{ ...state, drawings }} sheetId={sheet.id} sheetChain={sheetChain} user={user} designTeam={designTeam} />;

@@ -7,7 +7,7 @@
 // literal implementation of "it should fetch from the TC data only" (QC-CHANGES.md §1). Preview PDF
 // stays disabled while any part is unlinked — the server route re-asserts this, this is just the UX
 // echo of that gate.
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -23,6 +23,7 @@ import TraceabilityBadges from '@/components/TraceabilityBadges';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { ChevronLeftIcon, ChevronDownIcon, AlertTriangleIcon, SearchIcon, PlusIcon, Trash2Icon, XIcon, RefreshCwIcon } from 'lucide-react';
 import CertPicker from './CertPicker';
+import SearchableSelect from './SearchableSelect';
 import PdfPreview from './PdfPreview';
 import QcHeaderField from './QcHeaderField';
 import { suggestCertificates, suggestBomItem } from '@/lib/tc-match';
@@ -98,6 +99,15 @@ function BoilerDetailsSheet({ open, onOpenChange, document, currentUserName, rou
       <SheetContent className="w-full data-[side=right]:sm:max-w-2xl">
         <SheetHeader><SheetTitle>Edit boiler details</SheetTitle></SheetHeader>
         <div className="grid grid-cols-2 gap-3 overflow-y-auto px-4">
+          {/* Derived, not typed (DG- reversal) — every approved drawing on this project. Design
+              owns drawing approval, so there's no override point here; correct a wrong drawing_no
+              on the calc_drawings row itself. */}
+          <div className="col-span-2 flex flex-col gap-1.5">
+            <Label>Drawing No's</Label>
+            <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+              {document.approved_drawing_codes?.length ? document.approved_drawing_codes.join(', ') : 'No approved drawings on this project yet'}
+            </p>
+          </div>
           {QC_HEADER_FIELDS.map(f => (
             f.kind === 'select' ? (
               <div key={f.key} className="flex flex-col gap-1.5">
@@ -364,12 +374,14 @@ function AddPartDialog({ open, onOpenChange, documentId, bomItems, router }) {
 // per group, and parts move in/out via the always-works manual path — "Sync from BOM" reuses the
 // same global sync-bom endpoint Form IV A uses (lib/qc-bom-sync.js already routes a material line
 // into whichever group matches its assembly_id/group_label).
+// drawing_no is handled separately (a real calc_drawing_id picker, not free text — see the
+// dedicated field in IiiaGroupCard) since the DG- reversal made it canonical.
 const IIIA_HEADER_FIELDS = [
   ['design_pressure', 'Design Pressure (Kgf/cm²)'], ['design_temp', 'Design Temperature'],
   ['process_of_manufacture', 'Process of Manufacture'], ['mode_of_flange_attachment', 'Mode of Flange Attachment'],
   ['flange_particulars', 'Flange Particulars'], ['size_of_branch', 'Size of Branch & Attachment'],
   ['heat_treatment', 'Heat Treatment'], ['identification_marks', 'Identification Marks'],
-  ['drawing_no', 'Drawing No.'], ['hydro_test_pressure', 'Hydro Test Pressure (Kgf/cm²)'], ['hydro_test_date', 'Hydro Test Date'],
+  ['hydro_test_pressure', 'Hydro Test Pressure (Kgf/cm²)'], ['hydro_test_date', 'Hydro Test Date'],
 ];
 
 function NewIiiaGroupDialog({ open, onOpenChange, documentId, assemblies, groupLabels, router }) {
@@ -422,8 +434,9 @@ function NewIiiaGroupDialog({ open, onOpenChange, documentId, assemblies, groupL
   );
 }
 
-function IiiaGroupCard({ group: g, parts, ungroupedParts, bomItems, onLinkBomItem, canEdit, documentId, router }) {
+function IiiaGroupCard({ group: g, parts, ungroupedParts, bomItems, onLinkBomItem, canEdit, documentId, drawings, router }) {
   const [form, setForm] = useState(() => Object.fromEntries(IIIA_HEADER_FIELDS.map(([k]) => [k, g[k] || ''])));
+  const [drawingId, setDrawingId] = useState(g.calc_drawing_id ? String(g.calc_drawing_id) : '');
   const [busy, setBusy] = useState(false);
   const [addPartId, setAddPartId] = useState('');
   const [q, setQ] = useState('');
@@ -436,7 +449,9 @@ function IiiaGroupCard({ group: g, parts, ungroupedParts, bomItems, onLinkBomIte
   async function save() {
     setBusy(true);
     try {
-      await api(`/api/qc-documents/${documentId}/iiia-groups/${g.id}`, { method: 'PATCH', body: form });
+      await api(`/api/qc-documents/${documentId}/iiia-groups/${g.id}`, {
+        method: 'PATCH', body: { ...form, calc_drawing_id: drawingId ? Number(drawingId) : null },
+      });
       showToast('Group saved');
       router.refresh();
     } catch (err) { showToast(err.message, 'error'); }
@@ -475,6 +490,16 @@ function IiiaGroupCard({ group: g, parts, ungroupedParts, bomItems, onLinkBomIte
         {canEdit && <Button size="icon-sm" variant="ghost" aria-label="Delete group" onClick={removeGroup}><Trash2Icon className="size-3.5" /></Button>}
       </div>
       <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+        <div className="flex flex-col gap-1">
+          <Label className="text-xs font-normal text-muted-foreground">Drawing No.</Label>
+          {canEdit ? (
+            <SearchableSelect value={drawingId} onChange={setDrawingId} className="h-8"
+              options={drawings.map(d => ({ value: String(d.id), label: `${d.dgNo || d.id} · ${d.name}` }))}
+              placeholder={g.drawing_no ? `Unlinked — was "${g.drawing_no}"` : 'Link a drawing…'} />
+          ) : (
+            <Input value={g.linked_drawing_dg_no || g.drawing_no || ''} disabled className="h-8" />
+          )}
+        </div>
         {IIIA_HEADER_FIELDS.map(([k, l]) => (
           <div key={k} className="flex flex-col gap-1">
             <Label className="text-xs font-normal text-muted-foreground">{l}</Label>
@@ -514,13 +539,22 @@ function IiiaGroupCard({ group: g, parts, ungroupedParts, bomItems, onLinkBomIte
   );
 }
 
-function IiiaGroupsCard({ documentId, groups, parts, assemblies, bomItems, onLinkBomItem, canEdit, router }) {
+function IiiaGroupsCard({ documentId, projectId, groups, parts, assemblies, bomItems, onLinkBomItem, canEdit, router }) {
   const [newOpen, setNewOpen] = useState(false);
   const [syncBusy, setSyncBusy] = useState(false);
   const [open, setOpen] = useState(true);
+  const [drawings, setDrawings] = useState([]);
   const groupLabels = useMemo(() => [...new Set(bomItems.map(b => b.group_label).filter(Boolean))], [bomItems]);
   const ungrouped = parts.filter(p => !p.iiia_group_id);
   const groupedPartCount = parts.length - ungrouped.length;
+
+  // Best-effort, same idiom as PrWorkspace.jsx's drawing picker — the project's real DG- drawings,
+  // for linking a Form III A group to its canonical drawing number.
+  useEffect(() => {
+    let cancelled = false;
+    api(`/api/calc-drawings?project_id=${projectId}`).then(({ drawings }) => { if (!cancelled) setDrawings(drawings || []); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [projectId]);
 
   async function syncBom() {
     setSyncBusy(true);
@@ -566,7 +600,7 @@ function IiiaGroupsCard({ documentId, groups, parts, assemblies, bomItems, onLin
           {groups.map(g => (
             <IiiaGroupCard key={g.id} group={g} parts={parts.filter(p => p.iiia_group_id === g.id)}
               ungroupedParts={ungrouped} bomItems={bomItems} onLinkBomItem={onLinkBomItem}
-              canEdit={canEdit} documentId={documentId} router={router} />
+              canEdit={canEdit} documentId={documentId} drawings={drawings} router={router} />
           ))}
         </CardContent>
       )}
@@ -580,22 +614,27 @@ function IiiaGroupsCard({ documentId, groups, parts, assemblies, bomItems, onLin
 const EMPTY_MOUNT = { description: '', size: '', moc: '', serial_numbers: '', make: '', qty: '' };
 
 function MountingsCard({ documentId, mountings, bomItems, canEdit, router }) {
-  const [rows, setRows] = useState(() => mountings.map(m => ({ ...m })));
+  // `_key` is a locally-generated identity, never persisted (the server route only reads its own
+  // whitelisted fields, so this extra prop round-trips harmlessly in the Save payload) — needed
+  // because "Add row" prepends (client point: new rows go on top), which shifts every existing row's
+  // ARRAY INDEX by one. Keying selection/edits by index instead of `_key` would silently point every
+  // open selection at the wrong row the moment a row was added above it. `keySeq` only ever counts up,
+  // so a key is never reused even after rows are deleted.
+  const keySeq = useRef(mountings.length);
+  const [rows, setRows] = useState(() => mountings.map((m, i) => ({ ...m, _key: i })));
   const [busy, setBusy] = useState(false);
   const [syncBusy, setSyncBusy] = useState(false);
   const [open, setOpen] = useState(true);
   const [q, setQ] = useState('');
   const [selected, setSelected] = useState(new Set());
-  const setCell = (i, k) => e => setRows(rs => rs.map((r, j) => (j === i ? { ...r, [k]: e.target.value } : r)));
-  // Rows have no server id until Save (bulk-replace) — the index into `rows` is the only stable
-  // identity while editing, same key every per-row handler here already closes over.
-  function toggleRow(i) {
-    setSelected(s => { const n = new Set(s); if (n.has(i)) n.delete(i); else n.add(i); return n; });
+  const setCell = (key, k) => e => setRows(rs => rs.map(r => (r._key === key ? { ...r, [k]: e.target.value } : r)));
+  function toggleRow(key) {
+    setSelected(s => { const n = new Set(s); if (n.has(key)) n.delete(key); else n.add(key); return n; });
   }
   function deleteSelected() {
     if (!selected.size) return;
     if (!window.confirm(`Remove ${selected.size} selected item${selected.size === 1 ? '' : 's'}?`)) return;
-    setRows(rs => rs.filter((_, i) => !selected.has(i)));
+    setRows(rs => rs.filter(r => !selected.has(r._key)));
     setSelected(new Set());
   }
   // MOC and Make both get a searchable-but-not-locked picker: STANDARD_MOC is the app's own existing
@@ -618,9 +657,9 @@ function MountingsCard({ documentId, mountings, bomItems, canEdit, router }) {
   // so description is always overwritten by the pick — that's the explicit "this is what this row
   // is" action now, not a blank-only autofill. The other fields stay fill-if-blank: picking a title
   // shouldn't clobber a size/MOC/make the user already typed in by hand.
-  function setBomLink(i, id) {
+  function setBomLink(key, id) {
     const item = id ? bomItems.find(b => b.id === id) : null;
-    setRows(rs => rs.map((r, j) => (j !== i ? r : {
+    setRows(rs => rs.map(r => (r._key !== key ? r : {
       ...r, bom_item_id: id,
       description: item ? item.material_description : r.description,
       size: r.size || item?.size_spec || r.size,
@@ -629,32 +668,33 @@ function MountingsCard({ documentId, mountings, bomItems, canEdit, router }) {
       qty: r.qty || item?.qty_text || r.qty,
     })));
   }
-  const setDescription = (i, text) => setRows(rs => rs.map((r, j) => (j === i ? { ...r, description: text } : r)));
+  const setDescription = (key, text) => setRows(rs => rs.map(r => (r._key === key ? { ...r, description: text } : r)));
   // Qty is stored as one compound string ("40 SQ MTR") — the box only ever shows/edits the leading
   // number; the unit sits in its own label, sourced from whichever BOM item this row is linked to
   // (parseUnit'd from that item's own qty_text) so it updates the moment the link changes, and
   // falling back to whatever unit was already in the row's own text for a row with no link at all.
   // Typing a new number recombines it with that same unit before saving, so the stored value stays
   // in the one format every other reader of `qty` (the PDF, sync) already expects.
-  const setQtyNumber = (i, unit) => e => {
+  const setQtyNumber = (key, unit) => e => {
     const num = e.target.value;
-    setRows(rs => rs.map((r, j) => (j === i ? { ...r, qty: unit ? `${num} ${unit}`.trim() : num } : r)));
+    setRows(rs => rs.map(r => (r._key === key ? { ...r, qty: unit ? `${num} ${unit}`.trim() : num } : r)));
   };
 
-  // Filter AFTER pairing each row with its real index in `rows` — every handler above (setCell/
-  // setBomLink/remove/toggleRow) closes over that original index, so filtering the array directly
-  // first would silently edit, delete, or select the wrong row once a search narrows the list.
+  // Filter AFTER pairing each row with its display position — `i` here is only ever used for the
+  // "N." label and Save's sort_order, never for identity (every handler above keys by the stable
+  // `_key` instead, precisely so a search filter or a prepended row can never point an edit/selection
+  // at the wrong row).
   const needle = q.trim().toLowerCase();
   const shown = rows.map((r, i) => ({ r, i })).filter(({ r }) => {
     if (!needle) return true;
     return [r.description, r.size, r.moc, r.make, r.serial_numbers, r.qty]
       .some(v => v && String(v).toLowerCase().includes(needle));
   });
-  const allShownSelected = shown.length > 0 && shown.every(({ i }) => selected.has(i));
+  const allShownSelected = shown.length > 0 && shown.every(({ r }) => selected.has(r._key));
   function toggleSelectShown() {
     setSelected(s => {
-      if (allShownSelected) { const n = new Set(s); shown.forEach(({ i }) => n.delete(i)); return n; }
-      return new Set([...s, ...shown.map(({ i }) => i)]);
+      if (allShownSelected) { const n = new Set(s); shown.forEach(({ r }) => n.delete(r._key)); return n; }
+      return new Set([...s, ...shown.map(({ r }) => r._key)]);
     });
   }
 
@@ -714,7 +754,7 @@ function MountingsCard({ documentId, mountings, bomItems, canEdit, router }) {
           </div>
           {canEdit && (
             <>
-              <Button size="sm" variant="outline" onClick={() => setRows(rs => [{ ...EMPTY_MOUNT }, ...rs])}>
+              <Button size="sm" variant="outline" onClick={() => setRows(rs => [{ ...EMPTY_MOUNT, _key: keySeq.current++ }, ...rs])}>
                 <PlusIcon data-icon="inline-start" />Add row
               </Button>
               <Button size="sm" variant="outline" disabled={shown.length === 0} onClick={toggleSelectShown}>
@@ -746,17 +786,18 @@ function MountingsCard({ documentId, mountings, bomItems, canEdit, router }) {
             // row's own qty text for a row with no link at all (e.g. a purely manual "5 Bags" entry).
             const linkedItem = bomItems.find(b => b.id === r.bom_item_id);
             const qtyUnit = parseUnit(linkedItem?.qty_text) || parseUnit(r.qty);
+            const key = r._key;
             return (
-          <div key={i} className="flex flex-wrap items-center gap-2 border-t py-2 first:border-t-0">
-            <Checkbox className="shrink-0" checked={selected.has(i)} onCheckedChange={() => toggleRow(i)} />
+          <div key={key} className="flex flex-wrap items-center gap-2 border-t py-2 first:border-t-0">
+            <Checkbox className="shrink-0" checked={selected.has(key)} onCheckedChange={() => toggleRow(key)} />
             <span className="w-5 shrink-0 text-sm font-medium text-muted-foreground">{i + 1}.</span>
             {canEdit ? (
               <SearchableSelect
                 className="w-56 shrink-0 text-sm"
                 value={r.bom_item_id ? String(r.bom_item_id) : ''}
-                onChange={id => setBomLink(i, id ? Number(id) : null)}
+                onChange={id => setBomLink(key, id ? Number(id) : null)}
                 displayValue={r.description}
-                onTextChange={text => setDescription(i, text)}
+                onTextChange={text => setDescription(key, text)}
                 options={bomItems.map(b => ({ value: String(b.id), label: b.material_description }))}
                 placeholder="Description — type or pick from BOM"
               />
@@ -769,34 +810,34 @@ function MountingsCard({ documentId, mountings, bomItems, canEdit, router }) {
                 tag, so it's monospaced; Qty is a genuine number now (split from its unit above),
                 so it's the one field that can safely be type="number"; Size stays plain free text —
                 dimensional data has no reusable vocabulary the way a maker's name or MOC grade does. */}
-            <Input value={r.size || ''} onChange={setCell(i, 'size')} disabled={!canEdit}
+            <Input value={r.size || ''} onChange={setCell(key, 'size')} disabled={!canEdit}
               placeholder="Size" className="h-8 w-36 text-xs" />
             {canEdit ? (
               <SearchableSelect className="h-8 w-24 shrink-0 text-xs" value="" displayValue={r.moc}
-                onChange={v => setCell(i, 'moc')({ target: { value: v } })}
-                onTextChange={text => setCell(i, 'moc')({ target: { value: text } })}
+                onChange={v => setCell(key, 'moc')({ target: { value: v } })}
+                onTextChange={text => setCell(key, 'moc')({ target: { value: text } })}
                 options={mocOptions.map(m => ({ value: m, label: m }))} placeholder="MOC" />
             ) : (
               <span className="w-24 shrink-0 truncate rounded-full bg-muted/50 px-2 py-1 text-center text-xs font-medium">{r.moc || '—'}</span>
             )}
             {canEdit ? (
               <SearchableSelect className="h-8 w-28 shrink-0 text-xs" value="" displayValue={r.make}
-                onChange={v => setCell(i, 'make')({ target: { value: v } })}
-                onTextChange={text => setCell(i, 'make')({ target: { value: text } })}
+                onChange={v => setCell(key, 'make')({ target: { value: v } })}
+                onTextChange={text => setCell(key, 'make')({ target: { value: text } })}
                 options={makeOptions.map(m => ({ value: m, label: m }))} placeholder="Make" />
             ) : (
               <span className="w-28 shrink-0 truncate text-xs">{r.make || '—'}</span>
             )}
-            <Input value={r.serial_numbers || ''} onChange={setCell(i, 'serial_numbers')} disabled={!canEdit}
+            <Input value={r.serial_numbers || ''} onChange={setCell(key, 'serial_numbers')} disabled={!canEdit}
               placeholder="Serial No(s)" className="h-8 w-36 font-mono text-xs" />
             <div className="flex w-32 shrink-0 items-center gap-1">
-              <Input value={parseNumber(r.qty)} onChange={setQtyNumber(i, qtyUnit)} disabled={!canEdit}
+              <Input value={parseNumber(r.qty)} onChange={setQtyNumber(key, qtyUnit)} disabled={!canEdit}
                 placeholder="Qty" type="number" inputMode="decimal" className="h-8 w-16 text-right text-xs font-medium" />
               <span className="truncate text-xs text-muted-foreground" title={qtyUnit}>{qtyUnit}</span>
             </div>
             {canEdit && (
               <Button size="icon-sm" variant="ghost" aria-label="Remove row" className="ml-auto"
-                onClick={() => setRows(rs => rs.filter((_, j) => j !== i))}>
+                onClick={() => setRows(rs => rs.filter(row => row._key !== key))}>
                 <Trash2Icon className="size-3.5" />
               </Button>
             )}
@@ -1012,7 +1053,7 @@ export default function QcDocumentEditor({ project, document, parts, certificate
       </Card>
 
       {showIiia && (
-        <IiiaGroupsCard documentId={document.id} groups={groups} parts={parts} assemblies={assemblies}
+        <IiiaGroupsCard documentId={document.id} projectId={project.id} groups={groups} parts={parts} assemblies={assemblies}
           bomItems={bomItems} onLinkBomItem={linkBomItem} canEdit={canEdit} router={router} />
       )}
 

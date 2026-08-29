@@ -30,7 +30,7 @@ export default async function CalcSheetSelector({ params }) {
           <Link key={s.id} href={`/calc/project/${project.id}/${s.id}`}>
             <Card className="transition-colors hover:border-primary/40">
               <CardContent className="flex flex-col gap-1 py-4">
-                <span className="font-semibold text-primary">{s.name}</span>
+                <span className="font-semibold text-primary">{s.cs_no && <span className="text-muted-foreground">{s.cs_no} · </span>}{s.name}</span>
                 <span className="text-xs text-muted-foreground">Created {s.created_at}</span>
               </CardContent>
             </Card>

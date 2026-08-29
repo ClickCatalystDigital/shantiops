@@ -9,7 +9,7 @@
 // a PM). Formerly backed by a standalone `tickets` entity — collapsed into milestones + tasks, see
 // lib/notify.js's header comment. The component keeps its old name/shape deliberately (small diff);
 // rename once the shape settles.
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api, showToast, formatDate } from '@/lib/client';
@@ -19,7 +19,6 @@ import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/componen
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import {
@@ -27,6 +26,9 @@ import {
 } from '@/components/ui/dialog';
 import { PlusIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import LinkifiedText from './LinkifiedText';
+import MentionTextarea from './MentionTextarea';
+import { findEntityRefTokens } from '@/lib/entity-ref-tokens';
 
 // Exported so DesignOperationsCard (and any future per-department Operations card using this same
 // pattern) can place the Raise trigger inline in its own column header, next to the title + count
@@ -62,7 +64,7 @@ export function RaiseDialog({ department, projectId, milestones, router }) {
         await api('/api/production/tasks', {
           method: 'POST',
           body: {
-            title: form.title, due_date: form.due_date || todayISO(), department: form.to_department,
+            title: form.title, body: form.body, due_date: form.due_date || todayISO(), department: form.to_department,
             from_department: department || undefined, project_id: projectId || undefined,
           },
         });
@@ -130,7 +132,8 @@ export function RaiseDialog({ department, projectId, milestones, router }) {
           </div>
           <div className="flex flex-col gap-1.5">
             <Label>Details</Label>
-            <Textarea rows={2} value={form.body} onChange={set('body')} />
+            <MentionTextarea rows={2} value={form.body} onChange={v => setForm(f => ({ ...f, body: v }))}
+              placeholder="Type @ to reference a material, job card, work order, drawing, or NCR" />
           </div>
           {form.kind === 'request' && (
             <div className="flex flex-col gap-1.5">
@@ -170,6 +173,22 @@ export default function TicketsPanel({
   // fewer rows) never strands the view on a now-empty trailing page.
   if (bare && page > 0 && page >= pageCount) setPage(pageCount - 1);
 
+  // Entity-reference tagging (lib/entity-refs.js) — resolve once per visible batch (this page's
+  // title+body text), not once per row, to avoid an N+1 fetch across the several TicketsPanel
+  // instances one Operations view can render. Unresolved tokens (typo, or an entity that's since
+  // been removed) just don't appear in `refs` — LinkifiedText renders those as plain text.
+  const [refs, setRefs] = useState({});
+  const visibleTasks = bare ? pagedTasks : tasks;
+  useEffect(() => {
+    const codes = [...new Set(visibleTasks.flatMap(t => [
+      ...findEntityRefTokens(t.title), ...findEntityRefTokens(t.body),
+    ]))];
+    if (codes.length === 0) { setRefs({}); return; }
+    api(`/api/entity-refs/resolve?codes=${encodeURIComponent(codes.join(','))}`)
+      .then(d => setRefs(d.refs || {}))
+      .catch(() => setRefs({}));
+  }, [visibleTasks]);
+
   async function toggle(t) {
     try {
       await api(`/api/production/tasks/${t.id}`, { method: 'PATCH', body: { status: t.status === 'done' ? 'open' : 'done' } });
@@ -203,7 +222,11 @@ export default function TicketsPanel({
               </span>
             )}
             <div className="min-w-0 flex-1">
-              <p className={cn('truncate font-medium', t.status === 'done' && 'text-muted-foreground line-through')}>{t.title}</p>
+              <LinkifiedText text={t.title} refs={refs}
+                className={cn('block truncate font-medium', t.status === 'done' && 'text-muted-foreground line-through')} />
+              {t.body && (
+                <LinkifiedText text={t.body} refs={refs} className="block truncate text-xs text-muted-foreground" />
+              )}
               {subtitle.length > 0 && (
                 <p className="truncate text-xs text-muted-foreground">
                   {subtitle.map((node, i) => <span key={i}>{i > 0 && ' · '}{node}</span>)}

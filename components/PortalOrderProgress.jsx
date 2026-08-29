@@ -52,7 +52,7 @@ function DrawingRow({ drawing, onChanged }) {
     <div className="flex flex-col gap-3 rounded-lg border p-4">
       <div className="flex items-center justify-between gap-2">
         <div>
-          <p className="text-sm font-medium">{drawing.name}</p>
+          <p className="text-sm font-medium">{drawing.dgNo && <span className="text-muted-foreground">{drawing.dgNo} · </span>}{drawing.name}</p>
           {drawing.description && <p className="text-xs text-muted-foreground">{drawing.description}</p>}
         </div>
         <Badge variant={approved ? 'default' : 'outline'}>

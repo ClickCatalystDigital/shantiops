@@ -186,7 +186,7 @@ function ProductionBomTab({ projects }) {
                 <Select value={issueForm.job_card_id} onValueChange={v => setIssueForm({ ...issueForm, job_card_id: v })}>
                   <SelectTrigger className="w-56"><SelectValue placeholder="Job Card (optional)" /></SelectTrigger>
                   <SelectContent><SelectGroup>
-                    {jobCards.map(jc => <SelectItem key={jc.id} value={String(jc.id)}>#{jc.id} {jc.section}{jc.wo_no ? ` · ${jc.wo_no}` : ''}</SelectItem>)}
+                    {jobCards.map(jc => <SelectItem key={jc.id} value={String(jc.id)}>{jc.jc_no || `#${jc.id}`} {jc.section}{jc.wo_no ? ` · ${jc.wo_no}` : ''}</SelectItem>)}
                   </SelectGroup></SelectContent>
                 </Select>
               )}

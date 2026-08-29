@@ -355,7 +355,7 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
                     <div className="text-xs font-normal text-muted-foreground">
                       {[
                         r.catalog_item_code,
-                        r.drawing_name && `Drg DWG-${String(r.drawing_id).padStart(4, '0')} · ${r.drawing_name}${r.drawing_revision ? ` (${r.drawing_revision})` : ''}`,
+                        r.drawing_name && `Drg ${r.drawing_dg_no || `DWG-${String(r.drawing_id).padStart(4, '0')}`} · ${r.drawing_name}${r.drawing_revision ? ` (${r.drawing_revision})` : ''}`,
                         r.template_name && `via ${r.template_name}`,
                       ].filter(Boolean).join(' · ')}
                     </div>
