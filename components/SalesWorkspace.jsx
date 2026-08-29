@@ -1048,8 +1048,8 @@ function AddSaleOrderDialog({ onClose, router }) {
   async function save() {
     setSaving(true);
     try {
-      await api('/api/sale-orders', { method: 'POST', body: { customer_name: customerName.trim() || null, description: description.trim() || null, company } });
-      showToast('Sale Order added');
+      const res = await api('/api/sale-orders', { method: 'POST', body: { customer_name: customerName.trim() || null, description: description.trim() || null, company } });
+      showToast(`Sale Order ${res.so_no} created`);
       router.refresh();
       onClose();
     } catch (err) { showToast(err.message, 'error'); } finally { setSaving(false); }

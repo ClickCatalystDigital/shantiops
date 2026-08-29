@@ -50,5 +50,5 @@ export async function POST(req) {
     await notifyDepartment('Design', note);
     await notifyPMs(note, { except: user.id });
   } catch (err) { /* notification is best-effort */ }
-  return NextResponse.json({ id: Number(lastId) });
+  return NextResponse.json({ id: Number(lastId), so_no: soNo });
 }
