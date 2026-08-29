@@ -17,11 +17,12 @@ code. Doing that surfaced a second finding: QC's statutory-form "Drawing No." fi
 all to `calc_drawings` — closing that link (making `DG-` canonical inside QC) is part of this round
 too.
 
-## Status: implementation complete, not yet browser-verified for the QC half
+## Status: fully shipped and browser-verified, including the QC half
 
-Everything through "new drawing mint" was verified live (see below). The QC canonical-drawing-number
-work (IIIA group picker, folder-manifest derivation) was implemented but the session ran out of
-budget before click-through verification — flagged explicitly, not silently assumed working.
+Everything, including the QC canonical-drawing-number work, was verified live in a follow-up
+session (see "Verified live" below) — one real bug was found and fixed in the process
+(`SearchableSelect` was already imported once in `QcDocumentEditor.jsx`; the new import created a
+duplicate-binding webpack build error, caught immediately on first page load).
 
 ### Decisions locked (in order asked)
 
@@ -100,7 +101,7 @@ by creating a real drawing on SB-1040):
 - `REFS`/`ENTITY_TYPES`/`searchEntityRefs` updated to match (`DG`/`CS` in, `DWG` out; "Calc Sheet"
   added to the `@`-picker's type-chip list).
 
-## QC wiring (implemented, not yet browser-verified)
+## QC wiring (implemented and browser-verified)
 
 - `lib/data.js`'s `getQcDocumentDetail`: `qc_iiia_groups` query now joins `calc_drawings` for
   `linked_drawing_dg_no`; `document.approved_drawing_codes` is a new computed array (every approved
@@ -136,23 +137,33 @@ by creating a real drawing on SB-1040):
 5. Created a new drawing ("DG- Verification Test") → minted `DG-1001` (counter format, correctly
    distinct from the padded backfill range) — confirms `nextNumber('drawing_no','DG')` wiring end
    to end through `addDrawing` → `getCalcDrawings` → the UI.
+6. Login as `qc_head` (real QC document `SBH-TEST`, id 41, project SB-1040): the document header no
+   longer shows the old `drawing_no`/`drawing_no_from`/`drawing_no_to` inputs at all (confirmed
+   absent, not just disabled). Created a real Form III A group — its "Drawing No." field renders as
+   a `SearchableSelect` picker (not free text), and the dropdown listed both real project drawings
+   with their live `dg_no` codes (`DG-000030 · GA Drawing Test`, `DG-1001 · DG- Verification Test`)
+   — confirms `requireCalcReadAccess` correctly lets QC *read* Calc's drawing list. Attempted a
+   direct write (`PATCH /api/calc-drawings/30`) as `qc_head` → got a real `403`, confirming QC still
+   cannot write to Calc (read-only widening only, as designed). Linked a drawing via the picker →
+   persisted correctly across reload.
+7. `BoilerDetailsSheet`'s "Drawing No's" field: confirmed read-only (a `<p>`, no input), showed "No
+   approved drawings on this project yet" with zero approved drawings, then `DG-000030, DG-1001`
+   once two drawings on the project were set to `status='approved'` (via direct DB update — approval
+   is Design's existing action, untouched by this round, not worth re-testing here).
+8. **The actual generated PDF** (`GET /api/qc-documents/41/pdf`, 20-page real document, 221 parts) —
+   extracted text per-page with `pdfjsLib` (already loaded client-side for the preview) rather than
+   screenshotting, to keep verification cheap. Confirmed all three independent print sites agree:
+   covering-letter manifest line ("As built Drawings 1 set (Drawing No's DG-000030, DG-1001)"), Form
+   III's "Drawing no. : DG-000030, DG-1001", and the Form III A group page's "Drawing No. :
+   DG-000030" (the specific linked drawing, not the whole-project list) — exactly the derived,
+   comma-list, read-only behavior this round was designed to produce. Test group and the two
+   approvals were reverted afterward (direct DB cleanup) to leave the seed data as found.
 
-## Not yet verified — pick up here in a fresh session
-
-- Entity-ref tagging end-to-end: raise a task referencing a real `DG-1001`/`CS-000010` plus fakes
-  `DG-9999`/`CS-9999`; confirm real ones render as links with tooltips (`DG-` → project page, `CS-`
-  → the exact sheet URL), fakes degrade to plain text, `@`-picker's "Drawing"/"Calc Sheet" chips
-  live-search correctly, and a bare `DWG-1` now degrades (token retired).
-- Reports: Drawing Register report's new "Drawing No." column, on-screen and in the Excel export.
-- QC — the whole canonical-drawing-number half of this round is implemented but unclicked:
-  - IIIA group drawing picker (`requireCalcReadAccess` actually lets a `qc_head` login list a
-    project's drawings; linking one; the group's printed `drawing_no` becomes the linked `dg_no`).
-  - `BoilerDetailsSheet`'s new read-only "Drawing No's" display.
-  - The folder PDF itself (`GET /api/qc-documents/[id]/pdf`) — confirm the manifest line and every
-    form page (XVII/III/IIIA/TC) print the derived comma-list correctly, that a non-approved
-    drawing on the project is excluded, and that the line degrades sensibly when a project has zero
-    approved drawings.
-  - Document creation/edit sheets no longer show or require the three removed drawing_no* fields.
+One real bug found and fixed during this pass: `components/QcDocumentEditor.jsx` already imported
+`SearchableSelect` (for the existing part-move picker); the new import added for the drawing picker
+created a duplicate binding, which is a hard webpack build error, not a runtime one — caught
+immediately on first page load (`GET /projects/50/qc/41` 500'd with a clear "defined multiple
+times" message). Fixed by removing the duplicate import; the already-present one covers both uses.
 
 ## Files (current state)
 

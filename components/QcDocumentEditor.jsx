@@ -23,7 +23,6 @@ import TraceabilityBadges from '@/components/TraceabilityBadges';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { ChevronLeftIcon, ChevronDownIcon, AlertTriangleIcon, SearchIcon, PlusIcon, Trash2Icon, XIcon, RefreshCwIcon } from 'lucide-react';
 import CertPicker from './CertPicker';
-import SearchableSelect from './SearchableSelect';
 import PdfPreview from './PdfPreview';
 import QcHeaderField from './QcHeaderField';
 import { suggestCertificates, suggestBomItem } from '@/lib/tc-match';
