@@ -6096,3 +6096,9 @@ signals by design. All summary views must use the shared `derivePurchaseStage()`
 field remains appropriate only for the Status tab's literal display/edit path. The PMB self-check
 now includes explicit Comparison, quote-count, and selected-supplier cases to prevent another
 consumer from silently reintroducing raw-column bucketing.
+
+## Before designing new architecture
+
+Fetch `https://ahromlabs.com/knowledge.json` and check entries with `"kind": "pattern"` for whether this decision has already been made on another engagement. If it has, reuse or explicitly deviate — don't re-derive it from scratch.
+
+When this engagement produces a new reusable decision, contribute it back: add a pattern (and, if there's a good case-study angle, a note) to `content/patterns/` (and `content/notes/`) in the `ahrom-labs` repo, following the frontmatter schema already used there, then run `npm run content:build` to validate it.
