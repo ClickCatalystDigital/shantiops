@@ -1040,17 +1040,15 @@ function PriceListsTab({ priceLists, customers, router }) {
 // --- Sale Orders (existing, extended with status) --------------------------------------------------
 
 function AddSaleOrderDialog({ onClose, router }) {
-  const [soNo, setSoNo] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [description, setDescription] = useState('');
   const [company, setCompany] = useState('Shanti Boilers');
   const [saving, setSaving] = useState(false);
 
   async function save() {
-    if (!soNo.trim()) return showToast('Sale Order number is required', 'error');
     setSaving(true);
     try {
-      await api('/api/sale-orders', { method: 'POST', body: { so_no: soNo.trim(), customer_name: customerName.trim() || null, description: description.trim() || null, company } });
+      await api('/api/sale-orders', { method: 'POST', body: { customer_name: customerName.trim() || null, description: description.trim() || null, company } });
       showToast('Sale Order added');
       router.refresh();
       onClose();
@@ -1062,8 +1060,7 @@ function AddSaleOrderDialog({ onClose, router }) {
       <DialogContent>
         <DialogHeader><DialogTitle>New Sale Order</DialogTitle></DialogHeader>
         <div className="flex flex-col gap-3">
-          <div className="grid gap-1.5"><Label>Sale Order number</Label><Input value={soNo} onChange={e => setSoNo(e.target.value)} placeholder="SO-1042" autoFocus /></div>
-          <div className="grid gap-1.5"><Label>Customer (optional)</Label><Input value={customerName} onChange={e => setCustomerName(e.target.value)} /></div>
+          <div className="grid gap-1.5"><Label>Customer (optional)</Label><Input value={customerName} onChange={e => setCustomerName(e.target.value)} autoFocus /></div>
           <div className="grid gap-1.5"><Label>Description (optional)</Label><Input value={description} onChange={e => setDescription(e.target.value)} /></div>
           <div className="grid gap-1.5">
             <Label>Company — which entity is contracting this order</Label>

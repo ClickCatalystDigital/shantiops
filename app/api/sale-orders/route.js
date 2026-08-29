@@ -1,8 +1,12 @@
-// app/api/sale-orders/route.js — V2-CHANGES.md Group 6 Phase 6.1 (D14). Free-text Sale Order
-// numbers Sales maintains; Stores references one via ?search= when raising a source='sas' request
-// (Phase 6.4). Mirrors app/api/suppliers/route.js's shape.
+// app/api/sale-orders/route.js — V2-CHANGES.md Group 6 Phase 6.1 (D14). Stores references one via
+// ?search= when raising a source='sas' request (Phase 6.4). Mirrors app/api/suppliers/route.js's
+// shape.
+// so_no used to be free text Sales typed by hand here — inconsistent with the quotation→convert
+// path (app/api/quotations/[id]/convert/route.js), which always minted SO-{seq}. Fixed (entity-ref
+// tagging round): this path now mints too, off the same shared 'sale_order_no' counter, so every
+// sale order gets a real SO-{seq} number regardless of which path created it.
 import { NextResponse } from 'next/server';
-import { execute, queryAll } from '@/lib/db';
+import { execute, queryAll, nextCounterValue } from '@/lib/db';
 import { getFreshSessionUser, isInternal, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { getSaleOrders } from '@/lib/data';
@@ -33,8 +37,7 @@ export async function POST(req) {
   if (actionDenied) return actionDenied;
 
   const b = await req.json();
-  const soNo = String(b.so_no || '').trim();
-  if (!soNo) return NextResponse.json({ error: 'Sale Order number is required' }, { status: 400 });
+  const soNo = `SO-${await nextCounterValue('sale_order_no', 0)}`;
   const company = COMPANY_NAMES.includes(b.company) ? b.company : COMPANY_NAMES[0];
 
   const { lastId } = await execute(

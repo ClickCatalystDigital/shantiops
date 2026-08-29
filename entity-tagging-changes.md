@@ -42,15 +42,19 @@ registry entry per prefix:
 Certificates are out of scope (their only clean unique key is a 3-part combo — `cert_no` +
 `cast_no` + `plate_no` — not a single code).
 
-**Still not wired, but already have real minted codes** (found while inventorying every id scheme
-in the app — see chat transcript for the full table): Purchase Requisition (`PR-{seq}`), Purchase
-Order (FY-format), RFQ (`RFQ-{seq}`), Quotation (`QTN-{seq}/SB/YY-YY`), Sale Order (`sale_orders
-.so_no` = `SO-{seq}`, minted via `nextCounterValue('sale_order_no', 0)` — missed in the original
-inventory of this list, caught during the second gap-check pass), Fixed Asset (`FA-####`), Packing
-List (`PL-####`, its own namespace — not the same `PL-` as stock pieces, would need disambiguating
-if added), Credit/Debit Note (company/FY-format). Each follows the exact same pattern as
-everything above — a `resolveByNo`-style entry in `lib/entity-refs.js` plus a `searchEntityRefs`
-case — add on request, no new mechanism needed.
+**Now wired (later round)** — Purchase Requisition (`PR`), RFQ (`RFQ`), Fixed Asset (`FA`) as
+stored-full-code tokens (`resolveJobCard` pattern, label = the real code). Purchase Order, Quotation,
+Sale Order, Packing List, Credit Note, Debit Note as **derived-id** tokens (`PO`/`QT`/`SO`/`PK`/
+`CN`/`DN` + numeric id, `resolveBomItem`/`idFrom` pattern) — required because their real business
+numbers are slash-delimited (`579/SB/2026-27`, `QTN-42/SB/2026-27`, `SBE/CN/1/2026-27`) or
+heterogeneous free text (`so_no`, half-minted), which `TOKEN_RE`'s hyphen-only grammar can't
+represent; the synthetic token links, the label shows the real number. `PK-` deliberately distinct
+from stock-piece `PL-` (same `packing_no` "PL-####" shape, different table — would have collided).
+Same round also fixed the `so_no` half-mint: `POST /api/sale-orders` now mints `SO-{seq}` off the
+shared `sale_order_no` counter instead of taking free text. `TOKEN_RE`'s character class was not
+touched — only new prefixes added to its alternation, zero risk to any existing token. Verified live
+against real inserted rows for all 8 (PR/RFQ/FA/PO/QT/SO/PK, cleaned up after) plus a regression
+check that pre-existing prefixes (`PL`/`DG`/etc.) were untouched.
 
 Every resolved ref (except inventory items and, for now, drawings) shows its **code** as the link
 text, not its name/description — the name lives in the tooltip instead. This was a deliberate
