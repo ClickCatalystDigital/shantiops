@@ -56,6 +56,23 @@ touched — only new prefixes added to its alternation, zero risk to any existin
 against real inserted rows for all 8 (PR/RFQ/FA/PO/QT/SO/PK, cleaned up after) plus a regression
 check that pre-existing prefixes (`PL`/`DG`/etc.) were untouched.
 
+**Security fix, same round (audit pass, caught before it shipped to real users)** — 8 of these 9
+entities have real department gates on their normal read paths (`/procurement`, `/sales`,
+`/accounts`, `/packing` each redirect a wrong-department user home; their list/detail API routes
+independently re-check too). `lib/entity-refs.js`'s resolve/search only ever checked `isInternal` —
+so any internal user could see PO pricing/supplier, quotation totals/customer, fixed-asset cost, a
+credit/debit note's amount via a tooltip, or **actively browse them by typing `@` and searching**
+(`searchEntityRefs` had the identical gap — a true browse-by-typing side door, not just a passive
+tooltip leak). Fixed: `user` is now threaded through `resolveEntityRef`/`resolveEntityRefs`/
+`searchEntityRefs`, gated by two small maps (`READ_GATE`, `SEARCH_GATE`) that mirror each entity's
+own existing department check exactly (Procurement / Sales-or-Marketing-or-PM / Accounts / Dispatch
+/ Procurement-or-Stores for PO). A blocked code degrades to "absent from the result", same graceful
+pattern as an unknown/typo'd code — never a hard 403 for one bad token in an otherwise-valid batch.
+Sale Order confirmed as the one genuine exception (ungated elsewhere in the app too, left as-is).
+Verified live in both directions: `design_head` (no Procurement/Accounts access) gets an empty
+result from both resolve and search on `PO-`/`FA-` codes; `procurement_head`/`accounts_head`
+resolve the same codes correctly.
+
 Every resolved ref (except inventory items and, for now, drawings) shows its **code** as the link
 text, not its name/description — the name lives in the tooltip instead. This was a deliberate
 correction mid-session: `bom_item` originally showed the material description inline; changed to
@@ -312,9 +329,64 @@ param (e.g. `?highlight=GIR-1004`) and scroll to + visually flash that specific 
 do this today. Small, mechanical, but touches several pages' worth of scroll-into-view logic; a
 reasonable candidate to bundle with whichever future pass gives entities their own per-record
 pages (if that ever happens) rather than duct-taping query-param highlighting onto today's
-list-only pages. Also worth revisiting alongside §1 above: 7 more entities already have real
-minted codes but aren't wired into tagging yet (PR, PO, RFQ, Quotation, Fixed Asset, Packing List,
-Credit/Debit Note) — same `resolveByNo`-style pattern as GRN/GIR/Gate Pass, add on request.
+list-only pages. **Status: still not started as of this writing — next planned pickup, alongside
+defining explicit relationships between these entities (many-to-one, one-to-many, many-to-many,
+subset-of, etc. — e.g. a BOM item belongs to one drawing, a PO can span multiple PR line items).**
+The earlier "7 more entities" note here is now stale — all 20 entities with real minted codes are
+wired into tagging (see the tally above); this section is purely about deep-link precision now.
+
+### 4. `ENTITY_TYPES` chip list isn't filtered per department (cosmetic, deliberately not fixed)
+
+The `@`-picker shows all type chips (Purchase Order, Quotation, etc.) to every internal user
+regardless of department, even though `searchEntityRefs`' `SEARCH_GATE` (see above) now makes a
+blocked type silently return zero results. Not a security issue — the actual data access is
+already blocked — just a UX rough edge (a Design user can tap the "Purchase Order" chip and always
+get nothing). Real fix means converting `MentionTextarea.jsx`'s hardcoded client-side `ENTITY_TYPES`
+array into a server-fetched, per-user-filtered list. **Explicitly deferred — user confirmed this is
+low priority, not worth the effort right now.**
+
+### 5. Short-prefix false-positive risk — accepted, not "fixed" (same conclusion as the original `GP-` case)
+
+Every 2-3 letter derived-id prefix (`GP`, and now `SO`/`CN`/`DN`/`PR`/`PO`/`FA`/`QT`/`RFQ`/`PK`) can
+coincidentally appear in real prose followed by a hyphen and digits — e.g. a material spec reading
+"GP-2mm sheet" (GP = galvanized-plain, common steel terminology, nothing to do with a Gate Pass).
+**The derived-id prefixes added in the later round are actually a *larger* version of this same
+risk than the original `GP-`/`GIR-` case**: `GP-`/`GIR-` mint off `nextCounterValue(name)` with the
+default `startAt=1000`, so real codes only exist in the 1000+ range — small coincidental numbers in
+prose (`GP-2`) essentially never collide with a real row. `PO-`/`QT-`/`SO-`/`PK-`/`CN-`/`DN-`,
+though, are derived straight from the table's own `AUTOINCREMENT id` (via `idFrom`), which starts
+at **1** — so a coincidental low number in unrelated prose (someone typing "PO-5" meaning something
+else entirely) has a real chance of matching an actual row and producing a wrong-but-harmless link.
+
+**Why this doesn't have a clean fix, same as the original `GP-` investigation concluded:** the two
+only-real options both cost something —
+1. **Require more digits / a higher minimum id** before a derived token resolves — directly hurts
+   true positives (a real `PO-5` stops working, forever, even once the business has issued
+   thousands of POs and "5" is a perfectly normal id).
+2. **Add a discovery/disambiguation UI** (e.g. a confirm-before-link step, or visually distinguish
+   "resolved with low confidence") — a mechanism that doesn't exist anywhere else in this feature;
+   adding it only for these prefixes would be inconsistent, and building it generally is a real,
+   separate UI project, not a small fix.
+Every resolve is **read-only and now department-gated** (see the security fix above) — the actual
+damage ceiling of a false-positive match is "a tooltip shows the wrong record's status to someone
+already allowed to see that record type," never data corruption, never a wrong write, never an
+access-control bypass. **Recommendation: leave as accepted risk, same as `GP-`** — unless a future
+round wants to invest in a real confidence/disambiguation UI, which is a bigger, separate project
+worth scoping on its own, not a quick patch to this file.
+
+### 6. `items.item_code` / `IM-` — not a tagging gap, a data-completeness gap in a different part of the app
+
+Traced back in the original round: `items.item_code` (the **catalog** item's own code — distinct
+from `inventory_items`/`stock_pieces`, which already tag fine via `INV-`/`PL-`/`LN-`/`SR-`) is
+populated on roughly **1 of 2,773 rows** — everything else is blank, because it's only ever written
+by an import path, never by hand in the UI. There is no reliable key here to tag *by* — adding an
+`IM-` resolver today would resolve for one catalog item and silently fail for the other 2,772.
+**This isn't something the tagging system can fix** — the actual gap is that catalog items don't
+get a real code at creation time anywhere in the app, which is a data-governance/catalog-ownership
+question for a completely different part of the codebase (wherever `items` rows get created),
+unrelated to `lib/entity-refs.js`. Wiring `IM-` into tagging only becomes worthwhile *after* that
+gap is closed elsewhere — same shape as the `DG-`/`CS-` round, which had to fix the *source* column
+before tagging could show anything real.
 
 ## Files (current state)
 
