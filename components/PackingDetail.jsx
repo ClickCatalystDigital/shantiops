@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Trash2Icon, FileTextIcon } from 'lucide-react';
+import { EntityCode } from '@/components/EntityRefLink';
 
 const BLANK = { material_description: '', moc: '', size_spec: '', ibr_no: '', box_no: '', qty: 1, make: '', item_code: '' };
 const STATUSES = ['draft', 'packed', 'dispatched'];
@@ -170,7 +171,9 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
             <Meta label="Packing No" value={list.packing_no} />
             <Meta label="Address" value={list.customer_address} />
             <Meta label="Package Type" value={list.package_type} />
-            <Meta label="Invoice No" value={linkedInvoice?.invoice_no || list.invoice_no} />
+            <Meta label="Invoice No" value={list.sales_invoice_id
+              ? <EntityCode code={`SI-${list.sales_invoice_id}`} fallback={linkedInvoice?.invoice_no || list.invoice_no} />
+              : list.invoice_no} />
             <Meta label="Invoice Date" value={list.invoice_date && formatDate(list.invoice_date)} />
             <Meta label="D.C. No" value={list.dc_no} />
             <Meta label="D.C. Date" value={list.dc_date && formatDate(list.dc_date)} />

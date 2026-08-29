@@ -4,8 +4,9 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { useEntityHighlight } from '@/lib/use-entity-highlight';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
@@ -30,6 +31,7 @@ const DRAWING_STATUS_STYLE = {
 };
 
 export default function DesignPanel({ projectId, designSummary, scopeOfSupply = [], canEditScope = false, milestones = [], canApprove = false }) {
+  useEntityHighlight(useSearchParams().get('highlight'));
   const { calcSheets = [], drawings = [], activity = [] } = designSummary || {};
   const drawingsComplete = drawings.filter((d) => d.status === 'approved' || d.status === 'as_built').length;
   const [activityOpen, setActivityOpen] = useState(false);
@@ -99,7 +101,7 @@ export default function DesignPanel({ projectId, designSummary, scopeOfSupply = 
           </CardHeader>
           <CardContent className="flex flex-col divide-y p-0">
             {drawings.map((d) => (
-              <div key={d.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
+              <div key={d.id} data-entity-code={d.dgNo} className="flex items-center justify-between gap-3 px-4 py-2.5">
                 <span className="text-sm font-medium">{d.dgNo && <span className="text-muted-foreground">{d.dgNo} · </span>}{d.name}</span>
                 <Badge className={DRAWING_STATUS_STYLE[d.status].cls} variant="outline">{DRAWING_STATUS_STYLE[d.status].label}</Badge>
               </div>

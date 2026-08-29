@@ -9,10 +9,11 @@ import ProcurementWorkspace from '@/components/ProcurementWorkspace';
 
 export const dynamic = 'force-dynamic';
 
-export default async function ProcurementPage() {
+export default async function ProcurementPage({ searchParams }) {
   const user = await getFreshSessionUser();
   if (!canAccessDepartment(user, 'Procurement')) redirect(roleHome(user));
 
+  const sp = await searchParams;
   const [sourcingItems, suppliers, purchaseOrders, quotes, rfqSummaryByItem, purchaseReturns, inventoryItems, vendorBills, debitNotes, tdsRates] = await Promise.all([
     getSourcingItems(),
     getSuppliers(),
@@ -39,6 +40,7 @@ export default async function ProcurementPage() {
         vendorBills={vendorBills}
         debitNotes={debitNotes}
         tdsRates={tdsRates}
+        initialTab={sp?.tab}
       />
     </main>
   );

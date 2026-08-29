@@ -1,8 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { api, showToast } from '@/lib/client';
+import { EntityCode } from '@/components/EntityRefLink';
+import RelatedItemsCard from '@/components/RelatedItemsCard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -33,7 +35,10 @@ const COLUMNS = [
 // same list `/api/work-orders` already returns, rather than a second filtered fetch.
 export default function JobCardBoard({ jobCards, operations, workstations, projects, workers }) {
   const router = useRouter();
-  const [openCard, setOpenCard] = useState(null);
+  // Deep-link "click-to-open detail" behavior (Part B) — a JC- reference opens straight to the
+  // card's own Sheet on load, same as clicking its tile would, rather than just scrolling to it.
+  const highlightCode = useSearchParams().get('highlight');
+  const [openCard, setOpenCard] = useState(() => jobCards.find(jc => jc.jc_no === highlightCode)?.id || null);
   const [workOrders, setWorkOrders] = useState([]);
   const [projectFilter, setProjectFilter] = useState('all');
   const [workOrderFilter, setWorkOrderFilter] = useState('all');
@@ -117,7 +122,7 @@ export default function JobCardBoard({ jobCards, operations, workstations, proje
 
 function JobCardTile({ jc, onOpen }) {
   return (
-    <Card className="cursor-pointer transition-colors hover:border-foreground/30" onClick={onOpen}>
+    <Card data-entity-code={jc.jc_no} className="cursor-pointer transition-colors hover:border-foreground/30" onClick={onOpen}>
       <CardContent className="flex flex-col gap-2 py-3">
         <div className="flex items-center justify-between gap-2">
           <span className="text-xs text-muted-foreground">
@@ -376,6 +381,7 @@ function JobCardDetailSheet({ id, onClose, router, workers }) {
               {detail.wo_no ? ` · WO ${detail.wo_no}` : ''}
               {detail.workstation_name ? ` · ${detail.workstation_name}` : ''}
             </p>
+            <RelatedItemsCard type="job_card" id={detail.id} className="flex flex-col gap-1.5 -mt-2" />
 
             <div className="flex flex-wrap items-center gap-2">
               <Select value={detail.status} onValueChange={v => updateField('status', v)}>
@@ -480,7 +486,7 @@ function JobCardDetailSheet({ id, onClose, router, workers }) {
                 <p className="text-sm font-medium">Materials issued</p>
                 {detail.materialIssues.map(m => (
                   <div key={m.id} className="flex items-center justify-between text-xs">
-                    <span>BOM item #{m.bom_item_id}</span>
+                    <EntityCode code={`BM-${m.bom_item_id}`} fallback={`BOM item #${m.bom_item_id}`} />
                     <span className="text-muted-foreground tnum">qty {m.qty}</span>
                   </div>
                 ))}

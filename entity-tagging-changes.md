@@ -11,7 +11,14 @@ drawing (`CalcWorkspace.jsx`), reference another entity — a material (BOM line
 order, drawing, or NCR — by a short code, and have that reference render as a clickable link with
 a hover tooltip showing that entity's current status, instead of sitting as dead free text.
 
-## Status: fully shipped and browser-verified. Three follow-ups explicitly deferred, all scoped.
+## Status: fully shipped, two rounds
+
+Round 1 (below) was browser-verified. **Round 2** (deep-links + explicit relationships, see its own
+section below) is build-verified (clean `npm run build`, zero errors/warnings) but not yet
+browser-verified — see its own manual checklist. Of the original three deferred follow-ups: real
+drawing/calc-sheet numbers were resolved earlier in `drawing-numbering-changes.md`; tighter
+deep-links and the explicit-relationships ask are resolved in Round 2; expanding tagging to other
+free-text surfaces was investigated and answered (Part D of Round 2) rather than needing new code.
 
 ### Bug fixes
 
@@ -55,6 +62,10 @@ shared `sale_order_no` counter instead of taking free text. `TOKEN_RE`'s charact
 touched — only new prefixes added to its alternation, zero risk to any existing token. Verified live
 against real inserted rows for all 8 (PR/RFQ/FA/PO/QT/SO/PK, cleaned up after) plus a regression
 check that pre-existing prefixes (`PL`/`DG`/etc.) were untouched.
+
+**Round 2 added two more derived-id tokens: `SI` (Sales Invoice) and `VB` (Vendor Bill)** — see
+"Round 2" below for why (they're the real link target of several structural relationships built in
+that round). Same shape, same reasoning as PO/QT/SO/PK/CN/DN above.
 
 **Security fix, same round (audit pass, caught before it shipped to real users)** — 8 of these 9
 entities have real department gates on their normal read paths (`/procurement`, `/sales`,
@@ -252,20 +263,31 @@ documented accepted risk, two were already-known and already documented above/be
 
 ## Deep links — what clicking a rendered reference actually does
 
-Every `href` in `lib/entity-refs.js` goes to the closest page that exists, never to a record that
-doesn't have its own page — because **no entity in this app has a per-record URL today**. A job
-card, drawing, GIR, or gate pass is always a row/panel inside a bigger workspace page, not its own
-route. So a click always means "jump to the right *screen*," never "jump to the right *row on that
-screen*." This is a pre-existing limitation of the app, not something this feature introduced —
-`TicketsPanel.jsx`'s original project links had the exact same shape.
+**RESOLVED, see "Round 2" below.** The paragraph and table immediately following describe the
+*original* shipped state (every link landing on a whole workspace page, no `?highlight=`
+mechanism) — kept for history. Every `href` now appends `?highlight=CODE`, and the target page
+either scrolls-and-flashes the exact row or (Job Card/Work Order/Purchase Order) opens the
+record's own detail view directly. Several hrefs were also corrected to point at the page that
+actually renders the record (Job Card/Work Order → `/production/workers`, NCR → `/qc`) instead of
+the project page, which never actually mounted those lists.
 
-| Entity | Clicking goes to | Lands on the exact record? |
+Every `href` in `lib/entity-refs.js` went to the closest page that exists, never to a record that
+doesn't have its own page — because **no entity in this app has a per-record URL** (still true
+today for everything except `calc_sheet` and `packing_list`). A job card, drawing, GIR, or gate
+pass is always a row/panel inside a bigger workspace page, not its own route. So a click used to
+always mean "jump to the right *screen*," never "jump to the right *row on that screen*." This was
+a pre-existing limitation of the app, not something this feature introduced — `TicketsPanel.jsx`'s
+original project links had the exact same shape.
+
+| Entity | Clicking went to (original) | Lands on the exact record? |
 |---|---|---|
 | Job Card, Work Order, NCR, Material, Drawing | `/projects/{project_id}` | No — project page only |
 | Inventory item | *(no link — plain text)* | — no page exists for a single item |
 | GRN | *(no link — plain text)* | — no GRN detail page exists anywhere yet |
 | GIR | `/stores?tab=gir` | No — lands on the tab, not scrolled to the row |
 | Gate Pass | `/stores?tab=gatepasses` | No — lands on the tab, not scrolled to the row |
+
+See "Round 2 — tighter deep-links + explicit relationships" below for the corrected table.
 
 ## Deferred — three follow-ups, explicitly not done in this pass, each needs its own planning/scoping
 
@@ -320,20 +342,15 @@ pattern to follow is exactly what `CalcWorkspace.jsx` does: import `LinkifiedTex
 batched-resolve `useEffect` keyed on whatever list holds the free text, render the field through
 `LinkifiedText` with the resolved `refs` map.
 
-### 3. Tighter deep-links (scroll/highlight the exact record)
+### 3. Tighter deep-links (scroll/highlight the exact record) — RESOLVED, see "Round 2" below
 
-Not started. See "Deep links" section above for the full table of what clicking each entity type
-does today (always the closest existing page, never the exact record — no entity in this app has
-a per-record URL yet). Would need each target page (`/projects/[id]`, `/stores`) to read a query
-param (e.g. `?highlight=GIR-1004`) and scroll to + visually flash that specific row/panel — none
-do this today. Small, mechanical, but touches several pages' worth of scroll-into-view logic; a
-reasonable candidate to bundle with whichever future pass gives entities their own per-record
-pages (if that ever happens) rather than duct-taping query-param highlighting onto today's
-list-only pages. **Status: still not started as of this writing — next planned pickup, alongside
-defining explicit relationships between these entities (many-to-one, one-to-many, many-to-many,
-subset-of, etc. — e.g. a BOM item belongs to one drawing, a PO can span multiple PR line items).**
-The earlier "7 more entities" note here is now stale — all 20 entities with real minted codes are
-wired into tagging (see the tally above); this section is purely about deep-link precision now.
+Built: `?highlight=CODE` on every href, a shared `useEntityHighlight()` hook that scrolls+flashes
+the matching `data-entity-code` row, and a click-to-open-detail variant for Job Card/Work
+Order/Purchase Order (whose lists are click-through-to-a-Sheet UIs, not inline tables). Several
+hrefs were also corrected to point at the page that actually renders the list. Explicit
+relationships between entities (Part A of the same round) were built alongside this, since both
+turned out to reuse the same registry. See "Round 2 — tighter deep-links + explicit relationships"
+below for the full design and the real bugs found while implementing it.
 
 ### 4. `ENTITY_TYPES` chip list isn't filtered per department (cosmetic, deliberately not fixed)
 
@@ -388,21 +405,224 @@ unrelated to `lib/entity-refs.js`. Wiring `IM-` into tagging only becomes worthw
 gap is closed elsewhere — same shape as the `DG-`/`CS-` round, which had to fix the *source* column
 before tagging could show anything real.
 
+## Round 2 — tighter deep-links + explicit relationships (2026-08-29)
+
+Picked up Deferred §3 in full, plus the "explicit relationships between entity IDs" ask that came
+with it. Planned in a dedicated plan-mode session (schema fully re-read against `lib/db.js` for
+every one of the 20 tagged tables plus their neighbors — `pr_items`, `pr_item_projects`,
+`rfq_items`, `po_items`, `packing_items`, `work_order_materials`, `stock_receipts`,
+`stock_pieces`, `sales_invoices`, `vendor_bills`) before any code was touched, then implemented and
+self-audited in the same session (two review passes; see "Bugs found" below — this is not a
+"shipped and hoped" round, every relation was checked against what the resolver on the other end
+actually expects).
+
+### Part A — explicit relationships ("Related" panel)
+
+**Conclusion going in, confirmed by the schema read: the relationships mostly already existed as
+real FK columns and junction tables — this was a rendering gap, not a data-modeling one.**
+`JobCardBoard.jsx` printed raw `BOM item #{id}` text; `NcrPanel.jsx` never showed its own
+`job_card_id`/`work_order_id`/`bom_item_id`/`stock_piece_id` at all, only used them internally to
+gate the disposition dropdown.
+
+- **`lib/entity-refs.js` gained a `RELATIONS` registry** — ~40 real FK/junction relationships
+  across 15 entity types, one small hand-written SQL query per relation (this codebase's existing
+  "one query per real case" idiom, not a generic FK-graph walker). `getRelatedEntities(type, id,
+  user)` runs a type's relations, collects the codes each one emits, and batch-resolves them
+  through the **existing** `resolveEntityRefs()` — department gating and graceful-degrade-on-missing
+  come for free, and recursion is naturally bounded to one hop (a related ref is never itself asked
+  for ITS relations). New route: `GET /api/entity-refs/related?type=&id=`.
+- **Deliberately NOT modeled**: `CS` (calc sheet — no cross-entity FK), `FA` (fixed asset — none),
+  `GP` (gate pass — no FK columns at all), `PR`/`RFQ` outgoing-to-nowhere cases, and — found while
+  implementing, not planned in advance — **`inventory_item`'s own outgoing relations**:
+  `findInventoryItemIdByCode()` (`lib/data.js`) deliberately collapses every `PL-`/`LN-`/`SR-`/
+  `INV-` code down to the shared `inventory_items.id`, discarding which specific `stock_pieces` row
+  a `PL-`/`LN-` code actually named — so there is no way to ask "this resolved inventory item's own
+  receipt/job-card" without that lost specificity. The *reverse* direction (another entity's
+  relation pointing AT a stock piece by its own code — NCR's "Stock piece" relation) is unaffected,
+  since that only ever emits a fresh code for the normal resolve path. Stock-piece **lineage**
+  (`parent_id` cut/remnant/scrap chains) already has its own dedicated UI, `components/
+  PieceLineage.jsx` — reused as-is, not duplicated inside the new Related panel.
+- **Two new entity types added: `SI` (Sales Invoice) and `VB` (Vendor Bill).** Neither had a tag
+  before this round, but both are the real link target of several relations being built (PO→Vendor
+  Bills, Packing List→Invoice, Sale Order→Invoices, Credit/Debit Note→"against") — without them,
+  half that relation graph would have had nowhere to link *to*. Same derived-id shape as `PO`/`QT`
+  (`invoice_no`/`bill_no` aren't hyphen-safe or unique). Confirmed with the user before building
+  (a real scope decision, not silently expanded).
+- **`components/EntityRefLink.jsx` (new)** — `RefTooltip` extracted out of `LinkifiedText.jsx` so
+  both the free-text linkifier and the new structural-relations panel render an identical
+  Link+Tooltip, not two visual languages. Also exports `EntityCode` — a tiny self-resolving
+  component for a spot that only has a raw FK id in hand (e.g. a `materialIssue` row's bare
+  `bom_item_id`) and would otherwise need to duplicate href-construction rules that already live in
+  `lib/entity-refs.js`.
+- **`components/RelatedItemsCard.jsx` (new)** — fetches `/api/entity-refs/related` once per
+  `(type, id)`, renders each relation as a labeled row of `EntityRefLink` chips, and renders nothing
+  at all if there's nothing to show (same "degrade to nothing" convention as an unresolved token).
+  Wired into `NcrPanel.jsx` (every NCR row — the highest-value target, since it previously showed
+  none of its own links), `JobCardBoard.jsx`'s detail Sheet (also fixed the raw `BOM item #{id}`
+  line via `EntityCode`), `WorkOrdersPanel.jsx`'s detail Sheet (the one new relation it didn't
+  already show inline — NCRs), and `PackingDetail.jsx` (its Invoice No. field was plain text even
+  when linked; now a real `EntityCode` link once `sales_invoice_id` is set).
+
+### Part B — tighter deep-links (`?highlight=CODE`)
+
+- **Convention**: the exact same code string already used for tagging (`JC-1004`, `BM-88`, ...) as
+  the `?highlight=` value — one format across the whole feature.
+- **Two behaviors depending on the target UI shape**, decided per entity, not forced uniform:
+  - **Click-to-open detail** (Job Card, Work Order, Purchase Order — all three are click-through-
+    to-a-Sheet/drawer UIs, not inline tables): on load, if `highlight` matches a loaded row's code,
+    the same open-handler a click would call fires automatically. No CSS involved — the
+    Sheet/drawer opening *is* the highlight.
+  - **Inline list row** (NCR register, BOM table, Drawing cards, GIR/Gate Pass tables, PO/DN/QT/SO/
+    SI/CN/FA tables): new shared hook `lib/use-entity-highlight.js`'s `useEntityHighlight(code)` —
+    `document.querySelector('[data-entity-code="..."]')`, `scrollIntoView`, a brief
+    `.entity-highlight-flash` CSS class (new keyframe in `app/globals.css`, `color-mix()` fade
+    against the existing `--primary` token so it's theme-correct for free). Retries for ~1.5s (a
+    tab switch or one client fetch can land after the first paint), then silently gives up — same
+    graceful-degrade philosophy as an unresolved tag in free text, never an error.
+- **Several hrefs corrected, not just extended with a query param.** Job Card, Work Order, and NCR
+  never actually rendered inside the project page's `DepartmentPanel` at all (confirmed by reading
+  `components/DepartmentPanel.jsx` — it never mounts `JobCardBoard`/`WorkOrdersPanel`/`NcrPanel`).
+  Job Card/Work Order live at `/production/workers` (`WorkersPanel.jsx`'s `jobcards`/`workorders`
+  tabs); NCR lives at `/qc` (`QcWorkspace.jsx`'s `ncr` tab, cross-project, no per-project filter to
+  also set).
+
+  | Entity | Corrected href |
+  |---|---|
+  | JC | `/production/workers?tab=jobcards&highlight=JC-1004` (opens the card's Sheet) |
+  | WO | `/production/workers?tab=workorders&highlight=WO-12` (opens the WO drawer) |
+  | NCR | `/qc?tab=ncr&highlight=NCR-3` |
+  | BM | `/projects/{project_id}?dept=Engineering&highlight=BM-88` |
+  | DG | `/projects/{project_id}?dept=Design&highlight=DG-1002` |
+  | GIR | `/stores?tab=gir&highlight=GIR-1004` |
+  | GP | `/stores?tab=gatepasses&highlight=GP-1008` |
+  | PO | `/procurement?tab=orders&highlight=PO-42` (opens the PO drawer) |
+  | DN | `/procurement?tab=vendor_bills&highlight=DN-5` (renders inside Vendor Bills, not its own tab) |
+  | VB (new) | `/procurement?tab=vendor_bills&highlight=VB-8` |
+  | QT | `/sales?tab=quotations&highlight=QT-42` |
+  | SO | `/sales?tab=sale_orders&highlight=SO-9` |
+  | SI (new) | `/sales?tab=invoices&highlight=SI-13` |
+  | CN | `/sales?tab=invoices&highlight=CN-2` (renders inside Invoices, not its own tab) |
+  | FA | `/accounts?tab=fixed-assets&highlight=FA-1001` |
+  | PK, CS | unchanged — already real per-record pages |
+  | PR | unchanged, `/pr`, no highlight — **verified `PrWorkspace.jsx` has no PR register/list tab at
+        all** (its tabs are `raise`/`release`/`templates`, composers only), so there's genuinely
+        nowhere to scroll to. An earlier draft of this round assumed a `requests` tab existed there;
+        it doesn't — corrected before shipping. |
+  | RFQ, INW | unchanged, no link — no list page exists for either yet |
+- **`?dept=`/`?tab=` now actually work.** Before this round, `/stores?tab=gir` and friends were
+  **dead query strings** — no tab-bearing workspace page except `/qc` (`initialTab`/`initialProject`
+  server props) and `/production/workers` (`WorkersPanel.jsx`'s own `useSearchParams()`) read any
+  URL state into their tab selection at all. Added the same `initialTab` server-prop pattern to
+  `StoresWorkspace`, `ProcurementWorkspace`, `SalesWorkspace`, `AccountsWorkspace` (each seeded via
+  their `page.js`'s `searchParams.tab`), and gave `ProjectDepartmentTabs.jsx` (the PM/admin
+  all-departments picker) a `useSearchParams().get('dept')` read directly — a client component
+  nested anywhere under a dynamic page can do this without threading a prop through
+  `app/projects/[id]/page.js`, so that page itself needed no change for `?dept=`.
+
+### Part D — "does tagging work for every department's task Description?" (user question, checked)
+
+Traced `TicketsPanel.jsx`'s Raise dialog: it's **one shared component**, mounted identically by
+`DepartmentPanel.jsx` for every department except Procurement (which gets the same component twice
+more, on its own Requests tab and on Operations, filtered by `from_department`) — not a
+per-department reimplementation. Tagging already worked identically everywhere by construction; no
+code change was needed. **One real, pre-existing exception found**: the dialog's "Send back
+(rework)" kind folds the Details text into `milestones.reopen_reason` instead of `tasks.body`, and
+`reopen_reason` is never rendered anywhere in the app (already documented in Deferred §2 above) — a
+tag typed there is stored correctly but invisible everywhere, not a tagging bug. Left as a known,
+named gap rather than silently building a new display surface for it.
+
+### Bugs found — two audit passes before calling this done
+
+**Pass 1 (during implementation), found via careful re-reading of the RELATIONS table against
+what each resolver actually expects — not caught by the syntax checker, which can't know a query
+selects the wrong column:**
+1. `job_card`'s "Work Order" relation selected the raw `work_order_id` FK integer and ran it
+   through `raw` (meaning "already a full stored code") — but `work_orders`' stored code is
+   `wo_no`, a separately-minted value, not the row's own id. Fixed with a join to select `wo_no`.
+2. `bom_item`'s "Work Orders" relation and (3) `sale_order`'s "Work Orders" relation both made the
+   opposite mistake — selected `work_orders.id` and ran it through `derived('WO')` (meaning "this
+   type only ever gets a synthetic `{PREFIX}-{id}` code"), but WO is a **stored-code** type. Both
+   fixed to select `wo_no` via `raw`, with a join where needed.
+4. `grn`'s "Gate Inward Receipt" relation selected `stock_receipts.gate_inward_receipt_id` (which
+   stores `gate_inward_receipts.id`) and ran it through `derived('GIR')` — but GIR codes are keyed
+   by the separate `gir_no` column, not `id` (confirmed: `resolveGir`'s `idFrom()` match is against
+   `gir_no`). Fixed with a join to select `gir_no`.
+
+All four are the same class of mistake — confusing "stored-code" entities (JC/WO/NCR/DG/PR/RFQ/INW,
+whose own `xxx_no` column IS the tag) with "derived-id" entities (BM/PO/QT/SO/PK/CN/DN/SI/VB/GIR/GP,
+whose tag is a synthetic `{PREFIX}-{row.id}` never written to the DB) — worth remembering as a
+category error to check for specifically if this registry grows further.
+
+**Pass 2 (gap audit, prompted by direct question after the round was reported "done"):**
+5. **`components/MentionTextarea.jsx` had its own hardcoded, stale `ENTITY_TYPES` list — separate
+   from `lib/entity-refs.js`'s real, exported one, and never kept in sync with it.** It stopped at
+   8 entries from the original round (`job_card`/`work_order`/`bom_item`/`drawing`/`ncr`/`grn`/
+   `gir`/`gate_pass`) and was never updated when `calc_sheet`, `purchase_requisition`, `rfq`,
+   `purchase_order`, `quotation`, `sale_order`, `packing_list`, `fixed_asset`, `credit_note`,
+   `debit_note` were added to the real registry in an earlier round, nor when `sales_invoice`/
+   `vendor_bill` were added in this one. **This section's own Deferred §4 ("The @-picker shows all
+   type chips... to every internal user") was itself wrong when it was written** — those extra
+   types were fully resolvable/searchable via direct API calls and via typing a code by hand, but
+   never actually offered as a pickable chip in the `@` mention UI, the primary way most people
+   would discover them. Fixed at the root: `ENTITY_TYPES` moved into the pure `lib/entity-ref-
+   tokens.js` module (client-safe, no DB imports) as the one shared source; `lib/entity-refs.js` now
+   re-exports it instead of defining its own copy, and `MentionTextarea.jsx` imports it directly.
+   Structurally can't drift again — there is only one array now, not two.
+
+### Verified
+
+`npm run lint` (this repo's dependency-free syntax checker) passes on all 554 JS/JSX files, and a
+full `npm run build` completes clean with zero errors or warnings (all touched routes — `/stores`,
+`/procurement`, `/sales`, `/accounts`, `/production/workers`, `/qc`, `/projects/[id]`, `/packing/
+[id]` — compile). Not done: a live browser click-through (deliberately skipped this round, per
+instruction, to avoid burning tokens on heavy verification) — see the bullet checklist below for
+what a human should spot-check before trusting this fully.
+
+**Manual verification checklist** (light, no browser automation):
+- Open a real NCR/BOM item/PO with linked records → expect new clickable "Related" chips.
+- `GET /api/entity-refs/resolve?codes=SI-1` → expect a real invoice number as `label`.
+- `@`-mention picker → "Sales Invoice"/"Vendor Bill" (and the other 10 previously-invisible types)
+  now appear as pickable chips.
+- Click a `GIR-`/`JC-`/`BM-` reference → expect landing on the right tab with the row flashed (GIR/
+  BM) or its detail Sheet already open (JC).
+- Set a filter that would hide a highlight target, then click its link → expect either the row
+  still shows or the flash silently no-ops — never a crash.
+- Re-check 2–3 items from this doc's own earlier verification list still hold (case-insensitive
+  `bm-88`, a fake `JC-9999` degrading to plain text, a Design-only user getting nothing for `PO-`/
+  `FA-`).
+
 ## Files (current state)
 
-**New:** `lib/entity-refs.js`, `lib/entity-ref-tokens.js`, `components/LinkifiedText.jsx`,
-`components/MentionTextarea.jsx`, `app/api/entity-refs/resolve/route.js`,
-`app/api/entity-refs/search/route.js`.
+**New (original round):** `lib/entity-refs.js`, `lib/entity-ref-tokens.js`,
+`components/LinkifiedText.jsx`, `components/MentionTextarea.jsx`,
+`app/api/entity-refs/resolve/route.js`, `app/api/entity-refs/search/route.js`.
 
-**Modified:** `lib/db.js` (tasks.body column), `app/api/production/tasks/route.js` (accept/insert
-body), `components/TicketsPanel.jsx` (send body, render `LinkifiedText`, mount
+**New (Round 2):** `components/EntityRefLink.jsx`, `components/RelatedItemsCard.jsx`,
+`lib/use-entity-highlight.js`, `app/api/entity-refs/related/route.js`.
+
+**Modified (original round):** `lib/db.js` (tasks.body column), `app/api/production/tasks/route.js`
+(accept/insert body), `components/TicketsPanel.jsx` (send body, render `LinkifiedText`, mount
 `MentionTextarea`), `components/WorkersPanel.jsx` (jc_no display fix), `components/ui/textarea.jsx`
 (forwardRef), `components/CalcWorkspace.jsx` (drawing comments now tag).
 
-**Deleted:** `components/EntityRefPicker.jsx` (superseded by `MentionTextarea.jsx`).
+**Modified (Round 2):** `lib/entity-refs.js` (`RELATIONS` registry, `getRelatedEntities`,
+`resolveSalesInvoice`, `resolveVendorBill`, href corrections + `withHighlight()`, new
+READ_GATE/SEARCH_GATE entries, `ENTITY_TYPES` now re-exported not redefined),
+`lib/entity-ref-tokens.js` (`SI`/`VB` in `TOKEN_RE`, `ENTITY_TYPES` moved here),
+`components/LinkifiedText.jsx` (imports `RefTooltip` from `EntityRefLink.jsx`),
+`components/MentionTextarea.jsx` (imports the shared `ENTITY_TYPES`, no longer its own copy),
+`components/NcrPanel.jsx`, `components/JobCardBoard.jsx`, `components/PackingDetail.jsx`,
+`components/WorkOrdersPanel.jsx`, `components/BomTable.jsx`, `components/DesignPanel.jsx`,
+`components/ProjectDepartmentTabs.jsx`, `components/StoresWorkspace.jsx`,
+`components/ProcurementWorkspace.jsx`, `components/SalesWorkspace.jsx`,
+`components/AccountsWorkspace.jsx`, `app/globals.css` (flash keyframe), `app/stores/page.js`,
+`app/procurement/page.js`, `app/sales/page.js`, `app/accounts/page.js` (all four: `searchParams` →
+`initialTab`).
 
-**Untouched, despite being edited and reverted mid-session:** `components/PortalOrderProgress.jsx`
-— see "Drawing comments" section above for why.
+**Deleted:** `components/EntityRefPicker.jsx` (superseded by `MentionTextarea.jsx`, original round).
+
+**Untouched, despite being edited and reverted mid-session (original round):**
+`components/PortalOrderProgress.jsx` — see "Drawing comments" section above for why.
 
 **Unrelated, pre-existing, not touched by this work:** `components/QcDocumentEditor.jsx` shows
-modified in `git status` from before this session started — not part of this feature.
+modified in `git status` from before the original round started — not part of this feature.

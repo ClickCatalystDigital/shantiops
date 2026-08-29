@@ -11,7 +11,8 @@
 // kept rather than dropped. One shared search input lives above the active section, same position
 // regardless of active section, filtering whichever section is open.
 import { useState, useEffect, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useEntityHighlight } from '@/lib/use-entity-highlight';
 import { api, showToast, formatDate, formatMoney } from '@/lib/client';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from './ui/card';
 import MasterImport from './MasterImport';
@@ -721,6 +722,7 @@ function DebitNoteDialog({ bill, onClose, router }) {
 const BILL_STATUSES = ['draft', 'approved', 'paid', 'cancelled'];
 
 function VendorBillsTab({ vendorBills, debitNotes, router }) {
+  useEntityHighlight(useSearchParams().get('highlight'));
   const [busyId, setBusyId] = useState(null);
   const [debitNoteFor, setDebitNoteFor] = useState(null);
 
@@ -742,7 +744,7 @@ function VendorBillsTab({ vendorBills, debitNotes, router }) {
               <TableHeader><TableRow><TableHead>Bill No.</TableHead><TableHead>PO</TableHead><TableHead>Supplier</TableHead><TableHead>Payable</TableHead><TableHead>Status</TableHead><TableHead /></TableRow></TableHeader>
               <TableBody>
                 {vendorBills.map(vb => (
-                  <TableRow key={vb.id}>
+                  <TableRow key={vb.id} data-entity-code={`VB-${vb.id}`}>
                     <TableCell className="font-medium">{vb.bill_no}</TableCell>
                     <TableCell>{vb.po_no}</TableCell>
                     <TableCell>{vb.supplier_name}</TableCell>
@@ -772,7 +774,7 @@ function VendorBillsTab({ vendorBills, debitNotes, router }) {
           {debitNotes.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No debit notes yet.</p> : (
             <div className="flex flex-col divide-y">
               {debitNotes.map(dn => (
-                <div key={dn.id} className="flex justify-between py-2 text-sm">
+                <div key={dn.id} data-entity-code={`DN-${dn.id}`} className="flex justify-between py-2 text-sm">
                   <span>{dn.debit_note_no} — against {dn.bill_no}{dn.reason ? ` (${dn.reason})` : ''}</span>
                   <span className="tnum font-medium">{formatMoney(dn.amount)}</span>
                 </div>
@@ -789,7 +791,10 @@ function VendorBillsTab({ vendorBills, debitNotes, router }) {
 function PurchaseOrders({ orders, q, view, suppliers, tdsRates = [] }) {
   const router = useRouter();
   const [busy, setBusy] = useState(null);
-  const [viewingId, setViewingId] = useState(null);
+  // Deep-link "click-to-open detail" (Part B) — PO-{id} is a derived code (po_no itself has
+  // slashes TOKEN_RE can't represent), so match against the id, not po_no.
+  const highlightCode = useSearchParams().get('highlight');
+  const [viewingId, setViewingId] = useState(() => orders.find(po => `PO-${po.id}` === highlightCode)?.id || null);
   const needle = q.trim().toLowerCase();
   // Active vs Fulfilled (§ Phase 4) — a fulfilled PO (every line resolved, or the PO itself
   // cancelled) has nothing left to act on, so it drops out of the default list rather than
@@ -857,7 +862,7 @@ function PurchaseOrders({ orders, q, view, suppliers, tdsRates = [] }) {
           </p>
         )}
         {shown.map(po => (
-          <button key={po.id} onClick={() => setViewingId(po.id)}
+          <button key={po.id} data-entity-code={`PO-${po.id}`} onClick={() => setViewingId(po.id)}
             className="flex flex-wrap items-center gap-3 py-2.5 text-left text-sm transition-colors hover:bg-muted/40 -mx-2 px-2 rounded">
             <span className="flex-1 truncate">
               <span className="font-medium">{po.po_no}</span>
@@ -1329,9 +1334,8 @@ const SEARCH_PLACEHOLDER = {
   vendor_bills: 'Search bill number, PO, or supplier…',
 };
 
-export default function ProcurementWorkspace({ sourcingItems, suppliers, purchaseOrders, quotes, rfqSummaryByItem = {}, purchaseReturns = [], inventoryItems = [], vendorBills = [], debitNotes = [], tdsRates = [] }) {
+export default function ProcurementWorkspace({ sourcingItems, suppliers, purchaseOrders, quotes, rfqSummaryByItem = {}, purchaseReturns = [], inventoryItems = [], vendorBills = [], debitNotes = [], tdsRates = [], initialTab }) {
   const router = useRouter();
-  const [tab, setTab] = useState('enquiry');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [poView, setPoView] = useState('active');
@@ -1373,6 +1377,9 @@ export default function ProcurementWorkspace({ sourcingItems, suppliers, purchas
       ],
     },
   ];
+  // Deep-link tab selection (Part B) — same server-prop pattern as QcWorkspace.jsx/StoresWorkspace.jsx.
+  const flatKeys = navItems.flatMap(i => i.group ? i.children : i).map(i => i.key);
+  const [tab, setTab] = useState(flatKeys.includes(initialTab) ? initialTab : 'enquiry');
 
   return (
     <WorkspaceSidebar title="Procurement" icon={ShoppingCartIcon} items={navItems} activeKey={tab} onChange={setTab}>

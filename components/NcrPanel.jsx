@@ -5,8 +5,10 @@
 // (WorkersPanel.jsx, from a job card) can raise one — same access decision as POST /api/ncrs
 // ("QC and Production"), and the UI has to actually reach both, not just the API.
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { api, showToast, formatDate } from '@/lib/client';
+import RelatedItemsCard from './RelatedItemsCard';
+import { useEntityHighlight } from '@/lib/use-entity-highlight';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -180,6 +182,7 @@ function DispositionDialog({ ncr, onClose, router }) {
 
 export default function NcrPanel({ ncrs = [], canDisposition = false, canVerify = false, canClose = false }) {
   const router = useRouter();
+  useEntityHighlight(useSearchParams().get('highlight'));
   const [dispositioning, setDispositioning] = useState(null);
   const [busyId, setBusyId] = useState(null);
 
@@ -209,7 +212,7 @@ export default function NcrPanel({ ncrs = [], canDisposition = false, canVerify 
       <CardContent className="flex flex-col divide-y">
         {ncrs.length === 0 && <p className="text-sm text-muted-foreground">No NCRs raised.</p>}
         {ncrs.map(n => (
-          <div key={n.id} className="flex flex-col gap-1 py-3 text-sm">
+          <div key={n.id} data-entity-code={n.ncr_no} className="flex flex-col gap-1 py-3 text-sm">
             <div className="flex flex-wrap items-center gap-2">
               <AlertTriangleIcon className="size-4 text-muted-foreground" />
               <span className="font-medium">{n.ncr_no}</span>
@@ -224,6 +227,7 @@ export default function NcrPanel({ ncrs = [], canDisposition = false, canVerify 
               <span className="ml-auto text-xs text-muted-foreground tnum">{formatDate(n.raised_at)}</span>
             </div>
             <p className="text-muted-foreground">{n.description}</p>
+            <RelatedItemsCard type="ncr" id={n.id} className="flex flex-col gap-1" />
             {canDisposition && n.status === 'open' && (
               <Button size="sm" variant="outline" className="self-start" onClick={() => setDispositioning(n)}>Disposition</Button>
             )}

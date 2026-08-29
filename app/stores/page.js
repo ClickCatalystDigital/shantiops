@@ -15,7 +15,7 @@ import StoresWorkspace from '@/components/StoresWorkspace';
 
 export const dynamic = 'force-dynamic';
 
-export default async function StoresPage() {
+export default async function StoresPage({ searchParams }) {
   const user = await getFreshSessionUser();
   if (!canAccessDepartment(user, 'Stores')) redirect(roleHome(user));
 
@@ -24,7 +24,8 @@ export default async function StoresPage() {
     getReorderSuggestions(), getGateInwardReceipts(), getGatePasses(), getTestCertificates(), getSourcingItems(),
   ]);
 
+  const sp = await searchParams;
   return <StoresWorkspace inventoryItems={inventoryItems} openRequests={openRequests} activeReservations={activeReservations}
     projects={projects} reorderSuggestions={reorderSuggestions} gateInwardReceipts={gateInwardReceipts} gatePasses={gatePasses}
-    certificates={certificates} bomItems={bomItems} />;
+    certificates={certificates} bomItems={bomItems} initialTab={sp?.tab} />;
 }

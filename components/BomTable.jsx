@@ -5,8 +5,9 @@
 // select is the high-frequency action; everything else edits through a small dialog showing only
 // the viewer's editable columns. Enforcement lives in the PATCH route — this UI is convenience.
 import { useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { api, showToast } from '@/lib/client';
+import { useEntityHighlight } from '@/lib/use-entity-highlight';
 import { BOM_STATUSES, STATUS_TONE, DEFAULT_PURCHASE_STATUS, visibleBomColumns, showPackingColumn } from '@/lib/bom-fields.mjs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
@@ -142,6 +143,7 @@ const COLUMN_WIDTHS = {
 // callback ever tells them to refetch.
 export default function BomTable({ projectId, bom, pendingIds = [], editableFields = [], department, canCancel = false, onSaved, assemblies = [] }) {
   const router = useRouter();
+  useEntityHighlight(useSearchParams().get('highlight'));
   const [q, setQ] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [unlinkedOnly, setUnlinkedOnly] = useState(false);
@@ -345,7 +347,7 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
                 </TableCell>
               </TableRow>
             ) : (
-              <TableRow key={r.id}>
+              <TableRow key={r.id} data-entity-code={`BM-${r.id}`}>
                 <TableCell className="sticky left-0 z-10 w-12 bg-background tnum text-muted-foreground">{bom.indexOf(r) + 1}</TableCell>
                 <TableCell className="sticky left-12 z-10 w-64 min-w-64 max-w-64 break-words bg-background font-medium">
                   {r.material_description}

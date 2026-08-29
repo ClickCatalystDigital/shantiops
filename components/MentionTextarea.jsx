@@ -14,17 +14,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { Textarea } from '@/components/ui/textarea';
 import { api } from '@/lib/client';
-
-const ENTITY_TYPES = [
-  { type: 'job_card', label: 'Job Card' },
-  { type: 'work_order', label: 'Work Order' },
-  { type: 'bom_item', label: 'Material' },
-  { type: 'drawing', label: 'Drawing' },
-  { type: 'ncr', label: 'NCR' },
-  { type: 'grn', label: 'GRN' },
-  { type: 'gir', label: 'Gate Inward (GIR)' },
-  { type: 'gate_pass', label: 'Gate Pass' },
-];
+// Shared with lib/entity-refs.js's search-route guard — this used to be a second, hand-maintained
+// copy that stopped at 8 entries and silently never grew with the registry (found during a gap
+// audit: PR/RFQ/PO/QT/SO/PK/FA/CN/DN/SI/VB were all fully taggable but never selectable as a chip
+// here). One list now, in the pure token module so this client component doesn't have to import
+// lib/entity-refs.js's server-only DB code just for this array.
+import { ENTITY_TYPES } from '@/lib/entity-ref-tokens';
 
 // Finds an active "@…" span ending at the cursor — an "@" with no whitespace/newline between it
 // and `cursor`. Returns { start, query } or null.

@@ -4,7 +4,8 @@
 // HrWorkspace/PayrollWorkspace. Phase 0 (ACCOUNTING-IMPLEMENTATION-PLAN.md) only needs Company
 // Settings; later phases add tabs here (GST/TDS masters in Phase 1, Sales Invoice in Phase 2, ...).
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useEntityHighlight } from '@/lib/use-entity-highlight';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -728,6 +729,7 @@ function LedgerTab({ companies }) {
 // --- Fixed Assets & depreciation ------------------------------------------------------------------
 
 function FixedAssetsCard({ company }) {
+  useEntityHighlight(useSearchParams().get('highlight'));
   const [assets, setAssets] = useState([]);
   const [name, setName] = useState('');
   const [category, setCategory] = useState('');
@@ -788,7 +790,7 @@ function FixedAssetsCard({ company }) {
           <div className="flex flex-col divide-y pt-2">
             <p className="text-xs font-medium text-muted-foreground">Disposed</p>
             {assets.filter(a => a.status === 'disposed').map(a => (
-              <div key={a.id} className="flex justify-between py-2 text-sm text-muted-foreground line-through">
+              <div key={a.id} data-entity-code={a.asset_no} className="flex justify-between py-2 text-sm text-muted-foreground line-through">
                 <span>{a.asset_no} — {a.name}</span>
                 <span className="tnum">{fmt(a.disposal_amount)} on {a.disposed_at}</span>
               </div>
@@ -817,7 +819,7 @@ function FixedAssetRow({ asset: a, onDisposed }) {
   }
 
   return (
-    <div className="flex flex-col gap-2 py-2 text-sm">
+    <div data-entity-code={a.asset_no} className="flex flex-col gap-2 py-2 text-sm">
       <div className="flex justify-between">
         <span>{a.asset_no} — {a.name}{a.category ? ` (${a.category})` : ''} <span className="text-muted-foreground">{a.method}, {a.useful_life_years}y from {a.purchase_date}</span></span>
         <span className="flex items-center gap-2">
@@ -1451,9 +1453,8 @@ function GstReturnsTab({ companies }) {
   );
 }
 
-export default function AccountsWorkspace({ companies, gstRates = [], tdsRates = [], nested = false }) {
+export default function AccountsWorkspace({ companies, gstRates = [], tdsRates = [], nested = false, initialTab }) {
   const router = useRouter();
-  const [tab, setTab] = useState('settings');
   const navItems = [
     { key: 'settings', label: 'Company Settings', icon: LandmarkIcon },
     { key: 'company-entities', label: 'Company Entities', icon: IdCardIcon },
@@ -1464,6 +1465,8 @@ export default function AccountsWorkspace({ companies, gstRates = [], tdsRates =
     { key: 'bank-reconciliation', label: 'Bank Reconciliation', icon: LandmarkIcon },
     { key: 'audit-log', label: 'Audit Log', icon: HistoryIcon },
   ];
+  // Deep-link tab selection (Part B) — same server-prop pattern as QcWorkspace.jsx.
+  const [tab, setTab] = useState(navItems.some(i => i.key === initialTab) ? initialTab : 'settings');
 
   return (
     <WorkspaceSidebar title="Accounts" icon={LandmarkIcon} items={navItems} activeKey={tab} onChange={setTab} nested={nested}>

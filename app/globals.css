@@ -217,6 +217,17 @@
   will-change: transform;
 }
 
+/* Deep-link row highlight (lib/use-entity-highlight.js) — a brief background fade, not a border or
+   layout shift, so it works identically on a table row, a card, or a flex row without per-shape
+   CSS. Uses the existing --primary token so it fits both themes for free. */
+.entity-highlight-flash {
+  animation: entityHighlightFlash 1.6s ease-out;
+}
+@keyframes entityHighlightFlash {
+  0% { background-color: color-mix(in srgb, var(--primary) 22%, transparent); }
+  100% { background-color: transparent; }
+}
+
 @keyframes logoFlip {
   0% {
     transform: rotateY(0deg) scale(1);

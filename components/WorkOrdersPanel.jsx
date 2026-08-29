@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { api, showToast } from '@/lib/client';
 import { formatMoney } from '@/lib/format';
+import RelatedItemsCard from '@/components/RelatedItemsCard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -46,6 +47,15 @@ export default function WorkOrdersPanel({ projects, operations, workstations, in
   const [openId, setOpenId] = useState(null);
   const [status, setStatus] = useState(STATUS_OPTIONS.some(o => o.value === initialStatus) ? initialStatus : 'all');
   const [projectFilter, setProjectFilter] = useState('all');
+  // Deep-link "click-to-open detail" (Part B) — a WO- reference opens the same detail sheet a row
+  // click would, once the list has actually loaded (workOrders fetches client-side, not a server
+  // prop, so this can't be a useState initializer like JobCardBoard's).
+  const highlightCode = useSearchParams().get('highlight');
+  useEffect(() => {
+    if (!highlightCode || !workOrders) return;
+    const match = workOrders.find(w => w.wo_no === highlightCode);
+    if (match) setOpenId(match.id);
+  }, [highlightCode, workOrders]);
 
   async function load(statusFilter = status, projectIdFilter = projectFilter) {
     const params = new URLSearchParams();
@@ -104,7 +114,7 @@ export default function WorkOrdersPanel({ projects, operations, workstations, in
             </TableRow></TableHeader>
             <TableBody>
               {workOrders.map(wo => (
-                <TableRow key={wo.id} className="cursor-pointer" onClick={() => setOpenId(wo.id)}>
+                <TableRow key={wo.id} data-entity-code={wo.wo_no} className="cursor-pointer" onClick={() => setOpenId(wo.id)}>
                   <TableCell className="font-medium">{wo.wo_no}</TableCell>
                   <TableCell>{wo.mode === 'against_stock' ? 'Stock' : 'Order'}</TableCell>
                   <TableCell>{wo.project_no ? `${wo.project_no} · ${wo.customer_name}` : (wo.product_description || '—')}</TableCell>
@@ -317,6 +327,7 @@ function WorkOrderDetail({ id, projects, operations, workstations, onClose, onCh
               {detail.project_no ? `${detail.project_no} · ${detail.customer_name}` : detail.product_description}
               {detail.bom_release_revision ? ` · BOM rev ${detail.bom_release_revision}` : ''}
             </p>
+            <RelatedItemsCard type="work_order" id={detail.id} className="flex flex-col gap-1.5 -mt-2" />
 
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant={STATUS_VARIANT[detail.status]}>{detail.status.replace('_', ' ')}</Badge>

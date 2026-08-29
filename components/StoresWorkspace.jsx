@@ -9,7 +9,8 @@
 // can be promised the same units; Issue is the actual hand-out moment (on_hand decrements, the
 // request's bom_item goes terminal In-Stock). Release undoes an unissued Reserve.
 import { useState, useEffect, useMemo, Fragment } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useEntityHighlight } from '@/lib/use-entity-highlight';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -1398,6 +1399,7 @@ function GirFormDialog({ onClose, router }) {
 }
 
 function GateInwardReceiptsCard({ gateInwardReceipts, router }) {
+  useEntityHighlight(useSearchParams().get('highlight'));
   const [adding, setAdding] = useState(false);
   const [busyId, setBusyId] = useState(null);
   const [grnById, setGrnById] = useState({});
@@ -1441,7 +1443,7 @@ function GateInwardReceiptsCard({ gateInwardReceipts, router }) {
             </TableHeader>
             <TableBody>
               {gateInwardReceipts.map(g => (
-                <TableRow key={g.id}>
+                <TableRow key={g.id} data-entity-code={`GIR-${g.gir_no}`}>
                   <TableCell className="font-medium">GIR-{g.gir_no}</TableCell>
                   <TableCell>{g.vehicle_no || '—'}</TableCell>
                   <TableCell className="text-muted-foreground">{g.supplier_name || '—'}</TableCell>
@@ -1579,6 +1581,7 @@ function GatePassFormDialog({ onClose, router }) {
 }
 
 function GatePassesCard({ gatePasses, router }) {
+  useEntityHighlight(useSearchParams().get('highlight'));
   const [adding, setAdding] = useState(false);
   const [busyId, setBusyId] = useState(null);
 
@@ -1626,7 +1629,7 @@ function GatePassesCard({ gatePasses, router }) {
             </TableHeader>
             <TableBody>
               {gatePasses.map(gp => (
-                <TableRow key={gp.id}>
+                <TableRow key={gp.id} data-entity-code={`GP-${gp.gp_no}`}>
                   <TableCell className="font-medium">GP-{gp.gp_no}</TableCell>
                   <TableCell className="text-muted-foreground">{gp.type === 'returnable' ? 'Returnable' : 'Non-returnable'}</TableCell>
                   <TableCell>{gp.party || '—'}</TableCell>
@@ -2008,9 +2011,9 @@ function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavi
 export default function StoresWorkspace({
   inventoryItems, openRequests = [], activeReservations = [], projects = [],
   reorderSuggestions = [], gateInwardReceipts = [], gatePasses = [], certificates = [], bomItems = [],
+  initialTab,
 }) {
   const router = useRouter();
-  const [tab, setTab] = useState('inventory');
   const navItems = NAV_ITEMS({
     lowStock: inventoryItems.filter(isLowStock).length,
     requests: openRequests.length,
@@ -2018,6 +2021,9 @@ export default function StoresWorkspace({
     reorder: reorderSuggestions.length,
     overdueGatePasses: gatePasses.filter(g => g.is_overdue).length,
   });
+  // Deep-link tab selection (Part B) — same server-prop pattern QcWorkspace.jsx already proved
+  // out; `?tab=gir`/`?tab=gatepasses` were dead query strings before this (nothing read them).
+  const [tab, setTab] = useState(navItems.some(i => i.key === initialTab) ? initialTab : 'inventory');
 
   return (
     <WorkspaceSidebar title="Inventory" icon={PackageIcon} items={navItems} activeKey={tab} onChange={setTab}>

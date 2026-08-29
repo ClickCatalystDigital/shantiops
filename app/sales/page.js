@@ -13,7 +13,7 @@ export const dynamic = 'force-dynamic';
 
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 
-export default async function SalesPage() {
+export default async function SalesPage({ searchParams }) {
   const user = await getFreshSessionUser();
   if (!canAccessDepartment(user, 'Sales') && !canAccessDepartment(user, 'Marketing')) redirect(roleHome(user));
 
@@ -33,8 +33,9 @@ export default async function SalesPage() {
   // already uses for its own assignee dropdown.
   const crmUsers = heads.filter(h => h.active && h.departments.some(d => CRM_DEPARTMENTS.includes(d)));
   const savedViews = savedViewRows.map(r => ({ ...r, filters: JSON.parse(r.filters || '{}') }));
+  const sp = await searchParams;
 
   return (
-    <SalesWorkspace saleOrders={saleOrders} leads={leads} customers={customers} quotations={quotations} campaigns={campaigns} priceLists={priceLists} returns={returns} inventoryItems={inventoryItems} invoices={invoices} creditNotes={creditNotes} departments={departments} users={crmUsers} savedViews={savedViews} />
+    <SalesWorkspace saleOrders={saleOrders} leads={leads} customers={customers} quotations={quotations} campaigns={campaigns} priceLists={priceLists} returns={returns} inventoryItems={inventoryItems} invoices={invoices} creditNotes={creditNotes} departments={departments} users={crmUsers} savedViews={savedViews} initialTab={sp?.tab} />
   );
 }

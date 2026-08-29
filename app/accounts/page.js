@@ -7,7 +7,7 @@ import AccountsWorkspace from '@/components/AccountsWorkspace';
 
 export const dynamic = 'force-dynamic';
 
-export default async function AccountsPage() {
+export default async function AccountsPage({ searchParams }) {
   const user = await getFreshSessionUser();
   if (!canAccessDepartment(user, 'Accounts')) redirect(roleHome(user));
 
@@ -15,9 +15,10 @@ export default async function AccountsPage() {
     getCompanySettings(), getGstRates(), getVendorTdsRates(),
   ]);
 
+  const sp = await searchParams;
   return (
     <main className="min-h-[calc(100svh-3.5rem)]">
-      <AccountsWorkspace companies={companies} gstRates={gstRates} tdsRates={tdsRates} />
+      <AccountsWorkspace companies={companies} gstRates={gstRates} tdsRates={tdsRates} initialTab={sp?.tab} />
     </main>
   );
 }

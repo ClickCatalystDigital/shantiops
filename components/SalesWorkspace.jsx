@@ -5,7 +5,8 @@
 // Customer detail (contacts/addresses/notes) opens in a right-side Sheet, same drawer pattern
 // HrWorkspace.jsx's employee detail uses.
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useEntityHighlight } from '@/lib/use-entity-highlight';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
 import {
   SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarGroup,
@@ -670,6 +671,7 @@ export function NewQuotationDialog({ customers, opportunityId = null, initialCus
 }
 
 function QuotationsTab({ quotations, customers, router }) {
+  useEntityHighlight(useSearchParams().get('highlight'));
   const [dialogOpen, setDialogOpen] = useState(false);
   const [busyId, setBusyId] = useState(null);
   const [rcmQuotation, setRcmQuotation] = useState(null);
@@ -711,7 +713,7 @@ function QuotationsTab({ quotations, customers, router }) {
             <TableHeader><TableRow><TableHead>Quotation No.</TableHead><TableHead>Customer</TableHead><TableHead>Total</TableHead><TableHead>Status</TableHead><TableHead /></TableRow></TableHeader>
             <TableBody>
               {quotations.map(q => (
-                <TableRow key={q.id}>
+                <TableRow key={q.id} data-entity-code={`QT-${q.id}`}>
                   <TableCell className="font-medium">
                     <a href={`/api/quotations/${q.id}/pdf`} target="_blank" rel="noreferrer" className="text-primary hover:underline">{q.quotation_no}</a>
                   </TableCell>
@@ -811,6 +813,7 @@ function CreditNoteDialog({ invoice, onClose, router }) {
 }
 
 function InvoicesTab({ invoices, creditNotes, router }) {
+  useEntityHighlight(useSearchParams().get('highlight'));
   const [busyId, setBusyId] = useState(null);
   const [creditNoteFor, setCreditNoteFor] = useState(null);
 
@@ -832,7 +835,7 @@ function InvoicesTab({ invoices, creditNotes, router }) {
               <TableHeader><TableRow><TableHead>Invoice No.</TableHead><TableHead>Customer</TableHead><TableHead>Company</TableHead><TableHead>Total</TableHead><TableHead>Status</TableHead><TableHead /></TableRow></TableHeader>
               <TableBody>
                 {invoices.map(inv => (
-                  <TableRow key={inv.id}>
+                  <TableRow key={inv.id} data-entity-code={`SI-${inv.id}`}>
                     <TableCell className="font-medium">{inv.invoice_no}</TableCell>
                     <TableCell>{inv.customer_name}</TableCell>
                     <TableCell>{inv.company}</TableCell>
@@ -862,7 +865,7 @@ function InvoicesTab({ invoices, creditNotes, router }) {
           {creditNotes.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No credit notes yet.</p> : (
             <div className="flex flex-col divide-y">
               {creditNotes.map(cn => (
-                <div key={cn.id} className="flex justify-between py-2 text-sm">
+                <div key={cn.id} data-entity-code={`CN-${cn.id}`} className="flex justify-between py-2 text-sm">
                   <span>{cn.credit_note_no} — against {cn.invoice_no}{cn.reason ? ` (${cn.reason})` : ''}</span>
                   <span className="tnum font-medium">{formatMoney(cn.amount)}</span>
                 </div>
@@ -1183,6 +1186,7 @@ function CostingSheet({ so, onClose }) {
 // gated on isDesignHead. Moved to Design's own Projects tab (ConvertSaleOrderButton.jsx), the
 // surface every Design head can actually reach; not duplicated here.
 function SaleOrdersTab({ saleOrders, router }) {
+  useEntityHighlight(useSearchParams().get('highlight'));
   const [dialogOpen, setDialogOpen] = useState(false);
   const [sasSo, setSasSo] = useState(null);
   const [costingSo, setCostingSo] = useState(null);
@@ -1198,7 +1202,7 @@ function SaleOrdersTab({ saleOrders, router }) {
             <TableHeader><TableRow><TableHead>SO No.</TableHead><TableHead>Customer</TableHead><TableHead>Company</TableHead><TableHead>Total</TableHead><TableHead>Status</TableHead><TableHead>Created</TableHead><TableHead /></TableRow></TableHeader>
             <TableBody>
               {saleOrders.map(so => (
-                <TableRow key={so.id}>
+                <TableRow key={so.id} data-entity-code={`SO-${so.id}`}>
                   <TableCell className="font-medium">{so.so_no}</TableCell>
                   <TableCell>{so.customer_name || '—'}</TableCell>
                   <TableCell><SoCompanyCell so={so} router={router} /></TableCell>
@@ -1518,13 +1522,14 @@ const PANELS = [
   { key: 'team', label: 'Team', icon: ContactIcon, description: 'Auto-assign new leads round-robin', salesOnly: false },
 ];
 
-export default function SalesWorkspace({ saleOrders, leads, customers, quotations, campaigns, priceLists = [], returns = [], inventoryItems = [], invoices = [], creditNotes = [], departments = ['Sales', 'Marketing'], users = [], savedViews = [] }) {
+export default function SalesWorkspace({ saleOrders, leads, customers, quotations, campaigns, priceLists = [], returns = [], inventoryItems = [], invoices = [], creditNotes = [], departments = ['Sales', 'Marketing'], users = [], savedViews = [], initialTab }) {
   const router = useRouter();
-  const [panel, setPanel] = useState('leads');
   // Customers/Quotations/Sale Orders are the commercial fulfilment chain — Sales-owned. Marketing
   // shares Leads/Campaigns/Reports (both departments feed the pipeline) but doesn't manage orders.
   const inSales = departments.includes('Sales');
   const items = PANELS.filter(p => !p.salesOnly || inSales);
+  // Deep-link tab selection (Part B) — same server-prop pattern as QcWorkspace.jsx.
+  const [panel, setPanel] = useState(items.some(p => p.key === initialTab) ? initialTab : 'leads');
   const activePanel = items.find(p => p.key === panel) || items[0];
 
   return (
