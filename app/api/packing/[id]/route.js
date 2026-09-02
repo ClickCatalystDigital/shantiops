@@ -68,3 +68,35 @@ export async function PATCH(req, { params }) {
   }
   return NextResponse.json({ ok: true });
 }
+
+// Discard a whole draft — the gap the per-line DELETE on /items never covered: removing every item
+// one at a time still leaves an empty list behind, never actually removes it. Draft-only, same
+// "correct/discard before it's real, never after" boundary as everywhere else in this app (a
+// packed/dispatched list is a real committed action, corrected forward, not deleted). Reuses the
+// per-item route's own `dispatch.packing.edit` action — same authority level, not a new key.
+export async function DELETE(req, { params }) {
+  const user = await getFreshSessionUser();
+  const denied = requireDepartment(user, 'Dispatch');
+  if (denied) return denied;
+  const actionDenied = await requireAction(user, 'Dispatch', 'dispatch.packing.edit');
+  if (actionDenied) return actionDenied;
+
+  const pl = await queryOne('SELECT status, packing_no FROM packing_lists WHERE id = ?', [params.id]);
+  if (!pl) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  if (pl.status !== 'draft') {
+    return NextResponse.json({ error: 'Only a draft list can be deleted — a packed/dispatched list is a real record.' }, { status: 409 });
+  }
+  const posted = await queryOne(
+    "SELECT 1 FROM journal_entries WHERE source_type = 'dispatch_freight' AND source_id = ?", [params.id]
+  );
+  if (posted) {
+    return NextResponse.json({ error: 'Freight for this list is already posted to the ledger — reverse it in Accounts first.' }, { status: 409 });
+  }
+
+  // FKs aren't enforced (PRAGMA foreign_keys is never turned on in this app) — packing_items'
+  // ON DELETE CASCADE never actually fires, so its rows are removed explicitly here.
+  await execute('DELETE FROM packing_items WHERE packing_list_id = ?', [params.id]);
+  await execute('DELETE FROM packing_lists WHERE id = ?', [params.id]);
+  await audit('packing_deleted', { actor: user.username, detail: `list ${params.id} (${pl.packing_no})` });
+  return NextResponse.json({ ok: true });
+}

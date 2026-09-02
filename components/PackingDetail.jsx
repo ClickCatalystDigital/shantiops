@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { api, showToast, formatDate } from '@/lib/client';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -88,6 +89,7 @@ function DeliveryAckCard({ list, onDone }) {
 }
 
 export default function PackingDetail({ list: initialList, items: initialItems, readOnly = false }) {
+  const router = useRouter();
   const [list, setList] = useState(initialList);
   const [items, setItems] = useState(initialItems);
   const [f, setF] = useState(BLANK);
@@ -95,6 +97,7 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
   const [draft, setDraft] = useState(initialList);
   const [invoices, setInvoices] = useState([]);
   const [postingFreight, setPostingFreight] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (!list.project_id) return;
@@ -130,6 +133,15 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
     try { await api(`/api/packing/${list.id}`, { method: 'PATCH', body }); setList(l => ({ ...l, ...body })); setEditing(false); showToast('Details saved'); }
     catch (err) { showToast(err.message, 'error'); }
   }
+  async function deleteList() {
+    if (!confirm(`Delete draft ${list.packing_no}? This removes all ${items.length} item${items.length === 1 ? '' : 's'} from it — the underlying BOM lines stay pending and can be pulled into a new draft later.`)) return;
+    setDeleting(true);
+    try {
+      await api(`/api/packing/${list.id}`, { method: 'DELETE' });
+      showToast('Draft deleted');
+      router.push('/ops?dept=Dispatch');
+    } catch (err) { showToast(err.message, 'error'); setDeleting(false); }
+  }
   async function postFreight() {
     setPostingFreight(true);
     try {
@@ -161,6 +173,11 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
             </Select>
           )}
           {!readOnly && <Button variant="outline" size="sm" onClick={() => { setDraft(list); setEditing(v => !v); }}>{editing ? 'Close' : 'Edit details'}</Button>}
+          {!readOnly && list.status === 'draft' && (
+            <Button variant="outline" size="sm" className="text-danger hover:text-danger" disabled={deleting} onClick={deleteList}>
+              <Trash2Icon data-icon="inline-start" />{deleting ? 'Deleting…' : 'Delete draft'}
+            </Button>
+          )}
           <Button asChild size="sm"><a href={`/api/packing/${list.id}/pdf`} target="_blank" rel="noreferrer"><FileTextIcon data-icon="inline-start" />Generate PDF</a></Button>
           {!readOnly && <Button asChild variant="ghost" size="sm"><Link href="/ops?dept=Dispatch">← All</Link></Button>}
         </div>
