@@ -151,7 +151,10 @@ function PendingItemsTab({ items }) {
               <CardTitle className="text-sm">{group.project_no} · {group.customer_name}</CardTitle>
               {readyCount > 0 && (
                 <CardAction>
-                  <Button size="sm" disabled={busyProject === group.project_id} onClick={() => generate(group.project_id)}>
+                  {/* Disabled while ANY project's generate is in flight, not just this one — a
+                      single busyProject value can only track one id at a time, so leaving other
+                      projects' buttons live would let a second click race the first request. */}
+                  <Button size="sm" disabled={!!busyProject} onClick={() => generate(group.project_id)}>
                     {busyProject === group.project_id ? 'Generating…' : 'Generate Draft Packing List'}
                   </Button>
                 </CardAction>
