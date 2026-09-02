@@ -4,7 +4,7 @@
 // rows; what differs is `editableFields` (from BOM_FIELD_OWNERS via the server). The inline status
 // select is the high-frequency action; everything else edits through a small dialog showing only
 // the viewer's editable columns. Enforcement lives in the PATCH route — this UI is convenience.
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api, showToast } from '@/lib/client';
 import { useEntityHighlight } from '@/lib/use-entity-highlight';
@@ -17,6 +17,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import TraceabilityBadges from '@/components/TraceabilityBadges';
+import ReceiveBomItemDialog from '@/components/ReceiveBomItemDialog';
+import SearchableSelect from '@/components/SearchableSelect';
 import { PencilIcon, TrashIcon } from '@heroicons/react/24/solid';
 import { ChevronLeftIcon, ChevronRightIcon, XCircleIcon } from 'lucide-react';
 
@@ -41,6 +43,31 @@ function TruncatedCell({ value }) {
       </TooltipTrigger>
       <TooltipContent className="max-w-sm text-wrap">{text}</TooltipContent>
     </Tooltip>
+  );
+}
+
+// Smart text field for the add/edit dialog — a real type-to-filter dropdown (SearchableSelect,
+// this app's existing local-list combobox, already used by PrWorkspace/StoresWorkspace/
+// SalesWorkspace) offering values already typed elsewhere on this BOM, while still accepting
+// completely free text (SearchableSelect's displayValue/onTextChange hybrid mode — picking a
+// suggestion and typing something new both just become "the current text"). Replaces a plain
+// <input list="datalist-id">, whose unstyled native popup looked and behaved nothing like the rest
+// of this app's own dropdowns. A hidden input mirrors the current text under the field's real
+// `name` so the dialog's existing uncontrolled-FormData save path (saveDialog) needs no change —
+// this field just becomes a nicer front end for the same named form value. Keyed by field+item id
+// by the caller so it remounts (and re-reads defaultValue) fresh per edit session.
+function SmartTextField({ field, defaultValue, options, required }) {
+  const [text, setText] = useState(defaultValue || '');
+  return (
+    <>
+      <SearchableSelect
+        value={text} onChange={setText} displayValue={text} onTextChange={setText}
+        options={options.map(v => ({ value: v, label: v }))}
+        placeholder="Type or pick from existing…" inputClassName="h-9"
+      />
+      <input type="hidden" name={field} value={text} />
+      {required && !text.trim() && <p className="text-xs text-destructive">Required.</p>}
+    </>
   );
 }
 
@@ -141,7 +168,7 @@ const COLUMN_WIDTHS = {
 // props). Needed by callers whose `bom` is client-fetched local state instead (ReleaseBomTab, same
 // as ProductionBomTab already is) — router.refresh() can't touch that state, so nothing but this
 // callback ever tells them to refetch.
-export default function BomTable({ projectId, bom, pendingIds = [], editableFields = [], department, canCancel = false, onSaved, assemblies = [] }) {
+export default function BomTable({ projectId, bom, pendingIds = [], editableFields = [], department, canCancel = false, onSaved, assemblies = [], showItemCode = false, defaultAssemblyId, suggestionsFrom, layout = 'table' }) {
   const router = useRouter();
   useEntityHighlight(useSearchParams().get('highlight'));
   const [q, setQ] = useState('');
@@ -163,12 +190,41 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
 
   const canInlineStatus = editableFields.includes('purchase_status');
   const canToggleProductionDone = editableFields.includes('production_done');
+  // Canonical Stores Receiving (Feature A) — Stores' own department view gets the Receive action in
+  // the grn_ref column instead of a free-text field (removed from BOM_FIELD_OWNERS.Stores entirely,
+  // so dialogFields below naturally no longer offers it). "Enforcement lives in the route" (see this
+  // file's own header comment) — the real gate is requireAction in the /receive route; this is just
+  // which department's view shows the button.
+  const canReceive = department === 'Stores';
   const canStructure = editableFields.includes('material_description');
   const canSetTraceability = TRACEABILITY_FIELDS.some(f => editableFields.includes(f));
+  const canSetManufacturingFlag = editableFields.includes('requires_manufacturing');
   // Dialog fields: the viewer's editable set, minus status, production_done, and requires_* (all
   // three get their own dedicated control — a plain text input is the wrong shape for a boolean;
   // requires_* specifically had been rendering as an unlabeled text box, a real bug found in review).
-  const dialogFields = editableFields.filter(f => f !== 'purchase_status' && f !== 'production_done' && !TRACEABILITY_FIELDS.includes(f));
+  // requires_manufacturing (Feature C) needs the same exclusion — found in a later review pass: left
+  // out of this filter, it rendered as a second, generic text input sharing its `name` with the real
+  // checkbox below, and FormData.get() always resolves to whichever field is first in the DOM (the
+  // text input), so the checkbox's own checked state was silently never read at all.
+  const dialogFields = editableFields.filter(f =>
+    f !== 'purchase_status' && f !== 'production_done' && f !== 'requires_manufacturing' && !TRACEABILITY_FIELDS.includes(f));
+
+  // Smart text input: native <datalist> suggestions from values already typed elsewhere — zero new
+  // dependency, zero new backend, and purely additive (the field stays a plain <input>, so nothing
+  // about validation/saving changes for any caller). No LLM, no fuzzy matching — just "what did
+  // someone already type in this column." Suggestions draw from `suggestionsFrom` when the caller
+  // passes it (NodeItemsTab passes the whole project's items, since a node's own filtered `bom` is
+  // often empty right when suggestions matter most — a brand new node); every other caller doesn't
+  // pass it, so this falls back to `bom` itself, unchanged.
+  const SMART_TEXT_FIELDS = ['material_description', 'moc', 'size_spec', 'make'];
+  const suggestionSource = suggestionsFrom || bom;
+  const distinctValues = useMemo(() => {
+    const out = {};
+    for (const f of SMART_TEXT_FIELDS) {
+      out[f] = [...new Set(suggestionSource.map(b => b[f]).filter(Boolean))].sort();
+    }
+    return out;
+  }, [suggestionSource]);
   // The Actions column exists for edit/delete (dialogFields) OR the D10 cancel button — Design has
   // no editable fields at all (no BOM_FIELD_OWNERS entry) but still needs this column for Cancel.
   const hasActions = dialogFields.length > 0 || canCancel;
@@ -229,6 +285,13 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
     const form = new FormData(e.target);
     const body = {};
     for (const f of dialogFields) body[f] = String(form.get(f) ?? '');
+    // material_description used to be enforced by the plain <input required>; SmartTextField
+    // renders its value through a hidden input instead (so it can stay a real search dropdown, not
+    // native autocomplete), which browsers don't reliably validate — so this is the real check now.
+    if (dialogFields.includes('material_description') && !body.material_description.trim()) {
+      showToast('Description is required', 'error');
+      return;
+    }
     // Checkboxes need explicit boolean coercion, same reasoning as toggleProductionDone below —
     // a native checkbox's FormData value is 'on'/absent, not a value this table's other text fields
     // ever produce, and the PATCH route's NOT NULL boolean columns need 1/0, not that string.
@@ -238,6 +301,9 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
     const frozen = editing?.released_at_revision != null;
     if (canSetTraceability && !frozen) {
       for (const f of TRACEABILITY_FIELDS) if (editableFields.includes(f)) body[f] = form.get(f) ? 1 : 0;
+    }
+    if (canSetManufacturingFlag && !frozen) {
+      body.requires_manufacturing = form.get('requires_manufacturing') ? 1 : 0;
     }
     setBusy(true);
     try {
@@ -294,29 +360,90 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
           Not linked to catalog
         </Button>
         <span className="text-xs text-muted-foreground tnum">{rows.length} of {bom.length} items</span>
-        {/* Jump the wide table left/right without hunting for the scrollbar at the bottom of the page. */}
-        <div className="flex items-center gap-1">
-          <Button size="icon-sm" variant="outline" aria-label="Scroll table left" onClick={() => scrollByCols(-1)}>
-            <ChevronLeftIcon />
-          </Button>
-          <Button size="icon-sm" variant="outline" aria-label="Scroll table right" onClick={() => scrollByCols(1)}>
-            <ChevronRightIcon />
-          </Button>
-        </div>
+        {/* Jump the wide table left/right without hunting for the scrollbar at the bottom of the page.
+            Not needed in card layout — there's nothing to scroll, everything wraps instead. */}
+        {layout === 'table' && (
+          <div className="flex items-center gap-1">
+            <Button size="icon-sm" variant="outline" aria-label="Scroll table left" onClick={() => scrollByCols(-1)}>
+              <ChevronLeftIcon />
+            </Button>
+            <Button size="icon-sm" variant="outline" aria-label="Scroll table right" onClick={() => scrollByCols(1)}>
+              <ChevronRightIcon />
+            </Button>
+          </div>
+        )}
         {canStructure && (
           <Button size="sm" variant="outline" className="ml-auto"
-            onClick={() => setEditing({ __new: true, section: lastSection || '' })}>
+            onClick={() => setEditing({ __new: true, section: lastSection || '', assembly_id: defaultAssemblyId ?? '' })}>
             + Add item
           </Button>
         )}
       </div>
 
-      {/* table-fixed is load-bearing, not decorative: the sticky offsets below (left-12,
+      {/* Card layout — a narrow embedded context (the BOM workspace's own Items tab) doesn't have
+          room for the wide table's ~15 sticky/scrolling columns; wrapping key facts into a card
+          that reflows, instead of forcing horizontal scroll, is the actual fix for "why does this
+          look like Excel." Reuses every existing mutation/edit primitive (setEditing opens the
+          exact same dialog, remove/cancelItem/setStatus are the same functions the table row used)
+          — only the read-only *presentation* differs, nothing about how a save/delete happens. */}
+      {layout === 'cards' ? (
+        <div className="flex flex-col gap-2">
+          {rendered.map(r => r.divider ? (
+            <div key={r.key} className={`mt-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground first:mt-0 ${r.divider === 'group' ? 'pl-3 normal-case' : ''}`}>{r.label}</div>
+          ) : (
+            <div key={r.id} data-entity-code={`BM-${r.id}`} className="rounded-md border p-3 text-sm transition-colors hover:bg-muted/30">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="font-medium">
+                    {showItemCode && <span className="mr-1 text-[11px] tnum text-muted-foreground/70">BM-{r.id}</span>}
+                    {r.material_description}
+                  </p>
+                  <TraceabilityBadges item={r} />
+                  {canStructure && !r.item_id && <div className="mt-1"><LinkItemControl bomItemId={r.id} router={router} /></div>}
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  {/* Purchase status is Procurement's own lifecycle — showing it here, before a BOM
+                      is even released, is noise (every fresh line reads "Enquiry", telling Engineering
+                      nothing). Only surface it once it's actually moved past the default, or for a
+                      department that can act on it directly. */}
+                  {canInlineStatus ? (
+                    <Select value={r.purchase_status || 'none'} onValueChange={v => setStatus(r, v)}>
+                      <SelectTrigger className="h-7 w-28 text-xs"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">—</SelectItem>
+                        {BOM_STATUSES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  ) : r.purchase_status && r.purchase_status !== DEFAULT_PURCHASE_STATUS ? (
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${STATUS_TONE[r.purchase_status] || 'bg-muted text-muted-foreground ring-border'}`}>
+                      {r.purchase_status}
+                    </span>
+                  ) : null}
+                  {dialogFields.length > 0 && (
+                    <Button size="icon-sm" variant="ghost" aria-label="Edit item" onClick={() => setEditing(r)}><PencilIcon className="size-3.5" /></Button>
+                  )}
+                  {canStructure && (
+                    <Button size="icon-sm" variant="ghost" className="text-danger" aria-label="Delete item" onClick={() => remove(r)}><TrashIcon className="size-3.5" /></Button>
+                  )}
+                </div>
+              </div>
+              {columns.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 border-t pt-2 text-xs text-muted-foreground">
+                  {columns.filter(c => r[c] != null && r[c] !== '').map(c => (
+                    <span key={c}><span className="text-muted-foreground/70">{FIELD_LABELS[c]}:</span> {String(r[c])}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      ) : (
+      /* table-fixed is load-bearing, not decorative: the sticky offsets below (left-12,
           left-[19rem], left-[27rem]) are hardcoded assuming each column renders at exactly its
           declared w-* width. table-layout's default (auto) lets content shrink a column below
           that (e.g. "#" with single-digit rows), so the offsets stop matching reality and the
           scrolling columns physically overlap/bleed under the sticky ones instead of hiding
-          cleanly behind them. Fixed layout forces the declared widths to actually be honored. */}
+          cleanly behind them. Fixed layout forces the declared widths to actually be honored. */
       <Table ref={scrollerRef} className="table-fixed">
           <TableHeader>
             <TableRow>
@@ -350,6 +477,9 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
               <TableRow key={r.id} data-entity-code={`BM-${r.id}`}>
                 <TableCell className="sticky left-0 z-10 w-12 bg-background tnum text-muted-foreground">{bom.indexOf(r) + 1}</TableCell>
                 <TableCell className="sticky left-12 z-10 w-64 min-w-64 max-w-64 break-words bg-background font-medium">
+                  {/* Canonical entity code shown alongside the name — opt-in only (BOM workspace's
+                      Items tab), every other caller of this shared table is unaffected. */}
+                  {showItemCode && <span className="mr-1 text-[11px] tnum text-muted-foreground/70">BM-{r.id}</span>}
                   {r.material_description}
                   {/* Item Master identity (§3.2) — the catalog's own code, shown only when this
                       line is actually linked (item_id), never a free-typed value. */}
@@ -424,10 +554,34 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
                 {columns.map(c => (
                   <TableCell key={c} className="overflow-hidden text-muted-foreground">
                     {c === 'production_done' ? (
-                      canToggleProductionDone ? (
+                      // A requires_manufacturing=0 line never gets a production_done tick — it
+                      // becomes packable the moment it's Received (Feature C, lib/data.js's
+                      // getProjectBom). Without this, the column read as a blank "—", identical to a
+                      // manufacturing line that's simply not done yet — no way to tell "skips
+                      // Production entirely" from "still waiting on Production" at a glance.
+                      !r.requires_manufacturing ? (
+                        <span className="text-xs italic text-muted-foreground" title="No fabrication needed — packable as soon as it's Received.">
+                          Direct to packing
+                        </span>
+                      ) : canToggleProductionDone ? (
                         <input type="checkbox" checked={!!r.production_done} aria-label="Production done"
                           onChange={e => toggleProductionDone(r, e.target.checked)} />
                       ) : (r.production_done ? 'Done' : '—')
+                    ) : c === 'grn_ref' && r.receipt_id ? (
+                      // Once a receipt is linked, grn_ref is derived from it and read-only here —
+                      // the single-source-of-truth guarantee Feature A depends on. Print links reach
+                      // the same tag PDF either scoped to just this line or the whole receipt.
+                      <div className="flex flex-col gap-0.5 text-xs">
+                        <TruncatedCell value={r.grn_ref} />
+                        <div className="flex gap-2">
+                          <a className="text-info hover:underline" target="_blank" rel="noreferrer"
+                            href={`/api/stock-receipts/${r.receipt_id}/tag?bom_item_id=${r.id}`}>Tag (this item)</a>
+                          <a className="text-info hover:underline" target="_blank" rel="noreferrer"
+                            href={`/api/stock-receipts/${r.receipt_id}/tag`}>Full receipt</a>
+                        </div>
+                      </div>
+                    ) : c === 'grn_ref' && canReceive && !['Received', 'Cancelled', 'In-Stock'].includes(r.purchase_status) ? (
+                      <ReceiveBomItemDialog item={r} onDone={onSaved} />
                     ) : <TruncatedCell value={r[c]} />}
                   </TableCell>
                 ))}
@@ -435,6 +589,7 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
             ))}
           </TableBody>
       </Table>
+      )}
 
       <Dialog open={!!editing} onOpenChange={o => !o && setEditing(null)}>
         <DialogContent className="max-h-[85vh] overflow-y-auto">
@@ -459,9 +614,11 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
                       <option value="">— none —</option>
                       {assemblies.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                     </select>
+                  ) : SMART_TEXT_FIELDS.includes(f) ? (
+                    <SmartTextField field={f} defaultValue={editing[f]}
+                      options={distinctValues[f]} required={f === 'material_description'} />
                   ) : (
-                    <Input id={`bom-${f}`} name={f} defaultValue={editing[f] || ''}
-                      required={f === 'material_description'} />
+                    <Input id={`bom-${f}`} name={f} defaultValue={editing[f] || ''} />
                   )}
                 </div>
               ))}
@@ -483,6 +640,17 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
                     </p>
                   )}
                 </div>
+              )}
+              {canSetManufacturingFlag && (
+                // Feature C — distinct from traceability above: whether this line ever needs
+                // Production's own fabrication step. Same release-freeze governance, separate
+                // checkbox since the semantics aren't traceability.
+                <label className="flex items-center gap-1.5 text-sm">
+                  <input type="checkbox" name="requires_manufacturing"
+                    defaultChecked={editing.requires_manufacturing !== 0 && editing.requires_manufacturing !== false}
+                    disabled={editing.released_at_revision != null} />
+                  Requires manufacturing
+                </label>
               )}
               <DialogFooter>
                 <Button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save'}</Button>

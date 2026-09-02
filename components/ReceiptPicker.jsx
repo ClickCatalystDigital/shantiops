@@ -18,7 +18,11 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup } from '@/components/ui/select';
 
-export default function ReceiptPicker({ value, onChange }) {
+// `requireInvoice` (Feature A, canonical Stores Receiving) — the official receiving action needs a
+// real invoice number, unlike the pre-existing speculative piece-receiving path this control was
+// originally built for. Presentation only (a required-marker + native `required`); the real
+// enforcement is server-side in POST /api/bom-items/[id]/receive.
+export default function ReceiptPicker({ value, onChange, requireInvoice = false }) {
   const [receipts, setReceipts] = useState(null);
   const [suppliers, setSuppliers] = useState([]);
   const [purchaseOrders, setPurchaseOrders] = useState([]);
@@ -27,6 +31,7 @@ export default function ReceiptPicker({ value, onChange }) {
   const [supplierId, setSupplierId] = useState('');
   const [poId, setPoId] = useState('');
   const [grnRef, setGrnRef] = useState('');
+  const [invoiceNo, setInvoiceNo] = useState('');
   const [girId, setGirId] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -39,13 +44,16 @@ export default function ReceiptPicker({ value, onChange }) {
 
   async function create() {
     if (!supplierId) return showToast('Choose a supplier', 'error');
+    if (requireInvoice && !grnRef.trim()) return showToast('Enter the GRN number', 'error');
+    if (requireInvoice && !invoiceNo.trim()) return showToast('Enter the invoice number', 'error');
     setBusy(true);
     try {
       const result = await api('/api/stock-receipts', {
         method: 'POST',
         body: {
           supplier_id: Number(supplierId), po_id: poId ? Number(poId) : undefined,
-          grn_ref: grnRef.trim() || undefined, gate_inward_receipt_id: girId ? Number(girId) : undefined,
+          grn_ref: grnRef.trim() || undefined, invoice_no: invoiceNo.trim() || undefined,
+          gate_inward_receipt_id: girId ? Number(girId) : undefined,
         },
       });
       showToast(`Receipt ${result.inward_batch_no} created`);
@@ -63,7 +71,9 @@ export default function ReceiptPicker({ value, onChange }) {
       {!creating ? (
         <div className="flex flex-wrap items-center gap-2">
           <Select value={value ? String(value) : ''} onValueChange={v => onChange(v ? Number(v) : null)}>
-            <SelectTrigger className="w-72"><SelectValue placeholder="No receipt — receive speculatively" /></SelectTrigger>
+            <SelectTrigger className="w-72">
+              <SelectValue placeholder={requireInvoice ? 'Choose a receipt' : 'No receipt — receive speculatively'} />
+            </SelectTrigger>
             <SelectContent><SelectGroup>
               {(receipts || []).map(r => (
                 <SelectItem key={r.id} value={String(r.id)}>
@@ -89,7 +99,10 @@ export default function ReceiptPicker({ value, onChange }) {
                 {purchaseOrders.map(po => <SelectItem key={po.id} value={String(po.id)}>{po.po_no}</SelectItem>)}
               </SelectGroup></SelectContent>
             </Select>
-            <Input className="w-40" placeholder="GRN ref (optional)" value={grnRef} onChange={e => setGrnRef(e.target.value)} />
+            <Input className="w-40" placeholder={requireInvoice ? 'GRN ref *' : 'GRN ref (optional)'}
+              value={grnRef} onChange={e => setGrnRef(e.target.value)} required={requireInvoice} />
+            <Input className="w-40" placeholder={requireInvoice ? 'Invoice No *' : 'Invoice No (optional)'}
+              value={invoiceNo} onChange={e => setInvoiceNo(e.target.value)} required={requireInvoice} />
           </div>
           {girEntries.length > 0 && (
             <Select value={girId} onValueChange={setGirId}>

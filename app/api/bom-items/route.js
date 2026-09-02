@@ -32,8 +32,12 @@ export async function POST(req) {
   // production_done during the Allocation Mode redesign; the four requires_* flags are the same
   // column shape, added here rather than repeating that bug).
   const BOOLEAN_FIELDS = new Set(['production_done', 'requires_heat_no', 'requires_mtc', 'requires_supplier_batch', 'requires_serial_no']);
+  // requires_manufacturing (Feature C) is the same NOT NULL boolean shape, but its correct default
+  // is TRUE, not false like the fields above — an explicit `=== false` check, not a falsy one, so an
+  // omitted value defaults to 1 rather than the generic BOOLEAN_FIELDS coercion's implicit 0.
   const values = fields.map(f =>
-    BOOLEAN_FIELDS.has(f) ? (b[f] ? 1 : 0)
+    f === 'requires_manufacturing' ? (b[f] === false ? 0 : 1)
+    : BOOLEAN_FIELDS.has(f) ? (b[f] ? 1 : 0)
     : typeof b[f] === 'string' && b[f].trim() ? b[f].trim() : null);
   values[0] = b.material_description.trim();
 

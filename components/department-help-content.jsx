@@ -398,10 +398,15 @@ const FEATURE_FOUNDATIONS = {
     watchOut: 'Do not fix a technical mistake by creating a duplicate line. Correct the source definition and review the impact on quotes, receipts, and packing. A line that already has a receipt or issue against it can\'t be re-linked to a different catalog item — that protection is intentional, not a bug.',
   },
   bomStructure: {
-    value: 'Multi-Level BOM turns a flat list of parts into real assemblies and sub-assemblies with a quantity multiplier, so a boiler’s "2 ID Fans, each with 1 Drive sub-assembly" is a structure the system can roll up, not just three separate lines a reader has to mentally group.',
-    outcome: 'Every assembly shows the multiplied quantity of everything nested under it, computed live from the tree — never hand-typed and never out of date when a parent quantity changes.',
-    checklist: ['Create the assembly (or sub-assembly, nested under a parent) before assigning items to it.', 'Assign a BOM item to its assembly from the Edit dialog on the project’s BOM table, not here.', 'Check the roll-up quantity, not just the item’s own qty_text, before treating a count as final.'],
-    watchOut: 'A BOM item left unassigned (no assembly) still works exactly as before — assigning it to a structure is optional, not a requirement to keep using the BOM.',
+    value: 'The BOM workspace is a two-pane tree-and-detail editor, not just a viewer: build System → Subsystem → Assembly → Sub-assembly → Component structure (any label works — the levels are a naming convention, not a database rule) so a boiler’s "2 ID Fans, each with 1 Drive sub-assembly" is a real structure the system can roll up, then work each node’s Items, Drawings, Calculations, and History from one place instead of hunting across the project page.',
+    outcome: 'Every node shows its own local quantity multiplier and a live roll-up quantity computed through the whole chain beneath it, plus its linked drawings and calculation sheets, and a Release Readiness strip (item / drawing-linked / calc-linked / unassigned / pending-ECN counts) that stays purely informational — release is still the one existing Release BOM action, reachable from here or from Requests.',
+    checklist: [
+      'Build the tree first — rename, reorder with Move Up/Down, or Move to… a different parent. A cycle (moving a node under its own descendant) is rejected automatically.',
+      'Add items to a node either by creating a new BOM line inline (same fields/validation as the project-page table) or by assigning an existing unassigned item to it — both write the same BOM item record.',
+      'Link a Drawing or Calculation Sheet from the node’s own tabs. The drawing picker defaults to Approved/As-built only — turn on "Show all statuses" to pre-link a drawing still in progress, which stays visibly flagged "Under review — not yet approved" until it clears.',
+      'Duplicate a node to reuse a proven sub-structure on the same project — items clone as fresh, independent rows, but linked drawings/calc sheets do not carry over; re-link whatever actually applies to the copy.',
+    ],
+    watchOut: 'A BOM item left unassigned (no node) still works exactly as before — assigning it to the tree is optional, not a requirement. Deleting a node never deletes its items; they fall back to Unassigned. And nothing here forces a change through an ECN — inline edits still save immediately, same as always.',
   },
   whereUsed: {
     value: 'Where-Used answers "if I change this part, what else does it affect?" across every project at once — the question a flat, per-project BOM can never answer on its own.',
@@ -831,14 +836,14 @@ export const DEPARTMENT_HELP = {
       ], {
         checklist: [
           'When you add a plate/section BOM line, pick its Category and fill in Length/Width/Thickness (and MOC) — a line without these is simply invisible to matching, no error, it just goes to Procurement like before.',
-          'Release the BOM the normal way: Requests → Release BOM → pick the project → Release BOM. Matching runs automatically the instant you release — there is no separate step or button for it.',
+          'Release the BOM the normal way: Requests → Purchase Requests → Release BOM (reached directly at /pr?tab=release) → pick the project → Release BOM. Matching runs automatically the instant you release — there is no separate step or button for it.',
           'You do not need to check whether a line matched. Stores sees a "Remnant reserved" badge and Production sees a ready-to-cut piece; your BOM view looks the same either way.',
         ],
       }),
       milestoneTrackerFeature([
         ['Design', 'Explicit action', 'The Design Head clicks "Approve Design" on the project\'s Design tab — an internal sign-off with no other data signal to detect it from.'],
         ['Submit Design Approval', 'Automatic', 'Completes once every customer-visible drawing on the project has been approved by the customer — the same per-drawing approval already tracked in the Drawings panel, just rolled up.'],
-        ['Release BOM / PR', 'Explicit action', 'Design or Engineering clicks "Release BOM" on the Requests → Release BOM tab, once the project actually has BOM items to release — this is also the moment Cutting & Remnant Matching checks every plate/section line against Stores.'],
+        ['Release BOM / PR', 'Explicit action', 'Design or Engineering clicks "Release BOM" (reached from Requests → Purchase Requests, at /pr?tab=release), once the project actually has BOM items to release — this is also the moment Cutting & Remnant Matching checks every plate/section line against Stores.'],
         ['Release All Drawings', 'Manual only', 'No automatic or explicit-button trigger yet — close it from the milestone drawer once every drawing is genuinely released.'],
       ]),
       feature('tasks', 'Tasks and handoffs', ListChecksIcon, ['Use Tasks for small follow-ups that do not deserve a milestone. Raise a cross-department task when another team needs to act.', 'When a milestone closes, check the next team’s notification and task signal. Do not rely only on memory or a private note.']),
@@ -873,7 +878,7 @@ export const DEPARTMENT_HELP = {
       ]),
       feature('notifications', 'Notifications', BellIcon, [
         'You receive a notification the moment a new order reaches Engineering: converting a confirmed Sale Order into a Project (a Design Head or PM does the converting) notifies Engineering and Design at the same time, since a fresh Scope of Supply now exists for both to work from.',
-        'You receive a notification when a BOM template is applied to a project — a reusable per-boiler-model starting BOM (Requests → Templates), applied by Design, Stores, or Engineering itself. If someone else applied it, this is how Engineering learns a BOM has taken shape without opening the project to check. If Engineering applied it, no notification is sent for that own action — same "you don\'t get pinged for your own work" pattern as Sales\' own Sale Order creation.',
+        'You receive a notification when a BOM template is applied to a project — a reusable per-boiler-model starting BOM (Engineering → BOM Templates; Stores heads reach the same templates from Requests → PR Templates), applied by Design, Stores, or Engineering itself. If someone else applied it, this is how Engineering learns a BOM has taken shape without opening the project to check. If Engineering applied it, no notification is sent for that own action — same "you don\'t get pinged for your own work" pattern as Sales\' own Sale Order creation.',
         'Engineering owns no milestones of its own (Design owns the whole Design→BOM→Drawings chain), so unlike most departments there is no milestone-handoff traffic here — these two are genuinely the only notification types Engineering receives.',
         'This is the same bell every internal department uses, top right of the app. It is automatic for everyone with Engineering access; nothing here is a toggle you turn on or off.',
       ], {
@@ -888,7 +893,10 @@ export const DEPARTMENT_HELP = {
       }),
       feature('requests', 'Material requests', FileTextIcon, ['Use Requests for a new item or a quantity that must be sourced. Add enough technical detail for a buyer to obtain comparable quotes.', 'If an existing BOM line is wrong, correct the definition first; do not create a duplicate request to work around bad data.']),
       feature('milestones', 'Milestones and tasks', ListChecksIcon, ['Use milestones for major Engineering deliverables and Tasks for small follow-ups. Close both with real dates so downstream teams see the handoff clearly.']),
-      feature('bomStructure', 'BOM Structure (assemblies)', LayersIcon, ['Open the Engineering tab (top nav) → BOM Structure to build and browse a project’s assembly tree — nest sub-assemblies, set a quantity multiplier per level, and see roll-up quantity computed live.', 'Assign a BOM item to an assembly from the project page’s BOM table (Edit item → Assembly), not from the Engineering tab itself.']),
+      feature('bomStructure', 'BOMs (assemblies)', LayersIcon, [
+        'Open the Engineering tab (top nav) → BOMs, pick a project, then work its tree: search, filter by missing drawing / missing calc / pending ECN, rename, reorder (Move Up/Down), Move to… a new parent, or Duplicate a node — all from the tree pane.',
+        'Select a node to add or assign BOM items, link Drawings and Calculation Sheets, review its Engineering Change Note history, and set its quantity multiplier — right from that node’s own tabs, no need to leave the workspace.',
+      ]),
       feature('whereUsed', 'Where-Used', SearchIcon, ['Open the Engineering tab → Where-Used, search a part description, and see every project (and assembly, where assigned) that carries a matching part.']),
       feature('commonUncommon', 'Common / Uncommon', Repeat2Icon, ['Open the Engineering tab → Common/Uncommon to see which parts are reused across 2+ projects versus used on exactly one — a starting point for stocking decisions, not a Stores action in itself.']),
       feature('ecn', 'Engineering Change Notes', FileEditIcon, ['Raise an ECN from the Engineering tab (or the project’s BOM table) whenever a released BOM field needs a controlled change — field, old value, new value, and a real reason.', 'A department Head approves or rejects; approval applies the new value and stamps the project’s current release revision.']),
@@ -897,7 +905,7 @@ export const DEPARTMENT_HELP = {
       { title: 'Read the order', body: 'Open the project, review Scope of Supply, and check the project description and Sale Order context before starting calculations.' },
       { title: 'Run and freeze a calculation', body: 'Enter inputs, resolve validation warnings, run the sheet, and save a snapshot with a meaningful note or revision reference.' },
       { title: 'Prepare the BOM', body: 'Import the PMB, check skipped rows and mapped columns, then confirm. Correct the technical definition before Procurement starts sourcing.' },
-      { title: 'Request a new material', body: 'Open Requests, select the project, describe the item, include size/MOC/quantity, and submit it to Procurement.' },
+      { title: 'Request a new material', body: 'Open Requests → Purchase Requests, select the project, describe the item, include size/MOC/quantity, and submit it to Procurement.' },
       { title: 'Release responsibly', body: 'Update drawing status, close the Engineering milestone, and add a task for any known follow-up instead of hiding it in a note.' },
     ],
   },
@@ -1365,7 +1373,7 @@ export const DEPARTMENT_HELP = {
       feature('stageInspections', 'Incoming / Finished Goods / Subassembly Inspection', ClipboardCheckIcon, [
         'Incoming Inspection is auto-suggested (Pending) the moment a BOM item you\'re buying reaches Received — you don\'t have to notice the receipt yourself, just fill in the result. You can still add one by hand for anything the auto-suggestion misses.',
         'Finished Goods Inspection is tied to a Work Order. Pass it and flip "Dispatch eligible" once you\'re satisfied the completed goods are fit to ship — Dispatch\'s packing flow reads that flag.',
-        'Subassembly Inspection is tied to a BOM assembly (Engineering tab → BOM Structure) — use it for an intermediate stage check before the sub-assembly moves on, not the finished product.',
+        'Subassembly Inspection is tied to a BOM assembly (Engineering tab → BOMs) — use it for an intermediate stage check before the sub-assembly moves on, not the finished product.',
       ]),
       feature('jobWork', 'Job-Work Inspection', TruckIcon, [
         'Log material sent to an outside job worker: who, quantity sent, expected return date. Fill in received quantity and date once it comes back — variance (sent minus received) is calculated for you.',

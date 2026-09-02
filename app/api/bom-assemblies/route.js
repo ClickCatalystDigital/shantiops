@@ -35,9 +35,20 @@ export async function POST(req) {
     }
   }
 
+  // New nodes always append to the end of their sibling list (BOM workspace Phase 2) — never left
+  // at the column's default 0, so Move Up/Down never has to break a tie among freshly-created rows.
+  const siblingMax = await queryOne(
+    b.parent_id
+      ? 'SELECT MAX(sort_order) AS m FROM bom_assemblies WHERE project_id = ? AND parent_id = ?'
+      : 'SELECT MAX(sort_order) AS m FROM bom_assemblies WHERE project_id = ? AND parent_id IS NULL',
+    b.parent_id ? [b.project_id, b.parent_id] : [b.project_id]
+  );
+  const sortOrder = (siblingMax?.m ?? -1) + 1;
+
   const { lastId } = await execute(
-    `INSERT INTO bom_assemblies (project_id, parent_id, name, qty, created_by) VALUES (?, ?, ?, ?, ?)`,
-    [b.project_id, b.parent_id || null, name, Number(b.qty) > 0 ? Number(b.qty) : 1, user.username]
+    `INSERT INTO bom_assemblies (project_id, parent_id, name, qty, sort_order, node_type, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [b.project_id, b.parent_id || null, name, Number(b.qty) > 0 ? Number(b.qty) : 1, sortOrder,
+      b.node_type ? String(b.node_type).trim() || null : null, user.username]
   );
   await audit('bom_assembly_add', { actor: user.username, detail: `project ${b.project_id}: ${name}` });
   return NextResponse.json({ id: Number(lastId) });

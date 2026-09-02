@@ -27,6 +27,7 @@ export async function POST(req) {
       supplierId: b.supplier_id ? Number(b.supplier_id) : undefined,
       poId: b.po_id ? Number(b.po_id) : undefined,
       grnRef: b.grn_ref,
+      invoiceNo: b.invoice_no,
       gateInwardReceiptId: b.gate_inward_receipt_id ? Number(b.gate_inward_receipt_id) : undefined,
       username: user.username,
     });

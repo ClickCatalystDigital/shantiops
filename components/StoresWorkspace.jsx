@@ -1006,6 +1006,14 @@ function OpenRequestsCard({ openRequests, inventoryItems, router }) {
                   <TableRow key={r.id}>
                     <TableCell className="font-medium">
                       {r.material_description}
+                      {!r.requires_manufacturing && (
+                        <div className="mt-1">
+                          <Badge variant="outline" className="text-xs font-normal text-muted-foreground"
+                            title="Bought-out — skips Production, packable the moment it's received.">
+                            Direct to packing
+                          </Badge>
+                        </div>
+                      )}
                       {matches.length > 0 && (
                         <div className="mt-1 flex flex-wrap gap-1">
                           {matches.map(({ item, exact }) => (
@@ -1019,7 +1027,11 @@ function OpenRequestsCard({ openRequests, inventoryItems, router }) {
                       )}
                     </TableCell>
                     <TableCell className="text-muted-foreground">{r.qty_text || '—'}</TableCell>
-                    <TableCell className="text-muted-foreground">{requestLabel(r)}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {r.source === 'stock'
+                        ? <Badge variant="outline" className="border-dashed">Build Stock</Badge>
+                        : requestLabel(r)}
+                    </TableCell>
                     <TableCell>
                       {r.reserved_piece_count > 0
                         ? <Badge className="border-info/30 bg-info-surface text-info" title="Cutting & Remnant Management matched this line to stock automatically — ready for Production to cut. No action needed here.">Remnant reserved</Badge>
@@ -1204,6 +1216,205 @@ function ActiveReservationsCard({ activeReservations, router }) {
               ))}
             </TableBody>
           </Table>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// Material Indent hard gate (Feature B, 2026-09-02) — the queue of what Production has raised and
+// is waiting on Stores to release. Fetched client-side (this tab has no server-supplied prop, same
+// pattern ProductionBomTab/CutStockTab already use for their own on-mount fetches) rather than
+// threading a new prop through app/stores/page.js for a list that changes constantly anyway.
+function IndentItemRow({ indent, item, onDone, selectable, selected, onToggle }) {
+  const [qty, setQty] = useState('');
+  const isPiece = item.tracking_mode === 'piece';
+  const [pieces, setPieces] = useState(isPiece ? null : false);
+  const [pieceId, setPieceId] = useState('');
+  const [busy, setBusy] = useState(false);
+  const remaining = item.qty_requested - item.qty_released;
+
+  useEffect(() => {
+    if (!isPiece || !item.inventory_item_id) return;
+    api(`/api/stock-pieces?inventory_item_id=${item.inventory_item_id}`)
+      .then(rows => setPieces(rows.filter(p => p.status === 'available')))
+      .catch(() => setPieces([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item.inventory_item_id]);
+
+  async function release() {
+    const q = Number(qty);
+    if (!q || q <= 0) return showToast('Enter a quantity', 'error');
+    if (q > remaining) return showToast(`Only ${remaining} remaining`, 'error');
+    setBusy(true);
+    try {
+      await api(`/api/material-indents/${indent.id}/items/${item.id}/release`, { method: 'POST', body: { qty: q } });
+      showToast('Released');
+      onDone();
+    } catch (err) { showToast(err.message, 'error'); }
+    setBusy(false);
+  }
+
+  async function reservePieceAction() {
+    if (!pieceId) return showToast('Choose a piece', 'error');
+    setBusy(true);
+    try {
+      await api(`/api/material-indents/${indent.id}/items/${item.id}/reserve-piece`, { method: 'POST', body: { piece_id: Number(pieceId) } });
+      showToast('Piece reserved — Production can now cut it');
+      onDone();
+    } catch (err) { showToast(err.message, 'error'); }
+    setBusy(false);
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 py-2.5 text-sm">
+      {selectable && (
+        <Checkbox className="shrink-0" checked={selected} onCheckedChange={v => onToggle(item.id, !!v)} aria-label="Select item" />
+      )}
+      <div className="min-w-0 flex-1">
+        <span className="font-medium">{item.bom_description || item.inventory_description || `Item #${item.inventory_item_id}`}</span>
+        <div className="text-xs text-muted-foreground tnum">
+          {item.qty_released}/{item.qty_requested} released
+        </div>
+      </div>
+      <Badge variant="outline">{item.status}</Badge>
+      {['open', 'partially_released'].includes(item.status) && (
+        pieces && Array.isArray(pieces) ? (
+          <>
+            <Select value={pieceId} onValueChange={setPieceId}>
+              <SelectTrigger className="h-8 w-56 text-xs"><SelectValue placeholder="Choose a piece" /></SelectTrigger>
+              <SelectContent><SelectGroup>
+                {pieces.length === 0
+                  ? <div className="px-2 py-1.5 text-xs text-muted-foreground">No available pieces</div>
+                  : pieces.map(p => <SelectItem key={p.id} value={String(p.id)}>{p.code} — {pieceDimsLabel(p)} · {p.weight_kg} kg</SelectItem>)}
+              </SelectGroup></SelectContent>
+            </Select>
+            <Button size="sm" disabled={busy} onClick={reservePieceAction}>Reserve piece</Button>
+          </>
+        ) : pieces === false ? (
+          <>
+            <Input type="number" min="0" max={remaining} placeholder={`Qty (≤${remaining})`} className="h-8 w-28 text-xs"
+              value={qty} onChange={e => setQty(e.target.value)} />
+            <Button size="sm" disabled={busy} onClick={release}>Release</Button>
+          </>
+        ) : (
+          <span className="text-xs text-muted-foreground">Loading…</span>
+        )
+      )}
+    </div>
+  );
+}
+
+function IndentsCard({ router }) {
+  const [indents, setIndents] = useState(null);
+  const [q, setQ] = useState('');
+  const [selected, setSelected] = useState(new Set());
+  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState(null);
+
+  async function load() {
+    const rows = await api('/api/material-indents');
+    setIndents(rows.filter(i => ['open', 'partially_released'].includes(i.status)));
+  }
+
+  useEffect(() => { load().catch(err => showToast(err.message, 'error')); }, []);
+
+  const needle = q.trim().toLowerCase();
+  const shown = (indents || []).filter(indent => !needle
+    || indent.indent_no.toLowerCase().includes(needle)
+    || (indent.project_no || '').toLowerCase().includes(needle)
+    || (indent.requested_by || '').toLowerCase().includes(needle)
+    || indent.items.some(it => (it.bom_description || it.inventory_description || '').toLowerCase().includes(needle)));
+
+  // Bulk release only ever covers scalar/batch lines still open — a piece-tracked line always needs
+  // a specific physical piece chosen by hand (this row's own Reserve-piece action), so it's excluded
+  // here the same way BomGrnTab's own bulk-receive excludes what genuinely needs a human decision.
+  const selectableIds = shown.flatMap(indent =>
+    indent.items.filter(it => ['open', 'partially_released'].includes(it.status) && it.tracking_mode !== 'piece').map(it => it.id));
+  const allSelected = selectableIds.length > 0 && selectableIds.every(id => selected.has(id));
+
+  function toggleOne(id, checked) {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (checked) next.add(id); else next.delete(id);
+      return next;
+    });
+  }
+  function toggleAllShown() {
+    setSelected(new Set(allSelected ? [] : selectableIds));
+  }
+
+  async function releaseSelected() {
+    const ids = new Set(selected);
+    if (!ids.size) return showToast('Select at least one line', 'error');
+    setBusy(true);
+    setProgress({ done: 0, total: ids.size });
+    let failed = 0;
+    for (const indent of shown) {
+      for (const item of indent.items) {
+        if (!ids.has(item.id)) continue;
+        const remaining = item.qty_requested - item.qty_released;
+        try {
+          await api(`/api/material-indents/${indent.id}/items/${item.id}/release`, { method: 'POST', body: { qty: remaining } });
+        } catch { failed++; }
+        setProgress(p => ({ done: p.done + 1, total: p.total }));
+      }
+    }
+    setBusy(false);
+    setProgress(null);
+    setSelected(new Set());
+    showToast(failed ? `${ids.size - failed} of ${ids.size} released — ${failed} failed (release individually to see why)` : `${ids.size} line${ids.size === 1 ? '' : 's'} released`,
+      failed ? 'warning' : undefined);
+    load();
+    router.refresh();
+  }
+
+  return (
+    <Card>
+      <CardHeader><CardTitle>Material Indents</CardTitle></CardHeader>
+      {selected.size > 0 && (
+        <div className="flex items-center gap-2 border-y bg-muted/40 px-4 py-3 text-sm">
+          <span className="font-medium">{selected.size} selected</span>
+          <Button size="sm" className="h-7" disabled={busy} onClick={releaseSelected}>
+            {busy ? `Releasing ${progress?.done ?? 0}/${progress?.total ?? 0}…` : 'Release selected (full qty)'}
+          </Button>
+          <Button size="sm" variant="ghost" className="h-7" disabled={busy} onClick={() => setSelected(new Set())}>Clear</Button>
+        </div>
+      )}
+      <CardContent className="flex flex-col divide-y pt-4">
+        {indents === null ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">Loading…</p>
+        ) : indents.length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">No open indents.</p>
+        ) : (
+          <>
+            <SearchBox value={q} onChange={setQ} placeholder="Search by indent, project, or item…" />
+            {selectableIds.length > 0 && (
+              <label className="flex cursor-pointer items-center gap-2 pb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                <Checkbox className="shrink-0" checked={allSelected} onCheckedChange={toggleAllShown} aria-label="Select all shown" />
+                Select all releasable lines
+              </label>
+            )}
+            {shown.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">No indents match.</p>
+            ) : shown.map(indent => (
+              <div key={indent.id} className="py-3">
+                <div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground">{indent.indent_no}</span>
+                  <span>{indent.project_no || '—'} · raised by {indent.requested_by}</span>
+                </div>
+                <div className="flex flex-col divide-y pl-2">
+                  {indent.items.filter(it => ['open', 'partially_released'].includes(it.status)).map(item => (
+                    <IndentItemRow key={item.id} indent={indent} item={item}
+                      selectable={item.tracking_mode !== 'piece'}
+                      selected={selected.has(item.id)}
+                      onToggle={toggleOne}
+                      onDone={() => { load(); router.refresh(); }} />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </>
         )}
       </CardContent>
     </Card>
@@ -1754,6 +1965,7 @@ function BacklogTab() {
 const NAV_ITEMS = (counts) => [
   { key: 'inventory', label: 'Inventory', icon: PackageIcon, badge: counts.lowStock || null },
   { key: 'requests', label: 'Open Requests', icon: ClipboardListIcon, badge: counts.requests || null },
+  { key: 'indents', label: 'Material Indents', icon: BoxesIcon },
   { key: 'reservations', label: 'Active Reservations', icon: PackageCheckIcon, badge: counts.reservations || null },
   { key: 'issued', label: 'Material Issued to WIP', icon: TruckIcon },
   { key: 'reorder', label: 'Reorder Suggestions', icon: AlertTriangleIcon, badge: counts.reorder || null },
@@ -1764,16 +1976,19 @@ const NAV_ITEMS = (counts) => [
 ];
 
 // Stores' own "close this project's BOM" action — mirrors ProcurementWorkspace.jsx's Status tab
-// bulk pattern (project filter + checkbox-select + one bulk PATCH per selected line), but for the
-// fields Stores actually owns (grn_ref/grn_qty_text, BOM_FIELD_OWNERS.Stores) instead of
-// purchase_status. Filling in a GRN ref is itself what feeds checkMaterialsComplete's broadened
-// "line done" check (lib/data.js) — Stores doesn't need purchase_status access to complete its half
-// of the materials-complete handoff to Production/QC.
+// bulk pattern (project filter + checkbox-select + one bulk action per selected line). Feature A
+// (canonical Stores Receiving, 2026-09-02): grn_ref/grn_qty_text are no longer directly PATCHable by
+// Stores at all — this now bulk-applies one real receipt (supplier/GRN/invoice, via ReceiptPicker)
+// across every selected line through POST /api/bom-items/[id]/receive, the same atomic action the
+// per-line "Receive" button on BomTable.jsx uses. Each line receives at its own existing qty_text
+// (the common no-shortfall case); a line needing a different received quantity, or one gated by a
+// requires_heat_no/mtc/etc. flag, is better handled one at a time via BomTable's own Receive dialog
+// — this bulk tool reports it as a per-line failure (same tally pattern as before) rather than
+// growing per-line quantity/traceability inputs here.
 function BomGrnTab({ bomItems, router }) {
   const [project, setProject] = useState('all');
   const [selected, setSelected] = useState(new Set());
-  const [grnRef, setGrnRef] = useState('');
-  const [grnQty, setGrnQty] = useState('');
+  const [receiptId, setReceiptId] = useState(null);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(null);
 
@@ -1797,22 +2012,25 @@ function BomGrnTab({ bomItems, router }) {
   async function apply() {
     const ids = [...selected];
     if (!ids.length) return showToast('Select at least one line', 'error');
-    if (!grnRef.trim()) return showToast('Enter a GRN reference', 'error');
+    if (!receiptId) return showToast('Choose or create a receipt', 'error');
     setBusy(true);
     setProgress({ done: 0, total: ids.length });
     let failed = 0;
     for (const id of ids) {
+      const it = bomItems.find(b => b.id === id);
       try {
-        await api(`/api/bom-items/${id}`, { method: 'PATCH', body: { grn_ref: grnRef.trim(), ...(grnQty.trim() ? { grn_qty_text: grnQty.trim() } : {}) } });
+        await api(`/api/bom-items/${id}/receive`, {
+          method: 'POST',
+          body: { qty_text: it?.qty_text || '1', receipt: { existing_receipt_id: receiptId } },
+        });
       } catch { failed++; }
       setProgress(p => ({ done: p.done + 1, total: p.total }));
     }
     setBusy(false);
     setProgress(null);
     setSelected(new Set());
-    setGrnRef('');
-    setGrnQty('');
-    showToast(failed ? `${ids.length - failed} of ${ids.length} updated — ${failed} failed` : `${ids.length} line${ids.length === 1 ? '' : 's'} updated`,
+    setReceiptId(null);
+    showToast(failed ? `${ids.length - failed} of ${ids.length} received — ${failed} failed (try them individually via Receive on the BOM table)` : `${ids.length} line${ids.length === 1 ? '' : 's'} received`,
       failed ? 'warning' : undefined);
     router.refresh();
   }
@@ -1831,14 +2049,15 @@ function BomGrnTab({ bomItems, router }) {
         </CardAction>
       </CardHeader>
       {selected.size > 0 && (
-        <div className="flex flex-wrap items-center gap-2 border-y bg-muted/40 px-4 py-2 text-sm">
-          <span className="font-medium">{selected.size} selected</span>
-          <Input value={grnRef} onChange={e => setGrnRef(e.target.value)} placeholder="GRN ref" className="h-7 w-32 text-xs" disabled={busy} />
-          <Input value={grnQty} onChange={e => setGrnQty(e.target.value)} placeholder="GRN qty (optional)" className="h-7 w-36 text-xs" disabled={busy} />
-          <Button size="sm" className="h-7" disabled={busy} onClick={apply}>
-            {busy ? `Updating ${progress?.done ?? 0}/${progress?.total ?? 0}…` : 'Apply'}
-          </Button>
-          <Button size="sm" variant="ghost" className="h-7" disabled={busy} onClick={() => setSelected(new Set())}>Clear</Button>
+        <div className="flex flex-col gap-2 border-y bg-muted/40 px-4 py-3 text-sm">
+          <span className="font-medium">{selected.size} selected — receiving all against one receipt</span>
+          <ReceiptPicker value={receiptId} onChange={setReceiptId} requireInvoice />
+          <div className="flex gap-2">
+            <Button size="sm" className="h-7" disabled={busy} onClick={apply}>
+              {busy ? `Receiving ${progress?.done ?? 0}/${progress?.total ?? 0}…` : 'Receive selected'}
+            </Button>
+            <Button size="sm" variant="ghost" className="h-7" disabled={busy} onClick={() => setSelected(new Set())}>Clear</Button>
+          </div>
         </div>
       )}
       <CardContent className="flex flex-col divide-y pt-4">
@@ -2033,6 +2252,7 @@ export default function StoresWorkspace({
       {tab === 'requests' && (
         <OpenRequestsCard openRequests={openRequests} inventoryItems={inventoryItems} router={router} />
       )}
+      {tab === 'indents' && <IndentsCard router={router} />}
       {tab === 'reservations' && (
         <ActiveReservationsCard activeReservations={activeReservations} router={router} />
       )}

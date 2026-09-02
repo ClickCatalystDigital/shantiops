@@ -29,29 +29,45 @@ import { cn } from '@/lib/utils';
 // border/bg utility on the wrapper never touched the input's own border/bg at all. `inputClassName`
 // is that hook, applied straight onto the `<Input>` via the same `cn()` merge (later classes win), so
 // existing callers relying on the input's default look are unaffected by adding this optional prop.
-export default function SearchableSelect({ value, onChange, options, placeholder = 'Search…', className, inputClassName, displayValue, onTextChange }) {
+// `asyncOptions(query) => Promise<{value,label}[]>` (optional) — a live server search, merged in
+// alongside the local `options` list once 2+ chars are typed. Same threshold/best-effort-catch
+// precedent as BomLineFields.jsx's ItemSearchField (the established Item Master typeahead), reused
+// here instead of duplicating a second fetch-and-render component for node-name search.
+export default function SearchableSelect({ value, onChange, options, placeholder = 'Search…', className, inputClassName, displayValue, onTextChange, onKeyDown, autoFocus, asyncOptions }) {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
+  const [remote, setRemote] = useState([]);
   const selected = options.find(o => o.value === value);
   const currentText = displayValue ?? selected?.label ?? '';
-  const filtered = query.trim()
+  const localFiltered = query.trim()
     ? options.filter(o => o.label.toLowerCase().includes(query.trim().toLowerCase()))
     : options;
+  const localValues = new Set(localFiltered.map(o => o.value.toLowerCase()));
+  const filtered = asyncOptions ? [...localFiltered, ...remote.filter(o => !localValues.has(o.value.toLowerCase()))] : localFiltered;
+
+  async function search(text) {
+    if (!asyncOptions) return;
+    if (text.trim().length < 2) { setRemote([]); return; }
+    try { setRemote(await asyncOptions(text.trim())); } catch { /* best-effort */ }
+  }
 
   function pick(opt) {
     onChange(opt.value);
     setQuery('');
+    setRemote([]);
     setOpen(false);
   }
 
   return (
     <div className={cn('relative', className)}>
       <Input
+        autoFocus={autoFocus}
         className={inputClassName}
         value={open ? query : currentText}
-        onChange={e => { setQuery(e.target.value); setOpen(true); onTextChange?.(e.target.value); }}
+        onChange={e => { setQuery(e.target.value); setOpen(true); onTextChange?.(e.target.value); search(e.target.value); }}
         onFocus={() => { setQuery(onTextChange ? currentText : ''); setOpen(true); }}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onKeyDown={onKeyDown}
         placeholder={currentText || placeholder}
       />
       {open && (

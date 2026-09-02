@@ -47,11 +47,14 @@ assert.strictEqual(pieceWeight({ kind: 'plate', length_mm: 0, width_mm: 100, thi
 console.log('pieceWeight: ok');
 
 // ---- cutPiece (mirrors lib/stock-pieces.js's transaction, minus withTransaction wrapping) ----
-// Phase 0 fix mirrored here: the status flip is a compare-and-swap (WHERE ... AND status IN (...)),
+// Phase 0 fix mirrored here: the status flip is a compare-and-swap (WHERE ... AND status = ...),
 // and any present-but-invalid used/remnant entry hard-throws instead of being silently skipped.
+// Material Indent hard gate (2026-09-02): tightened from `IN ('available','reserved')` to
+// `= 'reserved'` only — a piece may only be cut once it's reserved (via the automatic BOM match or
+// a Stores-authorized indent release), never while merely 'available'. Kept in lockstep here since
+// this file hand-mirrors the real function (see this file's own header comment).
 async function cutPiece({ sourcePieceId, used = [], remnants = [], projectId, bomItemId }) {
   const source = await one('SELECT * FROM stock_pieces WHERE id = ?', [sourcePieceId]);
-  assert.ok(['available', 'reserved'].includes(source.status), 'source must be available or reserved');
   const dims = p => ({ kind: source.kind, ...p, density: source.density, kg_per_m: source.kg_per_m });
   const usedWeight = used.reduce((s, u) => s + pieceWeight(dims(u)), 0);
   const remnantWeight = remnants.reduce((s, r) => s + pieceWeight(dims(r)), 0);
@@ -60,8 +63,8 @@ async function cutPiece({ sourcePieceId, used = [], remnants = [], projectId, bo
   for (const u of used) if (!(pieceWeight(dims(u)) > 0)) throw new Error('Used piece: enter valid dimensions');
   for (const r of remnants) if (!(pieceWeight(dims(r)) > 0)) throw new Error('Remnant: enter valid dimensions');
 
-  const flip = await run("UPDATE stock_pieces SET status = 'consumed' WHERE id = ? AND status IN ('available','reserved')", [sourcePieceId]);
-  if (Number(flip.rowsAffected) !== 1) throw new Error(`Can't cut — already ${source.status}`);
+  const flip = await run("UPDATE stock_pieces SET status = 'consumed' WHERE id = ? AND status = 'reserved'", [sourcePieceId]);
+  if (Number(flip.rowsAffected) !== 1) throw new Error(`Can't cut — must be reserved first (currently ${source.status})`);
   for (const u of used) {
     await run(
       `INSERT INTO stock_pieces (inventory_item_id, kind, length_mm, width_mm, thickness_mm, density, kg_per_m, weight_kg, status, source, parent_id, project_id, bom_item_id)
@@ -91,7 +94,21 @@ async function cutPiece({ sourcePieceId, used = [], remnants = [], projectId, bo
 
 await run(`INSERT INTO inventory_items (id, description, moc, category) VALUES (1, 'MS Plate 10mm', 'IS 2062 E250', 'plate')`);
 await run(`INSERT INTO stock_pieces (id, inventory_item_id, code, kind, length_mm, width_mm, thickness_mm, density, weight_kg, status)
-           VALUES (1, 1, 'PL-0001', 'plate', 1500, 6000, 10, 7850, 706.5, 'available')`);
+           VALUES (1, 1, 'PL-0001', 'plate', 1500, 6000, 10, 7850, 706.5, 'reserved')`);
+
+// ---- Material Indent hard gate: an 'available' (not yet reserved) piece must never be cuttable ----
+{
+  await run(`INSERT INTO stock_pieces (id, inventory_item_id, code, kind, length_mm, width_mm, thickness_mm, density, weight_kg, status)
+             VALUES (999, 1, 'PL-0999', 'plate', 500, 500, 10, 7850, 19.6, 'available')`);
+  await assert.rejects(
+    () => cutPiece({ sourcePieceId: 999, used: [{ length_mm: 100, width_mm: 100, thickness_mm: 10 }], remnants: [] }),
+    /must be reserved first/,
+    'a bare available piece — never reserved via a BOM auto-match or a Stores-authorized indent — must be rejected'
+  );
+  const untouched999 = await one('SELECT status FROM stock_pieces WHERE id = 999');
+  assert.strictEqual(untouched999.status, 'available', 'the unreserved piece must be untouched after the rejected cut');
+}
+console.log('cutPiece hard gate: ok (available piece rejected, reserved required)');
 
 {
   const r = await cutPiece({ sourcePieceId: 1, used: [{ length_mm: 1000, width_mm: 2000, thickness_mm: 10 }], remnants: [{ length_mm: 500, width_mm: 2000, thickness_mm: 10 }] });
@@ -112,15 +129,15 @@ console.log('cutPiece: ok (lineage, weight conservation) — A0.3: conservation 
 // ---- A0.1: concurrency guard — two "concurrent" cuts of the same piece must not both win ----
 {
   await run(`INSERT INTO stock_pieces (id, inventory_item_id, code, kind, length_mm, width_mm, thickness_mm, density, weight_kg, status)
-             VALUES (100, 1, 'PL-0002', 'plate', 1000, 1000, 10, 7850, 78.5, 'available')`);
-  // Both "callers" read the same available status before either writes — the exact race window
+             VALUES (100, 1, 'PL-0002', 'plate', 1000, 1000, 10, 7850, 78.5, 'reserved')`);
+  // Both "callers" read the same reserved status before either writes — the exact race window
   // lib/stock-pieces.js's pre-transaction SELECT (line 66) allows. The CAS UPDATE, not read timing,
   // must be what decides the winner.
   const seenByBoth = await one('SELECT status FROM stock_pieces WHERE id = 100');
-  assert.strictEqual(seenByBoth.status, 'available', 'both concurrent callers see available before either commits');
+  assert.strictEqual(seenByBoth.status, 'reserved', 'both concurrent callers see reserved before either commits');
 
   async function attemptCut() {
-    const flip = await run("UPDATE stock_pieces SET status = 'consumed' WHERE id = 100 AND status IN ('available','reserved')");
+    const flip = await run("UPDATE stock_pieces SET status = 'consumed' WHERE id = 100 AND status = 'reserved'");
     return Number(flip.rowsAffected) === 1;
   }
   const first = await attemptCut();
@@ -135,7 +152,7 @@ console.log('cutPiece concurrency guard: ok (A0.1)');
 // ---- A0.2: invalid input must hard-reject, never silently skip ----
 {
   await run(`INSERT INTO stock_pieces (id, inventory_item_id, code, kind, length_mm, width_mm, thickness_mm, density, weight_kg, status)
-             VALUES (101, 1, 'PL-0003', 'plate', 1000, 1000, 10, 7850, 78.5, 'available')`);
+             VALUES (101, 1, 'PL-0003', 'plate', 1000, 1000, 10, 7850, 78.5, 'reserved')`);
   await assert.rejects(
     () => cutPiece({ sourcePieceId: 101, used: [{ length_mm: 0, width_mm: 500, thickness_mm: 10 }], remnants: [] }),
     /enter valid dimensions/,
@@ -147,7 +164,7 @@ console.log('cutPiece concurrency guard: ok (A0.1)');
     'a remnant entry with negative length must be rejected'
   );
   const untouched = await one('SELECT status FROM stock_pieces WHERE id = 101');
-  assert.strictEqual(untouched.status, 'available', 'source piece must be untouched after a rejected cut');
+  assert.strictEqual(untouched.status, 'reserved', 'source piece must be untouched after a rejected cut');
   const noChildren = await run('SELECT COUNT(*) AS n FROM stock_pieces WHERE parent_id = 101');
   assert.strictEqual(noChildren.rows[0].n, 0, 'zero children must be written when the cut is rejected');
 }

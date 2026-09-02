@@ -5432,6 +5432,392 @@ per-user (one person can promote/demote a pairing alone, bounded by rejection se
 `npm run build`/`npm run lint` clean; every claim above verified live against real (not fabricated)
 project/BOM/certificate data in the dev DB, test data cleaned up after each pass.
 
+## 5au. Engineering navigation reorg + BOM workspace: two-pane tree editor with drawing/calc-sheet linking (2026-09-02)
+
+Two passes, same session. **Phase 1 — pure navigation/IA reorg**, no data-model or business-logic
+change: Engineering's `structure` tab relabeled "BOM Structure" → "BOMs"; a new **BOM Templates**
+tab added to `EngineeringWorkspace.jsx` (`components/BomTemplateManager.jsx`, new — the reusable,
+`kind`-parameterized template manager extracted out of what was previously ~480 inline lines in
+`PrWorkspace.jsx`); Requests' own sidebar (`app/pr` → `PrWorkspace.jsx`) relabeled `raise` →
+**Purchase Requests** and `templates` → **PR Templates**, and dropped **Release BOM** from its
+visible sidebar list entirely — kept reachable only via `/pr?tab=release` (`app/pr/page.js` now
+threads `searchParams.tab` through as `initialTab`, same pattern `app/engineering/page.js` already
+used). **BOM Templates access for Stores preserved deliberately, not lost**:
+`showBomTemplatesHere = departments.includes('Stores') && !departments.some(d => ['Design',
+'Engineering'].includes(d))` — a Stores-only head (no `/engineering` access at all, per
+`PR_DEPARTMENTS = ['Engineering','Design','Stores']`) still gets a second
+`BomTemplateManager kind="bom"` instance inline inside their own PR Templates tab; a Design/
+Engineering user sees it once, as its own Engineering tab, not duplicated. `components/
+BomLineFields.jsx` (new) is the shared line-fields form both `PrWorkspace` and `BomTemplateManager`
+now import, instead of two independent copies of the same fields.
+
+**Phase 2 — BOM workspace: evolves the existing flat `bom_assemblies` self-referencing tree (built
+earlier for Multi-Level BOM, §5o) into a real two-pane build/browse/edit surface**, on the exact
+same schema plus three additive pieces, per an approved plan (full plan on file, including a
+Verification checklist this section tracks against). Nothing about the tree's read model —
+`getBomStructure()`/roll-up-qty computation, or any of the ~15 downstream flat consumers
+(Procurement, Stores, Production, QC, Reports, remnant-match) — changed; this only replaces the
+create-only, no-update-route editing surface with a working one.
+
+- **Schema, additive only** (`lib/db.js`): `bom_assemblies.node_type TEXT` (nullable — free text,
+  deliberately not a DB `CHECK`/enum; the UI's own picker offers 5 suggestions + an explicit "Other
+  — type your own" escape hatch as the only guardrail against label drift, keeping the level
+  taxonomy itself unconstrained per the standing instruction not to hard-code the hierarchy). Two
+  new junction tables, `bom_assembly_drawings`/`bom_assembly_calc_sheets` (`assembly_id`/
+  `drawing_id`|`calc_sheet_id`, `UNIQUE` pair, `linked_by`/`linked_at`) — many-to-many, since a node
+  (unlike a line item's single `drawing_id`) can legitimately need more than one drawing and one
+  drawing can apply to several sibling nodes.
+- **`sort_order`** (already existed, never had a real write path) now gets one: new-node creation
+  always appends (`MAX(sort_order)+1` among siblings, never left at the old default `0`); Move
+  Up/Down is an atomic two-row sibling swap — no drag-and-drop library added (none existed in the
+  repo).
+- **Cycle-safe reparent**: `wouldCreateCycle(nodeId, candidateParentId, byId)`
+  (`lib/bom-structure.mjs`, +5 new self-check assertions) walks the proposed parent's own ancestor
+  chain, same shape `rollupQty()` already used — `PATCH /api/bom-assemblies/[id]` 400s a move that
+  would put a node under its own descendant.
+- **New API surface**, every one gated by the existing `engineering.assembly.add`/`.delete`
+  `ACTION_CATALOG` keys (no new permission key, no widened department access):
+  `PATCH /api/bom-assemblies/[id]` (rename/reparent/`node_type`/`sort_order`/move — the
+  load-bearing gap the old flat page never had), `POST .../duplicate` (recursively clones a node +
+  descendants + their `bom_items` as fresh, independent rows — **drawing/calc-sheet links are
+  deliberately never copied**, a clone starts at 0/0 since documents represent reviewed evidence
+  tied to the original branch, not structural data), `GET/POST/DELETE .../drawings` and
+  `.../calc-sheets` (junction CRUD). Small extensions to three existing routes:
+  `GET /api/calc-drawings?status=a,b` (optional, every existing caller unaffected by omitting it —
+  defaults to the pre-existing unfiltered behavior), `GET /api/engineering-change-notes?assembly_id=`
+  (resolves the node's own descendant assemblies via a `WITH RECURSIVE`, for the node's History
+  tab), `GET /api/projects/[id]/release-bom` (gained `calcLinked`/`pendingEcnCount`/
+  `unassignedCount` alongside the existing fields — the POST release action itself is completely
+  untouched, still the same single `bomCount > 0` gate, reachable identically from here or
+  `/pr?tab=release`).
+- **Drawing-linking respects the approval ladder, doesn't bypass it**: the node's Drawings-tab
+  picker defaults to `status IN ('approved','as_built')`; an explicit "Show all statuses" toggle
+  reveals the rest, and every non-approved drawing shown — in the picker and, once linked, on the
+  node's own Drawings tab — carries a visible "Under review — not yet approved" badge, so
+  pre-linking a drawing still in progress can never silently read as approval.
+- **Entity-reference compatibility, explicitly required and verified by code-read**: the new Items
+  tab renders items by embedding the existing `BomTable` directly (filtered to the selected
+  `assembly_id`), so `data-entity-code="BM-{id}"` and `?highlight=BM-{id}` scroll-and-flash are
+  inherited for free, zero new code. `BomTable.jsx` gained one small, opt-in, backward-compatible
+  prop, `showItemCode` (default `false` — every existing caller elsewhere in the app renders
+  byte-for-byte unchanged), which the new Items tab is the only caller to set `true`, prefixing
+  each row with its real `BM-{id}`. Linked drawings/calc sheets render via the existing
+  `EntityCode`/`EntityRefLink` — their resolver `label` was already `code · name` by construction
+  (`DG-####`/`CS-####`), so no new display convention was invented. No new entity type was
+  registered for `bom_assembly` — tree nodes stay addressed by internal relational id, selected
+  through the workspace's own client state only.
+- **Components** (`components/bom-structure/`, 11 new files): `BomStructureWorkspace.jsx` (owns
+  all data fetching/mutation, one `GET /api/projects/[id]/bom?all=1` fetch per project rather than
+  per-tab), `BomTree.jsx`/`BomTreeNode.jsx` (search-with-ancestor-reveal, 3 filter chips — missing
+  drawing/missing calc/pending ECN, node_type badge, inline quick-add, Move Up/Down, context menu),
+  `BomNodeDetail.jsx` + 5 tabs (`NodeOverviewTab`/`NodeItemsTab`/`NodeDrawingsTab`/`NodeCalcTab`/
+  `NodeHistoryTab`), `MoveAssemblyDialog.jsx`, `ReleaseReadinessPanel.jsx` (purely informational
+  strip — item/drawing-linked/calc-linked/unassigned/pending-ECN counts — the button fires the exact
+  unmodified existing Release BOM action). `NodeItemsTab.jsx`'s "+ Add Item" reuses `BomTable`'s
+  existing add-item dialog/`POST /api/bom-items` outright (new `defaultAssemblyId` prop on
+  `BomTable` just pre-fills the Assembly field) — no second item-creation path.
+- **New pure helper** `lib/bom-tree.mjs` (+ self-check): `NODE_TYPE_SUGGESTIONS`,
+  `groupByParent`/`nodeDepth`/`nodePath`/`expandedIdsForSearch` — client-safe, no DB import, same
+  convention as `lib/bom-fields.mjs`.
+- **Help documentation updated** — `components/department-help-content.jsx`'s `bomStructure` entry
+  (both the `FEATURE_FOUNDATIONS` Why/How/checklist/watch-out block and the feature-list bullets)
+  rewritten to describe the actual new workspace instead of the old flat page; corrected a stale
+  claim that items could only be assigned "from the project page's BOM table, not from the
+  Engineering tab itself" — they now can, from either place.
+
+**Real bug found and fixed during interactive verification (2026-09-02, same day)**:
+`BomStructureWorkspace.jsx`'s `loadProjectBom()` read `res.bom` from
+`GET /api/projects/[id]/bom?all=1`, but that route's `?all=1` branch actually returns
+`{ items: [...] }` (`app/api/projects/[id]/bom/route.js:73`) — the same "not a bare `{bom:...}`
+shape" mistake §5k already documents happening on two *other* callers of `getProjectBom()`, made a
+third time on this new one. `res.bom` was always `undefined`, so `setProjectBom(undefined)` never
+satisfied the workspace's loading guard — the pane was stuck on "Loading…" forever, for any
+project, regardless of the DB's real latency (every underlying fetch was actually completing with
+real data the whole time, confirmed directly via `fetch()` in the browser console before the fix).
+One-line fix: `res.bom` → `res.items`. This was the loading issue observed during the plan's own
+first verification pass — not Turso latency, which is real and did separately slow down every step
+of the click-through below (10–30s per request, matching this repo's documented shared-cloud-DB dev
+setup), but was never actually the blocker.
+
+**Live-verified end to end, on a disposable test tree built inside the real project SB-1040 (id 50)
+— zero pre-existing rows in `bom_assemblies` on this DB, so nothing pre-existing was at risk — every
+claim below checked against a direct DB/API read, not just a screenshot**: created a 3-level tree
+(`ZZ-TEST-DELETE-ME Root` → `ZZ Sub A`/`ZZ Sub B` → `ZZ Leaf 1`), renamed a node, Move Up swapped
+`sort_order` atomically between siblings, Move-to reparented a node correctly, the cycle-guard
+rejected moving Root under its own descendant with a 400 and left the tree untouched, "+ Add item"
+created a real `bom_items` row pre-filled to the right `assembly_id` and the same row showed up on
+the ordinary project-page `BomTable` with no `BM-` prefix leak, "Assign existing item" correctly
+re-pointed an existing row's `assembly_id`, drawing-linking defaulted to approved-only and revealed
+a disposable non-approved test drawing only once "Show all statuses" was toggled — with a persistent
+"Under review — not yet approved" badge both in the picker and on the linked row — calc-sheet
+linking worked the same way, Duplicate cloned the node's one item as a genuinely new independent row
+while leaving both its drawing and calc-sheet links at 0 (exactly the deliberate "documents aren't
+copied" behavior), a real ECN raised against an item correctly appeared in both its own node's
+History tab and an ancestor node's History tab (confirming the `WITH RECURSIVE` descendant
+resolution), and the Release Readiness numbers matched a manual DB count exactly at every step
+(this project's BOM was already released before this session touched it, so the Release button
+itself — unmodified either way — was never re-exercised, deliberately, rather than un-releasing a
+real completed milestone just to click it). `/pr?tab=release` still renders the same project's BOM
+correctly (327 items mid-test), and a `stores_head` login confirmed their own project-page BOM panel
+is visually and functionally unchanged — no `BM-` prefix, same columns as before.
+
+**One real, separate gap found along the way, not fixed (flagged, not silently patched, per
+instruction)**: `DELETE /api/bom-assemblies/[id]` un-links `bom_items` from the deleted node but
+never removes that node's own `bom_assembly_drawings`/`bom_assembly_calc_sheets` rows first. Since
+this app never turns `PRAGMA foreign_keys` on (`lib/db.js`'s own comment), the delete still succeeds
+silently rather than erroring — it just leaves those junction rows permanently orphaned, pointing at
+an `assembly_id` that no longer exists. Worked around during this session's own cleanup by
+explicitly unlinking every drawing/calc-sheet before deleting the node that held them (confirmed
+after: zero orphaned rows in either junction table, globally, once cleanup finished). A real fix
+would have the DELETE route clear both junction tables in the same request, mirroring how it already
+clears `bom_items.assembly_id`.
+
+**Cleanup**: every test node, the two test `bom_items` rows (one hand-typed, one from Duplicate),
+the disposable non-approved drawing, and the disposable ECN (no DELETE route exists for
+`bom_change_notes`, consistent with this app's append-only-log precedent elsewhere — removed via a
+direct, one-off Turso query instead) were all removed. A final direct-DB comparison against the
+pre-verification baseline came back an exact match: `bom_items` back to 325 rows project-wide with
+zero `assembly_id` set, `bom_assemblies` back to 0 rows for this project, `calc_drawings`/
+`calc_sheets` back to their original single row each, `bom_change_notes` back to 0, both junction
+tables at 0 rows globally, and no `ZZ`-prefixed row left anywhere in the database. `npm run lint`
+clean (572 files) after the fix.
+
+### Same-day follow-on: tree-pane truncation, smart Type inference, scoped/searchable item pickers
+
+Four small, additive changes made right after the verification pass above, each live-verified the
+same way (a disposable node/tree on the same project, checked via direct API read, then deleted —
+final DB check came back to exactly 325 `bom_items`/0 `bom_assemblies` for the project again, no
+residue):
+
+- **Tree-pane truncation** — the fixed `18rem` tree-pane column was cutting off most real node
+  names entirely. Widened to `24rem` (`28rem` at `lg`) in `BomStructureWorkspace.jsx`'s grid
+  template, plus a `title={node.name}` native tooltip on the row's name button
+  (`BomTreeNode.jsx`) as a fallback for anything still tight. No new dependency — just more room
+  and a free browser-native hover.
+- **Smart Type inference** — `node_type` is no longer a manual step. `lib/bom-tree.mjs`'s new
+  `suggestNodeType(name, depth)` (pure, deterministic, no LLM/new backend — the ladder's own rung
+  order: reuse `NODE_TYPE_SUGGESTIONS` first) checks the new node's own name for a
+  System/Subsystem/Assembly/Sub-assembly/Component keyword first (a name literally saying
+  "Sub-assembly" wins regardless of where it sits), and falls back to the node's depth in the tree
+  otherwise. Wired into both creation paths — `BomTree.jsx`'s top-level create (`depth=0`) and
+  `BomTreeNode.jsx`'s quick-add-child (`depth+1`) — so `node_type` arrives pre-filled on the `POST`,
+  no second step. Still fully overridable afterward via the existing Select/"Other" control, now
+  demoted (see next point). Live-verified both branches: "Drive Sub-assembly" created at the
+  top level (depth 0, which would default to "System") correctly saved `node_type='Sub-assembly'`
+  from the name keyword; a plain-named child one level under it correctly fell back to
+  `'Subsystem'` (depth 1) with no keyword match.
+- **Type demoted in the detail pane** — `NodeOverviewTab.jsx` reordered: Local/Roll-up quantity
+  stay the prominent primary fields; the node_type control moved to the bottom, shrunk to a small
+  inline "Classified as [Select]" row in muted `text-xs`, no longer a full labeled block — since
+  it's now auto-filled correctly most of the time, it doesn't need the same visual weight as fields
+  that always need a human's own number.
+- **Scoped, searchable item pickers** — two independent but related fixes, both reusing
+  `components/SearchableSelect.jsx` (this app's existing type-to-filter-a-local-list component,
+  already used by `PrWorkspace`/`StoresWorkspace`/`SalesWorkspace`) rather than inventing a new
+  pattern:
+  1. **NodeItemsTab's "Assign existing item"** — replaced the plain scrolling `<Select>` (over
+     every unassigned item project-wide, in database order) with `SearchableSelect`, and the option
+     list is pre-sorted by a new `rankItemsByRelevance(pathNames, items)` (`lib/bom-tree.mjs`) —
+     keyword overlap between the node's own name + its ancestor path and each item's
+     description/section/group_label, reusing `lib/match-utils.js`'s `normalizeWords` (the same
+     primitive Stores'/QC's own possible-match badges already trust) rather than a new matching
+     algorithm. Never hides anything — a non-matching item just sorts to the end, still reachable by
+     typing — same "suggest, don't hide" precedent as every other fuzzy-match feature in this app.
+     Live-verified: typing "stay tube" into the picker on a real project correctly filtered to
+     exactly `BM-1397 · STAY TUBES`.
+  2. **"+ Add item"'s text fields get native suggestions** — `BomTable.jsx` gained a `<datalist>`
+     per smart field (`material_description`/`moc`/`size_spec`/`make`), built from `Set`-deduped
+     values already present elsewhere — zero new dependency, purely additive (the field stays a
+     plain `<input>`, so no other caller's validation/save path changes). Real gap caught and fixed
+     during live verification: the first version derived suggestions from the dialog's own scoped
+     `bom` prop, which for `NodeItemsTab` is just that one node's own (often empty) item list —
+     exactly wrong for a brand-new node, where suggestions matter most. Fixed with a new optional
+     `suggestionsFrom` prop (`NodeItemsTab` passes the *whole project's* `projectBom`; every other
+     `BomTable` caller doesn't pass it, so it silently keeps deriving from `bom` itself, unchanged).
+     Live-verified: reopened "+ Add item" on the same node after the fix — the description field's
+     datalist now offered 234 real distinct values from across the whole 325-item project instead of
+     zero.
+- **`lib/bom-tree-selfcheck.mjs`** extended with cases for both new pure functions (name-keyword
+  precedence, depth-only fallback, depth clamped past the suggestion list's length; relevance
+  ranking putting the strongest keyword match first while never dropping a zero-overlap item) — all
+  pass, alongside the two pre-existing self-checks. `npm run lint` clean (572 files) after every
+  step of this follow-on.
+
+### Second same-day follow-on: real dropdown everywhere, not native `<datalist>`, plus a visual pass
+
+Direct user feedback on the follow-on above: the "+ Add item" dialog's smart fields used a native
+HTML `<input list="...">`/`<datalist>` — technically a working suggestion list, but an unstyled
+browser-default popup that looked and behaved nothing like this app's own dropdowns (no consistent
+styling, no type-to-filter feel), and the "Add top-level node"/quick-add-child inputs had no
+suggestion affordance of any kind — a fair reading of "does not even have a search dropdown."
+Fixed properly rather than patched:
+
+- **`SmartTextField`** (new, module-local to `BomTable.jsx`) replaces the datalist entirely with
+  `SearchableSelect` (this app's own existing type-to-filter local-list component — the same one
+  already used elsewhere in the app, not a new pattern) in its documented free-text hybrid mode
+  (`displayValue`/`onTextChange` for anything typed, `onChange` when a suggestion is actually
+  picked) for `material_description`/`moc`/`size_spec`/`make`. A hidden `<input name={field}
+  value={text}>` mirrors the current text so the dialog's existing uncontrolled-`FormData` save path
+  (`saveDialog`) needed zero changes for every *other* field. One real consequence of dropping the
+  native `<input required>` on `material_description`: browsers don't reliably validate a `required`
+  hidden input, so `saveDialog` now explicitly checks `body.material_description.trim()` itself and
+  toasts an error rather than silently trusting an attribute that no longer does anything.
+  Live-verified: typing "stay" now opens a real, app-styled dropdown showing `STAY BARS`/`STAY
+  TUBES` from the real project data; picking one and saving created a real `bom_items` row correctly
+  assigned to the target node.
+- **Quick-add inputs upgraded and made legible, not just bigger** — both `BomTree.jsx`'s top-level
+  add and `BomTreeNode.jsx`'s quick-add-child went from a cramped `h-6` bare input with
+  invisible-until-you-know-it Enter-to-submit, to a proper bordered mini-form: a full-size input,
+  explicit Cancel/Add buttons, and — the part that actually answers "why isn't the smart typing
+  doing anything" — a **live "Will be classified as: [Type]" badge** that updates on every
+  keystroke via the same `suggestNodeType()` the create call itself will use. The type inference
+  from the previous follow-on was real but invisible until you opened the node afterward; this
+  makes it visible at the moment it matters. Live-verified: typing "Feedwater Subsystem" live-showed
+  "Subsystem" before submission, and the created node's `node_type` matched exactly.
+- **A first real visual pass**, addressing this session's own "flat hierarchy / tight spacing / no
+  motion" self-assessment rather than leaving it as just a written note:
+  - `ReleaseReadinessPanel.jsx` rebuilt from one run-on text line into real stat tiles (large
+    number, small label, divided columns) — `unassigned`/`pending ECN` pick up a warning-tint
+    color specifically when their count is non-zero, so the one figure worth acting on now actually
+    stands out instead of reading identically to the rest. Live-verified: a genuinely non-zero
+    "unassigned" count rendered in the warning color; the release badge/button kept its exact prior
+    behavior and wiring.
+  - The bare "Loading…" text in `BomStructureWorkspace.jsx` replaced with a real `Skeleton`-based
+    placeholder (this app's existing `components/ui/skeleton.jsx` primitive, not a new one) shaped
+    like the actual readiness strip + two-pane layout — makes the real, unavoidable Turso latency
+    this whole feature keeps hitting look like the app is working, not stuck.
+  - `BomTreeNode.jsx`'s row got a touch more vertical breathing room (`py-1` → `py-1.5`) and a real
+    selected-state (a tinted `primary/10` background + ring, replacing a flat `bg-muted` that read
+    almost identically to a plain hover) plus a color transition on hover.
+- **Cleanup**: every disposable node/item created while verifying this round was deleted through
+  the real routes; a final direct-DB check came back to exactly 325 `bom_items`/0 `bom_assemblies`
+  for the project again, no `ZZ`-prefixed row left anywhere. `npm run lint` clean (572 files).
+
+### Third same-day follow-on: the rest of the honest UI self-assessment, actually done this time
+
+The user's direct pushback ("keep going") on the deeper points from this session's own written
+self-critique — flat typographic hierarchy, tight spacing, no motion — rather than leaving them as
+just a note. Still scoped to the BOM workspace's own components, nothing shared touched beyond what
+the prior two rounds already changed:
+
+- **`BomNodeDetail.jsx` header rebuilt** — the selected node's own name is now a real `text-lg
+  font-semibold` heading, with the rest of its ancestor path demoted to a small breadcrumb line
+  above it (was: every path segment at the same `text-sm` weight, the current node only
+  distinguished by being non-muted). A `border-b` now visually separates the header from the tabs
+  below it. The four action buttons (Rename/Move to…/Duplicate/Delete) gained icons
+  (`PencilIcon`/`FolderInputIcon`/`CopyIcon`/`TrashIcon` — the exact same icons
+  `BomTreeNode.jsx`'s own context menu already used, reused rather than picking new ones) for
+  faster visual scanning instead of four identically-styled text-only buttons in a row.
+- **Tab-switch motion** — every `TabsContent` panel gained `animate-in fade-in-0
+  slide-in-from-bottom-1 duration-150`. Radix unmounts inactive tab content by default, so this
+  fires a real, visible transition on every switch with no state tracking needed.
+- **Empty states given real presence** instead of a bare muted sentence — `NodeDrawingsTab`,
+  `NodeCalcTab`, and `NodeHistoryTab`'s "nothing here yet" states became a dashed-border box with a
+  centered icon (`FileTextIcon`/`CalculatorIcon`/`HistoryIcon` respectively); their populated list
+  rows gained a leading icon, more vertical padding (`py-2` → `py-2.5`), and a hover-tint transition,
+  matching the tree row's own hover treatment. `NodeHistoryTab`'s ECN rows also gained a
+  status-colored left border (amber/green/red) and a real `pending` badge tint — the status badge
+  map previously left `pending` as an unstyled empty string, reading as plain unstatused text next
+  to the two statuses that did have color.
+- **The workspace's own two empty/list states polished**: "Select a node in the tree to view or
+  edit it" gained a large centered `LayersIcon` instead of being a bare centered sentence; the
+  "Unassigned items" panel (previously a raw unstyled `<div>` dump of up to 325 rows) became a real
+  bordered, divided, hover-tinted list matching every other list in this workspace, with the panel's
+  own heading promoted to the same `text-lg font-semibold` treatment as a selected node's title for
+  visual consistency between the two states that occupy that same pane.
+- **The workspace header gained a one-line `CardDescription`** ("Build assemblies, link drawings and
+  calc sheets, and review release readiness.") under the "BOMs" title — this app's own existing
+  `CardDescription` primitive, not a new pattern.
+- **Live-verified in the browser**, not just code-reviewed: the new heading/icon header, the
+  dashed-border empty states (confirmed present in the DOM — `border-dashed` + a real `<svg>` icon
+  — even though this session's narrow automation viewport visually clipped the tab panel's right
+  edge, a display artifact of the test harness, not the app), and the "Unassigned items" list's new
+  bordered/divided styling all rendered correctly against the real project. Test node created and
+  deleted through the real routes; final direct-DB check again came back to exactly 325
+  `bom_items`/0 `bom_assemblies` for the project, no residue. `npm run lint` clean (572 files).
+- **Deliberately not touched this round**: anything outside `components/bom-structure/*` (so
+  Stores/Procurement/Production's own use of the shared `BomTable`/dialog stays exactly as it was
+  before this whole session), and no new dependency was added anywhere — every animation/icon/badge
+  choice above reuses classes or components already shipped elsewhere in this app.
+
+### Fourth same-day follow-on: two real bugs in shared shadcn primitives, plus rapid live-iteration UI changes
+
+Direct, specific pushback on the third follow-on's own screenshots — "nothing gets searched here?",
+a giant blank gray box between the node header and its tabs, a reference mockup showing tree
+connector lines and per-boiler spec info, and a request to drop the explicit Rename button for
+double-click-to-rename. Investigated each concretely rather than guessing from the screenshot alone.
+
+**Root cause of the "huge box" — a real, pre-existing bug in `components/ui/tabs.jsx`, not
+something this session introduced.** `getComputedStyle` on the live `Tabs` root showed
+`flexDirection: "row"` instead of the intended `column` — `TabsList` and the active `TabsContent`
+were laid out **side by side**, each stretching to match the other's height, which is exactly what
+made `TabsList` balloon to 335px tall in the reported screenshot. The component's own classes used
+bare Tailwind v4 boolean-attribute variants (`data-horizontal:flex-col`, `group-data-horizontal/
+tabs:h-8`, `data-active:bg-background`) which only match a literal attribute named e.g.
+`data-horizontal` — but Radix Tabs sets `data-orientation="horizontal"` and `data-state="active"`
+(named, valued attributes), so none of those classes ever matched, for either layout *or* the active
+tab's pill background. Used the `shadcn` skill's own `npx shadcn@latest add tabs --diff` to check
+whether this was a local mistake — **the canonical upstream shadcn registry source uses the exact
+same bare-attribute syntax**, so this isn't a typo introduced here; it depends on a Radix behavior
+(mirroring `data-state`/`data-orientation` onto plain boolean attributes) that this project's
+installed `radix-ui@1.6.1` evidently doesn't provide for Tabs specifically, even though it does for
+Dialog/Popover/Select/Tooltip (confirmed those all animate correctly, and rely on the identical
+`data-open:`/`data-closed:` pattern). Fixed with the robust, version-independent form
+(`data-[orientation=horizontal]:`, `data-[state=active]:`, `group-data-[orientation=...]/tabs:`)
+throughout the file. **Verified this had zero blast radius before touching it**: `BomNodeDetail.jsx`
+is the *only* caller of `Tabs`/`TabsContent` in the entire app — the primitive was scaffolded but
+never actually used until this session, so the long-standing bug had never been exercised or
+noticed. Live-verified after the fix: the active tab now shows its real pill background, and the
+panel height matches its actual content.
+- **The identical bug pattern was also in `components/ui/separator.jsx`** (`data-horizontal:h-px
+  data-horizontal:w-full data-vertical:w-px data-vertical:self-stretch`), found while adding a
+  vertical divider to the redesigned header (see below) — confirmed live via `getComputedStyle`
+  that an existing `orientation="vertical"` `Separator` elsewhere in the app rendered with
+  `width: auto` instead of `1px`, i.e., **functionally invisible**. This one has real blast radius —
+  9 files import it, 6 with `orientation="vertical"`. Checked two before fixing (`WorkspaceSidebar.jsx`'s
+  vertical dividers, `sidebar.jsx`'s horizontal `SidebarSeparator`) — both already relied on the
+  broken behavior producing *no visible line*, so the fix can only make a previously-invisible
+  divider appear where the surrounding layout already expected one; live-verified on `/help`
+  (sidebar section dividers now visible) and `/settings` (a real horizontal divider above "Access
+  Management" now renders) — clean in both places, no layout breakage. Fixed with the same
+  `data-[orientation=...]:` form.
+- **`BomNodeDetail.jsx` header redesigned again**, per the live back-and-forth: the standalone
+  `Rename` button is gone — the node title itself is now double-click-to-edit (same inline-input
+  pattern the tree row's own rename already used), with a `title="Double-click to rename"` hint.
+  Move to…/Duplicate/Delete are icon-only `Button`s wrapped in `Tooltip` (this app's existing
+  Tooltip primitive, already provider-wrapped at `app/layout.js`, no new setup needed) instead of
+  icon+text — freeing enough width that the whole header (breadcrumb, title, and every action) now
+  fits on one line instead of wrapping.
+- **The separate `TabsList` pill-bar row is gone entirely** — replaced with 5 icon buttons
+  (`LayoutGridIcon`/`PackageIcon`/`FileTextIcon`/`CalculatorIcon`/`HistoryIcon` for Overview/Items/
+  Drawings/Calculations/History) inlined into the same header row as Move to…/Duplicate/Delete,
+  separated by a `Separator`, each with a `Tooltip` naming the tab and a small count badge when
+  non-zero. `Tabs`/`TabsContent` are still used underneath (state + the existing fade-in transition),
+  just driven by these buttons instead of Radix's own trigger row — saves a full row of vertical
+  space, per the explicit ask.
+- **Real ├─/└─ tree connector lines**, replacing plain indentation-via-padding. `BomTreeNode.jsx`
+  gained a new `ancestorLines: boolean[]` prop (does each ancestor depth still have more siblings
+  below it, i.e. does its column need a continuing vertical line) threaded through the recursive
+  `children.map(...)` call as `[...ancestorLines, !isLastSibling]`, and a small local `TreeRail`
+  component renders each column as either blank, a full vertical line, or — for the node's own
+  connector to its immediate parent — a half-height line + horizontal stub (a real "└" elbow) when
+  it's the last child, full-height when siblings follow (a real "├"). Geometry verified via
+  `getBoundingClientRect()` on a real 3-level test tree, not just eyeballed: a mid-list node showed a
+  blank first column (its grandparent had no further siblings), a full-height second column (its
+  parent had a sibling still to come), and a correctly half-height-plus-stub third column (it was
+  itself the last child) — exactly the intended shape.
+- **A real project-identity line, using only data that actually exists** — considered the reference
+  mockup's "Boiler #B-24017 / 5000 kg/hr · 21 bar · FBC" header, but this app's schema has no
+  capacity/pressure/fuel-type columns on `projects` (confirmed by re-checking `getActiveProjectsList()`
+  rather than assuming), so fabricating those values was rejected outright. Instead, once a project
+  is selected, the workspace's subtitle line becomes the real `project_no · customer_name` plus a
+  `series` badge (the actual CF/MF/OF/SF/SIB/PRS/FCB/FAB model code already on the project, when
+  set) — real facts only, no placeholder numbers.
+- **Cleanup**: the full test tree built to verify the connector-line geometry (5 nodes across 3
+  levels) was deleted through the real routes; final direct-DB check came back to exactly 325
+  `bom_items`/0 `bom_assemblies` for the project again. `npm run lint` clean (572 files) after every
+  step.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own

@@ -37,19 +37,22 @@ const BACKLOG = [
   },
   {
     title: 'No way to issue plain inventory to Production without a project/BOM line',
-    status: 'Needs scoping',
+    status: 'Shipped 2026-09-02 — Material Indent',
     added: '2026-08-26',
     body: [
-      `Found while scoping the Cut tab above. material_issues.bom_item_id is NOT NULL
+      `Resolved by the Material Indent hard gate — Production raises an indent
+       (material_indents/material_indent_items), Stores explicitly releases against it (partial
+       releases allowed, remaining stays open); the material_issues insert itself now happens only
+       from that release action (or Stores' own direct-issue card) — POST /api/material-issues is
+       Stores-only now, Production can no longer reach it at all. bom_item_id stays required for
+       scalar/batch/serial lines (material_issues.bom_item_id is still NOT NULL, no schema
+       relaxation this round) — the fully general "no BOM line at all" consumable case named below
+       is still explicitly out of scope.`,
+      `Original write-up, kept for history: material_issues.bom_item_id is NOT NULL
        (app/api/material-issues/route.js) — every material issuance has to trace to a real
        project's BOM line. There is no path today for Production to draw plain, non-piece-tracked
-       inventory (bolts, consumables, etc.) with no project attached — a standard "Stores Indent" /
-       Material Requisition concept, and a normal thing to want in a manufacturing ERP.`,
-      `Existing precedent to mirror rather than inventing a new system: Sales already has its own
-       "Request from Stores" dialog (components/SalesWorkspace.jsx, the SAS flow), fulfilled
-       through the same Reserve/Procure machinery Stores' Open Requests tab already uses. A
-       Production indent should probably follow that same request → Stores-fulfills shape.
-       Deliberately not scoped further here — needs its own pass.`,
+       inventory (bolts, consumables, etc.) with no project attached at all — that fully general
+       case needs an actual table rebuild to relax the NOT NULL constraint, and stays unscoped.`,
     ],
   },
   {
@@ -125,10 +128,12 @@ function BacklogTab() {
   );
 }
 
-// Standalone Cut entry point — deliberately minimal: pick an item, pick an available piece, cut
-// it. No project picker (an unlinked cut, by design — see plan), no BOM line required. Only items
-// that could ever have a cuttable piece are listed (track_pieces=1, same condition
-// StoresWorkspace.jsx's Inventory tab uses to decide whether to show its own Pieces icon).
+// Standalone Cut entry point — Material Indent hard gate (Feature B, 2026-09-02): a piece only
+// shows up here once it's 'reserved' via a Stores-authorized indent (or the pre-existing automatic
+// BOM match, which never routes through this tab — that flow's own Cut button lives in
+// WorkersPanel.jsx). No project picker (an unlinked cut, by design — see plan), no BOM line
+// required. Only items that could ever have a cuttable piece are listed (track_pieces=1, same
+// condition StoresWorkspace.jsx's Inventory tab uses to decide whether to show its own Pieces icon).
 function CutStockTab({ inventoryItems }) {
   const router = useRouter();
   const pieceItems = inventoryItems.filter(i => i.track_pieces);
@@ -138,7 +143,7 @@ function CutStockTab({ inventoryItems }) {
 
   async function load(id) {
     const rows = await api(`/api/stock-pieces?inventory_item_id=${id}`);
-    setPieces(rows.filter(p => p.status === 'available'));
+    setPieces(rows.filter(p => p.status === 'reserved' && p.indent_item_id));
   }
 
   useEffect(() => {
@@ -166,10 +171,21 @@ function CutStockTab({ inventoryItems }) {
             {pieces === null ? (
               <p className="py-6 text-center text-sm text-muted-foreground">Loading…</p>
             ) : pieces.length === 0 ? (
-              <p className="py-6 text-center text-sm text-muted-foreground">No available pieces to cut.</p>
+              <p className="py-6 text-center text-sm text-muted-foreground">
+                No pieces reserved via an indent yet — raise a Material Indent and have Stores
+                reserve a piece against it before it can be cut here.
+              </p>
             ) : pieces.map(p => (
               <div key={p.id} className="flex flex-wrap items-center gap-3 py-2.5 text-sm">
-                <span className="min-w-0 flex-1 font-medium">{p.code}</span>
+                <div className="min-w-0 flex-1">
+                  <span className="font-medium">{p.code}</span>
+                  {/* Context so nobody accidentally cuts a piece reserved for a different job —
+                      the actual safety fix in place of restricting who can see it at all. */}
+                  <div className="text-xs text-muted-foreground">
+                    Indent {p.indent_no} · {p.indent_requested_by || '—'}
+                    {p.indent_job_card_id ? ` · Job Card #${p.indent_job_card_id}` : ''}
+                  </div>
+                </div>
                 <span className="text-muted-foreground">{pieceDimsLabel(p)}</span>
                 <span className="tnum text-muted-foreground">{p.weight_kg} kg</span>
                 <Button size="sm" variant="outline" onClick={() => setCutting(p)}><ScissorsIcon />Cut</Button>

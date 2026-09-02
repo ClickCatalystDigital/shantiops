@@ -16,9 +16,11 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { LayersIcon, SearchIcon, Repeat2Icon, FileEditIcon, PlusIcon, TrashIcon } from 'lucide-react';
+import { LayersIcon, SearchIcon, Repeat2Icon, FileEditIcon, PlusIcon, LayoutTemplateIcon } from 'lucide-react';
 import { api, showToast, formatDate } from '@/lib/client';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
+import BomTemplateManager from '@/components/BomTemplateManager';
+import BomStructureWorkspace from '@/components/bom-structure/BomStructureWorkspace';
 
 // Same labeling convention as ProcurementWorkspace.jsx's projectLabel — a stock/sas BOM row's
 // project_id points at the sentinel system project, not a real one; "Stock"/"SO #..." reads better
@@ -30,175 +32,20 @@ function projectLabel(r) {
   return r.project_no;
 }
 
+// Phase 1 nav reorg (SYSTEM.md): "BOM Structure" -> "BOMs" (label only, key kept as 'structure' so
+// BomPanel.jsx's existing ?tab=structure deep link keeps working), and "BOM Templates" moved in
+// from Requests/PrWorkspace.jsx (still also rendered there for Stores heads — see PrWorkspace.jsx).
 const ITEMS = [
-  { key: 'structure', label: 'BOM Structure', icon: LayersIcon },
+  { key: 'structure', label: 'BOMs', icon: LayersIcon },
+  { key: 'bom_templates', label: 'BOM Templates', icon: LayoutTemplateIcon },
   { key: 'where_used', label: 'Where-Used', icon: SearchIcon },
   { key: 'common_uncommon', label: 'Common / Uncommon', icon: Repeat2Icon },
   { key: 'ecn', label: 'Change Notes', icon: FileEditIcon },
 ];
 
 // ---------- BOM Structure ----------
-
-function AssemblyForm({ projectId, assemblies, onClose, router }) {
-  const [form, setForm] = useState({ name: '', qty: '1', parent_id: '' });
-  const [saving, setSaving] = useState(false);
-
-  async function save() {
-    if (!form.name.trim()) return showToast('Name is required', 'error');
-    setSaving(true);
-    try {
-      await api('/api/bom-assemblies', {
-        method: 'POST',
-        body: { project_id: projectId, name: form.name, qty: Number(form.qty) || 1, parent_id: form.parent_id || null },
-      });
-      showToast('Assembly created');
-      router.refresh();
-      onClose();
-    } catch (err) { showToast(err.message, 'error'); }
-    setSaving(false);
-  }
-
-  return (
-    <Dialog open onOpenChange={o => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>New assembly / sub-assembly</DialogTitle></DialogHeader>
-        <div className="flex flex-col gap-3">
-          <div className="grid gap-1.5">
-            <Label>Name</Label>
-            <Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
-              placeholder="e.g. Drive sub-assembly" autoFocus />
-          </div>
-          <div className="grid gap-1.5">
-            <Label>Qty per parent</Label>
-            <Input type="number" min="1" value={form.qty} onChange={e => setForm({ ...form, qty: e.target.value })} />
-          </div>
-          <div className="grid gap-1.5">
-            <Label>Parent assembly (optional — blank = top level)</Label>
-            <Select value={form.parent_id || 'none'} onValueChange={v => setForm({ ...form, parent_id: v === 'none' ? '' : v })}>
-              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">— top level —</SelectItem>
-                {assemblies.map(a => <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-        <DialogFooter><Button onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Create'}</Button></DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function AssemblyNode({ a, byParent, depth = 0, onDelete }) {
-  const children = byParent.get(a.id) || [];
-  return (
-    <>
-      <TableRow>
-        <TableCell style={{ paddingLeft: `${depth * 1.5 + 0.75}rem` }} className="font-medium">
-          {a.name}
-        </TableCell>
-        <TableCell className="tnum text-muted-foreground">×{a.qty}</TableCell>
-        <TableCell className="tnum text-muted-foreground">{a.rollup_qty}</TableCell>
-        <TableCell className="text-muted-foreground">{a.items.length} item{a.items.length !== 1 ? 's' : ''}</TableCell>
-        <TableCell>
-          <Button size="icon-sm" variant="ghost" className="text-danger" aria-label="Delete assembly" onClick={() => onDelete(a)}>
-            <TrashIcon className="size-3.5" />
-          </Button>
-        </TableCell>
-      </TableRow>
-      {a.items.map(it => (
-        <TableRow key={`item-${it.id}`} className="hover:bg-transparent">
-          <TableCell style={{ paddingLeft: `${(depth + 1) * 1.5 + 0.75}rem` }} className="text-sm text-muted-foreground">
-            {it.material_description}
-          </TableCell>
-          <TableCell className="tnum text-xs text-muted-foreground">{it.qty_text || '—'}</TableCell>
-          <TableCell className="tnum text-xs text-muted-foreground">{it.rolled_qty ?? '—'}</TableCell>
-          <TableCell colSpan={2} />
-        </TableRow>
-      ))}
-      {children.map(c => <AssemblyNode key={c.id} a={c} byParent={byParent} depth={depth + 1} onDelete={onDelete} />)}
-    </>
-  );
-}
-
-function BomStructureTab({ projects }) {
-  const router = useRouter();
-  const [projectId, setProjectId] = useState('');
-  const [structure, setStructure] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [showForm, setShowForm] = useState(false);
-
-  async function load(id) {
-    setProjectId(id);
-    if (!id) return setStructure(null);
-    setLoading(true);
-    try { setStructure(await api(`/api/bom-assemblies?project_id=${id}`)); }
-    catch (err) { showToast(err.message, 'error'); }
-    setLoading(false);
-  }
-
-  async function remove(a) {
-    if (!window.confirm(`Delete "${a.name}"? Items under it become unassigned (not deleted).`)) return;
-    try {
-      await api(`/api/bom-assemblies/${a.id}`, { method: 'DELETE' });
-      showToast('Assembly deleted');
-      load(projectId);
-    } catch (err) { showToast(err.message, 'error'); }
-  }
-
-  const top = structure?.filter(a => !a.parent_id) || [];
-  const byParent = new Map();
-  for (const a of structure || []) {
-    if (!a.parent_id) continue;
-    if (!byParent.has(a.parent_id)) byParent.set(a.parent_id, []);
-    byParent.get(a.parent_id).push(a);
-  }
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>BOM Structure</CardTitle>
-        <CardAction className="flex items-center gap-2">
-          <Select value={projectId || undefined} onValueChange={load}>
-            <SelectTrigger className="w-64"><SelectValue placeholder="Pick a project" /></SelectTrigger>
-            <SelectContent>
-              {projects.map(p => <SelectItem key={p.id} value={String(p.id)}>{p.project_no} · {p.customer_name}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          {projectId && <Button size="sm" variant="outline" onClick={() => setShowForm(true)}><PlusIcon /> Assembly</Button>}
-        </CardAction>
-      </CardHeader>
-      <CardContent>
-        {!projectId ? (
-          <p className="text-sm text-muted-foreground">Pick a project to view or build its assembly tree.</p>
-        ) : loading ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
-        ) : top.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            No assemblies yet. Create one, then assign BOM items to it from the project's Engineering panel
-            (Edit item → Assembly).
-          </p>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Assembly / item</TableHead>
-                <TableHead>Qty</TableHead>
-                <TableHead>Roll-up</TableHead>
-                <TableHead>Items</TableHead>
-                <TableHead />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {top.map(a => <AssemblyNode key={a.id} a={a} byParent={byParent} onDelete={remove} />)}
-            </TableBody>
-          </Table>
-        )}
-      </CardContent>
-      {showForm && <AssemblyForm projectId={projectId} assemblies={structure || []} onClose={() => { setShowForm(false); load(projectId); }} router={router} />}
-    </Card>
-  );
-}
+// Phase 2 (SYSTEM.md): the flat create-only assembly form/table above was replaced by a real
+// two-pane tree+detail workspace — see components/bom-structure/BomStructureWorkspace.jsx.
 
 // ---------- Where-Used ----------
 
@@ -432,7 +279,8 @@ export default function EngineeringWorkspace({ projects, changeNotes, partUsage,
 
   return (
     <WorkspaceSidebar title="Engineering" icon={LayersIcon} items={ITEMS} activeKey={tab} onChange={setTab}>
-      {tab === 'structure' && <BomStructureTab projects={projects} />}
+      {tab === 'structure' && <BomStructureWorkspace projects={projects} />}
+      {tab === 'bom_templates' && <BomTemplateManager kind="bom" title="BOM Templates" projects={projects} />}
       {tab === 'where_used' && <WhereUsedTab />}
       {tab === 'common_uncommon' && <CommonUncommonTab partUsage={partUsage} />}
       {tab === 'ecn' && <EcnTab projects={projects} changeNotes={changeNotes} canApprove={canApproveEcn} />}

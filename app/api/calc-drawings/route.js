@@ -12,8 +12,12 @@ export async function GET(req) {
   const { searchParams } = new URL(req.url);
   const projectId = searchParams.get('project_id');
   if (!projectId) return NextResponse.json({ error: 'project_id is required' }, { status: 400 });
+  // BOM workspace Phase 2 — optional approval-state filter for the node-drawing picker. No param =
+  // every existing caller's behavior, byte-for-byte unchanged.
+  const statusParam = searchParams.get('status');
+  const statuses = statusParam ? statusParam.split(',').map(s => s.trim()).filter(Boolean) : null;
 
-  const drawings = await getCalcDrawings(projectId);
+  const drawings = await getCalcDrawings(projectId, statuses);
   return NextResponse.json({ drawings });
 }
 

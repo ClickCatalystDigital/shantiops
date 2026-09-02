@@ -9,6 +9,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
 import { Trash2Icon, FileTextIcon } from 'lucide-react';
 import { EntityCode } from '@/components/EntityRefLink';
 
@@ -24,6 +26,66 @@ const HEADER_FIELDS = [
   ['eway_bill_no', 'E-Way Bill No', 'text'], ['eway_bill_date', 'E-Way Bill Date', 'date'],
 ];
 const FREIGHT_PAID_BY = [['us', 'We pay'], ['customer', 'Customer pays']];
+// discrepancy, not 'partial' (Feature D) — deliberately distinct from the pre-existing multi-
+// packing-list partial-delivery concept (a project's own pending-items tracking); this is about
+// THIS shipment's own contents, e.g. "ordered 10, received 8," not "more is coming later."
+const DELIVERY_ACK_STATUSES = [['accepted', 'Accepted'], ['damaged', 'Damaged'], ['discrepancy', 'Discrepancy']];
+
+// Delivery acknowledgment (Feature D) — captured once, by Dispatch, after the customer confirms
+// receipt by phone/email. Immutable after first capture: once list.delivery_ack_status is set, this
+// card only ever displays it, never offers an edit path (a correction goes through a fresh
+// manual/admin note, matching the freight card's own "correct elsewhere, not here" precedent).
+function DeliveryAckCard({ list, onDone }) {
+  const [status, setStatus] = useState('');
+  const [notes, setNotes] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    if (!status) return showToast('Choose accepted, damaged, or discrepancy', 'error');
+    setBusy(true);
+    try {
+      const saved = await api(`/api/packing/${list.id}/acknowledge`, { method: 'POST', body: { status, notes } });
+      onDone({
+        delivery_ack_status: saved.delivery_ack_status,
+        delivery_ack_notes: saved.delivery_ack_notes,
+        delivery_ack_at: saved.delivery_ack_at,
+        delivery_ack_by: saved.delivery_ack_by,
+      });
+      showToast('Delivery acknowledgment logged');
+    } catch (err) { showToast(err.message, 'error'); }
+    setBusy(false);
+  }
+
+  return (
+    <Card className="no-print">
+      <CardContent className="flex flex-col gap-3 py-4">
+        <p className="text-sm font-medium">Delivery acknowledgment</p>
+        {list.delivery_ack_status ? (
+          <div className="text-sm">
+            <Badge variant={list.delivery_ack_status === 'accepted' ? 'default' : 'destructive'}>
+              {DELIVERY_ACK_STATUSES.find(([v]) => v === list.delivery_ack_status)?.[1] || list.delivery_ack_status}
+            </Badge>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {formatDate(list.delivery_ack_at)} · {list.delivery_ack_by}
+            </p>
+            {list.delivery_ack_notes && <p className="mt-1 text-xs">{list.delivery_ack_notes}</p>}
+          </div>
+        ) : (
+          <>
+            <Select value={status} onValueChange={setStatus}>
+              <SelectTrigger className="w-56"><SelectValue placeholder="Choose an outcome" /></SelectTrigger>
+              <SelectContent>{DELIVERY_ACK_STATUSES.map(([v, label]) => <SelectItem key={v} value={v}>{label}</SelectItem>)}</SelectContent>
+            </Select>
+            <Textarea placeholder="Notes (optional)" value={notes} onChange={e => setNotes(e.target.value)} rows={2} />
+            <Button size="sm" className="w-fit" disabled={busy} onClick={submit}>
+              {busy ? 'Logging…' : 'Log acknowledgment'}
+            </Button>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function PackingDetail({ list: initialList, items: initialItems, readOnly = false }) {
   const [list, setList] = useState(initialList);
@@ -155,6 +217,10 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
             {!list.freightPosted && <Button size="sm" disabled={postingFreight} onClick={postFreight}>{postingFreight ? 'Posting…' : 'Post Freight Expense'}</Button>}
           </CardContent>
         </Card>
+      )}
+
+      {!readOnly && list.status === 'dispatched' && (
+        <DeliveryAckCard list={list} onDone={updated => setList(l => ({ ...l, ...updated }))} />
       )}
 
       {/* Printable document */}

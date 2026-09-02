@@ -27,6 +27,23 @@ export async function POST(req) {
   const { readyForPacking } = await getProjectBom(project_id);
   if (!readyForPacking.length) return NextResponse.json({ error: 'No BOM lines ready to pack yet — Production hasn\'t marked any as done' }, { status: 400 });
 
+  // readyForPacking still includes anything sitting on an existing DRAFT list — getProjectBom's
+  // `pending` deliberately keeps a line "pending" until its list is actually approved (packed/
+  // dispatched), so an abandoned draft doesn't strand the line. That's correct for the generic
+  // Pending badge everywhere else, but left unguarded here it means clicking Generate twice while a
+  // draft is still open silently duplicates every one of its lines onto a second list. Excluded here
+  // — at the point of creating a NEW list — regardless of the existing list's status.
+  const alreadyDrafted = await queryAll(
+    `SELECT DISTINCT pi.bom_item_id FROM packing_items pi
+       JOIN packing_lists pl ON pl.id = pi.packing_list_id
+      WHERE pl.project_id = ? AND pi.bom_item_id IS NOT NULL`, [project_id]
+  );
+  const draftedIds = new Set(alreadyDrafted.map(r => r.bom_item_id));
+  const newItems = readyForPacking.filter(b => !draftedIds.has(b.id));
+  if (!newItems.length) {
+    return NextResponse.json({ error: 'Every ready item is already on an existing packing list for this project — open it to add more, or wait for it to be approved.' }, { status: 400 });
+  }
+
   const packing_no = await nextNumber('packing_no', 'PL');
   const pl = await execute(
     'INSERT INTO packing_lists (project_id, packing_no, customer_name, created_by) VALUES (?, ?, ?, ?)',
@@ -35,7 +52,7 @@ export async function POST(req) {
   const listId = Number(pl.lastId);
 
   let s = 1;
-  for (const b of readyForPacking) {
+  for (const b of newItems) {
     const qty = parseFloat(b.qty_text) || 1; // "2 Nos" → 2; non-numeric ("AS REQD") → 1
     await execute(
       `INSERT INTO packing_items (packing_list_id, bom_item_id, s_no, material_description, moc, size_spec, make, qty, unit)
@@ -43,6 +60,6 @@ export async function POST(req) {
       [listId, b.id, s++, b.material_description, b.moc || null, b.size_spec || null, b.make || null, qty, "No's"]
     );
   }
-  await audit('packing_created', { actor: user.username, detail: `${packing_no} · project ${project_id} · ${readyForPacking.length} items` });
-  return NextResponse.json({ id: listId, packing_no, items: readyForPacking.length });
+  await audit('packing_created', { actor: user.username, detail: `${packing_no} · project ${project_id} · ${newItems.length} items` });
+  return NextResponse.json({ id: listId, packing_no, items: newItems.length });
 }

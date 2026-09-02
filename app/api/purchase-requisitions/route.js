@@ -123,6 +123,11 @@ export async function POST(req) {
     const requiresMtc = line.requires_mtc ? 1 : 0;
     const requiresSupplierBatch = line.requires_supplier_batch ? 1 : 0;
     const requiresSerialNo = line.requires_serial_no ? 1 : 0;
+    // Feature C — only meaningful for source='bom' (stock/sas lines rarely touch Production either
+    // way, so the default of 1 below is harmless there too). Explicit `=== false` check, not a
+    // falsy check, since this field's default is true (unlike the four above, whose default is
+    // false) — an omitted/undefined value must still resolve to 1, not 0.
+    const requiresManufacturing = line.requires_manufacturing === false ? 0 : 1;
 
     if (source === 'stock') {
       // Stores raising a Build stock request is already Stores' own decision — no second
@@ -168,12 +173,12 @@ export async function POST(req) {
         // right here (the unify decision was "no accept step", this doesn't reintroduce one).
         const { lastId: bomItemId } = await execute(
           `INSERT INTO bom_items (project_id, material_description, moc, size_spec, qty_text, purchase_status, pr_item_id, category, category_fields_json, named_parts_json, origin, pending_review, item_id, drawing_id,
-                                   requires_heat_no, requires_mtc, requires_supplier_batch, requires_serial_no)
-           VALUES (?, ?, ?, ?, ?, 'Enquiry', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                                   requires_heat_no, requires_mtc, requires_supplier_batch, requires_serial_no, requires_manufacturing)
+           VALUES (?, ?, ?, ?, ?, 'Enquiry', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [p.project_id, line.material_description.trim(), line.moc || null, line.size_spec || null,
             p.qty_text.trim(), Number(prItemId), category, categoryFieldsJson, namedPartsJson, origin, gatedPendingReview, itemId,
             p.drawing_id ? Number(p.drawing_id) : null,
-            requiresHeatNo, requiresMtc, requiresSupplierBatch, requiresSerialNo]
+            requiresHeatNo, requiresMtc, requiresSupplierBatch, requiresSerialNo, requiresManufacturing]
         );
         bomItemIds.push(Number(bomItemId));
         if (allocationMode === 'auto') {

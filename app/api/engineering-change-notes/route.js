@@ -13,8 +13,11 @@ import { BOM_FIELD_OWNERS } from '@/lib/bom-fields.mjs';
 export async function GET(req) {
   const user = await getFreshSessionUser();
   if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  const projectId = new URL(req.url).searchParams.get('project_id');
-  return NextResponse.json(await getEngineeringChangeNotes(projectId ? Number(projectId) : null));
+  const sp = new URL(req.url).searchParams;
+  const projectId = sp.get('project_id');
+  const assemblyId = sp.get('assembly_id');
+  return NextResponse.json(await getEngineeringChangeNotes(
+    projectId ? Number(projectId) : null, assemblyId ? Number(assemblyId) : null));
 }
 
 export async function POST(req) {

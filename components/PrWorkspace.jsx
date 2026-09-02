@@ -22,57 +22,27 @@ import { Label } from './ui/label';
 import { Badge } from './ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup } from './ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from './ui/dialog';
-import { TrashIcon, PlusIcon, ClipboardListIcon, PackageCheckIcon, LayoutTemplateIcon, CheckIcon, DownloadIcon, UndoIcon } from 'lucide-react';
+import { TrashIcon, PlusIcon, ClipboardListIcon, LayoutTemplateIcon, CheckIcon, DownloadIcon, UndoIcon } from 'lucide-react';
 import WorkspaceSidebar from './WorkspaceSidebar';
 import BomTable from './BomTable';
 import DimensionInput from './DimensionInput';
 import SearchableSelect from './SearchableSelect';
 import QtyInput from './QtyInput';
 import CategoryFieldsBlock, { OTHER_MOC, MOC_OPTIONS } from './CategoryFieldsBlock';
-import { BOM_FIELD_OWNERS, DIMENSIONAL_CATEGORIES } from '@/lib/bom-fields.mjs';
+import { BOM_FIELD_OWNERS } from '@/lib/bom-fields.mjs';
 import {
-  CATEGORY_LABEL, GEOMETRY_SHAPES, ROLLED_CATEGORIES, OTHER_SIZE, STANDARD_SECTIONS, DEFAULT_DENSITY,
-  geometrySizeLabel, categoryDisplaySpec,
+  CATEGORY_LABEL, GEOMETRY_SHAPES, ROLLED_CATEGORIES, OTHER_SIZE, STANDARD_SECTIONS, categoryDisplaySpec,
 } from '@/lib/section-shapes';
+import BomTemplateManager from './BomTemplateManager';
+import {
+  NamedPartsEditor, ItemSearchField, CATEGORY_OPTIONS, defaultCategoryFields, finalizeCategoryFields,
+  defaultTraceabilityFromCategory, TRACEABILITY_FLAG_LABELS,
+} from './BomLineFields';
 
-// Density only matters for the shapes weight is computed from geometry for (plate + everything in
-// GEOMETRY_SHAPES) — rolled sections/tee already carry their own kg/m (picked or typed), no density
-// involved. Seeded at 7850 (mild steel) the moment one of those categories is picked, editable from
-// there — this is the client's own plate formula (L x W x T x "specified weight") made real: a
-// different material is a different number here, not a different formula.
-function defaultCategoryFields(category) {
-  return category === 'plate' || GEOMETRY_SHAPES[category] ? { density: String(DEFAULT_DENSITY) } : {};
-}
-
-// Traceability requirement defaults (Inventory Identity & Traceability, Phase 1). Category can
-// never be the enforcement mechanism (a plate can be pressure-critical on one project and
-// structural filler on another) — this is only ever a starting suggestion Engineering can override
-// per line, before the field even reaches bom_items. A catalog pick's own default_requires_* wins
-// when the item has any set; the category fallback below only applies to free-text lines (no
-// item_id), since a catalog row with all-zero defaults legitimately means "this material has none."
-function defaultTraceabilityFromItem(item) {
-  const any = item.default_requires_heat_no || item.default_requires_mtc || item.default_requires_supplier_batch || item.default_requires_serial_no;
-  if (!any) return null;
-  return {
-    requires_heat_no: !!item.default_requires_heat_no, requires_mtc: !!item.default_requires_mtc,
-    requires_supplier_batch: !!item.default_requires_supplier_batch, requires_serial_no: !!item.default_requires_serial_no,
-  };
-}
-function defaultTraceabilityFromCategory(category) {
-  return DIMENSIONAL_CATEGORIES.includes(category)
-    ? { requires_heat_no: true, requires_mtc: true, requires_supplier_batch: false, requires_serial_no: false }
-    : { requires_heat_no: false, requires_mtc: false, requires_supplier_batch: false, requires_serial_no: false };
-}
-const TRACEABILITY_FLAG_LABELS = {
-  requires_heat_no: 'Heat No.', requires_mtc: 'MTC', requires_supplier_batch: 'Supplier batch', requires_serial_no: 'Serial No.',
-};
-
-// Ten categories is one too many to scan by eye every time — SearchableSelect (type to filter)
-// everywhere this list is picked from, not just a plain Select.
-const CATEGORY_OPTIONS = [
-  { value: '', label: 'Uncategorized' },
-  ...Object.entries(CATEGORY_LABEL).map(([value, label]) => ({ value, label })),
-];
+// Phase 1 nav reorg (SYSTEM.md): defaultCategoryFields/defaultTraceabilityFrom*/TRACEABILITY_FLAG_LABELS/
+// CATEGORY_OPTIONS/guessCategory/finalizeCategoryFields/NamedPartsEditor/ItemSearchField moved to
+// ./BomLineFields (shared with BomTemplateManager.jsx, which also needs them and previously had no
+// way to import them). Nothing here changed behavior, only location.
 
 let nextKey = 1;
 function emptyLine() {
@@ -83,6 +53,7 @@ function emptyLine() {
     category: '', categoryFields: {}, namedParts: [],
     item_id: null, // §3.2 — set only when picked from the catalog search; cleared on any hand-edit
     requires_heat_no: false, requires_mtc: false, requires_supplier_batch: false, requires_serial_no: false,
+    requires_manufacturing: true, // Feature C — default checked; no category signal confident enough to infer this
   };
 }
 
@@ -93,25 +64,6 @@ function emptyLine() {
 // ROLLED_CATEGORIES live in lib/section-shapes.js — shared with Stores' matching inventory-item
 // picker (components/StoresWorkspace.jsx) so a BOM line's size and a stock item's spec are always
 // generated the same way, which is what lib/remnant-match.js's plain-text matching relies on.
-
-// Item Master's `group_name` (e.g. "MS PLATES", "SQUARE RODS", "FLANGES") suggests a category on
-// pick — confident keyword matches only, same "don't invent, only match" precedent as
-// lib/calc-import.mjs/applyTemplate. No default-to-'standard' guess: most groups (CABLE, TOOLS,
-// ASSET, ...) aren't a physical-material shape at all, so guessing wrong there is worse than
-// leaving it for the user to pick.
-function guessCategory(groupName) {
-  const g = (groupName || '').toUpperCase();
-  if (g.includes('PLATE') || g.includes('SHEET')) return 'plate';
-  if (/\bFLAT\b|\bHOOP\b/.test(g)) return 'flat';
-  if (/\bROUND\b|\bROD\b/.test(g)) return 'round';
-  if (/\bSQUARE\b/.test(g)) return 'square';
-  if (/OCTAGON/.test(g)) return 'octagonal';
-  if (g.includes('ANGLE')) return 'angle';
-  if (/CHANNEL/.test(g)) return 'channel';
-  if (/BEAM|JOIST/.test(g)) return 'beam';
-  if (/\bTEE\b/.test(g)) return 'tee';
-  return '';
-}
 
 // Weight-per-metre needed before a category's weight can be shown/validated: computed straight
 // from geometry for GEOMETRY_SHAPES categories (no input, never wrong), picked from
@@ -132,114 +84,6 @@ function validateCategoryFields(category, fields) {
     return null;
   }
   return null;
-}
-
-// category_fields as typed/picked -> what actually gets stored. Geometry categories get their
-// `size` (what lib/remnant-match.js's parseDims compares against Stores' stock) generated from the
-// dimensions, not typed — see lib/section-shapes.js's geometrySizeLabel, the same generator
-// Stores' own item form uses. Rolled/tee categories get a defensive strip of the OTHER_SIZE
-// sentinel — RaisePrTab's submit() blocks on it via validateCategoryFields before this ever runs,
-// but NewTemplateDialog.save() has no such gate, so "picked Other, left it blank" would otherwise
-// persist the literal sentinel token into a template's category_fields_json.
-function finalizeCategoryFields(category, fields) {
-  if (GEOMETRY_SHAPES[category]) return { ...fields, size: geometrySizeLabel(category, fields) };
-  if ((ROLLED_CATEGORIES.includes(category) || category === 'tee') && fields.size === OTHER_SIZE) {
-    return { ...fields, size: '' };
-  }
-  return fields;
-}
-
-// A line's own dimensions describe what was *bought* — this is optionally how it's meant to be
-// *cut*: one purchased plate can become several separately-named fabricated parts (e.g. a real
-// Form IV A sample lists SHELL BELT-I/IIA/IIB, three named shell segments sharing one purchased
-// plate). Stored on the BOM/template line (bom_items.named_parts_json), so it's defined once —
-// especially on a template item, where it then carries into every project built from that boiler
-// model — rather than left to whoever fills the statutory form by hand each time. Purely optional;
-// collapsed by default so a line that doesn't need this stays exactly as simple as it is today.
-// Downstream: lib/qc-bom-sync.js syncs one qc_document_parts row per named part here instead of one
-// generic row per BOM line, then reconciles each against whichever stock_pieces row Production tags
-// with that same name at Cut time (components/WorkersPanel.jsx's CutDialog).
-function NamedPartsEditor({ parts, onChange }) {
-  const [open, setOpen] = useState(parts.length > 0);
-  function update(idx, patch) { onChange(parts.map((p, i) => i === idx ? { ...p, ...patch } : p)); }
-  function add() { onChange([...parts, { name: '', qty: 1 }]); setOpen(true); }
-  function remove(idx) { onChange(parts.filter((_, i) => i !== idx)); }
-
-  if (!open) {
-    return (
-      <Button type="button" size="sm" variant="ghost" className="w-fit text-muted-foreground" onClick={add}>
-        <PlusIcon data-icon="inline-start" />Named parts (optional — for QC statutory forms)
-      </Button>
-    );
-  }
-  return (
-    <div className="flex flex-col gap-1.5 rounded-md border border-dashed p-2.5">
-      <Label className="text-xs">Named parts (optional — for QC statutory forms)</Label>
-      {parts.map((p, i) => (
-        <div key={i} className="flex items-center gap-2">
-          <Input className="flex-1" placeholder="e.g. SHELL BELT-I" value={p.name} onChange={e => update(i, { name: e.target.value })} />
-          <Input type="number" min="1" step="1" className="w-20 shrink-0" placeholder="Qty" value={p.qty ?? ''} onChange={e => update(i, { qty: e.target.value })} />
-          <Button type="button" size="icon-sm" variant="ghost" onClick={() => remove(i)}><TrashIcon className="size-4" /></Button>
-        </div>
-      ))}
-      <Button type="button" size="sm" variant="outline" className="w-fit" onClick={add}><PlusIcon data-icon="inline-start" />Add part</Button>
-    </div>
-  );
-}
-
-// Search-as-you-type over the Item Master catalog (GET /api/items) — picking a match autofills the
-// description/spec fields; typing straight through without picking anything is just free text, the
-// lean fallback the client asked for.
-function ItemSearchField({ line, onChange }) {
-  const [results, setResults] = useState([]);
-  const [open, setOpen] = useState(false);
-
-  async function onType(v) {
-    // §3.2 — hand-editing after a pick invalidates the catalog link; the description no longer
-    // provably matches the row item_id pointed at, so the tie is dropped rather than left stale.
-    onChange({ material_description: v, item_id: null });
-    if (v.trim().length < 2) { setResults([]); setOpen(false); return; }
-    try {
-      const rows = await api(`/api/items?search=${encodeURIComponent(v.trim())}`);
-      setResults(rows);
-      setOpen(rows.length > 0);
-    } catch { /* catalog search is best-effort — free text still works */ }
-  }
-
-  function pick(item) {
-    const category = guessCategory(item.group_name);
-    onChange({
-      material_description: item.item_name, size_spec: item.detail_desc || '', uomHint: item.uom || '',
-      item_id: item.id,
-      ...(category && { category, categoryFields: defaultCategoryFields(category) }),
-      // Traceability requirements: the item master's own recommendation wins when it has one set;
-      // otherwise fall back to the category default (or all-off, for a non-dimensional/uncategorized
-      // pick) — always seeded fresh on pick, same as category itself, editable from there.
-      ...(defaultTraceabilityFromItem(item) || defaultTraceabilityFromCategory(category)),
-    });
-    setOpen(false);
-  }
-
-  return (
-    <div className="relative flex flex-col gap-1.5">
-      <Label>Item description {line.uomHint && <span className="font-normal text-muted-foreground">(UoM: {line.uomHint})</span>}</Label>
-      <Input value={line.material_description} onChange={e => onType(e.target.value)}
-        onFocus={() => setOpen(results.length > 0)} onBlur={() => setTimeout(() => setOpen(false), 150)}
-        placeholder="Search the item catalog, or just type a description" />
-      {line.item_id && <p className="text-xs text-success">✓ Linked to catalog — real matching against Inventory now possible for this line.</p>}
-      {open && (
-        <div className="absolute top-full z-10 mt-1 w-full rounded-md border bg-popover shadow-md">
-          {results.map(it => (
-            <button key={it.id} type="button" className="flex w-full flex-col items-start gap-0.5 border-b px-3 py-1.5 text-left text-sm last:border-b-0 hover:bg-muted/40"
-              onMouseDown={() => pick(it)}>
-              <span className="font-medium">{it.item_name}</span>
-              <span className="text-xs text-muted-foreground">{it.item_code ? `${it.item_code} · ` : ''}{it.uom || '—'}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
 }
 
 const SOURCE_LABEL = { bom: 'Project material', stock: 'Build stock' };
@@ -367,6 +211,18 @@ function LineCard({ line, index, projects, inventoryItems, showSourcePicker, onC
             ))}
           </div>
         </div>
+      )}
+
+      {line.source === 'bom' && (
+        // Feature C — distinct from the traceability block above: whether this line ever needs
+        // Production's own fabrication step at all (a bought-out item, e.g., doesn't). Deliberately
+        // no category-based default — no confident signal exists for it, unlike the four flags
+        // above's dimensional-category fallback; ships as a plain checkbox, default checked.
+        <label className="flex items-center gap-1.5 text-sm">
+          <input type="checkbox" checked={!!line.requires_manufacturing}
+            onChange={e => setLine({ requires_manufacturing: e.target.checked })} />
+          Requires manufacturing
+        </label>
       )}
 
       {line.source === 'bom' && line.category && (
@@ -607,6 +463,10 @@ function RaisePrTab({ departments, projects, inventoryItems = [], prTemplatePref
               material_description: l.material_description, moc: l.moc || undefined, size_spec: l.size_spec || undefined, source, item_id: l.item_id || undefined,
               requires_heat_no: l.requires_heat_no || undefined, requires_mtc: l.requires_mtc || undefined,
               requires_supplier_batch: l.requires_supplier_batch || undefined, requires_serial_no: l.requires_serial_no || undefined,
+              // Unlike the four flags above (default false, safe to omit when unchecked),
+              // requires_manufacturing defaults TRUE — an explicit `false` must always be sent, or
+              // the server's own NOT NULL DEFAULT 1 would silently override an intentional uncheck.
+              requires_manufacturing: source === 'bom' ? !!l.requires_manufacturing : undefined,
             };
             if (source === 'stock') return { ...base, inventory_item_id: Number(l.inventory_item_id), qty: Number(l.qty) };
             return {
@@ -795,267 +655,27 @@ function ReleaseBomTab({ projects, departments = [] }) {
   );
 }
 
-// Reusable per-boiler-model material lists — a new project's BOM can start from a real template
-// instead of a blank Raise PR form every time. No prior template concept existed in the BOM/PR
-// code (confirmed by search); this is a genuinely new page, not a rename of an existing one.
-function emptyTemplateItem() {
-  return { material_description: '', moc: '', size_spec: '', section: '', qty_text: '', item_id: null, uomHint: '', category: '', categoryFields: {}, namedParts: [] };
-}
+// Phase 1 nav reorg (SYSTEM.md): emptyTemplateItem/TemplateItemsEditor/TemplateFormDialog/
+// ApplyTemplateDialog/TemplateSection/TemplatesTab moved to ./BomTemplateManager.jsx, which now
+// renders the "PR Templates"/"BOM Templates" sections from both Engineering and Requests (see
+// PrWorkspace below and EngineeringWorkspace.jsx). Nothing here changed behavior, only location.
 
-// Templates store the same reusable identity a BOM line does — Item Code (via item_id, §3.2),
-// category + dimensions (so a template-applied line is remnant-matchable from day one, not just
-// hand-typed rows). Reuses ItemSearchField/CategoryFieldsBlock as-is — no second picker
-// implementation. Deliberately NOT stored: drawing/revision — those are project-specific, never
-// standard across boiler models (confirmed by how this codebase already scopes drawings to one
-// project, calc_drawings.project_id NOT NULL).
-function TemplateItemsEditor({ items, onChange }) {
-  function update(i, patch) { onChange(items.map((it, idx) => idx === i ? { ...it, ...patch } : it)); }
-  function add() { onChange([...items, emptyTemplateItem()]); }
-  function remove(i) { onChange(items.filter((_, idx) => idx !== i)); }
-
-  return (
-    <div className="flex flex-col gap-3">
-      <Label>Items</Label>
-      {items.map((it, i) => (
-        <div key={i} className="flex flex-col gap-2 rounded-md border p-2.5">
-          <div className="flex items-start gap-2">
-            <div className="flex-1"><ItemSearchField line={it} onChange={patch => update(i, patch)} /></div>
-            <Button size="icon-sm" variant="ghost" className="mt-6 shrink-0" onClick={() => remove(i)}><TrashIcon className="size-4" /></Button>
-          </div>
-          <div className="grid grid-cols-4 gap-2">
-            <Input placeholder="MOC" value={it.moc} onChange={e => update(i, { moc: e.target.value })} />
-            <Input placeholder="Size / spec" value={it.size_spec} onChange={e => update(i, { size_spec: e.target.value })} />
-            <SearchableSelect value={it.category || ''} placeholder="Category" options={CATEGORY_OPTIONS}
-              onChange={v => update(i, { category: v, categoryFields: defaultCategoryFields(v) })} />
-            <Input placeholder="Qty, e.g. 4 Nos" value={it.qty_text} onChange={e => update(i, { qty_text: e.target.value })} />
-          </div>
-          {it.category && (
-            <CategoryFieldsBlock category={it.category} fields={it.categoryFields || {}}
-              onChange={categoryFields => update(i, {
-                categoryFields, size_spec: it.size_spec || categoryDisplaySpec(it.category, categoryFields),
-              })} />
-          )}
-          {it.category && (
-            <NamedPartsEditor parts={it.namedParts || []} onChange={namedParts => update(i, { namedParts })} />
-          )}
-        </div>
-      ))}
-      <Button size="sm" variant="outline" className="w-fit" onClick={add}><PlusIcon data-icon="inline-start" />Add item</Button>
-    </div>
-  );
-}
-
-// Create (no templateId) and edit (templateId given) share this one form — an edit that's opened
-// and left untouched is what "view a template's items" actually is, no separate read-only viewer
-// needed. `kind` is fixed by which section's "+ New" button opened it for create; on edit it's
-// whatever the template already is (never re-picked here — no reason a template should switch
-// kind mid-life, and the loaded value is only ever echoed back unchanged since PATCH doesn't
-// accept it).
-function TemplateFormDialog({ templateId, kind, onClose, router }) {
-  const editing = !!templateId;
-  const [loading, setLoading] = useState(editing);
-  const [name, setName] = useState('');
-  const [series, setSeries] = useState('');
-  const [items, setItems] = useState([emptyTemplateItem()]);
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (!editing) return;
-    api(`/api/bom-templates/${templateId}`).then(t => {
-      setName(t.name || '');
-      setSeries(t.series || '');
-      setItems(t.items.length ? t.items.map(it => ({
-        material_description: it.material_description || '', moc: it.moc || '', size_spec: it.size_spec || '',
-        section: it.section || '', qty_text: it.qty_text || '', item_id: it.item_id || null, uomHint: '',
-        category: it.category || '', categoryFields: it.category_fields_json ? JSON.parse(it.category_fields_json) : {},
-        namedParts: it.named_parts_json ? JSON.parse(it.named_parts_json) : [],
-      })) : [emptyTemplateItem()]);
-    }).catch(err => showToast(err.message, 'error')).finally(() => setLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editing, templateId]);
-
-  async function save() {
-    if (!name.trim()) return showToast('Name is required', 'error');
-    setSaving(true);
-    try {
-      const body = {
-        name: name.trim(), series: series.trim() || undefined,
-        items: items.filter(i => i.material_description.trim()).map(i => ({
-          material_description: i.material_description, moc: i.moc, size_spec: i.size_spec, qty_text: i.qty_text,
-          item_id: i.item_id || undefined, category: i.category || undefined,
-          category_fields: i.category ? finalizeCategoryFields(i.category, i.categoryFields || {}) : undefined,
-          named_parts: i.category && i.namedParts?.length ? i.namedParts : undefined,
-        })),
-      };
-      if (editing) await api(`/api/bom-templates/${templateId}`, { method: 'PATCH', body });
-      else await api('/api/bom-templates', { method: 'POST', body: { ...body, kind } });
-      showToast(editing ? 'Template saved' : 'Template created');
-      router.refresh();
-      onClose();
-    } catch (err) { showToast(err.message, 'error'); } finally { setSaving(false); }
-  }
-
-  if (loading) return <Card><CardContent className="py-10 text-center text-sm text-muted-foreground">Loading…</CardContent></Card>;
-
-  return (
-    <Card>
-      <CardHeader><CardTitle>{editing ? 'Edit template' : `New ${kind === 'pr' ? 'PR' : 'BOM'} template`}</CardTitle></CardHeader>
-      <CardContent className="flex flex-col gap-3">
-        <div className="grid grid-cols-2 gap-3">
-          <div className="flex flex-col gap-1.5">
-            <Label>Name</Label>
-            <Input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. 3 TPH Solid Fuel Fired Boiler" autoFocus />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label>Series / model (optional)</Label>
-            <Input value={series} onChange={e => setSeries(e.target.value)} />
-          </div>
-        </div>
-        <TemplateItemsEditor items={items} onChange={setItems} />
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button disabled={saving} onClick={save}>{saving ? 'Saving…' : editing ? 'Save changes' : 'Create template'}</Button>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function ApplyTemplateDialog({ template, projects, onClose, router }) {
-  const [projectId, setProjectId] = useState('');
-  const [applying, setApplying] = useState(false);
-
-  async function apply(confirm = false) {
-    if (!projectId) return showToast('Choose a project', 'error');
-    setApplying(true);
-    try {
-      const res = await api(`/api/bom-templates/${template.id}/apply`, { method: 'POST', body: { project_id: Number(projectId), confirm } });
-      if (res.needsConfirm) {
-        setApplying(false);
-        if (window.confirm(`This project already has: ${res.duplicates.join(', ')}. Add this template's items anyway?`)) await apply(true);
-        return;
-      }
-      showToast(`${res.inserted} item(s) added to the project's BOM`);
-      router.refresh();
-      onClose();
-    } catch (err) { showToast(err.message, 'error'); } finally { setApplying(false); }
-  }
-
-  return (
-    <Card>
-      <CardHeader><CardTitle>Apply "{template.name}" to a project</CardTitle></CardHeader>
-      <CardContent className="flex flex-col gap-3">
-        <Select value={projectId} onValueChange={setProjectId}>
-          <SelectTrigger className="w-64"><SelectValue placeholder="Select a project" /></SelectTrigger>
-          <SelectContent><SelectGroup>
-            {projects.map(p => <SelectItem key={p.id} value={String(p.id)}>{p.project_no} · {p.customer_name}</SelectItem>)}
-          </SelectGroup></SelectContent>
-        </Select>
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button disabled={applying} onClick={() => apply(false)}>{applying ? 'Applying…' : 'Apply to project'}</Button>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-// One section (a card + list) per kind, reused for both — same row actions either way except the
-// one action whose meaning genuinely differs (Apply direct-inserts a BOM template; a PR template
-// has no equivalent single-project action, so it hands off to Raise PR instead).
-function TemplateSection({ title, kind, templates, onNew, onEdit, onDelete, onApply, onUseInRaisePr }) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        <CardAction><Button size="sm" onClick={onNew}><PlusIcon data-icon="inline-start" />New</Button></CardAction>
-      </CardHeader>
-      <CardContent className="flex flex-col divide-y p-0">
-        {!templates ? (
-          <p className="px-4 py-6 text-center text-sm text-muted-foreground">Loading…</p>
-        ) : templates.length === 0 ? (
-          <p className="px-4 py-6 text-center text-sm text-muted-foreground">
-            No {kind === 'pr' ? 'PR' : 'BOM'} templates yet.
-          </p>
-        ) : templates.map(t => (
-          <div key={t.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
-            <div>
-              <span className="text-sm font-medium">{t.name}</span>
-              {t.series && <Badge variant="outline" className="ml-2 text-xs font-normal">{t.series}</Badge>}
-              <span className="ml-2 text-xs text-muted-foreground">{t.item_count} item{t.item_count === 1 ? '' : 's'}</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <Button size="sm" variant="outline" onClick={() => onEdit(t)}>View/Edit</Button>
-              {kind === 'bom'
-                ? <Button size="sm" variant="outline" onClick={() => onApply(t)}>Apply</Button>
-                : <Button size="sm" variant="outline" onClick={() => onUseInRaisePr(t)}>Use in Raise PR</Button>}
-              <Button size="icon-sm" variant="ghost" className="text-danger" onClick={() => onDelete(t)}><TrashIcon className="size-3.5" /></Button>
-            </div>
-          </div>
-        ))}
-      </CardContent>
-    </Card>
-  );
-}
-
-function TemplatesTab({ projects, onUseInRaisePr }) {
-  const router = useRouter();
-  const [prTemplates, setPrTemplates] = useState(null);
-  const [bomTemplates, setBomTemplates] = useState(null);
-  const [formTarget, setFormTarget] = useState(null); // { templateId?, kind }
-  const [applyTarget, setApplyTarget] = useState(null); // a BOM template
-
-  function load() {
-    api('/api/bom-templates?kind=pr').then(setPrTemplates).catch(err => showToast(err.message, 'error'));
-    api('/api/bom-templates?kind=bom').then(setBomTemplates).catch(err => showToast(err.message, 'error'));
-  }
-  useEffect(load, []);
-
-  async function remove(t) {
-    if (!window.confirm(`Delete template "${t.name}"?`)) return;
-    try {
-      await api(`/api/bom-templates/${t.id}`, { method: 'DELETE' });
-      showToast('Template deleted');
-      load();
-    } catch (err) { showToast(err.message, 'error'); }
-  }
-
-  async function useInRaisePr(t) {
-    try {
-      const full = await api(`/api/bom-templates/${t.id}`);
-      onUseInRaisePr(full.items);
-    } catch (err) { showToast(err.message, 'error'); }
-  }
-
-  if (formTarget) {
-    return <TemplateFormDialog templateId={formTarget.templateId} kind={formTarget.kind} router={router}
-      onClose={() => { setFormTarget(null); load(); }} />;
-  }
-  if (applyTarget) {
-    return <ApplyTemplateDialog template={applyTarget} projects={projects} router={router} onClose={() => setApplyTarget(null)} />;
-  }
-
-  return (
-    <div className="flex flex-col gap-4">
-      <TemplateSection title="PR Templates" kind="pr" templates={prTemplates}
-        onNew={() => setFormTarget({ kind: 'pr' })} onEdit={t => setFormTarget({ templateId: t.id, kind: 'pr' })}
-        onDelete={remove} onUseInRaisePr={useInRaisePr} />
-      <TemplateSection title="BOM Templates" kind="bom" templates={bomTemplates}
-        onNew={() => setFormTarget({ kind: 'bom' })} onEdit={t => setFormTarget({ templateId: t.id, kind: 'bom' })}
-        onDelete={remove} onApply={setApplyTarget} />
-    </div>
-  );
-}
-
-export default function PrWorkspace({ departments, projects, inventoryItems = [] }) {
-  const [tab, setTab] = useState('templates');
+export default function PrWorkspace({ departments, projects, inventoryItems = [], initialTab }) {
+  // Purchase Requests is the default landing tab (a deliberate UX change from the old default,
+  // "Templates" — see SYSTEM.md's Phase 1 plan for why). 'release' stays a valid tab key even
+  // though it's no longer in navItems below, so a direct /pr?tab=release visit still opens it —
+  // same page-level access gate as every other tab on this page, nothing new granted by this.
+  const [tab, setTab] = useState(['raise', 'templates', 'release'].includes(initialTab) ? initialTab : 'raise');
   const [prTemplatePrefill, setPrTemplatePrefill] = useState(null);
   const navItems = [
-    { key: 'templates', label: 'Templates', icon: LayoutTemplateIcon },
-    { key: '__divider__', divider: true },
-    { key: 'raise', label: 'Raise PR', icon: ClipboardListIcon },
-    { key: 'release', label: 'Release BOM', icon: PackageCheckIcon },
+    { key: 'raise', label: 'Purchase Requests', icon: ClipboardListIcon },
+    { key: 'templates', label: 'PR Templates', icon: LayoutTemplateIcon },
   ];
+  // Stores heads have Requests access but not Engineering access (where BOM Templates now
+  // primarily lives) — the app's own help docs already describe Stores applying BOM templates, so
+  // this keeps that working rather than silently dropping it. Design/Engineering heads use the
+  // Engineering tab instead; this never renders for them.
+  const showBomTemplatesHere = departments.includes('Stores') && !departments.some(d => ['Design', 'Engineering'].includes(d));
 
   function useInRaisePr(items) {
     setPrTemplatePrefill(items);
@@ -1069,7 +689,12 @@ export default function PrWorkspace({ departments, projects, inventoryItems = []
           prTemplatePrefill={prTemplatePrefill} onPrefillConsumed={() => setPrTemplatePrefill(null)} />
       )}
       {tab === 'release' && <ReleaseBomTab projects={projects} departments={departments} />}
-      {tab === 'templates' && <TemplatesTab projects={projects} onUseInRaisePr={useInRaisePr} />}
+      {tab === 'templates' && (
+        <div className="flex flex-col gap-4">
+          <BomTemplateManager kind="pr" title="PR Templates" projects={projects} onUseInRaisePr={useInRaisePr} />
+          {showBomTemplatesHere && <BomTemplateManager kind="bom" title="BOM Templates" projects={projects} />}
+        </div>
+      )}
     </WorkspaceSidebar>
   );
 }

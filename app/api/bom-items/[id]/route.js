@@ -1,13 +1,15 @@
 import { NextResponse } from 'next/server';
-import { execute, queryOne } from '@/lib/db';
-import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
+import { execute, queryOne, queryAll } from '@/lib/db';
+import { getFreshSessionUser, requireDepartment, isPM } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { editableBomFields, PURCHASE_STATUSES } from '@/lib/bom-fields.mjs';
 import { releaseReservationsForItem } from '@/lib/procurement';
-import { notifyDepartment } from '@/lib/notify';
 import { syncProcurementMilestones } from '@/lib/milestone-auto';
 import { checkMaterialsComplete } from '@/lib/data';
+import { missingTraceabilityFields, applyReceivedSideEffects } from '@/lib/bom-receiving';
+import { releasePiece } from '@/lib/stock-pieces';
+import { rollupIndentStatus } from '@/lib/indent-status.mjs';
 
 // Field-level department scoping — the trust boundary of the PMB module. A head may only write
 // the columns their department owns (BOM_FIELD_OWNERS); a PM writes anything. Enforced here, not
@@ -38,7 +40,10 @@ export async function PATCH(req, { params }) {
   // never cleared by a reopen (reopen only resets the milestone row), so checking it directly would
   // leave a line frozen forever even after a legitimate un-release — reopening would have no visible
   // effect on this specific field.
-  const TRACEABILITY_FIELDS = ['requires_heat_no', 'requires_mtc', 'requires_supplier_batch', 'requires_serial_no'];
+  // requires_manufacturing (Feature C) joins this same frozen-at-release group — it's exactly as
+  // much a release-baseline decision as the other four (a line shouldn't flip from "needs
+  // Production" to "Stores can pack it" after release without reopening).
+  const TRACEABILITY_FIELDS = ['requires_heat_no', 'requires_mtc', 'requires_supplier_batch', 'requires_serial_no', 'requires_manufacturing'];
   if (keys.some(k => TRACEABILITY_FIELDS.includes(k))) {
     const milestone = await queryOne(
       `SELECT actual_end, status FROM milestones WHERE project_id = ? AND milestone_key = 'release_bom'`,
@@ -55,6 +60,18 @@ export async function PATCH(req, { params }) {
   // the known list instead so a bad value 400s here rather than landing as silent junk.
   if (keys.includes('purchase_status') && b.purchase_status && !PURCHASE_STATUSES.includes(b.purchase_status)) {
     return NextResponse.json({ error: `Unknown purchase_status: ${b.purchase_status}` }, { status: 400 });
+  }
+  // Canonical Stores Receiving (Feature A) — Received is Stores' own action now
+  // (POST /api/bom-items/[id]/receive). A Procurement head has no path to it here at all; PM/admin/
+  // executive keep the same emergency-override capability they already have over every other field.
+  // In-Stock is blocked here too (gap found in review) — it's the other terminal "material is
+  // actually in hand" state Feature C's getProjectBom() now treats as equally packing-ready, and the
+  // ONLY two legitimate ways to reach it (lib/procurement.js's issueReservation(), cutPiece()'s
+  // completion check) both write purchase_status directly via their own raw SQL, never through this
+  // route — so blocking the manual override here closes a real bypass of every Feature A requirement
+  // (receipt, traceability) without touching either legitimate path.
+  if (keys.includes('purchase_status') && ['Received', 'In-Stock'].includes(b.purchase_status) && !isPM(user)) {
+    return NextResponse.json({ error: 'This status can only be reached through Receive or Issue, not a manual override' }, { status: 403 });
   }
   // Procurement's own inline Status dropdown is the one path that can set purchase_status directly
   // (see the resync comment below) — that's the "manually change purchase status" action from the
@@ -73,17 +90,11 @@ export async function PATCH(req, { params }) {
 
   // Traceability enforcement on the free-text GRN path (gap found in review, 2026-08-26) — the
   // ONLY point in this route that fires: the transition INTO 'Received', never a re-save of an
-  // already-Received row (same "only fire on the transition" idiom every other guard in this route
-  // already uses). `effective()` reads the value this same request is setting when present, so a
-  // caller can supply purchase_status and the received_* field together in one PATCH (the normal
-  // Stores-marks-Received UI flow) without a false rejection.
+  // already-Received row. Shared with the canonical /receive action (lib/bom-receiving.js) so both
+  // entry points enforce the identical rule. Reachable here only via the PM/admin/executive override
+  // now — Received itself is otherwise 403'd above before this line is ever reached.
   if (changed.purchase_status === 'Received' && item.purchase_status !== 'Received') {
-    const effective = f => (f in changed ? changed[f] : item[f]);
-    const missing = [];
-    if (item.requires_heat_no && !String(effective('received_heat_no') || '').trim()) missing.push('a heat number');
-    if (item.requires_mtc && !String(effective('received_mtc_no') || '').trim()) missing.push('an MTC/certificate number');
-    if (item.requires_supplier_batch && !String(effective('received_supplier_batch_no') || '').trim()) missing.push('a supplier batch number');
-    if (item.requires_serial_no && !String(effective('received_serial_no') || '').trim()) missing.push('a serial number');
+    const missing = missingTraceabilityFields(item, changed);
     if (missing.length) {
       return NextResponse.json(
         { error: `Can't mark Received — this line needs ${missing.join(', ')} first` }, { status: 400 });
@@ -94,20 +105,6 @@ export async function PATCH(req, { params }) {
     `UPDATE bom_items SET ${Object.keys(changed).map(k => `${k} = ?`).join(', ')} WHERE id = ?`,
     [...Object.values(changed), params.id]);
 
-  // Procurement's own inline Status dropdown (BomTable.jsx) is the one path that can set any
-  // purchase_status value directly, bypassing advancePurchaseStatus's forward-only ratchet —
-  // resync the 5 stage milestones against real BOM state whenever this happens.
-  if ('purchase_status' in changed) await syncProcurementMilestones(item.project_id);
-
-  // V2-CHANGES.md Group 6 Phase 6.3/6.4 (D7) — build stock: a source='stock' item reaching
-  // Received increments the inventory line it was raised against (inventory_item_id/inventory_qty,
-  // set at PR-raise time, Phase 6.4). Guarded on the *prior* status (item, fetched before this
-  // UPDATE) so a re-save of an already-Received row never double-counts — same "only fire on the
-  // transition" idiom the Stages route's wasDone guard uses (SYSTEM.md §3c).
-  if (item.source === 'stock' && item.purchase_status !== 'Received' && changed.purchase_status === 'Received'
-      && item.inventory_item_id && item.inventory_qty) {
-    await execute('UPDATE inventory_items SET on_hand = on_hand + ? WHERE id = ?', [item.inventory_qty, item.inventory_item_id]);
-  }
   // V2-CHANGES.md Group 6 Phase 6.3 gap found post-ship, live-verified: the Status tab's manual
   // override can also set purchase_status='Cancelled', bypassing the dedicated
   // /api/bom-items/[id]/cancel route (Eng/Design only) — which is where the reservation-release
@@ -116,56 +113,36 @@ export async function PATCH(req, { params }) {
   // guard: only fires on the transition *into* Cancelled, not a re-save of an already-cancelled row.
   if (item.purchase_status !== 'Cancelled' && changed.purchase_status === 'Cancelled') {
     await releaseReservationsForItem(item.id);
-  }
-  // STORES-SALES-CHANGES.md — Stores previously had zero signal when something they were waiting
-  // on actually got procured; they'd only find out by checking the BOM themselves. Only fires on
-  // the transition into Received, same idiom as the Cancelled guard above.
-  if (item.purchase_status !== 'Received' && changed.purchase_status === 'Received') {
-    try {
-      let context;
-      if (item.source === 'sas') context = `for SO #${item.sale_order_no || '—'}`;
-      else if (item.source === 'stock') context = 'into stock';
-      else {
-        const project = await queryOne('SELECT project_no FROM projects WHERE id = ?', [item.project_id]);
-        context = project ? `for ${project.project_no}` : null;
-      }
-      await notifyDepartment('Stores', {
-        kind: 'bom_received', title: `Procured: ${item.material_description}`,
-        body: context, dedupe_key: `bom_received:${item.id}`,
-      });
-    } catch (err) { /* notification is best-effort */ }
-  }
-  // STERP item 30 (§5p) — Incoming Inspection Against PO: same "only fire on the transition into
-  // Received" guard as the Stores notification above, mirrored rather than reinvented. Auto-suggests
-  // a pending qc_records row against the received item instead of QC having to notice and log it
-  // themselves; QC can still edit/delete it like any other record.
-  if (item.purchase_status !== 'Received' && changed.purchase_status === 'Received') {
-    const already = await queryOne(
-      "SELECT id FROM qc_records WHERE bom_item_id = ? AND test_type = 'Incoming Inspection'", [item.id]);
-    if (!already) {
-      await execute(
-        `INSERT INTO qc_records (project_id, test_type, reference_no, result, bom_item_id, notes, created_by)
-         VALUES (?, 'Incoming Inspection', ?, 'pending', ?, ?, ?)`,
-        [item.project_id, item.po_ref || null, item.id, `Auto-suggested on receipt of ${item.material_description}`, 'system']);
+    // Material Indent cascade (Feature B) — a 'released' indent item is deliberately excluded: if
+    // the material was already handed over (possibly already cut), a later BOM cancellation cannot
+    // un-happen that. Only open/partially_released items against this line get cancelled.
+    const openIndentItems = await queryAll(
+      "SELECT id, indent_id, stock_piece_id FROM material_indent_items WHERE bom_item_id = ? AND status NOT IN ('released', 'cancelled')",
+      [item.id]);
+    const touchedIndentIds = new Set();
+    for (const ii of openIndentItems) {
+      if (ii.stock_piece_id) await releasePiece(ii.stock_piece_id);
+      await execute("UPDATE material_indent_items SET status = 'cancelled' WHERE id = ?", [ii.id]);
+      touchedIndentIds.add(ii.indent_id);
+    }
+    for (const indentId of touchedIndentIds) {
+      const statuses = (await queryAll(
+        'SELECT status FROM material_indent_items WHERE indent_id = ?', [indentId])).map(r => r.status);
+      await execute('UPDATE material_indents SET status = ? WHERE id = ?', [rollupIndentStatus(statuses), indentId]);
     }
   }
-  // Materials-received activation signals. Same transition guard as the two blocks above. Both
-  // self-dedupe on a per-project key: QC hears once when the first item lands (incoming inspection
-  // can begin — it's per-item, so QC starts at first receipt, not last), and both QC + Production
-  // hear once when the project's BOM is fully received (cleared to build). ponytail: keyed on
-  // project only — a reopen→re-receive cycle won't re-fire; add a completion counter if that's ever
-  // needed.
+
+  // Canonical Stores Receiving (Feature A) — the Received transition's full side-effect chain
+  // (milestone sync, the source='stock' on_hand increment, Stores/QC notifications, QC's
+  // auto-inspection record) lives in one shared function so this PM/admin override path and the
+  // dedicated /receive route can never fire it twice or drift. Every OTHER purchase_status change
+  // (Enquiry/Comparison/Ordered/Transit/Cancelled) still needs the plain milestone resync that used
+  // to run unconditionally here — applyReceivedSideEffects already does its own resync internally,
+  // so this branch only covers the non-Received case to avoid syncing twice.
   if (item.purchase_status !== 'Received' && changed.purchase_status === 'Received') {
-    try {
-      const proj = await queryOne('SELECT project_no FROM projects WHERE id = ?', [item.project_id]);
-      const pno = proj?.project_no || '';
-      await notifyDepartment('QC', {
-        kind: 'qc_incoming', title: `Materials arriving — ${pno}`,
-        body: 'Incoming inspection can start as items are received.',
-        dedupe_key: `qc_incoming:${item.project_id}`,
-      });
-      await checkMaterialsComplete(item.project_id);
-    } catch (err) { /* notification is best-effort */ }
+    await applyReceivedSideEffects(item, changed);
+  } else if ('purchase_status' in changed) {
+    await syncProcurementMilestones(item.project_id);
   }
   // Stores' side of the same handoff — a line Stores has physically logged a GRN against counts as
   // done for this rollup even if Procurement's purchase_status hasn't (or won't) move, so a project
@@ -213,6 +190,14 @@ export async function DELETE(req, { params }) {
   if (reserved.n > 0) {
     return NextResponse.json(
       { error: 'This item has a stock reservation on record — it can\'t be deleted (history is kept)' }, { status: 409 });
+  }
+  // Same class of gap as inventory_reservations above, for material_indent_items.bom_item_id
+  // (Feature B, no ON DELETE clause) — found in review, before this ever hit a real FK 500 live.
+  const indented = await queryOne(
+    'SELECT COUNT(*) AS n FROM material_indent_items WHERE bom_item_id = ?', [params.id]);
+  if (indented.n > 0) {
+    return NextResponse.json(
+      { error: 'This item has a material indent on record — it can\'t be deleted (history is kept)' }, { status: 409 });
   }
 
   await execute('DELETE FROM bom_items WHERE id = ?', [params.id]);

@@ -88,8 +88,11 @@ async function receivePiece({ inventoryItemId, kind, weight_kg, heat_no, test_ce
 }
 async function cutPiece({ sourcePieceId, used = [], remnants = [], projectId, bomItemId }) {
   const source = await one('SELECT * FROM stock_pieces WHERE id = ?', [sourcePieceId]);
-  const flip = await run("UPDATE stock_pieces SET status = 'consumed' WHERE id = ? AND status IN ('available','reserved')", [sourcePieceId]);
-  if (flip.rowsAffected !== 1) throw new Error('already consumed');
+  // Material Indent hard gate (2026-09-02): tightened to `status = 'reserved'` only — kept in
+  // lockstep with the real lib/stock-pieces.js gate, same as scripts/remnant-cutting-selfcheck.mjs's
+  // own mirror. Callers in this file now reserve a piece explicitly before cutting it (see below).
+  const flip = await run("UPDATE stock_pieces SET status = 'consumed' WHERE id = ? AND status = 'reserved'", [sourcePieceId]);
+  if (flip.rowsAffected !== 1) throw new Error('must be reserved first');
   let uIdx = 0, rIdx = 0;
   for (const u of used) {
     uIdx++;
@@ -194,6 +197,7 @@ console.log('tracking_mode immutability guard: ok (A2.2)');
   assert.strictEqual(resolved.po_no, '101/SB/2026-27', 'a received piece must resolve back to its PO via receipt_id');
   assert.strictEqual(resolved.inward_batch_no, receipt.inward_batch_no, 'a received piece must resolve back to its inward batch no.');
 
+  await run("UPDATE stock_pieces SET status = 'reserved' WHERE id = ?", [piece.id]); // Material Indent gate — must be reserved before cutPiece() will act
   await cutPiece({ sourcePieceId: piece.id, remnants: [{ weight_kg: 30 }] });
   const remnant = await one("SELECT receipt_id FROM stock_pieces WHERE parent_id = ? AND source = 'remnant'", [piece.id]);
   assert.strictEqual(remnant.receipt_id, null, 'a cut remnant must have no receipt of its own — it inherits traceability by copy, not via a new receipt link');
@@ -218,6 +222,7 @@ console.log('receipt header purity (event-level only): ok (A2.4)');
 // =====================================================================================
 {
   const source = await receivePiece({ inventoryItemId: 2, kind: 'plate', weight_kg: 200 });
+  await run("UPDATE stock_pieces SET status = 'reserved' WHERE id = ?", [source.id]); // Material Indent gate
   await cutPiece({ sourcePieceId: source.id, remnants: [{ weight_kg: 50 }] });
   const remnant = await one("SELECT * FROM stock_pieces WHERE parent_id = ? AND source = 'remnant'", [source.id]);
   assert.strictEqual(remnant.status, 'pending_receipt', 'a freshly cut remnant must start as pending_receipt, not available');
@@ -250,6 +255,7 @@ console.log('remnant physical-handoff (pending_receipt -> available): ok (A2.5)'
 
   const receipt = await createReceipt({ supplierId: 2, poId: 2, grnRef: 'GRN-99' });
   const root = await receivePiece({ inventoryItemId: 5, kind: 'plate', weight_kg: 245.31, heat_no: 'H-500', test_certificate_id: 1, receiptId: receipt.id });
+  await run("UPDATE stock_pieces SET status = 'reserved' WHERE id = ?", [root.id]); // Material Indent gate
   await cutPiece({ sourcePieceId: root.id, used: [{ weight_kg: 157 }], remnants: [{ weight_kg: 73.18 }], projectId: 1, bomItemId: 1 });
 
   // Q3/Q4: which MTC certifies this piece, which heat/cast does it cover?

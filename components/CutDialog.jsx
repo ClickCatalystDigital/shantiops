@@ -145,7 +145,11 @@ export default function CutDialog({ bomItem = null, initialSource = null, projec
     setInventoryItemId(id);
     setSourcePieceId(''); setSource(null);
     const rows = await api(`/api/stock-pieces?inventory_item_id=${id}`);
-    setAvailablePieces(rows.filter(p => p.status === 'available'));
+    // Material Indent hard gate (Feature B) — no auto-match means this line's own reservation never
+    // happened, so the manual fallback here must go through the same indent-authorized-reservation
+    // gate the standalone Cut tab uses, not a bare 'available' piece (cutPiece()'s own CAS would
+    // reject that cut anyway now; filtering it out here avoids a confusing dead-end submit).
+    setAvailablePieces(rows.filter(p => p.status === 'reserved' && p.indent_item_id));
   }
 
   function pickSourcePiece(id, pool) {
@@ -208,7 +212,7 @@ export default function CutDialog({ bomItem = null, initialSource = null, projec
             </div>
           ) : (
             <div className="flex flex-col gap-2">
-              <p className="text-sm text-muted-foreground">No remnant was auto-matched for this line — pick a source piece manually.</p>
+              <p className="text-sm text-muted-foreground">No remnant was auto-matched for this line — pick an indent-reserved piece manually, or raise a Material Indent first.</p>
               {inventoryOptions === null ? (
                 <Button size="sm" variant="outline" onClick={loadInventoryOptions}>Find stock</Button>
               ) : (
@@ -226,7 +230,7 @@ export default function CutDialog({ bomItem = null, initialSource = null, projec
                       <SelectTrigger><SelectValue placeholder="Piece" /></SelectTrigger>
                       <SelectContent><SelectGroup>
                         {availablePieces.length === 0
-                          ? <div className="px-2 py-1.5 text-sm text-muted-foreground">No available pieces</div>
+                          ? <div className="px-2 py-1.5 text-sm text-muted-foreground">No indent-reserved pieces</div>
                           : availablePieces.map(p => <SelectItem key={p.id} value={String(p.id)}>{p.code} — {pieceDimsLabel(p)} · {p.weight_kg} kg{pieceTraceLabel(p)}</SelectItem>)}
                       </SelectGroup></SelectContent>
                     </Select>
