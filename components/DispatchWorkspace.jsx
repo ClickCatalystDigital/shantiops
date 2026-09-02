@@ -284,8 +284,8 @@ function DocumentsTab({ lists, initialMissingEway = false }) {
               <div className="flex flex-wrap gap-4 text-sm sm:text-right">
                 <div>
                   <div className="text-xs text-muted-foreground">Invoice</div>
-                  <div className={l.sales_invoice_id || l.invoice_no ? '' : 'font-medium text-danger'}>
-                    {l.sales_invoice_id ? `#${l.sales_invoice_id}` : (l.invoice_no || 'Missing')}
+                  <div className={l.linked_invoice_no || l.invoice_no ? '' : 'font-medium text-danger'}>
+                    {l.linked_invoice_no || l.invoice_no || 'Missing'}
                   </div>
                 </div>
                 <div>
