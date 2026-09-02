@@ -1,22 +1,21 @@
 // app/dispatch/page.js — Dispatch's own dedicated workspace, same gating shape as /procurement,
-// /stores, /qc. Kanban only (DispatchBoard) — the flow diagram + incidents + running-projects
-// summary moved to the unified Operations card (app/page.js), matching every other department.
+// /stores, /qc. No PageHeader/<main> — DispatchWorkspace's own WorkspaceSidebar owns the full-page
+// layout, same rule app/stores/page.js and app/qc/page.js already follow.
 import { redirect } from 'next/navigation';
 import { getFreshSessionUser, canAccessDepartment, roleHome } from '@/lib/auth';
-import DispatchBoard from '@/components/DispatchBoard';
-import PageHeader from '@/components/PageHeader';
+import { getPackingLists, getPendingPackingItems, getDispatchFlowCounts } from '@/lib/data';
+import DispatchWorkspace from '@/components/DispatchWorkspace';
 
 export const dynamic = 'force-dynamic';
 
-export default async function DispatchPage() {
+export default async function DispatchPage({ searchParams }) {
   const user = await getFreshSessionUser();
   if (!canAccessDepartment(user, 'Dispatch')) redirect(roleHome(user));
 
-  return (
-    <main className="container flex flex-col gap-6 py-8">
-      <PageHeader title="Packing & Dispatch"
-        description="Packing lists generated from each project's BOM — Pending → Ready → Dispatched." />
-      <DispatchBoard />
-    </main>
-  );
+  const [lists, pendingItems, flowCounts] = await Promise.all([
+    getPackingLists(), getPendingPackingItems(), getDispatchFlowCounts(),
+  ]);
+
+  const sp = await searchParams;
+  return <DispatchWorkspace lists={lists} pendingItems={pendingItems} flowCounts={flowCounts} initialTab={sp?.tab} />;
 }
