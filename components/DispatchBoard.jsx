@@ -38,7 +38,11 @@ export default function DispatchBoard({ lists, statusFilter = null }) {
                     <span className="font-semibold tnum">{l.packing_no}</span>
                     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${col.tone}`}>{col.label}</span>
                   </div>
-                  <div className="text-sm">{l.customer_name}</div>
+                  {/* project_no shown alongside customer_name so two shipments for the same
+                      project (a project can have several packing lists/lots) visibly share an
+                      identity, without needing a separate "Lot" concept — the project_id FK
+                      already carried this relationship, it just wasn't surfaced anywhere. */}
+                  <div className="text-sm">{l.project_no ? `${l.project_no} · ` : ''}{l.customer_name}</div>
                   <div className="text-xs text-muted-foreground">
                     {l.invoice_no || 'No invoice'} · {l.item_count} item{l.item_count !== 1 ? 's' : ''}
                   </div>

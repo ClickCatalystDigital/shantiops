@@ -13,7 +13,7 @@
 import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { api, showToast, formatDate } from '@/lib/client';
+import { api, showToast, formatDate, formatMoney } from '@/lib/client';
 import WorkspaceSidebar from './WorkspaceSidebar';
 import DispatchBoard from './DispatchBoard';
 import { Card, CardHeader, CardTitle, CardAction, CardContent } from './ui/card';
@@ -44,6 +44,28 @@ const ACK_BADGE_CLASS = {
 function AckBadge({ status }) {
   if (!status) return <Badge variant="outline" className="border-warning/30 bg-warning-surface text-warning">Awaiting Confirmation</Badge>;
   return <Badge variant="outline" className={ACK_BADGE_CLASS[status]}>{ACK_LABEL[status] || status}</Badge>;
+}
+
+// Same "We pay"/"Customer pays" wording PackingDetail.jsx's own freight_paid_by select already
+// uses — read-only here (freight stays editable only on the existing detail page, no second edit
+// surface). Reuses freight_amount/freight_paid_by directly off the packing_lists row; no new field.
+function FreightInfo({ amount, paidBy }) {
+  if (!amount) return <span>No freight recorded</span>;
+  const payerLabel = paidBy === 'us' ? 'We pay' : paidBy === 'customer' ? 'Customer pays' : 'Payer not set';
+  return <span>Freight {formatMoney(amount)} · {payerLabel}</span>;
+}
+
+// Compact per-shipment paperwork status — same fields Documents' own fuller view reads
+// (linked_invoice_no/invoice_no, eway_bill_no), condensed to one line for Deliveries' row.
+function DocsStatus({ list }) {
+  const hasInvoice = !!(list.linked_invoice_no || list.invoice_no);
+  const hasEway = !!list.eway_bill_no;
+  return (
+    <span>
+      Invoice {hasInvoice ? '✓' : <span className="font-medium text-danger">✗</span>} · E-Way Bill{' '}
+      {hasEway ? '✓' : <span className="font-medium text-danger">✗</span>}
+    </span>
+  );
 }
 
 // Same clickable-stat-pill treatment as StoresWorkspace.jsx's TodaySummary — reused verbatim so the
@@ -218,11 +240,21 @@ function DeliveriesTab({ lists }) {
         <div className="flex flex-col divide-y">
           {sorted.map(l => (
             <Link key={l.id} href={`/packing/${l.id}`}
-              className="flex flex-col gap-1.5 py-3 transition-colors hover:bg-muted/40 sm:flex-row sm:items-center sm:justify-between">
+              className="flex flex-col gap-1.5 py-3 transition-colors hover:bg-muted/40 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0">
-                <div className="font-medium">{l.packing_no}</div>
+                <div className="flex flex-wrap items-baseline gap-x-2">
+                  <span className="font-medium">{l.packing_no}</span>
+                  {/* Project context — a project can have several packing lists (each an
+                      independent shipment/lot); showing project_no here is what makes that
+                      relationship visible without a separate "Lot" entity. */}
+                  {l.project_no && <span className="text-xs text-muted-foreground">{l.project_no}</span>}
+                </div>
                 <div className="text-xs text-muted-foreground">
                   {l.customer_name} · Dispatched {formatDate(l.dispatched_at || l.created_at)}
+                </div>
+                <div className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-muted-foreground">
+                  <FreightInfo amount={l.freight_amount} paidBy={l.freight_paid_by} />
+                  <DocsStatus list={l} />
                 </div>
               </div>
               <AckBadge status={l.delivery_ack_status} />
@@ -280,8 +312,9 @@ function DocumentsTab({ lists, initialMissingEway = false }) {
             <Link key={l.id} href={`/packing/${l.id}`}
               className="flex flex-col gap-2 py-3 transition-colors hover:bg-muted/40 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="font-medium">{l.packing_no}</span>
+                  {l.project_no && <span className="text-xs text-muted-foreground">{l.project_no}</span>}
                   <StageBadge status={l.status} />
                 </div>
                 <div className="text-xs text-muted-foreground">{l.customer_name}</div>
