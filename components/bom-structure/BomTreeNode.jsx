@@ -23,7 +23,7 @@ import { SOFT_DEPTH_WARNING, suggestNodeType } from '@/lib/bom-tree.mjs';
 // by whitespace. `vertical` draws the line at all (blank spacer otherwise); `half` stops it at
 // mid-height (the "└" case — this is the last child, nothing continues below); `elbow` also draws
 // the horizontal stub connecting the line over to this row's own content.
-function TreeRail({ vertical, half, elbow }) {
+export function TreeRail({ vertical, half, elbow }) {
   return (
     <div className="relative w-5 shrink-0 self-stretch">
       {vertical && (

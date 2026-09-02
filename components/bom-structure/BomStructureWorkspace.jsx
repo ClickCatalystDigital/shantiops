@@ -14,6 +14,7 @@ import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/componen
 import { LayersIcon } from 'lucide-react';
 import BomTree from './BomTree';
 import BomNodeDetail from './BomNodeDetail';
+import BomTreeReadOnly from './BomTreeReadOnly';
 import MoveAssemblyDialog from './MoveAssemblyDialog';
 import ReleaseReadinessPanel from './ReleaseReadinessPanel';
 import { nodePath } from '@/lib/bom-tree.mjs';
@@ -139,6 +140,7 @@ export default function BomStructureWorkspace({ projects }) {
   const selectedProject = projects.find(p => String(p.id) === projectId);
 
   return (
+    <>
     <Card className="min-h-[32rem]">
       <CardHeader>
         <CardTitle>BOMs</CardTitle>
@@ -233,5 +235,10 @@ export default function BomStructureWorkspace({ projects }) {
         />
       )}
     </Card>
+
+    {projectId && assemblies && projectBom && (
+      <BomTreeReadOnly assemblies={assemblies} unassignedItems={unassignedItems} project={selectedProject} />
+    )}
+    </>
   );
 }
