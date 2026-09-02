@@ -82,7 +82,7 @@ export default function Nav({ user, reportDepartments = [] }) {
   // as Shop Floor, deliberately separate from it since it's write-once notes, not a live workspace.
   addDeptTab(['Production'], '/planning', 'Planning', ClipboardListIcon);
   addDeptTab(['QC'], '/qc', 'QC', FlaskConicalIcon);
-  addDeptTab(['Dispatch'], '/ops?dept=Dispatch', 'Dispatch', PackageIcon);
+  addDeptTab(['Dispatch'], '/dispatch', 'Dispatch', PackageIcon);
   addDeptTab(['Installation'], '/installation', 'Installation', MapPinIcon);
   addDeptTab(['Accounts'], '/accounts', 'Accounts', LandmarkIcon);
   addDeptTab(['HR'], '/hr', 'HR', UsersIcon);

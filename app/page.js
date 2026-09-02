@@ -3,10 +3,9 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import ProductionTodayPage from './production/page';
-import { getMyWork, getBomWork, bucketBomWork, getDepartmentTasks, getStageBottlenecks, getSourcingItems, getProcurementFlowCounts, getDesignFlowCounts, getDesignWork, getSalesFlowCounts, getStoresFlowCounts, getProductionFlowCounts, getDispatchFlowCounts, getInstallationFlowCounts, getHrFlowCounts, getEngineeringFlowCounts, getQcFlowCounts, getAccountsFlowCounts } from '@/lib/data';
+import { getMyWork, getBomWork, bucketBomWork, getDepartmentTasks, getStageBottlenecks, getSourcingItems, getProcurementFlowCounts, getDesignFlowCounts, getDesignWork, getSalesFlowCounts, getStoresFlowCounts, getProductionFlowCounts, getDispatchFlowCounts, getDispatchWork, getInstallationFlowCounts, getHrFlowCounts, getEngineeringFlowCounts, getQcFlowCounts, getAccountsFlowCounts } from '@/lib/data';
 import { getFreshSessionUser, isCustomer, isManager, isHead, headDepartments, canAccessDepartment, roleHome } from '@/lib/auth';
 import StatusBadge from '@/components/StatusBadge';
-import DispatchBoard from '@/components/DispatchBoard';
 import TicketsPanel from '@/components/TicketsPanel';
 import ProcurementFlow from '@/components/ProcurementFlow';
 import SalesFlow from '@/components/SalesFlow';
@@ -35,7 +34,7 @@ export const dynamic = 'force-dynamic';
 // Open Actions grid below — the card's own table Bottleneck column + the project page's own Open
 // Actions card already cover that ground, same precedent Design's card set. PM/multi-department
 // views keep the grid (still the only cross-department aggregate there).
-const UNIFIED_DEPTS = ['Procurement', 'Stores', 'Production', 'Design', 'Engineering'];
+const UNIFIED_DEPTS = ['Procurement', 'Stores', 'Production', 'Design', 'Engineering', 'Dispatch'];
 
 // Column specs for the four BOM-owning departments' unified table — plain data, not render
 // functions (this file is a Server Component; a function prop can't cross into the Client
@@ -50,6 +49,11 @@ const DESIGN_WORK_COLUMNS = [
   { key: 'bottleneck', label: 'Bottleneck', width: '', kind: 'text', field: 'bottleneck' },
   { key: 'calc', label: 'Calc Status', width: 'w-28', kind: 'ratioText', field: 'calcStatus' },
   { key: 'drawings', label: 'Drawings', width: 'w-24', kind: 'ratioText', field: 'drawings' },
+];
+const DISPATCH_WORK_COLUMNS = [
+  { key: 'progress', label: 'Dispatch Progress', width: 'w-40', kind: 'progress', field: 'dispatchProgress' },
+  { key: 'bottleneck', label: 'Bottleneck', width: '', kind: 'text', field: 'bottleneck' },
+  { key: 'lists', label: 'Packing Lists', width: 'w-32', kind: 'ratioText', field: 'listsStatus' },
 ];
 
 // Same outgoing/incoming split every unified card uses — pulled out once instead of copied per
@@ -88,24 +92,6 @@ export async function OperationsPage({ searchParams }) {
   // all-departments tab strip instead (app/projects/[id]/page.js), which they always get.
   const deptsToShow = manager ? [] : (deptFilter ? [deptFilter] : headDepartments(user));
   const isUnifiedOnlyView = deptsToShow.length === 1 && UNIFIED_DEPTS.includes(deptsToShow[0]);
-
-  // Dispatch department view = the packing board (§ "packing within department").
-  if (deptFilter === 'Dispatch') {
-    const dispatchTasks = deptsToShow.length ? await getDepartmentTasks('Dispatch') : [];
-    // Cross-project BOM items, so a Dispatch head raising a "Cancel BOM item" request from
-    // Operations gets the same picker the project page's Raise dialog offers.
-    const sourcingItems = deptsToShow.length ? await getSourcingItems() : [];
-    const dispatchFlow = await getDispatchFlowCounts();
-    return (
-      <main className="container flex flex-col gap-6 py-8">
-        <PageHeader title="Packing &amp; Dispatch"
-          description="Packing lists generated from each project's BOM — Pending → Ready → Dispatched." />
-        <DispatchFlow counts={dispatchFlow} />
-        <DispatchBoard />
-        {deptsToShow.length > 0 && <TicketsPanel department="Dispatch" tasks={dispatchTasks} bom={sourcingItems} canRaise />}
-      </main>
-    );
-  }
 
   const groups = await getMyWork(user, deptFilter);
   const tasksByDept = deptsToShow.length
@@ -181,6 +167,16 @@ export async function OperationsPage({ searchParams }) {
       dept: 'Design', flow: <DesignFlow counts={counts} bare />, outgoing, incoming,
       work, columns: DESIGN_WORK_COLUMNS, sourcingItems, emptyMessage: 'No active design work yet.',
       href: '/calc', linkLabel: 'Open Calc Sheets →',
+    });
+  }
+  if (deptsToShow.includes('Dispatch')) {
+    const counts = await getDispatchFlowCounts();
+    const work = await getDispatchWork();
+    const { outgoing, incoming } = splitIncidents(tasksByDept[deptsToShow.indexOf('Dispatch')] || [], 'Dispatch');
+    cards.push({
+      dept: 'Dispatch', flow: <DispatchFlow counts={counts} bare />, outgoing, incoming,
+      work, columns: DISPATCH_WORK_COLUMNS, sourcingItems, emptyMessage: 'No active dispatch work yet.',
+      href: '/dispatch', linkLabel: 'Open Dispatch →',
     });
   }
 

@@ -684,9 +684,10 @@ building anything — the real schema decided the shape, not the template:
 
 - **Dispatch** (`DispatchFlow.jsx`, `getDispatchFlowCounts`) — the plainest case: one table
   (`packing_lists`), one status column, 3 literal values (`draft`/`packed`/`dispatched`), no
-  branch/cancel concept. Rendered inside the Dispatch department view itself (`app/page.js`'s
-  `dept=Dispatch` branch, right above `DispatchBoard`) rather than as a separate workspace link,
-  since that view already *is* the Dispatch workspace.
+  branch/cancel concept. Originally rendered inside a hand-built Dispatch-only page branch right
+  above `DispatchBoard`, since that view was, at the time, Dispatch's only workspace — **superseded
+  2026-09-03, see the entry below**: Dispatch now has its own dedicated `/dispatch` workspace, and
+  this card moved onto the same unified pattern every other department here already uses.
 - **Installation** (`InstallationFlow.jsx`, `getInstallationFlowCounts`) — a real 5-state spine off
   `service_calls.status` (`open → assigned → in_progress → resolved → closed`, an enforced state
   machine in `app/api/service-calls/[id]/route.js`). Service Contracts is deliberately **not** a
@@ -715,6 +716,49 @@ building anything — the real schema decided the shape, not the template:
 - **Marketing** — no new card. It shares Sales' entire workspace and `SalesFlow.jsx` already renders
   whenever a Marketing head's `deptsToShow` includes 'Sales' via the same shared-tab mechanism
   Nav.jsx uses (`addDeptTab(['Sales', 'Marketing'], ...)`) — a second card would just duplicate it.
+
+### Dispatch joins the unified pattern + its own dedicated workspace (2026-09-03)
+
+Dispatch was the one department that never got a real dedicated workspace page — its "board" lived
+entirely inside a hand-built early-return branch on the Operations page (`app/page.js`), which meant
+the primary-nav "Dispatch" tab and the Operations-tab "Dispatch" view were the exact same URL
+(`/ops?dept=Dispatch`) showing the exact same thing: flow diagram + kanban + one un-split Incidents
+card. That's what created the confusion this round fixed — the "Incidents" card a dispatch head saw
+was never a Dispatch-specific thing, it was the same `TicketsPanel` every department's Operations
+view already renders.
+
+- **New `app/dispatch/page.js`** — Dispatch's own dedicated workspace, same gating shape as
+  `/procurement`/`/stores`/`/engineering`. Kanban only (`DispatchBoard`, unchanged, self-fetching,
+  zero rewiring needed) — no flow diagram, no incidents card. `Nav.jsx`'s primary "Dispatch" tab now
+  points here instead of `/ops?dept=Dispatch`.
+- **Dispatch added to `UNIFIED_DEPTS`** (`app/page.js`) — the early-return branch is gone; Dispatch
+  now gets the exact same `OperationsCard` treatment as Procurement/Stores/Production/Engineering/
+  Design: flow (`DispatchFlow`, which gained a `bare` prop for this, same pattern as every other
+  flow component), split Outgoing/Incoming Incidents, and a new "currently running projects" table.
+- **New `getDispatchWork()`** (`lib/data.js`) — Dispatch's own bespoke per-project "work" query,
+  modeled on `getDesignWork()`'s shape rather than the four BOM-owning departments' shared
+  `getBomWork()`/`bucketBomWork()` (Dispatch's real unit of work — packing readiness — doesn't fit
+  that shape either, same reasoning Design's own bespoke query already established). Three columns:
+  **Dispatch Progress** (`{done, total}` — non-cancelled BOM items on a dispatched packing list, out
+  of every non-cancelled BOM item on the project), **Bottleneck** (plain text, "N items ready to
+  pack" when something's ready but not yet on any list, using the exact same readiness predicate
+  `getProjectBom()` already uses — `requires_manufacturing`/`production_done`/`purchase_status` —
+  applied across every active project instead of one at a time), **Packing Lists** (`{done, total}`
+  dispatched vs. total packing lists for the project). Each row links to `/projects/{id}` — a real
+  per-project entry point into `PackingPanel` that never existed from Operations before this.
+- **Three more hardcoded `/ops?dept=Dispatch` references moved to `/dispatch`**, found by grep, not
+  guessed: the legacy `/packing` compatibility redirect (`app/packing/page.js`), the whole-draft-
+  delete success redirect and the "← All" link in `components/PackingDetail.jsx` (§5aj/§ delete-
+  draft feature). Dispatch's own `/help` guide text updated to match (it used to say "Operations →
+  Dispatch or the Dispatch tab" were the same thing — now only the Dispatch tab shows the board).
+- **No regression for a PM/admin using the cog's Departments picker** — confirmed live: a PM never
+  saw any department's unified card through that picker even before this change (`deptsToShow` is
+  always `[]` for `isManager(user)`, so `cards.push(...)` never runs for them, for any unified
+  department) — they get the generic attention grid, filtered by `?dept=`, same as always. The old
+  Dispatch-only special case bypassed that rule (it checked `deptFilter`, not `deptsToShow`), so a PM
+  at `/ops?dept=Dispatch` used to see the kanban directly; now they see the same generic grid every
+  other department already gave them. Not a loss — the primary-nav "Dispatch" tab (which a PM also
+  gets, same as every other department) still reaches the kanban directly at `/dispatch`.
 
 ## 4. Executive view
 

@@ -1417,7 +1417,7 @@ export const DEPARTMENT_HELP = {
     title: 'Dispatch', icon: TruckIcon,
     intro: [
       'Dispatch turns completed project material into a controlled packing and delivery record. The packing list is the bridge between the BOM and what the customer actually receives.',
-      'Use Operations → Dispatch or the Dispatch tab to see the board. Use Projects when you need the order context and the BOM source lines.',
+      'Use the Dispatch tab to see the board — Operations → Dispatch now shows a summary (flow, incidents, and current projects) instead. Use Projects when you need the order context and the BOM source lines.',
     ],
     features: [
       feature('board', 'Packing board', PackageCheckIcon, ['The board groups packing lists by Draft, Ready, and Dispatched. Use the status to tell the team whether a list is still being prepared, approved for delivery, or already sent.', 'Keep one person responsible for the final status so two people do not dispatch the same list.']),

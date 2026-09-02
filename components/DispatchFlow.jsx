@@ -83,35 +83,43 @@ function DispatchFlowVertical({ counts }) {
   );
 }
 
-export default function DispatchFlow({ counts }) {
+// bare: renders just the spine content, no Card chrome — used inside OperationsCard's Row 1
+// (Operations page unified card), same pattern as DesignFlow.jsx/ProcurementFlow.jsx's own `bare`.
+export default function DispatchFlow({ counts, bare = false }) {
   const nodeX = STAGES.map((_, i) => (i + 0.5) * (100 / STAGES.length));
   const midpoints = nodeX.slice(0, -1).map((x, i) => (x + nodeX[i + 1]) / 2);
   const firstX = nodeX[0];
   const lastX = nodeX[nodeX.length - 1];
+
+  const content = (
+    <>
+      <div className="hidden overflow-x-auto sm:block">
+        <div className="mx-auto flex min-w-[24rem] flex-col items-center">
+          <div className="relative grid w-full" style={{ gridTemplateColumns: `repeat(${STAGES.length}, minmax(0, 1fr))` }}>
+            <div className="absolute top-1/2 h-px -translate-y-1/2 bg-border" style={{ left: `${firstX}%`, right: `${100 - lastX}%` }} />
+            {midpoints.map(x => <FlowArrow key={x} atPercent={x} />)}
+            {STAGES.map(s => (
+              <div key={s.key} className="flex items-center justify-center">
+                <StageBox value={counts[s.key] || 0} label={s.label} help={s.help} tone={s.tone} />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className="sm:hidden">
+        <DispatchFlowVertical counts={counts} />
+      </div>
+    </>
+  );
+
+  if (bare) return content;
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>Dispatch</CardTitle>
       </CardHeader>
-      <CardContent>
-        <div className="hidden overflow-x-auto sm:block">
-          <div className="mx-auto flex min-w-[24rem] flex-col items-center">
-            <div className="relative grid w-full" style={{ gridTemplateColumns: `repeat(${STAGES.length}, minmax(0, 1fr))` }}>
-              <div className="absolute top-1/2 h-px -translate-y-1/2 bg-border" style={{ left: `${firstX}%`, right: `${100 - lastX}%` }} />
-              {midpoints.map(x => <FlowArrow key={x} atPercent={x} />)}
-              {STAGES.map(s => (
-                <div key={s.key} className="flex items-center justify-center">
-                  <StageBox value={counts[s.key] || 0} label={s.label} help={s.help} tone={s.tone} />
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-        <div className="sm:hidden">
-          <DispatchFlowVertical counts={counts} />
-        </div>
-      </CardContent>
+      <CardContent>{content}</CardContent>
     </Card>
   );
 }

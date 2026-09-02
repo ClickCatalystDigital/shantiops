@@ -139,7 +139,7 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
     try {
       await api(`/api/packing/${list.id}`, { method: 'DELETE' });
       showToast('Draft deleted');
-      router.push('/ops?dept=Dispatch');
+      router.push('/dispatch');
     } catch (err) { showToast(err.message, 'error'); setDeleting(false); }
   }
   async function postFreight() {
@@ -179,7 +179,7 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
             </Button>
           )}
           <Button asChild size="sm"><a href={`/api/packing/${list.id}/pdf`} target="_blank" rel="noreferrer"><FileTextIcon data-icon="inline-start" />Generate PDF</a></Button>
-          {!readOnly && <Button asChild variant="ghost" size="sm"><Link href="/ops?dept=Dispatch">← All</Link></Button>}
+          {!readOnly && <Button asChild variant="ghost" size="sm"><Link href="/dispatch">← All</Link></Button>}
         </div>
       </div>
 
