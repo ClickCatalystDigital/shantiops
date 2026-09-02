@@ -84,7 +84,10 @@ export default function BomTree({
   // catalog item itself — a tree node is a structural grouping, not a bom_items row.
   async function searchCatalog(q) {
     const rows = await api(`/api/items?search=${encodeURIComponent(q)}`);
-    return rows.map(it => ({ value: it.item_name, label: it.item_code ? `${it.item_code} · ${it.item_name}` : it.item_name }));
+    return rows.map(it => ({
+      value: it.item_name,
+      label: [it.item_code, it.item_name, it.category && `(${it.category})`].filter(Boolean).join(' · ').replace(' · (', ' ('),
+    }));
   }
 
   function submitTop() {

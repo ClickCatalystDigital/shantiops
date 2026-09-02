@@ -125,9 +125,13 @@ function LinkItemControl({ bomItemId, router }) {
           {results.map(it => (
             // onMouseDown (not onClick) so the pick fires before the input's onBlur closes the dropdown.
             <button key={it.id} type="button" disabled={busy} onMouseDown={() => pick(it)}
+              title={it.hsn_code ? `HSN ${it.hsn_code}` : undefined}
               className="flex w-full flex-col rounded-sm px-2 py-1 text-left text-xs hover:bg-muted">
               <span className="font-medium">{it.item_name}</span>
-              <span className="text-muted-foreground">{it.item_code} · {it.uom}</span>
+              <span className="text-muted-foreground">
+                {it.item_code} · {it.uom}
+                {(it.category || it.material_process_type) && ` · ${[it.category, it.material_process_type].filter(Boolean).join(' · ')}`}
+              </span>
             </button>
           ))}
         </div>

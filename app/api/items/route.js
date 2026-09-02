@@ -26,8 +26,10 @@ export async function GET(req) {
   // suggest a §F category (lib/section-shapes.js's taxonomy) on pick, a confident-match-only guess.
   // default_requires_* (Phase 1) — the material master's recommended traceability requirements,
   // seeded onto a BOM line on pick; a category fallback covers the free-text-majority case.
+  // category/material_process_type/hsn_code — real, populated columns that were previously never
+  // selected, so every caller silently lost them even though the import data has them.
   const rows = await queryAll(
-    `SELECT id, item_code, item_name, detail_desc, uom, group_name,
+    `SELECT id, item_code, item_name, detail_desc, uom, group_name, category, material_process_type, hsn_code,
             default_requires_heat_no, default_requires_mtc, default_requires_supplier_batch, default_requires_serial_no
        FROM items
       WHERE item_name LIKE ? OR item_code LIKE ?

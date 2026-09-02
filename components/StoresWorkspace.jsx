@@ -213,9 +213,12 @@ function ItemFormDialog({ item, onClose, router }) {
               <div className="absolute top-full z-10 mt-1 w-full rounded-md border bg-popover shadow-md">
                 {catalogResults.map(it => (
                   <button key={it.id} type="button" className="flex w-full flex-col items-start gap-0.5 border-b px-3 py-1.5 text-left text-sm last:border-b-0 hover:bg-muted/40"
-                    onMouseDown={() => pickCatalogItem(it)}>
+                    title={it.hsn_code ? `HSN ${it.hsn_code}` : undefined} onMouseDown={() => pickCatalogItem(it)}>
                     <span className="font-medium">{it.item_name}</span>
-                    <span className="text-xs text-muted-foreground">{it.item_code ? `${it.item_code} · ` : ''}{it.uom || '—'}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {it.item_code ? `${it.item_code} · ` : ''}{it.uom || '—'}
+                      {(it.category || it.material_process_type) && ` · ${[it.category, it.material_process_type].filter(Boolean).join(' · ')}`}
+                    </span>
                   </button>
                 ))}
               </div>
