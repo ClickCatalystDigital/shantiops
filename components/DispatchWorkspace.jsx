@@ -209,7 +209,7 @@ function DeliveriesTab({ lists }) {
         <p className="py-6 text-center text-sm text-muted-foreground">Nothing dispatched yet.</p>
       ) : sorted.length === 0 ? (
         <p className="py-6 text-center text-sm text-muted-foreground">
-          {showAll ? 'No lists match your search.' : 'Nothing awaiting confirmation — every dispatched shipment has been acknowledged. 🎉'}
+          {needle ? 'No lists match your search.' : 'Nothing awaiting confirmation — every dispatched shipment has been acknowledged. 🎉'}
         </p>
       ) : (
         <div className="flex flex-col divide-y">
@@ -267,7 +267,9 @@ function DocumentsTab({ lists, initialMissingEway = false }) {
         <p className="py-6 text-center text-sm text-muted-foreground">Nothing packed or dispatched yet — documents apply once a list is ready to ship.</p>
       ) : shown.length === 0 ? (
         <p className="py-6 text-center text-sm text-muted-foreground">
-          {anyFilterActive ? 'Nothing missing — every relevant shipment has its paperwork. 🎉' : 'No lists match this filter.'}
+          {needle
+            ? 'No lists match your search.'
+            : (anyFilterActive ? 'Nothing missing — every relevant shipment has its paperwork. 🎉' : 'No lists match this filter.')}
         </p>
       ) : (
         <div className="flex flex-col divide-y">
