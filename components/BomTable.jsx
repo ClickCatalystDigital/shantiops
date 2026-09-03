@@ -150,10 +150,22 @@ function LinkItemControl({ bomItemId, router }) {
 // field; a dimensional category (plate, angle, ...) upgrades the whole row to CategoryFieldsBlock
 // instead, which already carries its own per-dimension unit toggle.
 const SIZE_UNITS = ['mm', 'inch', 'm', 'ft', 'NB', '—'];
+// Curated from the real Item Master's own uom column (2,774 rows: Nos 2443, kgs/Kgs 189, Mtr 63,
+// Box 45, LTR/Ltr 26, Roll 3 — casing collapsed to one canonical spelling each) plus Set/Pair, two
+// common real-world BOM units that don't happen to appear in the current catalog import but are
+// worth offering directly rather than only through free text.
+const QTY_UNITS = ['Nos', 'Kgs', 'Mtr', 'Box', 'Ltr', 'Roll', 'Set', 'Pair', '—'];
+// Item Master's own uom is free text (case/spelling drift: "kgs" vs "Kgs", "LTR" vs "Ltr") — this
+// is the one place that drift gets resolved, so a catalog pick's uom can default the Qty dropdown
+// to one of the fixed QTY_UNITS values above instead of silently matching nothing.
+function normalizeQtyUnit(raw) {
+  const v = String(raw || '').trim().toLowerCase();
+  return QTY_UNITS.find(u => u.toLowerCase() === v) || null;
+}
 
 let sizeRowKey = 1;
-function emptySizeRow(categoryFields = {}) {
-  return { key: sizeRowKey++, categoryFields, size_spec: '', unit: 'mm', qty_text: '' };
+function emptySizeRow(categoryFields = {}, qtyUnit = 'Nos') {
+  return { key: sizeRowKey++, categoryFields, size_spec: '', unit: 'mm', qty_text: '', qtyUnit };
 }
 
 function safeParseCategoryFields(json) {
@@ -193,7 +205,15 @@ function SizeSpecRow({ row, index, total, category, onChange, onRemove, removabl
       )}
       <div className="flex flex-col gap-1">
         <Label className="text-xs">Qty</Label>
-        <Input placeholder="e.g. 2 Nos" value={row.qty_text} onChange={e => onChange({ qty_text: e.target.value })} />
+        <div className="flex gap-2">
+          <Input className="flex-1" placeholder="e.g. 2" value={row.qty_text} onChange={e => onChange({ qty_text: e.target.value })} />
+          <Select value={row.qtyUnit} onValueChange={qtyUnit => onChange({ qtyUnit })}>
+            <SelectTrigger className="h-9 w-20 shrink-0"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {QTY_UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
     </div>
   );
@@ -224,7 +244,12 @@ function AddItemForm({
         categoryFields: safeParseCategoryFields(existingItem.category_fields_json),
         size_spec: DIMENSIONAL_CATEGORIES.includes(existingItem.category) ? '' : (existingItem.size_spec || ''),
         unit: 'mm',
+        // The existing qty_text is kept exactly as-is (however messy — e.g. "1. 1.  1" on a real
+        // legacy multi-size row) and qtyUnit starts at '—' (append nothing) rather than guessing a
+        // unit, same reasoning as size_spec above: never auto-parse free text that predates this
+        // feature, just hand it back unchanged for the user to clean up themselves.
         qty_text: existingItem.qty_text || '',
+        qtyUnit: '—',
       }]
     : [emptySizeRow()]);
   const [traceability, setTraceability] = useState({
@@ -245,7 +270,14 @@ function AddItemForm({
   function onLineChange(patch) {
     if ('material_description' in patch) setDescription(patch.material_description);
     if ('item_id' in patch) setItemId(patch.item_id);
-    if ('uomHint' in patch) setUomHint(patch.uomHint);
+    if ('uomHint' in patch) {
+      setUomHint(patch.uomHint);
+      // Item Master's own uom, when it resolves to one of the fixed QTY_UNITS, becomes every
+      // current row's Qty unit default — the same "catalog pick sets a sensible starting point,
+      // still fully editable" precedent category/traceability already follow above/below.
+      const matched = normalizeQtyUnit(patch.uomHint);
+      if (matched) setSizeRows(rows => rows.map(r => ({ ...r, qtyUnit: matched })));
+    }
     if ('category' in patch) {
       setCategory(patch.category);
       // A category change resets every row's own dimension fields — the old ones don't describe
@@ -263,7 +295,7 @@ function AddItemForm({
   }
 
   function updateRow(idx, patch) { setSizeRows(rows => rows.map((r, i) => i === idx ? { ...r, ...patch } : r)); }
-  function addRow() { setSizeRows(rows => [...rows, emptySizeRow(DIMENSIONAL_CATEGORIES.includes(category) ? {} : {})]); }
+  function addRow() { setSizeRows(rows => [...rows, emptySizeRow({}, rows[0]?.qtyUnit || 'Nos')]); }
   function removeRow(idx) { setSizeRows(rows => rows.filter((_, i) => i !== idx)); }
 
   async function submit(e) {
@@ -286,11 +318,12 @@ function AddItemForm({
         const size_spec = isDimensional
           ? (categoryDisplaySpec(category, row.categoryFields) || '')
           : [row.size_spec.trim(), row.unit && row.unit !== '—' ? row.unit : ''].filter(Boolean).join(' ');
+        const qty_text = [row.qty_text.trim(), row.qtyUnit && row.qtyUnit !== '—' ? row.qtyUnit : ''].filter(Boolean).join(' ');
         const body = {
           material_description: description.trim(),
           moc: moc.trim(),
           size_spec,
-          qty_text: row.qty_text,
+          qty_text,
           category: category || undefined,
           category_fields_json: isDimensional ? JSON.stringify(finalizeCategoryFields(category, row.categoryFields)) : undefined,
           ...other,
