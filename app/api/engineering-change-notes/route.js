@@ -16,8 +16,11 @@ export async function GET(req) {
   const sp = new URL(req.url).searchParams;
   const projectId = sp.get('project_id');
   const assemblyId = sp.get('assembly_id');
+  // round 3 Phase A — Engineering's shared multi-select project filter, optional (CSV of ids).
+  const projectIdsParam = sp.get('project_ids');
+  const projectIds = projectIdsParam ? projectIdsParam.split(',').map(Number).filter(Boolean) : null;
   return NextResponse.json(await getEngineeringChangeNotes(
-    projectId ? Number(projectId) : null, assemblyId ? Number(assemblyId) : null));
+    projectId ? Number(projectId) : null, assemblyId ? Number(assemblyId) : null, projectIds));
 }
 
 export async function POST(req) {

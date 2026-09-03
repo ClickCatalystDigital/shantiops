@@ -8,6 +8,10 @@ import { getWhereUsed } from '@/lib/data';
 export async function GET(req) {
   const user = await getFreshSessionUser();
   if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  const q = new URL(req.url).searchParams.get('q');
-  return NextResponse.json(await getWhereUsed(q));
+  const sp = new URL(req.url).searchParams;
+  const q = sp.get('q');
+  // round 3 Phase A — Engineering's shared multi-select project filter, optional (CSV of ids).
+  const projectIdsParam = sp.get('project_ids');
+  const projectIds = projectIdsParam ? projectIdsParam.split(',').map(Number).filter(Boolean) : undefined;
+  return NextResponse.json(await getWhereUsed(q, projectIds));
 }

@@ -6,7 +6,7 @@
 // the viewer's editable columns. Enforcement lives in the PATCH route — this UI is convenience.
 import { useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { api, showToast } from '@/lib/client';
+import { api, showToast, formatDate } from '@/lib/client';
 import { useEntityHighlight } from '@/lib/use-entity-highlight';
 import { BOM_STATUSES, STATUS_TONE, DEFAULT_PURCHASE_STATUS, visibleBomColumns, showPackingColumn } from '@/lib/bom-fields.mjs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -586,6 +586,11 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
                       </div>
                     ) : c === 'grn_ref' && canReceive && !['Received', 'Cancelled', 'In-Stock'].includes(r.purchase_status) ? (
                       <ReceiveBomItemDialog item={r} onDone={onSaved} />
+                    ) : c === 'pr_ref' ? (
+                      // round 3 Phase B — the real pr_no (+ its date) wins once a line went through
+                      // the unified PR flow (bom_items.pr_item_id); the legacy free-text pr_ref only
+                      // still matters for rows from before that flow existed.
+                      <TruncatedCell value={r.pr_no ? `${r.pr_no} · ${formatDate(r.pr_created_at)}` : r.pr_ref} />
                     ) : <TruncatedCell value={r[c]} />}
                   </TableCell>
                 ))}

@@ -532,9 +532,16 @@ export function RaisePrTab({ departments, projects, inventoryItems = [], prTempl
 // acting on the release are the same screen instead of a summary-only tab pointing elsewhere.
 // Exported for the same reason RaisePrTab is above — Engineering's own sidebar renders this
 // directly.
-export function ReleaseBomTab({ projects, departments = [] }) {
+// `projectId`/`onProjectIdChange` (round 3 Phase A, both optional) — controlled by Engineering's
+// shared project selector, which replaces this tab's own picker when present. Falls back to
+// internal state (and its own picker) when omitted — the real case on /pr's own standalone
+// "Release BOM" tab, which has no shared header at all.
+export function ReleaseBomTab({ projects, departments = [], projectId: controlledProjectId, onProjectIdChange }) {
   const router = useRouter();
-  const [projectId, setProjectId] = useState('');
+  const controlled = controlledProjectId !== undefined;
+  const [internalProjectId, setInternalProjectId] = useState('');
+  const projectId = controlled ? controlledProjectId : internalProjectId;
+  const setProjectId = controlled ? onProjectIdChange : setInternalProjectId;
   const [status, setStatus] = useState(null); // { bomCount, released, templatesApplied, milestoneId } | null
   const [bom, setBom] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -542,6 +549,16 @@ export function ReleaseBomTab({ projects, departments = [] }) {
   const [unreleasing, setUnreleasing] = useState(false);
   const [applyingTemplate, setApplyingTemplate] = useState(false);
   const editableFields = departments.flatMap(d => BOM_FIELD_OWNERS[d] || []);
+  // BomTable's `department` prop drives column scoping (lib/bom-fields.mjs's visibleBomColumns/
+  // showPackingColumn) AND canReceive = department === 'Stores' (Stores' own inline Receive
+  // action) — so this can't just be the literal "Engineering" string this route used to hardcode
+  // regardless of who's actually viewing. Narrowed view only when the real departments are confined
+  // to Design/Engineering; a real Stores holder (even alongside Design/Engineering) keeps Receive
+  // working; anyone else gets the full unscoped view via whichever real department they hold.
+  const bomTableDepartment =
+    departments.length > 0 && departments.every(d => ['Design', 'Engineering'].includes(d)) ? 'Engineering'
+      : departments.includes('Stores') ? 'Stores'
+        : departments[0] || 'Engineering';
 
   function loadStatus() {
     return api(`/api/projects/${projectId}/release-bom`).then(setStatus);
@@ -617,12 +634,14 @@ export function ReleaseBomTab({ projects, departments = [] }) {
         )}
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        <Select value={projectId} onValueChange={setProjectId}>
-          <SelectTrigger className="w-64"><SelectValue placeholder="Select a project" /></SelectTrigger>
-          <SelectContent><SelectGroup>
-            {projects.map(p => <SelectItem key={p.id} value={String(p.id)}>{p.project_no} · {p.customer_name}</SelectItem>)}
-          </SelectGroup></SelectContent>
-        </Select>
+        {!controlled && (
+          <Select value={projectId} onValueChange={setProjectId}>
+            <SelectTrigger className="w-64"><SelectValue placeholder="Select a project" /></SelectTrigger>
+            <SelectContent><SelectGroup>
+              {projects.map(p => <SelectItem key={p.id} value={String(p.id)}>{p.project_no} · {p.customer_name}</SelectItem>)}
+            </SelectGroup></SelectContent>
+          </Select>
+        )}
         {!projectId ? (
           <p className="py-6 text-center text-sm text-muted-foreground">Pick a project to review, manage, and release its BOM.</p>
         ) : loading || !status || !bom ? (
@@ -648,7 +667,7 @@ export function ReleaseBomTab({ projects, departments = [] }) {
                 uses, so a line added by a template, a PR, or typed by hand looks and behaves
                 identically here; "via <template>" (BomTable's own inline label) is how a
                 template-sourced line stays distinguishable in the same list, not a separate view. */}
-            <BomTable projectId={Number(projectId)} bom={bom} editableFields={editableFields} department="Engineering" onSaved={loadBom} />
+            <BomTable projectId={Number(projectId)} bom={bom} editableFields={editableFields} department={bomTableDepartment} onSaved={loadBom} />
           </>
         )}
       </CardContent>

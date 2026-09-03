@@ -5,7 +5,7 @@
 import { redirect } from 'next/navigation';
 import { getFreshSessionUser, canAccessDepartment, roleHome, isPM, headDepartments } from '@/lib/auth';
 import { canPerformAction } from '@/lib/action-permissions';
-import { getActiveProjectsList, getEngineeringChangeNotes, getPartUsage } from '@/lib/data';
+import { getActiveProjectsList } from '@/lib/data';
 import EngineeringWorkspace from '@/components/EngineeringWorkspace';
 
 export const dynamic = 'force-dynamic';
@@ -17,10 +17,11 @@ export default async function EngineeringPage({ searchParams }) {
   }
 
   const sp = await searchParams;
-  const [projects, changeNotes, partUsage, canApproveEcn] = await Promise.all([
+  // Where-Used/Common-Uncommon/Change Notes are all client-fetched now (round 3 Phase A, the shared
+  // project-selector filter needs to re-query them live) — no more server-preloaded changeNotes/
+  // partUsage props, same precedent WhereUsedTab's own search always followed.
+  const [projects, canApproveEcn] = await Promise.all([
     getActiveProjectsList(),
-    getEngineeringChangeNotes(),
-    getPartUsage(),
     canPerformAction(user, 'Engineering', 'engineering.ecn.approve'),
   ]);
 
@@ -37,6 +38,6 @@ export default async function EngineeringPage({ searchParams }) {
     ? ['Engineering', 'Design', 'Stores']
     : headDepartments(user).filter(d => ['Engineering', 'Design', 'Stores'].includes(d));
 
-  return <EngineeringWorkspace projects={projects} changeNotes={changeNotes} partUsage={partUsage}
+  return <EngineeringWorkspace projects={projects}
     canApproveEcn={canApproveEcn} initialTab={sp?.tab} departments={departments} />;
 }

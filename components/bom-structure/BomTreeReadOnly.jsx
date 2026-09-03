@@ -30,6 +30,9 @@ const ITEM_AUTO_COLLAPSE_THRESHOLD = 15;
 function ItemRow({ item, node, ancestorLines, isLast }) {
   const showRolled = item.rolled_qty != null && node.rollup_qty !== 1;
   const ambiguous = hasAmbiguousQty(item.qty_text);
+  // Real pr_no (round 3 Phase B) wins over the legacy free-text pr_ref — same "structured value
+  // preferred, free text as a pre-unified-PR-flow fallback" precedent as BomTable's own PR column.
+  const prLabel = item.pr_no || item.pr_ref;
   return (
     <div className="flex items-center gap-0 py-1 pl-1 pr-2 text-sm text-muted-foreground">
       {ancestorLines.map((hasLine, i) => <TreeRail key={i} vertical={hasLine} />)}
@@ -39,6 +42,7 @@ function ItemRow({ item, node, ancestorLines, isLast }) {
         <span className="mr-1 text-[11px] tnum text-muted-foreground/70">
           BM-{item.id}
           {item.catalog_item_code && <> · {item.catalog_item_code}</>}
+          {prLabel && <> · {prLabel}</>}
         </span>
         {item.material_description}
       </span>
@@ -193,6 +197,7 @@ export default function BomTreeReadOnly({ assemblies, unassignedItems, project, 
   const unassignedMatches = query.trim() && displayUnassignedItems.some(it =>
     it.material_description.toLowerCase().includes(query.trim().toLowerCase()) ||
     (it.catalog_item_code || '').toLowerCase().includes(query.trim().toLowerCase()) ||
+    (it.pr_no || it.pr_ref || '').toLowerCase().includes(query.trim().toLowerCase()) ||
     `bm-${it.id}`.includes(query.trim().toLowerCase())
   );
   const effectiveUnassignedShown = unassignedShown || unassignedMatches;
@@ -310,6 +315,7 @@ export default function BomTreeReadOnly({ assemblies, unassignedItems, project, 
                       <span className="mr-1 text-[11px] tnum text-muted-foreground/70">
                         BM-{it.id}
                         {it.catalog_item_code && <> · {it.catalog_item_code}</>}
+                        {(it.pr_no || it.pr_ref) && <> · {it.pr_no || it.pr_ref}</>}
                       </span>
                       {it.material_description}
                     </span>

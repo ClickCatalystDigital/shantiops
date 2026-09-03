@@ -20,14 +20,28 @@ import MoveAssemblyDialog from './MoveAssemblyDialog';
 import ReleaseReadinessPanel from './ReleaseReadinessPanel';
 import { nodePath } from '@/lib/bom-tree.mjs';
 
-export default function BomStructureWorkspace({ projects }) {
+// `projectId`/`onProjectIdChange`/`showReleased`/`onShowReleasedChange` (round 3 Phase A, all
+// optional) — controlled by EngineeringWorkspace's own shared project selector, which replaces
+// this component's own picker UI when present. Falls back to internal state (and renders its own
+// picker) when omitted, so a hypothetical future standalone caller keeps working unchanged — cheap
+// insurance, not speculative; matches the controlled-with-uncontrolled-fallback shape already
+// normal in this codebase.
+export default function BomStructureWorkspace({
+  projects, projectId: controlledProjectId, onProjectIdChange,
+  showReleased: controlledShowReleased, onShowReleasedChange,
+}) {
   const router = useRouter();
-  const [projectId, setProjectId] = useState('');
+  const controlled = controlledProjectId !== undefined;
+  const [internalProjectId, setInternalProjectId] = useState('');
   // Default hides a project once its BOM has been released at least once — the picker would
   // otherwise only ever grow as more projects finish Engineering's own work here. Never filters
   // out a project you already have open (see selectedProject below, resolved against the full
   // `projects` prop, not this filtered view) — only the picker's own option list.
-  const [showReleased, setShowReleased] = useState(false);
+  const [internalShowReleased, setInternalShowReleased] = useState(false);
+  const projectId = controlled ? controlledProjectId : internalProjectId;
+  const showReleased = controlled ? !!controlledShowReleased : internalShowReleased;
+  const setProjectId = controlled ? onProjectIdChange : setInternalProjectId;
+  const setShowReleased = controlled ? onShowReleasedChange : setInternalShowReleased;
   const [assemblies, setAssemblies] = useState(null);
   const [projectBom, setProjectBom] = useState(null);
   const [releaseStatus, setReleaseStatus] = useState(null);
@@ -161,18 +175,20 @@ export default function BomStructureWorkspace({ projects }) {
             'Build assemblies, link drawings, and review release readiness.'
           )}
         </CardDescription>
-        <CardAction className="flex items-center gap-2">
-          <Button size="sm" variant={showReleased ? 'secondary' : 'outline'} onClick={() => setShowReleased(v => !v)}>
-            {showReleased ? 'Showing released' : 'Show released too'}
-          </Button>
-          <SearchableSelect
-            className="w-64"
-            value={projectId} onChange={setProjectId}
-            placeholder="Pick a project…"
-            options={visibleProjects.map(p => ({ value: String(p.id), label: `${p.project_no} · ${p.customer_name}` }))}
-            displayValue={selectedProject ? `${selectedProject.project_no} · ${selectedProject.customer_name}` : undefined}
-          />
-        </CardAction>
+        {!controlled && (
+          <CardAction className="flex items-center gap-2">
+            <Button size="sm" variant={showReleased ? 'secondary' : 'outline'} onClick={() => setShowReleased(v => !v)}>
+              {showReleased ? 'Showing released' : 'Show released too'}
+            </Button>
+            <SearchableSelect
+              className="w-64"
+              value={projectId} onChange={setProjectId}
+              placeholder="Pick a project…"
+              options={visibleProjects.map(p => ({ value: String(p.id), label: `${p.project_no} · ${p.customer_name}` }))}
+              displayValue={selectedProject ? `${selectedProject.project_no} · ${selectedProject.customer_name}` : undefined}
+            />
+          </CardAction>
+        )}
       </CardHeader>
 
       {!projectId ? (

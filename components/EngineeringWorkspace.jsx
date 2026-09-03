@@ -5,7 +5,7 @@
 // Common/Uncommon, and Engineering Change Notes. Per-project BOM *editing* stays on the project
 // page (Engineering's BomPanel/BomTable) — this is the cross-project oversight surface, same split
 // InstallationWorkspace draws between the project-page milestone action and its own workspace.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -13,18 +13,30 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
   LayersIcon, SearchIcon, Repeat2Icon, FileEditIcon, PlusIcon, LayoutTemplateIcon,
-  ClipboardListIcon, CheckIcon, FileStackIcon,
+  ClipboardListIcon, CheckIcon, FileStackIcon, FilterIcon,
 } from 'lucide-react';
 import { api, showToast, formatDate } from '@/lib/client';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
+import SearchableSelect from '@/components/SearchableSelect';
 import BomTemplateManager from '@/components/BomTemplateManager';
 import BomStructureWorkspace from '@/components/bom-structure/BomStructureWorkspace';
 import { RaisePrTab, ReleaseBomTab } from '@/components/PrWorkspace';
+
+// Round 3 Phase A — which tabs the shared project-selector header (below) applies to, and in which
+// shape. "BOM Templates"/"PR Templates" are deliberately excluded alongside Purchase Requests: both
+// BomTemplateManager instances manage reusable, cross-project templates (their own internal
+// "Apply to project" picker lives inside a dialog, not the workspace level) — a single/multi
+// "current project" doesn't map onto either any more than it does onto Purchase Requests' own
+// per-line multi-project repeater.
+const SINGLE_PROJECT_TABS = ['structure', 'pr_release'];
+const MULTI_PROJECT_TABS = ['where_used', 'common_uncommon', 'ecn'];
 
 // Same labeling convention as ProcurementWorkspace.jsx's projectLabel — a stock/sas BOM row's
 // project_id points at the sentinel system project, not a real one; "Stock"/"SO #..." reads better
@@ -63,25 +75,36 @@ const ITEMS = [
 
 // ---------- Where-Used ----------
 
-function WhereUsedTab() {
+// `projectIds` (round 3 Phase A, optional array of ids — empty/omitted = no filter, matching the
+// pre-existing all-projects default): threaded onto the search request as `project_ids=`. Re-runs
+// the last query automatically when the shared header's filter changes, but only once a search has
+// actually been performed — otherwise there's nothing to re-narrow yet.
+function WhereUsedTab({ projectIds = [] }) {
   const [q, setQ] = useState('');
   const [rows, setRows] = useState(null);
   const [loading, setLoading] = useState(false);
+  const idsKey = projectIds.join(',');
 
-  async function search(e) {
-    e.preventDefault();
-    if (!q.trim()) return;
+  async function runSearch(query) {
+    if (!query.trim()) return;
     setLoading(true);
-    try { setRows(await api(`/api/where-used?q=${encodeURIComponent(q)}`)); }
-    catch (err) { showToast(err.message, 'error'); }
+    try {
+      const suffix = idsKey ? `&project_ids=${idsKey}` : '';
+      setRows(await api(`/api/where-used?q=${encodeURIComponent(query)}${suffix}`));
+    } catch (err) { showToast(err.message, 'error'); }
     setLoading(false);
   }
+
+  useEffect(() => {
+    if (rows !== null) runSearch(q);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idsKey]);
 
   return (
     <Card>
       <CardHeader><CardTitle>Where-Used List</CardTitle></CardHeader>
       <CardContent className="flex flex-col gap-3">
-        <form onSubmit={search} className="flex gap-2">
+        <form onSubmit={e => { e.preventDefault(); runSearch(q); }} className="flex gap-2">
           <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Search a part description…" className="max-w-sm" />
           <Button type="submit" disabled={loading}>{loading ? 'Searching…' : 'Search'}</Button>
         </form>
@@ -118,9 +141,21 @@ function WhereUsedTab() {
 
 // ---------- Common / Uncommon ----------
 
-function CommonUncommonTab({ partUsage }) {
+// `projectIds` (round 3 Phase A, optional array of ids) — client-fetches /api/part-usage scoped to
+// it, rather than filtering a static prop client-side: classification (project_count >= 2) is only
+// honest when *recomputed* against the filtered set — filtering pre-computed rows would keep a part
+// reading "common" off its unfiltered count even once scoped down to where it barely appears.
+function CommonUncommonTab({ projectIds = [] }) {
   const [filter, setFilter] = useState('all');
-  const rows = partUsage.filter(r => filter === 'all' || r.classification === filter);
+  const [partUsage, setPartUsage] = useState(null);
+  const idsKey = projectIds.join(',');
+
+  useEffect(() => {
+    const suffix = idsKey ? `?project_ids=${idsKey}` : '';
+    api(`/api/part-usage${suffix}`).then(setPartUsage).catch(err => showToast(err.message, 'error'));
+  }, [idsKey]);
+
+  const rows = (partUsage || []).filter(r => filter === 'all' || r.classification === filter);
 
   return (
     <Card>
@@ -138,6 +173,7 @@ function CommonUncommonTab({ partUsage }) {
         </CardAction>
       </CardHeader>
       <CardContent>
+        {!partUsage ? <p className="text-sm text-muted-foreground">Loading…</p> : (
         <Table>
           <TableHeader>
             <TableRow>
@@ -160,6 +196,7 @@ function CommonUncommonTab({ partUsage }) {
             ))}
           </TableBody>
         </Table>
+        )}
       </CardContent>
     </Card>
   );
@@ -167,7 +204,7 @@ function CommonUncommonTab({ partUsage }) {
 
 // ---------- Engineering Change Notes ----------
 
-function EcnForm({ projects, onClose, router }) {
+function EcnForm({ projects, onClose, onCreated, router }) {
   const [form, setForm] = useState({ project_id: '', field_changed: '', old_value: '', new_value: '', reason: '' });
   const [saving, setSaving] = useState(false);
 
@@ -179,6 +216,7 @@ function EcnForm({ projects, onClose, router }) {
       await api('/api/engineering-change-notes', { method: 'POST', body: form });
       showToast('Change note raised');
       router.refresh();
+      onCreated?.();
       onClose();
     } catch (err) { showToast(err.message, 'error'); }
     setSaving(false);
@@ -222,14 +260,27 @@ const ECN_STATUS_CLS = {
   pending: '', approved: 'bg-success/10 text-success ring-success/20', rejected: 'bg-danger/10 text-danger ring-danger/20',
 };
 
-function EcnTab({ projects, changeNotes, canApprove }) {
+// `projectIds` (round 3 Phase A, optional array of ids) — client-fetches, replacing the old static
+// server-supplied `changeNotes` prop. `load()` is passed into EcnForm as `onCreated` so a freshly
+// raised note appears immediately — router.refresh() alone no longer touches this list once it's
+// client-fetched.
+function EcnTab({ projects, projectIds = [], canApprove }) {
   const router = useRouter();
   const [showForm, setShowForm] = useState(false);
+  const [changeNotes, setChangeNotes] = useState(null);
+  const idsKey = projectIds.join(',');
+
+  function load() {
+    const suffix = idsKey ? `?project_ids=${idsKey}` : '';
+    return api(`/api/engineering-change-notes${suffix}`).then(setChangeNotes).catch(err => showToast(err.message, 'error'));
+  }
+  useEffect(() => { load(); }, [idsKey]);
 
   async function decide(note, status) {
     try {
       await api(`/api/engineering-change-notes/${note.id}`, { method: 'PATCH', body: { status } });
       showToast(`Change note ${status}`);
+      await load();
       router.refresh();
     } catch (err) { showToast(err.message, 'error'); }
   }
@@ -241,7 +292,9 @@ function EcnTab({ projects, changeNotes, canApprove }) {
         <CardAction><Button size="sm" onClick={() => setShowForm(true)}><PlusIcon /> Raise ECN</Button></CardAction>
       </CardHeader>
       <CardContent>
-        {changeNotes.length === 0 ? (
+        {!changeNotes ? (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : changeNotes.length === 0 ? (
           <p className="text-sm text-muted-foreground">No change notes yet.</p>
         ) : (
           <Table>
@@ -281,14 +334,83 @@ function EcnTab({ projects, changeNotes, canApprove }) {
           </Table>
         )}
       </CardContent>
-      {showForm && <EcnForm projects={projects} onClose={() => setShowForm(false)} router={router} />}
+      {showForm && <EcnForm projects={projects} onClose={() => setShowForm(false)} onCreated={load} router={router} />}
     </Card>
   );
 }
 
+// ---------- Shared project selector header ----------
+// Round 3 Phase A: one control, rendered via WorkspaceSidebar's `header` prop, owned by the shell so
+// its state survives a tab switch. Shape follows the active tab — single project (BOMs/Release BOM),
+// multi-project checklist (Where-Used/Common-Uncommon/Change Notes), or hidden (everything else).
+
+function ProjectHeaderBar({
+  tab, projects, globalProjectId, setGlobalProjectId, globalShowReleased, setGlobalShowReleased,
+  globalProjectIds, setGlobalProjectIds,
+}) {
+  if (SINGLE_PROJECT_TABS.includes(tab)) {
+    const selectedProject = projects.find(p => String(p.id) === globalProjectId);
+    const visibleProjects = globalShowReleased ? projects : projects.filter(p => !p.bom_release_revision);
+    return (
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <Button size="sm" variant={globalShowReleased ? 'secondary' : 'outline'} onClick={() => setGlobalShowReleased(v => !v)}>
+          {globalShowReleased ? 'Showing released' : 'Show released too'}
+        </Button>
+        <SearchableSelect
+          className="w-72"
+          value={globalProjectId} onChange={setGlobalProjectId}
+          placeholder="Pick a project…"
+          options={visibleProjects.map(p => ({ value: String(p.id), label: `${p.project_no} · ${p.customer_name}` }))}
+          displayValue={selectedProject ? `${selectedProject.project_no} · ${selectedProject.customer_name}` : undefined}
+        />
+      </div>
+    );
+  }
+
+  if (MULTI_PROJECT_TABS.includes(tab)) {
+    function toggle(id) {
+      setGlobalProjectIds(prev => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id); else next.add(id);
+        return next;
+      });
+    }
+    return (
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button size="sm" variant="outline">
+              <FilterIcon data-icon="inline-start" />
+              {globalProjectIds.size === 0 ? 'All projects' : `${globalProjectIds.size} project${globalProjectIds.size === 1 ? '' : 's'}`}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="w-72 p-2">
+            <div className="flex items-center justify-between px-1 pb-2">
+              <span className="text-xs font-medium text-muted-foreground">Filter by project</span>
+              {globalProjectIds.size > 0 && (
+                <button type="button" className="text-xs text-muted-foreground hover:text-foreground" onClick={() => setGlobalProjectIds(new Set())}>Clear</button>
+              )}
+            </div>
+            <div className="flex max-h-72 flex-col gap-0.5 overflow-y-auto">
+              {projects.map(p => (
+                <label key={p.id} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-sm hover:bg-muted/40">
+                  <Checkbox checked={globalProjectIds.has(p.id)} onCheckedChange={() => toggle(p.id)} />
+                  <span className="truncate">{p.project_no} · {p.customer_name}</span>
+                </label>
+              ))}
+            </div>
+          </PopoverContent>
+        </Popover>
+      </div>
+    );
+  }
+
+  return null;
+}
+
 // ---------- Shell ----------
 
-export default function EngineeringWorkspace({ projects, changeNotes, partUsage, canApproveEcn = false, initialTab, departments = [] }) {
+export default function EngineeringWorkspace({ projects, canApproveEcn = false, initialTab, departments = [] }) {
   const [tab, setTab] = useState(ITEMS.some(i => i.key === initialTab) ? initialTab : 'structure');
   // Same small cross-tab handoff PrWorkspace.jsx owns internally for its own "PR Templates" tab —
   // reusing this workspace's existing setTab instead of a second tab-state.
@@ -298,13 +420,39 @@ export default function EngineeringWorkspace({ projects, changeNotes, partUsage,
     setTab('pr_raise');
   }
 
+  const [globalProjectId, setGlobalProjectId] = useState('');
+  const [globalShowReleased, setGlobalShowReleased] = useState(false);
+  const [globalProjectIds, setGlobalProjectIds] = useState(new Set());
+  // Switching from a single-select tab into a multi-select one seeds the checklist with whichever
+  // one project was picked there, as a starting point — still fully clearable/expandable. Only seeds
+  // once (guarded on the multi-set being empty), so it never stomps a filter already built up.
+  useEffect(() => {
+    if (MULTI_PROJECT_TABS.includes(tab) && globalProjectIds.size === 0 && globalProjectId) {
+      setGlobalProjectIds(new Set([Number(globalProjectId)]));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
+  const globalProjectIdsArr = [...globalProjectIds];
+
+  const showHeader = SINGLE_PROJECT_TABS.includes(tab) || MULTI_PROJECT_TABS.includes(tab);
+
   return (
-    <WorkspaceSidebar title="Engineering" icon={LayersIcon} items={ITEMS} activeKey={tab} onChange={setTab}>
-      {tab === 'structure' && <BomStructureWorkspace projects={projects} />}
+    <WorkspaceSidebar title="Engineering" icon={LayersIcon} items={ITEMS} activeKey={tab} onChange={setTab}
+      header={showHeader && (
+        <ProjectHeaderBar tab={tab} projects={projects}
+          globalProjectId={globalProjectId} setGlobalProjectId={setGlobalProjectId}
+          globalShowReleased={globalShowReleased} setGlobalShowReleased={setGlobalShowReleased}
+          globalProjectIds={globalProjectIds} setGlobalProjectIds={setGlobalProjectIds} />
+      )}>
+      {tab === 'structure' && (
+        <BomStructureWorkspace projects={projects}
+          projectId={globalProjectId} onProjectIdChange={setGlobalProjectId}
+          showReleased={globalShowReleased} onShowReleasedChange={setGlobalShowReleased} />
+      )}
       {tab === 'bom_templates' && <BomTemplateManager kind="bom" title="BOM Templates" projects={projects} />}
-      {tab === 'where_used' && <WhereUsedTab />}
-      {tab === 'common_uncommon' && <CommonUncommonTab partUsage={partUsage} />}
-      {tab === 'ecn' && <EcnTab projects={projects} changeNotes={changeNotes} canApprove={canApproveEcn} />}
+      {tab === 'where_used' && <WhereUsedTab projectIds={globalProjectIdsArr} />}
+      {tab === 'common_uncommon' && <CommonUncommonTab projectIds={globalProjectIdsArr} />}
+      {tab === 'ecn' && <EcnTab projects={projects} projectIds={globalProjectIdsArr} canApprove={canApproveEcn} />}
       {tab === 'pr_raise' && (
         <RaisePrTab departments={departments} projects={projects}
           prTemplatePrefill={prTemplatePrefill} onPrefillConsumed={() => setPrTemplatePrefill(null)} />
@@ -312,7 +460,10 @@ export default function EngineeringWorkspace({ projects, changeNotes, partUsage,
       {tab === 'pr_templates' && (
         <BomTemplateManager kind="pr" title="PR Templates" projects={projects} onUseInRaisePr={useInRaisePr} />
       )}
-      {tab === 'pr_release' && <ReleaseBomTab projects={projects} departments={departments} />}
+      {tab === 'pr_release' && (
+        <ReleaseBomTab projects={projects} departments={departments}
+          projectId={globalProjectId} onProjectIdChange={setGlobalProjectId} />
+      )}
     </WorkspaceSidebar>
   );
 }

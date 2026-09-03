@@ -39,12 +39,15 @@ export default function Nav({ user, reportDepartments = [] }) {
   const activeDept = searchParams.get('dept');
   // Tasks is a shared department-aware workspace; Home remains the common landing tab. Workers
   // stays Production's own shop-floor surface, enforced by the page via inDepartment().
-  // Group 5 Bundle A — the unified PR flow's shared "Requests" surface for Eng/Design/Stores.
-  // A PM sees it as part of the all-department oversight tabs; a dual-role head with Procurement
-  // access keeps the existing single Procurement workspace experience.
-  const canSeeRequests = isDeptPM || (
-    !departments.includes('Procurement') && ['Engineering', 'Design', 'Stores'].some(d => departments.includes(d))
-  );
+  // Group 5 Bundle A — the unified PR flow's shared "Requests" surface, now Stores-only in the nav
+  // (Engineering workspace round 3): Purchase Requests/PR Templates/Release BOM are also reachable
+  // from Engineering's own sidebar, so a Design/Engineering-only head no longer needs this tab
+  // listed twice — /pr itself is untouched, still reachable by direct URL for anyone with real
+  // department access, only the menu entry is gated tighter. Any head holding Stores keeps seeing
+  // it in every combination (Stores alone, Stores+Engineering, Stores+Design+Engineering) — fully
+  // unaffected. A PM still sees it, matching their existing all-department oversight tab set (same
+  // dual-visibility precedent Release BOM's own button already established).
+  const canSeeRequests = isDeptPM || (!departments.includes('Procurement') && departments.includes('Stores'));
   // Workspace tabs are derived from current department grants. Shared Sales/Marketing and
   // Design/Engineering workspaces appear once, so adding access in Settings immediately changes
   // the user's tab set on the next render without hard-coded per-user roles.
