@@ -14,7 +14,6 @@ import { PlusIcon, SearchIcon } from 'lucide-react';
 
 const FILTERS = [
   { key: 'missingDrawing', label: 'Missing drawing' },
-  { key: 'missingCalc', label: 'Missing calc' },
   { key: 'pendingEcn', label: 'Pending ECN' },
 ];
 
@@ -59,7 +58,6 @@ export default function BomTree({
     for (const a of assemblies) {
       const isMatch =
         (activeFilters.has('missingDrawing') && !a.drawing_count) ||
-        (activeFilters.has('missingCalc') && !a.calc_count) ||
         (activeFilters.has('pendingEcn') && (a.items || []).some(it => pendingEcnBomItemIds?.has(it.id)));
       if (isMatch) {
         let cur = a;

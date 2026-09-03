@@ -23,12 +23,6 @@ export async function GET(req, { params }) {
   if (!canRelease(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const bomCount = await queryOne('SELECT COUNT(*) AS n FROM bom_items WHERE project_id = ?', [params.id]);
   const drawingLinked = await queryOne('SELECT COUNT(*) AS n FROM bom_items WHERE project_id = ? AND drawing_id IS NOT NULL', [params.id]);
-  // BOM workspace Phase 2 readiness strip — all three kept at item-scale, same denominator as
-  // bomCount/drawingLinked, purely informational (never a release gate, per the existing
-  // bomCount.n>0-only check below, unchanged).
-  const calcLinked = await queryOne(
-    `SELECT COUNT(*) AS n FROM bom_items b WHERE b.project_id = ? AND b.assembly_id IN
-      (SELECT DISTINCT assembly_id FROM bom_assembly_calc_sheets)`, [params.id]);
   const pendingEcnCount = await queryOne(
     `SELECT COUNT(*) AS n FROM bom_change_notes WHERE project_id = ? AND status = 'pending'`, [params.id]);
   const unassignedCount = await queryOne(
@@ -48,7 +42,7 @@ export async function GET(req, { params }) {
   const released = !!(milestone?.actual_end || milestone?.status === 'done');
   return NextResponse.json({
     bomCount: bomCount?.n || 0, drawingLinked: drawingLinked?.n || 0, released,
-    calcLinked: calcLinked?.n || 0, pendingEcnCount: pendingEcnCount?.n || 0, unassignedCount: unassignedCount?.n || 0,
+    pendingEcnCount: pendingEcnCount?.n || 0, unassignedCount: unassignedCount?.n || 0,
     nextRevision: (project?.bom_release_revision || 0) + 1,
     milestoneId: milestone?.id || null, templatesApplied,
   });

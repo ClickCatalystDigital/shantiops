@@ -158,7 +158,7 @@ export default function BomStructureWorkspace({ projects }) {
               {selectedProject.series && <Badge variant="outline" className="text-[10px] font-normal">{selectedProject.series}</Badge>}
             </span>
           ) : (
-            'Build assemblies, link drawings and calc sheets, and review release readiness.'
+            'Build assemblies, link drawings, and review release readiness.'
           )}
         </CardDescription>
         <CardAction className="flex items-center gap-2">

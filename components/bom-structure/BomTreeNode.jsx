@@ -120,7 +120,6 @@ export default function BomTreeNode({
         <span className="shrink-0 text-xs text-muted-foreground">
           {itemCount > 0 && `${itemCount} item${itemCount === 1 ? '' : 's'}`}
           {node.drawing_count > 0 && ` · ${node.drawing_count} dwg`}
-          {node.calc_count > 0 && ` · ${node.calc_count} calc`}
         </span>
 
         <div className="flex shrink-0 items-center gap-0.5 opacity-0 group-hover:opacity-100">

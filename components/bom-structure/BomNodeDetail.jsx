@@ -10,12 +10,11 @@ import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   ChevronRightIcon, FolderInputIcon, CopyIcon, TrashIcon,
-  LayoutGridIcon, PackageIcon, FileTextIcon, CalculatorIcon, HistoryIcon,
+  LayoutGridIcon, PackageIcon, FileTextIcon, HistoryIcon,
 } from 'lucide-react';
 import NodeOverviewTab from './NodeOverviewTab';
 import NodeItemsTab from './NodeItemsTab';
 import NodeDrawingsTab from './NodeDrawingsTab';
-import NodeCalcTab from './NodeCalcTab';
 import NodeHistoryTab from './NodeHistoryTab';
 
 export default function BomNodeDetail({
@@ -27,7 +26,6 @@ export default function BomNodeDetail({
     { key: 'overview', label: 'Overview', icon: LayoutGridIcon },
     { key: 'items', label: 'Items', icon: PackageIcon, count: node.items?.length },
     { key: 'drawings', label: 'Drawings', icon: FileTextIcon, count: node.drawing_count },
-    { key: 'calcs', label: 'Calculations', icon: CalculatorIcon, count: node.calc_count },
     { key: 'history', label: 'History', icon: HistoryIcon },
   ];
   const [renaming, setRenaming] = useState(false);
@@ -115,9 +113,6 @@ export default function BomNodeDetail({
         </TabsContent>
         <TabsContent value="drawings" className="animate-in fade-in-0 slide-in-from-bottom-1 duration-150">
           <NodeDrawingsTab projectId={projectId} node={node} onLinkChange={onLinkChange} />
-        </TabsContent>
-        <TabsContent value="calcs" className="animate-in fade-in-0 slide-in-from-bottom-1 duration-150">
-          <NodeCalcTab projectId={projectId} node={node} onLinkChange={onLinkChange} />
         </TabsContent>
         <TabsContent value="history" className="animate-in fade-in-0 slide-in-from-bottom-1 duration-150">
           <NodeHistoryTab node={node} />

@@ -30,7 +30,6 @@ export default function ReleaseReadinessPanel({ status, onRelease, releasing }) 
         <div className="flex flex-wrap divide-x">
           <Stat value={status.bomCount} label={status.bomCount === 1 ? 'item' : 'items'} />
           <Stat value={status.drawingLinked} label="drawing-linked" />
-          <Stat value={status.calcLinked} label="calc-linked" />
           <Stat value={status.unassignedCount} label="unassigned" tone="warn" />
           <Stat value={status.pendingEcnCount} label={status.pendingEcnCount === 1 ? 'pending ECN' : 'pending ECNs'} tone="warn" />
         </div>

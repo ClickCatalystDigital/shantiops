@@ -36,6 +36,7 @@ import { Textarea } from '@/components/ui/textarea';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 import { TONE_CLASS } from '@/lib/status-styles';
 import LinkifiedText from '@/components/LinkifiedText';
+import { EntityCode } from '@/components/EntityRefLink';
 import { findEntityRefTokens } from '@/lib/entity-ref-tokens';
 
 const TYPE_STYLE = {
@@ -96,6 +97,11 @@ const PANELS = [
   {
     key: 'drawings', label: 'Drawings', icon: PencilRuler, description: 'Design deliverable checklist + files',
     help: 'A checklist of design drawings for this project — not a CAD studio. Upload files and track status per drawing.',
+    group: 'Drawings',
+  },
+  {
+    key: 'calc-drawing-links', label: 'Calc Links', icon: Calculator, description: 'Which calc sheet substantiates which drawing',
+    help: 'A calc sheet substantiates a drawing, not a BOM structural node. Link one or more calc sheets to each drawing here.',
     group: 'Drawings',
   },
   {
@@ -311,6 +317,7 @@ export default function CalcWorkspace({ initialState, sheetId, sheetChain, user,
           {panel === 'tables' && <TablesPanel tables={tables} router={router} nameList={nameList} variables={variables} />}
           {panel === 'audit' && <AuditPanel variables={variables} formulas={formulas} tables={tables} snapshots={snapshots} router={router} />}
           {panel === 'drawings' && <DrawingsPanel drawings={drawings} projectId={sheetChain?.projectId} router={router} user={user} designTeam={designTeam} />}
+          {panel === 'calc-drawing-links' && <CalcDrawingLinksPanel projectId={sheetChain?.projectId} />}
           {panel === 'portfolio' && <PortfolioPanel />}
         </div>
       </SidebarInset>
@@ -2310,6 +2317,107 @@ function DrawingsPanel({ drawings, projectId, router, user, designTeam }) {
         {drawings.map((d) => <DrawingCard key={d.id} drawing={d} router={router} canApprove={canApprove} designTeam={designTeam} />)}
         {drawings.length === 0 && <p className="text-sm text-muted-foreground">No drawings yet.</p>}
       </div>
+    </div>
+  );
+}
+
+// ---- Calc Links (round 2 — a calc sheet substantiates a DRAWING, not a bom_assemblies tree node) --
+// Client-fetches its own data on mount (same shape as PortfolioPanel below), not the server-hydrated
+// `drawings` prop DrawingsPanel uses — a calc<->drawing link is neither sheet- nor registry-scoped.
+function CalcDrawingLinksPanel({ projectId }) {
+  const [drawings, setDrawings] = useState(null);
+  const [sheets, setSheets] = useState(null);
+  const [expandedId, setExpandedId] = useState(null);
+
+  useEffect(() => {
+    if (!projectId) return;
+    api(`/api/calc-drawings?project_id=${projectId}`).then((d) => setDrawings(d.drawings)).catch((err) => showToast(err.message, 'error'));
+    api(`/api/calc-sheets?project_id=${projectId}`).then((d) => setSheets(d.sheets)).catch((err) => showToast(err.message, 'error'));
+  }, [projectId]);
+
+  if (!projectId) return <p className="text-sm text-muted-foreground">Open a project to link calc sheets to its drawings.</p>;
+  if (!drawings || !sheets) return <p className="text-sm text-muted-foreground">Loading…</p>;
+  if (!drawings.length) return <p className="text-sm text-muted-foreground">No drawings yet — add one in Drawings first.</p>;
+
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-xs text-muted-foreground">Link a calculation sheet to whichever drawing it substantiates.</p>
+      {drawings.map((d) => (
+        <DrawingCalcLinksRow key={d.id} drawing={d} sheets={sheets} expanded={expandedId === d.id}
+          onToggle={() => setExpandedId(expandedId === d.id ? null : d.id)} />
+      ))}
+    </div>
+  );
+}
+
+function DrawingCalcLinksRow({ drawing, sheets, expanded, onToggle }) {
+  const [links, setLinks] = useState(null);
+  const [pickerValue, setPickerValue] = useState('');
+
+  function loadLinks() {
+    api(`/api/calc-drawings/${drawing.id}/calc-sheets`).then(setLinks).catch((err) => showToast(err.message, 'error'));
+  }
+  useEffect(() => { if (expanded && links === null) loadLinks(); }, [expanded]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function link(calcSheetId) {
+    setPickerValue('');
+    try {
+      await api(`/api/calc-drawings/${drawing.id}/calc-sheets`, { method: 'POST', body: { calc_sheet_id: Number(calcSheetId) } });
+      loadLinks();
+    } catch (err) { showToast(err.message, 'error'); }
+  }
+  async function unlink(calcSheetId) {
+    try {
+      await api(`/api/calc-drawings/${drawing.id}/calc-sheets?calc_sheet_id=${calcSheetId}`, { method: 'DELETE' });
+      loadLinks();
+    } catch (err) { showToast(err.message, 'error'); }
+  }
+
+  const linkedIds = new Set((links || []).map((l) => l.id));
+  const options = sheets.filter((s) => !linkedIds.has(s.id));
+
+  return (
+    <div className="rounded-md border">
+      <button type="button" onClick={onToggle} className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left text-sm hover:bg-muted/40">
+        <div className="flex items-center gap-2">
+          <FileTextIcon className="size-4 shrink-0 text-muted-foreground" />
+          <EntityCode code={drawing.dgNo} fallback={drawing.name} />
+        </div>
+        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+          {links ? `${links.length} linked` : ''}
+          {expanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+        </span>
+      </button>
+      {expanded && (
+        <div className="flex flex-col gap-2 border-t p-3">
+          <Select value={pickerValue} onValueChange={link}>
+            <SelectTrigger className="h-8 w-72"><SelectValue placeholder="Link a calculation sheet…" /></SelectTrigger>
+            <SelectContent>
+              {options.length === 0 && <div className="px-2 py-1.5 text-sm text-muted-foreground">No matching calc sheets</div>}
+              {options.map((s) => <SelectItem key={s.id} value={String(s.id)}>{s.cs_no || 'CS'} · {s.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          {links === null ? (
+            <p className="text-sm text-muted-foreground">Loading…</p>
+          ) : links.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No calculation sheets linked yet.</p>
+          ) : (
+            <div className="flex flex-col divide-y rounded-md border">
+              {links.map((s) => (
+                <div key={s.id} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
+                  <div className="flex items-center gap-2">
+                    <Calculator className="size-4 shrink-0 text-muted-foreground" />
+                    <EntityCode code={s.cs_no} fallback={s.name} />
+                  </div>
+                  <Button size="icon-sm" variant="ghost" className="text-danger" onClick={() => unlink(s.id)} aria-label="Unlink">
+                    <Trash2 className="size-3.5" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
