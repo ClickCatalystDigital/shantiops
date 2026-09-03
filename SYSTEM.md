@@ -22,10 +22,12 @@ a reader who finds the old `V3_CHANGES.md` §12 text elsewhere knows it's stale.
 reversal.
 
 Everything in this file reflects the **current, working build**, updated as work lands — most
-recently 2026-09-03 (§5ax, real-NIC-e-way-bill-API research plus the prerequisite validation build
-it surfaced — transport distance/mode, a genuinely-missing `bom_items.hsn_code` column, structured
-destination-data validation, and credentials encrypted at rest — with the actual NIC HTTP call
-deliberately still stubbed); §5aw, a company-onboarding UI plus direct-to-NIC e-way-bill credential
+recently 2026-09-03 (§5ax, the real NIC E-Way Bill client now implemented — `authenticate`/
+`GENEWAYBILL`/`CANEWB` against the live official v1.03 spec, crypto self-checked locally, itemList
+built from real invoice line items rather than fabricating one — not yet live-tested, no NIC account
+exists yet); the prerequisite validation build before it — transport distance/mode, a
+genuinely-missing `bom_items.hsn_code` column, structured destination-data validation, and
+credentials encrypted at rest; §5aw, a company-onboarding UI plus direct-to-NIC e-way-bill credential
 storage — explicitly no GSP/private-vendor option anywhere, a product decision the user made explicit
 mid-session); §5av, giving Accounts real, ownership-scoped write access to Sales Invoices
 and Dispatch's packing lists — a gap found by directly asking "can Accounts actually do this
@@ -6189,6 +6191,48 @@ research:
 
 Full detail in the session's plan file. Still no live API call made, still no code touched by this
 research pass — see the next entry for the actual implementation that followed it the same day.
+
+**Same day, immediately after — the real client implemented (not yet live-tested against NIC).**
+The user asked directly why implementation couldn't start now; the honest answer: the *code* can be
+written and verified against the confirmed spec, only a *live network call* can't happen without
+real credentials (no dry-run exists, so a successful call is a real, legally-binding e-way bill).
+Built on that basis:
+- **`lib/eway-bill-crypto.js`** (new) — the RSA-PKCS1 + AES-256-ECB-PKCS7 scheme, pulled out
+  dependency-free so a plain-node self-check (`scripts/eway-bill-crypto-selfcheck.mjs`) can verify
+  it against a locally-generated RSA keypair (encrypt with the "public" half, decrypt with the
+  "private" half, exactly mirroring what NIC's server does) — the maximum verification possible
+  before a real account exists. All checks pass.
+- **`lib/eway-bill.js`** — real `authenticate()` (per-company token cache honoring NIC's 6-hour
+  window, never re-authenticating early), real `GENEWAYBILL`/`CANEWB` calls, error mapping.
+- **Two real bugs found and fixed while wiring this**: `app_key`'s raw random bytes were being
+  RSA-encrypted via a lossy string round-trip (`.toString('binary')` then re-encoded as UTF-8 —
+  silently corrupts any byte ≥ 0x80); fixed to pass the Buffer directly. The GSTIN was never
+  threaded into the NIC request headers at all — `loadCredentials()` now merges it in from
+  `company_settings` (where it actually lives; the stored credential blob never had it).
+- **A real, newly-found data gap, closed**: `company_settings` had no `pincode`/`place` at all —
+  both hard-required by NIC (`fromPincode`/`fromPlace`) with no other source anywhere in this app.
+  New columns + two new Accounts → Company Settings fields.
+- **A deeper structural gap, resolved cleanly rather than worked around**: NIC's `itemList` needs a
+  real `taxableAmount` per line, but `packing_items` carries no price at all — only
+  `sales_invoice_items` does (real HSN/qty/rate/amount/GST-rate per line). Rather than fabricate a
+  split of packing-list quantities against invoice totals (a real compliance risk on a government
+  filing), `itemList` is now built directly from the linked Sales Invoice's own priced line items.
+  New prerequisite gate: a packing list must have a linked, **issued** Sales Invoice before
+  generation — HSN completeness is now checked against the invoice's own items (the actual source),
+  not `packing_items`. **Known, documented limitation, not solved**: this assumes the packing list
+  represents the invoice in full — a genuine partial shipment against one invoice has no way today
+  to know which specific invoice lines are in *this* packing list, since no link between
+  `packing_items` and `sales_invoice_items` exists. Needs a real design pass if/when partial
+  dispatch against an already-issued invoice becomes a real case to support.
+- **Live-verified end to end** against a disposable full-chain scenario (a company with pincode/
+  place filled in, a complete customer, a real issued invoice with an HSN-coded priced line, a
+  fully-specified packing list: distance/mode/vehicle/invoice all linked): every validation gate
+  passes correctly on complete data, the real payload builds without error, credentials decrypt
+  correctly (GSTIN included), and the pipeline reaches exactly the one point that cannot be tested
+  without real NIC config — a clean `EWAY_BILL_BASE_URL`/`EWAY_BILL_PUBLIC_KEY` "not configured"
+  error, not a crash. Disposable rows deleted afterward (in FK-safe order — `packing_lists` before
+  `sales_invoices`, since the first references the second), confirmed zero residue by direct query.
+  `npm run lint` and a full `npm run build` both clean.
 
 ## 6. Customer Portal (read-only, external)
 
