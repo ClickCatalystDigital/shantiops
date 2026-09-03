@@ -836,7 +836,7 @@ export const DEPARTMENT_HELP = {
       ], {
         checklist: [
           'When you add a plate/section BOM line, pick its Category and fill in Length/Width/Thickness (and MOC) — a line without these is simply invisible to matching, no error, it just goes to Procurement like before.',
-          'Release the BOM the normal way: Engineering → Release BOM (its own tab in Engineering's sidebar, also reachable from the BOMs workspace's own Release button, or from Requests if you also hold Stores) → pick the project → Release BOM. Matching runs automatically the instant you release — there is no separate step or button for it.',
+          'Release the BOM the normal way: Engineering → Release BOM (its own tab in Engineering\'s sidebar, also reachable from the BOMs workspace\'s own Release button, or from Requests if you also hold Stores) → pick the project → Release BOM. Matching runs automatically the instant you release — there is no separate step or button for it.',
           'You do not need to check whether a line matched. Stores sees a "Remnant reserved" badge and Production sees a ready-to-cut piece; your BOM view looks the same either way.',
         ],
       }),
