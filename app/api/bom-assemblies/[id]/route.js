@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne, queryAll } from '@/lib/db';
-import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
-import { requireAction } from '@/lib/action-permissions';
+import { getFreshSessionUser } from '@/lib/auth';
+import { requireEngineeringAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { wouldCreateCycle } from '@/lib/bom-structure.mjs';
 
@@ -16,9 +16,7 @@ import { wouldCreateCycle } from '@/lib/bom-structure.mjs';
 // update. A body is never expected to mix the two — the UI only ever fires one or the other.
 export async function PATCH(req, { params }) {
   const user = await getFreshSessionUser();
-  const denied = requireDepartment(user, 'Engineering');
-  if (denied) return denied;
-  const actionDenied = await requireAction(user, 'Engineering', 'engineering.assembly.add');
+  const actionDenied = await requireEngineeringAction(user, 'engineering.assembly.add');
   if (actionDenied) return actionDenied;
 
   const row = await queryOne('SELECT * FROM bom_assemblies WHERE id = ?', [params.id]);
@@ -91,9 +89,7 @@ export async function PATCH(req, { params }) {
 // bom-items DELETE blocking on packed/reserved rows, rather than silently cascading a whole subtree.
 export async function DELETE(req, { params }) {
   const user = await getFreshSessionUser();
-  const denied = requireDepartment(user, 'Engineering');
-  if (denied) return denied;
-  const actionDenied = await requireAction(user, 'Engineering', 'engineering.assembly.delete');
+  const actionDenied = await requireEngineeringAction(user, 'engineering.assembly.delete');
   if (actionDenied) return actionDenied;
 
   const row = await queryOne('SELECT * FROM bom_assemblies WHERE id = ?', [params.id]);

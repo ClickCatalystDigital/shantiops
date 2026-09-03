@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne, queryAll } from '@/lib/db';
-import { getFreshSessionUser, requireDepartment, isInternal } from '@/lib/auth';
-import { requireAction } from '@/lib/action-permissions';
+import { getFreshSessionUser, isInternal } from '@/lib/auth';
+import { requireEngineeringAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 
 // BOM workspace Phase 2 — junction CRUD for bom_assembly_calc_sheets, same shape as the sibling
@@ -18,9 +18,7 @@ export async function GET(req, { params }) {
 
 export async function POST(req, { params }) {
   const user = await getFreshSessionUser();
-  const denied = requireDepartment(user, 'Engineering');
-  if (denied) return denied;
-  const actionDenied = await requireAction(user, 'Engineering', 'engineering.assembly.add');
+  const actionDenied = await requireEngineeringAction(user, 'engineering.assembly.add');
   if (actionDenied) return actionDenied;
 
   const b = await req.json();
@@ -47,9 +45,7 @@ export async function POST(req, { params }) {
 
 export async function DELETE(req, { params }) {
   const user = await getFreshSessionUser();
-  const denied = requireDepartment(user, 'Engineering');
-  if (denied) return denied;
-  const actionDenied = await requireAction(user, 'Engineering', 'engineering.assembly.add');
+  const actionDenied = await requireEngineeringAction(user, 'engineering.assembly.add');
   if (actionDenied) return actionDenied;
 
   const calcSheetId = new URL(req.url).searchParams.get('calc_sheet_id');

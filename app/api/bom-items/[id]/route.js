@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne, queryAll } from '@/lib/db';
-import { getFreshSessionUser, requireDepartment, isPM } from '@/lib/auth';
-import { requireAction } from '@/lib/action-permissions';
+import { getFreshSessionUser, isPM } from '@/lib/auth';
+import { requireAction, requireEngineeringAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { editableBomFields, PURCHASE_STATUSES } from '@/lib/bom-fields.mjs';
 import { releaseReservationsForItem } from '@/lib/procurement';
@@ -163,9 +163,7 @@ export async function PATCH(req, { params }) {
 // a packing list are protected — deleting them would orphan the reconciliation history.
 export async function DELETE(req, { params }) {
   const user = await getFreshSessionUser();
-  const deniedResp = requireDepartment(user, 'Engineering');
-  if (deniedResp) return deniedResp;
-  const actionDenied = await requireAction(user, 'Engineering', 'engineering.bom.delete_item');
+  const actionDenied = await requireEngineeringAction(user, 'engineering.bom.delete_item');
   if (actionDenied) return actionDenied;
 
   const item = await queryOne('SELECT * FROM bom_items WHERE id = ?', [params.id]);

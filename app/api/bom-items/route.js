@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
-import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
-import { requireAction } from '@/lib/action-permissions';
+import { getFreshSessionUser } from '@/lib/auth';
+import { requireEngineeringAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { notifyDepartment } from '@/lib/notify';
 import { BOM_FIELDS } from '@/lib/bom-fields.mjs';
@@ -12,9 +12,7 @@ import { getAllocationMode, autoReserveFromStock, notifyProcurementIfShortfall }
 // Engineering's, so this is Engineering/PM-gated like upload).
 export async function POST(req) {
   const user = await getFreshSessionUser();
-  const denied = requireDepartment(user, 'Engineering');
-  if (denied) return denied;
-  const actionDenied = await requireAction(user, 'Engineering', 'engineering.bom.add_item');
+  const actionDenied = await requireEngineeringAction(user, 'engineering.bom.add_item');
   if (actionDenied) return actionDenied;
 
   const b = await req.json();

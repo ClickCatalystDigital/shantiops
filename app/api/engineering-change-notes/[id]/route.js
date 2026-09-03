@@ -5,17 +5,15 @@
 // sales-returns' double-credit guard.
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
-import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
-import { requireAction } from '@/lib/action-permissions';
+import { getFreshSessionUser } from '@/lib/auth';
+import { requireEngineeringAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { BOM_FIELD_OWNERS } from '@/lib/bom-fields.mjs';
 import { canDecideChangeNote } from '@/lib/bom-structure.mjs';
 
 export async function PATCH(req, { params }) {
   const user = await getFreshSessionUser();
-  const denied = requireDepartment(user, 'Engineering');
-  if (denied) return denied;
-  const actionDenied = await requireAction(user, 'Engineering', 'engineering.ecn.approve');
+  const actionDenied = await requireEngineeringAction(user, 'engineering.ecn.approve');
   if (actionDenied) return actionDenied;
 
   const row = await queryOne('SELECT * FROM bom_change_notes WHERE id = ?', [params.id]);

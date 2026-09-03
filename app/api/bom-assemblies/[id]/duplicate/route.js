@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne, queryAll } from '@/lib/db';
-import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
-import { requireAction } from '@/lib/action-permissions';
+import { getFreshSessionUser } from '@/lib/auth';
+import { requireEngineeringAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { getAllocationMode } from '@/lib/procurement';
 
@@ -16,9 +16,7 @@ import { getAllocationMode } from '@/lib/procurement';
 // cloned items — out of scope for "duplicate the structure," not a stated requirement.
 export async function POST(req, { params }) {
   const user = await getFreshSessionUser();
-  const denied = requireDepartment(user, 'Engineering');
-  if (denied) return denied;
-  const actionDenied = await requireAction(user, 'Engineering', 'engineering.assembly.add');
+  const actionDenied = await requireEngineeringAction(user, 'engineering.assembly.add');
   if (actionDenied) return actionDenied;
 
   const source = await queryOne('SELECT * FROM bom_assemblies WHERE id = ?', [params.id]);

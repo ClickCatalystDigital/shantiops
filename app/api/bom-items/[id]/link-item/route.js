@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
-import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
-import { requireAction } from '@/lib/action-permissions';
+import { getFreshSessionUser } from '@/lib/auth';
+import { requireEngineeringAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 
 // Dedicated endpoint, deliberately not routed through the generic PATCH (app/api/bom-items/[id]/
@@ -11,9 +11,7 @@ import { audit } from '@/lib/usb';
 // route.js), but a line that misses it has no edit path anywhere today.
 export async function POST(req, { params }) {
   const user = await getFreshSessionUser();
-  const denied = requireDepartment(user, 'Engineering');
-  if (denied) return denied;
-  const actionDenied = await requireAction(user, 'Engineering', 'engineering.bom.link_item');
+  const actionDenied = await requireEngineeringAction(user, 'engineering.bom.link_item');
   if (actionDenied) return actionDenied;
 
   const bomItem = await queryOne('SELECT id, item_id FROM bom_items WHERE id = ?', [params.id]);

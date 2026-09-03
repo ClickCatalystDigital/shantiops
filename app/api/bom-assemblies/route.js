@@ -3,8 +3,8 @@
 // action gate, not field-level (there's no other department's column on this table).
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
-import { getFreshSessionUser, requireDepartment, isInternal } from '@/lib/auth';
-import { requireAction } from '@/lib/action-permissions';
+import { getFreshSessionUser, isInternal } from '@/lib/auth';
+import { requireEngineeringAction } from '@/lib/action-permissions';
 import { getBomStructure } from '@/lib/data';
 import { audit } from '@/lib/usb';
 
@@ -18,9 +18,7 @@ export async function GET(req) {
 
 export async function POST(req) {
   const user = await getFreshSessionUser();
-  const denied = requireDepartment(user, 'Engineering');
-  if (denied) return denied;
-  const actionDenied = await requireAction(user, 'Engineering', 'engineering.assembly.add');
+  const actionDenied = await requireEngineeringAction(user, 'engineering.assembly.add');
   if (actionDenied) return actionDenied;
 
   const b = await req.json();
