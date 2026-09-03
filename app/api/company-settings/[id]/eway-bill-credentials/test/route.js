@@ -4,7 +4,7 @@
 import { NextResponse } from 'next/server';
 import { queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
-import { generateEwayBill } from '@/lib/eway-bill';
+import { generateEwayBill, loadCredentials } from '@/lib/eway-bill';
 
 export async function POST(req, { params }) {
   const user = await getFreshSessionUser();
@@ -13,10 +13,10 @@ export async function POST(req, { params }) {
 
   const company = await queryOne('SELECT company FROM company_settings WHERE id = ?', [params.id]);
   if (!company) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  const row = await queryOne('SELECT credentials FROM eway_bill_credentials WHERE company = ?', [company.company]);
 
   try {
-    await generateEwayBill({ company: company.company, credentials: row ? JSON.parse(row.credentials) : null, payload: { test: true } });
+    const credentials = await loadCredentials(company.company);
+    await generateEwayBill({ company: company.company, credentials, payload: { test: true } });
     return NextResponse.json({ ok: true });
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: 400 });

@@ -7,9 +7,12 @@ import { syncPackingMilestone } from '@/lib/milestone-auto';
 
 const EDITABLE = ['customer_name', 'customer_address', 'invoice_no', 'invoice_date', 'package_type',
   'dc_no', 'dc_date', 'vehicle_no', 'dispatch_through', 'contact_person', 'status',
-  'sales_invoice_id', 'freight_amount', 'freight_paid_by', 'eway_bill_no', 'eway_bill_date'];
+  'sales_invoice_id', 'freight_amount', 'freight_paid_by', 'eway_bill_no', 'eway_bill_date',
+  'transport_distance_km', 'transport_mode', 'vehicle_type'];
 // Same idiom as bom-items PATCH's PURCHASE_STATUSES check / qc-records' pass|fail|pending check.
 const PACKING_STATUSES = ['draft', 'packed', 'dispatched'];
+const TRANSPORT_MODES = ['road', 'rail', 'air', 'ship'];
+const VEHICLE_TYPES = ['regular', 'odc'];
 
 export async function PATCH(req, { params }) {
   const user = await getFreshSessionUser();
@@ -18,6 +21,12 @@ export async function PATCH(req, { params }) {
   const b = await req.json();
   if ('status' in b && !PACKING_STATUSES.includes(b.status)) {
     return NextResponse.json({ error: `Unknown status: ${b.status}` }, { status: 400 });
+  }
+  if (b.transport_mode && !TRANSPORT_MODES.includes(b.transport_mode)) {
+    return NextResponse.json({ error: `Unknown transport_mode: ${b.transport_mode}` }, { status: 400 });
+  }
+  if (b.vehicle_type && !VEHICLE_TYPES.includes(b.vehicle_type)) {
+    return NextResponse.json({ error: `Unknown vehicle_type: ${b.vehicle_type}` }, { status: 400 });
   }
   if ('status' in b) {
     const actionDenied = await requireAction(user, 'Dispatch', 'dispatch.packing.status');

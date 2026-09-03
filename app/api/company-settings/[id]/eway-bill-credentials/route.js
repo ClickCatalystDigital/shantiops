@@ -2,11 +2,17 @@
 // storage (Accounts-owned, same as every other company-entity field). GET never returns the
 // credentials blob, not even masked — masking still requires holding the real value in a response;
 // simplest and safest is to only ever confirm "configured" + when it was last set.
+//
+// Encrypted at rest (real-NIC-API research plan, Gap 6) — the stored blob is safe from the browser
+// by construction (this GET never sends it back) but a plaintext JSON blob in the DB isn't safe
+// from direct DB access or a backup leak. lib/crypto.js's AES-256-GCM encrypts before every write;
+// only lib/eway-bill.js's real caller (once wired) ever decrypts, in memory, just before use.
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
+import { encryptSecret } from '@/lib/crypto';
 
 export async function GET(req, { params }) {
   const user = await getFreshSessionUser();
@@ -36,7 +42,16 @@ export async function PATCH(req, { params }) {
   if (!client_id || !client_secret || !api_username || !api_password) {
     return NextResponse.json({ error: 'client_id, client_secret, api_username, and api_password are all required' }, { status: 400 });
   }
-  const credentials = JSON.stringify({ client_id, client_secret, api_username, api_password });
+  const plaintext = JSON.stringify({ client_id, client_secret, api_username, api_password });
+
+  // Fails closed (no fallback to plaintext storage) if EWAY_BILL_CREDENTIALS_KEY isn't set — same
+  // "no workarounds" principle lib/mail.js already established for its own unwired provider seam.
+  let credentials;
+  try {
+    credentials = encryptSecret(plaintext);
+  } catch (e) {
+    return NextResponse.json({ error: e.message }, { status: 500 });
+  }
 
   await execute(
     `INSERT INTO eway_bill_credentials (company, credentials, updated_by) VALUES (?, ?, ?)

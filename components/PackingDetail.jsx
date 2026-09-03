@@ -27,6 +27,11 @@ const HEADER_FIELDS = [
   ['eway_bill_no', 'E-Way Bill No', 'text'], ['eway_bill_date', 'E-Way Bill Date', 'date'],
 ];
 const FREIGHT_PAID_BY = [['us', 'We pay'], ['customer', 'Customer pays']];
+// E-way bill prerequisites (real-NIC-API research plan) — transport mode/vehicle type must be an
+// explicit Dispatch choice, never a silent backend default; the Select below pre-selects the
+// overwhelmingly common case (Road / Regular) but Dispatch always sees and can change it.
+const TRANSPORT_MODES = [['road', 'Road'], ['rail', 'Rail'], ['air', 'Air'], ['ship', 'Ship']];
+const VEHICLE_TYPES = [['regular', 'Regular'], ['odc', 'Over Dimensional Cargo']];
 // discrepancy, not 'partial' (Feature D) — deliberately distinct from the pre-existing multi-
 // packing-list partial-delivery concept (a project's own pending-items tracking); this is about
 // THIS shipment's own contents, e.g. "ordered 10, received 8," not "more is coming later."
@@ -125,7 +130,11 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
   }
   async function saveHeader(e) {
     e.preventDefault();
-    const body = { freight_paid_by: draft.freight_paid_by || '', sales_invoice_id: draft.sales_invoice_id || '' };
+    const body = {
+      freight_paid_by: draft.freight_paid_by || '', sales_invoice_id: draft.sales_invoice_id || '',
+      transport_distance_km: draft.transport_distance_km || '',
+      transport_mode: draft.transport_mode || 'road', vehicle_type: draft.vehicle_type || 'regular',
+    };
     HEADER_FIELDS.forEach(([k]) => { body[k] = draft[k] || ''; });
     // Once posted, freight_amount is read-only (disabled input above) — leave it out of the body
     // entirely rather than resending the unchanged figure, which would otherwise trip the server's
@@ -225,6 +234,26 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
                   <Select value={draft.freight_paid_by || ''} onValueChange={v => setDraft({ ...draft, freight_paid_by: v })}>
                     <SelectTrigger><SelectValue placeholder="Not set" /></SelectTrigger>
                     <SelectContent>{FREIGHT_PAID_BY.map(([v, label]) => <SelectItem key={v} value={v}>{label}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label>Transport Distance (km)</Label>
+                  <Input type="number" min="0" max="4000" step="1"
+                    value={draft.transport_distance_km || ''} onChange={e => setDraft({ ...draft, transport_distance_km: e.target.value })} />
+                  <p className="text-xs text-muted-foreground">Required to generate an e-way bill. NIC's own max is 4000 km.</p>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label>Transport Mode</Label>
+                  <Select value={draft.transport_mode || 'road'} onValueChange={v => setDraft({ ...draft, transport_mode: v })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>{TRANSPORT_MODES.map(([v, label]) => <SelectItem key={v} value={v}>{label}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label>Vehicle Type</Label>
+                  <Select value={draft.vehicle_type || 'regular'} onValueChange={v => setDraft({ ...draft, vehicle_type: v })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>{VEHICLE_TYPES.map(([v, label]) => <SelectItem key={v} value={v}>{label}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
               </div>
