@@ -662,13 +662,16 @@ function ReleaseBomTab({ projects, departments = [] }) {
 
 export default function PrWorkspace({ departments, projects, inventoryItems = [], initialTab }) {
   // Purchase Requests is the default landing tab (a deliberate UX change from the old default,
-  // "Templates" — see SYSTEM.md's Phase 1 plan for why). 'release' stays a valid tab key even
-  // though it's no longer in navItems below, so a direct /pr?tab=release visit still opens it —
-  // same page-level access gate as every other tab on this page, nothing new granted by this.
+  // "Templates" — see SYSTEM.md's Phase 1 plan for why). Release BOM was briefly dropped from this
+  // sidebar on the theory that the BOM workspace's own Release button (Engineering tab) made it
+  // redundant here — reinstated after that read as "where did it go" rather than a cleaner nav, per
+  // direct feedback. Both buttons fire the exact same POST route, so nothing was ever duplicated at
+  // the data layer, only the entry point.
   const [tab, setTab] = useState(['raise', 'templates', 'release'].includes(initialTab) ? initialTab : 'raise');
   const [prTemplatePrefill, setPrTemplatePrefill] = useState(null);
   const navItems = [
     { key: 'raise', label: 'Purchase Requests', icon: ClipboardListIcon },
+    { key: 'release', label: 'Release BOM', icon: CheckIcon },
     { key: 'templates', label: 'PR Templates', icon: LayoutTemplateIcon },
   ];
   // Stores heads have Requests access but not Engineering access (where BOM Templates now

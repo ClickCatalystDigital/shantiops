@@ -5,13 +5,17 @@
 // bom_items leaves), shown as its own Card below the editable BomStructureWorkspace tree above it.
 // Pure presentation over data the parent already fetched (assemblies/unassignedItems) — no fetch,
 // no mutation, so it automatically reflects whatever the editor above last saved/reloaded.
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardDescription, CardAction, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ChevronRightIcon, ChevronDownIcon, PackageIcon, ListTreeIcon, ScaleIcon, AlertTriangleIcon, SearchIcon, DownloadIcon } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  ChevronRightIcon, ChevronDownIcon, PackageIcon, ListTreeIcon, ScaleIcon, AlertTriangleIcon, SearchIcon, DownloadIcon, HistoryIcon,
+} from 'lucide-react';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { Input } from '@/components/ui/input';
+import { api, showToast } from '@/lib/client';
 import { groupByParent, expandedIdsForSearch, itemMatchAncestorIds } from '@/lib/bom-tree.mjs';
 import { hasAmbiguousQty } from '@/lib/bom-structure.mjs';
 import { TreeRail } from './BomTreeNode';
@@ -129,7 +133,7 @@ function AssemblyRow({ node, depth, childrenByParent, collapsedIds, toggleCollap
   );
 }
 
-export default function BomTreeReadOnly({ assemblies, unassignedItems, project }) {
+export default function BomTreeReadOnly({ assemblies, unassignedItems, project, pastReleases = [] }) {
   const [collapsedIds, setCollapsedIds] = useState(new Set());
   // Inverted default: a node's items render unless its id is in this set. Lazy initializer seeds
   // the one safety-valve exception (a node with an unusually large item count starts hidden) —
@@ -144,18 +148,41 @@ export default function BomTreeReadOnly({ assemblies, unassignedItems, project }
   // a clean outline, not a dump of everything not yet organized.
   const [unassignedShown, setUnassignedShown] = useState(false);
   const [query, setQuery] = useState('');
+  // §7 — '' means Live (the assemblies/unassignedItems props, always current). A past revision is
+  // fetched on demand, not preloaded with every one of this project's releases — most opens of this
+  // card never touch history. Picking "Live" again just clears frozenData, no re-fetch needed.
+  const [viewingRevision, setViewingRevision] = useState('');
+  const [frozenData, setFrozenData] = useState(null);
+  const [loadingSnapshot, setLoadingSnapshot] = useState(false);
 
-  const childrenByParent = groupByParent(assemblies);
+  useEffect(() => {
+    if (!viewingRevision) { setFrozenData(null); return; }
+    let cancelled = false;
+    setLoadingSnapshot(true);
+    api(`/api/projects/${project.id}/bom-releases/${viewingRevision}`)
+      .then(res => { if (!cancelled) setFrozenData(res); })
+      .catch(err => { if (!cancelled) { showToast(err.message, 'error'); setViewingRevision(''); } })
+      .finally(() => !cancelled && setLoadingSnapshot(false));
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewingRevision]);
+
+  // Everything below renders off these two, live or frozen — the render path itself has no idea
+  // which one it's looking at, same "one rendering mode, a different data source" the plan called for.
+  const displayAssemblies = frozenData ? frozenData.assemblies : assemblies;
+  const displayUnassignedItems = frozenData ? frozenData.unassignedItems : unassignedItems;
+
+  const childrenByParent = groupByParent(displayAssemblies);
   const roots = childrenByParent.get(null) || [];
-  const byId = new Map(assemblies.map(a => [a.id, a]));
+  const byId = new Map(displayAssemblies.map(a => [a.id, a]));
 
   // Search reveals location, never hides non-matches — same principle the editable tree's own
   // search already uses. A hit forces its whole ancestor chain open (regardless of manual
   // collapse), and forces just the matching node's own items open (regardless of manual hide) —
   // computed as an override on top of the real collapsedIds/itemsHiddenIds state, not a second
   // source of truth, so clearing the query always returns to exactly what the user had set.
-  const nameExpandIds = expandedIdsForSearch(query, assemblies, byId);
-  const { expandIds: itemExpandIds, matchingNodeIds } = itemMatchAncestorIds(query, assemblies, byId);
+  const nameExpandIds = expandedIdsForSearch(query, displayAssemblies, byId);
+  const { expandIds: itemExpandIds, matchingNodeIds } = itemMatchAncestorIds(query, displayAssemblies, byId);
   const searchExpandIds = query.trim() ? new Set([...nameExpandIds, ...itemExpandIds]) : new Set();
   const effectiveCollapsedIds = searchExpandIds.size === 0
     ? collapsedIds
@@ -163,7 +190,7 @@ export default function BomTreeReadOnly({ assemblies, unassignedItems, project }
   const effectiveItemsHiddenIds = matchingNodeIds.size === 0
     ? itemsHiddenIds
     : new Set([...itemsHiddenIds].filter(id => !matchingNodeIds.has(id)));
-  const unassignedMatches = query.trim() && unassignedItems.some(it =>
+  const unassignedMatches = query.trim() && displayUnassignedItems.some(it =>
     it.material_description.toLowerCase().includes(query.trim().toLowerCase()) ||
     (it.catalog_item_code || '').toLowerCase().includes(query.trim().toLowerCase()) ||
     `bm-${it.id}`.includes(query.trim().toLowerCase())
@@ -189,11 +216,14 @@ export default function BomTreeReadOnly({ assemblies, unassignedItems, project }
     setItemsHiddenIds(new Set());
   }
   function collapseAll() {
-    setCollapsedIds(new Set(assemblies.map(a => a.id)));
-    setItemsHiddenIds(new Set(assemblies.filter(a => (a.items?.length || 0) > 0).map(a => a.id)));
+    setCollapsedIds(new Set(displayAssemblies.map(a => a.id)));
+    setItemsHiddenIds(new Set(displayAssemblies.filter(a => (a.items?.length || 0) > 0).map(a => a.id)));
   }
 
-  if (assemblies.length === 0 && unassignedItems.length === 0) return null;
+  // Still worth rendering (for the revision picker alone) if there's release history even when the
+  // live tree is currently empty — an edge case (un-released and wiped clean), but the picker must
+  // stay reachable whenever there's something in it to look at.
+  if (assemblies.length === 0 && unassignedItems.length === 0 && pastReleases.length === 0) return null;
 
   return (
     <Card>
@@ -206,6 +236,19 @@ export default function BomTreeReadOnly({ assemblies, unassignedItems, project }
           </CardDescription>
         )}
         <CardAction className="flex items-center gap-2">
+          {pastReleases.length > 0 && (
+            <Select value={viewingRevision || 'live'} onValueChange={v => setViewingRevision(v === 'live' ? '' : v)}>
+              <SelectTrigger className="h-8 w-40 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="live">Live</SelectItem>
+                {pastReleases.map(r => (
+                  <SelectItem key={r.id} value={String(r.revision)}>
+                    Rev {r.revision} · {new Date(r.created_at).toLocaleDateString()}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <Button size="sm" variant="outline" onClick={expandAll}>Expand all</Button>
           <Button size="sm" variant="outline" onClick={collapseAll}>Collapse all</Button>
           {project && (
@@ -217,13 +260,23 @@ export default function BomTreeReadOnly({ assemblies, unassignedItems, project }
         </CardAction>
       </CardHeader>
       <CardContent className="flex flex-col gap-2">
-        {(roots.length > 0 || unassignedItems.length > 0) && (
+        {viewingRevision && (
+          <div className="flex items-center gap-1.5 rounded-md border border-warning/30 bg-warning/10 px-2.5 py-1.5 text-xs text-warning">
+            <HistoryIcon className="size-3.5 shrink-0" />
+            Viewing revision {viewingRevision} — frozen at release, not live.
+          </div>
+        )}
+        {loadingSnapshot ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">Loading revision {viewingRevision}…</p>
+        ) : (
+        <>
+        {(roots.length > 0 || displayUnassignedItems.length > 0) && (
           <div className="relative">
             <SearchIcon className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input className="h-8 pl-7 text-sm" placeholder="Search a node or item…" value={query} onChange={e => setQuery(e.target.value)} />
           </div>
         )}
-        {roots.length === 0 && unassignedItems.length === 0 ? (
+        {roots.length === 0 && displayUnassignedItems.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-6 text-center">
             <ListTreeIcon className="size-8 text-muted-foreground/40" />
             <p className="text-sm text-muted-foreground">No structure built yet.</p>
@@ -238,7 +291,7 @@ export default function BomTreeReadOnly({ assemblies, unassignedItems, project }
           ))
         )}
 
-        {unassignedItems.length > 0 && (
+        {displayUnassignedItems.length > 0 && (
           <div className="mt-3 border-t pt-3">
             <button
               type="button"
@@ -246,11 +299,11 @@ export default function BomTreeReadOnly({ assemblies, unassignedItems, project }
               className="flex items-center gap-1 text-xs font-medium text-muted-foreground"
             >
               {effectiveUnassignedShown ? <ChevronDownIcon className="size-3.5" /> : <ChevronRightIcon className="size-3.5" />}
-              Unassigned ({unassignedItems.length}) — not yet placed under any node above
+              Unassigned ({displayUnassignedItems.length}) — not yet placed under any node above
             </button>
             {effectiveUnassignedShown && (
               <div className="mt-1">
-                {unassignedItems.map(it => (
+                {displayUnassignedItems.map(it => (
                   <div key={it.id} className="flex items-center gap-1.5 py-1 pl-1 pr-2 text-sm text-muted-foreground">
                     <PackageIcon className="size-3.5 shrink-0 text-muted-foreground/60" />
                     <span className="min-w-0 flex-1 truncate">
@@ -265,6 +318,8 @@ export default function BomTreeReadOnly({ assemblies, unassignedItems, project }
               </div>
             )}
           </div>
+        )}
+        </>
         )}
       </CardContent>
     </Card>

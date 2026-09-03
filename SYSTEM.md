@@ -6234,6 +6234,59 @@ Built on that basis:
   `sales_invoices`, since the first references the second), confirmed zero residue by direct query.
   `npm run lint` and a full `npm run build` both clean.
 
+**Same-day follow-up — a full UI/UX verification pass, as an actual user would use it.** Not just
+code review: walked both real screens live (Accounts → Company Entities credential card, Dispatch →
+packing-list detail) against a 10-point checklist. Found and fixed four real, genuine usability
+gaps — nothing else was touched:
+- **Test Connection's failure message leaked an internal doc reference and raw env var names**
+  (`"EWAY_BILL_BASE_URL and EWAY_BILL_PUBLIC_KEY are not both configured... See SYSTEM.md §5ax"`)
+  straight to an `accounts_head` — a business user, not a developer. Rewritten in plain language,
+  and — importantly — now says explicitly that *their own saved credentials are fine* and this is a
+  deployment-level step for their technical team, so they don't mistake it for their own mistake and
+  keep re-entering credentials.
+- **The customer/company missing-field errors printed raw database column names**
+  (`"missing: gst_no, state_code, pin_code, address"`) instead of plain labels. Now
+  `"missing: GSTIN, State, Pincode, Address"`.
+- **Cancellation was completely unexposed** — `cancelEwayBill()` existed in `lib/eway-bill.js` from
+  the implementation pass but had no route and no UI anywhere calling it (confirmed by grep: zero
+  callers outside its own definition). The one message a user *could* hit
+  (`"already set on this packing list"`) told them to "edit the field directly," an unsafe
+  workaround that risks desyncing Shanti Ops' record from NIC's real one. Built properly: new
+  `POST /api/packing/[id]/eway-bill/cancel` (new `dispatch.packing.eway_bill.cancel` action key,
+  same fail-closed discipline as generation — checks NIC's real 24-hour cancellation window and
+  requires a reason code + remark before ever calling NIC), and a real Cancel dialog in
+  `PackingDetail.jsx` (reason select with NIC's 4 real codes, a remark field, an explicit
+  irreversibility warning) — shown only within the 24-hour window, replaced by a plain "past the
+  window" note once it lapses, computed the same way client- and server-side.
+- **After generation, only the e-way-bill number/date showed — `validUpto` (NIC's own computed
+  validity window) was silently dropped.** The API response always carried it; the frontend never
+  captured or stored it. Added `packing_lists.eway_bill_valid_upto`, and a new persistent "E-Way
+  Bill" status card (replacing the old behavior where the Generate card just vanished once a number
+  existed) showing Number/Generated/Valid Until together, with the Cancel action alongside it.
+
+**A real, separate bug found while building the Cancel action, not part of the checklist**: NIC
+returns dates as `"dd/mm/yyyy hh:mm:ss AM/PM"` (e.g. `"16/09/2026 10:30:00 AM"`) — `new Date(...)`
+parses that as garbage in a JS engine that assumes US `mm/dd/yyyy`, which would have silently broken
+the Cancel action's own 24-hour-window math the first time it ran for real. Fixed by converting to a
+real ISO string once, at the point of storage (`parseNicDateTime()`, generation route) — every
+downstream reader (display, the cancel route's date math) now gets a value `new Date()` actually
+understands.
+
+**Live-verified in the browser**, not just via API calls: filled in real credentials through the
+actual form, confirmed they show as masked `type="password"` fields, confirmed the DOM value is
+genuinely empty after save (the visible dots are Chrome's own password-manager rendering, not real
+page content — checked via direct `.value` inspection), confirmed "Configured — last saved [date]"
+appears and Test Connection's button correctly enables/disables. On a real, already-shipped packing
+list (PL-1011) with no prerequisites met, clicked "Generate E-Way Bill" and got the plain-English
+distance error. Built a disposable incomplete-customer scenario and confirmed the plain-label
+missing-field message. Set a disposable packing list's e-way-bill fields directly (no live NIC call
+exists to generate one for real) and confirmed: the new status card renders Number/Generated/Valid
+Until correctly; the Cancel dialog opens, its reason dropdown lists all 4 real NIC codes, submitting
+without real NIC config surfaces the same honest "not configured" message; aging the same record
+past 24 hours correctly hides the Cancel button (client) and rejects the cancel call (server) with
+matching messages. All disposable rows deleted afterward, confirmed zero residue. `npm run lint` and
+a full `npm run build` both clean. Not committed yet, per instruction.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own

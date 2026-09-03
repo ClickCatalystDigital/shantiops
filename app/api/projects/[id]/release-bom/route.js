@@ -5,6 +5,7 @@
 import { NextResponse } from 'next/server';
 import { queryOne, queryAll, execute } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
+import { getBomStructure, getProjectBom } from '@/lib/data';
 import { markMilestoneDone } from '@/lib/milestone-auto';
 import { matchProjectBom } from '@/lib/remnant-match';
 import { getAllocationMode, matchProjectPlainStock, notifyProcurementIfShortfall } from '@/lib/procurement';
@@ -39,12 +40,19 @@ export async function GET(req, { params }) {
       WHERE b.project_id = ? GROUP BY tpl.id ORDER BY MIN(b.id)`,
     [params.id]
   );
+  // §7 — every past release this project has (not the frozen JSON itself, kept cheap for this
+  // status-check GET). BomTreeReadOnly's revision picker fetches one snapshot's full data on demand
+  // via GET /api/projects/[id]/bom-releases/[revision].
+  const pastReleases = await queryAll(
+    'SELECT id, revision, created_at, created_by FROM bom_release_snapshots WHERE project_id = ? ORDER BY revision DESC',
+    [params.id]
+  );
   const released = !!(milestone?.actual_end || milestone?.status === 'done');
   return NextResponse.json({
     bomCount: bomCount?.n || 0, drawingLinked: drawingLinked?.n || 0, released,
     pendingEcnCount: pendingEcnCount?.n || 0, unassignedCount: unassignedCount?.n || 0,
     nextRevision: (project?.bom_release_revision || 0) + 1,
-    milestoneId: milestone?.id || null, templatesApplied,
+    milestoneId: milestone?.id || null, templatesApplied, pastReleases,
   });
 }
 
@@ -72,6 +80,20 @@ export async function POST(req, { params }) {
     `UPDATE bom_items SET drawing_revision_at_release = (SELECT revision FROM calc_drawings WHERE calc_drawings.id = bom_items.drawing_id)
       WHERE project_id = ? AND drawing_id IS NOT NULL`,
     [params.id]
+  );
+
+  // §7 — freeze the tree exactly as it looks at this revision. assemblies_json/unassigned_json are
+  // getBomStructure()'s/getProjectBom()'s own live shapes, frozen verbatim — replaying one later
+  // needs zero shape translation on the read side (BomTreeReadOnly renders live and frozen data
+  // through the identical render path).
+  const [frozenAssemblies, { bom: frozenBom }] = await Promise.all([
+    getBomStructure(params.id),
+    getProjectBom(params.id),
+  ]);
+  const frozenUnassigned = frozenBom.filter((r) => !r.assembly_id);
+  await execute(
+    'INSERT INTO bom_release_snapshots (project_id, revision, assemblies_json, unassigned_json, created_by) VALUES (?, ?, ?, ?, ?)',
+    [params.id, revision, JSON.stringify(frozenAssemblies), JSON.stringify(frozenUnassigned), user.username]
   );
 
   await markMilestoneDone(params.id, 'release_bom', user.username);

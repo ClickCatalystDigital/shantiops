@@ -39,7 +39,7 @@ export async function POST(req, { params }) {
   );
   if (!list) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   if (list.eway_bill_no) {
-    return NextResponse.json({ error: 'An e-way bill is already set on this packing list. Regeneration/cancellation isn’t built yet — edit the field directly if this is a correction.' }, { status: 409 });
+    return NextResponse.json({ error: 'An e-way bill is already set on this packing list. Cancel it first (within 24 hours of generation) if this needs correcting.' }, { status: 409 });
   }
   if (!list.company) return NextResponse.json({ error: 'This packing list has no project/company linked — cannot generate.' }, { status: 400 });
 
@@ -58,20 +58,24 @@ export async function POST(req, { params }) {
 
   // Gap 4 — NIC needs structured GSTIN/state/pincode/address, not the free-text customer_name this
   // app displays elsewhere. Fail closed rather than sending an incomplete toGstin/toPincode.
+  // Error messages name plain field labels, never raw column names — an accounts/dispatch head
+  // reads these, not a developer.
   if (!list.customer_id) {
-    return NextResponse.json({ error: 'This project has no linked customer record — link one before generating an e-way bill.' }, { status: 400 });
+    return NextResponse.json({ error: 'This project has no linked customer record — link a real customer to this project before generating an e-way bill.' }, { status: 400 });
   }
   const customer = await queryOne('SELECT name, gst_no, state_code, pin_code, address, address2, city FROM customers WHERE id = ?', [list.customer_id]);
-  const missingCustomerFields = ['gst_no', 'state_code', 'pin_code', 'address'].filter(f => !customer?.[f]);
+  const CUSTOMER_FIELD_LABELS = { gst_no: 'GSTIN', state_code: 'State', pin_code: 'Pincode', address: 'Address' };
+  const missingCustomerFields = Object.keys(CUSTOMER_FIELD_LABELS).filter(f => !customer?.[f]);
   if (missingCustomerFields.length) {
-    return NextResponse.json({ error: `The linked customer record is missing: ${missingCustomerFields.join(', ')} — fill these in before generating an e-way bill.` }, { status: 400 });
+    return NextResponse.json({ error: `The customer's record is missing: ${missingCustomerFields.map(f => CUSTOMER_FIELD_LABELS[f]).join(', ')} — fill these in on the customer record before generating an e-way bill.` }, { status: 400 });
   }
 
   // Company (fromGstin/fromPincode/etc.) — same fail-closed pattern.
   const company = await queryOne('SELECT legal_name, gstin, state_code, registered_address, place, pincode FROM company_settings WHERE company = ?', [list.company]);
-  const missingCompanyFields = ['gstin', 'state_code', 'registered_address', 'place', 'pincode'].filter(f => !company?.[f]);
+  const COMPANY_FIELD_LABELS = { gstin: 'GSTIN', state_code: 'State', registered_address: 'Registered address', place: 'Place', pincode: 'Pincode' };
+  const missingCompanyFields = Object.keys(COMPANY_FIELD_LABELS).filter(f => !company?.[f]);
   if (missingCompanyFields.length) {
-    return NextResponse.json({ error: `${list.company}'s own record is missing: ${missingCompanyFields.join(', ')} — fill these in under Accounts → Company Settings before generating.` }, { status: 400 });
+    return NextResponse.json({ error: `${list.company}'s own record is missing: ${missingCompanyFields.map(f => COMPANY_FIELD_LABELS[f]).join(', ')} — fill these in under Accounts → Company Settings before generating.` }, { status: 400 });
   }
 
   // Gap 5 (new, found wiring the real payload) — NIC's docNo/docDate/totInvValue must come from a
@@ -148,8 +152,13 @@ export async function POST(req, { params }) {
 
   try {
     const result = await generateEwayBill({ company: list.company, credentials, payload });
-    await execute('UPDATE packing_lists SET eway_bill_no = ?, eway_bill_date = ? WHERE id = ?', [result.ewayBillNo, result.date, params.id]);
-    return NextResponse.json({ ok: true, ewayBillNo: result.ewayBillNo, date: result.date, validUpto: result.validUpto });
+    const isoDate = parseNicDateTime(result.date);
+    const isoValidUpto = parseNicDateTime(result.validUpto);
+    await execute(
+      'UPDATE packing_lists SET eway_bill_no = ?, eway_bill_date = ?, eway_bill_valid_upto = ? WHERE id = ?',
+      [result.ewayBillNo, isoDate, isoValidUpto, params.id]
+    );
+    return NextResponse.json({ ok: true, ewayBillNo: result.ewayBillNo, date: isoDate, validUpto: isoValidUpto });
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: 400 });
   }
@@ -159,4 +168,19 @@ export async function POST(req, { params }) {
 function formatDocDate(isoDate) {
   const [y, m, d] = String(isoDate).slice(0, 10).split('-');
   return `${d}/${m}/${y}`;
+}
+
+// NIC returns dates as "dd/mm/yyyy hh:mm:ss AM/PM" (e.g. "16/09/2026 10:30:00 AM") — new Date(...)
+// parses that as garbage (most JS engines assume US mm/dd/yyyy). Real bug found while building the
+// Cancel action's 24-hour-window check, which needs a real, parseable timestamp. Converts to a
+// proper ISO string once, at the point of storage, so every downstream reader (display, the cancel
+// route's own date math) gets a value new Date() actually understands.
+function parseNicDateTime(nicDateTime) {
+  if (!nicDateTime) return null;
+  const m = String(nicDateTime).match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2}):(\d{2})\s*(AM|PM)$/i);
+  if (!m) return null;
+  let [, dd, mm, yyyy, hh, min, ss, ampm] = m;
+  hh = Number(hh) % 12;
+  if (ampm.toUpperCase() === 'PM') hh += 12;
+  return `${yyyy}-${mm}-${dd}T${String(hh).padStart(2, '0')}:${min}:${ss}`;
 }

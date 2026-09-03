@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Trash2Icon, FileTextIcon } from 'lucide-react';
 import { EntityCode } from '@/components/EntityRefLink';
 
@@ -27,6 +28,8 @@ const HEADER_FIELDS = [
   ['eway_bill_no', 'E-Way Bill No', 'text'], ['eway_bill_date', 'E-Way Bill Date', 'date'],
 ];
 const FREIGHT_PAID_BY = [['us', 'We pay'], ['customer', 'Customer pays']];
+// NIC's own cancellation reason codes (docs.ewaybillgst.gov.in, confirmed live).
+const CANCEL_REASONS = [[1, 'Duplicate'], [2, 'Order Cancelled'], [3, 'Data Entry Mistake'], [4, 'Others']];
 // E-way bill prerequisites (real-NIC-API research plan) — transport mode/vehicle type must be an
 // explicit Dispatch choice, never a silent backend default; the Select below pre-selects the
 // overwhelmingly common case (Road / Regular) but Dispatch always sees and can change it.
@@ -103,6 +106,10 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
   const [invoices, setInvoices] = useState([]);
   const [postingFreight, setPostingFreight] = useState(false);
   const [generatingEwayBill, setGeneratingEwayBill] = useState(false);
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [cancellingEwayBill, setCancellingEwayBill] = useState(false);
+  const [cancelReasonCode, setCancelReasonCode] = useState('');
+  const [cancelRemark, setCancelRemark] = useState('');
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
@@ -165,11 +172,28 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
     setGeneratingEwayBill(true);
     try {
       const res = await api(`/api/packing/${list.id}/eway-bill`, { method: 'POST' });
-      setList(l => ({ ...l, eway_bill_no: res.ewayBillNo, eway_bill_date: res.date }));
+      setList(l => ({ ...l, eway_bill_no: res.ewayBillNo, eway_bill_date: res.date, eway_bill_valid_upto: res.validUpto }));
       showToast('E-way bill generated');
     } catch (err) { showToast(err.message, 'error'); }
     finally { setGeneratingEwayBill(false); }
   }
+  async function submitCancelEwayBill() {
+    if (!cancelReasonCode) { showToast('Choose a cancellation reason', 'error'); return; }
+    if (!cancelRemark.trim()) { showToast('Enter a short remark', 'error'); return; }
+    setCancellingEwayBill(true);
+    try {
+      await api(`/api/packing/${list.id}/eway-bill/cancel`, { method: 'POST', body: { cancelRsnCode: Number(cancelReasonCode), cancelRmrk: cancelRemark.trim() } });
+      setList(l => ({ ...l, eway_bill_no: null, eway_bill_date: null, eway_bill_valid_upto: null }));
+      setCancelDialogOpen(false);
+      setCancelReasonCode('');
+      setCancelRemark('');
+      showToast('E-way bill cancelled');
+    } catch (err) { showToast(err.message, 'error'); }
+    finally { setCancellingEwayBill(false); }
+  }
+  // NIC only allows cancellation within 24 hours of generation — computed client-side too, so the
+  // Cancel button doesn't invite an attempt the server will reject anyway.
+  const ewayBillCancellable = list.eway_bill_date && (Date.now() - new Date(list.eway_bill_date).getTime()) <= 24 * 60 * 60 * 1000;
 
   const Meta = ({ label, value }) => (
     <div><dt className="text-xs text-muted-foreground">{label}</dt><dd className="text-sm font-medium">{value || '—'}</dd></div>
@@ -286,6 +310,47 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
           </CardContent>
         </Card>
       )}
+
+      {list.eway_bill_no && (
+        <Card className="no-print">
+          <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
+            <div className="flex flex-wrap gap-x-8 gap-y-1">
+              <div><dt className="text-xs text-muted-foreground">E-Way Bill No</dt><dd className="text-sm font-medium tnum">{list.eway_bill_no}</dd></div>
+              <div><dt className="text-xs text-muted-foreground">Generated</dt><dd className="text-sm font-medium">{list.eway_bill_date ? formatDate(list.eway_bill_date) : '—'}</dd></div>
+              <div><dt className="text-xs text-muted-foreground">Valid Until</dt><dd className="text-sm font-medium">{list.eway_bill_valid_upto ? formatDate(list.eway_bill_valid_upto) : '—'}</dd></div>
+            </div>
+            {!readOnly && (
+              ewayBillCancellable
+                ? <Button size="sm" variant="outline" className="text-danger hover:text-danger" onClick={() => setCancelDialogOpen(true)}>Cancel E-Way Bill</Button>
+                : <p className="text-xs text-muted-foreground">Past NIC's 24-hour cancellation window.</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Cancel E-Way Bill {list.eway_bill_no}</DialogTitle></DialogHeader>
+          <div className="flex flex-col gap-4 text-sm">
+            <p className="text-muted-foreground">This cancels the real e-way bill with NIC — it can’t be undone, and only works within 24 hours of generation.</p>
+            <div className="flex flex-col gap-1.5">
+              <Label>Reason</Label>
+              <Select value={cancelReasonCode} onValueChange={setCancelReasonCode}>
+                <SelectTrigger><SelectValue placeholder="Choose a reason" /></SelectTrigger>
+                <SelectContent>{CANCEL_REASONS.map(([v, label]) => <SelectItem key={v} value={String(v)}>{label}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>Remark</Label>
+              <Textarea value={cancelRemark} onChange={e => setCancelRemark(e.target.value)} placeholder="Short explanation for the cancellation" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setCancelDialogOpen(false)}>Close</Button>
+            <Button variant="destructive" disabled={cancellingEwayBill} onClick={submitCancelEwayBill}>{cancellingEwayBill ? 'Cancelling…' : 'Cancel E-Way Bill'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {!readOnly && list.status === 'dispatched' && (
         <DeliveryAckCard list={list} onDone={updated => setList(l => ({ ...l, ...updated }))} />
