@@ -22,7 +22,10 @@ a reader who finds the old `V3_CHANGES.md` §12 text elsewhere knows it's stale.
 reversal.
 
 Everything in this file reflects the **current, working build**, updated as work lands — most
-recently 2026-08-23 (§5ap, a hardening pass on §5ao's NCR workflow following a second-opinion
+recently 2026-09-03 (§5av, giving Accounts real, ownership-scoped write access to Sales Invoices
+and Dispatch's packing lists — a gap found by directly asking "can Accounts actually do this
+today?" rather than assumed fixed); 2026-08-23 (§5ap, a hardening pass on §5ao's NCR workflow
+following a second-opinion
 review: a distinct QC-verification step now required before an NCR can close, and a real
 server-side guard closing the one structural gap the review found — a failed-test-originated NCR
 could otherwise never link to the held job card it was actually about; §5ao, a full QC
@@ -5861,6 +5864,80 @@ panel height matches its actual content.
   levels) was deleted through the real routes; final direct-DB check came back to exactly 325
   `bom_items`/0 `bom_assemblies` for the project again. `npm run lint` clean (572 files) after every
   step.
+
+## 5av. Accounts ↔ Dispatch/Sales real access — invoice payment status, packing-list read access, and two pre-existing 403s (2026-09-03)
+
+Prompted by a direct question — "does Accounts properly able to update invoices and e-way bill with
+Dispatch?" — investigated rather than assumed, and the honest answer was **no**: Accounts had
+`GET` access to Sales Invoices but zero write access at all, and `app/packing/[id]/page.js`
+redirected any non-Dispatch, non-PM internal user (Accounts included) away from a packing list's
+detail page entirely — Accounts could only see freight/e-way-bill/delivery-ack data through the
+flat Report Engine exports (§5aj/§5ar), never the real document.
+
+**Ownership boundaries, confirmed with the user before building, not assumed:** Sales/Marketing
+keep sole authority over an invoice's commercial/issuance fields (`draft`/`issued`/`cancelled`,
+`due_date`, `notes`); Accounts may only mark an invoice `paid` and record `payment_ref`. Dispatch
+remains the only department that can edit e-way bill/freight fields. Accounts gets **read-only**
+access to full packing-list detail for reconciliation — never edit.
+
+**Built, reusing the existing Action Permissions catalog (§5i) rather than a bespoke check:**
+- **`app/api/sales-invoices/[id]/route.js`** — `PATCH` now branches on `isAccountsPaymentOnly`
+  (`canAccessDepartment(user,'Accounts')` and not already on the full CRM path): submitted keys are
+  validated against `ACCOUNTS_PAYMENT_FIELDS = ['status','payment_ref']` and any `status` other
+  than `'paid'` is rejected, gated by a new `accounts.invoice.mark_paid` action key. The
+  pre-existing `requireCrmAction(user,'sales.invoice.status')` full path (Sales/Marketing/PM) is
+  byte-for-byte unchanged.
+- **`app/packing/[id]/page.js`** — `canView = canEdit || canAccessDepartment(user,'Accounts')`
+  replaces the old `!canEdit` redirect condition. `readOnly={!canEdit}` (still Dispatch-only) is
+  unchanged, so nothing new is editable — confirmed by reading `components/PackingDetail.jsx` in
+  full: every write control (status select, edit/delete, the freight card, `DeliveryAckCard`, item
+  add/remove) is already behind `{!readOnly && ...}`.
+- **Dispatch Register** (`components/reports/DispatchReportCards.jsx`) — the Packing No. column is
+  now a real `Link` to `/packing/{id}` (needed `pl.id` added to `getDispatchRegisterLines()`'s
+  SELECT, `lib/data.js`) — Accounts' actual discoverable path into a specific packing list, not
+  just permission with no way to find the ID.
+
+**A second, real gap found by re-reading the code after the fix above, not assumed fixed just
+because the permission existed:** `AccountsWorkspace.jsx` already had a working-looking "AR / AP
+settlement" card (§5w) — "Record receipt against invoice…" / "Record payment against bill…" — but
+its two backing routes' `POST` handlers were narrower than their own `GET`s: `app/api/sales-
+invoices/[id]/receipts/route.js` required `canAccessCrm(user)` (Sales/Marketing/PM), and
+`app/api/vendor-bills/[id]/payments/route.js` required `requireDepartment(user,'Procurement')`.
+**An `accounts_head` login got a 403 clicking Receive or Pay on their own workspace's own button.**
+This is the *better* mechanism for "mark an invoice paid" than the raw status PATCH above — real
+receipt/payment numbering, real GL posting via `customerReceiptLines`/`vendorPaymentLines`, handles
+partial payments — so leaving it CRM/Procurement-only would have left Accounts using only the
+narrower path.
+
+Fixed the same way, two new catalog entries (`accounts.invoice.receipt.write`,
+`accounts.vendor_bill.payment.write`) — no field-level restriction needed here (recording a
+receipt/payment never touches an invoice's or bill's commercial fields, just amount/date/
+reference), so it's a straight actor-widening: `isAccountsOnly = !canAccessCrm(user) &&
+canAccessDepartment(user,'Accounts')` picks the new gate, otherwise the original
+`requireCrmAction`/`requireAction(user,'Procurement',...)` path runs exactly as before. Confirmed
+`canProcurement = isPM(user) || canAccessDepartment(user,'Procurement')` is logically identical to
+the `requireDepartment` call it replaced (`canAccessDepartment` already returns `true` for a PM) —
+not a behavior change for the pre-existing Procurement/PM path, verified by reading
+`lib/auth.js` directly, not assumed.
+
+**Live-verified against the real dev DB**, disposable rows (a customer, a PO, an issued invoice, an
+approved vendor bill — all `ZZ-TEST-...-DELETE-ME`), FK-correct since this DB's Turso connection
+does enforce foreign keys (unlike the SQLite-local assumption elsewhere in this doc — corrected
+here, not generalized): as `accounts_head`, `PATCH` a real invoice to `status:'issued'`/`due_date`/
+`notes` each 403'd, `status:'paid'`+`payment_ref` succeeded; `POST .../receipts` and `POST
+.../payments` both succeeded (200, real receipt/payment numbers, correct running balance,
+real journal entries posted); as `admin` (PM), the original full-CRM path still fully worked
+end-to-end on the same invoice (final receipt closed the balance to 0 and auto-flipped the invoice
+to `paid`) — no regression. All disposable rows, their journal entries, and the PO/customer they
+depended on were deleted afterward; a direct DB count confirmed zero residue across all five
+touched tables. `npm run lint` and a full `npm run build` both clean.
+
+**Also discovered along the way, not this round's DB**: the current dev database has genuinely
+sparse transactional data right now (`projects: 2`, `sales_invoices: 0`, `vendor_bills: 0`,
+`purchase_orders: 0` at the start of this round) alongside substantial master data (`users: 44`,
+`suppliers: 445`) — a real observation surfaced by this verification, not investigated further
+since it's orthogonal to the permission fix; flagged here rather than silently noted only in a
+throwaway script.
 
 ## 6. Customer Portal (read-only, external)
 
