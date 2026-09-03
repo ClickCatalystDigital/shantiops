@@ -9,8 +9,10 @@ import { useState } from 'react';
 import { Card, CardHeader, CardTitle, CardDescription, CardAction, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ChevronRightIcon, ChevronDownIcon, PackageIcon, ListTreeIcon } from 'lucide-react';
+import { ChevronRightIcon, ChevronDownIcon, PackageIcon, ListTreeIcon, ScaleIcon, AlertTriangleIcon } from 'lucide-react';
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { groupByParent } from '@/lib/bom-tree.mjs';
+import { hasAmbiguousQty } from '@/lib/bom-structure.mjs';
 import { TreeRail } from './BomTreeNode';
 
 // A node's own items default OPEN (no click needed to see what's inside the component you're
@@ -22,6 +24,7 @@ const ITEM_AUTO_COLLAPSE_THRESHOLD = 15;
 
 function ItemRow({ item, node, ancestorLines, isLast }) {
   const showRolled = item.rolled_qty != null && node.rollup_qty !== 1;
+  const ambiguous = hasAmbiguousQty(item.qty_text);
   return (
     <div className="flex items-center gap-0 py-1 pl-1 pr-2 text-sm text-muted-foreground">
       {ancestorLines.map((hasLine, i) => <TreeRail key={i} vertical={hasLine} />)}
@@ -34,7 +37,15 @@ function ItemRow({ item, node, ancestorLines, isLast }) {
         </span>
         {item.material_description}
       </span>
-      <span className="shrink-0 tnum">
+      <span className="flex shrink-0 items-center gap-1 tnum">
+        {ambiguous && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <AlertTriangleIcon className="size-3 shrink-0 text-warning" />
+            </TooltipTrigger>
+            <TooltipContent>Multiple values in this quantity — only the first number is used in the roll-up total.</TooltipContent>
+          </Tooltip>
+        )}
         {item.qty_text}
         {showRolled && <span className="text-muted-foreground/70"> → {item.rolled_qty} total</span>}
       </span>
@@ -89,6 +100,16 @@ function AssemblyRow({ node, depth, childrenByParent, collapsedIds, toggleCollap
           </button>
         )}
       </div>
+
+      {node.weight_items_known > 0 && (
+        <div
+          className="flex items-center gap-1 pb-1 text-[11px] text-muted-foreground/80"
+          style={{ paddingLeft: `${(ancestorLines.length + (depth > 0 ? 1 : 0)) * 1.25 + 1.25}rem` }}
+        >
+          <ScaleIcon className="size-3 shrink-0" />
+          {node.weight_kg.toFixed(1)} kg cut so far ({node.weight_items_known} of {node.weight_items_total} items have recorded weight)
+        </div>
+      )}
 
       {slots.map((slot, i) => {
         const isLast = i === slots.length - 1;
