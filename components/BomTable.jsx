@@ -145,10 +145,10 @@ function LinkItemControl({ bomItemId, router }) {
   );
 }
 
-// Add Item's richer composer (Engineering/Design's own create-item flow only — see useRichComposer
-// below). Non-dimensional categories get a plain size/spec text box + this small unit dropdown
-// instead of a bare free-text field; a dimensional category (plate, angle, ...) upgrades the whole
-// row to CategoryFieldsBlock instead, which already carries its own per-dimension unit toggle.
+// Engineering/Design's item composer (create and edit — see useRichComposer below). Non-dimensional
+// categories get a plain size/spec text box + this small unit dropdown instead of a bare free-text
+// field; a dimensional category (plate, angle, ...) upgrades the whole row to CategoryFieldsBlock
+// instead, which already carries its own per-dimension unit toggle.
 const SIZE_UNITS = ['mm', 'inch', 'm', 'ft', 'NB', '—'];
 
 let sizeRowKey = 1;
@@ -156,19 +156,26 @@ function emptySizeRow(categoryFields = {}) {
   return { key: sizeRowKey++, categoryFields, size_spec: '', unit: 'mm', qty_text: '' };
 }
 
+function safeParseCategoryFields(json) {
+  if (!json) return {};
+  try { return JSON.parse(json) || {}; } catch { return {}; }
+}
+
 // One size/spec + qty variant of the item being added. `category` is shared across every row on the
 // form (it describes the *kind* of material, e.g. "these are all plates") — only each row's own
 // dimensions/size differ, same as picking three different plate sizes of the same steel grade.
-function SizeSpecRow({ row, index, total, category, onChange, onRemove }) {
+function SizeSpecRow({ row, index, total, category, onChange, onRemove, removable }) {
   const isDimensional = DIMENSIONAL_CATEGORIES.includes(category);
   return (
     <div className="flex flex-col gap-2 rounded-md border p-2.5">
       {total > 1 && (
         <div className="flex items-center justify-between">
           <span className="text-xs font-medium text-muted-foreground">Size/Spec #{index + 1}</span>
-          <Button type="button" size="icon-sm" variant="ghost" className="text-danger" aria-label="Remove this size/spec" onClick={onRemove}>
-            <TrashIcon className="size-3.5" />
-          </Button>
+          {removable && (
+            <Button type="button" size="icon-sm" variant="ghost" className="text-danger" aria-label="Remove this size/spec" onClick={onRemove}>
+              <TrashIcon className="size-3.5" />
+            </Button>
+          )}
         </div>
       )}
       {isDimensional ? (
@@ -192,27 +199,46 @@ function SizeSpecRow({ row, index, total, category, onChange, onRemove }) {
   );
 }
 
-// Engineering/Design's "+ Add item" composer — catalog-aware description (auto-detects a
-// dimensional category from the picked item, same as PrWorkspace's own Raise PR line), a manual
-// category override, and repeatable size/spec+qty rows (each row becomes its own bom_items POST on
-// submit, sharing description/MOC/category — see the plan's own reasoning: no new schema, every
-// downstream consumer of a BOM line already expects "one row = one packable variant"). Only rendered
-// for editing.__new && canStructure (see useRichComposer in BomTable) — editing an existing row keeps
-// the plain generic dialog fields unchanged, since a multi-row create semantics doesn't apply there.
-function AddItemForm({ projectId, assemblies, otherFields, otherDefaults, otherOptions, canSetTraceability, canSetManufacturingFlag, onDone, onCancel }) {
-  const [description, setDescription] = useState('');
-  const [itemId, setItemId] = useState(null);
+// Engineering/Design's item composer — catalog-aware description (auto-detects a dimensional
+// category from the picked item, same as PrWorkspace's own Raise PR line), a manual category
+// override, and repeatable size/spec+qty rows. Used for both create (editing.__new) and edit (an
+// existing row) — see useRichComposer in BomTable. On create every row becomes its own bom_items
+// POST, sharing description/MOC/category (no new schema: every downstream consumer already expects
+// "one row = one packable variant"). On edit, row #1 PATCHes the existing row being edited (so
+// editing a plain field never spawns a duplicate) and any further rows the user adds are new POSTs
+// — the deliberate way to split a messy legacy row (e.g. three sizes jammed into one qty_text
+// string, a real case found live) into proper separate rows, using the same UI either way. Row #1
+// can never be removed while editing — it's not a draft row, it's the record being saved.
+function AddItemForm({
+  projectId, assemblies, otherFields, otherDefaults, otherOptions, canSetTraceability, canSetManufacturingFlag,
+  existingItem, onDone, onCancel,
+}) {
+  const [description, setDescription] = useState(existingItem?.material_description || '');
+  const [itemId, setItemId] = useState(existingItem?.item_id || null);
   const [uomHint, setUomHint] = useState('');
-  const [moc, setMoc] = useState('');
-  const [category, setCategory] = useState('');
-  const [sizeRows, setSizeRows] = useState([emptySizeRow()]);
+  const [moc, setMoc] = useState(existingItem?.moc || '');
+  const [category, setCategory] = useState(existingItem?.category || '');
+  const [sizeRows, setSizeRows] = useState(() => existingItem
+    ? [{
+        key: sizeRowKey++,
+        categoryFields: safeParseCategoryFields(existingItem.category_fields_json),
+        size_spec: DIMENSIONAL_CATEGORIES.includes(existingItem.category) ? '' : (existingItem.size_spec || ''),
+        unit: 'mm',
+        qty_text: existingItem.qty_text || '',
+      }]
+    : [emptySizeRow()]);
   const [traceability, setTraceability] = useState({
-    requires_heat_no: false, requires_mtc: false, requires_supplier_batch: false, requires_serial_no: false,
+    requires_heat_no: !!existingItem?.requires_heat_no, requires_mtc: !!existingItem?.requires_mtc,
+    requires_supplier_batch: !!existingItem?.requires_supplier_batch, requires_serial_no: !!existingItem?.requires_serial_no,
   });
-  const [requiresManufacturing, setRequiresManufacturing] = useState(true);
+  const [requiresManufacturing, setRequiresManufacturing] = useState(
+    existingItem ? existingItem.requires_manufacturing !== 0 && existingItem.requires_manufacturing !== false : true);
   const [other, setOther] = useState(otherDefaults);
   const [saving, setSaving] = useState(false);
 
+  // Same release-baseline freeze the plain dialog already enforced — a line's traceability/
+  // manufacturing requirements shouldn't silently change after the BOM they belong to was released.
+  const frozen = existingItem?.released_at_revision != null;
   const line = { material_description: description, item_id: itemId, uomHint };
   const TRACEABILITY_KEYS = ['requires_heat_no', 'requires_mtc', 'requires_supplier_batch', 'requires_serial_no'];
 
@@ -253,13 +279,14 @@ function AddItemForm({ projectId, assemblies, otherFields, otherDefaults, otherO
 
     setSaving(true);
     try {
+      let touched = 0;
       let created = 0;
-      for (const row of sizeRows) {
+      for (let i = 0; i < sizeRows.length; i++) {
+        const row = sizeRows[i];
         const size_spec = isDimensional
           ? (categoryDisplaySpec(category, row.categoryFields) || '')
           : [row.size_spec.trim(), row.unit && row.unit !== '—' ? row.unit : ''].filter(Boolean).join(' ');
         const body = {
-          project_id: projectId,
           material_description: description.trim(),
           moc: moc.trim(),
           size_spec,
@@ -267,20 +294,32 @@ function AddItemForm({ projectId, assemblies, otherFields, otherDefaults, otherO
           category: category || undefined,
           category_fields_json: isDimensional ? JSON.stringify(finalizeCategoryFields(category, row.categoryFields)) : undefined,
           ...other,
-          ...(canSetTraceability ? traceability : {}),
-          ...(canSetManufacturingFlag ? { requires_manufacturing: requiresManufacturing ? 1 : 0 } : {}),
+          ...(canSetTraceability && !frozen ? traceability : {}),
+          ...(canSetManufacturingFlag && !frozen ? { requires_manufacturing: requiresManufacturing ? 1 : 0 } : {}),
         };
-        const { id } = await api('/api/bom-items', { method: 'POST', body });
-        created++;
+        let id;
+        if (i === 0 && existingItem) {
+          // Row #1 is the record being edited — PATCH it in place rather than creating a
+          // duplicate. project_id is never a PATCH-able field (not in BOM_FIELD_OWNERS), so it's
+          // deliberately left off this body, unlike the POST case below.
+          await api(`/api/bom-items/${existingItem.id}`, { method: 'PATCH', body });
+          id = existingItem.id;
+          touched++;
+        } else {
+          const res = await api('/api/bom-items', { method: 'POST', body: { project_id: projectId, ...body } });
+          id = res.id;
+          touched++;
+          created++;
+        }
         // Best-effort — same idiom as LinkItemControl above. The catalog link is a convenience
-        // (real Inventory matching), never load-bearing for the create itself; the row already
+        // (real Inventory matching), never load-bearing for the save itself; the row already
         // exists correctly whether or not this second call lands.
         if (itemId) {
           try { await api(`/api/bom-items/${id}/link-item`, { method: 'POST', body: { item_id: itemId } }); }
           catch { /* best-effort */ }
         }
       }
-      showToast(created === 1 ? 'Item added' : `${created} items added`);
+      showToast(created > 0 ? `Saved — ${created} new item${created === 1 ? '' : 's'} added` : (touched === 1 ? 'Item updated' : `${touched} items updated`));
       onDone();
     } catch (err) {
       showToast(err.message, 'error');
@@ -310,6 +349,7 @@ function AddItemForm({ projectId, assemblies, otherFields, otherDefaults, otherO
           <SizeSpecRow
             key={row.key} row={row} index={i} total={sizeRows.length} category={category}
             onChange={patch => updateRow(i, patch)} onRemove={() => removeRow(i)}
+            removable={!(existingItem && i === 0)}
           />
         ))}
         <Button type="button" size="sm" variant="ghost" className="w-fit text-muted-foreground" onClick={addRow}>
@@ -342,16 +382,19 @@ function AddItemForm({ projectId, assemblies, otherFields, otherDefaults, otherO
           <div className="flex flex-wrap gap-x-4 gap-y-1.5">
             {TRACEABILITY_FIELDS.map(f => (
               <label key={f} className="flex items-center gap-1.5 text-sm">
-                <input type="checkbox" checked={!!traceability[f]} onChange={e => setTraceability(t => ({ ...t, [f]: e.target.checked }))} />
+                <input type="checkbox" checked={!!traceability[f]} disabled={frozen}
+                  onChange={e => setTraceability(t => ({ ...t, [f]: e.target.checked }))} />
                 {TRACEABILITY_LABELS[f]}
               </label>
             ))}
           </div>
+          {frozen && <p className="text-xs text-muted-foreground">Frozen — reopen Release BOM to change these.</p>}
         </div>
       )}
       {canSetManufacturingFlag && (
         <label className="flex items-center gap-1.5 text-sm">
-          <input type="checkbox" checked={requiresManufacturing} onChange={e => setRequiresManufacturing(e.target.checked)} />
+          <input type="checkbox" checked={requiresManufacturing} disabled={frozen}
+            onChange={e => setRequiresManufacturing(e.target.checked)} />
           Requires manufacturing
         </label>
       )}
@@ -442,9 +485,8 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
     f !== 'purchase_status' && f !== 'production_done' && f !== 'requires_manufacturing' && !TRACEABILITY_FIELDS.includes(f)
     && f !== 'make' && f !== 'category' && f !== 'category_fields_json');
   // The richer catalog-aware, category-adaptive, multi-size composer — Engineering/Design's own
-  // "+ Add item" flow only. Editing an existing row keeps today's plain per-field dialog: a
-  // multi-row create doesn't apply to a single already-existing bom_items row.
-  const useRichComposer = editing?.__new && canStructure;
+  // create AND edit flow (AddItemForm branches internally on editing.__new vs an existing row).
+  const useRichComposer = !!editing && canStructure;
   const otherFields = dialogFields.filter(f => !['material_description', 'moc', 'size_spec', 'qty_text'].includes(f));
 
   // Smart text input: native <datalist> suggestions from values already typed elsewhere — zero new
@@ -854,6 +896,7 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
               otherDefaults={Object.fromEntries(otherFields.map(f => [f, editing[f] != null ? String(editing[f]) : '']))}
               otherOptions={distinctValues}
               canSetTraceability={canSetTraceability} canSetManufacturingFlag={canSetManufacturingFlag}
+              existingItem={editing.__new ? null : editing}
               onDone={() => { setEditing(null); router.refresh(); onSaved?.(); }}
               onCancel={() => setEditing(null)}
             />
