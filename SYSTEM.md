@@ -22,7 +22,9 @@ a reader who finds the old `V3_CHANGES.md` §12 text elsewhere knows it's stale.
 reversal.
 
 Everything in this file reflects the **current, working build**, updated as work lands — most
-recently 2026-09-03 (§5av, giving Accounts real, ownership-scoped write access to Sales Invoices
+recently 2026-09-03 (§5aw, a company-onboarding UI plus direct-to-NIC e-way-bill credential storage
+— explicitly no GSP/private-vendor option anywhere, a product decision the user made explicit
+mid-session); §5av, giving Accounts real, ownership-scoped write access to Sales Invoices
 and Dispatch's packing lists — a gap found by directly asking "can Accounts actually do this
 today?" rather than assumed fixed); 2026-08-23 (§5ap, a hardening pass on §5ao's NCR workflow
 following a second-opinion
@@ -5938,6 +5940,125 @@ sparse transactional data right now (`projects: 2`, `sales_invoices: 0`, `vendor
 `suppliers: 445`) — a real observation surfaced by this verification, not investigated further
 since it's orthogonal to the permission fix; flagged here rather than silently noted only in a
 throwaway script.
+
+## 5aw. Company onboarding UI + direct-to-NIC e-way-bill credentials (2026-09-03)
+
+A direct follow-on audit — "where are the gaps in Accounts, does it support onboarding, does it
+touch freight/e-way-bill" — surfaced two more real, confirmed gaps beyond §5av's invoice/packing
+fixes, both closed this round.
+
+**Company onboarding.** `company_settings` had exactly 2 hardcoded rows (Shanti Boilers, Shanti
+Techno Fab), seeded only in `lib/db.js` — no `POST` route, no "Add Company" UI anywhere. Built:
+- **`seedChartOfAccountsForCompany(client, company)`** (`lib/db.js`) — extracted out of `migrate()`'s
+  two inline copies (a one-time full-seed loop plus a separate `else` backfill loop for codes added
+  to `DEFAULT_CHART_OF_ACCOUNTS` after that first seed, e.g. Fixed Assets/Accumulated Depreciation).
+  `INSERT OR IGNORE` against the existing `UNIQUE(company, code)` constraint replaces both branches
+  with one pass, safe to call from `migrate()`'s own boot-time seed **and** directly from the new
+  create-company route — a runtime-created company gets its Chart of Accounts immediately, not only
+  on the next process restart. Live-verified: a company created via the API had all 20
+  `DEFAULT_CHART_OF_ACCOUNTS` rows present with zero restart.
+- **`POST /api/company-settings`** — gated by a **new**, Head-only `accounts.company.create` action
+  key (seeded in `migrate()`, same `INSERT OR IGNORE INTO action_permissions` idiom as
+  `engineering.ecn.approve`/`qc.ncr.disposition` — creating a legal entity is a standing,
+  high-consequence action, distinct from the routinely-open `accounts.company_settings.write`).
+  Pure `INSERT`, wrapped in `withTransaction` alongside the Chart-of-Accounts seed; a duplicate
+  `company` name is caught and returned as a clean 409, not a raw constraint error.
+- **`POST /api/company-settings/preview-gstin`** — the id-less sibling of the existing
+  `[id]/verify-gstin` route (which hard-requires an existing row to diff against). Exports and
+  reuses that route's `fetchFromHub()` (confirmed a route file's named export can be imported by a
+  sibling route file and builds clean under Next 14.2.5 — no need to relocate it into `lib/`).
+  Returns `mapSandboxResponse()`'s `{trackable, extra}` directly, no diff — nothing exists yet to
+  diff against.
+- **UI** (`components/AccountsWorkspace.jsx`) — `NewCompanyDialog`, same Dialog/Input shadcn shapes
+  as the existing `GstinRefreshDialog`: company short name, legal name, an optional GSTIN with an
+  inline "Look up" button pre-filling legal name/PAN/state from `preview-gstin`, address, invoice
+  prefix. On create, lands the user on the new company's own Company Entities view.
+  `SettingsTab`/`CompanyCard` needed no changes — both already map over the same `companies` prop.
+
+**Direct-to-NIC e-way-bill credentials — deliberately no GSP, no provider selector, no named
+private vendor anywhere.** Raised explicitly by the user mid-session after an initial design draft
+recommended a GSP (GST Suvidha Provider) option: rejected outright — "link directly to government
+which I believe should be free." Researched the actual process (WebSearch/WebFetch against
+`docs.ewaybillgst.gov.in`/`einv-apisandbox.nic.in`, cross-checked against this repo's own prior
+research in `ACCOUNTING-IMPLEMENTATION-PLAN.md` Phase 10 and independently corroborated by the
+user's own separate research) and confirmed: the direct route really is 100% government (no private
+intermediary, no per-transaction fee) — the only gate is eligibility (NIC "notifies" a GSTIN as
+eligible, roughly turnover/volume-based) — but **NIC's own registration is portal-based and cannot
+be automated by any third-party software**: the taxpayer logs into the E-Way Bill portal themselves
+(Registration → For API) and NIC issues Client ID / Client Secret / API Username / API Password.
+Shanti Ops' job is only to store those credentials once obtained and call the transactional API
+with them — building anything that implies "click here and Shanti Ops registers you" would be
+dishonest about what the government process actually allows. E-invoicing (IRN via NIC's own IRP) is
+a separate system with a separate threshold — **explicitly out of scope this round**, per the
+user's own choice; `ACCOUNTING-IMPLEMENTATION-PLAN.md` Phase 10 already tracks it as a distinct,
+still-deferred item.
+
+- **`eway_bill_credentials`** (new table) — one row per company, `credentials` a JSON blob
+  (`{client_id, client_secret, api_username, api_password}`). A **separate table, not new
+  `company_settings` columns**, because `getCompanySettings()`'s `SELECT *` already round-trips
+  straight to the browser (`app/accounts/page.js` → `AccountsWorkspace`) — secrets must never sit
+  in that path. JSON blob rather than rigid columns since this table has exactly one write path and
+  the real field names should follow whatever NIC's own screen calls them.
+- **`GET /api/company-settings/[id]/eway-bill-credentials`** never returns the blob, not even
+  masked — masking still requires holding the real value in a response; simplest and safest is
+  `{configured: boolean, updated_at}` only. `PATCH` reuses the existing
+  `accounts.company_settings.write` action (a field on the same company-entity object Accounts
+  already owns, not a new authority tier) and upserts the full blob — never pre-filled, "re-enter to
+  change," same convention as any credential field in this app. `audit()` logs `company` only,
+  never the blob.
+- **`lib/eway-bill.js`** — the dispatch seam, same shape as `lib/mail.js`: no real NIC account
+  exists yet to build/test the actual call against, so `generateEwayBill()` throws a clear,
+  actionable "not wired yet" error (naming the exact external step to do first) rather than faking
+  success. `POST .../eway-bill-credentials/test` ("Test Connection") calls it and surfaces the
+  honest message.
+- **`POST /api/packing/[id]/eway-bill`** — the generation trigger, same explicit-action shape as
+  the pre-existing `POST /api/packing/[id]/freight` (§5aj): looks up the packing list's project's
+  company, reads its credentials, calls `generateEwayBill()`, writes `eway_bill_no`/`eway_bill_date`
+  back on success. Idempotency guard mirrors the freight route's check-before-write idea:
+  `eway_bill_no IS NOT NULL` is the "already done" signal (no `journal_entries`-style existing-entry
+  check to lean on here) → 409, pointing at manual correction since regeneration/cancellation isn't
+  built — a real e-way bill's 24-hour cancellation window has regulatory semantics that shouldn't be
+  half-stubbed, left absent rather than faked. New `dispatch.packing.eway_bill.generate` action key,
+  open by default, same tier as `dispatch.packing.freight`.
+- **UI** — `EwayBillCredentialsCard` (`AccountsWorkspace.jsx`, Company Entities tab) renders the
+  real 3-step flow (register externally → enter credentials → Test Connection) rather than a bare
+  form, so it's clear from the UI itself why a button can't just work immediately. `PackingDetail.jsx`
+  gets a "Generate E-Way Bill" card next to the existing freight card, Dispatch-only, shown while
+  `!list.eway_bill_no`; a failure (today, always the stub) surfaces via `showToast`, not a silent
+  break.
+- **Parity fix, smaller**: `app/api/reports/freight-cost-summary` and `.../eway-bill-register`
+  widened to also allow Accounts, matching the pre-existing Dispatch Register exception. **Found
+  while doing this, not fully closed**: none of Dispatch's 3 freight/e-way reports are actually
+  reachable by Accounts through the Reports nav even after this — `app/reports/page.js`'s
+  department view only ever includes catalog entries tagged with that exact department, and these
+  are all tagged `department: 'Dispatch'`. The route-level widening is real (an Accounts-facing
+  surface calling the API directly would work) but isn't the same as on-screen parity; a genuine fix
+  needs the catalog to support tagging a report to more than one department, a bigger change not
+  attempted this round — named here rather than silently declared done.
+
+**Live-verified against the real dev DB** (disposable test rows — a company, its seeded Chart of
+Accounts, credentials, two projects/packing lists — all created via the real routes, not direct
+SQL where a route existed): company creation returned 201 with 20 real Chart-of-Accounts rows
+immediately; the existing 2 companies and the new `action_permissions` row were all confirmed by
+direct query; credential `PATCH` → `GET` round-trip confirmed the blob is never returned; Test
+Connection surfaced the exact stub error; the generation route correctly 400'd with "no credentials
+configured" against a real company with none, 400'd with the honest "not implemented yet" stub
+message against the company that did have credentials, and 409'd against a packing list that
+already had `eway_bill_no` set. Clicked through the actual UI (not just the API): the "New Company"
+dialog renders correctly with all fields; the `EwayBillCredentialsCard`'s 3-step copy and 4
+password fields render on a real company; `PackingDetail`'s "Generate E-Way Bill" card renders
+correctly next to a real packing list. All disposable rows deleted afterward; a direct DB check
+confirmed exactly 2 companies and zero `ZZ-TEST*`-prefixed rows anywhere. `npm run lint` and a full
+`npm run build` both clean.
+
+**Deferred (documented only, not built) — HR ↔ Accounts.** Confirmed via direct code read while
+scoping this round: payroll → GL posting is fully wired end-to-end (`salarySlipLines()` in
+`lib/ledger.mjs`, fired from `app/api/salary-slips/[id]/route.js` on `status='paid'`). Two real,
+concrete gaps for a future round, per the user's own "later": `employees.cost_rate_per_hour` and
+`employees.company` are API-only — no HR-facing form field exists anywhere to set them; and
+Accounts has zero visibility into payroll beyond the bare `payroll_export_status` toggle — no link
+from a posted salary journal entry back to the salary slip it came from, surfaced anywhere on the
+Accounts side.
 
 ## 6. Customer Portal (read-only, external)
 

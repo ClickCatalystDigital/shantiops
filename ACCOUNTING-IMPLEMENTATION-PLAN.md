@@ -444,13 +444,19 @@ phase comes up rather than assuming last check's answer still holds.
   statutory-rates-hub, which only distributes identical-for-everyone rate data and holds no
   per-company secrets or transactional state.
 - **E-way bill generation** — only if dispatching goods above the state threshold (usually
-  ₹50,000/consignment). **Paid service genuinely needed then**: production API access requires GSP
-  registration, same story as e-invoicing. **Correction (2026-08-22)**: eligibility for direct
-  (non-GSP) API access is volume-based — roughly 1,000 e-way bills/day or 10,000 transactions/month
-  per GSTIN, per the EWB portal's own prerequisites — not restricted by industry/business type as
-  previously assumed. Still not a real trigger today (nothing indicates dispatch volume is near
-  that), so still deferred; noted so it isn't mis-scoped as "industry-ineligible" later. Same
-  per-company placement as e-invoicing above if ever built — not statutory-rates-hub.
+  ₹50,000/consignment). **Correction (2026-08-22)**: eligibility for direct (non-GSP) API access is
+  volume-based — roughly 1,000 e-way bills/day or 10,000 transactions/month per GSTIN, per the EWB
+  portal's own prerequisites — not restricted by industry/business type as previously assumed.
+  **Correction (2026-09-03) — the "paid service genuinely needed then" framing above was wrong for
+  this system specifically**: a GSP is one path, but the direct-to-NIC route is genuinely free (no
+  per-transaction fee, no vendor) — the only real gate is eligibility, and the user explicitly
+  wants direct-only, no GSP/private vendor named anywhere in the product. **Architecture built
+  (SYSTEM.md §5aw)**: `eway_bill_credentials` table + Accounts-side credential entry UI +
+  `lib/eway-bill.js`'s dispatch seam + a Dispatch-side "Generate" trigger on `/packing/[id]` all
+  exist now; only the actual outbound NIC API call is stubbed, pending a real registered account
+  (NIC's own registration is portal-based, done by the user outside this app — see §5aw for why
+  that can't be automated). Same per-company placement as e-invoicing above — not
+  statutory-rates-hub.
 - **TDS 26Q e-filing** — the TDS Deduction Register (§5z) already gives the data; actual TRACES-
   format filing has no clean API for a self-service integration at any price — stays a CA/return-
   prep-software task regardless of budget.
