@@ -22,7 +22,15 @@ a reader who finds the old `V3_CHANGES.md` §12 text elsewhere knows it's stale.
 reversal.
 
 Everything in this file reflects the **current, working build**, updated as work lands — most
-recently 2026-09-03 (§5ax, the real NIC E-Way Bill client now implemented — `authenticate`/
+recently 2026-09-03 (§5ay, a "round 2" hardening pass on the Final BOM read-only tree card §5au
+shipped: items now default open instead of needing a click, an ambiguous-quantity flag, in-card
+search that also reaches Unassigned, a real never-fabricated-never-scaled weight roll-up off actual
+cut `stock_pieces`, a searchable/unreleased-by-default project picker, calc-sheet linking relocated
+from BOM tree nodes to drawings — a calc sheet substantiates a drawing, not a structural node — a
+flattened depth-indented PDF export, and a frozen structural snapshot per BOM release with a
+Live/past-revision picker; plus the Release BOM sidebar entry restored in Requests after being
+folded into the BOM workspace's own button read as "where did it go" rather than a cleaner nav); §5ax,
+the real NIC E-Way Bill client now implemented — `authenticate`/
 `GENEWAYBILL`/`CANEWB` against the live official v1.03 spec, crypto self-checked locally, itemList
 built from real invoice line items rather than fabricating one — not yet live-tested, no NIC account
 exists yet); the prerequisite validation build before it — transport distance/mode, a
@@ -6287,6 +6295,227 @@ past 24 hours correctly hides the Cancel button (client) and rejects the cancel 
 matching messages. All disposable rows deleted afterward, confirmed zero residue. `npm run lint` and
 a full `npm run build` both clean. Not committed yet, per instruction.
 
+## 5ay. Final BOM read-only tree card, then a "round 2" hardening pass — items-open fix, ambiguous-qty flag, in-card search, real weight roll-up, a searchable/unreleased-by-default project picker, calc-sheet relocation to drawings, PDF export, frozen release snapshots, and the Release BOM button's return (2026-09-02/03)
+
+§5au shipped the editable two-pane BOM workspace. This round added a second, deliberately
+**read-only** card below it — a full-depth, print-ready outline of the same tree, for the case
+`BomTree`/`BomNodeDetail`'s edit-first two-pane layout doesn't serve well: seeing the *whole*
+structure at once, searching across it, or handing someone a document. Built first, then used live,
+which surfaced seven real gaps — closed as eight independently-verified phases, plus one separate
+fix raised directly by the user mid-round.
+
+### The read-only "Final BOM" card — first build
+
+`components/bom-structure/BomTreeReadOnly.jsx`, rendered as its own `Card` in
+`BomStructureWorkspace.jsx`, directly below the editable tree, fed the exact same `assemblies`/
+`unassignedItems` state the editor already fetches (`GET /api/bom-assemblies?project_id=`, i.e.
+`getBomStructure()`'s own output — zero new query). Confirmed live against a real 4-level test chain
+that depth is genuinely unlimited (no hard-coded System→Component ceiling anywhere in the render
+path — `bom-tree.mjs`'s `SOFT_DEPTH_WARNING` is a cue only). Every item shows `BM-{id}` (+ its real
+Item Master code when catalog-linked) so a line is always individually referenceable. The card header
+carries real project identity (`project_no · customer_name` + a `series` badge) instead of generic
+copy.
+
+### Round 2, phases 1–8 (`components/bom-structure/BomTreeReadOnly.jsx` unless noted)
+
+1. **Items-default-open.** A node's own attached items used to be hidden until a click — a real
+   live bug report ("why can't I see the items I attached"). Flipped `itemsShownIds` (positive
+   default) to `itemsHiddenIds` (negative default: shown unless explicitly collapsed) — the same
+   inverted-default idiom `collapsedIds` (children) already used, so children and items now share one
+   rule: open by default, collapsible to tidy up. **Unassigned** stays the one deliberate exception
+   (collapsed by default) — that's the real wall-of-text risk (can run into the hundreds), a single
+   node's own item count typically isn't. Safety valve: `ITEM_AUTO_COLLAPSE_THRESHOLD = 15` — a node
+   with more of its own items than that starts collapsed anyway, via a lazy `useState` initializer
+   seeded once from the mounting project's tree (relies on `BomTreeReadOnly` being keyed by
+   `projectId` in the parent, so switching projects reseeds correctly rather than carrying over a
+   stale threshold decision).
+2. **Ambiguous-qty flag.** `itemRollupQty()`'s roll-up math only ever parses the *leading* number out
+   of `qty_text` — a row like `"2 Nos 1 No 1 No"` silently rolls up using just the `2`. New
+   `hasAmbiguousQty(qtyText)` (`lib/bom-structure.mjs`, `(qtyText.match(/[\d.]+/g)?.length ?? 0) > 1`)
+   drives a small `AlertTriangleIcon` + tooltip next to the roll-up total on any item with more than
+   one numeric token — a real "don't silently trust this" signal, not a fix to the parser itself
+   (`ponytail:` in the source names the real fix as a separate, bigger UOM-aware-parser job).
+3. **In-card search.** New `itemMatchAncestorIds(query, assemblies, byId)` (`lib/bom-tree.mjs`) —
+   same ancestor-walk shape as the editable tree's own `expandedIdsForSearch` (kept untouched,
+   shared with that tree's already-shipped search), but matching against each node's own
+   `items[].material_description`/`.catalog_item_code`/`BM-{id}` instead of node names. A hit forces
+   its whole ancestor chain open and that node's own items visible, as an override on top of the real
+   `collapsedIds`/`itemsHiddenIds` state (clearing the query always returns to exactly what was set
+   manually). **Also reaches the Unassigned bucket** — a real gap caught before shipping: Unassigned
+   starts collapsed and can hold hundreds of items, so a search that only checked tree-node items
+   would silently miss (or hide) a hit sitting there; a match anywhere in Unassigned force-opens it
+   for the duration of the query.
+4. **Weight roll-up (§8, "robustly," per explicit instruction).** The only real weight data anywhere
+   in this app is `stock_pieces.weight_kg` (geometry-derived, `lib/piece-weight.js`) — real, but
+   partial: only reachable from a `bom_items` row cut through the piece-tracking flow, a minority of
+   real BOM lines. Built around that honestly rather than pretending otherwise: `getBomStructure()`
+   gained one more parallel query (real, `consumed` `stock_pieces` only) attaching
+   `known_weight_kg`/`weight_piece_count` to each item (`null`/`0` when no pieces exist — never a
+   fabricated `0 kg` that could read as "weighs nothing"); `sumKnownWeight(assemblyId, byId,
+   childrenByParent)` (`lib/bom-structure.mjs`) sums it bottom-up per node, alongside a coverage count
+   (`weight_items_known`/`weight_items_total`) so a partial figure is never shown without its own
+   completeness context. Rendered as a small `142.5 kg cut so far (8 of 20 items have recorded
+   weight)` line per node, only when `weight_items_known > 0`.
+   - **Binding design constraint, confirmed verbatim mid-round and satisfied by the shipped
+     design**: *"Do not make BOM weight dependent on current Stores inventory or require
+     stock-piece selection to complete the BOM. The BOM must remain valid even when none of the
+     required material exists in Stores. Stock-piece weights should only appear as actual
+     consumption/cutting progress when physical stock has subsequently been allocated/cut.
+     Procurement must be able to fulfill missing material independently."* `known_weight_kg` is
+     always `null` (never required, never fabricated) when no `stock_pieces` exist; only
+     `status='consumed'` (physically cut) pieces count; nothing in this feature touches
+     Procurement or gates BOM validity/completeness — confirmed by design, not just by absence of a
+     found bug.
+   - **Real double-counting bug caught before any live test, by reading `lib/stock-pieces.js`'s
+     `cutPiece()` source directly rather than assuming**: the piece being cut transitions to
+     `status='consumed'` and *retains* its own `bom_item_id`; its new "used" child piece often
+     inherits the *same* `bom_item_id`. A naive `SUM(weight_kg) WHERE status='consumed' AND
+     bom_item_id IS NOT NULL` would double-count — the whole original plate *and* its own used
+     portion. Fixed with `AND sp.id NOT IN (SELECT DISTINCT parent_id FROM stock_pieces WHERE
+     parent_id IS NOT NULL)` (a piece that's become another row's parent was cut further, so its own
+     row is superseded, not additional). Scrap rows need no extra exclusion — that INSERT never sets
+     `bom_item_id` at all. **Weight is shown as-is, never multiplied by the quantity roll-up
+     multiplier** — a real recorded cut is a fact, scaling it up would silently convert it into an
+     assumption about future consumption, the same false-precision risk phase 2 flags for quantity.
+     Verified live end to end through the real API (receive → reserve → cut): a 39.25kg source piece
+     correctly reported 15.7kg remnant kept + used/scrap accounted for, not the naive 54.95kg a
+     double-count would have shown.
+5. **Searchable, unreleased-by-default project picker** (`BomStructureWorkspace.jsx`). Plain
+   `<Select>` replaced with `SearchableSelect`; `getActiveProjectsList()` (`lib/data.js`) gained
+   `bom_release_revision` in its `SELECT` (purely additive — every other of its 7 real callers
+   ignores fields it doesn't ask for, same precedent the function's own comment already documents
+   for `series`/`created_at`). A project with `bom_release_revision` set is hidden from the picker's
+   option list by default; a "Show released too" toggle brings it back. The `selectedProject` lookup
+   still runs against the full, unfiltered `projects` prop, so a project already open never
+   disappears mid-session just because the toggle is off.
+   - **Real bug found and fixed during live verification**: `SearchableSelect` derives its shown
+     label from `options.find(v => v.value === value)` — once a released project's row was filtered
+     out of the (now-shorter) option list, an already-selected project's displayed text went blank
+     the moment the toggle was switched off, even though the underlying `projectId` state and the
+     loaded BOM data were both still intact. Fixed with `SearchableSelect`'s own `displayValue` prop
+     (built for exactly this — "real text that doesn't match any option in the current list"),
+     sourced from the full unfiltered `projects` list. Verified: select a released project with the
+     toggle on, switch it off — the picker still shows the right label, the BOM stays loaded; a
+     fresh disposable unreleased test project correctly appears by default with no toggle needed.
+6. **Calc-sheet linking moved from BOM tree nodes to drawings.** A calc sheet substantiates a
+   *drawing*, not a structural grouping node — the old `bom_assembly_calc_sheets` link modeled the
+   wrong relationship. New `calc_sheet_drawings` junction table (`lib/db.js`, same shape as
+   `bom_assembly_drawings`) + `app/api/calc-drawings/[id]/calc-sheets/route.js` (GET/POST/DELETE,
+   gated `requireCalcAccess` — Design OR Engineering, since Calc is jointly owned, not
+   `requireDepartment('Engineering')`). New **Calc Links** panel on the Calc Sheets workspace
+   (`CalcWorkspace.jsx`'s `CalcDrawingLinksPanel`, next to the existing Drawings panel) —
+   client-fetches its own project-scoped data on mount (`PortfolioPanel`'s shape, not the
+   server-hydrated `drawings`-prop shape `DrawingsPanel` uses, since a calc↔drawing link is neither
+   sheet- nor registry-scoped), one expandable row per drawing with a link/unlink picker.
+   - **Removed, and every stale reference chased down, not just the obvious one**: the old node-level
+     Calc tab (`components/bom-structure/NodeCalcTab.jsx`, deleted) and its `TabsContent` in
+     `BomNodeDetail.jsx` (now Overview/Items/Drawings/History, 4 tabs not 5); `BomTree.jsx`'s
+     "Missing calc" filter chip and its `!a.calc_count` predicate (would otherwise have silently
+     become "always matches"); `BomTreeNode.jsx`'s ` · N calc` badge; `ReleaseReadinessPanel.jsx`'s
+     `calcLinked` stat tile and its query in `release-bom`'s GET route (would have gone permanently
+     stale at 0 with nothing left to compute it); `getBomStructure()`'s now-pointless `calcCounts`
+     query/`calc_count` field. The old `bom_assembly_calc_sheets` table and its route are left in
+     place, inert — confirmed live via direct query that 0 rows existed before removal, same "leave
+     it, don't drop it" precedent the retired `tickets` table already set.
+7. **PDF export of the Final BOM tree.** No nested-row primitive exists anywhere in this app's PDF
+   stack, and literal box/connector graphics have real page-break risk at scale — the correct
+   approach is also the real-world convention: a flattened, depth-indented outline. New
+   `lib/bom-tree-pdf.js`: `flattenBomTree(assemblies, unassignedItems)` (depth-first walk, node then
+   its own items then children, matching the screen card's own order; unassigned items trail at
+   depth 0) feeding `ReportDocument`/`ReportTable` (`lib/report-pdf.js`), landscape. An **explicit
+   `rowKey`** was required, not optional — `bom_assemblies` and `bom_items` are independent
+   autoincrement sequences that share id values, so `ReportTable`'s default `r.id ?? i` key would
+   collide. Indentation via a repeated non-breaking-space unit (plain spaces collapse in react-pdf,
+   same as HTML). Columns: Description (indented, `BM-{id}` prefix, node type on assembly rows), Item
+   Code, Qty, Roll-up total — an ambiguous `qty_text` row gets a `*` in print plus one explanatory
+   footnote line when at least one appears (a hover tooltip can't survive to paper). New `GET
+   /api/projects/[id]/bom-tree/pdf` route + a "Download PDF" link in the card's `CardAction`.
+   Verified against a real disposable multi-level test tree layered onto SB-1040's actual 326-item
+   BOM: a genuine 11-page PDF generated cleanly (no duplicate-key crash across 328 real+test items),
+   indentation rendered correctly across depths (confirmed via `pdftotext -layout`), the ambiguous row
+   got its `*` and the normal row didn't, the footnote appeared exactly once.
+8. **Frozen structural snapshot per release.** `bom_release_revision`/`released_at_revision` (§5k
+   addendum) stamp every live `bom_items` row at release time, but the *tree itself* — names, nesting,
+   node types — was never frozen anywhere; edit it after a release and there was no way left to answer
+   "what did revision N actually look like." New `bom_release_snapshots` (`lib/db.js`, same "freeze
+   the whole shape as one JSON blob per event" idiom `calc_snapshots` already established — nothing
+   in this codebase snapshots a tree structurally row-by-row): `assemblies_json`/`unassigned_json` are
+   `getBomStructure()`'s/`getProjectBom()`'s own live shapes, frozen verbatim, so replaying one needs
+   zero shape translation on the read side — `BomTreeReadOnly` renders live and frozen data through
+   the *identical* render path, just a different data source. Written inside the existing `POST
+   /api/projects/[id]/release-bom` handler, right after the revision bump/item-stamp (not wrapped in
+   `withTransaction` — the route was never transactional to begin with, three separate `execute()`
+   calls already; matching existing style over introducing a new pattern for this one insert). The
+   GET side of that same route gained a `pastReleases` array (`id, revision, created_at, created_by`
+   — cheap, not the JSON blob) and a new `GET /api/projects/[id]/bom-releases/[revision]` route
+   returns one snapshot's full parsed data, at the same `isInternal` read level as the rest of the
+   workspace (viewing history isn't a more sensitive action than viewing the live tree).
+   `BomTreeReadOnly` gained a `pastReleases` prop, a small revision `Select` in its `CardAction`
+   (hidden when there's no history) — "Live" (default) vs. `Rev N · date` — and a clear amber banner
+   ("Viewing revision N — frozen at release, not live") whenever not on Live. Search/Expand-all/
+   Collapse-all all work identically against frozen data (the render path has no idea which source
+   it's looking at). PDF export always targets the live tree, deliberately not made revision-aware —
+   outside this phase's stated scope.
+   - **Verified live with a real three-state proof, not just a single before/after**: on a disposable
+     test project, released once (node named "Node A" → snapshot revision 1), renamed to "Node B" and
+     released again (revision 2, via the existing generic milestone-reopen "un-release" — same
+     mechanism `TicketsPanel.jsx`'s "Send back" already used, nothing new needed), then renamed once
+     more to "Node C" **without** a third release. Confirmed at the API level: `pastReleases` lists
+     both revisions newest-first; `GET .../bom-releases/1` returns "Node A"; `GET .../bom-releases/2`
+     returns "Node B"; the live tree (`GET /api/bom-assemblies`) returns "Node C". Confirmed in the
+     browser too (a fresh tab — see the HMR note below): the revision picker lists Live/Rev 2/Rev 1
+     correctly, selecting Rev 1 shows "Node A" with the frozen banner, switching back to Live is
+     instant (no re-fetch, `frozenData` just clears) and shows "Node C" again.
+
+**A real, previously-undiscovered app bug flagged but not fixed this round** (out of this round's own
+scope, since it predates it): `DELETE /api/bom-assemblies/[id]` throws a `500 SQLITE_CONSTRAINT`
+instead of a clean response if the node still has a linked drawing — the route never cleans up
+`bom_assembly_drawings` before deleting the node. Worked around during cleanup by unlinking first via
+the real unlink route; a proper fix would have the DELETE route clear that junction table (and, by
+the same logic, `bom_assembly_calc_sheets`) before deleting.
+
+**A recurring environment gotcha, not a code bug, worth remembering**: this session repeatedly hit a
+stale-HMR React error overlay in a long-lived browser tab (a prior edit's failed compile leaving a
+broken error boundary, even after the underlying file was fixed and the dev server itself was
+serving correct 200s — confirmed by checking the actual dev-server log, not just the browser). A
+fresh tab always resolved it cleanly. `@babel/parser` (already a transitive dependency) is a fast way
+to confirm a file is genuinely syntactically valid before chasing a phantom compile error in the
+browser.
+
+### The Release BOM button's return
+
+Raised directly: "we had it before in Requests and it was properly wired with other departments, not
+sure what happened to that?" Investigated rather than assumed — §5au's own Phase 1 nav reorg had
+deliberately dropped **Release BOM** from Requests' visible sidebar (`PrWorkspace.jsx`'s `navItems`),
+reasoning that the new BOM workspace's own `ReleaseReadinessPanel` button made a second visible entry
+point redundant. The tab itself, `ReleaseBomTab` (full BomTable editor, Apply Template, PDF, Release,
+Un-release), was never touched or weakened — it stayed fully reachable at `/pr?tab=release`, and
+every downstream integration (remnant matching, auto-reserve, Procurement shortfall notifications,
+`markMilestoneDone`) lives in the shared `POST /api/projects/[id]/release-bom` route itself, fired
+identically regardless of which UI button calls it — so nothing was ever actually un-wired. What
+broke was discoverability: a Design/Engineering head landing on Requests (not Engineering) had no
+visible path to it anymore. Restored as a first-class sidebar entry (`{ key: 'release', label:
+'Release BOM', icon: CheckIcon }`, between Purchase Requests and PR Templates) — both entry points
+now visible, both firing the identical route, nothing duplicated at the data layer, only the menu
+item.
+
+### Help docs — real stale references found and fixed, not just new content added
+
+Checking `department-help-content.jsx` against what actually shipped (rather than assuming the one
+earlier in-round edit to `bomStructure`'s prose was the only place affected) found three more spots
+still describing the *pre-fix* state:
+- The Engineering `bomStructure` feature-list bullet still said "filter by missing drawing / missing
+  calc / pending ECN" and "link Drawings and Calculation Sheets" from a node's own tabs — both
+  removed by phase 6 above. Fixed, and extended with real coverage of the Final BOM card itself
+  (search/PDF/weight line/revision picker) and the picker's new unreleased-by-default behavior,
+  which had no help text anywhere before this round.
+- Design's and Engineering's own `drawings` feature bullets said nothing about Calc Links — the
+  Calc Sheets workspace's new sibling panel to Drawings, which both departments share. One line added
+  to each.
+- Design's Cutting & Remnant Matching checklist and its Milestone Tracker table both said Release BOM
+  is "reached directly at /pr?tab=release" (accurate when the sidebar entry was hidden, stale once it
+  wasn't) — both corrected to describe the real, now-restored entry point.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own
@@ -6404,6 +6633,9 @@ ncr_records ──> job_cards (rework_job_card_id)     (§5ao — set by a rewor
 job_cards.requires_qc_hold / qc_released_at/by     (§5ao — derived from work_order_operations.quality_checkpoint at generate-job-cards time; deliberately not PATCH-editable, only POST /api/job-cards/[id]/qc-release can clear it)
 stock_pieces.heat_no / test_certificate_id → test_certificates  (§5ao — captured once at receivePiece(), inherited by every cutPiece() child for free; linking a cert here auto-inserts a certificate_projects row on cut into a project)
 ncr_records.qc_verified_at / qc_verified_by            (§5ap — a distinct fact from status='closed'; POST /api/ncrs/[id]/close refuses unless this is already set, POST /api/ncrs/[id]/verify is the only thing that sets it)
+bom_assemblies ──< bom_assemblies (parent_id, self)  (§5o/§5au — the BOM tree; bom_items.assembly_id is the leaf link, nullable, unassigned items keep working exactly as before)
+calc_sheets ──< calc_sheet_drawings ── calc_drawings  (§5ay — a calc sheet substantiates a drawing, not a bom_assemblies node; the earlier bom_assembly_calc_sheets junction is retired in place, same "leave it" precedent as `tickets`)
+projects ──< bom_release_snapshots                    (§5ay — one frozen JSON row per Release BOM click, keyed by revision; assemblies_json/unassigned_json are getBomStructure()'s/getProjectBom()'s own live shapes, frozen verbatim)
 ```
 
 `bom_items` carries the spreadsheet-mirror columns — `section` (sheet), `group_label` (assembly
