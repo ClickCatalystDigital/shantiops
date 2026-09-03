@@ -22,7 +22,18 @@ a reader who finds the old `V3_CHANGES.md` §12 text elsewhere knows it's stale.
 reversal.
 
 Everything in this file reflects the **current, working build**, updated as work lands — most
-recently 2026-09-03 (§5ay, a "round 2" hardening pass on the Final BOM read-only tree card §5au
+recently 2026-09-03 (§5ba, a round-3 pass on Engineering's workspace prompted directly by the user
+after using it: a shared project selector in the sidebar header — single-select for BOMs/Release
+BOM, a multi-select checklist for Where-Used/Common-Uncommon/Change Notes, hidden for the three
+template/raise tabs — real PR-No./date provenance surfaced on the BOM tree/PDF/Release BOM table
+(with a legacy free-text fallback for pre-unified-flow rows), a genuinely narrowed Release BOM
+column set for Design/Engineering viewers that follows the real viewer's departments rather than the
+entry point, and the "Requests" top-nav tab trimmed away for Design/Engineering-only heads now that
+Engineering's own sidebar reaches the same three tabs; §5az, the round right before it — embedding
+those same three Requests tabs into Engineering's sidebar in the first place, plus a real bug fix
+along the way (a Stores-only head could get stuck on a permanent "Loading…" on a Release BOM tab
+they could never actually use); §5ay, a "round 2" hardening pass on the Final BOM read-only tree card
+§5au
 shipped: items now default open instead of needing a click, an ambiguous-quantity flag, in-card
 search that also reaches Unassigned, a real never-fabricated-never-scaled weight roll-up off actual
 cut `stock_pieces`, a searchable/unreleased-by-default project picker, calc-sheet linking relocated
@@ -6515,6 +6526,144 @@ still describing the *pre-fix* state:
 - Design's Cutting & Remnant Matching checklist and its Milestone Tracker table both said Release BOM
   is "reached directly at /pr?tab=release" (accurate when the sidebar entry was hidden, stale once it
   wasn't) — both corrected to describe the real, now-restored entry point.
+
+## 5az. Embed Requests' three tabs in Engineering's own sidebar + a Stores-visibility bug fix (2026-09-03)
+
+Purchase Requests, PR Templates, and Release BOM are also reachable from Engineering's own sidebar
+now (appended at the end, Release BOM last, separated by a divider) — a second entry point onto the
+exact same `RaisePrTab`/`ReleaseBomTab`/`BomTemplateManager(kind="pr")` components `/pr` already
+renders (now exported from `PrWorkspace.jsx` instead of private), calling the same routes — nothing
+duplicated at the data layer, only the entry point. `/pr` itself is unchanged: same tabs, same
+access, for Stores/Design/Engineering heads alike.
+
+`app/engineering/page.js` computes `departments` using the same three-department list `/pr`'s own
+`PR_DEPARTMENTS` filters against (`['Engineering','Design','Stores']`), not a narrower
+Design/Engineering-only list — a head holding Stores alongside Design/Engineering, or a PM, must see
+the identical editable BOM fields and source-selector on both entry points for the same action;
+narrowing it here would have made the two diverge for that real case (`PrWorkspace.jsx`'s own
+`showBomTemplatesHere` check already anticipates a head holding Stores + Design/Engineering
+together).
+
+**A real bug found while investigating, fixed in the same pass**: a Stores-only head could see
+"Release BOM" in Requests' own sidebar (restored the previous round, §5ay) and get permanently stuck
+on "Loading…" after the server 403'd their status check — `/api/projects/[id]/release-bom`'s GET has
+always been gated `canRelease(user) = canAccessDepartment(user,'Design') ||
+canAccessDepartment(user,'Engineering')`, Stores was never actually eligible. Fixed at the nav level,
+not the route: Release BOM now only appears in `navItems` for a viewer who can actually release,
+matching `canRelease()` exactly — the same conditional-visibility shape `showBomTemplatesHere`
+already used in this file.
+
+**Live-verified**: a real PR raised from Engineering's own tab appears via `/pr`'s own BOM query
+(same data, not duplicated); the dual-department/PM `departments` fix holds (admin sees the Stores
+source-selector from Engineering, matching `/pr`); a Stores-only head no longer sees Release BOM in
+`/pr` and still can't reach `/engineering` at all; PR Templates renders without the redundant BOM
+Templates duplicate. Disposable test PR/`bom_item` cleaned up, zero residue confirmed.
+
+## 5ba. Engineering workspace round 3 — shared project selector, PR provenance, simplified Release BOM columns, trim Requests nav (2026-09-03)
+
+Four related gaps surfaced from actually using §5az's embedded Requests tabs, raised directly by the
+user: every project-scoped tab re-asked for a project with no shared state between them; a BOM
+line's real Purchase Request origin (`bom_items.pr_item_id`, stamped at creation by the unified PR
+flow) was invisible everywhere downstream; Release BOM's table showed every Procurement/Stores/
+Production operational column to Design/Engineering too, most of which they never touch; and
+Requests' own top-nav tab was now redundant for Design/Engineering-only heads (identical tabs
+reachable via Engineering) but still shown, doubling up in nav.
+
+- **Shared project selector.** One control, rendered via `WorkspaceSidebar`'s existing `header` prop
+  (a pinned bar above scrollable content, built earlier for exactly this, unused until now), owned by
+  `EngineeringWorkspace` so its state survives a tab switch. Shape follows the active tab:
+  **BOMs / Release BOM** — a single `SearchableSelect`, unreleased-by-default with a "Show released
+  too" toggle (BOMs' own existing behavior) — a deliberate, flagged behavior change for Release BOM,
+  which used to show every project unfiltered in its own plain `<Select>`. **Where-Used /
+  Common-Uncommon / Change Notes** — the same control switches to a multi-select (`Popover` +
+  `Checkbox` list, both already-installed shadcn primitives, no new dependency), empty selection = no
+  filter (today's all-project default, unchanged). Switching from a single- into a multi-select tab
+  pre-checks whichever one project was selected there, as a starting point, guarded to only seed once
+  so it never stomps a filter already built up. **Purchase Requests / PR Templates / BOM
+  Templates** — the bar is hidden entirely; none of the three map a single/multi "current project"
+  onto their own per-line multi-project repeater or reusable cross-project template picker any more
+  cleanly than the others (`BomTemplateManager` wasn't named in the original plan's hidden-bar list —
+  added during implementation once its own internal "Apply to project" picker, identical in shape to
+  PR Templates', made the omission an obvious oversight).
+
+  `BomStructureWorkspace` and `PrWorkspace`'s `ReleaseBomTab` both go controlled/uncontrolled: an
+  optional `projectId`/`onProjectIdChange` (+ `showReleased`/`onShowReleasedChange` on
+  `BomStructureWorkspace`) — when provided, each hides its own picker chrome instead of duplicating
+  it; when omitted (`/pr`'s own standalone Release BOM tab, which has no shared header at all), each
+  keeps rendering its own picker and internal state exactly as before, completely unaffected.
+
+  Where-Used, Common/Uncommon, and Change Notes all move from static server-supplied props to
+  client-fetching, threaded with an optional `project_ids` CSV (`lib/data.js`'s
+  `allBomRowsWithIdentity`/`getWhereUsed`/`getPartUsage`/`getEngineeringChangeNotes` all gained the
+  param; new `app/api/part-usage/route.js`, same shape as the pre-existing Where-Used route).
+  **Common/Uncommon recomputes `project_count`/classification against the filtered set server-side,
+  deliberately not filtering pre-computed rows client-side** — a part's "common" classification
+  (`project_count >= 2`) is only honest when computed against the actual filtered project set;
+  filtering the unfiltered rows would keep a part reading "common" off a count that includes projects
+  no longer in scope. `app/engineering/page.js` drops its server-side `getEngineeringChangeNotes()`/
+  `getPartUsage()` calls entirely now that both tabs client-fetch. Raising a new ECN via `EcnForm`
+  now also calls a passed-down `onCreated` refetch — `router.refresh()` alone stopped reaching this
+  list the moment it became client-fetched.
+
+- **PR provenance.** The real PR↔BOM-item link already existed and was already stamped at creation
+  (the unified PR flow's own INSERT sets `bom_items.pr_item_id`) — it was just never joined or
+  displayed downstream. Reuses `getSourcingItems()`'s exact `LEFT JOIN pr_items ... LEFT JOIN
+  purchase_requisitions` shape. `getBomStructure()` and `getProjectBom()` both gained `pr_no`/
+  `pr_created_at`; `components/BomTable.jsx`'s existing "PR No. & Date" column is now a derived
+  display (`pr_no` + `formatDate(pr_created_at)` when set, falling back to the legacy free-text
+  `pr_ref` for rows predating the unified flow — same `COALESCE`-style precedent
+  `drawing_revision_at_release` already uses one line above it); `BomTreeReadOnly.jsx`'s `ItemRow`
+  and its unassigned-items list show/search it too (search predicate extended to match `pr_no`/
+  `pr_ref`); `lib/bom-tree-pdf.js` gained its own "PR No." column.
+
+- **Simplified Release BOM columns for Design/Engineering.** `lib/bom-fields.mjs`'s old
+  `SCOPED_BOM_VIEW`/`BOM_CONTEXT_FIELDS`/`visibleBomColumns` derivation unconditionally ORed in
+  `BOM_FIELD_OWNERS[department]` regardless of any context-list exclusion — since Engineering already
+  owns `make`/`remarks` per that map, the original plan's "additional context fields on top of owned
+  fields" design would have silently leaked those columns straight back in, caught by re-reading the
+  existing implementation before writing new code rather than by testing after. Replaced with an
+  explicit `VISIBLE_COLUMNS_BY_DEPT` map with no owned-fields fallback at all — Engineering's scoped
+  view keeps `moc`/`size_spec`/`qty_text`/`pr_ref` only, dropping exactly Make/PO No. & Date/GRN No. &
+  Date/GRN Qty/Pending Qty/BQ-TC/Issued/Received/Prod. Done/Remarks per the user's own list.
+  `showPackingColumn` got its own explicit `HIDE_PACKING_FOR = new Set(['Procurement'])` instead of
+  reusing the scoped-department set wholesale — the user's column list didn't name Packing, so
+  Engineering's narrowed view keeps it (Procurement's own pre-existing behavior is unchanged).
+
+  **Who actually sees the narrowed view follows the real viewer, not the entry point.**
+  `ReleaseBomTab` stops hardcoding `department="Engineering"` on its `BomTable` call — checked
+  `department`'s full usage in `BomTable.jsx` first, since it also gates `canReceive = department ===
+  'Stores'` (Stores' own inline Receive action), not just column visibility. Resolution, in priority
+  order: `departments.every(d => ['Design','Engineering'].includes(d))` → narrowed Engineering view;
+  else `departments.includes('Stores')` → `'Stores'` (keeps Receive working for a real Stores
+  holder, even alongside Design/Engineering); else the viewer's own first department. A PM or a
+  Stores-holding dual-department head gets the same full, unscoped view and correct department-
+  specific actions whether they reach Release BOM via `/pr` or via Engineering's own tab.
+
+- **Trim the "Requests" top-nav tab.** `components/Nav.jsx`'s `canSeeRequests` narrowed from "any
+  head holding Engineering/Design/Stores" to `isDeptPM || (!departments.includes('Procurement') &&
+  departments.includes('Stores'))` — a Design/Engineering-only head stops seeing "Requests" in top
+  nav (they reach the identical three tabs via Engineering's own sidebar now); any head holding
+  Stores, in any combination, is fully unaffected; a PM still sees it, matching their existing
+  all-department oversight tab set. `/pr` itself is completely untouched — no redirect, no access-
+  gate change — a Design/Engineering-only head who bookmarks or types the URL still reaches the exact
+  same standalone `PrWorkspace`; only the top-nav menu entry disappears, same lower-risk precedent
+  Release BOM's own earlier nav-hide (§5ay) already established.
+
+**Live-verified against the real dev DB, three real logins** (`admin`, `engg_head`, `stores_head`),
+not synthetic fixtures: the shared header correctly swaps shape per tab and stays in sync between
+BOMs and Release BOM (picking a project on one shows it already selected on the other); Common/
+Uncommon's recompute-not-hide behavior confirmed structurally (`project_count` stayed internally
+consistent between the filtered and unfiltered query against this DB's real, currently sparse
+project set — genuinely observing a common↔uncommon classification flip wasn't possible with the
+current data, since every part in this dev DB is presently used in exactly one active project);
+real production data exercised both PR-No. display paths live — a genuinely PR-raised line showed
+`PR-20 · 02 Sept 2026`, an older line showed its legacy `Revised on 02.08.25 by jagan` text, both in
+the same column; `engg_head`'s Release BOM table showed exactly the narrowed 8-column set (plus
+Packing); top-nav Requests visibility matched the intended matrix across all three logins
+(`admin`/PM: present; `engg_head`, Engineering-only: absent; `stores_head`, Stores-only: present).
+One incidental confirmation, not a regression: `stores_head` hitting `/pr?tab=release` by direct URL
+still correctly 403s server-side (§5az's `canRelease` gate, unrelated to and untouched by this
+round) — expected, not a bug.
 
 ## 6. Customer Portal (read-only, external)
 

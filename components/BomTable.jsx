@@ -241,7 +241,10 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
     }
     if (unlinkedOnly && b.item_id) return false;
     if (!needle) return true;
-    return ['material_description', 'moc', 'size_spec', 'make', 'group_label', 'pr_ref', 'po_ref', 'grn_ref', 'remarks']
+    // pr_no (round 3 Phase B, the real structured PR reference) alongside the legacy free-text
+    // pr_ref — a row with pr_no set and no pr_ref (the normal case for anything raised through the
+    // unified PR flow) would otherwise never match a search for its own visibly-displayed PR number.
+    return ['material_description', 'moc', 'size_spec', 'make', 'group_label', 'pr_no', 'pr_ref', 'po_ref', 'grn_ref', 'remarks']
       .some(f => String(b[f] || '').toLowerCase().includes(needle));
   });
 
