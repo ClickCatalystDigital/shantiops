@@ -110,8 +110,11 @@ export default function BomStructureWorkspace({
       reloadStructure();
     } catch (err) { showToast(err.message, 'error'); }
   }
-  async function moveTo(node, newParentId) {
-    await api(`/api/bom-assemblies/${node.id}`, { method: 'PATCH', body: { parent_id: newParentId } });
+  async function moveTo(node, newParentId, newLevel) {
+    // node_type travels with the move — picking a target LEVEL in the dialog (not just a parent)
+    // means the node's own classification changes too; leaving it stale would show the wrong
+    // badge (e.g. still "Subsystem" after moving one level deeper to become an "Assembly").
+    await api(`/api/bom-assemblies/${node.id}`, { method: 'PATCH', body: { parent_id: newParentId, node_type: newLevel } });
     reloadStructure();
   }
   async function duplicateNode(node) {
@@ -258,7 +261,7 @@ export default function BomStructureWorkspace({
         <MoveAssemblyDialog
           node={movingNode} assemblies={assemblies}
           onClose={() => setMovingNode(null)}
-          onMove={newParentId => moveTo(movingNode, newParentId)}
+          onMove={(newParentId, newLevel) => moveTo(movingNode, newParentId, newLevel)}
         />
       )}
     </Card>

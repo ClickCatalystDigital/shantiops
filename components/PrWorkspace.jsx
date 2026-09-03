@@ -30,19 +30,18 @@ import SearchableSelect from './SearchableSelect';
 import QtyInput from './QtyInput';
 import CategoryFieldsBlock, { OTHER_MOC, MOC_OPTIONS } from './CategoryFieldsBlock';
 import { BOM_FIELD_OWNERS } from '@/lib/bom-fields.mjs';
-import {
-  CATEGORY_LABEL, GEOMETRY_SHAPES, ROLLED_CATEGORIES, OTHER_SIZE, STANDARD_SECTIONS, categoryDisplaySpec,
-} from '@/lib/section-shapes';
+import { CATEGORY_LABEL, categoryDisplaySpec } from '@/lib/section-shapes';
 import BomTemplateManager from './BomTemplateManager';
 import {
   NamedPartsEditor, ItemSearchField, CATEGORY_OPTIONS, defaultCategoryFields, finalizeCategoryFields,
-  defaultTraceabilityFromCategory, TRACEABILITY_FLAG_LABELS,
+  defaultTraceabilityFromCategory, TRACEABILITY_FLAG_LABELS, validateCategoryFields,
 } from './BomLineFields';
 
 // Phase 1 nav reorg (SYSTEM.md): defaultCategoryFields/defaultTraceabilityFrom*/TRACEABILITY_FLAG_LABELS/
 // CATEGORY_OPTIONS/guessCategory/finalizeCategoryFields/NamedPartsEditor/ItemSearchField moved to
 // ./BomLineFields (shared with BomTemplateManager.jsx, which also needs them and previously had no
-// way to import them). Nothing here changed behavior, only location.
+// way to import them). Nothing here changed behavior, only location. validateCategoryFields joined
+// them later, once BomTable.jsx's Add Item dialog needed the identical check.
 
 let nextKey = 1;
 function emptyLine() {
@@ -64,27 +63,6 @@ function emptyLine() {
 // ROLLED_CATEGORIES live in lib/section-shapes.js — shared with Stores' matching inventory-item
 // picker (components/StoresWorkspace.jsx) so a BOM line's size and a stock item's spec are always
 // generated the same way, which is what lib/remnant-match.js's plain-text matching relies on.
-
-// Weight-per-metre needed before a category's weight can be shown/validated: computed straight
-// from geometry for GEOMETRY_SHAPES categories (no input, never wrong), picked from
-// STANDARD_SECTIONS or typed by hand for ROLLED_CATEGORIES/tee.
-function validateCategoryFields(category, fields) {
-  if (category === 'standard') return Number(fields.qty) > 0 ? null : 'needs a quantity';
-  if (category === 'plate') {
-    return (Number(fields.length) > 0 && Number(fields.width) > 0 && Number(fields.thickness) > 0)
-      ? null : 'needs its length/width/thickness filled in';
-  }
-  if (GEOMETRY_SHAPES[category]) {
-    return GEOMETRY_SHAPES[category].dims.every(d => Number(fields[d.key]) > 0) ? null : 'needs its dimensions filled in';
-  }
-  if (ROLLED_CATEGORIES.includes(category) || category === 'tee') {
-    if (!fields.size || fields.size === OTHER_SIZE) return 'needs a size';
-    if (!(Number(fields.kg_per_m) > 0)) return 'needs a weight per metre (kg/m)';
-    if (!(Number(fields.length) > 0)) return 'needs a length';
-    return null;
-  }
-  return null;
-}
 
 const SOURCE_LABEL = { bom: 'Project material', stock: 'Build stock' };
 

@@ -13,6 +13,29 @@ import { api } from '@/lib/client';
 import { DIMENSIONAL_CATEGORIES } from '@/lib/bom-fields.mjs';
 import { CATEGORY_LABEL, GEOMETRY_SHAPES, ROLLED_CATEGORIES, OTHER_SIZE, DEFAULT_DENSITY, geometrySizeLabel } from '@/lib/section-shapes';
 
+// Weight-per-metre needed before a category's weight can be shown/validated: computed straight
+// from geometry for GEOMETRY_SHAPES categories (no input, never wrong), picked from
+// STANDARD_SECTIONS or typed by hand for ROLLED_CATEGORIES/tee. Extracted out of PrWorkspace.jsx
+// (same round as this whole file's own extraction) once BomTable.jsx's Add Item dialog needed the
+// identical check for its own category-adaptive size rows.
+export function validateCategoryFields(category, fields) {
+  if (category === 'standard') return Number(fields.qty) > 0 ? null : 'needs a quantity';
+  if (category === 'plate') {
+    return (Number(fields.length) > 0 && Number(fields.width) > 0 && Number(fields.thickness) > 0)
+      ? null : 'needs its length/width/thickness filled in';
+  }
+  if (GEOMETRY_SHAPES[category]) {
+    return GEOMETRY_SHAPES[category].dims.every(d => Number(fields[d.key]) > 0) ? null : 'needs its dimensions filled in';
+  }
+  if (ROLLED_CATEGORIES.includes(category) || category === 'tee') {
+    if (!fields.size || fields.size === OTHER_SIZE) return 'needs a size';
+    if (!(Number(fields.kg_per_m) > 0)) return 'needs a weight per metre (kg/m)';
+    if (!(Number(fields.length) > 0)) return 'needs a length';
+    return null;
+  }
+  return null;
+}
+
 // Density only matters for the shapes weight is computed from geometry for (plate + everything in
 // GEOMETRY_SHAPES) — rolled sections/tee already carry their own kg/m (picked or typed), no density
 // involved. Seeded at 7850 (mild steel) the moment one of those categories is picked, editable from

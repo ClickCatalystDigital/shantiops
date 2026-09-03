@@ -8,7 +8,7 @@ import { useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api, showToast, formatDate } from '@/lib/client';
 import { useEntityHighlight } from '@/lib/use-entity-highlight';
-import { BOM_STATUSES, STATUS_TONE, DEFAULT_PURCHASE_STATUS, visibleBomColumns, showPackingColumn } from '@/lib/bom-fields.mjs';
+import { BOM_STATUSES, STATUS_TONE, DEFAULT_PURCHASE_STATUS, DIMENSIONAL_CATEGORIES, visibleBomColumns, showPackingColumn } from '@/lib/bom-fields.mjs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,8 +19,13 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import TraceabilityBadges from '@/components/TraceabilityBadges';
 import ReceiveBomItemDialog from '@/components/ReceiveBomItemDialog';
 import SearchableSelect from '@/components/SearchableSelect';
+import CategoryFieldsBlock from '@/components/CategoryFieldsBlock';
+import {
+  ItemSearchField, CATEGORY_OPTIONS, defaultCategoryFields, finalizeCategoryFields, validateCategoryFields,
+} from '@/components/BomLineFields';
+import { categoryDisplaySpec } from '@/lib/section-shapes';
 import { PencilIcon, TrashIcon } from '@heroicons/react/24/solid';
-import { ChevronLeftIcon, ChevronRightIcon, XCircleIcon } from 'lucide-react';
+import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, XCircleIcon } from 'lucide-react';
 
 // Real PMB data runs long (a hand-typed cell can be 400+ characters — see the CHIMNEY sheet's
 // multi-size plate rows). table-fixed locks each column's width from the header, so overflowing
@@ -140,6 +145,225 @@ function LinkItemControl({ bomItemId, router }) {
   );
 }
 
+// Add Item's richer composer (Engineering/Design's own create-item flow only — see useRichComposer
+// below). Non-dimensional categories get a plain size/spec text box + this small unit dropdown
+// instead of a bare free-text field; a dimensional category (plate, angle, ...) upgrades the whole
+// row to CategoryFieldsBlock instead, which already carries its own per-dimension unit toggle.
+const SIZE_UNITS = ['mm', 'inch', 'm', 'ft', 'NB', '—'];
+
+let sizeRowKey = 1;
+function emptySizeRow(categoryFields = {}) {
+  return { key: sizeRowKey++, categoryFields, size_spec: '', unit: 'mm', qty_text: '' };
+}
+
+// One size/spec + qty variant of the item being added. `category` is shared across every row on the
+// form (it describes the *kind* of material, e.g. "these are all plates") — only each row's own
+// dimensions/size differ, same as picking three different plate sizes of the same steel grade.
+function SizeSpecRow({ row, index, total, category, onChange, onRemove }) {
+  const isDimensional = DIMENSIONAL_CATEGORIES.includes(category);
+  return (
+    <div className="flex flex-col gap-2 rounded-md border p-2.5">
+      {total > 1 && (
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-medium text-muted-foreground">Size/Spec #{index + 1}</span>
+          <Button type="button" size="icon-sm" variant="ghost" className="text-danger" aria-label="Remove this size/spec" onClick={onRemove}>
+            <TrashIcon className="size-3.5" />
+          </Button>
+        </div>
+      )}
+      {isDimensional ? (
+        <CategoryFieldsBlock category={category} fields={row.categoryFields} onChange={categoryFields => onChange({ categoryFields })} />
+      ) : (
+        <div className="flex gap-2">
+          <Input className="flex-1" placeholder="Size / Spec" value={row.size_spec} onChange={e => onChange({ size_spec: e.target.value })} />
+          <Select value={row.unit} onValueChange={unit => onChange({ unit })}>
+            <SelectTrigger className="h-9 w-20 shrink-0"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {SIZE_UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+      <div className="flex flex-col gap-1">
+        <Label className="text-xs">Qty</Label>
+        <Input placeholder="e.g. 2 Nos" value={row.qty_text} onChange={e => onChange({ qty_text: e.target.value })} />
+      </div>
+    </div>
+  );
+}
+
+// Engineering/Design's "+ Add item" composer — catalog-aware description (auto-detects a
+// dimensional category from the picked item, same as PrWorkspace's own Raise PR line), a manual
+// category override, and repeatable size/spec+qty rows (each row becomes its own bom_items POST on
+// submit, sharing description/MOC/category — see the plan's own reasoning: no new schema, every
+// downstream consumer of a BOM line already expects "one row = one packable variant"). Only rendered
+// for editing.__new && canStructure (see useRichComposer in BomTable) — editing an existing row keeps
+// the plain generic dialog fields unchanged, since a multi-row create semantics doesn't apply there.
+function AddItemForm({ projectId, assemblies, otherFields, otherDefaults, otherOptions, canSetTraceability, canSetManufacturingFlag, onDone, onCancel }) {
+  const [description, setDescription] = useState('');
+  const [itemId, setItemId] = useState(null);
+  const [uomHint, setUomHint] = useState('');
+  const [moc, setMoc] = useState('');
+  const [category, setCategory] = useState('');
+  const [sizeRows, setSizeRows] = useState([emptySizeRow()]);
+  const [traceability, setTraceability] = useState({
+    requires_heat_no: false, requires_mtc: false, requires_supplier_batch: false, requires_serial_no: false,
+  });
+  const [requiresManufacturing, setRequiresManufacturing] = useState(true);
+  const [other, setOther] = useState(otherDefaults);
+  const [saving, setSaving] = useState(false);
+
+  const line = { material_description: description, item_id: itemId, uomHint };
+  const TRACEABILITY_KEYS = ['requires_heat_no', 'requires_mtc', 'requires_supplier_batch', 'requires_serial_no'];
+
+  function onLineChange(patch) {
+    if ('material_description' in patch) setDescription(patch.material_description);
+    if ('item_id' in patch) setItemId(patch.item_id);
+    if ('uomHint' in patch) setUomHint(patch.uomHint);
+    if ('category' in patch) {
+      setCategory(patch.category);
+      // A category change resets every row's own dimension fields — the old ones don't describe
+      // the new shape (a plate's L/W/T means nothing once switched to "round").
+      setSizeRows(rows => rows.map(r => ({ ...r, categoryFields: patch.categoryFields || {} })));
+    }
+    // The catalog's own detail_desc is only a starting suggestion for the first row's free-text
+    // size/spec — ignored once the category is dimensional, where the row renders CategoryFieldsBlock
+    // instead and this text has nowhere to go.
+    if ('size_spec' in patch && !DIMENSIONAL_CATEGORIES.includes(patch.category ?? category)) {
+      setSizeRows(rows => rows.map((r, i) => i === 0 ? { ...r, size_spec: patch.size_spec } : r));
+    }
+    const tKeys = TRACEABILITY_KEYS.filter(k => k in patch);
+    if (tKeys.length) setTraceability(t => ({ ...t, ...Object.fromEntries(tKeys.map(k => [k, patch[k]])) }));
+  }
+
+  function updateRow(idx, patch) { setSizeRows(rows => rows.map((r, i) => i === idx ? { ...r, ...patch } : r)); }
+  function addRow() { setSizeRows(rows => [...rows, emptySizeRow(DIMENSIONAL_CATEGORIES.includes(category) ? {} : {})]); }
+  function removeRow(idx) { setSizeRows(rows => rows.filter((_, i) => i !== idx)); }
+
+  async function submit(e) {
+    e.preventDefault();
+    if (!description.trim()) return showToast('Description is required', 'error');
+    const isDimensional = DIMENSIONAL_CATEGORIES.includes(category);
+    if (isDimensional) {
+      for (let i = 0; i < sizeRows.length; i++) {
+        const err = validateCategoryFields(category, sizeRows[i].categoryFields);
+        if (err) return showToast(`${sizeRows.length > 1 ? `Size/Spec #${i + 1} ` : 'Size/Spec '}${err}`, 'error');
+      }
+    }
+
+    setSaving(true);
+    try {
+      let created = 0;
+      for (const row of sizeRows) {
+        const size_spec = isDimensional
+          ? (categoryDisplaySpec(category, row.categoryFields) || '')
+          : [row.size_spec.trim(), row.unit && row.unit !== '—' ? row.unit : ''].filter(Boolean).join(' ');
+        const body = {
+          project_id: projectId,
+          material_description: description.trim(),
+          moc: moc.trim(),
+          size_spec,
+          qty_text: row.qty_text,
+          category: category || undefined,
+          category_fields_json: isDimensional ? JSON.stringify(finalizeCategoryFields(category, row.categoryFields)) : undefined,
+          ...other,
+          ...(canSetTraceability ? traceability : {}),
+          ...(canSetManufacturingFlag ? { requires_manufacturing: requiresManufacturing ? 1 : 0 } : {}),
+        };
+        const { id } = await api('/api/bom-items', { method: 'POST', body });
+        created++;
+        // Best-effort — same idiom as LinkItemControl above. The catalog link is a convenience
+        // (real Inventory matching), never load-bearing for the create itself; the row already
+        // exists correctly whether or not this second call lands.
+        if (itemId) {
+          try { await api(`/api/bom-items/${id}/link-item`, { method: 'POST', body: { item_id: itemId } }); }
+          catch { /* best-effort */ }
+        }
+      }
+      showToast(created === 1 ? 'Item added' : `${created} items added`);
+      onDone();
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+    setSaving(false);
+  }
+
+  return (
+    <form onSubmit={submit} className="flex flex-col gap-3">
+      <ItemSearchField line={line} onChange={onLineChange} />
+      <div className="flex gap-3">
+        <div className="flex flex-1 flex-col gap-1.5">
+          <Label>MOC / Material Spec</Label>
+          <Input value={moc} onChange={e => setMoc(e.target.value)} placeholder="e.g. IS 2062 E250" />
+        </div>
+        <div className="flex flex-1 flex-col gap-1.5">
+          <Label>Category</Label>
+          <SearchableSelect
+            className="w-full" value={category} options={CATEGORY_OPTIONS}
+            onChange={v => onLineChange({ category: v, categoryFields: defaultCategoryFields(v) })}
+          />
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        {sizeRows.map((row, i) => (
+          <SizeSpecRow
+            key={row.key} row={row} index={i} total={sizeRows.length} category={category}
+            onChange={patch => updateRow(i, patch)} onRemove={() => removeRow(i)}
+          />
+        ))}
+        <Button type="button" size="sm" variant="ghost" className="w-fit text-muted-foreground" onClick={addRow}>
+          <PlusIcon data-icon="inline-start" />Add another size/spec
+        </Button>
+      </div>
+
+      {otherFields.map(f => (
+        <div key={f} className="flex flex-col gap-1">
+          <Label htmlFor={`bom-new-${f}`}>{FIELD_LABELS[f]}</Label>
+          {f === 'assembly_id' ? (
+            <select id="bom-new-assembly_id" value={other.assembly_id || ''} onChange={e => setOther(o => ({ ...o, assembly_id: e.target.value }))}
+              className="h-9 rounded-md border bg-background px-3 text-sm">
+              <option value="">— none —</option>
+              {assemblies.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+          ) : (
+            <SearchableSelect
+              value={other[f] || ''} displayValue={other[f] || ''} onTextChange={v => setOther(o => ({ ...o, [f]: v }))}
+              onChange={v => setOther(o => ({ ...o, [f]: v }))} options={(otherOptions[f] || []).map(v => ({ value: v, label: v }))}
+              placeholder="Type or pick from existing…" inputClassName="h-9"
+            />
+          )}
+        </div>
+      ))}
+
+      {canSetTraceability && (
+        <div className="flex flex-col gap-1.5">
+          <Label>Traceability required at receipt</Label>
+          <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+            {TRACEABILITY_FIELDS.map(f => (
+              <label key={f} className="flex items-center gap-1.5 text-sm">
+                <input type="checkbox" checked={!!traceability[f]} onChange={e => setTraceability(t => ({ ...t, [f]: e.target.checked }))} />
+                {TRACEABILITY_LABELS[f]}
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+      {canSetManufacturingFlag && (
+        <label className="flex items-center gap-1.5 text-sm">
+          <input type="checkbox" checked={requiresManufacturing} onChange={e => setRequiresManufacturing(e.target.checked)} />
+          Requires manufacturing
+        </label>
+      )}
+
+      <DialogFooter>
+        <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
+        <Button type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button>
+      </DialogFooter>
+    </form>
+  );
+}
+
 const FIELD_LABELS = {
   section: 'Section', group_label: 'Group', material_description: 'Description',
   moc: 'MOC / Material Spec', size_spec: 'Size / Spec', make: 'Make', qty_text: 'Qty',
@@ -210,8 +434,18 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
   // out of this filter, it rendered as a second, generic text input sharing its `name` with the real
   // checkbox below, and FormData.get() always resolves to whichever field is first in the DOM (the
   // text input), so the checkbox's own checked state was silently never read at all.
+  // `make` — Design/Engineering asked for it off this form entirely; ownership in BOM_FIELD_OWNERS is
+  // unchanged, this only hides it here. `category`/`category_fields_json` are never plain-text
+  // fields (a raw JSON blob box would be useless) — they render only through AddItemForm's own
+  // CategoryFieldsBlock, below, for the create flow.
   const dialogFields = editableFields.filter(f =>
-    f !== 'purchase_status' && f !== 'production_done' && f !== 'requires_manufacturing' && !TRACEABILITY_FIELDS.includes(f));
+    f !== 'purchase_status' && f !== 'production_done' && f !== 'requires_manufacturing' && !TRACEABILITY_FIELDS.includes(f)
+    && f !== 'make' && f !== 'category' && f !== 'category_fields_json');
+  // The richer catalog-aware, category-adaptive, multi-size composer — Engineering/Design's own
+  // "+ Add item" flow only. Editing an existing row keeps today's plain per-field dialog: a
+  // multi-row create doesn't apply to a single already-existing bom_items row.
+  const useRichComposer = editing?.__new && canStructure;
+  const otherFields = dialogFields.filter(f => !['material_description', 'moc', 'size_spec', 'qty_text'].includes(f));
 
   // Smart text input: native <datalist> suggestions from values already typed elsewhere — zero new
   // dependency, zero new backend, and purely additive (the field stays a plain <input>, so nothing
@@ -220,7 +454,7 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
   // passes it (NodeItemsTab passes the whole project's items, since a node's own filtered `bom` is
   // often empty right when suggestions matter most — a brand new node); every other caller doesn't
   // pass it, so this falls back to `bom` itself, unchanged.
-  const SMART_TEXT_FIELDS = ['material_description', 'moc', 'size_spec', 'make'];
+  const SMART_TEXT_FIELDS = ['material_description', 'moc', 'size_spec', 'section', 'group_label', 'remarks'];
   const suggestionSource = suggestionsFrom || bom;
   const distinctValues = useMemo(() => {
     const out = {};
@@ -604,11 +838,26 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
       )}
 
       <Dialog open={!!editing} onOpenChange={o => !o && setEditing(null)}>
-        <DialogContent className="max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>{editing?.__new ? 'Add BOM item' : 'Edit BOM item'}</DialogTitle>
           </DialogHeader>
-          {editing && (
+          {editing && useRichComposer ? (
+            <AddItemForm
+              projectId={projectId} assemblies={assemblies} otherFields={otherFields}
+              // Always a string — POST /api/bom-items coerces any non-string field value to null
+              // (matching a native <select>'s FormData.get(), always a string, which the old
+              // generic dialog relied on implicitly). assembly_id in particular arrives here as a
+              // raw number (defaultAssemblyId is node.id), so leaving it uncoerced would silently
+              // drop the assembly link on every item added straight from a node's own Items tab —
+              // a real bug caught live: two rows created without String() both had assembly_id null.
+              otherDefaults={Object.fromEntries(otherFields.map(f => [f, editing[f] != null ? String(editing[f]) : '']))}
+              otherOptions={distinctValues}
+              canSetTraceability={canSetTraceability} canSetManufacturingFlag={canSetManufacturingFlag}
+              onDone={() => { setEditing(null); router.refresh(); onSaved?.(); }}
+              onCancel={() => setEditing(null)}
+            />
+          ) : editing && (
             <form onSubmit={saveDialog} className="flex flex-col gap-3">
               {!editing.__new && !dialogFields.includes('material_description') && (
                 <p className="text-sm text-muted-foreground">{editing.material_description}</p>

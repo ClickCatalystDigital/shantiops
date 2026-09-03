@@ -1,7 +1,7 @@
 'use client';
 
 // components/bom-structure/BomTreeReadOnly.jsx — a read-only, full-depth outline of a project's
-// complete BOM hierarchy (every System/Subsystem/Assembly/Sub-assembly/Component down to the real
+// complete BOM hierarchy (every System/Subsystem/Assembly/Sub-assembly/Item down to the real
 // bom_items leaves), shown as its own Card below the editable BomStructureWorkspace tree above it.
 // Pure presentation over data the parent already fetched (assemblies/unassignedItems) — no fetch,
 // no mutation, so it automatically reflects whatever the editor above last saved/reloaded.
@@ -16,7 +16,7 @@ import {
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { Input } from '@/components/ui/input';
 import { api, showToast } from '@/lib/client';
-import { groupByParent, expandedIdsForSearch, itemMatchAncestorIds } from '@/lib/bom-tree.mjs';
+import { groupByParent, expandedIdsForSearch, itemMatchAncestorIds, matchingItemIds } from '@/lib/bom-tree.mjs';
 import { hasAmbiguousQty } from '@/lib/bom-structure.mjs';
 import { TreeRail } from './BomTreeNode';
 
@@ -27,14 +27,17 @@ import { TreeRail } from './BomTreeNode';
 // into sub-nodes) starts collapsed instead, same as before.
 const ITEM_AUTO_COLLAPSE_THRESHOLD = 15;
 
-function ItemRow({ item, node, ancestorLines, isLast }) {
+function ItemRow({ item, node, ancestorLines, isLast, highlighted, isFirstMatch }) {
   const showRolled = item.rolled_qty != null && node.rollup_qty !== 1;
   const ambiguous = hasAmbiguousQty(item.qty_text);
   // Real pr_no (round 3 Phase B) wins over the legacy free-text pr_ref — same "structured value
   // preferred, free text as a pre-unified-PR-flow fallback" precedent as BomTable's own PR column.
   const prLabel = item.pr_no || item.pr_ref;
   return (
-    <div className="flex items-center gap-0 py-1 pl-1 pr-2 text-sm text-muted-foreground">
+    <div
+      data-bom-search-hit={isFirstMatch || undefined}
+      className={`flex items-center gap-0 py-1 pl-1 pr-2 text-sm text-muted-foreground ${highlighted ? 'rounded bg-warning/15' : ''}`}
+    >
       {ancestorLines.map((hasLine, i) => <TreeRail key={i} vertical={hasLine} />)}
       <TreeRail vertical elbow half={isLast} />
       <PackageIcon className="size-3.5 shrink-0 text-muted-foreground/60" />
@@ -62,7 +65,7 @@ function ItemRow({ item, node, ancestorLines, isLast }) {
   );
 }
 
-function AssemblyRow({ node, depth, childrenByParent, collapsedIds, toggleCollapsed, itemsHiddenIds, toggleItems, ancestorLines, isLastSibling }) {
+function AssemblyRow({ node, depth, childrenByParent, collapsedIds, toggleCollapsed, itemsHiddenIds, toggleItems, ancestorLines, isLastSibling, matchedItemIds, firstMatchId }) {
   const children = childrenByParent.get(node.id) || [];
   const items = node.items || [];
   const childrenShown = !collapsedIds.has(node.id) && children.length > 0;
@@ -124,12 +127,16 @@ function AssemblyRow({ node, depth, childrenByParent, collapsedIds, toggleCollap
         const isLast = i === slots.length - 1;
         const childAncestorLines = [...ancestorLines, depth > 0 ? !isLastSibling : false];
         return slot.kind === 'item' ? (
-          <ItemRow key={`item-${slot.it.id}`} item={slot.it} node={node} ancestorLines={childAncestorLines} isLast={isLast} />
+          <ItemRow
+            key={`item-${slot.it.id}`} item={slot.it} node={node} ancestorLines={childAncestorLines} isLast={isLast}
+            highlighted={matchedItemIds?.has(slot.it.id)} isFirstMatch={firstMatchId === slot.it.id}
+          />
         ) : (
           <AssemblyRow
             key={slot.c.id} node={slot.c} depth={depth + 1} childrenByParent={childrenByParent}
             collapsedIds={collapsedIds} toggleCollapsed={toggleCollapsed} itemsHiddenIds={itemsHiddenIds} toggleItems={toggleItems}
             ancestorLines={childAncestorLines} isLastSibling={isLast}
+            matchedItemIds={matchedItemIds} firstMatchId={firstMatchId}
           />
         );
       })}
@@ -185,8 +192,14 @@ export default function BomTreeReadOnly({ assemblies, unassignedItems, project, 
   // collapse), and forces just the matching node's own items open (regardless of manual hide) —
   // computed as an override on top of the real collapsedIds/itemsHiddenIds state, not a second
   // source of truth, so clearing the query always returns to exactly what the user had set.
+  //
+  // Reveal-only search with no highlight or scroll reads as "did nothing" once most of the tree is
+  // already expanded by default (this card's own default, unlike the editable tree's) — matched rows
+  // get a highlight, and the first match gets a scrollIntoView (see the effect below), plus an
+  // explicit "no matches" state when a real query finds nothing anywhere.
   const nameExpandIds = expandedIdsForSearch(query, displayAssemblies, byId);
-  const { expandIds: itemExpandIds, matchingNodeIds } = itemMatchAncestorIds(query, displayAssemblies, byId);
+  const { expandIds: itemExpandIds, matchingNodeIds, matchedItemIds } = itemMatchAncestorIds(query, displayAssemblies, byId);
+  const unassignedMatchIds = matchingItemIds(query, displayUnassignedItems);
   const searchExpandIds = query.trim() ? new Set([...nameExpandIds, ...itemExpandIds]) : new Set();
   const effectiveCollapsedIds = searchExpandIds.size === 0
     ? collapsedIds
@@ -194,13 +207,19 @@ export default function BomTreeReadOnly({ assemblies, unassignedItems, project, 
   const effectiveItemsHiddenIds = matchingNodeIds.size === 0
     ? itemsHiddenIds
     : new Set([...itemsHiddenIds].filter(id => !matchingNodeIds.has(id)));
-  const unassignedMatches = query.trim() && displayUnassignedItems.some(it =>
-    it.material_description.toLowerCase().includes(query.trim().toLowerCase()) ||
-    (it.catalog_item_code || '').toLowerCase().includes(query.trim().toLowerCase()) ||
-    (it.pr_no || it.pr_ref || '').toLowerCase().includes(query.trim().toLowerCase()) ||
-    `bm-${it.id}`.includes(query.trim().toLowerCase())
-  );
+  const unassignedMatches = unassignedMatchIds.size > 0;
   const effectiveUnassignedShown = unassignedShown || unassignedMatches;
+  const firstMatchId = matchedItemIds.size > 0 ? [...matchedItemIds][0] : (unassignedMatchIds.size > 0 ? [...unassignedMatchIds][0] : null);
+  const hasQuery = query.trim().length > 0;
+  const noMatchesFound = hasQuery && matchedItemIds.size === 0 && !unassignedMatches && nameExpandIds.size === 0;
+
+  // Scroll the first matched item into view — the reveal itself is silent otherwise (deliberately,
+  // per the comment above), which on an already-mostly-expanded tree can look like nothing happened.
+  useEffect(() => {
+    if (!hasQuery) return;
+    const el = document.querySelector('[data-bom-search-hit="true"]');
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [query, hasQuery]);
 
   function toggleCollapsed(id) {
     setCollapsedIds(prev => {
@@ -286,12 +305,18 @@ export default function BomTreeReadOnly({ assemblies, unassignedItems, project, 
             <ListTreeIcon className="size-8 text-muted-foreground/40" />
             <p className="text-sm text-muted-foreground">No structure built yet.</p>
           </div>
+        ) : noMatchesFound ? (
+          <div className="flex flex-col items-center gap-2 py-6 text-center">
+            <SearchIcon className="size-8 text-muted-foreground/40" />
+            <p className="text-sm text-muted-foreground">No matches for "{query.trim()}".</p>
+          </div>
         ) : (
           roots.map((root, i) => (
             <AssemblyRow
               key={root.id} node={root} depth={0} childrenByParent={childrenByParent}
               collapsedIds={effectiveCollapsedIds} toggleCollapsed={toggleCollapsed} itemsHiddenIds={effectiveItemsHiddenIds} toggleItems={toggleItems}
               ancestorLines={[]} isLastSibling={i === roots.length - 1}
+              matchedItemIds={matchedItemIds} firstMatchId={firstMatchId}
             />
           ))
         )}
@@ -309,7 +334,11 @@ export default function BomTreeReadOnly({ assemblies, unassignedItems, project, 
             {effectiveUnassignedShown && (
               <div className="mt-1">
                 {displayUnassignedItems.map(it => (
-                  <div key={it.id} className="flex items-center gap-1.5 py-1 pl-1 pr-2 text-sm text-muted-foreground">
+                  <div
+                    key={it.id}
+                    data-bom-search-hit={firstMatchId === it.id || undefined}
+                    className={`flex items-center gap-1.5 py-1 pl-1 pr-2 text-sm text-muted-foreground ${unassignedMatchIds.has(it.id) ? 'rounded bg-warning/15' : ''}`}
+                  >
                     <PackageIcon className="size-3.5 shrink-0 text-muted-foreground/60" />
                     <span className="min-w-0 flex-1 truncate">
                       <span className="mr-1 text-[11px] tnum text-muted-foreground/70">
