@@ -3,7 +3,7 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment, isPM } from '@/lib/auth';
-import { requireCrmAction } from '@/lib/action-permissions';
+import { requireCrmAction, requireAction } from '@/lib/action-permissions';
 import { getSalesInvoiceDetail } from '@/lib/data';
 import { audit } from '@/lib/usb';
 import { notifyProjectCustomers } from '@/lib/notify';
@@ -27,12 +27,32 @@ export async function GET(req, { params }) {
   return NextResponse.json(detail);
 }
 
+// Accounts' own path — payment reconciliation only. Confirmed ownership split: Sales/Marketing
+// keep sole authority over the commercial/issuance fields (draft/issued/cancelled, due_date,
+// notes); Accounts may only mark an invoice paid and record the payment reference. A PM (who also
+// passes canAccessCrm) always takes the full path below, never this narrower one.
+const ACCOUNTS_PAYMENT_FIELDS = ['status', 'payment_ref'];
+
 export async function PATCH(req, { params }) {
   const user = await getFreshSessionUser();
-  if (!canAccessCrm(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  const actionDenied = await requireCrmAction(user, 'sales.invoice.status');
-  if (actionDenied) return actionDenied;
   const b = await req.json();
+  const isCrm = canAccessCrm(user);
+  const isAccountsPaymentOnly = !isCrm && canAccessDepartment(user, 'Accounts');
+
+  if (!isCrm && !isAccountsPaymentOnly) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+
+  if (isAccountsPaymentOnly) {
+    const submittedKeys = Object.keys(b);
+    if (!submittedKeys.every(k => ACCOUNTS_PAYMENT_FIELDS.includes(k)) || (b.status !== undefined && b.status !== 'paid')) {
+      return NextResponse.json({ error: 'Accounts can only mark an invoice paid and record the payment reference' }, { status: 403 });
+    }
+    const actionDenied = await requireAction(user, 'Accounts', 'accounts.invoice.mark_paid');
+    if (actionDenied) return actionDenied;
+  } else {
+    const actionDenied = await requireCrmAction(user, 'sales.invoice.status');
+    if (actionDenied) return actionDenied;
+  }
+
   if (b.status !== undefined && !STATUSES.includes(b.status)) {
     return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
   }
@@ -40,7 +60,8 @@ export async function PATCH(req, { params }) {
   if (!invoice) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   const fields = [];
   const args = [];
-  for (const key of ['status', 'due_date', 'payment_ref', 'notes']) {
+  const allowedKeys = isAccountsPaymentOnly ? ACCOUNTS_PAYMENT_FIELDS : ['status', 'due_date', 'payment_ref', 'notes'];
+  for (const key of allowedKeys) {
     if (b[key] !== undefined) { fields.push(`${key} = ?`); args.push(b[key]); }
   }
   if (!fields.length) return NextResponse.json({ error: 'No fields to update' }, { status: 400 });

@@ -7,6 +7,7 @@
 // Reports sidebar search. DispatchRegisterCard closes a pre-existing gap (that report shipped
 // earlier this session, before this bug pattern was known); the other 3 are this session's own new
 // reports, so this closes it on day one instead of leaving it to be found again later.
+import Link from 'next/link';
 import { fmt } from './TrialBalanceCard';
 import { ListReportCard } from './ListReportCard';
 
@@ -17,7 +18,12 @@ export function DispatchRegisterCard({ company }) {
       emptyLabel="No dispatched shipments yet."
       subtitle={d => `${d.shipmentCount} shipment(s) · ${fmt(d.totalFreight)} total freight`}
       columns={[
-        { label: 'Packing No', key: 'packing_no' },
+        // Accounts' real, discoverable path into the full document (freight, e-way bill, invoice
+        // link, delivery acknowledgement) — they now have read access to /packing/{id}, but had no
+        // way to reach it without knowing a packing list's numeric id.
+        { label: 'Packing No', key: 'packing_no', render: s => s.id
+          ? <Link href={`/packing/${s.id}`} className="text-primary hover:underline">{s.packing_no}</Link>
+          : s.packing_no },
         { label: 'Dispatched', key: 'dispatched_at', render: s => s.dispatched_at?.slice(0, 10) || '—' },
         { label: 'Customer', key: 'customer_name' },
         { label: 'Invoice No', key: 'invoice_no', render: s => s.linked_invoice_no || s.invoice_no || '—' },
