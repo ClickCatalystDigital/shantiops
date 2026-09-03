@@ -443,6 +443,19 @@ phase comes up rather than assuming last check's answer still holds.
   built, belong per-company in Shanti Ops (`company_settings`-adjacent) — never in
   statutory-rates-hub, which only distributes identical-for-everyone rate data and holds no
   per-company secrets or transactional state.
+  **Correction (2026-09-04)** — direct research against the real government e-invoice sandbox
+  (`einv-apisandbox.nic.in`) and production portal (`einvoice1.gst.gov.in`) sharpens all of the
+  above: the mandate threshold is **₹5 crore AATO** (confirmed live), independent of and much lower
+  than the **₹500 crore** (table) / **₹100 crore** (prose) Direct API Access threshold — NIC's own
+  site disagrees with itself on that second number. A real, self-service, free "ERP" registration
+  category exists (same portal, no GSP) requiring only the registering entity's own PAN + a
+  GST-registered mobile/email — but **Ahrom Labs (the software vendor building Shanti Ops) has no
+  GST registration of its own yet, blocking that path today.** The one path that would still let
+  this be built exactly like e-way bill (each client holds direct credentials, Shanti Ops a pure
+  wrapper) is real, per NIC's own onboarding table: a taxpayer who already has direct **E-Way Bill**
+  API access carries that straight into e-invoice Direct API Access too, regardless of turnover —
+  but that depends on e-way bill actually being production-live for a real client first, which
+  hasn't happened. **Decision: still correctly deferred** — see SYSTEM.md §5bd for the full record.
 - **E-way bill generation** — only if dispatching goods above the state threshold (usually
   ₹50,000/consignment). **Correction (2026-08-22)**: eligibility for direct (non-GSP) API access is
   volume-based — roughly 1,000 e-way bills/day or 10,000 transactions/month per GSTIN, per the EWB
@@ -464,6 +477,15 @@ phase comes up rather than assuming last check's answer still holds.
   project's linked customer actually has structured GSTIN/state/pincode data) — all four now built
   and enforced server-side before the stub is ever reached, plus credentials now encrypted at rest.
   The outbound NIC call itself remains stubbed, deliberately, pending real registration.
+  **Update (2026-09-04)**: a full UI/UX verification pass against the live docs.ewaybillgst.gov.in
+  developer portal (read directly, not summarized) found and closed real gaps in what was already
+  built — the real NIC client (`authenticate`/`GENEWAYBILL`/`CANEWB`), the Cancel E-Way Bill action
+  (`lib/eway-bill.js`'s `cancelEwayBill()` existed with zero UI/route calling it — closed with a
+  real Cancel dialog respecting NIC's 24-hour window), a persistent post-generation status card
+  showing Number/Generated/Valid Until, and plain-language error messages replacing ones that had
+  leaked raw env var names and internal doc references to a business user. A same-day gap-recheck
+  pass then found and fixed one more real bug: the Cancel route cleared `eway_bill_no`/
+  `eway_bill_date` but left `eway_bill_valid_upto` stale on the row. See SYSTEM.md §5bd.
 - **TDS 26Q e-filing** — the TDS Deduction Register (§5z) already gives the data; actual TRACES-
   format filing has no clean API for a self-service integration at any price — stays a CA/return-
   prep-software task regardless of budget.

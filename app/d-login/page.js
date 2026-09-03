@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Loader2Icon, Users, Factory, UserCircle, KeyRound, CheckIcon, UserPlusIcon, Cloud } from 'lucide-react';
+import { Loader2Icon, Users, Factory, UserCircle, KeyRound, CheckIcon, UserPlusIcon, Cloud, Workflow } from 'lucide-react';
 import { DEPARTMENTS } from '@/lib/milestones';
 
 const DEMO_GROUPS = [
@@ -206,15 +206,26 @@ function LoginContent() {
                     );
                   })}
                   {label === 'Demo Accounts' && (
-                    <a
-                      href="/cloud-storage-pricing.html"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center justify-between gap-1 rounded-md border border-input bg-background px-2.5 py-1.5 text-left text-xs font-medium transition-colors hover:bg-muted"
-                    >
-                      <span className="truncate">Cloud Storage</span>
-                      <Cloud className="size-3.5 shrink-0" />
-                    </a>
+                    <>
+                      <a
+                        href="/cloud-storage-pricing.html"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-between gap-1 rounded-md border border-input bg-background px-2.5 py-1.5 text-left text-xs font-medium transition-colors hover:bg-muted"
+                      >
+                        <span className="truncate">Cloud Storage</span>
+                        <Cloud className="size-3.5 shrink-0" />
+                      </a>
+                      <a
+                        href="/acc-bpmn"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-between gap-1 rounded-md border border-input bg-background px-2.5 py-1.5 text-left text-xs font-medium transition-colors hover:bg-muted"
+                      >
+                        <span className="truncate">Accounts Audit</span>
+                        <Workflow className="size-3.5 shrink-0" />
+                      </a>
+                    </>
                   )}
                 </div>
               </div>

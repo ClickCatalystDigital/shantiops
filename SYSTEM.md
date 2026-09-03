@@ -6896,6 +6896,144 @@ partial-quantity tracking (a BOM line is either fully "on some approved packing 
 "pending," `packing_items.scanned_qty` is schema-only dead code) is a real, orthogonal limitation
 already true for any oversized line regardless of a multiplier — not something this round fixes.
 
+## 5bd. E-way bill Cancel action + UI/UX pass; e-invoicing research (deferred); the Ledger Atlas (`/acc-bpmn`) (2026-09-04)
+
+Three pieces of work, same session, none touching the real NIC account (still doesn't exist).
+
+**E-way bill: a full UI/UX pass against the built prerequisite/credential/generation flow (§5aw-
+§5ax), read straight against the real customer-facing screens rather than the code.** Found and
+fixed four real gaps: Test Connection's failure message leaked raw env var names
+(`EWAY_BILL_BASE_URL`/`EWAY_BILL_PUBLIC_KEY`) and an internal doc reference to a business user —
+rewritten in plain language, explicit that the user's own saved credentials are fine and this is a
+deployment-team step; missing-field errors on the customer/company completeness gates printed raw
+column names (`gst_no`, `pin_code`) — replaced with plain labels (GSTIN, Pincode); **Cancellation
+was completely unbuilt** — `lib/eway-bill.js`'s `cancelEwayBill()` existed with zero route or UI
+ever calling it, and the only path a user had (editing `eway_bill_no` directly) risked desyncing
+Shanti Ops' record from NIC's real one — closed with a real `POST /api/packing/[id]/eway-bill/
+cancel` route (new `dispatch.packing.eway_bill.cancel` action key, same fail-closed discipline as
+generation: checks NIC's real 24-hour cancellation window and requires a reason code + remark
+before ever calling NIC) and a Cancel dialog in `PackingDetail.jsx` (NIC's 4 real reason codes, an
+irreversibility warning, hidden once past the 24-hour window); **`validUpto`** (NIC's own computed
+validity window, always in the API response, previously dropped on the floor) is now captured
+(`packing_lists.eway_bill_valid_upto`, a real `parseNicDateTime()` fix for NIC's
+`dd/mm/yyyy hh:mm:ss AM/PM` format, which a naive `new Date()` mis-parses) and shown in a persistent
+status card (Number / Generated / Valid Until) that replaces the old behavior of the Generate card
+simply vanishing once a number existed.
+
+**A same-day gap-recheck pass found one more real bug**: the new Cancel route cleared
+`eway_bill_no`/`eway_bill_date` on success but left `eway_bill_valid_upto` stale — harmless today
+(the status card only renders when `eway_bill_no` is truthy) but a real data-hygiene gap between a
+cancel and any future re-generation. Fixed — the UPDATE now clears all three fields together.
+
+**E-invoicing (IRN/QR) — researched directly against the real government sandbox and production
+portal, not summarized secondhand.** `einv-apisandbox.nic.in` (NIC's own e-Invoice API Developer's
+Portal — confirmed government-run, not a GSP) and `einvoice1.gst.gov.in` (the real production
+portal). Findings, each independently sourced:
+- **Mandate threshold** (who must generate e-invoices at all): **₹5 crore AATO**, confirmed live on
+  the production portal's own banner ("Taxpayers with AATO between Rs.5 Crore to Rs.10 Crore are
+  enabled for e-invoicing"). Genuinely unknown for Shanti Boilers/Shanti Techno Fab — if either has
+  crossed it, e-invoicing may already be mandatory for them today, independent of anything
+  technical here; a real compliance question for the client's own CA, not resolved by this session.
+- **Direct API Access threshold**: **₹500 crore**, per the real onboarding table
+  (`einv-apisandbox.nic.in/onboarding.html`) — confirmed by direct DOM read (the checkmark icons
+  are Font Awesome `<i>` tags, invisible to a naive text scrape; re-checked via `outerHTML` and
+  cross-matched against a screenshot the user independently took of the same table) — **or** ₹100
+  crore per the same page's own prose. NIC's site disagrees with itself; not resolved either way,
+  flagged as-is.
+- **The one load-bearing row in that table**: "Users already having 'E-Way Bill API Access'" stays
+  checked even below ₹500 Cr. A taxpayer with real, production e-way-bill Direct API Access (§5aw's
+  own volume-gated, much-lower bar) carries that straight into e-invoice Direct API Access too,
+  regardless of turnover — the one path that would let e-invoicing be built exactly like e-way bill
+  (each client holds its own credentials directly, Shanti Ops a pure wrapper, no GSP/ERP layer).
+  **Not available in practice yet**: it's earned by e-way bill actually going production-live for a
+  real client, which hasn't happened.
+- **The "Through ERP" path** — a real, free, self-service registration category on the same
+  sandbox (`Tax Payer`/`GSP`/`e-Com Op.`/`ERP` radio buttons on the registration form), requiring
+  only the registering entity's own PAN, an "ERP Name," and a GST-registered mobile/email.
+  **Blocked today**: the registering entity would be Ahrom Labs (the software company; Shanti Ops
+  is one of its client projects, for Shanti Boilers) — which has no GST registration of its own.
+  Registering Ahrom Labs for GST, or having the client register as the ERP category itself (an odd
+  fit — they're the taxpayer, not the vendor), were both considered and set aside rather than
+  pursued to force a path open.
+- Credential model, if this path is ever used: **two-tier**, not one-tier like e-way bill — one
+  shared Shanti Ops-level `Client Id`/`Client Secret` (platform credential), plus a per-company
+  `Username`/`Password` each client creates after "opting for" Shanti Ops as their ERP. Would need
+  a new platform-level credential slot plus a per-company table, not a reuse of
+  `eway_bill_credentials`'s single-tier shape.
+- Other real findings for whenever this is picked back up: the auth flow is the identical RSA→AES
+  shape as e-way bill (`lib/eway-bill-crypto.js` directly reusable); Generate IRN/Get IRN Details
+  responses are additionally signed via JWT/JWS SHA256RSA (a real addition beyond e-way bill, since
+  the signed e-invoice + QR *is* the legal artifact); 2-Factor Authentication has been mandatory for
+  all e-invoicing taxpayers since 1 April 2025 (confirmed live), affecting the human account-
+  management side, not the machine-to-machine calls.
+
+**Decision: defer, as before — not reversed by this research.** The one non-GSP path that matches
+Shanti Ops' architecture depends on e-way bill being proven live in production first, which is the
+already-planned next step (testing e-way bills with a real customer via the accounts head). Full
+research trail kept in the session's own plan-file record for whoever picks this up next.
+
+**The Ledger Atlas (`/acc-bpmn`)** — a full audit of every Accounts workflow the app actually runs
+today, requested directly ahead of the user building a company-wide accounting BPMN in Lucidchart.
+Traced 20 workflows end to end (sequence, departments touched, documents/ledger entries produced,
+terminal state), grouped into Revenue Cycle, Procurement Cycle, Payroll, Ledger & Bank, GST &
+Statutory Reporting, and Company/Compliance Setup — plus a consolidated gap register and a
+step-by-step BPMN-drawing guide (pools/lanes, data objects vs. tasks, when a gateway is a real
+fork, marking automatic vs. human steps, drawing broken handoffs directly on the diagram). The
+guide's own recommended shape: **one diagram, built as six collapsed BPMN sub-processes** — not six
+separate files — sequenced left to right in the rough order money actually moves.
+
+Built as a real page in the app, not a one-off document, per explicit instruction (an earlier draft
+published as a standalone Artifact was rejected in favor of this): `app/acc-bpmn/page.js` (gated
+`canAccessDepartment(user, 'Accounts')`, same pattern as `/accounts` — PM bypass confirmed in code,
+re-verified live for both an Accounts head and a non-Accounts head), `components/AccBpmnAtlas.jsx`
+(the content — a plain server component, no client JS needed beyond native `<details>` disclosure),
+`app/acc-bpmn/acc-bpmn.module.css` (a deliberately isolated CSS Module — its own palette/typography
+scoped to `.atlas`, never `:root`, so nothing leaks into any other page; reads the app's real
+`html[data-theme]` dark-mode state, set by `components/Nav.jsx`, without needing any adaptation).
+Fonts via `next/font/google` (Fraunces/IBM Plex Sans/IBM Plex Mono), not a raw stylesheet link.
+
+**Two real content gaps found on a direct "are you sure there are no gaps?" recheck, both fixed
+same-day**: the gap register had silently dropped a documented finding (`employees.
+cost_rate_per_hour`/`employees.company` have no HR-facing input field anywhere — API-only, despite
+feeding directly into Payroll's own GL posting) — added back. And the page had no way to answer
+"what does department X touch across all 20 workflows" without scanning every card by eye — added
+a **By Department** index (`DeptIndex`, `components/AccBpmnAtlas.jsx`), computed directly from each
+workflow's own sequence-chip departments (no second hand-maintained list to drift from the real
+data), grouping every workflow a department appears in with a jump link.
+
+**Two real copy bugs found live-verifying the page in the browser**, both a JSX whitespace-
+collapse gotcha worth remembering generally: a newline sitting directly between an inline `<em>`
+tag and adjacent text gets *removed*, not condensed to a space, so `...six\n<em>collapsed
+sub-process</em>\nshapes...` rendered as `sixcollapsed sub-processshapes` with words fused together
+— fixed with an explicit `{' '}` at the line break. (A duplicated "already know BPMN already" was a
+plain typo, unrelated.) All four `<em>` usages in the file were checked for the same pattern after
+the first was found; only the one needed fixing.
+
+**Live-verified**: lint (801 files) and a full `npm run build` both clean, `/acc-bpmn` present in
+the route manifest; loaded as `accounts_head` (renders correctly, all sections present, console
+clean — no React key warnings or hydration mismatches) and as `qc_head` (redirected to their home
+page under the original gated version — one earlier screenshot briefly suggested otherwise before a
+hard reload showed it was stale cached content from a prior session, not a real gap); dark mode
+toggled via the app's own `data-theme` mechanism, responded correctly across the whole scoped
+palette.
+
+**Access, decided explicitly (not left as a default): public, no login required.** Added
+`/acc-bpmn` to `middleware.js`'s `PUBLIC_PATHS` and dropped the page's own `canAccessDepartment`
+gate entirely — a deliberate call, made after flagging the tradeoff (the page documents real
+internal bugs and file paths) rather than assuming either way. Same `PUBLIC_PATHS` mechanism
+`/d-login` itself already uses. The page's own `export const dynamic = 'force-dynamic'` was also
+removed as genuinely dead once the per-request auth check was gone — **checked, not assumed**: the
+build still marks `/acc-bpmn` `ƒ` (dynamic), not `○` (static), same as every other page in the app,
+because `app/layout.js` itself calls `getFreshSessionUser()` (a per-request cookie read, for
+`Nav.jsx`'s `user` prop) — every route inherits dynamic rendering from that shared root layout
+regardless of what any individual page does. Removing the export was still correct (it was true
+dead code on this page specifically) but doesn't change how the page actually renders; an earlier
+draft of this note wrongly claimed it would. A shortcut was added on `/d-login`'s "Demo Accounts"
+panel ("Accounts Audit," opens in a new tab) — same placement precedent as that panel's existing
+"Cloud Storage" link.
+
+Not committed as of this write-up.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own
