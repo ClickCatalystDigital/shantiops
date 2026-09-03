@@ -24,6 +24,12 @@ export async function PATCH(req, { params }) {
     if (!COMPANY_NAMES.includes(b.company)) return NextResponse.json({ error: 'Invalid company' }, { status: 400 });
     fields.push('company = ?'); args.push(b.company);
   }
+  // Whole-BOM Unit Count — same coercion-not-rejection pattern bom_assemblies.qty's own PATCH route
+  // already uses (silently floors a bad value to 1 rather than 400ing the whole request over it).
+  if (b.unit_count !== undefined) {
+    const n = Number(b.unit_count);
+    fields.push('unit_count = ?'); args.push(n > 0 ? n : 1);
+  }
   if (!fields.length) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
 
   args.push(params.id);
@@ -33,6 +39,14 @@ export async function PATCH(req, { params }) {
     if (String(e).includes('UNIQUE')) return NextResponse.json({ error: `Project ${b.project_no} already exists` }, { status: 409 });
     throw e;
   }
-  await audit('project_renamed', { actor: user.username, detail: `project ${params.id} -> ${b.project_no || ''}` });
+  if (b.project_no !== undefined || b.customer_name !== undefined || b.description !== undefined || b.company !== undefined) {
+    await audit('project_renamed', { actor: user.username, detail: `project ${params.id} -> ${b.project_no || ''}` });
+  }
+  // A separate audit action, not folded into project_renamed — it silently changes every downstream
+  // Procurement/Stores/Dispatch quantity the moment it's edited, worth its own traceable line rather
+  // than blending into a plain identity-rename entry.
+  if (b.unit_count !== undefined) {
+    await audit('project_unit_count_changed', { actor: user.username, detail: `project ${params.id} -> unit_count ${b.unit_count}` });
+  }
   return NextResponse.json({ ok: true });
 }

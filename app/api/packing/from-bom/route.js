@@ -56,8 +56,10 @@ export async function POST(req) {
   let s = 1;
   for (const b of newItems) {
     // "2 Nos" -> 2, scaled by any Local Quantity multiplier on the item's own BOM-tree node (and
-    // every node above it); non-numeric ("AS REQD") -> 1, same fallback as before this existed.
-    const qty = itemRollupQty(b.qty_text, b.assembly_id, rollupById) ?? 1;
+    // every node above it) times the project's own Whole-BOM Unit Count (project.unit_count,
+    // already loaded above — no second query needed); non-numeric ("AS REQD") -> 1, same fallback
+    // as before either multiplier existed.
+    const qty = itemRollupQty(b.qty_text, b.assembly_id, rollupById, project.unit_count, !!b.qty_resolved) ?? 1;
     await execute(
       `INSERT INTO packing_items (packing_list_id, bom_item_id, s_no, material_description, moc, size_spec, make, qty, unit)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,

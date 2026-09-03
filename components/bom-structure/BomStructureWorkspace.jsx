@@ -177,6 +177,15 @@ export default function BomStructureWorkspace({
       showToast(`Whole-BOM template saved — ${res.rootCount} root(s), ${res.nodeCount} node(s), ${res.itemCount} item(s)`);
     } catch (err) { showToast(err.message, 'error'); }
   }
+  async function saveUnitCount(n) {
+    try {
+      await api(`/api/projects/${projectId}`, { method: 'PATCH', body: { unit_count: n } });
+      showToast(`Unit Count set to ${n}`);
+      // `projects` is a server-supplied prop (selectedProject.unit_count reads off it) — refresh so
+      // the field's own display and every downstream number this drives reflect the new value.
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+  }
   async function release() {
     setReleasing(true);
     try {
@@ -252,6 +261,7 @@ export default function BomStructureWorkspace({
               status={releaseStatus} onRelease={release} releasing={releasing}
               rootCount={assemblies.filter(a => a.parent_id == null).length}
               onBuildFromTemplates={buildFromTemplates} onSaveBomAsTemplate={saveBomAsTemplate}
+              unitCount={selectedProject?.unit_count} onSaveUnitCount={saveUnitCount}
             />
           )}
           <ResizablePanelGroup direction="horizontal" className="min-h-[28rem] overflow-hidden rounded-md border">

@@ -22,7 +22,11 @@ a reader who finds the old `V3_CHANGES.md` §12 text elsewhere knows it's stale.
 reversal.
 
 Everything in this file reflects the **current, working build**, updated as work lands — most
-recently 2026-09-03 (§5bc, a multi-unit quantity multiplier — wiring the BOM tree's existing,
+recently 2026-09-04 (§5be, a whole-BOM Unit Count layered on top of §5bc's per-node multiplier —
+direct user pushback that a real multi-root project (SB-1109 has 5) needed one project-wide number,
+not five separately-set node values; closed out with a real, serious split-qty double-counting bug
+found and fixed in the same pass, live-proven with a real partial-match-then-re-release test); the
+round before that, 2026-09-03 (§5bc, a multi-unit quantity multiplier — wiring the BOM tree's existing,
 previously display-only per-node "Local Quantity" rollup into the 6 real places Procurement/Stores/
 Dispatch compute a quantity, with the math always shown next to the number and zero pre-existing
 data affected; §5bb, the round right before it — hierarchy-level "Structure Templates," letting a
@@ -7034,6 +7038,116 @@ panel ("Accounts Audit," opens in a new tab) — same placement precedent as tha
 
 Not committed as of this write-up.
 
+## 5be. Whole-BOM Unit Count + a real split-qty double-counting bug found and fixed (2026-09-04)
+
+Direct user pushback on §5bc, immediately after it shipped: "I don't know why we have multiplier
+per system or sub system where I clearly said, entire BOM should be multiplied. we don't have such
+system?" — plus three real downstream questions (do suppliers see the final PO quantity, can
+Procurement split a multiplied line across suppliers, can Stores report partial delivery).
+Investigated each with real evidence before designing anything:
+
+1. **The multi-root gap was real.** A live query confirmed SB-1109 has 5 independent top-level BOM
+   roots (Boiler/Flue Gas Duct/SDC/Chimney/ID Fan) — "this whole BOM is for 50 units" genuinely
+   required setting §5bc's per-node Local Quantity on all 5 separately, with no guarantee they stay
+   in sync and no way a 6th root added later gets remembered.
+2. **Suppliers already see the correct final quantity** — confirmed by reading
+   `app/api/purchase-orders/[id]/pdf/route.js` → `getPurchaseOrderDetail()` → `lib/po-pdf.js`: the
+   PDF renders `po_items.qty` directly, and that column already holds the §5bc-multiplied number.
+   Nothing to fix.
+3. **Splitting a multiplied line's supply across several suppliers by quantity — confirmed a real,
+   pre-existing gap**, not introduced by the multiplier: `purchase_orders.is_split` is a dormant
+   boolean with zero splitting mechanism behind it anywhere in `app/api/purchase-orders/*`.
+4. **Stores recording partial delivery ("30 of 50 delivered") — confirmed a real, pre-existing gap**:
+   `POST /api/bom-items/[id]/receive` unconditionally sets `purchase_status='Received'` the instant
+   *any* receive happens, regardless of whether the entered `grn_qty_text` matches the full required
+   quantity — the same class of gap already documented for Dispatch/packing in §5bc, found on the
+   receiving side too.
+
+Items 3 and 4 were deliberately left out of this round's scope — real, substantial, pre-existing
+gaps each deserving their own design pass, not a bolt-on — and added to `BOM-FOLLOWUP-NOTES.md` as
+new tracked items rather than rushed.
+
+**Design, converged on directly with the user**: keep `bom_assemblies.qty` (the per-node multiplier)
+exactly as it is — still correct for genuine structural repetition, e.g. "4 stay bolts per boiler," a
+different concept from "how many boilers" — and add a **second, separate, always-on layer for the
+whole project**: `projects.unit_count REAL NOT NULL DEFAULT 1` (`lib/db.js`), surfaced as a small
+number input in `components/bom-structure/ReleaseReadinessPanel.jsx`, right next to the Structure
+Templates icon buttons — the user's own proposed placement ("just like templates... a number input
+field next to BOM level icons"), saved via `PATCH /api/projects/[id]` (extended, not a new route) on
+blur, same UX language as `NodeOverviewTab.jsx`'s own per-node field.
+
+**Folded into the same rollup chain as one more factor, not a second calculation.**
+`rollupQty(assemblyId, byId, projectMultiplier = 1)` (`lib/bom-structure.mjs`) gained an optional
+3rd parameter, applied as the starting `mult` before the parent-chain walk — `itemRollupQty`/
+`qtyBreakdown` thread it straight through, so a node's own chain and the project's unit count
+combine into one number exactly as `rollupQty` already returned, no format change needed for the
+common case (project multiplier only, every node at its default qty=1). New `getProjectUnitCounts()`
+(`lib/data.js`), mirroring `getAssemblyRollupMap()`'s own exact scoped/unscoped shape — one function
+serves both a single-project lookup and a cross-project list's per-row lookup.
+
+**A 10th site the first draft missed, caught in the pre-implementation gap review**:
+`getBomStructure()` (`lib/data.js`) — the query that computes `rolled_qty`/`rollup_qty` for the
+interactive BOM tree's own "Roll-up quantity" display, the read-only Final BOM card, and the PDF
+export — wasn't one of §5bc's 9 wired call sites. Skipping it would have shipped a genuinely
+inconsistent app: the BOM tree itself would keep showing only the per-node rollup while
+Procurement/Stores/Dispatch showed the fully-combined number. Fixed before it ever shipped.
+
+**A real, serious, pre-existing correctness bug found while wiring this — not introduced by this
+round, but made far worse by it — fixed as part of the same pass, on the user's explicit direction.**
+A partial match/reservation (`lib/procurement.js`'s `reserveFromStock`, `lib/remnant-match.js`'s
+`matchAndReserve`) writes an already-total-space "still needed" remainder back into `qty_text` via
+`splitQtyText` — but every quantity-consuming site re-applies the live rollup multiplier to
+`qty_text` on every read, so that remainder got multiplied *again* on the next read, compounding
+every time a partially-fulfilled line was re-evaluated. Traced through carefully (not just
+theorized) before touching anything, then confirmed live: a real partial match (required=50,
+available=30) correctly split into a 30-piece reservation + a 20-remainder — then, on a **second**
+Release BOM with more stock added, without the fix the remaining "20 No" would have re-read as
+`20 × 50 = 1000`, not 20.
+
+**Fix**: new `bom_items.qty_resolved INTEGER NOT NULL DEFAULT 0` — a one-way flag (same "earned,
+never un-earned" precedent as `pending_review`/`released_at_revision` on this same table) marking a
+row whose `qty_text` is already a final physical count, set on both sides of a split
+(`cloneBomItemForSplit`'s INSERT always sets it; the remaining-row UPDATE in both
+`reserveFromStock` and `matchAndReserve` sets it too). `itemRollupQty`/`qtyBreakdown` gained a 5th
+parameter, `resolved = false` — when true, `qty_text`'s number is used as-is, no multiplier applied
+at all, regardless of the node/project context. Every one of the (now 10) quantity-consuming sites
+was re-audited and updated to pass `!!row.qty_resolved` alongside the existing multiplier args — a
+full repo-wide grep for every `itemRollupQty(`/`qtyBreakdown(` call confirmed all real sites
+covered, nothing missed.
+
+**A second, related, pre-existing gap found and fixed in the same pass**: `matchProjectBom`'s query
+(`lib/remnant-match.js`) had no `pending_review` filter at all — unlike its sibling
+`matchProjectPlainStock`, which already excludes `pending_review=1` rows for exactly this reason. A
+fully-resolved dimensional clone (`cloneBomItemForSplit` forces `pendingReview:true` on it) could be
+re-selected by a later Release BOM and matched *again* — a real double-reservation risk, not just a
+display bug. Fixed by adding the same `AND pending_review = 0` filter its sibling already had; a
+still-open remainder row correctly keeps `pending_review=0` and stays eligible for further matching.
+
+**A third real bug, found only by live-testing the fix, not by code review**: `matchProjectPlainStock`/
+`matchProjectBom` receive `projectId` as a route-param **string** when called from
+`app/api/projects/[id]/release-bom/route.js` (`params.id`, never auto-coerced by Next), but
+`getProjectUnitCounts()`'s returned `Map` is keyed by real DB-row **integers** — a bare
+`unitCounts.get(projectId)` silently missed (JS `Map` lookups use strict equality, unlike SQL's
+lenient type coercion) and fell back to `1`. First live partial-match test came back `matched=1`
+instead of the expected `=50` — traced to this, fixed with `unitCounts.get(Number(projectId))` at
+both sites, then re-verified live with the exact same test producing the correct numbers.
+
+**Live-verified end to end against the real dev DB, disposable test data**: a project with 2
+independent top-level roots (mirroring SB-1109's real 5-root shape) — setting `unit_count=50` via
+one PATCH correctly updated **both** roots' rollup simultaneously with no per-node action, confirmed
+via `getBomStructure()`'s API output; a downstream flow (auto-draft PO) correctly produced `qty=100`
+(2×50); a combined case (node `qty=4` + project `unit_count=50`) correctly produced `rollup_qty=200`,
+item `rolled_qty=400`; the split-qty fix was proven with a real partial match (required=50,
+available=30 → 30 reserved + 20 remainder, `qty_resolved=1` on both sides) followed by a **second**
+Release BOM after topping up stock, correctly re-chasing exactly the remaining 20 (not 1000) and
+fully reserving it. The UI was visually confirmed in the browser, not just via API: the Unit Count
+input renders next to the template buttons showing "50," and the read-only Final BOM card correctly
+shows `"ZZ Root A · System · ×4 (×200 total)"` and `"BM-2459 · 2 Mtrs → 400 total"` for the combined
+case, and `"BM-2461 · 20 No → 20 total"` (not re-multiplied) for the resolved remainder — exactly
+matching the fix. Every disposable row deleted afterward; a final query confirmed zero residue
+across `bom_assemblies.qty!=1`, `projects.unit_count!=1`, and `bom_items.qty_resolved!=0`, matching
+the pre-round baseline exactly.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own
@@ -7155,6 +7269,8 @@ bom_assemblies ──< bom_assemblies (parent_id, self)  (§5o/§5au — the BOM
 calc_sheets ──< calc_sheet_drawings ── calc_drawings  (§5ay — a calc sheet substantiates a drawing, not a bom_assemblies node; the earlier bom_assembly_calc_sheets junction is retired in place, same "leave it" precedent as `tickets`)
 projects ──< bom_release_snapshots                    (§5ay — one frozen JSON row per Release BOM click, keyed by revision; assemblies_json/unassigned_json are getBomStructure()'s/getProjectBom()'s own live shapes, frozen verbatim)
 bom_structure_templates ──< bom_assemblies (structure_template_id)  (§5bb — hierarchy-level BOM templates; tree_json is one JSON blob per template, not a parallel relational tree, same freeze-as-JSON idiom bom_release_snapshots already set; the FK is stamped only on root nodes an apply/bootstrap action creates)
+projects.unit_count                                   (§5be — the whole-BOM multiplier, additive on top of bom_assemblies.qty; folded into rollupQty() as one more factor, never a second calculation, never baked into qty_text)
+bom_items.qty_resolved                                (§5be — marks a split remainder/clone's qty_text as already a final physical count; itemRollupQty()/qtyBreakdown() stop re-applying any multiplier to it, matchProjectBom()/matchProjectPlainStock() stop re-selecting it as a matching candidate)
 ```
 
 `bom_items` carries the spreadsheet-mirror columns — `section` (sheet), `group_label` (assembly
