@@ -2,16 +2,55 @@
 // Phase 0; Company Entities, 2026-08-22). Same shape as app/api/statutory-rates/route.js, keyed by
 // row id instead of singleton.
 import { NextResponse } from 'next/server';
-import { execute } from '@/lib/db';
+import { execute, withTransaction, seedChartOfAccountsForCompany } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { getCompanySettings } from '@/lib/data';
+import { audit } from '@/lib/usb';
 
 export async function GET() {
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Accounts');
   if (denied) return denied;
   return NextResponse.json(await getCompanySettings());
+}
+
+// Onboarding a new company (legal entity). Pure INSERT — never touches an existing company_settings
+// row — plus seeding its Chart of Accounts immediately (seedChartOfAccountsForCompany, lib/db.js),
+// so a runtime-created company doesn't sit with zero accounts until the next process restart.
+export async function POST(req) {
+  const user = await getFreshSessionUser();
+  const denied = requireDepartment(user, 'Accounts');
+  if (denied) return denied;
+  const actionDenied = await requireAction(user, 'Accounts', 'accounts.company.create');
+  if (actionDenied) return actionDenied;
+
+  const b = await req.json();
+  const company = String(b.company || '').trim();
+  const legalName = String(b.legal_name || '').trim();
+  if (!company || !legalName) return NextResponse.json({ error: 'company and legal_name are required' }, { status: 400 });
+
+  let id;
+  try {
+    id = await withTransaction(async (tx) => {
+      const res = await tx.execute({
+        sql: `INSERT INTO company_settings (company, legal_name, gstin, pan, registered_address, state, state_code, invoice_prefix)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        args: [company, legalName, b.gstin || null, b.pan || null, b.registered_address || null, b.state || null, b.state_code || null, b.invoice_prefix || null],
+      });
+      const newId = Number(res.lastInsertRowid);
+      await seedChartOfAccountsForCompany(tx, company);
+      return newId;
+    });
+  } catch (e) {
+    if (String(e.message || '').includes('UNIQUE')) {
+      return NextResponse.json({ error: `A company named "${company}" already exists` }, { status: 409 });
+    }
+    throw e;
+  }
+
+  await audit('company_created', { actor: user.username, detail: company });
+  return NextResponse.json({ ok: true, id }, { status: 201 });
 }
 
 // A hand edit to any provenance-tracked field flips that field's source to 'manual' and stamps

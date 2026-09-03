@@ -274,6 +274,149 @@ function ApplicabilityCard({ entity, refreshKey }) {
   );
 }
 
+// Direct-to-NIC e-way-bill credentials — deliberately no GSP/provider field anywhere. NIC's own
+// registration is portal-based and can't be automated by this app; this card only ever stores
+// whatever credentials that external process issues, and calls the (for now stubbed) transactional
+// API using them. GET never returns the saved values — the form always starts blank ("re-enter to
+// change"), same convention as any credential field in this app.
+const EWAY_BILL_FIELDS = [
+  ['client_id', 'Client ID'], ['client_secret', 'Client Secret'],
+  ['api_username', 'API Username'], ['api_password', 'API Password'],
+];
+
+function EwayBillCredentialsCard({ entity }) {
+  const [status, setStatus] = useState(null);
+  const [form, setForm] = useState({ client_id: '', client_secret: '', api_username: '', api_password: '' });
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+
+  const load = useCallback(() => {
+    api(`/api/company-settings/${entity.id}/eway-bill-credentials`).then(setStatus).catch(err => showToast(err.message, 'error'));
+  }, [entity.id]);
+  useEffect(() => { load(); }, [load]);
+
+  async function save() {
+    if (Object.values(form).some(v => !v.trim())) { showToast('All four fields are required', 'error'); return; }
+    setSaving(true);
+    try {
+      await api(`/api/company-settings/${entity.id}/eway-bill-credentials`, { method: 'PATCH', body: form });
+      showToast('Credentials saved');
+      setForm({ client_id: '', client_secret: '', api_username: '', api_password: '' });
+      load();
+    } catch (err) { showToast(err.message, 'error'); } finally { setSaving(false); }
+  }
+  async function test() {
+    setTesting(true);
+    try {
+      await api(`/api/company-settings/${entity.id}/eway-bill-credentials/test`, { method: 'POST' });
+      showToast('Connection OK');
+    } catch (err) { showToast(err.message, 'error'); } finally { setTesting(false); }
+  }
+
+  return (
+    <Card>
+      <CardHeader><CardTitle className="flex items-center gap-2"><LockIcon className="size-4" />E-Way Bill (Direct NIC API)</CardTitle></CardHeader>
+      <CardContent className="flex flex-col gap-4 text-sm">
+        <ol className="flex flex-col gap-1 text-xs text-muted-foreground">
+          <li>1. Register for NIC API access yourself — log into the E-Way Bill portal (ewaybillgst.gov.in), Registration → For API.</li>
+          <li>2. Enter the Client ID / Client Secret / API Username / API Password NIC issues you, below.</li>
+          <li>3. Test Connection to confirm.</li>
+        </ol>
+        <p className="text-xs">
+          {status?.configured ? `Configured — last saved ${status.updated_at ? new Date(status.updated_at).toLocaleDateString('en-IN') : ''}.` : 'Not configured yet.'}
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {EWAY_BILL_FIELDS.map(([key, label]) => (
+            <div key={key} className="grid gap-1">
+              <Label>{label}</Label>
+              <Input type="password" autoComplete="off" value={form[key]} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))} placeholder={status?.configured ? '••••••••' : ''} />
+            </div>
+          ))}
+        </div>
+        <div className="flex gap-2">
+          <Button size="sm" disabled={saving} onClick={save}>{saving ? 'Saving…' : 'Save'}</Button>
+          <Button size="sm" variant="outline" disabled={testing || !status?.configured} onClick={test}>{testing ? 'Testing…' : 'Test Connection'}</Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// Onboarding a new legal entity. Optional GSTIN lookup (preview-gstin, id-less sibling of the
+// existing refresh-diff endpoint) pre-fills the rest of the form from what the government already
+// knows, same UX idea as GstinRefreshDialog but with nothing yet to diff against. On success, lands
+// the caller on the new company's own Company Entities view.
+function NewCompanyDialog({ onCreated }) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [lookingUp, setLookingUp] = useState(false);
+  const [form, setForm] = useState({ company: '', legal_name: '', gstin: '', pan: '', state: '', state_code: '', registered_address: '', invoice_prefix: '' });
+
+  function set(key, value) { setForm(f => ({ ...f, [key]: value })); }
+
+  async function lookup() {
+    if (!form.gstin.trim()) return;
+    setLookingUp(true);
+    try {
+      const res = await api('/api/company-settings/preview-gstin', { method: 'POST', body: { gstin: form.gstin.trim() } });
+      const t = res.trackable || {};
+      setForm(f => ({
+        ...f,
+        legal_name: f.legal_name || t.legal_name || '',
+        pan: f.pan || t.pan || '',
+        state: f.state || t.state || '',
+        state_code: f.state_code || t.state_code || '',
+      }));
+      showToast('Pre-filled from GST records');
+    } catch (err) { showToast(err.message, 'error'); } finally { setLookingUp(false); }
+  }
+
+  async function create() {
+    if (!form.company.trim() || !form.legal_name.trim()) { showToast('Company name and legal name are required', 'error'); return; }
+    setBusy(true);
+    try {
+      const res = await api('/api/company-settings', { method: 'POST', body: form });
+      showToast(`${form.company} created`);
+      setOpen(false);
+      setForm({ company: '', legal_name: '', gstin: '', pan: '', state: '', state_code: '', registered_address: '', invoice_prefix: '' });
+      onCreated(res.id);
+    } catch (err) { showToast(err.message, 'error'); } finally { setBusy(false); }
+  }
+
+  return (
+    <>
+      <Button size="sm" variant="outline" onClick={() => setOpen(true)}><PlusIcon data-icon="inline-start" />New Company</Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-h-[85vh] max-w-lg overflow-y-auto">
+          <DialogHeader><DialogTitle>New Company</DialogTitle></DialogHeader>
+          <div className="flex flex-col gap-3 text-sm">
+            <div className="grid gap-1"><Label>Company (short name)</Label><Input value={form.company} onChange={e => set('company', e.target.value)} /></div>
+            <div className="grid gap-1"><Label>Legal Name</Label><Input value={form.legal_name} onChange={e => set('legal_name', e.target.value)} /></div>
+            <div className="grid gap-1">
+              <Label>GSTIN (optional)</Label>
+              <div className="flex gap-2">
+                <Input value={form.gstin} onChange={e => set('gstin', e.target.value)} />
+                <Button size="sm" variant="outline" onClick={lookup} disabled={lookingUp || !form.gstin.trim()}>{lookingUp ? 'Looking up…' : 'Look up'}</Button>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-1"><Label>PAN</Label><Input value={form.pan} onChange={e => set('pan', e.target.value)} /></div>
+              <div className="grid gap-1"><Label>State</Label><Input value={form.state} onChange={e => set('state', e.target.value)} /></div>
+              <div className="grid gap-1"><Label>State Code</Label><Input value={form.state_code} onChange={e => set('state_code', e.target.value)} /></div>
+              <div className="grid gap-1"><Label>Invoice Prefix</Label><Input value={form.invoice_prefix} onChange={e => set('invoice_prefix', e.target.value)} /></div>
+            </div>
+            <div className="grid gap-1"><Label>Registered Address</Label><Input value={form.registered_address} onChange={e => set('registered_address', e.target.value)} /></div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button disabled={busy} onClick={create}>{busy ? 'Creating…' : 'Create'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 function CompanyEntitiesTab({ companies, router }) {
   const [companyId, setCompanyId] = useState(companies[0]?.id);
   const entity = companies.find(c => c.id === companyId) || companies[0];
@@ -282,15 +425,19 @@ function CompanyEntitiesTab({ companies, router }) {
   if (!entity) return null;
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex gap-2">
-        {companies.map(c => (
-          <Button key={c.id} size="sm" variant={companyId === c.id ? 'default' : 'outline'} onClick={() => setCompanyId(c.id)}>
-            {c.legal_name}
-          </Button>
-        ))}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap gap-2">
+          {companies.map(c => (
+            <Button key={c.id} size="sm" variant={companyId === c.id ? 'default' : 'outline'} onClick={() => setCompanyId(c.id)}>
+              {c.legal_name}
+            </Button>
+          ))}
+        </div>
+        <NewCompanyDialog onCreated={(id) => { setCompanyId(id); refresh(); }} />
       </div>
       <GstDetailCard entity={entity} onApplied={refresh} />
       <ApplicabilityCard entity={entity} refreshKey={refreshKey} />
+      <EwayBillCredentialsCard entity={entity} />
     </div>
   );
 }

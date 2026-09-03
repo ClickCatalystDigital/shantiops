@@ -15,7 +15,7 @@ export async function computeFreightCostSummary(company, { from, to } = {}) {
 
 export async function GET(req) {
   const user = await getFreshSessionUser();
-  if (!isPM(user) && !canAccessDepartment(user, 'Dispatch')) {
+  if (!isPM(user) && !canAccessDepartment(user, 'Dispatch') && !canAccessDepartment(user, 'Accounts')) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
   const { searchParams } = new URL(req.url);

@@ -97,6 +97,7 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
   const [draft, setDraft] = useState(initialList);
   const [invoices, setInvoices] = useState([]);
   const [postingFreight, setPostingFreight] = useState(false);
+  const [generatingEwayBill, setGeneratingEwayBill] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
@@ -150,6 +151,15 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
       showToast('Freight expense posted to the ledger');
     } catch (err) { showToast(err.message, 'error'); }
     finally { setPostingFreight(false); }
+  }
+  async function generateEwayBill() {
+    setGeneratingEwayBill(true);
+    try {
+      const res = await api(`/api/packing/${list.id}/eway-bill`, { method: 'POST' });
+      setList(l => ({ ...l, eway_bill_no: res.ewayBillNo, eway_bill_date: res.date }));
+      showToast('E-way bill generated');
+    } catch (err) { showToast(err.message, 'error'); }
+    finally { setGeneratingEwayBill(false); }
   }
 
   const Meta = ({ label, value }) => (
@@ -232,6 +242,18 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
               <p className="text-xs text-muted-foreground">{list.freightPosted ? 'Posted to the ledger.' : 'Not yet posted to the ledger.'}</p>
             </div>
             {!list.freightPosted && <Button size="sm" disabled={postingFreight} onClick={postFreight}>{postingFreight ? 'Posting…' : 'Post Freight Expense'}</Button>}
+          </CardContent>
+        </Card>
+      )}
+
+      {!readOnly && !list.eway_bill_no && (
+        <Card className="no-print">
+          <CardContent className="flex items-center justify-between py-4">
+            <div>
+              <p className="text-sm font-medium">E-Way Bill</p>
+              <p className="text-xs text-muted-foreground">Not yet generated. Needs direct-NIC credentials configured for this project's company under Accounts → Company Entities.</p>
+            </div>
+            <Button size="sm" disabled={generatingEwayBill} onClick={generateEwayBill}>{generatingEwayBill ? 'Generating…' : 'Generate E-Way Bill'}</Button>
           </CardContent>
         </Card>
       )}

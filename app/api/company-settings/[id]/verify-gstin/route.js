@@ -17,7 +17,9 @@ import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { mapSandboxResponse, diffCompanyEntity, TRACKABLE_FIELDS, EXTRA_FIELDS } from '@/lib/company-entity.mjs';
 
-async function fetchFromHub(gstin) {
+// Exported for app/api/company-settings/preview-gstin/route.js — the same hub call, used before a
+// company row exists yet (onboarding a brand-new company), not just to refresh an existing one.
+export async function fetchFromHub(gstin) {
   const baseUrl = process.env.STATUTORY_RATES_HUB_URL;
   const apiKey = process.env.STATUTORY_RATES_HUB_API_KEY;
   if (!baseUrl || !apiKey) throw new Error('STATUTORY_RATES_HUB_URL / STATUTORY_RATES_HUB_API_KEY not configured');
