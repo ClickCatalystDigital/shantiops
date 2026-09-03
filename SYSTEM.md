@@ -6136,6 +6136,22 @@ level: the stored blob contains no plaintext trace of the real values and doesn'
 afterward, confirmed by a direct DB count returning to zero. `npm run lint` and a full `npm run
 build` both clean.
 
+**Correction (2026-09-03, same day, research-only follow-up — no code changed)**: the finding above
+("e-way-bill sandbox testing moved into the e-invoice sandbox") was checked directly and is
+narrower than stated. That sandbox's own E-Way Bill section is **"Generate e-Way Bill by IRN"**
+(`api/einvewb/ewaybill`) — its request payload requires an existing e-invoice IRN. Since Shanti Ops
+doesn't do e-invoicing (not mandated by turnover), this specific sandbox endpoint isn't usable for
+Shanti Ops' actual need. The **standalone** (IRN-less) e-way-bill API — the one Shanti Ops needs —
+still lives on the separate `docs.ewaybillgst.gov.in` developer portal, same v1.03-era shape as
+always (RSA+AES, 360-minute token, same ~1,000/day-or-10,000/month eligibility gate). Whether that
+standalone system has its own self-service sandbox, or whether sandbox access there is *also*
+eligibility-gated like production, is genuinely unconfirmed from outside — the developer portal
+403s every automated fetch attempted this session (consistent across two separate rounds, almost
+certainly bot-blocking, not that the page is gone) and needs a human visiting normally to confirm.
+Full implementation plan for `authenticate`/`GENEWAYBILL`/`CANEWB` (including the not-yet-built
+Cancel action) written up in this session's plan file, approved, not yet built — still no code in
+`lib/eway-bill.js` beyond the existing stub.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own
