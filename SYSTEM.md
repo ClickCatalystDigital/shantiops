@@ -22,8 +22,11 @@ a reader who finds the old `V3_CHANGES.md` §12 text elsewhere knows it's stale.
 reversal.
 
 Everything in this file reflects the **current, working build**, updated as work lands — most
-recently 2026-09-03 (§5aw, a company-onboarding UI plus direct-to-NIC e-way-bill credential storage
-— explicitly no GSP/private-vendor option anywhere, a product decision the user made explicit
+recently 2026-09-03 (§5ax, real-NIC-e-way-bill-API research plus the prerequisite validation build
+it surfaced — transport distance/mode, a genuinely-missing `bom_items.hsn_code` column, structured
+destination-data validation, and credentials encrypted at rest — with the actual NIC HTTP call
+deliberately still stubbed); §5aw, a company-onboarding UI plus direct-to-NIC e-way-bill credential
+storage — explicitly no GSP/private-vendor option anywhere, a product decision the user made explicit
 mid-session); §5av, giving Accounts real, ownership-scoped write access to Sales Invoices
 and Dispatch's packing lists — a gap found by directly asking "can Accounts actually do this
 today?" rather than assumed fixed); 2026-08-23 (§5ap, a hardening pass on §5ao's NCR workflow
@@ -6059,6 +6062,79 @@ concrete gaps for a future round, per the user's own "later": `employees.cost_ra
 Accounts has zero visibility into payroll beyond the bare `payroll_export_status` toggle — no link
 from a posted salary journal entry back to the salary slip it came from, surfaced anywhere on the
 Accounts side.
+
+## 5ax. E-way bill: real-NIC-API research + prerequisite validation build (2026-09-03)
+
+§5aw shipped the credential-storage architecture and a stubbed `lib/eway-bill.js`; this round did
+the research the user (and a second AI's own review) asked for before wiring the real call, then
+built the prerequisite validation the research surfaced was actually missing — deliberately
+**without** wiring the real NIC HTTP call itself.
+
+**Research** (full detail in the session's plan file, not duplicated here): fetched and read the
+real, official 2018 NIC "EWB-API Technical Document" (72 pages, via a public PDF mirror since
+`docs.ewaybillgst.gov.in` blocks automated fetches — a normal browser doesn't hit this) — the
+authoritative auth flow (RSA-encrypted password/app_key exchange → AES-256 session key, 6-hour
+token validity, no separate refresh endpoint), the full `GENEWAYBILL` request/response schema, and
+the complete error code list (100-363). Cross-checked against 2026-current advisories and found two
+real, material changes since 2018: NIC launched a second "E-Way Bill 2.0" portal
+(`ewaybill2.gst.gov.in`) in mid-2025 alongside the original, and **the 2018 document's own sandbox
+is now deprecated — e-way-bill API testing has been consolidated into the e-invoice sandbox**
+(`einv-apisandbox.nic.in`). Confirmed there is no way to test against production without creating a
+real, legally-binding e-way bill (no dry-run flag exists anywhere in the spec), and confirmed NIC's
+own registration (Registration → For API on the portal) is portal-based and cannot be automated by
+any third-party software — Shanti Ops can only ever store the resulting credentials and call the
+transactional API with them.
+
+**Prerequisite validation, built this round** (all four gates enforced server-side in
+`app/api/packing/[id]/eway-bill/route.js`, before `generateEwayBill()` is ever called):
+- **Transport distance/mode/vehicle type** — new `packing_lists.transport_distance_km`/
+  `transport_mode`/`vehicle_type` columns (all nullable). UI in `PackingDetail.jsx`'s edit form:
+  a distance input (helper text names NIC's real 4000km max) and two `Select`s pre-selected to
+  Road/Regular — pre-selected for convenience, never a silent backend default Dispatch never sees.
+  Route rejects with a clear message if distance is unset or exceeds 4000km, or if mode/vehicle type
+  are unset.
+- **HSN coverage** — a real, corrected finding: the research's first draft assumed
+  `bom_items.hsn_code` already existed (misread from a grep that actually hit `items`/
+  `quotation_items`/`sale_order_items`/`gst_rates`/`sales_invoice_items`/`vendor_bill_items` —
+  `bom_items` had no HSN field at all). Added `bom_items.hsn_code TEXT`, with the generation route's
+  check falling back to the linked Item Master row's own `hsn_code` (via the existing `item_id`
+  link, §3.2/§5at) when the BOM line's own is blank — same "own field first, catalog as fallback"
+  precedent already used for `item_code` elsewhere. Fails closed, naming exactly which shipped
+  line(s) lack a code — a `packing_items` row with no `bom_item_id` at all (a hand-typed line) is
+  treated the same as missing, since there's nowhere for a code to come from. **Note**: this closes
+  the validation gate; it does not add a UI for Engineering/Design to actually enter
+  `bom_items.hsn_code` on the BOM composer (`PrWorkspace.jsx`) — deliberately out of this round's
+  scope (that file already carries unrelated in-progress work this session was careful not to touch)
+  and flagged as a real, separate follow-up.
+- **Structured destination data** — the route now resolves the packing list's project → its real
+  `customer_id` (not the free-text `customer_name` display fields) and requires the linked
+  `customers` row have `gst_no`/`state_code`/`pin_code`/`address` all populated, naming exactly
+  what's missing. A project with no linked customer at all gets its own distinct message.
+- **Credentials encrypted at rest** — `eway_bill_credentials.credentials` was a plaintext JSON blob
+  (safe from the browser via §5aw's GET-never-returns-it rule, not safe from direct DB/backup
+  access). New `lib/crypto.js` (AES-256-GCM, Node's built-in `crypto`, no new dependency) encrypts
+  before every `PATCH` write and decrypts only in memory, just before use, via a new
+  `loadCredentials(company)` helper in `lib/eway-bill.js` shared by both the "Test Connection" route
+  and the real generation route. Fails closed — the `PATCH` route refuses to store anything at all
+  if `EWAY_BILL_CREDENTIALS_KEY` isn't set (a 32-byte base64 key, generated via `openssl rand -base64
+  32` and set in `.env.local`/the real deployment's env), same "no workarounds" principle
+  `lib/mail.js` already established for its own unwired provider seam.
+
+**Deliberately not done this round, per explicit instruction**: the real NIC HTTP call itself.
+`lib/eway-bill.js`'s `generateEwayBill()` still throws "not implemented yet" once every validation
+gate passes — proven live by reaching that exact stub message on a fully-valid disposable test
+packing list, with real credentials configured and correctly decrypting. Wiring the actual
+`authenticate` → `GENEWAYBILL` → `CANEWB` calls happens only once the user has registered with NIC
+themselves and obtained real (sandbox-first) credentials.
+
+**Live-verified against the real dev DB**, disposable rows (a complete customer, an incomplete
+customer, three projects, four packing lists each engineered to fail exactly one gate, a BOM item
+with an HSN code) — all four gates fired with the correct, specific message on the wrong data and
+all cleared on the right data, reaching the real stub. Credential encryption verified at the byte
+level: the stored blob contains no plaintext trace of the real values and doesn't parse as JSON, yet
+"Test Connection" and the generation route both decrypt it correctly. All disposable rows deleted
+afterward, confirmed by a direct DB count returning to zero. `npm run lint` and a full `npm run
+build` both clean.
 
 ## 6. Customer Portal (read-only, external)
 

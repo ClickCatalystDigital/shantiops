@@ -456,7 +456,14 @@ phase comes up rather than assuming last check's answer still holds.
   exist now; only the actual outbound NIC API call is stubbed, pending a real registered account
   (NIC's own registration is portal-based, done by the user outside this app — see §5aw for why
   that can't be automated). Same per-company placement as e-invoicing above — not
-  statutory-rates-hub.
+  statutory-rates-hub. **Update (SYSTEM.md §5ax)**: a full research pass into the real, official
+  NIC EWB-API spec (not summaries of it) confirmed the auth/payload/error shape above and found the
+  2018 sandbox is now deprecated — e-way-bill sandbox testing runs through the e-invoice sandbox
+  instead (`einv-apisandbox.nic.in`). That research also surfaced real Shanti-Ops-side gaps (no
+  transport-distance field anywhere, no HSN code on `bom_items` at all, no validation that a
+  project's linked customer actually has structured GSTIN/state/pincode data) — all four now built
+  and enforced server-side before the stub is ever reached, plus credentials now encrypted at rest.
+  The outbound NIC call itself remains stubbed, deliberately, pending real registration.
 - **TDS 26Q e-filing** — the TDS Deduction Register (§5z) already gives the data; actual TRACES-
   format filing has no clean API for a self-service integration at any price — stays a CA/return-
   prep-software task regardless of budget.
