@@ -9,9 +9,10 @@ import { useState } from 'react';
 import { Card, CardHeader, CardTitle, CardDescription, CardAction, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ChevronRightIcon, ChevronDownIcon, PackageIcon, ListTreeIcon, ScaleIcon, AlertTriangleIcon } from 'lucide-react';
+import { ChevronRightIcon, ChevronDownIcon, PackageIcon, ListTreeIcon, ScaleIcon, AlertTriangleIcon, SearchIcon } from 'lucide-react';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
-import { groupByParent } from '@/lib/bom-tree.mjs';
+import { Input } from '@/components/ui/input';
+import { groupByParent, expandedIdsForSearch, itemMatchAncestorIds } from '@/lib/bom-tree.mjs';
 import { hasAmbiguousQty } from '@/lib/bom-structure.mjs';
 import { TreeRail } from './BomTreeNode';
 
@@ -142,9 +143,32 @@ export default function BomTreeReadOnly({ assemblies, unassignedItems, project }
   // items still sitting unassigned while the tree is being built, and this card is meant to read as
   // a clean outline, not a dump of everything not yet organized.
   const [unassignedShown, setUnassignedShown] = useState(false);
+  const [query, setQuery] = useState('');
 
   const childrenByParent = groupByParent(assemblies);
   const roots = childrenByParent.get(null) || [];
+  const byId = new Map(assemblies.map(a => [a.id, a]));
+
+  // Search reveals location, never hides non-matches — same principle the editable tree's own
+  // search already uses. A hit forces its whole ancestor chain open (regardless of manual
+  // collapse), and forces just the matching node's own items open (regardless of manual hide) —
+  // computed as an override on top of the real collapsedIds/itemsHiddenIds state, not a second
+  // source of truth, so clearing the query always returns to exactly what the user had set.
+  const nameExpandIds = expandedIdsForSearch(query, assemblies, byId);
+  const { expandIds: itemExpandIds, matchingNodeIds } = itemMatchAncestorIds(query, assemblies, byId);
+  const searchExpandIds = query.trim() ? new Set([...nameExpandIds, ...itemExpandIds]) : new Set();
+  const effectiveCollapsedIds = searchExpandIds.size === 0
+    ? collapsedIds
+    : new Set([...collapsedIds].filter(id => !searchExpandIds.has(id)));
+  const effectiveItemsHiddenIds = matchingNodeIds.size === 0
+    ? itemsHiddenIds
+    : new Set([...itemsHiddenIds].filter(id => !matchingNodeIds.has(id)));
+  const unassignedMatches = query.trim() && unassignedItems.some(it =>
+    it.material_description.toLowerCase().includes(query.trim().toLowerCase()) ||
+    (it.catalog_item_code || '').toLowerCase().includes(query.trim().toLowerCase()) ||
+    `bm-${it.id}`.includes(query.trim().toLowerCase())
+  );
+  const effectiveUnassignedShown = unassignedShown || unassignedMatches;
 
   function toggleCollapsed(id) {
     setCollapsedIds(prev => {
@@ -186,7 +210,13 @@ export default function BomTreeReadOnly({ assemblies, unassignedItems, project }
           <Button size="sm" variant="outline" onClick={collapseAll}>Collapse all</Button>
         </CardAction>
       </CardHeader>
-      <CardContent className="flex flex-col gap-0.5">
+      <CardContent className="flex flex-col gap-2">
+        {(roots.length > 0 || unassignedItems.length > 0) && (
+          <div className="relative">
+            <SearchIcon className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input className="h-8 pl-7 text-sm" placeholder="Search a node or item…" value={query} onChange={e => setQuery(e.target.value)} />
+          </div>
+        )}
         {roots.length === 0 && unassignedItems.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-6 text-center">
             <ListTreeIcon className="size-8 text-muted-foreground/40" />
@@ -196,7 +226,7 @@ export default function BomTreeReadOnly({ assemblies, unassignedItems, project }
           roots.map((root, i) => (
             <AssemblyRow
               key={root.id} node={root} depth={0} childrenByParent={childrenByParent}
-              collapsedIds={collapsedIds} toggleCollapsed={toggleCollapsed} itemsHiddenIds={itemsHiddenIds} toggleItems={toggleItems}
+              collapsedIds={effectiveCollapsedIds} toggleCollapsed={toggleCollapsed} itemsHiddenIds={effectiveItemsHiddenIds} toggleItems={toggleItems}
               ancestorLines={[]} isLastSibling={i === roots.length - 1}
             />
           ))
@@ -209,10 +239,10 @@ export default function BomTreeReadOnly({ assemblies, unassignedItems, project }
               onClick={() => setUnassignedShown(v => !v)}
               className="flex items-center gap-1 text-xs font-medium text-muted-foreground"
             >
-              {unassignedShown ? <ChevronDownIcon className="size-3.5" /> : <ChevronRightIcon className="size-3.5" />}
+              {effectiveUnassignedShown ? <ChevronDownIcon className="size-3.5" /> : <ChevronRightIcon className="size-3.5" />}
               Unassigned ({unassignedItems.length}) — not yet placed under any node above
             </button>
-            {unassignedShown && (
+            {effectiveUnassignedShown && (
               <div className="mt-1">
                 {unassignedItems.map(it => (
                   <div key={it.id} className="flex items-center gap-1.5 py-1 pl-1 pr-2 text-sm text-muted-foreground">
