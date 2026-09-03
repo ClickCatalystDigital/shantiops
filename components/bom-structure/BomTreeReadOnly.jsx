@@ -13,6 +13,13 @@ import { ChevronRightIcon, ChevronDownIcon, PackageIcon, ListTreeIcon } from 'lu
 import { groupByParent } from '@/lib/bom-tree.mjs';
 import { TreeRail } from './BomTreeNode';
 
+// A node's own items default OPEN (no click needed to see what's inside the component you're
+// already looking at) — the real wall-of-text risk is the aggregate Unassigned bucket, which stays
+// its own separate, positive-default toggle. This threshold is the one safety valve: a node with an
+// unusually large number of its own directly-attached items (a flat structure someone never broke
+// into sub-nodes) starts collapsed instead, same as before.
+const ITEM_AUTO_COLLAPSE_THRESHOLD = 15;
+
 function ItemRow({ item, node, ancestorLines, isLast }) {
   const showRolled = item.rolled_qty != null && node.rollup_qty !== 1;
   return (
@@ -35,11 +42,11 @@ function ItemRow({ item, node, ancestorLines, isLast }) {
   );
 }
 
-function AssemblyRow({ node, depth, childrenByParent, collapsedIds, toggleCollapsed, itemsShownIds, toggleItems, ancestorLines, isLastSibling }) {
+function AssemblyRow({ node, depth, childrenByParent, collapsedIds, toggleCollapsed, itemsHiddenIds, toggleItems, ancestorLines, isLastSibling }) {
   const children = childrenByParent.get(node.id) || [];
   const items = node.items || [];
   const childrenShown = !collapsedIds.has(node.id) && children.length > 0;
-  const itemsShown = itemsShownIds.has(node.id) && items.length > 0;
+  const itemsShown = !itemsHiddenIds.has(node.id) && items.length > 0;
   const hasToggle = children.length > 0 || items.length > 0;
 
   // Items render before sub-assemblies — "what this node itself contains" first, "what's nested
@@ -75,8 +82,9 @@ function AssemblyRow({ node, depth, childrenByParent, collapsedIds, toggleCollap
           <button
             type="button"
             onClick={() => toggleItems(node.id)}
-            className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] ${itemsShown ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted'}`}
+            className={`flex shrink-0 items-center gap-0.5 rounded-full px-2 py-0.5 text-[11px] ${itemsShown ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted'}`}
           >
+            {itemsShown ? <ChevronDownIcon className="size-3" /> : <ChevronRightIcon className="size-3" />}
             {items.length} item{items.length === 1 ? '' : 's'}
           </button>
         )}
@@ -90,7 +98,7 @@ function AssemblyRow({ node, depth, childrenByParent, collapsedIds, toggleCollap
         ) : (
           <AssemblyRow
             key={slot.c.id} node={slot.c} depth={depth + 1} childrenByParent={childrenByParent}
-            collapsedIds={collapsedIds} toggleCollapsed={toggleCollapsed} itemsShownIds={itemsShownIds} toggleItems={toggleItems}
+            collapsedIds={collapsedIds} toggleCollapsed={toggleCollapsed} itemsHiddenIds={itemsHiddenIds} toggleItems={toggleItems}
             ancestorLines={childAncestorLines} isLastSibling={isLast}
           />
         );
@@ -101,7 +109,14 @@ function AssemblyRow({ node, depth, childrenByParent, collapsedIds, toggleCollap
 
 export default function BomTreeReadOnly({ assemblies, unassignedItems, project }) {
   const [collapsedIds, setCollapsedIds] = useState(new Set());
-  const [itemsShownIds, setItemsShownIds] = useState(new Set());
+  // Inverted default: a node's items render unless its id is in this set. Lazy initializer seeds
+  // the one safety-valve exception (a node with an unusually large item count starts hidden) —
+  // computed once from the assemblies this component mounts with. Relies on BomStructureWorkspace
+  // keying this component by project id, so switching projects remounts it fresh rather than
+  // carrying over a stale seed computed from a different project's tree.
+  const [itemsHiddenIds, setItemsHiddenIds] = useState(() => new Set(
+    assemblies.filter(a => (a.items?.length || 0) > ITEM_AUTO_COLLAPSE_THRESHOLD).map(a => a.id)
+  ));
   // Collapsed by default, same as every node's own items — a project can easily have hundreds of
   // items still sitting unassigned while the tree is being built, and this card is meant to read as
   // a clean outline, not a dump of everything not yet organized.
@@ -118,7 +133,7 @@ export default function BomTreeReadOnly({ assemblies, unassignedItems, project }
     });
   }
   function toggleItems(id) {
-    setItemsShownIds(prev => {
+    setItemsHiddenIds(prev => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
@@ -126,11 +141,11 @@ export default function BomTreeReadOnly({ assemblies, unassignedItems, project }
   }
   function expandAll() {
     setCollapsedIds(new Set());
-    setItemsShownIds(new Set(assemblies.map(a => a.id)));
+    setItemsHiddenIds(new Set());
   }
   function collapseAll() {
     setCollapsedIds(new Set(assemblies.map(a => a.id)));
-    setItemsShownIds(new Set());
+    setItemsHiddenIds(new Set(assemblies.filter(a => (a.items?.length || 0) > 0).map(a => a.id)));
   }
 
   if (assemblies.length === 0 && unassignedItems.length === 0) return null;
@@ -160,7 +175,7 @@ export default function BomTreeReadOnly({ assemblies, unassignedItems, project }
           roots.map((root, i) => (
             <AssemblyRow
               key={root.id} node={root} depth={0} childrenByParent={childrenByParent}
-              collapsedIds={collapsedIds} toggleCollapsed={toggleCollapsed} itemsShownIds={itemsShownIds} toggleItems={toggleItems}
+              collapsedIds={collapsedIds} toggleCollapsed={toggleCollapsed} itemsHiddenIds={itemsHiddenIds} toggleItems={toggleItems}
               ancestorLines={[]} isLastSibling={i === roots.length - 1}
             />
           ))

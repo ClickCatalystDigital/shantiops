@@ -237,7 +237,7 @@ export default function BomStructureWorkspace({ projects }) {
     </Card>
 
     {projectId && assemblies && projectBom && (
-      <BomTreeReadOnly assemblies={assemblies} unassignedItems={unassignedItems} project={selectedProject} />
+      <BomTreeReadOnly key={projectId} assemblies={assemblies} unassignedItems={unassignedItems} project={selectedProject} />
     )}
     </>
   );
