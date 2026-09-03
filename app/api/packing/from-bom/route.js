@@ -4,7 +4,8 @@ import { NextResponse } from 'next/server';
 import { execute, queryAll, queryOne, nextNumber } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
-import { getProjectBom } from '@/lib/data';
+import { getProjectBom, getAssemblyRollupMap } from '@/lib/data';
+import { itemRollupQty } from '@/lib/bom-structure.mjs';
 import { audit } from '@/lib/usb';
 
 // Auto-generate a DRAFT packing list from a project's still-pending BOM lines. Prefills
@@ -51,9 +52,12 @@ export async function POST(req) {
   );
   const listId = Number(pl.lastId);
 
+  const rollupById = await getAssemblyRollupMap(project_id);
   let s = 1;
   for (const b of newItems) {
-    const qty = parseFloat(b.qty_text) || 1; // "2 Nos" → 2; non-numeric ("AS REQD") → 1
+    // "2 Nos" -> 2, scaled by any Local Quantity multiplier on the item's own BOM-tree node (and
+    // every node above it); non-numeric ("AS REQD") -> 1, same fallback as before this existed.
+    const qty = itemRollupQty(b.qty_text, b.assembly_id, rollupById) ?? 1;
     await execute(
       `INSERT INTO packing_items (packing_list_id, bom_item_id, s_no, material_description, moc, size_spec, make, qty, unit)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,

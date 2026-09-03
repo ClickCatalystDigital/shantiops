@@ -401,7 +401,10 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
                     <TableCell className="tnum">{it.ibr_no || '—'}</TableCell>
                     <TableCell className="tnum">{it.item_code || '—'}</TableCell>
                     <TableCell>{it.box_no || '—'}</TableCell>
-                    <TableCell className="tnum">{it.qty} {it.unit}</TableCell>
+                    <TableCell className="tnum">
+                      {it.qty} {it.unit}
+                      {it.qty_breakdown && <div className="text-xs font-normal text-muted-foreground">{it.qty_breakdown.label}</div>}
+                    </TableCell>
                     <TableCell>{it.make || '—'}</TableCell>
                     {!readOnly && (
                       <TableCell className="no-print">

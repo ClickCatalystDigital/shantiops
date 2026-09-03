@@ -20,7 +20,7 @@ const FILTERS = [
 export default function BomTree({
   assemblies, unassignedItems, selectedId, onSelect, expandedIds, onExpandedChange,
   onCreateTop, onQuickAddChild, onRename, onMoveUpDown, onMoveTo, onDuplicate, onDelete,
-  pendingEcnBomItemIds,
+  pendingEcnBomItemIds, hideAddTop,
 }) {
   const [query, setQuery] = useState('');
   const [activeFilters, setActiveFilters] = useState(new Set());
@@ -126,7 +126,7 @@ export default function BomTree({
           />
         ))}
 
-        {addingTop ? (
+        {hideAddTop ? null : addingTop ? (
           <div className="mt-1 flex flex-col gap-1.5 rounded-md border bg-muted/20 p-2">
             <SearchableSelect
               autoFocus

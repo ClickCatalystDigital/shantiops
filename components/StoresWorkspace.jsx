@@ -889,7 +889,10 @@ function ReservePieceDialog({ piece, projects, onClose, onReserved, router }) {
 
 function ReserveDialog({ request, inventoryItems, matches, onClose, router }) {
   const [inventoryItemId, setInventoryItemId] = useState('');
-  const [qty, setQty] = useState(leadingQty(request.qty_text));
+  // rolled_qty already reflects any Local Quantity multiplier on the item's own BOM-tree node —
+  // falls back to a plain leading-number parse for rows the server hasn't annotated (e.g. non-'bom'
+  // source stock/SAS lines with no assembly_id at all).
+  const [qty, setQty] = useState(request.rolled_qty ?? leadingQty(request.qty_text));
   const [saving, setSaving] = useState(false);
   // Default to the possibleMatches() shortlist (already computed by the parent for the row's
   // badges) instead of every inventory item — a request has no guaranteed FK to one specific item,
@@ -943,7 +946,9 @@ function ReserveDialog({ request, inventoryItems, matches, onClose, router }) {
           <div className="grid gap-1.5">
             <Label>Quantity</Label>
             <Input type="number" value={qty} onChange={e => setQty(e.target.value)} />
-            <p className="text-xs text-muted-foreground">Requested: {request.qty_text || '—'}. Reserving less than requested splits the remainder to keep procuring.</p>
+            <p className="text-xs text-muted-foreground">
+              Requested: {request.qty_text || '—'}{request.qty_breakdown ? ` (${request.qty_breakdown.label})` : ''}. Reserving less than requested splits the remainder to keep procuring.
+            </p>
           </div>
         </div>
         <DialogFooter>

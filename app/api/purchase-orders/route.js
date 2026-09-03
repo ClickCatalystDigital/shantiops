@@ -10,7 +10,8 @@ import { NextResponse } from 'next/server';
 import { execute, queryAll, nextCounterValue } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment, canAccessDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
-import { getPurchaseOrders } from '@/lib/data';
+import { getPurchaseOrders, getAssemblyRollupMap } from '@/lib/data';
+import { itemRollupQty } from '@/lib/bom-structure.mjs';
 import { audit } from '@/lib/usb';
 
 // GET is also Stores-readable (gap-closure round, 2026-08-26) — ReceiptPicker.jsx needs to let
@@ -42,7 +43,7 @@ export async function POST(req) {
 
   const placeholders = itemIds.map(() => '?').join(',');
   const rows = await queryAll(
-    `SELECT b.id, b.project_id, b.material_description, b.qty_text,
+    `SELECT b.id, b.project_id, b.assembly_id, b.material_description, b.qty_text,
             sq.supplier_id, sq.unit_price, sq.uom
        FROM bom_items b JOIN supplier_quotes sq ON sq.id = b.selected_quote_id
       WHERE b.id IN (${placeholders})`,
@@ -73,11 +74,17 @@ export async function POST(req) {
   );
   const poId = Number(lastId);
 
+  // Rows can span several projects (a PO can cover the same material across several boilers) —
+  // one unscoped rollup map, built once, covers all of them.
+  const rollupById = await getAssemblyRollupMap();
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
-    // qty_text is free-typed spreadsheet text ("2 Nos", "12 SQ MTR") — parseFloat pulls the
-    // leading number out of it; falls back to 1 when it can't (never blocks PO creation on it).
-    const qty = parseFloat(r.qty_text) || 1;
+    // qty_text is free-typed spreadsheet text ("2 Nos", "12 SQ MTR") — itemRollupQty pulls the
+    // leading number out of it and multiplies by whatever Local Quantity multiplier the item's
+    // own BOM-tree node (and every node above it) carries; falls back to 1 when it can't parse a
+    // number at all (never blocks PO creation on it) — identical to the old parseFloat fallback
+    // for the common qty=1 case, since itemRollupQty(text, id, byId) === parseFloat(text) there.
+    const qty = itemRollupQty(r.qty_text, r.assembly_id, rollupById) ?? 1;
     const amount = Math.round(qty * r.unit_price * 100) / 100;
     await execute(
       `INSERT INTO po_items (po_id, bom_item_id, project_id, description, qty, uom, rate, amount, sort_order)

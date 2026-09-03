@@ -52,6 +52,7 @@ function ItemContext({ it }) {
   return (
     <p className="truncate text-xs text-muted-foreground">
       {projectLabel(it)} · {it.moc || '—'} · {it.size_spec || '—'} · {it.qty_text || '—'}
+      {it.qty_breakdown && ` (${it.qty_breakdown.label})`}
       {it.pr_ref && ` · PR ${it.pr_ref}`}
       {/* Group 5 Bundle A — the unified PR flow's structured pr_no/timestamp, distinct from the
           legacy free-text pr_ref above (kept for PMB-imported/manually-typed rows). */}
@@ -1035,6 +1036,7 @@ function State({ items, router, q, statusFilter }) {
                 <p className="truncate font-medium">{it.material_description}</p>
                 <p className="truncate text-xs text-muted-foreground">
                   {it.moc || '—'} · {it.size_spec || '—'} · {it.qty_text || '—'}
+                  {it.qty_breakdown && ` (${it.qty_breakdown.label})`}
                   {it.pr_ref && ` · PR ${it.pr_ref}`}
                 </p>
                 {/* Traceability requirements (gap-closure round, 2026-08-26, P1) — this screen is

@@ -29,6 +29,7 @@ import { nodePath } from '@/lib/bom-tree.mjs';
 export default function BomStructureWorkspace({
   projects, projectId: controlledProjectId, onProjectIdChange,
   showReleased: controlledShowReleased, onShowReleasedChange,
+  initialSelectedId, hideRelease, banner, hideRootActions,
 }) {
   const router = useRouter();
   const controlled = controlledProjectId !== undefined;
@@ -68,7 +69,7 @@ export default function BomStructureWorkspace({
 
   useEffect(() => {
     if (!projectId) { setAssemblies(null); setProjectBom(null); setReleaseStatus(null); setSelectedId(null); return; }
-    setSelectedId(null);
+    setSelectedId(initialSelectedId ?? null);
     loadStructure(projectId);
     loadProjectBom(projectId);
     loadReleaseStatus(projectId);
@@ -145,6 +146,37 @@ export default function BomStructureWorkspace({
       reloadStructure();
     } catch (err) { showToast(err.message, 'error'); }
   }
+  async function saveAsTemplate(node, payload) {
+    try {
+      const res = await api(`/api/bom-assemblies/${node.id}/save-as-template`, { method: 'POST', body: payload });
+      showToast(`Template saved — ${res.nodeCount} node(s), ${res.itemCount} item(s)`);
+    } catch (err) { showToast(err.message, 'error'); }
+  }
+  async function applyTemplatesToNode(node, templateIds) {
+    try {
+      for (const templateId of templateIds) {
+        await api(`/api/bom-assemblies/${node.id}/apply-template`, { method: 'POST', body: { template_id: templateId } });
+      }
+      showToast(`Applied ${templateIds.length} template${templateIds.length === 1 ? '' : 's'}`);
+      await reloadStructure();
+      setExpandedIds(prev => new Set([...prev, node.id]));
+    } catch (err) { showToast(err.message, 'error'); }
+  }
+  async function buildFromTemplates(templateIds) {
+    try {
+      const res = await api('/api/bom-assemblies/apply-templates-to-project', {
+        method: 'POST', body: { project_id: Number(projectId), template_ids: templateIds },
+      });
+      showToast(`Built ${res.rootIds.length} node(s) from templates — ${res.nodeCount} total node(s), ${res.itemCount} item(s)`);
+      await reloadStructure();
+    } catch (err) { showToast(err.message, 'error'); }
+  }
+  async function saveBomAsTemplate(payload) {
+    try {
+      const res = await api(`/api/projects/${projectId}/save-bom-as-template`, { method: 'POST', body: payload });
+      showToast(`Whole-BOM template saved — ${res.rootCount} root(s), ${res.nodeCount} node(s), ${res.itemCount} item(s)`);
+    } catch (err) { showToast(err.message, 'error'); }
+  }
   async function release() {
     setReleasing(true);
     try {
@@ -165,6 +197,7 @@ export default function BomStructureWorkspace({
 
   return (
     <>
+    {banner}
     <Card className="min-h-[32rem]">
       <CardHeader>
         <CardTitle>BOMs</CardTitle>
@@ -214,7 +247,13 @@ export default function BomStructureWorkspace({
         </div>
       ) : (
         <div className="flex flex-col gap-3 px-3 pb-3">
-          <ReleaseReadinessPanel status={releaseStatus} onRelease={release} releasing={releasing} />
+          {!hideRelease && (
+            <ReleaseReadinessPanel
+              status={releaseStatus} onRelease={release} releasing={releasing}
+              rootCount={assemblies.filter(a => a.parent_id == null).length}
+              onBuildFromTemplates={buildFromTemplates} onSaveBomAsTemplate={saveBomAsTemplate}
+            />
+          )}
           <ResizablePanelGroup direction="horizontal" className="min-h-[28rem] overflow-hidden rounded-md border">
           <ResizablePanel defaultSize="30" minSize="18" maxSize="50">
             <BomTree
@@ -223,6 +262,7 @@ export default function BomStructureWorkspace({
               onCreateTop={createTop} onQuickAddChild={quickAddChild} onRename={renameNode} onMoveUpDown={moveUpDown}
               onMoveTo={setMovingNode} onDuplicate={duplicateNode} onDelete={deleteNode}
               pendingEcnBomItemIds={pendingEcnBomItemIds}
+              hideAddTop={hideRootActions}
             />
           </ResizablePanel>
           <ResizableHandle withHandle />
@@ -230,9 +270,10 @@ export default function BomStructureWorkspace({
             {selectedNode ? (
               <BomNodeDetail
                 node={selectedNode} path={nodePath(selectedNode.id, byId)} projectId={Number(projectId)}
-                projectBom={projectBom} assemblies={assembliesFlat} unassignedItems={unassignedItems}
+                projectBom={projectBom} assemblies={assembliesFlat} unassignedItems={unassignedItems} byId={byId}
                 onSaveQty={saveQty} onSaveNodeType={saveNodeType} onRename={renameNode} onMoveTo={setMovingNode}
                 onDuplicate={duplicateNode} onDelete={deleteNode} onSaved={reloadAll} onLinkChange={reloadAll}
+                onApplyTemplate={applyTemplatesToNode} onSaveAsTemplate={saveAsTemplate}
               />
             ) : selectedId === 'unassigned' ? (
               <div className="flex h-full flex-col gap-1 overflow-y-auto p-4">

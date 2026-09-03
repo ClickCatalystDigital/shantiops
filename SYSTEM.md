@@ -22,7 +22,14 @@ a reader who finds the old `V3_CHANGES.md` §12 text elsewhere knows it's stale.
 reversal.
 
 Everything in this file reflects the **current, working build**, updated as work lands — most
-recently 2026-09-03 (§5ba, a round-3 pass on Engineering's workspace prompted directly by the user
+recently 2026-09-03 (§5bc, a multi-unit quantity multiplier — wiring the BOM tree's existing,
+previously display-only per-node "Local Quantity" rollup into the 6 real places Procurement/Stores/
+Dispatch compute a quantity, with the math always shown next to the number and zero pre-existing
+data affected; §5bb, the round right before it — hierarchy-level "Structure Templates," letting a
+real built-out piece of BOM structure be saved and reapplied, closed out across four successive
+"any gaps?" audits that each found and fixed a real issue, the last one a genuine data-loss bug in
+the multi-root sandbox-edit flow caught before it ever shipped; §5ba, a round-3 pass on Engineering's
+workspace prompted directly by the user
 after using it: a shared project selector in the sidebar header — single-select for BOMs/Release
 BOM, a multi-select checklist for Where-Used/Common-Uncommon/Change Notes, hidden for the three
 template/raise tabs — real PR-No./date provenance surfaced on the BOM tree/PDF/Release BOM table
@@ -6665,6 +6672,230 @@ One incidental confirmation, not a regression: `stores_head` hitting `/pr?tab=re
 still correctly 403s server-side (§5az's `canRelease` gate, unrelated to and untouched by this
 round) — expected, not a bug.
 
+## 5bb. Structure Templates — hierarchy-level BOM templates (2026-09-03)
+
+Rebuilding SB-1109's BOM from a real Excel workbook cost a full session of manual work —
+cross-referencing every line against Item Master, structuring System→Subsystem→Item trees by hand.
+Boiler models repeat across projects (the same subsystems: Shell & Body, Mounting & Fittings, Feed
+Line, Blow Down Line, Fire Door & Fire Bars, Electrical Panel), so the ask: let a real, already-built
+piece of BOM structure be saved as a reusable template, tagged to a hierarchy level, and applied to
+instantly build out a new node's children.
+
+Two existing template systems were checked first, not assumed absent: `bom_templates`/
+`bom_template_items` (`components/BomTemplateManager.jsx`) is flat, no hierarchy concept, "Apply"
+always lands items unassigned at a project's BOM root — kept for its own real job (see below), not
+reused. `POST /api/bom-assemblies/[id]/duplicate` already did the hard part for a *live* subtree
+(walk `parent_id`-keyed children, recursive insert building an `old-id → new-id` map, clone each
+descendant's `bom_items`) — the proven pattern both new endpoints below mirror, one direction
+(DB subtree → JSON) to save a template, the other (JSON → DB subtree) to apply one.
+
+**Data model — one JSON blob per template, not a parallel relational tree.** `bom_structure_templates`
+(`lib/db.js`): `name`, `level` (one of `NODE_TYPE_SUGGESTIONS` — the level a template is meant to be
+applied *to*), `series` (optional boiler-model tag, `NULL` = generic), `description`, `tree_json`
+(nested `{name, node_type, qty, items[], children[]}`), denormalized `node_count`/`item_count`/
+`root_count`, `is_default`, `source_project_no` (provenance, e.g. "Captured from SB-1109-01-50"),
+`UNIQUE(level, series, name)`. Mirrors `bom_release_snapshots`' own precedent (§5ay) for "serialize a
+whole live tree as JSON" — and `bom_templates`' own PATCH route already treats its items as
+replace-the-whole-list-on-save, so a JSON blob is the same philosophy one level deeper. `bom_assemblies`
+gained `structure_template_id` (nullable FK), stamped on root nodes an apply/bootstrap action
+creates — the same lineage precedent `bom_items.template_id` already set for flat templates.
+
+**Template content is only ever authored through the real tree UI, never a second nested editor.**
+Two pure helpers factor the shape transforms (`lib/bom-structure.mjs`): `buildTemplateTree(rootNodes,
+childrenByParent, itemsByAssembly)` walks already-fetched nodes into `tree_json`, and
+`flattenTemplateTree(treeJson)` reverses it into a parent-before-child list tagged with synthetic
+`tempId`/`tempParentId` pairs — the same `idMap` insert pattern `duplicate/route.js` established,
+now shared by two callers via one exported `insertTemplateTree(tree, projectId, parentId,
+templateId, username)` (`app/api/bom-assemblies/[id]/apply-template/route.js`). `computeTemplateCounts`
+walks fresh on every save (never trusted from the client) so the list screen's counts can't drift —
+`rootCount > 1` is what flags a whole-BOM (multi-root) capture.
+
+**Routes**: `POST /api/bom-assemblies/[id]/save-as-template` (captures a node's own children — not
+the node itself — into a new template row); `POST .../apply-template` (always additive, appends
+after a node's existing children, never blocks on the node already having some — a real BOM node
+legitimately gets built from more than one template); `POST /api/bom-assemblies/apply-templates-to-project`
+(project-scoped bootstrap for the empty-tree case, loops `insertTemplateTree` once per selected
+template id, each creating a new top-level root); `POST /api/projects/[id]/save-bom-as-template`
+(captures *every* top-level root of a project in one save — real multi-root capture, always stores
+`level='System'`); the whole CRUD surface at `app/api/bom-structure-templates/` mirrors
+`bom_templates`' own route shapes exactly (same `requireEngineeringAction` gate, same
+`GET ?level=&series=` / `POST` / `GET [id]` / `PATCH [id]` / `DELETE [id]` shape).
+
+**UI** — `components/BomStructureTemplateManager.jsx` (a new "Structure Templates" Engineering tab):
+a flat, level-filterable list, each row showing name/★-default-toggle/level-or-"Complete BOM · N
+systems" badge/series/counts/`source_project_no`, and exactly two row icons — pencil (view/edit) and
+bin (delete) — deliberately no Apply button on this screen; applying only ever happens from where a
+tree is actually being built. The pencil opens a **sandbox-edit flow**: applies the template onto a
+fresh throwaway node under the existing hidden sentinel "system" project (`is_system=1`, the same one
+§5e's stock/SAS `bom_items` already use — reused rather than seeding a second one), opens the real
+`BomStructureWorkspace` on that node with a persistent "Editing template: {name}" banner, "Update
+Template" (re-runs save-as-template with `overwrite_template_id`) and "Discard" (a plain `DELETE
+/api/bom-assemblies/[id]?cascade=1` — a new, narrowly-scoped real-delete flag, server-side restricted
+to fire only when the target's own project has `is_system=1`, since the generic DELETE route
+otherwise just un-links items and blocks on child assemblies). Applying a template — single-node or
+the project-wide bootstrap — always shows a plain one-line note first: *"Inserts N items with their
+saved specs exactly as captured — sizes/quantities may need review before release."* Templates are
+frozen content, not a parametric generator; general capacity-scaling is a separate, unbuilt,
+explicitly-flagged feature (see `BOM-FOLLOWUP-NOTES.md` item 1).
+
+**Real gaps found and fixed across four successive "any gaps?" audits, not shipped speculatively:**
+- Overwriting an existing template (`overwrite_template_id`) only ever updated its content/counts,
+  never its `level` — reclassifying a node in the sandbox before "Update Template" silently left the
+  template's own advertised level wrong. Fixed; verified live via a direct API sequence (PATCH the
+  sandbox node's `node_type`, Update Template, confirmed the template row's `level` column changed).
+- The pencil icon had no in-flight guard — a rapid double-click could create two untracked sandbox
+  nodes, leaking one permanently. Fixed with an `openingId` state guard.
+- "Add top-level node"/"Build from Templates" stayed clickable while *inside* a sandbox-edit session,
+  and anything created that way would never be cleaned up by Discard/Update (which only ever touch
+  the one tracked node). Fixed with `hideAddTop`/`hideRootActions` props threaded through
+  `BomStructureWorkspace` → `BomTree`, suppressing these actions specifically in sandbox mode.
+- **`bom_templates` (`kind='bom'`) removed from Engineering's own tab, on direct user instruction,
+  after investigating why two template systems existed.** `bom_templates`/`BomTemplateManager.jsx`
+  turned out to serve two distinct jobs via its `kind` column: `kind='pr'` pre-fills the Raise-PR
+  form (unrelated to the BOM tree, kept, untouched) and `kind='bom'` drops a flat item list onto a
+  project's BOM root with no node created (the one made redundant by Structure Templates). Only the
+  Engineering-tab `kind='bom'` entry point was removed (`EngineeringWorkspace.jsx`'s nav array +
+  render clause, the now-unused `LayoutTemplateIcon` import); the `kind='pr'` PR Templates tab and
+  Stores' own `kind='bom'` fallback inside `PrWorkspace.jsx` (`showBomTemplatesHere`, a Stores-only
+  head with no Engineering access) were deliberately left untouched and flagged to the user, not
+  silently decided either way.
+- **Real domain-knowledge gap, found by the user directly asking "should we keep more data in
+  templates?", not by testing**: `buildTemplateTree`'s item capture was silently dropping `make`
+  (supplier/brand), `remarks` (e.g. a Safety Valve's real Set-Pressure note), `named_parts_json`, and
+  the four `requires_heat_no`/`requires_mtc`/`requires_supplier_batch`/`requires_serial_no`
+  traceability flags — real engineering-judgment data, not decorative. Fixed in both
+  `buildTemplateTree`'s item mapping and `apply-template`'s `bom_items` INSERT; added self-check
+  assertions confirming these fields survive a full save→flatten→apply round-trip.
+- **"Save Entire BOM as Template" + "Build from Templates" relocated, on direct user instruction,
+  from the tree pane to icon+tooltip buttons beside the Review & Release BOM button**
+  (`ReleaseReadinessPanel.jsx`) — closer to the action they actually gate (a project's readiness to
+  release), and the `bom_templates` removal above meant the tree pane no longer needed to host two
+  template entry points at once.
+- **Most serious, found on the fourth and final gap-audit round, before it ever shipped**: the
+  single-root-assuming sandbox-edit flow silently broke for a whole-BOM (multi-root) template.
+  `insertTemplateTree`'s `rootId` is only ever set once (the *first* root created), so materializing
+  a 5-system template for editing would track only one root — "Discard" would permanently orphan the
+  other four under the sentinel project every time, and "Update Template" would walk only that one
+  root's subtree and **overwrite the entire template's `tree_json` with just it** — real, silent data
+  loss collapsing a 5-system capture down to 1. Fixed by rejecting sandbox-edit for multi-root
+  templates entirely, server-side (`edit-session/route.js` checks `template.root_count > 1` before
+  touching anything, returns 400), with a matching disabled pencil icon + tooltip in the list UI
+  ("Whole-BOM templates can't be edited via the sandbox yet — re-save from a real project to update
+  one"). Verified live end to end via a direct API sequence: `edit-session` now correctly 400s on a
+  multi-root template; `apply-templates-to-project` still correctly stamps `structure_template_id`
+  onto *every* new root, not just the first; the newly-extended `bom_items` INSERT (carrying
+  make/remarks/named_parts_json/`requires_*`) inserts cleanly with no column-count mismatch. Full
+  cleanup confirmed the DB back to exactly 14 assemblies/181 items/0 templates on SB-1109 afterward.
+
+Deliberately out of scope, named rather than dropped: usage-count analytics ("applied N times"), any
+parametric/capacity-scaling engine, in-app per-item editing inside the template list screen itself
+(the sandbox-edit flow is that surface). Not yet committed as of this write-up.
+
+## 5bc. Multi-unit quantity multiplier (2026-09-03)
+
+A real project (e.g. `SB-1109-01-50`) can represent many physical units under one project/BOM — the
+`-01-50` suffix is a 50-unit range. There was no way to say "this BOM (or one subsystem of it) is
+for 50 units" and have Procurement/Stores/Dispatch's real quantities scale — someone had to
+hand-multiply every line, the same pain §5bb just solved for *structure* but not for *quantity*.
+
+**The mechanism already existed — it just was never consumed outside the BOM tree's own display.**
+`bom_assemblies.qty` ("Local quantity," already editable per-node via `NodeOverviewTab.jsx`, already
+rolled up through the parent chain by `rollupQty()`/`itemRollupQty()` in `lib/bom-structure.mjs`) was
+read in exactly three places, all display-only: `BomTreeReadOnly.jsx`, `NodeOverviewTab.jsx`,
+`lib/bom-tree-pdf.js`. Every real cross-department quantity — `po_items.qty`,
+`inventory_reservations.qty`, `packing_items.qty`, and the Stores Reserve dialog's default — was
+instead independently re-parsed off `bom_items.qty_text`'s leading number at 6 separate call sites,
+never touching the rollup chain at all. Confirmed via a direct read-only query against the live DB:
+**zero** existing `bom_assemblies` rows anywhere had `qty != 1`, so wiring the rollup into real
+quantity math was fully backward-compatible for every existing project before this round touched
+anything.
+
+**No baking into `qty_text` — a deliberate rejection, not an oversight.** A repo-wide grep for
+bake/freeze/scale idioms found no precedent anywhere in this codebase for overwriting a computed
+value into a free-text editable field, and `lib/bom-structure.mjs`'s own existing comment states the
+invariant explicitly: the structural multiplier and an item's own `qty_text` stay separate, always
+recomputed live. Baking would also have collapsed the honest "quantity per one instance of the
+immediate parent" reading `qty_text` already carries into an ambiguous already-multiplied number. The
+fix lives entirely in the *consumers*.
+
+**New pure helper** `qtyBreakdown(qtyText, assemblyId, byId)` (`lib/bom-structure.mjs`, next to
+`rollupQty`/`itemRollupQty`, both left untouched) returns `null` when the multiplier is 1 or
+`qty_text` doesn't parse — so a caller renders nothing extra in the common case — otherwise
+`{base, mult, total, unit, label}`, e.g. `label: "100 Mtrs = 2 Mtrs × 50"`. New DB-aware
+`getAssemblyRollupMap(projectId)` (`lib/data.js`, next to `getBomStructure`) builds the `Map<id,
+{id, parent_id, qty}>` `rollupQty`/`itemRollupQty` already expect — `bom_assemblies` is tiny
+table-wide, so an unscoped call (no `projectId`) safely covers a cross-project list read in one
+query. Self-check assertions added to `lib/bom-structure-selfcheck.mjs` for `qtyBreakdown` (multiplier
+1 → null; a real multiplier → correct label; no-unit-suffix → no stray trailing space).
+
+**Explicit product decision, made before building, not defaulted silently**: the rolled-up total is
+used **automatically** wherever a PO line / stock reservation / packing quantity is computed from a
+BOM item — no separate opt-in step — and the computed math is always visibly shown next to the
+number, so a multiplied quantity is never silently unexplained on screen.
+
+**Wired at the 6 real call sites**, each swapping its own `parseFloat`/regex parse of `qty_text` for
+`itemRollupQty(qty_text, assembly_id, byId) ?? <same fallback as before>`:
+- `app/api/purchase-orders/route.js` (manual PO creation) — its item `SELECT` was missing
+  `b.assembly_id`, added.
+- `lib/procurement.js`'s `addItemToDraftPO` (the auto-draft-on-select-supplier path).
+- `lib/procurement.js`'s `autoReserveFromStock` (Auto-allocation-mode path); `reserveFromStock`
+  itself needed no change — it already just takes `qty` from its caller.
+- `lib/remnant-match.js`'s `matchAndReserve` (dimensional/plate-remnant matching) — the recomputed
+  `required` correctly becomes the scaled stock-*piece* reservation ceiling (e.g. "reserve up to 100
+  pieces" for a ×50 line), not a continuous quantity.
+- `app/api/packing/from-bom/route.js` (auto-generate a packing list from BOM).
+- `components/StoresWorkspace.jsx`'s `ReserveDialog` default (`request.rolled_qty ?? leadingQty(...)`
+  — the fallback covers rows the server hasn't annotated, e.g. non-`bom`-source stock/SAS lines with
+  no `assembly_id` at all).
+
+**N+1 avoidance on the one real high-volume loop.** `matchAndReserve`/`autoReserveFromStock` both
+gained an *optional* trailing `byId` parameter — omitted, they self-fetch via
+`getAssemblyRollupMap(bomItem.project_id)` exactly as above; `matchProjectBom`/`matchProjectPlainStock`
+(both called once per Release BOM against every dimensional/plain item in **one** project — real
+volume: SB-1109 has 181 items) now build the map **once** before their loop and pass it down, instead
+of re-querying `bom_assemblies` once per item. The three other loop-based callers
+(`app/api/purchase-requisitions/route.js`'s PR-raise loop, `app/api/bom-templates/[id]/apply/route.js`'s
+template-apply loop, `app/api/bom-items/route.js`'s single-item add) call without the param — small
+batch sizes, not worth a per-project cache there.
+
+**"Always show the math" renders on 3 UI surfaces**, all fed by server-attached breakdowns on the
+existing **read** paths (not the creation POST responses — none of their callers render a created
+quantity from the response body, confirmed by reading each caller): `lib/data.js`'s
+`getSourcingItems()`/`getOpenBomItems()` attach `qty_breakdown`/`rolled_qty` per row, rendered in
+`ProcurementWorkspace.jsx`'s Sourcing/Status item lines and `StoresWorkspace.jsx`'s Reserve dialog
+hint. **`getPackingDetail(id)`'s breakdown is deliberately draft-only** — `packing_items.qty` is a
+frozen, already-committed number the instant a list moves past `draft`; a live-recomputed label next
+to it after a node's multiplier later changes would risk visibly disagreeing with the real stored
+value, worse than showing nothing. Verified live: moving a test packing list to `packed` made its
+breakdown label disappear on the very next load, item itself unaffected.
+
+**Live-verified end to end against the real dev DB**, not just self-checked: a disposable project +
+BOM node, baseline (`qty=1`) run through all 6 flows produced byte-identical results to the
+pre-change code (`2` everywhere, matching `qty_text = "2 Mtrs"`); the same node bumped to `qty=5`
+via the real `PATCH /api/bom-assemblies/[id]` produced `10` in every one of `po_items.qty`
+(both the manual-PO and auto-draft paths), `inventory_reservations.qty`, and `packing_items.qty`; a
+nested child node (`qty=3`) under the `qty=5` parent correctly rolled up to `×15`, and a real PO
+against an item there produced `qty=30` (`2 × 5 × 3`) — the full chain, not just display. The
+remnant-match path's re-run (triggered by re-releasing the BOM after the multiplier changed)
+incidentally proved a second, real, correct behavior: the rollup is never frozen per-item, so a
+dimensional line already partially matched at the old multiplier correctly re-chased the shortfall
+against the *new* total on the next Release BOM (observed live: an item's required count recomputed
+from 1 to 5 and its existing partial-match split updated accordingly) — expected given the
+"live, not baked" design, not a bug. All 3 UI surfaces' rendered labels were visually confirmed in
+the browser, not just asserted from the API. Every disposable row (project, assemblies, items,
+supplier, quotes, POs, reservations, stock pieces, packing lists, and the 25 auto-seeded milestones +
+4 `bom_release_snapshots` rows a real project drags in) was deleted afterward; a final direct query
+confirmed zero `bom_assemblies` rows with `qty != 1` anywhere in the DB, matching the pre-round
+baseline exactly.
+
+**Deliberately out of scope, with reasons — not touched:** Production Work Orders
+(`work_orders.qty_planned`, `job_cards.qty_planned`) stay 100% hand-typed with zero BOM linkage — a
+Work Order legitimately produces a subset of the total (e.g. 10 of 50 units in a first batch),
+coupling it to the rollup would be wrong, not a gap. Dispatch/packing's pre-existing lack of any
+partial-quantity tracking (a BOM line is either fully "on some approved packing list" or fully
+"pending," `packing_items.scanned_qty` is schema-only dead code) is a real, orthogonal limitation
+already true for any oversized line regardless of a multiplier — not something this round fixes.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own
@@ -6785,6 +7016,7 @@ ncr_records.qc_verified_at / qc_verified_by            (§5ap — a distinct fac
 bom_assemblies ──< bom_assemblies (parent_id, self)  (§5o/§5au — the BOM tree; bom_items.assembly_id is the leaf link, nullable, unassigned items keep working exactly as before)
 calc_sheets ──< calc_sheet_drawings ── calc_drawings  (§5ay — a calc sheet substantiates a drawing, not a bom_assemblies node; the earlier bom_assembly_calc_sheets junction is retired in place, same "leave it" precedent as `tickets`)
 projects ──< bom_release_snapshots                    (§5ay — one frozen JSON row per Release BOM click, keyed by revision; assemblies_json/unassigned_json are getBomStructure()'s/getProjectBom()'s own live shapes, frozen verbatim)
+bom_structure_templates ──< bom_assemblies (structure_template_id)  (§5bb — hierarchy-level BOM templates; tree_json is one JSON blob per template, not a parallel relational tree, same freeze-as-JSON idiom bom_release_snapshots already set; the FK is stamped only on root nodes an apply/bootstrap action creates)
 ```
 
 `bom_items` carries the spreadsheet-mirror columns — `section` (sheet), `group_label` (assembly

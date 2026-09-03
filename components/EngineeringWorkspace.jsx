@@ -19,13 +19,14 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
-  LayersIcon, SearchIcon, Repeat2Icon, FileEditIcon, PlusIcon, LayoutTemplateIcon,
-  ClipboardListIcon, CheckIcon, FileStackIcon, FilterIcon,
+  LayersIcon, SearchIcon, Repeat2Icon, FileEditIcon, PlusIcon,
+  ClipboardListIcon, CheckIcon, FileStackIcon, FilterIcon, GitBranchIcon,
 } from 'lucide-react';
 import { api, showToast, formatDate } from '@/lib/client';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 import SearchableSelect from '@/components/SearchableSelect';
 import BomTemplateManager from '@/components/BomTemplateManager';
+import BomStructureTemplateManager from '@/components/BomStructureTemplateManager';
 import BomStructureWorkspace from '@/components/bom-structure/BomStructureWorkspace';
 import { RaisePrTab, ReleaseBomTab } from '@/components/PrWorkspace';
 
@@ -49,17 +50,21 @@ function projectLabel(r) {
 }
 
 // Phase 1 nav reorg (SYSTEM.md): "BOM Structure" -> "BOMs" (label only, key kept as 'structure' so
-// BomPanel.jsx's existing ?tab=structure deep link keeps working), and "BOM Templates" moved in
-// from Requests/PrWorkspace.jsx (still also rendered there for Stores heads — see PrWorkspace.jsx).
+// BomPanel.jsx's existing ?tab=structure deep link keeps working). The flat "BOM Templates" tab
+// (kind="bom") that used to sit here is gone — Structure Templates is a strict superset for
+// Engineering/Design's own use (real hierarchy, richer item capture, whole-BOM save) — but the
+// underlying bom_templates table/BomTemplateManager component are NOT removed: PR Templates
+// (kind="pr") still needs them for pre-filling the Raise PR form, unrelated to the BOM tree, and
+// PrWorkspace.jsx still renders a kind="bom" instance for Stores-only heads (no Engineering/Design
+// access, so Structure Templates isn't reachable to them either) — deliberately left alone, not
+// this round's call to remove.
 // Requests' own three tabs (Purchase Requests/Release BOM/PR Templates) added at the end — same
 // RaisePrTab/ReleaseBomTab/BomTemplateManager(kind="pr") components /pr already renders, imported
 // directly rather than duplicated, so nothing is duplicated at the data layer, only the entry point
-// (same precedent Release BOM's own button already established). "PR Templates" deliberately does
-// NOT reuse BOM Templates' icon (LayoutTemplateIcon) — harmless on two separate pages, a real
-// ambiguity once both sit in one sidebar.
+// (same precedent Release BOM's own button already established).
 const ITEMS = [
   { key: 'structure', label: 'BOMs', icon: LayersIcon },
-  { key: 'bom_templates', label: 'BOM Templates', icon: LayoutTemplateIcon },
+  { key: 'structure_templates', label: 'Structure Templates', icon: GitBranchIcon },
   { key: 'where_used', label: 'Where-Used', icon: SearchIcon },
   { key: 'common_uncommon', label: 'Common / Uncommon', icon: Repeat2Icon },
   { key: 'ecn', label: 'Change Notes', icon: FileEditIcon },
@@ -449,7 +454,7 @@ export default function EngineeringWorkspace({ projects, canApproveEcn = false, 
           projectId={globalProjectId} onProjectIdChange={setGlobalProjectId}
           showReleased={globalShowReleased} onShowReleasedChange={setGlobalShowReleased} />
       )}
-      {tab === 'bom_templates' && <BomTemplateManager kind="bom" title="BOM Templates" projects={projects} />}
+      {tab === 'structure_templates' && <BomStructureTemplateManager />}
       {tab === 'where_used' && <WhereUsedTab projectIds={globalProjectIdsArr} />}
       {tab === 'common_uncommon' && <CommonUncommonTab projectIds={globalProjectIdsArr} />}
       {tab === 'ecn' && <EcnTab projects={projects} projectIds={globalProjectIdsArr} canApprove={canApproveEcn} />}

@@ -9,17 +9,19 @@ import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
-  ChevronRightIcon, FolderInputIcon, CopyIcon, TrashIcon,
+  ChevronRightIcon, FolderInputIcon, CopyIcon, TrashIcon, BookmarkPlusIcon,
   LayoutGridIcon, PackageIcon, FileTextIcon, HistoryIcon,
 } from 'lucide-react';
 import NodeOverviewTab from './NodeOverviewTab';
 import NodeItemsTab from './NodeItemsTab';
 import NodeDrawingsTab from './NodeDrawingsTab';
 import NodeHistoryTab from './NodeHistoryTab';
+import SaveAsTemplateDialog from './SaveAsTemplateDialog';
 
 export default function BomNodeDetail({
-  node, path, projectId, projectBom, assemblies, unassignedItems,
+  node, path, projectId, projectBom, assemblies, unassignedItems, byId,
   onSaveQty, onSaveNodeType, onRename, onMoveTo, onDuplicate, onDelete, onSaved, onLinkChange,
+  onApplyTemplate, onSaveAsTemplate,
 }) {
   const [tab, setTab] = useState('overview');
   const TAB_DEFS = [
@@ -28,6 +30,7 @@ export default function BomNodeDetail({
     { key: 'drawings', label: 'Drawings', icon: FileTextIcon, count: node.drawing_count },
     { key: 'history', label: 'History', icon: HistoryIcon },
   ];
+  const [savingAsTemplate, setSavingAsTemplate] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [nameDraft, setNameDraft] = useState(node.name);
   const [saving, setSaving] = useState(false);
@@ -98,6 +101,9 @@ export default function BomNodeDetail({
             <Button size="icon-sm" variant="ghost" onClick={() => onDuplicate(node)} aria-label="Duplicate"><CopyIcon /></Button>
           </TooltipTrigger><TooltipContent>Duplicate</TooltipContent></Tooltip>
           <Tooltip><TooltipTrigger asChild>
+            <Button size="icon-sm" variant="ghost" onClick={() => setSavingAsTemplate(true)} aria-label="Save as template"><BookmarkPlusIcon /></Button>
+          </TooltipTrigger><TooltipContent>Save as template</TooltipContent></Tooltip>
+          <Tooltip><TooltipTrigger asChild>
             <Button size="icon-sm" variant="ghost" className="text-danger" onClick={() => onDelete(node)} aria-label="Delete"><TrashIcon /></Button>
           </TooltipTrigger><TooltipContent>Delete</TooltipContent></Tooltip>
         </div>
@@ -105,7 +111,9 @@ export default function BomNodeDetail({
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsContent value="overview" className="animate-in fade-in-0 slide-in-from-bottom-1 duration-150">
-          <NodeOverviewTab node={node} onSaveQty={q => onSaveQty(node, q)} onSaveNodeType={t => onSaveNodeType(node, t)} />
+          <NodeOverviewTab node={node} byId={byId}
+            onSaveQty={q => onSaveQty(node, q)} onSaveNodeType={t => onSaveNodeType(node, t)}
+            onApplyTemplate={templateIds => onApplyTemplate(node, templateIds)} />
         </TabsContent>
         <TabsContent value="items" className="animate-in fade-in-0 slide-in-from-bottom-1 duration-150">
           <NodeItemsTab projectId={projectId} node={node} path={path} projectBom={projectBom} assemblies={assemblies}
@@ -118,6 +126,14 @@ export default function BomNodeDetail({
           <NodeHistoryTab node={node} />
         </TabsContent>
       </Tabs>
+
+      {savingAsTemplate && (
+        <SaveAsTemplateDialog
+          node={node} byId={byId}
+          onClose={() => setSavingAsTemplate(false)}
+          onSave={payload => onSaveAsTemplate(node, payload)}
+        />
+      )}
     </div>
   );
 }

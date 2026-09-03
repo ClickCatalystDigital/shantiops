@@ -87,6 +87,14 @@ export async function PATCH(req, { params }) {
 // packable leaf regardless of assembly membership (§5a invariant, packing_items.bom_item_id joins
 // bom_items.id directly). Child assemblies are blocked, same "resolve the tree first" precedent as
 // bom-items DELETE blocking on packed/reserved rows, rather than silently cascading a whole subtree.
+//
+// ?cascade=1 is the one exception, and it's deliberately narrow: it recursively deletes the whole
+// subtree AND its items (real deletes, not un-links) instead of the safe behavior above. Only the
+// Structure Templates sandbox-edit flow needs this — a throwaway node under the sentinel "system"
+// project, discarded or replaced by an Update Template every time. Honored ONLY when the target
+// row's own project is that sentinel project (is_system=1), checked server-side regardless of what
+// the caller passes — this makes the flag structurally impossible to point at a real project's real
+// BOM data, even by a future caller's mistake.
 export async function DELETE(req, { params }) {
   const user = await getFreshSessionUser();
   const actionDenied = await requireEngineeringAction(user, 'engineering.assembly.delete');
@@ -94,6 +102,25 @@ export async function DELETE(req, { params }) {
 
   const row = await queryOne('SELECT * FROM bom_assemblies WHERE id = ?', [params.id]);
   if (!row) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
+  const cascade = new URL(req.url).searchParams.get('cascade') === '1';
+  if (cascade) {
+    const project = await queryOne('SELECT is_system FROM projects WHERE id = ?', [row.project_id]);
+    if (!project?.is_system) {
+      return NextResponse.json({ error: 'Cascade delete is only available on the template sandbox' }, { status: 403 });
+    }
+    const all = await queryAll('SELECT id, parent_id FROM bom_assemblies WHERE project_id = ?', [row.project_id]);
+    const childrenByParent = new Map();
+    for (const a of all) {
+      if (!childrenByParent.has(a.parent_id)) childrenByParent.set(a.parent_id, []);
+      childrenByParent.get(a.parent_id).push(a);
+    }
+    const subtreeIds = [];
+    (function collect(id) { subtreeIds.push(id); for (const c of childrenByParent.get(id) || []) collect(c.id); })(row.id);
+    await execute(`DELETE FROM bom_items WHERE assembly_id IN (${subtreeIds.map(() => '?').join(',')})`, subtreeIds);
+    await execute(`DELETE FROM bom_assemblies WHERE id IN (${subtreeIds.map(() => '?').join(',')})`, subtreeIds);
+    return NextResponse.json({ ok: true, deletedNodes: subtreeIds.length });
+  }
 
   const child = await queryOne('SELECT COUNT(*) AS n FROM bom_assemblies WHERE parent_id = ?', [params.id]);
   if (child.n > 0) {
