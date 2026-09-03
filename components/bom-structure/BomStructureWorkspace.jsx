@@ -7,7 +7,8 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, showToast } from '@/lib/client';
 import { Card, CardHeader, CardTitle, CardDescription, CardAction } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Button } from '@/components/ui/button';
+import SearchableSelect from '@/components/SearchableSelect';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
@@ -22,6 +23,11 @@ import { nodePath } from '@/lib/bom-tree.mjs';
 export default function BomStructureWorkspace({ projects }) {
   const router = useRouter();
   const [projectId, setProjectId] = useState('');
+  // Default hides a project once its BOM has been released at least once — the picker would
+  // otherwise only ever grow as more projects finish Engineering's own work here. Never filters
+  // out a project you already have open (see selectedProject below, resolved against the full
+  // `projects` prop, not this filtered view) — only the picker's own option list.
+  const [showReleased, setShowReleased] = useState(false);
   const [assemblies, setAssemblies] = useState(null);
   const [projectBom, setProjectBom] = useState(null);
   const [releaseStatus, setReleaseStatus] = useState(null);
@@ -138,6 +144,7 @@ export default function BomStructureWorkspace({ projects }) {
   const assembliesFlat = (assemblies || []).map(a => ({ id: a.id, name: a.name, parent_id: a.parent_id }));
 
   const selectedProject = projects.find(p => String(p.id) === projectId);
+  const visibleProjects = showReleased ? projects : projects.filter(p => !p.bom_release_revision);
 
   return (
     <>
@@ -154,13 +161,17 @@ export default function BomStructureWorkspace({ projects }) {
             'Build assemblies, link drawings and calc sheets, and review release readiness.'
           )}
         </CardDescription>
-        <CardAction>
-          <Select value={projectId || undefined} onValueChange={setProjectId}>
-            <SelectTrigger className="w-64"><SelectValue placeholder="Pick a project" /></SelectTrigger>
-            <SelectContent>
-              {projects.map(p => <SelectItem key={p.id} value={String(p.id)}>{p.project_no} · {p.customer_name}</SelectItem>)}
-            </SelectContent>
-          </Select>
+        <CardAction className="flex items-center gap-2">
+          <Button size="sm" variant={showReleased ? 'secondary' : 'outline'} onClick={() => setShowReleased(v => !v)}>
+            {showReleased ? 'Showing released' : 'Show released too'}
+          </Button>
+          <SearchableSelect
+            className="w-64"
+            value={projectId} onChange={setProjectId}
+            placeholder="Pick a project…"
+            options={visibleProjects.map(p => ({ value: String(p.id), label: `${p.project_no} · ${p.customer_name}` }))}
+            displayValue={selectedProject ? `${selectedProject.project_no} · ${selectedProject.customer_name}` : undefined}
+          />
         </CardAction>
       </CardHeader>
 
