@@ -6152,6 +6152,44 @@ Full implementation plan for `authenticate`/`GENEWAYBILL`/`CANEWB` (including th
 Cancel action) written up in this session's plan file, approved, not yet built — still no code in
 `lib/eway-bill.js` beyond the existing stub.
 
+**Same-day follow-up — the live official docs, read directly (not secondary sources).**
+`docs.ewaybillgst.gov.in` 403s every automated `WebFetch` attempt (confirmed twice, domain-wide,
+not path-specific) but loads fine in a real browser — read Authentication, Generate E-Way Bill,
+Cancel E-Way Bill, and Get Error List in full via the Browser pane. Real corrections to the prior
+research:
+- **Cancel window is definitively 24 hours** ("E-way bill can be cancelled within 24 hours of
+  generation," generator only) — the prior round's hedging on this (citing only error codes
+  315/316) is resolved; 24 hours is the stated rule.
+- **No separate "Ship-to GSTIN" field exists** in the standalone `GENEWAYBILL` schema — the prior
+  round's secondary-source finding about a mandatory Ship-to GSTIN field doesn't appear here.
+  Bill-To/Ship-To already has a home in the existing schema: `toGstin`/`toStateCode` carry the
+  billed party, `toAddr*`/`actToStateCode` carry the actual ship-to location (mirrored on the From
+  side with `actFromStateCode`). For Shanti Ops' normal case these equal `fromStateCode`/
+  `toStateCode` already on file — no new field needed unless a shipment genuinely dispatches from
+  or delivers to a location distinct from the billed party's own state.
+- **The current v1.03 schema requires three fields the 2018-doc-based plan didn't know about**:
+  `transactionType` (1-4, distinct from `subSupplyType`), `totInvValue` (total invoice value incl.
+  tax — already on the linked Sales Invoice), and `actFromStateCode`/`actToStateCode` (above).
+- **A real forward-looking dependency, not relevant today**: standalone `GENEWAYBILL` generation is
+  blocked for B2B Tax-Invoice shipments once the *supplier* is e-invoicing-enabled — such e-way
+  bills must go through e-invoice/IRN generation instead. Shanti Ops isn't e-invoicing-enabled, so
+  this doesn't block anything now, but the day that changes, this is no longer just an independent
+  feature add — it changes which e-way-bill API is even valid to call.
+- **Distance has a real failure mode not previously known**: passing `0` tells NIC to use its own
+  PIN-to-PIN distance database; a real non-zero value differing by more than ±10% from that
+  database gets **rejected** — Shanti Ops has no way to pre-check against NIC's own database, so
+  this is a real risk the built Gap 1 validation (require ≤4000km) doesn't catch, flagged for a
+  product decision once wiring happens for real (surface NIC's own rejection vs. default to `0`).
+- **A live `GetErrorList` API exists** (`GET <URL>/Master/GetErrorList`) — better to fetch/cache
+  NIC's own current error table at runtime than hardcode the 2018 doc's list forever.
+- Also confirmed: NIC has its own duplicate-e-way-bill detection per document number (real defense
+  in depth under the already-built `eway_bill_no IS NOT NULL` guard, not a reason to drop it); a
+  180-day document-to-generation window; a 250-item cap (unchanged); HSN validated against NIC's own
+  GST master (stricter than Shanti Ops' own non-null check, which stays as the first-line gate).
+
+Full detail in the session's plan file. Still no live API call made, still no code touched by this
+research pass — see the next entry for the actual implementation that followed it the same day.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own

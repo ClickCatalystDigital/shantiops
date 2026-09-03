@@ -22,6 +22,9 @@ import BalanceSheetCard from '@/components/reports/BalanceSheetCard';
 const FIELDS = [
   ['gstin', 'GSTIN'], ['pan', 'PAN'], ['state', 'State'], ['state_code', 'State code'],
   ['invoice_prefix', 'Invoice series prefix'], ['registered_address', 'Registered address'],
+  // Real-NIC-API payload requires a discrete Place/Pincode distinct from the free-text address
+  // above (fromPlace/fromPincode on GENEWAYBILL) — no other source for these anywhere in this app.
+  ['place', 'Place (for E-Way Bill)'], ['pincode', 'Pincode (for E-Way Bill)'],
 ];
 
 function CompanyCard({ company, router }) {

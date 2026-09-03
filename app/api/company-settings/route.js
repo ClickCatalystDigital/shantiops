@@ -58,7 +58,7 @@ export async function POST(req) {
 // (lib/company-entity.mjs's diffCompanyEntity() treats a 'manual' source as a conflict, never
 // auto-applied). `state`/`state_code` share one `state_source` — they never diverge independently.
 const TRACKED = ['legal_name', 'gstin', 'pan', 'trade_name', 'gst_status', 'gst_taxpayer_type', 'gst_registration_date', 'gst_constitution'];
-const PLAIN = ['registered_address', 'invoice_prefix'];
+const PLAIN = ['registered_address', 'invoice_prefix', 'place', 'pincode'];
 // PF/ESI/PT: no source tracking (always manual — no fetch path exists for these), just a timestamp.
 const APPLICABILITY = [
   ['pf_applicable_override', 'pf_updated_at'], ['pf_establishment_code', 'pf_updated_at'],
