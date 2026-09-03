@@ -410,7 +410,10 @@ function ApplyBomTemplateDialog({ projectId, onClose, router, onApplied }) {
   );
 }
 
-function RaisePrTab({ departments, projects, inventoryItems = [], prTemplatePrefill, onPrefillConsumed }) {
+// Exported so components/EngineeringWorkspace.jsx can render this same tab from a second entry
+// point (its own sidebar) without nesting a second full WorkspaceSidebar shell — PrWorkspace's own
+// usage below is unchanged either way.
+export function RaisePrTab({ departments, projects, inventoryItems = [], prTemplatePrefill, onPrefillConsumed }) {
   const router = useRouter();
   const [dept, setDept] = useState(departments[0] || '');
   const [lines, setLines] = useState([emptyLine()]);
@@ -527,7 +530,9 @@ function RaisePrTab({ departments, projects, inventoryItems = [], prTemplatePref
 // The full, manageable BOM table (search/edit/delete — same BomTable every other department
 // panel uses) plus Release/PDF/Un-release, top right, so reviewing what a template or PR added and
 // acting on the release are the same screen instead of a summary-only tab pointing elsewhere.
-function ReleaseBomTab({ projects, departments = [] }) {
+// Exported for the same reason RaisePrTab is above — Engineering's own sidebar renders this
+// directly.
+export function ReleaseBomTab({ projects, departments = [] }) {
   const router = useRouter();
   const [projectId, setProjectId] = useState('');
   const [status, setStatus] = useState(null); // { bomCount, released, templatesApplied, milestoneId } | null
@@ -669,9 +674,14 @@ export default function PrWorkspace({ departments, projects, inventoryItems = []
   // the data layer, only the entry point.
   const [tab, setTab] = useState(['raise', 'templates', 'release'].includes(initialTab) ? initialTab : 'raise');
   const [prTemplatePrefill, setPrTemplatePrefill] = useState(null);
+  // Release BOM only shows for a viewer who can actually release (canRelease() in
+  // app/api/projects/[id]/release-bom/route.js requires Design or Engineering) — a Stores-only head
+  // used to see the tab, click it, and get stuck on a permanent "Loading…" screen once the status
+  // check 403'd. Same conditional-visibility shape showBomTemplatesHere already uses below.
+  const canReleaseBom = departments.some(d => ['Design', 'Engineering'].includes(d));
   const navItems = [
     { key: 'raise', label: 'Purchase Requests', icon: ClipboardListIcon },
-    { key: 'release', label: 'Release BOM', icon: CheckIcon },
+    ...(canReleaseBom ? [{ key: 'release', label: 'Release BOM', icon: CheckIcon }] : []),
     { key: 'templates', label: 'PR Templates', icon: LayoutTemplateIcon },
   ];
   // Stores heads have Requests access but not Engineering access (where BOM Templates now

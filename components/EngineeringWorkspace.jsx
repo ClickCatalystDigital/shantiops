@@ -16,11 +16,15 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { LayersIcon, SearchIcon, Repeat2Icon, FileEditIcon, PlusIcon, LayoutTemplateIcon } from 'lucide-react';
+import {
+  LayersIcon, SearchIcon, Repeat2Icon, FileEditIcon, PlusIcon, LayoutTemplateIcon,
+  ClipboardListIcon, CheckIcon, FileStackIcon,
+} from 'lucide-react';
 import { api, showToast, formatDate } from '@/lib/client';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 import BomTemplateManager from '@/components/BomTemplateManager';
 import BomStructureWorkspace from '@/components/bom-structure/BomStructureWorkspace';
+import { RaisePrTab, ReleaseBomTab } from '@/components/PrWorkspace';
 
 // Same labeling convention as ProcurementWorkspace.jsx's projectLabel — a stock/sas BOM row's
 // project_id points at the sentinel system project, not a real one; "Stock"/"SO #..." reads better
@@ -35,12 +39,22 @@ function projectLabel(r) {
 // Phase 1 nav reorg (SYSTEM.md): "BOM Structure" -> "BOMs" (label only, key kept as 'structure' so
 // BomPanel.jsx's existing ?tab=structure deep link keeps working), and "BOM Templates" moved in
 // from Requests/PrWorkspace.jsx (still also rendered there for Stores heads — see PrWorkspace.jsx).
+// Requests' own three tabs (Purchase Requests/Release BOM/PR Templates) added at the end — same
+// RaisePrTab/ReleaseBomTab/BomTemplateManager(kind="pr") components /pr already renders, imported
+// directly rather than duplicated, so nothing is duplicated at the data layer, only the entry point
+// (same precedent Release BOM's own button already established). "PR Templates" deliberately does
+// NOT reuse BOM Templates' icon (LayoutTemplateIcon) — harmless on two separate pages, a real
+// ambiguity once both sit in one sidebar.
 const ITEMS = [
   { key: 'structure', label: 'BOMs', icon: LayersIcon },
   { key: 'bom_templates', label: 'BOM Templates', icon: LayoutTemplateIcon },
   { key: 'where_used', label: 'Where-Used', icon: SearchIcon },
   { key: 'common_uncommon', label: 'Common / Uncommon', icon: Repeat2Icon },
   { key: 'ecn', label: 'Change Notes', icon: FileEditIcon },
+  { key: 'pr_raise', label: 'Purchase Requests', icon: ClipboardListIcon },
+  { key: 'pr_templates', label: 'PR Templates', icon: FileStackIcon },
+  { key: 'pr_divider', divider: true },
+  { key: 'pr_release', label: 'Release BOM', icon: CheckIcon },
 ];
 
 // ---------- BOM Structure ----------
@@ -274,8 +288,15 @@ function EcnTab({ projects, changeNotes, canApprove }) {
 
 // ---------- Shell ----------
 
-export default function EngineeringWorkspace({ projects, changeNotes, partUsage, canApproveEcn = false, initialTab }) {
+export default function EngineeringWorkspace({ projects, changeNotes, partUsage, canApproveEcn = false, initialTab, departments = [] }) {
   const [tab, setTab] = useState(ITEMS.some(i => i.key === initialTab) ? initialTab : 'structure');
+  // Same small cross-tab handoff PrWorkspace.jsx owns internally for its own "PR Templates" tab —
+  // reusing this workspace's existing setTab instead of a second tab-state.
+  const [prTemplatePrefill, setPrTemplatePrefill] = useState(null);
+  function useInRaisePr(items) {
+    setPrTemplatePrefill(items);
+    setTab('pr_raise');
+  }
 
   return (
     <WorkspaceSidebar title="Engineering" icon={LayersIcon} items={ITEMS} activeKey={tab} onChange={setTab}>
@@ -284,6 +305,14 @@ export default function EngineeringWorkspace({ projects, changeNotes, partUsage,
       {tab === 'where_used' && <WhereUsedTab />}
       {tab === 'common_uncommon' && <CommonUncommonTab partUsage={partUsage} />}
       {tab === 'ecn' && <EcnTab projects={projects} changeNotes={changeNotes} canApprove={canApproveEcn} />}
+      {tab === 'pr_raise' && (
+        <RaisePrTab departments={departments} projects={projects}
+          prTemplatePrefill={prTemplatePrefill} onPrefillConsumed={() => setPrTemplatePrefill(null)} />
+      )}
+      {tab === 'pr_templates' && (
+        <BomTemplateManager kind="pr" title="PR Templates" projects={projects} onUseInRaisePr={useInRaisePr} />
+      )}
+      {tab === 'pr_release' && <ReleaseBomTab projects={projects} departments={departments} />}
     </WorkspaceSidebar>
   );
 }
