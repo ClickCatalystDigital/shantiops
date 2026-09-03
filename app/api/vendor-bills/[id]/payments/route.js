@@ -2,7 +2,7 @@
 // completion (AP settlement). Mirrors app/api/sales-invoices/[id]/receipts, purchase direction.
 import { NextResponse } from 'next/server';
 import { execute, queryOne, queryAll, nextCounterValue } from '@/lib/db';
-import { getFreshSessionUser, requireDepartment, isPM, canAccessDepartment } from '@/lib/auth';
+import { getFreshSessionUser, isPM, canAccessDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { financialYear } from '@/lib/gst-calc.mjs';
@@ -22,9 +22,12 @@ export async function GET(req, { params }) {
 
 export async function POST(req, { params }) {
   const user = await getFreshSessionUser();
-  const denied = requireDepartment(user, 'Procurement');
-  if (denied) return denied;
-  const actionDenied = await requireAction(user, 'Procurement', 'procurement.vendor_bill.payment.write');
+  const canProcurement = isPM(user) || canAccessDepartment(user, 'Procurement');
+  const isAccountsOnly = !canProcurement && canAccessDepartment(user, 'Accounts');
+  if (!canProcurement && !isAccountsOnly) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const actionDenied = isAccountsOnly
+    ? await requireAction(user, 'Accounts', 'accounts.vendor_bill.payment.write')
+    : await requireAction(user, 'Procurement', 'procurement.vendor_bill.payment.write');
   if (actionDenied) return actionDenied;
 
   const bill = await queryOne('SELECT * FROM vendor_bills WHERE id = ?', [params.id]);

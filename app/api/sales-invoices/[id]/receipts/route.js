@@ -6,7 +6,7 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne, queryAll, nextCounterValue } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment, isPM } from '@/lib/auth';
-import { requireCrmAction } from '@/lib/action-permissions';
+import { requireCrmAction, requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { financialYear } from '@/lib/gst-calc.mjs';
 import { customerReceiptLines } from '@/lib/ledger.mjs';
@@ -29,8 +29,11 @@ export async function GET(req, { params }) {
 
 export async function POST(req, { params }) {
   const user = await getFreshSessionUser();
-  if (!canAccessCrm(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  const actionDenied = await requireCrmAction(user, 'sales.invoice.receipt.write');
+  const isAccountsOnly = !canAccessCrm(user) && canAccessDepartment(user, 'Accounts');
+  if (!canAccessCrm(user) && !isAccountsOnly) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const actionDenied = isAccountsOnly
+    ? await requireAction(user, 'Accounts', 'accounts.invoice.receipt.write')
+    : await requireCrmAction(user, 'sales.invoice.receipt.write');
   if (actionDenied) return actionDenied;
 
   const invoice = await queryOne('SELECT * FROM sales_invoices WHERE id = ?', [params.id]);
