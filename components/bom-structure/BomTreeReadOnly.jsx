@@ -9,7 +9,7 @@ import { useState } from 'react';
 import { Card, CardHeader, CardTitle, CardDescription, CardAction, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ChevronRightIcon, ChevronDownIcon, PackageIcon, ListTreeIcon, ScaleIcon, AlertTriangleIcon, SearchIcon } from 'lucide-react';
+import { ChevronRightIcon, ChevronDownIcon, PackageIcon, ListTreeIcon, ScaleIcon, AlertTriangleIcon, SearchIcon, DownloadIcon } from 'lucide-react';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { Input } from '@/components/ui/input';
 import { groupByParent, expandedIdsForSearch, itemMatchAncestorIds } from '@/lib/bom-tree.mjs';
@@ -208,6 +208,12 @@ export default function BomTreeReadOnly({ assemblies, unassignedItems, project }
         <CardAction className="flex items-center gap-2">
           <Button size="sm" variant="outline" onClick={expandAll}>Expand all</Button>
           <Button size="sm" variant="outline" onClick={collapseAll}>Collapse all</Button>
+          {project && (
+            <a href={`/api/projects/${project.id}/bom-tree/pdf`} target="_blank" rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
+              <DownloadIcon className="size-4" />PDF
+            </a>
+          )}
         </CardAction>
       </CardHeader>
       <CardContent className="flex flex-col gap-2">
