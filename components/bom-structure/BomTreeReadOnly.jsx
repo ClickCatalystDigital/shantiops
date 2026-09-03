@@ -16,7 +16,7 @@ import {
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { Input } from '@/components/ui/input';
 import { api, showToast } from '@/lib/client';
-import { groupByParent, expandedIdsForSearch, itemMatchAncestorIds, matchingItemIds } from '@/lib/bom-tree.mjs';
+import { groupByParent, expandedIdsForSearch, itemMatchAncestorIds, matchingItemIds, matchingNodeNameIds } from '@/lib/bom-tree.mjs';
 import { hasAmbiguousQty } from '@/lib/bom-structure.mjs';
 import { TreeRail } from './BomTreeNode';
 
@@ -65,12 +65,13 @@ function ItemRow({ item, node, ancestorLines, isLast, highlighted, isFirstMatch 
   );
 }
 
-function AssemblyRow({ node, depth, childrenByParent, collapsedIds, toggleCollapsed, itemsHiddenIds, toggleItems, ancestorLines, isLastSibling, matchedItemIds, firstMatchId }) {
+function AssemblyRow({ node, depth, childrenByParent, collapsedIds, toggleCollapsed, itemsHiddenIds, toggleItems, ancestorLines, isLastSibling, matchedItemIds, firstMatchId, nodeNameMatchIds }) {
   const children = childrenByParent.get(node.id) || [];
   const items = node.items || [];
   const childrenShown = !collapsedIds.has(node.id) && children.length > 0;
   const itemsShown = !itemsHiddenIds.has(node.id) && items.length > 0;
   const hasToggle = children.length > 0 || items.length > 0;
+  const nameMatched = nodeNameMatchIds?.has(node.id);
 
   // Items render before sub-assemblies — "what this node itself contains" first, "what's nested
   // deeper" after. A single combined slot list is what lets the rail lines below this row know
@@ -85,7 +86,10 @@ function AssemblyRow({ node, depth, childrenByParent, collapsedIds, toggleCollap
 
   return (
     <div>
-      <div className="group flex items-center gap-0 rounded-md py-1.5 pr-1 pl-1 text-sm">
+      <div
+        data-bom-search-hit={firstMatchId === node.id || undefined}
+        className={`group flex items-center gap-0 rounded-md py-1.5 pr-1 pl-1 text-sm ${nameMatched ? 'bg-warning/15' : ''}`}
+      >
         {ancestorLines.map((hasLine, i) => <TreeRail key={i} vertical={hasLine} />)}
         {depth > 0 && <TreeRail vertical elbow half={isLastSibling} />}
         <button
@@ -136,7 +140,7 @@ function AssemblyRow({ node, depth, childrenByParent, collapsedIds, toggleCollap
             key={slot.c.id} node={slot.c} depth={depth + 1} childrenByParent={childrenByParent}
             collapsedIds={collapsedIds} toggleCollapsed={toggleCollapsed} itemsHiddenIds={itemsHiddenIds} toggleItems={toggleItems}
             ancestorLines={childAncestorLines} isLastSibling={isLast}
-            matchedItemIds={matchedItemIds} firstMatchId={firstMatchId}
+            matchedItemIds={matchedItemIds} firstMatchId={firstMatchId} nodeNameMatchIds={nodeNameMatchIds}
           />
         );
       })}
@@ -198,6 +202,7 @@ export default function BomTreeReadOnly({ assemblies, unassignedItems, project, 
   // get a highlight, and the first match gets a scrollIntoView (see the effect below), plus an
   // explicit "no matches" state when a real query finds nothing anywhere.
   const nameExpandIds = expandedIdsForSearch(query, displayAssemblies, byId);
+  const nodeNameMatchIds = matchingNodeNameIds(query, displayAssemblies);
   const { expandIds: itemExpandIds, matchingNodeIds, matchedItemIds } = itemMatchAncestorIds(query, displayAssemblies, byId);
   const unassignedMatchIds = matchingItemIds(query, displayUnassignedItems);
   const searchExpandIds = query.trim() ? new Set([...nameExpandIds, ...itemExpandIds]) : new Set();
@@ -209,9 +214,14 @@ export default function BomTreeReadOnly({ assemblies, unassignedItems, project, 
     : new Set([...itemsHiddenIds].filter(id => !matchingNodeIds.has(id)));
   const unassignedMatches = unassignedMatchIds.size > 0;
   const effectiveUnassignedShown = unassignedShown || unassignedMatches;
-  const firstMatchId = matchedItemIds.size > 0 ? [...matchedItemIds][0] : (unassignedMatchIds.size > 0 ? [...unassignedMatchIds][0] : null);
+  // Scroll priority: an item match (the thing most likely being searched for in a large BOM) wins
+  // over a node-name match, which wins over an unassigned-item match — arbitrary once more than one
+  // kind exists in the same search, but keeps the target deterministic.
+  const firstMatchId = matchedItemIds.size > 0 ? [...matchedItemIds][0]
+    : nodeNameMatchIds.size > 0 ? [...nodeNameMatchIds][0]
+    : (unassignedMatchIds.size > 0 ? [...unassignedMatchIds][0] : null);
   const hasQuery = query.trim().length > 0;
-  const noMatchesFound = hasQuery && matchedItemIds.size === 0 && !unassignedMatches && nameExpandIds.size === 0;
+  const noMatchesFound = hasQuery && matchedItemIds.size === 0 && !unassignedMatches && nodeNameMatchIds.size === 0;
 
   // Scroll the first matched item into view — the reveal itself is silent otherwise (deliberately,
   // per the comment above), which on an already-mostly-expanded tree can look like nothing happened.
@@ -316,7 +326,7 @@ export default function BomTreeReadOnly({ assemblies, unassignedItems, project, 
               key={root.id} node={root} depth={0} childrenByParent={childrenByParent}
               collapsedIds={effectiveCollapsedIds} toggleCollapsed={toggleCollapsed} itemsHiddenIds={effectiveItemsHiddenIds} toggleItems={toggleItems}
               ancestorLines={[]} isLastSibling={i === roots.length - 1}
-              matchedItemIds={matchedItemIds} firstMatchId={firstMatchId}
+              matchedItemIds={matchedItemIds} firstMatchId={firstMatchId} nodeNameMatchIds={nodeNameMatchIds}
             />
           ))
         )}
