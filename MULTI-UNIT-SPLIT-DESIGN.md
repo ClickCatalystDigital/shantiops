@@ -263,13 +263,14 @@ the master regardless of how many children have shipped, is an open commercial q
 "consistent identity" open question in §5, since this directly determines what an invoice/e-way bill
 shows as its project reference.
 
-## 5. Open questions — resolved (2026-09-04), except #7
+## 5. Open questions — all resolved (2026-09-04)
 
-Every question below except #7 has a **safe, conservative, backward-compatible default** derivable
-directly from an existing pattern already proven in this codebase — none require inventing anything
-genuinely novel or risky, so none were escalated back to the user. #7 (unit variants) is a real,
-separate design gap already tracked in `BOM-FOLLOWUP-NOTES.md` §1 and stays explicitly deferred, not
-silently solved. Each item below is marked **RESOLVED** (the decision + why it's safe) or
+Every question below has a **safe, conservative, backward-compatible default** derivable directly
+from an existing pattern already proven in this codebase — none require inventing anything
+genuinely novel or risky. #7 (unit variants) was the one deferred item after this section's first
+pass; it's since been resolved too (2026-09-04, confirmed directly with the user) — an operational
+convention (separate master project per variant), not new schema. Each item below is marked
+**RESOLVED** (the decision + why it's safe) or
 **DEFERRED** (explicitly out of v1, stated plainly). The original open-question text is kept
 underneath each for the record.
 
@@ -321,10 +322,26 @@ underneath each for the record.
    edited in place), so historical truth survives a later master-BOM edit regardless. No child-level
    BOM-revision-pinning mechanism is built in v1 (that would be real, separate versioning machinery
    beyond what's been asked for) — flagged here as a stated v1 simplification, not hidden.
-7. **Unit configuration/variant. → DEFERRED, explicitly out of v1 scope.** The architecture assumes
-   N *identical* units, matching the original ask. A real mixed-capacity order (30×500kg/hr +
-   20×1000kg/hr) is a genuine, separate design gap already tracked in `BOM-FOLLOWUP-NOTES.md` §1 —
-   not solved here, not silently assumed away either.
+7. **Unit configuration/variant. → RESOLVED (2026-09-04): operational convention, no new schema.**
+   The architecture still assumes N *identical* units per master, matching the original ask — but a
+   real mixed-capacity order (e.g. 30×500kg/hr + 20×1000kg/hr) doesn't need one project to represent
+   it. Raise each variant as its **own separate multi-unit master project** (own `project_no`, own
+   BOM, own Release/Split — every one of Phase 1-10's existing machinery applies unchanged to each),
+   linked by the same `customer_id` and, optionally, the same or separate `sale_order_id`. Zero new
+   BOM/quantity code, zero new UI — this already works today.
+
+   Considered and rejected: real per-unit-subset BOM scoping (a subtree flagged "applies to units
+   1-30 only") — genuinely new schema (a per-child override/exclusion table), a new UI to define the
+   scoping, and changes to the per-child derived BOM view and quantity rollups. Bigger and riskier
+   than the ask justified for a lean pass; the separate-master-projects convention already covers
+   the real case with what's already built.
+
+   The one real, cheap risk from this convention — two masters sharing one `sale_order_id` fanning
+   out duplicate rows in the Sale Orders list and `getSalesFlowCounts()`'s "projects" tile, since
+   neither query previously guarded against more than one project per Sale Order — is fixed
+   (`lib/data.js`'s `getSaleOrders()`/`getSalesFlowCounts()`), live-verified with a real fan-out
+   scenario: the naive pre-fix join produced 2 duplicate rows for one Sale Order, both fixed queries
+   correctly collapse to 1.
 8. **Split atomicity/idempotency. → Confirmed hard requirement, implemented in Phase 2.** One
    transaction, no partial-children state on any failure; refuses to re-split a master that already
    has children (satisfies both this and #5 together).

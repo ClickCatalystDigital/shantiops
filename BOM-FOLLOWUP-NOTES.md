@@ -12,9 +12,15 @@ for a different capacity). Needs its own design pass: where does capacity live (
 `bom_assemblies`? on `projects`? something else), and does it ever drive anything automatically, or
 is it purely informational/labeling for now.
 
-**Now owned by `MULTI-UNIT-SPLIT-DESIGN.md` §5, open question 7** — a real order can mix capacities
-under one commercial order (30×500kg/hr + 20×1000kg/hr), and the multi-unit split design hits this
-exact wall for any non-uniform order. Resolve there, not as a standalone item.
+**The order-level question is resolved — `MULTI-UNIT-SPLIT-DESIGN.md` §5, open question 7,
+2026-09-04**: a mixed-capacity commercial order (30×500kg/hr + 20×1000kg/hr) is raised as separate
+multi-unit master projects, one per variant, each with its own BOM. Zero new schema.
+
+**Still genuinely open, narrower than the order-level question above**: Structure Templates itself
+still inserts frozen specs verbatim regardless of which capacity variant you're applying it to — the
+order-level convention doesn't parametrize a template's own numbers. Whether that's worth solving
+(and where capacity would live — `bom_assemblies`? `projects`? something else) is unchanged from the
+original question and stays open, not silently resolved by the order-level fix above.
 
 ## 2. A BOM-wide quantity multiplier for multi-unit projects — DONE (implemented and live-verified, uncommitted)
 
