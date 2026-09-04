@@ -115,7 +115,7 @@ export default async function Executive() {
   const user = await getFreshSessionUser();
   if (!isManager(user)) redirect(roleHome(user));
 
-  const [{ kpi, delayedBy, topRisks, forecast }, projects, snapshot, pipeline, procurementCounts, workforce, dependencyHealth] = await Promise.all([
+  const [{ kpi, delayedBy, topRisks, forecast }, allProjects, snapshot, pipeline, procurementCounts, workforce, dependencyHealth] = await Promise.all([
     getExecutiveSummary(),
     getProjectsWithStatus(),
     getErpSnapshot(),
@@ -124,6 +124,10 @@ export default async function Executive() {
     getWorkforceCounts(todayISO()),
     getDependencyHealthSummary(),
   ]);
+  // Multi-unit split — same filter as getExecutiveSummary()'s own internal one: the portfolio
+  // timeline shows one entry per commercial order, never N+1 rows for a split master's real
+  // children.
+  const projects = allProjects.filter(p => !p.master_project_id);
   const deptRows = Object.entries(dependencyHealth.byDepartment).sort((a, b) => b[1] - a[1]);
   const deptMax = deptRows.reduce((a, [, n]) => Math.max(a, n), 0) || 1;
 
