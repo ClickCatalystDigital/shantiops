@@ -7223,6 +7223,142 @@ this same round). All disposable rows (project, BOM item, its auto-seeded milest
 deleted afterward via a single FK-ordered transaction; a final query confirmed zero `ZZ-`-prefixed
 projects anywhere and zero residue. `npm run lint` clean throughout both rounds.
 
+## 5bg. Multi-unit split: a live prod regression fixed, plus the 7 deferred v1 items closed out (2026-09-04)
+
+Requested directly: plan and build everything still open from the multi-unit-split feature and the
+older, separate Calc/Drawings punch-list (`BOM-FOLLOWUP-NOTES.md` §3), quickly and leanly, then a
+dedicated gap-analysis/robustness pass — not a big-bang rebuild. Two Explore agents traced exact
+ground truth (schema, routes, existing precedent) for every item before any design was written; four
+real product decisions were confirmed directly with the user rather than assumed (recorded in
+`MULTI-UNIT-SPLIT-DESIGN.md`'s own updated open-questions section). Built as 8 phases (0 through G),
+each independently committed, lint-checked, and live-verified against real or disposable data before
+moving to the next — plus a dedicated Phase H review pass that found and fixed two further real
+bugs the phase-by-phase testing hadn't caught. Full plan file: the session's own plan-mode record,
+not duplicated here.
+
+**Phase 0 — urgent, found live, mid-plan, directly by the user: "why do I see 50 variants in
+Design?"** `getActiveProjectsList()` (`lib/data.js`) — the shared "pick a project" query behind 7
+real screens: Calc Sheets, Engineering, Requests/BOM workspace, Stores, Installation, QC, and
+project creation — had a bare `WHERE status = 'active'` with zero awareness of `master_project_id`.
+Every child project is correctly `status='active'` (children are real active projects), so the
+moment SB-1109-01-50 was split into 50 children, all 50 started appearing in every one of those
+master-only pickers alongside the master. The original 10-phase split build had only ever checked
+the Projects list (`groupProjectsByMaster()`) and the Executive dashboard
+(`.filter(p => !p.master_project_id)`) for this — this shared function was never audited. A second,
+separate instance of the identical bug: `getDesignWork()` (Design's own Operations-tab table) had
+the same bare filter. Fixed: `getActiveProjectsList({includeChildren = false})` now defaults to
+master-only, with `app/qc/page.js` the one deliberate exception (real QC documents are created per
+child, so QC's own picker needs children visible — it already layers its own further
+`getReceivedProjectIds()` scoping on top). `getDesignWork()` filtered the same way, no opt-out —
+every caller of Design's Operations table wants master-only. Confirmed by direct DB check that
+Procurement/Stores were never actually affected (children structurally have zero `bom_items` rows,
+matching the confirmed architecture) and that `getDispatchWork()` is correctly left untouched
+(Dispatch legitimately wants one row per child — packing lists are per-unit by design). Live-verified
+in the browser: Calc Sheets and Engineering's pickers both dropped from 52 rows to exactly the 2 real
+masters (SB-1040, SB-1109-01-50); a direct query confirmed `includeChildren=true` still returns all
+50 for QC specifically.
+
+**Phase A — drawing comment threads: Head-only on a customer-visible thread.** Any Design/
+Engineering department member could previously read/post directly into a thread the customer is
+in, with no gate at the same authority tier the `customer_visible` toggle itself already carries.
+`app/api/calc-drawings/[id]/comments/route.js`'s `authorize()` now requires
+`hasActiveDesignResponsibility(user,'head')` for the internal side specifically when
+`drawing.customer_visible` is true — a non-customer-visible thread is completely untouched (plain
+department-wide access, as before).
+
+**Phase B — Designer "Submit for review" + notify the Head.** A Designer could already move a
+drawing to `under_review` via the status dropdown, but nothing notified the Head — the PATCH
+route's only side effect was an audit-log entry. New `notifyDepartmentHeads()` in `lib/notify.js` —
+a plain, unconditional Head-only fan-out, kept deliberately separate from `notifyDepartment`'s
+`actionKey` narrowing (§5j) since Design's own approve/review gates are deliberately kept out of the
+`action_permissions` table. A small "Submit for review" button now sits next to the status dropdown
+for the common not-started/in-progress case.
+
+**Phase C — customer-visibility toggle, switch-style polish.** Cosmetic parity only (research found
+the checkbox already had a real 2-line label, contrary to the original punch-list note) — swapped
+for the same `role="switch"` pill `QcDocumentEditor.jsx` already used, for visual consistency.
+
+**Phase D — Drawings gets its own top-level nav tab.** Was nested as a sidebar panel inside Calc
+Sheets, inheriting its page-level gate. New `/calc-drawings` route (two-step project-picker-then-
+project-page shape, mirroring `/calc`'s own precedent exactly), reusing `CalcWorkspace.jsx`'s
+existing `DrawingsPanel` component directly (now exported) rather than duplicating it — a thin
+client wrapper (`DrawingsProjectView.jsx`) supplies the `useRouter()` a server page can't. The now-
+redundant nested panel is removed from Calc Sheets' own sidebar (one door, not two); Calc Links (a
+calc sheet's own relationship to a drawing — a different, still project-*and*-sheet-scoped concept)
+stays exactly where it was. Live-verified: the new tab renders a real project's drawing checklist
+correctly; Calc Sheets' own sidebar no longer shows a redundant entry.
+
+**Phase E — post-split resize: add more units.** `app/api/projects/[id]/split/route.js` refused any
+POST once a master already had children — no way to grow an order after splitting (e.g. 50→55).
+Confirmed scope: "add units" only — cancelling a specific already-split child is explicitly out of
+scope (it would be the first-ever write to `projects.status` away from `'active'` anywhere in this
+app, too much blast radius for a lean pass). Extracted the child-creation loop into a shared helper;
+an explicit `{addUnits: N}` body on an already-split master bumps `unit_count`, starts numbering at
+the next unassigned `unit_no`, and reuses the same legacy-suffix-stripping numbering logic a fresh
+split already uses. A bare re-POST with no `addUnits` still 409s exactly as before. Known, accepted
+edge case, documented in a `ponytail:`-style comment rather than built around: growth crossing a
+pad-width digit boundary (99→100+) only widens the padding on *new* children, not existing ones —
+real orders seen this session top out at 50. UI: `SplitIntoUnitsButton.jsx` gained a small "+N"
+control next to the existing "N units created" badge. Live-verified end to end on a disposable test
+project: fresh split (2 children) → `addUnits:3` (3 more, `unit_count` 2→5, all 5 with correct full
+25-row milestone chains) → bare re-POST correctly 409s. Zero residue after cleanup.
+
+**Phase F — informational BOM-revision stamp on child records.** None of `job_cards`/
+`qc_documents`/`packing_lists` recorded which BOM revision the master was on when a batch-children
+action created them. Confirmed lean scope: informational only (a plain stamp + a later drift flag),
+not a full historical-snapshot freeze — no change to what any of the 3 batch routes actually reads.
+New nullable `bom_release_revision_at_creation` column on all three tables (`addColumn()`); each
+batch route stamps it from the already-fetched master's own `bom_release_revision` on INSERT.
+`getJobCardDetail`/`getQcDocumentDetail`/`getPackingDetail` compute a `masterBomRevision`/
+`bomRevisionDrift` comparison (only when the stamp is present), surfaced as a small muted label
+(amber when drifted) on each record's own detail view. Live-verified end to end: two real job cards
+created via the batch route correctly stamped rev 3 (the disposable test master's revision at
+creation); bumping the master to rev 4 and re-deriving the drift computation correctly flagged both
+as drifted. QC/Packing routes verified by careful diff re-review (identical, mechanically-applied
+column-count-matches-placeholder-count pattern) rather than a second full round-trip.
+
+**Phase G — mixed-capacity orders: an operational convention, not new schema.** Resolves the design
+doc's last open question. A real mixed-capacity order (e.g. 30×500kg/hr + 20×1000kg/hr) is raised as
+**separate multi-unit master projects, one per variant** — own `project_no`, own BOM, own Release/
+Split, every existing phase's machinery applies unchanged. Considered and rejected: a real per-unit-
+subset BOM-scoping mechanism (a subtree flagged "applies to units 1-30 only") — genuinely new schema,
+a new UI, and changes to the per-child derived BOM view and quantity rollups; bigger and riskier than
+a lean pass justified. One real, cheap defensive fix this convention needed: `getSaleOrders()` (the
+Sale Orders list) and `getSalesFlowCounts()`'s "projects" tile both did a bare
+`LEFT JOIN projects p ON p.sale_order_id = so.id` with no guard against more than one project per
+Sale Order — if two variant masters intentionally share one `sale_order_id`, this would fan out
+duplicate rows. Fixed with `GROUP BY so.id` + `MIN(p.id)` and a scalar `EXISTS` respectively.
+Live-verified with a real fan-out scenario (two disposable projects sharing one real
+`sale_order_id`): the naive pre-fix join produced 2 duplicate rows, both fixed queries correctly
+collapsed to 1.
+
+**Phase H — the dedicated gap-analysis pass, not a re-test of the happy path.** Re-read every diff
+from Phases 0–G with a critical eye rather than only re-confirming what live-testing had already
+shown. Found two further real bugs, both fixed:
+1. The customer-comment notification (fired when a customer posts on a `customer_visible` thread)
+   still fanned out to the whole Design department via `notifyDepartment` — but Phase A had just
+   made the internal side of that exact thread Head-only. A plain Designer would get chimed for a
+   comment they'd then 403 on clicking through. Narrowed to `notifyDepartmentHeads`.
+2. Phase B's "submitted for review" notification carried no `project_id` — the bell had nothing to
+   deep-link to. Fixed by threading `project_id` through the existing `currentStatus` lookup.
+
+Also, a UX dead-end found in the same pass: the Comments section still showed a "Show comments"
+button to a non-Head user on a customer-visible thread, which would always 403 on click (handled
+gracefully via a toast, but a pointless interaction) — now shows a plain explanatory note instead.
+
+`hasActiveDesignResponsibility`'s Head-gate itself (the mechanism both Phase A and the pre-existing
+approve/reject gate on the same route family both depend on) was verified by direct code and data
+inspection rather than a fresh login round-trip — confirmed the real Design-department accounts
+(`ravi`/`vijay`, `department_roles.Design = 'designer'`) and Head accounts (`design_head`/
+`jaganmohan`, `= 'head'`) are shaped exactly as the function's own SQL expects, deliberately without
+resetting a real employee's password just to prove it live.
+
+`npm run lint` clean after every phase (818 JavaScript files by the end). A standalone
+`npm run build` was deliberately skipped this round — this codebase's own documented risk of
+corrupting the live dev server's `.next` folder when a build runs against the same tree a `next dev`
+process is actively serving (§20) — in favor of continuous verification against the real running
+dev server instead, the same discipline every phase's own live-testing already followed.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own
