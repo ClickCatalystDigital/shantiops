@@ -357,8 +357,46 @@ Dispatch data starts accumulating on it.
 
 ---
 
-**Not in scope for this document**: no schema migration, no new API routes, no UI were built as part
-of writing this. This is a review-before-building document. The actual implementation is separate,
-later work — likely itself split into several dated build rounds (the same way Work Orders §5g,
-Multi-Level BOM §5o, and the NCR workflow §5ao each shipped in phases) — once this design is
-reviewed and the open questions in §5 are answered.
+---
+
+## As-built status (2026-09-04)
+
+Phases 1–4 and part of 5, 8, and 9 are now built and live-verified. Full detail in commit history
+(`3f070fa`..`8175b9b` and later); summary:
+
+- **Phase 1 (schema)**, **2 (split action)**, **3 (child BOM visibility)** — done. Split is atomic/
+  idempotent, proven live with a forced mid-split collision leaving zero partial children.
+- **Phase 4 (Stores partial receipt + allocation)** — done. All 29 `purchase_status` consumers
+  audited before the receive route changed; `bom_item_receipts` now supports genuine partial
+  deliveries without prematurely flipping `purchase_status` or firing the QC incoming-inspection
+  auto-trigger early; `bom_item_child_allocations` is the optional link to specific children,
+  bounded by available (received − allocated), never by required quantity.
+- **Projects list rollup** (a direct follow-up ask, not in the original phase numbering) — a split
+  master shows "N of M units done" and expands inline into its real children, instead of cluttering
+  the list with N+1 top-level rows. `groupProjectsByMaster()` is additive; `getProjectsWithStatus()`
+  itself (Executive, etc.) is untouched.
+- **Phase 5 (Production), started** — confirmed structurally that `job_cards`/`qc_documents`/
+  `packing_lists` creation routes have zero project-type assumptions (grepped, zero
+  `master_project_id`/child-awareness anywhere) — a child project already works with every existing
+  Production/QC/Dispatch screen unmodified, since it's an ordinary `projects` row. The one genuinely
+  new piece — a **batch action** (pick several children + one milestone_key, get one job card per
+  child, each its own record) — is built and live-verified for Production
+  (`POST /api/job-cards/batch-children`): a real 3-unit batch created 3 job cards with 3 distinct
+  `project_id`/`milestone_id` pairs. **QC and Dispatch's own batch routes are not yet built** — the
+  identical pattern (resolve each child's own analogous entity, insert one record per child, loop)
+  applies directly; this is a fast, mechanical follow-up once needed, deliberately not duplicated
+  three times without a concrete driving case.
+- **Phase 8 (status/reporting), partial** — done for the Projects list (above). Executive's own
+  dashboard still shows every project flat; extending it to the same rollup is the same
+  `groupProjectsByMaster()` call, not yet wired in there.
+- **Phase 9 (customer-facing identity), confirmed safe by construction, no new code needed** — the
+  split action never touches `users.project_ids`, and `canAccessProject()` (the only gate a customer
+  ever passes through) checks exactly that field — so a customer can never see or reach a child
+  project, even by guessing its URL. Verified by reading both code paths directly, not assumed.
+- **Not started**: Phase 6 (QC batch route), Phase 7 (Dispatch batch route), Phase 8's Executive-
+  dashboard rollup, Phase 10 (a dedicated full regression pass beyond what each phase already
+  verified individually).
+
+Every phase above was live-verified against the real dev DB with disposable test data, cleaned up
+to zero residue afterward, and is lint-clean. No existing single-project workflow has regressed at
+any point.
