@@ -40,11 +40,16 @@ export default function ReceiveBomItemDialog({ item, onDone }) {
     if (!receiptId) return showToast('Choose or create a receipt', 'error');
     setBusy(true);
     try {
-      await api(`/api/bom-items/${item.id}/receive`, {
+      // Multi-unit split, Phase 4 — this call may only be a PARTIAL receipt now (the line only
+      // flips to Received once cumulative received qty meets what's required); the server tells us
+      // which happened via fully_received, so the toast never overclaims completion.
+      const res = await api(`/api/bom-items/${item.id}/receive`, {
         method: 'POST',
         body: { qty_text: qtyText, receipt: { existing_receipt_id: receiptId }, ...receivedFields },
       });
-      showToast('Marked Received');
+      showToast(res.fully_received
+        ? 'Marked Received'
+        : `Partial receipt recorded — ${res.received_so_far}${res.required_qty ? ` of ${res.required_qty}` : ''} received so far`);
       setOpen(false);
       router.refresh();
       onDone?.();
@@ -75,8 +80,12 @@ export default function ReceiveBomItemDialog({ item, onDone }) {
                   onChange={e => setReceivedFields(prev => ({ ...prev, [field]: e.target.value }))} />
               </div>
             ))}
+            <p className="text-xs text-muted-foreground">
+              Enter what actually arrived — if it's less than the full required quantity, this is
+              recorded as a partial receipt and the line stays open for the rest.
+            </p>
             <DialogFooter>
-              <Button type="submit" disabled={busy}>{busy ? 'Receiving…' : 'Mark Received'}</Button>
+              <Button type="submit" disabled={busy}>{busy ? 'Recording…' : 'Submit Receipt'}</Button>
             </DialogFooter>
           </form>
         </DialogContent>
