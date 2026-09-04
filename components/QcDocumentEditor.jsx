@@ -1004,6 +1004,11 @@ export default function QcDocumentEditor({ project, document, parts, certificate
         <h1 className="text-xl font-bold tracking-tight">{document.doc_id}</h1>
         <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">Draft</span>
         <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">{document.company}</span>
+        {document.bom_release_revision_at_creation != null && (
+          <span className={`text-xs ${document.bomRevisionDrift ? 'text-warning' : 'text-muted-foreground'}`}>
+            BOM rev {document.bom_release_revision_at_creation}{document.bomRevisionDrift && ` — master now on rev ${document.masterBomRevision}`}
+          </span>
+        )}
         <div className="ml-auto flex items-center gap-2">
           {parts.length === 0 ? (
             <span className="text-xs text-warning">No parts on this document yet</span>

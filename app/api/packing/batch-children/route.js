@@ -32,7 +32,7 @@ export async function POST(req) {
   if (!masterId) return NextResponse.json({ error: 'master_project_id is required' }, { status: 400 });
   if (!childIds.length) return NextResponse.json({ error: 'Pick at least one unit' }, { status: 400 });
 
-  const master = await queryOne('SELECT id, customer_name FROM projects WHERE id = ?', [masterId]);
+  const master = await queryOne('SELECT id, customer_name, bom_release_revision FROM projects WHERE id = ?', [masterId]);
   if (!master) return NextResponse.json({ error: 'Master project not found' }, { status: 404 });
 
   const placeholders = childIds.map(() => '?').join(',');
@@ -66,8 +66,8 @@ export async function POST(req) {
 
     const packing_no = await nextNumber('packing_no', 'PL');
     const pl = await execute(
-      'INSERT INTO packing_lists (project_id, packing_no, customer_name, created_by) VALUES (?, ?, ?, ?)',
-      [child.id, packing_no, master.customer_name, user?.username || null]);
+      'INSERT INTO packing_lists (project_id, packing_no, customer_name, created_by, bom_release_revision_at_creation) VALUES (?, ?, ?, ?, ?)',
+      [child.id, packing_no, master.customer_name, user?.username || null, master.bom_release_revision ?? null]);
     const listId = Number(pl.lastId);
 
     let s = 1;

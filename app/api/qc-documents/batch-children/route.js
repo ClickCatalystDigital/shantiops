@@ -46,7 +46,7 @@ export async function POST(req) {
     if (!String(b[f.key] || '').trim()) return NextResponse.json({ error: `${f.label} is required` }, { status: 400 });
   }
 
-  const master = await queryOne('SELECT id, company, series FROM projects WHERE id = ?', [masterId]);
+  const master = await queryOne('SELECT id, company, series, bom_release_revision FROM projects WHERE id = ?', [masterId]);
   if (!master) return NextResponse.json({ error: 'Master project not found' }, { status: 404 });
 
   const placeholders = childIds.map(() => '?').join(',');
@@ -67,12 +67,12 @@ export async function POST(req) {
       const values = { ...b, company, makers_no: `${makersNoPrefix}-${suffix}`, doc_id: `${docIdPrefix}-${suffix}` };
       const series = child.series || master.series || 'SF';
       const res = await tx.execute({
-        sql: `INSERT INTO qc_documents (project_id, series, ${HEADER_FIELDS.join(', ')}, created_by)
-              VALUES (?, ?, ${HEADER_FIELDS.map(() => '?').join(', ')}, ?)`,
+        sql: `INSERT INTO qc_documents (project_id, series, ${HEADER_FIELDS.join(', ')}, created_by, bom_release_revision_at_creation)
+              VALUES (?, ?, ${HEADER_FIELDS.map(() => '?').join(', ')}, ?, ?)`,
         args: [child.id, series, ...HEADER_FIELDS.map(f => {
           const v = values[f];
           return typeof v === 'string' ? (v.trim() || null) : (v ?? null);
-        }), user.username],
+        }), user.username, master.bom_release_revision ?? null],
       });
       const documentId = Number(res.lastInsertRowid);
       // Read the master's own BOM (per-unit qty_text, correct as-is — see file header), write parts

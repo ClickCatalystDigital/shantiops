@@ -207,6 +207,12 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
         <div>
           <h1 className="text-2xl font-bold tracking-tight tnum">{list.packing_no}</h1>
           <p className="text-sm text-muted-foreground">{list.customer_name}{list.invoice_no ? ` · Invoice ${list.invoice_no}` : ''}</p>
+          {list.bom_release_revision_at_creation != null && (
+            <p className="text-xs text-muted-foreground">
+              BOM rev {list.bom_release_revision_at_creation}
+              {list.bomRevisionDrift && <span className="text-warning"> — master's BOM has since moved to rev {list.masterBomRevision}</span>}
+            </p>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {!readOnly && (

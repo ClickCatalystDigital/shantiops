@@ -380,6 +380,12 @@ function JobCardDetailSheet({ id, onClose, router, workers }) {
               {detail.project_no ? `${detail.project_no} · ${detail.customer_name}` : (detail.wo_product_description || 'Stock')}
               {detail.wo_no ? ` · WO ${detail.wo_no}` : ''}
               {detail.workstation_name ? ` · ${detail.workstation_name}` : ''}
+              {detail.bom_release_revision_at_creation != null && (
+                <span className={detail.bomRevisionDrift ? 'text-warning' : ''}>
+                  {' · BOM rev '}{detail.bom_release_revision_at_creation}
+                  {detail.bomRevisionDrift && ` (master now on rev ${detail.masterBomRevision})`}
+                </span>
+              )}
             </p>
             <RelatedItemsCard type="job_card" id={detail.id} className="flex flex-col gap-1.5 -mt-2" />
 

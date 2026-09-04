@@ -6,7 +6,7 @@
 // individually-attributable job_cards rows — never one merged record. Reuses the exact insert shape
 // POST /api/job-cards already uses, just looped once per resolved child milestone.
 import { NextResponse } from 'next/server';
-import { execute, queryAll, nextNumber } from '@/lib/db';
+import { execute, queryOne, queryAll, nextNumber } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
@@ -33,20 +33,27 @@ export async function POST(req) {
     return NextResponse.json({ error: 'No matching Production milestone found on the selected units' }, { status: 404 });
   }
 
+  // Phase F — informational BOM-revision stamp. Every child shares one master, so one lookup covers
+  // the whole batch.
+  const master = await queryOne(
+    `SELECT m.bom_release_revision FROM projects c JOIN projects m ON m.id = c.master_project_id WHERE c.id = ? LIMIT 1`,
+    [milestones[0].project_id]);
+  const revision = master?.bom_release_revision ?? null;
+
   const created = [];
   for (const m of milestones) {
     const jcNo = await nextNumber('jc_no', 'JC');
     const { lastId } = await execute(
       `INSERT INTO job_cards
          (project_id, milestone_id, section, bom_item_id, operation_id, workstation_id, qty_planned,
-          planned_start, planned_end, is_site, notes, created_by, jc_no)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          planned_start, planned_end, is_site, notes, created_by, jc_no, bom_release_revision_at_creation)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         m.project_id, m.id, m.milestone_label,
         b.bom_item_id ? Number(b.bom_item_id) : null, b.operation_id ? Number(b.operation_id) : null,
         b.workstation_id ? Number(b.workstation_id) : null, Number(b.qty_planned) || 0,
         b.planned_start || null, b.planned_end || null, b.is_site ? 1 : 0,
-        String(b.notes || '').trim() || null, user.username, jcNo,
+        String(b.notes || '').trim() || null, user.username, jcNo, revision,
       ]);
     created.push({ child_project_id: m.project_id, id: Number(lastId), jc_no: jcNo });
   }
