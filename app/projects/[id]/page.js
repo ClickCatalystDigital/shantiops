@@ -14,6 +14,7 @@ import ProjectDepartmentTabs from '@/components/ProjectDepartmentTabs';
 import { DepartmentPills, DepartmentProgress } from '@/components/DepartmentStatus';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import ChildUnitBomCard from '@/components/ChildUnitBomCard';
+import AllocationPanel from '@/components/AllocationPanel';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,7 +24,7 @@ export default async function ProjectDetail({ params }) {
 
   const data = await getProjectDetail(params.id);
   if (!data) notFound();
-  const { project, milestones, health, blocker } = data;
+  const { project, milestones, health, blocker, hasChildren } = data;
   const { bom, pending, imports } = await getProjectBom(params.id);
   const bomAssemblies = await getBomAssembliesFlat(params.id); // STERP item 16, §5o — assign-to-assembly picker
   const packingLists = await getProjectPackingLists(params.id);
@@ -114,11 +115,13 @@ export default async function ProjectDetail({ params }) {
         </Card>
       </div>
 
-      {/* Multi-unit BOM split, Phase 3 — only a child project (master_project_id set) shows this;
-          every ordinary project is completely unaffected. */}
+      {/* Multi-unit BOM split, Phase 3/4 — only a child project (master_project_id set) or a master
+          that's actually been split (hasChildren) shows either of these; every ordinary project is
+          completely unaffected. */}
       {project.master_project_id && (
         <ChildUnitBomCard projectId={project.id} unitNo={project.unit_no} />
       )}
+      {hasChildren && <AllocationPanel projectId={project.id} />}
 
       {pm ? (
         // PM/admin: the all-departments tabbed card.
