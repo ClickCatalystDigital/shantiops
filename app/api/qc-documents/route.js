@@ -34,10 +34,17 @@ export async function POST(req) {
   // SF stays the fallback for legacy/unset projects — not a behavior change for existing users.
   const series = project.series || 'SF';
 
-  // The UI gate (lib/qc-document-fields.js's `required`) is never the real enforcement — mirrored
-  // here against the same list, same shape as the doc_id-only check this replaced.
-  for (const f of CORE_FIELDS) {
-    if (!String(b[f.key] || '').trim()) return NextResponse.json({ error: `${f.label} is required` }, { status: 400 });
+  // Only the true identity fields are hard-required to create the row — every other CORE_FIELD
+  // (design/hydro/working pressure, dimensions, etc.) can be left blank and filled in later, per a
+  // direct product decision: the engineering data for a real boiler often isn't known yet at
+  // document-creation time. lib/qc-document-fields.js's `required` flag is unchanged and still
+  // drives the UI's asterisks/prompt — this only relaxes the server-side block, not the "this
+  // should eventually be filled in" signal.
+  for (const key of ['company', 'makers_no', 'doc_id']) {
+    if (!String(b[key] || '').trim()) {
+      const label = CORE_FIELDS.find(f => f.key === key)?.label || key;
+      return NextResponse.json({ error: `${label} is required` }, { status: 400 });
+    }
   }
 
   const values = HEADER_FIELDS.map(f => {

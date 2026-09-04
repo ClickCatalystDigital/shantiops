@@ -74,7 +74,11 @@ function NewDocumentSheet({ open, onOpenChange, projectId, projectSeries, router
   }
 
   async function submit() {
-    const missing = CORE_FIELDS.find(f => !String(form[f.key] || '').trim());
+    // Matches the server's own relaxed requirement (app/api/qc-documents/route.js) — only the
+    // identity fields block creation now; every other CORE_FIELD can be filled in later.
+    const missing = ['company', 'makers_no', 'doc_id']
+      .map(key => CORE_FIELDS.find(f => f.key === key))
+      .find(f => f && !String(form[f.key] || '').trim());
     if (missing) return showToast(`${missing.label} is required`, 'error');
     setBusy(true);
     try {

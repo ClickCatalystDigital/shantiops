@@ -41,10 +41,10 @@ export async function POST(req) {
   if (!makersNoPrefix || !docIdPrefix) {
     return NextResponse.json({ error: "Maker's No. prefix and Document ID prefix are both required" }, { status: 400 });
   }
-  for (const f of CORE_FIELDS) {
-    if (f.key === 'makers_no' || f.key === 'doc_id') continue;
-    if (!String(b[f.key] || '').trim()) return NextResponse.json({ error: `${f.label} is required` }, { status: 400 });
-  }
+  // Only the identity fields (makers/doc-id prefixes above, company below) are hard-required —
+  // every other CORE_FIELD (design/hydro/working pressure, dimensions, etc.) can be left blank and
+  // filled in later, same relaxation as the single-document creation route and for the same reason:
+  // the real engineering data for a real boiler often isn't known yet at creation time.
 
   const master = await queryOne('SELECT id, company, series, bom_release_revision FROM projects WHERE id = ?', [masterId]);
   if (!master) return NextResponse.json({ error: 'Master project not found' }, { status: 404 });
