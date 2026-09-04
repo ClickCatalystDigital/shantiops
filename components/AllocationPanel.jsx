@@ -13,7 +13,55 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+
+// Bundle allocation — pick N children in one action, one qty auto-split 1-per-child off the line's
+// own per-unit requirement (server-computed, never hand-typed). Same checkbox idiom as
+// DispatchBatchPackingPanel's own batch action.
+function BundleAllocate({ line, children, onDone }) {
+  const [selected, setSelected] = useState(new Set());
+  const [busy, setBusy] = useState(false);
+
+  function toggle(id) {
+    setSelected(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
+  }
+
+  const perUnit = line.per_unit_qty ?? 1;
+  const fits = line.available >= perUnit * selected.size;
+
+  async function submit() {
+    if (!selected.size) return showToast('Pick at least one unit', 'error');
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/bom-items/${line.id}/allocate`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ child_project_ids: [...selected] }),
+      }).then(r => r.json().then(j => ({ ok: r.ok, ...j })));
+      if (!res.ok) throw new Error(res.error || 'Failed to allocate');
+      showToast(`Allocated 1 unit's worth (${res.per_unit_qty}) to ${res.created} unit(s) — ${res.available_after} left available`);
+      setSelected(new Set());
+      onDone?.();
+    } catch (err) { showToast(err.message, 'error'); }
+    setBusy(false);
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex flex-wrap gap-2">
+        {children.map(c => (
+          <label key={c.id} className="flex items-center gap-1 text-xs">
+            <Checkbox checked={selected.has(c.id)} onCheckedChange={() => toggle(c.id)} />
+            {c.project_no}
+          </label>
+        ))}
+      </div>
+      <Button size="sm" variant="outline" className="h-7 w-fit text-xs" disabled={busy || !selected.size || !fits} onClick={submit}>
+        {busy ? '…' : `Allocate 1 unit's worth to ${selected.size || 'N'}`}
+      </Button>
+    </div>
+  );
+}
 
 function AllocateRow({ line, children, onDone }) {
   const [childId, setChildId] = useState('');
@@ -39,17 +87,20 @@ function AllocateRow({ line, children, onDone }) {
 
   if (line.available <= 0) return null;
   return (
-    <div className="flex items-center gap-2">
-      <Select value={childId} onValueChange={setChildId}>
-        <SelectTrigger className="h-8 w-32 text-xs"><SelectValue placeholder="Unit…" /></SelectTrigger>
-        <SelectContent>
-          {children.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.project_no}</SelectItem>)}
-        </SelectContent>
-      </Select>
-      <Input className="h-8 w-20 text-xs" placeholder="Qty" value={qty} onChange={e => setQty(e.target.value)} />
-      <Button size="sm" variant="outline" className="h-8 text-xs" disabled={busy} onClick={submit}>
-        {busy ? '…' : 'Allocate'}
-      </Button>
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-2">
+        <Select value={childId} onValueChange={setChildId}>
+          <SelectTrigger className="h-8 w-32 text-xs"><SelectValue placeholder="Unit…" /></SelectTrigger>
+          <SelectContent>
+            {children.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.project_no}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Input className="h-8 w-20 text-xs" placeholder="Qty" value={qty} onChange={e => setQty(e.target.value)} />
+        <Button size="sm" variant="outline" className="h-8 text-xs" disabled={busy} onClick={submit}>
+          {busy ? '…' : 'Allocate'}
+        </Button>
+      </div>
+      {children.length > 1 && <BundleAllocate line={line} children={children} onDone={onDone} />}
     </div>
   );
 }

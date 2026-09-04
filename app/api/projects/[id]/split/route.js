@@ -14,7 +14,7 @@
 // the design doc's open question #5 and the plan that shipped this phase.
 import { NextResponse } from 'next/server';
 import { queryOne, queryAll, withTransaction, createProjectMilestones } from '@/lib/db';
-import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
+import { getFreshSessionUser, canAccessDepartment, isInternal } from '@/lib/auth';
 import { notifyDepartment } from '@/lib/notify';
 import { audit } from '@/lib/usb';
 
@@ -24,9 +24,14 @@ function canSplit(user) {
 
 // Status check for the split UI — whether this project can be split, already has children, or is
 // itself a child (can never be split). Mirrors release-bom/route.js's GET shape.
+//
+// Read-only, so gated broader than the POST split action itself (canSplit, Design/Engineering only):
+// every batch-children panel (Production/QC/Dispatch/Stores) fetches THIS route to learn its own
+// project's children — canSplit-gating the GET silently 403'd every one of those panels for any
+// non-Design/Engineering/PM head, so they never rendered at all. isInternal is the real requirement.
 export async function GET(req, { params }) {
   const user = await getFreshSessionUser();
-  if (!canSplit(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const project = await queryOne(
     'SELECT id, project_no, unit_count, master_project_id, bom_release_revision FROM projects WHERE id = ?', [params.id]);
   if (!project) return NextResponse.json({ error: 'Not found' }, { status: 404 });

@@ -159,7 +159,7 @@ Procurement, **Stores** (owns the BOM's GRN/receipt columns — also no mileston
 | `dispatch_head` | `dispatch_head123` | **Functional Head** (`operator`) | Dispatch department only (demo). |
 | `installation_head` | `installation_head123` | **Functional Head** (`operator`) | Installation department only (demo). |
 | `asian_brown` | `asian_brown123` | Customer | One order (SB-1018), read-only, business language. |
-| `hkm_charitable` | `hkm_charitable123` | Customer | Three orders (SB-1103/04/05) — lands on **My Orders** (`/portal`), one card per project. |
+| `hkm_charitable` | `hkm_charitable123` | Customer | **The real HKM CHARITABLE FOUNDATION account (2026-09-04, §6).** One real order, `SB-1109-01-50` — a 50-unit split — lands on **My Orders** with one combined card for the whole order, not one per unit. (Superseded a stale demo-only description of "three orders SB-1103/04/05," which never existed as real project rows.) |
 | `virchow_biotech` | `virchow_biotech123` | Customer | One order (STF-IBR-052). |
 | *(agent)* | — | `agent` | Not a human login — a machine-scoped JWT issued when a device is registered. See §11. |
 
@@ -4882,7 +4882,8 @@ never *read* visibility across projects.
    Sales UI showed it as "not on the portal" despite a working login. Backfilled the one real link
    (customer #4 → user #9, `portal_enabled` left off — no consent to actually email a demo address).
    `hkm_charitable`/`virchow_biotech` predate the CRM `customers` table itself and have no customer
-   record to link to at all — flagged, not fabricated a record to force a fix.
+   record to link to at all — flagged, not fabricated a record to force a fix. (`hkm_charitable`'s
+   own gap closed for real 2026-09-04, once a real HKM customer record existed to link to — see §6.)
 7. **Missing sync**: a customer's `project_ids` was set once, at first portal-enable, and never
    again — a genuine second order would silently never appear in "My Orders". `POST /api/projects`
    now appends the new project id onto an existing linked portal login's `project_ids`, best-effort,
@@ -5082,9 +5083,11 @@ before any code was written), implemented, and live-verified this session.
 
 **Demo-data fixes** — two real, pre-existing bugs, not new work: `virchow_biotech` and
 `hkm_charitable` portal logins pointed at no project / an unrelated customer's project respectively
-— deactivated (`users.active = 0`) rather than fabricating projects for them. Two projects (SB-1032,
-SB-1039) had a NULL `customer_id` FK, matched only by free-text name — backfilled to the real
-customer id now that the match was confirmed. Both fixes are DB-only, no schema change.
+— deactivated (`users.active = 0`) rather than fabricating projects for them. (`hkm_charitable`
+reactivated for real once a real HKM customer/project existed to point it at — see §6, 2026-09-04.
+`virchow_biotech` is unaffected, still deactivated for the same original reason.) Two projects
+(SB-1032, SB-1039) had a NULL `customer_id` FK, matched only by free-text name — backfilled to the
+real customer id now that the match was confirmed. Both fixes are DB-only, no schema change.
 
 **Dual-department Reports nav fix** (`app/reports/page.js`, `components/Nav.jsx`) — a non-PM head
 granted 2+ report-bearing departments (a real but previously-latent case, zero live accounts hit it)
@@ -7358,6 +7361,244 @@ resetting a real employee's password just to prove it live.
 corrupting the live dev server's `.next` folder when a build runs against the same tree a `next dev`
 process is actively serving (§20) — in favor of continuous verification against the real running
 dev server instead, the same discipline every phase's own live-testing already followed.
+
+## 5bh. Real customer master imported, SB-1109-01-50 wired to a real Sale Order (2026-09-04)
+
+While setting up SB-1109-01-50 (HKM CHARITABLE FOUNDATION, the real 50-unit split order) for real
+QC document creation, found the `customers` table was **completely empty** — not missing just this
+one customer, zero rows in the whole live database (a real, previously-flagged-but-unresolved gap,
+§5al's own note that the original demo portal logins "predate the CRM customers table entirely").
+The user supplied the real STERP Party Master export (`lib/master-import.mjs`'s `parsePartyMaster()`
+— built for this exact template, never previously run against live data) — parsed cleanly, 332 real
+parties, 0 skipped. Imported for real via the existing (never-before-used) full-replace import path.
+
+Also found and fixed the underlying reason nothing showed up for a Design Head to convert on
+`/projects`: SB-1109-01-50 was created directly (bypassing Sales/CRM entirely) and had
+`customer_id`/`sale_order_id` both NULL. `app/api/projects/[id]/route.js` gained support for
+linking both to an already-existing project — the one genuinely missing capability, confirmed by
+checking `ConvertSaleOrderButton.jsx`'s own filter first (`!so.project_id && so.item_count > 0`,
+already correctly excludes an already-linked Sale Order from the convert picker — no risk of a
+duplicate project from this). New `PUT /api/sale-orders/[id]/items` (whole-list replace, recomputes
+subtotal/tax/total) closes the second missing piece — `sale_order_items` had only ever been written
+once, at Quotation→Convert time; a Sale Order created any other way had no way to ever gain real
+line items.
+
+Populated SO-22 with the real 7 line items from the client's own Order Acknowledgement/SoS PDF,
+matching it exactly (₹0 rates — the source document itself shows every amount as 0.00 — 18% IGST
+as stated), then linked SO-22 + the newly-imported HKM customer row to project 61. A real GST
+discrepancy was found doing this — see `ACCOUNTING-READINESS.md` §8 for the full record: both
+parties are registered in Telangana, so the app's own `gstSplit()` would compute this as
+intra-state (CGST+SGST), but the source document states IGST — flagged for whoever handles real
+GST filing on this order, not resolved here.
+
+Customer Portal login for HKM explicitly **not** touched in this pass, per direct instruction — no
+`portal_enabled` toggle, no call to the portal-enable route, the stale/deactivated `hkm_charitable`
+demo account left exactly as it was. Fixing it (it's deactivated and points at the wrong project,
+§5ao) is a deliberately separate, paused step. **Done later the same day — see §6, 2026-09-04**:
+reactivated, relinked to the real project 61, no email sent.
+
+## 5bi. Multi-unit split: Stores bundle allocation + Production/Dispatch routing (2026-09-04)
+
+`SB-1109-01-50` is real material arriving in bundles ("20 of 50 boiler feed pumps") with no way to
+say which units that covers or where it goes next. §5be/§5bg's own child allocation ledger
+(`bom_item_child_allocations`, §5k addendum) existed but was single-child-only and unread by
+anything except a display summary — Dispatch's own batch action
+(`POST /api/packing/batch-children`) applied the master's aggregate ready-to-pack list uniformly to
+every selected child, ignoring allocation entirely. Built per three confirmed product decisions:
+bundle allocation splits one auto-computed per-unit qty across N picked children in one action; a
+(child, line) is "ready" once the *sum* of everything ever allocated to it meets the per-unit
+requirement; Stores gets an **active**, forced Production-vs-Dispatch routing choice per (child,
+line) — never a passive default off `requires_manufacturing`. Explicit constraint honored
+throughout: wire into existing infra (`bom_item_child_allocations`, `itemRollupQty`, the
+already-shipped "pick N children, one action" batch-panel pattern) rather than a parallel system —
+the only genuinely new piece is the routing table itself, since routing had no prior home.
+
+- **`bom_item_child_routing`** (new table, `lib/db.js`, next to `bom_item_child_allocations`) — grain
+  is (master `bom_item_id` × `child_project_id`), `routed_to` CHECK'd to `production`/`dispatch`,
+  `UNIQUE(bom_item_id, child_project_id)` + upsert (current-state, not append-only — history lives in
+  `usb_audit` via `audit()`, same as every other current-state decision here). No row = undecided; no
+  third sentinel value and no `requires_manufacturing`-derived default, since forcing an explicit
+  Stores choice is the entire point.
+- **Bundle allocation** — `POST /api/bom-items/[id]/allocate` gained an `Array.isArray(child_project_ids)`
+  branch alongside its untouched single-child path: per-unit qty computed server-side
+  (`itemRollupQty(..., 1, ...)`, unit multiplier 1 — same math `packing/batch-children` already used),
+  all-or-nothing (rejects outright rather than allocating to as many children as fit and picking
+  winners). `AllocationPanel.jsx` gained a checkbox-strip bundle control next to its existing
+  single-row Select+Input.
+- **`getChildRoutingBoard(masterProjectId)`** (`lib/data.js`) — the one shared readiness/routing
+  computation, reused by the new Stores panel and the Dispatch batch route so the two can never
+  disagree. Computed live on every read (this codebase's own `lib/dependency.mjs` precedent —
+  "computed live, never stored"), sparse cells (only `(line, child)` pairs with `allocated > 0`).
+  `getChildDerivedBom()` (a child project's own read-only BOM view, §5k) additively gained
+  `allocated_qty`/`ready`/`routed_to` per item, surfaced as a new Status column on
+  `ChildUnitBomCard.jsx` — the entire Production-facing visibility for this feature; deliberately
+  **no gating added to `POST /api/job-cards/batch-children`**, since that route is milestone-scoped
+  not BOM-line-scoped and Production's job-card creation has never been readiness-gated — adding one
+  now would be a real, unrequested shop-floor regression.
+- **`POST /api/bom-items/[id]/route-to`** (new, Stores-only, new `stores.bom.route` action key) — the
+  write side: validates each child, **recomputes readiness server-side** (never trusts the UI's own
+  filtered list), upserts the routing row per child. `components/ChildRoutingPanel.jsx` (new) — one
+  row per BOM line with ≥1 ready cell, expandable to a checkbox strip (ready cells actionable,
+  not-yet-ready ones greyed with `allocated/required`) plus **→ Production** / **→ Dispatch**
+  buttons, a "Show all" toggle to revisit already-routed lines. Wired onto the master project's own
+  page next to `AllocationPanel`, Stores-gated.
+- **`POST /api/packing/batch-children` rewired — the one real behavior change.** Was: compute the
+  master's aggregate `readyForPacking` once, apply identically to every selected child. Now: pulls
+  `getChildRoutingBoard()`, packs only the cells that are both `ready` and `routed_to === 'dispatch'`
+  for each specific child; 400s with a plain message ("Stores allocates material to a unit, then
+  routes it to Dispatch") when nothing at all is routed to Dispatch yet. Every other mechanic
+  untouched — the `alreadyDrafted` per-child dedup (safely re-runnable), the packing-list insert
+  shape, `bom_release_revision_at_creation` stamping. **Stated plainly**: any already-split master
+  with allocations but no routing (true of every project today — this is a brand-new mechanism,
+  including `SB-1109-01-50`) produces nothing from this button until Stores makes a real routing
+  decision at least once; deliberately no backfill, since fabricating one from
+  `requires_manufacturing` is exactly the passive default decision #3 rejected.
+- **QC: link one certificate across sibling children's documents in one action.** The user's own
+  ask — "QC should also be able to bundle them together and attach TC." QC's batch document creation
+  (`POST /api/qc-documents/batch-children`, §5k addendum, unchanged) already makes one statutory
+  document per child; the real gap was that `POST /api/qc-documents/[id]/link-parts` only ever linked
+  within one document. Extended in place with an optional `also_link_siblings` flag: finds every
+  sibling child's own document part sharing the **same `bom_item_id`** (not `part_name` — see the
+  correction below) and applies the identical certificate + idempotent `certificate_projects` insert
+  to each. Single-part-link precondition only (matches the existing TC-match-approval scoring's own
+  precondition one block above it). `components/CertPicker.jsx` gained a generic `extraOption` render
+  slot (used here for a small "Also link this part on sibling units" checkbox, shown only when
+  `pickerTargets.length === 1`) rather than teaching the picker itself about multi-unit split.
+- **Research correction made mid-implementation, not after**: the original plan assumed
+  `qc_document_parts` had no `bom_item_id` column (a grep for `addColumn(client, 'qc_document_parts',
+  ...)` found only `iiia_group_id`) and designed the sibling match on free-text `part_name` instead.
+  A `PRAGMA table_info` check against the live DB — prompted by the user directly flagging concern
+  about research errors mid-round — showed `bom_item_id`/`stock_piece_id` are real columns on that
+  table (added somewhere this session didn't trace). Since every sibling's document is synced from
+  the identical master `bom_items` row, `bom_item_id` is a strictly stronger match than text — fixed
+  before shipping, falls back to `part_name` only for a manually-added part with no BOM-item link.
+- **`GET /api/projects/[id]/split` relaxed to `isInternal`** (was `canSplit` = Design/Engineering
+  only). Confirmed live: every existing batch panel (`AllocationPanel`/`ProductionBatchJobCardPanel`/
+  `DispatchBatchPackingPanel`) fetches this same endpoint for its own `children` list — the
+  Design/Engineering-only gate meant a Stores/Production/Dispatch-only head got a silent 403 →
+  `children: []` → the panel simply never rendered. These panels were effectively PM/Design/
+  Engineering-only before this fix, invisible to the departments that actually use them. The `POST`
+  split action itself is untouched, still `canSplit`-gated.
+- **`scripts/child-routing-selfcheck.mjs`** (new) — pure predicate checks for `isChildLineReady`/
+  `childPackable`: exact-threshold and over-allocated ready; ready-but-unrouted not packable (the
+  forced-choice rule); routed-to-production not packable via the Dispatch route; unready-but-routed
+  not packable (routing never substitutes for allocation); a sum across two separate allocation
+  events crossing the threshold.
+
+**Live-verified end to end against the real dev DB and the running server** (disposable
+`ZZ-CRT-*`-prefixed master + 3 children + BOM lines, real logins as `stores_head`/`dispatch_head`/
+`qc_head`, 24 assertions, all passed): the Phase 0 split-GET fix confirmed visible to a Stores-only
+head; bundle-allocate to 2 of 3 children produced exactly 2 real allocation rows at the correct
+per-unit qty and left the pre-existing single-child path working unchanged; an over-request against
+an unreceived line correctly 400'd all-or-nothing; the routing board correctly showed all 3 cells
+ready and unrouted; `route-to` correctly rejected an unready `(line, child)` pair and correctly
+routed 2 children to Dispatch and 1 to Production; `ChildUnitBomCard`'s new Status column correctly
+showed each child's own allocated/ready/routed state; a fresh master with allocation but zero
+routing correctly 400'd on the Dispatch batch route with the exact stated message; the real batch
+pack created lists **only** for the 2 dispatch-routed children (correctly skipping the
+production-routed one) at the correct per-unit quantity (not the master's aggregate), and a
+re-run was correctly idempotent (nothing duplicated); QC's batch-children created one document per
+child with matching `bom_item_id` parts, and the sibling-link checkbox correctly propagated one
+certificate to both documents (`certificate_projects` correctly gained a row for both projects),
+while the same action against a genuinely non-split document was a harmless no-op
+(`siblings_linked: 0`); the pre-existing allocate route's own trust check (a project must be a real
+child of the line's own project) still rejected a stray project id. Every disposable row was deleted
+in FK-safe order afterward; a final direct query confirmed zero residual `ZZ-CRT-*` projects and the
+global `bom_item_child_routing`/`bom_item_child_allocations` tables back to their exact pre-round
+counts. `npm run lint` clean throughout (824 JavaScript files).
+
+### Same-day follow-up: Installation's Service Call/Contract picker was master-only (2026-09-04)
+
+Direct user question — "is the path ready end to end through Service?" — prompted a real check
+rather than an assumption. Found: `app/installation/page.js` was one of the callers Phase 0's
+`getActiveProjectsList()` audit (above) hadn't singled out for the `includeChildren` exception —
+only `app/qc/page.js` had it. Every other caller (Stores/Calc/Calc-Drawings/Engineering/Requests) is
+correctly master-only, since their real work (BOM, calc sheets, drawings, material issue against a
+BOM line) only ever exists at the master level. Installation is different, for the same reason QC
+is: a Service Call/Contract is about one physical boiler ("unit #23 broke down"), not the order — so
+the "Project / equipment" picker on both `ServiceCallFormDialog` and `ServiceContractFormDialog`
+only ever offered the master project, with no way to raise a service call against one of 50 real
+units. Fixed with the identical one-line opt-in QC already established:
+`getActiveProjectsList({ includeChildren: true })`. The read side (`getServiceCalls()`/
+`getServiceContracts()`/`getInstallationMilestones()`) was already correct — plain joins on
+`project_id` with no master-only filter, and milestone completion (`InstallationMilestoneActions.jsx`)
+is driven by a specific project's own page, not this picker, so per-child Site Installation/
+Commissioning milestones already worked; only the creation-form picker was broken. Live-verified as
+`installation_head`: `/installation` now lists real `SB-1109-*` child project numbers in both forms.
+
+### Same-day follow-up: Customer Portal aggregation for a split order (2026-09-04)
+
+A deeper audit, prompted directly by the user after the Installation fix ("check one more time"),
+found `getCustomerView(projectId)` had zero awareness of `master_project_id` — packing lists and QC
+documents only ever exist on a split order's *children*, so viewing the *master* project's portal
+(where a customer's `project_ids` would naturally point) showed a real phase stepper but **zero**
+packing lists and **zero** QC documents, even after real units had shipped. A second, smaller finding
+in the same pass: `PackingDetail.jsx`'s invoice-linking picker scopes to the packing list's own exact
+`project_id` — for a child, that's the child's id, so if invoicing happens once against the master (as
+confirmed below), a child's own packing list would show "No invoices for this project" in the
+structured picker (a free-text fallback field still worked, so not a hard block).
+
+Four product decisions confirmed directly with the user before building: **one combined "My Orders"
+card** for the whole order, not one per physical unit; **one invoice per order** (not per shipment);
+the phase stepper shows **real aggregate progress** ("QC: 12 of 50") for the phases that are
+genuinely per-unit work, not the master's own placeholder milestones; built as a **general
+capability** (any `master_project_id` order gets this for free), not hardcoded to this one customer.
+
+- **`getCustomerViewSplitOrder(master, children)`** (`lib/data.js`, new) — the aggregate view.
+  `CUSTOMER_PHASES`' own 9 phases split cleanly along the same line the whole split architecture
+  already draws: **Design & Engineering** and **Material Procurement** are master-level work (done
+  once, before the split — reads the master's own milestones, unchanged in meaning), while
+  **Manufacturing/Quality Testing/Finishing/Packing/Site Installation/Commissioning** are real
+  per-physical-unit work — each child carries its own full milestone template (unused for the
+  master-level phases, which is why those two specifically are never read per-child), so status here
+  is a genuine live aggregate: how many of N children have completed/started/not-started that
+  phase's milestone keys, computed with the *exact same* per-set completion rule the single-project
+  path already used (`phaseStatusFor()`, extracted so both paths can never define "done" differently).
+  Packing lists and QC documents are unioned across every child (each row tagged with its own unit's
+  `project_no`, dispatch date for packing), sorted newest-first, same "past-draft, not just latest"
+  rule the single-project path already established (§5al #11). Invoices read the **master's own**
+  `sales_invoices` — no aggregation needed, since the client confirmed one invoice per order.
+- **Additive seam, not a rewrite**: `getCustomerView(projectId)` gained one check right after
+  fetching the project — real children present → delegate to the new function and return; none →
+  fall straight through to the original function body, completely untouched below that line. A
+  non-split order (the vast majority) executes the identical code path it always did.
+- **Dispatch's invoice-linking gap closed the same way it was found — one shared function, not a
+  one-off patch.** `getSalesInvoices({projectId})` now checks whether the given project has a
+  `master_project_id` and, if so, includes the master's own invoices in the query — fixes
+  `PackingDetail.jsx`'s picker (the only real caller passing a `projectId`) and any future caller of
+  the same route for free, rather than patching that one call site.
+- **UI, additive only** (`components/PortalOrderProgress.jsx`, `app/portal/[id]/page.js`): a phase's
+  `statusText` gets a real "(N of M units)" suffix only when `unitProgress` is present (undefined for
+  every ordinary order — zero visual change there); packing/QC document rows show their own unit's
+  `project_no` (and dispatch date, for packing) when present; the portal header shows a small
+  "· 50 units" note when viewing a split order. **Deliberately minimal on the "lot" question** (the
+  user's own real-world detail — several boilers often dispatch together): no new grouping schema —
+  units dispatched the same day naturally read together in the flat, date-sorted list. Explicitly
+  scoped as a future enhancement if the flat list proves too dense in practice, not built speculatively.
+- **The real HKM CHARITABLE FOUNDATION portal account, fixed properly, not just simulated.** Direct
+  instruction: build the real thing, no notification. Investigated first: `hkm_charitable` (user #16)
+  was deactivated and pointed at `project_ids: "16"` — a stale id predating the real customer import
+  (§5bh), not project 61. Fixed via a direct DB update (no route exists for "reactivate + relink a
+  customer login without emailing" — `POST /api/customers/[id]/portal` explicitly requires a
+  successful email send before it sets anything, exactly the path avoided here, same precedent §5am
+  already established for the other 9 demo customer logins): password reset to the same
+  `<username>123` convention `/d-login` itself already expects (`app/d-login/page.js`'s `fillDemo()`
+  auto-fills `${username}123` — `hkm_charitable` was already listed in its Customers group, so **no
+  code change was needed there at all**), `active` restored, `project_ids` corrected to `"61"`,
+  `customers.portal_user_id` (row #166, the real imported HKM row) linked to it. `portal_enabled`
+  deliberately left `0` — access works, nothing is ever emailed, matching the user's explicit "hold
+  off notification" instruction. Logged to `usb_audit` for a real, traceable record of the change.
+
+**Live-verified end to end as the real customer login** (`hkm_charitable`/`hkm_charitable123`, not
+the admin bypass every earlier check in this round used) against the real `SB-1109-01-50` order:
+login succeeds; "My Orders" correctly lists `SB-1109-01-50`; the order page renders "50 units" and
+real aggregate phase counts (confirmed live: "Manufacturing — Upcoming (0 of 50 units)", "Design &
+Engineering — In progress" with no unit-count suffix, exactly the master-vs-child split the design
+calls for); Order Progress computed 11%, consistent with only the master-level phases having any
+real progress yet. **Access control re-confirmed intact**, not just the new feature: the same login
+was correctly redirected (307, not 200) attempting to view an unrelated project (`/portal/1`) —
+`canAccessProject`'s scoping was never touched by this change. `npm run lint` clean throughout
+(824 JavaScript files).
 
 ## 6. Customer Portal (read-only, external)
 

@@ -30,7 +30,7 @@ export async function POST(req, { params }) {
   // Only touch rows that actually belong to this document — a stray/forged part_id from another
   // document must not be linkable through this endpoint.
   const own = await queryAll(
-    `SELECT id FROM qc_document_parts WHERE document_id = ? AND id IN (${partIds.map(() => '?').join(',')})`,
+    `SELECT id, bom_item_id, part_name FROM qc_document_parts WHERE document_id = ? AND id IN (${partIds.map(() => '?').join(',')})`,
     [params.id, ...partIds]);
   if (!own.length) return NextResponse.json({ error: 'Parts not found on this document' }, { status: 404 });
   const ownIds = own.map(r => r.id);
@@ -46,6 +46,49 @@ export async function POST(req, { params }) {
   // (client-confirmed). Idempotent — the certificate_projects PK ignores a repeat.
   await execute('INSERT OR IGNORE INTO certificate_projects (certificate_id, project_id) VALUES (?, ?)',
     [cert.id, document.project_id]);
+
+  // Multi-unit split — "bundle them together and attach TC": when this document's own project is a
+  // split child, one certificate covering a real batch of material spread across many units should
+  // link the same physically-identical part on every sibling child's own document in one action, not
+  // one document at a time. Matched by bom_item_id when the source part has one — every sibling
+  // document's parts were synced from the SAME master bom_items row (children never get their own
+  // cloned BOM lines), so it's the exact same id on every sibling's part, a real FK match, not a
+  // guess. Falls back to part_name only for a manually-added part with no bom_item_id (AddPartDialog
+  // allows this). Only meaningful for a single-part link, same precondition the TC-match approval
+  // scoring below already requires.
+  let siblingsLinked = 0;
+  const sourcePart = own[0];
+  if (b.also_link_siblings && ownIds.length === 1 && (sourcePart.bom_item_id || sourcePart.part_name)) {
+    const parent = await queryOne('SELECT master_project_id FROM projects WHERE id = ?', [document.project_id]);
+    if (parent?.master_project_id) {
+      const siblingParts = sourcePart.bom_item_id
+        ? await queryAll(
+            `SELECT qdp.id, p.id AS sibling_project_id
+               FROM qc_document_parts qdp
+               JOIN qc_documents qd ON qd.id = qdp.document_id
+               JOIN projects p ON p.id = qd.project_id
+              WHERE p.master_project_id = ? AND p.id != ? AND qdp.bom_item_id = ?`,
+            [parent.master_project_id, document.project_id, sourcePart.bom_item_id])
+        : await queryAll(
+            `SELECT qdp.id, p.id AS sibling_project_id
+               FROM qc_document_parts qdp
+               JOIN qc_documents qd ON qd.id = qdp.document_id
+               JOIN projects p ON p.id = qd.project_id
+              WHERE p.master_project_id = ? AND p.id != ? AND qdp.bom_item_id IS NULL AND qdp.part_name = ?`,
+            [parent.master_project_id, document.project_id, sourcePart.part_name]);
+      if (siblingParts.length) {
+        const siblingIds = siblingParts.map(r => r.id);
+        await execute(
+          `UPDATE qc_document_parts SET test_certificate_id = ?, stock_piece_id = NULL WHERE id IN (${siblingIds.map(() => '?').join(',')})`,
+          [cert.id, ...siblingIds]);
+        const siblingProjectIds = [...new Set(siblingParts.map(r => r.sibling_project_id))];
+        for (const pid of siblingProjectIds) {
+          await execute('INSERT OR IGNORE INTO certificate_projects (certificate_id, project_id) VALUES (?, ?)', [cert.id, pid]);
+        }
+        siblingsLinked = siblingIds.length;
+      }
+    }
+  }
 
   // TC<->BOM-item suggestion approval history (see lib/tc-match.js) — single-row Link only. A bulk
   // multi-select action can apply one cert across parts with different bom_item_id links, so there's
@@ -82,9 +125,9 @@ export async function POST(req, { params }) {
 
   await audit('qc_document_link_parts', {
     actor: user.username,
-    detail: JSON.stringify({ qc_document_id: Number(params.id), part_ids: ownIds, test_certificate_id: cert.id }),
+    detail: JSON.stringify({ qc_document_id: Number(params.id), part_ids: ownIds, test_certificate_id: cert.id, siblings_linked: siblingsLinked }),
   });
-  return NextResponse.json({ ok: true, linked: ownIds.length });
+  return NextResponse.json({ ok: true, linked: ownIds.length, siblings_linked: siblingsLinked });
 }
 
 // Clear a part's certificate link without deleting the part — the trash-can button deletes the

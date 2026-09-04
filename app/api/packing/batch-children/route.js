@@ -1,22 +1,23 @@
 // Multi-unit BOM split, Phase 7 (MULTI-UNIT-SPLIT-DESIGN.md §4 Dispatch) — batch action: pick
-// several child units, get one packing list per child, each pre-filled from the MASTER's own
-// ready-to-pack BOM lines (a child never has its own bom_items, per confirmed architecture) at the
-// PER-UNIT quantity (unit multiplier of 1 — same "read master, scope to one unit" pattern §Phase 3's
-// getChildDerivedBom and §Phase 6's QC batch route both already use), never the master's own
-// aggregate quantity. Per the guiding principle: one action, N separate packing lists, each its own
-// e-way bill / dispatch date / delivery — never one merged shipment.
+// several child units, get one packing list per child, each pre-filled with only the BOM lines
+// Stores has actually allocated AND routed to Dispatch for that specific unit (Stores per-child
+// routing — getChildRoutingBoard, the single shared source of truth for "ready"/"routed" used by
+// both this route and ChildRoutingPanel's own write UI). This is a real behavior change from the
+// original build: it used to apply the master's aggregate "ready to pack" list uniformly to every
+// selected child, ignoring allocation/routing entirely — a child now only gets what Stores has
+// actively decided is theirs. Per the guiding principle: one action, N separate packing lists, each
+// its own e-way bill / dispatch date / delivery — never one merged shipment.
 //
 // Dispatch already has real multi-lot support at the master level (POST /api/packing/from-bom
 // already excludes whatever's already drafted and can be called again as more material becomes
 // ready) — this reuses that exact exclusion idiom, just scoped per child instead of per project, so
-// re-running this batch action after new master BOM lines become ready only adds the NEW lines to
-// each child's own list(s) rather than duplicating what's already there.
+// re-running this batch action after Stores routes more lines only adds the NEW lines to each
+// child's own list(s) rather than duplicating what's already there.
 import { NextResponse } from 'next/server';
 import { execute, queryOne, queryAll, nextNumber } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
-import { getProjectBom, getAssemblyRollupMap } from '@/lib/data';
-import { itemRollupQty } from '@/lib/bom-structure.mjs';
+import { getChildRoutingBoard } from '@/lib/data';
 import { audit } from '@/lib/usb';
 
 export async function POST(req) {
@@ -43,26 +44,35 @@ export async function POST(req) {
     return NextResponse.json({ error: 'One or more selected units are not children of this master project' }, { status: 400 });
   }
 
-  // The master's own ready-to-pack lines are the template every child draws from — this never reads
-  // or writes the master's own packing lists, only its BOM readiness signal.
-  const { readyForPacking } = await getProjectBom(masterId);
-  if (!readyForPacking.length) {
-    return NextResponse.json({ error: "No BOM lines ready to pack yet — Production hasn't marked any as done" }, { status: 400 });
+  const board = await getChildRoutingBoard(masterId);
+  const linesById = new Map(board.lines.map(l => [l.id, l]));
+  const dispatchCellsByChild = new Map();
+  for (const c of board.cells) {
+    if (!c.ready || c.routed_to !== 'dispatch') continue;
+    if (!dispatchCellsByChild.has(c.child_project_id)) dispatchCellsByChild.set(c.child_project_id, []);
+    dispatchCellsByChild.get(c.child_project_id).push(c);
   }
-  const rollupById = await getAssemblyRollupMap(masterId);
+  if (!dispatchCellsByChild.size) {
+    return NextResponse.json(
+      { error: 'Nothing routed to Dispatch yet — Stores allocates material to a unit, then routes it to Dispatch.' },
+      { status: 400 });
+  }
 
   const created = [];
   const skipped = [];
   for (const child of children) {
+    const cells = dispatchCellsByChild.get(child.id) || [];
+    if (!cells.length) { skipped.push(child.id); continue; }
+
     // Same exclusion idiom as POST /api/packing/from-bom, scoped to this one child instead of the
-    // whole project — lets the batch be re-run safely as more master BOM lines become ready.
+    // whole project — lets the batch be re-run safely as more lines get routed to Dispatch.
     const alreadyDrafted = await queryAll(
       `SELECT DISTINCT pi.bom_item_id FROM packing_items pi
          JOIN packing_lists pl ON pl.id = pi.packing_list_id
         WHERE pl.project_id = ? AND pi.bom_item_id IS NOT NULL`, [child.id]);
     const draftedIds = new Set(alreadyDrafted.map(r => r.bom_item_id));
-    const newItems = readyForPacking.filter(item => !draftedIds.has(item.id));
-    if (!newItems.length) { skipped.push(child.id); continue; }
+    const newCells = cells.filter(c => !draftedIds.has(c.bom_item_id) && linesById.has(c.bom_item_id));
+    if (!newCells.length) { skipped.push(child.id); continue; }
 
     const packing_no = await nextNumber('packing_no', 'PL');
     const pl = await execute(
@@ -71,16 +81,14 @@ export async function POST(req) {
     const listId = Number(pl.lastId);
 
     let s = 1;
-    for (const item of newItems) {
-      // unit multiplier 1, deliberately not the master's own unit_count — this list is for ONE
-      // physical unit, not the aggregate.
-      const qty = itemRollupQty(item.qty_text, item.assembly_id, rollupById, 1, !!item.qty_resolved) ?? 1;
+    for (const cell of newCells) {
+      const item = linesById.get(cell.bom_item_id);
       await execute(
         `INSERT INTO packing_items (packing_list_id, bom_item_id, s_no, material_description, moc, size_spec, make, qty, unit)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [listId, item.id, s++, item.material_description, item.moc || null, item.size_spec || null, item.make || null, qty, "No's"]);
+        [listId, item.id, s++, item.material_description, item.moc || null, item.size_spec || null, item.make || null, cell.per_unit_required, "No's"]);
     }
-    created.push({ child_project_id: child.id, packing_list_id: listId, packing_no, items: newItems.length });
+    created.push({ child_project_id: child.id, packing_list_id: listId, packing_no, items: newCells.length });
   }
 
   await audit('packing_batch_created', {

@@ -135,8 +135,11 @@ function PhaseRow({ ph, index, expandable, expanded, onToggle }) {
   );
   // awaiting_customer intentionally reuses the "In progress" label — the color/icon/expand
   // affordance are the only new signal, no new copy.
-  const statusText = ph.status === 'done' ? 'Completed'
+  let statusText = ph.status === 'done' ? 'Completed'
     : ph.status === 'in_progress' || ph.status === 'awaiting_customer' ? 'In progress' : 'Upcoming';
+  // Multi-unit split — a real per-unit count only present on an aggregate (split-order) phase;
+  // undefined for every ordinary single-project order, which renders exactly as before this line.
+  if (ph.unitProgress) statusText += ` (${ph.unitProgress.done} of ${ph.unitProgress.total} units)`;
 
   if (!expandable) {
     return (
@@ -204,14 +207,21 @@ export default function PortalOrderProgress({ phases, drawings, qcCertificates =
                 {ph.key === 'testing' && expanded && (
                   <li className="flex flex-col gap-3 border-b py-3 pl-10">
                     {qcCertificates.map(doc => (
-                      <DocumentRow key={doc.id} name={`QC Certificate — ${doc.doc_id}`} href={`/api/qc-documents/${doc.id}/pdf`} />
+                      <DocumentRow key={doc.id}
+                        name={`QC Certificate — ${doc.doc_id}${doc.unitProjectNo ? ` (${doc.unitProjectNo})` : ''}`}
+                        href={`/api/qc-documents/${doc.id}/pdf`} />
                     ))}
                   </li>
                 )}
                 {ph.key === 'packing' && expanded && (
                   <li className="flex flex-col gap-3 border-b py-3 pl-10">
+                    {/* Multi-unit split — units dispatched in the same real-world lot naturally cluster
+                        here since each carries its own dispatch date; no separate lot-grouping UI yet,
+                        see SB-1109 portal design note. */}
                     {packingLists.map(pl => (
-                      <DocumentRow key={pl.id} name={`Packing List — ${pl.packingNo}`} href={`/api/packing/${pl.id}/pdf`} />
+                      <DocumentRow key={pl.id}
+                        name={`Packing List — ${pl.packingNo}${pl.unitProjectNo ? ` (${pl.unitProjectNo}${pl.dispatchedAt ? `, ${formatDate(pl.dispatchedAt)}` : ''})` : ''}`}
+                        href={`/api/packing/${pl.id}/pdf`} />
                     ))}
                   </li>
                 )}

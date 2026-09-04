@@ -859,6 +859,7 @@ export default function QcDocumentEditor({ project, document, parts, certificate
   const [selected, setSelected] = useState(new Set());
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerTargets, setPickerTargets] = useState([]);
+  const [linkSiblings, setLinkSiblings] = useState(false);
   const [boilerOpen, setBoilerOpen] = useState(false);
   const [pdfOpen, setPdfOpen] = useState(false);
   const [addPartOpen, setAddPartOpen] = useState(false);
@@ -938,11 +939,18 @@ export default function QcDocumentEditor({ project, document, parts, certificate
           material_spec: s.certificate.material_spec, steel_maker: s.certificate.steel_maker,
           inventory_item_id: pickerBomItem.inventory_item_id,
         }));
-      await api(`/api/qc-documents/${document.id}/link-parts`, {
-        method: 'POST', body: { part_ids: pickerTargets, test_certificate_id: certId, shown_candidates: shownCandidates },
+      // Multi-unit split — "also link siblings" only makes sense for a single-part link (the server
+      // matches by that one part's own bom_item_id/part_name); the checkbox itself is only ever
+      // shown in that case, but guard here too since link() is the one real trust boundary.
+      const res = await api(`/api/qc-documents/${document.id}/link-parts`, {
+        method: 'POST', body: {
+          part_ids: pickerTargets, test_certificate_id: certId, shown_candidates: shownCandidates,
+          ...(pickerTargets.length === 1 && linkSiblings ? { also_link_siblings: true } : {}),
+        },
       });
-      showToast(`Linked ${pickerTargets.length} part${pickerTargets.length === 1 ? '' : 's'}`);
+      showToast(`Linked ${pickerTargets.length} part${pickerTargets.length === 1 ? '' : 's'}${res.siblings_linked ? ` + ${res.siblings_linked} on sibling units` : ''}`);
       setSelected(new Set());
+      setLinkSiblings(false);
       router.refresh();
     } catch (err) { showToast(err.message, 'error'); }
   }
@@ -1134,6 +1142,12 @@ export default function QcDocumentEditor({ project, document, parts, certificate
         usedIds={usedIds}
         suggestions={suggestions}
         onPick={link}
+        extraOption={pickerTargets.length === 1 && (
+          <label className="flex items-center gap-2 px-1 text-xs text-muted-foreground">
+            <Checkbox checked={linkSiblings} onCheckedChange={v => setLinkSiblings(!!v)} />
+            Also link this part on sibling units (multi-unit split)
+          </label>
+        )}
       />
       <BoilerDetailsSheet open={boilerOpen} onOpenChange={setBoilerOpen} document={document} currentUserName={currentUserName} router={router} />
       <AddPartDialog open={addPartOpen} onOpenChange={setAddPartOpen} documentId={document.id} bomItems={bomItems} router={router} />

@@ -15,6 +15,7 @@ import { DepartmentPills, DepartmentProgress } from '@/components/DepartmentStat
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import ChildUnitBomCard from '@/components/ChildUnitBomCard';
 import AllocationPanel from '@/components/AllocationPanel';
+import ChildRoutingPanel from '@/components/ChildRoutingPanel';
 import ProductionBatchJobCardPanel from '@/components/ProductionBatchJobCardPanel';
 import QcBatchDocumentPanel from '@/components/QcBatchDocumentPanel';
 import DispatchBatchPackingPanel from '@/components/DispatchBatchPackingPanel';
@@ -125,6 +126,7 @@ export default async function ProjectDetail({ params }) {
         <ChildUnitBomCard projectId={project.id} unitNo={project.unit_no} />
       )}
       {hasChildren && <AllocationPanel projectId={project.id} />}
+      {hasChildren && canAccessDepartment(user, 'Stores') && <ChildRoutingPanel projectId={project.id} />}
       {hasChildren && canAccessDepartment(user, 'Production') && <ProductionBatchJobCardPanel projectId={project.id} />}
       {hasChildren && canAccessDepartment(user, 'QC') && <QcBatchDocumentPanel projectId={project.id} />}
       {hasChildren && canAccessDepartment(user, 'Dispatch') && <DispatchBatchPackingPanel projectId={project.id} />}

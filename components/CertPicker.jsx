@@ -61,7 +61,7 @@ function SuggestionChips({ suggestions, onPick }) {
   );
 }
 
-export default function CertPicker({ open, onOpenChange, title, certificates = [], project = null, usedIds = new Set(), suggestions = [], onPick }) {
+export default function CertPicker({ open, onOpenChange, title, certificates = [], project = null, usedIds = new Set(), suggestions = [], onPick, extraOption = null }) {
   const router = useRouter();
   const [q, setQ] = useState('');
   const [formOpen, setFormOpen] = useState(false);
@@ -104,6 +104,7 @@ export default function CertPicker({ open, onOpenChange, title, certificates = [
               {rest.map(c => <CertOption key={c.id} c={c} onClick={() => pick(c)} />)}
             </div>
           </div>
+          {extraOption}
           <div className="-mx-4 -mb-4 flex items-center justify-between rounded-b-xl border-t bg-muted/50 p-4 text-sm">
             <span className="text-muted-foreground">Not in the bank?</span>
             <Button size="sm" variant="outline" onClick={() => setFormOpen(true)}>

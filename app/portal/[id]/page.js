@@ -18,7 +18,7 @@ export default async function Portal({ params }) {
 
   const data = await getCustomerView(params.id);
   if (!data) notFound();
-  const { project, phases, estDispatch, packingLists, drawings, invoices, qcCertificates } = data;
+  const { project, phases, estDispatch, packingLists, drawings, invoices, qcCertificates, isSplitOrder, unitCount } = data;
   const doneCount = phases.filter(p => p.status === 'done').length;
   const pct = Math.round((doneCount / phases.length) * 100);
 
@@ -40,7 +40,8 @@ export default async function Portal({ params }) {
           {isCustomer(user) && <Link href="/portal" className="text-sm text-muted-foreground hover:underline">← My Orders</Link>}
           <h1 className="text-2xl font-bold tracking-tight">Order {project.project_no}</h1>
           <p className="text-sm text-muted-foreground">
-            {project.description || 'Boiler order'} · Estimated dispatch {estDispatch ? formatDate(estDispatch) : 'TBD'}
+            {project.description || 'Boiler order'}{isSplitOrder ? ` · ${unitCount} units` : ''} · Estimated
+            dispatch {estDispatch ? formatDate(estDispatch) : 'TBD'}
           </p>
         </div>
 
