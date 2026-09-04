@@ -69,6 +69,13 @@ export async function POST(req, { params }) {
   // Numbering zero-pad width computed from unit count (§5.12, resolved) — handles both <=99 and
   // 100+ unit orders with the same code path, never hardcoded to 2 digits.
   const padWidth = Math.max(2, String(unitCount).length);
+  // Real bug found live-testing against SB-1109-01-50 (a real project whose own project_no already
+  // carries a legacy free-text "-01-50" unit-RANGE annotation, predating this feature): naively
+  // appending produced "SB-1109-01-50-01" instead of the confirmed design's "SB-1109-01". Strip a
+  // trailing two-number range suffix ("-NN-NN") from the master's own project_no before appending
+  // the new per-unit suffix; a project with no such pattern (the common case, e.g. "SB-1040") is
+  // completely unaffected.
+  const baseProjectNo = master.project_no.replace(/-\d+-\d+$/, '');
   const todayStr = new Date().toISOString().slice(0, 10);
   const start = master.order_date && master.order_date > todayStr ? new Date(master.order_date) : new Date();
   const startDaysAgo = Math.round((Date.now() - start.getTime()) / 864e5);
@@ -78,7 +85,7 @@ export async function POST(req, { params }) {
     childIds = await withTransaction(async tx => {
       const ids = [];
       for (let i = 1; i <= unitCount; i++) {
-        const childProjectNo = `${master.project_no}-${String(i).padStart(padWidth, '0')}`;
+        const childProjectNo = `${baseProjectNo}-${String(i).padStart(padWidth, '0')}`;
         const r = await tx.execute({
           sql: `INSERT INTO projects (project_no, customer_name, description, order_date, owner, customer_id, sale_order_id, series, company, master_project_id, unit_no)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,

@@ -262,6 +262,7 @@ export default function BomStructureWorkspace({
               rootCount={assemblies.filter(a => a.parent_id == null).length}
               onBuildFromTemplates={buildFromTemplates} onSaveBomAsTemplate={saveBomAsTemplate}
               unitCount={selectedProject?.unit_count} onSaveUnitCount={saveUnitCount}
+              projectId={projectId}
             />
           )}
           <ResizablePanelGroup direction="horizontal" className="min-h-[28rem] overflow-hidden rounded-md border">

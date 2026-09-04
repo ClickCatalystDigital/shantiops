@@ -13,6 +13,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { CheckCircle2Icon, LayoutTemplateIcon, BookmarkPlusIcon } from 'lucide-react';
 import BuildFromTemplatesDialog from './BuildFromTemplatesDialog';
 import SaveBomAsTemplateDialog from './SaveBomAsTemplateDialog';
+import SplitIntoUnitsButton from './SplitIntoUnitsButton';
 
 // Whole-BOM Unit Count — the user's own proposed shape: a small always-on control living right next
 // to the template actions, not buried in a per-node tab (unlike bom_assemblies.qty, "Local quantity"
@@ -64,7 +65,7 @@ function Stat({ value, label, tone }) {
 
 export default function ReleaseReadinessPanel({
   status, onRelease, releasing, rootCount, onBuildFromTemplates, onSaveBomAsTemplate,
-  unitCount, onSaveUnitCount,
+  unitCount, onSaveUnitCount, projectId,
 }) {
   const [buildingFromTemplates, setBuildingFromTemplates] = useState(false);
   const [savingBomAsTemplate, setSavingBomAsTemplate] = useState(false);
@@ -80,6 +81,7 @@ export default function ReleaseReadinessPanel({
         </div>
         <div className="flex items-center gap-3">
           {onSaveUnitCount && <UnitCountField unitCount={unitCount} onSaveUnitCount={onSaveUnitCount} />}
+          {projectId && <SplitIntoUnitsButton projectId={projectId} />}
           <div className="flex items-center gap-1.5">
             {onBuildFromTemplates && (
               <Tooltip><TooltipTrigger asChild>

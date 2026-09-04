@@ -1,6 +1,9 @@
 # Multi-unit BOM split — master project + N executable child units
 
-**Status: design review draft (2026-09-04) — nothing in this document is built.** Every schema
+**Status: built, live-verified, and in production use (2026-09-04) — see "As-built status" below,
+and its 2026-09-04 gap-audit addendum for two real bugs found by testing on a real production
+project.** The paragraph below is kept only as the historical record of the original design pass;
+nothing in it should be read as still-pending. Every schema
 sketch, department recommendation, and open question below is a proposal for the user to review,
 not a spec to build from unchecked. Delete/fold this note once the design is confirmed and a real
 build round starts (matching the convention `QC-FOLDER-DESIGN.md`/`PRODUCTION-MODULE-DESIGN.md`
@@ -424,3 +427,65 @@ came back empty each time.
 Every phase above was live-verified against the real dev DB with disposable test data, cleaned up
 to zero residue afterward, and is lint-clean. No existing single-project workflow has regressed at
 any point.
+
+## Gap audit addendum (2026-09-04) — two real bugs, found only by testing on real production data
+
+The "10 phases complete" record above was proven entirely against disposable synthetic test
+projects. A direct instruction to re-audit for remaining gaps, followed by explicit authorization
+to test on the real, already-released SB-1109-01-50 (HKM CHARITABLE FOUNDATION, 50 real physical
+boiler units), surfaced two real issues neither the phase build-outs nor the synthetic tests ever
+exercised:
+
+1. **The Split action had no UI entry point anywhere in the app.** Every backend route (split,
+   batch job-cards, batch QC documents, batch packing) was built and had been curled/tested
+   directly, but nothing in the app actually rendered a button to trigger any of them — a
+   Design/Engineering head finalizing a real BOM had no way to discover or use this feature at all.
+   Closed by building four new components, wired into the two places the design doc already
+   specified:
+   - `components/bom-structure/SplitIntoUnitsButton.jsx` — the split trigger itself, added to
+     `ReleaseReadinessPanel` next to the Unit Count field. Self-fetches split status; shows nothing
+     for an ordinary (non-multi-unit) project, a disabled button with an explanatory tooltip before
+     the BOM's been released, an enabled "Split into N Units" button once ready (gated behind a
+     `window.confirm()` naming the exact irreversibility: one-time, cannot be undone), and a
+     "N units created" badge once already split.
+   - `components/ProductionBatchJobCardPanel.jsx`, `components/QcBatchDocumentPanel.jsx`,
+     `components/DispatchBatchPackingPanel.jsx` — the three batch-action panels, added to the
+     project detail page (`app/projects/[id]/page.js`), each gated behind
+     `hasChildren && canAccessDepartment(user, '<Department>')` and each self-fetching the split's
+     child list rather than depending on server-passed props (same pattern as the pre-existing
+     `AllocationPanel`/`ChildUnitBomCard`).
+   All four live-verified in the browser against the real SB-1109-01-50 project once split — see
+   below.
+2. **A real project-number collision, found only by splitting a real project with a legacy naming
+   shape.** `SB-1109-01-50`'s own `project_no` already carries a pre-existing, pre-this-feature
+   free-text convention — a trailing "-01-50" annotating the unit range by hand. The split route
+   naively appended its own new per-unit suffix onto the master's *full* `project_no`, producing
+   `SB-1109-01-50-01` through `SB-1109-01-50-50` instead of the confirmed design's
+   `SB-1109-01`..`SB-1109-50`. No synthetic test project in any of the 10 phases happened to carry
+   this legacy shape, so it was never caught until real data was used.
+   - **Fixed in code** (`app/api/projects/[id]/split/route.js`): before generating child numbers,
+     strip a trailing two-number range suffix (`/-\d+-\d+$/`) off the master's own `project_no` to
+     get a clean base name, then append the new per-unit suffix to *that*. A project with no such
+     legacy suffix (the common case, e.g. `SB-1040`) is completely unaffected — re-verified with two
+     targeted disposable test cases, one with a legacy range suffix and one without, both producing
+     correct names.
+   - **Fixed in the live production data**: the 50 already-created (but wrongly-named) children were
+     renamed directly in the database, in one transaction, verified for zero collisions before and
+     zero duplicates across the entire `projects` table after. Confirmed post-fix: exactly 50
+     children (`SB-1109-01`..`SB-1109-50`), each with a full 25-row milestone chain, the master
+     itself untouched (`SB-1109-01-50`, `unit_count=50`, `master_project_id` still NULL).
+
+**Live-verified after both fixes, on the real SB-1109-01-50 project** (project id 61, its 50
+children ids 112–161 — left in the database deliberately, per direct instruction to test on this
+real order rather than disposable data): the "Split into N Units" button correctly showed "50 units
+created" once split; all three batch panels (Production/QC/Dispatch) rendered on the project page
+with the full, correctly-named 50-unit checklist; the real BOM table on the same page correctly
+showed the per-unit quantity rollup ("100 Mtrs = 2 Mtrs × 50", etc., from the earlier §5be/§5bf
+work) unaffected by any of this. `npm run lint` clean (815 files). The batch-creation forms
+themselves (job cards / QC documents / packing lists) were deliberately **not** submitted against
+this real order — authorization covered testing the split, not creating real downstream execution
+records against a live 50-unit customer order; those three routes were already proven correct
+against disposable synthetic children during the original Phase 5/6/7 builds above.
+
+No other gaps found. See `MULTI-UNIT-SPLIT-TESTING-GUIDE.md` for a plain, click-through checklist
+covering every department, for verifying this feature works correctly in production going forward.

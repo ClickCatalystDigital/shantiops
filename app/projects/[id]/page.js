@@ -15,6 +15,9 @@ import { DepartmentPills, DepartmentProgress } from '@/components/DepartmentStat
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import ChildUnitBomCard from '@/components/ChildUnitBomCard';
 import AllocationPanel from '@/components/AllocationPanel';
+import ProductionBatchJobCardPanel from '@/components/ProductionBatchJobCardPanel';
+import QcBatchDocumentPanel from '@/components/QcBatchDocumentPanel';
+import DispatchBatchPackingPanel from '@/components/DispatchBatchPackingPanel';
 
 export const dynamic = 'force-dynamic';
 
@@ -122,6 +125,9 @@ export default async function ProjectDetail({ params }) {
         <ChildUnitBomCard projectId={project.id} unitNo={project.unit_no} />
       )}
       {hasChildren && <AllocationPanel projectId={project.id} />}
+      {hasChildren && canAccessDepartment(user, 'Production') && <ProductionBatchJobCardPanel projectId={project.id} />}
+      {hasChildren && canAccessDepartment(user, 'QC') && <QcBatchDocumentPanel projectId={project.id} />}
+      {hasChildren && canAccessDepartment(user, 'Dispatch') && <DispatchBatchPackingPanel projectId={project.id} />}
 
       {pm ? (
         // PM/admin: the all-departments tabbed card.
