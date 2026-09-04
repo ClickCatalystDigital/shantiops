@@ -10,8 +10,49 @@ import Link from 'next/link';
 import { showToast } from '@/lib/client';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { LayersIcon } from 'lucide-react';
+import { LayersIcon, PlusIcon } from 'lucide-react';
+
+// Phase E — post-split resize: "add more units" is the only supported direction (confirmed scope,
+// MULTI-UNIT-SPLIT-DESIGN.md open question #5). Cancelling a specific already-split child is
+// deliberately not built.
+function AddUnitsControl({ projectId, currentCount, onAdded }) {
+  const [n, setN] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function addUnits() {
+    const count = Math.round(Number(n));
+    if (!count || count < 1) return showToast('Enter how many units to add', 'error');
+    if (!window.confirm(`Add ${count} more unit project(s), starting at unit ${currentCount + 1}? This cannot be undone.`)) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/split`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ addUnits: count }),
+      }).then(r => r.json().then(j => ({ ok: r.ok, ...j })));
+      if (!res.ok) throw new Error(res.error || 'Failed to add units');
+      showToast(`Added ${res.childIds.length} unit projects`);
+      setN('');
+      onAdded();
+    } catch (err) { showToast(err.message, 'error'); }
+    setBusy(false);
+  }
+
+  return (
+    <div className="flex items-center gap-1">
+      <Input type="number" min="1" placeholder="N" value={n} onChange={e => setN(e.target.value)}
+        className="h-7 w-14 px-1.5 text-xs" disabled={busy} />
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button size="sm" variant="ghost" className="h-7 px-1.5" disabled={busy} onClick={addUnits}>
+            <PlusIcon className="size-3.5" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Add N more unit projects to this already-split order</TooltipContent>
+      </Tooltip>
+    </div>
+  );
+}
 
 export default function SplitIntoUnitsButton({ projectId }) {
   const [status, setStatus] = useState(null);
@@ -26,16 +67,19 @@ export default function SplitIntoUnitsButton({ projectId }) {
 
   if (status.alreadySplit) {
     return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Link href="/projects">
-            <Badge variant="outline" className="cursor-pointer gap-1 font-normal">
-              <LayersIcon className="size-3" />{status.children.length} units created
-            </Badge>
-          </Link>
-        </TooltipTrigger>
-        <TooltipContent>View unit projects on the Projects list</TooltipContent>
-      </Tooltip>
+      <div className="flex items-center gap-2">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Link href="/projects">
+              <Badge variant="outline" className="cursor-pointer gap-1 font-normal">
+                <LayersIcon className="size-3" />{status.children.length} units created
+              </Badge>
+            </Link>
+          </TooltipTrigger>
+          <TooltipContent>View unit projects on the Projects list</TooltipContent>
+        </Tooltip>
+        <AddUnitsControl projectId={projectId} currentCount={status.children.length} onAdded={reload} />
+      </div>
     );
   }
 
