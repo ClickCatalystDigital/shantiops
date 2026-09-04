@@ -8,5 +8,10 @@ import { getProjectCosting } from '@/lib/data';
 export async function GET(req, { params }) {
   const user = await getFreshSessionUser();
   if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  return NextResponse.json(await getProjectCosting(params.id));
+  const costing = await getProjectCosting(params.id);
+  // A split child has no commercial value of its own — see getProjectCosting's own comment.
+  if (costing.isChild) {
+    return NextResponse.json({ error: 'This is one unit of a multi-unit order — costing is tracked on the master project only.' }, { status: 400 });
+  }
+  return NextResponse.json(costing);
 }

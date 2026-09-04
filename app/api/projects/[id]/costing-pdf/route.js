@@ -16,6 +16,10 @@ export async function GET(req, { params }) {
   const project = await queryOne('SELECT project_no, customer_name, company FROM projects WHERE id = ?', [params.id]);
   if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
   const costing = await getProjectCosting(params.id);
+  // A split child has no commercial value of its own — see getProjectCosting's own comment.
+  if (costing.isChild) {
+    return NextResponse.json({ error: 'This is one unit of a multi-unit order — costing is tracked on the master project only.' }, { status: 400 });
+  }
 
   const pdf = await renderProjectCostingPdf(project, costing, project.company);
   return new NextResponse(pdf, {
