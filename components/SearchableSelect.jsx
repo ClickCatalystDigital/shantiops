@@ -40,10 +40,15 @@ export default function SearchableSelect({ value, onChange, options, placeholder
   const selected = options.find(o => o.value === value);
   const currentText = displayValue ?? selected?.label ?? '';
   const localFiltered = query.trim()
-    ? options.filter(o => o.label.toLowerCase().includes(query.trim().toLowerCase()))
+    ? options.filter(o => String(o.label ?? '').toLowerCase().includes(query.trim().toLowerCase()))
     : options;
-  const localValues = new Set(localFiltered.map(o => o.value.toLowerCase()));
-  const filtered = asyncOptions ? [...localFiltered, ...remote.filter(o => !localValues.has(o.value.toLowerCase()))] : localFiltered;
+  // String(o.value ?? '') — an option's value is often a real sentinel `null` (every "All X" /
+  // "None" entry in this app's option lists, e.g. QcWorkspace's Series/Project pickers), and a bare
+  // `.toLowerCase()` on that threw on every render wherever such an option existed. Only matters
+  // for asyncOptions callers (dedup against remote results), but computed for every render either
+  // way, so guard here rather than gating behind `asyncOptions ?`.
+  const localValues = new Set(localFiltered.map(o => String(o.value ?? '').toLowerCase()));
+  const filtered = asyncOptions ? [...localFiltered, ...remote.filter(o => !localValues.has(String(o.value ?? '').toLowerCase()))] : localFiltered;
 
   async function search(text) {
     if (!asyncOptions) return;
