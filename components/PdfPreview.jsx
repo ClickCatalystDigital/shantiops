@@ -12,31 +12,51 @@ export default function PdfPreview({ open, onOpenChange, url, title, description
   const scrollRef = useRef(null);
   const pdfRef = useRef(null);
   const canvasRefs = useRef([]);
+  const renderingRef = useRef(false);
+  const pendingRef = useRef(false);
   const [status, setStatus] = useState('loading');
   const [error, setError] = useState(null);
   const [numPages, setNumPages] = useState(0);
 
   // Paints into each page's own canvas — mutates width/height/pixels only, never the DOM tree.
   // The canvases themselves are mounted/unmounted purely by the numPages-driven map in the JSX below.
+  //
+  // Real bug found live: ResizeObserver.observe() fires its first callback on the next frame even
+  // with no actual size change (a well-known browser-API footgun) — landing right on top of the
+  // direct renderPages() call already firing once status becomes ready. For a large multi-page PDF
+  // (this document's own 221-part Form IV A table), the per-page render loop below takes long enough
+  // for both calls to overlap and both reach page.render() on the SAME <canvas> at once, which
+  // pdf.js throws on ("Cannot use the same canvas during multiple render() operations") — the dialog
+  // gets stuck on "Rendering PDF…" forever. Guarded with a simple mutex: a call that arrives while
+  // one is already in flight is coalesced into a single trailing re-run once the current one
+  // finishes, so a genuine resize during an in-progress render still repaints at the final size
+  // rather than being silently dropped.
   const renderPages = useCallback(async () => {
     const pdf = pdfRef.current;
     const scroller = scrollRef.current;
     if (!pdf || !scroller) return;
-    const availW = Math.max(200, scroller.clientWidth - 32);
-    const availH = Math.max(200, scroller.clientHeight - 16);
-    const dpr = window.devicePixelRatio || 1;
-    for (let i = 1; i <= pdf.numPages; i++) {
-      const canvas = canvasRefs.current[i - 1];
-      if (!canvas) continue;
-      const page = await pdf.getPage(i);
-      const base = page.getViewport({ scale: 1 });
-      const cssScale = Math.min(availW / base.width, availH / base.height);
-      const viewport = page.getViewport({ scale: cssScale * dpr });
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
-      canvas.style.width = `${base.width * cssScale}px`;
-      canvas.style.height = `${base.height * cssScale}px`;
-      await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+    if (renderingRef.current) { pendingRef.current = true; return; }
+    renderingRef.current = true;
+    try {
+      const availW = Math.max(200, scroller.clientWidth - 32);
+      const availH = Math.max(200, scroller.clientHeight - 16);
+      const dpr = window.devicePixelRatio || 1;
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const canvas = canvasRefs.current[i - 1];
+        if (!canvas) continue;
+        const page = await pdf.getPage(i);
+        const base = page.getViewport({ scale: 1 });
+        const cssScale = Math.min(availW / base.width, availH / base.height);
+        const viewport = page.getViewport({ scale: cssScale * dpr });
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        canvas.style.width = `${base.width * cssScale}px`;
+        canvas.style.height = `${base.height * cssScale}px`;
+        await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+      }
+    } finally {
+      renderingRef.current = false;
+      if (pendingRef.current) { pendingRef.current = false; renderPages(); }
     }
   }, []);
 
