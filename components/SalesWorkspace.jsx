@@ -26,7 +26,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/com
 import {
   PlusIcon, TrashIcon, UserPlusIcon, UsersIcon, FileTextIcon, ShoppingCartIcon,
   MegaphoneIcon, CheckSquareIcon, ContactIcon, MessageCircleIcon, MailIcon, TagIcon,
-  InboxIcon, UndoIcon, IndianRupeeIcon, ReceiptIcon, DownloadIcon,
+  InboxIcon, UndoIcon, IndianRupeeIcon, ReceiptIcon, DownloadIcon, UploadIcon,
 } from 'lucide-react';
 import { api, showToast } from '@/lib/client';
 import { formatMoney } from '@/lib/format';
@@ -1186,16 +1186,137 @@ function CostingSheet({ so, onClose }) {
   );
 }
 
+// Line-item editing + Order Acknowledgement/Scope-of-Supply PDF attachment for an existing Sale
+// Order — the two missing pieces found wiring up a real order (SB-1109-01-50/SO-22) that predates
+// a project it was later linked to. sale_order_items was previously only ever written once, at
+// Quotation->Convert time (POST /api/sale-orders/[id]/items is new, whole-list replace). The PDF
+// attachment mirrors test_certificates.pdf_key/pdf_url exactly (same R2 single-file pattern), per
+// direct instruction.
+function SaleOrderItemsSheet({ so, onClose, onSaved, canEditTax }) {
+  const [detail, setDetail] = useState(null);
+  const [items, setItems] = useState([]);
+  const [taxPct, setTaxPct] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
+
+  useEffect(() => {
+    api(`/api/sale-orders/${so.id}`).then(d => {
+      setDetail(d);
+      setItems(d.items.length ? d.items : [{ item_description: '', qty: '', uom: '', rate: '' }]);
+      setTaxPct(d.tax_pct || 0);
+    }).catch(err => showToast(err.message, 'error'));
+  }, [so.id]);
+
+  const subtotal = items.reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.rate) || 0), 0);
+  const taxAmount = Math.round(subtotal * Number(taxPct)) / 100;
+
+  function updateRow(i, patch) { setItems(rows => rows.map((r, idx) => idx === i ? { ...r, ...patch } : r)); }
+  function addRow() { setItems(rows => [...rows, { item_description: '', qty: '', uom: '', rate: '' }]); }
+  function removeRow(i) { setItems(rows => rows.filter((_, idx) => idx !== i)); }
+
+  async function save() {
+    const rows = items.filter(it => String(it.item_description || '').trim());
+    if (!rows.length) return showToast('At least one line item is required', 'error');
+    setSaving(true);
+    try {
+      await api(`/api/sale-orders/${so.id}/items`, { method: 'PUT', body: { items: rows, tax_pct: Number(taxPct) || 0 } });
+      showToast('Line items saved');
+      onSaved();
+    } catch (err) { showToast(err.message, 'error'); } finally { setSaving(false); }
+  }
+
+  async function uploadPdf(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPdfBusy(true);
+    try {
+      const fd = new FormData(); fd.append('file', file);
+      const res = await fetch(`/api/sale-orders/${so.id}/pdf`, { method: 'POST', body: fd }).then(r => r.json());
+      if (res.error) throw new Error(res.error);
+      setDetail(d => ({ ...d, pdf_key: 'set', pdf_url: res.pdf_url }));
+      showToast('PDF attached');
+    } catch (err) { showToast(err.message, 'error'); } finally { setPdfBusy(false); }
+  }
+
+  async function removePdf() {
+    setPdfBusy(true);
+    try {
+      await api(`/api/sale-orders/${so.id}/pdf`, { method: 'DELETE' });
+      setDetail(d => ({ ...d, pdf_key: null, pdf_url: null }));
+      showToast('PDF removed');
+    } catch (err) { showToast(err.message, 'error'); } finally { setPdfBusy(false); }
+  }
+
+  return (
+    <Sheet open onOpenChange={o => !o && onClose()}>
+      <SheetContent className="w-full sm:max-w-xl">
+        <SheetHeader><SheetTitle>Line items — {so.so_no}</SheetTitle></SheetHeader>
+        {!detail ? <p className="px-4 text-sm text-muted-foreground">Loading…</p> : (
+          <div className="flex flex-col gap-3 px-4 pb-4">
+            <div className="flex flex-col gap-2">
+              {items.map((it, i) => (
+                <div key={i} className="flex items-start gap-1.5">
+                  <Input placeholder="Description" className="flex-1" value={it.item_description || ''}
+                    onChange={e => updateRow(i, { item_description: e.target.value })} />
+                  <Input placeholder="Qty" className="w-16" value={it.qty ?? ''} onChange={e => updateRow(i, { qty: e.target.value })} />
+                  <Input placeholder="UoM" className="w-16" value={it.uom || ''} onChange={e => updateRow(i, { uom: e.target.value })} />
+                  <Input placeholder="Rate" className="w-20" value={it.rate ?? ''} onChange={e => updateRow(i, { rate: e.target.value })} />
+                  <Button size="icon" variant="ghost" onClick={() => removeRow(i)}><TrashIcon className="size-3.5" /></Button>
+                </div>
+              ))}
+              <Button size="sm" variant="outline" className="w-fit" onClick={addRow}><PlusIcon />Add line</Button>
+            </div>
+            <div className="flex items-center gap-2 border-t pt-2">
+              <Label className="text-xs text-muted-foreground">Tax %</Label>
+              {canEditTax ? (
+                <Input className="w-20" value={taxPct} onChange={e => setTaxPct(e.target.value)} />
+              ) : (
+                <span className="tnum text-sm">{taxPct}%</span>
+              )}
+              <div className="ml-auto flex flex-col items-end text-sm">
+                <span className="text-muted-foreground">Subtotal {formatMoney(subtotal)} + tax {formatMoney(taxAmount)}</span>
+                <span className="font-semibold">Total {formatMoney(subtotal + taxAmount)}</span>
+              </div>
+            </div>
+            <Button size="sm" disabled={saving} onClick={save}>{saving ? 'Saving…' : 'Save line items'}</Button>
+
+            <div className="flex flex-col gap-2 border-t pt-3">
+              <Label className="text-xs text-muted-foreground">Order Acknowledgement / Scope of Supply PDF</Label>
+              {detail.pdf_key ? (
+                <div className="flex items-center gap-2">
+                  <Button asChild size="sm" variant="outline">
+                    <a href={`/api/sale-orders/${so.id}/pdf`} target="_blank" rel="noreferrer"><DownloadIcon data-icon="inline-start" />View</a>
+                  </Button>
+                  <Button size="sm" variant="ghost" disabled={pdfBusy} onClick={removePdf}><TrashIcon data-icon="inline-start" />Remove</Button>
+                </div>
+              ) : (
+                <label className="flex w-fit cursor-pointer items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm hover:bg-muted">
+                  <UploadIcon className="size-3.5" />{pdfBusy ? 'Uploading…' : 'Attach PDF'}
+                  <input type="file" accept="application/pdf" className="hidden" disabled={pdfBusy} onChange={uploadPdf} />
+                </label>
+              )}
+            </div>
+          </div>
+        )}
+        <SheetFooter className="flex-row justify-end gap-2">
+          <Button variant="outline" onClick={onClose}>Close</Button>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 // Convert-to-Project used to live here (STORES-SALES-CHANGES.md §2b/§4) but was only reachable by
 // a Design head who also held Sales/Marketing access — /sales itself is gated on those departments,
 // so a Design-only head (the common case) could never reach it despite the button/API both being
 // gated on isDesignHead. Moved to Design's own Projects tab (ConvertSaleOrderButton.jsx), the
 // surface every Design head can actually reach; not duplicated here.
-function SaleOrdersTab({ saleOrders, router }) {
+function SaleOrdersTab({ saleOrders, router, canEditSoTax }) {
   useEntityHighlight(useSearchParams().get('highlight'));
   const [dialogOpen, setDialogOpen] = useState(false);
   const [sasSo, setSasSo] = useState(null);
   const [costingSo, setCostingSo] = useState(null);
+  const [itemsSo, setItemsSo] = useState(null);
   return (
     <Card>
       <CardHeader>
@@ -1216,6 +1337,7 @@ function SaleOrdersTab({ saleOrders, router }) {
                   <TableCell><Badge variant={so.status === 'open' ? 'outline' : 'default'}>{so.status || 'open'}</Badge></TableCell>
                   <TableCell className="text-muted-foreground">{new Date(so.created_at).toLocaleDateString()}</TableCell>
                   <TableCell className="flex justify-end gap-2">
+                    <Button size="sm" variant="outline" onClick={() => setItemsSo(so)}><FileTextIcon />Items & PDF</Button>
                     {so.project_id && <Button size="sm" variant="outline" onClick={() => setCostingSo(so)}><IndianRupeeIcon />Costing</Button>}
                     <Button size="sm" variant="outline" onClick={() => setSasSo(so)}>Request from Stores</Button>
                   </TableCell>
@@ -1228,6 +1350,7 @@ function SaleOrdersTab({ saleOrders, router }) {
       {dialogOpen && <AddSaleOrderDialog router={router} onClose={() => setDialogOpen(false)} />}
       {sasSo && <RequestFromStoresDialog so={sasSo} router={router} onClose={() => setSasSo(null)} />}
       {costingSo && <CostingSheet so={costingSo} onClose={() => setCostingSo(null)} />}
+      {itemsSo && <SaleOrderItemsSheet so={itemsSo} onClose={() => setItemsSo(null)} onSaved={() => router.refresh()} canEditTax={canEditSoTax} />}
     </Card>
   );
 }
@@ -1528,7 +1651,7 @@ const PANELS = [
   { key: 'team', label: 'Team', icon: ContactIcon, description: 'Auto-assign new leads round-robin', salesOnly: false },
 ];
 
-export default function SalesWorkspace({ saleOrders, leads, customers, quotations, campaigns, priceLists = [], returns = [], inventoryItems = [], invoices = [], creditNotes = [], departments = ['Sales', 'Marketing'], users = [], savedViews = [], initialTab }) {
+export default function SalesWorkspace({ saleOrders, leads, customers, quotations, campaigns, priceLists = [], returns = [], inventoryItems = [], invoices = [], creditNotes = [], departments = ['Sales', 'Marketing'], users = [], savedViews = [], initialTab, canEditSoTax = false }) {
   const router = useRouter();
   // Customers/Quotations/Sale Orders are the commercial fulfilment chain — Sales-owned. Marketing
   // shares Leads/Campaigns/Reports (both departments feed the pipeline) but doesn't manage orders.
@@ -1590,7 +1713,7 @@ export default function SalesWorkspace({ saleOrders, leads, customers, quotation
           {activePanel.key === 'customers' && <CustomersTab customers={customers} router={router} />}
           {activePanel.key === 'quotations' && <QuotationsTab quotations={quotations} customers={customers} router={router} />}
           {activePanel.key === 'price_lists' && <PriceListsTab priceLists={priceLists} customers={customers} router={router} />}
-          {activePanel.key === 'sale_orders' && <SaleOrdersTab saleOrders={saleOrders} router={router} />}
+          {activePanel.key === 'sale_orders' && <SaleOrdersTab saleOrders={saleOrders} router={router} canEditSoTax={canEditSoTax} />}
           {activePanel.key === 'invoices' && <InvoicesTab invoices={invoices} creditNotes={creditNotes} router={router} />}
           {activePanel.key === 'returns' && <ReturnsTab returns={returns} saleOrders={saleOrders} inventoryItems={inventoryItems} router={router} />}
           {activePanel.key === 'campaigns' && <CampaignsTab campaigns={campaigns} router={router} />}

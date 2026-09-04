@@ -200,3 +200,34 @@ off the original STERP checklist's older GSTR-1/2/3 model or any legacy ERP-impl
 checklist. STERP's own item 59 label ("GSTR2") is left in row 59's first column only because
 that's STERP's item name, not a description of what Shanti Ops actually builds — see that row's
 own note.
+
+## 8. Real-world finding — a real order where the source document disagrees with the app's own
+## automatic intra/inter-state GST split (2026-09-04)
+
+Found while wiring up a real Sale Order (SO-22, project SB-1109-01-50, customer HKM CHARITABLE
+FOUNDATION) from the client's own Order Acknowledgement / Scope of Supply PDF, not a hypothetical:
+
+- Both parties are registered in the **same state** — Shanti Boilers (GSTIN `36AAECS7382N1ZN`,
+  Telangana) and HKM CHARITABLE FOUNDATION (state code 36, Telangana), confirmed directly against
+  `company_settings` and the real `customers` row.
+- `lib/gst-calc.mjs`'s `gstSplit()` (§3, already built for real Sales Invoice posting) would
+  therefore compute this as an **intra-state** sale — CGST + SGST.
+- The client's own source document explicitly states **"ADD: IGST @ 18%"** — inter-state
+  treatment.
+
+This is a real, live discrepancy, not a bug in `gstSplit()` — the function is doing exactly what
+it was built to do given the two parties' registered addresses. Two real possibilities, both
+legitimate under GST law and neither decidable from inside this app: (a) the actual place of
+supply differs from both parties' registered address (common for boiler installation/site-delivery
+contracts, where place of supply can follow the delivery/installation site rather than the
+registered billing address), or (b) the source document's IGST line is simply a template default
+that was never corrected for this specific order.
+
+**Not resolved here — flagged for whoever handles this order's real GST filing to confirm before
+any invoice is issued against SO-22.** If place-of-supply genuinely differs from registered
+address for this kind of contract, `gstSplit()`'s "same state = intra-state" rule (accurate for
+the common case) doesn't hold, and either the invoicing flow needs an explicit "place of supply"
+override field (not built — `gstSplit()` currently has no way to express this), or this specific
+invoice's split needs to be entered manually rather than trusting the automatic calculation. Worth
+treating as a signal to eventually check whether place-of-supply commonly differs from registered
+address for Shanti's real installation-heavy contracts, not just a one-off data-entry question.

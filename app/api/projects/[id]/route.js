@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { execute } from '@/lib/db';
+import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser } from '@/lib/auth';
 import { requireCalcAccess } from '@/lib/calc';
 import { audit } from '@/lib/usb';
@@ -30,6 +30,25 @@ export async function PATCH(req, { params }) {
     const n = Number(b.unit_count);
     fields.push('unit_count = ?'); args.push(n > 0 ? n : 1);
   }
+  // Link an already-existing project to an already-existing customer/Sale Order — for a project
+  // that was created directly (not via Convert-to-Project), which otherwise has no way to ever gain
+  // either link. Deliberately allows a Sale Order to be linked to more than one project (the
+  // confirmed multi-unit-split variant-order convention, MULTI-UNIT-SPLIT-DESIGN.md §7, relies on
+  // exactly this) — not blocked as a conflict.
+  if (b.customer_id !== undefined) {
+    if (b.customer_id !== null) {
+      const c = await queryOne('SELECT id FROM customers WHERE id = ?', [b.customer_id]);
+      if (!c) return NextResponse.json({ error: 'Customer not found' }, { status: 400 });
+    }
+    fields.push('customer_id = ?'); args.push(b.customer_id);
+  }
+  if (b.sale_order_id !== undefined) {
+    if (b.sale_order_id !== null) {
+      const so = await queryOne('SELECT id FROM sale_orders WHERE id = ?', [b.sale_order_id]);
+      if (!so) return NextResponse.json({ error: 'Sale Order not found' }, { status: 400 });
+    }
+    fields.push('sale_order_id = ?'); args.push(b.sale_order_id);
+  }
   if (!fields.length) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
 
   args.push(params.id);
@@ -47,6 +66,12 @@ export async function PATCH(req, { params }) {
   // than blending into a plain identity-rename entry.
   if (b.unit_count !== undefined) {
     await audit('project_unit_count_changed', { actor: user.username, detail: `project ${params.id} -> unit_count ${b.unit_count}` });
+  }
+  if (b.customer_id !== undefined || b.sale_order_id !== undefined) {
+    await audit('project_customer_so_linked', {
+      actor: user.username,
+      detail: `project ${params.id} -> customer_id ${b.customer_id ?? '(unchanged)'}, sale_order_id ${b.sale_order_id ?? '(unchanged)'}`,
+    });
   }
   return NextResponse.json({ ok: true });
 }

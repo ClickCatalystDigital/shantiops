@@ -21,6 +21,10 @@ export default async function SalesPage({ searchParams }) {
   // Leads/Campaigns/Tasks/Team but doesn't own the commercial fulfilment chain. Same
   // "departments the viewer holds" shape as app/pipeline/page.js.
   const departments = isPM(user) ? CRM_DEPARTMENTS : headDepartments(user).filter(d => CRM_DEPARTMENTS.includes(d));
+  // Sale Order tax % — Accounts owns the real rate, Sales sees it as a label only (direct request).
+  // CRM_DEPARTMENTS above deliberately excludes Accounts, so this needs its own check rather than
+  // reusing `departments`.
+  const canEditSoTax = isPM(user) || canAccessDepartment(user, 'Accounts');
 
   const [saleOrders, leads, customers, quotations, campaigns, priceLists, returns, inventoryItems, invoices, creditNotes, heads, savedViewRows] = await Promise.all([
     getSaleOrders(), getLeads(), getCustomers(), getQuotations(), getCampaigns(), getPriceLists(), getSalesReturns(), getInventoryItems(),
@@ -36,6 +40,6 @@ export default async function SalesPage({ searchParams }) {
   const sp = await searchParams;
 
   return (
-    <SalesWorkspace saleOrders={saleOrders} leads={leads} customers={customers} quotations={quotations} campaigns={campaigns} priceLists={priceLists} returns={returns} inventoryItems={inventoryItems} invoices={invoices} creditNotes={creditNotes} departments={departments} users={crmUsers} savedViews={savedViews} initialTab={sp?.tab} />
+    <SalesWorkspace saleOrders={saleOrders} leads={leads} customers={customers} quotations={quotations} campaigns={campaigns} priceLists={priceLists} returns={returns} inventoryItems={inventoryItems} invoices={invoices} creditNotes={creditNotes} departments={departments} users={crmUsers} savedViews={savedViews} initialTab={sp?.tab} canEditSoTax={canEditSoTax} />
   );
 }
