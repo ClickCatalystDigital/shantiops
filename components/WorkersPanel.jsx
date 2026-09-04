@@ -223,7 +223,10 @@ function ProductionBomTab({ projects }) {
                   <div key={b.id} className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm">
                     <div className="flex flex-col">
                       <span>{b.material_description} {b.size_spec ? `· ${b.size_spec}` : ''}</span>
-                      <span className="text-xs text-muted-foreground">{b.catalog_item_code ? `${b.catalog_item_code} · ` : ''}{b.qty_text || '—'}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {b.catalog_item_code ? `${b.catalog_item_code} · ` : ''}{b.qty_text || '—'}
+                        {b.qty_breakdown && ` (${b.qty_breakdown.label})`}
+                      </span>
                     </div>
                     <div className="flex items-center gap-2">
                       {b.reserved_piece_count > 0 && <Badge className="border-info/30 bg-info-surface text-info">Reserved — ready to cut</Badge>}

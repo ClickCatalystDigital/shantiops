@@ -22,7 +22,12 @@ a reader who finds the old `V3_CHANGES.md` §12 text elsewhere knows it's stale.
 reversal.
 
 Everything in this file reflects the **current, working build**, updated as work lands — most
-recently 2026-09-04 (§5be, a whole-BOM Unit Count layered on top of §5bc's per-node multiplier —
+recently 2026-09-04 (§5bf, a same-day pair: a live-reported prod crash on the QC tab — one
+`SearchableSelect` sentinel-value bug taking down all five QC sub-tabs, root-caused and shipped
+first, ahead of everything else, per direct instruction — then a full repo-wide quantity-display
+gap audit finding and fixing 7 real screens §5be's own rollup never reached, from the single
+most-used BOM table down to the RFQ supplier portal); the round before that, 2026-09-04 (§5be, a
+whole-BOM Unit Count layered on top of §5bc's per-node multiplier —
 direct user pushback that a real multi-root project (SB-1109 has 5) needed one project-wide number,
 not five separately-set node values; closed out with a real, serious split-qty double-counting bug
 found and fixed in the same pass, live-proven with a real partial-match-then-re-release test); the
@@ -7147,6 +7152,76 @@ case, and `"BM-2461 · 20 No → 20 total"` (not re-multiplied) for the resolved
 matching the fix. Every disposable row deleted afterward; a final query confirmed zero residue
 across `bom_assemblies.qty!=1`, `projects.unit_count!=1`, and `bom_items.qty_resolved!=0`, matching
 the pre-round baseline exactly.
+
+## 5bf. A live prod crash + a full quantity-display gap audit (2026-09-04)
+
+Two rounds, same day, both user-triggered directly.
+
+**A pre-existing, unrelated crash reported live** ("QC head `venu` logs in, `/qc` breaks") — took
+priority over everything else per the user's own sequencing. Root cause: `SearchableSelect.jsx`
+unconditionally called `.toLowerCase()` on every option's `value` while building an internal dedup
+set, even for callers that never need it (only `asyncOptions` callers do). `QcWorkspace.jsx`'s
+Series/Project filters both include a real `{value: null, label: 'All models'/'All projects'}`
+sentinel — `null.toLowerCase()` crashed the whole component tree on *every* render, taking down all
+five QC sub-tabs for any user hitting `/qc`. Confirmed via `git log` this predates and is unrelated
+to this session's own §5be work — a prior commit (`45a2e6e`) had already fixed one related
+`SearchableSelect` crash in this same pair of files but missed this one. Fixed at the root (the
+shared component, both the value and label comparisons), not per-caller, since the same sentinel
+pattern is used by other `SearchableSelect` callers throughout the app. Live-verified across all
+five QC sub-tabs (Test Certificates, Documents, NCR, Hold Points, Calibration) with a fresh browser
+session as `venu` — zero console errors, shipped and pushed on its own
+(`f5a5e9e`) before continuing.
+
+**The quantity-display gap audit** — a full repo-wide grep of every `qty_text` render, not just the
+screens already touched. Confirmed the write side (every real committed number — `po_items.qty`,
+`inventory_reservations.qty`, `packing_items.qty`) was already fully correct from §5be; the display
+side had 7 real, un-annotated gaps, tiered by how many screens/how externally-facing each was.
+All 7 fixed in one pass, reusing the exact `qtyBreakdown()`/attach-on-read pattern §5be already
+established — no new calculation, only wiring:
+
+1. **`getProjectBom()`** (`lib/data.js`) — the single most-used BOM view (`BomTable.jsx`, every
+   department's project-page panel, Release BOM, Structure Templates' item tab) had never been
+   wired, the biggest miss. Now attaches `qty_breakdown`/`rolled_qty` per item, same
+   `getAssemblyRollupMap()`/project `unit_count` lookup every other site already uses.
+2. **`BomTable.jsx`** — the `qty_text` column (one of the generic `COLUMNS`-driven cells, no
+   per-field JSX before this) gained its own branch rendering the breakdown as a second, muted line
+   under the value.
+3. **`WorkersPanel.jsx`'s Cutting & Remnant list** (Production) — reads `getProjectBom()` directly
+   for its own card; picked up the new field for free, just needed the render.
+4. **`getPendingPackingItems()`** (`lib/data.js`) — Dispatch's cross-project Pending-items preview
+   (distinct from the draft-packing-list view `getPackingDetail()` already covered) was missing
+   `assembly_id`/`qty_resolved` from its `SELECT` entirely, so it couldn't even be wired without a
+   query change first. Added both, then attached the breakdown the same way.
+5. **`DispatchWorkspace.jsx`'s Pending tab row** — rendered the new field.
+6. **`StoresWorkspace.jsx`'s Open Requests table cell** — the data already carried `qty_breakdown`
+   (wired into `getOpenBomItems()` in §5be), it just was never rendered in this specific cell — only
+   in the Reserve dialog that opens from it. Cheapest fix.
+7. **RFQ supplier portal + compose** — `getRfqByToken()` (`lib/data.js`) gained the same
+   `assembly_id`/`qty_resolved`/`project_id` columns and breakdown attach (computed inside the
+   function's existing plain-object-copy map, not by mutating the raw Row instances first — that
+   function has its own documented reason a Row can't cross the server→client RSC boundary
+   unmutated); `RfqPortalForm.jsx` renders it. `CreateRfqDialog.jsx`'s WhatsApp/Email
+   `composeMessage()` — the outbound message text — reads `qty_breakdown` too now (its `items` data
+   already carried it via `getSourcingItems()`, the composer just never read the field). A supplier's
+   submitted quote (unit price/UoM/terms only, never a quantity) stays correct either way — this is
+   a transparency fix, not a pricing-correctness one.
+
+**Checked and confirmed NOT a gap**: Engineering's Where-Used List shows raw `qty_text` too, but
+that's an identity-matching view ("which projects use this part"), not a quantity-consumption view
+— the multiplier there would be noise. Left alone.
+
+**Live-verified against the real dev DB, one disposable project** (`ZZ-GAP-TEST-DELETE-ME`,
+`unit_count=50`, one dimensional BOM line `qty_text: '2 Nos'`): `GET /api/projects/[id]/bom?all=1`
+correctly returned `qty_breakdown: {base:2, mult:50, total:100, label:"100 Nos = 2 Nos × 50"}`,
+`rolled_qty: 100`; the project page's `BomTable` rendered exactly "2 Nos" / "100 Nos = 2 Nos × 50"
+on two lines in the Qty cell; Dispatch's Pending Items tab showed "(100 Nos = 2 Nos × 50)" next to
+the item; Stores' Open Requests table showed "2 Nos (100 Nos = 2 Nos × 50)" in its Qty cell. Gaps #1
+(RFQ portal) and #2 (RFQ compose) reuse the identical proven wiring and were verified by code
+inspection rather than a full RFQ-token click-through (would need a disposable supplier + RFQ +
+token setup, not attempted given the pattern's already-proven correctness at 3 independent sites
+this same round). All disposable rows (project, BOM item, its auto-seeded milestones/scope-of-supply)
+deleted afterward via a single FK-ordered transaction; a final query confirmed zero `ZZ-`-prefixed
+projects anywhere and zero residue. `npm run lint` clean throughout both rounds.
 
 ## 6. Customer Portal (read-only, external)
 

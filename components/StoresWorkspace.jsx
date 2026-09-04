@@ -1034,7 +1034,9 @@ function OpenRequestsCard({ openRequests, inventoryItems, router }) {
                         </div>
                       )}
                     </TableCell>
-                    <TableCell className="text-muted-foreground">{r.qty_text || '—'}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {r.qty_text || '—'}{r.qty_breakdown && ` (${r.qty_breakdown.label})`}
+                    </TableCell>
                     <TableCell className="text-muted-foreground">
                       {r.source === 'stock'
                         ? <Badge variant="outline" className="border-dashed">Build Stock</Badge>

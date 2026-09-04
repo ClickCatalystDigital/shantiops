@@ -187,7 +187,10 @@ function PendingItemsTab({ items }) {
                 <div key={it.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
                   <div className="min-w-0 flex-1">
                     <div className="truncate font-medium">{it.material_description}</div>
-                    <div className="text-xs text-muted-foreground">{[it.qty_text, it.size_spec].filter(Boolean).join(' · ') || '—'}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {[it.qty_text, it.size_spec].filter(Boolean).join(' · ') || '—'}
+                      {it.qty_breakdown && ` (${it.qty_breakdown.label})`}
+                    </div>
                   </div>
                   {it.readyForPacking
                     ? <Badge variant="outline" className="shrink-0 border-success/30 bg-success-surface text-success">Ready to pack</Badge>

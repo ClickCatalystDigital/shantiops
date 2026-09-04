@@ -903,6 +903,15 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
                       // the unified PR flow (bom_items.pr_item_id); the legacy free-text pr_ref only
                       // still matters for rows from before that flow existed.
                       <TruncatedCell value={r.pr_no ? `${r.pr_no} · ${formatDate(r.pr_created_at)}` : r.pr_ref} />
+                    ) : c === 'qty_text' && r.qty_breakdown ? (
+                      // Gap #3/#5 (2026-09-04) — this cell, and WorkersPanel.jsx's Cutting & Remnant
+                      // list which reads the same getProjectBom() data, are the app's two
+                      // highest-traffic BOM quantity views; both were missing the "always show the
+                      // math" annotation §5be already wired everywhere else.
+                      <div className="flex flex-col gap-0.5">
+                        <TruncatedCell value={r.qty_text} />
+                        <div className="text-xs text-muted-foreground">{r.qty_breakdown.label}</div>
+                      </div>
                     ) : <TruncatedCell value={r[c]} />}
                   </TableCell>
                 ))}

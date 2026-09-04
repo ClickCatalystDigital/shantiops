@@ -62,7 +62,10 @@ export default function RfqPortalForm({ token, rfq, alreadyResponded }) {
       {rfq.items.map(it => (
         <div key={it.rfq_item_id} className="flex flex-col gap-3 rounded-md border p-3">
           <p className="text-sm font-medium">{it.material_description}</p>
-          <p className="text-xs text-muted-foreground">{it.moc || '—'} · {it.size_spec || '—'} · Qty {it.qty_text || '—'}</p>
+          <p className="text-xs text-muted-foreground">
+            {it.moc || '—'} · {it.size_spec || '—'} · Qty {it.qty_text || '—'}
+            {it.qty_breakdown && ` (${it.qty_breakdown.label})`}
+          </p>
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
               <Label>Unit price</Label>

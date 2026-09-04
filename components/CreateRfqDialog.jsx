@@ -21,7 +21,12 @@ function waDigits(phone) {
 }
 
 function composeMessage({ rfqNo, supplierName, items, portalUrl }) {
-  const itemLines = items.map((it, i) => `${i + 1}. ${it.material_description} — Qty ${it.qty_text || '—'}`).join('\n');
+  // Gap #2 (2026-09-04) — items already carry qty_breakdown (getSourcingItems(), §5be); this
+  // composer just never read it, so a supplier quoting a multiplied line saw the raw per-unit
+  // figure ("Qty 2 Mtrs") with no sense of the real total order size.
+  const itemLines = items.map((it, i) =>
+    `${i + 1}. ${it.material_description} — Qty ${it.qty_text || '—'}${it.qty_breakdown ? ` (${it.qty_breakdown.label})` : ''}`
+  ).join('\n');
   return `RFQ ${rfqNo} — Shanti Boilers
 
 Dear ${supplierName},
