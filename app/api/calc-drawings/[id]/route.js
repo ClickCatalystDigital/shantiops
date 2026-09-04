@@ -4,6 +4,7 @@ import { queryOne } from '@/lib/db';
 import { requireCalcAccess, updateDrawing, getDrawingFiles, deleteDrawing } from '@/lib/calc';
 import { deleteObject } from '@/lib/r2';
 import { audit } from '@/lib/usb';
+import { notifyDepartmentHeads } from '@/lib/notify';
 
 const PATCHABLE = { status: 'status', assignedTo: 'assigned_to', dueDate: 'due_date', notes: 'notes', name: 'name', description: 'description', drawingType: 'drawing_type', customerVisible: 'customer_visible' };
 
@@ -28,6 +29,9 @@ export async function PATCH(req, { params }) {
   for (const [key, column] of Object.entries(PATCHABLE)) {
     if (b[key] !== undefined && key !== 'customerVisible') fields[column] = b[key];
   }
+  const currentStatus = b.status !== undefined
+    ? await queryOne('SELECT status, name FROM calc_drawings WHERE id = ?', [params.id])
+    : null;
   if (b.customerVisible !== undefined) {
     const current = await queryOne('SELECT customer_visible FROM calc_drawings WHERE id = ?', [params.id]);
     const next = b.customerVisible ? 1 : 0;
@@ -47,6 +51,16 @@ export async function PATCH(req, { params }) {
 
   await updateDrawing(params.id, fields);
   await audit('calc_drawing_edit', { actor: user.username, detail: `drawing ${params.id}` });
+
+  // A Designer submitting for review — never fired for the Head's own transition, since they'd
+  // just be notifying themselves.
+  if (currentStatus && currentStatus.status !== 'under_review' && b.status === 'under_review' && !head) {
+    await notifyDepartmentHeads('Design', {
+      kind: 'drawing_submitted', title: `${currentStatus.name || 'A drawing'} submitted for review`,
+      body: `${user.display_name || user.username} submitted this drawing for review.`,
+      dedupe_key: `drawing_submitted:${params.id}:${Date.now()}`,
+    });
+  }
   return NextResponse.json({ ok: true });
 }
 

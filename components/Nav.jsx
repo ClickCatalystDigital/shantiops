@@ -8,7 +8,7 @@ import {
   LayoutDashboardIcon, FolderKanbanIcon, PackageIcon, ShieldCheckIcon, InfoIcon,
   CalendarDaysIcon, HardHatIcon, ShoppingCartIcon, InboxIcon, FlaskConicalIcon,
   TagIcon, WarehouseIcon, TrendingUpIcon, UsersIcon, CalculatorIcon, MapPinIcon, NetworkIcon,
-  LandmarkIcon, ClipboardListIcon,
+  LandmarkIcon, ClipboardListIcon, PencilRulerIcon,
 } from 'lucide-react';
 import { DEPARTMENTS } from '@/lib/milestones';
 import { cn } from '@/lib/utils';
@@ -72,6 +72,7 @@ export default function Nav({ user, reportDepartments = [] }) {
   addDeptTab(['Sales', 'Marketing'], '/sales', tabDepartments.includes('Sales') ? 'Sales' : 'Marketing', TagIcon);
   addDeptTab(['Sales', 'Marketing'], '/pipeline', 'Pipeline', TrendingUpIcon);
   addDeptTab(['Design', 'Engineering'], '/calc', 'Calc Sheets', CalculatorIcon);
+  addDeptTab(['Design', 'Engineering'], '/calc-drawings', 'Drawings', PencilRulerIcon);
   // STERP items 16-19 (§5o) — BOM Structure/Where-Used/Common-Uncommon/ECN. Deliberately gated to
   // the same ['Design','Engineering'] pair as Calc Sheets above (the owner's ask: one shared tab
   // today, split-ready later) rather than 'Engineering' alone — every route/action key underneath

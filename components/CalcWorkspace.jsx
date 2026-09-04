@@ -13,7 +13,7 @@ import {
   ArrowRight, CheckCircle2, AlertTriangle, XCircle, GitBranch, Save, RotateCcw,
   BookOpen, ShieldCheck, ExternalLink, Calculator, RefreshCw, ChevronDown, ChevronRight,
   Table as TableIcon, FileText as FileTextIcon, FileSpreadsheet, Upload, MessageSquare, LayoutTemplate,
-  LayoutDashboard, ChartSpline, PencilRuler,
+  LayoutDashboard, ChartSpline,
 } from 'lucide-react';
 import { computeAll, runValidations, runFormulaTests, extractDeps, round, LIBRARY, goalSeek, sensitivityAnalysis, changeImpact } from '@/lib/calc-engine';
 import { api, showToast, formatDate } from '@/lib/client';
@@ -27,7 +27,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Separator } from '@/components/ui/separator';
@@ -95,11 +94,6 @@ const PANELS = [
     group: 'Governance',
   },
   {
-    key: 'drawings', label: 'Drawings', icon: PencilRuler, description: 'Design deliverable checklist + files',
-    help: 'A checklist of design drawings for this project — not a CAD studio. Upload files and track status per drawing.',
-    group: 'Drawings',
-  },
-  {
     key: 'calc-drawing-links', label: 'Calc Links', icon: Calculator, description: 'Which calc sheet substantiates which drawing',
     help: 'A calc sheet substantiates a drawing, not a BOM structural node. Link one or more calc sheets to each drawing here.',
     group: 'Drawings',
@@ -128,7 +122,6 @@ export default function CalcWorkspace({ initialState, sheetId, sheetChain, user,
   const [formulaTests, setFormulaTests] = useState(initialState.formulaTests || []);
   const [notes, setNotes] = useState(initialState.notes || []);
   const [templates, setTemplates] = useState(initialState.templates || []);
-  const [drawings, setDrawings] = useState(initialState.drawings || []);
 
   // Server truth lands here after every mutation's router.refresh() — re-sync local editable state.
   useEffect(() => {
@@ -140,7 +133,6 @@ export default function CalcWorkspace({ initialState, sheetId, sheetChain, user,
     setFormulaTests(initialState.formulaTests || []);
     setNotes(initialState.notes || []);
     setTemplates(initialState.templates || []);
-    setDrawings(initialState.drawings || []);
   }, [initialState]);
 
   const nameList = variables.map((v) => v.name);
@@ -316,7 +308,6 @@ export default function CalcWorkspace({ initialState, sheetId, sheetChain, user,
           {panel === 'library' && <LibraryPanel formulas={formulas} router={router} sheetId={sheetId} />}
           {panel === 'tables' && <TablesPanel tables={tables} router={router} nameList={nameList} variables={variables} />}
           {panel === 'audit' && <AuditPanel variables={variables} formulas={formulas} tables={tables} snapshots={snapshots} router={router} />}
-          {panel === 'drawings' && <DrawingsPanel drawings={drawings} projectId={sheetChain?.projectId} router={router} user={user} designTeam={designTeam} />}
           {panel === 'calc-drawing-links' && <CalcDrawingLinksPanel projectId={sheetChain?.projectId} />}
           {panel === 'portfolio' && <PortfolioPanel />}
         </div>
@@ -2222,18 +2213,31 @@ function DrawingCard({ drawing, router, canApprove, designTeam }) {
   </div>
 ))}</div>
       <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-        <div className="flex flex-col gap-1"><Label className="text-xs">Status</Label><Select value={form.status} onValueChange={(status) => { setForm({ ...form, status }); save({ status }); }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{DRAWING_STATUSES.filter((s) => canApprove || !['approved', 'as_built'].includes(s)).map((s) => <SelectItem key={s} value={s}>{DRAWING_STATUS_STYLE[s].label}</SelectItem>)}</SelectContent></Select></div>
+        <div className="flex flex-col gap-1">
+          <Label className="text-xs">Status</Label>
+          <Select value={form.status} onValueChange={(status) => { setForm({ ...form, status }); save({ status }); }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{DRAWING_STATUSES.filter((s) => canApprove || !['approved', 'as_built'].includes(s)).map((s) => <SelectItem key={s} value={s}>{DRAWING_STATUS_STYLE[s].label}</SelectItem>)}</SelectContent></Select>
+          {!canApprove && ['not_started', 'in_progress'].includes(form.status) && (
+            <Button size="sm" variant="outline" className="mt-1 w-fit" disabled={busy}
+              onClick={() => { setForm({ ...form, status: 'under_review' }); save({ status: 'under_review' }); }}>
+              Submit for review
+            </Button>
+          )}
+        </div>
         <div className="flex flex-col gap-1"><Label className="text-xs">Assigned to</Label><Select disabled={!canApprove} value={form.assignedTo || undefined} onValueChange={(assignedTo) => { setForm({ ...form, assignedTo }); save({ assignedTo }); }}><SelectTrigger><SelectValue placeholder="Select a Design teammate" /></SelectTrigger><SelectContent>{designTeam.map((m) => <SelectItem key={m.id} value={m.name}>{m.name}</SelectItem>)}</SelectContent></Select></div>
         <div className="flex flex-col gap-1"><Label className="text-xs">Due date</Label><Input type="date" disabled={!canApprove} value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} onBlur={() => save({ dueDate: form.dueDate })} /></div>
       </div>
       <div className="flex flex-col gap-1"><Label className="text-xs">Notes</Label><Textarea rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} onBlur={() => save({ notes: form.notes })} /></div>
       {canApprove && (
-        <div className="flex items-center gap-2">
-          <Checkbox id={`cv-${drawing.id}`} checked={drawing.customerVisible} disabled={busy}
-            onCheckedChange={(v) => save({ customerVisible: !!v })} />
-          <Label htmlFor={`cv-${drawing.id}`} className="font-normal text-xs">
+        <div className="flex items-center gap-1.5">
+          <button type="button" role="switch" aria-checked={!!drawing.customerVisible}
+            aria-label="Share with customer" disabled={busy}
+            onClick={() => save({ customerVisible: !drawing.customerVisible })}
+            className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${drawing.customerVisible ? 'bg-primary' : 'bg-muted-foreground/25'}`}>
+            <span className={`inline-block size-4 translate-x-0.5 rounded-full bg-white shadow transition-transform ${drawing.customerVisible ? 'translate-x-4' : ''}`} />
+          </button>
+          <span className="text-xs text-muted-foreground">
             Share with customer{drawing.customerVisible ? ' — visible once status reaches Under review' : ' (not shown in the portal)'}
-          </Label>
+          </span>
         </div>
       )}
       <div className="flex flex-col gap-1.5 border-t pt-2.5">
@@ -2300,7 +2304,10 @@ function AddDrawingDialog({ projectId, router }) {
   );
 }
 
-function DrawingsPanel({ drawings, projectId, router, user, designTeam }) {
+// Exported for app/calc-drawings/page.js — Drawings' own top-level nav tab reuses this component
+// directly rather than duplicating it; Calc Sheets itself no longer renders it (its own `drawings`
+// PANELS entry was removed once the standalone tab existed — one door, not two).
+export function DrawingsPanel({ drawings, projectId, router, user, designTeam }) {
   const canApprove = ['admin', 'manager', 'executive'].includes(user?.role) || user?.department_roles?.Design === 'head';
   return (
     <div className="flex flex-col gap-3">

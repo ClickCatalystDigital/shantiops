@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getFreshSessionUser, isCustomer, canAccessProject } from '@/lib/auth';
+import { getFreshSessionUser, isCustomer, canAccessProject, hasActiveDesignResponsibility } from '@/lib/auth';
 import { queryOne } from '@/lib/db';
 import { getDrawingComments, addDrawingComment, requireCalcAccess } from '@/lib/calc';
 import { notifyDepartment } from '@/lib/notify';
@@ -7,6 +7,12 @@ import { audit } from '@/lib/usb';
 
 // Either an internal Design/Engineering user (requireCalcAccess) or the owning project's customer
 // can read/post — a drawing comment thread is the one place those two audiences meet.
+//
+// On a customer_visible drawing, the internal side is narrowed to the Design Head only — the same
+// authority tier that already gates the customer_visible toggle itself (PATCH .../route.js). Before
+// this, any Design/Engineering member could read/post directly into a thread the customer is in,
+// with no approval-equivalent gate at all. A non-customer-visible thread is untouched — plain
+// department-wide access, same as before.
 async function authorize(req, drawingId) {
   const user = await getFreshSessionUser();
   const drawing = await queryOne('SELECT project_id, customer_visible FROM calc_drawings WHERE id = ?', [drawingId]);
@@ -18,6 +24,9 @@ async function authorize(req, drawingId) {
   }
   const denied = requireCalcAccess(user);
   if (denied) return { error: denied };
+  if (drawing.customer_visible && !(await hasActiveDesignResponsibility(user, 'head'))) {
+    return { error: NextResponse.json({ error: 'Only the Design Head can read or post in a customer-visible drawing thread' }, { status: 403 }) };
+  }
   return { user, drawing, authorType: 'internal' };
 }
 
