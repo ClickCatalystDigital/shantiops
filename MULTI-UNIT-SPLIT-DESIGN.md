@@ -375,27 +375,51 @@ Phases 1–4 and part of 5, 8, and 9 are now built and live-verified. Full detai
   master shows "N of M units done" and expands inline into its real children, instead of cluttering
   the list with N+1 top-level rows. `groupProjectsByMaster()` is additive; `getProjectsWithStatus()`
   itself (Executive, etc.) is untouched.
-- **Phase 5 (Production), started** — confirmed structurally that `job_cards`/`qc_documents`/
+- **Phase 5 (Production) — done.** Confirmed structurally that `job_cards`/`qc_documents`/
   `packing_lists` creation routes have zero project-type assumptions (grepped, zero
   `master_project_id`/child-awareness anywhere) — a child project already works with every existing
   Production/QC/Dispatch screen unmodified, since it's an ordinary `projects` row. The one genuinely
   new piece — a **batch action** (pick several children + one milestone_key, get one job card per
   child, each its own record) — is built and live-verified for Production
   (`POST /api/job-cards/batch-children`): a real 3-unit batch created 3 job cards with 3 distinct
-  `project_id`/`milestone_id` pairs. **QC and Dispatch's own batch routes are not yet built** — the
-  identical pattern (resolve each child's own analogous entity, insert one record per child, loop)
-  applies directly; this is a fast, mechanical follow-up once needed, deliberately not duplicated
-  three times without a concrete driving case.
-- **Phase 8 (status/reporting), partial** — done for the Projects list (above). Executive's own
-  dashboard still shows every project flat; extending it to the same rollup is the same
-  `groupProjectsByMaster()` call, not yet wired in there.
-- **Phase 9 (customer-facing identity), confirmed safe by construction, no new code needed** — the
+  `project_id`/`milestone_id` pairs.
+- **Phase 6 (QC) — done.** `POST /api/qc-documents/batch-children`: pick several children + one
+  shared set of boiler specs, get one `qc_documents` header per child with its OWN maker's no/doc_id
+  (auto-suffixed by the child's own `unit_no` — never one shared identity across units). Parts are
+  synced by calling `syncQcPartsFromBom(tx, documentId, master.id)` — read the MASTER's own BOM
+  (already per-unit qty_text) while writing parts against the CHILD's document, since a child never
+  has its own `bom_items`. Live-verified: a real 3-unit batch created 3 documents with 3 distinct
+  `project_id`/`makers_no`/`doc_id` combinations.
+- **Phase 7 (Dispatch) — done.** Investigated the existing multi-lot dispatch mechanism first (per
+  direct instruction) rather than building parallel machinery: `POST /api/packing/from-bom` already
+  supports multiple packing lists per project (excludes whatever's already drafted, safely
+  re-runnable). `POST /api/packing/batch-children` reuses that exact exclusion idiom, scoped per
+  child instead of per project: one packing list per selected child, pre-filled from the master's
+  ready-to-pack BOM lines at the PER-UNIT quantity (unit multiplier of 1, not the master's own
+  `unit_count`). Live-verified: a real 3-unit batch created 3 packing lists with `qty=1` each
+  (correct per-unit figure), and re-running the identical batch correctly skipped all 3 children
+  with zero duplication — confirmed idempotent.
+- **Phase 8 (status/reporting) — done.** Projects list rollup (above) plus the Executive dashboard:
+  `getExecutiveSummary()` and the Executive page's own `PortfolioDelayTimeline` feed both now filter
+  out children (`.filter(p => !p.master_project_id)`) before computing KPIs/forecast/risk counts —
+  a split master counts as exactly one portfolio entry, never N+1. `getProjectsWithStatus()` itself
+  stays the flat, unfiltered list every other caller (Operations "Today's Factory," Stage
+  Bottlenecks — which correctly DO want to see each child's own operational work) still depends on;
+  only Executive's commercial/portfolio-level view gets the filter, matching the confirmed
+  architecture (master = commercial aggregate, child = physical execution). Live-verified: a real
+  4-unit split master appeared exactly once on the Executive page, with zero occurrences of any of
+  its 4 children anywhere on it.
+- **Phase 9 (customer-facing identity) — confirmed safe by construction, no new code needed.** The
   split action never touches `users.project_ids`, and `canAccessProject()` (the only gate a customer
   ever passes through) checks exactly that field — so a customer can never see or reach a child
   project, even by guessing its URL. Verified by reading both code paths directly, not assumed.
-- **Not started**: Phase 6 (QC batch route), Phase 7 (Dispatch batch route), Phase 8's Executive-
-  dashboard rollup, Phase 10 (a dedicated full regression pass beyond what each phase already
-  verified individually).
+- **Phase 10 (regression) — done.** Full production build (`npm run build`) clean, `npm run lint`
+  clean, and a live spot-check of both `/projects` and `/executive` against real production data
+  (SB-1109-01-50, SB-1040) confirmed both render correctly with no regression.
+
+All 10 phases from the original build order are now complete. Every disposable test project created
+across every phase was deleted afterward; a final DB-wide check for any leftover `ZZ-`-prefixed row
+came back empty each time.
 
 Every phase above was live-verified against the real dev DB with disposable test data, cleaned up
 to zero residue afterward, and is lint-clean. No existing single-project workflow has regressed at
