@@ -12,6 +12,10 @@ for a different capacity). Needs its own design pass: where does capacity live (
 `bom_assemblies`? on `projects`? something else), and does it ever drive anything automatically, or
 is it purely informational/labeling for now.
 
+**Now owned by `MULTI-UNIT-SPLIT-DESIGN.md` §5, open question 7** — a real order can mix capacities
+under one commercial order (30×500kg/hr + 20×1000kg/hr), and the multi-unit split design hits this
+exact wall for any non-uniform order. Resolve there, not as a standalone item.
+
 ## 2. A BOM-wide quantity multiplier for multi-unit projects — DONE (implemented and live-verified, uncommitted)
 
 Answered exactly as the open questions here anticipated: the "unit count" is **not** a new concept
@@ -90,3 +94,10 @@ current code, don't assume still correct), then trace what Production and QC see
 released — the stated end goal is QC needs to start attaching Test Certificates to BOM items (the
 existing `qc_document_parts`/`link-parts` flow, §5d/§5ao) on a project that went through this year's
 BOM-rebuild work, not just the older seeded demo projects.
+
+**The "what does QC see once a BOM is released" half of this is now owned by
+`MULTI-UNIT-SPLIT-DESIGN.md`** — a multi-unit project (e.g. SB-1109, `unit_count=50`) can't have a
+real per-boiler QC statutory folder until it's split into per-unit child projects; that design doc's
+§4 (QC section) and §5 (open questions) are the actual scoping for this now, not a standalone item
+here. TC attachment on a *single-unit* project is unaffected and still just needs the plain
+verification pass described above.
