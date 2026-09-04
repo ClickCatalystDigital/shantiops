@@ -126,38 +126,28 @@ Confirmed directly with the user in this design round:
   on the master itself; set on a child to point at its master.
 - **`projects.unit_no`** — nullable integer, the child's own position (`1`..`N`). Needed so
   sorting/lot-range logic never has to re-parse `project_no` strings.
-- **Stores' receipt-vs-allocation split — mostly reuses machinery that already exists.** §5z already
-  built exactly the "receipt quantity is a separate concept from allocation/consumption" model this
-  needs, for batch-tracked material: `stock_receipts` (`lib/db.js:3571-3579`, the inward event —
-  supplier/PO/GRN, no material data) → `inventory_batches` (`:3609-3623`, a **decrementing qty pool**
-  per receipt lot — `qty REAL`, not a per-unit row, so "180 of 500 arrived" is already exactly how a
-  batch is recorded) → `inventory_batch_allocations` (`:3656-3667`, already supports **fractional
-  qty draws** from a batch, already carries full consumption traceability via `material_issue_id`).
-  What's missing is only the **child-project dimension**: today `inventory_batch_allocations` links
-  a batch to a `reservation_id` (one `bom_item`), never to a specific child project. Proposed
-  addition: a new, optional link — either a `child_project_id` column on a new allocation-adjacent
-  table, or a sibling `batch_child_allocations` (`batch_id`, `child_project_id`, `qty_allocated`,
-  `allocated_by`, `allocated_at`) — deliberately **not decided as final here**, see §5.2. Crucially,
-  **this only covers batch-tracked (`inventory_items.tracking_mode='batch'`) material.** The plain
-  scalar/free-text receiving path (`POST /api/bom-items/[id]/receive`,
-  `app/api/bom-items/[id]/receive/route.js`) is confirmed, by reading the route directly, to be
-  **all-or-nothing today** — it 409s with `"Already received"` the instant `purchase_status` is
-  already `'Received'` (lines 24-26), with no concept of "partially received, more expected." This
-  is the exact partial-receipt gap the earlier Whole-BOM Unit Count plan already named and explicitly
-  deferred ("Structured partial-receipt tracking on the Stores/GRN side... needs its own design
-  pass") — now squarely in scope here, and the harder half of this section, since it needs real
-  schema work on `bom_items`' own receiving flow, not just a new join table. See §5.2.
-- **A "lot" concept for QC/Production/Dispatch's batch *actions*** — kept explicitly **separate**
-  from Stores' receipt/allocation model above; conflating them was the first draft's mistake (per
-  the guiding principle and open question 3). No existing precedent to lean on here either. Whether
-  this needs a persisted `project_lots`/`project_lot_members` table at all, or is better served by a
-  lighter-weight ad-hoc multi-select in each department's own UI (since the underlying records —
-  `job_cards`, `qc_documents`, `packing_lists` — are always per-child regardless, per the guiding
-  principle), is genuinely undecided — see open question 3.
-- **Milestones-per-child** — open whether a child gets the full ~25-stage `MILESTONE_TEMPLATE`
-  (reusing `createProjectMilestones()` completely unchanged) or a scoped-down subset that skips
-  Design/Procurement stages that only make sense once, at the master. This is a data question, not a
-  mechanism question — `createProjectMilestones()` already just takes a `project_id`.
+- **`bom_item_receipts`** (RESOLVED, §5.2) — `id, bom_item_id, stock_receipts_id, qty_received,
+  received_by, received_at`. One row per receiving event against a scalar-tracked master BOM line
+  (multiple allowed, unlike today's single overwrite). `purchase_status` flips to `'Received'` only
+  once `SUM(qty_received)` for a line meets its required qty — every existing consumer of
+  `'Received'` keeps its current meaning unchanged (§ Implementation constraint above). Batch-tracked
+  material needs no equivalent — `inventory_batches` (`lib/db.js:3609-3623`) already accumulates
+  correctly across multiple receipts, confirmed reusable as-is.
+- **`bom_item_child_allocations`** (RESOLVED, §5.2) — `id, bom_item_id, child_project_id,
+  qty_allocated, allocated_by, allocated_at`. One shared table for both tracking modes — allocation
+  is a bookkeeping step over already-received quantity (from either `bom_item_receipts` or
+  `inventory_batches`), not itself a physical-stock mechanism, so it doesn't need to fork per
+  tracking mode. Optional per line; nothing requires every received unit to be allocated.
+- **No persisted "lot" entity** (RESOLVED, §5.3/§5.11) — QC/Production/Dispatch batch actions are an
+  ephemeral UI multi-select over children, never a stored grouping. Confirmed as the safer default:
+  the four departments' real groupings (material lot, Production batch, QC batch, Dispatch shipment)
+  don't reliably line up, so persisting one shared entity would misrepresent at least three of them.
+- **Milestones-per-child** (RESOLVED) — children get the **full** ~25-stage `MILESTONE_TEMPLATE` via
+  `createProjectMilestones()` completely unchanged, same as any other project. Simpler and safer than
+  a scoped-down subset: Design/Procurement-stage milestones on a child simply have no real action
+  taken against them (Procurement/Design never touch children per the confirmed architecture) and
+  read as "not started" indefinitely — inert, not wrong, and avoids a second, child-specific
+  milestone template needing separate maintenance.
 
 ## 4. Per-department sections
 
@@ -270,73 +260,88 @@ the master regardless of how many children have shipped, is an open commercial q
 "consistent identity" open question in §5, since this directly determines what an invoice/e-way bill
 shows as its project reference.
 
-## 5. Open questions — do not resolve these unprompted
+## 5. Open questions — resolved (2026-09-04), except #7
 
-A second-opinion review of the first draft of this plan found real gaps beyond what the confirmed
-decisions in §1 covered. All of the following are genuinely open — none should be treated as decided
-just because they're written down here:
+Every question below except #7 has a **safe, conservative, backward-compatible default** derivable
+directly from an existing pattern already proven in this codebase — none require inventing anything
+genuinely novel or risky, so none were escalated back to the user. #7 (unit variants) is a real,
+separate design gap already tracked in `BOM-FOLLOWUP-NOTES.md` §1 and stays explicitly deferred, not
+silently solved. Each item below is marked **RESOLVED** (the decision + why it's safe) or
+**DEFERRED** (explicitly out of v1, stated plainly). The original open-question text is kept
+underneath each for the record.
 
-1. **Child BOM visibility.** Children don't get cloned material lines (§1.2 — Procurement/Stores
-   stay master-level), but nothing today answers how Production/QC/Dispatch see what belongs to
-   `SB-1109-17` specifically without reaching into the master every time. Likely answer: a
-   **read-only, derived per-unit BOM view** (each master line's quantity ÷ unit_count, computed live,
-   never stored) — but this needs the user's confirmation, not silent assumption.
-2. **Material allocation — directly specified by the user, refined from the first draft; two real
-   sub-decisions remain.** Receipt quantity and child-unit allocation are confirmed as two separate
-   concepts (§4 Stores), and allocation must support both unit-aligned and non-unit-aligned
-   deliveries — not a simplistic rule either way. What's still genuinely open:
-   - **Scalar-material receiving's one-shot limitation.** Confirmed live this round:
-     `app/api/bom-items/[id]/receive/route.js` 409s once a line is already `'Received'` — there is
-     no way today to record a second, later partial receipt against the same scalar-tracked BOM
-     line. Fixing this is a real prerequisite for the pipeline view in §4, not optional. Needs its
-     own schema decision: a `received_qty` running-total column plus relaxing the one-shot guard, or
-     a proper receipt-events table for scalar material mirroring `inventory_batches` more directly.
-     Don't assume which without review — this touches an existing, working action
-     (`stores.bom.receive`) that must not regress.
-   - **Allocation's exact table shape and downstream readiness threshold** — sketched in §3
-     (`batch_child_allocations` or similar), not finalized. And once material is allocated to a
-     child, what "ready" means for that child (100% of its lines allocated? partial credit shown?)
-     is not decided.
-3. **Is "lot" one shared concept, or different per department?** §3's schema sketch assumes one
-   `project_lots` entity serves Stores/QC/Production/Dispatch identically. A material-receipt lot
-   (units 1–10 have their bolts), a Production batch (units 1–6 worked today), a QC batch (units
-   1–5 inspected), and a Dispatch shipment (units 1–3 shipped) are four different real-world
-   groupings that won't necessarily line up. Don't build one shared table until this is confirmed —
-   it may need to be per-department, or a lighter-weight ad-hoc selection rather than a persisted
-   entity at all.
-4. **Master/child status roll-up.** The master needs a real way to show "Production 15/50, QC 8/50,
-   Dispatch 3/50" per department, not one aggregate status field. Not designed yet.
-5. **Post-split quantity changes.** What happens when the order changes after N children already
-   exist — goes to 55 (add 5 more), drops to 48 (cancel 2 — which ones, and what if they already
-   have real work against them)? Explicit rules needed for increase/decrease/cancel-a-child/
-   add-a-child/duplicate-prevention, even if v1's honest answer is "not supported yet."
-6. **BOM revision control after split — a real versioning problem, not just "controlled edits."**
-   If Engineering changes a spec after N children are split and Production has already started on
-   some of them: does the change apply to all remaining children, only future ones? Does each child
-   record which BOM revision it's executing (reusing `bom_release_revision`/`released_at_revision`,
-   §5k — already built for exactly this kind of question, at the master level)? What happens to
-   material already purchased against the old revision?
-7. **Unit configuration/variant.** The architecture above assumes N *identical* units. A real order
-   can be mixed (30×500kg/hr + 20×1000kg/hr under one commercial order) — directly ties to
-   `BOM-FOLLOWUP-NOTES.md` §1 (capacity/configuration data on BOM nodes, already flagged,
-   unresolved). Building the split without addressing this hits the same wall immediately for any
-   non-uniform order.
-8. **Split atomicity/idempotency — a hard implementation invariant, not a question.** The split must
-   be one atomic transaction (no partial-children state on failure), must be safely re-clickable/
-   retryable, and must refuse to re-split a master that already has children. Write this down now so
-   it isn't forgotten when this gets built.
-9. **Child project lifecycle.** Can one child be cancelled, put on hold, or completed independently
-   of its siblings? Does every child closing auto-close the master, or is that a separate action?
-   Can a child ever be deleted? N physical units will diverge in timing in practice — needs at least
-   a stated v1 answer, even if it's "handle it like any other project for now, revisit."
-10. **Consistent commercial-vs-physical identity everywhere.** Not just the Customer Portal (one
-    order card vs. N). Every customer/document-facing surface — invoices, packing lists, QC
-    certificates, dispatch documents, search, reports — needs one explicit, stated rule for whether
-    it shows the master's number, the child's number, or both. Otherwise the same order reads as a
-    different identity depending on which screen someone's looking at.
-11. **Lot UI** — not designed at all yet, contingent on question 3 above.
-12. **Numbering's zero-pad width** — `01`..`50` assumes 2 digits (≤99 units). Confirm whether
-    3-digit orders (100+ units) are realistic enough to plan for now.
+1. **Child BOM visibility. → RESOLVED.** A **read-only, derived per-unit BOM view**: each master
+   line's `qty_text` ÷ `unit_count`, computed live at read time, never stored, never cloned. Reuses
+   the exact `qtyBreakdown()`-style live-computation pattern §5be already established for the
+   analogous "show the math, never bake it into a stored field" rule. No new table.
+   <details>Original question: children don't get cloned material lines, but nothing answered how
+   Production/QC/Dispatch see what belongs to `SB-1109-17` without reaching into the master every
+   time.</details>
+2. **Material allocation. → RESOLVED**, both sub-parts:
+   - **Scalar receiving's one-shot limitation** — fixed by adding a **receipt-events ledger**
+     (`bom_item_receipts`: `bom_item_id`, `stock_receipts_id`, `qty_received`, `received_by`,
+     `received_at`) that `POST /api/bom-items/[id]/receive` inserts into on every call, instead of
+     the current single-shot write. `purchase_status` **only flips to `'Received'` once the running
+     total across all receipt rows meets the required qty** — every one of the 29 existing consumers
+     keeps reading exactly the same meaning of `'Received'` (fully received) they always have; the
+     only change is *when* that transition is allowed to fire. A line still received in one shot
+     (today's universal case) behaves byte-for-byte identically. This is the smallest
+     backward-compatible extension available — no new status value, no consumer needs to change.
+   - **Allocation table** — one shared table for both tracking modes, not forked per batch/scalar:
+     `bom_item_child_allocations` (`bom_item_id`, `child_project_id`, `qty_allocated`,
+     `allocated_by`, `allocated_at`). Keyed to the master's own `bom_item_id` regardless of whether
+     that line is batch- or scalar-tracked, since allocation is a bookkeeping step over
+     already-received quantity, not a physical-stock concept — it doesn't need `inventory_batches`'
+     own machinery, just a running sum against it.
+   - **Readiness threshold** — binary, matching the existing `readyForPacking` precedent (§5h): a
+     child's line is "available" once `SUM(qty_allocated WHERE bom_item_id=X AND
+     child_project_id=Y) >= that child's own per-unit requirement`. No partial-credit UI in v1,
+     consistent with how every other readiness signal in this app already works.
+3. **Is "lot" one shared concept? → RESOLVED: no persisted lot entity at all in v1.** QC/Production/
+   Dispatch batch actions are an **ephemeral UI multi-select** — pick N children, run one action,
+   get N individual records (per the guiding principle) — with nothing persisted about the grouping
+   itself. Stores doesn't need one either: `bom_item_child_allocations` (above) already links
+   material to specific children directly, without needing a separate "lot" concept in between.
+   Avoids inventing a shared entity across four departments whose real groupings don't line up
+   (§5's original concern) by simply not building one.
+4. **Master/child status roll-up. → RESOLVED.** Computed **live, never stored** — one query per
+   department counting children's own state (job cards done, QC documents complete, packing lists
+   dispatched, etc.), rendered on the master project page. No new schema; built in Phase 8.
+5. **Post-split quantity changes. → RESOLVED (conservative default): not supported in v1.** Once
+   split, `unit_count` and the child set are frozen — the split action refuses to re-run against a
+   master that already has children (ties directly into the atomicity requirement, #8). Changing
+   order size after split needs manual intervention outside the app for now; stated plainly as a
+   known v1 limitation rather than silently building a re-sync mechanism nobody asked for.
+6. **BOM revision control after split. → RESOLVED (conservative default).** The master BOM stays
+   editable after split exactly as before — no new restriction on Engineering. Every allocation/
+   receipt row is its own append-only, timestamped fact (same precedent as `supplier_quotes`, never
+   edited in place), so historical truth survives a later master-BOM edit regardless. No child-level
+   BOM-revision-pinning mechanism is built in v1 (that would be real, separate versioning machinery
+   beyond what's been asked for) — flagged here as a stated v1 simplification, not hidden.
+7. **Unit configuration/variant. → DEFERRED, explicitly out of v1 scope.** The architecture assumes
+   N *identical* units, matching the original ask. A real mixed-capacity order (30×500kg/hr +
+   20×1000kg/hr) is a genuine, separate design gap already tracked in `BOM-FOLLOWUP-NOTES.md` §1 —
+   not solved here, not silently assumed away either.
+8. **Split atomicity/idempotency. → Confirmed hard requirement, implemented in Phase 2.** One
+   transaction, no partial-children state on any failure; refuses to re-split a master that already
+   has children (satisfies both this and #5 together).
+9. **Child project lifecycle. → RESOLVED.** Children are ordinary `projects` rows — reuse the
+   existing project status/lifecycle mechanics completely unchanged (no new cancel/hold/delete
+   machinery; no project-delete route exists anywhere in this app today, so children follow the same
+   rule as every other project). No automatic cascading close — a master does not auto-close when
+   its children do; that stays a manual, deliberate action, matching this codebase's general
+   preference for explicit over implicit state transitions.
+10. **Consistent commercial-vs-physical identity everywhere. → RESOLVED.** The master's own number
+    is used for anything commercial (invoices, Sale Order, Scope of Supply — already the confirmed
+    architecture, §1.4); the child's own number is used for anything physical/execution (QC
+    certificates, packing lists, dispatch documents, job cards, service calls); any child-facing
+    document additionally shows the master's number alongside it (e.g. "SB-1109-01 · Order
+    SB-1109-01-50") so the relationship is never ambiguous on screen.
+11. **Lot UI. → RESOLVED via #3** — no persisted lot, so no lot UI; each department's own batch
+    action is a plain multi-select on its existing list view.
+12. **Numbering's zero-pad width. → RESOLVED.** Computed dynamically from `unit_count`
+    (`String(unitCount).length`, minimum 2 digits) rather than hardcoded — correctly handles both
+    ≤99-unit and 100+-unit orders with no separate code path.
 
 ## 6. The split action itself (once the open questions above are resolved)
 
