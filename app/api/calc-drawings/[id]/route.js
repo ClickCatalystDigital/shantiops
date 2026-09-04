@@ -30,7 +30,7 @@ export async function PATCH(req, { params }) {
     if (b[key] !== undefined && key !== 'customerVisible') fields[column] = b[key];
   }
   const currentStatus = b.status !== undefined
-    ? await queryOne('SELECT status, name FROM calc_drawings WHERE id = ?', [params.id])
+    ? await queryOne('SELECT status, name, project_id FROM calc_drawings WHERE id = ?', [params.id])
     : null;
   if (b.customerVisible !== undefined) {
     const current = await queryOne('SELECT customer_visible FROM calc_drawings WHERE id = ?', [params.id]);
@@ -58,6 +58,7 @@ export async function PATCH(req, { params }) {
     await notifyDepartmentHeads('Design', {
       kind: 'drawing_submitted', title: `${currentStatus.name || 'A drawing'} submitted for review`,
       body: `${user.display_name || user.username} submitted this drawing for review.`,
+      project_id: currentStatus.project_id,
       dedupe_key: `drawing_submitted:${params.id}:${Date.now()}`,
     });
   }

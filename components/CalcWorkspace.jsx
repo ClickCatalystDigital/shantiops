@@ -2242,7 +2242,9 @@ function DrawingCard({ drawing, router, canApprove, designTeam }) {
       )}
       <div className="flex flex-col gap-1.5 border-t pt-2.5">
         <Label className="text-xs">Comments{drawing.status === 'not_started' || drawing.status === 'in_progress' ? ' (internal only — not visible to the customer yet)' : ''}</Label>
-        {comments === null ? (
+        {drawing.customerVisible && !canApprove ? (
+          <p className="text-xs text-muted-foreground">Only the Design Head can view this customer-visible thread.</p>
+        ) : comments === null ? (
           <button type="button" className="w-fit text-xs text-primary hover:underline" onClick={loadComments}>Show comments</button>
         ) : (
           <>

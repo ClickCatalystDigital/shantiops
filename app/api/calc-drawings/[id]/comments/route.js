@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getFreshSessionUser, isCustomer, canAccessProject, hasActiveDesignResponsibility } from '@/lib/auth';
 import { queryOne } from '@/lib/db';
 import { getDrawingComments, addDrawingComment, requireCalcAccess } from '@/lib/calc';
-import { notifyDepartment } from '@/lib/notify';
+import { notifyDepartmentHeads } from '@/lib/notify';
 import { audit } from '@/lib/usb';
 
 // Either an internal Design/Engineering user (requireCalcAccess) or the owning project's customer
@@ -52,9 +52,13 @@ export async function POST(req, { params }) {
 
   // Cross-audience signal: an internal comment doesn't need to page anyone new (Design already
   // watches its own Drawings panel); a customer comment should reach Design the same way any other
-  // cross-department signal does.
+  // cross-department signal does. Head-only, not a full department fan-out — a customer can only
+  // ever post here on a customer_visible drawing, and the internal side of that exact thread is
+  // now Head-gated too (this file's own authorize()); a plain Designer notified of the comment
+  // would just hit a 403 clicking through. Real gap found and fixed in the same pass that added
+  // that gate.
   if (authorType === 'customer') {
-    await notifyDepartment('Design', {
+    await notifyDepartmentHeads('Design', {
       kind: 'comment', title: `Customer commented on a drawing`, body,
     });
   }
