@@ -35,6 +35,23 @@ together) is a UI/workflow convenience. The resulting *data* must still land as 
 individually-attributable records — N QC certificates, N dispatch confirmations — never one record
 covering "the lot." Every section below should be checked against this, not just the schema sketch.
 
+**Implementation constraint, stated explicitly per direct instruction (twice)**: wire into what
+already exists — reuse the real machinery cited in §2/§3 rather than building parallel systems —
+and do not break any existing workflow while doing it. Concretely for Stores: the existing Requests
+workflow (`StoresWorkspace.jsx`'s Open Requests / Reserve-from-stock / Trading (SAS) tabs, §5e) is a
+different, unrelated concern (non-BOM trade/stock requests) and must not be replaced, merged into,
+or otherwise disturbed by anything in this design — everything below is additive alongside it.
+**Before any change to `purchase_status`/receiving semantics specifically**: a plain grep found 29
+files touching `purchase_status` across `lib/` and `app/api/` — every consumer must be checked, not
+assumed safe, before that field's transition rules change at all. At least these are known to fire
+real side effects on the transition into `'Received'` specifically and must keep firing at the
+*correct* moment (full receipt, not every partial one) if scalar receiving becomes multi-step:
+`app/api/bom-items/[id]/route.js`'s PATCH route (auto-inserts the QC incoming-inspection record,
+§5p), `lib/milestone-auto.js`'s `syncProcurementMilestones` (auto-completes Procurement milestones
+once every line clears a stage), and `lib/dependency.mjs`'s readiness-check signal. Prefer the
+smallest backward-compatible extension (an additive column/table, not a semantics rewrite) and state
+explicitly, in whatever gets built, exactly which existing behavior is unchanged.
+
 ## 1. Confirmed architecture (settled — not open for re-litigation)
 
 Confirmed directly with the user in this design round:
@@ -47,9 +64,15 @@ Confirmed directly with the user in this design round:
      authoring.
    - **Procurement** — stays fully at the master/aggregate level: one PO, one set of quantities,
      exactly as it works today. Never touches child projects directly.
-   - **Stores** — receives against the master's aggregate requirement, but a physical receipt can be
-     recorded as a **partial lot** (e.g. "units 1–10," "units 11–20") and linked to the specific
-     child units it covers — not one all-or-nothing receipt, not 50 individual ones either.
+   - **Stores** — receives against the master's aggregate requirement. A receipt records the actual
+     quantity physically received (e.g. "180 of 500 bolts"), never an assumption that a complete
+     child unit arrived. **Receipt quantity and child-unit allocation are two separate concepts** —
+     a receipt may *optionally* be allocated to specific child units once that's known (e.g. "these
+     180 are earmarked for units 1–10"), but the model must stay flexible enough for both
+     unit-aligned deliveries and non-unit-aligned partial quantities; no simplistic rule forcing one
+     shape. Stores must never be forced into 50 separate receiving transactions just because there
+     are 50 children. Full detail in §3/§4/§5.2 below — this is the most fleshed-out department in
+     this doc, per direct instruction.
    - **QC, Production, Dispatch** — operate on real child units/projects, **and** must support
      acting on a batch/lot of several children at once (inspecting or dispatching units 1–10
      together in one action), not forced into doing everything one child at a time.
@@ -103,12 +126,34 @@ Confirmed directly with the user in this design round:
   on the master itself; set on a child to point at its master.
 - **`projects.unit_no`** — nullable integer, the child's own position (`1`..`N`). Needed so
   sorting/lot-range logic never has to re-parse `project_no` strings.
-- **A "lot" concept** — the one genuinely new entity, with no existing precedent to lean on.
-  Proposed shape: `project_lots` (`id`, `master_project_id`, `label` e.g. "Units 1–10",
-  `created_at`, `created_by`) + `project_lot_members` (`lot_id`, `child_project_id`). One
-  receipt/inspection/dispatch action tags a lot instead of one child, and downstream reporting can
-  always resolve "which children did this event cover." **This is explicitly not settled** — see
-  the "is lot one shared concept" open question in §5 before treating this table shape as final.
+- **Stores' receipt-vs-allocation split — mostly reuses machinery that already exists.** §5z already
+  built exactly the "receipt quantity is a separate concept from allocation/consumption" model this
+  needs, for batch-tracked material: `stock_receipts` (`lib/db.js:3571-3579`, the inward event —
+  supplier/PO/GRN, no material data) → `inventory_batches` (`:3609-3623`, a **decrementing qty pool**
+  per receipt lot — `qty REAL`, not a per-unit row, so "180 of 500 arrived" is already exactly how a
+  batch is recorded) → `inventory_batch_allocations` (`:3656-3667`, already supports **fractional
+  qty draws** from a batch, already carries full consumption traceability via `material_issue_id`).
+  What's missing is only the **child-project dimension**: today `inventory_batch_allocations` links
+  a batch to a `reservation_id` (one `bom_item`), never to a specific child project. Proposed
+  addition: a new, optional link — either a `child_project_id` column on a new allocation-adjacent
+  table, or a sibling `batch_child_allocations` (`batch_id`, `child_project_id`, `qty_allocated`,
+  `allocated_by`, `allocated_at`) — deliberately **not decided as final here**, see §5.2. Crucially,
+  **this only covers batch-tracked (`inventory_items.tracking_mode='batch'`) material.** The plain
+  scalar/free-text receiving path (`POST /api/bom-items/[id]/receive`,
+  `app/api/bom-items/[id]/receive/route.js`) is confirmed, by reading the route directly, to be
+  **all-or-nothing today** — it 409s with `"Already received"` the instant `purchase_status` is
+  already `'Received'` (lines 24-26), with no concept of "partially received, more expected." This
+  is the exact partial-receipt gap the earlier Whole-BOM Unit Count plan already named and explicitly
+  deferred ("Structured partial-receipt tracking on the Stores/GRN side... needs its own design
+  pass") — now squarely in scope here, and the harder half of this section, since it needs real
+  schema work on `bom_items`' own receiving flow, not just a new join table. See §5.2.
+- **A "lot" concept for QC/Production/Dispatch's batch *actions*** — kept explicitly **separate**
+  from Stores' receipt/allocation model above; conflating them was the first draft's mistake (per
+  the guiding principle and open question 3). No existing precedent to lean on here either. Whether
+  this needs a persisted `project_lots`/`project_lot_members` table at all, or is better served by a
+  lighter-weight ad-hoc multi-select in each department's own UI (since the underlying records —
+  `job_cards`, `qc_documents`, `packing_lists` — are always per-child regardless, per the guiding
+  principle), is genuinely undecided — see open question 3.
 - **Milestones-per-child** — open whether a child gets the full ~25-stage `MILESTONE_TEMPLATE`
   (reusing `createProjectMilestones()` completely unchanged) or a scoped-down subset that skips
   Design/Procurement stages that only make sense once, at the master. This is a data question, not a
@@ -129,14 +174,55 @@ today (confirmed reusable per §2 — a PO can already draw from multiple projec
 ever needed to, but here it doesn't need to at all, since Procurement never touches a child). The
 existing Sourcing/Selection/PO/Status tabs (`ProcurementWorkspace.jsx`) need zero changes.
 
-### Stores
-Continues receiving against the master's aggregate BOM lines, same as today. New: a receipt can
-optionally be tagged with a **lot** (§3) — a subset of child units it covers — so a partial delivery
-("180 of 500 bolts arrived") can still be linked to *which* children it's earmarked for, once that's
-known. **Open**: whether that linkage is ever quantity-based (partially covering many children) or
-only ever whole-unit — see the material-allocation open question in §5. Nothing here requires
-duplicating `bom_items`/`inventory_reservations` per child; the lot is a linking/reporting layer on
-top of the existing master-level receiving flow, not a new receiving flow.
+### Stores (the most fleshed-out section in this doc, per direct instruction)
+Continues receiving against the master's aggregate BOM lines — Procurement's PO and Stores' GRN both
+stay at the master level, unchanged. What's new is entirely additive on top:
+
+- **The canonical pipeline, stated exactly as instructed** — six distinct stages, never collapsed
+  into each other: **Master BOM requirement → Procurement ordered qty → Stores received qty →
+  Stores available qty → optional child-unit allocated qty → child readiness.** Two invariants that
+  follow directly and must hold in whatever gets built: **a receipt does not automatically mean a
+  child unit is complete** (receiving material and a child being "ready" are different facts, linked
+  only through the optional allocation step), and **allocating material to a child does not create a
+  separate procurement requirement** (allocation is a pure bookkeeping/traceability step over
+  already-received stock — it never triggers a new PR/PO, never touches Procurement's own aggregate
+  numbers).
+- **A per-master-BOM-line pipeline view** surfaces this to Stores: ordered qty (from the master's own
+  `bom_items.qty_text`, already correctly reflecting `unit_count`, §5be) → received-so-far →
+  available → allocated. Real numbers, not a status word — matches the "Stores should be able to
+  see..." requirement directly.
+  "Received-so-far" is computed differently depending on the line's tracking mode (§3): for a
+  batch-tracked line, `SUM(inventory_batches.qty WHERE status='available' OR 'consumed')` already
+  gives this; for the still-more-common scalar/free-text-GRN line, this requires the receiving flow
+  itself to stop being one-shot (see below) — the pipeline view can't show a real running total
+  until the underlying receiving action can record more than one partial receipt per line.
+- **A receipt records a real quantity, never an assumed complete unit.** For batch-tracked material
+  this already works exactly this way (§3) — a new `inventory_batches` row per delivery, `qty` set
+  to whatever actually arrived, no forced link to any child. For scalar-tracked material, the
+  existing `POST /api/bom-items/[id]/receive` action needs to stop treating `purchase_status →
+  'Received'` as a one-shot terminal transition once qty tracking matters here — this is real,
+  non-trivial schema/route work (not just a new join table), flagged plainly rather than glossed
+  over. Exact shape (a running `received_qty` column vs. a proper receipt-events table for scalar
+  material, mirroring `inventory_batches`) is an open question, §5.2.
+- **Allocation to child units is optional and separate from receipt**, exactly as instructed:
+  supports both a clean unit-aligned delivery ("these are for units 1–10") and a partial,
+  not-yet-unit-aligned quantity ("180 bolts received, not yet earmarked to specific units"). Never
+  forces Stores to touch 50 child projects to log one receiving action — allocation is a distinct,
+  later, optional step a Stores head can take once they know how material maps to units, not a
+  required part of receiving itself.
+- **Traceability both directions**: every receipt/batch traces back to the master BOM line and PO
+  (already true today via `stock_receipts.po_id`); every allocation additionally traces to whichever
+  child unit(s) it was assigned to. Nothing here duplicates `bom_items`/`inventory_reservations` per
+  child — allocation is a linking/reporting layer over the existing master-level receiving flow.
+- **Feeds downstream readiness**: once material is allocated to a child unit, that child's
+  Production/QC readiness signal should be able to reflect it — mirroring how `getProjectBom()`'s
+  existing `readyForPacking` predicate already works (§5h), just resolved per-child instead of
+  per-project. Exact threshold (100% of a child's lines allocated vs. partial-credit) is not decided
+  — flagged, not invented, per open question 5.2.
+- **Existing Stores workflows are completely untouched.** Open Requests, Reserve-from-stock, and
+  Trading (SAS) requests (`StoresWorkspace.jsx`, §5e) are a different, non-BOM concern — nothing
+  above replaces, merges into, or shares a screen with them. This pipeline view is a new panel
+  alongside the existing ones, not a redesign of Stores' workspace.
 
 ### Production
 Job cards and Work Orders move from "one project" to "N child projects, worked in batches." A
@@ -195,11 +281,22 @@ just because they're written down here:
    `SB-1109-17` specifically without reaching into the master every time. Likely answer: a
    **read-only, derived per-unit BOM view** (each master line's quantity ÷ unit_count, computed live,
    never stored) — but this needs the user's confirmation, not silent assumption.
-2. **Material allocation vs. clean unit ranges.** A real Stores receipt rarely divides evenly across
-   units (500 bolts needed, 180 arrive — that's not "units 1–18 done," it's a partial quantity
-   against an aggregate need). The design must distinguish **receipt quantity** from **allocation to
-   specific child units**, and confirm whether allocation is ever quantity-based (partially covering
-   many children) or only ever whole-unit/whole-lot.
+2. **Material allocation — directly specified by the user, refined from the first draft; two real
+   sub-decisions remain.** Receipt quantity and child-unit allocation are confirmed as two separate
+   concepts (§4 Stores), and allocation must support both unit-aligned and non-unit-aligned
+   deliveries — not a simplistic rule either way. What's still genuinely open:
+   - **Scalar-material receiving's one-shot limitation.** Confirmed live this round:
+     `app/api/bom-items/[id]/receive/route.js` 409s once a line is already `'Received'` — there is
+     no way today to record a second, later partial receipt against the same scalar-tracked BOM
+     line. Fixing this is a real prerequisite for the pipeline view in §4, not optional. Needs its
+     own schema decision: a `received_qty` running-total column plus relaxing the one-shot guard, or
+     a proper receipt-events table for scalar material mirroring `inventory_batches` more directly.
+     Don't assume which without review — this touches an existing, working action
+     (`stores.bom.receive`) that must not regress.
+   - **Allocation's exact table shape and downstream readiness threshold** — sketched in §3
+     (`batch_child_allocations` or similar), not finalized. And once material is allocated to a
+     child, what "ready" means for that child (100% of its lines allocated? partial credit shown?)
+     is not decided.
 3. **Is "lot" one shared concept, or different per department?** §3's schema sketch assumes one
    `project_lots` entity serves Stores/QC/Production/Dispatch identically. A material-receipt lot
    (units 1–10 have their bolts), a Production batch (units 1–6 worked today), a QC batch (units
