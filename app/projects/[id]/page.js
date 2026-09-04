@@ -13,6 +13,7 @@ import DepartmentPanel from '@/components/DepartmentPanel';
 import ProjectDepartmentTabs from '@/components/ProjectDepartmentTabs';
 import { DepartmentPills, DepartmentProgress } from '@/components/DepartmentStatus';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import ChildUnitBomCard from '@/components/ChildUnitBomCard';
 
 export const dynamic = 'force-dynamic';
 
@@ -112,6 +113,12 @@ export default async function ProjectDetail({ params }) {
           </CardContent>
         </Card>
       </div>
+
+      {/* Multi-unit BOM split, Phase 3 — only a child project (master_project_id set) shows this;
+          every ordinary project is completely unaffected. */}
+      {project.master_project_id && (
+        <ChildUnitBomCard projectId={project.id} unitNo={project.unit_no} />
+      )}
 
       {pm ? (
         // PM/admin: the all-departments tabbed card.
