@@ -7600,6 +7600,98 @@ was correctly redirected (307, not 200) attempting to view an unrelated project 
 `canAccessProject`'s scoping was never touched by this change. `npm run lint` clean throughout
 (824 JavaScript files).
 
+### Same-day follow-up: reverted a mistaken milestone force-close, cleaned up 22 unassigned BOM lines, Material Procurement made a real per-unit signal (2026-09-05)
+
+A direct user question ("why doesn't the portal show Material Procurement in progress?") surfaced
+that the 5 Procurement milestones on SB-1109-01-50 had been force-closed earlier via the generic
+milestone PATCH route with zero real backing data — every one of the project's 203 BOM lines was
+still at `purchase_status='Enquiry'`, zero quotes, zero POs, zero receipts. A deeper discussion
+clarified two real mechanics worth recording: `Received` is meant to be Stores' domain (the real
+Receive action's partial-delivery ledger), even though Procurement's own Status-tab override can
+technically also set it as a general "fix bad data" escape hatch, not the intended workflow; and on a
+split order, the whole-project 5-milestone rollup can only ever mean "every line cleared this stage,"
+never "N of 50 units" — a genuinely different altitude from what the portal needed.
+
+- **Reverted, through the real route, not raw SQL**: `PATCH /api/milestones/[id]` with
+  `{status:'pending', actual_end:''}` for all 5 (confirmed live: `fireHandoff`/`notifyMilestoneExtra`
+  only fire on a transition *into* done, never on a revert — no side effects from undoing this).
+  Also deleted the 8 stale notifications the wrong close had fired ("Handoff from Procurement" to 4
+  Production users, "All items procured" to 4 QC users) — found by id, not a blanket delete; the
+  earlier, legitimate "Handoff from Design" notifications were left untouched.
+- **Deleted 22 unassigned BOM lines** (`assembly_id IS NULL`, project 61 down to 181 real lines) and
+  **PR-23** (`purchase_requisitions` id 25) — investigated first, not assumed safe: PR-23's one line
+  turned out to be shared with an unrelated real project, SB-1040 (`pr_item_projects`, 2 Nos to
+  project 61, 1 No to SB-1040). SB-1040 is being kept, so its own item had `pr_item_id` cleared (not
+  the project touched otherwise) before PR-23 itself was deleted, per direct confirmation. Verified
+  all 22 items had zero rows in every downstream table (`po_items`, `supplier_quotes`,
+  `material_issues`, `bom_item_receipts`, allocations/routing, `qc_document_parts`, `qc_records`,
+  `bom_change_notes`, etc.) before deleting — a clean delete, no cascading cleanup needed.
+- **`getCustomerViewSplitOrder()`'s `'procurement'` phase moved from `MASTER_LEVEL_PHASES` to a real
+  per-child aggregate**, reusing `getChildRoutingBoard()`'s existing allocation-readiness signal
+  (`bom_item_child_allocations`) rather than the whole-project milestones — a child counts once every
+  BOM line someone actually chose to allocate per-unit (the physical-lot items; bulk commodities
+  bought once for the whole order are correctly never tracked this way) is `ready` for it.
+  `trackedLineIds.size === 0` guards the vacuous-truth case (nothing allocated to *any* child must
+  read as "upcoming," never as trivially "done" for having no lines to check). A real bug was found
+  live during this: `(map.get(key) ??= []).push(...)` is not valid JavaScript — `.get()`'s return
+  value isn't an assignable target — and Next's real compiler rejected it (`ModuleBuildError`,
+  500 on every page) even though the repo's own `npm run lint` (a plain syntax check) passed it
+  clean. Fixed to a plain `has`/`set` check; re-verified live. Confirmed a non-split project's own
+  portal path (`getCustomerView`'s original, untouched logic) renders byte-identical to before.
+- **Confirmed, on direct question, that Manufacturing and Quality Testing deliberately stay strict**
+  — routing material to Production, or even a Job Card existing, does not move either phase to
+  "in progress"; only a real Job Card reaching Done (Manufacturing) or a passing Hydro Test record
+  (Quality Testing) does. Material arriving is a real prerequisite for manufacturing, not
+  manufacturing progress itself — a deliberate design confirmation, not a gap.
+- **A large real lot-receiving pass followed the same session, completed and fully verified.** Since
+  one master BOM is shared across all 50 units, "20 of 50 units' worth arrived" means every one of
+  the 181 real lines has 20 units' worth in hand — not one representative line. Driven by a
+  disposable, resumable script calling the exact same real routes (receive, bundle-allocate,
+  route-to, `job-cards/batch-children`, `material-indents`, `packing/batch-children`) rather than
+  reimplementing any of the logic, since doing this by hand across 181 lines isn't realistic.
+  Live-tested on 2 lines first (fully cleaned up afterward), then run to completion across all 181.
+  **One real edge case, found live, not a script bug**: one line ("MOTOR RATING") had a null/
+  unparseable `qty_text` — the real receive route correctly treats "no real required quantity" as
+  "any positive receipt fully satisfies it," so its own first-lot receive alone flipped it straight
+  to `Received`, and the script's own second-lot receive attempt for it correctly 409'd
+  ("Already received"). The script's per-item try/catch already isolated this (continued past it
+  cleanly rather than crashing the run, unlike its first, non-resumable version — see below), and it
+  was fixed separately: reverted to a clean pre-run state, given a real `qty_text` of `'1'`, then run
+  through the identical 2-lot receive→allocate→route sequence as every other line — now byte-
+  identical in shape to the rest of the BOM. Final state, verified directly against the DB: all 181
+  items at exactly 20-of-50 `received_so_far`/`required_qty`, all 181 fully allocated across all 20
+  processed units, all 181 routed 10-to-production/10-to-dispatch (`3620` routing rows total, split
+  exactly `1810`/`1810`). Downstream: 10 real Job Cards (units 1–10, "Marking, Cutting, Rolling
+  Shell") each with a real 181-line Material Indent, and 10 real packing lists (units 11–20, 181
+  items each) — all created via the real batch routes, none hand-typed. Portal re-verified after:
+  `Material Procurement — In progress (20 of 50 units)`, with `Manufacturing`/`Quality Testing` both
+  still correctly `Upcoming (0 of 50 units)` — job cards existing (still `pending`) and material
+  being routed don't move either phase, only a Job Card reaching `done`/a passing Hydro Test does,
+  exactly the "keep it strict" decision above.
+  - **A second real gap found and fixed the same round, via a direct user question ("would the 20
+    child projects and their items be available to QC?")**: `/qc`'s own project-picker filter
+    (`app/qc/page.js`) unions `getReceivedProjectIds()` with any project already referenced by an
+    existing certificate/document — but `getReceivedProjectIds()` checks `bom_items.purchase_status
+    IN ('Received','In-Stock')`, and a genuine **partial** multi-unit delivery correctly never flips
+    `purchase_status` away from `Enquiry` until the *full* required quantity (all 50 units) is in
+    (§5be/§5bi's own by-design behavior) — so the master, and by extension every child, stayed
+    invisible to `/qc`'s picker despite 20 real units' worth of material having genuinely arrived and
+    a QC-facing "This unit's material list" card already showing real allocated/ready/routed data
+    per child (`ChildUnitBomCard`, ungated by department, on each child's own project page). Fixed in
+    two parts: (1) `getReceivedProjectIds()` widened to also count any project with a real logged
+    `bom_item_receipts` row (a genuine receiving event — the correct earlier signal for "QC's
+    business has started" on a partial-delivery order, not just the coarser fully-closed status;
+    only caller, no other blast radius); (2) `getActiveProjectsList()` additively gained
+    `master_project_id` in its `SELECT` (existing callers ignore fields they don't ask for, same
+    precedent already documented on this function), and `/qc`'s own `relevant` set now also unions in
+    every child of a project already relevant, so a unit is findable as soon as its master starts
+    receiving — no longer gated on QC first creating a document for it. Both fixes verified live: a
+    direct DB replication of the exact filter logic confirmed the master and all 20 processed units
+    became relevant; the real `/qc` page (as `qc_head`) server-renders all 50 units (already covered
+    independently via this order's pre-existing QC-document/certificate associations from an earlier
+    session, confirmed not to be masking a fix that doesn't work — the isolated receivedIds-only
+    check above proves the new signal alone already reaches exactly the right 20).
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own

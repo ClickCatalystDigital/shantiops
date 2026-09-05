@@ -5,19 +5,33 @@ Real project (id 61), real customer (HKM CHARITABLE FOUNDATION), real 50 child u
 order — not a demo. Do this on the running dev server at `http://localhost:3012`, logged in as
 `stores_head` / `stores_head123` (or `admin` for anything Stores can't reach).
 
-## Before you start — a real gap, checked directly against the database
+## Correction from the first version of this doc
 
-**Nothing has been received yet on this order.** I queried the live DB before writing this: the
-FEED PUMP line (`FEED PUMP (TYPE-CENTRIFUGAL) & MOTOR`, qty `2 Nos` per unit) is still sitting at
-`purchase_status: Enquiry`, and there are **zero** rows in the receiving ledger for any BOM line on
-this project. So "Stores has received 20 of 50 boiler feed pumps" describes something that happened
-physically, but hasn't been logged in the app yet.
+The original version of this walkthrough used the FEED PUMP line as if it were the whole scenario.
+That was wrong — since the BOM is **one shared list, repeated 50 times** (one master `bom_items`
+row per real material, multiplied by whichever unit needs it), "Stores received 20 of 50 units'
+worth" means **every one of the ~180 real BOM lines** has 20 units' worth in hand, not just one
+line. A real physical delivery of "20 boilers' worth of material" is a truck (or several) carrying
+every part those 20 units need — plates, pumps, valves, fasteners, everything — not one line item.
+
+**The steps below are still the correct mechanism** — receive, bundle-allocate, route — and are
+genuinely worth doing by hand on **one line** if you want to see the UI work end to end. But doing
+that for all ~180 lines, one at a time in the browser, isn't realistic — that's exactly why the real
+lot-receiving pass for this order was driven by a script that calls the same real routes described
+below, once per line, rather than by hand. If you want to feel the mechanism yourself, pick any one
+BOM line not already touched by that script and walk it through Steps 1–3 below — the UI behaves
+identically whether it's the one line you're testing or the ~180 lines a real lot covers.
+
+## Before you start — checked directly against the database
+
+**Update (2026-09-05): the real full lot pass has now run.** All 181 lines have Lot 1 + Lot 2
+logged (20 of 50 units' worth received on every line), bundle-allocated to units 1–20, and routed
+(units 1–10 → Production, units 11–20 → Dispatch). Units 21–50 still have nothing received/
+allocated/routed — that's genuinely the next lot whenever it arrives. Re-check the real state before
+assuming either way if picking this up again later; the steps below are unaffected either way.
 
 This means allocation can't start until a receipt exists (allocation is bounded by
 `received − already allocated`; with 0 received, 0 is available). **Step 1 below does that first.**
-
-If the physical receipt already happened for a different line than the feed pump (or a different
-quantity), swap in the real numbers — the steps are the same regardless of which line.
 
 ## Step 1 — Log the receipt (Stores' existing Receiving flow, not part of this new feature)
 
@@ -79,6 +93,19 @@ Still on `/projects/61`, if you're logged in as (or switch to) `dispatch_head`: 
 click **Generate for N unit(s)**. Each gets its own real packing list containing only the FEED PUMP
 line, at qty 2 — units you routed to Production are silently skipped (not an error) since nothing's
 routed to Dispatch for them yet.
+
+## Step 6 (optional) — draw the routed-to-Production material with a real Job Card + Material Indent
+
+For a unit you routed to Production instead of Dispatch: Production first needs a **Job Card**
+(Production's own workspace → Job Card board → create one against that unit's own milestone, e.g.
+"Marking, Cutting, Rolling Shell" — or use the "batch across units" action if raising the same
+milestone for several units at once). Then, from that Job Card, raise a **Material Indent**
+(Production's Indent screen) listing the BOM line(s) now routed to Production for that unit and the
+quantity needed — this is the real, formal "request material from Stores" document
+(`material_indents`/`material_indent_items`). Stores then **releases** against the indent, which is
+the actual moment material leaves stock for the shop floor (`material_issues`). Routing material to
+Production only makes it *available* to request this way — it doesn't create the Job Card or Indent
+by itself.
 
 ## Optional — QC: link one certificate across several units' documents at once
 

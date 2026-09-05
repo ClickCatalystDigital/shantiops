@@ -33,6 +33,14 @@ export default async function QcPage({ searchParams }) {
   // ever disappears. ponytail: pre-staging a doc for a project not yet receiving isn't supported;
   // widen this set if that need shows up.
   const relevant = new Set(receivedIds);
+  // A split child never carries its own bom_items (all real material lives on the master), so
+  // getReceivedProjectIds() can only ever see the master directly — without this, a unit stayed
+  // invisible here until QC had already created a document for it via the master's batch panel.
+  // Once the master is relevant, every one of its children is too, so QC can find a unit before
+  // ever touching the batch-create action.
+  for (const p of allProjects) {
+    if (p.master_project_id && relevant.has(p.master_project_id)) relevant.add(p.id);
+  }
   for (const c of certificates) String(c.project_ids || '').split(',').filter(Boolean).forEach(id => relevant.add(Number(id)));
   for (const d of documents) if (d.project_id != null) relevant.add(d.project_id);
   const projects = allProjects.filter(p => relevant.has(p.id));
