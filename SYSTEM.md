@@ -7677,20 +7677,34 @@ never "N of 50 units" — a genuinely different altitude from what the portal ne
     (§5be/§5bi's own by-design behavior) — so the master, and by extension every child, stayed
     invisible to `/qc`'s picker despite 20 real units' worth of material having genuinely arrived and
     a QC-facing "This unit's material list" card already showing real allocated/ready/routed data
-    per child (`ChildUnitBomCard`, ungated by department, on each child's own project page). Fixed in
-    two parts: (1) `getReceivedProjectIds()` widened to also count any project with a real logged
+    per child (`ChildUnitBomCard`, ungated by department, on each child's own project page). Fixed:
+    `getReceivedProjectIds()` widened to also count any project with a real logged
     `bom_item_receipts` row (a genuine receiving event — the correct earlier signal for "QC's
     business has started" on a partial-delivery order, not just the coarser fully-closed status;
-    only caller, no other blast radius); (2) `getActiveProjectsList()` additively gained
-    `master_project_id` in its `SELECT` (existing callers ignore fields they don't ask for, same
-    precedent already documented on this function), and `/qc`'s own `relevant` set now also unions in
-    every child of a project already relevant, so a unit is findable as soon as its master starts
-    receiving — no longer gated on QC first creating a document for it. Both fixes verified live: a
-    direct DB replication of the exact filter logic confirmed the master and all 20 processed units
-    became relevant; the real `/qc` page (as `qc_head`) server-renders all 50 units (already covered
-    independently via this order's pre-existing QC-document/certificate associations from an earlier
-    session, confirmed not to be masking a fix that doesn't work — the isolated receivedIds-only
-    check above proves the new signal alone already reaches exactly the right 20).
+    only caller, no other blast radius).
+  - **A real regression in that same fix, caught immediately by direct user review ("wtf is QC
+    seeing all 50 children now? they should only see the lots Stores actually received"), fixed
+    same-day.** The first cut of the fix unioned in *every* child of a project already relevant —
+    correct for the master's own relevance, wrong for its children: a master with 20 of 50 units'
+    worth received made all 50 children visible, not just the 20 Stores had actually allocated
+    material to. The real per-child signal isn't "is the master relevant," it's whether Stores has
+    put real material aside for *this specific unit* — `bom_item_child_allocations.child_project_id`.
+    New `getAllocatedChildProjectIds()` (`lib/data.js`) returns exactly that set; `/qc`'s `relevant`
+    set now unions those child ids directly instead of "every child of a relevant master." Verified
+    live, both via a direct DB replication of the filter logic and against the real running
+    `/qc` page: exactly the 20 allocated units (`SB-1109-01`…`SB-1109-20`) now appear, `SB-1109-21`
+    through `-50` correctly do not.
+  - **One more real gap, caught in the same review ("why is master also available in the
+    option?"), fixed same-day.** The master itself (`SB-1109-01-50`) was still showing up in the
+    picker alongside its children — it's directly in `receivedIds` since every real receipt is
+    physically logged against the master's own `bom_items` rows (children never carry their own).
+    But the master isn't a physical unit to inspect; QC documents are only ever created per child.
+    Fixed: `/qc`'s final project list now excludes any project that has children at all
+    (`mastersWithChildren`, derived live from the real `master_project_id` links already being
+    fetched — not a fixed list, so it tracks whatever's actually split at request time), regardless
+    of whether the master itself is otherwise "relevant." Verified live: the master no longer
+    appears, the 20 real children still do, and an ordinary non-split project (no children) is
+    completely unaffected.
 
 ## 6. Customer Portal (read-only, external)
 
