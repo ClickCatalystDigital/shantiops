@@ -70,7 +70,90 @@ function CollapseButton({ open, onToggle, label }) {
   );
 }
 
-function BoilerDetailsSheet({ open, onOpenChange, document, currentUserName, router }) {
+// QC statutory-forms plan, Phase 5 — Form III §4's dynamic belt/furnace-ring seam rows. A repeatable
+// list per location (never a fixed belt1/belt2 pair — a real boiler can have any number of belts).
+// Each row PATCHes its own seam_count on blur; add/remove call the sub-resource routes directly and
+// router.refresh() to pull the fresh list back down as a prop, same pattern every other sub-resource
+// in this editor (Form III A groups, mountings) already uses.
+function SeamRow({ documentId, seam, label, router, busyId, setBusyId }) {
+  const [value, setValue] = useState(seam.seam_count || '');
+  async function save() {
+    if (value === (seam.seam_count || '')) return;
+    setBusyId(seam.id);
+    try {
+      await api(`/api/qc-documents/${documentId}/seams/${seam.id}`, { method: 'PATCH', body: { seam_count: value } });
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+    setBusyId(null);
+  }
+  async function remove() {
+    setBusyId(seam.id);
+    try {
+      await api(`/api/qc-documents/${documentId}/seams/${seam.id}`, { method: 'DELETE' });
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+    setBusyId(null);
+  }
+  return (
+    <div className="flex items-center gap-2">
+      <span className="w-14 shrink-0 text-xs text-muted-foreground">{label} {seam.sequence}</span>
+      <Input className="h-8" value={value} onChange={e => setValue(e.target.value)} onBlur={save}
+        disabled={busyId === seam.id} placeholder="e.g. ONE, TWO, NA" />
+      <Button type="button" size="icon-sm" variant="ghost" disabled={busyId === seam.id} onClick={remove}>
+        <Trash2Icon className="size-4" />
+      </Button>
+    </div>
+  );
+}
+
+function SeamsSection({ documentId, seams, router }) {
+  const [busyId, setBusyId] = useState(null);
+  const belts = seams.filter(s => s.location === 'belt');
+  const rings = seams.filter(s => s.location === 'furnace_ring');
+
+  async function addSeam(location) {
+    try {
+      await api(`/api/qc-documents/${documentId}/seams`, { method: 'POST', body: { location } });
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+  }
+
+  // Real gap found on review: the plan calls for the editor to START with one belt row and one
+  // furnace-ring row (matching the printed government form, which always shows at least "Belt 1"),
+  // not an empty list requiring two manual "+ Add" clicks just to reach that baseline. Sheet
+  // content unmounts when closed (Radix Dialog's default, confirmed — no forceMount anywhere in
+  // this tree), so this only ever fires once per real open, not on every page load. `[]` deps is
+  // deliberate: check the counts as they stood at mount, seed whichever is still zero, then never
+  // re-fire on a later router.refresh() (same mounted instance, no remount) — so deliberately
+  // deleting every belt later doesn't get silently re-seeded on the next edit within this session.
+  useEffect(() => {
+    if (belts.length === 0) addSeam('belt');
+    if (rings.length === 0) addSeam('furnace_ring');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <div className="col-span-2 flex flex-col gap-3 rounded-md border p-3">
+      <p className="text-sm font-medium">Form III §4 — Longitudinal Seams</p>
+      <div className="flex flex-col gap-1.5">
+        <Label className="text-xs text-muted-foreground">Belts</Label>
+        {belts.map(s => <SeamRow key={s.id} documentId={documentId} seam={s} label="Belt" router={router} busyId={busyId} setBusyId={setBusyId} />)}
+        <Button type="button" size="sm" variant="outline" className="w-fit" onClick={() => addSeam('belt')}>
+          <PlusIcon data-icon="inline-start" />Add belt
+        </Button>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <Label className="text-xs text-muted-foreground">Furnace rings</Label>
+        {rings.map(s => <SeamRow key={s.id} documentId={documentId} seam={s} label="Ring" router={router} busyId={busyId} setBusyId={setBusyId} />)}
+        <Button type="button" size="sm" variant="outline" className="w-fit" onClick={() => addSeam('furnace_ring')}>
+          <PlusIcon data-icon="inline-start" />Add furnace ring
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function BoilerDetailsSheet({ open, onOpenChange, document, seams = [], currentUserName, router }) {
   const [form, setForm] = useState(() => {
     const init = Object.fromEntries(QC_HEADER_FIELDS.map(f => [f.key, document[f.key] || '']));
     // "signer = QC user", "date defaults to today" (QC-FOLDER-DESIGN.md §4.3) — pre-filled on first
@@ -124,6 +207,7 @@ function BoilerDetailsSheet({ open, onOpenChange, document, currentUserName, rou
                 onChange={v => setForm(fm => ({ ...fm, [f.key]: v }))} />
             )
           ))}
+          <SeamsSection documentId={document.id} seams={seams} router={router} />
         </div>
         <SheetFooter>
           <Button disabled={busy} onClick={submit}>{busy ? 'Saving…' : 'Save changes'}</Button>
@@ -859,7 +943,7 @@ function MountingsCard({ documentId, mountings, bomItems, canEdit, router }) {
   );
 }
 
-export default function QcDocumentEditor({ project, document, parts, certificates, mountings = [], groups = [], bomItems = [], approvals = [], assemblies = [], unitCertsByItem = {}, canEdit, currentUserName }) {
+export default function QcDocumentEditor({ project, document, parts, certificates, mountings = [], groups = [], seams = [], bomItems = [], approvals = [], assemblies = [], unitCertsByItem = {}, canEdit, currentUserName }) {
   const router = useRouter();
   // parts comes straight from the server prop, no local copy — router.refresh() after linking
   // re-fetches it server-side and flows the new value straight back in, same as QcPanel does for
@@ -1176,7 +1260,7 @@ export default function QcDocumentEditor({ project, document, parts, certificate
           </label>
         )}
       />
-      <BoilerDetailsSheet open={boilerOpen} onOpenChange={setBoilerOpen} document={document} currentUserName={currentUserName} router={router} />
+      <BoilerDetailsSheet open={boilerOpen} onOpenChange={setBoilerOpen} document={document} seams={seams} currentUserName={currentUserName} router={router} />
       <AddPartDialog open={addPartOpen} onOpenChange={setAddPartOpen} documentId={document.id} bomItems={bomItems} router={router} />
       <PdfPreview
         open={pdfOpen}

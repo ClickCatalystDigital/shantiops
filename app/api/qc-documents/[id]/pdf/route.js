@@ -46,7 +46,7 @@ export async function GET(req, { params }) {
   // which just means getBomAssembliesFlat finds nothing and the render degrades to the flat table.
   const bomProjectId = detail.parts.find(p => p.bom_project_id != null)?.bom_project_id ?? detail.document.project_id;
   const assemblies = await getBomAssembliesFlat(bomProjectId);
-  const pdf = await renderQcFolderPdf(detail.document, detail.parts, detail.mountings, project, detail.groups, assemblies);
+  const pdf = await renderQcFolderPdf(detail.document, detail.parts, detail.mountings, project, detail.groups, assemblies, detail.seams);
   return new NextResponse(pdf, {
     headers: {
       'Content-Type': 'application/pdf',

@@ -7994,6 +7994,77 @@ real `bom_items.project_id` on each part, not from the document's own `project_i
 click-through — generate a real child's Form IV A and see the 12 real lettered sections on the
 page — remains blocked and unverified until that fix lands.
 
+## 5bl. QC statutory forms — Form III's remaining §4/§9 construction facts (2026-09-06)
+
+Closes the last data-model gap this session's research plan identified: Form III §4 (CONSTRUCTION)
+and §9's "least pressure of this component" line had no real data home — Phase 1 of the same plan
+had already replaced the wrong hardcoded seam-count values with an honest `—`, but the real facts
+themselves still had nowhere to be entered. Uses the later, redesigned version of this phase (a
+dynamic repeatable-rows table for belts/furnace rings, not a fixed `belt1`/`belt2` pair — the real
+sample alone has 2 belts, and nothing bounds how many a different boiler might have).
+
+- **New table `qc_document_longitudinal_seams`** (`id, document_id, location CHECK IN ('belt',
+  'furnace_ring'), sequence, seam_count`) — one row per belt or per furnace ring, `sequence`
+  auto-incrementing independently per `location`. New sub-resource routes
+  `POST /api/qc-documents/[id]/seams` and `PATCH`/`DELETE .../seams/[seamId]`, mirroring the
+  existing `qc_iiia_groups` sub-resource route shape exactly (`requireDepartment(user,'QC')` +
+  `requireAction(user,'QC','qc.document.write'/'.delete')`, no new action-permission key needed).
+- **6 new single-value `qc_documents` columns**, added via `QC_HEADER_FIELDS` (`lib/qc-document-
+  fields.js`) exactly like every existing header field — no new form, they appear in the existing
+  flat edit-sheet grid automatically: `circumferential_seams_shell`, `circumferential_seams_
+  furnace`, `construction_repair_details`, `construction_heat_treatment_note` (named distinctly
+  from `qc_iiia_groups`' own separate, narrower per-Form-III-A-group `heat_treatment` column, so the
+  two are never confused), `least_pressure_component_name`, `least_pressure_value` (kept as two
+  separate fields, not one free-text line, so the value can eventually cross-check against the Calc
+  module's own governing-component figure). All nullable, all free text (matching the real sample's
+  own ONE/TWO/NA-style answers, not assumed numeric), never defaulted — render `—` when blank,
+  same discipline as the Phase 1 fix these fields replace. None are required — the creation sheet's
+  `CORE_FIELDS` filter is untouched, so these only ever appear on the edit sheet.
+- **`components/QcDocumentEditor.jsx`'s `BoilerDetailsSheet`** gained the one part of this phase
+  that isn't purely additive to the flat-grid pattern: a new `SeamsSection` (+ `SeamRow`) rendering
+  two repeatable lists (Belts, Furnace rings), each row PATCHing its own `seam_count` on blur, with
+  its own "+ Add belt"/"+ Add furnace ring" and a per-row remove button. **Gap found on review and
+  fixed**: the plan calls for the editor to *start with* one belt row and one furnace-ring row
+  (matching the printed government form, which always shows at least "Belt 1"), not an empty list
+  needing two manual clicks just to reach that baseline — `SeamsSection` now auto-seeds one of each
+  via a `useEffect([])` the first time it actually mounts (i.e. the first real open of the sheet;
+  confirmed safe by reading `components/ui/sheet.jsx`'s actual composition — plain
+  `SheetPrimitive.Root`/`Portal`/`Content` with no `forceMount` anywhere, so Radix's real default
+  applies and this content is genuinely unmounted while the sheet is closed, never mounted at page
+  load). Deliberately re-seeds if a user later deletes every row of one location and reopens the
+  sheet — a floor to return to, not a one-time nudge, same tradeoff a missing-baseline empty state
+  would otherwise force onto every document. `getQcDocumentDetail()` widened to also return
+  `seams`, threaded through the project-page route and
+  `QcDocumentEditor`/`BoilerDetailsSheet`'s prop chains the same way `groups` already was.
+- **`lib/qc-folder-pdf.js`'s `FormIIIPage`** — `renderQcFolderPdf()` gained a `seams` parameter
+  (empty-array default, so every existing call site untouched by this phase keeps working);
+  §4's five previously-hardcoded-then-`—`'d lines now render the real dynamic seam rows
+  (`seamLine(seams, 'belt'/'furnace_ring', 'Belt'/'Ring')` — "Belt 1: ONE, Belt 2: TWO", `—` when
+  none exist yet) and the four single-value facts; §9's line now reads
+  `Least pressure of this component (MAIN SHELL) – 17.47 kg/sq.cm (g)` when filled, matching the
+  real reference sample's exact shape, `—` when either half is blank.
+
+**Live-verified against real production data (SB-1040, document 50 — the same document Phase 3's
+lettered-sections work was verified against)**: added 3 belts + 2 furnace rings, set all 6 new
+document fields, generated the real PDF through the actual route — every line matched the intended
+format exactly (`"Belt 1: ONE, Belt 2: TWO, Belt 3: THREE"`, `"Ring 1: NA, Ring 2: NA"`, and the
+other four fields verbatim). Deleted one belt (id 2) and regenerated — confirmed it disappeared
+from the render while the remaining two kept their own real sequence numbers (`"Belt 1: ONE, Belt
+3: THREE"`, never renumbered to hide the gap). Fully reverted afterward — every seam row deleted,
+every new field cleared back to `NULL` via the same PATCH route — and confirmed via a direct DB
+read that document 50 is byte-for-byte back to its pre-verification state. The all-blank `—`
+fallback path was confirmed by direct inspection of `seamLine()`'s own 2-line guard clause rather
+than a redundant live round-trip, matching the same trivial-case exemption Phase 3 already used.
+`npm run lint` clean (830 files).
+
+**Gap-review pass, same day — auto-seed fix not yet click-tested in a browser.** The seam
+CRUD/rendering pipeline above was fully verified live via the API/PDF route (curl-only, per
+instruction). The auto-seed `useEffect` added on review is a pure client-side React-lifecycle
+fix built entirely on that already-proven `POST .../seams` endpoint — confirmed correct by reading
+`components/ui/sheet.jsx`'s real composition rather than assuming, but not click-tested in an
+actual browser session. Worth a real open-the-sheet check on a document with zero seams before
+calling this fully proven end to end.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own
