@@ -25,7 +25,7 @@ function CertRow({ c, onClick, onViewPdf }) {
         <span className="text-muted-foreground">cast {c.cast_no}</span>
         {c.heat_no && <span className="text-muted-foreground">heat {c.heat_no}</span>}
         {c.plate_no && <span className="text-muted-foreground">plate {c.plate_no}</span>}
-        {c.pdf_key && (
+        {c.pdf_key ? (
           <span
             role="button"
             tabIndex={0}
@@ -35,8 +35,14 @@ function CertRow({ c, onClick, onViewPdf }) {
           >
             <FileTextIcon className="size-3.5" />PDF
           </span>
+        ) : (
+          // The record exists (cast/plate/spec are real) but the scan hasn't been uploaded yet — a
+          // normal, supported state (§5d), not an error. Distinct from the positive "PDF" badge so
+          // it's never mistaken for "this certificate has no file" being fine to ignore — the
+          // covering letter's own enclosed-count now excludes these too (lib/qc-folder-pdf.js).
+          <span className="ml-auto rounded px-1.5 py-0.5 text-xs text-muted-foreground">PDF not uploaded</span>
         )}
-        <ChevronRightIcon className={c.pdf_key ? 'size-4 text-muted-foreground' : 'ml-auto size-4 text-muted-foreground'} />
+        <ChevronRightIcon className="size-4 text-muted-foreground" />
       </div>
       <p className="text-xs text-muted-foreground">
         {c.material_spec} · {c.steel_maker} · {sizeText(c)}

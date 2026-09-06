@@ -2,9 +2,23 @@
 
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
-import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
+import { getFreshSessionUser, requireDepartment, canAccessDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
+import { getTestCertificates } from '@/lib/data';
+
+// Phase 4 (QC statutory-forms plan) — Stores needs to browse/pick from the bank while receiving an
+// MTC-required BOM line (components/ReceiveBomItemDialog.jsx); QC already reads this server-side via
+// getTestCertificates() on its own pages. Read-only, so both departments (canAccessDepartment already
+// passes a PM through either check).
+export async function GET(req) {
+  const user = await getFreshSessionUser();
+  if (!canAccessDepartment(user, 'Stores') && !canAccessDepartment(user, 'QC')) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+  const projectId = new URL(req.url).searchParams.get('project_id');
+  return NextResponse.json(await getTestCertificates(projectId ? Number(projectId) : null));
+}
 
 const REQUIRED = ['certificate_no', 'cast_no', 'material_spec', 'steel_maker'];
 const FIELDS = [

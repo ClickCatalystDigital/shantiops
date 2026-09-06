@@ -3,6 +3,7 @@ import { queryAll, withTransaction } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment, isInternal } from '@/lib/auth';
 import { requireBomAction } from '@/lib/action-permissions';
 import { getProjectBom } from '@/lib/data';
+import { CATEGORY_LABEL } from '@/lib/section-shapes.js';
 
 const MAX_PASTE_ROWS = 500; // a human pasting rows has a much lower realistic ceiling than a bulk
 // file import (see bom/import/route.js's MAX_IMPORT_ROWS) — past this, use CSV import instead.
@@ -20,7 +21,7 @@ export async function POST(req, { params }) {
   const actionDenied = await requireBomAction(user, 'engineering.bom.add_item');
   if (actionDenied) return actionDenied;
 
-  const { rows } = await req.json();
+  const { rows, category } = await req.json();
   if (!Array.isArray(rows) || !rows.length) {
     return NextResponse.json({ error: 'No BOM rows provided' }, { status: 400 });
   }
@@ -29,14 +30,20 @@ export async function POST(req, { params }) {
       { error: `${rows.length} rows — the limit here is ${MAX_PASTE_ROWS}. Use CSV import for a larger BOM.` },
       { status: 400 });
   }
+  // Category is required here too, same rule native creation enforces — this route must never
+  // again silently create source='bom' rows with no category (see lib/section-shapes.js's
+  // CATEGORY_LABEL for the taxonomy; applied to the whole pasted batch, not inferred per row).
+  if (!category || !Object.prototype.hasOwnProperty.call(CATEGORY_LABEL, category)) {
+    return NextResponse.json({ error: 'A valid category is required' }, { status: 400 });
+  }
 
   const n = await withTransaction(async tx => {
     let n = 0;
     for (const r of rows) {
       if (!r.material_description?.trim()) continue;
       await tx.execute({
-        sql: 'INSERT INTO bom_items (project_id, material_description, moc, size_spec, sort_order) VALUES (?, ?, ?, ?, ?)',
-        args: [params.id, r.material_description.trim(), r.moc || null, r.size_spec || null, n],
+        sql: 'INSERT INTO bom_items (project_id, material_description, moc, size_spec, sort_order, category) VALUES (?, ?, ?, ?, ?, ?)',
+        args: [params.id, r.material_description.trim(), r.moc || null, r.size_spec || null, n, category],
       });
       n++;
     }

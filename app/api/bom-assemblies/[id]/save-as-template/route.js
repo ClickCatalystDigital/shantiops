@@ -47,7 +47,8 @@ export async function POST(req, { params }) {
     ? await queryAll(
         `SELECT assembly_id, material_description, moc, size_spec, qty_text, make, remarks,
                 category, category_fields_json, named_parts_json, item_id,
-                requires_heat_no, requires_mtc, requires_supplier_batch, requires_serial_no
+                requires_heat_no, requires_mtc, requires_supplier_batch, requires_serial_no,
+                requires_manufacturing
            FROM bom_items WHERE assembly_id IN (${idsForItems.map(() => '?').join(',')})
           ORDER BY sort_order, id`,
         idsForItems)

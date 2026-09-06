@@ -301,6 +301,11 @@ function AddItemForm({
   async function submit(e) {
     e.preventDefault();
     if (!description.trim()) return showToast('Description is required', 'error');
+    // Category is required at native creation/edit time, not just at Release — this is the
+    // composer Engineering/Design actually use to build the BOM, and it's the review surface for
+    // fixing an already-uncategorized (e.g. imported) row, so requiring it here on every save
+    // (create or edit) is what actually resolves the Release-BOM gate's flagged items.
+    if (!category) return showToast('Category is required', 'error');
     const isDimensional = DIMENSIONAL_CATEGORIES.includes(category);
     if (isDimensional) {
       for (let i = 0; i < sizeRows.length; i++) {
@@ -478,6 +483,9 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
   const [q, setQ] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [unlinkedOnly, setUnlinkedOnly] = useState(false);
+  // Phase 2.3's Release BOM gate blocks on uncategorized 'bom'-source lines — this is how Engineering
+  // actually finds and fixes the flagged rows in a 181+ item table, same pattern as unlinkedOnly above.
+  const [categoryMissingOnly, setCategoryMissingOnly] = useState(false);
   const [editing, setEditing] = useState(null); // item row | {__new, section} | null
   const [busy, setBusy] = useState(false);
   const scrollerRef = useRef(null);
@@ -549,6 +557,7 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
       if (st !== statusFilter) return false;
     }
     if (unlinkedOnly && b.item_id) return false;
+    if (categoryMissingOnly && b.category) return false;
     if (!needle) return true;
     // pr_no (round 3 Phase B, the real structured PR reference) alongside the legacy free-text
     // pr_ref — a row with pr_no set and no pr_ref (the normal case for anything raised through the
@@ -674,6 +683,10 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
         <Button size="sm" variant={unlinkedOnly ? 'secondary' : 'outline'} className="h-8"
           onClick={() => setUnlinkedOnly(v => !v)}>
           Not linked to catalog
+        </Button>
+        <Button size="sm" variant={categoryMissingOnly ? 'secondary' : 'outline'} className="h-8"
+          onClick={() => setCategoryMissingOnly(v => !v)}>
+          Uncategorized only
         </Button>
         <span className="text-xs text-muted-foreground tnum">{rows.length} of {bom.length} items</span>
         {/* Jump the wide table left/right without hunting for the scrollbar at the bottom of the page.

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getQcDocumentDetail } from '@/lib/data';
+import { getQcDocumentDetail, getBomAssembliesFlat } from '@/lib/data';
 import { queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment, isCustomer, canAccessProject } from '@/lib/auth';
 import { renderQcFolderPdf } from '@/lib/qc-folder-pdf';
@@ -39,7 +39,14 @@ export async function GET(req, { params }) {
   }
 
   const project = await queryOne('SELECT id, project_no, customer_name, series FROM projects WHERE id = ?', [detail.document.project_id]);
-  const pdf = await renderQcFolderPdf(detail.document, detail.parts, detail.mountings, project, detail.groups);
+  // Phase 3 — Form IV A's lettered sections read the tree that actually owns these bom_items rows,
+  // not the document's own project — for a split child that's the MASTER's id (bi.project_id,
+  // §5bj: a child document's parts always reference the master's bom_items). Falls back to the
+  // document's own project when every part is manual/unlinked (bom_project_id null on all of them),
+  // which just means getBomAssembliesFlat finds nothing and the render degrades to the flat table.
+  const bomProjectId = detail.parts.find(p => p.bom_project_id != null)?.bom_project_id ?? detail.document.project_id;
+  const assemblies = await getBomAssembliesFlat(bomProjectId);
+  const pdf = await renderQcFolderPdf(detail.document, detail.parts, detail.mountings, project, detail.groups, assemblies);
   return new NextResponse(pdf, {
     headers: {
       'Content-Type': 'application/pdf',

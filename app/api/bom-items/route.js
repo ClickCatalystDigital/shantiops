@@ -5,6 +5,7 @@ import { requireEngineeringAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { notifyDepartment } from '@/lib/notify';
 import { BOM_FIELDS } from '@/lib/bom-fields.mjs';
+import { CATEGORY_LABEL } from '@/lib/section-shapes.js';
 import { matchAndReserve } from '@/lib/remnant-match';
 import { getAllocationMode, autoReserveFromStock, notifyProcurementIfShortfall } from '@/lib/procurement';
 
@@ -18,6 +19,12 @@ export async function POST(req) {
   const b = await req.json();
   if (!b.project_id || !b.material_description?.trim()) {
     return NextResponse.json({ error: 'project_id and material_description are required' }, { status: 400 });
+  }
+  // Category is required at native creation, not just at Release — this route only ever creates
+  // real project-material (source='bom') lines, never stock/sas, so there's no exemption case to
+  // worry about here (unlike the generic PATCH route, which every department shares).
+  if (!b.category || !Object.prototype.hasOwnProperty.call(CATEGORY_LABEL, b.category)) {
+    return NextResponse.json({ error: 'A valid category is required' }, { status: 400 });
   }
   const project = await queryOne('SELECT id FROM projects WHERE id = ?', [b.project_id]);
   if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 });

@@ -29,6 +29,10 @@ function CertOption({ c, onClick }) {
 }
 
 const TIER_BADGE = {
+  // Multi-unit split — a real fact, not an inferred match: QC already linked this certificate to
+  // this exact unit's material via /qc's "Assign to Units" panel. Still only a suggestion here —
+  // confirming it is what actually attaches it to this statutory document.
+  assigned: { label: '✓ unit', title: "Already linked to this unit's material — confirm to add it to this document too" },
   promoted: { label: '✓✓', title: 'Previously approved 3+ times for this material — confirm before using' },
   exact: { label: '✓', title: 'Material spec matches the linked BOM item — confirm before using' },
   fuzzy: { label: '≈', title: 'Partial match, not binding — confirm before using' },

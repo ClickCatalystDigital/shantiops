@@ -34,7 +34,7 @@ export default function QcProjectSummary({ projectId, summary = {}, canManage = 
       <CardContent className="flex flex-col divide-y">
         <Row icon={FlaskConicalIcon} label="Test Certificates"
           value={certs_total === 0 ? 'None uploaded yet' : `${certs_with_pdf} of ${certs_total} with PDF`}
-          href={`/qc?tab=tc&project=${projectId}`} canManage={canManage} cta="Manage certificates" />
+          href={`/qc?tab=tc-bank&project=${projectId}`} canManage={canManage} cta="Manage certificates" />
         <Row icon={FileTextIcon} label="Statutory Documents"
           value={docs_total === 0 ? 'None filed yet' : `${docs_finalized} of ${docs_total} finalized`}
           href={`/qc?tab=docs&project=${projectId}`} canManage={canManage} cta="Manage documents" />

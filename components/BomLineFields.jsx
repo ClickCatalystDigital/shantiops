@@ -75,24 +75,10 @@ export const CATEGORY_OPTIONS = [
   ...Object.entries(CATEGORY_LABEL).map(([value, label]) => ({ value, label })),
 ];
 
-// Item Master's `group_name` (e.g. "MS PLATES", "SQUARE RODS", "FLANGES") suggests a category on
-// pick — confident keyword matches only, same "don't invent, only match" precedent as
-// lib/calc-import.mjs/applyTemplate. No default-to-'standard' guess: most groups (CABLE, TOOLS,
-// ASSET, ...) aren't a physical-material shape at all, so guessing wrong there is worse than
-// leaving it for the user to pick.
-export function guessCategory(groupName) {
-  const g = (groupName || '').toUpperCase();
-  if (g.includes('PLATE') || g.includes('SHEET')) return 'plate';
-  if (/\bFLAT\b|\bHOOP\b/.test(g)) return 'flat';
-  if (/\bROUND\b|\bROD\b/.test(g)) return 'round';
-  if (/\bSQUARE\b/.test(g)) return 'square';
-  if (/OCTAGON/.test(g)) return 'octagonal';
-  if (g.includes('ANGLE')) return 'angle';
-  if (/CHANNEL/.test(g)) return 'channel';
-  if (/BEAM|JOIST/.test(g)) return 'beam';
-  if (/\bTEE\b/.test(g)) return 'tee';
-  return '';
-}
+// (Removed 2026-09, Item Master round: the live group_name-based guess this used to be —
+// guessCategory() — is superseded by items.bom_category, a real persisted default populated by a
+// one-time backfill (lib/db.js) and editable per catalog item going forward. ItemSearchField now
+// reads item.bom_category directly instead of recomputing a guess on every pick.)
 
 // category_fields as typed/picked -> what actually gets stored. Geometry categories get their
 // `size` (what lib/remnant-match.js's parseDims compares against Stores' stock) generated from the
@@ -167,7 +153,10 @@ export function ItemSearchField({ line, onChange }) {
   }
 
   function pick(item) {
-    const category = guessCategory(item.group_name);
+    // items.bom_category — a real, persisted default (lib/db.js's one-time backfill, editable per
+    // catalog item going forward), not a live guess. Blank when the Item Master item has none set,
+    // in which case the composer's own required-category check forces a manual pick before save.
+    const category = item.bom_category || '';
     onChange({
       material_description: item.item_name, size_spec: item.detail_desc || '', uomHint: item.uom || '',
       item_id: item.id,

@@ -84,12 +84,16 @@ export async function insertTemplateTree(tree, projectId, parentId, templateId, 
         `INSERT INTO bom_items (project_id, assembly_id, sort_order, material_description, moc, size_spec, qty_text,
                                  make, remarks, category, category_fields_json, named_parts_json, item_id,
                                  requires_heat_no, requires_mtc, requires_supplier_batch, requires_serial_no,
-                                 purchase_status, pending_review)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Enquiry', ?)`,
+                                 requires_manufacturing, purchase_status, pending_review)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Enquiry', ?)`,
         [projectId, idMap.get(entry.tempId), n++, it.material_description, it.moc || null, it.size_spec || null,
           it.qty_text || null, it.make || null, it.remarks || null, it.category || null, it.category_fields_json || null,
           it.named_parts_json || null, itemId,
           it.requires_heat_no ? 1 : 0, it.requires_mtc ? 1 : 0, it.requires_supplier_batch ? 1 : 0, it.requires_serial_no ? 1 : 0,
+          // Previously not copied at all (defaulting to the column's own DB default) — inconsistent
+          // with the assembly-node duplicate route, which already copies this correctly. Same
+          // "the template's own value wins" precedent as the four flags right above it.
+          it.requires_manufacturing === 0 || it.requires_manufacturing === false ? 0 : 1,
           pendingReview]
       );
       itemCount++;

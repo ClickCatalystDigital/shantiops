@@ -214,6 +214,10 @@ function EnquiryRow({ it, quotes, suppliers, router, rfqSummary, selected, onTog
           <div className="min-w-0 flex-1">
             <span className="font-medium">{it.material_description}</span>
             <ItemContext it={it} />
+            {/* Phase 4 (QC statutory-forms plan) — Engineering's requires_* flags were previously
+                invisible on Enquiry/Selection, Procurement's own actual working screens; only the
+                State tab rendered them. Same canonical badge renderer, reused, not duplicated. */}
+            <TraceabilityBadges item={it} className="mt-1 flex flex-wrap gap-1" />
           </div>
           {it.reserved_qty > 0 && (
             <Badge className="border-success/30 bg-success-surface text-success"
@@ -336,6 +340,7 @@ function SelectionRow({ it, quotes, router }) {
         <div className="min-w-0">
           <p className="font-medium">{it.material_description}</p>
           <ItemContext it={it} />
+          <TraceabilityBadges item={it} className="mt-1 flex flex-wrap gap-1" />
         </div>
         {it.selected_quote_id && (
           <Button size="sm" variant="outline" disabled={busy} onClick={undo}>Undo selection</Button>

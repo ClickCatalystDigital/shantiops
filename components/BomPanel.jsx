@@ -16,6 +16,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import BomTable from './BomTable';
 import BomImport from './BomImport';
+import SearchableSelect from './SearchableSelect';
+import { CATEGORY_OPTIONS } from './BomLineFields';
 
 const CSV_FORMAT_HINT = 'material_description, moc, size_spec';
 const CSV_SAMPLE = 'material_description,moc,size_spec\nControl Panel,CS,As per drawing\nID Fan with Motor,MS,CFM:3000 · 5 HP\n';
@@ -39,13 +41,19 @@ function downloadCsvTemplate() {
 export default function BomPanel({ projectId, bom, pending, canUpload, editableFields = [], imports = [], canCancel = false, assemblies = [], department = 'Engineering' }) {
   const router = useRouter();
   const [text, setText] = useState('');
+  // Paste-rows has no per-row structured input to infer a category from (unlike Excel/CSV import,
+  // which at least attempts a keyword guess) — rather than build a second inference system, this
+  // applies one category to the whole pasted batch, same requirement native creation now enforces.
+  // A paste session is realistically one batch of similar items, not a mixed bag.
+  const [category, setCategory] = useState('');
   const [busy, setBusy] = useState(false);
 
   async function submitRows(rows) {
     if (!rows.length) return showToast('No BOM rows found', 'error');
+    if (!category) return showToast('Pick a category for these rows first', 'error');
     setBusy(true);
     try {
-      const { inserted } = await api(`/api/projects/${projectId}/bom`, { method: 'POST', body: { rows } });
+      const { inserted } = await api(`/api/projects/${projectId}/bom`, { method: 'POST', body: { rows, category } });
       showToast(`${inserted} BOM line${inserted !== 1 ? 's' : ''} added`);
       router.refresh();
     } catch (err) { showToast(err.message, 'error'); }
@@ -102,6 +110,10 @@ export default function BomPanel({ projectId, bom, pending, canUpload, editableF
               <Label>One item per line: Description, MOC, Size/Spec</Label>
               <Textarea rows={4} value={text} onChange={e => setText(e.target.value)}
                 placeholder={'Control Panel, CS, As per drawing\nID Fan with Motor, MS, CFM:3000 · 5 HP'} />
+              <div className="flex flex-col gap-1.5">
+                <Label>Category for these rows</Label>
+                <SearchableSelect className="w-56" value={category} options={CATEGORY_OPTIONS} onChange={setCategory} />
+              </div>
               <div><Button disabled={busy}>{busy ? 'Adding…' : 'Add rows'}</Button></div>
             </form>
             <p className="mt-3 text-xs text-muted-foreground">

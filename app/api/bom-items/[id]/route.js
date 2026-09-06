@@ -4,6 +4,7 @@ import { getFreshSessionUser, isPM } from '@/lib/auth';
 import { requireAction, requireEngineeringAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { editableBomFields, PURCHASE_STATUSES } from '@/lib/bom-fields.mjs';
+import { CATEGORY_LABEL } from '@/lib/section-shapes.js';
 import { releaseReservationsForItem } from '@/lib/procurement';
 import { syncProcurementMilestones } from '@/lib/milestone-auto';
 import { checkMaterialsComplete } from '@/lib/data';
@@ -32,6 +33,13 @@ export async function PATCH(req, { params }) {
   }
   if (keys.includes('material_description') && !String(b.material_description || '').trim()) {
     return NextResponse.json({ error: 'Description cannot be empty' }, { status: 400 });
+  }
+  // Category must not be cleared back to blank, and must be one of the real taxonomy values —
+  // the same "required, not just at Release" rule native creation now enforces. Only checked when
+  // the key is actually present, so every other department's own-field PATCH (purchase_status,
+  // grn_ref, etc.) that never touches category is completely unaffected.
+  if (keys.includes('category') && (!b.category || !Object.prototype.hasOwnProperty.call(CATEGORY_LABEL, b.category))) {
+    return NextResponse.json({ error: 'A valid category is required — it cannot be cleared' }, { status: 400 });
   }
   // Traceability flags (I9) — frozen once the project's BOM has actually been released, changeable
   // only via the existing un-release path (POST /api/milestones/[id]/reopen), same governance as

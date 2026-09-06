@@ -52,6 +52,7 @@ export default function ChildUnitBomCard({ projectId, unitNo }) {
                   <TableHead>Size</TableHead>
                   <TableHead>Qty for this unit</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Certificate(s)</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -70,6 +71,11 @@ export default function ChildUnitBomCard({ projectId, unitNo }) {
                       {it.ready
                         ? (it.routed_to ? `→ ${it.routed_to}` : 'Ready — awaiting routing')
                         : (it.allocated_qty > 0 ? `${it.allocated_qty}/${it.per_unit_qty ?? '—'} allocated` : '—')}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {it.certificates?.length
+                        ? it.certificates.map(c => c.certificate_no).join(', ')
+                        : '—'}
                     </TableCell>
                   </TableRow>
                 ))}

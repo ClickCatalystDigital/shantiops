@@ -28,6 +28,11 @@ export async function GET(req, { params }) {
     `SELECT COUNT(*) AS n FROM bom_change_notes WHERE project_id = ? AND status = 'pending'`, [params.id]);
   const unassignedCount = await queryOne(
     'SELECT COUNT(*) AS n FROM bom_items WHERE project_id = ? AND assembly_id IS NULL', [params.id]);
+  // Phase 2.3 — category is mandatory at Release for every native/imported 'bom'-source line
+  // (stock/sas lines never feed a statutory document, so they're excluded by design, not a gap).
+  const uncategorizedCount = await queryOne(
+    `SELECT COUNT(*) AS n FROM bom_items WHERE project_id = ? AND source = 'bom' AND category IS NULL`,
+    [params.id]);
   const project = await queryOne('SELECT bom_release_revision FROM projects WHERE id = ?', [params.id]);
   const milestone = await queryOne(
     `SELECT id, status, actual_end FROM milestones WHERE project_id = ? AND milestone_key = 'release_bom'`,
@@ -51,6 +56,7 @@ export async function GET(req, { params }) {
   return NextResponse.json({
     bomCount: bomCount?.n || 0, drawingLinked: drawingLinked?.n || 0, released,
     pendingEcnCount: pendingEcnCount?.n || 0, unassignedCount: unassignedCount?.n || 0,
+    uncategorizedCount: uncategorizedCount?.n || 0,
     nextRevision: (project?.bom_release_revision || 0) + 1,
     milestoneId: milestone?.id || null, templatesApplied, pastReleases,
   });
@@ -64,6 +70,20 @@ export async function POST(req, { params }) {
   if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
   const bomCount = await queryOne('SELECT COUNT(*) AS n FROM bom_items WHERE project_id = ?', [params.id]);
   if (!bomCount.n) return NextResponse.json({ error: 'This project has no BOM items yet' }, { status: 400 });
+
+  // Phase 2.3 — category is the one authoritative gate at Release, regardless of how a line was
+  // created (composer, template, or PMB bulk import — the importer stays a secondary ingestion
+  // path that may arrive uncategorized, but every 'bom'-source line must be resolved by the time
+  // the project actually releases). stock/sas lines never feed a statutory document, excluded by
+  // design (same source='bom' scoping used everywhere else this taxonomy is enforced).
+  const uncategorized = await queryOne(
+    `SELECT COUNT(*) AS n FROM bom_items WHERE project_id = ? AND source = 'bom' AND category IS NULL`,
+    [params.id]);
+  if (uncategorized.n > 0) {
+    return NextResponse.json(
+      { error: `${uncategorized.n} item(s) have no category set — resolve this before releasing` },
+      { status: 400 });
+  }
 
   // Release-baseline revision — the "Released BOM revision" Production/QC/Procurement can point at
   // (§5k addendum). One counter bump + one stamp of every live line, not a new workflow.

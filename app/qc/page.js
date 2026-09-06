@@ -48,9 +48,16 @@ export default async function QcPage({ searchParams }) {
   // (already unioned in above, exactly the ones Stores has allocated to so far) are selectable.
   const mastersWithChildren = new Set(allProjects.filter(p => p.master_project_id).map(p => p.master_project_id));
   const projects = allProjects.filter(p => relevant.has(p.id) && !mastersWithChildren.has(p.id));
+  // "Assign to Units" (§ multi-unit split) operates on the whole ORDER, not one unit — picking a
+  // unit to reach it was confusing (real user feedback), so it gets its own picker listing actual
+  // split orders directly. allProjects already includes masters (includeChildren:true removes the
+  // master_project_id IS NULL filter), so this is a plain filter, no second query.
+  const splitOrders = allProjects
+    .filter(p => mastersWithChildren.has(p.id))
+    .map(p => ({ id: p.id, project_no: p.project_no, customer_name: p.customer_name, unit_count: p.unit_count }));
 
   return <QcWorkspace projects={projects} certificates={certificates} documents={documents}
-    calibrationItems={calibrationItems} ncrs={ncrs} holdPoints={holdPoints}
+    calibrationItems={calibrationItems} ncrs={ncrs} holdPoints={holdPoints} splitOrders={splitOrders}
     canDisposition={canDisposition} canVerify={canVerify} canClose={canClose}
     initialTab={sp?.tab} initialProject={sp?.project} />;
 }

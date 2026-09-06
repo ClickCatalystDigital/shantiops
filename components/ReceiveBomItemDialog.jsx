@@ -5,7 +5,7 @@
 // receipt (supplier/GRN/invoice, via ReceiptPicker) + the received quantity + whichever received_*
 // fields the line's own requires_* flags demand. Submits to POST /api/bom-items/[id]/receive —
 // the one place a Stores user can move a line into 'Received'.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, showToast } from '@/lib/client';
 import { Label } from '@/components/ui/label';
@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import ReceiptPicker from '@/components/ReceiptPicker';
+import CertPicker from '@/components/CertPicker';
 
 const RECEIVED_FIELD_LABELS = {
   received_heat_no: 'Heat number', received_mtc_no: 'MTC / certificate number',
@@ -30,14 +31,43 @@ export default function ReceiveBomItemDialog({ item, onDone }) {
   const [qtyText, setQtyText] = useState(item.qty_text || '');
   const [receivedFields, setReceivedFields] = useState({});
   const [busy, setBusy] = useState(false);
+  // Phase 4 (QC statutory-forms plan) — MTC fulfillment is now a real linked test_certificates
+  // record, not just a hand-typed string. Certificates are fetched lazily (only once this dialog
+  // actually needs them) via the new project-scoped GET /api/test-certificates.
+  const [certificates, setCertificates] = useState([]);
+  const [testCertificateId, setTestCertificateId] = useState(null);
+  const [certPickerOpen, setCertPickerOpen] = useState(false);
 
   const requiredReceivedKeys = Object.entries(REQUIRES_TO_RECEIVED)
     .filter(([flag]) => item[flag])
     .map(([, field]) => field);
 
+  useEffect(() => {
+    if (!open || !item.requires_mtc) return;
+    api(`/api/test-certificates?project_id=${item.project_id}`).then(setCertificates).catch(() => {});
+  }, [open, item.requires_mtc, item.project_id]);
+
+  async function pickCert(certId) {
+    setTestCertificateId(certId);
+    let cert = certificates.find(c => c.id === certId);
+    if (!cert) {
+      // Just created via CertPicker's own "+ Add certificate" escape hatch — not yet in our local
+      // list (fetched once on open). Re-fetch so the display text/received_mtc_no reflect the real
+      // new certificate instead of silently falling back to '' (which would then fail the server's
+      // own missingTraceabilityFields check with a confusing "needs an MTC/certificate number").
+      try {
+        const fresh = await api(`/api/test-certificates?project_id=${item.project_id}`);
+        setCertificates(fresh);
+        cert = fresh.find(c => c.id === certId);
+      } catch { /* best-effort */ }
+    }
+    setReceivedFields(prev => ({ ...prev, received_mtc_no: cert?.certificate_no || '' }));
+  }
+
   async function submit(e) {
     e.preventDefault();
     if (!receiptId) return showToast('Choose or create a receipt', 'error');
+    if (item.requires_mtc && !testCertificateId) return showToast('Pick or add a test certificate first', 'error');
     setBusy(true);
     try {
       // Multi-unit split, Phase 4 — this call may only be a PARTIAL receipt now (the line only
@@ -45,7 +75,7 @@ export default function ReceiveBomItemDialog({ item, onDone }) {
       // which happened via fully_received, so the toast never overclaims completion.
       const res = await api(`/api/bom-items/${item.id}/receive`, {
         method: 'POST',
-        body: { qty_text: qtyText, receipt: { existing_receipt_id: receiptId }, ...receivedFields },
+        body: { qty_text: qtyText, receipt: { existing_receipt_id: receiptId }, test_certificate_id: testCertificateId, ...receivedFields },
       });
       showToast(res.fully_received
         ? 'Marked Received'
@@ -72,7 +102,14 @@ export default function ReceiveBomItemDialog({ item, onDone }) {
               <Label htmlFor="receive-qty">Quantity received</Label>
               <Input id="receive-qty" value={qtyText} onChange={e => setQtyText(e.target.value)} required />
             </div>
-            {requiredReceivedKeys.map(field => (
+            {requiredReceivedKeys.map(field => field === 'received_mtc_no' ? (
+              <div key={field} className="flex flex-col gap-1">
+                <Label>{RECEIVED_FIELD_LABELS[field]} *</Label>
+                <Button type="button" variant="outline" className="justify-start font-normal" onClick={() => setCertPickerOpen(true)}>
+                  {receivedFields.received_mtc_no || 'Pick or add a test certificate…'}
+                </Button>
+              </div>
+            ) : (
               <div key={field} className="flex flex-col gap-1">
                 <Label htmlFor={`receive-${field}`}>{RECEIVED_FIELD_LABELS[field]} *</Label>
                 <Input id={`receive-${field}`} required
@@ -90,6 +127,8 @@ export default function ReceiveBomItemDialog({ item, onDone }) {
           </form>
         </DialogContent>
       </Dialog>
+      <CertPicker open={certPickerOpen} onOpenChange={setCertPickerOpen} title="Link test certificate"
+        certificates={certificates} project={{ id: item.project_id }} onPick={pickCert} />
     </>
   );
 }

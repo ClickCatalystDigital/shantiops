@@ -10,6 +10,13 @@ import { useRouter } from 'next/navigation';
 import { api, showToast } from '@/lib/client';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import SearchableSelect from '@/components/SearchableSelect';
+import { CATEGORY_LABEL } from '@/lib/section-shapes';
+
+const CATEGORY_PREVIEW_OPTIONS = [
+  { value: '', label: 'Uncategorized' },
+  ...Object.entries(CATEGORY_LABEL).map(([value, label]) => ({ value, label })),
+];
 
 export default function BomImport({ projectId, format = 'xlsx' }) {
   const router = useRouter();
@@ -17,6 +24,9 @@ export default function BomImport({ projectId, format = 'xlsx' }) {
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
   const [busy, setBusy] = useState(false);
+  // Sparse — only rows the user actually overrides from parsePmb's own best-effort inference.
+  // Keyed "sheetIndex-itemIndex", matching the server's own indexing on confirm.
+  const [categoryOverrides, setCategoryOverrides] = useState({});
   const accept = format === 'csv' ? '.csv' : '.xlsx';
   const label = format === 'csv' ? 'Import CSV' : 'Import PMB (.xlsx)';
 
@@ -30,6 +40,7 @@ export default function BomImport({ projectId, format = 'xlsx' }) {
       fd.append('file', f);
       const { preview } = await api(`/api/projects/${projectId}/bom/import`, { method: 'POST', body: fd });
       setPreview(preview);
+      setCategoryOverrides({});
     } catch (err) {
       showToast(err.message, 'error');
       setFile(null);
@@ -45,10 +56,12 @@ export default function BomImport({ projectId, format = 'xlsx' }) {
       fd.append('file', file);
       fd.append('confirm', '1');
       if (preview.existingItems > 0) fd.append('replace', '1');
+      if (Object.keys(categoryOverrides).length) fd.append('categoryOverrides', JSON.stringify(categoryOverrides));
       const res = await api(`/api/projects/${projectId}/bom/import`, { method: 'POST', body: fd });
       showToast(`Imported ${res.inserted} items (revision ${res.revision})`);
       setPreview(null);
       setFile(null);
+      setCategoryOverrides({});
       router.refresh();
     } catch (err) { showToast(err.message, 'error'); }
     setBusy(false);
@@ -75,7 +88,9 @@ export default function BomImport({ projectId, format = 'xlsx' }) {
                 {preview.totalSkipped > 0 && <> · <span className="text-warning font-medium">{preview.totalSkipped} rows skipped</span></>}
               </p>
 
-              {preview.sheets.map(s => (
+              {preview.sheets.map((s, sheetIndex) => {
+                const uncategorized = s.items?.filter(i => !i.category).length || 0;
+                return (
                 <div key={s.name} className="rounded-md border p-3">
                   <div className="flex items-baseline justify-between gap-2">
                     <span className="font-semibold">{s.name}</span>
@@ -93,6 +108,30 @@ export default function BomImport({ projectId, format = 'xlsx' }) {
                       e.g. {s.sample.map(i => i.material_description).slice(0, 3).join(' · ')}
                     </p>
                   )}
+                  {s.items?.length > 0 && (
+                    <details className="mt-1">
+                      <summary className="cursor-pointer text-xs text-muted-foreground">
+                        Review categories ({s.items.length - uncategorized} guessed
+                        {uncategorized > 0 && <>, {uncategorized} uncategorized</>}) — best-effort,
+                        edit anything wrong before importing
+                      </summary>
+                      <div className="mt-2 flex max-h-64 flex-col gap-1.5 overflow-y-auto pr-1">
+                        {s.items.map((it, itemIndex) => {
+                          const key = `${sheetIndex}-${itemIndex}`;
+                          const value = Object.prototype.hasOwnProperty.call(categoryOverrides, key)
+                            ? categoryOverrides[key] : (it.category || '');
+                          return (
+                            <div key={itemIndex} className="flex items-center gap-2">
+                              <span className="flex-1 truncate text-xs" title={it.material_description}>{it.material_description}</span>
+                              <SearchableSelect className="w-40 shrink-0" value={value}
+                                options={CATEGORY_PREVIEW_OPTIONS}
+                                onChange={v => setCategoryOverrides(prev => ({ ...prev, [key]: v }))} />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </details>
+                  )}
                   {s.skipped?.length > 0 && (
                     <details className="mt-1">
                       <summary className="cursor-pointer text-xs text-warning">
@@ -106,7 +145,8 @@ export default function BomImport({ projectId, format = 'xlsx' }) {
                     </details>
                   )}
                 </div>
-              ))}
+                );
+              })}
 
               {replacing && (
                 <p className="rounded-md border border-danger/30 bg-danger/5 p-3 text-danger">

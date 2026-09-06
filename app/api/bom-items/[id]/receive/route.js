@@ -86,6 +86,9 @@ export async function POST(req, { params }) {
     received_mtc_no: b.received_mtc_no ? String(b.received_mtc_no).trim() : null,
     received_supplier_batch_no: b.received_supplier_batch_no ? String(b.received_supplier_batch_no).trim() : null,
     received_serial_no: b.received_serial_no ? String(b.received_serial_no).trim() : null,
+    // Phase 4 — the real Test Certificate bank record an MTC requirement resolves to, picked/created
+    // via CertPicker client-side (which also fills received_mtc_no from the cert's own certificate_no).
+    test_certificate_id: b.test_certificate_id ? Number(b.test_certificate_id) : null,
   };
   // Traceability is required on every receiving event, not just the one that completes the line —
   // each physical delivery genuinely needs its own heat/cert regardless of whether it finishes the
@@ -138,10 +141,10 @@ export async function POST(req, { params }) {
       await tx.execute({
         sql: `INSERT INTO bom_item_receipts
                 (bom_item_id, stock_receipts_id, qty_received, received_heat_no, received_mtc_no,
-                 received_supplier_batch_no, received_serial_no, received_by)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                 received_supplier_batch_no, received_serial_no, test_certificate_id, received_by)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         args: [item.id, receiptId, parsedQty, changed.received_heat_no, changed.received_mtc_no,
-          changed.received_supplier_batch_no, changed.received_serial_no, user.username],
+          changed.received_supplier_batch_no, changed.received_serial_no, changed.test_certificate_id, user.username],
       });
 
       if (!isFullyReceived) return { receiptId, isFullyReceived };
@@ -154,10 +157,10 @@ export async function POST(req, { params }) {
       const cumulativeText = unitSuffix ? `${totalReceived} ${unitSuffix}` : String(totalReceived);
       const upd = await tx.execute({
         sql: `UPDATE bom_items SET purchase_status = 'Received', grn_ref = ?, grn_qty_text = ?, receipt_id = ?,
-                received_heat_no = ?, received_mtc_no = ?, received_supplier_batch_no = ?, received_serial_no = ?
+                received_heat_no = ?, received_mtc_no = ?, received_supplier_batch_no = ?, received_serial_no = ?, test_certificate_id = ?
               WHERE id = ? AND purchase_status NOT IN ('Received', 'Cancelled')`,
         args: [grnRef, cumulativeText, receiptId, changed.received_heat_no, changed.received_mtc_no,
-          changed.received_supplier_batch_no, changed.received_serial_no, params.id],
+          changed.received_supplier_batch_no, changed.received_serial_no, changed.test_certificate_id, params.id],
       });
       if (Number(upd.rowsAffected) !== 1) throw new Error('Already received or cancelled');
       changed.grn_qty_text = cumulativeText;

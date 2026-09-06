@@ -30,6 +30,7 @@ import { normalizeMaterial } from '@/lib/match-utils';
 import { QC_HEADER_FIELDS } from '@/lib/qc-document-fields';
 import { modelConfig } from '@/lib/qc-models';
 import { STANDARD_MOC } from '@/lib/section-shapes';
+import { classificationSource } from '@/lib/bom-fields.mjs';
 import SearchableSelect from './SearchableSelect';
 
 // V2-CHANGES.md Group 2 — same two companies as StatutoryDocsPanel.jsx's NewDocumentSheet; this
@@ -211,6 +212,10 @@ function PartRow({ part, selected, onToggle, onOpenPicker, onRemove, onUnlink, o
   // in the first place (Production's CutDialog only offers a Part picker when a breakdown exists).
   const isNamedPart = part.bom_item_id && part.part_name !== part.bom_material_description;
   const linkedBomItem = bomItems.find(b => b.id === part.bom_item_id);
+  // Phase 2.4 — moc-fallback classification is a stopgap, never a silent permanent decision (see
+  // lib/bom-fields.mjs's classificationSource). Display-only: doesn't change what synced onto this
+  // document, just flags it so a human knows to go set the line's real category.
+  const fallbackClassified = linkedBomItem && classificationSource(linkedBomItem) === 'fallback';
   return (
     <div className="flex items-start gap-3 py-2.5 text-sm">
       <Checkbox className="mt-0.5" checked={selected} onCheckedChange={() => onToggle(part.id)} />
@@ -223,6 +228,11 @@ function PartRow({ part, selected, onToggle, onOpenPicker, onRemove, onUnlink, o
           </span>
         )}
         <LinkedBomItemContext item={linkedBomItem} />
+        {fallbackClassified && (
+          <span className="text-xs text-muted-foreground">
+            Unconfirmed — classified by legacy rule, verify
+          </span>
+        )}
       </div>
       {/* Bordered only once there's something to frame: a card around the cert's own details makes
           the X (unlink) read as "detach this cert record" — an action that belongs to what's inside
@@ -849,7 +859,7 @@ function MountingsCard({ documentId, mountings, bomItems, canEdit, router }) {
   );
 }
 
-export default function QcDocumentEditor({ project, document, parts, certificates, mountings = [], groups = [], bomItems = [], approvals = [], assemblies = [], canEdit, currentUserName }) {
+export default function QcDocumentEditor({ project, document, parts, certificates, mountings = [], groups = [], bomItems = [], approvals = [], assemblies = [], unitCertsByItem = {}, canEdit, currentUserName }) {
   const router = useRouter();
   // parts comes straight from the server prop, no local copy — router.refresh() after linking
   // re-fetches it server-side and flows the new value straight back in, same as QcPanel does for
@@ -919,7 +929,24 @@ export default function QcDocumentEditor({ project, document, parts, certificate
   // "Link to BOM item" instead). lib/tc-match.js already returns [] for a missing/unmatched bomItem.
   const pickerPart = pickerTargets.length === 1 ? parts.find(p => p.id === pickerTargets[0]) : null;
   const pickerBomItem = pickerPart ? bomItems.find(b => b.id === pickerPart.bom_item_id) : null;
-  const suggestions = pickerPart ? suggestCertificates(pickerPart, pickerBomItem, certificates, approvals) : [];
+  const matchSuggestions = pickerPart ? suggestCertificates(pickerPart, pickerBomItem, certificates, approvals) : [];
+  // Multi-unit split — a real, human-confirmed fact (QC already linked this exact certificate to
+  // this exact unit's material via /qc's "Assign to Units" panel), so it goes first and is never
+  // capped the way the fuzzy/exact tiers are — still only ever a suggestion here, never auto-applied
+  // to the document. Empty for every ordinary (non-split) project's part.
+  const unitCerts = pickerPart ? (unitCertsByItem[pickerPart.bom_item_id] || []) : [];
+  const suggestions = (() => {
+    const seen = new Set();
+    const out = [];
+    for (const uc of unitCerts) {
+      const full = certificates.find(c => c.id === uc.id);
+      if (full && !seen.has(full.id)) { seen.add(full.id); out.push({ certificate: full, tier: 'assigned' }); }
+    }
+    for (const s of matchSuggestions) {
+      if (!seen.has(s.certificate.id)) { seen.add(s.certificate.id); out.push(s); }
+    }
+    return out;
+  })();
 
   async function link(certId) {
     try {

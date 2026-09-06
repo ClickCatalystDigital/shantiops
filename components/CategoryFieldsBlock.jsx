@@ -27,7 +27,12 @@ export const MOC_OPTIONS = [...STANDARD_MOC.map(m => ({ value: m, label: m })), 
 export default function CategoryFieldsBlock({ category, fields, onChange }) {
   const set = patch => onChange({ ...fields, ...patch });
 
-  if (category === 'standard') {
+  // `other` renders identically to `standard` — no dimensions, just a reference + qty. Distinct
+  // classification outcome (excluded from both Form IV A/III A material and the Mounting & Fittings
+  // list, lib/qc-bom-sync.js's classify()) for lines that are genuinely neither raw pressure material
+  // nor an IBR mounting — electrical/panel components, refractory/insulation/consumables, rotating
+  // equipment (found on real project data, SYSTEM.md's category-taxonomy audit).
+  if (category === 'standard' || category === 'other') {
     return (
       <div className="grid grid-cols-2 gap-3 rounded-md border border-dashed p-2.5">
         <div className="flex flex-col gap-1.5">

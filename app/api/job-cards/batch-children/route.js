@@ -5,10 +5,18 @@
 // child). Per the guiding principle: the batch is a UI convenience, the result is N separate,
 // individually-attributable job_cards rows — never one merged record. Reuses the exact insert shape
 // POST /api/job-cards already uses, just looped once per resolved child milestone.
+//
+// Gap-review fix (architecture review, multi-unit split): when the batch carries a bom_item_id,
+// re-derive readiness against the routing board — the sibling Dispatch route
+// (app/api/packing/batch-children/route.js) already gates on getChildRoutingBoard()'s
+// ready/routed_to, this route never did, so a job card could be created for a child whose material
+// Stores never allocated or routed to Production at all. A milestone-only batch (no bom_item_id) has
+// no board cell to check against and is completely unaffected.
 import { NextResponse } from 'next/server';
 import { execute, queryOne, queryAll, nextNumber } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
+import { getChildRoutingBoard } from '@/lib/data';
 import { audit } from '@/lib/usb';
 
 export async function POST(req) {
@@ -25,7 +33,7 @@ export async function POST(req) {
   if (!childIds.length) return NextResponse.json({ error: 'Pick at least one unit' }, { status: 400 });
 
   const placeholders = childIds.map(() => '?').join(',');
-  const milestones = await queryAll(
+  let milestones = await queryAll(
     `SELECT id, project_id, milestone_label FROM milestones
       WHERE milestone_key = ? AND department = 'Production' AND project_id IN (${placeholders})`,
     [milestoneKey, ...childIds]);
@@ -36,9 +44,24 @@ export async function POST(req) {
   // Phase F — informational BOM-revision stamp. Every child shares one master, so one lookup covers
   // the whole batch.
   const master = await queryOne(
-    `SELECT m.bom_release_revision FROM projects c JOIN projects m ON m.id = c.master_project_id WHERE c.id = ? LIMIT 1`,
+    `SELECT m.id AS master_id, m.bom_release_revision FROM projects c JOIN projects m ON m.id = c.master_project_id WHERE c.id = ? LIMIT 1`,
     [milestones[0].project_id]);
   const revision = master?.bom_release_revision ?? null;
+
+  // Only gate on the routing board when this card is tied to real material — a milestone-only card
+  // (no bom_item_id) has no allocation/routing concept to check.
+  const skipped = [];
+  const bomItemId = b.bom_item_id ? Number(b.bom_item_id) : null;
+  if (bomItemId && master?.master_id) {
+    const board = await getChildRoutingBoard(master.master_id);
+    const readyChildIds = new Set(
+      board.cells
+        .filter(c => c.bom_item_id === bomItemId && c.ready && c.routed_to === 'production')
+        .map(c => c.child_project_id));
+    const gated = milestones.filter(m => readyChildIds.has(m.project_id));
+    for (const m of milestones) if (!readyChildIds.has(m.project_id)) skipped.push(m.project_id);
+    milestones = gated;
+  }
 
   const created = [];
   for (const m of milestones) {
@@ -58,7 +81,8 @@ export async function POST(req) {
     created.push({ child_project_id: m.project_id, id: Number(lastId), jc_no: jcNo });
   }
   await audit('job_card_batch_created', {
-    actor: user.username, detail: `${created.length} job cards for ${milestoneKey} across ${created.length} units`,
+    actor: user.username,
+    detail: `${created.length} job cards for ${milestoneKey} across ${created.length} units${skipped.length ? ` (${skipped.length} skipped — not allocated/routed to Production)` : ''}`,
   });
-  return NextResponse.json({ ok: true, created });
+  return NextResponse.json({ ok: true, created, skipped });
 }

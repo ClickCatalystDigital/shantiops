@@ -109,6 +109,25 @@ function TodaySummary({ inventoryItems, openRequests, activeReservations, onNavi
   );
 }
 
+// Phase 4 (QC statutory-forms plan) — the reverse of possibleMatches() above: given one fixed
+// inventory item, which open BOM requests could it fulfill. Same exact-item_id-first, then
+// keyword-overlap fallback (no `available` filter — that's a property of the OTHER side there,
+// meaningless here since we already have one specific inventory item in hand).
+function matchingOpenRequests(inventoryItem, openRequests) {
+  if (inventoryItem.item_id) {
+    const exact = openRequests.filter(r => r.item_id === inventoryItem.item_id);
+    if (exact.length) return exact;
+  }
+  const words = new Set(normalizeWords(inventoryItem.description));
+  if (!words.size) return [];
+  return openRequests
+    .map(r => ({ r, score: normalizeWords(r.material_description).filter(w => words.has(w)).length }))
+    .filter(m => m.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5)
+    .map(m => m.r);
+}
+
 function possibleMatches(request, inventoryItems) {
   if (request.item_id) {
     const exact = inventoryItems.filter(it => it.item_id === request.item_id && it.available > 0);
@@ -289,7 +308,7 @@ function ItemFormDialog({ item, onClose, router }) {
 // own shape (L×W×T×density); every other category (lib/section-shapes.js's taxonomy) is "linear" —
 // cut by length, weight = length × kg/m, since a non-rectangular profile's cross-section isn't
 // L×W×T.
-function AddPieceDialog({ inventoryItem, onClose, router, onAdded, certificates = [] }) {
+function AddPieceDialog({ inventoryItem, onClose, router, onAdded, certificates = [], openRequests = [] }) {
   const kind = inventoryItem.category === 'plate' ? 'plate' : 'linear';
   const [length, setLength] = useState('');
   const [width, setWidth] = useState('');
@@ -300,8 +319,13 @@ function AddPieceDialog({ inventoryItem, onClose, router, onAdded, certificates 
   const [certId, setCertId] = useState(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [receiptId, setReceiptId] = useState(null);
+  // Phase 4 (QC statutory-forms plan) — optional: which open BOM requirement this receipt fulfills,
+  // so lib/stock-pieces.js's receivePiece() can actually enforce that line's requires_heat_no/
+  // requires_mtc flags (previously dead code — this dialog never sent bom_item_id at all).
+  const [bomItemId, setBomItemId] = useState(null);
   const [saving, setSaving] = useState(false);
   const cert = certificates.find(c => c.id === certId);
+  const matches = useMemo(() => matchingOpenRequests(inventoryItem, openRequests), [inventoryItem, openRequests]);
   const weightKg = pieceWeight({
     kind, length_mm: length, width_mm: width, thickness_mm: thickness,
     density: kind === 'plate' ? density : null, kg_per_m: kind === 'linear' ? kgPerM : null,
@@ -322,6 +346,7 @@ function AddPieceDialog({ inventoryItem, onClose, router, onAdded, certificates 
           heat_no: heatNo.trim() || null,
           test_certificate_id: certId,
           receipt_id: receiptId || undefined,
+          bom_item_id: bomItemId || undefined,
         },
       });
       showToast(`${result.code} added — ${result.weight_kg} kg`);
@@ -340,6 +365,14 @@ function AddPieceDialog({ inventoryItem, onClose, router, onAdded, certificates 
           <div className="col-span-2">
             <ReceiptPicker value={receiptId} onChange={setReceiptId} />
           </div>
+          {matches.length > 0 && (
+            <div className="col-span-2 grid gap-1.5">
+              <Label>Receiving against an open BOM request? (optional)</Label>
+              <SearchableSelect value={bomItemId ? String(bomItemId) : ''} onChange={v => setBomItemId(v ? Number(v) : null)}
+                options={[{ value: '', label: 'Not linked to a specific request' },
+                  ...matches.map(r => ({ value: String(r.id), label: `${r.material_description} · ${requestLabel(r)}` }))]} />
+            </div>
+          )}
           <div className="grid gap-1.5">
             <Label>Length</Label>
             <DimensionInput valueMm={length} onChangeMm={setLength} autoFocus />
@@ -459,7 +492,7 @@ function PieceRow({ p, indent, kindLabel, busyId, onRelease, onReserve, onConfir
   );
 }
 
-function PiecesDialog({ inventoryItem, onClose, router, certificates = [], projects = [] }) {
+function PiecesDialog({ inventoryItem, onClose, router, certificates = [], projects = [], openRequests = [] }) {
   const [pieces, setPieces] = useState(null);
   const [adding, setAdding] = useState(false);
   const [reservingPiece, setReservingPiece] = useState(null);
@@ -587,7 +620,7 @@ function PiecesDialog({ inventoryItem, onClose, router, certificates = [], proje
           <DialogFooter><Button variant="outline" onClick={onClose}>Close</Button></DialogFooter>
         </DialogContent>
       </Dialog>
-      {adding && <AddPieceDialog inventoryItem={inventoryItem} router={router} certificates={certificates} onClose={() => setAdding(false)} onAdded={load} />}
+      {adding && <AddPieceDialog inventoryItem={inventoryItem} router={router} certificates={certificates} openRequests={openRequests} onClose={() => setAdding(false)} onAdded={load} />}
       {reservingPiece && (
         <ReservePieceDialog piece={reservingPiece} projects={projects} router={router}
           onClose={() => setReservingPiece(null)} onReserved={load} />
@@ -2230,7 +2263,7 @@ function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavi
           <ItemFormDialog item={dialogItem} router={router} onClose={() => setDialogItem(undefined)} />
         )}
       </Card>
-      {piecesFor && <PiecesDialog inventoryItem={piecesFor} router={router} certificates={certificates} projects={projects} onClose={() => setPiecesFor(null)} />}
+      {piecesFor && <PiecesDialog inventoryItem={piecesFor} router={router} certificates={certificates} projects={projects} openRequests={openRequests} onClose={() => setPiecesFor(null)} />}
       {batchesFor && <BatchesDialog inventoryItem={batchesFor} router={router} certificates={certificates} onClose={() => setBatchesFor(null)} />}
       {serialsFor && <SerialsDialog inventoryItem={serialsFor} router={router} certificates={certificates} onClose={() => setSerialsFor(null)} />}
     </div>

@@ -78,6 +78,11 @@ export async function POST(req, { params }) {
           unmappedColumns: s.unmappedColumns,
           itemCount: s.items.length,
           sample: s.items.slice(0, 5),
+          // Full per-row list (lean shape — just enough to judge a category, not every column) so
+          // the preview UI can show/override the best-effort inferred category on every row before
+          // anything is written, not just the first 5. `sample` above is left untouched (existing
+          // 3-item summary line).
+          items: s.items.map(it => ({ material_description: it.material_description, moc: it.moc, category: it.category })),
           skipped: s.skipped,
         })),
         totalItems: parsed.totalItems,
@@ -116,6 +121,17 @@ export async function POST(req, { params }) {
   const allocationMode = await getAllocationMode();
   const freshPendingReview = allocationMode === 'manual' ? 1 : 0;
 
+  // Sparse category overrides from the preview screen — keyed "sheetIndex-itemIndex" (only rows the
+  // user actually changed from parsePmb's own best-effort inference), applied at insert time below.
+  // The file is re-parsed from the same bytes on confirm (this route's own stateless design, see the
+  // header comment) so indices here must match parseSheet's own item order exactly — unaffected by
+  // anything else, since neither sheets nor items are reordered between the two calls.
+  let categoryOverrides = {};
+  try {
+    const raw = form.get('categoryOverrides');
+    if (raw) categoryOverrides = JSON.parse(raw);
+  } catch { categoryOverrides = {}; }
+
   // Replace-delete, the revision record, and every item insert happen in one transaction — a
   // failure partway through (network drop, DB hiccup) previously could leave the project with fewer
   // items than either the old or new BOM (worst on the replace path, which deletes first). Side
@@ -134,19 +150,24 @@ export async function POST(req, { params }) {
     const importId = Number(imp.lastInsertRowid);
 
     let n = 0;
-    for (const sheet of parsed.sheets) {
-      for (const it of sheet.items) {
+    for (let sheetIndex = 0; sheetIndex < parsed.sheets.length; sheetIndex++) {
+      const sheet = parsed.sheets[sheetIndex];
+      for (let itemIndex = 0; itemIndex < sheet.items.length; itemIndex++) {
+        const it = sheet.items[itemIndex];
         const itemId = catalogByName.get(String(it.material_description || '').trim().toLowerCase().replace(/\s+/g, ' ')) || null;
+        const overrideKey = `${sheetIndex}-${itemIndex}`;
+        const category = Object.prototype.hasOwnProperty.call(categoryOverrides, overrideKey)
+          ? (categoryOverrides[overrideKey] || null) : it.category;
         await tx.execute({
           sql: `INSERT INTO bom_items
                   (project_id, material_description, moc, size_spec, sort_order, section, group_label,
                    make, qty_text, purchase_status, pr_ref, po_ref, grn_ref, grn_qty_text,
-                   pending_qty_text, bqtc_ref, issued_ref, received_ref, remarks, import_id, pending_review, item_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                   pending_qty_text, bqtc_ref, issued_ref, received_ref, remarks, import_id, pending_review, item_id, category)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           args: [params.id, it.material_description, it.moc, it.size_spec, n, it.section, it.group_label,
             it.make, it.qty_text, it.purchase_status, it.pr_ref, it.po_ref, it.grn_ref,
             it.grn_qty_text, it.pending_qty_text, it.bqtc_ref, it.issued_ref, it.received_ref,
-            it.remarks, importId, it.purchase_status ? 0 : freshPendingReview, itemId],
+            it.remarks, importId, it.purchase_status ? 0 : freshPendingReview, itemId, category],
         });
         n++;
       }

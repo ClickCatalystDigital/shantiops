@@ -7706,6 +7706,294 @@ never "N of 50 units" — a genuinely different altitude from what the portal ne
     appears, the 20 real children still do, and an ordinary non-split project (no children) is
     completely unaffected.
 
+## 5bj. Multi-unit split — architecture review + Production routing gate, milestone rollup fix, and cell-level certificate assignment (2026-09-06)
+
+A dedicated architecture review of the whole master/child split feature (real order SB-1109-01-50,
+project 61, its 50 real children) against the stated business workflow (partial supplier lots,
+per-unit allocation, independent Production/Dispatch ordering, and certificate traceability spanning
+multiple units) — done via three parallel research agents plus direct verification against the real
+production database, not code review alone. Two real gaps were found that only became visible once
+real data was inspected (not just from reading the code): a live production-routing hole and a
+structurally-impossible-to-close milestone rollup. Full research trail, the "already
+supported/partially supported/actually missing/future gaps/recommended architecture" breakdown, and
+the three worked examples validating the certificate design all live in this session's own plan
+file, not duplicated here — this section is the as-built record of what actually shipped.
+
+**Confirmed correct and unchanged by this round**: the master/child split architecture itself —
+`bom_items`/`bom_assemblies` living only on the master, `getChildDerivedBom()`/`getChildRoutingBoard()`
+computing a child's own view live off the master's current BOM, `bom_item_receipts` (partial-lot
+ledger) → `bom_item_child_allocations` (per-child allocation) → `bom_item_child_routing`
+(Production-vs-Dispatch decision) — is the right shape and needed no redesign. What was missing was
+narrow: two places that read this data incompletely, and one real gap in what the data could express
+at all (certificate coverage).
+
+**Gap 1 — fixed: Production's batch job-card creation never checked the routing board at all.**
+`app/api/job-cards/batch-children/route.js` previously created a job card for any selected child
+purely off a matching Production milestone existing — never checking `getChildRoutingBoard()`'s
+`ready`/`routed_to`, unlike its Dispatch sibling (`app/api/packing/batch-children/route.js`), which
+already gated on exactly that. A user could create a Production job card for a child whose material
+Stores never allocated or routed to Production at all. Fixed: when the batch request carries a
+`bom_item_id`, the route now re-derives `getChildRoutingBoard(masterId)` and only creates a card for
+`(bom_item_id, child)` pairs where `ready && routed_to === 'production'`, reporting the rest in a
+`skipped` array (same `created`/`skipped` shape the Dispatch route already returns). A milestone-only
+card (no `bom_item_id` — the only path the real UI panel, `ProductionBatchJobCardPanel.jsx`, actually
+exercises today) is completely unaffected — the gate only fires for a caller that supplies material
+context, real or direct-API. **Verified live** via direct API calls (no UI surface for supplying
+`bom_item_id` in a batch exists yet): a ready-and-routed-to-production cell correctly created a job
+card; a ready-but-routed-to-dispatch cell was correctly skipped; a never-allocated cell was correctly
+skipped. Test job cards deleted afterward, zero residue confirmed.
+
+**Gap 2 — fixed: a split child's own milestone rollup could never read "done," even once the
+physical unit genuinely shipped.** Every child inherits the full ~25-milestone template
+(`createProjectMilestones`, unchanged), including 4 Design keys and 5 Procurement keys that are
+structurally never actionable at the child level — that work happens once, on the master. `lib/sla.js`'s
+`worstStatus()` requires every milestone in the set passed to it to be done before reporting `'done'`,
+so these 9 permanently-`pending` rows kept a child's roll-up stuck forever, regardless of real per-unit
+progress. This broke two real, already-shipped consumers nobody had updated for the split case:
+`getProjectsWithStatus()` (feeding `groupProjectsByMaster()`'s "N of 50 done" on the internal
+`/projects` list) and `getProjectDetail()` (a child's own health badge/progress %/Open Actions). The
+identical "which milestones are master-level vs. genuinely per-unit" problem had already been solved
+once, correctly, but only for the Customer Portal (`getCustomerViewSplitOrder()`, §5bg) — never
+threaded through to these two internal call sites. Fixed: new `MASTER_LEVEL_MILESTONE_KEYS` export
+(`lib/milestones.js`, derived from `CUSTOMER_PHASES`' own `design`+`procurement` entries — one source
+of truth, not a second hand-written list) excluded from the rollup-only inputs
+(`roll`/`blocker`/`progress`/`done`/`overallTotal`) in both `getProjectsWithStatus()` and
+`getProjectDetail()` (`lib/data.js`) whenever `master_project_id` is set — the real, full `milestones`
+array returned to the page is completely untouched, only the summarized numbers change.
+`groupProjectsByMaster()`/`getStageBottlenecks()` needed no separate fix — both already consume
+whatever `getProjectsWithStatus()` attaches, so the correction flows through automatically. **Verified
+live, decisively**: backdated a real child's own `design` milestone to 5 days overdue — the raw
+Milestone Tracker correctly still showed "+5d late" (nothing hidden), but the health badge correctly
+stayed "On track — no overdue or blocked milestones" and Open Actions correctly stayed at 0 (the
+orphaned milestone is excluded from the rollup, not from the data) — then reverted. An ordinary
+project's own Design milestone (SB-1040, unrelated to any split) was confirmed still correctly
+reported as its own real overdue blocker, proving zero regression for the non-split case.
+
+**Gap 3 — built: certificate assignment at the (BOM item × child) allocation grain, wired into `/qc`.**
+Confirmed live on the real order: QC already had a working, manual way to tag one certificate to
+multiple child *projects* (the TC Bank's `certificate_projects` many-to-many join — 11 real certs
+already tagged to one real child this way) — but nothing connected that to *which allocation* (a
+specific BOM item's material given to a specific child) the certificate's material actually
+corresponded to. A real receipt/lot can cover many BOM items across many children in one delivery
+(e.g. 10 boilers × 100 items), and a single BOM item's material for different children can
+legitimately need different certificates — coverage needed to be assignable at exactly Stores'
+own allocation grain, many-to-many, with group/bulk assignment and partial/remaining-unassigned
+support, never a receipt-level or one-per-line model (that first draft was explicitly rejected before
+building anything).
+
+- **Schema**: `bom_item_child_certificates` (`lib/db.js`, next to `bom_item_child_routing`) —
+  `(id, bom_item_id, child_project_id, certificate_id, linked_by, linked_at,
+  UNIQUE(bom_item_id, child_project_id, certificate_id))`. Same key shape `bom_item_child_routing`
+  already uses, extended to true many-to-many by putting `certificate_id` inside the unique triple
+  rather than the pair alone — a cell can carry more than one certificate (e.g. two partial lots,
+  two heats), one certificate can cover many cells across items and children. A human-recorded fact,
+  never auto-matched/inferred; deliberately does not record how much of a cell's allocated quantity
+  each certificate covers — no quantity/split field. Exact-quantity lot genealogy stays a named,
+  deferred future item, not attempted here.
+- **API**: `POST`/`DELETE /api/projects/[id]/child-routing/certificates` (params.id = the master —
+  sibling path to the existing read-only routing-board route, which already exposes certificates
+  once `getChildRoutingBoard()`/`getChildDerivedBom()` gained a `certificates` array per cell/item).
+  Re-derives a fresh board server-side before writing — never trusts the client's cell list. **No
+  silent drops**: every submitted cell is classified and reported back
+  (`{assigned: N, skipped: [{bom_item_id, child_project_id, reason: 'not_allocated'|'already_linked'}]}`) —
+  an all-invalid submission still returns 200 with a fully-populated `skipped` list, matching and
+  extending the `created`/`skipped` precedent `packing/batch-children` already established. Gated on
+  the same, already-existing `qc.certificate.write` action key `test-certificates` writes use — no
+  new permission tier, since bulk-linking material to a cert is the same class of action as logging a
+  certificate in the first place.
+- **UI, placed after real user feedback across three rounds** — not a new top-level nav tab (this is
+  exception-only, multi-unit split orders are rare, so a permanent nav slot mostly sitting irrelevant
+  was rejected), not folded into Documents. Lives as a sub-tab of the existing **Test Certificates**
+  tab in `/qc` (`components/QcWorkspace.jsx`) — "Test Certificates" is now a `group: true` item with
+  two children, **Certificates** (the existing `TcBank`, unchanged) and **Assign to Units** (new),
+  the exact same `group`/`children` shape `ProcurementWorkspace.jsx`'s own "Suppliers" (Roster/
+  Analysis) nav item already established — no new sidebar mechanism invented.
+  `components/MaterialCertificatePanel.jsx` renders one flat, searchable table (not a
+  per-line-then-checkbox-of-children widget like `ChildRoutingPanel.jsx` — the requirement is
+  "select arbitrarily from a pool spanning two axes at once," which a flat table with a plain
+  per-row checkbox represents far more directly than nesting by line first): item description, unit,
+  allocated qty, existing certificate badges (each removable), a "select all N shown" convenience
+  respecting the search filter, and a footer "Assign certificate to N selected" action opening the
+  existing `CertPicker.jsx` unmodified.
+  - **"Assign to Units" gets its own dedicated Order picker, not the shared unit picker** — the
+    first cut reused `/qc`'s existing Model+Project header (pick any one child, resolve up to its
+    `master_project_id`), which real use immediately showed was confusing: picking one specific unit
+    to reach a panel that then shows *every* unit of that order reads as "did my selection do
+    nothing?" Replaced with a single "Search split orders…" picker listing only real split orders
+    directly (`app/qc/page.js`'s new `splitOrders` prop — `allProjects.filter(p =>
+    mastersWithChildren.has(p.id))`, no new query, `allProjects` already includes masters since
+    `includeChildren:true` only ever drops the `master_project_id IS NULL` filter). Independent
+    local state (`assignOrderId`) from the shared `projectId`/`series` state the other four tabs use
+    — switching tabs never cross-contaminates either picker's own selection.
+  - **Read-only indicator on the project page**: `components/ChildUnitBomCard.jsx` (already
+    read-only, already department-agnostic, already showing per-item `allocated_qty`/`ready`/
+    `routed_to` for one child) gained one more column showing that item's linked certificate
+    number(s) — no write action added there, its existing character preserved exactly.
+- **Three worked examples, each live-verified on the real order (not just asserted from the design)**:
+  one certificate bulk-assigned across 100+ arbitrary item/child cells in a single action; different
+  certificates assigned to the same BOM item across different groups of children; two different
+  certificates on the exact same (item, child) cell, both coexisting with no forced choice. All test
+  links removed afterward, confirmed zero residue in the new table via direct DB check.
+
+**Gap 4 — built, after direct pushback that a suggestion-only flow was unacceptable friction: unit
+assignments now auto-populate the statutory document, not just suggest.** The Form IV A editor
+(`components/QcDocumentEditor.jsx`) already computes certificate suggestions via `lib/tc-match.js`'s
+`suggestCertificates()`; a first pass merged the cell's already-assigned certificate(s) into that
+same suggestions list as a distinct, top-of-list `'assigned'` tier (`CertPicker.jsx`'s
+`TIER_BADGE` — "✓ unit," a real confirmed fact, not an inferred match) — but this still required
+clicking "Use this certificate" once per part, per child, even when QC had already done the exact
+same confirming action in bulk via "Assign to Units." Direct feedback: a human already confirmed this
+fact once, at the point they had full context (deliberately selecting cells); re-confirming per part
+is pure friction, not a real safety gate — and this codebase already has a precedent for "confirm
+once, apply broadly" (the statutory-document `also_link_siblings` fan-out, §5at). Fixed with the
+narrowest possible extension of an *existing* mechanism, not new architecture: `lib/qc-bom-sync.js`
+already has `reconcilePartsCertificates()`, which auto-links a document part's `test_certificate_id`
+when a Production-cut `stock_pieces` match resolves to exactly one distinct certificate, and
+deliberately leaves it unlinked (for a human to resolve via the suggestion box) when more than one
+distinct certificate exists. New sibling function `reconcileUnitCertificates()` applies the identical
+rule to `bom_item_child_certificates`: for each still-unlinked document part, if its `(bom_item_id,
+child_project_id)` cell has *exactly one* assigned certificate, auto-populate
+`test_certificate_id` (`WHERE test_certificate_id IS NULL`, same never-overwrite-a-human-link guard);
+2+ certificates on a cell is left alone, exactly as the sibling function already treats a real
+cast mismatch across re-cuts — genuine ambiguity stays a human decision via the untouched suggestion
+box. Called from the same two places inside `syncQcPartsFromBom()` the sibling function already runs
+from (document creation and "Sync from BOM"), so all three real callers — single-document creation,
+`batch-children`, and the manual re-sync button — get it for free, no new call sites invented.
+**Deliberately not touched**: `suggestCertificates()`, `CertPicker.jsx`'s suggestion rendering, and
+the matching logic from the first pass — none of that changed in this fix, only a new, separate,
+earlier auto-populate step was added. **Verified live, one decisive test**: on a real split child
+with three real BOM items — one with exactly one certificate explicitly assigned, one with two
+(genuine ambiguity), one with none — creating a fresh Form IV A document produced
+`test_certificate_id` auto-populated only for the first, `NULL` for the other two, in a single query
+confirming all three cases at once. Test document and certificate links deleted afterward, zero
+residue confirmed.
+
+**A real, independent, pre-existing bug found and fixed along the way (explicitly scoped in, not a
+scope-creep addition) — a split-child statutory document's certificate suggestions were silently
+dead.** `suggestCertificates(part, bomItem, ...)` requires a resolved `bomItem` row, not just
+`part.bom_item_id` — the caller (`QcDocumentEditor.jsx`) resolves it from a `bomItems` prop fetched
+server-side via `getBomItemsForProject(params.id)`, where `params.id` is the document's own
+`project_id`. For a split-child document, that's the child's id — and a child never has its own
+`bom_items` rows (confirmed architecture) — so `bomItems` was silently `[]` for *every* split-child
+document, meaning `suggestCertificates()` always short-circuited to zero suggestions, regardless of
+what was actually stored on `qc_document_parts.bom_item_id`. Since `qc_document_parts.bom_item_id`
+on a child's document is already confirmed to be the *master's* own `bom_items.id`
+(`syncQcPartsFromBom` seeds parts from `master.id`, not the child, per §5bg), the fix is a one-line
+resolution: `app/projects/[id]/qc/[docId]/page.js` now calls
+`getBomItemsForProject(project.master_project_id || params.id)`. Fixes both the exact/fuzzy/promoted
+suggestion tiers and the separate "Link to BOM item" picker (`suggestBomItem`) for every split-child
+document — previously both were unusable there. **Deliberately not fixed in the same pass**: the
+identical bug exists one prop over — `assemblies` (`getBomAssembliesFlat(params.id)`, used only by
+Form III A's group-assembly picker) is still unresolved to the master for a split child, so grouping
+parts into a Form III A group by assembly is still broken there. Flagged, not fixed — kept out of
+scope on explicit instruction not to broaden this into a general redesign.
+
+**Deliberately deferred, documented rather than built**:
+- Full receipt-to-allocation lot genealogy (exact-quantity tracing of which specific delivery lot, out
+  of several feeding one allocation cell, a given certificate covers) — certification here is at the
+  (item, child) cell, the finest grain the existing allocation/routing UI already operates at, not at
+  the level of individual receipt/allocation ledger events.
+- The three QC-traceability mechanisms now in play — TC Bank project-level tagging
+  (`certificate_projects`), the statutory `qc_documents`/`also_link_siblings` sibling-fanout, and this
+  round's cell-level `bom_item_child_certificates` — remain independent, each serving a different real
+  granularity. Unifying them is a future consolidation, not a blocker today.
+- A unit-level certificate assignment does not proactively push into an *already-created* document's
+  parts — only the next "Sync from BOM" (or a fresh document creation) picks it up. Matches the
+  pre-existing `reconcilePartsCertificates` sibling's own established behavior exactly, not a new
+  inconsistency.
+- No unlink propagation (removing a unit assignment later never retroactively un-links an
+  already-populated document part) and no visual marker distinguishing an auto-populated link from a
+  manually-picked one on the document part itself — the real provenance (`linked_by`/`linked_at`)
+  still lives on `bom_item_child_certificates`, just not surfaced inline on `qc_document_parts`.
+- Per-child BOM deviation, cancelling/shrinking one already-split child, and Executive
+  dashboard/My-Work-queue split-awareness were all checked during the architecture review and found
+  either not to exist or not to have been audited — named in the session's own plan file, not
+  re-litigated here since none were built or changed this round.
+
+## 5bk. QC statutory forms — Form IV A lettered assembly sections, derived from the BOM tree (2026-09-06)
+
+Closes the "sync doesn't reproduce the real document's structure" gap this session's own research
+plan identified: the real filled samples group Form IV A's material table into lettered subsystem
+sections (A. Shell, B. Water Wall Assembly, C. Down Comer Arrangement…) — a structural feature the
+generator never reproduced at all, rendering everything as one flat table regardless of how the
+project's BOM was organized.
+
+- **New pure module `lib/qc-form4a-sections.mjs`** (+ `lib/qc-form4a-sections-selfcheck.mjs`,
+  `node lib/qc-form4a-sections-selfcheck.mjs`) — `resolveSection(assemblyId, byId)` climbs a BOM
+  item's `bom_assemblies` ancestor chain to the first level below the tree's own root; an item
+  sitting directly on a root (a real, confirmed shape on SB-1109-01-50: 3 of its 5 roots have no
+  children at all) resolves to that root itself. `buildLetteredSections(assemblies, parts)` groups
+  already-classified material parts into lettered sections (only sections that actually have ≥1 part
+  get a letter — no gaps) plus a trailing ungrouped bucket for anything unassigned or whose project
+  has no tree at all. Depth-agnostic, no hardcoded section names — the letters are just positions in
+  a deterministic walk over whatever real nodes the tree happens to have.
+- **`lib/qc-folder-pdf.js`** — `renderQcFolderPdf()` gained an `assemblies` parameter; `FormTablePage`
+  gained an optional `sectionLabel` (omitted → renders byte-identical to before this feature
+  existed). `case 'IVA':` now renders one full page (Table + Sign + Footer, same per-page shape the
+  already-shipped Form III A per-group pages use) per lettered section, each independently
+  `renumber()`'d starting at 1 (mirrors the existing `iiia_group_id` precedent), plus a trailing
+  "Ungrouped Materials" page for anything that didn't resolve to a section — labeled only when real
+  lettered sections exist alongside it, so a fully-unstructured BOM's single table carries no extra
+  heading and stays pixel-identical to the pre-feature output. `computeRanges`'s existing pagination
+  loop needed zero changes — it already handled an array of pages per form key (`'IIIA'`'s own
+  per-group rendering already proved this).
+- **`lib/data.js`'s `getQcDocumentDetail()`** — widened the existing `parts` query with
+  `bi.assembly_id, bi.project_id AS bom_project_id` (purely additive columns, no schema change).
+- **Master/child architecture, confirmed with the user before building, not assumed**: Form IV A's
+  section grouping reads whichever project the linked `bom_items` row actually belongs to
+  (`bi.project_id`) — not the QC document's own `project_id`. For a split child, `qc_document_parts.
+  bom_item_id` already points at the **master's** `bom_items.id` (§5bj), so this single rule
+  correctly resolves the shared master tree for every child's own document with no explicit
+  master/child branching anywhere in the render code — each child keeps its own independent
+  certificate links, unchanged. `app/api/qc-documents/[id]/pdf/route.js` fetches
+  `getBomAssembliesFlat(bomProjectId)` using that resolved id (falling back to the document's own
+  `project_id` only when every part is unlinked/manual).
+- **A real, separate, pre-existing gap found and flagged, not fixed (out of this phase's scope)**:
+  `app/api/qc-documents/route.js`'s creation route and `.../[id]/sync-bom/route.js`'s re-sync route
+  both still call `syncQcPartsFromBom(tx, documentId, project_id)` using the *document's own*
+  `project_id` — never resolved to the master for a split child, so a child document created or
+  re-synced through either of those two routes today still seeds zero parts (real example: document
+  48 on `SB-1109-20`, still empty). This is the plan's own already-tracked "Phase 5.0" item, distinct
+  from this section's render-side work — this section's fix is correct and unaffected either way,
+  since it derives project scope from the actual `bom_items` row once parts exist, not from the
+  document's own `project_id`.
+
+**Verified in two independent, real-data passes — but explicitly NOT a full split-child
+end-to-end proof; see the gap below.**
+1. **Live PDF, through the real route** (SB-1040, document 50 — 224 real parts, all
+   certificate-linked, no test/disposable data needed or created): 1 item resolves to a real
+   lettered section ("A. MS SADDLE", 1 row, renumbered from 1); the other 221
+   non-`iiia_group_id` material parts (224 total − 2 III A-grouped − 1 lettered = 221, confirmed by
+   an exact DB-count cross-check and by counting rendered rows in the actual PDF) land in a trailing
+   "Ungrouped Materials" table, also renumbered from 1 — nothing vanished, nothing duplicated. The
+   covering letter's own "Form IV A (Page 7 to 18)" manifest line correctly reflects the now-
+   multi-page section with zero changes to the pagination-convergence loop. This proves the
+   render/pagination/per-section-page mechanics work through the real pipeline — but SB-1040's own
+   tree only has 1 assigned item, so it says nothing about the 12-section claim below.
+2. **The "12 real lettered sections" claim, checked directly against SB-1109-01-50's actual tree and
+   all 181 real `bom_items`** (not inferred or extrapolated from SB-1040's near-empty tree, per
+   direct instruction not to conflate the two): calling `buildLetteredSections()` with the project's
+   real 14-row `bom_assemblies` and all 181 real items' real `assembly_id` values produces **exactly
+   12 sections** — A. Boiler Shell & Body (21) … L. ID FAN (20) — matching the plan's own audit
+   finding exactly, with 0 ungrouped and a sum check confirming all 181 items land in exactly one
+   bucket each.
+
+Both pre-existing selfchecks (`selfcheck-qc-pdf-pagination.mjs`, `selfcheck-qc-iiia.mjs`) re-run
+clean. The "no tree at all → byte-identical flat table" fallback path was verified by
+code-equivalence proof + the new selfcheck's own assertions (no live project with zero
+`bom_assemblies` rows currently exists to click-test against — every real document in the DB already
+has at least a starter tree). `npm run lint` clean (828 files).
+
+**Still open, not this phase's to close — recorded so it isn't silently assumed done**: nothing
+above is an actual generated PDF for a real **split-child** document showing these 12 sections — no
+child project currently has any real `qc_document_parts` rows to render, because the separate
+sync-time bug immediately above (`qc-documents/route.js` / `.../sync-bom/route.js` not resolving to
+the master project) blocks every normal path that would create them. The render logic itself is
+already correct and needs no further change once that bug is fixed (it resolves tree scope from the
+real `bom_items.project_id` on each part, not from the document's own `project_id`) — but the actual
+click-through — generate a real child's Form IV A and see the 12 real lettered sections on the
+page — remains blocked and unverified until that fix lands.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own
@@ -7829,6 +8117,9 @@ projects ──< bom_release_snapshots                    (§5ay — one frozen 
 bom_structure_templates ──< bom_assemblies (structure_template_id)  (§5bb — hierarchy-level BOM templates; tree_json is one JSON blob per template, not a parallel relational tree, same freeze-as-JSON idiom bom_release_snapshots already set; the FK is stamped only on root nodes an apply/bootstrap action creates)
 projects.unit_count                                   (§5be — the whole-BOM multiplier, additive on top of bom_assemblies.qty; folded into rollupQty() as one more factor, never a second calculation, never baked into qty_text)
 bom_items.qty_resolved                                (§5be — marks a split remainder/clone's qty_text as already a final physical count; itemRollupQty()/qtyBreakdown() stop re-applying any multiplier to it, matchProjectBom()/matchProjectPlainStock() stop re-selecting it as a matching candidate)
+bom_item_child_certificates                           (§5bj — which certificate(s) apply to a (bom_item, child) allocation cell, same key shape as bom_item_child_routing extended to a real many-to-many; a cell can carry more than one certificate, no quantity/split field)
+qc_document_parts.test_certificate_id                 (§5bj — auto-populated at BOM-sync time from bom_item_child_certificates when exactly one certificate is assigned to that cell; left NULL, for the suggestion box, when 2+ certificates exist — reconcileUnitCertificates(), lib/qc-bom-sync.js)
+lib/milestones.js MASTER_LEVEL_MILESTONE_KEYS         (§5bj — the 9 Design/Procurement keys a split child can never close itself; excluded from getProjectsWithStatus()/getProjectDetail()'s rollup-only inputs, never from the real milestones array a page renders)
 ```
 
 `bom_items` carries the spreadsheet-mirror columns — `section` (sheet), `group_label` (assembly
