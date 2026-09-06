@@ -8065,6 +8065,82 @@ fix built entirely on that already-proven `POST .../seams` endpoint — confirme
 actual browser session. Worth a real open-the-sheet check on a document with zero seams before
 calling this fully proven end to end.
 
+## 5bm. QC statutory folder — Cover Letter content fixes + a document-wide serif typeface (2026-09-07)
+
+Compared the generated folder PDF against 5 real reference documents (cover letter, Form II(1)/
+III/III A/IV A) the client provided. Scoped this round to the **Cover Letter only** — the other
+four forms' own confirmed gaps (Form II(1)'s "DIRECTOR" vs "DIRECTORATE" typo, Form III's missing
+Contact Number field and per-belt seam wording, Form III A's wrong numbered item, Form IV A's
+missing preamble/title format/repeated sign-off) are real, verified, and explicitly deferred to a
+later round — not touched here.
+
+**Three real content bugs fixed, all in `CoveringLetterPage`/`manifestLines()`
+(`lib/qc-folder-pdf.js`):**
+1. **Ref-number prefix duplication.** `SB-EXP-09` should produce `SB/QC/OW/EXP-09` (the company
+   code stripped, not repeated) — the old code only stripped non-alphanumerics, so
+   `STF-IBR-045-DEMO` produced `STF/QC/OW/STF-IBR-045-DEMO`. Fixed by also stripping a leading
+   `SB-`/`STF-` (case-insensitive) — the same two prefixes `entityForMaker()` already checks for.
+2. **Two always-present manifest lines were missing**: `Rub Off - 1 page` (right after As-built
+   Drawings) and `Material Inspection and stage wise reports – 1 Page` (right after the last
+   statutory form) — both real, fixed physical enclosures, not derived from any BOM/certificate
+   data. Gated on `model.noun === 'Boiler'` (`lib/qc-models.js`'s `MODEL_CONFIG`) — CF/MF/OF/SF/SIB
+   only, not PRS/HEADERS, reusing the same boiler-vs-component distinction `FormIIIPage` itself
+   already encodes, since neither line has a confirmed real-sample equivalent for a non-boiler
+   component filing.
+3. **Recipient address was one run-on string**; the real letter breaks it across 6 real lines that
+   don't align with its own commas, so a naive split couldn't reproduce it. `DIRECTOR_OF_BOILERS.
+   address` (`lib/qc-entities.js`) is now a real array of lines — confirmed via two independent
+   greps that this constant has exactly one consumer in the whole app before reshaping it.
+   `CoveringLetterPage` normalizes either shape (the hardcoded array, or a custom
+   `d.recipient_address` free-text column, split on `\n`) to a line array before rendering.
+
+**Document-wide typeface — PT Serif, not the user's original Lora/Merriweather examples.**
+Every PDF this app generates (all ~16 `@react-pdf/renderer` generators) used plain Helvetica; this
+is the first font-registration in that stack. Checked the canonical `google/fonts` GitHub repo
+directly before committing to a choice: **Lora, Merriweather, and EB Garamond are all
+variable-font-only** now (`Lora[wght].ttf`, etc., no static per-weight files) — and
+`@react-pdf/renderer`'s own issue tracker confirms variable fonts don't reliably switch weight (the
+PDF spec has no variable-weight-axis concept; the documented failure is a font rendering all-bold
+or none). **PT Serif** genuinely ships separate static `PT_Serif-Web-Regular.ttf`/
+`PT_Serif-Web-Bold.ttf` files — same "professional serif for a letter" category, zero
+variable-font risk. Files verified as real TrueType binaries (not just downloaded blindly) and
+committed under `assets/fonts/pt-serif/` — a plain top-level folder outside `app/`/`public/`/
+`components/`, checked against `next.config.js` first (no `output: 'standalone'`, so there's no
+build-time file-tracing/pruning risk either way) and chosen over `public/` since these files are
+read purely server-side at PDF-generation time and were never meant to be web-reachable.
+`Font.register()` runs once at `lib/qc-folder-pdf.js` module scope.
+
+**Applied document-wide, not scoped to just the cover letter** — the user's own follow-up
+instruction, since a single page in a different typeface from the rest of the same combined PDF
+would read as inconsistent. `s.page`/`s.pageL` (the two base page styles every form in the file
+uses) now default to `fontFamily: 'PT Serif'`; every prose/label/heading/sign-off across Form
+II(1)/III/III A/IV A/the mounting list inherited it for free with **zero additional per-style
+changes**, since none of them previously set `fontFamily` explicitly. The one deliberate exception:
+`s.cell` (the shared `Table` component's header+body cell style, used by every material-data table
+in the folder — Form IV A, Form III A, and the mounting list) is pinned to `fontFamily: 'Helvetica'`
+— those 18-20 column tables were sized for Helvetica's tighter glyph width, and switching a
+already-tight column layout to a wider serif risked real overflow. Bold text across every form
+(KV's `filled`, `title`, `h`, sign-off captions, etc.) needed no per-style change either — since
+`Font.register` registered both Regular and Bold weights under one `'PT Serif'` family, any existing
+`fontWeight: 'bold'` usage anywhere in the file automatically resolves to the correct bold TTF.
+
+**Two small letter-specific refinements alongside the font swap**: the `SUB:` line bumped to 11pt
+(reads as a real subject header, not same-weight body text); the sign-off's blank gap before "QC
+Engineer" only appears when `signer_name` is actually blank (a demo-only case — `signer_name`
+auto-fills from the current QC user the first time someone opens the Boiler Details sheet, so it's
+populated in real use), rather than always leaving an oversized gap.
+
+**Live-verified against the real dev DB, not just code-reviewed** — generated the actual folder PDF
+via `GET /api/qc-documents/[id]/pdf` for a real existing document (SB-1040, document 50, reused
+rather than creating disposable data — read-only verification, no writes): `pdftotext` confirmed the
+ref number (`STF/QC/OW/IBR-045-DEMO`, no duplicated prefix), both new manifest lines in the correct
+position, and the address rendering as 5 real lines under "To, / The Director of Boilers". Visually
+inspected the rendered pages (the one thing `pdftotext` can't confirm — embedded font choice doesn't
+show up in extracted text): the cover letter, Form II(1), and Form III all render in a clear serif
+face; Form IV A's material table and the mounting list's table both stayed visually sans-serif with
+every column intact and zero overflow, while their own titles/section labels/sign-off blocks
+(outside the table) picked up the new serif correctly.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own
