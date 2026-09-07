@@ -8304,6 +8304,43 @@ honest `—`; §§6-8 with the full restored safety-valve template; §9 + a real
 III A, and the sign-off + Place/Date lines appear once, only on the final IVA section page.
 `npm run lint` clean (830 files).
 
+### Follow-on, same day — Form III §1 spacing/label-gap, Form III A alignment + §2 legibility
+
+Direct feedback against the render above, all in `lib/qc-folder-pdf.js`:
+
+- **Form III §1** — `KV` gained an optional `style` prop (merges onto the shared `s.row`, every
+  other caller unaffected) and its 14 lines now use `tight` (auto-width label, closing the dead
+  gap a fixed 150pt column left for short labels) plus a `marginBottom: 10` row style (`s1Row`) —
+  the section previously packed all 14 lines into `s.row`'s bare 1pt padding, leaving the whole
+  rest of the page blank below "Brief Description of Boiler" instead of spreading the real content
+  across it.
+- **Form III A's numbered list** — same label-gap problem, fixed the same way: `s.lbl`'s fixed
+  150pt column swapped for `s.lblTight` (auto-width), tightening every short label ("Heat
+  treatment", "Identification marks") without needing extra width just to fit the one genuinely
+  long item (item 5's boilerplate label), which the landscape page has room for either way.
+- **Form III A's sign-off rebuilt into two real aligned columns.** Was: a `Sign()` row (Maker's
+  Representative/Maker) followed by a separately `alignItems:'flex-end'` "Name & Signature of
+  Inspecting Authority" line (right-aligned to the *page* edge, not under "Maker" specifically) and
+  two plain full-width "Place:"/"Date:" lines with no left/right association to either signature.
+  Now: two explicit `width:'45%'` columns — left has Maker's Representative's caption, then
+  Place:/Date: centered directly under it; right has Maker's caption, then Name & Signature of
+  Inspecting Authority centered directly under it.
+- **§2's part-name list un-bolded.** The heading was bold and the full run-on part-name list
+  (every named part on the boiler, easily 700+ words) was *also* bold via the shared `s.filled`
+  style — at that length, bold reads as one solid grey block rather than legible data. Dropped to
+  plain weight for the list only; the bold heading right before it still marks where the data
+  starts, same convention the rest of the folder already uses (bold heading, plain/filled-bold body
+  depending on how much text there is).
+
+**Live-verified against the real dev DB** (SB-1040, document 50, same reused document as above):
+regenerated the real PDF through the actual route after each change, confirmed via rendered-image
+inspection (not just `pdftotext`, since spacing/alignment don't show in extracted text) — §1's 14
+lines now read with real breathing room and a tight label:value gap; §2's list reads as a normal
+paragraph, not a dense bold block; Form III A's Place:/Date: and Inspecting-Authority lines are
+now genuinely centered under their own signature caption, not floating at the page edge. Every
+other page (Form II(1), the cover letter, Form III §§2-9, Form IV A) spot-checked unchanged — the
+new `KV` `style` prop is opt-in and every other caller omits it. `npm run lint` clean (830 files).
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own
