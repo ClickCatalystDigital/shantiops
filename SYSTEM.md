@@ -8141,6 +8141,84 @@ face; Form IV A's material table and the mounting list's table both stayed visua
 every column intact and zero overflow, while their own titles/section labels/sign-off blocks
 (outside the table) picked up the new serif correctly.
 
+### Follow-on, same day — Cover Letter date fallback + Form II(1) polish pass
+
+Two rounds of direct feedback against the render above, both in `lib/qc-folder-pdf.js`.
+
+**Cover Letter — a display-only today's-date fallback.** `submission_date` already auto-defaults to
+today in `QcDocumentEditor.jsx`'s Boiler Details sheet, but only once someone opens *and saves* that
+sheet — a document nobody's touched that way still has a real `NULL` in the DB, so the letter showed
+a blank `Date:` line regardless of when it was generated. `CoveringLetterPage` now falls back to
+`todayISO()` (`lib/date.js`'s existing IST-pinned helper) purely for display — never written back to
+`qc_documents`, so the stored value and the editor's own default are both untouched. Also: a small
+gap added between "Please acknowledge receipt of the same." and "Thank you," and the em-dash removed
+from a genuinely-unset Date line (was `Date: —`, now just `Date:`).
+
+**Form II(1) — the Maker's-info block ("headline facts" — Maker's Name/No., Year of Make, Tested
+To, On, W.P.) and the stamp-authority heading, both bumped to 10pt** (up from the ambient 8pt), per
+direct request that they read as the certificate's real headline, not same-weight body text.
+
+- **Label-to-value gap fixed.** The old code used one fixed 95pt label column for every row — a
+  short label like "W.P." left a big dead gap before its colon, while a longer one like "Maker's
+  No." barely fit. `KV`/`KV2` gained an opt-in `tight` mode (auto-width label + a small fixed 6pt
+  gap) — used for the two single-row fields (Maker's Name, W.P.) that have no alignment partner to
+  match. The two KV2 rows (Maker's No./Year of Make; Tested To/On) instead use a shared fixed
+  `labelWidth={70}` — "Year of Make" and "On" need to align *with each other* across their two
+  separate rows, which per-row `tight` auto-sizing can't do (it sized each label to its own text, so
+  their colons landed at different x-positions) — one shared width fixes that, matching every other
+  existing `labelWidth`-based call site elsewhere in this file (Form III's much longer labels),
+  untouched.
+- **W.P.'s missing unit — a real bug, not just a data gap.** `working_pressure`'s own field
+  definition (`lib/qc-document-fields.js`) already declares `unit: 'Kg/cm²'`, but the renderer never
+  appended it, while the adjacent "Tested To" row already did (hardcoded inline). Now reads
+  "W.P. : 15.0 Kg/cm²", matching the sibling field's own treatment.
+- **The wrapped address line under Maker's Name** — real sample shows just the city, capitalized, no
+  street/area prefix (e.g. "HYDERABAD.", not "Kucharam, Hyderabad"). Derived from `entity.address`'s
+  own last comma-separated segment (`.split(',').pop().trim().toUpperCase()`), not hardcoded, so it
+  still tracks a future address correction. **A genuine, non-obvious react-pdf layout bug found and
+  fixed while wiring this**: the second line must be a plain sibling `<Text>` at the *same* nesting
+  level as the `KV` call, never returned from inside `KV`'s own component render — nesting it there
+  (tried first) silently corrupted vertical flow for every row after it (confirmed via
+  `pdftotext -bbox`: the second line and the *next* KV2 row landed at the identical Y coordinate).
+  Root cause, once isolated: `s.val` (the shared value-text style) carries `flex: 1`, which is
+  correct inside a `flexDirection: 'row'` KV row (fills the row's remaining *width*) but wrong for a
+  plain top-level child of the outer `flexDirection: 'column'` block wrapping the whole section,
+  where `flex: 1` instead means "grow to fill the column's remaining *height*" — exactly what was
+  displacing every sibling below it. The new `KVSecondLine` helper uses `s.filled`'s bold weight
+  only, deliberately never `s.val`, and offsets by `labelWidth + 6` (calibrated against the real
+  rendered position of the first line's value, via `pdftotext -bbox`, not guessed) so it lands
+  aligned under the value text, not the label.
+- **`DIRECTOR` → `DIRECTORATE`** in the authority-designation fallback (`lib/qc-folder-pdf.js`) — a
+  typo already flagged in an earlier research pass, fixed here since this round was already touching
+  this exact form. **A genuine missing-space bug** in the hydrostatic-test paragraph — "...22.5
+  Kg/cm² (g)in the presence..." — a JSX line-break between two adjacent `<Text>` elements was
+  silently swallowing the space between them; fixed with an explicit `{' '}`.
+- **Sign-off captions bumped to 10pt too** ("Signature of Competent Person"/"Signature of inspecting
+  Authority"/"Date And Seal"), matching the rest of the page's new size — they were 7pt and had
+  started reading as noticeably smaller than everything around them once the rest of the page grew.
+
+**Live-verified against the real dev DB** (SB-1040, document 50, same reused read-only document as
+above): every fix confirmed both via `pdftotext -layout`/`-bbox` (exact text, exact coordinates —
+`marginLeft`/`labelWidth` tuning was verified against real rendered positions, not asserted blindly)
+and by visual inspection of the rendered page. The `s.val`/`flex:1` layout bug in particular went
+through several genuinely-wrong intermediate attempts (a nested-flex-column approach, a Fragment
+return from `KV`) before the real root cause was isolated via `pdftotext -bbox` — recorded here since
+it's a non-obvious react-pdf/Yoga gotcha (`flex: 1` means something different depending on the
+parent's `flexDirection`) worth remembering for any future multi-line value in this file.
+
+**Two more rounds, same day, both label-width and sign-off precision tweaks**: the Maker's-info
+block's `labelWidth` values (78/70) still left a visible dead gap for "Maker's Name"/"Maker's No."
+specifically — measured the real rendered label widths via `pdftotext -bbox` (≈62pt/≈57pt) instead
+of guessing again, and tightened to 65/60 respectively (the KV2 pair's shared 60 still fits "Year of
+Make", the longest of that pair, with a small buffer). Separately, "Date And Seal" was rendering
+~43pt to the right of "Signature of inspecting Authority" — both were meant to associate with the
+same right-hand signature, but one was centered in a 40%-width box (a fixed percentage) while the
+other was too, at a *different* effective position because the two captions are different lengths;
+replaced the percentage-based layout with a single absolute `marginLeft: 357` measured directly
+against where "Signature of inspecting Authority" itself renders (real coordinate, not guessed),
+plus more vertical breathing room (`marginTop: 18`, up from 10) between the two lines. Re-verified
+via `pdftotext -bbox` after each change — both alignments landed within 0.1pt.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own
