@@ -8482,6 +8482,76 @@ so they're intentionally not re-summarized here:**
   boilerplate or a real per-document fact; needs a direct answer from QC/the client before either
   design is worth building.
 
+## 5bo. Item Master management UI — Engineering's own CRUD surface for the catalog (2026-09-07)
+
+Closes a real, confirmed gap: no in-app path had ever existed to create or edit an Item Master
+(`items`) row (confirmed by `grep` before building — `app/api/items/route.js` has no `POST`
+handler, and no `INSERT INTO items` existed anywhere in `app/`/`lib/`). Every catalog row until now
+was either part of the original ~2,780-row ERP import or inserted by hand via a direct DB script.
+Built per direct instruction: a new Engineering sidebar tab, search-across-all-fields, a paginated/
+sortable table, an Add/Edit form with real validation, and duplicate-detection before create.
+
+- **New action key** `engineering.item_master.write` (`lib/action-permissions.js`) — open to any
+  Design/Engineering-access user (no seeded Head-gate row), matching the user's "engineering team"
+  framing rather than Head-only.
+- **`app/api/item-master/route.js`** — `GET` (search over item_name/item_code/category/group_name/
+  hsn_code/detail_desc, pagination, sort, plus a `facets` object of distinct uom/category/
+  material_process_type/item_type values + the strict `CATEGORY_LABEL` list for BOM Category) and
+  `POST` (create). Duplicate detection (`findPossibleDuplicates`, reusing `lib/match-utils.js`'s
+  `normalizeWords` — the same primitive Stores'/QC's own fuzzy-match badges already trust) runs
+  unless `confirm: true` is set, returning a `409` with up to 8 candidates; the UI resubmits with
+  `confirm: true` after an explicit "Create anyway."
+- **`app/api/item-master/[id]/route.js`** — `GET` (single item + real usage counts:
+  `bom_items`/`inventory_items` line and distinct-project counts) and `PATCH` (edit).
+  `item_code`/`id`/`created_at` are structurally excluded from the editable-fields list on both
+  routes, not just hidden in the UI — a PATCH carrying only those fields 400s "Nothing to update."
+- **`components/ItemMasterPanel.jsx`** — the table (search, sort, pagination) + a shared Add/Edit
+  form (`SearchableSelect` for the soft-dropdown fields sourced from `facets`, a strict `Select` for
+  BOM Category from `CATEGORY_LABEL`, numeric inputs for the 8 numeric fields, unit-suffixed labels
+  where a field has an implicit unit). No Delete action anywhere — matches the "no active/inactive
+  mechanism exists yet" instruction. The create POST uses a raw `fetch()`, not the shared `api()`
+  client helper — `api()` discards a 409 response's `duplicates` array (it only ever keeps the
+  `error` string), which this flow needs to render the candidate list.
+- **Sidebar placement, per direct feedback**: **Item Master sits first**, above BOMs, separated by
+  a divider — not appended at the end where it was first built. Reflects that Item Master is
+  upstream of everything else Engineering does with a BOM, not a peripheral feature.
+- **Required-field decision, made directly with the user**: only Item Name and **UOM** are
+  required (client + server). GST % (`hsn_item_pct`) stays optional and was deliberately not made
+  required — this app already has a dedicated, versioned `gst_rates` table (HSN → rate,
+  effective-dated, §5r) as the real tax-rate authority; `items.hsn_item_pct` is legacy ERP-import
+  data nothing in a live calculation path reads (Sales Invoice/PO GST is still entered manually per
+  line, per §5r/§5y's own standing note). Requiring it here would just invite two GST sources to
+  drift, and Engineering creating a new catalog row often won't know the rate at creation time.
+
+**A real bug found and fixed during live verification, not caught by lint or code review.**
+`execute()`'s `lastId` (`lib/db.js`) is a raw libsql `BigInt` (`result.lastInsertRowid`) — the
+established convention at every other insert-then-use-the-id call site in this codebase (grepped
+across ~15 routes) is `Number(lastId)` immediately after the insert. The POST route's `audit()`
+call passed the raw BigInt straight into `JSON.stringify({ id: lastId, ... })`, which throws
+(`TypeError: Do not know how to serialize a BigInt`) — a real, silent-until-runtime crash that
+`npm run lint`'s syntax check and code review both missed entirely, only surfaced by actually
+POSTing to the route. Worse: the crash happened *after* the real `INSERT INTO items` had already
+committed, so three separate failed attempts (500, empty body) each still created a real duplicate
+row before the fourth attempt (post-fix) finally returned success — found by the UI's own
+duplicate-detection check flagging 4 identically-named candidates, not assumed. Fixed by converting
+`lastId` to a plain `Number` immediately after the INSERT and using that value everywhere
+downstream (the item_code UPDATE's params, the audit detail, the JSON response) — matching the
+codebase-wide convention exactly, not inventing a new one.
+
+**Live-verified end to end against the real dev DB** (as `engg_head`): list view renders real data
+(2,777 real rows) with working search (narrowed to 1 real match on "stay tube"); Edit dialog on a
+real linked item (Stay Tube, IM-002780) correctly showed "used on 3 BOM lines across 2 projects"
+and a read-only Item Code footer; duplicate-detection correctly 409'd on a near-duplicate name with
+both real candidates shown, Cancel writes nothing; after the BigInt fix, a real create succeeded
+(id 2786, `IM-002786`), a PATCH edit round-trip persisted correctly (`detail_desc`/`min_qty`
+confirmed via a follow-up GET), a PATCH attempting to change `item_code`/`id` correctly 400'd and
+left the row untouched, and duplicate-detection correctly fired against the new real row too. The
+3 debris rows from the pre-fix failed attempts (ids 2783–2785, no DELETE route exists on this
+resource by design) were removed via a direct Turso script, same `node --env-file=.env.local`
+pattern this file already documents elsewhere; one clearly-labeled test row
+(`ZZ-ITEM-MASTER-UI-TEST (safe to ignore)`, id 2786) was intentionally left in place, per
+instruction, as real proof-of-life data. `npm run lint` clean (833 files) throughout.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own

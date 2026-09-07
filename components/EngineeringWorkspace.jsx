@@ -20,7 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
   LayersIcon, SearchIcon, Repeat2Icon, FileEditIcon, PlusIcon,
-  ClipboardListIcon, CheckIcon, FileStackIcon, FilterIcon, GitBranchIcon,
+  ClipboardListIcon, CheckIcon, FileStackIcon, FilterIcon, GitBranchIcon, BoxIcon,
 } from 'lucide-react';
 import { api, showToast, formatDate } from '@/lib/client';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
@@ -29,6 +29,7 @@ import BomTemplateManager from '@/components/BomTemplateManager';
 import BomStructureTemplateManager from '@/components/BomStructureTemplateManager';
 import BomStructureWorkspace from '@/components/bom-structure/BomStructureWorkspace';
 import { RaisePrTab, ReleaseBomTab } from '@/components/PrWorkspace';
+import ItemMasterPanel from '@/components/ItemMasterPanel';
 
 // Round 3 Phase A — which tabs the shared project-selector header (below) applies to, and in which
 // shape. "BOM Templates"/"PR Templates" are deliberately excluded alongside Purchase Requests: both
@@ -63,6 +64,8 @@ function projectLabel(r) {
 // directly rather than duplicated, so nothing is duplicated at the data layer, only the entry point
 // (same precedent Release BOM's own button already established).
 const ITEMS = [
+  { key: 'item_master', label: 'Item Master', icon: BoxIcon },
+  { key: 'item_master_divider', divider: true },
   { key: 'structure', label: 'BOMs', icon: LayersIcon },
   { key: 'structure_templates', label: 'Structure Templates', icon: GitBranchIcon },
   { key: 'where_used', label: 'Where-Used', icon: SearchIcon },
@@ -455,6 +458,7 @@ export default function EngineeringWorkspace({ projects, canApproveEcn = false, 
           showReleased={globalShowReleased} onShowReleasedChange={setGlobalShowReleased} />
       )}
       {tab === 'structure_templates' && <BomStructureTemplateManager />}
+      {tab === 'item_master' && <ItemMasterPanel />}
       {tab === 'where_used' && <WhereUsedTab projectIds={globalProjectIdsArr} />}
       {tab === 'common_uncommon' && <CommonUncommonTab projectIds={globalProjectIdsArr} />}
       {tab === 'ecn' && <EcnTab projects={projects} projectIds={globalProjectIdsArr} canApprove={canApproveEcn} />}
