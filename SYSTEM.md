@@ -8552,6 +8552,59 @@ pattern this file already documents elsewhere; one clearly-labeled test row
 (`ZZ-ITEM-MASTER-UI-TEST (safe to ignore)`, id 2786) was intentionally left in place, per
 instruction, as real proof-of-life data. `npm run lint` clean (833 files) throughout.
 
+## 5bp. QC statutory forms — Form III §3/§5/§6 no longer hardcoded (2026-09-07)
+
+Closes §5bn's own deferred item on "Headers and Boxes" (Form III §6) — plus the two adjacent
+sections it turns out shared the identical problem, found by reading the generator directly rather
+than trusting the earlier write-up. `lib/qc-folder-pdf.js`'s `FormIIIPage` had three sections
+rendering a **hardcoded literal string, on every document, regardless of the actual boiler**:
+§3 "PARTS MANUFACTURED OUTSIDE THE CONSTRUCTOR'S WORKS" → `"NOT APPLICABLE"`, §5 "Details of
+Drums" → `"Not Applicable"`, §6 "Headers and Boxes" → `"Not Applicable"`. No `qc_documents` field
+backed any of them, no UI existed to say otherwise.
+
+**Correctness assessed, not assumed.** Likely true today for every real boiler this app has data
+for (fire-tube/shell construction — Shell Belt, Stay Tubes, Furnace, Fire Bars — none of which has
+drums or header boxes in the Form III sense), but baked in as a constant rather than a real
+per-document fact, with no way for QC to say otherwise the moment a different boiler design comes
+through. **Cannot be determined with certainty from BOM data** — checked directly against this
+app's own established doctrine for this exact class of question (§5j): BOM lines are free text,
+not tagged with "this is a drum"; a keyword match would both false-positive (a "feed header pipe"
+fitting isn't a boiler header box) and false-negative (no line ever needs to literally say "drum"
+even when one's present); absence of a matching line proves nothing.
+
+**Fixed the same way §5bl's neighboring construction facts already were** — real, nullable
+per-document fields, not a guess and not a second generator branch. Three new `qc_documents`
+columns (`parts_outside_constructor_works`, `drums_details`, `headers_boxes_details`, all `TEXT`,
+`addColumn` in `lib/db.js`) added to `QC_HEADER_FIELDS` (`lib/qc-document-fields.js`,
+`required: false`, `kind: 'text'`) — the single source of truth both the creation and edit sheets
+already render off, so no new UI code was needed at all: `QcHeaderField.jsx`'s generic renderer and
+`app/api/qc-documents/[id]/route.js`'s `PATCH` (which derives its editable-field list from
+`QC_HEADER_FIELDS` directly) picked the three fields up automatically. `FormIIIPage` now renders
+`d.parts_outside_constructor_works || 'NOT APPLICABLE'` / `d.drums_details || 'Not Applicable'` /
+`d.headers_boxes_details || 'Not Applicable'` — blank still prints the same text every existing
+document already shows (zero regression, zero migration needed for old documents), but it's now an
+editable default a QC user can override for a boiler design that genuinely has one of these,
+instead of a constant baked into the PDF generator.
+
+**Verified**: `npm run lint` clean (833 files). Migration applied directly against the live Turso
+DB (`ALTER TABLE qc_documents ADD COLUMN ...` ×3, confirmed via `PRAGMA table_info`). Mechanism
+verified at the data layer on the real document (id 54, SB-1109-01) — `PATCH
+/api/qc-documents/54` with real test values for `drums_details`/`headers_boxes_details` persisted
+correctly (confirmed via a direct DB read), then reverted back to `NULL` afterward, zero residue.
+**Full PDF-render confirmation not repeated this round** — document 54 still 409s on
+`GET /api/qc-documents/54/pdf` for the same pre-existing, unrelated reason §5bn already documented
+(47 Form IV A parts not yet certificate-linked), and standing up a fresh disposable project +
+certificate chain solely to re-prove a 3-line JSX fallback was judged not worth the cost: this is
+the *identical* `{d.field || fallback}` pattern §5bl already live-verified on a real generated PDF
+for six sibling fields in the same section, reusing the same data pipeline
+(`getQcDocumentDetail` → `FormIIIPage`'s own `d`) unchanged.
+
+**Sync from BOM button on Form III A — kept, not removed.** Investigated on direct question: the
+button calls the exact same `/api/qc-documents/[id]/sync-bom` route the Form IV A card's own
+button calls, not a scoped-down duplicate — `syncQcPartsFromBom` already reconciles Form III A
+group membership on every run (§5d), so the button lets a user working in the III A section
+re-sync without navigating to the IV A card. Real, in-place value, not accidental duplication.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own
