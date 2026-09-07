@@ -7384,7 +7384,10 @@ route's only side effect was an audit-log entry. New `notifyDepartmentHeads()` i
 a plain, unconditional Head-only fan-out, kept deliberately separate from `notifyDepartment`'s
 `actionKey` narrowing (§5j) since Design's own approve/review gates are deliberately kept out of the
 `action_permissions` table. A small "Submit for review" button now sits next to the status dropdown
-for the common not-started/in-progress case.
+for the common not-started/in-progress case. **Superseded 2026-09-07, see §5br** — the status
+dropdown itself is gone; "Submit for review" is now its own contextual button (`MemberSubmitControl`)
+with no dropdown alongside it, and the Head-notify mechanism this phase built is now the one used
+for the Designer→Head submit direction specifically (the new Head→assignee direction is separate).
 
 **Phase C — customer-visibility toggle, switch-style polish.** Cosmetic parity only (research found
 the checkbox already had a real 2-line label, contrary to the original punch-list note) — swapped
@@ -7398,7 +7401,10 @@ client wrapper (`DrawingsProjectView.jsx`) supplies the `useRouter()` a server p
 redundant nested panel is removed from Calc Sheets' own sidebar (one door, not two); Calc Links (a
 calc sheet's own relationship to a drawing — a different, still project-*and*-sheet-scoped concept)
 stays exactly where it was. Live-verified: the new tab renders a real project's drawing checklist
-correctly; Calc Sheets' own sidebar no longer shows a redundant entry.
+correctly; Calc Sheets' own sidebar no longer shows a redundant entry. **Superseded 2026-09-07, see
+§5br** — the two-step project-picker-then-project-page route and `DrawingsProjectView.jsx` are both
+gone, replaced by one page with a searchable project dropdown (`DrawingsWorkspace.jsx`); Calc Links'
+own placement is unaffected.
 
 **Phase E — post-split resize: add more units.** `app/api/projects/[id]/split/route.js` refused any
 POST once a master already had children — no way to grow an order after splitting (e.g. 50→55).
@@ -8646,6 +8652,120 @@ misleading a future session.
 ever picks up its *own* assigned certificate — `reconcileUnitCertificates` runs per-document, keyed
 by that document's own `project_id`, so there's no cross-contamination between units; each child's
 Form IV A reflects exactly what was assigned to that specific unit, independently.
+
+## 5br. Drawings — the status dropdown is gone, replaced by role-based Approve/Submit; a real assignment-eligibility bug fixed along the way (2026-09-07)
+
+Direct user request: heads found the status dropdown (`not_started → in_progress → under_review →
+approved → as_built`) confusing to work with day to day, and the card's file/rename controls had
+never actually been scoped to who a drawing was assigned to. This **supersedes §5bg Phase B/D's
+description below** — the two-step `/calc-drawings` project-picker page and the plain status
+dropdown they describe no longer exist; this section is the current state.
+
+- **`/calc-drawings` is one page now**, not two. `app/calc-drawings/[projectId]/page.js` and its
+  client wrapper `components/DrawingsProjectView.jsx` (§5bg Phase D) are deleted; a single
+  `app/calc-drawings/page.js` renders `components/DrawingsWorkspace.jsx` (new), which owns a
+  `SearchableSelect` project picker as plain client state (no route change on selection) and
+  client-fetches that project's drawings — same shared-picker idiom `BomStructureWorkspace.jsx`/
+  `EngineeringWorkspace.jsx` already established elsewhere, not a new pattern.
+- **The status dropdown is gone for both roles.** Head gets contextual buttons instead
+  (`HeadApprovalControl` in `CalcWorkspace.jsx`): **Approve**/**Send back** while `under_review`,
+  **Un-approve** once `approved`/`as_built` (reverts to `in_progress`). Member gets
+  **Submit for review**/**Withdraw submission** (`MemberSubmitControl`) — Submit is disabled with no
+  files present, both client- and server-side (`PATCH /api/calc-drawings/[id]` 400s a bare API call
+  targeting `under_review` with zero rows in `calc_drawing_files`) — and only renders at all when the
+  drawing is actually assigned to that person.
+- **Real attribution replaces the bare "Approved"/"As built" words.** New `calc_drawings.approved_by`/
+  `approved_at` columns (mirroring `customer_approved_at`/`customer_approved_by` exactly), stamped by
+  `PATCH /api/calc-drawings/[id]` on a genuine new approval (`b.status === 'approved'` and the prior
+  status wasn't already `approved`/`as_built` — never re-stamped on a later `as_built`↔`approved`
+  move, since that's the same approval, not a second one). The header badge shows
+  **"Approved by {name}"** once `approvedBy` is set, falling back to the plain status label for
+  legacy rows that predate the column. The customer's own badge changed the same way — **"Approved
+  by {customer name}"** instead of "Customer approved" — using the `customerApprovedBy` value that
+  already existed. **`as_built` itself is not removable from this UI anymore** — "Mark as built"/
+  "Revert to approved" links are gone (approved and as_built now render identically in
+  `HeadApprovalControl`, both just offering Un-approve) — the status value still exists in the DB and
+  `lib/data.js`'s `released`-stage derivation still reads it, but nothing in this card can set it
+  going forward. Flagged, not silently dropped: if a real "confirm final release" step is needed
+  later, it needs its own clearer design, not this old link restored.
+- **Customer approval also highlights the Comments block.** When `customer_approved_at` is set, the
+  Comments section (Head-only, see below) gets a subtle `bg-success/5` tint and shows "Approved by
+  {customer name}" on its own header row, instead of requiring the Head to scroll back up to the
+  card's top badge to know.
+- **Metadata editing (title/type/description/notes) is now scoped to Head-or-assignee — a real gap
+  found and fixed post-ship, not caught in the first pass.** These four fields had no permission
+  gating at all beyond "any Design/Engineering calc-access user with a real Design responsibility" —
+  any designer could rename or redescribe a colleague's drawing, and an Engineering-only viewer with
+  no Design responsibility saw the same editable-looking fields only to 403 on save. Fixed on both
+  sides: the inputs now render `disabled` (client) unless `canApprove || isAssignedToMe`, and
+  `PATCH /api/calc-drawings/[id]` now 403s a non-Head, non-assigned caller attempting any of these
+  four fields directly — not just a UI-only restriction. Notes was deliberately scoped the same way
+  as the other three, not carved out as an "internal scratchpad, anyone can add a note" exception —
+  a judgment call made for consistency with the other three fields, not something separately asked
+  for.
+- **Type is now a preset dropdown + free-text**, same "pick from a list or add your own" idiom
+  `PaymentTermsField.jsx` already used — `DrawingTypeField` (new, `CalcWorkspace.jsx`), 10 real
+  boiler-drawing categories (GA/Foundation/SDC/End Box/Saddle/Fire Bars/Chimney/Ducting/IBR/
+  Electrical Control Panel), `drawing_type` stays plain TEXT, no enum.
+- **Creating a drawing now requires an assignee — but who picks it depends on who's creating.** A
+  Head must pick a Design teammate (mandatory, was previously optional/absent from the create
+  dialog entirely). Anyone else creating one (a real Design-team designer) has it **auto-assigned to
+  themselves** — no picker shown, since it's obviously for them — resolved server-side via
+  `findMyDesignEmployee(user.id)`, never trusted from the client. **"Add Drawing" itself is hidden
+  from a viewer with no real Design-team standing** (Engineering-only department access, no Design
+  head/designer responsibility at all) — same false-affordance fix as the metadata scoping above,
+  since such a viewer's create attempt would otherwise always 403.
+  - **A real bug found and fixed while building this gate**: the first cut checked
+    `user.department_roles?.Design === 'designer'` literally — but `lib/auth.js`'s `departmentRole()`
+    defaults an *unset* `department_roles` entry to `'designer'` (a plain Design-department member
+    with no explicit role assignment is a designer by default, not "no responsibility"). The naive
+    literal check missed that fallback and wrongly hid "Add Drawing" from the common case. Fixed to
+    check the user's own `departments` grant instead (`(user?.departments || []).includes('Design')`)
+    — the same signal `canAccessDepartment` itself is built from — correctly covering both the
+    explicit- and default-designer cases.
+- **The actual root-cause bug this round traced back to: assignment/employee-eligibility checks only
+  matched `employees.department = 'Design'`, silently excluding anyone reaching Design access via
+  `access_departments`** (the same cross-department-grant mechanism §5f already documents) —
+  `getDesignTeamMembers()` (the list that *populates* the assignment picker) already accounted for
+  this via an `OR INSTR(...access_departments...)` clause; the PATCH route's own validation query,
+  the drawing-creation route's validation, and the new `isAssignedDesigner`/`resolveAssignedUserId`
+  helpers all didn't, and would reject a real employee the picker had just offered. Found live via a
+  real employee (`design_member`, `department` = NULL, `access_departments` = `'Design'`) whose
+  assignment silently failed to persist. Fixed once, in `lib/calc.js`, via one shared
+  `DESIGN_EMPLOYEE_WHERE` predicate and four exported helpers (`findDesignEmployeeByName`,
+  `findMyDesignEmployee`, `isAssignedDesigner`, `resolveAssignedUserId`) — every call site (both
+  route files) now goes through these instead of its own inline query.
+- **Comments are hidden entirely for non-Heads now**, not shown-with-an-explanation. The old
+  "Only the Design Head can view this customer-visible thread" message (§5bg Phase A) is gone along
+  with the whole block for a Designer — they have no action to take there either way, so per direct
+  instruction the section simply doesn't render for them, customer-visible or not. Internal
+  (non-customer-visible) comment threads a Designer could previously read/post into are also gone
+  for them as a side effect — nothing distinguished the two cases worth keeping separate once the
+  decision was "Designers don't see Comments."
+- **Notification on every Head-driven change, not just status.** The Head's own metadata edits
+  (title/type/due date/assignee/description/notes) are staged in local state and only PATCHed on an
+  explicit **Save** click (`saveAll()` in `DrawingCard`, disabled unless something actually changed) —
+  that Save always carries `notify: true`, and the PATCH route pages whichever person the drawing is
+  assigned to *after* the save (so a reassignment in the same click notifies the new assignee, not
+  the old one), independent of the existing status-transition notifications.
+- **Live-verified both directions**, not just as `design_head`: logged in as a real Design-team
+  designer (`des`/`design_member`) and confirmed metadata fields render disabled on a colleague's
+  drawing (`Mena Vijay`'s) and stay editable on their own assigned one, "Add Drawing" is visible
+  (post-fix) with no assignee field shown, a real member-created drawing auto-assigned to that
+  member, and the assignment/attribution/Save-notify flows round-tripped correctly through the real
+  API each time (confirmed via direct `notifications` table reads, not just the UI). The Designer→
+  Head "submitted for review" notification itself is `notifyDepartmentHeads()`, unchanged from §5bg
+  Phase B — not re-clicked through this round, since nothing about that specific path was touched.
+  Customer approval's green highlight and "Approved by {name}" attribution were verified by faking
+  `customer_approved_at`/`customer_approved_by` via a direct, disposable DB write (never through the
+  real customer-approval endpoint, since no customer login exists for the test project used) and
+  reverted immediately after the screenshot — flagged here explicitly since it's the one piece of
+  this round not proven through the real end-to-end flow.
+- **Known, deliberately out-of-scope gap**: `components/department-help-content.jsx`'s in-app Design
+  help text (`/help`) still describes the retired status-dropdown/as-built model ("Update status when
+  the file moves through review, approval, or as-built stages") — not touched this round, since the
+  request was scoped to the working UI, not the help copy. Worth a pass whenever `/help`'s Design
+  guide is next touched.
 
 ## 6. Customer Portal (read-only, external)
 
