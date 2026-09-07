@@ -8450,6 +8450,38 @@ now genuinely centered under their own signature caption, not floating at the pa
 other page (Form II(1), the cover letter, Form III §§2-9, Form IV A) spot-checked unchanged — the
 new `KV` `style` prop is opt-in and every other caller omits it. `npm run lint` clean (830 files).
 
+## 5bn. Stale-category BOM rows fixed on SB-1109-01-50; three items deferred pending fresh research (2026-09-07)
+
+The BOI-mapping fix (§5bl's neighbor, `d4ae131`) corrected `items.bom_category` for 711 catalog rows
+but was explicitly not retroactive — any `bom_items` row that had already synced `category` from the
+old wrong value keeps carrying the stale `'other'` until re-applied. Re-queried live against the real
+DB (not the months-old "9" estimate) and found the real current count is **18**, not 9, on
+SB-1109-01-50 (project 61) — a broader Item Master correction ran after the original smaller count
+was taken. Fixed directly by `bom_items.id` (11 valves/gauges/plugs, 4 ASBESTOS ROPE lots, 2 IBR SLIP
+ON FLANGES, 1 WHITE HEAT-K — every row whose linked `items.bom_category` is now `standard` but whose
+own `bom_items.category` still read `other`), confirmed via a full before/after diff that no other
+row on the project moved. Re-synced the one real QC document on this project tree (id 54, on child
+`SB-1109-01`) via the real `sync-bom`/`sync-mountings` routes — all 18 landed correctly in
+`qc_mountings` (Form IV A's `sync-bom` correctly added 0, since they're all `standard`-classified,
+i.e. mounting items, not material); a second immediate re-run of both routes correctly returned
+`added: 0`/`0`, proving idempotence. **Full end-to-end PDF verification was not possible this
+pass** — document 54's own `GET /api/qc-documents/[id]/pdf` route 409s with `"47 parts still need a
+certificate"`, a real, pre-existing gap on this document (47 unlinked Form IV A material parts,
+already true before this fix, unrelated to the 18 mounting rows touched here — `qc_mountings` itself
+has no certificate-linking column or gate at all). Verified instead at the data layer the PDF route
+actually reads from: all 18 rows present in `qc_mountings` with the correct real descriptions,
+correctly linked via `bom_item_id`.
+
+**Deferred, pending a fresh research pass — the earlier write-ups on these three may be inaccurate,
+so they're intentionally not re-summarized here:**
+- **Form XVII's real dedicated page** (SIB series) — the current render (a stub reusing Form II(1)'s
+  `small` branch) has never actually been rendered and reviewed against real current output.
+- **The Mounting List's multi-serial-row rendering** — a mounting with several physical
+  units/serials should render as multiple rows, not one comma-joined cell.
+- **"Headers and Boxes" (Form III §6)** — whether the small count table is fixed per-model
+  boilerplate or a real per-document fact; needs a direct answer from QC/the client before either
+  design is worth building.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own
