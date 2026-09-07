@@ -1316,6 +1316,115 @@ and "Next" below.
   `public/pdf.worker.min.mjs` (`scripts/copy-pdf-worker.js`, `postinstall` + committed) — webpack
   asset-module bundling of it fails Next's production Terser pass.
 
+### How each statutory form actually gets its data (2026-09-07) — read this before touching sync
+
+A consolidated reference for a new AI/session, since the mechanism was previously scattered across
+several dated sub-sections. Nothing here changed the mechanism itself except the master/child fix
+named at the end — this is documentation, plus one real fix.
+
+**Manual, always** — Form II(1)/III's boiler-level facts (design/hydro/working pressure, dimensions,
+maker's no, year of make, etc.) are typed directly into `qc_documents`' header fields
+(`lib/qc-document-fields.js`'s `QC_HEADER_FIELDS`, edited via `QcDocumentEditor.jsx`'s
+`BoilerDetailsSheet`). **There is no automated fill for any of these** — the only two fields that
+default themselves are `submission_date` (today, IST-pinned) and `signer_name` (the current QC
+user), both only on first open of that sheet. Every engineering fact — pressure, capacity, boiler
+type, dimensions — has to be typed by hand from whatever real source QC/Engineering has (a Sale
+Order, a calc sheet, a drawing). Confirmed by reading the actual editor code, not assumed.
+
+**Auto-synced, from the BOM — Form IV A material and Mounting & Fittings.** Both come from
+`lib/qc-bom-sync.js`'s `classify(b)`, run against every non-Cancelled `bom_items` row on the
+project:
+```
+category === 'other'                        → excluded from BOTH (see below)
+category === 'standard'                      → Mounting & Fittings
+category is dimensional, OR requires_mtc     → Form IV A material
+no category AND no requires_mtc              → legacy fallback: has an moc? → material : mounting
+anything else                                → Mounting & Fittings
+```
+`'other'` exists specifically for BOM lines that are genuinely neither raw pressure material nor a
+bought-out fitting — electrical/panel components, refractory/insulation/consumables, rotating
+equipment (pulleys, bearings, motors). **This entirely depends on Engineering having set `category`
+correctly on each BOM line** — there is no independent classification anywhere else. A line's
+`category`/`requires_mtc` are set in the BOM composer (`components/PrWorkspace.jsx`'s
+`CategoryFieldsBlock`) or a Structure Template, **not** anywhere in the QC workflow or the
+`/engineering` BOM tree workspace itself (`components/bom-structure/*` has zero involvement in this
+— it owns structure/drawings/calc-links/ECNs, not `category`).
+
+**Real, live proof this isn't theoretical (2026-09-07, SB-1109-01-50's real BOM, 181 lines,
+every line genuinely categorized — not a bulk-import gap):** 47 lines correctly synced to Form IV
+A, 58 to Mounting & Fittings — but **14 real bought-out mountings** (a fusible plug, a feed pump,
+5 valves, a water-level gauge, 2 fire bars, 2 more valves under Feed Line, 1 under Blow Down Line)
+sit in the `'other'` bucket, mistagged, right next to correctly-tagged siblings in the exact same
+subsystem — including inside the subsystem literally named "Boiler Mounting & Fittings." This is a
+BOM data-entry inconsistency, not a sync bug — `classify()` is doing exactly what its inputs say.
+Worth a periodic domain review of any real project's `'other'`-tagged lines before trusting the
+Mounting list is complete, until/unless a stricter category taxonomy or a review UI exists (neither
+built).
+
+**Form III A is deliberately NOT automatic — a genuine setup step, not a bug or a data gap.**
+`qc_iiia_groups` (one named-part group per document, e.g. "Feed pipeline") only exists once QC
+explicitly creates one (`NewIiiaGroupDialog` in `QcDocumentEditor.jsx` → `POST /api/qc-documents/
+[id]/iiia-groups`, naming it and picking the BOM-tree assembly it corresponds to). Once a group
+exists, `matchIiiaGroup`/`reconcileIiiaGroups` (`lib/qc-bom-sync.js`) correctly pull every BOM item
+under that group's `assembly_id` into it on the next sync — proven correct by reading the matching
+code directly, keyed on `assembly_id` first, `group_label` (the flat PMB-import heading) as a
+fallback. **A document with zero groups showing zero Form III A content is the expected state for
+any project nobody has configured yet** — it is not evidence of a bug. The real candidate on
+SB-1109-01-50: the **Feed Line subsystem** (14 items) is exactly the kind of named part this form
+exists for, matching the real reference sample's own "Feed pipeline" precedent.
+
+**A real, separate, still-open bug blocking this for a split child specifically** — found while
+investigating this (§5bj had already flagged half of it): `app/projects/[id]/qc/[docId]/page.js`'s
+`assemblies` prop (which feeds `NewIiiaGroupDialog`'s own assembly picker) is fetched via
+`getBomAssembliesFlat(params.id)` — the document's own project id, **never resolved to the
+master**. `bomItems` on the very next line *does* correctly resolve
+(`project.master_project_id || params.id`) — only `assemblies` was missed. For a split child, this
+means the "New Group" dialog's assembly picker currently shows nothing to pick from (a child has no
+`bom_assemblies` rows of its own, same architecture as `bom_items`), so Form III A can't even be
+configured yet for a split-child document like SB-1109-01 — a second, independent blocker on top of
+"no group created yet." Not fixed as part of this pass; flagged for the next round that touches this
+file.
+
+**The master/child BOM-resolution fix (2026-09-07)** — the one real code change this investigation
+led to. `app/api/qc-documents/route.js` (single-document creation), `app/api/qc-documents/[id]/
+sync-bom/route.js`, and `app/api/qc-documents/[id]/sync-mountings/route.js` all previously read
+`bom_items WHERE project_id = <the document's own project_id>` — correct for an ordinary project,
+silently zero for a split child (whose entire BOM lives only on the master, §5k/
+MULTI-UNIT-SPLIT-DESIGN.md). `app/api/qc-documents/batch-children/route.js` already resolved this
+correctly (explicit `master.id`, confirmed by reading it); the other three now resolve
+`bomProjectId = project.master_project_id || project.id` the same way, before ever calling
+`syncQcPartsFromBom`/`syncMountingsFromBom`. **Live-verified**: SB-1109-01 (project 112, a real
+child of SB-1109-01-50) went from `partsSeeded: 0`/`added: 0` (both routes) to 47 material parts +
+58 mountings on the very next call, with zero manual data entry beyond the boiler-detail header
+fields. **Regression-checked**: a disposable test document on a non-split project (SB-1040)
+produced the identical 224-part/88-mounting sync it always did, and re-sync stayed idempotent at 0
+— `project.master_project_id` is `NULL` for a non-split project, so `bomProjectId` resolves to
+exactly what it always did.
+
+**The 14-mounting-mismatch finding above traced to a real root cause and fixed (2026-09-07),
+one line in the Item Master, not a per-project BOM patch.** 9 of the 14 mis-tagged mountings were
+catalog-linked, and every one of their catalog rows carried the real ERP category `'BOI'` (Bought
+Out Item — confirmed by `group_name: 'MOUNTING'` on each) with `bom_category` wrongly backfilled to
+`'other'`. `lib/db.js`'s `ERP_CATEGORY_TO_BOM_CATEGORY` map had `'BOUGHT OUT ITEM'` (the spelled-out
+ERP label) correctly pointing at `'standard'`, but its own abbreviation, `'BOI'`, pointed at
+`'other'` — the same real-world concept, mapped to opposite buckets. This wasn't a one-project
+mistake: a live check found **711 real catalog rows** (49 of the first 50 "VALVE" matches alone)
+carrying this wrong default — silently mis-defaulting a large share of the catalog's real bought-out
+mounting parts on every future BOM pick, not just this order. Fixed: the map entry corrected to
+`BOI: 'standard'`; a new marker-gated one-time correction, `fixBoiItemBomCategory()`
+(`system_migrations` key `item_bom_category_boi_fix_v1`, called from `migrate()` right after the
+original `backfillItemBomCategory()` — the original backfill's own `WHERE bom_category IS NULL`
+guard would never re-touch these rows itself, since they're already `'other'`, not `NULL`), corrects
+every already-backfilled `category='BOI' AND bom_category='other'` row to `'standard'`.
+**Live-verified**: exactly 711 rows corrected, re-confirmed 0 remaining `BOI`→`other` rows and 0
+`ELECTRICALS`/other-genuinely-`other` rows accidentally touched (spot-checked a real `CONTACTOR`
+line, still correctly `other`). **Deliberately not done as part of this fix**: the 9 already-created
+`bom_items` rows on SB-1109-01-50's own real BOM still carry the stale `category='other'` value
+copied at entry time — this Item Master fix only prevents the *default* from being wrong on a
+*future* pick; it doesn't retroactively touch already-existing BOM lines. The remaining 3 mis-tagged
+mountings (`FEED PUMP (TYPE-CENTRIFUGAL) & MOTOR`, `TRIPLEX FIRE BAR`, `H' BAR`) aren't
+catalog-linked at all — a separate, smaller, per-line fix, not explained by this map bug.
+
 ### The real folder (from the sample set — understood, generation NOT built yet)
 
 Real filled samples live at **`/Users/pujan/Developer/FOLDER SAMPLE - FOR APP/`** — one folder per

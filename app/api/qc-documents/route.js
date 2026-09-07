@@ -24,8 +24,12 @@ export async function POST(req) {
 
   const b = await req.json();
   if (!b.project_id) return NextResponse.json({ error: 'project_id is required' }, { status: 400 });
-  const project = await queryOne('SELECT id, company, series FROM projects WHERE id = ?', [b.project_id]);
+  const project = await queryOne('SELECT id, company, series, master_project_id FROM projects WHERE id = ?', [b.project_id]);
   if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+  // A multi-unit split child never has its own bom_items rows (the whole BOM lives only on the
+  // master, §5k/MULTI-UNIT-SPLIT-DESIGN.md) — sync against the master's BOM instead, same pattern
+  // batch-children/route.js already uses. A non-split project (master_project_id NULL) is unaffected.
+  const bomProjectId = project.master_project_id || project.id;
   // Defaults to the project's own company now (§2.6 fix) rather than always Shanti Boilers —
   // an explicit override in the request still wins if given.
   b.company = COMPANY_NAMES.includes(b.company) ? b.company : (project.company || COMPANY_NAMES[0]);
@@ -62,7 +66,7 @@ export async function POST(req) {
     // Bought-out Items (Mountings & Fittings) deliberately stay manual-sync-only for now (the
     // MountingsCard "Sync from BOM" button, lib/qc-bom-sync.js's syncMountingsFromBom) — not
     // auto-seeded at creation like Form IV A. See SYSTEM.md §5d for why.
-    const partsSeeded = await syncQcPartsFromBom(tx, documentId, b.project_id);
+    const partsSeeded = await syncQcPartsFromBom(tx, documentId, bomProjectId);
     return { documentId, partsSeeded };
   });
 
