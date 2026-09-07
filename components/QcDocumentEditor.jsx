@@ -706,7 +706,7 @@ function IiiaGroupsCard({ documentId, projectId, groups, parts, assemblies, bomI
 // via the bulk-replace endpoint. serial_numbers is free text (one description can have several).
 const EMPTY_MOUNT = { description: '', size: '', moc: '', serial_numbers: '', make: '', qty: '' };
 
-function MountingsCard({ documentId, mountings, bomItems, canEdit, router }) {
+function MountingsCard({ documentId, mountings, bomItems, certificates, canEdit, router }) {
   // `_key` is a locally-generated identity, never persisted (the server route only reads its own
   // whitelisted fields, so this extra prop round-trips harmlessly in the Save payload) — needed
   // because "Add row" prepends (client point: new rows go on top), which shifts every existing row's
@@ -721,6 +721,35 @@ function MountingsCard({ documentId, mountings, bomItems, canEdit, router }) {
   const [q, setQ] = useState('');
   const [selected, setSelected] = useState(new Set());
   const setCell = (key, k) => e => setRows(rs => rs.map(r => (r._key === key ? { ...r, [k]: e.target.value } : r)));
+
+  // Certificate linking — real ids (r.id, not the local _key), a separate action from the bulk-edit
+  // rows/save() buffer above so it commits immediately, same "own atomic action" precedent link-parts
+  // already established. Cert display fields (certificate_no, tc_cast_no, …) are read live from the
+  // `mountings` prop by id, never buffered into `rows` — router.refresh() alone (no remount needed)
+  // is what surfaces a freshly-linked certificate.
+  const [certPickerOpen, setCertPickerOpen] = useState(false);
+  const [certPickerIds, setCertPickerIds] = useState([]);
+  const [linkSiblings, setLinkSiblings] = useState(false);
+  const usedCertIds = useMemo(() => new Set(mountings.filter(m => m.test_certificate_id).map(m => m.test_certificate_id)), [mountings]);
+  function openCertPicker(ids) { setCertPickerIds(ids); setLinkSiblings(false); setCertPickerOpen(true); }
+  async function pickCert(certId) {
+    try {
+      const res = await api(`/api/qc-documents/${documentId}/link-mountings`, {
+        method: 'POST',
+        body: { mounting_ids: certPickerIds, test_certificate_id: certId, ...(certPickerIds.length === 1 && linkSiblings ? { also_link_siblings: true } : {}) },
+      });
+      showToast(`Linked ${res.linked} item${res.linked === 1 ? '' : 's'}${res.siblings_linked ? ` + ${res.siblings_linked} on sibling units` : ''}`);
+      setCertPickerOpen(false);
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+  }
+  async function unlinkCert(id) {
+    try {
+      await api(`/api/qc-documents/${documentId}/link-mountings`, { method: 'DELETE', body: { mounting_ids: [id] } });
+      showToast('Certificate unlinked');
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+  }
   function toggleRow(key) {
     setSelected(s => { const n = new Set(s); if (n.has(key)) n.delete(key); else n.add(key); return n; });
   }
@@ -784,6 +813,8 @@ function MountingsCard({ documentId, mountings, bomItems, canEdit, router }) {
       .some(v => v && String(v).toLowerCase().includes(needle));
   });
   const allShownSelected = shown.length > 0 && shown.every(({ r }) => selected.has(r._key));
+  // Only saved rows (real r.id) are cert-linkable — a just-added, unsaved row must be Saved first.
+  const selectedRealIds = rows.filter(r => selected.has(r._key) && r.id != null).map(r => r.id);
   function toggleSelectShown() {
     setSelected(s => {
       if (allShownSelected) { const n = new Set(s); shown.forEach(({ r }) => n.delete(r._key)); return n; }
@@ -853,6 +884,11 @@ function MountingsCard({ documentId, mountings, bomItems, canEdit, router }) {
               <Button size="sm" variant="outline" disabled={shown.length === 0} onClick={toggleSelectShown}>
                 {allShownSelected ? 'Deselect all' : 'Select all'}
               </Button>
+              {selectedRealIds.length > 0 && (
+                <Button size="sm" variant="outline" onClick={() => openCertPicker(selectedRealIds)}>
+                  Link certificate ({selectedRealIds.length})
+                </Button>
+              )}
               {selected.size > 0 && (
                 <Button size="sm" variant="outline" className="text-destructive hover:text-destructive" onClick={deleteSelected}>
                   Delete ({selected.size})
@@ -928,8 +964,45 @@ function MountingsCard({ documentId, mountings, bomItems, canEdit, router }) {
                 placeholder="Qty" type="number" inputMode="decimal" className="h-8 w-16 text-right text-xs font-medium" />
               <span className="truncate text-xs text-muted-foreground" title={qtyUnit}>{qtyUnit}</span>
             </div>
+            {/* Cert data is read live from the `mountings` prop (never the local `rows` edit buffer)
+                — router.refresh() alone surfaces a fresh link with no remount needed. Only a
+                real, already-saved row (r.id set — not a just-added, unsaved local row) can be
+                cert-linked; a brand-new row has to be Saved first. */}
+            {(() => {
+              const live = r.id != null ? mountings.find(m => m.id === r.id) : null;
+              if (!live) return <span className="ml-auto" />;
+              const linked = !!live.test_certificate_id;
+              return (
+                <div className={cn(
+                  'ml-auto flex shrink-0 max-w-48 items-center gap-1',
+                  linked && 'rounded-lg border border-border/60 bg-muted/20 px-2 py-1',
+                )}>
+                  <button type="button" onClick={() => openCertPicker([live.id])} className="flex min-w-0 flex-col items-end text-right hover:opacity-80">
+                    {linked ? (
+                      <>
+                        <span className="truncate text-xs font-medium">
+                          {live.certificate_no}{live.tc_cast_no ? ` · ${live.tc_cast_no}` : ''}
+                        </span>
+                        {(live.material_spec || live.steel_maker) && (
+                          <span className="truncate text-xs text-muted-foreground">{[live.material_spec, live.steel_maker].filter(Boolean).join(' · ')}</span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="flex items-center gap-1 text-xs text-warning">
+                        <AlertTriangleIcon className="size-3.5" />No cert
+                      </span>
+                    )}
+                  </button>
+                  {canEdit && linked && (
+                    <button type="button" aria-label="Unlink certificate" onClick={() => unlinkCert(live.id)} className="shrink-0 text-muted-foreground hover:text-destructive">
+                      <XIcon className="size-3.5" />
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
             {canEdit && (
-              <Button size="icon-sm" variant="ghost" aria-label="Remove row" className="ml-auto"
+              <Button size="icon-sm" variant="ghost" aria-label="Remove row"
                 onClick={() => setRows(rs => rs.filter(row => row._key !== key))}>
                 <Trash2Icon className="size-3.5" />
               </Button>
@@ -939,6 +1012,20 @@ function MountingsCard({ documentId, mountings, bomItems, canEdit, router }) {
           })}
       </CardContent>
       )}
+      <CertPicker
+        open={certPickerOpen}
+        onOpenChange={setCertPickerOpen}
+        title={`Link certificate — ${certPickerIds.length} item${certPickerIds.length === 1 ? '' : 's'}`}
+        certificates={certificates}
+        usedIds={usedCertIds}
+        onPick={pickCert}
+        extraOption={certPickerIds.length === 1 && (
+          <label className="flex items-center gap-2 px-1 text-xs text-muted-foreground">
+            <Checkbox checked={linkSiblings} onCheckedChange={v => setLinkSiblings(!!v)} />
+            Also link this item on sibling units (multi-unit split)
+          </label>
+        )}
+      />
     </Card>
   );
 }
@@ -1232,7 +1319,7 @@ export default function QcDocumentEditor({ project, document, parts, certificate
         )}
       </Card>
 
-      <MountingsCard key={mountings.length} documentId={document.id} mountings={mountings} bomItems={bomItems} canEdit={canEdit} router={router} />
+      <MountingsCard key={mountings.length} documentId={document.id} mountings={mountings} bomItems={bomItems} certificates={certificates} canEdit={canEdit} router={router} />
 
       {selected.size > 0 && (
         <div className="sticky bottom-4 flex items-center justify-between rounded-xl bg-popover p-3 text-sm shadow-lg ring-1 ring-foreground/10">

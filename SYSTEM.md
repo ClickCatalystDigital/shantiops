@@ -8767,6 +8767,71 @@ dropdown they describe no longer exist; this section is the current state.
   request was scoped to the working UI, not the help copy. Worth a pass whenever `/help`'s Design
   guide is next touched.
 
+## 5bs. Mounting & Fittings certificate linking — mirrors Form IV A's, including unit auto-populate (2026-09-07)
+
+`qc_mountings` (bought-out items) had zero certificate-linking capability — `qc_document_parts`
+(Form IV A material) has had it since §5d, but the Mounting List's own PDF table (`MountingListPage`
+in `lib/qc-folder-pdf.js`) has always been Sl/Description/Size/MOC/Serial No(s)/Make/Qty with no cert
+column, and nothing else in the schema referenced `test_certificates` from this table. Built as a
+real mirror, not a stub — including the multi-unit-split auto-populate chain §5bq just re-audited for
+Form IV A.
+
+- **`qc_mountings.test_certificate_id`** (new, nullable FK, `addColumn`). `getQcDocumentDetail()`
+  (`lib/data.js`) widened with the same `LEFT JOIN test_certificates` shape parts already use
+  (cert no/cast/heat/plate no, material spec, steel maker) — no new query shape invented.
+- **`app/api/qc-documents/[id]/link-mountings/route.js`** (new, POST + DELETE) — a direct mirror of
+  the sibling `link-parts` route: ownership-checked to the document, auto-associates the cert to the
+  project via `certificate_projects`, and supports the same `also_link_siblings` multi-unit-split
+  fan-out (matched on `bom_item_id` only — mountings have no free-text `part_name` fallback to match
+  on, so a manually-added mounting with no BOM link simply isn't eligible for the fan-out, same
+  precondition `link-parts` already applies). Deliberately **simpler** than its sibling in two ways:
+  no TC-match suggestion-tier scoring (`lib/tc-match.js`'s `suggestCertificates()` is a material-
+  spec/steel-maker comparison built for raw pressure-part material — not a meaningful signal for a
+  bought-out valve or gauge) and no `stock_piece_id` clearing (mountings are procured whole, never
+  cut from `stock_pieces`).
+- **`reconcileMountingCertificates()`** (`lib/qc-bom-sync.js`) — the `qc_mountings` twin of
+  `reconcileUnitCertificates()` (§5bj): when a QC-confirmed "Assign to Units" cell
+  (`bom_item_child_certificates`) resolves to **exactly one** certificate for a mounting row's own
+  `bom_item_id` + the document's own child `project_id`, it auto-populates
+  `test_certificate_id` — `WHERE test_certificate_id IS NULL` so a human link is never overwritten,
+  2+ certificates on a cell stays unlinked (genuine ambiguity, same as its sibling). Called from
+  `syncMountingsFromBom()`. **One real gap fixed before it ever shipped, not after**: the function's
+  first draft returned early (`if (!qualifying.length) return 0;`) before reconciling — the exact bug
+  §5bj already found and fixed once for the Form IV A twin (an early-return silently skips picking up
+  a fresh unit-certificate assignment on a document whose mountings are already fully synced). Fixed
+  by reconciling on both the early-return and the main-loop-end paths, matching the sibling exactly.
+  `MaterialCertificatePanel.jsx` ("Assign to Units") needed **zero changes** — confirmed by reading
+  `getChildRoutingBoard()` directly: it already lists every allocated BOM item regardless of
+  `classify()`'s Form-IV-A/Mounting outcome, so the write side only needed extending, not the panel.
+- **UI** (`components/QcDocumentEditor.jsx`'s `MountingsCard`) — a compact cert badge per row
+  (mirrors `PartRow`'s minimal shape: cert no + cast, or a warning "No cert" prompt when unlinked,
+  an X to unlink), a bulk "Link certificate (N)" action next to the existing bulk Delete, and a
+  `CertPicker` instance with the same `also_link_siblings` checkbox `PartRow`'s own picker offers.
+  **Cert display data is read live from the `mountings` prop, never buffered into the card's own
+  local `rows` edit state** — `MountingsCard` is a bulk-edit spreadsheet with an explicit Save
+  button (a real design difference from parts, which have no local buffer at all), so a naive
+  "buffer everything in `rows`" copy would have gone stale the instant a cert was linked without a
+  full component remount; reading straight from the always-fresh `mountings` prop on every render
+  sidesteps that with zero extra state.
+
+**Live-verified end to end against the real dev DB and running server** (document 54, project 112 —
+a real split child of SB-1109-01-50, project 61 the master): `POST link-mountings` linked a real
+mounting (FLANGE, id 622) to a real certificate — confirmed persisted, confirmed `getQcDocumentDetail`'s
+join surfaces cert_no/material_spec/steel_maker correctly, confirmed `certificate_projects` auto-
+inserted. `DELETE link-mountings` correctly cleared it. **The reconcile chain proved decisively, not
+just asserted**: assigned the same certificate to `(bom_item 1818, child project 112)` via the real
+`POST /api/projects/[id]/child-routing/certificates` route, then re-ran `sync-mountings` — it returned
+`{added:0}` (no new rows to insert, meaning only the early-return reconcile path ran) and the FLANGE
+row's `test_certificate_id` was correctly auto-populated to the assigned certificate — proof the
+early-return fix above was both necessary and correct, not a speculative addition. Every test artifact
+(the mounting's cert link, the cell assignment via the real DELETE route, the `certificate_projects`
+row) was removed afterward; a final direct query confirmed zero residue. Server-rendered HTML confirmed
+the new badge UI renders correctly against the real 76-mounting document (a live browser click-through
+was attempted but blocked by a session-cookie mismatch between the browser tool's own login and the
+curl-based verification session — not chased further, since the data-layer proof above is decisive and
+matches this file's own established "verify at the layer you can reach" precedent, e.g. §5bn).
+`npm run lint` clean (833 files) throughout.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own
