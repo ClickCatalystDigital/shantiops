@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getFreshSessionUser, hasActiveDesignResponsibility, isCustomer, canAccessProject } from '@/lib/auth';
-import { requireCalcAccess, isAssignedDesigner } from '@/lib/calc';
+import { requireCalcAccess, requireCalcReadAccess, isAssignedDesigner } from '@/lib/calc';
 import { queryOne, execute } from '@/lib/db';
 import { getObjectBuffer, deleteObject } from '@/lib/r2';
 import { audit } from '@/lib/usb';
@@ -18,7 +18,10 @@ export async function GET(req, { params }) {
     const visible = drawing.customer_visible && ['under_review', 'approved', 'as_built'].includes(drawing.status);
     if (!visible || !canAccessProject(user, drawing.project_id)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   } else {
-    const denied = requireCalcAccess(user);
+    // requireCalcReadAccess (not requireCalcAccess) — QC needs to view a drawing's file for the
+    // Boiler Details sheet's inline preview (Form II/III), same read-only widening already applied
+    // to GET /api/calc-drawings' own list. QC gains no write access here — DELETE below is untouched.
+    const denied = requireCalcReadAccess(user);
     if (denied) return denied;
   }
 

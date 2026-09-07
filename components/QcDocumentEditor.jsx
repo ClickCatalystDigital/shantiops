@@ -21,9 +21,10 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/com
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import TraceabilityBadges from '@/components/TraceabilityBadges';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
-import { ChevronLeftIcon, ChevronDownIcon, AlertTriangleIcon, SearchIcon, PlusIcon, Trash2Icon, XIcon, RefreshCwIcon } from 'lucide-react';
+import { ChevronLeftIcon, ChevronDownIcon, AlertTriangleIcon, SearchIcon, PlusIcon, PencilIcon, Trash2Icon, XIcon, RefreshCwIcon } from 'lucide-react';
 import CertPicker from './CertPicker';
 import PdfPreview from './PdfPreview';
+import FloatingPdfPanel from './FloatingPdfPanel';
 import QcHeaderField from './QcHeaderField';
 import { suggestCertificates, suggestBomItem } from '@/lib/tc-match';
 import { normalizeMaterial } from '@/lib/match-utils';
@@ -163,6 +164,17 @@ function BoilerDetailsSheet({ open, onOpenChange, document, seams = [], currentU
     return init;
   });
   const [busy, setBusy] = useState(false);
+  // Drawing preview (Form II/III filling aid) — a dropdown of this document's own approved
+  // drawings, previewed in a floating panel on the left, outside the sheet's own frame — same
+  // floating/zoomable feel as the Test Certificate preview, not embedded inline in a cramped column,
+  // since reading fine drawing detail needs real screen space plus zoom/pan (PdfPreview's own zoom
+  // controls). Read-only: no upload/delete here, that stays Design's own /calc-drawings surface —
+  // see lib/data.js's getQcDocumentDetail for where approved_drawings (id/dg_no/name/file_id) comes
+  // from. Defaults to the first approved drawing so opening this sheet shows something useful
+  // without an extra click.
+  const drawings = document.approved_drawings || [];
+  const [selectedDrawingId, setSelectedDrawingId] = useState(() => String(drawings[0]?.id || ''));
+  const selectedDrawing = drawings.find(d => String(d.id) === selectedDrawingId);
 
   async function submit() {
     const missing = QC_HEADER_FIELDS.find(f => f.required && !String(form[f.key] || '').trim());
@@ -178,42 +190,71 @@ function BoilerDetailsSheet({ open, onOpenChange, document, seams = [], currentU
   }
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full data-[side=right]:sm:max-w-2xl">
-        <SheetHeader><SheetTitle>Edit boiler details</SheetTitle></SheetHeader>
-        <div className="grid grid-cols-2 gap-3 overflow-y-auto px-4">
-          {/* Derived, not typed (DG- reversal) — every approved drawing on this project. Design
-              owns drawing approval, so there's no override point here; correct a wrong drawing_no
-              on the calc_drawings row itself. */}
-          <div className="col-span-2 flex flex-col gap-1.5">
-            <Label>Drawing No's</Label>
-            <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-              {document.approved_drawing_codes?.length ? document.approved_drawing_codes.join(', ') : 'No approved drawings on this project yet'}
-            </p>
-          </div>
-          {QC_HEADER_FIELDS.map(f => (
-            f.kind === 'select' ? (
-              <div key={f.key} className="flex flex-col gap-1.5">
-                <Label>{f.label}<span className="text-danger"> *</span></Label>
-                <Select value={form.company} onValueChange={v => setForm(fm => ({ ...fm, company: v }))}>
-                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {COMPANIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-            ) : (
-              <QcHeaderField key={f.key} field={f} value={form[f.key]}
-                onChange={v => setForm(fm => ({ ...fm, [f.key]: v }))} />
-            )
-          ))}
-          <SeamsSection documentId={document.id} seams={seams} router={router} />
+    <>
+      {/* Floating, not embedded in the sheet — same weight/interaction as the Test Certificate
+          source-PDF panel (CertForm.jsx), positioned on the left since the sheet itself is
+          anchored right. FloatingPdfPanel is a real, portal + pointer-events-fix + z-index shared
+          component, not a copy — see its own comment for the two Radix bugs it exists to avoid. */}
+      <FloatingPdfPanel open={open && !!selectedDrawing}>
+        <div className="flex shrink-0 items-center justify-between gap-2">
+          <span className="truncate text-sm font-medium">
+            {selectedDrawing?.dg_no}{selectedDrawing?.name ? ` — ${selectedDrawing.name}` : ''}
+          </span>
+          <button type="button" aria-label="Close drawing preview" onClick={() => setSelectedDrawingId('')}
+            className="shrink-0 text-muted-foreground hover:text-foreground">
+            <XIcon className="size-4" />
+          </button>
         </div>
-        <SheetFooter>
-          <Button disabled={busy} onClick={submit}>{busy ? 'Saving…' : 'Save changes'}</Button>
-        </SheetFooter>
-      </SheetContent>
-    </Sheet>
+        {selectedDrawing?.file_id ? (
+          <PdfPreview inline open={open} url={`/api/calc-drawings/${selectedDrawing.id}/files/${selectedDrawing.file_id}`} />
+        ) : (
+          <p className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
+            No file uploaded on this drawing yet
+          </p>
+        )}
+      </FloatingPdfPanel>
+      <Sheet open={open} onOpenChange={onOpenChange}>
+        <SheetContent className="w-full data-[side=right]:sm:max-w-2xl"
+          onPointerDownOutside={e => { if (e.target.closest('[data-pdf-panel]')) e.preventDefault(); }}>
+          <SheetHeader><SheetTitle>Edit boiler details</SheetTitle></SheetHeader>
+          <div className="grid grid-cols-2 gap-3 overflow-y-auto px-4">
+            {/* Read-only: no upload/delete here, that stays Design's own /calc-drawings surface.
+                Only approved drawings are offered, same rule getQcDocumentDetail's own query
+                already enforces. Picking one opens the floating preview panel below, outside
+                this sheet's own frame. */}
+            <div className="col-span-2 flex flex-col gap-1.5">
+              <Label>Drawing preview</Label>
+              <SearchableSelect
+                value={selectedDrawingId}
+                onChange={setSelectedDrawingId}
+                options={drawings.map(d => ({ value: String(d.id), label: `${d.dg_no}${d.name ? ` — ${d.name}` : ''}` }))}
+                placeholder={drawings.length ? 'Select a drawing to preview it' : 'No approved drawings on this project yet'}
+              />
+            </div>
+            {QC_HEADER_FIELDS.map(f => (
+              f.kind === 'select' ? (
+                <div key={f.key} className="flex flex-col gap-1.5">
+                  <Label>{f.label}<span className="text-danger"> *</span></Label>
+                  <Select value={form.company} onValueChange={v => setForm(fm => ({ ...fm, company: v }))}>
+                    <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {COMPANIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : (
+                <QcHeaderField key={f.key} field={f} value={form[f.key]}
+                  onChange={v => setForm(fm => ({ ...fm, [f.key]: v }))} />
+              )
+            ))}
+            <SeamsSection documentId={document.id} seams={seams} router={router} />
+          </div>
+          <SheetFooter>
+            <Button disabled={busy} onClick={submit}>{busy ? 'Saving…' : 'Save changes'}</Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+    </>
   );
 }
 
@@ -287,7 +328,7 @@ function PartTitleField({ part, partNo, bomItems, onLink, canEdit }) {
   );
 }
 
-function PartRow({ part, selected, onToggle, onOpenPicker, onRemove, onUnlink, onLinkBomItem, bomItems, canEdit }) {
+function PartRow({ part, selected, onToggle, onOpenPicker, onRemove, onEdit, onUnlink, onLinkBomItem, bomItems, canEdit }) {
   const linked = !!part.test_certificate_id;
   // A real named part (Design's breakdown, components/PrWorkspace.jsx's NamedPartsEditor) is any
   // row whose name differs from its own BOM line's material_description — the plain single-row
@@ -367,6 +408,15 @@ function PartRow({ part, selected, onToggle, onOpenPicker, onRemove, onUnlink, o
           </button>
         )}
       </div>
+      {canEdit && (
+        <button
+          aria-label="Edit part"
+          onClick={() => onEdit(part)}
+          className="mt-0.5 shrink-0 text-muted-foreground hover:text-foreground"
+        >
+          <PencilIcon className="size-3.5" />
+        </button>
+      )}
       {canEdit && (
         <button
           aria-label="Remove part"
@@ -456,6 +506,75 @@ function AddPartDialog({ open, onOpenChange, documentId, bomItems, router }) {
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button disabled={busy} onClick={submit}>{busy ? 'Adding…' : 'Add part'}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Edit an existing part's own fields — the counterpart to AddPartDialog, closing the gap that no
+// path existed to fix a part's size/qty/name after creation (only its BOM link and its certificate
+// had their own edit paths). Same field set as AddPartDialog, PATCHes rather than POSTs, and leaves
+// bom_item_id/test_certificate_id alone — those stay owned by PartTitleField's own picker and the
+// cert Link/Unlink buttons respectively.
+function EditPartDialog({ open, onOpenChange, documentId, part, router }) {
+  const [form, setForm] = useState({ part_no: '', part_name: '', size_t: '', size_w: '', size_l: '', qty: '' });
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (part) {
+      setForm({
+        part_no: part.part_no || '', part_name: part.part_name || '',
+        size_t: part.size_t || '', size_w: part.size_w || '', size_l: part.size_l || '', qty: part.qty || '',
+      });
+    }
+  }, [part]);
+
+  function set(field) { return e => setForm(f => ({ ...f, [field]: e.target.value })); }
+
+  async function submit() {
+    if (!form.part_name.trim()) return showToast('Part name is required', 'error');
+    setBusy(true);
+    try {
+      await api(`/api/qc-documents/${documentId}/parts/${part.id}`, { method: 'PATCH', body: form });
+      showToast('Part updated');
+      onOpenChange(false);
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+    setBusy(false);
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader><DialogTitle>Edit part</DialogTitle></DialogHeader>
+        <div className="flex flex-col gap-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label>Part No.</Label>
+              <Input value={form.part_no} onChange={set('part_no')} placeholder="55" />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>Qty</Label>
+              <Input value={form.qty} onChange={set('qty')} placeholder="1" />
+            </div>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label>Part Name</Label>
+            <Input value={form.part_name} onChange={set('part_name')} placeholder="e.g. INSPECTION DOOR" autoFocus />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label>Size (mm)</Label>
+            <div className="grid grid-cols-3 gap-2">
+              <Input value={form.size_t} onChange={set('size_t')} placeholder="T" />
+              <Input value={form.size_w} onChange={set('size_w')} placeholder="W" />
+              <Input value={form.size_l} onChange={set('size_l')} placeholder="L" />
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button disabled={busy} onClick={submit}>{busy ? 'Saving…' : 'Save changes'}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -1044,6 +1163,7 @@ export default function QcDocumentEditor({ project, document, parts, certificate
   const [boilerOpen, setBoilerOpen] = useState(false);
   const [pdfOpen, setPdfOpen] = useState(false);
   const [addPartOpen, setAddPartOpen] = useState(false);
+  const [editingPart, setEditingPart] = useState(null);
   const [visBusy, setVisBusy] = useState(false);
   const [syncBusy, setSyncBusy] = useState(false);
   const [ivaOpen, setIvaOpen] = useState(true);
@@ -1312,7 +1432,7 @@ export default function QcDocumentEditor({ project, document, parts, certificate
             {shown.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">No matches.</p>}
             {shown.map(p => (
               <PartRow key={p.id} part={p} selected={selected.has(p.id)} onToggle={toggle} onOpenPicker={openPicker}
-                onRemove={removePart} onUnlink={unlinkPart} onLinkBomItem={linkBomItem} bomItems={bomItems} canEdit={canEdit} />
+                onRemove={removePart} onEdit={setEditingPart} onUnlink={unlinkPart} onLinkBomItem={linkBomItem} bomItems={bomItems} canEdit={canEdit} />
             ))}
           </div>
         </CardContent>
@@ -1349,6 +1469,7 @@ export default function QcDocumentEditor({ project, document, parts, certificate
       />
       <BoilerDetailsSheet open={boilerOpen} onOpenChange={setBoilerOpen} document={document} seams={seams} currentUserName={currentUserName} router={router} />
       <AddPartDialog open={addPartOpen} onOpenChange={setAddPartOpen} documentId={document.id} bomItems={bomItems} router={router} />
+      <EditPartDialog open={!!editingPart} onOpenChange={o => { if (!o) setEditingPart(null); }} documentId={document.id} part={editingPart} router={router} />
       <PdfPreview
         open={pdfOpen}
         onOpenChange={setPdfOpen}

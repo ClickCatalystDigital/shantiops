@@ -8832,6 +8832,94 @@ curl-based verification session — not chased further, since the data-layer pro
 matches this file's own established "verify at the layer you can reach" precedent, e.g. §5bn).
 `npm run lint` clean (833 files) throughout.
 
+## 5bt. Form IV A part edit pencil icon + a floating, zoomable drawing preview for Boiler Details (2026-09-07)
+
+Two explicit requests, same session: an edit path for a Form IV A part's own fields (the "no" answer
+to §5d's own "does UI have edit option for details of any items added in forms like 4A?" — the gap
+this closes), and a drawing-preview panel for Form II/III's Boiler Details sheet, driven by the
+Drawing No's dropdown (previously a bare read-only paragraph), matching the floating/zoomable feel
+of the Test Certificate preview rather than an embedded inline box.
+
+**Task 1 — pencil-edit.** New `PATCH /api/qc-documents/[id]/parts/[partId]/route.js` (sibling to the
+existing DELETE-only route), editable fields `part_no`/`part_name`/`size_t`/`size_w`/`size_l`/`qty` —
+deliberately not `bom_item_id`/`test_certificate_id`, which stay on their own dedicated routes
+(`link-bom-item`, `link-parts`) since those carry real side effects (suggestion matching, sibling
+fan-out) this route has no business re-implementing. `EditPartDialog` (`components/
+QcDocumentEditor.jsx`, mirrors `AddPartDialog`'s field shape) opens from a new pencil icon in
+`PartRow`, next to the existing bin icon.
+
+**Task 2 — drawing preview.** Three real fixes, not just new UI:
+- **Master/child resolution bug fixed** — `getQcDocumentDetail()`'s `approvedDrawings` query
+  (`lib/data.js`) used the document's own `project_id` with no master resolution, so a split-child
+  document's Drawing No's dropdown always came back empty even when the master had real approved
+  drawings — this was the actual, confirmed cause of the user-reported "currently nothing shows up."
+  Fixed with the same `master_project_id || project_id` pattern already used in the sibling
+  `sync-bom`/`sync-mountings` routes; `document.approved_drawings` (id/dg_no/name/file_id) added
+  alongside the pre-existing `approved_drawing_codes` bare-string array (kept unchanged — still what
+  `lib/qc-folder-pdf.js`'s covering letter/§9 lines consume, zero PDF-generator changes needed).
+- **QC read access widened** — `GET /api/calc-drawings/[id]/files/[fileId]/route.js`'s internal-user
+  branch was `requireCalcAccess` (Design/Engineering only), which would 403 a QC user; swapped to
+  the already-existing `requireCalcReadAccess` (adds QC, read-only — the same widening
+  `GET /api/calc-drawings`'s own list route already used). DELETE stays `requireCalcAccess`,
+  unaffected — QC still cannot delete a drawing file.
+- **`PdfPreview.jsx` gained an `inline` mode plus zoom + drag-to-pan** — `inline` skips the Dialog/
+  Header/Footer chrome (an `open={!!url}` caller renders just the scrollable canvas content, reusing
+  every existing fetch/render hook unchanged). Zoom (25%–300%, ±25% steps, click-to-reset) is a
+  multiplier on top of the existing fit-to-container scale, read via a ref inside `renderPages` so a
+  zoom change never tears down the ResizeObserver; a dedicated effect re-paints at the new scale and
+  re-centers the scroll position on zoom. Drag-to-pan reads/writes `scrollLeft`/`scrollTop` directly
+  (no CSS transform, no offset math) once zoomed past fit, with `snap-y` (the existing multi-page
+  scroll-snap) disabled while zoomed so panning and snapping never fight. Both additions are on the
+  shared component, so the pre-existing Test Certificate modal preview picked up the same zoom
+  toolbar for free — confirmed live it renders correctly with no regression to the modal's own
+  Download button/footer.
+- **`components/FloatingPdfPanel.jsx`** (new, shared) — extracted the exact floating-panel pattern
+  `CertForm.jsx`'s own Test Certificate source-PDF panel already used and documents two real Radix
+  bugs it exists to dodge (Radix's modal Dialog sets `document.body.style.pointerEvents='none'`
+  while open, silently swallowing clicks on any other `<body>` child unless overridden; its
+  DismissableLayer treats a click on a sibling portal as "outside" the Sheet and closes it unless
+  guarded) — portaled straight to `document.body`, `z-[60]` above the Sheet's own `z-50` overlay,
+  `pointer-events-auto`. `BoilerDetailsSheet` was rebuilt to use it: the drawing dropdown stays in
+  the Sheet's own form grid (reverted to its original `sm:max-w-2xl` width — no longer needs to fit
+  two columns), and picking a drawing opens the floating panel on the **left**, outside the Sheet's
+  own frame entirely — the shape explicitly asked for ("just like TC"), not the first draft's
+  embedded-inline-column layout. `SheetContent` gained the matching `onPointerDownOutside` guard.
+
+**A real bug self-caught during verification, not found by a user report**: the first cut of the
+inline `PdfPreview` never passed `open` to it — its fetch effect's `if (!open) return;` guard means
+the fetch silently never fired, so the panel stuck on "Rendering PDF…" forever regardless of latency.
+Found by checking `read_network_requests` (zero requests to the file route at all, not just slow
+ones) rather than assuming it was the documented Turso/R2 cold-start latency; fixed by threading the
+Sheet's own `open` prop through.
+
+**Live-verified against the real dev DB and running server** (SB-1109-01, project 112, document 54 —
+a real split child, the exact case the reported bug was about): pencil-edit opened, prefilled
+correctly (Part No./Qty/Name/Size all matched the row), and a same-value Save round-tripped through
+the real PATCH with no data change, confirmed by re-expanding the card afterward — part 1 unchanged.
+Drawing dropdown correctly listed all 9 real approved drawings on the master (DG-1004…DG-1012,
+previously zero); selecting one opened the floating panel on the left with a real rendered technical
+drawing; switching drawings re-fetched and re-rendered correctly; zoom-in/zoom-out/reset all worked
+(confirmed visually at 175%/250%/100%); drag-to-pan confirmed correct via direct DOM `MouseEvent`
+dispatch (the browser automation tool's own synthetic drag didn't fire real intermediate `mousemove`
+events, a tool limitation, not an app bug — verified separately that a real event sequence pans
+`scrollLeft`/`scrollTop` in the expected direction); the × close button cleared the dropdown and
+closed the panel without dismissing the underlying Sheet. The pre-existing TC certificate modal
+preview was re-verified unaffected — a real cert PDF rendered correctly with the new zoom toolbar as
+a bonus, Download button/footer unchanged.
+
+**Known, honestly-stated limitations, not silently glossed over**:
+- Only `status='approved'` drawings are offered (matches the literal request) — a legacy `as_built`
+  row (a status the current Drawings UI, §5br, can no longer set going forward) won't appear.
+- A drawing with multiple uploaded files only offers the most recent (`ORDER BY id DESC LIMIT 1`).
+- The ordinary (non-split) project path is code-reviewed, not click-tested — every QC document
+  currently in the live DB happens to sit on a split-child project, so there's no non-split document
+  to click through right now; the fallback (`master_project_id || project_id`) is the identical
+  one-line pattern already proven in 4+ other routes in this codebase.
+- The "no file uploaded on this drawing yet" fallback message is a trivial ternary confirmed correct
+  by inspection only — every real approved drawing on the test project already has a file.
+
+Not committed as of this write-up.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own
