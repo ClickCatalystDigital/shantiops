@@ -8219,6 +8219,47 @@ against where "Signature of inspecting Authority" itself renders (real coordinat
 plus more vertical breathing room (`marginTop: 18`, up from 10) between the two lines. Re-verified
 via `pdftotext -bbox` after each change — both alignments landed within 0.1pt.
 
+### Same day — why QC folder PDF generation/download feels slow, investigated with real timing data
+
+Instrumented `app/api/qc-documents/[id]/pdf/route.js` and `renderQcFolderPdf()` with temporary
+`Date.now()` markers (removed after measuring — never committed), then generated the real folder
+PDF for a real, data-heavy document (SB-1040, document 50 — 224 parts, 12 Form IV A lettered
+sections, 3 Form III pages, 1 certificate) several times against the actual running dev server, not
+guessed from reading the code alone. Two genuinely separate things were happening, previously
+conflated as one:
+
+1. **An intermittent ~30-56 second cold start on the very first DB query of a request**
+   (`getFreshSessionUser()`'s own single-row lookup by primary key — a query that should be near-
+   instant). Confirmed this is **not** a bug in this app's own connection handling: `lib/db.js`'s
+   `getClient()` is already a correct module-level singleton (the client is created once and reused,
+   never recreated per request). Re-running the exact same request immediately afterward dropped
+   auth to 30-150ms — the cold cost only ever hit the *first* query after the connection had sat
+   idle for a while (consistent with this app's own documented shared-remote-Turso dev setup,
+   SYSTEM.md's own `dev-server-uses-remote-turso` note), not something specific to this route or
+   fixable by changing this route's own code.
+2. **A real, consistent ~3-3.6 second cost once the connection is warm** — confirmed this genuinely
+   is data-volume-driven, matching the user's own hypothesis: it's almost entirely
+   `formSections` (rendering Form II(1)/III/III A/IV A) — synchronous CPU work (React reconciliation
+   + Yoga layout, one node per table cell — 224 parts × 18 columns is thousands of layout nodes for
+   this one document alone), not I/O. The remaining phases (mounting list render, the one
+   certificate's R2 fetch, the page-count convergence loop, final pdf-lib merge) added well under a
+   second combined.
+
+**One safe, verified fix landed; a bigger one deliberately not attempted.** `formSections`,
+`mountingsSection`, and `loadCertPdfs` were three fully independent operations (confirmed by
+reading the code — none depends on another's output) that ran sequentially for no reason; they now
+run under one `Promise.all`. Measured honestly, not oversold: on this test document (only 1 small
+certificate) it barely moved the needle, since Node's single-threaded event loop can't actually
+interleave `formSections`' synchronous CPU-bound work with the other two even under `Promise.all` —
+but it's a real win on a document with several/large certificate attachments (`loadCertPdfs`'s R2
+fetches are genuine async I/O that can now overlap with form rendering instead of always adding to
+it afterward), and it's provably harmless either way — verified byte-identical `pdftotext` output
+and identical page count before/after. **Not attempted**: reducing the actual CPU-bound Yoga/React
+layout cost for the dense tables themselves (e.g., generating those rows via raw PDFKit primitives
+instead of React elements) — a real, substantially bigger and riskier change to this file's core
+rendering approach, explicitly out of scope for this pass per the "don't risk breaking anything
+else" instruction it was done under.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own
