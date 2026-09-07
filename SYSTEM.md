@@ -8605,6 +8605,48 @@ button calls, not a scoped-down duplicate — `syncQcPartsFromBom` already recon
 group membership on every run (§5d), so the button lets a user working in the III A section
 re-sync without navigating to the IV A card. Real, in-place value, not accidental duplication.
 
+## 5bq. Assign to Units → Form IV A chain re-audited after recent QC document changes (2026-09-07)
+
+Requested directly, after the Form III/lettered-sections/typeface rounds (§5bk–§5bp): confirm
+"Assign to Units" (`bom_item_child_certificates`, §5bj) is still robust and that a certificate
+linked there actually shows up on Form IV A for every child. Code-level trace, not a fresh live
+click-through (token-constrained) — but a real trace of every hop the data actually crosses,
+cross-checked against the live route code rather than trusted from prior write-ups.
+
+**Found solid, no bugs.** `app/api/projects/[id]/child-routing/certificates/route.js` (POST/DELETE)
+still re-derives `getChildRoutingBoard(master.id)` fresh on every write — never trusts the client's
+cell list — and ownership-checks a DELETE through both `bom_items.project_id` and
+`projects.master_project_id` before removing anything. `reconcileUnitCertificates()`
+(`lib/qc-bom-sync.js`) still correctly derives the *document's own* `project_id` (the child) for the
+`bom_item_child_certificates` lookup — a different id than the *master* id `syncQcPartsFromBom`
+uses to seed parts from the shared BOM — and only auto-populates `qc_document_parts.
+test_certificate_id` when a cell has **exactly one** assigned certificate, `WHERE
+test_certificate_id IS NULL` (never overwrites a human link), called at both the early-return and
+the main-loop end of `syncQcPartsFromBom` so no code path skips it. `getQcDocumentDetail()`
+(`lib/data.js`) `LEFT JOIN test_certificates`/`LEFT JOIN bom_items` onto every part with no
+project-id filtering — a child document's parts point at the **master's** `bom_items.id` directly
+(confirmed architecture), so the join resolves correctly with zero master/child special-casing,
+and feeds Form IV A's full certificate dataset (cert no/cast/heat/plate no, material spec, steel
+maker, chemistry, mechanical props) plus `bi.project_id`/`bi.assembly_id` — exactly what §5bk's
+lettered-section grouping reads. Neither this session's Form III fields (§5bp) nor Form IV A's
+lettered sections (§5bk) touch `bom_item_child_certificates` or `reconcileUnitCertificates` at all —
+zero interaction, zero regression risk from those rounds.
+
+**One stale doc note corrected, not a code bug**: §5bk's own "still open" gap
+("`app/api/qc-documents/route.js`'s creation route and `.../sync-bom/route.js`'s re-sync route
+both still call `syncQcPartsFromBom` using the document's own `project_id`, never resolved to the
+master") is **no longer true** — checked directly against the live route code, all three routes
+(creation, `sync-bom`, `sync-mountings`) already resolve `bomProjectId = master_project_id ||
+project_id` correctly, and `batch-children` already passes `master.id` explicitly. Whichever pass
+fixed this after §5bk was written never updated that note; corrected here rather than left
+misleading a future session.
+
+**"For all its child projects"**: a single Assign-to-Units bulk write can span many
+`(bom_item_id, child_project_id)` cells across many children in one action, but each child only
+ever picks up its *own* assigned certificate — `reconcileUnitCertificates` runs per-document, keyed
+by that document's own `project_id`, so there's no cross-contamination between units; each child's
+Form IV A reflects exactly what was assigned to that specific unit, independently.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own
