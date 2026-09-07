@@ -38,7 +38,13 @@ export async function GET(req, { params }) {
       { status: 409 });
   }
 
-  const project = await queryOne('SELECT id, project_no, customer_name, series FROM projects WHERE id = ?', [detail.document.project_id]);
+  // LEFT JOIN customers for Form III's "Contact Number" field — projects.customer_id is nullable
+  // (a project isn't always linked to a real CRM customer row), so this stays a plain left join
+  // with an honest '—' fallback in the render rather than assuming every project has one.
+  const project = await queryOne(
+    `SELECT p.id, p.project_no, p.customer_name, p.series, c.phone AS customer_phone
+     FROM projects p LEFT JOIN customers c ON c.id = p.customer_id WHERE p.id = ?`,
+    [detail.document.project_id]);
   // Phase 3 — Form IV A's lettered sections read the tree that actually owns these bom_items rows,
   // not the document's own project — for a split child that's the MASTER's id (bi.project_id,
   // §5bj: a child document's parts always reference the master's bom_items). Falls back to the

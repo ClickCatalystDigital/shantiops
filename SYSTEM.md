@@ -8260,6 +8260,50 @@ instead of React elements) — a real, substantially bigger and riskier change t
 rendering approach, explicitly out of scope for this pass per the "don't risk breaking anything
 else" instruction it was done under.
 
+### Same day, follow-on — Form III's real 5-page structure, Sign()/Form III A/Contact Number fixes
+
+Continuing the same document-accuracy pass, four more gaps closed against the real reference
+samples, all in `lib/qc-folder-pdf.js`:
+
+- **`Sign()` corrected to match the real Form III A/IV A sign-off** — was showing "For {entity}."/
+  "Maker / Authorized Signatory" on the right, which matched neither real sample; now renders
+  `Maker's Representative` (left) / `Maker` (right, plain), exactly as both real samples show it.
+- **Form III A's numbered item list** — added the real item 5 ("Main dimensions, Tolerance, mode of
+  manufacture, drawing nos., Flattening test, etc." → "As per test certificate enclosed"), removed
+  the old item 10 (Drawing No.) since the closing certification paragraph already states that value
+  independently — no functionality lost, just no longer duplicated.
+- **Form III §1 gained a "Contact Number" field** — the real sample has one; the PDF route's project
+  query now `LEFT JOIN`s `customers` for `c.phone`, rendered honestly as `—` when the project has no
+  linked CRM customer rather than defaulted to a guess.
+- **Form IV A's preamble/sign-off, fixed to render exactly once** — `FormTablePage` (the component
+  behind every lettered Form IV A section) previously repeated the certifying preamble paragraph and
+  the sign-off/Place/Date lines on *every* section page; both are now gated (`preamble`/`isLast`
+  props, set once at section-array construction time, not patched onto already-built elements) so a
+  multi-section Form IV A shows the preamble only on its first page and signs off only on its last.
+
+**Form III restructured into its real 5-page shape**, per direct instruction, replacing one long
+auto-paginating `<Page>` with an array of 5 explicit pages (`iii-1`..`iii-5`, the same "array of
+`<Page>` elements" pattern Form III A/IV A's own lettered sections already proved safe): §1
+DESCRIPTION alone (its KV block bumped to 10pt — the certificate's own headline facts, same
+treatment Form II(1)'s Maker's-info block got); §§2-3 together; §§4-5 together (§4's seam/
+construction lines now read real, per-document data via `qc_document_longitudinal_seams` +
+`qc_documents` columns shipped the same day, always honestly `—` where nothing's entered — not
+the wrong hardcoded values this used to show); §§6-8 together (§8's ~25-line safety-valve blank
+template restored in full, each labeled sub-block wrapped `wrap={false}` after an early real-render
+check showed one long page auto-splitting mid-list); §9 + sign-off alone. Every continuation page
+repeats a `fixed` "FORM III Contd." heading, matching the real sample's own repeated heading on every
+one of its continuation pages.
+
+**Live-verified against the real dev DB** (SB-1040, document 50): the real generated PDF's page
+count moved from 22 to 24 (Form III's 3-ish auto-paginated pages became 5 explicit ones); every one
+of the 5 Form III pages checked via `pdftotext -layout` for correct content and no loss/duplication
+(§1 alone; §§2-3 together with the footer present; §§4-5 with the real per-document seam data or
+honest `—`; §§6-8 with the full restored safety-valve template; §9 + a real two-block sign-off with
+`Dated ... the day of ...`); the FormIVA preamble/sign-off fix confirmed on the same document's real
+12 lettered sections — the certifying preamble appears once, on the section immediately after Form
+III A, and the sign-off + Place/Date lines appear once, only on the final IVA section page.
+`npm run lint` clean (830 files).
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own
