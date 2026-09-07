@@ -13,7 +13,7 @@ import {
   ArrowRight, CheckCircle2, AlertTriangle, XCircle, GitBranch, Save, RotateCcw,
   BookOpen, ShieldCheck, ExternalLink, Calculator, RefreshCw, ChevronDown, ChevronRight,
   Table as TableIcon, FileText as FileTextIcon, FileSpreadsheet, Upload, MessageSquare, LayoutTemplate,
-  LayoutDashboard, ChartSpline,
+  LayoutDashboard, ChartSpline, Check, X, Send, User,
 } from 'lucide-react';
 import { computeAll, runValidations, runFormulaTests, extractDeps, round, LIBRARY, goalSeek, sensitivityAnalysis, changeImpact } from '@/lib/calc-engine';
 import { api, showToast, formatDate } from '@/lib/client';
@@ -1974,7 +1974,6 @@ function TableCard({ table, onDeleteTable, router }) {
 
 // ---- Drawings (CALC-CHANGES2.md §B/§C) ---------------------------------------------------------
 
-const DRAWING_STATUSES = ['not_started', 'in_progress', 'under_review', 'approved', 'as_built'];
 const DRAWING_STATUS_STYLE = {
   not_started: { label: 'Not started', cls: 'text-muted-foreground bg-muted ring-1 ring-inset ring-border' },
   in_progress: { label: 'In progress', cls: 'text-warning bg-warning/10 ring-1 ring-inset ring-warning/20' },
@@ -2152,7 +2151,96 @@ function DrawingFileUpload({ drawingId, router }) {
 //   );
 // }
 
-function DrawingCard({ drawing, router, canApprove, designTeam }) {
+// A handful of real, recurring boiler-drawing categories, plus a free-text escape hatch — same
+// "pick from a list, or add your own" idiom as PaymentTermsField.jsx. Not an enum anywhere in the
+// schema (drawing_type stays plain TEXT), so this list is just a head start, never a constraint.
+const DRAWING_TYPE_PRESETS = [
+  'General Arrangement (GA)', 'Foundation Drawing', 'SDC', 'End Box (Front & Rear)',
+  'Saddle', 'Fire Bars', 'Chimney', 'Ducting', 'IBR Drawing', 'Electrical Control Panel / Circuit Diagram',
+];
+
+// `onCommit` (optional) fires once the value is decided — immediately on picking from the list,
+// or on blur while typing a custom one — separately from `onChange`, which just tracks the field's
+// live value. AddDrawingDialog only needs `onChange` (it saves once, on submit); DrawingCard's
+// inline edit passes `onCommit` too, so a preset pick saves right away like every other Select in
+// this card, and free text saves on blur like Name/Notes/Description already do.
+function DrawingTypeField({ value, onChange, onCommit, disabled }) {
+  const [custom, setCustom] = useState(!!value && !DRAWING_TYPE_PRESETS.includes(value));
+  return (
+    <div className="flex flex-col gap-1">
+      <Label className="text-xs">Type</Label>
+      {custom ? (
+        <Input disabled={disabled} placeholder="Custom type" value={value || ''}
+          onChange={(e) => onChange(e.target.value)} onBlur={() => onCommit?.(value)} />
+      ) : (
+        <Select disabled={disabled} value={value || undefined} onValueChange={(v) => { onChange(v); onCommit?.(v); }}>
+          <SelectTrigger><SelectValue placeholder="Select a type…" /></SelectTrigger>
+          <SelectContent>{DRAWING_TYPE_PRESETS.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+        </Select>
+      )}
+      {!disabled && (
+        <button type="button" className="w-fit text-xs text-primary hover:underline" onClick={() => { setCustom((c) => !c); onChange(''); onCommit?.(''); }}>
+          {custom ? 'Pick from list' : '+ Add new type'}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// Head's own status control — "just a button to approve or un-approve," contextual on where the
+// drawing actually is. Mark as built / Revert to approved stay reachable (the "released" design
+// stage, lib/data.js, still keys off status='as_built') but deliberately small/muted — a rare
+// admin action, not the everyday one.
+function HeadApprovalControl({ drawing, save, busy }) {
+  if (drawing.status === 'under_review') {
+    return (
+      <div className="flex items-center gap-2">
+        <Button size="sm" variant="outline" disabled={busy} onClick={() => save({ status: 'approved' })}
+          className="border-success/30 bg-success/10 text-success hover:bg-success/20">
+          <Check className="size-3.5" data-icon="inline-start" />Approve
+        </Button>
+        <Button size="sm" variant="outline" disabled={busy} onClick={() => save({ status: 'in_progress' })}
+          className="border-warning/30 bg-warning/10 text-warning hover:bg-warning/20">
+          <X className="size-3.5" data-icon="inline-start" />Send back
+        </Button>
+      </div>
+    );
+  }
+  // approved and as_built read identically here — the header badge already says who approved it
+  // and when; the only action left from either state is to reopen it.
+  if (drawing.status === 'approved' || drawing.status === 'as_built') {
+    return (
+      <Button size="sm" variant="outline" disabled={busy} onClick={() => save({ status: 'in_progress' })}
+        className="border-warning/30 bg-warning/10 text-warning hover:bg-warning/20">
+        <X className="size-3.5" data-icon="inline-start" />Un-approve
+      </Button>
+    );
+  }
+  return <p className="text-xs text-muted-foreground">Not submitted for review yet.</p>;
+}
+
+// The assigned Designer's own toggle — Submit (needs at least one file, server-enforced too) while
+// the drawing is theirs to work on; Withdraw once submitted, to pull it back for more changes
+// before the Head ever looks at it. Nothing to do once the Head has already decided (approved/
+// as built) — the header's own status badge already says so.
+function MemberSubmitControl({ drawing, save, busy }) {
+  if (drawing.status === 'approved' || drawing.status === 'as_built') return null;
+  if (drawing.status === 'under_review') {
+    return (
+      <Button size="sm" variant="outline" disabled={busy} onClick={() => save({ status: 'in_progress' })}>
+        <RotateCcw className="size-3.5" data-icon="inline-start" />Withdraw submission
+      </Button>
+    );
+  }
+  const hasFiles = drawing.files.length > 0;
+  return (
+    <Button size="sm" disabled={busy || !hasFiles} onClick={() => save({ status: 'under_review' })}>
+      <Send className="size-3.5" data-icon="inline-start" />Submit for review
+    </Button>
+  );
+}
+
+function DrawingCard({ drawing, router, canApprove, designTeam, user }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [fileBusy, setFileBusy] = useState(null);
@@ -2169,7 +2257,33 @@ function DrawingCard({ drawing, router, canApprove, designTeam }) {
       .then((d) => setRefs(d.refs || {}))
       .catch(() => setRefs({}));
   }, [comments]);
-  const [form, setForm] = useState({ status: drawing.status, assignedTo: drawing.assignedTo || '', dueDate: drawing.dueDate || '', notes: drawing.notes || '' });
+  const [form, setForm] = useState({
+    name: drawing.name || '', drawingType: drawing.drawingType || '', description: drawing.description || '',
+    assignedTo: drawing.assignedTo || '', dueDate: drawing.dueDate || '', notes: drawing.notes || '',
+  });
+  // "Only the designer this drawing is assigned to" — same name-based match the PATCH route
+  // enforces server-side (assigned_to is a plain name string, not a username/user id).
+  const isAssignedToMe = !canApprove && designTeam.some((m) => m.name === drawing.assignedTo && m.user_id === user?.id);
+  const canManageFiles = canApprove || isAssignedToMe;
+  // Head's metadata edits are staged (typed into `form`, not saved) until Save is clicked — that's
+  // the one moment the assigned Designer gets pinged about them. A member's own fields (Title/
+  // Type/Description/Notes) still save as they type/blur, same as before — there's no one for them
+  // to notify, they *are* the assignee.
+  const original = {
+    name: drawing.name || '', drawingType: drawing.drawingType || '', assignedTo: drawing.assignedTo || '',
+    dueDate: drawing.dueDate || '', description: drawing.description || '', notes: drawing.notes || '',
+  };
+  const dirty = canApprove && Object.keys(original).some((k) => form[k] !== original[k]);
+  const saveAll = () => {
+    const patch = { notify: true };
+    if (form.name.trim() && form.name.trim() !== original.name) patch.name = form.name.trim();
+    if (form.drawingType !== original.drawingType) patch.drawingType = form.drawingType;
+    if (form.assignedTo && form.assignedTo !== original.assignedTo) patch.assignedTo = form.assignedTo;
+    if (form.dueDate !== original.dueDate) patch.dueDate = form.dueDate;
+    if (form.description !== original.description) patch.description = form.description;
+    if (form.notes !== original.notes) patch.notes = form.notes;
+    save(patch);
+  };
   const loadComments = async () => { if (comments) return; try { setComments(await api(`/api/calc-drawings/${drawing.id}/comments`)); } catch (err) { showToast(err.message, 'error'); } };
   const postComment = async () => {
     if (!commentDraft.trim()) return;
@@ -2196,16 +2310,35 @@ function DrawingCard({ drawing, router, canApprove, designTeam }) {
   };
   return <Card>
     <button className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left" onClick={() => setOpen((v) => !v)}>
-      <div className="min-w-0"><div className="text-sm font-medium">{drawing.dgNo && <span className="text-muted-foreground">{drawing.dgNo} · </span>}{drawing.name}</div>{drawing.drawingType && <div className="text-xs text-muted-foreground">{drawing.drawingType}</div>}</div>
-      <div className="flex shrink-0 items-center gap-2">{drawing.customerApprovedAt && <Badge variant="outline" className="border-success text-success">Customer approved {formatDate(drawing.customerApprovedAt)}</Badge>}<Badge className={DRAWING_STATUS_STYLE[drawing.status].cls} variant="outline">{DRAWING_STATUS_STYLE[drawing.status].label}</Badge><ChevronDown className={`size-3.5 transition-transform ${open ? 'rotate-180' : ''}`} /></div>
+      <div className="min-w-0"><div className="truncate text-sm font-medium">{drawing.dgNo && <span className="text-muted-foreground">{drawing.dgNo} · </span>}{drawing.name}</div>{drawing.drawingType && <div className="truncate text-xs text-muted-foreground">{drawing.drawingType}</div>}</div>
+      <div className="flex shrink-0 items-center gap-2">
+        {drawing.assignedTo && (
+          <span className="hidden items-center gap-1 text-xs text-muted-foreground sm:flex">
+            <User className="size-3" />{isAssignedToMe ? 'Assigned to you' : drawing.assignedTo}
+          </span>
+        )}
+        {/* Internal sign-off (status) and the customer's own sign-off (customer_approved_at) are two
+            different facts, each attributed to who actually did it — a different tone (info, not
+            success) keeps them from reading as the same "approved" at a glance. */}
+        {drawing.customerApprovedAt && (
+          <Badge variant="outline" className="gap-1 border-info text-info" title={formatDate(drawing.customerApprovedAt)}>
+            <CheckCircle2 className="size-3" />Approved by {drawing.customerApprovedBy}
+          </Badge>
+        )}
+        <Badge className={DRAWING_STATUS_STYLE[drawing.status].cls} variant="outline">
+          {['approved', 'as_built'].includes(drawing.status) && drawing.approvedBy
+            ? `Approved by ${drawing.approvedBy}`
+            : DRAWING_STATUS_STYLE[drawing.status].label}
+        </Badge>
+        <ChevronDown className={`size-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </div>
     </button>
     {open && <CardContent className="flex flex-col gap-3 border-t pt-3">
-      <div className="flex justify-end gap-2"><DrawingFileUpload drawingId={drawing.id} router={router} />{canApprove && <Button variant="ghost" size="sm" disabled={busy} onClick={remove} className="text-destructive hover:text-destructive"><Trash2 className="size-3.5" data-icon="inline-start" />Delete drawing</Button>}</div>
       <div className="flex flex-col gap-1.5"><div className="flex items-center justify-between"><Label className="text-xs">Files</Label><span className="text-xs text-muted-foreground">{drawing.files.length} file{drawing.files.length === 1 ? '' : 's'}</span></div>{drawing.files.length === 0 && <p className="text-sm text-muted-foreground">No files yet.</p>}{drawing.files.map((f) => (
   <div key={f.id} className="flex items-center justify-between gap-2 rounded border px-2.5 py-1.5 text-xs">
     <a href={`/api/calc-drawings/${drawing.id}/files/${f.id}`} className="min-w-0 flex-1 truncate text-primary hover:underline">{f.fileName}</a>
     {formatFileSize(f.fileSize) && <span className="shrink-0 text-muted-foreground">{formatFileSize(f.fileSize)}</span>}
-    {canApprove && (
+    {canManageFiles && (
       <button onClick={() => removeFile(f.id)} disabled={fileBusy === f.id} className="shrink-0 text-muted-foreground hover:text-destructive disabled:opacity-50">
         <Trash2 className="size-3.5" />
       </button>
@@ -2214,19 +2347,62 @@ function DrawingCard({ drawing, router, canApprove, designTeam }) {
 ))}</div>
       <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
         <div className="flex flex-col gap-1">
-          <Label className="text-xs">Status</Label>
-          <Select value={form.status} onValueChange={(status) => { setForm({ ...form, status }); save({ status }); }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{DRAWING_STATUSES.filter((s) => canApprove || !['approved', 'as_built'].includes(s)).map((s) => <SelectItem key={s} value={s}>{DRAWING_STATUS_STYLE[s].label}</SelectItem>)}</SelectContent></Select>
-          {!canApprove && ['not_started', 'in_progress'].includes(form.status) && (
-            <Button size="sm" variant="outline" className="mt-1 w-fit" disabled={busy}
-              onClick={() => { setForm({ ...form, status: 'under_review' }); save({ status: 'under_review' }); }}>
-              Submit for review
-            </Button>
+          <Label className="text-xs">Title</Label>
+          <Input disabled={!canManageFiles} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
+            onBlur={() => { if (!canApprove && canManageFiles && form.name.trim() && form.name.trim() !== drawing.name) save({ name: form.name.trim() }); }} />
+        </div>
+        <DrawingTypeField value={form.drawingType} onChange={(drawingType) => setForm({ ...form, drawingType })}
+          disabled={!canManageFiles}
+          onCommit={canApprove || !canManageFiles ? undefined : (drawingType) => save({ drawingType })} />
+      </div>
+      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+        <div className="flex flex-col gap-1">
+          <Label className="text-xs">Due date</Label>
+          {canApprove ? (
+            <Input type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} />
+          ) : (
+            <p className="flex h-8 items-center text-sm text-muted-foreground">{formatDate(drawing.dueDate)}</p>
           )}
         </div>
-        <div className="flex flex-col gap-1"><Label className="text-xs">Assigned to</Label><Select disabled={!canApprove} value={form.assignedTo || undefined} onValueChange={(assignedTo) => { setForm({ ...form, assignedTo }); save({ assignedTo }); }}><SelectTrigger><SelectValue placeholder="Select a Design teammate" /></SelectTrigger><SelectContent>{designTeam.map((m) => <SelectItem key={m.id} value={m.name}>{m.name}</SelectItem>)}</SelectContent></Select></div>
-        <div className="flex flex-col gap-1"><Label className="text-xs">Due date</Label><Input type="date" disabled={!canApprove} value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} onBlur={() => save({ dueDate: form.dueDate })} /></div>
+        <div className="flex flex-col gap-1">
+          <Label className="text-xs">Assigned to</Label>
+          {canApprove ? (
+            <Select value={form.assignedTo || undefined} onValueChange={(assignedTo) => setForm({ ...form, assignedTo })}>
+              <SelectTrigger><SelectValue placeholder="Select a Design teammate" /></SelectTrigger>
+              <SelectContent>{designTeam.map((m) => <SelectItem key={m.id} value={m.name}>{m.name}</SelectItem>)}</SelectContent>
+            </Select>
+          ) : (
+            <p className="flex h-8 items-center text-sm text-muted-foreground">{isAssignedToMe ? 'You' : (drawing.assignedTo || 'Unassigned')}</p>
+          )}
+        </div>
       </div>
-      <div className="flex flex-col gap-1"><Label className="text-xs">Notes</Label><Textarea rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} onBlur={() => save({ notes: form.notes })} /></div>
+      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+        <div className="flex flex-col gap-1">
+          <Label className="text-xs">Description</Label>
+          <Textarea rows={2} disabled={!canManageFiles} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })}
+            onBlur={() => { if (!canApprove && canManageFiles) save({ description: form.description }); }} />
+        </div>
+        <div className="flex flex-col gap-1">
+          <Label className="text-xs">Notes</Label>
+          <Textarea rows={2} disabled={!canManageFiles} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })}
+            onBlur={() => { if (!canApprove && canManageFiles) save({ notes: form.notes }); }} />
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        {canManageFiles && <DrawingFileUpload drawingId={drawing.id} router={router} />}
+        {canApprove ? <HeadApprovalControl drawing={drawing} save={save} busy={busy} /> : isAssignedToMe && <MemberSubmitControl drawing={drawing} save={save} busy={busy} />}
+        {canApprove && (
+          <Button variant="ghost" size="sm" disabled={busy} onClick={remove} className="text-destructive hover:text-destructive">
+            <Trash2 className="size-3.5" data-icon="inline-start" />Delete drawing
+          </Button>
+        )}
+        {canApprove && (
+          <Button size="sm" disabled={busy || !dirty} onClick={saveAll}>
+            <Save className="size-3.5" data-icon="inline-start" />Save
+          </Button>
+        )}
+        {canApprove && dirty && <span className="text-xs text-muted-foreground">Notifies {form.assignedTo || 'the assignee'} once saved.</span>}
+      </div>
       {canApprove && (
         <div className="flex items-center gap-1.5">
           <button type="button" role="switch" aria-checked={!!drawing.customerVisible}
@@ -2236,49 +2412,55 @@ function DrawingCard({ drawing, router, canApprove, designTeam }) {
             <span className={`inline-block size-4 translate-x-0.5 rounded-full bg-white shadow transition-transform ${drawing.customerVisible ? 'translate-x-4' : ''}`} />
           </button>
           <span className="text-xs text-muted-foreground">
-            Share with customer{drawing.customerVisible ? ' — visible once status reaches Under review' : ' (not shown in the portal)'}
+            Share with customer{!drawing.customerVisible && ' (not shown in the portal)'}
           </span>
         </div>
       )}
-      <div className="flex flex-col gap-1.5 border-t pt-2.5">
-        <Label className="text-xs">Comments{drawing.status === 'not_started' || drawing.status === 'in_progress' ? ' (internal only — not visible to the customer yet)' : ''}</Label>
-        {drawing.customerVisible && !canApprove ? (
-          <p className="text-xs text-muted-foreground">Only the Design Head can view this customer-visible thread.</p>
-        ) : comments === null ? (
-          <button type="button" className="w-fit text-xs text-primary hover:underline" onClick={loadComments}>Show comments</button>
-        ) : (
-          <>
-            {comments.length === 0 && <p className="text-xs text-muted-foreground">No comments yet.</p>}
-            {comments.map((c) => (
-              <div key={c.id} className="text-xs">
-                <span className="font-medium">{c.author_name}</span>{c.author_type === 'customer' && <Badge variant="outline" className="ml-1.5 text-[10px]">Customer</Badge>}{' '}
-                <span className="text-muted-foreground">{formatDate(c.created_at)}</span>
-                <LinkifiedText text={c.body} refs={refs} className="mt-0.5 block" />
+      {canApprove && (
+        <div className={drawing.customerApprovedAt
+          ? 'flex flex-col gap-1.5 rounded-md border border-success/25 bg-success/5 p-2.5'
+          : 'flex flex-col gap-1.5 border-t pt-2.5'}>
+          <div className="flex items-center justify-between gap-2">
+            <Label className="text-xs">Comments{drawing.status === 'not_started' || drawing.status === 'in_progress' ? ' (internal only — not visible to the customer yet)' : ''}</Label>
+            {drawing.customerApprovedAt && <span className="text-xs font-medium text-success">Approved by {drawing.customerApprovedBy}</span>}
+          </div>
+          {comments === null ? (
+            <button type="button" className="w-fit text-xs text-primary hover:underline" onClick={loadComments}>Show comments</button>
+          ) : (
+            <>
+              {comments.length === 0 && <p className="text-xs text-muted-foreground">No comments yet.</p>}
+              {comments.map((c) => (
+                <div key={c.id} className="text-xs">
+                  <span className="font-medium">{c.author_name}</span>{c.author_type === 'customer' && <Badge variant="outline" className="ml-1.5 text-[10px]">Customer</Badge>}{' '}
+                  <span className="text-muted-foreground">{formatDate(c.created_at)}</span>
+                  <LinkifiedText text={c.body} refs={refs} className="mt-0.5 block" />
+                </div>
+              ))}
+              <div className="flex gap-2 pt-1">
+                <Textarea rows={2} value={commentDraft} onChange={(e) => setCommentDraft(e.target.value)} placeholder="Reply…" />
               </div>
-            ))}
-            <div className="flex gap-2 pt-1">
-              <Textarea rows={2} value={commentDraft} onChange={(e) => setCommentDraft(e.target.value)} placeholder="Reply…" />
-            </div>
-            <Button size="sm" variant="outline" className="w-fit" disabled={busy || !commentDraft.trim()} onClick={postComment}>Comment</Button>
-          </>
-        )}
-      </div>
+              <Button size="sm" variant="outline" className="w-fit" disabled={busy || !commentDraft.trim()} onClick={postComment}>Comment</Button>
+            </>
+          )}
+        </div>
+      )}
     </CardContent>}
   </Card>;
 }
 
-function AddDrawingDialog({ projectId, router }) {
+function AddDrawingDialog({ projectId, router, designTeam, canApprove }) {
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ name: '', drawingType: '', description: '' });
+  const [form, setForm] = useState({ name: '', drawingType: '', description: '', assignedTo: '' });
   const [busy, setBusy] = useState(false);
+  const needsAssignee = canApprove; // anyone else creating one is obviously creating it for themselves
 
   async function submit() {
-    if (!form.name.trim()) return;
+    if (!form.name.trim() || (needsAssignee && !form.assignedTo)) return;
     setBusy(true);
     try {
       await api('/api/calc-drawings', { method: 'POST', body: { projectId, ...form } });
       showToast('Drawing added');
-      setForm({ name: '', drawingType: '', description: '' });
+      setForm({ name: '', drawingType: '', description: '', assignedTo: '' });
       setOpen(false);
       router.refresh();
     } catch (err) {
@@ -2295,11 +2477,20 @@ function AddDrawingDialog({ projectId, router }) {
         <DialogHeader><DialogTitle>Add drawing</DialogTitle></DialogHeader>
         <div className="flex flex-col gap-2.5">
           <Input placeholder="Name, e.g. GA Drawing" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-          <Input placeholder="Type, e.g. General Arrangement" value={form.drawingType} onChange={(e) => setForm({ ...form, drawingType: e.target.value })} />
+          <DrawingTypeField value={form.drawingType} onChange={(drawingType) => setForm({ ...form, drawingType })} />
+          {needsAssignee && (
+            <div className="flex flex-col gap-1">
+              <Label className="text-xs">Assigned to</Label>
+              <Select value={form.assignedTo || undefined} onValueChange={(assignedTo) => setForm({ ...form, assignedTo })}>
+                <SelectTrigger><SelectValue placeholder="Select a Design teammate" /></SelectTrigger>
+                <SelectContent>{designTeam.map((m) => <SelectItem key={m.id} value={m.name}>{m.name}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+          )}
           <Textarea rows={2} placeholder="Description (optional)" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
         </div>
         <DialogFooter>
-          <Button disabled={busy || !form.name.trim()} onClick={submit}>{busy ? 'Adding…' : 'Add'}</Button>
+          <Button disabled={busy || !form.name.trim() || (needsAssignee && !form.assignedTo)} onClick={submit}>{busy ? 'Adding…' : 'Add'}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -2311,6 +2502,12 @@ function AddDrawingDialog({ projectId, router }) {
 // PANELS entry was removed once the standalone tab existed — one door, not two).
 export function DrawingsPanel({ drawings, projectId, router, user, designTeam }) {
   const canApprove = ['admin', 'manager', 'executive'].includes(user?.role) || user?.department_roles?.Design === 'head';
+  // Creating a drawing is a Design-team action — a viewer here purely via Engineering department
+  // access is genuinely not one of that team and shouldn't get a button that always 403s when
+  // clicked. Checking the user's own `departments` grant, not department_roles directly: an unset
+  // department_roles entry defaults to 'designer' (lib/auth.js's departmentRole()), so a plain
+  // Design-department member with no explicit role assignment — the common case — must still count.
+  const canCreate = canApprove || (user?.departments || []).includes('Design');
   return (
     <div className="flex flex-col gap-3">
       <Card>
@@ -2318,12 +2515,13 @@ export function DrawingsPanel({ drawings, projectId, router, user, designTeam })
           <DrawingProgressBar drawings={drawings} />
         </CardContent>
       </Card>
-      <div className="flex items-center justify-between">
-        <p className="text-xs text-muted-foreground">Design deliverable checklist for this project — not a CAD studio.</p>
-        <AddDrawingDialog projectId={projectId} router={router} />
-      </div>
+      {canCreate && (
+        <div className="flex items-center justify-end">
+          <AddDrawingDialog projectId={projectId} router={router} designTeam={designTeam} canApprove={canApprove} />
+        </div>
+      )}
       <div className="flex flex-col gap-2">
-        {drawings.map((d) => <DrawingCard key={d.id} drawing={d} router={router} canApprove={canApprove} designTeam={designTeam} />)}
+        {drawings.map((d) => <DrawingCard key={d.id} drawing={d} router={router} canApprove={canApprove} designTeam={designTeam} user={user} />)}
         {drawings.length === 0 && <p className="text-sm text-muted-foreground">No drawings yet.</p>}
       </div>
     </div>

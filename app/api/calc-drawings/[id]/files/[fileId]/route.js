@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getFreshSessionUser, hasActiveDesignResponsibility, isCustomer, canAccessProject } from '@/lib/auth';
-import { requireCalcAccess } from '@/lib/calc';
+import { requireCalcAccess, isAssignedDesigner } from '@/lib/calc';
 import { queryOne, execute } from '@/lib/db';
 import { getObjectBuffer, deleteObject } from '@/lib/r2';
 import { audit } from '@/lib/usb';
@@ -35,11 +35,18 @@ export async function GET(req, { params }) {
   }
 }
 
+// The assigned Designer owns their own drawing's files, same as they own the submit/withdraw
+// action — not restricted to the Head alone anymore.
 export async function DELETE(req, { params }) {
   const user = await getFreshSessionUser();
   const denied = requireCalcAccess(user);
   if (denied) return denied;
-  if (!(await hasActiveDesignResponsibility(user, 'head'))) return NextResponse.json({ error: 'Only the Design Head can delete files' }, { status: 403 });
+  if (!(await hasActiveDesignResponsibility(user, 'head'))) {
+    const drawing = await queryOne('SELECT assigned_to FROM calc_drawings WHERE id = ?', [params.id]);
+    if (!drawing || !(await isAssignedDesigner(user, drawing.assigned_to))) {
+      return NextResponse.json({ error: 'Only the Design Head or the assigned designer can remove files' }, { status: 403 });
+    }
+  }
 
   const file = await queryOne('SELECT file_key FROM calc_drawing_files WHERE id = ? AND drawing_id = ?', [params.fileId, params.id]);
   if (!file) return NextResponse.json({ error: 'Not found' }, { status: 404 });

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getFreshSessionUser, hasActiveDesignResponsibility } from '@/lib/auth';
-import { requireCalcAccess, addDrawingFile } from '@/lib/calc';
+import { requireCalcAccess, addDrawingFile, isAssignedDesigner } from '@/lib/calc';
+import { queryOne } from '@/lib/db';
 import { putObject } from '@/lib/r2';
 import { audit } from '@/lib/usb';
 
@@ -11,7 +12,14 @@ export async function POST(req, { params }) {
   const user = await getFreshSessionUser();
   const denied = requireCalcAccess(user);
   if (denied) return denied;
-  if (!(await hasActiveDesignResponsibility(user, 'head')) && !(await hasActiveDesignResponsibility(user, 'designer'))) return NextResponse.json({ error: 'Design access required' }, { status: 403 });
+  const head = await hasActiveDesignResponsibility(user, 'head');
+  if (!head) {
+    if (!(await hasActiveDesignResponsibility(user, 'designer'))) return NextResponse.json({ error: 'Design access required' }, { status: 403 });
+    const drawing = await queryOne('SELECT assigned_to FROM calc_drawings WHERE id = ?', [params.id]);
+    if (!drawing || !(await isAssignedDesigner(user, drawing.assigned_to))) {
+      return NextResponse.json({ error: 'Only the designer this drawing is assigned to can upload files' }, { status: 403 });
+    }
+  }
 
   const form = await req.formData();
   const file = form.get('file');
