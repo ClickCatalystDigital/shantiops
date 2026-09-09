@@ -9,6 +9,7 @@
 // can be promised the same units; Issue is the actual hand-out moment (on_hand decrements, the
 // request's bom_item goes terminal In-Stock). Release undoes an unissued Reserve.
 import { useState, useEffect, useMemo, Fragment } from 'react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEntityHighlight } from '@/lib/use-entity-highlight';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
@@ -22,7 +23,7 @@ import {
 } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { PlusIcon, PencilIcon, PackageCheckIcon, UndoIcon, TruckIcon, PackageIcon, ClipboardListIcon, LayersIcon, AlertTriangleIcon, LogInIcon, FileOutputIcon, CheckIcon, XIcon, ListChecksIcon, SearchIcon, ChevronRightIcon, ListTodoIcon, BoxesIcon, HashIcon } from 'lucide-react';
+import { PlusIcon, PencilIcon, PackageCheckIcon, UndoIcon, TruckIcon, PackageIcon, ClipboardListIcon, LayersIcon, AlertTriangleIcon, LogInIcon, FileOutputIcon, CheckIcon, XIcon, ListChecksIcon, SearchIcon, ChevronRightIcon, ListTodoIcon, BoxesIcon, HashIcon, SplitIcon } from 'lucide-react';
 import { api, showToast } from '@/lib/client';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 import CertPicker from '@/components/CertPicker';
@@ -1588,6 +1589,57 @@ function ReorderSuggestionsCard({ reorderSuggestions, router }) {
   );
 }
 
+// Multi-unit split orders needing a Stores decision — a discovery/queue screen only, same shape as
+// ReorderSuggestionsCard above. The actual allocate/route actions stay on the project's own page
+// (AllocationPanel/ChildRoutingPanel) — this just answers "which orders currently need me," which
+// nothing in /stores could answer before (SYSTEM.md §5bi built the actions but never a cross-order
+// queue for them).
+function AllocationRoutingCard({ splitOrders }) {
+  return (
+    <Card>
+      <CardHeader><CardTitle>Allocation & Routing</CardTitle></CardHeader>
+      <CardContent>
+        {splitOrders.length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">No split orders need attention right now.</p>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Order</TableHead>
+                <TableHead>Customer</TableHead>
+                <TableHead>Units</TableHead>
+                <TableHead>Needs allocation</TableHead>
+                <TableHead>Needs routing</TableHead>
+                <TableHead></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {splitOrders.map(o => (
+                <TableRow key={o.id}>
+                  <TableCell className="font-medium">{o.project_no}</TableCell>
+                  <TableCell className="text-muted-foreground">{o.customer_name}</TableCell>
+                  <TableCell>{o.unit_count}</TableCell>
+                  <TableCell>
+                    {o.unallocated_lines > 0 ? <Badge variant="destructive">{o.unallocated_lines} line{o.unallocated_lines === 1 ? '' : 's'}</Badge> : <span className="text-muted-foreground">—</span>}
+                  </TableCell>
+                  <TableCell>
+                    {o.unrouted_ready_cells > 0 ? <Badge variant="destructive">{o.unrouted_ready_cells} unit{o.unrouted_ready_cells === 1 ? '' : 's'}</Badge> : <span className="text-muted-foreground">—</span>}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button size="sm" variant="outline" asChild>
+                      <Link href={`/projects/${o.id}#stores-allocation`}>Open</Link>
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // STERP item 14, Formal GIR — Gate Inward Receipt. Standalone gate/security log, not part of the
 // reserve/available inventory model above; Stores owns it because no separate gate department
 // exists. grn_ref links back to the ordinary GRN paperwork once Procurement/Stores actually
@@ -2005,16 +2057,25 @@ function BacklogTab() {
 // sidebar-workspace pattern as Production's Job Card panel (WorkersPanel.jsx): one section per
 // tab, Inventory as the default landing tab since the mode toggle + today-summary glance belong
 // somewhere and Inventory is what Stores opens to most.
+// Ordered to match the real workflow (receive → stock it → fulfill demand → send it back out →
+// reference), not "whenever it was added." Grouped with dividers, same WorkspaceSidebar primitive
+// every other workspace already uses — no new component.
 const NAV_ITEMS = (counts) => [
-  { key: 'inventory', label: 'Inventory', icon: PackageIcon, badge: counts.lowStock || null },
-  { key: 'requests', label: 'Open Requests', icon: ClipboardListIcon, badge: counts.requests || null },
-  { key: 'indents', label: 'Material Indents', icon: BoxesIcon },
-  { key: 'reservations', label: 'Active Reservations', icon: PackageCheckIcon, badge: counts.reservations || null },
-  { key: 'issued', label: 'Material Issued to WIP', icon: TruckIcon },
-  { key: 'reorder', label: 'Reorder Suggestions', icon: AlertTriangleIcon, badge: counts.reorder || null },
+  { key: 'divider-receiving', divider: true },
   { key: 'gir', label: 'Gate Inward (GIR)', icon: LogInIcon },
-  { key: 'gatepasses', label: 'Gate Passes', icon: FileOutputIcon, badge: counts.overdueGatePasses || null },
   { key: 'bom', label: 'BOM', icon: ListChecksIcon },
+  { key: 'divider-stock', divider: true },
+  { key: 'inventory', label: 'Inventory', icon: PackageIcon, badge: counts.lowStock || null },
+  { key: 'reorder', label: 'Reorder Suggestions', icon: AlertTriangleIcon, badge: counts.reorder || null },
+  { key: 'divider-fulfillment', divider: true },
+  { key: 'requests', label: 'Open Requests', icon: ClipboardListIcon, badge: counts.requests || null },
+  { key: 'reservations', label: 'Active Reservations', icon: PackageCheckIcon, badge: counts.reservations || null },
+  { key: 'indents', label: 'Material Indents', icon: BoxesIcon },
+  { key: 'issued', label: 'Material Issued to WIP', icon: TruckIcon },
+  { key: 'allocation', label: 'Allocation & Routing', icon: SplitIcon, badge: counts.splitOrders || null },
+  { key: 'divider-outbound', divider: true },
+  { key: 'gatepasses', label: 'Gate Passes', icon: FileOutputIcon, badge: counts.overdueGatePasses || null },
+  { key: 'divider-reference', divider: true },
   { key: 'backlog', label: 'Backlog', icon: ListTodoIcon },
 ];
 
@@ -2273,6 +2334,7 @@ function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavi
 export default function StoresWorkspace({
   inventoryItems, openRequests = [], activeReservations = [], projects = [],
   reorderSuggestions = [], gateInwardReceipts = [], gatePasses = [], certificates = [], bomItems = [],
+  splitOrders = [],
   initialTab,
 }) {
   const router = useRouter();
@@ -2282,6 +2344,7 @@ export default function StoresWorkspace({
     reservations: activeReservations.length,
     reorder: reorderSuggestions.length,
     overdueGatePasses: gatePasses.filter(g => g.is_overdue).length,
+    splitOrders: splitOrders.length,
   });
   // Deep-link tab selection (Part B) — same server-prop pattern QcWorkspace.jsx already proved
   // out; `?tab=gir`/`?tab=gatepasses` were dead query strings before this (nothing read them).
@@ -2300,6 +2363,7 @@ export default function StoresWorkspace({
         <ActiveReservationsCard activeReservations={activeReservations} router={router} />
       )}
       {tab === 'issued' && <MaterialIssuesCard projects={projects} />}
+      {tab === 'allocation' && <AllocationRoutingCard splitOrders={splitOrders} />}
       {tab === 'reorder' && <ReorderSuggestionsCard reorderSuggestions={reorderSuggestions} router={router} />}
       {tab === 'gir' && <GateInwardReceiptsCard gateInwardReceipts={gateInwardReceipts} router={router} />}
       {tab === 'gatepasses' && <GatePassesCard gatePasses={gatePasses} router={router} />}

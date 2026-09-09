@@ -105,7 +105,7 @@ function AllocateRow({ line, children, onDone }) {
   );
 }
 
-export default function AllocationPanel({ projectId }) {
+export default function AllocationPanel({ projectId, id }) {
   const [data, setData] = useState(null);
 
   function reload() {
@@ -117,7 +117,7 @@ export default function AllocationPanel({ projectId }) {
   const children = data?.children ?? [];
 
   return (
-    <Card>
+    <Card id={id}>
       <CardHeader>
         <CardTitle>Material allocation to unit projects</CardTitle>
         <p className="text-sm text-muted-foreground">

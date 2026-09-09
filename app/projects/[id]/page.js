@@ -125,7 +125,12 @@ export default async function ProjectDetail({ params }) {
       {project.master_project_id && (
         <ChildUnitBomCard projectId={project.id} unitNo={project.unit_no} />
       )}
-      {hasChildren && <AllocationPanel projectId={project.id} />}
+      {/* id="stores-allocation" on AllocationPanel's own Card — an anchor for Stores' own
+          Allocation & Routing queue (/stores) to jump straight here instead of landing at the page
+          top. A wrapping display:contents div was tried first and doesn't work: it has no box, so
+          getBoundingClientRect() returns a zero rect and the browser's native scroll-to-hash can't
+          find it — the id has to live on a real element. */}
+      {hasChildren && <AllocationPanel projectId={project.id} id="stores-allocation" />}
       {hasChildren && canAccessDepartment(user, 'Stores') && <ChildRoutingPanel projectId={project.id} />}
       {hasChildren && canAccessDepartment(user, 'Production') && <ProductionBatchJobCardPanel projectId={project.id} />}
       {hasChildren && canAccessDepartment(user, 'QC') && <QcBatchDocumentPanel projectId={project.id} />}
