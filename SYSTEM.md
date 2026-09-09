@@ -8920,6 +8920,108 @@ a bonus, Download button/footer unchanged.
 
 Not committed as of this write-up.
 
+## 5bu. BOM Size/Spec auto-suggestion staleness fix + redundant status dropdown removed (2026-09-09)
+
+A real bug report — a plate PR line's thickness typed as 10mm displayed as "1 mm" in Procurement's
+Enquiry tab — traced to `PrWorkspace.jsx`'s Size/Spec auto-suggestion: `size_spec: line.size_spec ||
+categoryDisplaySpec(...)` froze the moment the suggestion first became non-empty (the digit typed
+last across Length/Width/Thickness), never picking up the rest of that field's own digits. Fixed by
+recomputing whenever the field still equals its own last auto-suggestion, not just when blank — same
+fix applied in `BomTemplateManager.jsx`'s identical pattern. The same staleness could reach a real
+`bom_items` row two more ways, both fixed at the shared root rather than per-caller: applying a
+template (`templateItemToLine` in `PrWorkspace.jsx`, and both server-side apply routes —
+`app/api/bom-templates/[id]/apply/route.js`, `app/api/bom-assemblies/[id]/apply-template/route.js`'s
+shared `insertTemplateTree`) now regenerate `size_spec` fresh from the template's own stored
+dimensions instead of trusting its possibly-pre-fix-stale stored string; and picking a catalog item
+with a dimensional `bom_category` into the composer (`BomLineFields.jsx`'s `ItemSearchField.pick()`)
+no longer seeds `size_spec` from the item's free-text `detail_desc` for a dimensional category —
+same freeze risk, now with no visible box left to fix it once the category hides the free-text
+field (below). All three affected callers of `pick()` (`PrWorkspace`, `BomTemplateManager`,
+`BomTable`'s `AddItemForm`) traced individually before touching it — `BomTable`'s own `onLineChange`
+was the one real gap, a manual per-key patch switch that silently drops any key it doesn't
+explicitly handle.
+
+**Raise PR's free-text Size/Spec input now hides itself once a dimensional category is picked** —
+Length/Width/Thickness already derive it, matching `BomTable.jsx`'s own Add Item composer's
+established `isDimensional ? CategoryFieldsBlock : free-text` rule — and stays for non-dimensional/
+uncategorized lines, where it's the only way to enter spec text (a gasket's "80 NB", a relay's
+"1 1/4 x 8 x 1 x 5"). Switching *into* a dimensional category clears any already-typed free text so
+it can't ride along invisibly once the box disappears.
+
+**`BomTable.jsx`'s inline, editable `purchase_status` dropdown removed** — redundant with
+Procurement's own dedicated Status tab (`ProcurementWorkspace.jsx`, bulk-status + filter + the same
+`BOM_STATUSES` list), which was always the real, purpose-built screen for this. The shared Master
+BOM table (rendered everywhere — Engineering's BOM tree, Release BOM, every department panel) now
+shows status as a plain read-only badge, matching what a non-Procurement viewer already saw; dead
+`setStatus`/`canInlineStatus` removed.
+
+Live-verified end to end (real test data, cleaned up after): raised a real PR as `design_head`
+(Length 2000/Width 1000/Thickness 10 typed digit-by-digit, matching the exact reported repro),
+pushed it through Stores' Procure gate, confirmed Procurement's Enquiry tab reads "2000 x 1000 x
+**10 mm**" correctly. Confirmed the free-text box hides for Plate/Sheet and reappears for Standard/
+Fitting. Committed `b661cd5`.
+
+## 5bv. Item Master catalog-level defaults — MOC, shape-size dimensions, requires-manufacturing (2026-09-09)
+
+Direct follow-on from §5bu's own root cause: a catalog pick never seeded MOC, the shape-defining
+dimension(s), or the manufacturing-requirement flag, even though the equivalent traceability
+defaults (`default_requires_heat_no/mtc/supplier_batch/serial_no`, §5bo) already existed and already
+worked. Grounded in real Item Master data before designing anything — checked live that every
+dimensional catalog row already bakes its shape-defining size into a distinct SKU per size ("MS
+ANGLE 50 X 50 X 5 MM" vs "...65 X 65 X 6 MM", "BQ PLATE 8 MM" vs "...10MM"), never a length — so
+Length (and for plate, Width too — the one category where the client's own real data confirms
+*both* vary per cut/purchase) must never be a catalog-level default, only the fields intrinsic to
+the item's own identity.
+
+- **Schema** — 3 new nullable/defaulted `items` columns: `default_moc TEXT`, `default_category_
+  fields_json TEXT` (same JSON-blob-not-sparse-columns shape as `bom_items.category_fields_json`
+  itself), `default_requires_manufacturing INTEGER NOT NULL DEFAULT 1` (matches every composer's
+  own `emptyLine()` pre-checked default).
+- **`CategoryFieldsBlock.jsx` gained an opt-in `mode='defaults'`** (default `'full'`, so all 5
+  existing callers — BOM/PR/Templates/Stores — are byte-for-byte unchanged): drops Length always,
+  and for `plate` specifically also drops Width, leaving Thickness alone; drops the weight preview
+  (always incomplete without a length); drops the qty/item-ref block entirely for standard/other
+  (never a sensible per-item default); makes every remaining field optional (a freshly-imported
+  catalog row legitimately has no default yet). A real bug found and fixed in the same round, before
+  it shipped: the first cut only filtered out `'length'`, which is correct for every `GEOMETRY_
+  SHAPES` category but left plate showing Width *and* Thickness — fixed by excluding both keys for
+  plate specifically, re-checked against each `GEOMETRY_SHAPES` `dims` array directly (`lib/section-
+  shapes.js`) rather than from memory.
+- **`ItemMasterPanel.jsx`** — new "Default MOC" field (same `MOC_OPTIONS`/`OTHER_MOC` searchable-
+  with-custom-escape-hatch pattern as everywhere else), "Default dimensions" (`CategoryFieldsBlock
+  mode="defaults"`, shown only for a dimensional `bom_category`, reset on category change — same
+  "old dims don't describe a new shape" rule `BomTable.jsx`'s own composer already applies), and a
+  "Requires manufacturing by default" checkbox. Traceability checkboxes were already there (§5bo) —
+  confirmed by reading the actual rendered form before assuming a gap existed, not assumed missing.
+- **`BomLineFields.jsx`'s `ItemSearchField.pick()`** — the one true root wiring point (all 3 real
+  composers route through it, confirmed by exhaustive grep, not assumed): merges the catalog's
+  default dimensions on top of the plain density seed (always reseeded fresh on pick, same rule
+  category/traceability already follow); sets MOC **only when the catalog has a real answer**
+  (unlike category/traceability, a blank MOC default must never clobber whatever the line's own MOC
+  already was — a generic gasket/fitting item legitimately has none); always reseeds requires-
+  manufacturing fresh (NOT NULL DEFAULT 1 means an un-set catalog item still resolves to checked).
+- **`BomTable.jsx`'s `onLineChange`** — added handling for the new `moc`/`requires_manufacturing`
+  patch keys; without this its own Add Item composer would have silently dropped both (its patch
+  handler is a manual per-key switch, not a generic spread, unlike `PrWorkspace`/
+  `BomTemplateManager`).
+- **Considered and explicitly not added**: `hsn_code` copy-on-pick (an initial claim that this was
+  a live compliance gap was checked and found wrong — `bom_items.hsn_code` has zero consumers
+  anywhere; the real e-way-bill HSN check reads `sales_invoice_items.hsn_code` instead, a design
+  pivot §5ax already documents); default Density (more sensibly follows from MOC than from the item
+  itself) and default Make (the actual supplier used on an order, not an item-identity property).
+- **No backfill onto the 2,238 already-`bom_category`-tagged real catalog rows** — same "don't
+  fabricate, only match on confirmed data" principle this codebase already applies elsewhere
+  (`bom_category` itself was backfilled from a real ERP field, not guessed from item names); a real
+  item's defaults stay unset until someone fills them in through the edit form.
+
+Live-verified end to end through the real UI, both entry points (`/pr` directly and Engineering's
+own embedded "Purchase Requests" sidebar tab — same `PrWorkspace` component either way, confirmed
+identical per §5az): created a real test catalog item (Angle, MOC "SS 304", Size "ISA 50x50x5"/kg-
+per-m 3.77 via the real preset picker, "Requires manufacturing by default" unchecked), picked it
+into a real PR line, confirmed MOC/Size/kg-per-m all landed correctly, Length stayed blank and
+required, and Requires Manufacturing landed unchecked. Test catalog row deleted after. Not committed
+as of this write-up (bundled with §5bv's own fix, pending final commit).
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own

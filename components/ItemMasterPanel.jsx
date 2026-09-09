@@ -22,6 +22,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { PlusIcon, PencilIcon, ArrowUpIcon, ArrowDownIcon } from 'lucide-react';
 import { api, showToast } from '@/lib/client';
 import SearchableSelect from '@/components/SearchableSelect';
+import CategoryFieldsBlock, { OTHER_MOC, MOC_OPTIONS } from '@/components/CategoryFieldsBlock';
+import { DIMENSIONAL_CATEGORIES } from '@/lib/bom-fields.mjs';
 
 const COLUMNS = [
   { key: 'item_code', label: 'Item Code', sortable: true },
@@ -50,13 +52,21 @@ function ItemMasterForm({ id, facets, onClose, onSaved }) {
   const [loading, setLoading] = useState(isEdit);
   const [saving, setSaving] = useState(false);
   const [duplicates, setDuplicates] = useState(null); // null = not checked yet, [] = checked clean, [...] = needs confirm
+  // The catalog-level default dimensions — kept as a parsed object, same "separate state from the
+  // stored JSON string, merged back in only at save time" shape BomTable/BomTemplateManager already
+  // use for the identical bom_items.category_fields_json column.
+  const [defaultDimFields, setDefaultDimFields] = useState({});
+  const [mocCustomOpen, setMocCustomOpen] = useState(false);
 
   useEffect(() => {
     if (!isEdit) return;
     api(`/api/item-master/${id}`).then(data => {
-      const { usage: u, id: _id, created_at, ...rest } = data;
+      const { usage: u, id: _id, created_at, default_category_fields_json, ...rest } = data;
       setForm(rest);
       setUsage(u);
+      try { setDefaultDimFields(default_category_fields_json ? JSON.parse(default_category_fields_json) : {}); }
+      catch { setDefaultDimFields({}); }
+      setMocCustomOpen(!!rest.default_moc && !MOC_OPTIONS.some(o => o.value === rest.default_moc));
       setLoading(false);
     }).catch(err => { showToast(err.message, 'error'); onClose(); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -65,6 +75,10 @@ function ItemMasterForm({ id, facets, onClose, onSaved }) {
   function set(field, value) {
     setForm(f => ({ ...f, [field]: value }));
     if (field === 'item_name') setDuplicates(null); // name changed, any prior duplicate check is stale
+    // A BOM Category change makes the old default dimensions describe the wrong shape entirely
+    // (a plate's Thickness means nothing once switched to "round") — same reset BomTable's own
+    // category-change handler already applies to a BOM line's dimension fields.
+    if (field === 'bom_category') setDefaultDimFields({});
   }
 
   async function save(confirm = false) {
@@ -77,9 +91,16 @@ function ItemMasterForm({ id, facets, onClose, onSaved }) {
       }
     }
     setSaving(true);
+    // Default dimensions only mean anything for a dimensional category — never send a stale JSON
+    // blob left over from a category the item no longer has (the reset in set() above already
+    // clears it on change; this is the belt-and-braces guard at the actual save boundary).
+    const body = {
+      ...form,
+      default_category_fields_json: DIMENSIONAL_CATEGORIES.includes(form.bom_category) ? JSON.stringify(defaultDimFields) : null,
+    };
     try {
       if (isEdit) {
-        await api(`/api/item-master/${id}`, { method: 'PATCH', body: form });
+        await api(`/api/item-master/${id}`, { method: 'PATCH', body });
         showToast('Item updated');
         onSaved();
         onClose();
@@ -88,7 +109,7 @@ function ItemMasterForm({ id, facets, onClose, onSaved }) {
         // the caller needs to show, which api() discards (it only ever keeps `error`).
         const res = await fetch('/api/item-master', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...form, confirm }),
+          body: JSON.stringify({ ...body, confirm }),
         });
         const data = await res.json();
         if (res.status === 409 && data.duplicates) {
@@ -207,6 +228,35 @@ function ItemMasterForm({ id, facets, onClose, onSaved }) {
             <div className="grid gap-1.5"><Label>Tolerance − (mm)</Label><Input type="number" value={form.tolerance_minus ?? ''} onChange={e => set('tolerance_minus', e.target.value)} /></div>
           </div>
 
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-1.5">
+              <Label>Default MOC</Label>
+              <SearchableSelect value={mocCustomOpen ? '' : (form.default_moc || '')} placeholder="Type to search a material…"
+                options={MOC_OPTIONS}
+                onChange={v => {
+                  if (v === OTHER_MOC) { setMocCustomOpen(true); return; }
+                  setMocCustomOpen(false);
+                  set('default_moc', v);
+                }} />
+              {mocCustomOpen && (
+                <Input className="mt-1" value={form.default_moc || ''} onChange={e => set('default_moc', e.target.value)}
+                  placeholder="e.g. IS 2062 E250" />
+              )}
+              <p className="text-xs text-muted-foreground">Seeded onto a BOM line on pick, when set — a blank default leaves the line's own MOC untouched.</p>
+            </div>
+          </div>
+
+          {/* Default dimensions — only the shape-defining size(s), never a length (see
+              CategoryFieldsBlock's own "defaults" mode). Only shown once a real BOM Category is
+              picked; standard/other/uncategorized have nothing dimensional to default. */}
+          {DIMENSIONAL_CATEGORIES.includes(form.bom_category) && (
+            <div className="grid gap-1.5">
+              <Label>Default dimensions</Label>
+              <CategoryFieldsBlock mode="defaults" category={form.bom_category} fields={defaultDimFields} onChange={setDefaultDimFields} />
+              <p className="text-xs text-muted-foreground">Length is never defaulted — always per-project, entered fresh on the BOM line.</p>
+            </div>
+          )}
+
           <div className="grid gap-1.5">
             <Label className="text-xs text-muted-foreground">Traceability requirements this item defaults a BOM line to</Label>
             <div className="flex flex-wrap gap-4">
@@ -216,6 +266,15 @@ function ItemMasterForm({ id, facets, onClose, onSaved }) {
                 </label>
               ))}
             </div>
+          </div>
+
+          <div className="grid gap-1.5">
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox checked={form.default_requires_manufacturing !== 0 && form.default_requires_manufacturing !== false}
+                onCheckedChange={v => set('default_requires_manufacturing', v ? 1 : 0)} />
+              Requires manufacturing by default
+            </label>
+            <p className="text-xs text-muted-foreground">A bought-out item (a valve, a gauge) never needs Production's own fabrication step — uncheck for those.</p>
           </div>
 
           {isEdit && <p className="text-xs text-muted-foreground">Item Code: <span className="font-mono">{form.item_code}</span> — assigned at creation, cannot be changed.</p>}

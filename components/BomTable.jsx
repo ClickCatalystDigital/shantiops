@@ -294,6 +294,11 @@ function AddItemForm({
     }
     const tKeys = TRACEABILITY_KEYS.filter(k => k in patch);
     if (tKeys.length) setTraceability(t => ({ ...t, ...Object.fromEntries(tKeys.map(k => [k, patch[k]])) }));
+    // Item Master's own default MOC / requires-manufacturing flag (2026-09 round) — same "reseed
+    // fresh on pick, still fully editable, gated at submit time by canSetTraceability/
+    // canSetManufacturingFlag exactly like traceability above" shape.
+    if ('moc' in patch) setMoc(patch.moc);
+    if ('requires_manufacturing' in patch) setRequiresManufacturing(!!patch.requires_manufacturing);
   }
 
   function updateRow(idx, patch) { setSizeRows(rows => rows.map((r, i) => i === idx ? { ...r, ...patch } : r)); }

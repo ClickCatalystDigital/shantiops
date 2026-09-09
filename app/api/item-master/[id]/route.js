@@ -16,6 +16,7 @@ const EDITABLE_FIELDS = [
   'material_process_type', 'item_type', 'min_qty', 'max_qty', 'lead_time', 'tolerance_plus',
   'tolerance_minus', 'class', 'store_location', 'bin_no', 'hsn_code', 'hsn_desc', 'hsn_item_pct',
   'default_requires_heat_no', 'default_requires_mtc', 'default_requires_supplier_batch', 'default_requires_serial_no',
+  'default_moc', 'default_category_fields_json', 'default_requires_manufacturing',
 ];
 
 export async function GET(req, { params }) {

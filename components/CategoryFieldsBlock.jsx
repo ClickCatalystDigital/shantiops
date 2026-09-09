@@ -24,8 +24,21 @@ export const MOC_OPTIONS = [...STANDARD_MOC.map(m => ({ value: m, label: m })), 
 // size + kg/m (tee, no preset table), or item ref + qty (standard) — plus, for anything with real
 // weight, a live computed label right under the grid so the number is visible while filling the
 // form instead of only after saving.
-export default function CategoryFieldsBlock({ category, fields, onChange }) {
+//
+// `mode` ('full', the default — every existing caller omits it, so this is fully opt-in and changes
+// nothing for BOM/PR/Templates/Stores) vs 'defaults' (Item Master's own catalog-level defaults,
+// SYSTEM.md's "which dimensions are actually intrinsic to the item" round): 'defaults' drops Length
+// (and, for plate, Width) entirely — real catalog data confirms every dimensional item already
+// bakes its shape-defining size into a distinct SKU per size ("MS ANGLE 50x50x5" vs "...65x65x6"),
+// but never a length, since that's what's purchased/cut for one specific project, not a property of
+// the item. It also drops the qty/item-ref block for standard/other (nothing there is a sensible
+// per-item default either) and the weight preview (always incomplete without a length to multiply
+// by), and makes every remaining field optional — a freshly-imported catalog row has no default yet,
+// and that's a normal, not an error, state.
+export default function CategoryFieldsBlock({ category, fields, onChange, mode = 'full' }) {
   const set = patch => onChange({ ...fields, ...patch });
+  const isDefaults = mode === 'defaults';
+  const req = !isDefaults;
 
   // `other` renders identically to `standard` — no dimensions, just a reference + qty. Distinct
   // classification outcome (excluded from both Form IV A/III A material and the Mounting & Fittings
@@ -33,6 +46,7 @@ export default function CategoryFieldsBlock({ category, fields, onChange }) {
   // nor an IBR mounting — electrical/panel components, refractory/insulation/consumables, rotating
   // equipment (found on real project data, SYSTEM.md's category-taxonomy audit).
   if (category === 'standard' || category === 'other') {
+    if (isDefaults) return null; // an item-master reference + a qty are never a per-item default
     return (
       <div className="grid grid-cols-2 gap-3 rounded-md border border-dashed p-2.5">
         <div className="flex flex-col gap-1.5">
@@ -51,9 +65,17 @@ export default function CategoryFieldsBlock({ category, fields, onChange }) {
   const weightLabel = weightKg > 0 ? `${round2(weightKg)} kg` : '—';
 
   if (category === 'plate' || GEOMETRY_SHAPES[category]) {
-    const dims = category === 'plate'
+    const fullDims = category === 'plate'
       ? [{ key: 'length', label: 'Length' }, { key: 'width', label: 'Width' }, { key: 'thickness', label: 'Thickness' }]
       : GEOMETRY_SHAPES[category].dims;
+    // Defaults mode keeps only the shape-defining dimension(s). Plate is the one category where
+    // BOTH Length and Width vary per purchase/cut — real catalog data confirms a plate SKU only
+    // ever encodes its thickness ("BQ PLATE 10MM SA 516 GR 70", never an L x W) — so it drops both,
+    // leaving Thickness alone. Every GEOMETRY_SHAPES entry's own dims already exclude nothing but
+    // 'length' by construction (flat: width+thickness, round/square/octagonal: one dimension), so
+    // filtering 'length' alone is the correct, sufficient rule for all of those.
+    const excludeKeys = category === 'plate' ? ['length', 'width'] : ['length'];
+    const dims = isDefaults ? fullDims.filter(d => !excludeKeys.includes(d.key)) : fullDims;
     const presets = GEOMETRY_SHAPES[category]?.sizePresets;
     return (
       <div className="flex flex-col gap-2 rounded-md border border-dashed p-2.5">
@@ -68,8 +90,8 @@ export default function CategoryFieldsBlock({ category, fields, onChange }) {
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           {dims.map(d => (
             <div key={d.key} className="flex flex-col gap-1.5">
-              <Label className="text-xs">{d.label}<span className="text-danger"> *</span></Label>
-              <DimensionInput required valueMm={fields[d.key] || ''} onChangeMm={v => set({ [d.key]: v })} />
+              <Label className="text-xs">{d.label}{req && <span className="text-danger"> *</span>}</Label>
+              <DimensionInput required={req} valueMm={fields[d.key] || ''} onChangeMm={v => set({ [d.key]: v })} />
             </div>
           ))}
           <div className="flex flex-col gap-1.5">
@@ -78,7 +100,7 @@ export default function CategoryFieldsBlock({ category, fields, onChange }) {
               onChange={e => set({ density: e.target.value })} placeholder={String(DEFAULT_DENSITY)} />
           </div>
         </div>
-        <p className="text-xs text-muted-foreground">Estimated weight: <span className="tnum font-medium text-foreground">{weightLabel}</span></p>
+        {!isDefaults && <p className="text-xs text-muted-foreground">Estimated weight: <span className="tnum font-medium text-foreground">{weightLabel}</span></p>}
       </div>
     );
   }
@@ -90,7 +112,7 @@ export default function CategoryFieldsBlock({ category, fields, onChange }) {
       <div className="flex flex-col gap-2 rounded-md border border-dashed p-2.5">
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs">Size<span className="text-danger"> *</span></Label>
+            <Label className="text-xs">Size{req && <span className="text-danger"> *</span>}</Label>
             {presets.length > 0 ? (
               <SearchableSelect value={isOther ? OTHER_SIZE : (fields.size || '')} placeholder="Type to search a size…"
                 onChange={v => v === OTHER_SIZE
@@ -98,26 +120,30 @@ export default function CategoryFieldsBlock({ category, fields, onChange }) {
                   : set({ size: v, kg_per_m: String(presets.find(p => p.size === v)?.kg_per_m ?? '') })}
                 options={[...presets.map(p => ({ value: p.size, label: p.size })), { value: OTHER_SIZE, label: 'Other / custom size' }]} />
             ) : (
-              <Input required value={fields.size === OTHER_SIZE ? '' : fields.size || ''} onChange={e => set({ size: e.target.value })} placeholder="e.g. Tee 50x50x6" />
+              <Input required={req} value={fields.size === OTHER_SIZE ? '' : fields.size || ''} onChange={e => set({ size: e.target.value })} placeholder="e.g. Tee 50x50x6" />
             )}
           </div>
           {presets.length > 0 && isOther && (
             <div className="flex flex-col gap-1.5">
               <Label className="text-xs">Custom size</Label>
-              <Input required value={fields.size === OTHER_SIZE ? '' : fields.size || ''} onChange={e => set({ size: e.target.value })} placeholder="e.g. ISMB 150" />
+              <Input required={req} value={fields.size === OTHER_SIZE ? '' : fields.size || ''} onChange={e => set({ size: e.target.value })} placeholder="e.g. ISMB 150" />
             </div>
           )}
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs">Weight per metre (kg/m){(isOther || presets.length === 0) && <span className="text-danger"> *</span>}</Label>
-            <Input type="number" min="0" step="any" required={isOther || presets.length === 0}
+            <Label className="text-xs">Weight per metre (kg/m){req && (isOther || presets.length === 0) && <span className="text-danger"> *</span>}</Label>
+            <Input type="number" min="0" step="any" required={req && (isOther || presets.length === 0)}
               value={fields.kg_per_m || ''} onChange={e => set({ kg_per_m: e.target.value })} />
           </div>
-          <div className="flex flex-col gap-1.5">
-            <Label className="text-xs">Length<span className="text-danger"> *</span></Label>
-            <DimensionInput required valueMm={fields.length || ''} onChangeMm={v => set({ length: v })} />
-          </div>
+          {/* Length is never a per-item default — a rolled section's real length is always what a
+              specific project needs, not a property of the catalog SKU. */}
+          {!isDefaults && (
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs">Length<span className="text-danger"> *</span></Label>
+              <DimensionInput required valueMm={fields.length || ''} onChangeMm={v => set({ length: v })} />
+            </div>
+          )}
         </div>
-        <p className="text-xs text-muted-foreground">Estimated weight: <span className="tnum font-medium text-foreground">{weightLabel}</span></p>
+        {!isDefaults && <p className="text-xs text-muted-foreground">Estimated weight: <span className="tnum font-medium text-foreground">{weightLabel}</span></p>}
       </div>
     );
   }

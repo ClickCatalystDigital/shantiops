@@ -27,12 +27,15 @@ export async function GET(req) {
   // (guessCategory(), removed — this field supersedes it). group_name is kept in the response for
   // display only (the search-result subtitle). default_requires_* (Phase 1) — the material master's
   // recommended traceability requirements, seeded onto a BOM line on pick; a category fallback
-  // covers the free-text-majority case. category/material_process_type/hsn_code — real, populated
+  // covers the free-text-majority case. default_moc/default_category_fields_json/
+  // default_requires_manufacturing (later round, same file) — the three remaining catalog-level
+  // defaults a pick seeds onto a new line's MOC/dimensions/manufacturing flag, same "seed once,
+  // freely editable from there" precedent. category/material_process_type/hsn_code — real, populated
   // columns that were previously never selected, so every caller silently lost them even though the
   // import data has them.
   const rows = await queryAll(
     `SELECT id, item_code, item_name, detail_desc, uom, group_name, category, material_process_type, hsn_code,
-            bom_category,
+            bom_category, default_moc, default_category_fields_json, default_requires_manufacturing,
             default_requires_heat_no, default_requires_mtc, default_requires_supplier_batch, default_requires_serial_no
        FROM items
       WHERE item_name LIKE ? OR item_code LIKE ?

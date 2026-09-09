@@ -157,6 +157,13 @@ export function ItemSearchField({ line, onChange }) {
     // catalog item going forward), not a live guess. Blank when the Item Master item has none set,
     // in which case the composer's own required-category check forces a manual pick before save.
     const category = item.bom_category || '';
+    // The catalog's own captured default dimensions — shape-defining size only, never a length (see
+    // CategoryFieldsBlock's "defaults" mode) — merged on top of the plain density seed, same "always
+    // reseed fresh on pick" rule category/traceability already follow.
+    let itemDefaultDims = {};
+    if (item.default_category_fields_json) {
+      try { itemDefaultDims = JSON.parse(item.default_category_fields_json) || {}; } catch { /* malformed, ignore */ }
+    }
     onChange({
       material_description: item.item_name,
       // A dimensional category derives size_spec from real Length/Width/Thickness, entered next —
@@ -168,7 +175,16 @@ export function ItemSearchField({ line, onChange }) {
       size_spec: DIMENSIONAL_CATEGORIES.includes(category) ? '' : (item.detail_desc || ''),
       uomHint: item.uom || '',
       item_id: item.id,
-      ...(category && { category, categoryFields: defaultCategoryFields(category) }),
+      ...(category && { category, categoryFields: { ...defaultCategoryFields(category), ...itemDefaultDims } }),
+      // Default MOC — only when the catalog has a real answer. Unlike category/traceability (always
+      // reseeded fresh, since a "no default" state there just means "off"), MOC has a genuine "no
+      // known default" state worth preserving — a generic gasket/fitting item legitimately has none,
+      // and a blank default must never clobber whatever MOC the line already had typed into it.
+      ...(item.default_moc && { moc: item.default_moc }),
+      // Requires-manufacturing default — always reseeded fresh on pick, same as category/
+      // traceability; NOT NULL DEFAULT 1 on the DB side means an un-set catalog item still resolves
+      // to checked, matching every composer's own emptyLine() default.
+      requires_manufacturing: item.default_requires_manufacturing !== 0 && item.default_requires_manufacturing !== false,
       // Traceability requirements: the item master's own recommendation wins when it has one set;
       // otherwise fall back to the category default (or all-off, for a non-dimensional/uncategorized
       // pick) — always seeded fresh on pick, same as category itself, editable from there.
