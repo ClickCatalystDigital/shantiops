@@ -6,6 +6,8 @@ import { execute, queryOne, queryAll } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
 import { notifyDepartment } from '@/lib/notify';
 import { matchAndReserve } from '@/lib/remnant-match';
+import { DIMENSIONAL_CATEGORIES } from '@/lib/bom-fields.mjs';
+import { categoryDisplaySpec } from '@/lib/section-shapes';
 
 const TEMPLATE_DEPARTMENTS = ['Engineering', 'Design', 'Stores'];
 function canTouch(user) { return TEMPLATE_DEPARTMENTS.some(d => canAccessDepartment(user, d)); }
@@ -61,10 +63,17 @@ export async function POST(req, { params }) {
     [b.project_id]
   );
   for (const it of items) {
+    // For a dimensional category, derive fresh from the template's own stored dimensions rather
+    // than trusting its stored size_spec — a template saved before the size_spec-freezing bug was
+    // fixed (see the client-side "Use in Raise PR" fix, same reasoning) could still carry a stale
+    // value, and this route is the other path a template's items reach a real bom_items row through.
+    const sizeSpec = DIMENSIONAL_CATEGORIES.includes(it.category)
+      ? categoryDisplaySpec(it.category, it.category_fields_json ? JSON.parse(it.category_fields_json) : {})
+      : it.size_spec;
     const { lastId } = await execute(
       `INSERT INTO bom_items (project_id, section, material_description, moc, size_spec, qty_text, purchase_status, pending_review, sort_order, item_id, category, category_fields_json, named_parts_json, template_id)
        VALUES (?, ?, ?, ?, ?, ?, 'Enquiry', 1, ?, ?, ?, ?, ?, ?)`,
-      [b.project_id, it.section, it.material_description, it.moc, it.size_spec, it.qty_text, n,
+      [b.project_id, it.section, it.material_description, it.moc, sizeSpec, it.qty_text, n,
         it.item_id, it.category, it.category_fields_json, it.named_parts_json, Number(params.id)]
     );
     n++;

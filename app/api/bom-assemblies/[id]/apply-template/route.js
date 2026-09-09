@@ -5,6 +5,8 @@ import { requireEngineeringAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { getAllocationMode } from '@/lib/procurement';
 import { flattenTemplateTree } from '@/lib/bom-structure.mjs';
+import { DIMENSIONAL_CATEGORIES } from '@/lib/bom-fields.mjs';
+import { categoryDisplaySpec } from '@/lib/section-shapes';
 
 // Inserts a template's tree_json as new children under [id] — the mirror image of duplicate/
 // route.js's own insert loop (same idMap pattern), driven by flattenTemplateTree()'s
@@ -80,13 +82,20 @@ export async function insertTemplateTree(tree, projectId, parentId, templateId, 
         const catalogRow = await queryOne('SELECT id FROM items WHERE id = ?', [it.item_id]);
         if (catalogRow) itemId = it.item_id;
       }
+      // For a dimensional category, derive fresh from the template's own stored dimensions rather
+      // than trusting its stored size_spec — a snapshot frozen from a pre-fix, already-stale
+      // bom_items row (the size_spec-freezing bug) would otherwise carry that staleness forward
+      // forever, with no visible free-text box left in the UI to notice or correct it from.
+      const sizeSpec = it.category && DIMENSIONAL_CATEGORIES.includes(it.category)
+        ? categoryDisplaySpec(it.category, it.category_fields_json ? JSON.parse(it.category_fields_json) : {})
+        : (it.size_spec || null);
       await execute(
         `INSERT INTO bom_items (project_id, assembly_id, sort_order, material_description, moc, size_spec, qty_text,
                                  make, remarks, category, category_fields_json, named_parts_json, item_id,
                                  requires_heat_no, requires_mtc, requires_supplier_batch, requires_serial_no,
                                  requires_manufacturing, purchase_status, pending_review)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Enquiry', ?)`,
-        [projectId, idMap.get(entry.tempId), n++, it.material_description, it.moc || null, it.size_spec || null,
+        [projectId, idMap.get(entry.tempId), n++, it.material_description, it.moc || null, sizeSpec,
           it.qty_text || null, it.make || null, it.remarks || null, it.category || null, it.category_fields_json || null,
           it.named_parts_json || null, itemId,
           it.requires_heat_no ? 1 : 0, it.requires_mtc ? 1 : 0, it.requires_supplier_batch ? 1 : 0, it.requires_serial_no ? 1 : 0,

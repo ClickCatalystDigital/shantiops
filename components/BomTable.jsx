@@ -1,9 +1,11 @@
 'use client';
 
 // The one shared BOM table — Engineering, Procurement, Stores, Production and PM all see the same
-// rows; what differs is `editableFields` (from BOM_FIELD_OWNERS via the server). The inline status
-// select is the high-frequency action; everything else edits through a small dialog showing only
-// the viewer's editable columns. Enforcement lives in the PATCH route — this UI is convenience.
+// rows; what differs is `editableFields` (from BOM_FIELD_OWNERS via the server). Status is
+// read-only here — it's edited from Procurement's own dedicated Status tab
+// (ProcurementWorkspace.jsx), not duplicated as a second editable control in this shared view.
+// Everything else edits through a small dialog showing only the viewer's editable columns.
+// Enforcement lives in the PATCH route — this UI is convenience.
 import { useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api, showToast, formatDate } from '@/lib/client';
@@ -500,7 +502,6 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
     scrollerRef.current?.scrollBy({ left: dir * 220, behavior: 'smooth' });
   }
 
-  const canInlineStatus = editableFields.includes('purchase_status');
   const canToggleProductionDone = editableFields.includes('production_done');
   // Canonical Stores Receiving (Feature A) — Stores' own department view gets the Receive action in
   // the grn_ref column instead of a free-text field (removed from BOM_FIELD_OWNERS.Stores entirely,
@@ -585,14 +586,6 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
       if (lastGroup) rendered.push({ divider: 'group', label: lastGroup, key: `g-${section}-${lastGroup}-${b.id}` });
     }
     rendered.push(b);
-  }
-
-  async function setStatus(item, value) {
-    try {
-      await api(`/api/bom-items/${item.id}`, { method: 'PATCH', body: { purchase_status: value === 'none' ? '' : value } });
-      router.refresh();
-      onSaved?.();
-    } catch (err) { showToast(err.message, 'error'); }
   }
 
   // Production's own signal that a line is fabricated — Dispatch can only pull it onto a packing
@@ -713,7 +706,7 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
           room for the wide table's ~15 sticky/scrolling columns; wrapping key facts into a card
           that reflows, instead of forcing horizontal scroll, is the actual fix for "why does this
           look like Excel." Reuses every existing mutation/edit primitive (setEditing opens the
-          exact same dialog, remove/cancelItem/setStatus are the same functions the table row used)
+          exact same dialog, remove/cancelItem are the same functions the table row used)
           — only the read-only *presentation* differs, nothing about how a save/delete happens. */}
       {layout === 'cards' ? (
         <div className="flex flex-col gap-2">
@@ -731,19 +724,11 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
                   {canStructure && !r.item_id && <div className="mt-1"><LinkItemControl bomItemId={r.id} router={router} /></div>}
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
-                  {/* Purchase status is Procurement's own lifecycle — showing it here, before a BOM
-                      is even released, is noise (every fresh line reads "Enquiry", telling Engineering
-                      nothing). Only surface it once it's actually moved past the default, or for a
-                      department that can act on it directly. */}
-                  {canInlineStatus ? (
-                    <Select value={r.purchase_status || 'none'} onValueChange={v => setStatus(r, v)}>
-                      <SelectTrigger className="h-7 w-28 text-xs"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">—</SelectItem>
-                        {BOM_STATUSES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  ) : r.purchase_status && r.purchase_status !== DEFAULT_PURCHASE_STATUS ? (
+                  {/* Purchase status is Procurement's own lifecycle, edited from their dedicated
+                      Status tab (ProcurementWorkspace.jsx) — showing it here, before a BOM is even
+                      released, is noise (every fresh line reads "Enquiry", telling Engineering
+                      nothing). Only surface it once it's actually moved past the default. */}
+                  {r.purchase_status && r.purchase_status !== DEFAULT_PURCHASE_STATUS ? (
                     <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${STATUS_TONE[r.purchase_status] || 'bg-muted text-muted-foreground ring-border'}`}>
                       {r.purchase_status}
                     </span>
@@ -836,19 +821,11 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
                   )}
                 </TableCell>
                 <TableCell className={`w-32 bg-background md:sticky md:left-[19rem] md:z-10 ${!showPacking && !hasActions ? 'md:border-r' : ''}`}>
-                  {canInlineStatus ? (
-                    <Select value={r.purchase_status || 'none'} onValueChange={v => setStatus(r, v)}>
-                      <SelectTrigger className="h-7 w-28 text-xs"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">—</SelectItem>
-                        {BOM_STATUSES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  ) : (
-                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${STATUS_TONE[r.purchase_status] || 'bg-muted text-muted-foreground ring-border'}`}>
-                      {r.purchase_status || DEFAULT_PURCHASE_STATUS}
-                    </span>
-                  )}
+                  {/* Editable from Procurement's dedicated Status tab (ProcurementWorkspace.jsx),
+                      not here — read-only in the shared Master BOM table. */}
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${STATUS_TONE[r.purchase_status] || 'bg-muted text-muted-foreground ring-border'}`}>
+                    {r.purchase_status || DEFAULT_PURCHASE_STATUS}
+                  </span>
                 </TableCell>
                 {showPacking && (
                   <TableCell className={`w-24 bg-background md:sticky md:left-[27rem] md:z-10 ${hasActions ? '' : 'md:border-r'}`}>

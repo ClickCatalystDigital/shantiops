@@ -55,10 +55,18 @@ function TemplateItemsEditor({ items, onChange }) {
             <Input placeholder="Qty, e.g. 4 Nos" value={it.qty_text} onChange={e => update(i, { qty_text: e.target.value })} />
           </div>
           {it.category && (
+            // Same "suggest while blank or still-auto-generated, never clobber a real edit" rule as
+            // PrWorkspace.jsx's LineCard — a bare `it.size_spec ||` check freezes the suggestion at
+            // whatever it first became non-empty at (see SYSTEM.md), so it needs to keep tracking the
+            // dimensions as long as the field still matches its own last suggestion.
             <CategoryFieldsBlock category={it.category} fields={it.categoryFields || {}}
-              onChange={categoryFields => update(i, {
-                categoryFields, size_spec: it.size_spec || categoryDisplaySpec(it.category, categoryFields),
-              })} />
+              onChange={categoryFields => {
+                const wasAutoSuggested = !it.size_spec || it.size_spec === categoryDisplaySpec(it.category, it.categoryFields || {});
+                update(i, {
+                  categoryFields,
+                  size_spec: wasAutoSuggested ? categoryDisplaySpec(it.category, categoryFields) : it.size_spec,
+                });
+              }} />
           )}
           {it.category && (
             <NamedPartsEditor parts={it.namedParts || []} onChange={namedParts => update(i, { namedParts })} />

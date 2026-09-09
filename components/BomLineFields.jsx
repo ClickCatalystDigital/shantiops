@@ -158,7 +158,15 @@ export function ItemSearchField({ line, onChange }) {
     // in which case the composer's own required-category check forces a manual pick before save.
     const category = item.bom_category || '';
     onChange({
-      material_description: item.item_name, size_spec: item.detail_desc || '', uomHint: item.uom || '',
+      material_description: item.item_name,
+      // A dimensional category derives size_spec from real Length/Width/Thickness, entered next —
+      // seeding it from the catalog's free-text detail_desc here would freeze that text in place
+      // (the "already has a value, so don't auto-derive over it" guard on the dimension fields below
+      // can't tell a catalog-seeded string apart from one the user actually typed), with no visible
+      // box left to fix it once the category hides the free-text field. Leave it blank for a
+      // dimensional pick; non-dimensional/uncategorized items keep the free-text spec as before.
+      size_spec: DIMENSIONAL_CATEGORIES.includes(category) ? '' : (item.detail_desc || ''),
+      uomHint: item.uom || '',
       item_id: item.id,
       ...(category && { category, categoryFields: defaultCategoryFields(category) }),
       // Traceability requirements: the item master's own recommendation wins when it has one set;

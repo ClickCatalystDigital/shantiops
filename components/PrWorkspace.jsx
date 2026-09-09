@@ -29,7 +29,7 @@ import DimensionInput from './DimensionInput';
 import SearchableSelect from './SearchableSelect';
 import QtyInput from './QtyInput';
 import CategoryFieldsBlock, { OTHER_MOC, MOC_OPTIONS } from './CategoryFieldsBlock';
-import { BOM_FIELD_OWNERS } from '@/lib/bom-fields.mjs';
+import { BOM_FIELD_OWNERS, DIMENSIONAL_CATEGORIES } from '@/lib/bom-fields.mjs';
 import { CATEGORY_LABEL, categoryDisplaySpec } from '@/lib/section-shapes';
 import BomTemplateManager from './BomTemplateManager';
 import {
@@ -80,6 +80,8 @@ function LineCard({ line, index, projects, inventoryItems, showSourcePicker, onC
   // a catalog pick or a template can seed one before this ever renders.
   const [mocCustomOpen, setMocCustomOpen] = useState(() => !!line.moc && !MOC_OPTIONS.some(o => o.value === line.moc));
 
+  const showSizeSpecInput = !(line.category && DIMENSIONAL_CATEGORIES.includes(line.category));
+
   function setLine(patch) { onChange({ ...line, ...patch }); }
   function setProject(pkey, patch) {
     setLine({ projects: line.projects.map(p => p.key === pkey ? { ...p, ...patch } : p) });
@@ -114,7 +116,13 @@ function LineCard({ line, index, projects, inventoryItems, showSourcePicker, onC
           <Button size="icon-sm" variant="ghost" className="mt-6 shrink-0" onClick={onRemove}><TrashIcon className="size-4" /></Button>
         )}
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      {/* A dimensional category (below) already gives Length/Width/Thickness (or size + kg/m) and
+          derives Size/Spec from them — a second, freely-editable free-text box for the same field
+          would just be a second place for the same fact to drift out of sync, the exact class of bug
+          this line replaced. It only makes sense for a category with no structured dimensions of its
+          own (standard/other/uncategorized) — same "one or the other, never both" rule
+          BomTable.jsx's own composer already applies. */}
+      <div className={`grid gap-3 ${showSizeSpecInput ? 'grid-cols-2' : 'grid-cols-1'}`}>
         <div className="flex flex-col gap-1.5">
           <Label>MOC {line.category ? <span className="text-danger">*</span> : '(optional)'}</Label>
           <SearchableSelect value={mocCustomOpen ? '' : (line.moc || '')} placeholder="Type to search a material…"
@@ -129,10 +137,12 @@ function LineCard({ line, index, projects, inventoryItems, showSourcePicker, onC
               placeholder="e.g. IS 2062 E250" required={!!line.category} autoFocus />
           )}
         </div>
-        <div className="flex flex-col gap-1.5">
-          <Label>Size / spec (optional)</Label>
-          <Input value={line.size_spec} onChange={e => setLine({ size_spec: e.target.value })} />
-        </div>
+        {showSizeSpecInput && (
+          <div className="flex flex-col gap-1.5">
+            <Label>Size / spec (optional)</Label>
+            <Input value={line.size_spec} onChange={e => setLine({ size_spec: e.target.value })} />
+          </div>
+        )}
       </div>
 
       {showSourcePicker && (
@@ -153,6 +163,10 @@ function LineCard({ line, index, projects, inventoryItems, showSourcePicker, onC
           <SearchableSelect className="w-56" value={line.category || ''} options={CATEGORY_OPTIONS}
             onChange={v => setLine({
               category: v, categoryFields: defaultCategoryFields(v),
+              // Switching into a dimensional category hides the free-text Size/Spec box (it's
+              // superseded by the derived one below) — clear whatever was typed there so it can't
+              // silently ride along invisibly instead of being regenerated from the real dimensions.
+              ...(DIMENSIONAL_CATEGORIES.includes(v) ? { size_spec: '' } : {}),
               // Category-based traceability default only for a free-text line — a catalog pick's
               // own default_requires_* (set at ItemSearchField.pick, above) already won and must not
               // be silently overridden by a later category tweak on the same line.
@@ -165,13 +179,19 @@ function LineCard({ line, index, projects, inventoryItems, showSourcePicker, onC
         // Size/spec (bom_items.size_spec) is what every downstream department actually sees in the
         // Master BOM table — category_fields_json (dims/size/kg_per_m/density) drives weight + stock
         // matching but is never itself displayed there. Suggest it from the dimensions so the two
-        // don't silently diverge, but only while it's still blank — a value the user already typed
-        // (or already edited) is never overwritten.
+        // don't silently diverge, but only while it's still blank OR still equal to the previous
+        // auto-suggestion — a value the user actually typed by hand into the Size/Spec box is never
+        // overwritten. A bare `line.size_spec ||` check here was the bug: the moment the suggestion
+        // became non-empty (e.g. the length/width/thickness field typed last hits its first digit),
+        // it froze forever and never picked up the rest of that same field's digits.
         <CategoryFieldsBlock category={line.category} fields={line.categoryFields}
-          onChange={categoryFields => setLine({
-            categoryFields,
-            size_spec: line.size_spec || categoryDisplaySpec(line.category, categoryFields),
-          })} />
+          onChange={categoryFields => {
+            const wasAutoSuggested = !line.size_spec || line.size_spec === categoryDisplaySpec(line.category, line.categoryFields);
+            setLine({
+              categoryFields,
+              size_spec: wasAutoSuggested ? categoryDisplaySpec(line.category, categoryFields) : line.size_spec,
+            });
+          }} />
       )}
 
       {line.source === 'bom' && (
@@ -274,12 +294,20 @@ function LineCard({ line, index, projects, inventoryItems, showSourcePicker, onC
 // starts with project_id blank (nothing to prefill) and qty_text seeded from the template item's
 // own qty_text as an editable starting suggestion.
 function templateItemToLine(it) {
+  const category = it.category || '';
+  const categoryFields = it.category_fields_json ? JSON.parse(it.category_fields_json) : {};
   return {
     key: nextKey++, source: 'bom',
-    material_description: it.material_description || '', moc: it.moc || '', size_spec: it.size_spec || '', uomHint: '',
+    material_description: it.material_description || '', moc: it.moc || '',
+    // For a dimensional category, derive fresh from the template's own stored dimensions rather
+    // than trusting its stored size_spec — a template saved before the size_spec-freezing bug was
+    // fixed could still carry a stale value, and the free-text box is now hidden for dimensional
+    // categories (below), so there'd be no easy way to notice or correct it after applying.
+    size_spec: DIMENSIONAL_CATEGORIES.includes(category) ? categoryDisplaySpec(category, categoryFields) : (it.size_spec || ''),
+    uomHint: '',
     projects: [{ key: nextKey++, project_id: '', qty_text: it.qty_text || '', drawing_id: '', drawingOptions: null }],
     inventory_item_id: '', qty: '',
-    category: it.category || '', categoryFields: it.category_fields_json ? JSON.parse(it.category_fields_json) : {},
+    category, categoryFields,
     namedParts: it.named_parts_json ? JSON.parse(it.named_parts_json) : [],
     item_id: it.item_id || null,
   };
