@@ -215,7 +215,8 @@ function BoilerDetailsSheet({ open, onOpenChange, document, seams = [], currentU
       </FloatingPdfPanel>
       <Sheet open={open} onOpenChange={onOpenChange}>
         <SheetContent className="w-full data-[side=right]:sm:max-w-2xl"
-          onPointerDownOutside={e => { if (e.target.closest('[data-pdf-panel]')) e.preventDefault(); }}>
+          onPointerDownOutside={e => { if (e.target.closest('[data-pdf-panel]')) e.preventDefault(); }}
+          onOpenAutoFocus={e => e.preventDefault()}>
           <SheetHeader><SheetTitle>Edit boiler details</SheetTitle></SheetHeader>
           <div className="grid grid-cols-2 gap-3 overflow-y-auto px-4">
             {/* Read-only: no upload/delete here, that stays Design's own /calc-drawings surface.
@@ -471,7 +472,7 @@ function AddPartDialog({ open, onOpenChange, documentId, bomItems, router }) {
 
   return (
     <Dialog open={open} onOpenChange={o => { onOpenChange(o); if (!o) setForm(EMPTY); }}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md" onOpenAutoFocus={e => e.preventDefault()}>
         <DialogHeader><DialogTitle>Add part</DialogTitle></DialogHeader>
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-1.5">

@@ -28,6 +28,27 @@ export async function PATCH(req, { params }) {
   if (actionDenied) return actionDenied;
 
   const b = await req.json();
+
+  // { action: 'cancel' } — RFQ-level, not per-supplier, so it's handled before the per-supplier `rs`
+  // lookup below. A real user's explicit "get rid of this RFQ" — closes it outright regardless of
+  // whether its items are decided (unlike the automatic sibling-aware close in
+  // lib/procurement.js's maybeCloseRfqsForItem, this is a deliberate, confirmed action on the one
+  // RFQ being looked at). Never deletes rows — just closes it and kills every not-yet-responded
+  // supplier's link, so a mistaken RFQ stops showing as active anywhere and can't collect any more
+  // quotes, while its history (and any already-submitted quote) stays intact.
+  if (b.action === 'cancel') {
+    const rfq = await queryOne('SELECT * FROM rfqs WHERE id = ?', [params.id]);
+    if (!rfq) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    if (rfq.status === 'closed') return NextResponse.json({ error: 'Already cancelled' }, { status: 400 });
+    await execute("UPDATE rfqs SET status = 'closed' WHERE id = ?", [params.id]);
+    // A genuine past epoch-ms, not 0 — the public route's guard is `token_expires &&
+    // token_expires < Date.now()`, and 0 is falsy, so it would silently skip the expiry check
+    // entirely instead of rejecting (caught live: the token stayed usable after "cancelling" it).
+    await execute('UPDATE rfq_suppliers SET token_expires = 1 WHERE rfq_id = ? AND responded_at IS NULL', [params.id]);
+    await audit('rfq_cancelled', { actor: user.username, detail: `rfq ${params.id}` });
+    return NextResponse.json(await getRfqDetail(params.id));
+  }
+
   const rs = await queryOne('SELECT * FROM rfq_suppliers WHERE rfq_id = ? AND supplier_id = ?', [params.id, b.supplier_id]);
   if (!rs) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 

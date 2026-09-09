@@ -73,7 +73,7 @@ export default function MoveAssemblyDialog({ node, assemblies, onClose, onMove }
 
   return (
     <Dialog open onOpenChange={o => !o && onClose()}>
-      <DialogContent>
+      <DialogContent onOpenAutoFocus={e => e.preventDefault()}>
         <DialogHeader><DialogTitle>Move "{node.name}"</DialogTitle></DialogHeader>
         <div className="flex flex-col gap-3">
           <div>

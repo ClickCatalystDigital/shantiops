@@ -10,8 +10,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 
 const PAYMENT_TERM_PRESETS = ['LC', 'Advance %', 'After Delivery', 'PDC', 'COD'];
 const ADVANCE_PCTS = Array.from({ length: 10 }, (_, i) => `${(i + 1) * 10}%`);
+const PDC_DAYS = ['15 days', '30 days', '45 days', '60 days', '90 days', '120 days'];
 
-export default function PaymentTermsField({ value, advancePct, onChange, onAdvancePctChange }) {
+export default function PaymentTermsField({ value, advancePct, pdcDays, onChange, onAdvancePctChange, onPdcDaysChange }) {
   const [custom, setCustom] = useState(!PAYMENT_TERM_PRESETS.includes(value) && !!value);
   return (
     <div className="flex flex-col gap-1.5">
@@ -28,6 +29,12 @@ export default function PaymentTermsField({ value, advancePct, onChange, onAdvan
         <Select value={advancePct} onValueChange={onAdvancePctChange}>
           <SelectTrigger className="h-8 w-full text-xs"><SelectValue placeholder="Which %?" /></SelectTrigger>
           <SelectContent>{ADVANCE_PCTS.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent>
+        </Select>
+      )}
+      {value === 'PDC' && !custom && (
+        <Select value={pdcDays} onValueChange={onPdcDaysChange}>
+          <SelectTrigger className="h-8 w-full text-xs"><SelectValue placeholder="How many days?" /></SelectTrigger>
+          <SelectContent>{PDC_DAYS.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent>
         </Select>
       )}
       <button type="button" className="w-fit text-xs text-primary hover:underline"

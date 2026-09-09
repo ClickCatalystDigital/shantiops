@@ -8,7 +8,7 @@ import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
 import { audit } from '@/lib/usb';
 import { notifyDepartment } from '@/lib/notify';
-import { removeItemFromDraftPO, releaseReservationsForItem } from '@/lib/procurement';
+import { removeItemFromDraftPO, releaseReservationsForItem, maybeCloseRfqsForItem } from '@/lib/procurement';
 import { DEFAULT_PURCHASE_STATUS } from '@/lib/bom-fields.mjs';
 import { syncProcurementMilestones } from '@/lib/milestone-auto';
 
@@ -39,6 +39,9 @@ export async function POST(req, { params }) {
   // V2-CHANGES.md Group 6 Phase 6.3 — an active stock reservation against this item must release
   // too, or that stock stays phantom-committed with no request left to issue it against.
   await releaseReservationsForItem(item.id);
+  // A cancelled item's own outstanding RFQ invitation(s) are moot — see maybeCloseRfqsForItem for
+  // why this is sibling-aware rather than a blunt close.
+  await maybeCloseRfqsForItem(item.id);
 
   if (status === 'Ordered') {
     // Ordered = a PO was actually issued (Phase 5.1's advancePurchaseStatus) — Procurement needs to

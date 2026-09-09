@@ -12,7 +12,7 @@ import { Textarea } from './ui/textarea';
 import PaymentTermsField from './PaymentTermsField';
 
 function emptyLine() {
-  return { unit_price: '', uom: '', payment_terms: '', advance_pct: '', expected_delivery_date: '', remarks: '' };
+  return { unit_price: '', uom: '', payment_terms: '', advance_pct: '', pdc_days: '', expected_delivery_date: '', remarks: '' };
 }
 
 export default function RfqPortalForm({ token, rfq, alreadyResponded }) {
@@ -34,7 +34,8 @@ export default function RfqPortalForm({ token, rfq, alreadyResponded }) {
         body: {
           lines: priced.map(it => {
             const l = lines[it.rfq_item_id];
-            const paymentTerms = l.payment_terms === 'Advance %' && l.advance_pct ? `Advance ${l.advance_pct}` : l.payment_terms;
+            const paymentTerms = l.payment_terms === 'Advance %' && l.advance_pct ? `Advance ${l.advance_pct}`
+              : l.payment_terms === 'PDC' && l.pdc_days ? `PDC ${l.pdc_days}` : l.payment_terms;
             return {
               rfq_item_id: it.rfq_item_id, unit_price: Number(l.unit_price), uom: l.uom || undefined,
               payment_terms: paymentTerms || undefined, expected_delivery_date: l.expected_delivery_date || undefined,
@@ -78,7 +79,9 @@ export default function RfqPortalForm({ token, rfq, alreadyResponded }) {
             </div>
           </div>
           <PaymentTermsField value={lines[it.rfq_item_id].payment_terms} advancePct={lines[it.rfq_item_id].advance_pct}
-            onChange={v => setLine(it.rfq_item_id, { payment_terms: v })} onAdvancePctChange={v => setLine(it.rfq_item_id, { advance_pct: v })} />
+            pdcDays={lines[it.rfq_item_id].pdc_days}
+            onChange={v => setLine(it.rfq_item_id, { payment_terms: v })} onAdvancePctChange={v => setLine(it.rfq_item_id, { advance_pct: v })}
+            onPdcDaysChange={v => setLine(it.rfq_item_id, { pdc_days: v })} />
           <div className="flex flex-col gap-1.5">
             <Label>Expected delivery</Label>
             <Input type="date" value={lines[it.rfq_item_id].expected_delivery_date}

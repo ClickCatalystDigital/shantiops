@@ -28,6 +28,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import PdfPreview from './PdfPreview';
 import PaymentTermsField from './PaymentTermsField';
 import CreateRfqDialog from './CreateRfqDialog';
+import SearchableSelect from './SearchableSelect';
 import { PURCHASE_STATUSES as BOM_STATUSES, CLOSED_STATUSES, OPEN_STATUSES, STATUS_TONE, DEFAULT_PURCHASE_STATUS } from '@/lib/bom-fields.mjs';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 import SupplierAnalysis from '@/components/SupplierAnalysis';
@@ -71,6 +72,7 @@ function AddQuoteDialog({ item, suppliers, router, onClose }) {
   const [uom, setUom] = useState('');
   const [terms, setTerms] = useState('');
   const [advancePct, setAdvancePct] = useState('');
+  const [pdcDays, setPdcDays] = useState('');
   const [deliveryDate, setDeliveryDate] = useState('');
   const [source, setSource] = useState('');
   const [busy, setBusy] = useState(false);
@@ -86,7 +88,8 @@ function AddQuoteDialog({ item, suppliers, router, onClose }) {
         const res = await api('/api/suppliers', { method: 'POST', body: { name: newSupplierName.trim() } });
         sid = res.id;
       }
-      const paymentTerms = terms === 'Advance %' && advancePct ? `Advance ${advancePct}` : terms;
+      const paymentTerms = terms === 'Advance %' && advancePct ? `Advance ${advancePct}`
+        : terms === 'PDC' && pdcDays ? `PDC ${pdcDays}` : terms;
       await api('/api/supplier-quotes', {
         method: 'POST',
         body: {
@@ -103,7 +106,8 @@ function AddQuoteDialog({ item, suppliers, router, onClose }) {
 
   return (
     <Dialog open onOpenChange={o => { if (!o) onClose(); }}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-md">
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-md"
+        onOpenAutoFocus={e => e.preventDefault()}>
         <DialogHeader><DialogTitle>Add quote — {item.material_description}</DialogTitle></DialogHeader>
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-1.5">
@@ -111,10 +115,9 @@ function AddQuoteDialog({ item, suppliers, router, onClose }) {
             {newSupplier ? (
               <Input value={newSupplierName} onChange={e => setNewSupplierName(e.target.value)} placeholder="New supplier name" autoFocus />
             ) : (
-              <Select value={supplierId} onValueChange={setSupplierId}>
-                <SelectTrigger className="w-full"><SelectValue placeholder="Choose…" /></SelectTrigger>
-                <SelectContent>{suppliers.map(s => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}</SelectContent>
-              </Select>
+              <SearchableSelect value={supplierId} onChange={setSupplierId}
+                options={suppliers.map(s => ({ value: String(s.id), label: s.name }))}
+                placeholder="Search vendor…" className="w-full" />
             )}
             <button type="button" className="w-fit text-xs text-primary hover:underline" onClick={() => setNewSupplier(v => !v)}>
               {newSupplier ? 'Pick existing supplier' : '+ Add a new supplier'}
@@ -122,7 +125,7 @@ function AddQuoteDialog({ item, suppliers, router, onClose }) {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
-              <Label>Quote</Label>
+              <Label>Rate</Label>
               <Input type="number" min="0" step="0.01" value={price} onChange={e => setPrice(e.target.value)} placeholder="Unit price" />
             </div>
             <div className="flex flex-col gap-1.5">
@@ -130,7 +133,8 @@ function AddQuoteDialog({ item, suppliers, router, onClose }) {
               <Input value={uom} onChange={e => setUom(e.target.value)} placeholder="e.g. Kg, No" />
             </div>
           </div>
-          <PaymentTermsField value={terms} advancePct={advancePct} onChange={setTerms} onAdvancePctChange={setAdvancePct} />
+          <PaymentTermsField value={terms} advancePct={advancePct} pdcDays={pdcDays}
+            onChange={setTerms} onAdvancePctChange={setAdvancePct} onPdcDaysChange={setPdcDays} />
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
               <Label>Expected delivery</Label>
@@ -176,10 +180,29 @@ function RfqSuppliersList({ rfqId, router }) {
     setBusy(null);
   }
 
+  async function cancelRfq() {
+    if (!confirm('Cancel this RFQ? Suppliers who have not yet responded will no longer be able to submit a quote.')) return;
+    setBusy('cancel');
+    try {
+      const d = await api(`/api/rfqs/${rfqId}`, { method: 'PATCH', body: { action: 'cancel' } });
+      setDetail(d); showToast('RFQ cancelled'); router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+    setBusy(null);
+  }
+
   if (!detail) return null;
+  const cancelled = detail.status === 'closed';
   return (
     <div className="flex flex-col gap-1 border-t pt-2">
-      <p className="text-xs font-medium text-muted-foreground">{detail.rfq_no} — invited suppliers</p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs font-medium text-muted-foreground">
+          {detail.rfq_no} — invited suppliers{cancelled ? ' (cancelled)' : ''}
+        </p>
+        {!cancelled && (
+          <button type="button" className="text-xs text-destructive hover:underline" disabled={busy === 'cancel'}
+            onClick={cancelRfq}>Cancel RFQ</button>
+        )}
+      </div>
       {detail.suppliers.map(s => (
         <div key={s.id} className="flex items-center justify-between gap-2 text-xs">
           <span>{s.supplier_name}</span>
@@ -191,7 +214,7 @@ function RfqSuppliersList({ rfqId, router }) {
             ) : (
               <Badge variant="outline" className="text-muted-foreground">Not sent</Badge>
             )}
-            {!s.responded_at && (
+            {!s.responded_at && !cancelled && (
               <button type="button" className="text-primary hover:underline" disabled={busy === s.supplier_id}
                 onClick={() => resend(s.supplier_id)}>Resend</button>
             )}
@@ -458,10 +481,9 @@ function ChangeSupplierPanel({ line, suppliers, onDone, onCancel }) {
           {newSupplierMode ? (
             <Input value={newSupplierName} onChange={e => setNewSupplierName(e.target.value)} placeholder="New supplier name" autoFocus />
           ) : (
-            <Select value={supplierId} onValueChange={setSupplierId}>
-              <SelectTrigger className="w-full"><SelectValue placeholder="Choose a supplier…" /></SelectTrigger>
-              <SelectContent>{suppliers.map(s => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}</SelectContent>
-            </Select>
+            <SearchableSelect value={supplierId} onChange={setSupplierId}
+              options={suppliers.map(s => ({ value: String(s.id), label: s.name }))}
+              placeholder="Search vendor…" className="w-full" />
           )}
           <button type="button" className="w-fit text-xs text-primary hover:underline" onClick={() => setNewSupplierMode(v => !v)}>
             {newSupplierMode ? 'Pick existing supplier' : '+ Add a new supplier'}
@@ -1341,13 +1363,23 @@ const SEARCH_PLACEHOLDER = {
   vendor_bills: 'Search bill number, PO, or supplier…',
 };
 
-export default function ProcurementWorkspace({ sourcingItems, suppliers, purchaseOrders, quotes, rfqSummaryByItem = {}, purchaseReturns = [], inventoryItems = [], vendorBills = [], debitNotes = [], tdsRates = [], initialTab }) {
+export default function ProcurementWorkspace({ sourcingItems, suppliers, purchaseOrders, quotes, rfqSummaryByItem = {}, purchaseReturns = [], inventoryItems = [], vendorBills = [], debitNotes = [], tdsRates = [], initialTab, initialProject }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [poView, setPoView] = useState('active');
   const [analysisView, setAnalysisView] = useState('dashboard');
-  const [projectFilter, setProjectFilter] = useState('all');
+  // Deep-linked + persisted like `tab` above — a project picked on Enquiry/Selection shouldn't
+  // silently reset to "All projects" on a real page reload, same complaint the `?tab=` deep-link
+  // was already built to solve.
+  const [projectFilter, setProjectFilter] = useState(() => initialProject || 'all');
+  function updateProjectFilter(v) {
+    setProjectFilter(v);
+    const params = new URLSearchParams(searchParams.toString());
+    if (v === 'all') params.delete('project'); else params.set('project', v);
+    router.replace(`?${params.toString()}`, { scroll: false });
+  }
 
   const quotesByItem = {};
   for (const quote of quotes) (quotesByItem[quote.bom_item_id] ||= []).push(quote);
@@ -1364,6 +1396,14 @@ export default function ProcurementWorkspace({ sourcingItems, suppliers, purchas
   const inPipelineItems = useMemo(() => activeItems.filter(it => !OUT_OF_PIPELINE.includes(it.purchase_status)), [activeItems]);
   const bomProjects = useMemo(() => [...new Set(inPipelineItems.map(it => it.project_no))].sort(), [inPipelineItems]);
   const projectItems = projectFilter === 'all' ? activeItems : activeItems.filter(it => it.project_no === projectFilter);
+  // A `?project=` deep-linked value that's stale (project closed/left the pipeline since the link
+  // was saved) shouldn't leave the picker showing an unmatched, blank-looking value forever.
+  useEffect(() => {
+    if (projectFilter !== 'all' && bomProjects.length > 0 && !bomProjects.includes(projectFilter)) {
+      updateProjectFilter('all');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bomProjects, projectFilter]);
 
   // Suppliers is one nav item with two sub-views (roster / analysis) instead of two flat tabs —
   // "Suppliers" is the one word for this entity everywhere in the app; a second flat tab called
@@ -1398,13 +1438,9 @@ export default function ProcurementWorkspace({ sourcingItems, suppliers, purchas
         <Input value={search} onChange={e => setSearch(e.target.value)}
           placeholder={SEARCH_PLACEHOLDER[tab]} className="h-8 w-72" />
         {(tab === 'enquiry' || tab === 'selection') && bomProjects.length > 0 && (
-          <Select value={projectFilter} onValueChange={setProjectFilter}>
-            <SelectTrigger className="ml-auto h-8 w-44"><SelectValue placeholder="All projects" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All projects</SelectItem>
-              {bomProjects.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <SearchableSelect value={projectFilter} onChange={updateProjectFilter}
+            options={[{ value: 'all', label: 'All projects' }, ...bomProjects.map(p => ({ value: p, label: p }))]}
+            placeholder="All projects" className="ml-auto w-44" inputClassName="h-8" />
         )}
         {tab === 'state' && (
           <Select value={statusFilter} onValueChange={setStatusFilter}>

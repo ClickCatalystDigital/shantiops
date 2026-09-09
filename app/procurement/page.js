@@ -41,6 +41,7 @@ export default async function ProcurementPage({ searchParams }) {
         debitNotes={debitNotes}
         tdsRates={tdsRates}
         initialTab={sp?.tab}
+        initialProject={sp?.project}
       />
     </main>
   );

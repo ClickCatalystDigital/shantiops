@@ -75,8 +75,11 @@ export async function PATCH(req, { params }) {
     const items = await queryAll('SELECT bom_item_id FROM po_items WHERE po_id = ?', [po.id]);
     for (const it of items) {
       if (it.bom_item_id) {
+        // The PO is back in draft/unsent — po_ref (§5a: "blank means still sourcing, filled means a
+        // PO exists") should revert alongside the status, or ProcurementQueue/BomTable keep showing
+        // a PO number for a line that isn't actually on an issued PO right now.
         await execute(
-          "UPDATE bom_items SET purchase_status = 'Comparison' WHERE id = ? AND purchase_status = 'Ordered'",
+          "UPDATE bom_items SET purchase_status = 'Comparison', po_ref = NULL WHERE id = ? AND purchase_status = 'Ordered'",
           [it.bom_item_id]
         );
       }

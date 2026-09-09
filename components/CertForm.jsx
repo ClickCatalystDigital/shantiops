@@ -256,7 +256,8 @@ export default function CertForm({ open, onOpenChange, certificate = null, certi
 
       <Sheet open={open} onOpenChange={o => { onOpenChange(o); if (!o) reset(); }}>
         <SheetContent className="flex w-full flex-col gap-0 p-0 data-[side=right]:sm:w-[40vw] data-[side=right]:sm:max-w-2xl"
-          onPointerDownOutside={e => { if (e.target.closest('[data-pdf-panel]')) e.preventDefault(); }}>
+          onPointerDownOutside={e => { if (e.target.closest('[data-pdf-panel]')) e.preventDefault(); }}
+          onOpenAutoFocus={e => e.preventDefault()}>
           <SheetHeader className="shrink-0 border-b px-6 py-4">
             <SheetTitle>{editing ? 'Edit Test Certificate' : 'Add Test Certificate'}</SheetTitle>
           </SheetHeader>
