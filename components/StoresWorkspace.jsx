@@ -9,7 +9,6 @@
 // can be promised the same units; Issue is the actual hand-out moment (on_hand decrements, the
 // request's bom_item goes terminal In-Stock). Release undoes an unissued Reserve.
 import { useState, useEffect, useMemo, Fragment } from 'react';
-import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEntityHighlight } from '@/lib/use-entity-highlight';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
@@ -27,6 +26,8 @@ import { PlusIcon, PencilIcon, PackageCheckIcon, UndoIcon, TruckIcon, PackageIco
 import { api, showToast } from '@/lib/client';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 import CertPicker from '@/components/CertPicker';
+import AllocationPanel from '@/components/AllocationPanel';
+import ChildRoutingPanel from '@/components/ChildRoutingPanel';
 import DimensionInput from '@/components/DimensionInput';
 import SearchableSelect from '@/components/SearchableSelect';
 import CategoryFieldsBlock, { OTHER_MOC, MOC_OPTIONS } from '@/components/CategoryFieldsBlock';
@@ -1589,12 +1590,31 @@ function ReorderSuggestionsCard({ reorderSuggestions, router }) {
   );
 }
 
-// Multi-unit split orders needing a Stores decision — a discovery/queue screen only, same shape as
-// ReorderSuggestionsCard above. The actual allocate/route actions stay on the project's own page
-// (AllocationPanel/ChildRoutingPanel) — this just answers "which orders currently need me," which
-// nothing in /stores could answer before (SYSTEM.md §5bi built the actions but never a cross-order
-// queue for them).
-function AllocationRoutingCard({ splitOrders }) {
+// Multi-unit split orders needing a Stores decision, plus the actual allocate/route work itself —
+// both now live here, not on the project's own page (often 180+ BOM lines, a real trip for a daily
+// task). Queue-first: pick an order that needs attention, work it inline (AllocationPanel then
+// ChildRoutingPanel, in the real order Stores does the work — allocate, then route), "Back to
+// queue" refreshes the server-fetched list so a just-finished order's counts aren't stale.
+function AllocationRoutingSection({ splitOrders, router }) {
+  const [selected, setSelected] = useState(null); // {id, project_no, customer_name} | null
+
+  if (selected) {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="flex items-baseline justify-between">
+          <div>
+            <Button size="sm" variant="ghost" className="-ml-2 mb-1"
+              onClick={() => { setSelected(null); router.refresh(); }}>&larr; Back to queue</Button>
+            <h2 className="text-lg font-semibold">{selected.project_no}</h2>
+            <p className="text-sm text-muted-foreground">{selected.customer_name}</p>
+          </div>
+        </div>
+        <AllocationPanel projectId={selected.id} />
+        <ChildRoutingPanel projectId={selected.id} />
+      </div>
+    );
+  }
+
   return (
     <Card>
       <CardHeader><CardTitle>Allocation & Routing</CardTitle></CardHeader>
@@ -1626,9 +1646,7 @@ function AllocationRoutingCard({ splitOrders }) {
                     {o.unrouted_ready_cells > 0 ? <Badge variant="destructive">{o.unrouted_ready_cells} unit{o.unrouted_ready_cells === 1 ? '' : 's'}</Badge> : <span className="text-muted-foreground">—</span>}
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button size="sm" variant="outline" asChild>
-                      <Link href={`/projects/${o.id}#stores-allocation`}>Open</Link>
-                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => setSelected(o)}>Manage</Button>
                   </TableCell>
                 </TableRow>
               ))}
@@ -2363,7 +2381,7 @@ export default function StoresWorkspace({
         <ActiveReservationsCard activeReservations={activeReservations} router={router} />
       )}
       {tab === 'issued' && <MaterialIssuesCard projects={projects} />}
-      {tab === 'allocation' && <AllocationRoutingCard splitOrders={splitOrders} />}
+      {tab === 'allocation' && <AllocationRoutingSection splitOrders={splitOrders} router={router} />}
       {tab === 'reorder' && <ReorderSuggestionsCard reorderSuggestions={reorderSuggestions} router={router} />}
       {tab === 'gir' && <GateInwardReceiptsCard gateInwardReceipts={gateInwardReceipts} router={router} />}
       {tab === 'gatepasses' && <GatePassesCard gatePasses={gatePasses} router={router} />}

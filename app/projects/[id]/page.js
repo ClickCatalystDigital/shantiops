@@ -14,8 +14,6 @@ import ProjectDepartmentTabs from '@/components/ProjectDepartmentTabs';
 import { DepartmentPills, DepartmentProgress } from '@/components/DepartmentStatus';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import ChildUnitBomCard from '@/components/ChildUnitBomCard';
-import AllocationPanel from '@/components/AllocationPanel';
-import ChildRoutingPanel from '@/components/ChildRoutingPanel';
 import ProductionBatchJobCardPanel from '@/components/ProductionBatchJobCardPanel';
 import QcBatchDocumentPanel from '@/components/QcBatchDocumentPanel';
 import DispatchBatchPackingPanel from '@/components/DispatchBatchPackingPanel';
@@ -125,13 +123,10 @@ export default async function ProjectDetail({ params }) {
       {project.master_project_id && (
         <ChildUnitBomCard projectId={project.id} unitNo={project.unit_no} />
       )}
-      {/* id="stores-allocation" on AllocationPanel's own Card — an anchor for Stores' own
-          Allocation & Routing queue (/stores) to jump straight here instead of landing at the page
-          top. A wrapping display:contents div was tried first and doesn't work: it has no box, so
-          getBoundingClientRect() returns a zero rect and the browser's native scroll-to-hash can't
-          find it — the id has to live on a real element. */}
-      {hasChildren && <AllocationPanel projectId={project.id} id="stores-allocation" />}
-      {hasChildren && canAccessDepartment(user, 'Stores') && <ChildRoutingPanel projectId={project.id} />}
+      {/* Allocation (AllocationPanel) and Routing (ChildRoutingPanel) both moved to Stores' own
+          Allocation & Routing tab (/stores) — Stores' actual daily allocate-then-route workflow
+          lives there now, inline, instead of requiring a trip to this (often very large — 181+
+          BOM lines) project page per order. */}
       {hasChildren && canAccessDepartment(user, 'Production') && <ProductionBatchJobCardPanel projectId={project.id} />}
       {hasChildren && canAccessDepartment(user, 'QC') && <QcBatchDocumentPanel projectId={project.id} />}
       {hasChildren && canAccessDepartment(user, 'Dispatch') && <DispatchBatchPackingPanel projectId={project.id} />}

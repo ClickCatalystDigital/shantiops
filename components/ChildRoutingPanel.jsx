@@ -1,7 +1,9 @@
 'use client';
 
-// components/ChildRoutingPanel.jsx — Multi-unit split: Stores' active routing decision UI. Shown
-// only on a MASTER project's own page, Stores-only. One row per BOM line with at least one
+// components/ChildRoutingPanel.jsx — Multi-unit split: Stores' active routing decision UI. Lives
+// inline in Stores' own Allocation & Routing tab (StoresWorkspace.jsx), Stores-only — moved off the
+// project page so the daily allocate-then-route workflow doesn't need a trip to a (often 180+-line)
+// project page per order. One row per BOM line with at least one
 // allocation-ready cell; expands to a checkbox strip of that line's cells (ready ones actionable,
 // not-yet-ready ones shown greyed with their allocated/required progress) plus two buttons —
 // → Production / → Dispatch. Reuses the checkbox-strip idiom DispatchBatchPackingPanel already uses.

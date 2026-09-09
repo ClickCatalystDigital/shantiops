@@ -1,8 +1,9 @@
 'use client';
 
 // components/AllocationPanel.jsx — Multi-unit BOM split, Phase 4 (MULTI-UNIT-SPLIT-DESIGN.md §5.2),
-// the Stores pipeline view. Shown only on a MASTER project's own page (one with real children) —
-// per BOM line: received so far, allocated so far, available to allocate, and an inline action to
+// the Stores pipeline view. Lives inline in Stores' own Allocation & Routing tab
+// (StoresWorkspace.jsx) — per BOM line: received so far, allocated so far, available to allocate,
+// and an inline action to
 // allocate a quantity to one specific child unit. Deliberately separate from BomTable/
 // ReceiveBomItemDialog — allocation is its own optional, later step over stock that's already
 // arrived, not part of receiving itself, and this never touches the existing Open Requests/
@@ -105,7 +106,7 @@ function AllocateRow({ line, children, onDone }) {
   );
 }
 
-export default function AllocationPanel({ projectId, id }) {
+export default function AllocationPanel({ projectId }) {
   const [data, setData] = useState(null);
 
   function reload() {
@@ -117,7 +118,7 @@ export default function AllocationPanel({ projectId, id }) {
   const children = data?.children ?? [];
 
   return (
-    <Card id={id}>
+    <Card>
       <CardHeader>
         <CardTitle>Material allocation to unit projects</CardTitle>
         <p className="text-sm text-muted-foreground">
