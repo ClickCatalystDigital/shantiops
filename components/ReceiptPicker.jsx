@@ -70,7 +70,12 @@ export default function ReceiptPicker({ value, onChange, requireInvoice = false 
       <Label>Receipt (supplier / PO / inward batch)</Label>
       {!creating ? (
         <div className="flex flex-wrap items-center gap-2">
-          <Select value={value ? String(value) : ''} onValueChange={v => onChange(v ? Number(v) : null)}>
+          {/* modal={false} — this Select always lives inside a Dialog (ReceiveBomItemDialog,
+              AddPieceDialog, Receive batch/serial). Radix's Select is itself modal by default,
+              which stacks a second focus-trap/dismissable-layer on top of the Dialog's own; closing
+              the Select's popup can then get misread as an outside click on the parent Dialog and
+              close it too. modal={false} is Radix's own documented fix for exactly this nesting. */}
+          <Select modal={false} value={value ? String(value) : ''} onValueChange={v => onChange(v ? Number(v) : null)}>
             <SelectTrigger className="w-72">
               <SelectValue placeholder={requireInvoice ? 'Choose a receipt' : 'No receipt — receive speculatively'} />
             </SelectTrigger>
@@ -87,13 +92,13 @@ export default function ReceiptPicker({ value, onChange, requireInvoice = false 
       ) : (
         <div className="flex flex-col gap-2">
           <div className="flex flex-wrap gap-2">
-            <Select value={supplierId} onValueChange={setSupplierId}>
+            <Select modal={false} value={supplierId} onValueChange={setSupplierId}>
               <SelectTrigger className="w-56"><SelectValue placeholder="Supplier *" /></SelectTrigger>
               <SelectContent><SelectGroup>
                 {suppliers.map(s => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}
               </SelectGroup></SelectContent>
             </Select>
-            <Select value={poId} onValueChange={setPoId}>
+            <Select modal={false} value={poId} onValueChange={setPoId}>
               <SelectTrigger className="w-56"><SelectValue placeholder="PO (optional)" /></SelectTrigger>
               <SelectContent><SelectGroup>
                 {purchaseOrders.map(po => <SelectItem key={po.id} value={String(po.id)}>{po.po_no}</SelectItem>)}
@@ -105,7 +110,7 @@ export default function ReceiptPicker({ value, onChange, requireInvoice = false 
               value={invoiceNo} onChange={e => setInvoiceNo(e.target.value)} required={requireInvoice} />
           </div>
           {girEntries.length > 0 && (
-            <Select value={girId} onValueChange={setGirId}>
+            <Select modal={false} value={girId} onValueChange={setGirId}>
               <SelectTrigger className="w-72"><SelectValue placeholder="Link a gate entry (optional)" /></SelectTrigger>
               <SelectContent><SelectGroup>
                 {girEntries.map(g => (

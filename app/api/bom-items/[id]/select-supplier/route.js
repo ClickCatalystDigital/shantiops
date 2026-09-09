@@ -10,11 +10,10 @@
 // undecided, 1 winner, 0 rejected sibling) gets set — the training-signal column for a later
 // "learning mode." Quotes themselves stay append-only/immutable; only this outcome flag moves.
 import { NextResponse } from 'next/server';
-import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
-import { selectQuoteForItem, removeItemFromDraftPO } from '@/lib/procurement';
+import { selectQuoteForItem, deselectQuoteForItem } from '@/lib/procurement';
 
 export async function POST(req, { params }) {
   const user = await getFreshSessionUser();
@@ -41,13 +40,11 @@ export async function DELETE(req, { params }) {
   const actionDenied = await requireAction(user, 'Procurement', 'procurement.quote.select');
   if (actionDenied) return actionDenied;
 
-  const item = await queryOne('SELECT id FROM bom_items WHERE id = ?', [params.id]);
-  if (!item) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-
-  await execute('UPDATE bom_items SET selected_quote_id = NULL WHERE id = ?', [params.id]);
-  // D2: undo means undecided again — reset every quote on this item, not just the former winner.
-  await execute('UPDATE supplier_quotes SET is_selected = NULL WHERE bom_item_id = ?', [params.id]);
-  await removeItemFromDraftPO(item.id);
+  try {
+    await deselectQuoteForItem(params.id);
+  } catch (err) {
+    return NextResponse.json({ error: err.message }, { status: err.message === 'Item not found' ? 404 : 400 });
+  }
   await audit('supplier_selection_reverted', { actor: user.username, detail: `item ${params.id}` });
   return NextResponse.json({ ok: true });
 }

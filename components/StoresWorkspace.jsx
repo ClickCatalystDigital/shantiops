@@ -23,7 +23,8 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { PlusIcon, PencilIcon, PackageCheckIcon, UndoIcon, TruckIcon, PackageIcon, ClipboardListIcon, LayersIcon, AlertTriangleIcon, LogInIcon, FileOutputIcon, CheckIcon, XIcon, ListChecksIcon, SearchIcon, ChevronRightIcon, ListTodoIcon, BoxesIcon, HashIcon, SplitIcon } from 'lucide-react';
-import { api, showToast } from '@/lib/client';
+import { api, showToast, formatDate } from '@/lib/client';
+import { derivePurchaseStage } from '@/lib/bom-fields.mjs';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 import CertPicker from '@/components/CertPicker';
 import AllocationPanel from '@/components/AllocationPanel';
@@ -34,6 +35,7 @@ import CategoryFieldsBlock, { OTHER_MOC, MOC_OPTIONS } from '@/components/Catego
 import { pieceDimsLabel } from '@/components/CutDialog';
 import { pieceKindLabel, groupPiecesByRoot } from '@/components/PieceLineage';
 import ReceiptPicker from '@/components/ReceiptPicker';
+import ReceiveBomItemDialog from '@/components/ReceiveBomItemDialog';
 import { normalizeWords } from '@/lib/match-utils';
 import { pieceWeight } from '@/lib/piece-weight';
 import {
@@ -221,7 +223,11 @@ function ItemFormDialog({ item, onClose, router }) {
 
   return (
     <Dialog open onOpenChange={o => !o && onClose()}>
-      <DialogContent>
+      {/* CategoryFieldsBlock's own DimensionInput (a dimensional category's mm/m unit toggle) is a
+          raw Select whose popup portals outside this DialogContent — same outside-click guard as
+          ReceiveBomItemDialog.jsx. */}
+      <DialogContent
+        onPointerDownOutside={e => { if (e.target.closest('[data-slot="select-content"]')) e.preventDefault(); }}>
         <DialogHeader><DialogTitle>{editing ? 'Edit inventory item' : 'New inventory item'}</DialogTitle></DialogHeader>
         <div className="grid grid-cols-2 gap-3">
           <div className="relative col-span-2 grid gap-1.5">
@@ -361,7 +367,11 @@ function AddPieceDialog({ inventoryItem, onClose, router, onAdded, certificates 
 
   return (
     <Dialog open onOpenChange={o => !o && onClose()}>
-      <DialogContent>
+      {/* Nested Selects (ReceiptPicker's own) portal outside this DialogContent, so a click
+          inside their popup reads as "outside" and closes this dialog too — same guard as
+          ReceiveBomItemDialog.jsx/CertForm.jsx's SheetContent. */}
+      <DialogContent
+        onPointerDownOutside={e => { if (e.target.closest('[data-slot="select-content"]')) e.preventDefault(); }}>
         <DialogHeader><DialogTitle>Add piece — {inventoryItem.description}</DialogTitle></DialogHeader>
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
@@ -467,7 +477,10 @@ function PieceRow({ p, indent, kindLabel, busyId, onRelease, onReserve, onConfir
         )}
       </TableCell>
       <TableCell className="text-muted-foreground">
-        {p.bom_description ? [p.project_no, p.bom_description, p.part_name].filter(Boolean).join(' · ') : '—'}
+        {p.bom_description
+          ? [p.project_no, p.bom_description, p.part_name, (p.pr_no || p.pr_ref) ? `PR ${p.pr_no || p.pr_ref}` : null]
+            .filter(Boolean).join(' · ')
+          : '—'}
       </TableCell>
       <TableCell>
         <div className="flex items-center gap-1.5">
@@ -708,7 +721,10 @@ function ReceiveBatchDialog({ inventoryItem, onClose, router, onAdded, certifica
 
   return (
     <Dialog open onOpenChange={o => !o && onClose()}>
-      <DialogContent>
+      {/* Nested Select popups portal outside this DialogContent — same outside-click guard as
+          ReceiveBomItemDialog.jsx. */}
+      <DialogContent
+        onPointerDownOutside={e => { if (e.target.closest('[data-slot="select-content"]')) e.preventDefault(); }}>
         <DialogHeader><DialogTitle>Receive batch — {inventoryItem.description}</DialogTitle></DialogHeader>
         <div className="flex flex-col gap-3">
           <ReceiptPicker value={receiptId} onChange={setReceiptId} />
@@ -821,7 +837,10 @@ function ReceiveSerialDialog({ inventoryItem, onClose, router, onAdded, certific
 
   return (
     <Dialog open onOpenChange={o => !o && onClose()}>
-      <DialogContent>
+      {/* Nested Select popups portal outside this DialogContent — same outside-click guard as
+          ReceiveBomItemDialog.jsx. */}
+      <DialogContent
+        onPointerDownOutside={e => { if (e.target.closest('[data-slot="select-content"]')) e.preventDefault(); }}>
         <DialogHeader><DialogTitle>Receive serial — {inventoryItem.description}</DialogTitle></DialogHeader>
         <div className="flex flex-col gap-3">
           <ReceiptPicker value={receiptId} onChange={setReceiptId} />
@@ -886,7 +905,10 @@ function ReservePieceDialog({ piece, projects, onClose, onReserved, router }) {
 
   return (
     <Dialog open onOpenChange={o => !o && onClose()}>
-      <DialogContent>
+      {/* Nested Select popups (Project, BOM line) portal outside this DialogContent — same
+          outside-click guard as ReceiveBomItemDialog.jsx. */}
+      <DialogContent
+        onPointerDownOutside={e => { if (e.target.closest('[data-slot="select-content"]')) e.preventDefault(); }}>
         <DialogHeader><DialogTitle>Reserve {piece.code} — {pieceDimsLabel(piece)}</DialogTitle></DialogHeader>
         <div className="flex flex-col gap-3">
           <div className="grid gap-1.5">
@@ -957,7 +979,10 @@ function ReserveDialog({ request, inventoryItems, matches, onClose, router }) {
 
   return (
     <Dialog open onOpenChange={o => !o && onClose()}>
-      <DialogContent>
+      {/* The Inventory item Select's popup portals outside this DialogContent — same outside-click
+          guard as ReceiveBomItemDialog.jsx. */}
+      <DialogContent
+        onPointerDownOutside={e => { if (e.target.closest('[data-slot="select-content"]')) e.preventDefault(); }}>
         <DialogHeader><DialogTitle>Reserve from stock — {request.material_description}</DialogTitle></DialogHeader>
         <div className="flex flex-col gap-3">
           <div className="grid gap-1.5">
@@ -2081,6 +2106,9 @@ function BacklogTab() {
 const NAV_ITEMS = (counts) => [
   { key: 'divider-receiving', divider: true },
   { key: 'gir', label: 'Gate Inward (GIR)', icon: LogInIcon },
+  // Unified delivery/lot-centric receiving, Phase 3b — search-first, no project pick needed first
+  // (a real gap BomGrnTab below never closed: it only works once a project is already chosen).
+  { key: 'receive', label: 'Receive a Delivery', icon: SearchIcon },
   { key: 'bom', label: 'BOM', icon: ListChecksIcon },
   { key: 'divider-stock', divider: true },
   { key: 'inventory', label: 'Inventory', icon: PackageIcon, badge: counts.lowStock || null },
@@ -2107,12 +2135,70 @@ const NAV_ITEMS = (counts) => [
 // requires_heat_no/mtc/etc. flag, is better handled one at a time via BomTable's own Receive dialog
 // — this bulk tool reports it as a per-line failure (same tally pattern as before) rather than
 // growing per-line quantity/traceability inputs here.
+// Unified delivery/lot-centric receiving, Phase 3b — the "reachable without picking a project
+// first" entry point the plan calls out as genuinely missing: BomGrnTab below only works once a
+// project is already chosen from its own dropdown. This is a plain search across every open line
+// (material description, project number, or PR number), reusing ReceiveBomItemDialog unchanged —
+// the actual receive/routing/split mechanics live there, this is purely a discovery surface.
+function ReceiveDeliveryTab({ bomItems, router }) {
+  const [query, setQuery] = useState('');
+  // A line still in Enquiry/Comparison has no supplier chosen and nothing has actually been
+  // ordered — nothing can plausibly be "arriving" yet. Only Ordered (supplier/PO selected) or
+  // Transit (PO issued) lines are real candidates. purchase_status is an editable, often-stale
+  // column (see lib/bom-fields.mjs's own header comment) — derivePurchaseStage() is what every
+  // other summary view already uses instead of trusting it directly.
+  const open = bomItems.filter(it => ['Ordered', 'Transit'].includes(derivePurchaseStage(it)));
+  const q = query.trim().toLowerCase();
+  const results = q
+    ? open.filter(it =>
+        (it.material_description || '').toLowerCase().includes(q) ||
+        (it.project_no || '').toLowerCase().includes(q) ||
+        (it.pr_no || '').toLowerCase().includes(q) ||
+        (it.po_ref || '').toLowerCase().includes(q))
+    : [];
+
+  return (
+    <Card>
+      <CardHeader><CardTitle>Receive a Delivery</CardTitle></CardHeader>
+      <CardContent className="flex flex-col gap-3 pt-4">
+        <Input value={query} onChange={e => setQuery(e.target.value)}
+          placeholder="Search by material, project, PR, or PO number…" autoFocus />
+        {!q ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">Start typing to find what arrived.</p>
+        ) : results.length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">No open lines match that search.</p>
+        ) : (
+          <div className="flex flex-col divide-y">
+            {results.map(it => (
+              <div key={it.id} className="flex flex-wrap items-center gap-3 py-2.5 text-sm">
+                <span className="min-w-0 flex-1 truncate font-medium">{it.material_description}</span>
+                <span className="w-40 shrink-0 truncate text-xs text-muted-foreground">{it.project_no}</span>
+                <span className="w-24 shrink-0 truncate text-xs text-muted-foreground">{derivePurchaseStage(it)}</span>
+                <span className="w-32 shrink-0 truncate text-xs text-muted-foreground">
+                  {it.expected_delivery_date ? `Exp. ${formatDate(it.expected_delivery_date)}` : '—'}
+                </span>
+                <ReceiveBomItemDialog item={it} onDone={() => setQuery('')} />
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function BomGrnTab({ bomItems, router }) {
   const [project, setProject] = useState('all');
   const [selected, setSelected] = useState(new Set());
   const [receiptId, setReceiptId] = useState(null);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(null);
+  // Unified delivery/lot-centric receiving, Phase 2 — this bulk action always sends each line's own
+  // full qty_text, so a selected line on a normal (childless) project will complete on this call and
+  // now needs an explicit routing decision (route-self, no silent default). Applied uniformly across
+  // the whole selection rather than per-line — a master-project line is exempt (routes per-child
+  // later via Allocation & Routing) and never needs this.
+  const [routedTo, setRoutedTo] = useState('');
 
   const projects = useMemo(() => [...new Set(bomItems.map(it => it.project_no))].sort(), [bomItems]);
   const shown = project === 'all' ? [] : bomItems.filter(it => it.project_no === project);
@@ -2131,10 +2217,16 @@ function BomGrnTab({ bomItems, router }) {
     setSelected(new Set(allShownSelected ? [] : shownIds));
   }
 
+  const selectedIds = [...selected];
+  const needsRoutingChoice = selectedIds.some(id => !bomItems.find(b => b.id === id)?.has_children);
+
   async function apply() {
     const ids = [...selected];
     if (!ids.length) return showToast('Select at least one line', 'error');
     if (!receiptId) return showToast('Choose or create a receipt', 'error');
+    if (needsRoutingChoice && !routedTo) {
+      return showToast('Pick where the material goes — Manufacturing or Direct to Dispatch', 'error');
+    }
     setBusy(true);
     setProgress({ done: 0, total: ids.length });
     let failed = 0;
@@ -2143,7 +2235,10 @@ function BomGrnTab({ bomItems, router }) {
       try {
         await api(`/api/bom-items/${id}/receive`, {
           method: 'POST',
-          body: { qty_text: it?.qty_text || '1', receipt: { existing_receipt_id: receiptId } },
+          body: {
+            qty_text: it?.qty_text || '1', receipt: { existing_receipt_id: receiptId },
+            routed_to: it?.has_children ? undefined : routedTo,
+          },
         });
       } catch { failed++; }
       setProgress(p => ({ done: p.done + 1, total: p.total }));
@@ -2152,6 +2247,7 @@ function BomGrnTab({ bomItems, router }) {
     setProgress(null);
     setSelected(new Set());
     setReceiptId(null);
+    setRoutedTo('');
     showToast(failed ? `${ids.length - failed} of ${ids.length} received — ${failed} failed (try them individually via Receive on the BOM table)` : `${ids.length} line${ids.length === 1 ? '' : 's'} received`,
       failed ? 'warning' : undefined);
     router.refresh();
@@ -2174,6 +2270,18 @@ function BomGrnTab({ bomItems, router }) {
         <div className="flex flex-col gap-2 border-y bg-muted/40 px-4 py-3 text-sm">
           <span className="font-medium">{selected.size} selected — receiving all against one receipt</span>
           <ReceiptPicker value={receiptId} onChange={setReceiptId} requireInvoice />
+          {needsRoutingChoice && (
+            <div className="flex flex-col gap-1">
+              <Label className="text-xs">Route to (applies to every selected line, except split-order ones) *</Label>
+              <Select value={routedTo} onValueChange={setRoutedTo}>
+                <SelectTrigger className="h-8 w-64 text-xs"><SelectValue placeholder="Pick where this goes" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="production">Manufacturing</SelectItem>
+                  <SelectItem value="dispatch">Direct to Dispatch</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div className="flex gap-2">
             <Button size="sm" className="h-7" disabled={busy} onClick={apply}>
               {busy ? `Receiving ${progress?.done ?? 0}/${progress?.total ?? 0}…` : 'Receive selected'}
@@ -2384,6 +2492,7 @@ export default function StoresWorkspace({
       {tab === 'allocation' && <AllocationRoutingSection splitOrders={splitOrders} router={router} />}
       {tab === 'reorder' && <ReorderSuggestionsCard reorderSuggestions={reorderSuggestions} router={router} />}
       {tab === 'gir' && <GateInwardReceiptsCard gateInwardReceipts={gateInwardReceipts} router={router} />}
+      {tab === 'receive' && <ReceiveDeliveryTab bomItems={bomItems} router={router} />}
       {tab === 'gatepasses' && <GatePassesCard gatePasses={gatePasses} router={router} />}
       {tab === 'bom' && <BomGrnTab bomItems={bomItems} router={router} />}
       {tab === 'backlog' && <BacklogTab />}

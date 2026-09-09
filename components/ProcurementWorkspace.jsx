@@ -30,6 +30,7 @@ import PaymentTermsField from './PaymentTermsField';
 import CreateRfqDialog from './CreateRfqDialog';
 import SearchableSelect from './SearchableSelect';
 import { PURCHASE_STATUSES as BOM_STATUSES, CLOSED_STATUSES, OPEN_STATUSES, STATUS_TONE, DEFAULT_PURCHASE_STATUS } from '@/lib/bom-fields.mjs';
+import { aggregatePrGroups } from '@/lib/bom-structure.mjs';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 import SupplierAnalysis from '@/components/SupplierAnalysis';
 import TraceabilityBadges from '@/components/TraceabilityBadges';
@@ -64,7 +65,10 @@ function ItemContext({ it }) {
 
 // ---------- Enquiry (was Sourcing) ----------
 
-function AddQuoteDialog({ item, suppliers, router, onClose }) {
+// `item` (single, existing) targets exactly one bom_items row. `itemIds` + `label` (new, PR-group
+// quoting) target several at once — the same price/terms submitted to every constituent's own
+// bom_items row in one call to the already-array-capable POST /api/supplier-quotes route.
+function AddQuoteDialog({ item, itemIds, label, suppliers, router, onClose }) {
   const [supplierId, setSupplierId] = useState('');
   const [newSupplier, setNewSupplier] = useState(false);
   const [newSupplierName, setNewSupplierName] = useState('');
@@ -76,6 +80,7 @@ function AddQuoteDialog({ item, suppliers, router, onClose }) {
   const [deliveryDate, setDeliveryDate] = useState('');
   const [source, setSource] = useState('');
   const [busy, setBusy] = useState(false);
+  const targetIds = itemIds || [item.id];
 
   async function submit() {
     if (!newSupplier && !supplierId) return showToast('Pick a supplier', 'error');
@@ -94,21 +99,26 @@ function AddQuoteDialog({ item, suppliers, router, onClose }) {
         method: 'POST',
         body: {
           supplier_id: sid,
-          items: [{ bom_item_id: item.id, unit_price: Number(price), uom: uom || undefined }],
+          items: targetIds.map(id => ({ bom_item_id: id, unit_price: Number(price), uom: uom || undefined })),
           payment_terms: paymentTerms || undefined, quote_source: source || undefined,
           expected_delivery_date: deliveryDate || undefined,
         },
       });
-      showToast('Quote logged'); router.refresh(); onClose();
+      showToast(targetIds.length > 1 ? `Quote logged for ${targetIds.length} projects` : 'Quote logged');
+      router.refresh(); onClose();
     } catch (err) { showToast(err.message, 'error'); }
     setBusy(false);
   }
 
   return (
     <Dialog open onOpenChange={o => { if (!o) onClose(); }}>
+      {/* The Quote source Select's popup portals outside this DialogContent, so a click inside it
+          reads as "outside" and closes this dialog too — same guard as ReceiveBomItemDialog.jsx.
+          (SearchableSelect's own dropdown is a plain inline div, not a portal — unaffected.) */}
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-md"
-        onOpenAutoFocus={e => e.preventDefault()}>
-        <DialogHeader><DialogTitle>Add quote — {item.material_description}</DialogTitle></DialogHeader>
+        onOpenAutoFocus={e => e.preventDefault()}
+        onPointerDownOutside={e => { if (e.target.closest('[data-slot="select-content"]')) e.preventDefault(); }}>
+        <DialogHeader><DialogTitle>Add quote — {label || item.material_description}</DialogTitle></DialogHeader>
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-1.5">
             <Label>Vendor / Make</Label>
@@ -280,33 +290,199 @@ function EnquiryRow({ it, quotes, suppliers, router, rfqSummary, selected, onTog
   );
 }
 
-function Enquiry({ items, quotesByItem, suppliers, rfqSummaryByItem, router, q }) {
+// Groups a PR group's own constituent quotes (quotesByItem, already fetched) by supplier —
+// shared by PrGroupEnquiryRow/PrGroupSelectionRow's "quoted N of M lines" summaries. Only ever
+// walks the ids handed to it (already narrowed to whichever constituents are actually still
+// relevant for that view), never the group's full constituent list.
+function groupedSupplierQuotes(bomItemIds, quotesByItem) {
+  const bySupplier = new Map();
+  for (const id of bomItemIds) {
+    for (const q of quotesByItem[id] || []) {
+      if (!bySupplier.has(q.supplier_id)) bySupplier.set(q.supplier_id, { supplier_id: q.supplier_id, supplier_name: q.supplier_name, quotes: [] });
+      bySupplier.get(q.supplier_id).quotes.push({ ...q, bom_item_id: id });
+    }
+  }
+  return [...bySupplier.values()];
+}
+
+// The PR-group header's two visually distinct halves, per the confirmed presentation model:
+// **common specification** (what material — MOC + the fixed shape spec, e.g. "10 mm thick" or
+// "⌀63.5mm OD" — never Length/Width, which vary per project) answers "what do we need," shown
+// muted; **aggregated requirement** (real summed demand — total pieces, plus total area for plate
+// or total length for everything else, plus total weight) answers "how much," shown emphasized so
+// it reads as the number that matters. A third, separately muted line carries the PR/date/project-
+// count housekeeping. Never a fictitious combined stock size — area/length are demand totals, not
+// a claim that one physical sheet/bar of that size exists; which real stock to buy and how to cut
+// it stays a downstream Procurement/Stores decision.
+function PrGroupHeaderInfo({ group }) {
+  return (
+    <>
+      <p className="truncate text-xs text-muted-foreground">
+        {group.moc || '—'}{(group.common_spec || group.size_spec) ? ` · ${group.common_spec || group.size_spec}` : ''}
+      </p>
+      <p className="truncate text-xs font-medium">
+        {group.total_qty} {group.unit}
+        {group.total_area_sqm != null && ` · ≈${group.total_area_sqm} m² net area`}
+        {group.total_length_m != null && ` · ≈${group.total_length_m} m total length`}
+        {group.total_weight_kg != null && ` · ≈${group.total_weight_kg} kg`}
+      </p>
+      <p className="truncate text-xs text-muted-foreground">
+        {group.pr_no && `${group.pr_no} · ${formatDate(group.pr_created_at)} · `}
+        {group.constituents.length} project{group.constituents.length !== 1 ? 's' : ''}
+      </p>
+    </>
+  );
+}
+
+// One row per PR line (bom_items.pr_item_id) instead of one per project split — the "PR Items"
+// aggregate view. `group` is one entry from aggregatePrGroups(), already narrowed by the caller to
+// only its still-actionable sourcing_bom_item_ids. The checkbox feeds the *same* selectedIds Set
+// Enquiry's PMB rows use, contributing this group's sourcing ids — Create RFQ then only ever calls
+// the existing, unmodified bom_item_id-array path, never a pr_item_id-keyed one (see the RFQ
+// compatibility note in the plan this was built from).
+function PrGroupEnquiryRow({ group, quotesByItem, suppliers, rfqSummaryByItem, router, selected, onToggle }) {
+  const [expanded, setExpanded] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [singleDialogItem, setSingleDialogItem] = useState(null);
+  const bySupplier = groupedSupplierQuotes(group.sourcing_bom_item_ids, quotesByItem);
+
+  return (
+    <div className="border-b last:border-b-0">
+      <div className="flex w-full items-center gap-3 py-2.5 text-left text-sm">
+        <input type="checkbox" className="size-4 shrink-0" checked={selected} onChange={onToggle} onClick={e => e.stopPropagation()} />
+        <button className="flex min-w-0 flex-1 items-center gap-3 text-left" onClick={() => setExpanded(v => !v)}>
+          <div className="min-w-0 flex-1">
+            <span className="font-medium">{group.material_description}</span>
+            <PrGroupHeaderInfo group={group} />
+            {(group.unit_mismatch || group.spec_drift) && (
+              <div className="mt-1 flex flex-wrap gap-1">
+                {group.unit_mismatch && <Badge variant="outline" className="text-warning">Unit mismatch across projects — check before quoting</Badge>}
+                {group.spec_drift && <Badge variant="outline" className="text-warning">Spec drift — a project's own MOC/size/category no longer matches the rest</Badge>}
+              </div>
+            )}
+          </div>
+          {bySupplier.length > 0 && (
+            <Badge variant="outline">{bySupplier.length} supplier quote{bySupplier.length !== 1 ? 's' : ''}</Badge>
+          )}
+        </button>
+      </div>
+      {expanded && (
+        <div className="flex flex-col gap-3 bg-muted/30 px-3 py-3 text-sm">
+          <div className="flex flex-col gap-1.5">
+            <p className="text-xs font-medium text-muted-foreground">Project requirements</p>
+            {group.constituents.map(c => (
+              <div key={c.id} className="flex flex-col gap-1.5 rounded-md border bg-background px-3 py-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs">
+                    {/* This project's own dimensions — never just the group's representative
+                        size_spec. A plate/tube split can genuinely differ per project (e.g. 2000 x
+                        1000 x 10 mm here vs 1500 x 800 x 12 mm on another project's own line), and
+                        this is the one place that has to show the real per-constituent numbers. */}
+                    {c.project_no} · {c.moc || '—'} · {c.size_spec || '—'} · {c.qty_text || '—'}
+                    {c.excluded && <span className="ml-2 text-success">already reserved from stock — not counted</span>}
+                  </span>
+                  {group.sourcing_bom_item_ids.includes(c.id) && (
+                    <button type="button" className="shrink-0 text-xs text-primary hover:underline" onClick={() => setSingleDialogItem(c)}>
+                      + Add quote for just this project
+                    </button>
+                  )}
+                </div>
+                {(quotesByItem[c.id] || []).map(q => (
+                  <div key={q.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/40 px-2 py-1 text-xs">
+                    <span className="font-medium">{q.supplier_name}</span>
+                    <span className="text-muted-foreground">
+                      {formatMoney(q.unit_price)}{q.uom ? `/${q.uom}` : ''}
+                      {q.payment_terms ? ` · ${q.payment_terms}` : ''}
+                      {q.expected_delivery_date ? ` · by ${formatDate(q.expected_delivery_date)}` : ''}
+                    </span>
+                  </div>
+                ))}
+                {/* A PR-originated item is only ever reachable from this view (excluded from "PMB
+                    Items"), so its own existing RFQ activity — created either the old way, or via
+                    this group's own "select for RFQ" checkbox above — has to stay visible and
+                    manageable here too, same badge + resend/cancel list EnquiryRow renders. */}
+                {rfqSummaryByItem?.[c.id] && (
+                  <>
+                    <Badge variant="outline" className="w-fit">
+                      {rfqSummaryByItem[c.id].rfq_no} · {rfqSummaryByItem[c.id].responded}/{rfqSummaryByItem[c.id].invited} responded
+                    </Badge>
+                    <RfqSuppliersList rfqId={rfqSummaryByItem[c.id].rfq_id} router={router} />
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+          {bySupplier.length > 0 && (
+            <div className="flex flex-col gap-1">
+              <p className="text-xs font-medium text-muted-foreground">Quoted, by supplier</p>
+              {bySupplier.map(s => (
+                <div key={s.supplier_id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-background px-3 py-1.5 text-xs">
+                  <span className="font-medium">{s.supplier_name}</span>
+                  <span className="text-muted-foreground">
+                    quoted {s.quotes.length} of {group.sourcing_bom_item_ids.length} line{group.sourcing_bom_item_ids.length !== 1 ? 's' : ''}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+          <Button size="sm" variant="outline" className="w-fit" onClick={() => setDialogOpen(true)}>+ Add quote (whole PR line)</Button>
+        </div>
+      )}
+      {dialogOpen && (
+        <AddQuoteDialog itemIds={group.sourcing_bom_item_ids} label={group.material_description}
+          suppliers={suppliers} router={router} onClose={() => setDialogOpen(false)} />
+      )}
+      {singleDialogItem && (
+        <AddQuoteDialog item={singleDialogItem} suppliers={suppliers} router={router} onClose={() => setSingleDialogItem(null)} />
+      )}
+    </div>
+  );
+}
+
+function Enquiry({ items, allItems, sourceView, quotesByItem, suppliers, rfqSummaryByItem, router, q }) {
   const needle = q.trim().toLowerCase();
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [rfqDialogOpen, setRfqDialogOpen] = useState(false);
-  const shown = items.filter(it => !it.selected_quote_id && !OUT_OF_PIPELINE.includes(it.purchase_status))
+  const isPr = sourceView === 'pr';
+
+  // Same eligibility rule PMB rows already applied per-row, generalized so a PR group's own open
+  // constituent ids can be filtered by it too.
+  const openIds = new Set(
+    allItems.filter(it => !it.selected_quote_id && !OUT_OF_PIPELINE.includes(it.purchase_status)).map(it => it.id)
+  );
+  const groups = isPr
+    ? aggregatePrGroups(allItems)
+      .map(g => ({ ...g, sourcing_bom_item_ids: g.sourcing_bom_item_ids.filter(id => openIds.has(id)) }))
+      .filter(g => g.sourcing_bom_item_ids.length > 0)
+      .filter(g => !needle || g.material_description.toLowerCase().includes(needle) || (g.pr_no || '').toLowerCase().includes(needle))
+    : null;
+  const shownPmb = isPr ? null : items.filter(it => !it.pr_item_id && !it.selected_quote_id && !OUT_OF_PIPELINE.includes(it.purchase_status))
     .filter(it => !needle || it.material_description.toLowerCase().includes(needle) || it.project_no.toLowerCase().includes(needle));
-  const shownIds = shown.map(it => it.id);
+
+  const shownIds = isPr ? groups.flatMap(g => g.sourcing_bom_item_ids) : shownPmb.map(it => it.id);
   const allShownSelected = shownIds.length > 0 && shownIds.every(id => selectedIds.has(id));
 
   function toggle(id) {
     setSelectedIds(s => { const next = new Set(s); next.has(id) ? next.delete(id) : next.add(id); return next; });
   }
-  function toggleAllShown() {
+  function toggleIds(ids, checked) {
     setSelectedIds(s => {
-      if (allShownSelected) { const next = new Set(s); shownIds.forEach(id => next.delete(id)); return next; }
-      return new Set([...s, ...shownIds]);
+      const next = new Set(s);
+      ids.forEach(id => (checked ? next.delete(id) : next.add(id)));
+      return next;
     });
   }
-  const selectedItems = items.filter(it => selectedIds.has(it.id));
+  function toggleAllShown() { toggleIds(shownIds, allShownSelected); }
+  const selectedItems = allItems.filter(it => selectedIds.has(it.id));
+  const empty = isPr ? groups.length === 0 : shownPmb.length === 0;
 
   return (
     <Card>
       <CardContent className="flex flex-col pt-4">
-        {shown.length > 0 && (
+        {shownIds.length > 0 && (
           <div className="mb-2 flex items-center gap-3 border-b pb-2">
             <input type="checkbox" className="size-4" checked={allShownSelected} onChange={toggleAllShown} />
-            <span className="text-xs text-muted-foreground">Select all ({shown.length})</span>
+            <span className="text-xs text-muted-foreground">Select all ({isPr ? groups.length : shownPmb.length})</span>
             {selectedIds.size > 0 && (
               <div className="ml-auto flex items-center gap-2">
                 <span className="text-xs text-muted-foreground">{selectedIds.size} selected</span>
@@ -316,11 +492,21 @@ function Enquiry({ items, quotesByItem, suppliers, rfqSummaryByItem, router, q }
             )}
           </div>
         )}
-        {shown.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">Nothing to enquire right now.</p>}
-        {shown.map(it => (
-          <EnquiryRow key={it.id} it={it} quotes={quotesByItem[it.id] || []} suppliers={suppliers} router={router}
-            rfqSummary={rfqSummaryByItem[it.id]} selected={selectedIds.has(it.id)} onToggle={() => toggle(it.id)} />
-        ))}
+        {empty && (
+          <p className="py-6 text-center text-sm text-muted-foreground">
+            {isPr ? 'No PR lines waiting on Enquiry right now.' : 'Nothing to enquire right now.'}
+          </p>
+        )}
+        {isPr
+          ? groups.map(g => (
+            <PrGroupEnquiryRow key={g.pr_item_id} group={g} quotesByItem={quotesByItem} suppliers={suppliers} rfqSummaryByItem={rfqSummaryByItem} router={router}
+              selected={g.sourcing_bom_item_ids.every(id => selectedIds.has(id))}
+              onToggle={() => toggleIds(g.sourcing_bom_item_ids, g.sourcing_bom_item_ids.every(id => selectedIds.has(id)))} />
+          ))
+          : shownPmb.map(it => (
+            <EnquiryRow key={it.id} it={it} quotes={quotesByItem[it.id] || []} suppliers={suppliers} router={router}
+              rfqSummary={rfqSummaryByItem[it.id]} selected={selectedIds.has(it.id)} onToggle={() => toggle(it.id)} />
+          ))}
       </CardContent>
       {rfqDialogOpen && (
         <CreateRfqDialog items={selectedItems} suppliers={suppliers} router={router}
@@ -393,9 +579,122 @@ function SelectionRow({ it, quotes, router }) {
   );
 }
 
-function Selection({ items, quotesByItem, router, q }) {
+function selectionEligible(it, quotesByItem) {
+  return (quotesByItem[it.id] || []).length > 0 && !OUT_OF_PIPELINE.includes(it.purchase_status);
+}
+
+// The PR-group equivalent of SelectionRow — one row per PR line, "Select" awards every constituent
+// at once (the primary, recommended action). Mixed-award detection: if the group's own constituents
+// are already awarded to more than one supplier (e.g. from before this feature existed, or via the
+// per-constituent escape hatch below), a clean single "awarded" badge would misrepresent a real
+// disagreement, so it's called out explicitly instead. The expanded detail nests the *exact*,
+// unmodified SelectionRow per constituent — the escape hatch that keeps today's per-project award
+// flexibility (e.g. a remote site needing a different supplier) alongside the new group action.
+function PrGroupSelectionRow({ group, quotesByItem, router }) {
+  const [expanded, setExpanded] = useState(false);
+  const [busySupplier, setBusySupplier] = useState(null);
+  const bySupplier = groupedSupplierQuotes(group.sourcing_bom_item_ids, quotesByItem);
+  const awardedSuppliers = new Set(
+    group.constituents.filter(c => !c.excluded && c.selected_quote_id).map(c => c.selected_supplier_name)
+  );
+  const mixedAward = awardedSuppliers.size > 1;
+  const uniformAwardedName = awardedSuppliers.size === 1 ? [...awardedSuppliers][0] : null;
+
+  async function award(supplierId) {
+    setBusySupplier(supplierId);
+    try {
+      await api(`/api/pr-items/${group.pr_item_id}/select-supplier`, { method: 'POST', body: { supplier_id: supplierId } });
+      showToast('Supplier awarded for this PR line'); router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+    setBusySupplier(null);
+  }
+  async function undoGroup() {
+    setBusySupplier('undo');
+    try {
+      await api(`/api/pr-items/${group.pr_item_id}/select-supplier`, { method: 'DELETE' });
+      showToast('Award undone'); router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+    setBusySupplier(null);
+  }
+
+  return (
+    <div className="flex flex-col gap-2 border-b py-3 last:border-b-0">
+      <div className="flex items-center justify-between gap-2">
+        <button className="min-w-0 flex-1 text-left" onClick={() => setExpanded(v => !v)}>
+          <p className="font-medium">{group.material_description}</p>
+          <PrGroupHeaderInfo group={group} />
+        </button>
+        {mixedAward ? (
+          <Badge variant="outline" className="shrink-0 text-warning">
+            Awarded to {awardedSuppliers.size} different suppliers — review individually
+          </Badge>
+        ) : uniformAwardedName && (
+          <Button size="sm" variant="outline" className="shrink-0" disabled={busySupplier === 'undo'} onClick={undoGroup}>Undo selection</Button>
+        )}
+      </div>
+      {(group.unit_mismatch || group.spec_drift) && (
+        <div className="flex flex-wrap gap-1">
+          {group.unit_mismatch && <Badge variant="outline" className="text-warning">Unit mismatch across projects</Badge>}
+          {group.spec_drift && <Badge variant="outline" className="text-warning">Spec drift across projects</Badge>}
+        </div>
+      )}
+      <div className="flex flex-col gap-1.5">
+        {bySupplier.map(s => (
+          <div key={s.supplier_id} className="flex flex-wrap items-center gap-2 rounded-md border px-3 py-1.5 text-sm">
+            <span className="font-medium">{s.supplier_name}</span>
+            <span className="text-xs text-muted-foreground">
+              quoted {s.quotes.length} of {group.sourcing_bom_item_ids.length} line{group.sourcing_bom_item_ids.length !== 1 ? 's' : ''}
+            </span>
+            <div className="ml-auto">
+              {!mixedAward && uniformAwardedName === s.supplier_name
+                ? <Badge>Selected</Badge>
+                : <Button size="sm" variant="ghost" disabled={busySupplier === s.supplier_id} onClick={() => award(s.supplier_id)}>Select</Button>}
+            </div>
+          </div>
+        ))}
+      </div>
+      <button type="button" className="w-fit text-xs text-primary hover:underline" onClick={() => setExpanded(v => !v)}>
+        {expanded ? 'Hide' : 'Show'} projects individually
+      </button>
+      {expanded && (
+        <div className="flex flex-col gap-1 rounded-md border bg-muted/30 p-2">
+          {group.constituents.map(c => (
+            <div key={c.id} className="rounded-md border bg-background px-1">
+              {c.excluded ? (
+                <p className="px-2 py-2 text-xs text-muted-foreground">
+                  {c.project_no} — <span className="text-success">already reserved from stock, not counted</span>
+                </p>
+              ) : (
+                <SelectionRow it={c} quotes={quotesByItem[c.id] || []} router={router} />
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Selection({ items, allItems, sourceView, quotesByItem, router, q }) {
   const needle = q.trim().toLowerCase();
-  const shown = items.filter(it => (quotesByItem[it.id] || []).length > 0 && !OUT_OF_PIPELINE.includes(it.purchase_status))
+  if (sourceView === 'pr') {
+    const groups = aggregatePrGroups(allItems)
+      .map(g => ({ ...g, sourcing_bom_item_ids: g.sourcing_bom_item_ids.filter(id => {
+        const it = allItems.find(x => x.id === id);
+        return it && selectionEligible(it, quotesByItem);
+      }) }))
+      .filter(g => g.sourcing_bom_item_ids.length > 0)
+      .filter(g => !needle || g.material_description.toLowerCase().includes(needle) || (g.pr_no || '').toLowerCase().includes(needle));
+    return (
+      <Card>
+        <CardContent className="flex flex-col pt-4">
+          {groups.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">Nothing ready to compare yet — log a quote in Enquiry first.</p>}
+          {groups.map(g => <PrGroupSelectionRow key={g.pr_item_id} group={g} quotesByItem={quotesByItem} router={router} />)}
+        </CardContent>
+      </Card>
+    );
+  }
+  const shown = items.filter(it => !it.pr_item_id && selectionEligible(it, quotesByItem))
     .filter(it => !needle || it.material_description.toLowerCase().includes(needle) || it.project_no.toLowerCase().includes(needle));
   return (
     <Card>
@@ -503,6 +802,83 @@ function ChangeSupplierPanel({ line, suppliers, onDone, onCancel }) {
   );
 }
 
+// Unified delivery/lot-centric receiving, Phase 0 — a plain Stores-facing reference (which child
+// project IDs a delivery/lot is for), never quantity, never anything supplier-facing. Only rendered
+// for a line whose project has real child units (line.has_children, from getPurchaseOrderDetail).
+// The common single-lot case never shows a label field at all — silently '1' — per the plan.
+function LotsEditor({ po, line, onSaved }) {
+  const [children, setChildren] = useState(null);
+  const [lots, setLots] = useState(() =>
+    line.expected_lots?.length
+      ? line.expected_lots.map(l => ({ lot_label: l.lot_label, child_project_ids: l.children.map(c => c.child_project_id) }))
+      : [{ lot_label: '1', child_project_ids: [] }]
+  );
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    api(`/api/projects/${line.project_id}/split`).then(d => setChildren(d.children || [])).catch(() => setChildren([]));
+  }, [line.project_id]);
+
+  function toggleChild(lotIdx, childId) {
+    setLots(ls => ls.map((l, i) => i !== lotIdx ? l : {
+      ...l,
+      child_project_ids: l.child_project_ids.includes(childId)
+        ? l.child_project_ids.filter(id => id !== childId)
+        : [...l.child_project_ids, childId],
+    }));
+  }
+
+  async function save() {
+    setSaving(true);
+    try {
+      await api(`/api/purchase-orders/${po.id}`, {
+        method: 'PATCH',
+        body: { action: 'edit_lots', po_item_id: line.id, lots: lots.filter(l => l.child_project_ids.length) },
+      });
+      showToast('Lot reference saved');
+      onSaved();
+    } catch (err) { showToast(err.message, 'error'); }
+    setSaving(false);
+  }
+
+  if (children === null) return <p className="text-xs text-muted-foreground">Loading units…</p>;
+  if (!children.length) return null;
+
+  return (
+    <div className="flex flex-col gap-2 rounded-md border border-dashed p-2 text-xs">
+      <p className="font-medium text-muted-foreground">Applies to units (reference only)</p>
+      {lots.map((lot, idx) => (
+        <div key={idx} className="flex flex-col gap-1">
+          {lots.length > 1 && (
+            <div className="flex items-center gap-2">
+              <Input className="h-6 w-24 text-xs" value={lot.lot_label}
+                onChange={e => setLots(ls => ls.map((l, i) => i === idx ? { ...l, lot_label: e.target.value } : l))}
+                placeholder="Lot label" />
+              <button type="button" className="text-destructive hover:underline"
+                onClick={() => setLots(ls => ls.filter((_, i) => i !== idx))}>Remove lot</button>
+            </div>
+          )}
+          <div className="flex flex-wrap gap-2">
+            {children.map(c => (
+              <label key={c.id} className="flex items-center gap-1">
+                <Checkbox checked={lot.child_project_ids.includes(c.id)} onCheckedChange={() => toggleChild(idx, c.id)} />
+                {c.project_no}
+              </label>
+            ))}
+          </div>
+        </div>
+      ))}
+      <div className="flex items-center gap-2">
+        <button type="button" className="text-primary hover:underline"
+          onClick={() => setLots(ls => [...ls, { lot_label: String(ls.length + 1), child_project_ids: [] }])}>
+          + Add another lot
+        </button>
+        <Button size="sm" disabled={saving} onClick={save}>{saving ? 'Saving…' : 'Save lots'}</Button>
+      </div>
+    </div>
+  );
+}
+
 function EditPoLinesDialog({ po, suppliers, onClose, onPoGone, router }) {
   const [detail, setDetail] = useState(null);
   const [drafts, setDrafts] = useState({}); // po_item_id -> { qty, rate }
@@ -517,6 +893,12 @@ function EditPoLinesDialog({ po, suppliers, onClose, onPoGone, router }) {
   }, [po.id]);
 
   function setDraft(id, patch) { setDrafts(d => ({ ...d, [id]: { ...d[id], ...patch } })); }
+
+  async function refetchDetail() {
+    const d = await api(`/api/purchase-orders/${po.id}`);
+    setDetail(d);
+    setDrafts(Object.fromEntries(d.items.map(it => [it.id, { qty: String(it.qty), rate: String(it.rate) }])));
+  }
 
   async function saveLine(line) {
     setBusyId(line.id);
@@ -533,7 +915,11 @@ function EditPoLinesDialog({ po, suppliers, onClose, onPoGone, router }) {
 
   return (
     <Dialog open onOpenChange={o => !o && onClose()}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+      {/* ChangeSupplierPanel (rendered inline below, per line) has its own nested Select whose
+          popup portals outside this DialogContent — same outside-click guard as
+          ReceiveBomItemDialog.jsx. */}
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg"
+        onPointerDownOutside={e => { if (e.target.closest('[data-slot="select-content"]')) e.preventDefault(); }}>
         <DialogHeader><DialogTitle>Edit {po.po_no} — draft</DialogTitle></DialogHeader>
         <div className="flex flex-col gap-3">
           {!detail && <p className="text-sm text-muted-foreground">Loading…</p>}
@@ -581,6 +967,7 @@ function EditPoLinesDialog({ po, suppliers, onClose, onPoGone, router }) {
                   }}
                   onCancel={() => setChangingId(null)} />
               )}
+              {line.has_children && <LotsEditor po={po} line={line} onSaved={refetchDetail} />}
             </div>
           ))}
         </div>
@@ -675,7 +1062,10 @@ function RecordBillDialog({ po, tdsRates, onClose, router }) {
 
   return (
     <Dialog open onOpenChange={o => !o && onClose()}>
-      <DialogContent className="max-w-md">
+      {/* The Vendor TDS Select's popup portals outside this DialogContent — same outside-click
+          guard as ReceiveBomItemDialog.jsx. */}
+      <DialogContent className="max-w-md"
+        onPointerDownOutside={e => { if (e.target.closest('[data-slot="select-content"]')) e.preventDefault(); }}>
         <DialogHeader><DialogTitle>Record Bill against {po.po_no}</DialogTitle></DialogHeader>
         <div className="flex flex-col gap-3">
           <div className="grid gap-1.5"><Label>Supplier's bill number</Label><Input value={billNo} onChange={e => setBillNo(e.target.value)} /></div>
@@ -1260,7 +1650,10 @@ function AddPurchaseReturnDialog({ purchaseOrders, onClose, router }) {
 
   return (
     <Dialog open onOpenChange={o => !o && onClose()}>
-      <DialogContent>
+      {/* The Purchase Order Select's popup portals outside this DialogContent — same outside-click
+          guard as ReceiveBomItemDialog.jsx. */}
+      <DialogContent
+        onPointerDownOutside={e => { if (e.target.closest('[data-slot="select-content"]')) e.preventDefault(); }}>
         <DialogHeader><DialogTitle>Raise a Purchase Return</DialogTitle></DialogHeader>
         <div className="flex flex-col gap-3">
           <div className="grid gap-1.5">
@@ -1370,6 +1763,9 @@ export default function ProcurementWorkspace({ sourcingItems, suppliers, purchas
   const [statusFilter, setStatusFilter] = useState('all');
   const [poView, setPoView] = useState('active');
   const [analysisView, setAnalysisView] = useState('dashboard');
+  // "PMB Items" (today's per-row bom_items view, unchanged) vs "PR Items" (grouped by the shared
+  // PR line a project split came from) — Enquiry/Selection each render one or the other.
+  const [sourceView, setSourceView] = useState('pmb');
   // Deep-linked + persisted like `tab` above — a project picked on Enquiry/Selection shouldn't
   // silently reset to "All projects" on a real page reload, same complaint the `?tab=` deep-link
   // was already built to solve.
@@ -1437,10 +1833,18 @@ export default function ProcurementWorkspace({ sourcingItems, suppliers, purchas
       <div className="flex flex-wrap items-center gap-2">
         <Input value={search} onChange={e => setSearch(e.target.value)}
           placeholder={SEARCH_PLACEHOLDER[tab]} className="h-8 w-72" />
-        {(tab === 'enquiry' || tab === 'selection') && bomProjects.length > 0 && (
+        {(tab === 'enquiry' || tab === 'selection') && (
+          <div className="ml-auto flex gap-1 rounded-md border p-0.5">
+            <Button size="sm" variant={sourceView === 'pmb' ? 'secondary' : 'ghost'} className="h-7 px-2.5 text-xs"
+              onClick={() => setSourceView('pmb')}>PMB Items</Button>
+            <Button size="sm" variant={sourceView === 'pr' ? 'secondary' : 'ghost'} className="h-7 px-2.5 text-xs"
+              onClick={() => setSourceView('pr')}>PR Items</Button>
+          </div>
+        )}
+        {(tab === 'enquiry' || tab === 'selection') && sourceView === 'pmb' && bomProjects.length > 0 && (
           <SearchableSelect value={projectFilter} onChange={updateProjectFilter}
             options={[{ value: 'all', label: 'All projects' }, ...bomProjects.map(p => ({ value: p, label: p }))]}
-            placeholder="All projects" className="ml-auto w-44" inputClassName="h-8" />
+            placeholder="All projects" className="w-44" inputClassName="h-8" />
         )}
         {tab === 'state' && (
           <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -1470,8 +1874,8 @@ export default function ProcurementWorkspace({ sourcingItems, suppliers, purchas
           </div>
         )}
       </div>
-      {tab === 'enquiry' && <Enquiry items={projectItems} quotesByItem={quotesByItem} suppliers={suppliers} rfqSummaryByItem={rfqSummaryByItem} router={router} q={search} />}
-      {tab === 'selection' && <Selection items={projectItems} quotesByItem={quotesByItem} router={router} q={search} />}
+      {tab === 'enquiry' && <Enquiry items={projectItems} allItems={activeItems} sourceView={sourceView} quotesByItem={quotesByItem} suppliers={suppliers} rfqSummaryByItem={rfqSummaryByItem} router={router} q={search} />}
+      {tab === 'selection' && <Selection items={projectItems} allItems={activeItems} sourceView={sourceView} quotesByItem={quotesByItem} router={router} q={search} />}
       {tab === 'orders' && <PurchaseOrders orders={purchaseOrders} q={search} view={poView} suppliers={suppliers} tdsRates={tdsRates} />}
       {tab === 'state' && <State items={sourcingItems} router={router} q={search} statusFilter={statusFilter} />}
       {tab === 'suppliers-roster' && <Suppliers suppliers={suppliers} quotes={quotes} q={search} />}

@@ -167,6 +167,16 @@ export async function POST(req) {
           'INSERT INTO pr_item_projects (pr_item_id, project_id, qty_text) VALUES (?, ?, ?)',
           [Number(prItemId), p.project_id, p.qty_text.trim()]
         );
+        // A project split's own dimensions, when the raise-PR form actually diverged one from the
+        // line's shared/overall dims (PrWorkspace.jsx's per-project "Override dimensions" — a real
+        // plate/tube requirement can genuinely differ project to project, e.g. 2000x1000x10mm vs
+        // 1500x800x12mm). Falls back to the line-level values otherwise, unchanged from before this
+        // existed — the vast majority of splits share one set of dims and never send `category_fields`
+        // at all. `pr_items`/`pr_item_projects` still only ever record the line's own shared spec —
+        // this per-project value only ever lives on the materialized bom_items row, same as every
+        // other project-specific fact already only lives there (qty_text, drawing_id).
+        const pCategoryFieldsJson = category && p.category_fields ? JSON.stringify(p.category_fields) : categoryFieldsJson;
+        const pSizeSpec = p.size_spec || line.size_spec || null;
         // Materializes immediately — this line×project pair is the real procurement need. Manual
         // mode keeps it out of Procurement's Enquiry queue until Stores explicitly reserves it or
         // clicks Procure; Auto mode tries the same allocation the release-bom/single-add paths use,
@@ -175,8 +185,8 @@ export async function POST(req) {
           `INSERT INTO bom_items (project_id, material_description, moc, size_spec, qty_text, purchase_status, pr_item_id, category, category_fields_json, named_parts_json, origin, pending_review, item_id, drawing_id,
                                    requires_heat_no, requires_mtc, requires_supplier_batch, requires_serial_no, requires_manufacturing)
            VALUES (?, ?, ?, ?, ?, 'Enquiry', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [p.project_id, line.material_description.trim(), line.moc || null, line.size_spec || null,
-            p.qty_text.trim(), Number(prItemId), category, categoryFieldsJson, namedPartsJson, origin, gatedPendingReview, itemId,
+          [p.project_id, line.material_description.trim(), line.moc || null, pSizeSpec,
+            p.qty_text.trim(), Number(prItemId), category, pCategoryFieldsJson, namedPartsJson, origin, gatedPendingReview, itemId,
             p.drawing_id ? Number(p.drawing_id) : null,
             requiresHeatNo, requiresMtc, requiresSupplierBatch, requiresSerialNo, requiresManufacturing]
         );

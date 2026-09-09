@@ -5,7 +5,7 @@
 // po_ref column (which they already read), cancelling clears it — neither knows a structured PO
 // exists, they just see the free-text ref appear or disappear.
 import { NextResponse } from 'next/server';
-import { execute, queryAll, queryOne } from '@/lib/db';
+import { execute, queryAll, queryOne, withTransaction } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { getPurchaseOrderDetail } from '@/lib/data';
@@ -20,6 +20,10 @@ const PO_ACTION_KEYS = {
   cancel: 'procurement.po.cancel',
   edit_item: 'procurement.po.edit_lines',
   change_supplier: 'procurement.po.edit_lines',
+  // Unified delivery/lot-centric receiving, Phase 0 — a plain Stores-facing reference (which child
+  // project IDs a delivery is for), never touching qty/rate/amount or anything that flows into the
+  // PO document itself. Same "edit PO lines" authority tier as the two above — no new permission.
+  edit_lots: 'procurement.po.edit_lines',
 };
 
 export async function GET(req, { params }) {
@@ -158,6 +162,40 @@ export async function PATCH(req, { params }) {
     }
     await audit('po_supplier_changed', { actor: user.username, detail: `${po.po_no}: item ${line.bom_item_id} -> quote ${quoteId}` });
     return NextResponse.json({ ok: true, po_id: result.poId });
+  }
+
+  // Unified delivery/lot-centric receiving, Phase 0 — a pure Stores-facing reference (which child
+  // project IDs a delivery/lot is for), never touching qty/rate/amount. Full-replace on save, same
+  // "replace-the-whole-list" precedent bom_templates' own PATCH route already uses — simpler than
+  // diffing a small repeatable list, and this is never large enough for that to matter.
+  if (b.action === 'edit_lots') {
+    if (po.status !== 'draft') return NextResponse.json({ error: 'Only a draft PO can be edited' }, { status: 400 });
+    const line = await queryOne('SELECT * FROM po_items WHERE id = ? AND po_id = ?', [b.po_item_id, po.id]);
+    if (!line || !line.bom_item_id) return NextResponse.json({ error: 'Line not found on this PO' }, { status: 404 });
+    const bomItem = await queryOne('SELECT project_id FROM bom_items WHERE id = ?', [line.bom_item_id]);
+    if (!bomItem) return NextResponse.json({ error: 'BOM line not found' }, { status: 404 });
+    const hasChildren = await queryOne('SELECT 1 FROM projects WHERE master_project_id = ? LIMIT 1', [bomItem.project_id]);
+    if (!hasChildren) return NextResponse.json({ error: "This line's project has no child units" }, { status: 400 });
+
+    const lots = Array.isArray(b.lots) ? b.lots : [];
+    await withTransaction(async tx => {
+      await tx.execute({ sql: 'DELETE FROM bom_item_expected_children WHERE po_item_id = ?', args: [line.id] });
+      for (const lot of lots) {
+        const label = String(lot.lot_label || '1').trim() || '1';
+        const childIds = Array.isArray(lot.child_project_ids)
+          ? [...new Set(lot.child_project_ids.map(Number).filter(Boolean))]
+          : [];
+        for (const childId of childIds) {
+          await tx.execute({
+            sql: `INSERT INTO bom_item_expected_children (po_item_id, lot_label, child_project_id, created_by)
+                  VALUES (?, ?, ?, ?)`,
+            args: [line.id, label, childId, user.username],
+          });
+        }
+      }
+    });
+    await audit('po_lots_edited', { actor: user.username, detail: `${po.po_no}: line ${line.id} -> ${lots.length} lot(s)` });
+    return NextResponse.json({ ok: true });
   }
 
   return NextResponse.json({ error: 'Unknown action' }, { status: 400 });

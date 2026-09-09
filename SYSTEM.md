@@ -9019,8 +9019,123 @@ own embedded "Purchase Requests" sidebar tab — same `PrWorkspace` component ei
 identical per §5az): created a real test catalog item (Angle, MOC "SS 304", Size "ISA 50x50x5"/kg-
 per-m 3.77 via the real preset picker, "Requires manufacturing by default" unchecked), picked it
 into a real PR line, confirmed MOC/Size/kg-per-m all landed correctly, Length stayed blank and
-required, and Requires Manufacturing landed unchecked. Test catalog row deleted after. Not committed
-as of this write-up (bundled with §5bv's own fix, pending final commit).
+required, and Requires Manufacturing landed unchecked. Test catalog row deleted after.
+
+## 5bw. Stores IA reorg (5-group sidebar, Allocation & Routing tab) + Unified delivery/lot-centric receiving + allocation (2026-09-09)
+
+Two related pieces, planned together in one session, shipped in two rounds.
+
+### Stores IA reorg — sidebar reordered into the sequence Stores actually works in
+
+`StoresWorkspace.jsx`'s `NAV_ITEMS` was a flat, add-order list (10 tabs, no grouping) — reordered
+into 5 real workflow groups with `divider: true` separators (the existing `WorkspaceSidebar`
+primitive, zero new UI): **Receiving** (Gate Inward (GIR), BOM) → **Stock** (Inventory, Reorder
+Suggestions) → **Requests & Fulfillment** (Open Requests, Active Reservations, Material Indents,
+Material Issued to WIP, Allocation & Routing) → **Outbound** (Gate Passes) → **Reference**
+(Backlog). Pure reorder — every tab keys off its own string `key`, never array position, so nothing
+about selection/badges/deep-links could break by moving rows around (confirmed by grep before
+touching anything: no positional `NAV_ITEMS[n]` access anywhere in the file).
+
+**The one real gap found**: Allocation & Routing (multi-unit split orders' per-unit allocate/route
+decision, §5bi) had no cross-project queue — it only ever lived on one specific split order's own
+project page, discoverable only by already knowing the project existed. Closed with
+`getSplitOrdersNeedingStoresAction()` (`lib/data.js`) — every split master with a BOM line
+received-but-not-fully-allocated, or a cell allocated-and-ready-but-not-yet-routed, reusing
+`getProjectAllocationSummary()`'s and `getChildRoutingBoard()`'s own readiness rules rather than a
+third predicate, so the queue can never silently disagree with what the project page itself
+considers ready — plus a new **Allocation & Routing** tab, badge-counted. First shipped as a
+discovery-only table linking out to the project page; a same-round follow-up relocated
+`AllocationPanel`/`ChildRoutingPanel` inline as a master-detail view instead (queue table → pick an
+order → both panels render right there, allocate-then-route in the real work order, no page
+navigation) — both panels removed from the project page entirely once confirmed to have no other
+caller.
+
+### Unified delivery/lot-centric receiving + allocation
+
+Closes the three-separate-workflows problem the plan file (`these-are-things-we-ticklish-balloon.md`)
+diagnosed: a master project's material split across specific children (§5bi, already real but
+showing every child regardless of remaining need), a normal project's own delivery (trivial
+allocation, but **no real routing-confirmation step existed**), and a shared-PR line split across
+several unrelated normal projects at raise time (`pr_item_projects`, written once and never read
+back). Built as the four phases below, all server-side enforced, not just UI-filtered.
+
+- **Phase 0 — Procurement's lot-reference pre-plan.** New `bom_item_expected_children` table
+  (`po_item_id`, `lot_label` — `NOT NULL DEFAULT '1'`, since SQLite treats every `NULL` as distinct
+  and would silently defeat the `UNIQUE(po_item_id, lot_label, child_project_id)` constraint —
+  `child_project_id`), a plain reference only, never a quantity, never touching the PO's own
+  rate/qty/amount. New `edit_lots` action on `PATCH /api/purchase-orders/[id]` (reuses the existing
+  `procurement.po.edit_lines` permission — same authority tier as `edit_item`), full-replace on
+  save. UI: `LotsEditor` inside `EditPoLinesDialog` (`ProcurementWorkspace.jsx`), rendered only for
+  a line whose project has real children (`has_children`, now surfaced on `getPurchaseOrderDetail()`
+  and `getProjectBom()`) — a repeatable lot-label + unit-checkbox group, fetching the project's real
+  children via the existing `GET /api/projects/[id]/split` route.
+- **Phase 1 — server-side eligibility.** Folded into Phase 3's `splits` validation (below) rather
+  than a separate mechanism — every split target is re-validated against the primary item's own
+  `pr_item_id` on every call, never trusted from whatever the UI happened to show.
+- **Phase 2 — routing, for normal/sibling projects too, not just master/child.** The real
+  correction this plan made mid-design: `requires_manufacturing` was always just a default
+  suggestion, set once at BOM-raise time and never revisited — there was no confirmation step
+  anywhere for a normal or shared-PR-sibling project, only for master/child (`route-to/route.js`).
+  New `app/api/bom-items/[id]/route-self/route.js` — a second, honest write path onto the same
+  `bom_item_child_routing` table (`route-to`'s own `master_project_id` check structurally can't
+  serve this case). `child_project_id` is always the item's own `project_id`, derived server-side,
+  never accepted from the request body — there's no client-submitted identity to validate here at
+  all. Rejects with a clear message if the item's own project actually has children (route per-unit
+  via `route-to` instead) or isn't yet `Received`. `getProjectBom()` gained a display-only
+  `self_routed_to` field (mirrors `getChildDerivedBom()`'s own `routed_to`) — deliberately never
+  gates the pre-existing `readyForPacking` predicate, since retroactively requiring a row from a
+  brand-new table would have instantly un-readied every already-packable line in the app.
+- **Phase 3 — the receiving route itself, rewritten to support multi-recipient submissions.**
+  `POST /api/bom-items/[id]/receive` gained an optional `splits: [{bom_item_id, qty, routed_to}]`
+  array — every target beyond the primary item, each independently eligibility-checked (must share
+  the primary's `pr_item_id`, must not already be terminal), each getting its own required/
+  received-so-far computation and (when it has no children of its own) a **required** routing
+  confirmation, all credited via `creditBomItemReceipt()` (unchanged, extracted earlier this
+  session) inside **one** transaction — a multi-sibling submission either fully lands (receipt +
+  routing for every recipient) or fully rolls back, never half-applied. Traceability
+  (heat/mtc/batch/serial/cert) is one shared object across every target — genuinely one physical
+  delivery, one heat/batch, honestly true for every recipient it's split across. Omitting `splits`
+  is byte-identical to the pre-existing single-line behavior. New `GET` handler on the same route
+  (`required_qty`/`received_so_far`/`remaining`/`has_children`/`requires_manufacturing`/
+  `planned_recipients`) backs both the dialog's own defaults and a genuinely reusable read of
+  `getPlannedRecipients()` (Phase 0's sibling/child recipient lookup, previously write-only wired).
+- **`ReceiveBomItemDialog.jsx` rewritten**: qty now defaults to the remaining outstanding amount
+  (was the full original `qty_text` — a real, confirmed pre-existing bug), a visible "N of M received
+  so far" running total, a required "Route to" select when the item's own project has no children,
+  and — when the item's PR was split across siblings — a checkbox list of eligible siblings with
+  their own qty + routing fields, submitting the whole thing as one `splits` array.
+- **New "Receive a Delivery" entry point** (`ReceiveDeliveryTab`, Stores' Receiving group, right
+  after Gate Inward) — the "reachable without picking a project first" gap the plan called out
+  explicitly: `BomGrnTab` (the pre-existing "BOM" tab) only ever works once a project is already
+  chosen from its own dropdown. A plain search (material description / project / PR / PO number)
+  across every open line, reusing `ReceiveBomItemDialog` unchanged per result row — no duplicated
+  receiving logic, purely a discovery surface.
+
+**Live-verified end to end against the real dev DB and a real browser session**, not just
+self-checked: `edit_lots` (a real lot-reference save + re-read via `getPurchaseOrderDetail()`);
+`route-self`'s three guards (rejects an un-received item, rejects a project with children, accepts
+and records a valid routing decision — confirmed via its own `GET`); a real partial-then-complete
+receive on a normal project correctly rejected completion without a routing decision and correctly
+accepted it with one; a real sibling-PR split (`PR-26`, one line raised across two disposable
+projects) correctly credited both `bom_items` rows from one submission, same `receipt_id`/`grn_ref`,
+independently routed (`production` / `dispatch`) — proven via direct DB reads, not just the API
+response. The full "Receive a Delivery" flow was clicked through in a real browser session
+(`stores_head`): search → Receive → remaining-qty default (`3 Nos`) → running total (`0 of 3
+received so far`) → required "Route to" field (defaulted to `Direct to Dispatch` from
+`requires_manufacturing: false`) → new-receipt creation → submit → `Marked Received` toast → routing
+confirmed via a follow-up `route-self` `GET`. All disposable test data (7 projects, 7 `bom_items`,
+2 purchase orders, 1 purchase requisition, their milestones/scope-of-supply/notifications) was
+deleted afterward via a direct Turso script in FK-safe order; a final broad `LIKE '%ZZ-%'` sweep
+across every touched table confirmed zero residue.
+
+**Deliberately deferred, per the plan's own scope**: Phase 4 (opportunistic-leftover browsing for
+genuine over-delivery) and Phase 5 (merging sibling/child eligibility into one visually-unified
+recipients panel) — both explicitly lower-priority in the plan, not required for the core capability
+to work. The separate "QC hard gate" research (advisory-only QC → a real accept/reject mechanism)
+remains on hold pending a client conversation about accept/reject mechanics, unaffected by any of
+the above — this phase's own `creditBomItemReceipt()` extraction was built with that future layer
+in mind (Phase 2 of the deferred research explicitly sequences onto this same function), but no
+QC-clearance code was touched this round.
 
 ## 6. Customer Portal (read-only, external)
 
@@ -9151,8 +9266,10 @@ lib/milestones.js MASTER_LEVEL_MILESTONE_KEYS         (§5bj — the 9 Design/Pr
 ```
 
 `bom_items` carries the spreadsheet-mirror columns — `section` (sheet), `group_label` (assembly
-heading), `make`, `qty_text`, `purchase_status` (PENDING/TRANSIT/CLOSED/RECEIVED/CANCELLED — the
-last added this round, §5a), and free-text
+heading), `make`, `qty_text`, `purchase_status` (current, real enum: `Enquiry → Comparison →
+Ordered → Transit → Received | Cancelled | In-Stock` — `lib/bom-fields.mjs`; the old
+PENDING/TRANSIT/CLOSED/RECEIVED/CANCELLED set this line used to name was folded into the above by a
+migration years before this note was corrected, §5bw), and free-text
 refs `pr_ref`/`po_ref`/`grn_ref`/`grn_qty_text`/`pending_qty_text`/`bqtc_ref`/`issued_ref`/
 `received_ref`/`remarks`, plus `import_id → bom_imports` (null = pasted/added in-app). All refs
 are deliberately free text (the cells mix numbers, dates and codes); only `purchase_status` is

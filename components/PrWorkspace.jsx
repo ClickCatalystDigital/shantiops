@@ -30,7 +30,7 @@ import SearchableSelect from './SearchableSelect';
 import QtyInput from './QtyInput';
 import CategoryFieldsBlock, { OTHER_MOC, MOC_OPTIONS } from './CategoryFieldsBlock';
 import { BOM_FIELD_OWNERS, DIMENSIONAL_CATEGORIES } from '@/lib/bom-fields.mjs';
-import { CATEGORY_LABEL, categoryDisplaySpec } from '@/lib/section-shapes';
+import { CATEGORY_LABEL, categoryDisplaySpec, categoryWeightKg } from '@/lib/section-shapes';
 import BomTemplateManager from './BomTemplateManager';
 import {
   NamedPartsEditor, ItemSearchField, CATEGORY_OPTIONS, defaultCategoryFields, finalizeCategoryFields,
@@ -44,10 +44,27 @@ import {
 // them later, once BomTable.jsx's Add Item dialog needed the identical check.
 
 let nextKey = 1;
+// A project split's own Length (+ Width, plate only) — always its own real cut requirement, never
+// an inherited/optional value. The line's own categoryFields (below) only ever holds the fields
+// that describe the *stock being bought*, not a cut instance — Thickness for plate, Diameter for
+// tube, Size/kg-per-m for rolled sections — since that's what's actually shared across every
+// project on one PR line (you buy one thickness of plate, one diameter of tube; you cut different
+// lengths/areas from it per project). See perInstanceDimKeys() in lib/section-shapes.js.
+function emptyProject() {
+  return { key: nextKey++, project_id: '', qty_text: '', drawing_id: '', drawingOptions: null, length: '', width: '' };
+}
+// This project's own full dimension set for weight/spec purposes — the line's shape fields (fixed:
+// thickness/diameter/size/kg-per-m/density) plus this project's own Length/Width. Same shape
+// categoryWeightKg/categoryDisplaySpec/validateCategoryFields/finalizeCategoryFields already expect
+// for a category's *full* fields — reused unchanged, never re-derived.
+function mergedProjectFields(line, p) {
+  return { ...line.categoryFields, length: p.length, width: p.width };
+}
+function round2Weight(n) { return Math.round(n * 100) / 100; }
 function emptyLine() {
   return {
     key: nextKey++, source: 'bom', material_description: '', moc: '', size_spec: '', uomHint: '',
-    projects: [{ key: nextKey++, project_id: '', qty_text: '', drawing_id: '', drawingOptions: null }],
+    projects: [emptyProject()],
     inventory_item_id: '', qty: '',
     category: '', categoryFields: {}, namedParts: [],
     item_id: null, // §3.2 — set only when picked from the catalog search; cleared on any hand-edit
@@ -86,7 +103,7 @@ function LineCard({ line, index, projects, inventoryItems, showSourcePicker, onC
   function setProject(pkey, patch) {
     setLine({ projects: line.projects.map(p => p.key === pkey ? { ...p, ...patch } : p) });
   }
-  function addProject() { setLine({ projects: [...line.projects, { key: nextKey++, project_id: '', qty_text: '', drawing_id: '', drawingOptions: null }] }); }
+  function addProject() { setLine({ projects: [...line.projects, emptyProject()] }); }
   function removeProject(pkey) { setLine({ projects: line.projects.filter(p => p.key !== pkey) }); }
 
   // Drawing linking (2026-08-19) — "where applicable", never required. Fetched lazily per project
@@ -176,22 +193,18 @@ function LineCard({ line, index, projects, inventoryItems, showSourcePicker, onC
       )}
 
       {line.source === 'bom' && line.category && (
-        // Size/spec (bom_items.size_spec) is what every downstream department actually sees in the
-        // Master BOM table — category_fields_json (dims/size/kg_per_m/density) drives weight + stock
-        // matching but is never itself displayed there. Suggest it from the dimensions so the two
-        // don't silently diverge, but only while it's still blank OR still equal to the previous
-        // auto-suggestion — a value the user actually typed by hand into the Size/Spec box is never
-        // overwritten. A bare `line.size_spec ||` check here was the bug: the moment the suggestion
-        // became non-empty (e.g. the length/width/thickness field typed last hits its first digit),
-        // it froze forever and never picked up the rest of that same field's digits.
+        // Dimensional: what's being *bought* — Thickness (plate) / Diameter+Size+kg-per-m (tube/
+        // rolled) / the one shape dimension (round/square/octagonal/flat) — the fields shared by
+        // every project on this PR line, since they determine which raw stock gets purchased. Never
+        // Length (or Width for plate): those are what each project's own cut needs, entered per
+        // project below, not a property of the line. mode="shapeOnly" is CategoryFieldsBlock's
+        // per-project-varying-field filter (the same one Item Master's "defaults" mode already uses)
+        // with required=true kept — unlike a catalog default, a real PR can't skip stating the
+        // thickness/diameter it's buying. standard/other (item-master-ref + qty) has no per-project
+        // varying field at all, so it renders its normal full block, unaffected.
         <CategoryFieldsBlock category={line.category} fields={line.categoryFields}
-          onChange={categoryFields => {
-            const wasAutoSuggested = !line.size_spec || line.size_spec === categoryDisplaySpec(line.category, line.categoryFields);
-            setLine({
-              categoryFields,
-              size_spec: wasAutoSuggested ? categoryDisplaySpec(line.category, categoryFields) : line.size_spec,
-            });
-          }} />
+          mode={DIMENSIONAL_CATEGORIES.includes(line.category) ? 'shapeOnly' : 'full'}
+          onChange={categoryFields => setLine({ categoryFields })} />
       )}
 
       {line.source === 'bom' && (
@@ -227,37 +240,84 @@ function LineCard({ line, index, projects, inventoryItems, showSourcePicker, onC
         <NamedPartsEditor parts={line.namedParts || []} onChange={namedParts => setLine({ namedParts })} />
       )}
 
-      {line.source === 'bom' && (
-        <div className="flex flex-col gap-1.5">
-          <Label>Projects &amp; quantity<span className="text-danger"> *</span></Label>
-          {line.projects.map(p => (
-            <div key={p.key} className="flex items-center gap-2">
-              <Select value={p.project_id} onValueChange={v => onProjectChange(p.key, v)}>
-                <SelectTrigger className="w-48" aria-invalid={!p.project_id}><SelectValue placeholder="Project…" /></SelectTrigger>
-                <SelectContent>
-                  {projects.map(pr => <SelectItem key={pr.id} value={String(pr.id)}>{pr.project_no}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <QtyInput value={p.qty_text} onChange={v => setProject(p.key, { qty_text: v })} />
-              {p.drawingOptions?.length > 0 && (
-                <Select value={p.drawing_id} onValueChange={v => setProject(p.key, { drawing_id: v === '__none__' ? '' : v })}>
-                  <SelectTrigger className="w-40"><SelectValue placeholder="Drawing (optional)" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">No drawing</SelectItem>
-                    {p.drawingOptions.map(d => <SelectItem key={d.id} value={String(d.id)}>{d.dgNo || `DWG-${String(d.id).padStart(4, '0')}`} · {d.name}{d.revision ? ` · ${d.revision}` : ''}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              )}
-              {line.projects.length > 1 && (
-                <Button size="icon-sm" variant="ghost" onClick={() => removeProject(p.key)}><TrashIcon className="size-4" /></Button>
-              )}
-            </div>
-          ))}
-          <Button size="sm" variant="outline" className="w-fit" onClick={addProject}>
-            <PlusIcon data-icon="inline-start" />Add project
-          </Button>
-        </div>
-      )}
+      {line.source === 'bom' && (() => {
+        const isDim = line.category && DIMENSIONAL_CATEGORIES.includes(line.category);
+        const isPlate = line.category === 'plate';
+        // Live totals — exactly what Procurement's PR-group view sums server-side once this is
+        // raised (lib/bom-structure.mjs's aggregatePrGroups: total qty is a plain sum of pieces,
+        // total weight is each project's own per-unit weight x its own qty, never one shared
+        // dimension applied to the combined total). Shown here so Engineering sees, before
+        // submitting, the same aggregate figure Procurement will use to source and communicate
+        // with a supplier.
+        const qtyOf = p => Number(String(p.qty_text || '').match(/^\s*([\d.]+)/)?.[1]) || 0;
+        const totalQty = line.projects.reduce((s, p) => s + qtyOf(p), 0);
+        const totalWeight = isDim
+          ? line.projects.reduce((s, p) => s + categoryWeightKg(line.category, mergedProjectFields(line, p)) * qtyOf(p), 0)
+          : 0;
+        return (
+          <div className="flex flex-col gap-1.5">
+            <Label>Projects &amp; quantity<span className="text-danger"> *</span></Label>
+            {line.projects.map(p => (
+              <div key={p.key} className="flex flex-col gap-1.5">
+                <div className="flex items-center gap-2">
+                  <Select value={p.project_id} onValueChange={v => onProjectChange(p.key, v)}>
+                    <SelectTrigger className="w-48" aria-invalid={!p.project_id}><SelectValue placeholder="Project…" /></SelectTrigger>
+                    <SelectContent>
+                      {projects.map(pr => <SelectItem key={pr.id} value={String(pr.id)}>{pr.project_no}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <QtyInput value={p.qty_text} onChange={v => setProject(p.key, { qty_text: v })} />
+                  {p.drawingOptions?.length > 0 && (
+                    <Select value={p.drawing_id} onValueChange={v => setProject(p.key, { drawing_id: v === '__none__' ? '' : v })}>
+                      <SelectTrigger className="w-40"><SelectValue placeholder="Drawing (optional)" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">No drawing</SelectItem>
+                        {p.drawingOptions.map(d => <SelectItem key={d.id} value={String(d.id)}>{d.dgNo || `DWG-${String(d.id).padStart(4, '0')}`} · {d.name}{d.revision ? ` · ${d.revision}` : ''}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  {line.projects.length > 1 && (
+                    <Button size="icon-sm" variant="ghost" onClick={() => removeProject(p.key)}><TrashIcon className="size-4" /></Button>
+                  )}
+                </div>
+                {/* Always this project's own real cut requirement — never inherited, never optional.
+                    Thickness/Diameter/Size stay on the line above (the stock being bought); Length
+                    (+ Width, plate only) is what actually differs project to project, so it lives
+                    here, always required, same as it's always been required for a project's own
+                    qty. */}
+                {isDim && (
+                  <div className="ml-1 flex flex-wrap items-end gap-3 rounded-md border border-dashed p-2">
+                    <div className="flex flex-col gap-1.5">
+                      <Label className="text-xs">Length<span className="text-danger"> *</span></Label>
+                      <DimensionInput required valueMm={p.length || ''} onChangeMm={v => setProject(p.key, { length: v })} />
+                    </div>
+                    {isPlate && (
+                      <div className="flex flex-col gap-1.5">
+                        <Label className="text-xs">Width<span className="text-danger"> *</span></Label>
+                        <DimensionInput required valueMm={p.width || ''} onChangeMm={v => setProject(p.key, { width: v })} />
+                      </div>
+                    )}
+                    <p className="pb-1.5 text-xs text-muted-foreground">
+                      {categoryDisplaySpec(line.category, mergedProjectFields(line, p)) || 'Fill in dimensions'}
+                      {categoryWeightKg(line.category, mergedProjectFields(line, p)) > 0
+                        && ` · ${round2Weight(categoryWeightKg(line.category, mergedProjectFields(line, p)))} kg each`}
+                    </p>
+                  </div>
+                )}
+              </div>
+            ))}
+            <Button size="sm" variant="outline" className="w-fit" onClick={addProject}>
+              <PlusIcon data-icon="inline-start" />Add project
+            </Button>
+            {isDim && (totalQty > 0 || totalWeight > 0) && (
+              <p className="text-xs font-medium text-muted-foreground">
+                Overall: {totalQty} piece{totalQty !== 1 ? 's' : ''} across {line.projects.length} project{line.projects.length !== 1 ? 's' : ''}
+                {totalWeight > 0 && ` · ≈${round2Weight(totalWeight)} kg total`}
+              </p>
+            )}
+          </div>
+        );
+      })()}
 
       {line.source === 'stock' && (
         <div className="grid grid-cols-2 gap-3">
@@ -305,7 +365,7 @@ function templateItemToLine(it) {
     // categories (below), so there'd be no easy way to notice or correct it after applying.
     size_spec: DIMENSIONAL_CATEGORIES.includes(category) ? categoryDisplaySpec(category, categoryFields) : (it.size_spec || ''),
     uomHint: '',
-    projects: [{ key: nextKey++, project_id: '', qty_text: it.qty_text || '', drawing_id: '', drawingOptions: null }],
+    projects: [{ ...emptyProject(), qty_text: it.qty_text || '' }],
     inventory_item_id: '', qty: '',
     category, categoryFields,
     namedParts: it.named_parts_json ? JSON.parse(it.named_parts_json) : [],
@@ -456,8 +516,18 @@ export function RaisePrTab({ departments, projects, inventoryItems = [], prTempl
       }
       if (source === 'bom' && l.category) {
         if (!l.moc.trim()) return showToast(`${CATEGORY_LABEL[l.category]} needs an MOC — that's what remnant matching checks against`, 'error');
-        const err = validateCategoryFields(l.category, l.categoryFields);
-        if (err) return showToast(`${CATEGORY_LABEL[l.category]} ${err}`, 'error');
+        if (!DIMENSIONAL_CATEGORIES.includes(l.category)) {
+          const err = validateCategoryFields(l.category, l.categoryFields);
+          if (err) return showToast(`${CATEGORY_LABEL[l.category]} ${err}`, 'error');
+        } else {
+          // Each project's own merged fields (line's shape spec + that project's own Length/Width)
+          // must be complete — the identical check a non-dimensional line runs once, run once per
+          // project here since a project's Length/Width lives only on that project now, not the line.
+          for (const p of l.projects) {
+            const err = validateCategoryFields(l.category, mergedProjectFields(l, p));
+            if (err) return showToast(`${CATEGORY_LABEL[l.category]} ${err}`, 'error');
+          }
+        }
       }
     }
     setBusy(true);
@@ -478,10 +548,23 @@ export function RaisePrTab({ departments, projects, inventoryItems = [], prTempl
               requires_manufacturing: source === 'bom' ? !!l.requires_manufacturing : undefined,
             };
             if (source === 'stock') return { ...base, inventory_item_id: Number(l.inventory_item_id), qty: Number(l.qty) };
+            const isDim = l.category && DIMENSIONAL_CATEGORIES.includes(l.category);
             return {
+              // category_fields here is the line's own shape spec (Thickness/Diameter/Size/kg-per-m)
+              // — what pr_items records as the material being bought. For a dimensional category it
+              // deliberately never has Length/Width; every project below always sends its own merged
+              // (shape + its own Length/Width), which is what actually lands on that project's
+              // materialized bom_items row.
               ...base, category: l.category || undefined, category_fields: l.category ? finalizeCategoryFields(l.category, l.categoryFields) : undefined,
               named_parts: l.category && l.namedParts?.length ? l.namedParts : undefined,
-              projects: l.projects.map(p => ({ project_id: Number(p.project_id), qty_text: p.qty_text, drawing_id: p.drawing_id ? Number(p.drawing_id) : undefined })),
+              projects: l.projects.map(p => {
+                const merged = isDim ? mergedProjectFields(l, p) : null;
+                return {
+                  project_id: Number(p.project_id), qty_text: p.qty_text, drawing_id: p.drawing_id ? Number(p.drawing_id) : undefined,
+                  category_fields: merged ? finalizeCategoryFields(l.category, merged) : undefined,
+                  size_spec: merged ? (categoryDisplaySpec(l.category, merged) || undefined) : undefined,
+                };
+              }),
             };
           }),
         },

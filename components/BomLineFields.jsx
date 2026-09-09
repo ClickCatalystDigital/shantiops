@@ -31,6 +31,7 @@ export function validateCategoryFields(category, fields) {
     if (!fields.size || fields.size === OTHER_SIZE) return 'needs a size';
     if (!(Number(fields.kg_per_m) > 0)) return 'needs a weight per metre (kg/m)';
     if (!(Number(fields.length) > 0)) return 'needs a length';
+    if (category === 'pipe' && !(Number(fields.diameter_mm) > 0)) return 'needs a diameter (mm)';
     return null;
   }
   return null;

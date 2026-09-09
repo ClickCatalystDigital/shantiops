@@ -7,7 +7,7 @@
 import { NextResponse } from 'next/server';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
-import { execute, queryOne, queryAll } from '@/lib/db';
+import { queryOne, queryAll, withTransaction } from '@/lib/db';
 import { audit } from '@/lib/usb';
 import { getAssemblyRollupMap } from '@/lib/data';
 import { itemRollupQty } from '@/lib/bom-structure.mjs';
@@ -37,11 +37,13 @@ export async function POST(req, { params }) {
 
   const b = await req.json();
 
-  const [received, alreadyAllocated] = await Promise.all([
-    queryOne('SELECT COALESCE(SUM(qty_received), 0) AS total FROM bom_item_receipts WHERE bom_item_id = ?', [item.id]),
-    queryOne('SELECT COALESCE(SUM(qty_allocated), 0) AS total FROM bom_item_child_allocations WHERE bom_item_id = ?', [item.id]),
-  ]);
-  const available = Number(received.total || 0) - Number(alreadyAllocated.total || 0);
+  // Phase 1 (unified delivery/lot-centric receiving plan) — the available-quantity check used to
+  // be read once, outside any transaction, then trusted for the INSERT(s) that followed; two
+  // concurrent allocate calls could both read the same stale "available" figure and both succeed,
+  // over-allocating the line. Fixed: the whole read-check-write now happens inside one
+  // withTransaction, with the availability figure re-read from that same transaction's own
+  // connection immediately before the insert(s) — the standard CAS discipline this codebase already
+  // uses elsewhere (route-to/route.js's readiness gate, material-indents' release claim).
 
   // Bundle path — pick N children in one action, one qty split 1-per-child (auto-computed from the
   // line's own per-unit rollup, never hand-typed). All-or-nothing: rejected outright if the bundle
@@ -61,22 +63,36 @@ export async function POST(req, { params }) {
     const rollupById = await getAssemblyRollupMap(item.project_id);
     const perUnit = itemRollupQty(item.qty_text, item.assembly_id, rollupById, 1, !!item.qty_resolved) ?? 1;
     const total = perUnit * children.length;
-    if (total > available) {
-      return NextResponse.json(
-        { error: `Only ${available} available — ${children.length} units × ${perUnit} needs ${total}` }, { status: 400 });
+
+    let availableAfter;
+    try {
+      availableAfter = await withTransaction(async tx => {
+        const [receivedRow, allocatedRow] = await Promise.all([
+          tx.execute({ sql: 'SELECT COALESCE(SUM(qty_received), 0) AS total FROM bom_item_receipts WHERE bom_item_id = ?', args: [item.id] }),
+          tx.execute({ sql: 'SELECT COALESCE(SUM(qty_allocated), 0) AS total FROM bom_item_child_allocations WHERE bom_item_id = ?', args: [item.id] }),
+        ]);
+        const available = Number(receivedRow.rows[0]?.total || 0) - Number(allocatedRow.rows[0]?.total || 0);
+        if (total > available) {
+          throw new Error(`Only ${available} available — ${children.length} units × ${perUnit} needs ${total}`);
+        }
+        for (const child of children) {
+          await tx.execute({
+            sql: `INSERT INTO bom_item_child_allocations (bom_item_id, child_project_id, qty_allocated, allocated_by)
+                  VALUES (?, ?, ?, ?)`,
+            args: [item.id, child.id, perUnit, user.username],
+          });
+        }
+        return available - total;
+      });
+    } catch (e) {
+      return NextResponse.json({ error: e.message }, { status: 400 });
     }
 
-    for (const child of children) {
-      await execute(
-        `INSERT INTO bom_item_child_allocations (bom_item_id, child_project_id, qty_allocated, allocated_by)
-         VALUES (?, ?, ?, ?)`,
-        [item.id, child.id, perUnit, user.username]);
-    }
     await audit('bom_item_allocated', {
       actor: user.username,
       detail: `bom_item #${item.id} -> ${children.length} units @ ${perUnit} each`,
     });
-    return NextResponse.json({ ok: true, created: children.length, per_unit_qty: perUnit, available_after: available - total });
+    return NextResponse.json({ ok: true, created: children.length, per_unit_qty: perUnit, available_after: availableAfter });
   }
 
   const childId = Number(b.child_project_id);
@@ -90,18 +106,30 @@ export async function POST(req, { params }) {
   if (child.master_project_id !== item.project_id) {
     return NextResponse.json({ error: 'That project is not a child unit of this BOM line\'s own project' }, { status: 400 });
   }
-  if (qty > available) {
-    return NextResponse.json({ error: `Only ${available} available to allocate` }, { status: 400 });
-  }
 
-  const ins = await execute(
-    `INSERT INTO bom_item_child_allocations (bom_item_id, child_project_id, qty_allocated, allocated_by)
-     VALUES (?, ?, ?, ?)`,
-    [item.id, childId, qty, user.username]);
+  let insertedId, availableAfter;
+  try {
+    ({ insertedId, availableAfter } = await withTransaction(async tx => {
+      const [receivedRow, allocatedRow] = await Promise.all([
+        tx.execute({ sql: 'SELECT COALESCE(SUM(qty_received), 0) AS total FROM bom_item_receipts WHERE bom_item_id = ?', args: [item.id] }),
+        tx.execute({ sql: 'SELECT COALESCE(SUM(qty_allocated), 0) AS total FROM bom_item_child_allocations WHERE bom_item_id = ?', args: [item.id] }),
+      ]);
+      const available = Number(receivedRow.rows[0]?.total || 0) - Number(allocatedRow.rows[0]?.total || 0);
+      if (qty > available) throw new Error(`Only ${available} available to allocate`);
+      const ins = await tx.execute({
+        sql: `INSERT INTO bom_item_child_allocations (bom_item_id, child_project_id, qty_allocated, allocated_by)
+              VALUES (?, ?, ?, ?)`,
+        args: [item.id, childId, qty, user.username],
+      });
+      return { insertedId: Number(ins.lastInsertRowid), availableAfter: available - qty };
+    }));
+  } catch (e) {
+    return NextResponse.json({ error: e.message }, { status: 400 });
+  }
 
   await audit('bom_item_allocated', {
     actor: user.username,
     detail: `bom_item #${item.id} -> ${child.project_no}: ${qty}`,
   });
-  return NextResponse.json({ ok: true, id: Number(ins.lastId), available_after: available - qty });
+  return NextResponse.json({ ok: true, id: insertedId, available_after: availableAfter });
 }

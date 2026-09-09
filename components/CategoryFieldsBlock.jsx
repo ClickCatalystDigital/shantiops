@@ -38,6 +38,12 @@ export const MOC_OPTIONS = [...STANDARD_MOC.map(m => ({ value: m, label: m })), 
 export default function CategoryFieldsBlock({ category, fields, onChange, mode = 'full' }) {
   const set = patch => onChange({ ...fields, ...patch });
   const isDefaults = mode === 'defaults';
+  // 'shapeOnly' (PrWorkspace.jsx's raise-PR "overall" section, §5c PR aggregation) — same field
+  // filter as 'defaults' (hide Length, and Width for plate — the per-instance fields that now live
+  // on each project split instead), but unlike a catalog default, a real PR line can't skip stating
+  // what it's actually buying, so required stays true (req is NOT gated on this, only on isDefaults).
+  const isShapeOnly = mode === 'shapeOnly';
+  const hideInstanceDims = isDefaults || isShapeOnly;
   const req = !isDefaults;
 
   // `other` renders identically to `standard` — no dimensions, just a reference + qty. Distinct
@@ -75,7 +81,7 @@ export default function CategoryFieldsBlock({ category, fields, onChange, mode =
     // 'length' by construction (flat: width+thickness, round/square/octagonal: one dimension), so
     // filtering 'length' alone is the correct, sufficient rule for all of those.
     const excludeKeys = category === 'plate' ? ['length', 'width'] : ['length'];
-    const dims = isDefaults ? fullDims.filter(d => !excludeKeys.includes(d.key)) : fullDims;
+    const dims = hideInstanceDims ? fullDims.filter(d => !excludeKeys.includes(d.key)) : fullDims;
     const presets = GEOMETRY_SHAPES[category]?.sizePresets;
     return (
       <div className="flex flex-col gap-2 rounded-md border border-dashed p-2.5">
@@ -100,7 +106,7 @@ export default function CategoryFieldsBlock({ category, fields, onChange, mode =
               onChange={e => set({ density: e.target.value })} placeholder={String(DEFAULT_DENSITY)} />
           </div>
         </div>
-        {!isDefaults && <p className="text-xs text-muted-foreground">Estimated weight: <span className="tnum font-medium text-foreground">{weightLabel}</span></p>}
+        {!hideInstanceDims && <p className="text-xs text-muted-foreground">Estimated weight: <span className="tnum font-medium text-foreground">{weightLabel}</span></p>}
       </div>
     );
   }
@@ -134,16 +140,27 @@ export default function CategoryFieldsBlock({ category, fields, onChange, mode =
             <Input type="number" min="0" step="any" required={req && (isOther || presets.length === 0)}
               value={fields.kg_per_m || ''} onChange={e => set({ kg_per_m: e.target.value })} />
           </div>
-          {/* Length is never a per-item default — a rolled section's real length is always what a
-              specific project needs, not a property of the catalog SKU. */}
-          {!isDefaults && (
+          {/* Diameter is shape-intrinsic (same footing as Size), unlike Length below — a real pipe
+              schedule table doesn't exist in this app (see STANDARD_SECTIONS' own comment), so this
+              stays a real OD in mm, purely descriptive, never feeding the weight formula. */}
+          {category === 'pipe' && (
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs">Diameter (mm){req && <span className="text-danger"> *</span>}</Label>
+              <Input type="number" min="0" step="any" required={req} value={fields.diameter_mm || ''}
+                onChange={e => set({ diameter_mm: e.target.value })} />
+            </div>
+          )}
+          {/* Length is never a per-item default, nor a PR line's own shared/overall field — a rolled
+              section's real length is always what a specific project needs, not a property of the
+              catalog SKU or the raw stock being bought. */}
+          {!hideInstanceDims && (
             <div className="flex flex-col gap-1.5">
               <Label className="text-xs">Length<span className="text-danger"> *</span></Label>
               <DimensionInput required valueMm={fields.length || ''} onChangeMm={v => set({ length: v })} />
             </div>
           )}
         </div>
-        {!isDefaults && <p className="text-xs text-muted-foreground">Estimated weight: <span className="tnum font-medium text-foreground">{weightLabel}</span></p>}
+        {!hideInstanceDims && <p className="text-xs text-muted-foreground">Estimated weight: <span className="tnum font-medium text-foreground">{weightLabel}</span></p>}
       </div>
     );
   }

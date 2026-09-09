@@ -831,6 +831,14 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
                   <span className={`rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${STATUS_TONE[r.purchase_status] || 'bg-muted text-muted-foreground ring-border'}`}>
                     {r.purchase_status || DEFAULT_PURCHASE_STATUS}
                   </span>
+                  {/* Unified delivery/lot-centric receiving, Phase 2 — the self-routing decision made
+                      at receive time for a normal/sibling project (route-self/route.js). Previously
+                      computed and attached to every row but never rendered anywhere. */}
+                  {r.self_routed_to && (
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      Routed to: {r.self_routed_to === 'production' ? 'Manufacturing' : 'Dispatch'}
+                    </div>
+                  )}
                 </TableCell>
                 {showPacking && (
                   <TableCell className={`w-24 bg-background md:sticky md:left-[27rem] md:z-10 ${hasActions ? '' : 'md:border-r'}`}>
