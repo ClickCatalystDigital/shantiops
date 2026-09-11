@@ -439,7 +439,7 @@ function PartRow({ part, selected, onToggle, onOpenPicker, onRemove, onEdit, onU
 // routing (link-bom-item's route now re-runs reconcileIiiaGroups), and lib/tc-match.js's certificate
 // suggestions, which need a real bom_item to compare against. Optional — a genuinely off-BOM addition
 // (an IBR-mandated attachment that was never a BOM line) still works with the fields typed by hand.
-function AddPartDialog({ open, onOpenChange, documentId, bomItems, router }) {
+function AddPartDialog({ open, onOpenChange, documentId, bomItems, defaultIiiaGroupId, router }) {
   const EMPTY = { part_no: '', part_name: '', size_t: '', size_w: '', size_l: '', qty: '', bom_item_id: '' };
   const [form, setForm] = useState(EMPTY);
   const [busy, setBusy] = useState(false);
@@ -460,7 +460,8 @@ function AddPartDialog({ open, onOpenChange, documentId, bomItems, router }) {
     setBusy(true);
     try {
       await api(`/api/qc-documents/${documentId}/parts`, {
-        method: 'POST', body: { ...form, bom_item_id: form.bom_item_id ? Number(form.bom_item_id) : null },
+        method: 'POST',
+        body: { ...form, bom_item_id: form.bom_item_id ? Number(form.bom_item_id) : null, iiia_group_id: defaultIiiaGroupId ?? null },
       });
       showToast('Part added — link it to a certificate before the PDF can be previewed');
       setForm(EMPTY);
@@ -492,7 +493,7 @@ function AddPartDialog({ open, onOpenChange, documentId, bomItems, router }) {
             </div>
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label>Part Name</Label>
+            <Label>Part Name <span className="text-destructive">*</span></Label>
             <Input value={form.part_name} onChange={set('part_name')} placeholder="e.g. INSPECTION DOOR" autoFocus />
           </div>
           <div className="flex flex-col gap-1.5">
@@ -561,7 +562,7 @@ function EditPartDialog({ open, onOpenChange, documentId, part, router }) {
             </div>
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label>Part Name</Label>
+            <Label>Part Name <span className="text-destructive">*</span></Label>
             <Input value={form.part_name} onChange={set('part_name')} placeholder="e.g. INSPECTION DOOR" autoFocus />
           </div>
           <div className="flex flex-col gap-1.5">
@@ -647,11 +648,11 @@ function NewIiiaGroupDialog({ open, onOpenChange, documentId, assemblies, groupL
   );
 }
 
-function IiiaGroupCard({ group: g, parts, ungroupedParts, bomItems, onLinkBomItem, canEdit, documentId, drawings, router }) {
+function IiiaGroupCard({ group: g, parts, bomItems, onLinkBomItem, canEdit, documentId, drawings, router,
+  selected, onToggle, onOpenPicker, onEdit, onRemove, onUnlink, onAddPart }) {
   const [form, setForm] = useState(() => Object.fromEntries(IIIA_HEADER_FIELDS.map(([k]) => [k, g[k] || ''])));
   const [drawingId, setDrawingId] = useState(g.calc_drawing_id ? String(g.calc_drawing_id) : '');
   const [busy, setBusy] = useState(false);
-  const [addPartId, setAddPartId] = useState('');
   const [q, setQ] = useState('');
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
   const needle = q.trim().toLowerCase();
@@ -680,27 +681,18 @@ function IiiaGroupCard({ group: g, parts, ungroupedParts, bomItems, onLinkBomIte
     } catch (err) { showToast(err.message, 'error'); }
   }
 
-  async function addPart() {
-    if (!addPartId) return;
-    try {
-      await api(`/api/qc-documents/${documentId}/iiia-groups/${g.id}/parts`, { method: 'POST', body: { part_id: Number(addPartId) } });
-      setAddPartId('');
-      router.refresh();
-    } catch (err) { showToast(err.message, 'error'); }
-  }
-
-  async function removePart(partId) {
-    try {
-      await api(`/api/qc-documents/${documentId}/iiia-groups/${g.id}/parts`, { method: 'DELETE', body: { part_id: partId } });
-      router.refresh();
-    } catch (err) { showToast(err.message, 'error'); }
-  }
-
   return (
     <div className="flex flex-col gap-3 rounded-lg border p-3">
       <div className="flex items-center justify-between">
         <span className="font-medium text-sm">{g.name}</span>
-        {canEdit && <Button size="icon-sm" variant="ghost" aria-label="Delete group" onClick={removeGroup}><Trash2Icon className="size-3.5" /></Button>}
+        <div className="flex items-center gap-1">
+          {canEdit && (
+            <Button size="sm" variant="outline" onClick={() => onAddPart(g.id)}>
+              <PlusIcon data-icon="inline-start" />Add part
+            </Button>
+          )}
+          {canEdit && <Button size="icon-sm" variant="ghost" aria-label="Delete group" onClick={removeGroup}><Trash2Icon className="size-3.5" /></Button>}
+        </div>
       </div>
       <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
         <div className="flex flex-col gap-1">
@@ -727,32 +719,20 @@ function IiiaGroupCard({ group: g, parts, ungroupedParts, bomItems, onLinkBomIte
           <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Search part name or number" className="h-8 pl-8 text-sm" />
         </div>
       )}
-      <div className="flex flex-col divide-y text-sm">
+      <div className="flex flex-col divide-y">
         {parts.length === 0 && <p className="py-2 text-xs text-muted-foreground">No parts in this group yet.</p>}
         {parts.length > 0 && shownParts.length === 0 && <p className="py-2 text-xs text-muted-foreground">No matches.</p>}
         {shownParts.map(p => (
-          <div key={p.id} className="flex items-center justify-between gap-2 py-1.5">
-            <div className="min-w-0 flex-1">
-              <PartTitleField part={p} partNo={p.part_no} bomItems={bomItems} onLink={onLinkBomItem} canEdit={canEdit} />
-              {p.qty ? <span className="text-xs text-muted-foreground">× {p.qty}</span> : null}
-            </div>
-            {canEdit && <Button size="icon-sm" variant="ghost" aria-label="Move back to Form IV A" onClick={() => removePart(p.id)}><XIcon className="size-3.5" /></Button>}
-          </div>
+          <PartRow key={p.id} part={p} selected={selected.has(p.id)} onToggle={onToggle} onOpenPicker={onOpenPicker}
+            onRemove={onRemove} onEdit={onEdit} onUnlink={onUnlink} onLinkBomItem={onLinkBomItem} bomItems={bomItems} canEdit={canEdit} />
         ))}
       </div>
-      {canEdit && ungroupedParts.length > 0 && (
-        <div className="flex items-center gap-1">
-          <SearchableSelect value={addPartId} onChange={setAddPartId} className="h-8"
-            options={ungroupedParts.map(p => ({ value: String(p.id), label: p.part_name }))}
-            placeholder="Move a Form IV A part into this group" />
-          <Button size="sm" variant="outline" disabled={!addPartId} onClick={addPart}>Add</Button>
-        </div>
-      )}
     </div>
   );
 }
 
-function IiiaGroupsCard({ documentId, projectId, groups, parts, assemblies, bomItems, onLinkBomItem, canEdit, router }) {
+function IiiaGroupsCard({ documentId, projectId, groups, parts, assemblies, bomItems, onLinkBomItem, canEdit, router,
+  selected, onToggle, onOpenPicker, onEdit, onRemove, onUnlink, onAddPart }) {
   const [newOpen, setNewOpen] = useState(false);
   const [syncBusy, setSyncBusy] = useState(false);
   const [open, setOpen] = useState(true);
@@ -812,8 +792,10 @@ function IiiaGroupsCard({ documentId, projectId, groups, parts, assemblies, bomI
           {groups.length === 0 && <p className="py-2 text-sm text-muted-foreground">No Form III A groups yet — this boiler files only Form IV A until one is added.</p>}
           {groups.map(g => (
             <IiiaGroupCard key={g.id} group={g} parts={parts.filter(p => p.iiia_group_id === g.id)}
-              ungroupedParts={ungrouped} bomItems={bomItems} onLinkBomItem={onLinkBomItem}
-              canEdit={canEdit} documentId={documentId} drawings={drawings} router={router} />
+              bomItems={bomItems} onLinkBomItem={onLinkBomItem}
+              canEdit={canEdit} documentId={documentId} drawings={drawings} router={router}
+              selected={selected} onToggle={onToggle} onOpenPicker={onOpenPicker}
+              onEdit={onEdit} onRemove={onRemove} onUnlink={onUnlink} onAddPart={onAddPart} />
           ))}
         </CardContent>
       )}
@@ -1164,6 +1146,7 @@ export default function QcDocumentEditor({ project, document, parts, certificate
   const [boilerOpen, setBoilerOpen] = useState(false);
   const [pdfOpen, setPdfOpen] = useState(false);
   const [addPartOpen, setAddPartOpen] = useState(false);
+  const [addPartGroupId, setAddPartGroupId] = useState(null);
   const [editingPart, setEditingPart] = useState(null);
   const [visBusy, setVisBusy] = useState(false);
   const [syncBusy, setSyncBusy] = useState(false);
@@ -1385,7 +1368,10 @@ export default function QcDocumentEditor({ project, document, parts, certificate
 
       {showIiia && (
         <IiiaGroupsCard documentId={document.id} projectId={project.id} groups={groups} parts={parts} assemblies={assemblies}
-          bomItems={bomItems} onLinkBomItem={linkBomItem} canEdit={canEdit} router={router} />
+          bomItems={bomItems} onLinkBomItem={linkBomItem} canEdit={canEdit} router={router}
+          selected={selected} onToggle={toggle} onOpenPicker={openPicker}
+          onEdit={setEditingPart} onRemove={removePart} onUnlink={unlinkPart}
+          onAddPart={groupId => { setAddPartGroupId(groupId); setAddPartOpen(true); }} />
       )}
 
       <Card>
@@ -1424,7 +1410,7 @@ export default function QcDocumentEditor({ project, document, parts, certificate
               </Button>
             )}
             {canEdit && (
-              <Button size="sm" variant="outline" onClick={() => setAddPartOpen(true)}>
+              <Button size="sm" variant="outline" onClick={() => { setAddPartGroupId(null); setAddPartOpen(true); }}>
                 <PlusIcon data-icon="inline-start" />Add part
               </Button>
             )}
@@ -1469,7 +1455,8 @@ export default function QcDocumentEditor({ project, document, parts, certificate
         )}
       />
       <BoilerDetailsSheet open={boilerOpen} onOpenChange={setBoilerOpen} document={document} seams={seams} currentUserName={currentUserName} router={router} />
-      <AddPartDialog open={addPartOpen} onOpenChange={setAddPartOpen} documentId={document.id} bomItems={bomItems} router={router} />
+      <AddPartDialog open={addPartOpen} onOpenChange={setAddPartOpen} documentId={document.id} bomItems={bomItems}
+        defaultIiiaGroupId={addPartGroupId} router={router} />
       <EditPartDialog open={!!editingPart} onOpenChange={o => { if (!o) setEditingPart(null); }} documentId={document.id} part={editingPart} router={router} />
       <PdfPreview
         open={pdfOpen}

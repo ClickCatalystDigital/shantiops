@@ -36,14 +36,23 @@ export async function POST(req, { params }) {
     bomItemId = bomItem.id;
   }
 
+  // Optional — lets a part be created directly inside a Form III A group (the editor's own
+  // "Add part" button on a group card) instead of always landing ungrouped in Form IV A first.
+  let iiiaGroupId = null;
+  if (b.iiia_group_id != null) {
+    const group = await queryOne('SELECT id FROM qc_iiia_groups WHERE id = ? AND document_id = ?', [b.iiia_group_id, params.id]);
+    if (!group) return NextResponse.json({ error: 'Form III A group not found' }, { status: 404 });
+    iiiaGroupId = group.id;
+  }
+
   const max = await queryOne('SELECT MAX(sort_order) AS n FROM qc_document_parts WHERE document_id = ?', [params.id]);
   const sortOrder = (max?.n ?? -1) + 1;
 
   const res = await execute(
-    `INSERT INTO qc_document_parts (document_id, part_no, part_name, size_t, size_w, size_l, qty, bom_item_id, sort_order)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO qc_document_parts (document_id, part_no, part_name, size_t, size_w, size_l, qty, bom_item_id, sort_order, iiia_group_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [params.id, b.part_no?.trim() || null, b.part_name.trim(), b.size_t?.trim() || null,
-      b.size_w?.trim() || null, b.size_l?.trim() || null, b.qty?.trim() || null, bomItemId, sortOrder]);
+      b.size_w?.trim() || null, b.size_l?.trim() || null, b.qty?.trim() || null, bomItemId, sortOrder, iiiaGroupId]);
 
   if (bomItemId) await withTransaction(tx => reconcileIiiaGroups(tx, params.id));
 
