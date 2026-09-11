@@ -14,7 +14,9 @@ export async function POST(req, { params }) {
   const actionDenied = await requireAction(user, 'QC', 'qc.document.write');
   if (actionDenied) return actionDenied;
 
-  const document = await queryOne('SELECT id, project_id FROM qc_documents WHERE id = ?', [params.id]);
+  const document = await queryOne(
+    `SELECT qd.id, qd.project_id, p.master_project_id FROM qc_documents qd
+       JOIN projects p ON p.id = qd.project_id WHERE qd.id = ?`, [params.id]);
   if (!document) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   const part = await queryOne('SELECT id FROM qc_document_parts WHERE id = ? AND document_id = ?', [params.partId, params.id]);
@@ -23,8 +25,11 @@ export async function POST(req, { params }) {
   const b = await req.json();
   let bomItemId = null;
   if (b.bom_item_id != null) {
-    // Must belong to the same project — a part can't be pointed at another job's BOM line.
-    const bomItem = await queryOne('SELECT id FROM bom_items WHERE id = ? AND project_id = ?', [b.bom_item_id, document.project_id]);
+    // Must belong to the same project — a part can't be pointed at another job's BOM line. A split
+    // child's own BOM items live only on the master (§5k/§5bj), so resolve to it the same way the
+    // picker itself does (app/projects/[id]/qc/[docId]/page.js), or every pick 404s.
+    const bomProjectId = document.master_project_id || document.project_id;
+    const bomItem = await queryOne('SELECT id FROM bom_items WHERE id = ? AND project_id = ?', [b.bom_item_id, bomProjectId]);
     if (!bomItem) return NextResponse.json({ error: 'BOM item not found on this project' }, { status: 404 });
     bomItemId = bomItem.id;
   }

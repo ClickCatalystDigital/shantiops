@@ -448,22 +448,24 @@ function AddPartDialog({ open, onOpenChange, documentId, bomItems, defaultIiiaGr
 
   function pickBomItem(id) {
     const item = bomItems.find(b => String(b.id) === id);
-    setForm(f => ({
-      ...f, bom_item_id: id,
-      part_name: item ? item.material_description : f.part_name,
-      size_l: item?.size_spec && !f.size_t && !f.size_w ? item.size_spec : f.size_l,
-    }));
+    // Deliberately doesn't pre-fill Size from the BOM line's own size_spec — that field is almost
+    // always a free-text descriptor ("300NB, B-CLASS", "2000 X 6000 X 10 THK"), not a real length,
+    // and dropping it into the "L" box read as a fabricated dimension. Size (T/W/L) is what the QC
+    // user actually measures/observes on the physical part — always typed by hand.
+    setForm(f => ({ ...f, bom_item_id: id, part_name: item ? item.material_description : f.part_name }));
   }
 
   async function submit() {
     if (!form.part_name.trim()) return showToast('Part name is required', 'error');
     setBusy(true);
     try {
-      await api(`/api/qc-documents/${documentId}/parts`, {
+      const res = await api(`/api/qc-documents/${documentId}/parts`, {
         method: 'POST',
         body: { ...form, bom_item_id: form.bom_item_id ? Number(form.bom_item_id) : null, iiia_group_id: defaultIiiaGroupId ?? null },
       });
-      showToast('Part added — link it to a certificate before the PDF can be previewed');
+      showToast(res.moved
+        ? 'This BOM line already had a part on the document — moved it into the group instead of duplicating it'
+        : 'Part added — link it to a certificate before the PDF can be previewed');
       setForm(EMPTY);
       onOpenChange(false);
       router.refresh();
