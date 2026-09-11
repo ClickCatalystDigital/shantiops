@@ -701,7 +701,7 @@ function IiiaGroupCard({ group: g, parts, bomItems, onLinkBomItem, canEdit, docu
           <Label className="text-xs font-normal text-muted-foreground">Drawing No.</Label>
           {canEdit ? (
             <SearchableSelect value={drawingId} onChange={setDrawingId} className="h-8"
-              options={drawings.map(d => ({ value: String(d.id), label: `${d.dgNo || d.id} · ${d.name}` }))}
+              options={drawings.map(d => ({ value: String(d.id), label: `${d.dg_no}${d.name ? ` — ${d.name}` : ''}` }))}
               placeholder={g.drawing_no ? `Unlinked — was "${g.drawing_no}"` : 'Link a drawing…'} />
           ) : (
             <Input value={g.linked_drawing_dg_no || g.drawing_no || ''} disabled className="h-8" />
@@ -733,23 +733,14 @@ function IiiaGroupCard({ group: g, parts, bomItems, onLinkBomItem, canEdit, docu
   );
 }
 
-function IiiaGroupsCard({ documentId, projectId, groups, parts, assemblies, bomItems, onLinkBomItem, canEdit, router,
+function IiiaGroupsCard({ documentId, drawings, groups, parts, assemblies, bomItems, onLinkBomItem, canEdit, router,
   selected, onToggle, onOpenPicker, onEdit, onRemove, onUnlink, onAddPart }) {
   const [newOpen, setNewOpen] = useState(false);
   const [syncBusy, setSyncBusy] = useState(false);
   const [open, setOpen] = useState(true);
-  const [drawings, setDrawings] = useState([]);
   const groupLabels = useMemo(() => [...new Set(bomItems.map(b => b.group_label).filter(Boolean))], [bomItems]);
   const ungrouped = parts.filter(p => !p.iiia_group_id);
   const groupedPartCount = parts.length - ungrouped.length;
-
-  // Best-effort, same idiom as PrWorkspace.jsx's drawing picker — the project's real DG- drawings,
-  // for linking a Form III A group to its canonical drawing number.
-  useEffect(() => {
-    let cancelled = false;
-    api(`/api/calc-drawings?project_id=${projectId}`).then(({ drawings }) => { if (!cancelled) setDrawings(drawings || []); }).catch(() => {});
-    return () => { cancelled = true; };
-  }, [projectId]);
 
   async function syncBom() {
     setSyncBusy(true);
@@ -1369,7 +1360,7 @@ export default function QcDocumentEditor({ project, document, parts, certificate
       </Card>
 
       {showIiia && (
-        <IiiaGroupsCard documentId={document.id} projectId={project.id} groups={groups} parts={parts} assemblies={assemblies}
+        <IiiaGroupsCard documentId={document.id} drawings={document.approved_drawings || []} groups={groups} parts={parts} assemblies={assemblies}
           bomItems={bomItems} onLinkBomItem={linkBomItem} canEdit={canEdit} router={router}
           selected={selected} onToggle={toggle} onOpenPicker={openPicker}
           onEdit={setEditingPart} onRemove={removePart} onUnlink={unlinkPart}
