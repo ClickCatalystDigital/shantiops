@@ -10,8 +10,13 @@
 // replace affordance the old thumbnail version had, since this is still the live drop target for a
 // new file, not just a viewer.
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { UploadIcon, FileTextIcon, SparklesIcon, XIcon } from 'lucide-react';
+import { UploadIcon, FileTextIcon, SparklesIcon, XIcon, ZoomInIcon, ZoomOutIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+
+const ZOOM_MIN = 0.5;
+const ZOOM_MAX = 3;
+const ZOOM_STEP = 0.25;
 
 export default function PdfInlinePreview({ file, url, onPick, onRemove, extracting, replaceLabel = 'Replace' }) {
   const scrollRef = useRef(null);
@@ -22,6 +27,14 @@ export default function PdfInlinePreview({ file, url, onPick, onRemove, extracti
   const [status, setStatus] = useState(file || url ? 'loading' : 'empty'); // empty | loading | ready | error
   const [error, setError] = useState(null);
   const [numPages, setNumPages] = useState(0);
+  // Same zoom/pan convention as PdfPreview.jsx — 1 = fit-to-width, a multiplier on top of that base
+  // scale, not an absolute. Drag-to-pan reads/writes scrollLeft/scrollTop directly, no transform math.
+  const [zoom, setZoom] = useState(1);
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+  const prevZoomRef = useRef(1);
+  const dragRef = useRef(null);
+  const [dragging, setDragging] = useState(false);
 
   // Paint into each page's own canvas — mutates width/height/pixels only, never the DOM tree.
   const renderPages = useCallback(async () => {
@@ -35,7 +48,7 @@ export default function PdfInlinePreview({ file, url, onPick, onRemove, extracti
       if (!canvas) continue;
       const page = await pdf.getPage(i);
       const base = page.getViewport({ scale: 1 });
-      const cssScale = availW / base.width;
+      const cssScale = (availW / base.width) * zoomRef.current;
       const viewport = page.getViewport({ scale: cssScale * dpr });
       canvas.width = viewport.width;
       canvas.height = viewport.height;
@@ -63,6 +76,8 @@ export default function PdfInlinePreview({ file, url, onPick, onRemove, extracti
     let cancelled = false;
     setStatus('loading');
     setError(null);
+    setZoom(1);
+    prevZoomRef.current = 1;
     pdfRef.current = null;
     canvasRefs.current = [];
     renderTasksRef.current = [];
@@ -99,6 +114,38 @@ export default function PdfInlinePreview({ file, url, onPick, onRemove, extracti
     return () => { clearTimeout(t); ro.disconnect(); };
   }, [status, numPages, renderPages]);
 
+  // Repaint at the new pixel density on zoom change, re-centering on the same point instead of
+  // snapping back to the top-left — identical approach to PdfPreview.jsx.
+  useEffect(() => {
+    if (status !== 'ready' || !numPages || !scrollRef.current) return;
+    const el = scrollRef.current;
+    const ratio = zoom / prevZoomRef.current;
+    const cx = (el.scrollLeft + el.clientWidth / 2) * ratio - el.clientWidth / 2;
+    const cy = (el.scrollTop + el.clientHeight / 2) * ratio - el.clientHeight / 2;
+    renderPages().then(() => { el.scrollLeft = cx; el.scrollTop = cy; });
+    prevZoomRef.current = zoom;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zoom]);
+
+  function zoomBy(delta) {
+    setZoom(z => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round((z + delta) * 100) / 100)));
+  }
+
+  // Drag-to-pan, only meaningful once zoomed past fit — plain scrollLeft/scrollTop mutation.
+  function onPointerDown(e) {
+    if (zoom <= 1 || e.button !== 0) return;
+    const el = scrollRef.current;
+    dragRef.current = { x: e.clientX, y: e.clientY, left: el.scrollLeft, top: el.scrollTop };
+    setDragging(true);
+  }
+  function onPointerMove(e) {
+    if (!dragRef.current) return;
+    const el = scrollRef.current;
+    el.scrollLeft = dragRef.current.left - (e.clientX - dragRef.current.x);
+    el.scrollTop = dragRef.current.top - (e.clientY - dragRef.current.y);
+  }
+  function endDrag() { dragRef.current = null; setDragging(false); }
+
   function pick(e) {
     const f = e.target.files?.[0];
     e.target.value = '';
@@ -127,7 +174,14 @@ export default function PdfInlinePreview({ file, url, onPick, onRemove, extracti
         <>
           <div
             ref={scrollRef}
-            className="flex min-h-0 flex-1 snap-y snap-mandatory flex-col items-center gap-3 overflow-y-auto bg-muted/30 p-3"
+            onMouseDown={onPointerDown}
+            onMouseMove={onPointerMove}
+            onMouseUp={endDrag}
+            onMouseLeave={endDrag}
+            className={cn(
+              'flex min-h-0 flex-1 flex-col items-center gap-3 bg-muted/30 p-3',
+              zoom <= 1 ? 'snap-y snap-mandatory overflow-y-auto' : cn('overflow-auto', dragging ? 'cursor-grabbing select-none' : 'cursor-grab'),
+            )}
           >
             {status === 'loading' && <p className="py-12 text-center text-sm text-muted-foreground">Rendering PDF…</p>}
             {status === 'error' && <p className="py-12 text-center text-sm text-destructive">{error}</p>}
@@ -136,10 +190,25 @@ export default function PdfInlinePreview({ file, url, onPick, onRemove, extracti
                 key={i}
                 ref={el => { canvasRefs.current[i] = el; }}
                 className="shrink-0 rounded-md border bg-white shadow-sm"
-                style={{ scrollSnapAlign: 'start' }}
+                draggable={false}
+                style={{ scrollSnapAlign: zoom <= 1 ? 'start' : undefined }}
               />
             ))}
           </div>
+
+          {status === 'ready' && numPages > 0 && !extracting && (
+            <div className="pointer-events-auto absolute left-3 top-3 flex items-center gap-0.5 rounded-md border bg-popover/90 p-0.5 shadow-sm backdrop-blur-xs">
+              <Button size="icon-sm" variant="ghost" disabled={zoom <= ZOOM_MIN} onClick={() => zoomBy(-ZOOM_STEP)} aria-label="Zoom out">
+                <ZoomOutIcon className="size-3.5" />
+              </Button>
+              <button type="button" onClick={() => setZoom(1)} className="w-11 text-center text-xs text-muted-foreground hover:text-foreground">
+                {Math.round(zoom * 100)}%
+              </button>
+              <Button size="icon-sm" variant="ghost" disabled={zoom >= ZOOM_MAX} onClick={() => zoomBy(ZOOM_STEP)} aria-label="Zoom in">
+                <ZoomInIcon className="size-3.5" />
+              </Button>
+            </div>
+          )}
 
           {status === 'ready' && numPages > 1 && (
             <span className={cn(

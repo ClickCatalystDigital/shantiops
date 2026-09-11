@@ -78,7 +78,7 @@ function PickOrType({ label, required, value, options, onChange }) {
       {custom ? (
         <Input value={value} onChange={e => onChange(e.target.value)} placeholder={`Type ${label.toLowerCase()}`} autoFocus />
       ) : (
-        <Select value={value || undefined} onValueChange={v => (v === '__custom' ? setCustom(true) : onChange(v))}>
+        <Select modal={false} value={value || undefined} onValueChange={v => (v === '__custom' ? setCustom(true) : onChange(v))}>
           <SelectTrigger className="w-full"><SelectValue placeholder="Select…" /></SelectTrigger>
           <SelectContent>
             {options.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
@@ -344,7 +344,7 @@ export default function CertForm({ open, onOpenChange, certificate = null, certi
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <Label>Bend / Flat test</Label>
-                  <Select value={form.bend_test} onValueChange={v => setForm(f => ({ ...f, bend_test: v }))}>
+                  <Select modal={false} value={form.bend_test} onValueChange={v => setForm(f => ({ ...f, bend_test: v }))}>
                     <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="OK">OK</SelectItem>
