@@ -30,7 +30,9 @@ export default async function QcDocumentPage({ params }) {
   // so resolving to the master here is correct, not an approximation.
   const bomItems = await getBomItemsForProject(project.master_project_id || params.id);
   const approvals = await getTcMatchApprovals();
-  const assemblies = await getBomAssembliesFlat(params.id);
+  // Same fix as bomItems above — a split child has no bom_assemblies rows of its own, so the "New
+  // Form III A group" dialog's assembly picker was silently empty for every split-child document.
+  const assemblies = await getBomAssembliesFlat(project.master_project_id || params.id);
 
   // Multi-unit split — a document on a split child gets no exact/fuzzy suggestions from
   // suggestCertificates() at all (bomItems is always [] for a child, since children never have
