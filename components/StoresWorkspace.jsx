@@ -38,6 +38,7 @@ import ReceiptPicker from '@/components/ReceiptPicker';
 import ReceiveBomItemDialog from '@/components/ReceiveBomItemDialog';
 import { normalizeWords } from '@/lib/match-utils';
 import { pieceWeight } from '@/lib/piece-weight';
+import { todayISO, toISODate } from '@/lib/date';
 import {
   CATEGORY_LABEL, ROLLED_CATEGORIES, OTHER_SIZE, categoryDisplaySpec,
 } from '@/lib/section-shapes';
@@ -2140,8 +2141,16 @@ const NAV_ITEMS = (counts) => [
 // project is already chosen from its own dropdown. This is a plain search across every open line
 // (material description, project number, or PR number), reusing ReceiveBomItemDialog unchanged —
 // the actual receive/routing/split mechanics live there, this is purely a discovery surface.
+const DATE_FILTERS = [
+  { value: 'all', label: 'All dates' },
+  { value: 'overdue', label: 'Overdue' },
+  { value: 'today', label: 'Due today' },
+  { value: 'week', label: 'Due this week' },
+];
+
 function ReceiveDeliveryTab({ bomItems, router }) {
   const [query, setQuery] = useState('');
+  const [dateFilter, setDateFilter] = useState('all');
   // A line still in Enquiry/Comparison has no supplier chosen and nothing has actually been
   // ordered — nothing can plausibly be "arriving" yet. Only Ordered (supplier/PO selected) or
   // Transit (PO issued) lines are real candidates. purchase_status is an editable, often-stale
@@ -2149,37 +2158,65 @@ function ReceiveDeliveryTab({ bomItems, router }) {
   // other summary view already uses instead of trusting it directly.
   const open = bomItems.filter(it => ['Ordered', 'Transit'].includes(derivePurchaseStage(it)));
   const q = query.trim().toLowerCase();
+
+  // Lot-aware date filter (attachDeliveryLotDates, lib/data.js) — a standalone browse mode, not
+  // just a narrower search: with a filter picked, results show even with an empty search box, so
+  // "what's due today" is answerable without already knowing a material name.
+  const today = todayISO();
+  const weekEnd = toISODate(new Date(Date.now() + 7 * 86400000));
+  const matchesDate = it => {
+    if (!it.nearest_expected_delivery) return false;
+    if (dateFilter === 'overdue') return it.nearest_expected_delivery < today;
+    if (dateFilter === 'today') return it.nearest_expected_delivery === today;
+    return it.nearest_expected_delivery >= today && it.nearest_expected_delivery <= weekEnd; // week
+  };
+  const dateFiltered = dateFilter === 'all' ? open : open.filter(matchesDate);
   const results = q
-    ? open.filter(it =>
+    ? dateFiltered.filter(it =>
         (it.material_description || '').toLowerCase().includes(q) ||
         (it.project_no || '').toLowerCase().includes(q) ||
         (it.pr_no || '').toLowerCase().includes(q) ||
         (it.po_ref || '').toLowerCase().includes(q))
-    : [];
+    : (dateFilter === 'all' ? [] : dateFiltered);
+  const showPrompt = dateFilter === 'all' && !q;
 
   return (
     <Card>
       <CardHeader><CardTitle>Receive a Delivery</CardTitle></CardHeader>
       <CardContent className="flex flex-col gap-3 pt-4">
-        <Input value={query} onChange={e => setQuery(e.target.value)}
-          placeholder="Search by material, project, PR, or PO number…" autoFocus />
-        {!q ? (
+        <div className="flex gap-2">
+          <Input value={query} onChange={e => setQuery(e.target.value)}
+            placeholder="Search by material, project, PR, or PO number…" autoFocus className="flex-1" />
+          <Select value={dateFilter} onValueChange={setDateFilter}>
+            <SelectTrigger className="h-9 w-36 shrink-0 text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {DATE_FILTERS.map(f => <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        {showPrompt ? (
           <p className="py-6 text-center text-sm text-muted-foreground">Start typing to find what arrived.</p>
         ) : results.length === 0 ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">No open lines match that search.</p>
+          <p className="py-6 text-center text-sm text-muted-foreground">No open lines match.</p>
         ) : (
           <div className="flex flex-col divide-y">
-            {results.map(it => (
-              <div key={it.id} className="flex flex-wrap items-center gap-3 py-2.5 text-sm">
-                <span className="min-w-0 flex-1 truncate font-medium">{it.material_description}</span>
-                <span className="w-40 shrink-0 truncate text-xs text-muted-foreground">{it.project_no}</span>
-                <span className="w-24 shrink-0 truncate text-xs text-muted-foreground">{derivePurchaseStage(it)}</span>
-                <span className="w-32 shrink-0 truncate text-xs text-muted-foreground">
-                  {it.expected_delivery_date ? `Exp. ${formatDate(it.expected_delivery_date)}` : '—'}
-                </span>
-                <ReceiveBomItemDialog item={it} onDone={() => setQuery('')} />
-              </div>
-            ))}
+            {results.map(it => {
+              const dates = it.all_expected_dates || [];
+              const title = dates.length > 1 ? dates.map(formatDate).join(', ') : undefined;
+              return (
+                <div key={it.id} className="flex flex-wrap items-center gap-3 py-2.5 text-sm">
+                  <span className="min-w-0 flex-1 truncate font-medium">{it.material_description}</span>
+                  <span className="w-40 shrink-0 truncate text-xs text-muted-foreground">{it.project_no}</span>
+                  <span className="w-24 shrink-0 truncate text-xs text-muted-foreground">{derivePurchaseStage(it)}</span>
+                  <span className="w-36 shrink-0 truncate text-xs text-muted-foreground" title={title}>
+                    {it.nearest_expected_delivery
+                      ? `Exp. ${formatDate(it.nearest_expected_delivery)}${dates.length > 1 ? ` (+${dates.length - 1})` : ''}`
+                      : '—'}
+                  </span>
+                  <ReceiveBomItemDialog item={it} onDone={() => setQuery('')} />
+                </div>
+              );
+            })}
           </div>
         )}
       </CardContent>

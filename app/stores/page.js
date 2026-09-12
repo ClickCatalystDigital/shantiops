@@ -10,7 +10,7 @@ import { getFreshSessionUser, canAccessDepartment, roleHome } from '@/lib/auth';
 import {
   getInventoryItems, getOpenBomItems, getActiveReservations, getActiveProjectsList,
   getReorderSuggestions, getGateInwardReceipts, getGatePasses, getTestCertificates, getSourcingItems,
-  getSplitOrdersNeedingStoresAction,
+  getSplitOrdersNeedingStoresAction, attachDeliveryLotDates,
 } from '@/lib/data';
 import StoresWorkspace from '@/components/StoresWorkspace';
 
@@ -25,6 +25,10 @@ export default async function StoresPage({ searchParams }) {
     getReorderSuggestions(), getGateInwardReceipts(), getGatePasses(), getTestCertificates(), getSourcingItems(),
     getSplitOrdersNeedingStoresAction(),
   ]);
+
+  // Lot-aware expected-delivery dates for Receive a Delivery only — merged in after the shared
+  // Promise.all so /procurement's own getSourcingItems() calls stay untouched (see attachDeliveryLotDates).
+  await attachDeliveryLotDates(bomItems);
 
   const sp = await searchParams;
   return <StoresWorkspace inventoryItems={inventoryItems} openRequests={openRequests} activeReservations={activeReservations}

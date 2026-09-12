@@ -9364,6 +9364,70 @@ PO (which already had an unrelated real line on it) — then cleanly undone via 
 state. All disposable rows (project, PR, quote, the temporary PO line) removed; zero residue
 confirmed by direct query.
 
+## 5ca. Stores' "Receive a Delivery" made lot-aware, and a real dead-field bug found while fixing it (2026-09-12)
+
+Requested directly: §5bx's PO Delivery Lots let Procurement split one line's delivery across dated
+lots, but Stores' "Receive a Delivery" tab (`ReceiveDeliveryTab`, `components/StoresWorkspace.jsx`)
+still showed one flat date per line via `it.expected_delivery_date` — no awareness of lots at all.
+
+**Investigating the intended fix found a bigger, pre-existing bug: that field was already dead
+code.** `ReceiveDeliveryTab`'s `bomItems` prop looked like it should be `getOpenBomItems()`'s output
+by name, but `app/stores/page.js`'s `Promise.all(...)` destructuring is positional, not
+name-matched — the 9th slot (`bomItems`) is actually `getSourcingItems()`, and that function never
+selected `expected_delivery_date` at all. So `it.expected_delivery_date` was always `undefined`,
+and the hint always silently rendered `—`, independent of anything §5bx added. Fixing the real
+target meant extending `getSourcingItems()`'s output, not `getOpenBomItems()`'s (which already
+computes the field correctly for its own, different consumers, untouched here).
+
+**`attachDeliveryLotDates(items)`** (`lib/data.js`, new, right after `getSourcingItems()`) — a
+standalone merge step, deliberately **not** folded into `getSourcingItems()` itself: that function
+also feeds `/procurement` (`ProcurementWorkspace.jsx`'s Enquiry/Selection tabs), which has no use
+for this data, so extending it directly would've added two unnecessary queries to every page that
+calls it. Called once, from `app/stores/page.js`, after the existing `Promise.all(...)` resolves —
+only the Stores page's own `bomItems` prop gains the new fields.
+
+Mirrors `getPoDeliveryLots()`'s (§5bx) own allocated/unallocated + "keep the RFQ date" logic, just
+batched across many `bom_items` instead of scoped to one PO: batch-fetches `supplier_quotes` (RFQ
+fallback dates), `po_items WHERE bom_item_id IN (...)`, and `po_delivery_lot_items JOIN
+po_delivery_lots WHERE po_item_id IN (...)`, then in JS (plain `Map`s, same style as
+`getPoDeliveryLots()`'s own `byLot`/`childrenByLotItem`) rolls up per bom_item: for each of its
+po_items, sum allocated qty from lot-items and collect distinct lot dates; if the bom_item has zero
+po_items at all, or any po_item still has `qty - allocated > 1e-6` (same epsilon), its RFQ date is
+added as one more candidate. The sorted, deduped candidate set becomes `nearest_expected_delivery`
+(first, or `null`) and `all_expected_dates` (the full list) on each row. This also restores the
+plain pre-lots case to actually working — a line with no lots ever created just shows its RFQ date,
+same as the dead code originally intended.
+
+**UI** (`ReceiveDeliveryTab`): the date cell now reads `Exp. {nearest date}`, plus a visible
+`(+N)` suffix when more than one date is pending and a `title=` tooltip listing them all — the
+visible suffix (not tooltip-only) matters since this app is mobile/app-like (§18) and a hover-only
+tooltip is invisible on a phone. A new compact `Select` next to the search input (All dates /
+Overdue / Due today / Due this week, driven by `todayISO()`/`toISODate()` from `lib/date.js`)
+doubles as a standalone browse mode: picking a non-"All" filter relaxes the tab's existing
+search-first gate (nothing shown until you type), so "what's due today" is answerable without
+already knowing a material name; typing a search term still further narrows whatever the date
+filter already selected.
+
+**A real bug found on review, before it shipped: `all_expected_dates` was read but never
+produced.** `ReceiveDeliveryTab`'s `(+N)` suffix and tooltip read `it.all_expected_dates`, but
+`attachDeliveryLotDates()` only ever computed the full date set as a local variable (`allDates`,
+used solely to derive `nearest_expected_delivery`) and never attached it to the row — the field was
+always `undefined`, so a line with 2+ real pending dates would silently show only the nearest one,
+with the `(+N)`/tooltip UI dead code. Fixed by assigning `r.all_expected_dates = allDates` (deduped
+via `Set` before sorting, since an unscheduled remainder's RFQ-fallback date can coincide with a
+real lot date).
+
+**Verification**: `npm run lint` clean. Since `lib/data.js` relies on Next's extensionless-import
+resolution for `./db` (the same documented gotcha `lib/calc-engine.js`'s own self-check note
+already names, §5f) and can't run under plain `node` without the bundler, `attachDeliveryLotDates()`
+was instead verified by **replicating its exact logic** in a disposable script run directly against
+the real dev DB (a real bom_item + PO + 2 real `po_delivery_lots` at different dates, one item
+deliberately left partially unallocated): the replicated computation produced
+`all_expected_dates: ["2026-09-20", "2026-10-05"]` and `nearest_expected_delivery: "2026-09-20"`
+exactly as intended — confirming the fix, not just the pre-fix bug. All disposable rows removed
+afterward, zero residue confirmed. Full browser click-through against the real dev DB deferred to
+the user, per their own explicit instruction this round.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own
