@@ -9137,6 +9137,95 @@ the above — this phase's own `creditBomItemReceipt()` extraction was built wit
 in mind (Phase 2 of the deferred research explicitly sequences onto this same function), but no
 QC-clearance code was touched this round.
 
+## 5bx. PO Delivery Lots — Procurement's own per-PO expected-delivery scheduling (2026-09-12)
+
+Procurement had no way to record *when* different parts of an issued PO are expected to arrive.
+Today the only "expected delivery" data anywhere is `supplier_quotes.expected_delivery_date` — one
+date per bom_item, set once when the supplier quoted — with no way to say "30 of these 100 arrive
+Sept 20, the other 70 Oct 5" or "this delivery covers 20 units for Project A and 15 for Project B."
+The closest existing table, `bom_item_expected_children` (§5bi's `LotsEditor`), looks similar but
+solves a *different* problem: a reference-only (no qty, no date) tag of which multi-unit-split
+child projects a po_item's material applies to — deliberately not reused, and unrelated to §5bw's
+own "Unified delivery/lot-centric receiving" (that's Stores allocating already-*received* material
+to specific child units after arrival; this is Procurement scheduling expected shipments *before*
+arrival).
+
+**New sub-tab, "Delivery Lots"** — a user picks an issued PO, sees its items with how much of each
+is still un-scheduled, and groups quantities (across one or several items/projects) into named
+lots, each with its own expected date. Whatever's never put into a lot keeps showing the RFQ date
+as its fallback ("keep the RFQ date" rule) — nothing is forced into a lot. Each line carries
+clickable `BM-{id}`/`PR-{no}` pills (the existing `EntityCode`/`EntityRefLink` convention) back to
+the source BOM item and Purchase Requisition, and — only when a line's project is a real
+multi-unit-split master — an optional checkbox strip (same UI idiom as `LotsEditor`) to tag which
+specific child project(s)/units that lot's allocation covers.
+
+**Data model — 3 new tables**, deliberately not reusing `bom_item_expected_children`: `po_delivery_lots`
+(header — `po_id`, `lot_label`, `expected_delivery_date` `NOT NULL`, `notes`) → `po_delivery_lot_items`
+(how much of one po_item's qty this lot covers — a po_item can appear in several lots across
+different dates; a lot can carry several po_items, even across projects) → `po_delivery_lot_item_children`
+(optional, reference-only, which child project(s) a specific lot-item allocation covers — scoped per
+`(lot, po_item)` pair rather than per po_item alone, since the same line split across two delivery
+dates can legitimately cover different child units on each date). `CHECK(qty > 0)` on the line table
+as defense in depth.
+
+**Only issued POs, enforced in both the picker and the API** — a draft PO's lines aren't a real
+commitment yet, so there's nothing to schedule against until the supplier actually has the order;
+`POST`/`PATCH` on the new `app/api/purchase-orders/[id]/delivery-lots(/[lotId])` routes reject
+anything but `status === 'issued'` (not just "not cancelled"), so a stale/direct request can't
+bypass what the UI already won't offer. `DELETE` stays unrestricted regardless of status — removing
+a stale schedule entry is always safe cleanup.
+
+**Sidebar placement — a deliberate architecture call, not the initial guess.** First built as a
+group/child under "Purchase Orders" (mirroring Suppliers' Roster/Analysis) — wrong analogy, per
+direct user question: Suppliers' Roster/Analysis is "two views of one entity," while Delivery Lots
+is "pick an issued PO, then record something against it," the *exact* shape Returns and Vendor
+Bills already have as their own top-level tabs, not sub-tabs of Purchase Orders. Promoted to a
+top-level sidebar item, sibling to Purchase Orders/Status/Returns/Vendor Bills, sitting right after
+Purchase Orders (issue → schedule delivery → track status → returns/bills).
+
+**Two real, previously-latent bugs found and fixed while building this, both in the one shared
+function every "remove a po_item" caller routes through** (`removeItemFromDraftPO`, `lib/procurement.js`):
+1. **Delivery-lot cleanup on supplier change.** Changing a draft PO line's supplier (or undoing a
+   selection, or cancelling a BOM item) deletes and recreates its `po_items` row — nothing cleaned
+   up a line's delivery-lot allocations first, which would have silently orphaned them. Fixed at
+   the root: clears `po_delivery_lot_items` for the removed po_item, dropping any lot left with
+   zero items as a result, before the `po_items` row disappears.
+2. **A real pre-existing gap this fix's own testing caught live**: the identical exposure already
+   existed for `bom_item_expected_children` — a po_item still carrying one of Stores' own
+   unit-routing reference rows could never actually be deleted at all, because **Turso does enforce
+   foreign keys on this connection** (confirmed live, contradicting an older, already-superseded
+   assumption elsewhere in this doc that FK enforcement is always off) — "Change Supplier" failed
+   outright with a raw `FOREIGN KEY constraint failed` SQL error, no clean message, no workaround.
+   Fixed the same way, same function, same discard-it-not-worth-carrying-forward logic.
+3. Separately, `edit_item` (draft-only PO-line qty edit, same route) gained a guard: reducing a
+   line's qty below what's already scheduled into delivery lots is now blocked with a clear message
+   naming the amount, instead of silently breaking the `sum(lot qty) <= po_items.qty` invariant.
+
+**One general UI gotcha worth remembering, found live**: `Card` bakes in `overflow-hidden`
+(for rounded-corner image clipping), which silently clips any `SearchableSelect` dropdown rendered
+inside one at the card's bottom edge — invisible in a quick look, since the dropdown still "opens,"
+just clipped to near-zero visible height. Fixed with `<Card className="overflow-visible">` (safe
+override — `cn()`/tailwind-merge lets a caller's later `overflow-*` class win). Worth checking
+before dropping any `SearchableSelect` inside a `Card` elsewhere.
+
+**Live-verified end to end against the real dev DB** (real POs, a real multi-unit-split project):
+partial-then-full allocation across two items/projects on one PO, the RFQ-date fallback correctly
+appearing/disappearing as `unallocated_qty` crosses zero, over-allocation rejected server-side
+(not just UI-clamped), a client-submitted `po_item_id` from a *different* PO rejected (trust
+boundary), a fabricated child-project id rejected (child-tag validation), edit (qty change
+correctly re-freeing the RFQ-fallback date) and delete both round-tripped, the "Label" field
+correctly hidden for a PO's first lot and appearing once a second lot exists (same convention
+`LotsEditor` already set), and the two `removeItemFromDraftPO` fixes proven via a real Change
+Supplier call that previously 400'd with the raw SQL error and now succeeds cleanly. All disposable
+test data (lots, a throwaway supplier + its quote, a temporary draft-PO edit) removed afterward;
+confirmed zero residue across all 3 new tables via direct query.
+
+**Deliberately not built**: no integration with §5bi's `bom_item_child_allocations`/
+`bom_item_child_routing` — that's a separate, receiving-time mechanism, untouched; no
+"actual delivered"/fulfillment tracking on a lot (expected-date scheduling only, real receiving
+stays on the existing Stores flow); no PDF/report changes (delivery lots never appear on the
+printed PO document); no Stores notification on lot creation (a natural future follow-on).
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own
@@ -9263,6 +9352,7 @@ bom_items.qty_resolved                                (§5be — marks a split r
 bom_item_child_certificates                           (§5bj — which certificate(s) apply to a (bom_item, child) allocation cell, same key shape as bom_item_child_routing extended to a real many-to-many; a cell can carry more than one certificate, no quantity/split field)
 qc_document_parts.test_certificate_id                 (§5bj — auto-populated at BOM-sync time from bom_item_child_certificates when exactly one certificate is assigned to that cell; left NULL, for the suggestion box, when 2+ certificates exist — reconcileUnitCertificates(), lib/qc-bom-sync.js)
 lib/milestones.js MASTER_LEVEL_MILESTONE_KEYS         (§5bj — the 9 Design/Procurement keys a split child can never close itself; excluded from getProjectsWithStatus()/getProjectDetail()'s rollup-only inputs, never from the real milestones array a page renders)
+purchase_orders ──< po_delivery_lots ──< po_delivery_lot_items ──< po_delivery_lot_item_children  (§5bx — Procurement's own per-PO expected-delivery scheduling; distinct from and unrelated to bom_item_expected_children, which stays Stores' own reference-only unit-routing tag)
 ```
 
 `bom_items` carries the spreadsheet-mirror columns — `section` (sheet), `group_label` (assembly
