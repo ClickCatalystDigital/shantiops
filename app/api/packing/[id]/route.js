@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { execute, queryOne } from '@/lib/db';
+import { execute, queryOne, queryAll } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
@@ -61,13 +61,34 @@ export async function PATCH(req, { params }) {
   // Stamp the actual dispatch moment once, on the first draft/packed -> dispatched transition —
   // updated_at changes on every edit and can't answer "when did this actually ship" (needed for the
   // Dispatch Register report).
-  if (b.status === 'dispatched' && !pl.dispatched_at) {
+  const isFirstDispatch = b.status === 'dispatched' && !pl.dispatched_at;
+  if (isFirstDispatch) {
     sets.push('dispatched_at = CURRENT_TIMESTAMP');
   }
   if (!sets.length) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
   sets.push('updated_at = CURRENT_TIMESTAMP');
   args.push(params.id);
   await execute(`UPDATE packing_lists SET ${sets.join(', ')} WHERE id = ?`, args);
+  // Stores/Inventory hardening Phase 5 — close the physical stock-piece lifecycle at the moment a
+  // list genuinely first reaches 'dispatched' (same one-shot guard as the dispatched_at stamp
+  // above). Without this, a piece-tracked line's own stock_pieces row stayed available/reserved
+  // indefinitely after its material physically left the building — silently re-reservable/cuttable
+  // for an entirely unrelated purpose, a real "material becomes untraceable" risk. Every
+  // non-terminal piece linked to any bom_item on this list is flipped to 'consumed', the same
+  // terminal state cutPiece()'s own "used" branch already uses for "this material has left Stores'
+  // controllable stock."
+  if (isFirstDispatch) {
+    const bomItemIds = await queryAll(
+      'SELECT DISTINCT bom_item_id FROM packing_items WHERE packing_list_id = ? AND bom_item_id IS NOT NULL',
+      [params.id]
+    );
+    for (const row of bomItemIds) {
+      await execute(
+        "UPDATE stock_pieces SET status = 'consumed' WHERE bom_item_id = ? AND status IN ('available', 'reserved')",
+        [row.bom_item_id]
+      );
+    }
+  }
   // Status is the meaningful transition (Pending → Ready → Dispatched) — worth its own audit action.
   if ('status' in b) {
     await audit('packing_status_change', { actor: user.username, detail: `list ${params.id} -> ${b.status}` });

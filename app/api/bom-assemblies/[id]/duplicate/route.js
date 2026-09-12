@@ -71,12 +71,17 @@ export async function POST(req, { params }) {
         `INSERT INTO bom_items (project_id, assembly_id, sort_order, material_description, moc, size_spec, make, qty_text,
           section, group_label, remarks, category, category_fields_json, named_parts_json, item_id,
           requires_heat_no, requires_mtc, requires_supplier_batch, requires_serial_no, requires_manufacturing,
-          purchase_status, pending_review, drawing_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Enquiry', ?, NULL)`,
+          purchase_status, pending_review, drawing_id, pr_item_id, import_id, template_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Enquiry', ?, NULL, ?, ?, ?)`,
         [source.project_id, idMap.get(it.assembly_id), n++, it.material_description, it.moc, it.size_spec, it.make, it.qty_text,
           it.section, it.group_label, it.remarks, it.category, it.category_fields_json, it.named_parts_json, it.item_id,
           it.requires_heat_no, it.requires_mtc, it.requires_supplier_batch, it.requires_serial_no, it.requires_manufacturing,
-          pendingReview]
+          // Stores/Inventory hardening Phase 1 — carries the source's own origin forward the same
+          // way item_id/category already are, so a duplicated item's demandOrigin() (lib/bom-
+          // fields.mjs) doesn't silently read as 'manual'. drawing_id stays NULL, deliberately —
+          // see the file header comment above: a duplicate is a different branch, drawings/calcs
+          // don't carry over, but origin is a fact about the material itself, not the branch.
+          pendingReview, it.pr_item_id, it.import_id, it.template_id]
       );
       clonedItemCount++;
     }

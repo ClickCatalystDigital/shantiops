@@ -8,6 +8,7 @@ import { CATEGORY_LABEL } from '@/lib/section-shapes.js';
 import { releaseReservationsForItem } from '@/lib/procurement';
 import { syncProcurementMilestones } from '@/lib/milestone-auto';
 import { checkMaterialsComplete } from '@/lib/data';
+import { findBlockingReferences } from '@/lib/bom-item-guard';
 import { missingTraceabilityFields, applyReceivedSideEffects } from '@/lib/bom-receiving';
 import { releasePiece } from '@/lib/stock-pieces';
 import { rollupIndentStatus } from '@/lib/indent-status.mjs';
@@ -177,33 +178,16 @@ export async function DELETE(req, { params }) {
   const item = await queryOne('SELECT * FROM bom_items WHERE id = ?', [params.id]);
   if (!item) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  const packed = await queryOne(
-    'SELECT COUNT(*) AS n FROM packing_items WHERE bom_item_id = ?', [params.id]);
-  if (packed.n > 0) {
+  // lib/bom-item-guard.js — was 3 hand-picked checks here (packing_items, inventory_reservations,
+  // material_indent_items, the first two found only after a real production FK 500), covering 3 of
+  // the 18 real tables Turso's live schema actually shows referencing bom_items(id). One shared,
+  // schema-derived list now covers all of them, so the next new bom_item_id-referencing table isn't
+  // rediscovered live a third time.
+  const { blocked, reasons } = await findBlockingReferences(Number(params.id));
+  if (blocked) {
+    const reason = reasons[0].label;
     return NextResponse.json(
-      { error: 'This item is on a packing list — remove it there first' }, { status: 409 });
-  }
-  // V2-CHANGES.md Group 6 Phase 6.3 gap found post-ship, live-verified: inventory_reservations.
-  // bom_item_id has no ON DELETE clause and Turso enforces FKs (unlike the local-sqlite fallback,
-  // SYSTEM.md §7's tickets note) — deleting a reserved item without this guard 500s on a raw FK
-  // constraint violation instead of a clean, actionable error. Checked against *any* reservation
-  // row, not just active ones: released/issued rows are kept as history (same append-only
-  // precedent as supplier_quotes) and still reference bom_item_id, so they'd hit the exact same FK
-  // failure — confirmed live (releasing an active reservation first still left the delete 500ing on
-  // the now-released row). Same block-not-cascade precedent as the packing_items check above.
-  const reserved = await queryOne(
-    'SELECT COUNT(*) AS n FROM inventory_reservations WHERE bom_item_id = ?', [params.id]);
-  if (reserved.n > 0) {
-    return NextResponse.json(
-      { error: 'This item has a stock reservation on record — it can\'t be deleted (history is kept)' }, { status: 409 });
-  }
-  // Same class of gap as inventory_reservations above, for material_indent_items.bom_item_id
-  // (Feature B, no ON DELETE clause) — found in review, before this ever hit a real FK 500 live.
-  const indented = await queryOne(
-    'SELECT COUNT(*) AS n FROM material_indent_items WHERE bom_item_id = ?', [params.id]);
-  if (indented.n > 0) {
-    return NextResponse.json(
-      { error: 'This item has a material indent on record — it can\'t be deleted (history is kept)' }, { status: 409 });
+      { error: `This item ${reason} — it can't be deleted (history is kept)` }, { status: 409 });
   }
 
   await execute('DELETE FROM bom_items WHERE id = ?', [params.id]);

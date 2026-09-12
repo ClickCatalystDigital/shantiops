@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
-import { execute, queryOne, queryAll, withTransaction } from '@/lib/db';
+import { queryOne, queryAll, withTransaction } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
 import { requireBomAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { notifyDepartment } from '@/lib/notify';
 import { parsePmb } from '@/lib/pmb.mjs';
 import { getAllocationMode } from '@/lib/procurement';
+import { findBlockedIds } from '@/lib/bom-item-guard';
 
 // PMB (.xlsx) or CSV import — Engineering, Design, or PM (Design got the same BOM-entry capability
 // as Engineering, 2026-08-25; CSV unified into this same pipeline the same day — parsePmb's
@@ -60,11 +61,26 @@ export async function POST(req, { params }) {
       { status: 400 });
   }
 
-  const existing = await queryOne(
-    'SELECT COUNT(*) AS n FROM bom_items WHERE project_id = ?', [params.id]);
-  const packed = await queryOne(
-    `SELECT COUNT(DISTINCT b.id) AS n FROM bom_items b
-     JOIN packing_items p ON p.bom_item_id = b.id WHERE b.project_id = ?`, [params.id]);
+  // Scoped to import_id IS NOT NULL — a Replace only ever tears down what a *previous* PMB/CSV
+  // import put here, never a PR-raised line (bom_items.pr_item_id), a manually-added row, or a
+  // structure-template-applied one. Those three origins have nothing to do with "I uploaded a
+  // corrected Excel file" and must survive it.
+  const pmbItems = await queryAll(
+    'SELECT id FROM bom_items WHERE project_id = ? AND import_id IS NOT NULL', [params.id]);
+  const pmbIds = pmbItems.map(r => r.id);
+  // Of those, which ones have real downstream activity (a supplier quote, a PO line, a packing
+  // link, a QC record, ...) and must survive Replace regardless of origin — deleting one would
+  // either throw a raw FK constraint error or (packing_items/supplier_quotes specifically) silently
+  // destroy real history this app never lets anyone delete anywhere else. Checked once, in bulk
+  // (a fixed ~19 queries regardless of how many PMB rows exist) — see lib/bom-item-guard.js for the
+  // full table list and why it's schema-derived, not hand-picked.
+  const blockedIds = await findBlockedIds(pmbIds);
+  const deletableIds = pmbIds.filter(id => !blockedIds.has(id));
+  const existing = { n: pmbIds.length };
+  // Informational only — surfaced so the Replace warning can say what's being *kept*, not just
+  // what's being wiped. Never affects the DELETE scope itself.
+  const preserved = await queryOne(
+    'SELECT COUNT(*) AS n FROM bom_items WHERE project_id = ? AND import_id IS NULL', [params.id]);
 
   if (form.get('confirm') !== '1') {
     return NextResponse.json({
@@ -88,7 +104,8 @@ export async function POST(req, { params }) {
         totalItems: parsed.totalItems,
         totalSkipped: parsed.totalSkipped,
         existingItems: existing.n,
-        packedCount: packed.n,
+        blockedCount: blockedIds.size,
+        preservedCount: preserved.n,
       },
     });
   }
@@ -138,8 +155,16 @@ export async function POST(req, { params }) {
   // effects (audit, Stores notification) stay outside, per withTransaction's own convention, and
   // only run once the transaction has actually committed.
   const { importId, n } = await withTransaction(async tx => {
-    if (replacing) {
-      await tx.execute({ sql: 'DELETE FROM bom_items WHERE project_id = ?', args: [params.id] });
+    if (replacing && deletableIds.length) {
+      // deletableIds, not a blanket `import_id IS NOT NULL` — a PR-raised/manual/template row must
+      // never be swept up (see the comment above `pmbItems` earlier in this route), and neither may
+      // a PMB-imported row that already has real downstream activity (blockedIds above) — deleting
+      // one would throw a raw FK constraint error (Turso enforces them) or silently cascade away
+      // real history (supplier_quotes).
+      await tx.execute({
+        sql: `DELETE FROM bom_items WHERE id IN (${deletableIds.map(() => '?').join(',')})`,
+        args: deletableIds,
+      });
     }
 
     const imp = await tx.execute({

@@ -150,9 +150,15 @@ export default function BomImport({ projectId, format = 'xlsx' }) {
 
               {replacing && (
                 <p className="rounded-md border border-danger/30 bg-danger/5 p-3 text-danger">
-                  This project already has {preview.existingItems} BOM items
-                  {preview.packedCount > 0 && <>, {preview.packedCount} of them already on packing lists — their links will be lost</>}.
-                  Importing will <strong>replace the entire BOM</strong>, including any in-app edits.
+                  This project already has {preview.existingItems} PMB-imported BOM item{preview.existingItems === 1 ? '' : 's'}.
+                  Importing will <strong>replace</strong> {preview.existingItems - preview.blockedCount} of them, including any in-app edits.
+                  {preview.blockedCount > 0 && (
+                    <> {preview.blockedCount} of them already {preview.blockedCount === 1 ? 'has' : 'have'} real activity logged against
+                    {preview.blockedCount === 1 ? ' it' : ' them'} elsewhere (a quote, an order, a packing list, a QC record, etc.) and will be kept as-is.</>
+                  )}
+                  {preview.preservedCount > 0 && (
+                    <> {preview.preservedCount} other item{preview.preservedCount === 1 ? '' : 's'} (raised via PR or added manually) will also be kept.</>
+                  )}
                 </p>
               )}
 

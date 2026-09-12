@@ -79,8 +79,12 @@ export async function POST(req, { params }) {
       }
       await withTransaction(async tx => {
         await tx.execute({ sql: "UPDATE stock_pieces SET status = 'scrap' WHERE id = ?", args: [piece.id] });
+        // owner_project_id IS NULL — Stores/Inventory hardening Phase 2's ownership guard, found
+        // missing here (a third, independent inline duplicate of the on_hand rollup query) during
+        // the Phase 3 gap-hunt. Without it, scrapping an owned piece silently folded it into the
+        // shared/common on_hand count it was never part of — a live regression, fixed here.
         const countRow = await tx.execute({
-          sql: "SELECT COUNT(*) AS n FROM stock_pieces WHERE inventory_item_id = ? AND status = 'available'",
+          sql: "SELECT COUNT(*) AS n FROM stock_pieces WHERE inventory_item_id = ? AND status = 'available' AND owner_project_id IS NULL",
           args: [piece.inventory_item_id],
         });
         await tx.execute({ sql: 'UPDATE inventory_items SET on_hand = ? WHERE id = ?', args: [countRow.rows[0].n, piece.inventory_item_id] });

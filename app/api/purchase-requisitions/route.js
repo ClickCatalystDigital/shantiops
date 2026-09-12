@@ -21,8 +21,19 @@ import { notifyDepartment } from '@/lib/notify';
 import { getAllocationMode, autoReserveFromStock, notifyProcurementIfShortfall } from '@/lib/procurement';
 import { matchAndReserve } from '@/lib/remnant-match';
 import { DIMENSIONAL_CATEGORIES } from '@/lib/bom-fields.mjs';
+import { getPurchaseRequisitions } from '@/lib/data';
 
 const PR_DEPARTMENTS = ['Engineering', 'Design', 'Stores', 'Sales'];
+
+// PR History — read-only, gated to whoever can reach the Requests/Engineering tabs that show it
+// (canAccessDepartment already returns true for a PM regardless of department, lib/auth.js:196-200).
+export async function GET() {
+  const user = await getFreshSessionUser();
+  if (!['Engineering', 'Design', 'Stores'].some(d => canAccessDepartment(user, d))) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+  return NextResponse.json(await getPurchaseRequisitions());
+}
 const SAS_RAISERS = new Set(['Sales']);
 // CALC-CHANGES2.md §F — category tag, 'bom'-source lines only (stock/sas are inventory/trade
 // lines, not physical-material categories). DIMENSIONAL_CATEGORIES is the shared, single source of

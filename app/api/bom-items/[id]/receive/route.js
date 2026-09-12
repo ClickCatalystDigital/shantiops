@@ -39,7 +39,7 @@ import { requireAction } from '@/lib/action-permissions';
 import { execute, queryOne, queryAll, withTransaction, nextNumber } from '@/lib/db';
 import { getAssemblyRollupMap, getProjectUnitCounts, getPlannedRecipients } from '@/lib/data';
 import { itemRollupQty } from '@/lib/bom-structure.mjs';
-import { missingTraceabilityFields, applyReceivedSideEffects, creditBomItemReceipt } from '@/lib/bom-receiving';
+import { missingTraceabilityFields, applyReceivedSideEffects, creditBomItemReceipt, maybeCreatePieceStock, maybeReserveScalarStock } from '@/lib/bom-receiving';
 import { audit } from '@/lib/usb';
 
 // Read-only helper for the dialog's own "remaining outstanding" default and running-total display
@@ -274,6 +274,19 @@ export async function POST(req, { params }) {
     });
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: 409 });
+  }
+
+  // Stores/Inventory hardening Phase 2 — a real physical delivery, even a partial one, gets real
+  // piece-level stock (best-effort, never gates completion of the receipt itself). Deliberately its
+  // own loop, not folded into the isFullyReceived-gated one below: unlike applyReceivedSideEffects
+  // (QC record, notifications — meaningful only once the line is actually done), the physical
+  // material itself exists the moment this delivery lands, whether or not it completes the line.
+  for (const r of results) {
+    await maybeCreatePieceStock(r.item, r.qty, r.receiptId, r.targetChanged, user.username);
+    // Stores/Inventory hardening Phase 3 — the scalar counterpart, same per-target/every-delivery
+    // treatment. Each function's own gate (dimensional-vs-scalar, respectively) means at most one
+    // of the two ever actually does anything for a given target.
+    await maybeReserveScalarStock(r.item, r.qty, user.username);
   }
 
   for (const r of results) {

@@ -20,7 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
   LayersIcon, SearchIcon, Repeat2Icon, FileEditIcon, PlusIcon,
-  ClipboardListIcon, CheckIcon, FileStackIcon, FilterIcon, GitBranchIcon, BoxIcon,
+  ClipboardListIcon, CheckIcon, FileStackIcon, FilterIcon, GitBranchIcon, BoxIcon, HistoryIcon,
 } from 'lucide-react';
 import { api, showToast, formatDate } from '@/lib/client';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
@@ -28,7 +28,7 @@ import SearchableSelect from '@/components/SearchableSelect';
 import BomTemplateManager from '@/components/BomTemplateManager';
 import BomStructureTemplateManager from '@/components/BomStructureTemplateManager';
 import BomStructureWorkspace from '@/components/bom-structure/BomStructureWorkspace';
-import { RaisePrTab, ReleaseBomTab } from '@/components/PrWorkspace';
+import { RaisePrTab, ReleaseBomTab, PrHistoryTab } from '@/components/PrWorkspace';
 import ItemMasterPanel from '@/components/ItemMasterPanel';
 
 // Round 3 Phase A — which tabs the shared project-selector header (below) applies to, and in which
@@ -72,6 +72,7 @@ const ITEMS = [
   { key: 'common_uncommon', label: 'Common / Uncommon', icon: Repeat2Icon },
   { key: 'ecn', label: 'Change Notes', icon: FileEditIcon },
   { key: 'pr_raise', label: 'Purchase Requests', icon: ClipboardListIcon },
+  { key: 'pr_history', label: 'PR History', icon: HistoryIcon },
   { key: 'pr_templates', label: 'PR Templates', icon: FileStackIcon },
   { key: 'pr_divider', divider: true },
   { key: 'pr_release', label: 'Release BOM', icon: CheckIcon },
@@ -466,6 +467,7 @@ export default function EngineeringWorkspace({ projects, canApproveEcn = false, 
         <RaisePrTab departments={departments} projects={projects}
           prTemplatePrefill={prTemplatePrefill} onPrefillConsumed={() => setPrTemplatePrefill(null)} />
       )}
+      {tab === 'pr_history' && <PrHistoryTab />}
       {tab === 'pr_templates' && (
         <BomTemplateManager kind="pr" title="PR Templates" projects={projects} onUseInRaisePr={useInRaisePr} />
       )}

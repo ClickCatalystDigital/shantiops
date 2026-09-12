@@ -14,22 +14,23 @@
 // from Stores" dialog), so it's deliberately not offered in this picker anymore.
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { api, showToast } from '@/lib/client';
+import { api, showToast, formatDate } from '@/lib/client';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Badge } from './ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup } from './ui/select';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from './ui/dialog';
-import { TrashIcon, PlusIcon, ClipboardListIcon, LayoutTemplateIcon, CheckIcon, DownloadIcon, UndoIcon } from 'lucide-react';
+import { TrashIcon, PlusIcon, ClipboardListIcon, LayoutTemplateIcon, CheckIcon, DownloadIcon, UndoIcon, HistoryIcon } from 'lucide-react';
 import WorkspaceSidebar from './WorkspaceSidebar';
 import BomTable from './BomTable';
 import DimensionInput from './DimensionInput';
 import SearchableSelect from './SearchableSelect';
 import QtyInput from './QtyInput';
 import CategoryFieldsBlock, { OTHER_MOC, MOC_OPTIONS } from './CategoryFieldsBlock';
-import { BOM_FIELD_OWNERS, DIMENSIONAL_CATEGORIES } from '@/lib/bom-fields.mjs';
+import { BOM_FIELD_OWNERS, DIMENSIONAL_CATEGORIES, PURCHASE_STATUSES, STATUS_TONE, DEFAULT_PURCHASE_STATUS } from '@/lib/bom-fields.mjs';
 import { CATEGORY_LABEL, categoryDisplaySpec, categoryWeightKg } from '@/lib/section-shapes';
 import BomTemplateManager from './BomTemplateManager';
 import {
@@ -612,6 +613,108 @@ export function RaisePrTab({ departments, projects, inventoryItems = [], prTempl
   );
 }
 
+// A stock/sas-source line's bom_items.project_id points at the sentinel system project, not a real
+// one — "Stock"/"SO #..." reads better than the sentinel's literal placeholder project_no. Same
+// small helper EngineeringWorkspace.jsx and ProcurementWorkspace.jsx already each keep their own
+// copy of; not worth extracting for a third one-off use.
+function prHistoryProjectLabel(l) {
+  if (!l.project_is_system) return l.project_no;
+  if (l.source === 'sas') return `SO #${l.sale_order_no || '—'}`;
+  if (l.source === 'stock') return 'Stock';
+  return l.project_no;
+}
+
+// PR History — read-only record of every PR ever raised, no props needed (self-fetches). Exported
+// for the same reason RaisePrTab is above — Engineering's own sidebar renders this same tab from a
+// second entry point, sharing the one /api/purchase-requisitions GET rather than a second query.
+export function PrHistoryTab() {
+  const [prs, setPrs] = useState(null);
+  const [q, setQ] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+
+  useEffect(() => {
+    api('/api/purchase-requisitions').then(setPrs).catch(err => showToast(err.message, 'error'));
+  }, []);
+
+  const rows = (prs || []).flatMap(pr => pr.items.map(it => ({
+    ...it, pr_no: pr.pr_no, created_at: pr.created_at,
+  })));
+
+  const needle = q.trim().toLowerCase();
+  const shown = rows.filter(r => {
+    if (statusFilter !== 'all' && !r.lines.some(l => (l.purchase_status || DEFAULT_PURCHASE_STATUS) === statusFilter)) return false;
+    if (!needle) return true;
+    return [r.pr_no, r.material_description, r.moc,
+      ...r.lines.flatMap(l => [prHistoryProjectLabel(l), l.customer_name])]
+      .some(v => String(v || '').toLowerCase().includes(needle));
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>PR History</CardTitle>
+        <CardAction className="flex items-center gap-2">
+          <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Search PR, item, project…" className="w-56" />
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All statuses</SelectItem>
+              {PURCHASE_STATUSES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </CardAction>
+      </CardHeader>
+      <CardContent>
+        {!prs ? (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : rows.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No PRs raised yet.</p>
+        ) : shown.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No PR items match.</p>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Date</TableHead>
+                <TableHead>PR</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead>MOC</TableHead>
+                <TableHead>Projects</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {shown.map(r => (
+                <TableRow key={r.pr_item_id}>
+                  <TableCell className="whitespace-nowrap text-muted-foreground">{formatDate(r.created_at)}</TableCell>
+                  <TableCell>{r.pr_no}</TableCell>
+                  <TableCell className="font-medium">{r.material_description}</TableCell>
+                  <TableCell className="text-muted-foreground">{r.moc || '—'}</TableCell>
+                  <TableCell>
+                    <div className="flex flex-col gap-1.5">
+                      {r.lines.length === 0 ? (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      ) : r.lines.map(l => (
+                        <div key={l.bom_item_id} className="flex flex-wrap items-center gap-2 text-xs">
+                          <span className="font-medium">{prHistoryProjectLabel(l)}{l.customer_name ? ` · ${l.customer_name}` : ''}</span>
+                          <span className="text-muted-foreground">{l.qty_text || '—'}</span>
+                          <span className="text-muted-foreground">{l.size_spec || '—'}</span>
+                          <span className={`shrink-0 rounded-full px-2 py-0.5 font-medium ring-1 ring-inset ${STATUS_TONE[l.purchase_status] || STATUS_TONE[DEFAULT_PURCHASE_STATUS]}`}>
+                            {l.purchase_status || DEFAULT_PURCHASE_STATUS}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // Release BOM = a deliberate, whole-project action ("everything's ready together"), not something
 // inferred from the first item landing on the BOM — a project's BOM usually gets built up
 // piecemeal over days (app/api/projects/[id]/release-bom's own comment explains why). This tab is
@@ -780,7 +883,7 @@ export default function PrWorkspace({ departments, projects, inventoryItems = []
   // redundant here — reinstated after that read as "where did it go" rather than a cleaner nav, per
   // direct feedback. Both buttons fire the exact same POST route, so nothing was ever duplicated at
   // the data layer, only the entry point.
-  const [tab, setTab] = useState(['raise', 'templates', 'release'].includes(initialTab) ? initialTab : 'raise');
+  const [tab, setTab] = useState(['raise', 'history', 'templates', 'release'].includes(initialTab) ? initialTab : 'raise');
   const [prTemplatePrefill, setPrTemplatePrefill] = useState(null);
   // Release BOM only shows for a viewer who can actually release (canRelease() in
   // app/api/projects/[id]/release-bom/route.js requires Design or Engineering) — a Stores-only head
@@ -789,6 +892,7 @@ export default function PrWorkspace({ departments, projects, inventoryItems = []
   const canReleaseBom = departments.some(d => ['Design', 'Engineering'].includes(d));
   const navItems = [
     { key: 'raise', label: 'Purchase Requests', icon: ClipboardListIcon },
+    { key: 'history', label: 'PR History', icon: HistoryIcon },
     ...(canReleaseBom ? [{ key: 'release', label: 'Release BOM', icon: CheckIcon }] : []),
     { key: 'templates', label: 'PR Templates', icon: LayoutTemplateIcon },
   ];
@@ -809,6 +913,7 @@ export default function PrWorkspace({ departments, projects, inventoryItems = []
         <RaisePrTab departments={departments} projects={projects} inventoryItems={inventoryItems}
           prTemplatePrefill={prTemplatePrefill} onPrefillConsumed={() => setPrTemplatePrefill(null)} />
       )}
+      {tab === 'history' && <PrHistoryTab />}
       {tab === 'release' && <ReleaseBomTab projects={projects} departments={departments} />}
       {tab === 'templates' && (
         <div className="flex flex-col gap-4">
