@@ -31,24 +31,16 @@ import CreateRfqDialog from './CreateRfqDialog';
 import SearchableSelect from './SearchableSelect';
 import { PURCHASE_STATUSES as BOM_STATUSES, CLOSED_STATUSES, OPEN_STATUSES, STATUS_TONE, DEFAULT_PURCHASE_STATUS } from '@/lib/bom-fields.mjs';
 import { aggregatePrGroups } from '@/lib/bom-structure.mjs';
+import { projectLabel } from '@/lib/project-label';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 import SupplierAnalysis from '@/components/SupplierAnalysis';
+import PoDeliveryLotsWorkspace from '@/components/PoDeliveryLotsWorkspace';
 import TraceabilityBadges from '@/components/TraceabilityBadges';
-import { SearchIcon, GitCompareIcon, FileTextIcon, ListChecksIcon, Building2Icon, ShoppingCartIcon, BarChart3Icon, LayoutDashboardIcon, Undo2Icon, PlusIcon, ReceiptIcon, TrashIcon, DownloadIcon } from 'lucide-react';
+import { SearchIcon, GitCompareIcon, FileTextIcon, ListChecksIcon, Building2Icon, ShoppingCartIcon, BarChart3Icon, LayoutDashboardIcon, Undo2Icon, PlusIcon, ReceiptIcon, TrashIcon, DownloadIcon, CalendarClockIcon } from 'lucide-react';
 
 // Enquiry/Selection are for items still working toward a PO — once one's issued (Ordered, Phase
 // 5.1 — was Transit pre-5.1) or closed out, it's Status's job to show it, not theirs.
 const OUT_OF_PIPELINE = [...CLOSED_STATUSES, 'Ordered', 'Transit'];
-
-// V2-CHANGES.md Group 6 Phase 6.4 — source='stock'/'sas' items point at the sentinel system
-// project (project_is_system, from getSourcingItems) instead of a real one; reads better here as
-// "SO #.../Stock" than the sentinel's literal placeholder project_no.
-function projectLabel(it) {
-  if (!it.project_is_system) return it.project_no;
-  if (it.source === 'sas') return `SO #${it.sale_order_no || '—'}`;
-  if (it.source === 'stock') return 'Stock';
-  return it.project_no;
-}
 
 function ItemContext({ it }) {
   return (
@@ -735,6 +727,12 @@ function ChangeSupplierPanel({ line, suppliers, onDone, onCancel }) {
   }, [line.bom_item_id]);
 
   async function save() {
+    // Changing supplier deletes-and-recreates this line's po_items row (removeItemFromDraftPO,
+    // lib/procurement.js) — any Delivery Lots already scheduled against it get cleared server-side
+    // as a result. Warn before doing it, not just after.
+    if (line.has_delivery_lots && !window.confirm('This line has delivery lots scheduled — changing supplier will remove them. Continue?')) {
+      return;
+    }
     setBusy(true);
     try {
       const body = { action: 'change_supplier', po_item_id: line.id };
@@ -1809,6 +1807,11 @@ export default function ProcurementWorkspace({ sourcingItems, suppliers, purchas
     { key: 'enquiry', label: 'Enquiry', icon: SearchIcon },
     { key: 'selection', label: 'Selection', icon: GitCompareIcon },
     { key: 'orders', label: 'Purchase Orders', icon: FileTextIcon },
+    // A top-level sibling, not nested under Purchase Orders — same shape as Returns/Vendor Bills
+    // right below (pick an issued PO, then record/manage something against it), not the "two views
+    // of one entity" shape Suppliers' Roster/Analysis group has. Sits right after Purchase Orders
+    // to match the real lifecycle: issue -> schedule delivery -> track status -> returns/bills.
+    { key: 'orders-lots', label: 'Delivery Lots', icon: CalendarClockIcon },
     { key: 'state', label: 'Status', icon: ListChecksIcon },
     { key: 'returns', label: 'Returns', icon: Undo2Icon },
     { key: 'vendor_bills', label: 'Vendor Bills', icon: ReceiptIcon },
@@ -1829,7 +1832,10 @@ export default function ProcurementWorkspace({ sourcingItems, suppliers, purchas
       {/* One shared search row, same position under the tab bar regardless of which tab is active,
           so switching tabs never makes the page jump (§4, point 4). Each tab interprets it. A
           tab-specific control (Status's status filter, Purchase Orders' Active/Fulfilled toggle)
-          sits right-aligned in the same row rather than adding a second control row per tab. */}
+          sits right-aligned in the same row rather than adding a second control row per tab.
+          Delivery Lots is the one tab that needs none of this — it has its own PO picker as the
+          actual "search" — so the row is hidden outright rather than shown empty. */}
+      {tab !== 'orders-lots' && (
       <div className="flex flex-wrap items-center gap-2">
         <Input value={search} onChange={e => setSearch(e.target.value)}
           placeholder={SEARCH_PLACEHOLDER[tab]} className="h-8 w-72" />
@@ -1874,9 +1880,11 @@ export default function ProcurementWorkspace({ sourcingItems, suppliers, purchas
           </div>
         )}
       </div>
+      )}
       {tab === 'enquiry' && <Enquiry items={projectItems} allItems={activeItems} sourceView={sourceView} quotesByItem={quotesByItem} suppliers={suppliers} rfqSummaryByItem={rfqSummaryByItem} router={router} q={search} />}
       {tab === 'selection' && <Selection items={projectItems} allItems={activeItems} sourceView={sourceView} quotesByItem={quotesByItem} router={router} q={search} />}
       {tab === 'orders' && <PurchaseOrders orders={purchaseOrders} q={search} view={poView} suppliers={suppliers} tdsRates={tdsRates} />}
+      {tab === 'orders-lots' && <PoDeliveryLotsWorkspace purchaseOrders={purchaseOrders} />}
       {tab === 'state' && <State items={sourcingItems} router={router} q={search} statusFilter={statusFilter} />}
       {tab === 'suppliers-roster' && <Suppliers suppliers={suppliers} quotes={quotes} q={search} />}
       {tab === 'suppliers-analysis' && <SupplierAnalysis view={analysisView} suppliers={suppliers} quotes={quotes} purchaseOrders={purchaseOrders} q={search} />}

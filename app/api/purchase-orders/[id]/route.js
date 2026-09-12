@@ -118,6 +118,14 @@ export async function PATCH(req, { params }) {
     const qty = Number(b.qty);
     const rate = Number(b.rate);
     if (!(qty > 0) || !(rate > 0)) return NextResponse.json({ error: 'Qty and rate must be positive' }, { status: 400 });
+    // Delivery Lots (§ PO Delivery Lots) can already promise part of this line's qty against a real
+    // date — reducing below what's already scheduled would silently break that invariant.
+    const allocated = (await queryOne(
+      'SELECT COALESCE(SUM(qty),0) AS q FROM po_delivery_lot_items WHERE po_item_id = ?', [line.id]
+    ))?.q || 0;
+    if (qty < allocated) {
+      return NextResponse.json({ error: `${allocated} of this line already scheduled into delivery lots — remove/reduce them first` }, { status: 400 });
+    }
     const amount = Math.round(qty * rate * 100) / 100;
     await execute('UPDATE po_items SET qty = ?, rate = ?, amount = ? WHERE id = ?', [qty, rate, amount, line.id]);
     // D11: propagates to the bom_items line so Enquiry/Selection/Status stay in sync — the
