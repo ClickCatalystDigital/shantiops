@@ -89,13 +89,14 @@ export async function POST(req) {
     [prNo, raisedByDept, user.username]
   );
 
-  // Allocation Mode gate, refined 2026-08-20 — 'bom'/'sas' lines used to always gate behind
+  // Allocation Mode gate, refined 2026-08-20 — 'sas' lines used to always gate behind
   // pending_review=1 (Stores review of every line, regardless of what's actually in stock). Auto
   // mode instead inserts open (0) and immediately tries the same auto-match reuse/matchAndReserve
   // already does for the release-bom/single-add paths — SAS demand goes through the identical
   // allocation mechanism as project BOM demand, per the redesign (Sales still owns raising it, this
   // is only about how it gets fulfilled). 'stock' is unaffected — Stores' own Build-stock request
-  // already skipped this gate entirely before this change.
+  // already skipped this gate entirely before this change. Still applies to 'sas' only — see the
+  // bom-source branch below for why 'bom' lines no longer use this at all.
   const allocationMode = await getAllocationMode();
   const gatedPendingReview = allocationMode === 'manual' ? 1 : 0;
 
@@ -188,16 +189,20 @@ export async function POST(req) {
         // other project-specific fact already only lives there (qty_text, drawing_id).
         const pCategoryFieldsJson = category && p.category_fields ? JSON.stringify(p.category_fields) : categoryFieldsJson;
         const pSizeSpec = p.size_spec || line.size_spec || null;
-        // Materializes immediately — this line×project pair is the real procurement need. Manual
-        // mode keeps it out of Procurement's Enquiry queue until Stores explicitly reserves it or
-        // clicks Procure; Auto mode tries the same allocation the release-bom/single-add paths use,
-        // right here (the unify decision was "no accept step", this doesn't reintroduce one).
+        // Materializes immediately, always pending_review=0 — direct product decision: a project
+        // BOM line raised through the unified PR flow (this branch is only ever reached by
+        // Engineering/Design/Stores; Sales must use 'sas', 'stock' is its own branch above) skips
+        // both the Manual-mode Stores-review gate here AND the release_bom gate in
+        // lib/data.js's getSourcingItems() — the unified PR flow's own original design was "no
+        // acceptance gate," and neither of those two generic, PMB-import-oriented gates should have
+        // re-applied to a PR-raised line at all. PMB-imported/manual/template lines are completely
+        // unaffected — they still go through both gates exactly as before.
         const { lastId: bomItemId } = await execute(
           `INSERT INTO bom_items (project_id, material_description, moc, size_spec, qty_text, purchase_status, pr_item_id, category, category_fields_json, named_parts_json, origin, pending_review, item_id, drawing_id,
                                    requires_heat_no, requires_mtc, requires_supplier_batch, requires_serial_no, requires_manufacturing)
-           VALUES (?, ?, ?, ?, ?, 'Enquiry', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           VALUES (?, ?, ?, ?, ?, 'Enquiry', ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)`,
           [p.project_id, line.material_description.trim(), line.moc || null, pSizeSpec,
-            p.qty_text.trim(), Number(prItemId), category, pCategoryFieldsJson, namedPartsJson, origin, gatedPendingReview, itemId,
+            p.qty_text.trim(), Number(prItemId), category, pCategoryFieldsJson, namedPartsJson, origin, itemId,
             p.drawing_id ? Number(p.drawing_id) : null,
             requiresHeatNo, requiresMtc, requiresSupplierBatch, requiresSerialNo, requiresManufacturing]
         );

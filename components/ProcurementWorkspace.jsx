@@ -353,9 +353,12 @@ function PrGroupEnquiryRow({ group, quotesByItem, suppliers, rfqSummaryByItem, r
               </div>
             )}
           </div>
-          {bySupplier.length > 0 && (
-            <Badge variant="outline">{bySupplier.length} supplier quote{bySupplier.length !== 1 ? 's' : ''}</Badge>
-          )}
+          <div className="flex shrink-0 items-center gap-2">
+            {group.raised_by_dept && <Badge variant="outline">{group.raised_by_dept}</Badge>}
+            {bySupplier.length > 0 && (
+              <Badge variant="outline">{bySupplier.length} supplier quote{bySupplier.length !== 1 ? 's' : ''}</Badge>
+            )}
+          </div>
         </button>
       </div>
       {expanded && (
@@ -447,6 +450,9 @@ function Enquiry({ items, allItems, sourceView, quotesByItem, suppliers, rfqSumm
       .map(g => ({ ...g, sourcing_bom_item_ids: g.sourcing_bom_item_ids.filter(id => openIds.has(id)) }))
       .filter(g => g.sourcing_bom_item_ids.length > 0)
       .filter(g => !needle || g.material_description.toLowerCase().includes(needle) || (g.pr_no || '').toLowerCase().includes(needle))
+      // Newest-raised PR first — same convention PR History already uses, not the incidental
+      // per-project order aggregatePrGroups()'s own Map iteration would otherwise produce.
+      .sort((a, b) => new Date(b.pr_created_at) - new Date(a.pr_created_at))
     : null;
   const shownPmb = isPr ? null : items.filter(it => !it.pr_item_id && !it.selected_quote_id && !OUT_OF_PIPELINE.includes(it.purchase_status))
     .filter(it => !needle || it.material_description.toLowerCase().includes(needle) || it.project_no.toLowerCase().includes(needle));
@@ -616,13 +622,16 @@ function PrGroupSelectionRow({ group, quotesByItem, router }) {
           <p className="font-medium">{group.material_description}</p>
           <PrGroupHeaderInfo group={group} />
         </button>
-        {mixedAward ? (
-          <Badge variant="outline" className="shrink-0 text-warning">
-            Awarded to {awardedSuppliers.size} different suppliers — review individually
-          </Badge>
-        ) : uniformAwardedName && (
-          <Button size="sm" variant="outline" className="shrink-0" disabled={busySupplier === 'undo'} onClick={undoGroup}>Undo selection</Button>
-        )}
+        <div className="flex shrink-0 items-center gap-2">
+          {group.raised_by_dept && <Badge variant="outline">{group.raised_by_dept}</Badge>}
+          {mixedAward ? (
+            <Badge variant="outline" className="text-warning">
+              Awarded to {awardedSuppliers.size} different suppliers — review individually
+            </Badge>
+          ) : uniformAwardedName && (
+            <Button size="sm" variant="outline" disabled={busySupplier === 'undo'} onClick={undoGroup}>Undo selection</Button>
+          )}
+        </div>
       </div>
       {(group.unit_mismatch || group.spec_drift) && (
         <div className="flex flex-wrap gap-1">
@@ -676,7 +685,8 @@ function Selection({ items, allItems, sourceView, quotesByItem, router, q }) {
         return it && selectionEligible(it, quotesByItem);
       }) }))
       .filter(g => g.sourcing_bom_item_ids.length > 0)
-      .filter(g => !needle || g.material_description.toLowerCase().includes(needle) || (g.pr_no || '').toLowerCase().includes(needle));
+      .filter(g => !needle || g.material_description.toLowerCase().includes(needle) || (g.pr_no || '').toLowerCase().includes(needle))
+      .sort((a, b) => new Date(b.pr_created_at) - new Date(a.pr_created_at));
     return (
       <Card>
         <CardContent className="flex flex-col pt-4">

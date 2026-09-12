@@ -9226,6 +9226,144 @@ confirmed zero residue across all 3 new tables via direct query.
 stays on the existing Stores flow); no PDF/report changes (delivery lots never appear on the
 printed PO document); no Stores notification on lot creation (a natural future follow-on).
 
+## 5by. PR History tab + a real, previously-undocumented FK-enforcement bug found and centrally fixed (2026-09-12)
+
+Raising a PR (`components/PrWorkspace.jsx`'s `RaisePrTab`) had no way to see what had been raised
+afterward — the file's own top comment said so explicitly: "no PR history/list view yet." This round
+added that view, then a direct question about it ("check /procurement... is PR/PMB Replace robust?")
+led to finding and fixing a real, systemic, previously-undocumented bug affecting BOM-item deletion
+across the whole app, not just this feature.
+
+**PR History — read-only, header-first, every PR ever raised.** New `getPurchaseRequisitions()`
+(`lib/data.js`), deliberately unlike `getSourcingItems()` (scoped to "still needs sourcing," excludes
+`pending_review=1`, requires `release_bom` done): this shows every PR regardless of where its lines
+currently sit, including fully `Received`/`Cancelled` ones and lines still in Stores Review. One row
+per PR item, each with its own per-project split(s) (project, qty, dimensions — reusing
+`bom_items.size_spec`, already the rendered `categoryDisplaySpec()` string from raise time, never
+re-parsed) and a `STATUS_TONE`-colored status badge. New `GET /api/purchase-requisitions` (gated to
+Engineering/Design/Stores, PM passes via `canAccessDepartment`). New exported `PrHistoryTab`
+(`components/PrWorkspace.jsx`), rendered as its own sidebar tab directly below "Purchase Requests" in
+both `/pr` and Engineering's own embedded copy (`components/EngineeringWorkspace.jsx`, §5az) — same
+shared-component precedent as `RaisePrTab`/`ReleaseBomTab`, not duplicated. Table layout: **Date** is
+the leftmost column (plain text), **PR** its own column with no department subtext under it (dropped
+after direct feedback questioning why a bare department name floated there once date moved out) —
+search/status-filter row above.
+
+**The real bug: Turso enforces foreign keys.** `lib/db.js`'s own long-standing comment
+("this app never turns PRAGMA foreign_keys on... table creation order here doesn't matter") describes
+local-sqlite dev fallback behavior, not what the hosted Turso connection actually does — confirmed
+live, the hard way, mid-session: deleting a `purchase_requisitions` header while a `bom_items` row
+still referenced its `pr_items` child threw a genuine `SQLITE_CONSTRAINT: FOREIGN KEY constraint
+failed`. A live query (`SELECT name FROM sqlite_master...` then `PRAGMA foreign_key_list(<table>)`
+filtered to `fk.table === 'bom_items'`, run against the real schema, not hand-counted from source)
+found **18 tables** with a real, enforced FK into `bom_items(id)`: 17 `NO ACTION` (`qc_records`,
+`po_items`, `qc_document_parts`, `rfq_items`, `qc_mountings`, `material_issues`,
+`work_order_materials`, `bom_change_notes`, `job_work_inspections`, `vendor_bill_items`,
+`ncr_records`, `material_indent_items`, `bom_item_receipts`, `bom_item_child_allocations`,
+`bom_item_child_routing`, `bom_item_child_certificates`, `inventory_reservations`) and 1 `CASCADE`
+(`supplier_quotes` — would silently delete the "honest, append-only, never-deleted" price-history log
+this app documents elsewhere as deliberately un-deletable anywhere else).
+
+**This had already bitten the app twice before, one table at a time.**
+`app/api/bom-items/[id]/route.js`'s own DELETE handler carried the scars in its comments —
+`inventory_reservations` (found after a real production 500) and `material_indent_items` (found in
+review before it could) were each patched as one-off checks, covering 3 of the 18 real tables. The
+other 15, plus the PMB Replace route's own bulk `DELETE FROM bom_items WHERE project_id = ?`
+(completely unscoped by origin — would also have swept up PR-raised/manual/template rows sharing a
+project with a PMB import, and crashed outright on any row with real downstream activity), were
+unguarded.
+
+**Fix — centralized, schema-verified, self-checking.** New `lib/bom-item-guard.js`:
+`BOM_ITEM_BLOCKING_TABLES` (all 18 real-FK tables + `packing_items`, a business rule with no DB-level
+FK at all, guarded for the same reason — deleting a packed line would orphan real dispatch
+reconciliation), `findBlockingReferences(id)` (one item → human-readable reason, used by the
+single-item DELETE route) and `findBlockedIds(candidateIds)` (many items → a blocked-id Set in
+O(19) queries total, not O(19×N) — the shape a bulk Replace needs). `app/api/bom-items/[id]/route.js`
+now checks all 19 instead of 3. `app/api/projects/[id]/bom/import/route.js`'s Replace now: scopes its
+delete to `import_id IS NOT NULL` (never touches PR-raised/manual/template rows, matching PR
+History's own read-side scoping) **and** skips any of those PMB-imported rows that have real
+downstream activity, reporting the split via `blockedCount`/`preservedCount` in the preview
+(`components/BomImport.jsx`'s warning now names both: replaced / kept-because-already-committed /
+kept-because-not-PMB-origin). New `scripts/bom-item-guard-selfcheck.mjs` — re-runs the same live
+`PRAGMA foreign_key_list` discovery and asserts the guard's table list covers everything the real
+schema currently has, so a future 19th table can't silently reintroduce this gap a third time.
+
+**Live-verified, not just reasoned about**: built a disposable bom_item with a real blocking
+reference, confirmed the *old* code genuinely throws the raw constraint error (proving this wasn't
+theoretical), then confirmed both the single-item DELETE (clean 409, correct reason) and the bulk
+Replace (blocked row survives, reported correctly, clean row still replaces normally) on the *new*
+code. A separate, disposable "brand new project, first import, then a full replace" run confirmed the
+everyday vanilla path produces byte-identical results to before — nothing regressed for the common
+case. 4 orphaned test-PR chains from earlier sessions' incomplete cleanup (`PR-24/25/27/28` —
+`bom_items` deleted directly by a prior test-cleanup script, `pr_items`/`purchase_requisitions` left
+behind) were found via this same History view and removed.
+
+## 5bz. PR-raised lines skip Stores Review + release_bom in Enquiry/Selection; raising department shown; sorted newest-first (2026-09-12)
+
+Direct product decision, confirmed with three explicit questions before touching anything (all
+"Recommended" answers taken): **any PR raised by Engineering, Design, or Stores should appear in
+Procurement's Enquiry and/or Selection immediately, unless a PO has already been issued for it** —
+covering every raising department the unified PR flow allows (not just the two originally named),
+bypassing both blocking gates found (not just one), and backfilling already-stuck existing PR lines
+(not just future ones).
+
+**Root cause, re-framed correctly once traced.** The unified PR flow's own original design explicitly
+said "no acceptance gate — materializes straight to bom_items on Enquiry" (`PrWorkspace.jsx`'s own top
+comment). Two *other*, generic, PMB-import-oriented gates were incidentally re-imposing one anyway,
+uniformly across every `source='bom'` item regardless of origin:
+1. **`pending_review=1`** — Manual allocation mode's Stores-self-review step (§5e/§3b), set at raise
+   time regardless of who raised it.
+2. **`release_bom`** — the project-wide "Design has finished releasing this BOM" milestone gate in
+   `lib/data.js`'s `getSourcingItems()`, checked for every `source='bom'` row with no origin exception.
+
+Neither gate is specific to the PR flow — they belong to the PMB-import/manual-entry world (a
+spreadsheet-derived line genuinely does need a self-check and a release step; a discrete PR request
+already *is* the acceptance). "Unless a PO is issued" was already correctly handled by the
+pre-existing `OUT_OF_PIPELINE` cut (`Ordered`/`Transit`/closed statuses) the moment a PO gets issued
+— no change needed there.
+
+**Fix, scoped strictly to PR-raised lines (`bom_items.pr_item_id IS NOT NULL`) — PMB-imported/
+manual/template lines are completely unaffected, still gated exactly as before:**
+- `app/api/purchase-requisitions/route.js` — the bom-source branch (only ever reachable by
+  Engineering/Design/Stores; Sales must use `source='sas'`, which keeps its own existing
+  allocation-mode-dependent `pending_review` behavior, untouched and out of this round's scope) now
+  always inserts `pending_review=0`, a literal, not the allocation-mode-dependent `gatedPendingReview`
+  it used before.
+- `lib/data.js`'s `getSourcingItems()` — the `release_bom` bypass condition gained
+  `OR b.pr_item_id IS NOT NULL`, alongside the existing stock/sas sentinel-project exemption.
+- `lib/db.js` — new one-time guarded migration `backfillPrRaisedPendingReview` (marker
+  `pr_raised_pending_review_v1`, same `system_migrations`-gated idiom as every other one-time fix
+  here): `UPDATE bom_items SET pending_review = 0 WHERE pr_item_id IS NOT NULL AND pending_review = 1`.
+  The `release_bom` side needed no backfill — `getSourcingItems()` checks it live on every read, so an
+  existing PR-raised row becomes visible the moment the code deploys.
+
+**Also, same round, direct request**: PR-group rows in both Enquiry's and Selection's "PR Items" view
+now show the raising department as a badge on the right (`pr.raised_by_dept` threaded through
+`getSourcingItems()`'s SELECT → `aggregatePrGroups()`'s output, `lib/bom-structure.mjs` → a new
+`Badge` in `PrGroupEnquiryRow`/`PrGroupSelectionRow`, `components/ProcurementWorkspace.jsx`), and are
+sorted **newest-PR-first** (`.sort((a,b) => new Date(b.pr_created_at) - new Date(a.pr_created_at))`,
+both tabs) — matching PR History's own convention, replacing the incidental per-project order
+`aggregatePrGroups()`'s `Map` iteration happened to produce before.
+
+**Also verified, on direct request, not assumed**: a PR-group award (`POST
+/api/pr-items/[id]/select-supplier`) reuses `selectQuoteForItem` — the exact same function the
+regular per-item Selection flow already uses — so it lands on the supplier's own single open draft
+PO with a correctly priced new line, never a separate PO-creation code path for PR-raised material.
+
+**Live-verified, real data, all reverted after**: raised a real PR from `stores_head` (not just
+Design/Engineering) — confirmed `pending_review=0` immediately, passed the `getSourcingItems()` gate
+without any release_bom dependency. Confirmed in the actual browser: PR-29's two previously-stuck
+lines (one blocked by `pending_review`, one by `release_bom` — different projects, different
+gates) both appeared in Enquiry → PR Items the moment the migration ran, no restart needed (Next
+dev's own module-reload re-triggers `initDB()`'s cached `migrate()` promise on the next request).
+Confirmed the department badge ("Design") and the new sort order (a 09-Sept PR now ranks above a
+03-Sept one) live. Ran a full quote → award → PO cycle on the Stores-raised test PR: a real PO
+(`po_id` returned) gained a correctly priced new line item on the supplier's pre-existing open draft
+PO (which already had an unrelated real line on it) — then cleanly undone via the existing `DELETE
+/api/pr-items/[id]/select-supplier` route, confirmed the PO reverted to byte-identical its original
+state. All disposable rows (project, PR, quote, the temporary PO line) removed; zero residue
+confirmed by direct query.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own
