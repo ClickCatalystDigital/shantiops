@@ -9,6 +9,7 @@ import { audit } from '@/lib/usb';
 import { postJournalEntry } from '@/lib/ledger-post';
 import { vendorBillLines } from '@/lib/ledger.mjs';
 import { weightedAverageCost } from '@/lib/inventory-costing.mjs';
+import { costUncostedPieces } from '@/lib/stock-pieces';
 
 const STATUSES = ['draft', 'approved', 'paid', 'cancelled'];
 
@@ -71,7 +72,7 @@ export async function PATCH(req, { params }) {
     // tracked inventory row; see lib/db.js's vendor_bill_items.bom_item_id comment). A line that
     // doesn't resolve just isn't costed, same as it wasn't before this pass.
     const billItems = await queryAll(
-      `SELECT vbi.qty, vbi.rate, ii.id AS inventory_item_id, ii.on_hand, ii.avg_cost
+      `SELECT vbi.qty, vbi.rate, ii.id AS inventory_item_id, ii.on_hand, ii.avg_cost, ii.track_pieces
          FROM vendor_bill_items vbi
          JOIN bom_items b ON b.id = vbi.bom_item_id
          JOIN inventory_items ii ON ii.item_id = b.item_id
@@ -79,10 +80,20 @@ export async function PATCH(req, { params }) {
       [bill.id]
     );
     for (const it of billItems) {
-      const newAvgCost = weightedAverageCost({
-        existingQty: it.on_hand, existingAvgCost: it.avg_cost, receivedQty: it.qty, receivedUnitCost: it.rate,
-      });
-      await execute('UPDATE inventory_items SET on_hand = on_hand + ?, avg_cost = ? WHERE id = ?', [it.qty, newAvgCost, it.inventory_item_id]);
+      if (it.track_pieces) {
+        // Phase 6 — on_hand/avg_cost for a piece-tracked row are the wrong basis entirely here (see
+        // lib/db.js's stock_pieces.unit_cost comment for the full corruption trace): on_hand is
+        // independently, repeatedly overwritten by rollUpOnHand() to an ownership-scoped count that
+        // rarely matches what this bill's own `qty`/`rate` mean, so weightedAverageCost()'s
+        // "existing quantity" basis is meaningless for this population. Prices the pieces this
+        // delivery actually created instead — see costUncostedPieces()'s own self-correcting design.
+        await costUncostedPieces(it.inventory_item_id, it.qty, it.rate);
+      } else {
+        const newAvgCost = weightedAverageCost({
+          existingQty: it.on_hand, existingAvgCost: it.avg_cost, receivedQty: it.qty, receivedUnitCost: it.rate,
+        });
+        await execute('UPDATE inventory_items SET on_hand = on_hand + ?, avg_cost = ? WHERE id = ?', [it.qty, newAvgCost, it.inventory_item_id]);
+      }
     }
   }
 

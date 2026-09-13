@@ -39,7 +39,7 @@ import { requireAction } from '@/lib/action-permissions';
 import { execute, queryOne, queryAll, withTransaction, nextNumber } from '@/lib/db';
 import { getAssemblyRollupMap, getProjectUnitCounts, getPlannedRecipients } from '@/lib/data';
 import { itemRollupQty } from '@/lib/bom-structure.mjs';
-import { missingTraceabilityFields, applyReceivedSideEffects, creditBomItemReceipt, maybeCreatePieceStock, maybeReserveScalarStock } from '@/lib/bom-receiving';
+import { missingTraceabilityFields, applyReceivedSideEffects, creditBomItemReceipt, maybeCreatePieceStock, maybeReserveScalarStock, notifyInwardApprovalPending } from '@/lib/bom-receiving';
 import { audit } from '@/lib/usb';
 
 // Read-only helper for the dialog's own "remaining outstanding" default and running-total display
@@ -268,7 +268,11 @@ export async function POST(req, { params }) {
             args: [t.item.id, t.item.project_id, t.routedTo, user.username],
           });
         }
-        out.push({ item: t.item, receiptId, isFullyReceived: credit.isFullyReceived, grnRef: credit.grnRef, targetChanged, totalReceived: t.totalReceived, requiredQty: t.requiredQty, qty: t.qty });
+        out.push({
+          item: t.item, receiptId, isFullyReceived: credit.isFullyReceived, grnRef: credit.grnRef, targetChanged,
+          totalReceived: t.totalReceived, requiredQty: t.requiredQty, qty: t.qty,
+          bomItemReceiptId: credit.bomItemReceiptId, inwardApprovalId: credit.inwardApprovalId,
+        });
       }
       return out;
     });
@@ -282,11 +286,15 @@ export async function POST(req, { params }) {
   // (QC record, notifications — meaningful only once the line is actually done), the physical
   // material itself exists the moment this delivery lands, whether or not it completes the line.
   for (const r of results) {
-    await maybeCreatePieceStock(r.item, r.qty, r.receiptId, r.targetChanged, user.username);
+    await maybeCreatePieceStock(r.item, r.qty, r.receiptId, r.targetChanged, user.username, r.bomItemReceiptId);
     // Stores/Inventory hardening Phase 3 — the scalar counterpart, same per-target/every-delivery
     // treatment. Each function's own gate (dimensional-vs-scalar, respectively) means at most one
     // of the two ever actually does anything for a given target.
-    await maybeReserveScalarStock(r.item, r.qty, user.username);
+    await maybeReserveScalarStock(r.item, r.qty, user.username, r.inwardApprovalId);
+    // Inward QC/Production Approval Workflow — every delivery event gets its own real inward
+    // review, regardless of dimensional/scalar/multi-recipient shape (one inward_approvals row per
+    // target, created inside creditBomItemReceipt itself).
+    await notifyInwardApprovalPending(r.item, r.inwardApprovalId);
   }
 
   for (const r of results) {

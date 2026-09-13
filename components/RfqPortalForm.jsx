@@ -10,6 +10,8 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
 import PaymentTermsField from './PaymentTermsField';
+import SearchableSelect from './SearchableSelect';
+import { UOM_PRESETS } from '@/lib/uom';
 
 function emptyLine() {
   return { unit_price: '', uom: '', payment_terms: '', advance_pct: '', pdc_days: '', expected_delivery_date: '', remarks: '' };
@@ -75,7 +77,9 @@ export default function RfqPortalForm({ token, rfq, alreadyResponded }) {
             </div>
             <div className="flex flex-col gap-1.5">
               <Label>UoM</Label>
-              <Input value={lines[it.rfq_item_id].uom} onChange={e => setLine(it.rfq_item_id, { uom: e.target.value })} placeholder="e.g. Kg, No" />
+              <SearchableSelect value={lines[it.rfq_item_id].uom} onChange={v => setLine(it.rfq_item_id, { uom: v })}
+                options={UOM_PRESETS} displayValue={lines[it.rfq_item_id].uom}
+                onTextChange={v => setLine(it.rfq_item_id, { uom: v })} placeholder="Nos, Kg, Mtr…" />
             </div>
           </div>
           <PaymentTermsField value={lines[it.rfq_item_id].payment_terms} advancePct={lines[it.rfq_item_id].advance_pct}

@@ -738,6 +738,11 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
                       {r.purchase_status}
                     </span>
                   ) : null}
+                  {r.pending_inward_review && (
+                    <span className="shrink-0 rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning">
+                      Pending QC review
+                    </span>
+                  )}
                   {dialogFields.length > 0 && (
                     <Button size="icon-sm" variant="ghost" aria-label="Edit item" onClick={() => setEditing(r)}><PencilIcon className="size-3.5" /></Button>
                   )}
@@ -837,6 +842,16 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
                   {r.self_routed_to && (
                     <div className="mt-1 text-xs text-muted-foreground">
                       Routed to: {r.self_routed_to === 'production' ? 'Manufacturing' : 'Dispatch'}
+                    </div>
+                  )}
+                  {/* Final Phase 0-7 audit, item C — the real gap: purchase_status flips to
+                      'Received' the moment material physically arrives, even while it's still
+                      sitting in QC's inward-review hold (lib/bom-receiving.js) — a line could
+                      silently look done with no visible reason. Surfaces the same signal
+                      readyForPacking now correctly gates on (lib/data.js's getProjectBom). */}
+                  {r.pending_inward_review && (
+                    <div className="mt-1 rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning w-fit">
+                      Pending QC review
                     </div>
                   )}
                 </TableCell>

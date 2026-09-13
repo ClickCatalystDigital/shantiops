@@ -29,6 +29,7 @@ import PdfPreview from './PdfPreview';
 import PaymentTermsField from './PaymentTermsField';
 import CreateRfqDialog from './CreateRfqDialog';
 import SearchableSelect from './SearchableSelect';
+import { UOM_PRESETS } from '@/lib/uom';
 import { PURCHASE_STATUSES as BOM_STATUSES, CLOSED_STATUSES, OPEN_STATUSES, STATUS_TONE, DEFAULT_PURCHASE_STATUS } from '@/lib/bom-fields.mjs';
 import { aggregatePrGroups } from '@/lib/bom-structure.mjs';
 import { projectLabel } from '@/lib/project-label';
@@ -41,6 +42,10 @@ import { SearchIcon, GitCompareIcon, FileTextIcon, ListChecksIcon, Building2Icon
 // Enquiry/Selection are for items still working toward a PO — once one's issued (Ordered, Phase
 // 5.1 — was Transit pre-5.1) or closed out, it's Status's job to show it, not theirs.
 const OUT_OF_PIPELINE = [...CLOSED_STATUSES, 'Ordered', 'Transit'];
+
+// UoM hardening (Phase 6 accounting round) — UOM_PRESETS moved to lib/uom.js so
+// RfqPortalForm.jsx's public, unauthenticated bundle can reuse the identical list too, without
+// pulling in this whole authenticated workspace.
 
 function ItemContext({ it }) {
   return (
@@ -132,7 +137,8 @@ function AddQuoteDialog({ item, itemIds, label, suppliers, router, onClose }) {
             </div>
             <div className="flex flex-col gap-1.5">
               <Label>UoM</Label>
-              <Input value={uom} onChange={e => setUom(e.target.value)} placeholder="e.g. Kg, No" />
+              <SearchableSelect value={uom} onChange={setUom} options={UOM_PRESETS}
+                displayValue={uom} onTextChange={setUom} placeholder="Nos, Kg, Mtr…" />
             </div>
           </div>
           <PaymentTermsField value={terms} advancePct={advancePct} pdcDays={pdcDays}
@@ -797,7 +803,8 @@ function ChangeSupplierPanel({ line, suppliers, onDone, onCancel }) {
           </button>
           <div className="grid grid-cols-2 gap-2">
             <Input type="number" min="0" step="0.01" value={price} onChange={e => setPrice(e.target.value)} placeholder="Unit price" />
-            <Input value={uom} onChange={e => setUom(e.target.value)} placeholder="UoM (e.g. Kg, No)" />
+            <SearchableSelect value={uom} onChange={setUom} options={UOM_PRESETS}
+              displayValue={uom} onTextChange={setUom} placeholder="Nos, Kg, Mtr…" />
           </div>
           <button type="button" className="w-fit text-xs text-primary hover:underline" onClick={() => setAddingNew(false)}>Pick an existing quote instead</button>
         </>

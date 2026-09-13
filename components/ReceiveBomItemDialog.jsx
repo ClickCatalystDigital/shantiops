@@ -154,8 +154,8 @@ export default function ReceiveBomItemDialog({ item, onDone }) {
         },
       });
       showToast(res.fully_received
-        ? 'Marked Received'
-        : `Partial receipt recorded — ${res.received_so_far}${res.required_qty ? ` of ${res.required_qty}` : ''} received so far`);
+        ? 'Marked Received — held pending QC inward review'
+        : `Partial receipt recorded — ${res.received_so_far}${res.required_qty ? ` of ${res.required_qty}` : ''} received so far, held pending QC review`);
       setOpen(false);
       router.refresh();
       onDone?.();

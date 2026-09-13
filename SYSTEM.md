@@ -9792,6 +9792,413 @@ deferred `reloadAll()` resolved. Reopened the panel from the now-"1 uncategorize
 that exact node (`Zzsheet`) in the tree pane. All disposable rows removed afterward, confirmed zero
 residue by direct query. `npm run lint` clean (858 files).
 
+## 5cf. Inward + Pre-Dispatch QC/Production Approval Workflow (2026-09-13)
+
+A real, mandatory two-stage gate on the physical material lifecycle, replacing "material arrives →
+immediately usable" and "packing list packed → one click dispatches" with an explicit QC (and, for
+dispatch, Production) sign-off. Two purpose-built tables, not one polymorphic one — same
+`usb_requests`/`browser_requests` precedent this file already documents (§16): the two flows have
+genuinely different shapes (single QC-Head approver keyed to one delivery event, vs. dual QC-Head +
+Production-Head approvers keyed to one packing list).
+
+- **Inward review.** `inward_approvals` — one row per `bom_item_receipts` event (one physical
+  delivery of one BOM line), created inside `creditBomItemReceipt()`'s own transaction (`lib/
+  bom-receiving.js`), so every entry point that credits a receipt always produces one, with no
+  bypass. Withholding, piece side: `stock_pieces` gained a `pending_qc_inward` status and a
+  `bom_item_receipt_id` link column — `receivePiece()`'s new `heldForInwardApproval` flag inserts at
+  that status instead of `available` and skips the auto-reserve-against-its-own-demand step Phase 5
+  of the earlier Stores-hardening work (§ "Phase 5 — implemented, verified" above) had added; every
+  existing `status='available'` filter (`rollUpOnHand`, `findCandidates`, `reservePiece`) already
+  correctly excludes a held piece, since it simply isn't `available` yet. Withholding, scalar side:
+  `maybeReserveScalarStock()` no longer credits `on_hand`/reserves immediately — it stashes
+  `inventory_item_id`/`qty_scalar` on the `inward_approvals` row itself, crediting nothing until
+  approved. QC Head decides (`POST /api/inward-approvals/[id]/decide`, `qc.inward.decide`,
+  Head-gated): approve calls `releasePieceFromInwardHold()` (CAS release + finishes the reserve the
+  receipt would have made) for every held piece plus `releaseScalarFromInwardHold()` (credits
+  `on_hand` then reserves it — the exact two statements the pre-hold code used to run inline);
+  reject leaves the hold exactly where it was. **Resubmit is QC-Head-only, not a new business
+  authority** — the same person/department who rejected reopens it once addressed
+  (`qc.inward.decide` again, no new permission key) — inserts a fresh row (`resubmission_of_id`),
+  never mutates the rejected one; the scalar `inventory_item_id`/`qty_scalar` are carried forward
+  onto the new row so a later approve still has something real to release.
+- **Pre-dispatch review.** `pre_dispatch_approvals` — one row per review cycle, dual decision
+  columns on one row (`qc_decision`/`qc_decided_by`/`qc_decided_at`/`qc_reason` +
+  `production_decision`/…, mirroring `ncr_records`' own shape of independent facts on one row, not
+  two rows). Dispatch submits (`POST /api/packing/[id]/submit-for-approval`,
+  `dispatch.packing.submit_approval`, open by default) once the list is `packed`; a fresh submission
+  requires the latest cycle (if any) be `rejected` or absent. QC Head and Production Head each decide
+  independently (`POST /api/pre-dispatch-approvals/[id]/decide`, server — never the client —
+  resolves which slot a caller fills, via `departmentRole(user, dept) === 'head'`; a PM may act as
+  either via an explicit `role` in the body); overall status is `rejected` if either side rejects,
+  `approved` only once both approve — one deciding never blocks or waits on the other.
+  `app/api/packing/[id]/route.js`'s PATCH gains one guard: a `status: 'dispatched'` request 400s
+  unless the packing list's **latest** `pre_dispatch_approvals` row is `status='approved'` — placed
+  alongside the route's pre-existing freight-already-posted guard, not a replacement for it.
+- **Resubmission, both flows**: exact NCR-workflow precedent (§5ao/§5ap) — never mutate a decided
+  row; insert a new one pointing back at it via `resubmission_of_id`; the old row's decision/reason/
+  decider/timestamp stay permanent and queryable forever through the chain.
+- **`dispatch_eligible`** (on `qc_records`, previously dead code per the earlier Stores-hardening
+  Phase 7 research above) is deliberately left exactly as it is — general-purpose, used well outside
+  dispatch. It surfaces read-only on the new pre-dispatch reviewer screen as one more piece of
+  context, never the server-side gate itself.
+- **New UI module, `/material-review`** (deliberately not `/approvals`, which is already the
+  existing USB-device/browser security-approval platform, Part B of this app) —
+  `components/MaterialReviewWorkspace.jsx`, same flat two-tab `WorkspaceSidebar` shape as
+  `InstallationWorkspace.jsx`: Inward Approvals / Pre-Dispatch Approvals, each a pending-queue table,
+  row click opens a detail dialog (fetched via the `[id]` GET route) with full supporting info +
+  Approve/Reject + an optional reason textarea. `canDecideInward`/`canDecideQc`/`canDecideProduction`
+  are computed server-side (`isDepartmentHead`, which includes PM) and gate the buttons — a Member
+  sees the queue read-only, matching the real server-side `requireAction` gate exactly. Dispatch sees
+  both tabs read-only here; the actual Submit/Resubmit button lives on `PackingDetail.jsx` itself
+  (a status badge — Pending/Approved/Rejected — next to the existing status `<Select>`), its natural
+  home. New Nav tab, `addDeptTab(['QC','Production','Dispatch'], '/material-review', ...)`.
+- **Reason is optional on every decision**, both flows, server-unenforced — per the explicit
+  requirement, not left to guess.
+- **A real, pre-existing UI bug found and fixed while wiring this in**: `PackingDetail.jsx`'s status
+  `<Select>` did an optimistic `setList` update with no rollback on a server rejection — harmless
+  before this feature (rejections were rare), but the new pre-dispatch gate makes "try to dispatch,
+  get blocked" an ordinary path, so the dropdown would have silently kept showing "dispatched" after
+  a blocked attempt until a manual page reload. Fixed: `changeStatus()` now reverts to the prior
+  status on any caught error.
+- **Every future delivery and every future dispatch passes through this gate — no threshold, no
+  opt-in.** Historical/already-received-and-in-use stock is untouched (forward-only, matching every
+  other can't-backfill precedent in this file) — only future receipts and future dispatches are
+  gated. Stated plainly, not silently shipped as a minor change.
+
+**Verified**: `npm run lint` clean (858 files). Both flows fully live-verified against the real dev
+DB using the exact SQL each route file runs (not an approximation) — disposable scratch project +
+scalar BOM line + packing list, every step confirmed via direct query: on inward, `on_hand` stays 0
+while held, stays 0 after reject, only credits to the received quantity once a resubmitted cycle is
+approved, and the rejected row's own decision/reason/decider survive untouched through the
+resubmission; on pre-dispatch, the dispatch gate correctly blocks with zero cycles, blocks while
+pending, blocks with only one side decided, blocks on a rejected cycle, and only passes once a fresh
+cycle has both sides `approved` — with the original rejected cycle's own decisions permanently
+unchanged after resubmission. All disposable rows deleted afterward (self-referencing `resubmission_
+of_id` FKs required deleting the newer/child row of each pair before its parent — noted here since
+it tripped the test script's own teardown, not the app), confirmed zero residue by direct query.
+Browser verification deliberately not performed this round, per explicit instruction — reserved for
+the user.
+
+### Same-day hardening pass — three real gaps found and fixed, not shipped as-is
+
+A dedicated second look, same discipline as every other feature's own follow-up round in this file
+(§5ap's NCR hardening pass, §5aw's onboarding gaps, etc.) — not a re-test of the happy path, a
+critical re-read of exactly what could still be wrong.
+
+1. **A real PM-role-resolution bug, confirmed via `lib/auth.js` itself, not theoretical.**
+   `app/api/pre-dispatch-approvals/[id]/decide/route.js`'s original role-resolution checked
+   `isRealQcHead`/`isRealProductionHead` (department access + `departmentRole(...) === 'head'`)
+   *before* falling through to an `isPM(user)` branch meant to let a PM pick via an explicit
+   `role` in the body. But `departmentRole(user, dept)` (`lib/auth.js`) returns `'head'`
+   unconditionally for **any** department when `isPM(user)` is true — so both real-head checks were
+   always true for a PM, and the PM branch was structurally unreachable dead code. A PM explicitly
+   asking to decide as Production (`role: 'production'`) was silently forced into the QC slot
+   instead — a real data-integrity risk (the wrong reviewer name landing in the wrong decision
+   column), not a cosmetic one. Fixed by checking `isPM(user)` first, matching the route's own
+   documented intent exactly.
+2. **`lib/bom-item-guard.js`'s `BOM_ITEM_BLOCKING_TABLES` — the exact recurring bug class this file
+   documents itself as centralizing against (§5by) — missed its own new table.** The real, live
+   `PRAGMA foreign_key_list` discovery (same command the file's own header cites as its generation
+   method) now returns 19 tables with a real FK into `bom_items(id)`, not 18 — `inward_approvals`
+   was added this round and never added to the guard list, confirmed by running
+   `scripts/bom-item-guard-selfcheck.mjs` (which failed with exactly this diagnosis before the fix).
+   Added to both the guard list and the selfcheck's own hand-mirrored copy.
+3. **A second, previously-unguarded FK, found by tracing the actual state machine, not assumed
+   safe.** `pre_dispatch_approvals.packing_list_id` is a real, enforced (`NO ACTION`) FK into
+   `packing_lists(id)` — and nothing stops a packing list from moving back to `draft` after being
+   submitted for review (`PACKING_STATUS` has no forward-only enforcement, pre-existing and
+   unrelated to this feature). `app/api/packing/[id]/route.js`'s DELETE route only ever checked
+   `status === 'draft'` — a list that had been packed, submitted, then reverted to draft would pass
+   that check and hit the unguarded FK, throwing a raw `SQLITE_CONSTRAINT` error **after**
+   `packing_items` had already been deleted, leaving a corrupted item-less list behind. Fixed with a
+   guard alongside the existing freight-posted check, same clean-409 pattern; the pre-existing
+   `PRAGMA foreign_keys is never turned on` comment on that route (already stale/superseded — Turso
+   does enforce FKs on this connection, per the correction elsewhere in this file) was also
+   corrected while touching the same lines.
+4. **A UI gap in the badge I'd just shipped**: the partial-decision detail line ("QC: approved ·
+   Production: awaiting") was gated on `pda.status !== 'pending'` — which meant it stayed hidden in
+   exactly the common case (one side has approved, waiting on the other, so overall status is still
+   `pending`) and only ever showed in the rarer case (an early reject). Fixed by dropping the status
+   gate — the line now shows whenever either side has decided, regardless of overall status.
+
+**Live-verified** (disposable rows, real Turso DB, zero residue confirmed after): both new FK-guard
+fixes proven by reproducing the exact unguarded crash first (a raw `FOREIGN KEY constraint failed`
+confirmed via a direct delete attempt), then confirming the new guard query correctly detects the
+blocking row before the route would ever attempt the delete. The PM role-resolution fix was verified
+by direct code trace against `lib/auth.js`'s actual `isPM`/`departmentRole` source (a pure-logic fix,
+same verification-by-inspection precedent this file already applies to other pure-function changes).
+`npm run lint` clean (858 files) after every fix; `scripts/bom-item-guard-selfcheck.mjs` passes.
+
+## 5cg. Per-piece cutting-cost accounting — the Stores/Inventory hardening plan's old "Phase 6" (2026-09-13)
+
+Closes the last item from the original 2026-09 Stores/Inventory hardening plan: `cutPiece()`
+(material cutting) posted zero accounting entries, for any material, ever — real, pre-existing, not
+introduced by anything in this session. Dived into the real blocker before writing code, per direct
+instruction, and found it went deeper than the original plan assumed: not just "no accounting yet,"
+but a real, already-live corruption in `inventory_items.avg_cost`/`on_hand` for every piece-tracked
+item that's ever had a Vendor Bill approved against it.
+
+**The bug, traced precisely.** `app/api/vendor-bills/[id]/route.js`'s Vendor Bill approval is the
+only caller of `weightedAverageCost()` (`lib/inventory-costing.mjs`) anywhere in the app — it treats
+`on_hand` as an accumulator (`on_hand + qty`), correct for scalar stock. But for a piece-tracked row
+(`track_pieces=1`), `on_hand` is independently and repeatedly **overwritten** by `rollUpOnHand()`
+(`lib/stock-pieces.js`) on every piece-state change — and that rollup only ever counts *unowned*
+(`owner_project_id IS NULL`) pieces, a deliberate Stores-hardening-Phase-2 choice so an owned piece
+never inflates the shared/common-pool figure. Since PMB/PR-procured dimensional material — the exact
+population this whole mechanism exists for — is *always* owned by its receiving project,
+`rollUpOnHand()`'s on_hand for this population is essentially always 0 regardless of real stock, and
+the Vendor Bill's `on_hand + qty` bump is a phantom value the very next piece event discards. Worse,
+`weightedAverageCost()` reads `it.on_hand` as its "existing quantity" blending basis — almost always
+wrong — so `avg_cost` has been corrupted from the first Vendor Bill onward for any piece-tracked
+item, independent of cutting. A second, separate finding: `supplier_quotes.uom`/`po_items.uom`/
+`vendor_bill_items.uom` are free `TEXT` with nothing reading them — `lib/procurement.js`'s
+`addItemToDraftPO` already computes `amount = qty × unit_price` with `qty` always the same
+piece-count `isCountUnit()` gates piece creation on, meaning the app's own existing math already
+requires `rate` be quoted per-piece for totals to be correct; `uom` was never authoritative, just a
+guessable label. Not the accounting bug's root cause, but a real, separate robustness gap, folded
+into this same pass on request.
+
+**The fix — per-piece cost, not a shared running average.** Rather than patch the on_hand/ownership
+conflict, each physical piece now carries its own known cost, sidestepping the conflict entirely:
+- **`stock_pieces.unit_cost REAL`** (new, nullable) — inherited by every `cutPiece()` child (used/
+  remnant/scrap) from its parent, same pattern `heat_no`/`owner_project_id`/`test_certificate_id`
+  already use. A remnant cut again later still carries its true original cost forward, never a
+  blended average.
+- **New `costUncostedPieces(inventoryItemId, qty, unitCost)`** (`lib/stock-pieces.js`) — prices up
+  to `qty` pieces still genuinely uncosted (`unit_cost IS NULL`, not `consumed`/`scrap`), oldest-id
+  first. Deliberately **not** a precise bill-to-piece link (none exists — `vendor_bill_items` only
+  references `bom_item_id`, and one `bom_items` row can have several `bom_item_receipts`, §5bw) —
+  self-correcting instead: a *later* bill for the same catalog item at a different rate only ever
+  touches pieces still uncosted, so two different-cost lots of the same item naturally keep their
+  own correct price with no explicit bill↔receipt link needed. Never touches `on_hand` —
+  `rollUpOnHand()` remains its sole owner, unchanged.
+- **`app/api/vendor-bills/[id]/route.js`'s costing loop branches on `track_pieces`**: piece-tracked
+  rows skip `weightedAverageCost()`/`on_hand += qty` entirely (both wrong for this population) and
+  call `costUncostedPieces()` instead; scalar rows are **completely unchanged** — the original,
+  still-correct case this mechanism was built for.
+- **`cutPiece()` posts `Dr Material Consumed / Cr Raw Material Inventory`**
+  (`materialConsumptionLines({amount})`, already existed, unchanged) for `cost = (usedWeight /
+  source.weight_kg) * source.unit_cost` — a fraction of *this specific piece's own* known cost.
+  Best-effort, placed right after `cutPiece()`'s own `withTransaction()` resolves (mirrors
+  `issueMaterial()`'s inline posting and `maybeCreatePieceStock`/`notifyInwardApprovalPending`'s own
+  post-transaction placement) — skipped cleanly, no error, when `unit_cost` is null (never priced —
+  received via the generic manual Stores path, or no Vendor Bill recorded yet) or `company` can't be
+  resolved (a standalone/project-less cut, §5k addendum), same "not every consumption is costed"
+  tolerance `issueMaterial()` already accepts. Remnants and scrap post nothing — they haven't left
+  inventory, only used material has; they only inherit `unit_cost` forward for their own future cut.
+- **UoM hardening** — the one real, confirmed human-entry point for `supplier_quotes.uom` (the other
+  two tables copy it through unedited: `addItemToDraftPO`, `record-bill/route.js`) is fixed at all
+  three real entry points: `ProcurementWorkspace.jsx`'s two Sourcing quote-entry dialogs and
+  `RfqPortalForm.jsx`'s public, unauthenticated supplier RFQ-response form. New shared
+  `lib/uom.js` (`UOM_PRESETS` — Nos/Kg/Mtr/Sqm/Set/Ltr), reused via `SearchableSelect`'s existing
+  free-text hybrid mode (`displayValue`/`onTextChange`) — same "pick from a short list or type your
+  own" pattern `PaymentTermsField.jsx` already established, extracted to a pure-data file (not
+  `ProcurementWorkspace.jsx` itself) specifically so the public portal bundle doesn't have to pull in
+  the whole authenticated workspace, same precedent `PaymentTermsField.jsx`'s own extraction set.
+  Never a rigid enum — no calculation reads `uom`, this only makes the label a human actually
+  reads trustworthy. `SalesWorkspace.jsx`/`PipelineWorkspace.jsx`'s own `uom` usages (Quotations,
+  Sale Orders, Price Lists — the sales/CRM side, unrelated tables) deliberately untouched, out of
+  this fix's scope.
+
+**Deliberately out of scope, named not silently dropped** (all three confirmed directly with the
+user before implementation): scrap write-off accounting (scrapped material still posts nothing — the
+original scope only ever covered "used" material); the generic manual Stores receive path
+(`receivePiece()` called directly, not through `maybeCreatePieceStock`) stays uncosted, same as
+today; Stock Valuation / Inventory Aging reports' pre-existing gap (both value piece-tracked stock as
+`on_hand × avg_cost`, and `on_hand` stays ownership-scoped either way, so owned piece-tracked stock
+is invisible to both reports — real, pre-existing, tracked separately, not fixed this round).
+
+**Live-verified against the real dev DB**, not just self-checked: a disposable catalog item +
+piece-tracked `inventory_items` row + 3 stock pieces, real `chart_of_accounts`/Trial Balance for
+Shanti Boilers. `costUncostedPieces()`'s self-correcting property proven directly: a first "bill"
+(qty=2, rate=1000) priced exactly the 2 existing uncosted pieces; a second, later "bill" for a new
+piece at a different rate (1300) correctly priced only the new piece, leaving the first lot's own
+1000 cost untouched — the exact property that makes this safer than a blended average. The real
+cost-fraction posting (100kg used of a 157kg, ₹1000-cost piece → ₹636.94) was posted as a real
+journal entry against the real company's chart of accounts; Trial Balance moved by exactly ₹636.94
+on both sides and stayed balanced; the idempotency key (`source_type='stock_piece_cut'` +
+`source_id`=piece id) correctly found the just-posted entry, proving a re-cut of the same piece
+(already structurally impossible via the CAS guard) could never double-post even if it were
+attempted. A remnant child correctly inherited the source piece's own `unit_cost` (not a blended
+figure) for its own future cut. All disposable rows removed afterward, confirmed zero residue —
+Trial Balance back to its exact pre-test baseline. `npm run lint` clean (859 files);
+`scripts/bom-item-guard-selfcheck.mjs` still passes (no new table added, only a column).
+
+## 5ch. Final Phase 0-7 gap audit, before Phase 8 (2026-09-13)
+
+Requested directly, before starting the Stores/Requests UI reorg (Phase 8): a full pass across
+everything built in the Stores/Inventory hardening plan (Phase 0-6) and the Inward + Pre-Dispatch
+Approval Workflow (§5cf, "the old Phase 7") against the real codebase and the plan's own 12
+invariants — specifically hunting for **interaction gaps between phases built at different times**,
+since that's the highest-risk, least-tested surface (a later phase's assumptions about an earlier
+one, or vice versa). Not a re-test of what each phase already verified in isolation.
+
+### Blockers found and fixed (all three genuinely threaten reliable daily operation)
+
+1. **`readyForPacking` never checked the Inward Approval Workflow's own hold state — the single
+   most serious finding.** `bom_items.purchase_status` flips to `'Received'` at the exact moment of
+   physical receipt, **inside the same transaction** that creates the held `stock_pieces` row
+   (`pending_qc_inward`) or stashes the scalar hold (`lib/bom-receiving.js`) — the two facts were
+   never actually linked. `readyForPacking`'s `baseReady` computation (3 real call sites:
+   `getProjectBom()`, `getPendingPackingItems()`, `getDispatchWork()`, all three confirmed
+   byte-identical by direct grep) read `purchase_status` alone, with zero awareness of whether the
+   physical material behind it had actually cleared QC. Traced the full consequence: a bought-out
+   piece-tracked line could be selected by `POST /api/packing/from-bom`, packed, submitted for
+   pre-dispatch review, and **dispatched** — while its actual `stock_pieces` row was still sitting
+   at `pending_qc_inward`, never released by QC. The dispatch-time close-out
+   (`app/api/packing/[id]/route.js`) only matches `status IN ('available','reserved')`, so a held
+   piece would be silently left behind at `pending_qc_inward` forever even after the paperwork says
+   it shipped — the entire stated purpose of the Inward Approval Workflow ("determines whether
+   received material becomes usable Stores inventory at all," §5cf) was bypassable through the
+   ordinary packing/dispatch flow with zero error, zero warning. Fixed at all 3 call sites: each now
+   fetches `SELECT DISTINCT bom_item_id FROM inward_approvals WHERE status='pending'`
+   (project-scoped for `getProjectBom`, global for the two cross-project functions) and ANDs
+   `!pendingInwardIds.has(b.id)` onto the existing `baseReady` check — applied to **both** the
+   bought-out and the `requires_manufacturing` branch (not just bought-out): `production_done` is a
+   manual Production toggle (`BomTable.jsx`'s "Prod. Done" column), not strictly tied to any specific
+   piece ever having been cut, so it carries the identical risk of being checked prematurely on held
+   material by human error. Same fallback discipline every other Phase 5 gate already used — a `NULL`/
+   no-pending-review row (every existing line, and any future line QC has already cleared) falls
+   through to the exact prior behavior, byte-identical.
+2. **A whole piece-tracked item dispatched without ever being cut posted zero accounting entry.**
+   Confirmed by grep that exactly two write paths in the whole app ever set
+   `stock_pieces.status='consumed'`: `cutPiece()`'s own CAS flip (now costed, §5cg) and the
+   dispatch-time close-out's direct `UPDATE ... WHERE bom_item_id=? AND status IN
+   ('available','reserved')` — a real, common case for piece-tracked bought-out material (a valve/
+   fitting/gauge routed straight to Dispatch, never Production, §5bi) that the §5cg accounting fix
+   never touched, since it only ever lived inside `cutPiece()`. Fixed: new
+   `postDispatchConsumption(pieces, company, username)` (`lib/stock-pieces.js`) posts `Dr Material
+   Consumed / Cr Raw Material Inventory` for the piece's **full** `unit_cost` (not a fraction — the
+   whole piece leaves, unlike a partial cut), same best-effort tolerance as `cutPiece()`'s own
+   posting. `app/api/packing/[id]/route.js`'s close-out now selects the affected pieces (their own
+   `unit_cost`) **before** the status flip, then calls the new function — `sourceType:
+   'stock_piece_dispatch'` (distinct from `cutPiece()`'s `'stock_piece_cut'`, since a piece is either
+   cut or dispatched whole, never both, but the two idempotency keys stay independent regardless).
+   The route's `pl` query widened to join `projects.company` (same pattern
+   `app/api/packing/[id]/freight/route.js` already used).
+3. **Ownership Transfer (Phase 4) could silently corrupt a later QC-inward approval.**
+   `transferPieceOwnership()` only ever blocked `consumed`/`scrap` pieces — a piece still
+   `pending_qc_inward` passed straight through (its `releasePiece()` pre-step is a no-op for
+   anything but `'reserved'`, so nothing else happens either). Traced the full consequence: when QC
+   later approves the inward review, `releasePieceFromInwardHold()` calls `reservePiece({...,
+   projectId: approval.project_id, ...})` using the inward_approval's own **original** project id
+   (never updated by an ownership transfer) — `reservePiece()`'s own ownership guard then compares
+   that against the piece's now-**different** `owner_project_id` and throws `"belongs to another
+   project"`. Since the decide route's release loop has no error boundary, this throw would abort
+   the whole request **before** `inward_approvals.status` ever updates — the approval permanently
+   stuck mid-decide, with no way to recover through the UI. Not reachable through any UI today
+   (Ownership Transfer has only ever had an API route, no button — exactly what Phase 8 is about to
+   build), which is what makes this a genuine must-fix-before-Phase-8 finding, not a live incident.
+   Fixed: `transferPieceOwnership()` now refuses outright (`"Can't transfer ownership — this piece
+   is still pending QC inward review"`) rather than allowing a transfer that can't be safely
+   reconciled later — material still awaiting its inward review isn't settled enough to move yet.
+
+**Live-verified against the real dev DB**, not just code-reviewed: disposable fixtures for all
+three — a bought-out line with a real pending `inward_approvals` row confirmed `readyForPacking`
+false, then true again once approved (proving the fix is a hold, not a permanent block); a real
+whole piece with a known `unit_cost` closed out via the exact dispatch-route logic, posted a real
+journal entry for its full cost (not a fraction), moved Trial Balance by exactly that amount, stayed
+balanced, and the idempotency key resolved correctly; the ownership-transfer guard's exact trigger
+condition confirmed present against a real `pending_qc_inward` row. All disposable rows removed
+afterward, zero residue. `npm run lint` clean (859 files); `scripts/bom-item-guard-selfcheck.mjs`
+still passes.
+
+### Confirmed correct, no gap (checked, not assumed)
+
+- `findCandidates()` (remnant-match) already excludes `pending_qc_inward` pieces by construction —
+  its `status='available'` filter never matches a held piece, no fix needed.
+- `matchAndReserve`/Phase 3's own reservation paths never touch pieces above — the guard fix (item 3)
+  is the only place ownership transfer and inward-hold state actually intersected.
+- A manually-added packing item (`POST /api/packing/[id]/items`, no `bom_item_id` at all — free-text
+  Dispatch entry, pre-existing, unrelated to this whole workflow) correctly never intersects
+  `stock_pieces`/`readyForPacking` either way — not a gap, a pre-existing, deliberate flexibility
+  (Dispatch has always been able to hand-type an arbitrary line).
+- `costUncostedPieces()` correctly prices a piece regardless of whether it's `available` or still
+  `pending_qc_inward` — checked deliberately, and confirmed this is the *right* behavior: cost is a
+  financial fact (what was paid), independent of whether QC has cleared the material for use yet.
+
+### Optional / lower-priority — named, not fixed, not blocking Phase 8
+
+- **No UI surfaces "this line's material is pending QC inward review"** anywhere outside
+  `/material-review` itself — not on the project's own BOM table, not on Stores' Open Requests. A
+  real, confirmed UX gap, but exactly the kind of thing Phase 8's own UI design should resolve by
+  construction (surfacing backend state that already exists), not a standalone patch beforehand.
+- The inward-approval decide route's piece-release loop has no top-level error boundary — if a
+  release throws for any reason (now far less likely post-fix #3), the caller gets a generic error
+  instead of a clean message. Not data-corrupting either way: `inward_approvals.status` only ever
+  updates after the loop succeeds, so a failure leaves the record safely at `pending`, and each
+  piece's own CAS guard makes a retry naturally safe. Polish, not a blocker.
+- Already-documented, unchanged, still-accepted gaps from earlier phases: a rejected-and-never-
+  resubmitted inward approval has no automatic cleanup if its `bom_item` is later cancelled (§5cf's
+  own note); `matchAndReserve` isn't fully consolidated onto `reservePiece()`'s own write path (a
+  deliberate Phase 3 tradeoff, documented at the time); Stock Valuation/Inventory Aging reports don't
+  value owned piece-tracked stock (tracked separately, per the user's own explicit "track
+  separately" decision when Phase 6 shipped).
+- `/material-review`'s two pending queues have no pagination — fine at current volume, worth
+  revisiting only if this workflow sees heavy daily use.
+- No Report Engine entries for inward/pre-dispatch rejection history — a natural future addition,
+  not part of the original approved scope for this workflow.
+
+## 5ci. Phase 8 — tying the Stores/Inventory hardening backend into the UI (2026-09-13)
+
+The Stores/Inventory hardening plan's original "Phase 8" scope (reorganize Stores' sidebar into
+Stock/Fulfillment/Production/Receiving) was already built earlier this session under §5bw, before
+this specific work resumed — confirmed by reading `StoresWorkspace.jsx`'s current `NAV_ITEMS`
+directly rather than assuming the plan's months-old sketch still described a gap. So this round's
+real job was narrower: connect the specific backend capabilities that still had weak or no UI,
+using only existing screens and patterns — no new page, no new navigation mechanism, per direct
+instruction.
+
+- **Ownership Transfer gets its first real UI.** `transferPieceOwnership()` (Stores/Inventory
+  hardening Phase 4) has existed since before this session with only an API route — confirmed via
+  the final Phase 0-7 audit (§5ch) that this was the exact gap that let its own real bug (transferring
+  a piece still `pending_qc_inward`) go unnoticed. New `TransferOwnershipDialog`
+  (`StoresWorkspace.jsx`, modeled directly on the existing `ReservePieceDialog`): a
+  `SearchableSelect` project picker (plus an explicit "Common pool (unowned)" option) + a required
+  reason `Textarea`, calling the same, unmodified `POST /api/stock-pieces/[id]/transfer-ownership`
+  route. A "Transfer" button appears on `PieceRow` only for a genuinely transferable piece
+  (`available`/`reserved`/`pending_receipt` — mirrors, never replaces, the real server-side guard).
+- **Piece cost (`unit_cost`, Phase 6) becomes visible for the first time.** New "Cost" column in
+  `PiecesDialog`'s table, `formatMoney(p.unit_cost)` or `—` for a never-priced piece (matching the
+  same "not every consumption is costed" tolerance the rest of this app already uses). No backend
+  change needed — `listPieces()` already does `SELECT sp.*`, so `unit_cost` was already coming
+  through, just never rendered.
+- **Ownership itself becomes visible.** `listPieces()` never joined `owner_project_id` out to a
+  real project name before this round — confirmed by reading the query directly, not assumed. New
+  `LEFT JOIN projects op ON op.id = sp.owner_project_id` (`op` — `p`/`pr` were already taken by
+  other joins in the same query), surfaced as "Owned by {project}" under the existing "For" cell
+  (a different fact from "For," which reflects the *reservation* project, `sp.project_id` — Phase
+  0's own contract: Ownership ≠ Reservation, now visually distinct too, not just structurally).
+- **The audit's own flagged UX gap closed** — `getProjectBom()` now attaches
+  `pending_inward_review: boolean` to *every* BOM row (not just the `readyForPacking`-filtered
+  subset it already computed this signal for), reusing the exact `pendingInwardIds` Set §5ch's fix
+  already built. `BomTable.jsx` renders it as a small warning-toned "Pending QC review" badge, in
+  both the desktop table row (next to the existing "Routed to:" indicator) and the mobile card view
+  (next to the existing purchase-status badge). **A related, mis-scoped idea from the audit write-up
+  corrected while building this**: Stores' "Open Requests" tab (`getOpenBomItems()`) was named
+  alongside `BomTable.jsx` as a second surface needing this badge — checked its actual `WHERE`
+  clause and found it structurally excludes anything already `purchase_status='Received'`, which is
+  exactly the state a pending-inward line is always in. The badge could never have rendered there;
+  dropped rather than shipped as dead code. `BomTable.jsx` is the one real, reachable surface.
+- **`/material-review`'s own sidebar tabs get real badge counts** — `MaterialReviewWorkspace.jsx`'s
+  static `ITEMS` array became `ITEMS(counts)`, mirroring `StoresWorkspace.jsx`'s own `NAV_ITEMS(counts)`
+  pattern exactly (`inward.length`/`preDispatch.length`, computed from data the page already fetches
+  — no new query). Deliberately **not** a badge on the top-level `Nav.jsx` tab — grepped the whole
+  file and confirmed no top-level Nav tab anywhere in this app has ever carried a badge; that would
+  have been a new UI mechanism, not an extension of an existing one, and stayed out of scope per the
+  explicit "existing screens/patterns only" instruction this round was built under.
+
+**Live-verified against the real dev DB** (disposable fixtures, zero residue after): the new
+`owner_project_no` join correctly resolves a real owning project's name, confirmed alongside
+`unit_cost` still present with no regression to the existing `SELECT sp.*` shape; the Transfer
+dialog's request body shape (`to_project_id`, `reason`) confirmed to match exactly what the
+existing, unmodified route expects. Everything else in this round is either a pure rendering change
+(already-fetched data, no new query) or reuses machinery (`readyForPacking`'s own `pendingInwardIds`
+computation, the pre-existing transfer-ownership route) already live-verified in §5ch's own pass.
+`npm run lint` clean (859 files); `scripts/bom-item-guard-selfcheck.mjs` still passes. Browser
+verification deliberately not performed, per the same standing instruction covering this whole
+session — reserved for the user.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own

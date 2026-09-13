@@ -4,6 +4,7 @@ import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { syncPackingMilestone } from '@/lib/milestone-auto';
+import { postDispatchConsumption } from '@/lib/stock-pieces';
 
 const EDITABLE = ['customer_name', 'customer_address', 'invoice_no', 'invoice_date', 'package_type',
   'dc_no', 'dc_date', 'vehicle_no', 'dispatch_through', 'contact_person', 'status',
@@ -37,7 +38,10 @@ export async function PATCH(req, { params }) {
     if (actionDenied) return actionDenied;
   }
 
-  const pl = await queryOne('SELECT project_id, dispatched_at FROM packing_lists WHERE id = ?', [params.id]);
+  const pl = await queryOne(
+    `SELECT pl.project_id, pl.dispatched_at, p.company
+       FROM packing_lists pl LEFT JOIN projects p ON p.id = pl.project_id
+      WHERE pl.id = ?`, [params.id]);
   if (!pl) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   // Guard against a silent post-posting correction: once the freight expense is actually in the
@@ -50,6 +54,18 @@ export async function PATCH(req, { params }) {
     );
     if (posted) {
       return NextResponse.json({ error: 'Freight already posted to the ledger — correct it with a manual Journal Entry in Accounts, not by editing this figure.' }, { status: 409 });
+    }
+  }
+
+  // Inward QC/Production Approval Workflow — the pre-dispatch gate. Additive to every guard above,
+  // only checked when this specific request tries to finalize dispatch. Reads the LATEST cycle for
+  // this list — a rejected cycle blocks exactly the same as no cycle at all, both requiring a fresh
+  // submit-for-approval (POST .../submit-for-approval) before dispatch can proceed.
+  if (b.status === 'dispatched') {
+    const latest = await queryOne(
+      'SELECT status FROM pre_dispatch_approvals WHERE packing_list_id = ? ORDER BY id DESC LIMIT 1', [params.id]);
+    if (latest?.status !== 'approved') {
+      return NextResponse.json({ error: 'Held for QC/Production final review — submit for approval and get both sign-offs before dispatching.' }, { status: 400 });
     }
   }
 
@@ -83,10 +99,19 @@ export async function PATCH(req, { params }) {
       [params.id]
     );
     for (const row of bomItemIds) {
+      // Final Phase 0-7 audit gap-fix — a whole piece-tracked item shipped without ever being cut
+      // (routed straight to Dispatch, §5bi) used to close out here with zero accounting entry.
+      // Select the affected pieces (their own unit_cost) BEFORE the status flip, so
+      // postDispatchConsumption still has something real to cost after.
+      const pieces = await queryAll(
+        "SELECT id, code, unit_cost FROM stock_pieces WHERE bom_item_id = ? AND status IN ('available', 'reserved')",
+        [row.bom_item_id]
+      );
       await execute(
         "UPDATE stock_pieces SET status = 'consumed' WHERE bom_item_id = ? AND status IN ('available', 'reserved')",
         [row.bom_item_id]
       );
+      await postDispatchConsumption(pieces, pl.company, user.username);
     }
   }
   // Status is the meaningful transition (Pending → Ready → Dispatched) — worth its own audit action.
@@ -122,9 +147,22 @@ export async function DELETE(req, { params }) {
   if (posted) {
     return NextResponse.json({ error: 'Freight for this list is already posted to the ledger — reverse it in Accounts first.' }, { status: 409 });
   }
+  // Inward QC/Production Approval Workflow — a list can only be re-edited back to 'draft' by a
+  // plain status PATCH (no state-machine restriction stops packed/dispatched -> draft), so a list
+  // that was once submitted for pre-dispatch review can still reach here. pre_dispatch_approvals'
+  // own FK into packing_lists is NO ACTION (real, enforced — Turso does enforce FKs on this
+  // connection, confirmed live), so an unguarded delete here would throw a raw SQLITE_CONSTRAINT
+  // error AFTER packing_items had already been deleted below, leaving a corrupted item-less list
+  // behind. Blocked here instead, same clean-message pattern as the freight guard above it — and
+  // the review history is never deletable anyway, matching every other decision-history table in
+  // this app.
+  const reviewed = await queryOne('SELECT 1 FROM pre_dispatch_approvals WHERE packing_list_id = ?', [params.id]);
+  if (reviewed) {
+    return NextResponse.json({ error: 'This list has a pre-dispatch review on record and can no longer be deleted.' }, { status: 409 });
+  }
 
-  // FKs aren't enforced (PRAGMA foreign_keys is never turned on in this app) — packing_items'
-  // ON DELETE CASCADE never actually fires, so its rows are removed explicitly here.
+  // Turso enforces FKs on this connection — packing_items' ON DELETE CASCADE would fire on its own,
+  // but its rows are removed explicitly here anyway for a clean, ordered delete.
   await execute('DELETE FROM packing_items WHERE packing_list_id = ?', [params.id]);
   await execute('DELETE FROM packing_lists WHERE id = ?', [params.id]);
   await audit('packing_deleted', { actor: user.username, detail: `list ${params.id} (${pl.packing_no})` });

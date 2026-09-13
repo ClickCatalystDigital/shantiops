@@ -17,6 +17,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
@@ -24,6 +25,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGr
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { PlusIcon, PencilIcon, PackageCheckIcon, UndoIcon, TruckIcon, PackageIcon, ClipboardListIcon, LayersIcon, AlertTriangleIcon, LogInIcon, FileOutputIcon, CheckIcon, XIcon, ListChecksIcon, SearchIcon, ChevronRightIcon, ListTodoIcon, BoxesIcon, HashIcon, SplitIcon } from 'lucide-react';
 import { api, showToast, formatDate } from '@/lib/client';
+import { formatMoney } from '@/lib/format';
 import { derivePurchaseStage } from '@/lib/bom-fields.mjs';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 import CertPicker from '@/components/CertPicker';
@@ -460,14 +462,25 @@ function AddPieceDialog({ inventoryItem, onClose, router, onAdded, certificates 
 // components/PieceLineage.jsx (gap-closure round, 2026-08-26) — shared with Production's read-only
 // lineage view (CutDialog.jsx), single source of truth for both.
 
+// Stores/Inventory hardening Phase 4 + this app's final Phase 0-7 audit — a piece is transferable
+// (Ownership Transfer, lib/stock-pieces.js's transferPieceOwnership) whenever it isn't already
+// terminal or still awaiting its own QC inward review — the exact same set the backend guard itself
+// enforces (mirrored here only to decide whether to show the button, never trusted as the real
+// gate — the route re-checks this identically).
+const TRANSFERABLE_STATUSES = new Set(['available', 'reserved', 'pending_receipt']);
+
 // Piece row shared by both the root and its expanded children — kept as one function so the two
 // look consistent rather than two hand-maintained near-duplicates.
-function PieceRow({ p, indent, kindLabel, busyId, onRelease, onReserve, onConfirmReceipt }) {
+function PieceRow({ p, indent, kindLabel, busyId, onRelease, onReserve, onConfirmReceipt, onTransfer }) {
   return (
     <TableRow>
       <TableCell className={`font-medium ${indent ? 'pl-8' : ''}`}>{p.code}</TableCell>
       <TableCell className="text-muted-foreground">{pieceDimsLabel(p)}</TableCell>
       <TableCell className="tnum">{p.weight_kg} kg</TableCell>
+      {/* Phase 8 — unit_cost (Phase 6's own per-piece cost, set at Vendor Bill approval) had zero
+          UI anywhere before this; "—" for a never-priced piece (manual Stores receive, or no bill
+          recorded yet), same "not every consumption is costed" tolerance the rest of this app uses. */}
+      <TableCell className="tnum text-muted-foreground">{p.unit_cost != null ? formatMoney(p.unit_cost) : '—'}</TableCell>
       <TableCell className="text-muted-foreground">
         {p.heat_no || p.certificate_no ? [p.heat_no, p.certificate_no].filter(Boolean).join(' · ') : '—'}
         {/* Receipt provenance (S5) — which delivery this piece actually arrived on, folded into the
@@ -482,6 +495,11 @@ function PieceRow({ p, indent, kindLabel, busyId, onRelease, onReserve, onConfir
           ? [p.project_no, p.bom_description, p.part_name, (p.pr_no || p.pr_ref) ? `PR ${p.pr_no || p.pr_ref}` : null]
             .filter(Boolean).join(' · ')
           : '—'}
+        {/* Phase 8 — owner_project_no was never joined out anywhere before this session; Ownership
+            (who this piece belongs to) is a different fact from the "For" line above (the
+            RESERVATION project) — shown only when actually set, matching every other muted-detail
+            line in this row. */}
+        {p.owner_project_no && <div className="text-xs">Owned by {p.owner_project_no}</div>}
       </TableCell>
       <TableCell>
         <div className="flex items-center gap-1.5">
@@ -494,15 +512,20 @@ function PieceRow({ p, indent, kindLabel, busyId, onRelease, onReserve, onConfir
         </div>
       </TableCell>
       <TableCell>
-        {p.status === 'reserved' && (
-          <Button size="sm" variant="outline" disabled={busyId === p.id} onClick={() => onRelease(p.id)}>Release</Button>
-        )}
-        {p.status === 'available' && (
-          <Button size="sm" variant="outline" onClick={() => onReserve(p)}>Reserve</Button>
-        )}
-        {p.status === 'pending_receipt' && (
-          <Button size="sm" variant="outline" disabled={busyId === p.id} onClick={() => onConfirmReceipt(p.id)}>Confirm receipt</Button>
-        )}
+        <div className="flex items-center gap-1.5">
+          {p.status === 'reserved' && (
+            <Button size="sm" variant="outline" disabled={busyId === p.id} onClick={() => onRelease(p.id)}>Release</Button>
+          )}
+          {p.status === 'available' && (
+            <Button size="sm" variant="outline" onClick={() => onReserve(p)}>Reserve</Button>
+          )}
+          {p.status === 'pending_receipt' && (
+            <Button size="sm" variant="outline" disabled={busyId === p.id} onClick={() => onConfirmReceipt(p.id)}>Confirm receipt</Button>
+          )}
+          {TRANSFERABLE_STATUSES.has(p.status) && (
+            <Button size="sm" variant="ghost" disabled={busyId === p.id} onClick={() => onTransfer(p)}>Transfer</Button>
+          )}
+        </div>
       </TableCell>
     </TableRow>
   );
@@ -514,6 +537,7 @@ function PiecesDialog({ inventoryItem, onClose, router, certificates = [], proje
   const [reservingPiece, setReservingPiece] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [expanded, setExpanded] = useState(new Set());
+  const [transferringPiece, setTransferringPiece] = useState(null);
 
   async function load() {
     setPieces(await api(`/api/stock-pieces?inventory_item_id=${inventoryItem.id}`));
@@ -580,6 +604,7 @@ function PiecesDialog({ inventoryItem, onClose, router, certificates = [], proje
                       <TableHead>Code</TableHead>
                       <TableHead>Dimensions</TableHead>
                       <TableHead>Weight</TableHead>
+                      <TableHead>Cost</TableHead>
                       <TableHead>Heat/Cert</TableHead>
                       <TableHead>For</TableHead>
                       <TableHead>Status</TableHead>
@@ -590,7 +615,7 @@ function PiecesDialog({ inventoryItem, onClose, router, certificates = [], proje
                     {groups.map(({ root, children }) => {
                       if (children.length === 0) {
                         // Never cut — just a plain, non-expandable row, same as before.
-                        return <PieceRow key={root.id} p={root} busyId={busyId} onRelease={release} onReserve={setReservingPiece} onConfirmReceipt={confirmReceipt} />;
+                        return <PieceRow key={root.id} p={root} busyId={busyId} onRelease={release} onReserve={setReservingPiece} onConfirmReceipt={confirmReceipt} onTransfer={setTransferringPiece} />;
                       }
                       const isOpen = expanded.has(root.id);
                       const counts = children.reduce((acc, c) => {
@@ -610,6 +635,7 @@ function PiecesDialog({ inventoryItem, onClose, router, certificates = [], proje
                             </TableCell>
                             <TableCell className="text-muted-foreground">{pieceDimsLabel(root)}</TableCell>
                             <TableCell className="tnum">{root.weight_kg} kg</TableCell>
+                            <TableCell />
                             <TableCell className="text-muted-foreground">
                               {root.heat_no || root.certificate_no ? [root.heat_no, root.certificate_no].filter(Boolean).join(' · ') : '—'}
                               {(root.receipt_inward_batch_no || root.receipt_supplier_name) && (
@@ -622,7 +648,7 @@ function PiecesDialog({ inventoryItem, onClose, router, certificates = [], proje
                             </TableCell>
                           </TableRow>
                           {isOpen && children.map(c => (
-                            <PieceRow key={c.id} p={c} indent kindLabel={pieceKindLabel(c)} busyId={busyId} onRelease={release} onReserve={setReservingPiece} onConfirmReceipt={confirmReceipt} />
+                            <PieceRow key={c.id} p={c} indent kindLabel={pieceKindLabel(c)} busyId={busyId} onRelease={release} onReserve={setReservingPiece} onConfirmReceipt={confirmReceipt} onTransfer={setTransferringPiece} />
                           ))}
                         </Fragment>
                       );
@@ -640,6 +666,10 @@ function PiecesDialog({ inventoryItem, onClose, router, certificates = [], proje
       {reservingPiece && (
         <ReservePieceDialog piece={reservingPiece} projects={projects} router={router}
           onClose={() => setReservingPiece(null)} onReserved={load} />
+      )}
+      {transferringPiece && (
+        <TransferOwnershipDialog piece={transferringPiece} projects={projects} router={router}
+          onClose={() => setTransferringPiece(null)} onTransferred={load} />
       )}
     </>
   );
@@ -939,6 +969,63 @@ function ReservePieceDialog({ piece, projects, onClose, onReserved, router }) {
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button onClick={reserve} disabled={saving || !bomItemId}>{saving ? 'Reserving…' : 'Reserve'}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Phase 8 — the first real UI for Ownership Transfer (lib/stock-pieces.js's transferPieceOwnership,
+// Stores/Inventory hardening Phase 4). Explicit, auditable per the backend's own design: a real
+// business case (material bought for one project genuinely needed by another) — never a bare
+// checkbox toggle, always a named target + a reason, matching the route's own required-reason
+// guard. `null` target = the common/unowned pool, same convention transferPieceOwnership() itself
+// uses for "unassign."
+const COMMON_POOL_OPTION = { value: '', label: 'Common pool (unowned)' };
+function TransferOwnershipDialog({ piece, projects, onClose, onTransferred, router }) {
+  const [toProjectId, setToProjectId] = useState('');
+  const [reason, setReason] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const options = [COMMON_POOL_OPTION, ...projects.map(p => ({ value: String(p.id), label: `${p.project_no} · ${p.customer_name}` }))];
+
+  async function transfer() {
+    if (!reason.trim()) return showToast('A reason is required', 'error');
+    setSaving(true);
+    try {
+      await api(`/api/stock-pieces/${piece.id}/transfer-ownership`, {
+        method: 'POST', body: { to_project_id: toProjectId || undefined, reason: reason.trim() },
+      });
+      showToast('Ownership transferred');
+      await onTransferred?.();
+      router.refresh();
+      onClose();
+    } catch (err) { showToast(err.message, 'error'); }
+    setSaving(false);
+  }
+
+  return (
+    <Dialog open onOpenChange={o => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Transfer {piece.code} — {pieceDimsLabel(piece)}</DialogTitle>
+        </DialogHeader>
+        <div className="flex flex-col gap-3">
+          <p className="text-sm text-muted-foreground">
+            Currently owned by {piece.owner_project_no || 'the common pool (unowned)'}.
+          </p>
+          <div className="grid gap-1.5">
+            <Label>Transfer to</Label>
+            <SearchableSelect value={toProjectId} onChange={setToProjectId} options={options} placeholder="Search project…" className="w-full" />
+          </div>
+          <div className="grid gap-1.5">
+            <Label>Reason</Label>
+            <Textarea value={reason} onChange={e => setReason(e.target.value)} rows={2} placeholder="Why is this material moving?" />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={transfer} disabled={saving}>{saving ? 'Transferring…' : 'Transfer'}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
