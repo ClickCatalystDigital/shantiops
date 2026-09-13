@@ -9724,6 +9724,74 @@ the DB level today. Given the table's own design (a human's direct, one-off deci
 inferred score) a bad row should be rare, but a review screen is a natural, small follow-up whenever
 this has real usage to point at.
 
+## 5ce. "Resolve categories" — the aggregated uncategorized count becomes an actionable queue (2026-09-13)
+
+Direct follow-on the same day: the import-time preview (§5cd) is a one-shot gate at upload — it
+never helps with categorization gaps that appear afterward (a manually-added BOM item, a line an
+import guessed and someone later cleared, etc.), and it doesn't help find *where* an already-imported
+uncategorized item actually lives. Raised as an explicit design question — walk items one-by-one at
+import time, or keep the aggregated "N uncategorized" stat as a live, permanent entry point — and
+built as the latter, per the reasoning below.
+
+**Why the aggregated-button shape won this, not an import-time wizard**: it works on the BOM's real,
+current state at any time, not just the moment of an upload; it's the natural place to search for a
+discrepancy (the user's own framing) since the count is already the thing a head glances at daily on
+`ReleaseReadinessPanel.jsx`; and it generalizes — the same "aggregated count → click → step through
+one at a time" shape is exactly reusable for the panel's other flagged stats (unassigned, pending
+ECN) whenever there's a real design for what "resolving" each of those actually means, without
+needing to touch this decision again.
+
+**Built, reusing everything already in place — zero new API route**:
+- `ReleaseReadinessPanel.jsx`'s `Stat` component gained an optional `onClick` — a tile only renders
+  as a real button (hover tint, underlined label) once its count is non-zero **and** a handler was
+  actually passed; every other tile (items/drawing-linked/pending ECN) is completely unaffected,
+  same zero-behavior-change-by-default shape this codebase's own additive-prop convention already
+  follows everywhere.
+- **New `components/bom-structure/ResolveCategoriesDialog.jsx`** — one item at a time: description +
+  moc/size_spec, a breadcrumb badge (its real assembly path via the already-available `nodePath()`/
+  `byId`, or "Unassigned"), a category `SearchableSelect` (the same `CATEGORY_LABEL` list §5cd's
+  preview dropdown already uses), and **Save & Next** / **Skip** / **Close**. Saving calls the
+  existing, unmodified `PATCH /api/bom-items/[id]` route with `{category}` — `category` was already
+  Engineering-owned in `BOM_FIELD_OWNERS` (`lib/bom-fields.mjs`) and already writable through this
+  exact route from every other caller (`BomTable.jsx`'s own composer); this feature adds no new
+  write path, no new permission, no schema change — the whole thing is a new way to reach an action
+  that already existed.
+- **"Open in tree"** — a bridge between the two options the user weighed, not a forced either/or:
+  the queue is the default flow, but clicking this on any item closes the dialog and jumps straight
+  to that item's own node in the tree (walking the ancestor chain via `byId` to expand every parent,
+  same shape `nodePath()` already walks) — for when a category alone isn't enough context to judge
+  without seeing the item's real neighbors.
+- `BomStructureWorkspace.jsx` derives the uncategorized subset straight from the `projectBom` state
+  it already fetches (`projectBom.filter(r => !r.category)`, `_path` attached via `nodePath()`) — no
+  new query. The readiness panel's own **count is server-computed** (`GET /api/projects/[id]/
+  release-bom`'s `uncategorizedCount`), not derived from `projectBom` client-side, so the dialog
+  defers a full `reloadAll()` to its own `onClose` rather than re-fetching after every single save —
+  the in-dialog "N of M" progress tracks its own local queue in the meantime, so the walkthrough
+  itself never waits on a server round-trip to know where it is.
+
+**Deliberately scoped to categories only, not a generic "resolve any gap" framework** — the user's
+own follow-up floated reusing this for other things once proven; a name like `ResolveFieldDialog`
+was considered and rejected for this pass, since "unassigned" (needs a tree-node picker, not a
+Select) and "pending ECN" (needs an approve/reject action, not a value entry) each have a genuinely
+different real shape, and guessing at a shared abstraction before a second concrete case exists would
+cost more than it saves. This file is the one to copy for the next case, not a base class to extend.
+
+**Live-verified end to end against the real dev DB and the running dev server** (disposable test
+project, 2 genuinely uncategorized items — one under a real tree node, confirming the whole chain
+from a fresh PMB import through to this dialog): clicked the "2 uncategorized" tile, confirmed it's
+now a real button (hover tint, underlined); item 1 of 2 showed its correct breadcrumb ("Zzsheet")
+and "Open in tree" link; picked "Angle" and Save & Next — the PATCH genuinely completed server-side
+(confirmed via the dev server's own request log, `PATCH .../bom-items/2752 200`, and independently
+via a direct DB read showing `category: 'angle'`) despite this session's severe, real remote-Turso
+latency (several requests this round took 70-100+ seconds — an environment condition, not a bug in
+this feature, matching this codebase's own long-documented `dev-server-uses-remote-turso` note) —
+the dialog correctly auto-advanced to item 2 of 2 the moment the response landed. Skipped item 2,
+closed the dialog, and confirmed the readiness panel's own count dropped from 2 to 1 once the
+deferred `reloadAll()` resolved. Reopened the panel from the now-"1 uncategorized" tile, confirmed
+"1 of 1," and clicked "Open in tree" — confirmed it closed the dialog and correctly selected/opened
+that exact node (`Zzsheet`) in the tree pane. All disposable rows removed afterward, confirmed zero
+residue by direct query. `npm run lint` clean (858 files).
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own

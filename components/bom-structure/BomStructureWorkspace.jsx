@@ -18,6 +18,7 @@ import BomNodeDetail from './BomNodeDetail';
 import BomTreeReadOnly from './BomTreeReadOnly';
 import MoveAssemblyDialog from './MoveAssemblyDialog';
 import ReleaseReadinessPanel from './ReleaseReadinessPanel';
+import ResolveCategoriesDialog from './ResolveCategoriesDialog';
 import { nodePath } from '@/lib/bom-tree.mjs';
 
 // `projectId`/`onProjectIdChange`/`showReleased`/`onShowReleasedChange` (round 3 Phase A, all
@@ -51,6 +52,7 @@ export default function BomStructureWorkspace({
   const [expandedIds, setExpandedIds] = useState(new Set());
   const [movingNode, setMovingNode] = useState(null);
   const [releasing, setReleasing] = useState(false);
+  const [resolvingCategories, setResolvingCategories] = useState(false);
 
   function loadStructure(pid) {
     return api(`/api/bom-assemblies?project_id=${pid}`).then(setAssemblies).catch(err => showToast(err.message, 'error'));
@@ -186,6 +188,27 @@ export default function BomStructureWorkspace({
       router.refresh();
     } catch (err) { showToast(err.message, 'error'); }
   }
+  // "Open in tree" from the Resolve Categories walkthrough — bridges the two options the user
+  // weighed (walk the queue vs. navigate to the item's own spot): the queue is the default flow,
+  // but this escape hatch reaches the tree's own richer context (siblings, the item's full record)
+  // when a category alone isn't enough to judge without more information about surrounding items.
+  function openInTreeFromResolve(item) {
+    setResolvingCategories(false);
+    if (item.assembly_id) {
+      const ancestorIds = [];
+      let a = byId.get(item.assembly_id);
+      while (a) { ancestorIds.push(a.id); a = a.parent_id != null ? byId.get(a.parent_id) : null; }
+      setExpandedIds(prev => new Set([...prev, ...ancestorIds]));
+      setSelectedId(item.assembly_id);
+    } else {
+      setSelectedId('unassigned');
+    }
+  }
+  function closeResolveCategories() {
+    setResolvingCategories(false);
+    reloadAll(); // the readiness panel's own count is server-computed, not derived from projectBom
+  }
+
   async function release() {
     setReleasing(true);
     try {
@@ -198,6 +221,10 @@ export default function BomStructureWorkspace({
 
   const byId = assemblies ? new Map(assemblies.map(a => [a.id, a])) : new Map();
   const unassignedItems = (projectBom || []).filter(r => !r.assembly_id);
+  // `_path` gives the "Resolve categories" walkthrough the same "where does this live" context the
+  // tree already shows — computed once here (byId is already in scope), not inside the dialog.
+  const uncategorizedItems = (projectBom || []).filter(r => !r.category)
+    .map(r => ({ ...r, _path: r.assembly_id ? nodePath(r.assembly_id, byId) : null }));
   const selectedNode = selectedId != null && selectedId !== 'unassigned' ? byId.get(selectedId) : null;
   const assembliesFlat = (assemblies || []).map(a => ({ id: a.id, name: a.name, parent_id: a.parent_id }));
 
@@ -263,6 +290,7 @@ export default function BomStructureWorkspace({
               onBuildFromTemplates={buildFromTemplates} onSaveBomAsTemplate={saveBomAsTemplate}
               unitCount={selectedProject?.unit_count} onSaveUnitCount={saveUnitCount}
               projectId={projectId}
+              onResolveUncategorized={uncategorizedItems.length ? () => setResolvingCategories(true) : undefined}
             />
           )}
           <ResizablePanelGroup direction="horizontal" className="min-h-[28rem] overflow-hidden rounded-md border">
@@ -314,6 +342,13 @@ export default function BomStructureWorkspace({
           node={movingNode} assemblies={assemblies}
           onClose={() => setMovingNode(null)}
           onMove={(newParentId, newLevel) => moveTo(movingNode, newParentId, newLevel)}
+        />
+      )}
+      {resolvingCategories && (
+        <ResolveCategoriesDialog
+          items={uncategorizedItems}
+          onClose={closeResolveCategories}
+          onOpenInTree={openInTreeFromResolve}
         />
       )}
     </Card>

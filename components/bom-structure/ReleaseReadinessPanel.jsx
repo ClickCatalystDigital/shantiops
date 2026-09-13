@@ -53,19 +53,28 @@ function UnitCountField({ unitCount, onSaveUnitCount }) {
 // figure sitting at the same size in one run-on line — the flagged tiles (unassigned/pending ECN)
 // pick up a warning tint once their count is non-zero, so the one number worth acting on actually
 // draws the eye instead of reading identically to the rest.
-function Stat({ value, label, tone }) {
+// `onClick` turns the tile into an actionable entry point (e.g. "walk through the N uncategorized
+// items") instead of a bare number — only rendered as a real button once there's something to do
+// (value > 0 and a handler was actually passed), so a zero/no-handler tile behaves exactly as before.
+function Stat({ value, label, tone, onClick }) {
   const flagged = tone === 'warn' && value > 0;
+  const clickable = onClick && value > 0;
+  const Wrapper = clickable ? 'button' : 'div';
   return (
-    <div className="flex flex-col gap-0.5 px-4 py-1 first:pl-0">
+    <Wrapper
+      type={clickable ? 'button' : undefined}
+      onClick={clickable ? onClick : undefined}
+      className={`flex flex-col gap-0.5 px-4 py-1 text-left first:pl-0 ${clickable ? 'rounded-sm transition-colors hover:bg-muted/60' : ''}`}
+    >
       <span className={`tnum text-2xl font-semibold leading-none ${flagged ? 'text-warning' : 'text-foreground'}`}>{value}</span>
-      <span className="text-xs text-muted-foreground">{label}</span>
-    </div>
+      <span className={`text-xs ${clickable ? 'text-primary underline decoration-dotted' : 'text-muted-foreground'}`}>{label}</span>
+    </Wrapper>
   );
 }
 
 export default function ReleaseReadinessPanel({
   status, onRelease, releasing, rootCount, onBuildFromTemplates, onSaveBomAsTemplate,
-  unitCount, onSaveUnitCount, projectId,
+  unitCount, onSaveUnitCount, projectId, onResolveUncategorized,
 }) {
   const [buildingFromTemplates, setBuildingFromTemplates] = useState(false);
   const [savingBomAsTemplate, setSavingBomAsTemplate] = useState(false);
@@ -77,7 +86,7 @@ export default function ReleaseReadinessPanel({
           <Stat value={status.bomCount} label={status.bomCount === 1 ? 'item' : 'items'} />
           <Stat value={status.drawingLinked} label="drawing-linked" />
           <Stat value={status.unassignedCount} label="unassigned" tone="warn" />
-          <Stat value={status.uncategorizedCount} label="uncategorized" tone="warn" />
+          <Stat value={status.uncategorizedCount} label="uncategorized" tone="warn" onClick={onResolveUncategorized} />
           <Stat value={status.pendingEcnCount} label={status.pendingEcnCount === 1 ? 'pending ECN' : 'pending ECNs'} tone="warn" />
         </div>
         <div className="flex items-center gap-3">
