@@ -7,6 +7,9 @@ import { notifyDepartment } from '@/lib/notify';
 import { parsePmb } from '@/lib/pmb.mjs';
 import { getAllocationMode } from '@/lib/procurement';
 import { findBlockedIds } from '@/lib/bom-item-guard';
+import { buildAssemblyTreeFromImport } from '@/lib/bom-tree-from-import';
+import { suggestCategoryFromGroups, suggestSpellingCorrection } from '@/lib/section-shapes';
+import { normalizeWords } from '@/lib/match-utils';
 
 // PMB (.xlsx) or CSV import — Engineering, Design, or PM (Design got the same BOM-entry capability
 // as Engineering, 2026-08-25; CSV unified into this same pipeline the same day — parsePmb's
@@ -61,6 +64,76 @@ export async function POST(req, { params }) {
       { status: 400 });
   }
 
+  // §3.2 catalog wiring, resolved BEFORE the preview branch below (not just at confirm time) so the
+  // preview dialog and the actual insert always agree on the same category — a real inconsistency
+  // this would otherwise introduce: the preview used to show parsePmb()'s own regex-only guess while
+  // a catalog-aware category (added here) would silently differ once actually written.
+  //
+  // Once a row exact-name-matches a real catalog item, that item's own `bom_category` — the client's
+  // real ERP-classified data (lib/db.js's backfillItemBomCategory) or a category picked by hand on
+  // the Item Master screen — is authoritative and replaces the regex guess entirely, the same
+  // "item.bom_category wins outright" rule the manual single-line composer already uses
+  // (components/BomLineFields.jsx's ItemSearchField.pick()). Falls back to the regex guess when the
+  // catalog row itself has no bom_category set (~19% of the real catalog, left NULL on purpose
+  // rather than guessed at catalog-backfill scale) — never leaves a matched row worse off than an
+  // unmatched one.
+  const catalog = await queryAll('SELECT id, item_name, bom_category FROM items');
+  const catalogByName = new Map(catalog.map(c => [c.item_name.trim().toLowerCase().replace(/\s+/g, ' '), c]));
+  // Tier 2 — a fuzzy fallback for whatever still has no category at all after both an exact catalog
+  // match AND inferCategory()'s own regex have had a chance (lib/section-shapes.js's
+  // suggestCategoryFromGroups, scoped to internally-consistent group_name values only — see its own
+  // comment for why, and for the real regression numbers behind ordering it strictly as a fallback,
+  // never a competing signal that could override an already-correct regex answer).
+  const groupRows = await queryAll(
+    `SELECT group_name, bom_category FROM items
+     WHERE group_name IS NOT NULL AND group_name != '' AND bom_category IS NOT NULL
+     GROUP BY group_name HAVING COUNT(DISTINCT bom_category) = 1`);
+  const groups = groupRows.map(g => ({ name: g.group_name, category: g.bom_category }));
+  for (const sheet of parsed.sheets) {
+    for (const it of sheet.items) {
+      const match = catalogByName.get(String(it.material_description || '').trim().toLowerCase().replace(/\s+/g, ' '));
+      it.item_id = match?.id || null;
+      if (match?.bom_category) {
+        it.category = match.bom_category;
+      } else if (!it.category) {
+        const fuzzy = suggestCategoryFromGroups(it.material_description, groups);
+        if (fuzzy) it.category = fuzzy;
+      }
+    }
+  }
+
+  // Tier 3 — learned spelling corrections (2026-09-13): a human already resolved this exact typo
+  // once before, via the suggestion tier below and the confirm-time persistence at the bottom of
+  // this route. Checked only after catalog + regex + fuzzy group have all had their turn — same
+  // strictly-additive-fallback ordering §5cc's own suggestCategoryFromGroups already established,
+  // never a competing signal that could override an already-correct answer.
+  const corrections = await queryAll('SELECT word, category FROM category_word_corrections');
+  if (corrections.length) {
+    const correctionMap = new Map(corrections.map(c => [c.word.toUpperCase(), c.category]));
+    for (const sheet of parsed.sheets) {
+      for (const it of sheet.items) {
+        if (it.category) continue;
+        for (const w of normalizeWords(it.material_description || '')) {
+          const hit = correctionMap.get(w.toUpperCase());
+          if (hit) { it.category = hit; break; }
+        }
+      }
+    }
+  }
+
+  // Tier 4 — nothing confirmed yet for this word: offer a "did you mean X?" guess for the preview
+  // screen to show, never applied automatically. This is the actual "ask the user, then remember
+  // the answer" loop — the previous round's TINNER/PALTE fixes were hand-added regex variants for
+  // typos already known about; this is what closes the gap for a typo nobody's seen yet.
+  for (const sheet of parsed.sheets) {
+    for (const it of sheet.items) {
+      if (!it.category) {
+        const suggestion = suggestSpellingCorrection(it.material_description);
+        if (suggestion) it.category_suggestion = suggestion;
+      }
+    }
+  }
+
   // Scoped to import_id IS NOT NULL — a Replace only ever tears down what a *previous* PMB/CSV
   // import put here, never a PR-raised line (bom_items.pr_item_id), a manually-added row, or a
   // structure-template-applied one. Those three origins have nothing to do with "I uploaded a
@@ -98,7 +171,10 @@ export async function POST(req, { params }) {
           // the preview UI can show/override the best-effort inferred category on every row before
           // anything is written, not just the first 5. `sample` above is left untouched (existing
           // 3-item summary line).
-          items: s.items.map(it => ({ material_description: it.material_description, moc: it.moc, category: it.category })),
+          items: s.items.map(it => ({
+            material_description: it.material_description, moc: it.moc, category: it.category,
+            category_suggestion: it.category_suggestion || null,
+          })),
           skipped: s.skipped,
         })),
         totalItems: parsed.totalItems,
@@ -123,13 +199,6 @@ export async function POST(req, { params }) {
     name: s.name, items: s.items.length, skipped: s.skipped.length,
   })));
 
-  // §3.2 catalog wiring — best-effort auto-link: PMB descriptions and the client's own Item Master
-  // export both ultimately came from the same ERP system, so an exact (case/space-insensitive)
-  // name match is a real signal, not a guess, worth taking automatically here (unlike the fuzzy
-  // keyword overlap the possible-match badge uses elsewhere). No match just leaves item_id NULL —
-  // same as any row nobody's linked yet.
-  const catalog = await queryAll('SELECT id, item_name FROM items');
-  const catalogByName = new Map(catalog.map(c => [c.item_name.trim().toLowerCase().replace(/\s+/g, ' '), c.id]));
   // Allocation Mode gate, refined 2026-08-20 — applies only to genuinely fresh rows (a row
   // carrying a real historical status from the client's own PMB export, e.g. already Received,
   // skips it entirely; it doesn't need Stores' review, it's already resolved). Manual mode keeps
@@ -154,7 +223,7 @@ export async function POST(req, { params }) {
   // items than either the old or new BOM (worst on the replace path, which deletes first). Side
   // effects (audit, Stores notification) stay outside, per withTransaction's own convention, and
   // only run once the transaction has actually committed.
-  const { importId, n } = await withTransaction(async tx => {
+  const { importId, n, tree, learned } = await withTransaction(async tx => {
     if (replacing && deletableIds.length) {
       // deletableIds, not a blanket `import_id IS NOT NULL` — a PR-raised/manual/template row must
       // never be swept up (see the comment above `pmbItems` earlier in this route), and neither may
@@ -174,15 +243,24 @@ export async function POST(req, { params }) {
     });
     const importId = Number(imp.lastInsertRowid);
 
+    // Confirm-time learning: a real, deliberate human decision, so one confirmation is enough to
+    // promote it (unlike tc_item_match_approvals' multi-approval promotion, §5at, which is scoring
+    // an inferred match rather than recording an explicit yes/no). Keyed by word so the same typo
+    // fixed twice in one file only writes once; INSERT OR REPLACE below lets a later correct answer
+    // for the same word supersede an earlier, possibly wrong one.
+    const learnedCorrections = new Map();
+
     let n = 0;
     for (let sheetIndex = 0; sheetIndex < parsed.sheets.length; sheetIndex++) {
       const sheet = parsed.sheets[sheetIndex];
       for (let itemIndex = 0; itemIndex < sheet.items.length; itemIndex++) {
         const it = sheet.items[itemIndex];
-        const itemId = catalogByName.get(String(it.material_description || '').trim().toLowerCase().replace(/\s+/g, ' ')) || null;
         const overrideKey = `${sheetIndex}-${itemIndex}`;
         const category = Object.prototype.hasOwnProperty.call(categoryOverrides, overrideKey)
           ? (categoryOverrides[overrideKey] || null) : it.category;
+        if (it.category_suggestion && category === it.category_suggestion.category) {
+          learnedCorrections.set(it.category_suggestion.word.toUpperCase(), category);
+        }
         await tx.execute({
           sql: `INSERT INTO bom_items
                   (project_id, material_description, moc, size_spec, sort_order, section, group_label,
@@ -192,12 +270,25 @@ export async function POST(req, { params }) {
           args: [params.id, it.material_description, it.moc, it.size_spec, n, it.section, it.group_label,
             it.make, it.qty_text, it.purchase_status, it.pr_ref, it.po_ref, it.grn_ref,
             it.grn_qty_text, it.pending_qty_text, it.bqtc_ref, it.issued_ref, it.received_ref,
-            it.remarks, importId, it.purchase_status ? 0 : freshPendingReview, itemId, category],
+            it.remarks, importId, it.purchase_status ? 0 : freshPendingReview, it.item_id, category],
         });
         n++;
       }
     }
-    return { importId, n };
+
+    // Auto-builds bom_assemblies from this import's own section/group_label data — same
+    // transaction as the insert loop above, so a failure here can't leave items inserted with no
+    // tree built for them. Scoped to importId, so it only ever touches rows just inserted above.
+    const tree = await buildAssemblyTreeFromImport({ tx, projectId: Number(params.id), importId, username: user.username });
+
+    for (const [word, category] of learnedCorrections) {
+      await tx.execute({
+        sql: 'INSERT OR REPLACE INTO category_word_corrections (word, category, confirmed_by) VALUES (?, ?, ?)',
+        args: [word, category, user.username],
+      });
+    }
+
+    return { importId, n, tree, learned: learnedCorrections.size };
   });
 
   await audit(replacing ? 'bom_replace' : 'bom_import', {
@@ -207,6 +298,12 @@ export async function POST(req, { params }) {
       inserted: n, skipped: parsed.totalSkipped, previous_items: existing.n,
     }),
   });
+  if (tree.itemsAssigned > 0) {
+    await audit('bom_assembly_auto_build', {
+      actor: user.username,
+      detail: JSON.stringify({ project_id: Number(params.id), import_id: importId, ...tree }),
+    });
+  }
 
   // STORES-SALES-CHANGES.md §3.1 — Stores previously heard about a new BOM only by opening the
   // workbench and eyeballing it. Best-effort, outside the insert loop above (already committed).
@@ -220,5 +317,5 @@ export async function POST(req, { params }) {
     } catch (err) { /* notification is best-effort */ }
   }
 
-  return NextResponse.json({ importId, revision, inserted: n, skipped: parsed.totalSkipped });
+  return NextResponse.json({ importId, revision, inserted: n, skipped: parsed.totalSkipped, tree, learned });
 }

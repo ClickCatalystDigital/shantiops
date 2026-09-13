@@ -28,6 +28,7 @@ import SearchableSelect from '@/components/SearchableSelect';
 import BomTemplateManager from '@/components/BomTemplateManager';
 import BomStructureTemplateManager from '@/components/BomStructureTemplateManager';
 import BomStructureWorkspace from '@/components/bom-structure/BomStructureWorkspace';
+import BomImport from '@/components/BomImport';
 import { RaisePrTab, ReleaseBomTab, PrHistoryTab } from '@/components/PrWorkspace';
 import ItemMasterPanel from '@/components/ItemMasterPanel';
 
@@ -355,13 +356,19 @@ function EcnTab({ projects, projectIds = [], canApprove }) {
 
 function ProjectHeaderBar({
   tab, projects, globalProjectId, setGlobalProjectId, globalShowReleased, setGlobalShowReleased,
-  globalProjectIds, setGlobalProjectIds,
+  globalProjectIds, setGlobalProjectIds, onImported,
 }) {
   if (SINGLE_PROJECT_TABS.includes(tab)) {
     const selectedProject = projects.find(p => String(p.id) === globalProjectId);
     const visibleProjects = globalShowReleased ? projects : projects.filter(p => !p.bom_release_revision);
     return (
       <div className="flex min-w-0 flex-1 items-center gap-2">
+        {/* Excel-only upload entry point on the BOMs tab, right next to the project picker it needs
+            a project already selected for — Import CSV stays reachable via Requests/BomPanel only,
+            this button is deliberately Excel-only per the ask. */}
+        {tab === 'structure' && globalProjectId && (
+          <BomImport projectId={Number(globalProjectId)} format="xlsx" onImported={onImported} />
+        )}
         <Button size="sm" variant={globalShowReleased ? 'secondary' : 'outline'} onClick={() => setGlobalShowReleased(v => !v)}>
           {globalShowReleased ? 'Showing released' : 'Show released too'}
         </Button>
@@ -432,6 +439,11 @@ export default function EngineeringWorkspace({ projects, canApproveEcn = false, 
   const [globalProjectId, setGlobalProjectId] = useState('');
   const [globalShowReleased, setGlobalShowReleased] = useState(false);
   const [globalProjectIds, setGlobalProjectIds] = useState(new Set());
+  // Bumped after a successful BOM upload from the header bar — BomStructureWorkspace owns all its
+  // own data fetching internally (keyed only off its projectId prop changing), so a sibling-rendered
+  // upload has no other way to make it refetch. Folded into its `key` below: changing key remounts
+  // it fresh, re-running its own initial-load effect — no new imperative reload API needed on it.
+  const [bomReloadNonce, setBomReloadNonce] = useState(0);
   // Switching from a single-select tab into a multi-select one seeds the checklist with whichever
   // one project was picked there, as a starting point — still fully clearable/expandable. Only seeds
   // once (guarded on the multi-set being empty), so it never stomps a filter already built up.
@@ -451,10 +463,11 @@ export default function EngineeringWorkspace({ projects, canApproveEcn = false, 
         <ProjectHeaderBar tab={tab} projects={projects}
           globalProjectId={globalProjectId} setGlobalProjectId={setGlobalProjectId}
           globalShowReleased={globalShowReleased} setGlobalShowReleased={setGlobalShowReleased}
-          globalProjectIds={globalProjectIds} setGlobalProjectIds={setGlobalProjectIds} />
+          globalProjectIds={globalProjectIds} setGlobalProjectIds={setGlobalProjectIds}
+          onImported={() => setBomReloadNonce(n => n + 1)} />
       )}>
       {tab === 'structure' && (
-        <BomStructureWorkspace projects={projects}
+        <BomStructureWorkspace key={bomReloadNonce} projects={projects}
           projectId={globalProjectId} onProjectIdChange={setGlobalProjectId}
           showReleased={globalShowReleased} onShowReleasedChange={setGlobalShowReleased} />
       )}

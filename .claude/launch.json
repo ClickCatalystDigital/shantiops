@@ -7,6 +7,7 @@
     { "name": "shanti-ops-calc-3004", "runtimeExecutable": "npm", "runtimeArgs": ["run", "dev", "--", "-p", "3004"], "port": 3004, "autoPort": false },
     { "name": "shanti-ops-calc-3011", "runtimeExecutable": "npm", "runtimeArgs": ["run", "dev", "--", "-p", "3011"], "port": 3011, "autoPort": false },
     { "name": "shanti-ops-nav", "runtimeExecutable": "npm", "runtimeArgs": ["run", "dev", "--", "-p", "3012"], "port": 3012, "autoPort": false },
-    { "name": "shanti-ops-po-lots", "runtimeExecutable": "npm", "runtimeArgs": ["run", "dev", "--", "-p", "3013"], "port": 3013, "autoPort": false }
+    { "name": "shanti-ops-po-lots", "runtimeExecutable": "npm", "runtimeArgs": ["run", "dev", "--", "-p", "3013"], "port": 3013, "autoPort": false },
+    { "name": "shanti-ops-bom-tree", "runtimeExecutable": "npm", "runtimeArgs": ["run", "dev", "--", "-p", "3014"], "port": 3014, "autoPort": false }
   ]
 }

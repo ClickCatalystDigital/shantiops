@@ -9428,6 +9428,302 @@ exactly as intended — confirming the fix, not just the pre-fix bug. All dispos
 afterward, zero residue confirmed. Full browser click-through against the real dev DB deferred to
 the user, per their own explicit instruction this round.
 
+## 5cb. BOM tree auto-build from PMB/CSV import (2026-09-13)
+
+Closes a real, confirmed gap found via a live production complaint: SB-1108's `/engineering` →
+BOMs tab showed all 168 imported items as "Unassigned." Investigation (both code and the live DB)
+confirmed this was **not a bug and nothing was missing from the Excel file** — it was how the
+system had always worked: PMB/CSV import (`lib/pmb.mjs` + `app/api/projects/[id]/bom/import/
+route.js`) only ever inserted flat `bom_items` rows; `bom_assemblies` (the tree, §5o/§5au) was a
+separate, always-manual step (Add node / Apply Structure Template) that nobody had done for
+SB-1108. Confirmed live: project 213 had 168/168 items with `assembly_id = NULL` and **zero**
+`bom_assemblies` rows.
+
+The parser already extracts exactly the hierarchy signal needed — `section` (the Excel sheet name)
+and `group_label` (in-sheet heading rows) — on every row, just never turned into tree nodes. This
+was validated two ways before building anything: (1) the real stored `.xlsx` was pulled out of
+`bom_imports` and run through the real `parsePmb()` — a clean 2-level structure: 4 sections
+(BOILER, SDC, FD FAN & ID FAN, WPH) → 10 distinct in-section headings, covering all 168 items (only
+3 rows legitimately skipped as blank/annotation rows — no real data loss). (2) Cross-checked
+against **SB-1109-01-50** (project 61), whose tree was built entirely by hand with zero PMB
+import — its real System/Subsystem names (`BOILER` → `Boiler Shell & Body`, `Boiler Mounting &
+Fittings`, `Feed Line`, `Blow Down Line`, `Fire Door & Fire Bars`, `Electrical Panel`; flat
+single-level `SDC`/`CHIMNEY`/`ID FAN` nodes with no children) almost exactly reproduce what a
+`section`+`group_label`-driven auto-build of SB-1108's own file would produce — including the
+pattern of **flattening a section that only has one heading** (SDC/WPH in SB-1108 each have exactly
+one heading; SB-1109's own SDC/CHIMNEY/ID FAN, likewise single/no-heading, are flat top-level nodes
+with no Subsystem layer).
+
+**Decisions, made directly with the user before building**: automatic on every import (no button,
+no separate confirmation step — runs inside the import's own transaction, including Replace); node
+names cleaned up (not raw verbatim Excel text) using Item Master data as an additional signal where
+available.
+
+**Algorithm** (`lib/bom-tree-from-import.js`, new): for each distinct `section` among a fresh
+import's items, find-or-create a top-level `bom_assemblies` node named
+`humanizeAssemblyName(section)` (`node_type: 'System'`). Compute the distinct *effective* group
+labels within that section (real `group_label`, or a linked catalog item's `group_name` as a
+fallback when `group_label` is null). **If more than one distinct label exists**, each gets its own
+`'Subsystem'` child node; an unheaded item attaches directly to the System node. **If at most one
+distinct label exists**, skip the Subsystem layer entirely — matching SB-1109's own real SDC/
+CHIMNEY/ID FAN precedent exactly. A generic CSV default sheet name (`"Sheet1"`,
+`/^sheet\s*\d*$/i`) never becomes a real node — headings (if any) become top-level nodes directly
+instead of sitting under a meaningless wrapper.
+
+**Find-or-create is case-insensitive** (`LOWER(name) = LOWER(?)`, not exact match) — proven
+necessary against real data: SB-1109's own stored node names are all-uppercase (`"BOILER"`,
+`"FLUE GAS DUCT UP TO CHIMNEY"`), which a title-cased candidate (`"Boiler"`) would not exact-match,
+so a future import into an already-hand-tree'd project would otherwise create duplicate sibling
+nodes differing only in case. **A second, subtler bug found and fixed during targeted integration
+testing** (a disposable test project, not real data): the flatten-vs-2-level decision was
+originally made purely from *that one import batch's own* label count, ignoring whether a Subsystem
+layer already existed under that System from an *earlier* import (a Replace, or a real `bom_item`
+surviving Replace because it has downstream activity, §5by's `bom-item-guard.js`) — a later
+single-label batch would flatten onto the System node instead of reusing the already-existing,
+more-specific Subsystem node with the same label, splitting one real heading across two different
+homes. Fixed: once any Subsystem child already exists under a System node, always go 2-level for
+that section, regardless of the current batch's own label count — the find-or-create then correctly
+reuses the existing node.
+
+`humanizeAssemblyName(raw)` (new, `lib/bom-structure.mjs`): collapses whitespace, strips a trailing
+`@...` annotation clause (pressure/spec suffixes like `"@ W.P.: 10.54 Kg/cm^2"`), strips a leading
+`"for "`, then plain title-cases every word and strips leftover trailing punctuation
+(`"NOZZLE:"` → `"Nozzle"`). Deliberately **no acronym-preservation** (`SDC`/`WPH` become
+`"Sdc"`/`"Wph"`, not kept upper-case) — a length/vowel-based heuristic was tried and found to
+misclassify real short words ("FAN" in "FD FAN & ID FAN" reads exactly like a short acronym) with
+no bound on where it would need to stop; renaming a node is already free, so plain, uniform
+title-casing is the more robust choice over an ever-growing acronym dictionary.
+
+**UI** — a new "Import PMB (.xlsx)" button on the BOMs tab toolbar (`EngineeringWorkspace.jsx`'s
+`ProjectHeaderBar`), positioned left of the existing "Show released too" toggle, shown only once a
+project is picked. Reuses the existing, already-battle-tested `components/BomImport.jsx`
+unmodified apart from a new optional `onImported` callback — Excel-only (`format="xlsx"`,
+`accept=".xlsx"`, confirmed via the real DOM attribute), CSV import stays reachable only via the
+project page's own `BomPanel`. A successful import bumps a `bomReloadNonce` counter used as
+`<BomStructureWorkspace key={bomReloadNonce}>` — a clean remount that re-runs the workspace's own
+initial data-loading effects, rather than inventing a new imperative-reload prop contract on a
+component that had none.
+
+**Live-verified end to end**: ran the real `buildAssemblyTreeFromImport()` directly (via a raw
+libsql transaction, since `lib/db.js` can't load under plain `node` — its extensionless imports only
+resolve under Next's own bundler) against SB-1108's existing import (`bom_imports.id = 9`) —
+`{nodesCreated: 12, nodesReused: 0, itemsAssigned: 168}`. Confirmed via direct DB query: 4 System
+nodes (Boiler/Sdc/Fd Fan & Id Fan/Wph), 6 Subsystem children under Boiler, 2 under Fd Fan & Id Fan
+(SDC/WPH correctly flattened), item counts summing exactly to 168 (104+35+12+17, matching each
+sheet's own real item count). Confirmed visually in the real `/engineering` UI (fresh browser tab —
+this app's own documented stale-HMR-tab gotcha, §5ay, recurred and was worked around the same way):
+the readiness panel showed **168 items, 0 unassigned**, and the tree rendered `Boiler Mounting &
+Fittings`/`Feed Line`/`Blow Down Line` — exact matches to SB-1109's real hand-typed names. Targeted
+integration tests (disposable project, cleaned up after, zero residue confirmed) proved the
+case-insensitive-reuse fix, the generic-CSV-sheet-name handling, and the Subsystem-reuse-across-
+imports fix described above. SB-1040 and SB-1109 were deliberately left untouched, per direct
+instruction — the backfill only ever ran against SB-1108.
+
+## 5cc. BOM-import categorization made robust — catalog priority, a careful fuzzy fallback, and two pre-existing wrong regex rules found and fixed (2026-09-13)
+
+Follow-on to §5cb: SB-1108's BOM tree readiness panel also showed 48 of 168 items "uncategorized"
+(`bom_items.category`, the best-effort shape/type suggestion `inferCategory()` in
+`lib/section-shapes.js` assigns at import time). Per direct instruction — "think more on how to make
+categorization work, understand item master first" — this was investigated from the Item Master
+catalog outward, not by adding more keywords blind.
+
+**Item Master, understood.** 2,779 real catalog items, 2,238 (80%) with a real `bom_category`
+already backfilled (§3.2/§5o's `backfillItemBomCategory`, real ERP category or an `inferCategory()`
+fallback), `group_name` populated on 99.7% — a much cleaner signal than raw `item_name`. Checked for
+internal consistency before trusting it for anything: of 84 distinct categorized `group_name`
+values, 79 (94%) agree on a single `bom_category`; 5 are genuine ERP dumping-ground groups spanning
+4-5 different categories each (`"ELECTRICAL"`, `"MISSLANIOUS"` [sic]) and must never be guessed
+from.
+
+**Fix 1 — exact catalog match now actually drives categorization (a real, previously-silent bug).**
+The import route already resolved `item_id` via an exact case/space-insensitive name match against
+the catalog (§3.2) — but then discarded the catalog's own `bom_category` entirely and always used
+`inferCategory()`'s regex guess anyway, even when a confirmed catalog match existed. Fixed to prefer
+`items.bom_category` outright once a row exact-matches, the same "`item.bom_category` wins" rule
+`components/BomLineFields.jsx`'s manual single-line composer already used. Resolved **before** the
+route's preview-branch early-return, not just at confirm time — the two used to risk disagreeing
+(preview showing the regex-only guess, the actual insert silently writing something different),
+now guaranteed consistent since both read the same already-resolved `it.category`.
+
+**Fix 2 — a fuzzy catalog fallback, but only as a strict gap-filler (the real design lesson from
+this round).** `suggestCategoryFromGroups(description, groups)` (new, `lib/section-shapes.js`):
+requires the group name's *entire* word set (via `lib/match-utils.js`'s `normalizeWords`) to be
+contained in the description — not a raw word-count threshold, which would exclude every real
+single-word group (`"DOOR"`, `"PUMP"`) despite those being exactly the clean, low-collision-risk
+labels a `group_name` usually is. Ties between equally-specific, disagreeing groups are refused,
+same "ties refused outright" precedent `lib/tc-match.js` already established.
+
+The first design tried let this fuzzy signal **override** an existing regex answer whenever it
+fired (reasoning: real ERP data should outrank a hand-written keyword list). A full regression pass
+against the whole real catalog caught why that was wrong before it shipped: **5.6% of real items
+disagreed**, including *reintroducing an already-fixed, documented bug* — "PVC CHANNEL" (wiring
+duct) misread as the structural `channel` shape, exactly the false positive §5o's own
+`CATEGORY_PATTERNS` ordering was built to prevent, since the fuzzy layer had no knowledge of that
+guard. Root cause: `inferCategory()`'s own keyword list already handles the tricky
+electrical/PVC-exception cases correctly, checked in a carefully-tuned order — a competing signal
+with no such tuning made things worse whenever it disagreed with an already-correct regex answer.
+**Restricted to fire only when `inferCategory()` already returned null for the same text** (a pure
+fallback, never a competing signal), the identical regression check came back **99.35% agreement
+(307 agree / 2 disagree)** — the 2 exceptions ("WHITE/BLACK WELDING GLASS" vs. the unrelated "GLASS"
+group) an accepted, honestly-disclosed residual edge case.
+
+**Fix 3 — two pre-existing wrong regex rules, not introduced this round, found by the same
+process.** `\bBEARING(S)?\b` and `V['\s]?BELT|\bBELT\b` were hardcoded to `'other'` in
+`CATEGORY_PATTERNS`'s rotating-equipment group — but the catalog's own `"BEARINGS"`/
+`"BALL BEARINGS"`/`"V BELTS"` groups all say `'standard'`. Removed the wrong guesses; the fuzzy
+fallback now answers correctly instead. Also removed `FIRE\s*DOOR` from the same file's earlier,
+unconfirmed `'other'` guess for furnace fittings, once the catalog's own `"DOOR"` group confirmed
+it's actually `'standard'` — `"TRIPLEX FIRE BAR"`/`"H' BAR"` were left as `'other'` since their own
+real catalog family (`"FIRE BARS"`, `"GRATE BARS"`) is itself uncategorized in the ERP data, so
+there's no confirmed answer to correct *to* either way.
+
+**Two final narrow typo-variant fixes** (same day, follow-up ask): `ASBESTOS?` already covered SB-
+1108's real, repeated "ASBESTOR" spelling; added `TH?INNER` (covers "TINNER", a single-character
+variant with essentially zero false-positive surface) and `\bPALTE\b` alongside `PLATE(S)?` (a real
+letter-transposition typo, "PAD PALTE FOR SUPPORT", added as its own alternative since a
+transposition can't be expressed as one optional character the way the other two can).
+**`"PLUMMBER BLOCKS"` was deliberately left alone** — its old `PLUMMER BLOCK` pattern was *removed*
+this same round for being an unconfirmed guess; there's no catalog data confirming what a Plummer
+block really maps to, so fixing its spelling without a confirmed target would just reintroduce the
+same class of mistake `BEARING`/`BELT` needed fixing for.
+
+**Net result on SB-1108**: 48 → 30 uncategorized (120 → 138 categorized), confirmed via direct DB
+backfill (recompute every row through the corrected catalog → fuzzy → regex pipeline, `UPDATE` only
+where the answer changed — never blind, so a wrong earlier guess like `FIRE DOOR`/`BEARINGS` gets
+*corrected*, not just left as the first non-null value found) and live in the browser.
+
+**Why 30 items are still uncategorized — a confirmed 3-way breakdown, not a leftover bug**, per a
+direct follow-up question:
+- **14 are datasheet/spec rows, not real materials at all** ("TYPE", "FLOW cfm", "STATIC HEAD",
+  "SPEED RPM", "MEDIUM", "OPERATING TEMP(°C)", "SET PRESSURE - I/II") — fan/pump datasheet fields
+  the parser imports as line items on purpose (`lib/pmb.mjs`'s own `ponytail:` comment: "content-
+  sniffing is the upgrade path"). Forcing a category onto these would be actively wrong; `null` is
+  the correct answer, not a gap.
+- **6 are "BODY SHELL MATERIAL" rows with transposed source columns** — the client's own WPH sheet
+  has the MOC field holding a quantity-like value ("1 No") and the real material sitting in
+  size_spec instead, for these specific rows only. A real source-data-quality issue in the client's
+  own Excel, not something the app can safely guess its way around.
+- **10 are genuinely ambiguous** ("H' BAR", "WOODEN HANDLE", "MS GRILL", "PIN", "WHITE HEAT-K",
+  "PLUMMBER BLOCKS", "SHELL+CONE", "ELEMENTS SG GREEN/RED" ×2) — no keyword, catalog exact match, or
+  fuzzy group match exists with any real confidence; correctly left for the existing mandatory-
+  preview human review rather than guessed.
+
+**Does the system recognize Assembly/Sub-assembly levels, not just System/Subsystem — a second
+direct follow-up question, investigated rather than assumed.** Two independent checks converged on
+the same answer:
+- **Code-level: fully depth-agnostic by design.** `bom_assemblies.node_type` is free `TEXT`
+  (`lib/bom-tree.mjs`'s own comment: "deliberately not a DB enum, per the explicit instruction not
+  to hard-code the hierarchy"). `NODE_TYPE_SUGGESTIONS` already lists `['System', 'Subsystem',
+  'Assembly', 'Sub-assembly', 'Item']` — Assembly/Sub-assembly already exist as suggested labels
+  today. `BomTreeNode.jsx` recurses with no depth ceiling; the only depth-aware behavior anywhere is
+  a cosmetic "deep" badge past `SOFT_DEPTH_WARNING = 5` levels, explicitly documented as never a
+  hard block. `rollupQty`/`wouldCreateCycle` (§5o) walk the parent chain to however many levels
+  actually exist, with zero hardcoded assumptions — proven depth-agnostic by their own self-check's
+  3-level test chain.
+- **Real production evidence: every real tree ever built in this app tops out at 2 assembly
+  levels.** SB-1109's real 14-node/5-root tree: 3 of 5 roots have no Subsystem layer at all (flat),
+  the other 2 have Subsystem children — never a 3rd assembly level (confirmed independently by
+  §5bk's own live-verification: "3 of its 5 roots have no children at all"). The only 3-level trees
+  anywhere in this codebase's history are disposable `ZZ`-prefixed test fixtures built purely to
+  prove the UI *can* recurse (§5au's own connector-geometry test, §5aw's cycle-guard test) — never
+  left as real data.
+- **Checked directly against SB-1108's own real `.xlsx`**: zero evidence of a hidden 3rd structural
+  level, in either the text or the cell formatting. Every heading-like row was scanned in raw
+  document order — the only "consecutive heading" case (the WPH sheet) is a single freeform spec
+  description split across 3 rows by the client, not real nested structure. Cell style data (bold/
+  indent) was checked directly on heading vs. item rows — identical (`patternType: none` on both),
+  no formatting-based hierarchy signal exists that a text-only parse would be missing.
+
+**Conclusion: not a gap.** The auto-build's 2-level output faithfully represents what real PMB files
+(and real hand-built trees) actually contain — it isn't inventing a shallower tree than the source
+data or real practice supports. A project that genuinely needs a deeper Assembly/Sub-assembly
+breakdown can already get one via the existing manual "Add child" action, zero code change needed —
+the auto-build doesn't prevent going deeper, it just doesn't invent depth the source doesn't have.
+
+**Verification**: new `lib/section-shapes-selfcheck.mjs` (this file had no selfcheck before this
+round) covers `inferCategory()`'s sizeSpec-checking and every spelling-variant fix, and
+`suggestCategoryFromGroups()`'s containment rule, tie-refusal, and the exact false-positive case
+found and fixed ("BOILER SMOKE BOX" must not match "BOILER FEED PUMP" on one shared word). All
+pre-existing selfchecks (`pmb-selfcheck.mjs`, `bom-structure-selfcheck.mjs`) re-run clean, `npm run
+lint` clean (857 files) throughout. Every regression check was run against the *real* 2,779-item
+catalog, not synthetic fixtures.
+
+## 5cd. BOM-import categorization "learns" from a human correction (2026-09-13)
+
+Direct follow-on to §5cc, raised the same day: "can't we ask the user if for TINNER they meant
+THINNER... and that can help the system learn the mistakes files make?" — closes the gap §5cc's own
+hand-added typo fixes (TINNER/PALTE) left open. Those were regex variants for *already-known*
+mistakes; this is what makes a *future*, never-seen typo need a human's attention only once.
+
+**The existing per-item category dropdown (`components/BomImport.jsx`'s `SearchableSelect`,
+`CATEGORY_PREVIEW_OPTIONS` — including an explicit "Uncategorized" option) was already there before
+this round and is completely unchanged** — every item's category is always freely editable in the
+mandatory import preview regardless of anything below. This round adds a suggestion *next to* that
+dropdown, it doesn't replace or gate it.
+
+- **New table `category_word_corrections`** (`lib/db.js`, `word TEXT PRIMARY KEY COLLATE NOCASE,
+  category, confirmed_by, confirmed_at`) — one row per confirmed word, keyed case-insensitively.
+  Deliberately **not** modeled on `tc_item_match_approvals`' multi-approval promotion (§5at): that
+  mechanism exists to score an *inferred* match across ambiguous candidates; here a human is making
+  a direct, deliberate yes/no decision during the same review step they already use to fix a wrong
+  category, so **one confirmation is enough to promote it** — no frequency count, no waiting for 3
+  approvals.
+- **`lib/section-shapes.js`'s `suggestSpellingCorrection(description)`** (+ `lib/section-shapes-
+  selfcheck.mjs`) — a plain-JS Levenshtein distance (`levenshtein()`, no dependency) plus a narrower,
+  purpose-built `isSingleTransposition()` check, against a small curated `CANONICAL_KEYWORDS` list
+  (the same literal words `CATEGORY_PATTERNS` already trusts — never the regex source itself, which
+  mixes in generic words like MOTOR/FLANGE that would produce noisy near-misses). Only two typo
+  shapes are trusted: a single insert/delete/substitute (edit distance exactly 1 — TINNER's missing
+  H), or a genuine two-letter swap (PALTE↔PLATE). **A real false positive found and fixed before
+  shipping**: a naive "edit distance ≤2" threshold (needed to catch the transposition case, which
+  costs 2 in plain Levenshtein) also matched "PALTE" against "VALVE" at the identical distance — two
+  *unrelated* substitutions, not a swap — which would have made the real PLATE suggestion ambiguous
+  and useless. Fixed by requiring the distance-2 case specifically be a transposition
+  (`isSingleTransposition`), not any two edits. Ties — a word qualifying against more than one
+  distinct keyword, or more than one word in the same description each independently qualifying —
+  are refused outright, not guessed, same "ties refused outright" precedent `lib/tc-match.js` and
+  §5cc's own `suggestCategoryFromGroups()` already established.
+- **Wired into `app/api/projects/[id]/bom/import/route.js`** as two more tiers, strictly after
+  catalog exact-match + regex + fuzzy catalog group (§5cc) have all had their turn on an item —
+  never a competing signal, only a fallback for what's still uncategorized:
+  1. **Learned corrections** — check every word in the description against
+     `category_word_corrections`; apply directly, no suggestion shown, since it's already confirmed.
+  2. **Fresh suggestion** — if still uncategorized, compute `suggestSpellingCorrection()` and attach
+     it to the preview row as `category_suggestion` (never applied automatically).
+  `components/BomImport.jsx` renders it as a small hint under the row's own dropdown — *"Did you
+  mean **PLATE** (typed "PALTE")? [Yes, mark as Plate / Sheet]"* — shown only while that line is
+  still genuinely unresolved (any category picked, including the suggested one, dismisses the hint).
+  Clicking the button just sets the same `categoryOverrides` state the manual dropdown already
+  writes to — **zero new wire format**; picking the exact suggested category by hand from the plain
+  dropdown counts identically as accepting it.
+- **Confirm-time learning**: the insert route recomputes the same suggestion deterministically (this
+  route is already stateless/re-parse-on-confirm, §5a) and — for any item whose *final* resolved
+  category matches its own live suggestion — upserts `(word, category)` into
+  `category_word_corrections` inside the same transaction as the item inserts. The confirm response
+  carries a `learned: N` count; the UI toasts it ("learned 2 spelling corrections for next time").
+
+**Live-verified end to end against the real dev DB, disposable project + real xlsx uploads (not
+just the selfcheck)**: uploaded a file with "MS ANGEL SUPPORT" (a transposition of ANGLE) and "SS
+CHANEL BRACKET" (a single-delete typo of CHANNEL) — both correctly surfaced as suggestions, neither
+auto-applied. Confirmed the import accepting only the ANGEL→angle suggestion (leaving CHANEL
+uncategorized) — response came back `learned: 1`, and a direct DB read confirmed exactly one new
+`category_word_corrections` row (`ANGEL → angle`), not two. Uploaded a **second, brand-new** file
+containing a different real-world description with the same "ANGEL" typo — it came back
+pre-categorized as `angle` with **zero** suggestion and zero prompting, proving the loop actually
+closes: a typo fixed once by a human is fixed for every future import from then on, matching the
+user's own follow-up ("we already know these mistakes, so we should have mappings already solving
+them") applied dynamically instead of by hand-editing `CATEGORY_PATTERNS` every time. All disposable
+rows (the test project, its BOM items/tree/milestones, and the one test-generated learned
+correction) removed afterward; confirmed zero residue by direct query. `npm run lint` clean
+(857 files).
+
+**Known, deliberately out-of-scope limitation, not silently hidden**: there is no admin UI to
+view/edit/delete a learned correction once confirmed — a wrong one (mis-clicked, or a word that
+genuinely means something different in a later, unrelated context) can only be corrected by hand at
+the DB level today. Given the table's own design (a human's direct, one-off decision, not an
+inferred score) a bad row should be rare, but a review screen is a natural, small follow-up whenever
+this has real usage to point at.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own

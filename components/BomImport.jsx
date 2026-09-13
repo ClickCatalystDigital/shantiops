@@ -18,7 +18,7 @@ const CATEGORY_PREVIEW_OPTIONS = [
   ...Object.entries(CATEGORY_LABEL).map(([value, label]) => ({ value, label })),
 ];
 
-export default function BomImport({ projectId, format = 'xlsx' }) {
+export default function BomImport({ projectId, format = 'xlsx', onImported }) {
   const router = useRouter();
   const fileRef = useRef(null);
   const [file, setFile] = useState(null);
@@ -58,11 +58,13 @@ export default function BomImport({ projectId, format = 'xlsx' }) {
       if (preview.existingItems > 0) fd.append('replace', '1');
       if (Object.keys(categoryOverrides).length) fd.append('categoryOverrides', JSON.stringify(categoryOverrides));
       const res = await api(`/api/projects/${projectId}/bom/import`, { method: 'POST', body: fd });
-      showToast(`Imported ${res.inserted} items (revision ${res.revision})`);
+      showToast(`Imported ${res.inserted} items (revision ${res.revision})`
+        + (res.learned ? ` — learned ${res.learned} spelling correction${res.learned === 1 ? '' : 's'} for next time` : ''));
       setPreview(null);
       setFile(null);
       setCategoryOverrides({});
       router.refresh();
+      onImported?.(res);
     } catch (err) { showToast(err.message, 'error'); }
     setBusy(false);
   }
@@ -120,12 +122,29 @@ export default function BomImport({ projectId, format = 'xlsx' }) {
                           const key = `${sheetIndex}-${itemIndex}`;
                           const value = Object.prototype.hasOwnProperty.call(categoryOverrides, key)
                             ? categoryOverrides[key] : (it.category || '');
+                          const suggestion = it.category_suggestion;
+                          // Only worth showing while the line is still genuinely unresolved — once
+                          // the reviewer has picked anything (including the suggested category
+                          // itself), the hint just repeats what the dropdown already says.
+                          const showSuggestion = suggestion && !value;
                           return (
-                            <div key={itemIndex} className="flex items-center gap-2">
-                              <span className="flex-1 truncate text-xs" title={it.material_description}>{it.material_description}</span>
-                              <SearchableSelect className="w-40 shrink-0" value={value}
-                                options={CATEGORY_PREVIEW_OPTIONS}
-                                onChange={v => setCategoryOverrides(prev => ({ ...prev, [key]: v }))} />
+                            <div key={itemIndex} className="flex flex-col gap-1">
+                              <div className="flex items-center gap-2">
+                                <span className="flex-1 truncate text-xs" title={it.material_description}>{it.material_description}</span>
+                                <SearchableSelect className="w-40 shrink-0" value={value}
+                                  options={CATEGORY_PREVIEW_OPTIONS}
+                                  onChange={v => setCategoryOverrides(prev => ({ ...prev, [key]: v }))} />
+                              </div>
+                              {showSuggestion && (
+                                <p className="text-xs text-warning">
+                                  Did you mean <strong>{suggestion.suggestedWord}</strong> (typed "{suggestion.word}")?{' '}
+                                  <button type="button" className="underline"
+                                    onClick={() => setCategoryOverrides(prev => ({ ...prev, [key]: suggestion.category }))}>
+                                    Yes, mark as {CATEGORY_LABEL[suggestion.category] || suggestion.category}
+                                  </button>
+                                  {' '}— confirming this once teaches the system, so it won't ask again.
+                                </p>
+                              )}
                             </div>
                           );
                         })}
