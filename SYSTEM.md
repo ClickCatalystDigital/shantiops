@@ -10430,6 +10430,181 @@ project (and its 25 auto-seeded milestones — the preview call never wrote any 
 was just the project + milestones) was deleted afterward; confirmed zero `ZZ-`-prefixed projects
 remain in the DB.
 
+## 5cn. Six real client PMB files, one after another, through the real UI — one real dialog-width bug found and fixed; the tree's System/Subsystem depth model confirmed correct against the client's own hand-built reference (2026-09-13)
+
+Direct follow-on to §5cm: the user supplied 6 genuinely new, real client PMB files
+(`STF-IBR-053/055/056/057/060/061-PMB.xlsx`) never before seen by this app, and asked to run them
+through the real UI one at a time, watching for anything that breaks. Six disposable mock projects
+(`ZZ-PMB-STF-IBR-0NN-DELETE-ME`, company Shanti Techno Fab) were created and each file uploaded via
+the real `/engineering` → BOMs → Upload PMB flow — not curl. Automating the actual file picker isn't
+possible in this browser-automation setup (no native OS dialog access), so each file was instead
+fetched from Next's own `public/` folder (temporarily copied there, deleted after) and assigned to the
+hidden `<input type="file">` via in-page JS (`DataTransfer` + a dispatched `change` event) — the exact
+same `pick()`/`confirm()` handlers `BomImport.jsx` already runs for a real OS file pick, so this
+exercised the genuine upload → preview → confirm round trip end to end, not a shortcut around it.
+
+**Result: all 6 imported cleanly, zero unassigned across every one of them**, despite real structural
+variety no prior test file had shown — sheet counts from 4 to 10, a genuinely empty sheet (`CRP`, 0
+items, no crash), a sheet with exactly one item carrying a 275-character description (also no crash),
+new real sheet names this app had never seen before (`PRS`, `DEAERATOR HEAD`, `ESSENTIAL SPARES`), and
+one sheet (`CHIMNEY` in STF-IBR-056) producing 11 real sibling Subsystems under one System — the
+richest real heading structure encountered so far:
+
+| File | Items | Sheets | Uncategorized | Unassigned | Tree nodes |
+|---|---|---|---|---|---|
+| STF-IBR-053 | 168 | 4 | 35 | 0 | 12 |
+| STF-IBR-055 | 263 | 7 | 68 | 0 | 29 |
+| STF-IBR-056 | 234 | 5 | 53 | 0 | 24 |
+| STF-IBR-057 | 244 | 6 | 58 | 0 | 25 |
+| STF-IBR-060 | 275 | 10 | 64 | 0 | 26 |
+| STF-IBR-061 | 268 | 7 | 61 | 0 | 25 |
+
+**One real bug found and fixed, live, mid-session**: the Import Preview dialog (`BomImport.jsx`)
+rendered at only 384px wide — the exact `tailwind-merge` variant-scope gotcha this file's own §18
+already documents for other dialogs (a bare `max-w-2xl`, no `sm:` prefix, has zero effect against
+`DialogContent`'s own default `sm:max-w-sm`; both classes survive the merge, and the responsive one
+wins in the compiled CSS at real widths) — just never previously fixed in this specific file.
+Confirmed via `getBoundingClientRect()`: `windowInnerWidth: 1131`, dialog `width: 384`. Fixed to
+`sm:max-w-4xl` (widened past the original 2xl intent per the user's own follow-up ask, since real
+item rows carry long descriptions that need the room). Verified live, both via a fresh re-trigger
+(`getBoundingClientRect()` confirming the dialog no longer clips) and directly by the user watching
+the same page.
+
+**A second thing initially suspected as a bug, investigated and confirmed NOT one**: STF-IBR-056's
+BOILER sheet produced "Boiler Mounting & Fittings" (31 items) immediately followed in the flat
+`get_page_text` dump by "Feed Line" (12), "Blow Down Line" (5), "Fire Door and Fire Bars & Support
+Bars" (3), "Pump Base Frame" (1) — which read, from linear text alone, like a 3-level nest (the first
+one containing the other four). Checked via `getBoundingClientRect().left` on each: all four render
+at the identical pixel offset — true siblings, all direct children of "Boiler" (System), not nested.
+Confirmed by the arithmetic too: 14 + 31 + 12 + 5 + 3 + 1 + 43 (Electrical Panel) = 109, exactly
+matching the sheet's own real item count from the preview. `get_page_text`'s linear extraction has no
+way to encode visual nesting depth — a real lesson for reading this app's own text dumps, not an app
+bug.
+
+### The System/Subsystem/Assembly/Sub-assembly question — investigated properly, not just asserted
+
+Direct question from the user: are any of these imported items genuinely Assembly/Sub-assembly level,
+and is the auto-built tree actually accurate? Investigated three ways before answering, not from
+memory:
+
+1. **Confirmed `node_type` is fully free text with no depth limit** — `NODE_TYPE_SUGGESTIONS` already
+   lists all 5 levels (System/Subsystem/Assembly/Sub-assembly/Item), and nothing in `bom_assemblies`'
+   schema or the tree UI caps recursion — a human can add a 3rd/4th level and label it
+   Assembly/Sub-assembly at any time via the existing Add-child/Move/node_type-dropdown UI, no code
+   change needed.
+2. **Checked the real hand-built reference tree** (SB-1109-01-50, project 61 — built by the client's
+   own team, not auto-imported) via a direct DB query: `Boiler Mounting & Fittings`, `Feed Line`,
+   `Blow Down Line`, `Fire Door & Fire Bars`, `Electrical Panel` are **all direct children of `BOILER`
+   (System), all `node_type='Subsystem'`** — the exact same flat-sibling shape the auto-build just
+   produced for the 6 new files, not a nested Assembly/Sub-assembly chain. Separately confirmed the
+   only two `bom_assemblies` rows anywhere in the whole database that ever use `node_type='Assembly'`/
+   `'Sub-assembly'` are leftover disposable rows literally named `"test"` on SB-1040, from an old,
+   uncleaned verification session — never real client data.
+3. **Checked the raw Excel cell formatting directly** (`xlsx` library, `cellStyles: true`) on two
+   different sheets (BOILER, CHIMNEY) of STF-IBR-056 — every heading-like row ("Boiler Mounting &
+   Fittings", "For Feed Line", "Working Platform With Railing", "Chimney Hood", etc.) carries the
+   **byte-identical** style object (`{"patternType":"none"}`, no bold, no indent, no distinguishing
+   font size) as an ordinary material row sitting right next to it. The source file provides zero
+   signal — visual or structural — distinguishing one heading "level" from another; the only real
+   signal is "which sheet" and "which heading most recently preceded this row," which is exactly what
+   the importer's depth-based System/Subsystem assignment already reads.
+
+**Conclusion: the auto-built trees are accurate, and the 2-level (System/Subsystem) design is
+correct for this data, not a shortfall.** It's been checked against 8 real files now (SB-1108,
+SB-1040, and these 6) with zero disagreements against the client's own hand-built reference. A
+genuine 3rd level would only ever reflect a business decision about how the client *wants* their BOM
+organized (e.g., "Feed Line should sit *under* Mounting & Fittings, not beside it") — something no
+heuristic, name-based or depth-based, could derive from the source file, since the file itself
+doesn't express it. The right tool for that, once such a decision is actually made, is the existing
+Structure Templates feature (§5bb) — fix the shape once by hand, save it as a named template tied to
+that boiler model, and reapply it to future projects of the same model — not a speculative auto-detect
+mechanism built ahead of an actual confirmed need.
+
+### A name→level lookup table was considered and rejected
+
+The user proposed a lookup/mapping table (Item Master or a new table) that would map known heading
+names directly to a hierarchy level, to replace or augment the depth-based inference. Considered and
+rejected, for three concrete reasons, not just a preference:
+
+- **The same real name doesn't always belong at the same level** — it depends on how *that specific
+  file's own author* organized it. "Electrical Panel" is correctly a Subsystem heading inside these
+  6 files' BOILER sheet; a future, larger-scope model could just as easily give it its own sheet tab,
+  which should correctly make it a System. Depth-based inference adapts to whichever choice a given
+  file actually made; a static name→level table would force one answer regardless, and would be
+  *wrong* the moment a file organizes the same real-world concept differently — a regression risk,
+  not a safety net.
+- **Real client files spell headings inconsistently** across engineers/years ("Boiler Mounting &
+  Fittings" vs "BOILER MOUNTING & FITTING" vs "Mountings") — a lookup table would need the same
+  ongoing curation this app already had to build for BOM categories (§5cd's "learn from a correction"
+  mechanism), and even that only works because a human confirms each correction once; a table doesn't
+  eliminate that need, it just adds a second place the same maintenance burden has to be paid.
+- **The evidence doesn't support the premise that depth-based inference is getting anything wrong** —
+  zero disagreements found across 8 real files including the client's own hand-built ground truth.
+  A lookup table would be solving a failure mode that hasn't actually been observed in this data.
+
+Depth-based inference plus a fully free-text, always-overridable `node_type` (the existing safety net
+for the rare case it's wrong) is more robust for this specific problem than a static name-based
+override would be.
+
+### Other fields checked against the real imports — make, size_spec, category_fields_json, purchase_status
+
+Direct follow-up question: are dimensions/make/other columns being stored correctly when populated?
+Checked against real inserted rows (project 236, STF-IBR-056), not assumed:
+
+- **`moc`/`size_spec`/`qty_text` are captured correctly, verbatim, as free text** — confirmed real
+  values matching the source exactly (`"SA 516 Gr.70"`, `"2500 X 12000 X 16THK. ... 1000 X 2500 X 10
+  THK."`, `"2 Nos 1 No 1 No"` for multi-line-merged cells).
+- **`make` is correctly populated when the source has it** — confirmed one real row ("FUSIBLE PLUG
+  SINEGLE PEC DESIGN" → `make: "ZOLOTO / RUSHAS"`) alongside 15 other real rows correctly left `NULL`
+  where the source genuinely has no Make value yet (expected — Make is typically filled in during
+  Comparison/PO, not at initial PMB creation, for raw-material lines; it shows up earliest for
+  bought valves/instruments like this one, exactly as seen).
+- **`category_fields_json` (structured length/width/thickness) is `NULL` on every one of the 234
+  imported rows — by longstanding, already-documented design, not a new gap.** §5o's own text already
+  states this precisely: "bulk PMB Excel import ... writes pure free text and is completely
+  unaffected [by remnant-matching] — no regression, matching is simply never attempted on those rows."
+  PMB import has never populated structured dimension fields; only the BOM/PR composer's own
+  category-field UI does that, on manually-entered lines. This means real dimensional strings like
+  `"ISA 40 X 40 X 5"` or `"SQ.10x10- 5000 LG."` stay in `size_spec` as free text after a PMB import —
+  correct, honest, and consistent with the already-stated scope boundary, but worth restating plainly
+  since it means remnant-matching/auto-reservation still won't fire on any PMB-imported dimensional
+  line without a human re-entering its dimensions through the composer. Auto-parsing these into
+  structured fields would be a real, separate project — the raw strings use wildly inconsistent
+  per-shape notation across even these 6 files (`"2500 X 12000 X 16THK."` vs `"Φ63.5 x 3.66 THK - 2780
+  LG"` vs `"SQ.10x10- 5000 LG."` vs `"ISA 40 X 40 X 5"`) — not attempted here.
+- **`purchase_status` mapping (`lib/pmb.mjs`'s `mapPurchaseStatus`, `/pending|enquir/ → 'Enquiry'`)
+  works correctly but is often not a useful per-item signal in practice** — confirmed all 234 items on
+  this project map to the single value `'Enquiry'`, because the source file's own status column reads
+  literally `"PENDING"` on every single row without exception. This isn't a code gap: at the moment a
+  PMB is first created, the client's own real process hasn't differentiated procurement state per item
+  yet, so there's genuinely nothing more specific in the source to map to. Confirmed via the user's own
+  framing ("status column is difficult to take a decision on today") that this is understood as an open
+  question about the source data's own limits, not something to force a decision on right now.
+
+### Storage design question, raised and answered — free text vs. normalized IDs
+
+Direct question: why not store `moc`/`size_spec`/`make`/etc. as IDs into lookup tables instead of free
+text, to save storage? Answered directly, not deferred: **storage was never the real cost here** — a
+`bom_items` row is a few hundred bytes; even the largest real project in this app (SB-1109-01-50,
+~181 lines × 50-unit split) is nowhere near a scale where text-vs-int-id storage matters. The actual
+tradeoff is data-quality/consistency, and this app has already made a deliberate, working choice on
+that front for the fields that actually need it: `bom_items.item_id` (Item Master link, §3.2) is
+already a real normalized ID for the identity axis that benefits from one (exact catalog matching,
+`bom_category`/traceability defaults, §5bv); `MOC_OPTIONS`/`CATEGORY_LABEL` already give MOC and
+category a curated, searchable-with-custom-escape-hatch UI (pick from a list or type your own) without
+forcing every value through a rigid foreign key. Free text stays the right choice specifically for
+`size_spec`/raw `moc` text/`make` because these fields exist to preserve exactly what a real, messy
+PMB Excel says — the whole fuzzy-matching layer this app relies on elsewhere (`suggestCategoryFromGroups`,
+`normalizeMaterial`, remnant-matching, TC-match) depends on that raw text being present and comparable,
+not pre-collapsed into an ID that would need to already exist before a never-before-seen real phrase
+could be captured at all. Normalizing these into hard foreign keys would trade a non-problem (storage)
+for a real one (an import failing, or silently losing data, the moment a real file's phrasing doesn't
+already match an existing ID) — not adopted.
+
+**Cleanup**: all 6 test projects (their `bom_items`/`bom_assemblies`/`bom_imports`/milestones/scope of
+supply) deleted after verification, confirmed via direct query to zero `ZZ-`-prefixed projects
+remaining anywhere in the database.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own

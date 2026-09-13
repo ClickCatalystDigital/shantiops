@@ -90,7 +90,7 @@ export default function BomImport({ projectId, format = 'xlsx', onImported }) {
       )}
 
       <Dialog open={!!preview} onOpenChange={o => !o && setPreview(null)}>
-        <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
+        <DialogContent className="max-h-[85vh] sm:max-w-4xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Import preview — {preview?.filename}</DialogTitle>
           </DialogHeader>
