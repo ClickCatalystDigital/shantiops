@@ -10357,10 +10357,78 @@ permission gates from §5cf — this is a pure UI relocation, zero change to the
 the deleted route/component anywhere in the app (`middleware.js`, every page/component) — remaining
 mentions are historical SYSTEM.md prose and inline comments explaining the supersession, matching this
 file's own established "leave a `superseded, see §X` note rather than silently rewriting history"
-convention (e.g. §5br). A full interactive click-through of all three relocated panels was not
-performed this round — the pre-existing routes/tables were already live-verified end to end under
-`/material-review` in §5cf, and this round's change is additive UI wiring around unchanged data, not
-new business logic.
+convention (e.g. §5br). **Update, same day** — the full interactive click-through this entry
+originally deferred was done: as `qc_head`, QC's Approvals → Inward tab showed a real pending review
+(a GASKET receipt on SB-1040) and opened a working dialog (Approve/Reject/reason), and QC's own
+Pre-Dispatch tab rendered correctly (empty); as `production_head`, Shop Floor's own Approvals tab
+rendered correctly (empty — Production only decides its own slot); as `dispatch_head`, Dispatch's own
+Approvals tab rendered correctly (empty — every real packing list on the DB is currently `draft` or
+`dispatched`, none `packed`, so nothing is awaiting submission right now). All three real logins
+confirmed working end to end, no decisions made against the one real pending review found (left
+untouched, not a test row).
+
+## 5cm. BOM-import categorization stress-test against a real, larger PMB — one real bug found and fixed (2026-09-13)
+
+Direct follow-on to §5cb/§5cc/§5cd's own categorization work, per the user's own ask: "test on newer
+PMBs so we know if there are no exceptions we didn't cover." The whole DB has exactly two real PMB
+imports — SB-1108 (already stress-tested through §5cb/§5cc) and SB-1040 (imported back in August,
+**never** run through the auto-build/categorization pipeline since it predates that work, per §5cb's
+own note that "SB-1040 and SB-1109 were deliberately left untouched"). Pulled SB-1040's real stored
+`.xlsx` out of `bom_imports` and ran it through the actual, full preview pipeline
+(`POST /api/projects/[id]/bom/import`, no `confirm`) against a disposable test project — never
+touching SB-1040 itself. A genuinely bigger, more complex real file than SB-1108's (11 sheets, 321
+items, vs. SB-1108's 4 sheets/168 items) — a good real stress case.
+
+**One real code bug found: a plural/singular mismatch silently defeated a confirmed catalog answer,
+producing a wrong "did you mean" suggestion.** `suggestCategoryFromGroups()`'s containment check
+(`descWords.has(w)`, exact set membership) required every word in a catalog group's name to appear
+verbatim in the item description. The real catalog has a group `"V BELTS"` (plural, `bom_category=
+'standard'`, confirmed via a direct query), but the real BOM line reads `"V' BELT"` (singular) — the
+plural mismatch meant a real, confirmed catalog answer was silently never applied, and the item fell
+through to `suggestSpellingCorrection()`, which then produced a genuinely wrong suggestion: "did you
+mean **BOLT**?" — BELT and BOLT are both real, unrelated English words that happen to be exactly one
+letter apart, not a typo relationship at all. (The suggested *category*, `'standard'`, happened to be
+right either way since both words map there — but the "did you mean" text itself was wrong and would
+have misled a human reviewer, and in a case where the two coincidental near-neighbors mapped to
+different categories this would have been a real miscategorization, not just a confusing label.)
+
+**Fixed** with a small, scoped `wordOrPlural()` helper inside `suggestCategoryFromGroups()`
+(`lib/section-shapes.js`) — a group word is satisfied by an exact match, its own trailing-`s` plural,
+or (for a group word already ending in `s`) the description's singular form. Deliberately not pushed
+into the shared `normalizeWords()` (`lib/match-utils.js`) itself, which several other matching
+contexts (Item Master relevance ranking, Stores' possible-match badges, `lib/tc-match.js`) also
+depend on — keeping the change local to this one function avoids any blast radius beyond it.
+`lib/section-shapes-selfcheck.mjs` gained 4 new assertions: singular description vs. plural group
+name, plural vs. plural (unaffected), plural description vs. singular group name, and — documenting
+the actual end-to-end guarantee, not just the isolated function — a case proving
+`suggestSpellingCorrection()` in isolation still has no idea BELT is a real word (by design, its own
+header comment already says so), which is exactly why the ordering (`suggestCategoryFromGroups` always
+runs first, confirmed by re-reading the real import route) is what actually closes this gap, not a
+change to the spelling-correction function itself.
+
+**Everything else uncategorized checked and confirmed as already-accepted domain gaps, not new code
+bugs** — after the fix, SB-1040's real file drops from 79 to 74 uncategorized out of 321 (23%, higher
+than SB-1108's post-fix ~18%, consistent with SB-1040 being a larger, more varied real file). Every
+remaining item falls cleanly into §5cc's own already-documented 3-way breakdown: real fan/tank
+datasheet fields (`TYPE`, `FLOW cfm`, `STATIC HEAD`, `SPEED RPM`, `MEDIUM`, `OPERATING TEMP(°C)`,
+`SET PRESSURE`, control-panel component tags); the known `BODY SHELL MATERIAL` source-column
+transposition (8 occurrences across 4 sheets, not just SB-1108's WPH sheet); and genuinely ambiguous
+position/function-named fabricated parts with no shape keyword and no catalog group at all
+(`CHIMNEY CONE-1`, `PAD`, `LADDER STEP`, duct-segment tags like `FG-1`..`FG-12`) or a catalog group
+that itself still has a `NULL bom_category` (`REDUCER`, `STEAM TRAP` — confirmed via a direct query:
+these groups exist in the real Item Master but were never themselves categorized, so even a perfect
+description match couldn't have produced an answer). None of these are code gaps — they're exactly
+what the "Resolve categories" walkthrough (§5ce) exists to let a human work through one at a time, and
+no fuzzy match was invented to paper over a genuinely unconfirmed answer.
+
+**Verified**: `npm run lint` clean (859 files); `node lib/section-shapes-selfcheck.mjs` passes with
+the 4 new assertions. Re-ran the exact same real-file preview after the fix and confirmed `"V' BELT"`
+now resolves to `category: "standard"` with `category_suggestion: null` (no misleading suggestion),
+and confirmed no other item anywhere in the file still carries a `category_suggestion` once
+uncategorized — the plural fix was the only live misfire this file surfaced. The disposable test
+project (and its 25 auto-seeded milestones — the preview call never wrote any BOM item, so cleanup
+was just the project + milestones) was deleted afterward; confirmed zero `ZZ-`-prefixed projects
+remain in the DB.
 
 ## 6. Customer Portal (read-only, external)
 
