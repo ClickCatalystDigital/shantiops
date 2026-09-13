@@ -5,20 +5,21 @@
 // handlers; child components are presentational + local UI state only.
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { api, showToast } from '@/lib/client';
+import { api, showToast, formatDate } from '@/lib/client';
 import { Card, CardHeader, CardTitle, CardDescription, CardAction } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import SearchableSelect from '@/components/SearchableSelect';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
-import { LayersIcon } from 'lucide-react';
+import { LayersIcon, CheckCircle2Icon, AlertTriangleIcon } from 'lucide-react';
 import BomTree from './BomTree';
 import BomNodeDetail from './BomNodeDetail';
 import BomTreeReadOnly from './BomTreeReadOnly';
 import MoveAssemblyDialog from './MoveAssemblyDialog';
 import ReleaseReadinessPanel from './ReleaseReadinessPanel';
 import ResolveCategoriesDialog from './ResolveCategoriesDialog';
+import ResolveUnassignedDialog from './ResolveUnassignedDialog';
 import { nodePath } from '@/lib/bom-tree.mjs';
 
 // `projectId`/`onProjectIdChange`/`showReleased`/`onShowReleasedChange` (round 3 Phase A, all
@@ -53,6 +54,7 @@ export default function BomStructureWorkspace({
   const [movingNode, setMovingNode] = useState(null);
   const [releasing, setReleasing] = useState(false);
   const [resolvingCategories, setResolvingCategories] = useState(false);
+  const [resolvingUnassigned, setResolvingUnassigned] = useState(false);
 
   function loadStructure(pid) {
     return api(`/api/bom-assemblies?project_id=${pid}`).then(setAssemblies).catch(err => showToast(err.message, 'error'));
@@ -188,12 +190,18 @@ export default function BomStructureWorkspace({
       router.refresh();
     } catch (err) { showToast(err.message, 'error'); }
   }
-  // "Open in tree" from the Resolve Categories walkthrough — bridges the two options the user
-  // weighed (walk the queue vs. navigate to the item's own spot): the queue is the default flow,
-  // but this escape hatch reaches the tree's own richer context (siblings, the item's full record)
-  // when a category alone isn't enough to judge without more information about surrounding items.
+  // "Open in tree" from either Resolve walkthrough (categories or unassigned) — bridges the two
+  // options the user weighed (walk the queue vs. navigate to the item's own spot): the queue is the
+  // default flow, but this escape hatch reaches the tree's own richer context (siblings, the item's
+  // full record) when a bare category/assignment pick alone isn't enough context. Shared by both
+  // dialogs — an unassigned item has no assembly_id by definition, so it always takes the
+  // Unassigned-panel branch. Always reloads: real bug found live — this used to close the dialog
+  // without refreshing, so any Save & Next progress made earlier in the same walkthrough looked
+  // silently lost (tile/table/tree kept showing pre-walkthrough numbers) even though it was already
+  // saved server-side.
   function openInTreeFromResolve(item) {
     setResolvingCategories(false);
+    setResolvingUnassigned(false);
     if (item.assembly_id) {
       const ancestorIds = [];
       let a = byId.get(item.assembly_id);
@@ -203,10 +211,15 @@ export default function BomStructureWorkspace({
     } else {
       setSelectedId('unassigned');
     }
+    reloadAll();
   }
   function closeResolveCategories() {
     setResolvingCategories(false);
     reloadAll(); // the readiness panel's own count is server-computed, not derived from projectBom
+  }
+  function closeResolveUnassigned() {
+    setResolvingUnassigned(false);
+    reloadAll();
   }
 
   async function release() {
@@ -230,37 +243,69 @@ export default function BomStructureWorkspace({
 
   const selectedProject = projects.find(p => String(p.id) === projectId);
   const visibleProjects = showReleased ? projects : projects.filter(p => !p.bom_release_revision);
+  // The release action itself moved up into the card header (project identity + button in one
+  // row) per direct request — ReleaseReadinessPanel below keeps only the stat tiles/Unit Count/
+  // template actions. blockingCount mirrors that panel's own pre-existing computation exactly.
+  const blockingCount = releaseStatus ? (releaseStatus.uncategorizedCount || 0) + (releaseStatus.unassignedCount || 0) : 0;
 
   return (
     <>
     {banner}
     <Card className="min-h-[32rem]">
       <CardHeader>
-        <CardTitle>BOMs</CardTitle>
-        <CardDescription>
-          {selectedProject ? (
-            <span className="flex items-center gap-1.5">
+        {selectedProject ? (
+          <>
+            <CardTitle className="flex items-center gap-1.5">
               {selectedProject.project_no} · {selectedProject.customer_name}
               {selectedProject.series && <Badge variant="outline" className="text-[10px] font-normal">{selectedProject.series}</Badge>}
-            </span>
-          ) : (
-            'Build assemblies, link drawings, and review release readiness.'
-          )}
-        </CardDescription>
-        {!controlled && (
-          <CardAction className="flex items-center gap-2">
-            <Button size="sm" variant={showReleased ? 'secondary' : 'outline'} onClick={() => setShowReleased(v => !v)}>
-              {showReleased ? 'Showing released' : 'Show released too'}
-            </Button>
-            <SearchableSelect
-              className="w-64"
-              value={projectId} onChange={setProjectId}
-              placeholder="Pick a project…"
-              options={visibleProjects.map(p => ({ value: String(p.id), label: `${p.project_no} · ${p.customer_name}` }))}
-              displayValue={selectedProject ? `${selectedProject.project_no} · ${selectedProject.customer_name}` : undefined}
-            />
-          </CardAction>
+            </CardTitle>
+            {selectedProject.created_at && (
+              <CardDescription>Created {formatDate(selectedProject.created_at)}</CardDescription>
+            )}
+          </>
+        ) : (
+          <>
+            <CardTitle>BOMs</CardTitle>
+            <CardDescription>Build assemblies, link drawings, and review release readiness.</CardDescription>
+          </>
         )}
+        <CardAction className="flex items-center gap-2">
+          {!controlled && (
+            <>
+              <Button size="sm" variant="secondary" onClick={() => setShowReleased(v => !v)}>
+                {showReleased ? 'Released' : 'Draft'}
+              </Button>
+              <SearchableSelect
+                className="w-64"
+                value={projectId} onChange={setProjectId}
+                placeholder="Pick a project…"
+                options={visibleProjects.map(p => ({ value: String(p.id), label: `${p.project_no} · ${p.customer_name}` }))}
+                displayValue={selectedProject ? `${selectedProject.project_no} · ${selectedProject.customer_name}` : undefined}
+              />
+            </>
+          )}
+          {selectedProject && !hideRelease && releaseStatus && (
+            releaseStatus.released ? (
+              <span className="flex items-center gap-1.5 text-sm font-medium text-success">
+                <CheckCircle2Icon className="size-4" />Released (rev {releaseStatus.nextRevision - 1})
+              </span>
+            ) : (
+              <div className="flex flex-col items-end gap-1">
+                <Button disabled={releasing || !releaseStatus.bomCount || blockingCount > 0} onClick={release}>
+                  {releasing ? 'Releasing…' : `Release BOM (rev ${releaseStatus.nextRevision})`}
+                </Button>
+                {blockingCount > 0 && (
+                  <span className="flex items-center gap-1 text-xs text-warning">
+                    <AlertTriangleIcon className="size-3" />
+                    {releaseStatus.uncategorizedCount > 0 && `${releaseStatus.uncategorizedCount} uncategorized`}
+                    {releaseStatus.uncategorizedCount > 0 && releaseStatus.unassignedCount > 0 && ' · '}
+                    {releaseStatus.unassignedCount > 0 && `${releaseStatus.unassignedCount} unassigned`}
+                  </span>
+                )}
+              </div>
+            )
+          )}
+        </CardAction>
       </CardHeader>
 
       {!projectId ? (
@@ -285,12 +330,13 @@ export default function BomStructureWorkspace({
         <div className="flex flex-col gap-3 px-3 pb-3">
           {!hideRelease && (
             <ReleaseReadinessPanel
-              status={releaseStatus} onRelease={release} releasing={releasing}
+              status={releaseStatus}
               rootCount={assemblies.filter(a => a.parent_id == null).length}
               onBuildFromTemplates={buildFromTemplates} onSaveBomAsTemplate={saveBomAsTemplate}
               unitCount={selectedProject?.unit_count} onSaveUnitCount={saveUnitCount}
               projectId={projectId}
               onResolveUncategorized={uncategorizedItems.length ? () => setResolvingCategories(true) : undefined}
+              onResolveUnassigned={unassignedItems.length ? () => setResolvingUnassigned(true) : undefined}
             />
           )}
           <ResizablePanelGroup direction="horizontal" className="min-h-[28rem] overflow-hidden rounded-md border">
@@ -348,6 +394,15 @@ export default function BomStructureWorkspace({
         <ResolveCategoriesDialog
           items={uncategorizedItems}
           onClose={closeResolveCategories}
+          onOpenInTree={openInTreeFromResolve}
+        />
+      )}
+      {resolvingUnassigned && (
+        <ResolveUnassignedDialog
+          items={unassignedItems}
+          assemblies={assemblies}
+          byId={byId}
+          onClose={closeResolveUnassigned}
           onOpenInTree={openInTreeFromResolve}
         />
       )}

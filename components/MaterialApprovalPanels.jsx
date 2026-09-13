@@ -1,10 +1,21 @@
 'use client';
 
-// components/MaterialReviewWorkspace.jsx — the Inward + Pre-Dispatch QC/Production Approval
-// Workflow's own UI module. Same flat two-tab shape as InstallationWorkspace.jsx: a pending-queue
-// table per tab, clicking a row opens a detail dialog (fetched fresh via the [id] GET route) with
-// full supporting info + Approve/Reject + a reason textarea. Dispatch sees both tabs read-only
-// here — the actual Submit/Resubmit button lives on the packing list itself (PackingDetail.jsx).
+// components/MaterialApprovalPanels.jsx — the Inward + Pre-Dispatch QC/Production Approval
+// Workflow's UI, lived here as three department-local panels rather than one standalone workspace.
+// Per direct instruction: no shared cross-department Approvals page — QC/Production/Dispatch each
+// reach their own slice from their own existing workspace's own sidebar, no project-page or
+// packing-list-page actions. Superseded the retired /material-review route and
+// MaterialReviewWorkspace.jsx (same backend routes/tables, zero change to the approval workflow
+// itself — this file only relocates where the UI is reached from).
+//
+// InwardApprovalsPanel   — QC's own Approvals > Inward tab. QC decides; nobody else sees this tab.
+// PreDispatchApprovalsPanel — QC's Approvals > Pre-Dispatch tab (QC decides its own slot) AND
+//   Production's Approvals tab (Production decides its own slot) — same component, different
+//   canDecideQc/canDecideProduction booleans depending on which department's page renders it, so a
+//   dual-department user acts on each department's own decision only from that department's own
+//   page, never both from one place.
+// DispatchApprovalsPanel — Dispatch's own Approvals tab: Submit/Resubmit (the action that used to
+//   live inline on PackingDetail.jsx) + read-only status for every packing list still 'packed'.
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
@@ -13,19 +24,7 @@ import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { InboxIcon, TruckIcon } from 'lucide-react';
 import { api, showToast, formatDate } from '@/lib/client';
-import WorkspaceSidebar from '@/components/WorkspaceSidebar';
-
-// Phase 8 — badge counts on this workspace's own sidebar tabs, same pattern StoresWorkspace.jsx's
-// NAV_ITEMS(counts) already established. Deliberately NOT a top-level Nav.jsx badge (no precedent
-// for that anywhere in this app — every existing badge lives inside a workspace's own sidebar,
-// visible on the one click it already takes to reach it), matching the "extend existing screens"
-// scope this round was kept to.
-const ITEMS = (counts) => [
-  { key: 'inward', label: 'Inward Approvals', icon: InboxIcon, badge: counts.inward || null },
-  { key: 'predispatch', label: 'Pre-Dispatch Approvals', icon: TruckIcon, badge: counts.preDispatch || null },
-];
 
 function DecisionButtons({ canDecide, onDecide, busy }) {
   const [reason, setReason] = useState('');
@@ -44,7 +43,8 @@ function DecisionButtons({ canDecide, onDecide, busy }) {
 
 // ---------- Inward ----------
 
-function InwardDetailDialog({ id, canDecide, onClose, router }) {
+function InwardDetailDialog({ id, canDecide, onClose }) {
+  const router = useRouter();
   const [detail, setDetail] = useState(null);
   const [busy, setBusy] = useState(false);
 
@@ -117,7 +117,7 @@ function InwardDetailDialog({ id, canDecide, onClose, router }) {
   );
 }
 
-function InwardTab({ rows, canDecide, router }) {
+export function InwardApprovalsPanel({ rows = [], canDecide = false }) {
   const [openId, setOpenId] = useState(null);
   return (
     <Card>
@@ -141,14 +141,15 @@ function InwardTab({ rows, canDecide, router }) {
           </Table>
         )}
       </CardContent>
-      {openId != null && <InwardDetailDialog id={openId} canDecide={canDecide} router={router} onClose={() => setOpenId(null)} />}
+      {openId != null && <InwardDetailDialog id={openId} canDecide={canDecide} onClose={() => setOpenId(null)} />}
     </Card>
   );
 }
 
 // ---------- Pre-Dispatch ----------
 
-function PreDispatchDetailDialog({ id, canDecideQc, canDecideProduction, onClose, router }) {
+function PreDispatchDetailDialog({ id, canDecideQc, canDecideProduction, onClose }) {
+  const router = useRouter();
   const [detail, setDetail] = useState(null);
   const [busy, setBusy] = useState(false);
 
@@ -229,7 +230,7 @@ function PreDispatchDetailDialog({ id, canDecideQc, canDecideProduction, onClose
   );
 }
 
-function PreDispatchTab({ rows, canDecideQc, canDecideProduction, router }) {
+export function PreDispatchApprovalsPanel({ rows = [], canDecideQc = false, canDecideProduction = false }) {
   const [openId, setOpenId] = useState(null);
   return (
     <Card>
@@ -256,21 +257,85 @@ function PreDispatchTab({ rows, canDecideQc, canDecideProduction, router }) {
       </CardContent>
       {openId != null && (
         <PreDispatchDetailDialog id={openId} canDecideQc={canDecideQc} canDecideProduction={canDecideProduction}
-          router={router} onClose={() => setOpenId(null)} />
+          onClose={() => setOpenId(null)} />
       )}
     </Card>
   );
 }
 
-export default function MaterialReviewWorkspace({ inward = [], preDispatch = [], canDecideInward, canDecideQc, canDecideProduction }) {
-  const router = useRouter();
-  const [tab, setTab] = useState('inward');
+// ---------- Dispatch ----------
 
-  const items = ITEMS({ inward: inward.length, preDispatch: preDispatch.length });
+const APPROVAL_BADGE = {
+  pending: ['secondary', 'Pending review'],
+  approved: ['default', 'Approved — ready to dispatch'],
+  rejected: ['destructive', 'Rejected'],
+};
+
+// Dispatch's own Approvals tab — the Submit/Resubmit action that used to live inline on
+// PackingDetail.jsx, plus read-only status for every packing list still 'packed' (once dispatched a
+// list drops off this queue — see getDispatchApprovalQueue()'s own comment). Dispatch never decides
+// either side, so the detail dialog it opens is always canDecideQc={false} canDecideProduction={false}.
+export function DispatchApprovalsPanel({ rows = [] }) {
+  const router = useRouter();
+  const [openApprovalId, setOpenApprovalId] = useState(null);
+  const [busyId, setBusyId] = useState(null);
+
+  async function submit(packingListId) {
+    setBusyId(packingListId);
+    try {
+      await api(`/api/packing/${packingListId}/submit-for-approval`, { method: 'POST' });
+      showToast('Submitted for QC/Production review');
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+    setBusyId(null);
+  }
+
   return (
-    <WorkspaceSidebar title="QC & Production Review" icon={InboxIcon} items={items} activeKey={tab} onChange={setTab}>
-      {tab === 'inward' && <InwardTab rows={inward} canDecide={canDecideInward} router={router} />}
-      {tab === 'predispatch' && <PreDispatchTab rows={preDispatch} canDecideQc={canDecideQc} canDecideProduction={canDecideProduction} router={router} />}
-    </WorkspaceSidebar>
+    <Card>
+      <CardContent className="py-4">
+        {!rows.length ? <p className="text-sm text-muted-foreground">No packing lists awaiting dispatch approval.</p> : (
+          <Table>
+            <TableHeader><TableRow>
+              <TableHead>Packing List</TableHead><TableHead>Project</TableHead>
+              <TableHead>Status</TableHead><TableHead /></TableRow></TableHeader>
+            <TableBody>
+              {rows.map(r => {
+                const status = r.approval_status;
+                const badge = status && APPROVAL_BADGE[status];
+                const canSubmit = !status || status === 'rejected';
+                return (
+                  <TableRow key={r.id}>
+                    <TableCell>{r.packing_no}</TableCell>
+                    <TableCell>{r.project_no || '—'}</TableCell>
+                    <TableCell>
+                      {badge ? <Badge variant={badge[0]}>{badge[1]}</Badge> : <Badge variant="secondary">Not submitted</Badge>}
+                      {status && (r.qc_decision || r.production_decision) && (
+                        <span className="ml-2 text-xs text-muted-foreground">
+                          QC: {r.qc_decision || 'awaiting'} · Production: {r.production_decision || 'awaiting'}
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell className="flex justify-end gap-2">
+                      {canSubmit && (
+                        <Button size="sm" disabled={busyId === r.id} onClick={() => submit(r.id)}>
+                          {busyId === r.id ? 'Submitting…' : status === 'rejected' ? 'Resubmit for review' : 'Submit for review'}
+                        </Button>
+                      )}
+                      {r.approval_id != null && (
+                        <Button size="sm" variant="ghost" onClick={() => setOpenApprovalId(r.approval_id)}>View</Button>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+      {openApprovalId != null && (
+        <PreDispatchDetailDialog id={openApprovalId} canDecideQc={false} canDecideProduction={false}
+          onClose={() => setOpenApprovalId(null)} />
+      )}
+    </Card>
   );
 }

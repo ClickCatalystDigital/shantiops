@@ -10,7 +10,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { CheckCircle2Icon, LayoutTemplateIcon, BookmarkPlusIcon } from 'lucide-react';
+import {
+  LayoutTemplateIcon, BookmarkPlusIcon,
+  PackageIcon, FileTextIcon, UnlinkIcon, TagIcon, ClipboardListIcon,
+} from 'lucide-react';
 import BuildFromTemplatesDialog from './BuildFromTemplatesDialog';
 import SaveBomAsTemplateDialog from './SaveBomAsTemplateDialog';
 import SplitIntoUnitsButton from './SplitIntoUnitsButton';
@@ -56,7 +59,9 @@ function UnitCountField({ unitCount, onSaveUnitCount }) {
 // `onClick` turns the tile into an actionable entry point (e.g. "walk through the N uncategorized
 // items") instead of a bare number — only rendered as a real button once there's something to do
 // (value > 0 and a handler was actually passed), so a zero/no-handler tile behaves exactly as before.
-function Stat({ value, label, tone, onClick }) {
+// `icon` is purely decorative (a small Lucide component next to the label) — every tile gets one now,
+// picked to match the same concept's icon elsewhere in this workspace (Items/Drawings tabs, etc.).
+function Stat({ value, label, tone, onClick, icon: Icon }) {
   const flagged = tone === 'warn' && value > 0;
   const clickable = onClick && value > 0;
   const Wrapper = clickable ? 'button' : 'div';
@@ -67,14 +72,16 @@ function Stat({ value, label, tone, onClick }) {
       className={`flex flex-col gap-0.5 px-4 py-1 text-left first:pl-0 ${clickable ? 'rounded-sm transition-colors hover:bg-muted/60' : ''}`}
     >
       <span className={`tnum text-2xl font-semibold leading-none ${flagged ? 'text-warning' : 'text-foreground'}`}>{value}</span>
-      <span className={`text-xs ${clickable ? 'text-primary underline decoration-dotted' : 'text-muted-foreground'}`}>{label}</span>
+      <span className={`flex items-center gap-1 text-xs ${clickable ? 'text-primary underline decoration-dotted' : 'text-muted-foreground'}`}>
+        {Icon && <Icon className="size-3 shrink-0" />}{label}
+      </span>
     </Wrapper>
   );
 }
 
 export default function ReleaseReadinessPanel({
-  status, onRelease, releasing, rootCount, onBuildFromTemplates, onSaveBomAsTemplate,
-  unitCount, onSaveUnitCount, projectId, onResolveUncategorized,
+  status, rootCount, onBuildFromTemplates, onSaveBomAsTemplate,
+  unitCount, onSaveUnitCount, projectId, onResolveUncategorized, onResolveUnassigned,
 }) {
   const [buildingFromTemplates, setBuildingFromTemplates] = useState(false);
   const [savingBomAsTemplate, setSavingBomAsTemplate] = useState(false);
@@ -83,11 +90,11 @@ export default function ReleaseReadinessPanel({
     <Card>
       <CardContent className="flex flex-wrap items-center justify-between gap-4 py-4">
         <div className="flex flex-wrap divide-x">
-          <Stat value={status.bomCount} label={status.bomCount === 1 ? 'item' : 'items'} />
-          <Stat value={status.drawingLinked} label="drawing-linked" />
-          <Stat value={status.unassignedCount} label="unassigned" tone="warn" />
-          <Stat value={status.uncategorizedCount} label="uncategorized" tone="warn" onClick={onResolveUncategorized} />
-          <Stat value={status.pendingEcnCount} label={status.pendingEcnCount === 1 ? 'pending ECN' : 'pending ECNs'} tone="warn" />
+          <Stat value={status.bomCount} label={status.bomCount === 1 ? 'item' : 'items'} icon={PackageIcon} />
+          <Stat value={status.drawingLinked} label="drawing-linked" icon={FileTextIcon} />
+          <Stat value={status.unassignedCount} label="unassigned" tone="warn" icon={UnlinkIcon} onClick={onResolveUnassigned} />
+          <Stat value={status.uncategorizedCount} label="uncategorized" tone="warn" icon={TagIcon} onClick={onResolveUncategorized} />
+          <Stat value={status.pendingEcnCount} label={status.pendingEcnCount === 1 ? 'pending ECN' : 'pending ECNs'} tone="warn" icon={ClipboardListIcon} />
         </div>
         <div className="flex items-center gap-3">
           {onSaveUnitCount && <UnitCountField unitCount={unitCount} onSaveUnitCount={onSaveUnitCount} />}
@@ -106,15 +113,6 @@ export default function ReleaseReadinessPanel({
                   <BookmarkPlusIcon />
                 </Button>
               </TooltipTrigger><TooltipContent>Save Entire BOM as Template</TooltipContent></Tooltip>
-            )}
-            {status.released ? (
-              <span className="flex items-center gap-1.5 text-sm font-medium text-success">
-                <CheckCircle2Icon className="size-4" />Released (rev {status.nextRevision - 1})
-              </span>
-            ) : (
-              <Button disabled={releasing || !status.bomCount} onClick={onRelease}>
-                {releasing ? 'Releasing…' : `Review & Release BOM (rev ${status.nextRevision})`}
-              </Button>
             )}
           </div>
         </div>

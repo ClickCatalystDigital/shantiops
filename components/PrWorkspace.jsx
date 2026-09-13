@@ -741,6 +741,11 @@ export function ReleaseBomTab({ projects, departments = [], projectId: controlle
   const [unreleasing, setUnreleasing] = useState(false);
   const [applyingTemplate, setApplyingTemplate] = useState(false);
   const editableFields = departments.flatMap(d => BOM_FIELD_OWNERS[d] || []);
+  // §5ck — same server-side gate the BOM Structure workspace's own Release button now reflects
+  // proactively (app/api/projects/[id]/release-bom's POST already 400s on either); this tab has no
+  // tree UI to attach the resolve walkthroughs to, so it gets the blocking parity and a pointer to
+  // where to actually fix them, not a duplicated dialog.
+  const blockingCount = status ? (status.uncategorizedCount || 0) + (status.unassignedCount || 0) : 0;
   // BomTable's `department` prop drives column scoping (lib/bom-fields.mjs's visibleBomColumns/
   // showPackingColumn) AND canReceive = department === 'Stores' (Stores' own inline Receive
   // action) — so this can't just be the literal "Engineering" string this route used to hardcode
@@ -818,7 +823,7 @@ export function ReleaseBomTab({ projects, departments = [], projectId: controlle
                 </Button>
               </>
             ) : (
-              <Button size="sm" disabled={releasing || !status.bomCount} onClick={release}>
+              <Button size="sm" disabled={releasing || !status.bomCount || blockingCount > 0} onClick={release}>
                 {releasing ? 'Releasing…' : 'Release BOM'}
               </Button>
             )}
@@ -846,6 +851,14 @@ export function ReleaseBomTab({ projects, departments = [], projectId: controlle
                 {status.bomCount - status.drawingLinked > 0 && ` · ${status.bomCount - status.drawingLinked} not linked`}
               </span>
               {!status.released && <span className="text-xs text-muted-foreground">Releasing now makes this revision {status.nextRevision} — Production's baseline.</span>}
+              {!status.released && blockingCount > 0 && (
+                <span className="text-xs text-warning">
+                  {status.uncategorizedCount > 0 && `${status.uncategorizedCount} uncategorized`}
+                  {status.uncategorizedCount > 0 && status.unassignedCount > 0 && ' · '}
+                  {status.unassignedCount > 0 && `${status.unassignedCount} unassigned`} item(s) block release —
+                  resolve them in the BOM Structure tab (Engineering → BOMs).
+                </span>
+              )}
               {status.templatesApplied?.length > 0 && (
                 <div className="flex flex-wrap items-center gap-1.5 pt-1 text-xs text-muted-foreground">
                   <LayoutTemplateIcon className="size-3.5" />Templates on this BOM:

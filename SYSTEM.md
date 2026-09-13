@@ -10199,6 +10199,169 @@ computation, the pre-existing transfer-ownership route) already live-verified in
 verification deliberately not performed, per the same standing instruction covering this whole
 session — reserved for the user.
 
+## 5cj. "Receive a Delivery" surfaces Make/Supplier/PO — a real gap, not a removal (2026-09-13)
+
+Direct user question during browser verification: "recieve a delivery should already have make and
+details from procurement... did you remove all that?" Checked, not assumed — `git log` on
+`ReceiveDeliveryTab` back to its very first version (§5bw, commit `6ab2394`) showed the row never
+rendered `make`/`selected_supplier_name`/`po_ref`, even though `getSourcingItems()` (`lib/data.js`)
+has fetched all three on every row since that same commit — nothing was ever removed, the fields
+were just never wired into this specific screen's render.
+
+Fixed by surfacing the already-fetched data, no new query: `ReceiveDeliveryTab`'s row gained a
+muted sub-line under the material description ("Make: X · Supplier: Y · PO: Z", only the parts that
+exist), `ReceiveBomItemDialog.jsx` gained the identical line inside the dialog itself so Stores
+confirms the right make/supplier before submitting, and the sibling `BomGrnTab` ("BOM" tab, same
+`bomItems` data) gained a Make column next to its existing Status/GRN Ref columns.
+
+**Live-verified** against real SB-1109-01-50 data — searching surfaced 9 real open lines, each
+correctly showing "Supplier: {name} · PO: {ref}" under its description; opening Receive on the MS
+PIPE line showed the identical "Supplier: Karoli Pipes · PO: 616/SB/2026-27" line inside the dialog.
+Closed without submitting (real project data, not disposable). `npm run lint` clean (858 files).
+
+## 5ck. Resolve-unassigned parity, release-gate blocking on both counts, and 5 hero icons (2026-09-13)
+
+Direct follow-on the same day: §5ce shipped "Resolve categories" deliberately scoped to categories
+only, naming unassigned/pending-ECN as different shapes not yet built. This round asked whether
+unassigned deserves the identical treatment, gated Release on both, and gave all 5 readiness stats
+their own icon — closing the gap §5ce's own header comment left open, not inventing a new pattern.
+
+**Real bug found and fixed first, before building anything on top of it**: `BomStructureWorkspace.jsx`'s
+`openInTreeFromResolve()` — the "Open in tree" escape hatch from inside a Resolve dialog — closed the
+dialog but never called `reloadAll()`, unlike `closeResolveCategories()` which does. Any Save & Next
+progress made earlier in the same walkthrough was real in the DB but the readiness tile/`projectBom`/
+tree kept showing the pre-walkthrough numbers until something else triggered a reload — correctly
+saved work looked silently lost. Fixed by adding `reloadAll()` to the one shared handler both dialogs
+now use.
+
+**`ResolveUnassignedDialog.jsx`** (new) — a direct sibling of `ResolveCategoriesDialog.jsx`, not a
+generalized "resolve any field" engine (same explicit non-goal §5ce's own header already states):
+no `_path` breadcrumb (every item here is definitionally unassigned), a `SearchableSelect` node
+picker built from the project's own `assemblies`/`byId` via `nodePath()`, `saveAndNext()` PATCHes
+`{ assembly_id: Number(value) }` through the exact same, unmodified `PATCH /api/bom-items/[id]` route
+— `assembly_id` was already Engineering-owned and already writable through this path (the same one
+`NodeItemsTab.jsx`'s "Assign existing item" picker already uses), so no schema/permission change was
+needed, same reuse-before-building precedent §5ce itself established for `category`. Handles the
+zero-nodes-exist-yet edge case with a plain message instead of an empty picker.
+
+**Server-side release gate extended to match, mirroring the existing uncategorized check exactly**
+(`app/api/projects/[id]/release-bom/route.js`'s `POST`): `source='bom' AND assembly_id IS NULL` blocks
+release with a 400 naming the count. **Real blast-radius check done first, not assumed safe**: a
+direct read-only query against the live DB found SB-1040 (released once already) sitting at 327 of
+328 items unassigned — the gate only fires on the `POST` release *action*, never retroactively
+un-releases already-shipped state, so this is safe to ship; SB-1040 stays exactly as released and
+would only need resolving if someone ever tries to re-release it. Stated in the code comment, not
+hidden.
+
+**`ReleaseReadinessPanel.jsx`** — the unassigned `Stat` tile gained `onClick={onResolveUnassigned}`
+(previously not clickable at all, unlike the uncategorized tile). `Stat` gained an optional `icon`
+prop, one per tile, matching the same concept's icon already used elsewhere in this workspace:
+`PackageIcon` (Items — matches `BomNodeDetail.jsx`'s own Items tab), `FileTextIcon` (drawing-linked —
+matches the Drawings tab), `UnlinkIcon` (unassigned), `TagIcon` (uncategorized), `ClipboardListIcon`
+(pending ECN) — all 5 confirmed present in the installed `lucide-react` version before use. Release
+button: `disabled={releasing || !status.bomCount || blockingCount > 0}` where `blockingCount =
+uncategorizedCount + unassignedCount`, with a muted reason line under the button naming exactly which
+counts are blocking, so a disabled button always explains itself instead of sitting inert.
+
+**`components/PrWorkspace.jsx`'s `ReleaseBomTab` — parity, not duplication.** This is the second,
+independent entry point to the identical release route (`/pr?tab=release` and Engineering's own
+embedded copy, §5az). It has no tree UI to attach a resolve walkthrough to, so it gets the blocking
+parity only: the same `blockingCount` computation, the same `disabled` condition on its Release
+button, and a status-line pointer ("N uncategorized · M unassigned item(s) block release — resolve
+them in the BOM Structure tab") rather than a duplicated dialog.
+
+**Deliberately staying informational, not gated or given a resolve dialog**: drawing-linked (a bought
+valve legitimately never needs one — an existing, explicit design decision) and pending ECN (its real
+resolution is Engineering's Change Notes tab's own approve/reject action, a materially different
+shape than "pick a value from a list" — `ResolveCategoriesDialog.jsx`'s own header comment already
+explains why this pattern isn't generalized into every gap). Both still got a hero icon.
+
+**Live-verified end to end against the real dev DB and the running dev server**, disposable test
+project `ZZ-5CK-TEST-DELETE-ME` (id 231, created via the real API, one assembly node + 3 test
+`bom_items` rows exercising both queues independently — one unassigned+uncategorized, one
+unassigned-but-categorized, one uncategorized-but-assignable), through this session's own severe,
+real remote-Turso latency: confirmed both stat tiles are real, icon'd buttons; walked items through
+Save & Next on both dialogs, confirmed the tile counts update immediately on close (proving the
+reload-bug fix, for both dialogs, not just the one that surfaced it); confirmed Release disabled with
+both counts nonzero and the reason line rendering correctly; resolved both to zero and confirmed
+Release re-enabled; confirmed `ReleaseBomTab` at `/pr?tab=release` shows the identical disabled state
+and pointer text for the same test project. A direct `POST /release-bom` against a manufactured
+unassigned line was confirmed to still 400 (the server gate, not just a client-side disable). Test
+project and its rows deleted afterward; a direct query also cleaned up three unrelated leftover
+`ZZ-GAPFIX-DELETE-ME`/`ZZ-GAPV-A`/`ZZ-GAPV-MASTER` test rows found still in the DB from an earlier,
+uncleaned session — confirmed zero `ZZ-`-prefixed residue anywhere afterward. `npm run lint` clean.
+
+**What this does and doesn't complete, honestly, per the direct question asked**: the two
+release-blocking data-quality gaps (category, structure assignment) now have symmetric UI+server
+enforcement and a real walkthrough each — that's what this round closes. It does **not** address
+SB-1040's own real legacy backlog (327 unassigned items on an already-released project) — that's a
+genuine future remediation task, not something this gate retroactively fixes or was ever meant to.
+It does **not** add cross-project validation to the generic `assembly_id` PATCH path — that gap
+(a forged `assembly_id` from a different project isn't rejected) predates this round, is shared with
+the already-existing `NodeItemsTab` feature, and isn't introduced or fixed here. More gaps will keep
+surfacing as the BOM Structure workspace sees more real use (drawing-linked/pending-ECN's own
+resolution shapes, the SB-1040 backlog) — this round closes the two concrete, symmetric ones asked
+for, not "no gaps ever again."
+
+## 5cl. Inward + Pre-Dispatch Approval Workflow UI moved off a shared page, into each department's own workspace (2026-09-13)
+
+Direct follow-on to §5cf: the workflow's UI originally lived on one shared top-level `/material-review`
+route (`MaterialReviewWorkspace.jsx`), reached via a single `addDeptTab(['QC','Production','Dispatch'],
+...)` Nav entry. Per direct instruction, relocated so each department reaches its own slice from its
+own existing workspace's own sidebar instead — no shared cross-department page, no project-page or
+packing-list-page inline actions. **The backend is completely untouched** — same `inward_approvals`/
+`pre_dispatch_approvals` tables, same routes (`/api/inward-approvals/*`, `/api/pre-dispatch-approvals/*`,
+`POST /api/packing/[id]/submit-for-approval`), same `qc.inward.decide`/`dispatch.packing.submit_approval`
+permission gates from §5cf — this is a pure UI relocation, zero change to the approval workflow itself.
+
+- **`components/MaterialApprovalPanels.jsx`** (new) supersedes the retired `/material-review` route
+  and `MaterialReviewWorkspace.jsx` (both deleted). Three exported panels, each a thin, focused slice
+  of the same backend data:
+  - **`InwardApprovalsPanel`** — QC's own Approvals → Inward tab; only QC ever sees this half.
+  - **`PreDispatchApprovalsPanel`** — reused twice, with different capability booleans depending on
+    which department's page renders it: QC's Approvals → Pre-Dispatch tab (`canDecideQc`, QC decides
+    its own slot only) **and** Production's own Approvals tab (`canDecideProduction`, Production
+    decides its own slot only) — a dual-department user acts on each department's own decision only
+    from that department's own page, never both from one shared screen.
+  - **`DispatchApprovalsPanel`** — Dispatch's own Approvals tab: the Submit/Resubmit action that used
+    to live inline on `PackingDetail.jsx` (removed from there — `submittingApproval` state, the
+    button, and the status badge all deleted from that file), plus read-only status for every packing
+    list still `packed`. Dispatch never decides either side, so its own detail-dialog view always
+    passes `canDecideQc={false} canDecideProduction={false}`.
+- **New `getDispatchApprovalQueue()`** (`lib/data.js`) — every packing list still `status='packed'`
+  (not yet dispatched) joined to its latest `pre_dispatch_approvals` cycle if one exists, covering
+  "ready to submit" (no cycle) / "awaiting review" (pending) / "rejected — resubmit" / "approved,
+  ready to dispatch" in one query. Drops a list the moment it moves to `dispatched` — a live worklist,
+  not history (the packing list's own detail page and the Dispatch Register report, §5aj/§5ar, already
+  cover shipped lists). The pre-existing `getPendingInwardApprovals()`/`getPendingPreDispatchApprovals()`
+  (§5cf) needed no change — both are already plain unfiltered reads; every write route re-enforces the
+  real decide authority server-side via `requireAction`, so which department's page happens to render
+  a row was never itself a security boundary.
+- **Wiring**: `app/qc/page.js` fetches both queues and passes `canDecideInward`/`canDecideQcPreDispatch`
+  (both `isDepartmentHead(user, 'QC')`); `app/production/workers/page.js` fetches
+  `getPendingPreDispatchApprovals()` and passes `canDecideProduction={isDepartmentHead(user,
+  'Production')}`; `app/dispatch/page.js` fetches the new queue. Each workspace component
+  (`QcWorkspace.jsx`, `WorkersPanel.jsx`, `DispatchWorkspace.jsx`) gained an "Approvals" nav entry —
+  QC's is a group with Inward/Pre-Dispatch children (mirroring `ProcurementWorkspace.jsx`'s own
+  Suppliers Roster/Analysis group shape); Production's and Dispatch's are flat single tabs. Dispatch's
+  own tab carries a badge count of packing lists genuinely needing Dispatch's own action (unsubmitted
+  or rejected — "pending review"/"approved" are informational, not counted, since there's nothing for
+  Dispatch itself to do about those two states).
+- **`components/Nav.jsx`** — the shared `/material-review` Nav entry and its `ClipboardCheckIcon`
+  import are removed; nothing replaces it at the top level, since each department now reaches its own
+  slice from inside its own existing tab.
+
+**Live-verified**: `npm run lint` clean (859 files). Confirmed every route the panels call
+(`/api/inward-approvals/[id]/decide`, `.../resubmit`, `/api/pre-dispatch-approvals/[id]/decide`,
+`/api/packing/[id]/submit-for-approval`) still exists unchanged. Confirmed no dangling reference to
+the deleted route/component anywhere in the app (`middleware.js`, every page/component) — remaining
+mentions are historical SYSTEM.md prose and inline comments explaining the supersession, matching this
+file's own established "leave a `superseded, see §X` note rather than silently rewriting history"
+convention (e.g. §5br). A full interactive click-through of all three relocated panels was not
+performed this round — the pre-existing routes/tables were already live-verified end to end under
+`/material-review` in §5cf, and this round's change is additive UI wiring around unchanged data, not
+new business logic.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own

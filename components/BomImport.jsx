@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import SearchableSelect from '@/components/SearchableSelect';
 import { CATEGORY_LABEL } from '@/lib/section-shapes';
+import { FileSpreadsheetIcon } from 'lucide-react';
 
 const CATEGORY_PREVIEW_OPTIONS = [
   { value: '', label: 'Uncategorized' },
@@ -28,7 +29,7 @@ export default function BomImport({ projectId, format = 'xlsx', onImported }) {
   // Keyed "sheetIndex-itemIndex", matching the server's own indexing on confirm.
   const [categoryOverrides, setCategoryOverrides] = useState({});
   const accept = format === 'csv' ? '.csv' : '.xlsx';
-  const label = format === 'csv' ? 'Import CSV' : 'Import PMB (.xlsx)';
+  const label = format === 'csv' ? 'Import CSV' : 'Upload PMB';
 
   async function pick(e) {
     const f = e.target.files?.[0];
@@ -74,9 +75,19 @@ export default function BomImport({ projectId, format = 'xlsx', onImported }) {
   return (
     <>
       <input ref={fileRef} type="file" accept={accept} className="hidden" onChange={pick} />
-      <Button variant="outline" disabled={busy} onClick={() => fileRef.current?.click()}>
-        {busy && !preview ? 'Reading…' : label}
-      </Button>
+      {format === 'csv' ? (
+        <Button variant="outline" disabled={busy} onClick={() => fileRef.current?.click()}>
+          {busy && !preview ? 'Reading…' : label}
+        </Button>
+      ) : (
+        // Excel-brand green (#217346) — a real, deliberate solid accent for the one destructive-
+        // adjacent action on this toolbar, sized to match the neighboring Released/Draft toggle.
+        <Button size="sm" disabled={busy} onClick={() => fileRef.current?.click()}
+          className="border-transparent bg-[#217346] text-white hover:bg-[#1a5c38]">
+          <FileSpreadsheetIcon data-icon="inline-start" />
+          {busy && !preview ? 'Reading…' : label}
+        </Button>
+      )}
 
       <Dialog open={!!preview} onOpenChange={o => !o && setPreview(null)}>
         <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">

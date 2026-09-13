@@ -176,6 +176,12 @@ export default function ReceiveBomItemDialog({ item, onDone }) {
           onPointerDownOutside={e => { if (e.target.closest('[data-slot="select-content"]')) e.preventDefault(); }}>
           <DialogHeader><DialogTitle>Receive: {item.material_description}</DialogTitle></DialogHeader>
           <form onSubmit={submit} className="flex flex-col gap-3">
+            {(item.make || item.selected_supplier_name || item.po_ref) && (
+              <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                {[item.make && `Make: ${item.make}`, item.selected_supplier_name && `Supplier: ${item.selected_supplier_name}`, item.po_ref && `PO: ${item.po_ref}`]
+                  .filter(Boolean).join(' · ')}
+              </div>
+            )}
             {/* A fresh "New receipt" pick here writes invoice_no through the same POST /api/stock-receipts
                 the create() call already uses — creating one directly against this BOM line's GRN would
                 need a second create path with no real benefit, since this dialog just needs the id back. */}

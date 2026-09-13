@@ -111,7 +111,6 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
   const [cancelReasonCode, setCancelReasonCode] = useState('');
   const [cancelRemark, setCancelRemark] = useState('');
   const [deleting, setDeleting] = useState(false);
-  const [submittingApproval, setSubmittingApproval] = useState(false);
 
   useEffect(() => {
     if (!list.project_id) return;
@@ -170,15 +169,6 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
     } catch (err) { showToast(err.message, 'error'); }
     finally { setPostingFreight(false); }
   }
-  async function submitForApproval() {
-    setSubmittingApproval(true);
-    try {
-      const res = await api(`/api/packing/${list.id}/submit-for-approval`, { method: 'POST' });
-      setList(l => ({ ...l, preDispatchApproval: { id: res.id, packing_list_id: l.id, status: 'pending', qc_decision: null, production_decision: null } }));
-      showToast('Submitted for QC/Production review');
-    } catch (err) { showToast(err.message, 'error'); }
-    finally { setSubmittingApproval(false); }
-  }
   async function generateEwayBill() {
     setGeneratingEwayBill(true);
     try {
@@ -211,12 +201,6 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
   );
 
   const linkedInvoice = invoices.find(i => i.id === list.sales_invoice_id);
-  const pda = list.preDispatchApproval;
-  const PDA_BADGE = {
-    pending: ['secondary', 'Pending QC/Production review'],
-    approved: ['default', 'Approved for dispatch'],
-    rejected: ['destructive', 'Rejected — needs resubmission'],
-  };
 
   return (
     <main className="container flex flex-col gap-6 py-8">
@@ -230,23 +214,8 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
               {list.bomRevisionDrift && <span className="text-warning"> — master's BOM has since moved to rev {list.masterBomRevision}</span>}
             </p>
           )}
-          {pda && (
-            <div className="mt-1 flex items-center gap-2">
-              <Badge variant={PDA_BADGE[pda.status]?.[0] || 'secondary'}>{PDA_BADGE[pda.status]?.[1] || pda.status}</Badge>
-              {(pda.qc_decision || pda.production_decision) && (
-                <span className="text-xs text-muted-foreground">
-                  QC: {pda.qc_decision || 'awaiting'} · Production: {pda.production_decision || 'awaiting'}
-                </span>
-              )}
-            </div>
-          )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {!readOnly && list.status === 'packed' && (!pda || pda.status === 'rejected') && (
-            <Button size="sm" disabled={submittingApproval} onClick={submitForApproval}>
-              {submittingApproval ? 'Submitting…' : pda ? 'Resubmit for review' : 'Submit for review'}
-            </Button>
-          )}
           {!readOnly && (
             <Select value={list.status} onValueChange={changeStatus}>
               <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>

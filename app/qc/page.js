@@ -1,9 +1,9 @@
 // QC workspace (QC-CHANGES.md) — department-gated top-level route with two project-scoped tabs
 // (Test Certificates + Documents), rendered by one client workspace component.
 import { redirect } from 'next/navigation';
-import { getFreshSessionUser, canAccessDepartment, roleHome } from '@/lib/auth';
+import { getFreshSessionUser, canAccessDepartment, isDepartmentHead, roleHome } from '@/lib/auth';
 import { canPerformAction } from '@/lib/action-permissions';
-import { getTestCertificates, getAllQcDocuments, getActiveProjectsList, getCalibrationItems, getReceivedProjectIds, getAllocatedChildProjectIds, getNcrs, getQcHoldPoints } from '@/lib/data';
+import { getTestCertificates, getAllQcDocuments, getActiveProjectsList, getCalibrationItems, getReceivedProjectIds, getAllocatedChildProjectIds, getNcrs, getQcHoldPoints, getPendingInwardApprovals, getPendingPreDispatchApprovals } from '@/lib/data';
 import QcWorkspace from '@/components/QcWorkspace';
 
 export const dynamic = 'force-dynamic';
@@ -13,7 +13,7 @@ export default async function QcPage({ searchParams }) {
   if (!canAccessDepartment(user, 'QC')) redirect(roleHome(user));
 
   const sp = await searchParams;
-  const [allProjects, certificates, documents, calibrationItems, receivedIds, allocatedChildIds, ncrs, holdPoints, canDisposition, canVerify, canClose] = await Promise.all([
+  const [allProjects, certificates, documents, calibrationItems, receivedIds, allocatedChildIds, ncrs, holdPoints, canDisposition, canVerify, canClose, inwardApprovals, preDispatchApprovals] = await Promise.all([
     // QC is the one deliberate exception to getActiveProjectsList()'s master-only default — real QC
     // documents are created per split-child unit, so QC's own picker needs children visible.
     getActiveProjectsList({ includeChildren: true }),
@@ -27,6 +27,11 @@ export default async function QcPage({ searchParams }) {
     canPerformAction(user, 'QC', 'qc.ncr.disposition'),
     canPerformAction(user, 'QC', 'qc.ncr.verify'),
     canPerformAction(user, 'QC', 'qc.ncr.close'),
+    // Inward + Pre-Dispatch QC/Production Approval Workflow — QC's own department-local Approvals
+    // tab (superseded the shared /material-review route). Both queues are unfiltered reads; every
+    // write route re-enforces the real decide authority server-side via requireAction.
+    getPendingInwardApprovals(),
+    getPendingPreDispatchApprovals(),
   ]);
 
   // A project is QC's business once Stores starts receiving its materials — filter the project
@@ -59,5 +64,7 @@ export default async function QcPage({ searchParams }) {
   return <QcWorkspace projects={projects} certificates={certificates} documents={documents}
     calibrationItems={calibrationItems} ncrs={ncrs} holdPoints={holdPoints} splitOrders={splitOrders}
     canDisposition={canDisposition} canVerify={canVerify} canClose={canClose}
+    inwardApprovals={inwardApprovals} preDispatchApprovals={preDispatchApprovals}
+    canDecideInward={isDepartmentHead(user, 'QC')} canDecideQcPreDispatch={isDepartmentHead(user, 'QC')}
     initialTab={sp?.tab} initialProject={sp?.project} />;
 }

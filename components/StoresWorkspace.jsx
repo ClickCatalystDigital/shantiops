@@ -2290,9 +2290,22 @@ function ReceiveDeliveryTab({ bomItems, router }) {
             {results.map(it => {
               const dates = it.all_expected_dates || [];
               const title = dates.length > 1 ? dates.map(formatDate).join(', ') : undefined;
+              // Procurement's own context (make/supplier/PO) — already fetched via getSourcingItems(),
+              // just never surfaced on this screen before. Stores confirms the right make/supplier
+              // arrived without opening the Receive dialog first.
+              const procParts = [
+                it.make && `Make: ${it.make}`,
+                it.selected_supplier_name && `Supplier: ${it.selected_supplier_name}`,
+                it.po_ref && `PO: ${it.po_ref}`,
+              ].filter(Boolean);
               return (
                 <div key={it.id} className="flex flex-wrap items-center gap-3 py-2.5 text-sm">
-                  <span className="min-w-0 flex-1 truncate font-medium">{it.material_description}</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium">{it.material_description}</p>
+                    {procParts.length > 0 && (
+                      <p className="truncate text-[11px] text-muted-foreground">{procParts.join(' · ')}</p>
+                    )}
+                  </div>
                   <span className="w-40 shrink-0 truncate text-xs text-muted-foreground">{it.project_no}</span>
                   <span className="w-24 shrink-0 truncate text-xs text-muted-foreground">{derivePurchaseStage(it)}</span>
                   <span className="w-36 shrink-0 truncate text-xs text-muted-foreground" title={title}>
@@ -2424,6 +2437,7 @@ function BomGrnTab({ bomItems, router }) {
             <div className="flex items-center gap-3 pb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
               <Checkbox className="shrink-0" checked={allShownSelected} onCheckedChange={toggleAllShown} aria-label="Select all shown" />
               <span className="flex-1">Part Description</span>
+              <span className="w-32 shrink-0">Make</span>
               <span className="w-28 shrink-0">Status</span>
               <span className="w-36 shrink-0">GRN Ref</span>
             </div>
@@ -2431,6 +2445,7 @@ function BomGrnTab({ bomItems, router }) {
               <div key={it.id} className="flex flex-wrap items-center gap-3 py-2.5 text-sm">
                 <Checkbox className="shrink-0" checked={selected.has(it.id)} onCheckedChange={v => toggleOne(it.id, !!v)} aria-label="Select item" />
                 <span className="min-w-0 flex-1 truncate font-medium">{it.material_description}</span>
+                <span className="w-32 shrink-0 truncate text-xs text-muted-foreground">{it.make || '—'}</span>
                 <span className="w-28 shrink-0 truncate text-xs text-muted-foreground">{it.purchase_status || 'Enquiry'}</span>
                 <span className="w-36 shrink-0 truncate text-xs text-muted-foreground">{it.grn_ref || '—'}</span>
               </div>

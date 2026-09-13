@@ -8,7 +8,7 @@ import {
   LayoutDashboardIcon, FolderKanbanIcon, PackageIcon, ShieldCheckIcon, InfoIcon,
   CalendarDaysIcon, HardHatIcon, ShoppingCartIcon, InboxIcon, FlaskConicalIcon,
   TagIcon, WarehouseIcon, TrendingUpIcon, UsersIcon, CalculatorIcon, MapPinIcon, NetworkIcon,
-  LandmarkIcon, ClipboardListIcon, PencilRulerIcon, ClipboardCheckIcon,
+  LandmarkIcon, ClipboardListIcon, PencilRulerIcon,
 } from 'lucide-react';
 import { DEPARTMENTS } from '@/lib/milestones';
 import { cn } from '@/lib/utils';
@@ -87,9 +87,6 @@ export default function Nav({ user, reportDepartments = [] }) {
   addDeptTab(['Production'], '/planning', 'Planning', ClipboardListIcon);
   addDeptTab(['QC'], '/qc', 'QC', FlaskConicalIcon);
   addDeptTab(['Dispatch'], '/dispatch', 'Dispatch', PackageIcon);
-  // Inward + Pre-Dispatch QC/Production Approval Workflow — deliberately NOT '/approvals', which is
-  // already the existing USB-device/browser security-approval platform (Part B of this app).
-  addDeptTab(['QC', 'Production', 'Dispatch'], '/material-review', 'QC & Production Review', ClipboardCheckIcon);
   addDeptTab(['Installation'], '/installation', 'Installation', MapPinIcon);
   addDeptTab(['Accounts'], '/accounts', 'Accounts', LandmarkIcon);
   addDeptTab(['HR'], '/hr', 'HR', UsersIcon);

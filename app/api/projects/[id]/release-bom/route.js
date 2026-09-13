@@ -85,6 +85,20 @@ export async function POST(req, { params }) {
       { status: 400 });
   }
 
+  // §5ck — the symmetric gate for "assigned to a structure node," same shape/scoping as the
+  // uncategorized check above. Only blocks the release *action* — it never retroactively un-releases
+  // a project that already went out before this gate existed (confirmed live: SB-1040, released once
+  // already, currently sits at 327 of 328 items unassigned; that stays exactly as released, it would
+  // only need resolving if someone ever tries to re-release it).
+  const unassigned = await queryOne(
+    `SELECT COUNT(*) AS n FROM bom_items WHERE project_id = ? AND source = 'bom' AND assembly_id IS NULL`,
+    [params.id]);
+  if (unassigned.n > 0) {
+    return NextResponse.json(
+      { error: `${unassigned.n} item(s) are not assigned to a structure node — resolve this before releasing` },
+      { status: 400 });
+  }
+
   // Release-baseline revision — the "Released BOM revision" Production/QC/Procurement can point at
   // (§5k addendum). One counter bump + one stamp of every live line, not a new workflow.
   const revision = (project.bom_release_revision || 0) + 1;

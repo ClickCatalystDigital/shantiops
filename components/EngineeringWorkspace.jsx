@@ -369,8 +369,8 @@ function ProjectHeaderBar({
         {tab === 'structure' && globalProjectId && (
           <BomImport projectId={Number(globalProjectId)} format="xlsx" onImported={onImported} />
         )}
-        <Button size="sm" variant={globalShowReleased ? 'secondary' : 'outline'} onClick={() => setGlobalShowReleased(v => !v)}>
-          {globalShowReleased ? 'Showing released' : 'Show released too'}
+        <Button size="sm" variant="secondary" onClick={() => setGlobalShowReleased(v => !v)}>
+          {globalShowReleased ? 'Released' : 'Draft'}
         </Button>
         <SearchableSelect
           className="w-72"

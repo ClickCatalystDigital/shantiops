@@ -18,7 +18,7 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectGroup, SelectItem,
 } from '@/components/ui/select';
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table';
-import { PlusIcon, HouseIcon, ClipboardListIcon, UsersIcon, HardHatIcon, PackageIcon, ScissorsIcon, TrashIcon, ClipboardIcon, TrendingUpIcon } from 'lucide-react';
+import { PlusIcon, HouseIcon, ClipboardListIcon, UsersIcon, HardHatIcon, PackageIcon, ScissorsIcon, TrashIcon, ClipboardIcon, TrendingUpIcon, ClipboardCheckIcon } from 'lucide-react';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 import JobCardBoard from '@/components/JobCardBoard';
 import BomTable from '@/components/BomTable';
@@ -28,6 +28,7 @@ import WorkOrdersPanel from '@/components/WorkOrdersPanel';
 import ProductionForecastPanel from '@/components/ProductionForecastPanel';
 import CutDialog from '@/components/CutDialog';
 import SearchableSelect from '@/components/SearchableSelect';
+import { PreDispatchApprovalsPanel } from '@/components/MaterialApprovalPanels';
 import { DIMENSIONAL_CATEGORIES as SHAPE_CATEGORIES } from '@/lib/bom-fields.mjs';
 
 // Renamed from "Workers" to "Job Card" (PRODUCTION-MODULE-DESIGN.md §3.1 nav decision) — job cards
@@ -37,9 +38,9 @@ import { DIMENSIONAL_CATEGORIES as SHAPE_CATEGORIES } from '@/lib/bom-fields.mjs
 // BOM/Forecast/Daily Sheet/Workers Roster all live here too now, so the workspace name needs to
 // cover the whole thing; Job Card stays exactly as it was, just as the default sub-tab, same
 // "workspace name ≠ default sub-tab" shape every other department tab already has.
-const WORKSPACE_TABS = ['jobcards', 'workorders', 'bom', 'forecast', 'sheet', 'roster'];
+const WORKSPACE_TABS = ['jobcards', 'workorders', 'bom', 'forecast', 'sheet', 'roster', 'approvals'];
 
-export default function WorkersPanel({ date, sheet, workers, projects, trades, jobCards, operations, workstations }) {
+export default function WorkersPanel({ date, sheet, workers, projects, trades, jobCards, operations, workstations, preDispatchApprovals = [], canDecideProduction = false }) {
   // Operations' Production pipeline glance (ProductionFlow.jsx) links a stage straight into a
   // specific sub-tab (and, for Work Orders, a specific status) — read once off the URL the same way
   // DepartmentHelpWorkspace.jsx already does for its own ?dept=&page=, not a new pattern.
@@ -57,6 +58,10 @@ export default function WorkersPanel({ date, sheet, workers, projects, trades, j
     { key: 'forecast', label: 'Forecast', icon: TrendingUpIcon },
     { key: 'sheet', label: 'Daily Sheet', icon: ClipboardListIcon },
     { key: 'roster', label: 'Workers Roster', icon: UsersIcon },
+    // Inward + Pre-Dispatch QC/Production Approval Workflow — Production's own department-local
+    // slice (the retired top-level /material-review page). Only Pre-Dispatch, never Inward — that
+    // half is QC-only. No shared cross-department page, per direct instruction.
+    { key: 'approvals', label: 'Approvals', icon: ClipboardCheckIcon },
   ];
 
   return (
@@ -69,6 +74,9 @@ export default function WorkersPanel({ date, sheet, workers, projects, trades, j
       {tab === 'forecast' && <ProductionForecastPanel />}
       {tab === 'sheet' && <DailySheetWorkspace date={date} sheet={sheet} projects={projects} />}
       {tab === 'roster' && <Roster workers={workers} trades={trades} />}
+      {tab === 'approvals' && (
+        <PreDispatchApprovalsPanel rows={preDispatchApprovals} canDecideQc={false} canDecideProduction={canDecideProduction} />
+      )}
     </WorkspaceSidebar>
   );
 }

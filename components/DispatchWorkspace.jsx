@@ -16,13 +16,14 @@ import Link from 'next/link';
 import { api, showToast, formatDate, formatMoney } from '@/lib/client';
 import WorkspaceSidebar from './WorkspaceSidebar';
 import DispatchBoard from './DispatchBoard';
+import { DispatchApprovalsPanel } from './MaterialApprovalPanels';
 import { Card, CardHeader, CardTitle, CardAction, CardContent } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Badge } from './ui/badge';
 import {
   PackageIcon, PackageCheckIcon, ClipboardListIcon, TruckIcon, FileTextIcon,
-  SearchIcon, XIcon,
+  SearchIcon, XIcon, ClipboardCheckIcon,
 } from 'lucide-react';
 
 const STAGE_LABEL = { draft: 'Draft', packed: 'Ready', dispatched: 'Dispatched' };
@@ -346,8 +347,8 @@ function DocumentsTab({ lists, initialMissingEway = false }) {
 
 // ---- Shell ----
 
-export default function DispatchWorkspace({ lists, pendingItems, flowCounts, initialTab }) {
-  const [tab, setTab] = useState(['board', 'pending', 'deliveries', 'documents'].includes(initialTab) ? initialTab : 'board');
+export default function DispatchWorkspace({ lists, pendingItems, flowCounts, approvalQueue = [], initialTab }) {
+  const [tab, setTab] = useState(['board', 'pending', 'deliveries', 'documents', 'approvals'].includes(initialTab) ? initialTab : 'board');
   // A one-shot seed for Documents' "Missing E-Way Bill" chip when arrived at via the Packing Lists
   // pill — DocumentsTab remounts fresh on every tab switch (conditionally rendered below), so this
   // only matters at the instant of that specific navigation, not as an ongoing controlled value.
@@ -356,12 +357,19 @@ export default function DispatchWorkspace({ lists, pendingItems, flowCounts, ini
   const pendingReadyCount = pendingItems.filter(it => it.readyForPacking).length;
   const awaitingAckCount = lists.filter(l => l.status === 'dispatched' && !l.delivery_ack_status).length;
   const missingEwayCount = lists.filter(l => ['packed', 'dispatched'].includes(l.status) && !l.eway_bill_no).length;
+  // Not yet submitted or rejected — the two states Dispatch actually needs to act on from this tab;
+  // "pending review"/"approved" are informational only, not counted as needing Dispatch's own action.
+  const approvalActionCount = approvalQueue.filter(r => !r.approval_status || r.approval_status === 'rejected').length;
 
   const navItems = [
     { key: 'board', label: 'Packing Lists', icon: PackageCheckIcon },
     { key: 'pending', label: 'Pending Items', icon: ClipboardListIcon, badge: pendingReadyCount || null },
     { key: 'deliveries', label: 'Deliveries', icon: TruckIcon, badge: awaitingAckCount || null },
     { key: 'documents', label: 'Documents', icon: FileTextIcon, badge: missingEwayCount || null },
+    // Inward + Pre-Dispatch QC/Production Approval Workflow — Dispatch's own Submit/Resubmit +
+    // status tab (the retired top-level /material-review page's Dispatch-facing read-only view,
+    // plus the Submit/Resubmit action that used to live inline on PackingDetail.jsx).
+    { key: 'approvals', label: 'Approvals', icon: ClipboardCheckIcon, badge: approvalActionCount || null },
   ];
 
   // Sidebar clicks always land clean (no stale pre-filter from an earlier pill click); pill clicks
@@ -384,6 +392,7 @@ export default function DispatchWorkspace({ lists, pendingItems, flowCounts, ini
       {tab === 'pending' && <PendingItemsTab items={pendingItems} />}
       {tab === 'deliveries' && <DeliveriesTab lists={lists} />}
       {tab === 'documents' && <DocumentsTab lists={lists} initialMissingEway={docsPrefilter} />}
+      {tab === 'approvals' && <DispatchApprovalsPanel rows={approvalQueue} />}
     </WorkspaceSidebar>
   );
 }
