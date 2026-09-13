@@ -3,9 +3,10 @@
 // explicit "approval" field); issue/mark-returned/cancel and per-item returned ticks are the
 // ordinary write action. A single PATCH body carries one of: {action:'approve'|'issue'|'cancel'},
 // or {item_id, returned} for one line — mark-returned-as-a-whole is just ticking every line.
+// Widened Stores-only -> Stores OR Dispatch alongside the route.js POST above, same reasoning.
 import { NextResponse } from 'next/server';
 import { execute, queryOne, queryAll } from '@/lib/db';
-import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
+import { getFreshSessionUser, requireDepartment, canAccessDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 
@@ -17,8 +18,10 @@ const TRANSITIONS = {
 
 export async function PATCH(req, { params }) {
   const user = await getFreshSessionUser();
-  const denied = requireDepartment(user, 'Stores');
-  if (denied) return denied;
+  const deniedStores = requireDepartment(user, 'Stores');
+  const deniedDispatch = requireDepartment(user, 'Dispatch');
+  if (deniedStores && deniedDispatch) return deniedStores;
+  const actingDept = canAccessDepartment(user, 'Stores') ? 'Stores' : 'Dispatch';
 
   const gp = await queryOne('SELECT * FROM gate_passes WHERE id = ?', [params.id]);
   if (!gp) return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -28,7 +31,7 @@ export async function PATCH(req, { params }) {
   // Per-item returned tick — no status transition of its own; once every item on an issued pass
   // is returned, the pass as a whole flips to 'returned'.
   if (b.item_id) {
-    const actionDenied = await requireAction(user, 'Stores', 'stores.gatepass.write');
+    const actionDenied = await requireAction(user, actingDept, 'stores.gatepass.write');
     if (actionDenied) return actionDenied;
     if (!['issued', 'returned'].includes(gp.status)) {
       return NextResponse.json({ error: `Cannot tick a return before the pass is issued (currently ${gp.status})` }, { status: 409 });
@@ -50,7 +53,7 @@ export async function PATCH(req, { params }) {
 
   const t = TRANSITIONS[b.action];
   if (!t) return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
-  const actionDenied = await requireAction(user, 'Stores', t.actionKey);
+  const actionDenied = await requireAction(user, actingDept, t.actionKey);
   if (actionDenied) return actionDenied;
   if (!t.from.includes(gp.status)) return NextResponse.json({ error: `Cannot ${b.action} from ${gp.status}` }, { status: 409 });
 

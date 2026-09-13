@@ -1,11 +1,13 @@
 // app/api/gate-passes/route.js — STERP item 15. Returnable / Non-Returnable Gate Pass: item list,
 // expected return date (returnable only), responsible person, approval, and returned/overdue
-// status (overdue derived, see getGatePasses). GET is isInternal-gated, writes are Stores-only —
-// approval is a separate action key (stores.gatepass.approve), not folded into write, since
-// STERP explicitly calls out approval as its own step.
+// status (overdue derived, see getGatePasses). GET is isInternal-gated, writes are Stores OR
+// Dispatch (widened when the Gate Passes screen moved to Dispatch's own workspace — Stores'
+// existing write access is unchanged, additive only) — approval is a separate action key
+// (stores.gatepass.approve), not folded into write, since STERP explicitly calls out approval as
+// its own step.
 import { NextResponse } from 'next/server';
 import { execute, withTransaction, nextCounterValue } from '@/lib/db';
-import { getFreshSessionUser, isInternal, requireDepartment } from '@/lib/auth';
+import { getFreshSessionUser, isInternal, requireDepartment, canAccessDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { getGatePasses } from '@/lib/data';
 import { audit } from '@/lib/usb';
@@ -18,9 +20,11 @@ export async function GET() {
 
 export async function POST(req) {
   const user = await getFreshSessionUser();
-  const denied = requireDepartment(user, 'Stores');
-  if (denied) return denied;
-  const actionDenied = await requireAction(user, 'Stores', 'stores.gatepass.write');
+  const deniedStores = requireDepartment(user, 'Stores');
+  const deniedDispatch = requireDepartment(user, 'Dispatch');
+  if (deniedStores && deniedDispatch) return deniedStores;
+  const actingDept = canAccessDepartment(user, 'Stores') ? 'Stores' : 'Dispatch';
+  const actionDenied = await requireAction(user, actingDept, 'stores.gatepass.write');
   if (actionDenied) return actionDenied;
 
   const b = await req.json();

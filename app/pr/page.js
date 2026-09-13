@@ -4,7 +4,7 @@
 // three separate builds.
 import { redirect } from 'next/navigation';
 import { getFreshSessionUser, canAccessDepartment, headDepartments, isPM, roleHome } from '@/lib/auth';
-import { getActiveProjectsList, getInventoryItems } from '@/lib/data';
+import { getActiveProjectsList, getInventoryItems, getReorderSuggestions } from '@/lib/data';
 import PrWorkspace from '@/components/PrWorkspace';
 
 export const dynamic = 'force-dynamic';
@@ -18,9 +18,10 @@ export default async function PrPage({ searchParams }) {
   const sp = await searchParams;
   const departments = isPM(user) ? PR_DEPARTMENTS : headDepartments(user).filter(d => PR_DEPARTMENTS.includes(d));
   // inventoryItems only matters for Stores' stock source (Phase 6.4) — small table, cheap to fetch
-  // regardless of whether Stores is among this viewer's departments.
-  const [projects, inventoryItems] = await Promise.all([
-    getActiveProjectsList(), getInventoryItems(),
+  // regardless of whether Stores is among this viewer's departments. reorderSuggestions backs the
+  // Reorder Suggestions tab, relocated here from StoresWorkspace.jsx (Stores IA redesign).
+  const [projects, inventoryItems, reorderSuggestions] = await Promise.all([
+    getActiveProjectsList(), getInventoryItems(), getReorderSuggestions(),
   ]);
 
   // No PageHeader/<main container> here — PrWorkspace owns the full sidebar layout itself (its
@@ -32,5 +33,6 @@ export default async function PrPage({ searchParams }) {
   // Phase 1 nav reorg (SYSTEM.md): ?tab= mirrors app/engineering/page.js's own pattern — Release
   // BOM was dropped from PrWorkspace's visible sidebar, so /pr?tab=release is now its only UI path
   // (still behind the exact same PR_DEPARTMENTS gate above; no new access is granted by this).
-  return <PrWorkspace departments={departments} projects={projects} inventoryItems={inventoryItems} initialTab={sp?.tab} />;
+  return <PrWorkspace departments={departments} projects={projects} inventoryItems={inventoryItems}
+    reorderSuggestions={reorderSuggestions} initialTab={sp?.tab} />;
 }

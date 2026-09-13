@@ -23,7 +23,7 @@ import { Badge } from './ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup } from './ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from './ui/dialog';
-import { TrashIcon, PlusIcon, ClipboardListIcon, LayoutTemplateIcon, CheckIcon, DownloadIcon, UndoIcon, HistoryIcon } from 'lucide-react';
+import { TrashIcon, PlusIcon, ClipboardListIcon, LayoutTemplateIcon, CheckIcon, DownloadIcon, UndoIcon, HistoryIcon, AlertTriangleIcon } from 'lucide-react';
 import WorkspaceSidebar from './WorkspaceSidebar';
 import BomTable from './BomTable';
 import DimensionInput from './DimensionInput';
@@ -889,14 +889,90 @@ export function ReleaseBomTab({ projects, departments = [], projectId: controlle
 // renders the "PR Templates"/"BOM Templates" sections from both Engineering and Requests (see
 // PrWorkspace below and EngineeringWorkspace.jsx). Nothing here changed behavior, only location.
 
-export default function PrWorkspace({ departments, projects, inventoryItems = [], initialTab }) {
+// Stores IA redesign — moved here from StoresWorkspace.jsx's own "Reorder Suggestions" tab. The
+// underlying data (getReorderSuggestions()) and action (POST /api/purchase-requisitions,
+// source='stock') are unchanged; only the screen it renders on moved, since raising a replenishment
+// request is a Purchase-Requests-owned action even though the trigger (below reorder point) is
+// Stores' own inventory signal. Own useRouter() call rather than a prop, so this component doesn't
+// need PrWorkspace's outer scope to thread one through.
+function ReorderSuggestionsCard({ reorderSuggestions }) {
+  const router = useRouter();
+  const [qtyById, setQtyById] = useState({});
+  const [busyId, setBusyId] = useState(null);
+
+  function suggestedQty(it) {
+    const raw = Math.max(1, Math.ceil((it.reorder_point || 0) - it.available));
+    return qtyById[it.id] ?? raw;
+  }
+
+  async function createRequest(it) {
+    const qty = Number(suggestedQty(it));
+    if (!qty || qty <= 0) return showToast('Enter a quantity', 'error');
+    setBusyId(it.id);
+    try {
+      await api('/api/purchase-requisitions', {
+        method: 'POST',
+        body: {
+          raised_by_dept: 'Stores',
+          lines: [{ material_description: it.description, moc: it.moc, source: 'stock', inventory_item_id: it.id, qty }],
+        },
+      });
+      showToast('Replenishment request created');
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+    setBusyId(null);
+  }
+
+  return (
+    <Card>
+      <CardHeader><CardTitle>Reorder suggestions</CardTitle></CardHeader>
+      <CardContent>
+        {reorderSuggestions.length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">Nothing below its minimum right now.</p>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Description</TableHead>
+                <TableHead>Available</TableHead>
+                <TableHead>Minimum</TableHead>
+                <TableHead>Suggested qty</TableHead>
+                <TableHead></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {reorderSuggestions.map(it => (
+                <TableRow key={it.id}>
+                  <TableCell className="font-medium">{it.description}</TableCell>
+                  <TableCell><Badge variant="destructive">{it.available}</Badge></TableCell>
+                  <TableCell className="text-muted-foreground">{it.reorder_point}</TableCell>
+                  <TableCell>
+                    <Input type="number" className="w-24" value={suggestedQty(it)}
+                      onChange={e => setQtyById({ ...qtyById, [it.id]: e.target.value })} />
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button size="sm" disabled={busyId === it.id} onClick={() => createRequest(it)}>
+                      {busyId === it.id ? 'Creating…' : 'Create request'}
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+export default function PrWorkspace({ departments, projects, inventoryItems = [], reorderSuggestions = [], initialTab }) {
   // Purchase Requests is the default landing tab (a deliberate UX change from the old default,
   // "Templates" — see SYSTEM.md's Phase 1 plan for why). Release BOM was briefly dropped from this
   // sidebar on the theory that the BOM workspace's own Release button (Engineering tab) made it
   // redundant here — reinstated after that read as "where did it go" rather than a cleaner nav, per
   // direct feedback. Both buttons fire the exact same POST route, so nothing was ever duplicated at
   // the data layer, only the entry point.
-  const [tab, setTab] = useState(['raise', 'history', 'templates', 'release'].includes(initialTab) ? initialTab : 'raise');
+  const [tab, setTab] = useState(['raise', 'history', 'templates', 'release', 'reorder'].includes(initialTab) ? initialTab : 'raise');
   const [prTemplatePrefill, setPrTemplatePrefill] = useState(null);
   // Release BOM only shows for a viewer who can actually release (canRelease() in
   // app/api/projects/[id]/release-bom/route.js requires Design or Engineering) — a Stores-only head
@@ -908,6 +984,7 @@ export default function PrWorkspace({ departments, projects, inventoryItems = []
     { key: 'history', label: 'PR History', icon: HistoryIcon },
     ...(canReleaseBom ? [{ key: 'release', label: 'Release BOM', icon: CheckIcon }] : []),
     { key: 'templates', label: 'PR Templates', icon: LayoutTemplateIcon },
+    { key: 'reorder', label: 'Reorder Suggestions', icon: AlertTriangleIcon, badge: reorderSuggestions.length || null },
   ];
   // Stores heads have Requests access but not Engineering access (where BOM Templates now
   // primarily lives) — the app's own help docs already describe Stores applying BOM templates, so
@@ -934,6 +1011,7 @@ export default function PrWorkspace({ departments, projects, inventoryItems = []
           {showBomTemplatesHere && <BomTemplateManager kind="bom" title="BOM Templates" projects={projects} />}
         </div>
       )}
+      {tab === 'reorder' && <ReorderSuggestionsCard reorderSuggestions={reorderSuggestions} />}
     </WorkspaceSidebar>
   );
 }

@@ -1077,7 +1077,7 @@ export const DEPARTMENT_HELP = {
       }),
       feature('issues', 'Material issued to WIP', PackageCheckIcon, ['Log material leaving Stores for the shop floor — pick the project, the BOM item, and the quantity. This is a separate action from Reserve→Issue: it does not touch on-hand or purchase status, it is purely a record of what physically went to WIP and when.', 'Production can log the same event from their own BOM view — either side recording it is fine, there is no duplicate-entry conflict since each is just an append-only log row, not a status change.']),
       feature('reorder', 'Reorder suggestions', AlertTriangleIcon, [
-        'Every item at or below its minimum stock level (the same "Low" flag Inventory already shows) appears here with a suggested replenishment quantity — minimum minus available, editable before you commit.',
+        'Every item at or below its minimum stock level (the same "Low" flag Inventory already shows) appears under Requests → Reorder Suggestions (the same "Requests" tab you already use to raise material demand) with a suggested replenishment quantity — minimum minus available, editable before you commit.',
         'Create request turns a suggestion into a real Build stock request through the same flow Inventory\'s own stock-request path already uses — it lands in Open Requests as an ordinary Enquiry line, same as if you\'d raised it by hand.',
         'Nothing is created automatically. A suggestion stays a suggestion — visible, editable, ignorable — until you click Create request; and once you do, that item drops off this list until it needs reordering again.',
       ]),
@@ -1085,12 +1085,6 @@ export const DEPARTMENT_HELP = {
         'Log every vehicle that enters the gate with material: vehicle number, supplier, driver, a material reference (PO/DC/BOM), and the two security checks (seal intact, documents verified) plus any remarks.',
         'A GIR is the gate-entry record, not the GRN — it exists independently of whether the material has been formally received yet. Attach the GRN reference and close the GIR once receipt is confirmed.',
         'This is a standalone security-desk log, not part of the reserve/available inventory model — creating a GIR never touches on-hand stock by itself.',
-      ]),
-      feature('gatepass', 'Gate Passes', FileOutputIcon, [
-        'Raise a Returnable or Non-returnable gate pass before material or tooling leaves the gate — party/destination, responsible person, purpose, and an item list. A returnable pass also takes an expected return date; a non-returnable one does not.',
-        'Approve, then Issue — a pass only leaves draft once someone with approval authority signs off. Cancel is available before issue.',
-        'Once issued, tick each item off as it actually comes back — the pass itself flips to Returned automatically the moment every item on it is ticked, and back to Issued if you un-tick one by mistake.',
-        'A returnable pass still out past its expected return date shows an Overdue badge — computed live, not something you have to check for; it clears the moment the pass is fully returned.',
       ]),
       feature('tasks', 'Tasks and handoffs', ListChecksIcon, ['Use Tasks for a missing document, a receipt question, or a delivery follow-up. Close the task when the physical or documentary action is complete.', 'Operations now shows Outgoing and Incoming Incidents for Stores, split by direction — same pattern Procurement already has. Raising one from either card sends a real notification to the other department immediately; there is nothing extra to do beyond filling in the Raise dialog.']),
     ],
@@ -1101,10 +1095,9 @@ export const DEPARTMENT_HELP = {
       { title: 'Issue material', body: 'From Active reservations, click Issue once material actually leaves Stores for a reserved requirement — it decrements on-hand and marks that BOM line In-Stock. For material that arrived the normal way (not via a stock reservation) and is now physically leaving for the shop floor, use Material issued to WIP instead — pick the project and BOM item and log the quantity.' },
       { title: 'Handle a mismatch', body: 'Do not force a receipt into the wrong line. Raise a task to Procurement or Engineering with the PO, material description, and actual quantity.' },
       { title: 'Close the loop', body: 'Make sure the BOM receipt fields, inventory quantity, and reservation state agree before closing the Stores task.' },
-      { title: 'Act on a reorder suggestion', body: 'Open Reorder Suggestions, check the suggested quantity against what you actually want to hold, adjust it if needed, and click Create request. Reserve from stock first if a request in Open Requests could be filled from what you already have — Reorder Suggestions is for topping up depleted stock, not a substitute for reserving.' },
+      { title: 'Act on a reorder suggestion', body: 'Open Requests → Reorder Suggestions, check the suggested quantity against what you actually want to hold, adjust it if needed, and click Create request. Reserve from stock first if a request in Open Requests could be filled from what you already have — Reorder Suggestions is for topping up depleted stock, not a substitute for reserving.' },
       { title: 'Log a Gate Inward Receipt', body: 'The moment a vehicle enters with material, log a GIR: vehicle, supplier, driver, a material reference, and the two security checks. Enter at least a vehicle number or supplier — a blank GIR is not a real record.' },
       { title: 'Close a GIR', body: 'Once the material is actually received (via Procurement\'s GRN or your own confirmation), enter the GRN reference on the GIR row and click Close. Close is disabled until a GRN reference exists — a closed GIR always means the receipt is real, not just that the gate visit is over.' },
-      { title: 'Issue and close out a Gate Pass', body: 'Raise the pass (Returnable or Non-returnable), get it Approved, then Issue it the moment material actually leaves. For a returnable pass, tick each item off as it comes back — the pass flips to Returned on its own once every item is ticked. An overdue returnable pass shows a badge automatically; there is nothing else to check for it.' },
     ],
   },
   Production: {
@@ -1428,6 +1421,12 @@ export const DEPARTMENT_HELP = {
       feature('packing', 'Packing details', BoxesIcon, ['Add box number, quantity, unit, MOC, size/spec, item code, ibr number, make, and scanned quantity as applicable.', 'Scanned quantity is a physical check; it should not silently exceed the BOM quantity without an explanation.']),
       feature('pdf', 'Packing PDFs', FileTextIcon, ['Generate the customer-facing PDF when the list is Ready. Use the pending-list PDF when you need a list of lines still waiting to be packed.', 'Check customer name, address, invoice/DC details, vehicle, and dispatch method before issuing the document.']),
       feature('reconcile', 'BOM reconciliation', ClipboardCheckIcon, ['A packing item keeps a link to its BOM line. Use that link to explain what was carried, what remains pending, and why a partial list was created.']),
+      feature('gatepass', 'Gate Passes', FileOutputIcon, [
+        'Raise a Returnable or Non-returnable gate pass before material or tooling leaves the gate — party/destination, responsible person, purpose, and an item list. A returnable pass also takes an expected return date; a non-returnable one does not.',
+        'Approve, then Issue — a pass only leaves draft once someone with approval authority signs off. Cancel is available before issue.',
+        'Once issued, tick each item off as it actually comes back — the pass itself flips to Returned automatically the moment every item on it is ticked, and back to Issued if you un-tick one by mistake.',
+        'A returnable pass still out past its expected return date shows an Overdue badge — computed live, not something you have to check for; it clears the moment the pass is fully returned.',
+      ]),
       feature('reports', 'Reports', BarChart3Icon, [
         'Dispatch Register lists every dispatched shipment with its freight and e-way bill details. E-Way Bill Register narrows that to shipments carrying an e-way bill number. Freight Cost Summary groups freight spend by who paid it and by month. Pending vs Dispatched Aging is the flip side of the Register — shipments still sitting, by how long.',
         'Every report reads live off the same packing list data — there is nothing to enter separately for reporting.',
@@ -1443,6 +1442,7 @@ export const DEPARTMENT_HELP = {
       { title: 'Release the document', body: 'Move the list to Ready only after the contents and header are checked, then generate the PDF.' },
       { title: 'Close dispatch', body: 'After the vehicle leaves, move the list to Dispatched and keep the PDF with the customer/order record.' },
       { title: 'Check aging', body: 'Use Pending vs Dispatched Aging to spot lists sitting in Draft or Ready too long before they actually ship.' },
+      { title: 'Issue and close out a Gate Pass', body: 'Raise the pass (Returnable or Non-returnable), get it Approved, then Issue it the moment material actually leaves. For a returnable pass, tick each item off as it comes back — the pass flips to Returned on its own once every item is ticked. An overdue returnable pass shows a badge automatically; there is nothing else to check for it.' },
     ],
   },
   Installation: {

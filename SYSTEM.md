@@ -10605,6 +10605,186 @@ already match an existing ID) — not adopted.
 supply) deleted after verification, confirmed via direct query to zero `ZZ-`-prefixed projects
 remaining anywhere in the database.
 
+## 5co. `make`/`size_spec`/`moc`/`purchase_status` normalization — researched, deferred, not built (2026-09-13)
+
+Direct follow-on the same day: the user pushed back on §5cn's storage-as-IDs conclusion, specifically
+for `make` (should be a real supplier reference), `size_spec` (should never be free text — each
+dimension its own numeric field + unit), `moc` (should be a lookup that can grow with new values),
+and `purchase_status` (keep as a string, but normalize capitalization). Investigated each against
+real data before proposing anything — the findings below matter more than the surface-level ask, and
+one of them (`make`) turned out to genuinely contradict the proposed fix. **Explicitly deferred, not
+built** — the user asked to research and document this as a real, important gap for a future session,
+not implement it now.
+
+- **`make` — real data says this should NOT become a straight `supplier_id` FK.** Queried every
+  distinct `make` value across the whole DB (73 distinct values, 132 populated rows): only **4 exactly
+  match a real `suppliers.name`** (`Karoli Pipes`, `Bharat Tubes Corporation`, `Delite Industries`,
+  `Bhilai Ispat Udyog` — ~5.5% of distinct values). The dominant real pattern instead is a
+  **multi-brand "or equivalent" specification** — `"CARONA/EQUIVALENT"` (11 rows), `"ELEMS / ATAM /
+  EQUA"` (8), `"H GURU / WAREE / FGV ENTERPRISE"` (6), `"UTAM / ATAM / EQ."` (4), `"ZOLOTO / RUSHAS"`
+  (3), and several more — standard Indian manufacturing-procurement practice: Design specifies which
+  brands are acceptable, Purchasing picks whichever is actually available at PO time. A single FK
+  cannot represent "any of these three brands" without either a many-to-many join or silently
+  discarding two of the three real options. A handful of other values are outright **column-shift
+  data-entry artifacts** — `"1250X2500X3.15 MM THICK"`, `"ISMC75X40X5T X 2000Lg"`, `"ISA40X5T"` are
+  genuine size specs that landed in the `make` column in specific source files, the same class of
+  transposed-column issue §5cc already documented for `"BODY SHELL MATERIAL"`. Forcing this column
+  straight into `suppliers` would be actively wrong for roughly a third of real populated rows and
+  would inherit the artifacts uncleaned. This app's existing design already gets the real "who did we
+  buy from" question right through a completely separate mechanism (`supplier_quotes`/
+  `purchase_orders.supplier_id`, §5c) — `bom_items.make` is the design engineer's brand note, a
+  different real-world fact, not a stand-in for it. **If this is picked up**: a real fix would model
+  "acceptable brands" as its own small many-to-many concept (not `suppliers`, which is specifically
+  "who we can buy from," a distinct axis) — and would need a one-time data-cleanup pass to find and
+  fix the column-shift artifacts first, since they'd otherwise become garbage brand entries.
+- **`size_spec` — the structured-dimension schema already exists (`category_fields_json` +
+  `GEOMETRY_SHAPES`/`STANDARD_SECTIONS`, `lib/section-shapes.js`), it's just never populated by PMB
+  import.** This is the same, already-documented (§5o) scope boundary restated in §5cn — worth
+  restating here because the user's specific ask ("each dim as a numerical field and a unit field
+  each") is *almost* what already exists for the 5 geometry-shape categories (flat/round/square/
+  octagonal/plate get real per-dimension numeric fields: width/thickness/length/diameter/side/
+  across_flats) and the 4 rolled-section categories (angle/beam/channel/pipe get a picked
+  size-designation + `kg_per_m`) — **but every dimension's stored *unit* is implicitly millimeters**,
+  not a separate stored field; the composer's `DimensionInput` only toggles the *input* unit for
+  convenience, converting to mm before storage. A real fix has two genuinely separate pieces, worth
+  keeping distinct: (1) **teaching the PMB importer to parse `size_spec` into `category_fields_json`**
+  at import time — checked directly against these 6 files' own real strings and confirmed this is
+  harder than it looks, since even one client uses several incompatible per-shape notations
+  side by side (`"2500 X 12000 X 16THK."`, `"Φ63.5 x 3.66 THK - 2780 LG"`, `"SQ.10x10- 5000 LG."`,
+  `"ISA 40 X 40 X 5"` — plate/round/square/angle each written differently, sometimes with multiple
+  size variants merged into one cell for a multi-qty line); (2) **adding a genuine per-dimension unit
+  column**, only worth doing if mixed units are a confirmed real requirement (not observed in any real
+  file checked so far — every dimension seen across SB-1108/SB-1040/these 6 files is already in mm).
+- **`moc` — the curated-list-with-escape-hatch UI already exists (`MOC_OPTIONS`, `components/
+  CategoryFieldsBlock.jsx`) but has no memory, and (raised directly, then confirmed against real data)
+  should be scoped per category, not one flat global list.** Confirmed: `MOC_OPTIONS` is a fixed,
+  hardcoded `STANDARD_MOC` array plus an "Other / custom" free-text fallback — picking "Other" and
+  typing a new grade doesn't persist anywhere for the *next* line/project to reuse; it's a one-off per
+  row. Real data (448 populated rows) has only 56 distinct values, meaningfully more controllable than
+  `make`'s 73/132 — a genuinely good candidate for the same "get or create" lookup-table pattern this
+  app already built once for exactly this class of problem: `category_word_corrections` (§5cd)
+  persists a human's one-time confirmation so it's never asked again. A real fix: a small `moc_values`
+  (or similarly named) table, `MOC_OPTIONS` sourced from it instead of the hardcoded array, and picking
+  "Other / custom" upserts the new value into that table instead of leaving it a one-off string.
+  **The category-scoping instinct is confirmed correct against real data, not just a hunch**: grouping
+  real `moc` values by `category` shows genuinely different, largely non-overlapping vocabularies —
+  `pipe` uses `"MS 'B' CLASS"`/`"C.S-SMLS"`/`"BS 3059 PT.1, ERW 320"` (pipe-schedule/class
+  notations), `standard` (bought valves/fittings/fasteners) uses a much richer, unrelated set
+  (`"SA 105"`, `"CI/SGI"`, `"FORGED"`, `"BRONZE"`, `"GRADE 8.8"` — a bolt strength grade), `plate`
+  uses `"SA 516 Gr.70"`/`"MS- IS 2062"`/`"Aluminium"`. A future `moc_values` table should carry a
+  `category` (or item-type) scope column so the picker only ever offers grades that actually apply —
+  a plate line should never see "GRADE 8.8" (bolt-only), a valve line should never see raw plate steel
+  grades. **A second, separate, real data-quality bug surfaced by this same query, not previously
+  found**: several rows carry a plain *quantity* string in the `moc` column instead of a real material
+  spec — `"12 mtrs"`/`"1 Nos"` (angle), `"5 mtrs"`/`"1 Nos"` (channel/flat), `"1 SET"`/`"1 NO"`
+  (round), `"1 SET"`/`"80 No 4 Nos 4 Nos"`/`"4 Nos 4 nos"` (standard) — the identical class of
+  column-shift/misalignment issue §5cc already documented for `make`'s "1250X2500X3.15 MM THICK"
+  artifacts, now confirmed to also contaminate `moc` on specific rows across these same 6 files. Any
+  future `moc_values` lookup must not be seeded blindly from raw historical `moc` text — these garbage
+  rows would need identifying and excluding first (e.g., a numeric-quantity-shaped value is never a
+  real MOC), or the new lookup table would launch pre-polluted with quantity strings masquerading as
+  material grades.
+- **`purchase_status` — checked and confirmed the real DB currently has zero inconsistent
+  capitalization to fix.** Every real `purchase_status` value in the whole database today is already
+  one of the 6 canonical, correctly-capitalized values (`Enquiry`/`Comparison`/`Ordered`/`Transit`/
+  `Received`/`In-Stock`) — `mapPurchaseStatus()`'s fallthrough branch (`return s // unrecognized —
+  kept verbatim`) has never actually left a real row mis-cased in practice, on any file imported so
+  far. The ask is a defensive normalization for whatever a *future*, differently-phrased status column
+  might contain, not a fix for an observed bug. This is the smallest, lowest-risk item of the four —
+  a one-line capitalization pass (e.g. Title Case) on that same fallthrough branch — and could be done
+  independently of the other three whenever picked up, without needing a bigger schema decision first.
+
+**Deliberately not implemented this session, per direct instruction** — this section exists so a
+future session has the real data and the real existing mechanisms already laid out, instead of
+re-deriving them. Flagged as genuinely important (not busywork): `make` and `moc` both affect real
+Procurement/Stores workflows (brand acceptability, material-grade consistency for QC traceability),
+and `size_spec` staying unparsed is the direct reason remnant-matching/auto-reservation never fires on
+any PMB-imported dimensional line (already known, but now with the concrete real-string evidence for
+why it's a genuinely hard parsing problem, not a quick fix).
+
+## 5cp. Stores UI/IA redesign — business-activity sidebar, BOM/Gate Passes/Reorder/Backlog relocated (2026-09-13)
+
+A pure information-architecture pass over Stores' sidebar, requested directly against a precise
+spec: expose business activities (RECEIVE → STOCK → FULFILL DEMAND → PRODUCTION/ISSUE → DISPATCH),
+not every underlying process concept. An earlier round (§5bw) had already done a *partial* reorg
+into 5 flat-divider groups (Receiving/Stock/Requests & Fulfillment/Outbound/Reference) — this round
+replaces that with the exact spec'd structure and, critically, relocates 3 tabs to their real
+business owners rather than just renaming them in place.
+
+- **Final Stores sidebar** (`components/StoresWorkspace.jsx`, `NAV_ITEMS`): `WorkspaceSidebar`'s
+  divider rows gained an optional `label` (small muted uppercase text above the separator — every
+  existing caller without one renders byte-identical, `components/WorkspaceSidebar.jsx`), used here
+  for real **Stock / Fulfillment / Production / Receiving** section headers. Renamed in place: Open
+  Requests → **Material Demand**, Material Indents → **Production Requests**, Material Issued to
+  WIP → **Issued to WIP**. Merged onto one **Allocation & Reservations** tab: `ActiveReservationsCard`
+  (plain Reserve→Issue) stacked above `AllocationRoutingSection` (multi-unit split-order allocation/
+  routing) — two different mechanisms for the same real question, "what stock is committed to what,"
+  not forced into one screen.
+- **No standalone "BOM" tab — but its real capability wasn't dropped.** Investigated before cutting
+  it: `BomGrnTab` (the old "BOM" tab) does something neither `ReceiveDeliveryTab` (search-first,
+  cross-project, one line at a time) nor the project-page `BomTable`'s inline Receive button (also
+  one row at a time) can — select many lines within a project, pick or create one receipt reference,
+  and receive them all under it in a single bulk action. Declaring it redundant on a first pass would
+  have been a real regression (caught and corrected before shipping, see the gap-check note below) —
+  instead it's folded into **Receive a Delivery** as a "Search" / "Bulk by project" toggle on the same
+  screen, its own card retitled "Bulk receive by project" (no more "BOM" anywhere in Stores' UI).
+- **Reorder Suggestions → Purchase Requests.** `ReorderSuggestionsCard` moved to
+  `components/PrWorkspace.jsx` (own `useRouter()` call, no prop-threading needed) as a new tab;
+  `app/pr/page.js` now also fetches `getReorderSuggestions()`. The underlying data/action
+  (`getReorderSuggestions()`, `POST /api/purchase-requisitions` with `source='stock'`) is untouched
+  — only the screen moved. A Stores-only head already had a "Requests" top-nav tab pointing at `/pr`
+  (`Nav.jsx`'s `canSeeRequests`), so this isn't a new destination they can't already reach.
+- **Gate Passes → Dispatch.** `GatePassFormDialog`/`GatePassesCard`/`GATE_PASS_STATUS` moved to
+  `components/DispatchWorkspace.jsx`; `app/dispatch/page.js` now also fetches `getGatePasses()`. The
+  backend write/approve permission (`app/api/gate-passes/route.js`, `[id]/route.js`) was widened
+  from hardcoded `requireDepartment(user,'Stores')` to **Stores OR Dispatch** (additive — nothing
+  removed from Stores) — resolved per-request to whichever department the acting user actually holds
+  (Stores preferred), so `requireAction`'s Head-gate lookup still passes for a genuine Dispatch-only
+  user. **Known, narrow limitation, left as-is**: `stores.gatepass.write`/`.approve` are still
+  catalogued only under "Stores" in Settings → Action Permissions — if an admin ever Head-gates
+  either there, a Dispatch-only user's lookup finds no matching `(Dispatch, ...)` row and stays
+  open-by-default regardless. Confirmed neither key has ever had a seeded Head-gate row (checked
+  `lib/db.js`'s migrations), so this has zero effect today; a full fix (a second, Dispatch-scoped
+  action key) was judged more invasive than this IA task's scope.
+- **Backlog → Planning, as a second labeled section, not merged into one array.** Stores'
+  2-entry technical-debt log (`components/StoresWorkspace.jsx`'s old `BACKLOG`) moved into
+  `components/PlanningWorkspace.jsx` as `STORES_BACKLOG`, rendered under its existing Backlog tab
+  as "Stores / Material Identity" alongside Production's own "Production / Cutting" section —
+  deliberately kept as two separate arrays, not one merged list, preserving the original reasoning
+  (Production/Cut-domain vs. Stores/material-identity-domain notes are genuinely different concerns,
+  the same distinction that kept them apart before this round).
+- **Approvals needed zero changes** — QC (Approvals → Inward/Pre-Dispatch, `group:true`/`children`),
+  Production (Approvals → Pre-Dispatch only, no Inward child), and Dispatch (Approvals →
+  Submit/Resubmit + status in one queue) already matched the target department-local IA exactly
+  (confirmed via direct source read before touching anything) — §5cl already retired the shared
+  `/material-review` page. `PackingDetail.jsx` confirmed to carry zero approval buttons.
+
+**Gap-check pass, done twice more after the initial implementation, each time asked directly
+whether anything was missed:**
+1. First pass caught the BOM-tab-is-redundant error above before it shipped (verified by actually
+   reading `ReceiveDeliveryTab`/`BomTable.jsx`'s source, not from memory).
+2. Second pass, after shipping: a full-repo grep for every hardcoded `/stores?tab=`/`'/stores'`
+   literal found `lib/entity-refs.js`'s `GP-####` clickable-entity-code resolver still pointing at
+   `/stores?tab=gatepasses` (a dead link post-move — fixed to `/dispatch?tab=gatepasses`; the
+   sibling GIR resolver, `/stores?tab=gir`, was correctly left alone) — and Stores' own in-app Help
+   guide (`components/department-help-content.jsx`) still telling employees to "Issue and close out
+   a Gate Pass" from a screen that no longer exists there — moved that feature/howTo entry to
+   Dispatch's guide, corrected Reorder Suggestions' text to say "Requests → Reorder Suggestions."
+   Checked and confirmed clean in the same pass: the Operations dashboard's Stores flow diagram
+   (`StoresFlow.jsx`), the Report Engine catalog, `lib/notify.js` (gate-pass/reorder events have no
+   notification wiring at all, a separate pre-existing gap, unaffected either way), and
+   `TodaySummary`'s chips (none read the removed counts).
+
+**Verified**: `npm run lint` clean (859 files, unchanged count — pure relocation within existing
+files, no new/deleted files). Live-clicked through on a fresh dev server against the real shared dev
+DB, three logins (`stores_head`/`dispatch_head`/`admin`): Stores' sidebar renders exactly the spec'd
+groups with zero matches for "BOM"/"Gate Passes"/"Reorder Suggestions"/"Backlog"; Receive a
+Delivery's Bulk mode renders the folded-in screen; Allocation & Reservations shows both sections
+stacked with real live split-order data; Dispatch's Gate Passes tab renders with real data and
+Approve/Issue/Cancel actions for a Dispatch-only user; Purchase Requests' Reorder Suggestions and
+Planning's two-section Backlog both render correctly with real content; `/help?dept=Dispatch` shows
+Gate Passes, `/help?dept=Stores` doesn't. Zero console errors across the session.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own

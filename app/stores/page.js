@@ -9,7 +9,7 @@ import { redirect } from 'next/navigation';
 import { getFreshSessionUser, canAccessDepartment, roleHome } from '@/lib/auth';
 import {
   getInventoryItems, getOpenBomItems, getActiveReservations, getActiveProjectsList,
-  getReorderSuggestions, getGateInwardReceipts, getGatePasses, getTestCertificates, getSourcingItems,
+  getGateInwardReceipts, getTestCertificates, getSourcingItems,
   getSplitOrdersNeedingStoresAction, attachDeliveryLotDates,
 } from '@/lib/data';
 import StoresWorkspace from '@/components/StoresWorkspace';
@@ -20,9 +20,9 @@ export default async function StoresPage({ searchParams }) {
   const user = await getFreshSessionUser();
   if (!canAccessDepartment(user, 'Stores')) redirect(roleHome(user));
 
-  const [inventoryItems, openRequests, activeReservations, projects, reorderSuggestions, gateInwardReceipts, gatePasses, certificates, bomItems, splitOrders] = await Promise.all([
+  const [inventoryItems, openRequests, activeReservations, projects, gateInwardReceipts, certificates, bomItems, splitOrders] = await Promise.all([
     getInventoryItems(), getOpenBomItems(), getActiveReservations(), getActiveProjectsList(),
-    getReorderSuggestions(), getGateInwardReceipts(), getGatePasses(), getTestCertificates(), getSourcingItems(),
+    getGateInwardReceipts(), getTestCertificates(), getSourcingItems(),
     getSplitOrdersNeedingStoresAction(),
   ]);
 
@@ -32,6 +32,6 @@ export default async function StoresPage({ searchParams }) {
 
   const sp = await searchParams;
   return <StoresWorkspace inventoryItems={inventoryItems} openRequests={openRequests} activeReservations={activeReservations}
-    projects={projects} reorderSuggestions={reorderSuggestions} gateInwardReceipts={gateInwardReceipts} gatePasses={gatePasses}
+    projects={projects} gateInwardReceipts={gateInwardReceipts}
     certificates={certificates} bomItems={bomItems} splitOrders={splitOrders} initialTab={sp?.tab} />;
 }

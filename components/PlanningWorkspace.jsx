@@ -107,10 +107,57 @@ const BACKLOG = [
   },
 ];
 
-function BacklogTab() {
+// Stores' own deferred-issue log — moved here from StoresWorkspace.jsx's own standalone "Backlog"
+// nav tab (Stores IA redesign) since a technical debt log a Stores employee scrolls past daily has
+// no place in a daily-operations sidebar. Kept as a separate array (not merged into BACKLOG above)
+// deliberately — the two lists cover genuinely different domains (Production/Cut vs. Stores/
+// material-identity), the same distinction that originally kept them apart; this just gives Stores'
+// list a real, non-Stores-nav home instead of dropping it, rendered as its own labeled section.
+const STORES_BACKLOG = [
+  {
+    title: 'Cut-code lineage renumbering: PL-0042-R1 cut again should read PL-0042-U2/-R2, not PL-0042-R1-U1/-R1',
+    status: 'Deferred — needs its own atomic counter first',
+    added: '2026-08-26',
+    body: [
+      `cutPiece() (lib/stock-pieces.js) builds a child's code by string-appending onto the immediate
+       PARENT's code (\`\${source.code}-U\${n}\`), not the ROOT's. Cutting PL-0042 directly gives the
+       intended PL-0042-U1/PL-0042-R1. But cutting that remnant again gives PL-0042-R1-U1/PL-0042-R1-R1
+       — compounding with every generation — instead of the lineage-flat PL-0042-U2/PL-0042-R2 the
+       client actually wants. The genealogy underneath is NOT affected: stock_pieces.parent_id is a
+       real FK, correct at every level regardless of what the code string says — this is purely a
+       display/ID-generation issue, never a traceability gap.`,
+      `Deliberately not fixed alongside Phase 0's cutPiece() correctness fix: computing "the nth used/
+       remnant descendant anywhere under this root" requires walking parent_id up to the root (or
+       storing a denormalized root_id) and a NEW per-root atomic counter — a plain
+       \`SELECT MAX(...)+1\` over sibling codes would reintroduce exactly the kind of race Phase 0 just
+       closed for the status flip. When this is picked up, reuse the same pattern the global
+       \`counters\` table already proves out (INSERT...ON CONFLICT DO UPDATE...RETURNING), keyed by
+       root piece id, not a bare MAX query.`,
+    ],
+  },
+  {
+    title: 'Reserve-from-Stock has no server-side material match — only an advisory, bypassable shortlist',
+    status: 'Deferred — blocked on wider item_id catalog coverage',
+    added: '2026-08-26',
+    body: [
+      `possibleMatches() (StoresWorkspace.jsx) computes a soft, client-side shortlist for the Reserve
+       dialog — exact item_id match first, keyword-overlap fallback — but it's advisory only: "Show
+       all items" always bypasses it, and reserveFromStock() (lib/procurement.js) performs zero
+       server-side check that the chosen inventory row's material actually matches the BOM line's
+       requirement. Nothing stops reserving, say, a stainless flange's inventory row against a
+       carbon-steel plate BOM line.`,
+      `Deliberately not hardened yet: item_id (the one reliable signal) is nullable on both
+       bom_items and inventory_items with no backfill for free-typed rows — the overwhelming majority
+       today. A hard filter keyed on item_id alone would incorrectly block most real reservations
+       until catalog linkage is much more broadly adopted. Revisit once that coverage improves.`,
+    ],
+  },
+];
+
+function BacklogItems({ items }) {
   return (
     <div className="flex flex-col gap-4">
-      {BACKLOG.map(item => (
+      {items.map(item => (
         <Card key={item.title}>
           <CardHeader>
             <CardTitle className="flex flex-wrap items-center gap-2">
@@ -124,6 +171,21 @@ function BacklogTab() {
           </CardContent>
         </Card>
       ))}
+    </div>
+  );
+}
+
+function BacklogTab() {
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-3">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Production / Cutting</h3>
+        <BacklogItems items={BACKLOG} />
+      </div>
+      <div className="flex flex-col gap-3">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Stores / Material Identity</h3>
+        <BacklogItems items={STORES_BACKLOG} />
+      </div>
     </div>
   );
 }

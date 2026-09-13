@@ -23,7 +23,7 @@ import {
 } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { PlusIcon, PencilIcon, PackageCheckIcon, UndoIcon, TruckIcon, PackageIcon, ClipboardListIcon, LayersIcon, AlertTriangleIcon, LogInIcon, FileOutputIcon, CheckIcon, XIcon, ListChecksIcon, SearchIcon, ChevronRightIcon, ListTodoIcon, BoxesIcon, HashIcon, SplitIcon } from 'lucide-react';
+import { PlusIcon, PencilIcon, PackageCheckIcon, UndoIcon, TruckIcon, PackageIcon, ClipboardListIcon, LayersIcon, LogInIcon, SearchIcon, ChevronRightIcon, BoxesIcon, HashIcon } from 'lucide-react';
 import { api, showToast, formatDate } from '@/lib/client';
 import { formatMoney } from '@/lib/format';
 import { derivePurchaseStage } from '@/lib/bom-fields.mjs';
@@ -1634,74 +1634,9 @@ function ReservationModeToggle({ router }) {
 // table), each row one click from becoming a real Build-stock request via the same
 // purchase-requisitions endpoint the Inventory tab's existing stock-request flow already uses.
 // Nothing is auto-created — this is the suggestion, the click is the approval.
-function ReorderSuggestionsCard({ reorderSuggestions, router }) {
-  const [qtyById, setQtyById] = useState({});
-  const [busyId, setBusyId] = useState(null);
-
-  function suggestedQty(it) {
-    const raw = Math.max(1, Math.ceil((it.reorder_point || 0) - it.available));
-    return qtyById[it.id] ?? raw;
-  }
-
-  async function createRequest(it) {
-    const qty = Number(suggestedQty(it));
-    if (!qty || qty <= 0) return showToast('Enter a quantity', 'error');
-    setBusyId(it.id);
-    try {
-      await api('/api/purchase-requisitions', {
-        method: 'POST',
-        body: {
-          raised_by_dept: 'Stores',
-          lines: [{ material_description: it.description, moc: it.moc, source: 'stock', inventory_item_id: it.id, qty }],
-        },
-      });
-      showToast('Replenishment request created');
-      router.refresh();
-    } catch (err) { showToast(err.message, 'error'); }
-    setBusyId(null);
-  }
-
-  return (
-    <Card>
-      <CardHeader><CardTitle>Reorder suggestions</CardTitle></CardHeader>
-      <CardContent>
-        {reorderSuggestions.length === 0 ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">Nothing below its minimum right now.</p>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Description</TableHead>
-                <TableHead>Available</TableHead>
-                <TableHead>Minimum</TableHead>
-                <TableHead>Suggested qty</TableHead>
-                <TableHead></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {reorderSuggestions.map(it => (
-                <TableRow key={it.id}>
-                  <TableCell className="font-medium">{it.description}</TableCell>
-                  <TableCell><Badge variant="destructive">{it.available}</Badge></TableCell>
-                  <TableCell className="text-muted-foreground">{it.reorder_point}</TableCell>
-                  <TableCell>
-                    <Input type="number" className="w-24" value={suggestedQty(it)}
-                      onChange={e => setQtyById({ ...qtyById, [it.id]: e.target.value })} />
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button size="sm" disabled={busyId === it.id} onClick={() => createRequest(it)}>
-                      {busyId === it.id ? 'Creating…' : 'Create request'}
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
+// Stores IA redesign: ReorderSuggestionsCard moved to components/PrWorkspace.jsx (Purchase
+// Requests → Reorder Suggestions) — raising a replenishment request is a Purchase-Requests-owned
+// action even though the trigger signal (below reorder point) is Stores' own inventory data.
 
 // Multi-unit split orders needing a Stores decision, plus the actual allocate/route work itself —
 // both now live here, not on the project's own page (often 180+ BOM lines, a real trip for a daily
@@ -1916,301 +1851,36 @@ function GateInwardReceiptsCard({ gateInwardReceipts, router }) {
   );
 }
 
-// STERP item 15, Returnable / Non-Returnable Gate Pass. Overdue is computed server-side
-// (lib/data.js getGatePasses, is_overdue) — never a client-side date check that could drift from
-// what got saved.
-const GATE_PASS_STATUS = {
-  draft: { cls: '', label: 'Draft' },
-  approved: { cls: 'bg-info/10 text-info ring-info/20', label: 'Approved' },
-  issued: { cls: 'bg-warning/10 text-warning ring-warning/20', label: 'Issued' },
-  returned: { cls: 'bg-success/10 text-success ring-success/20', label: 'Returned' },
-  cancelled: { cls: 'bg-muted text-muted-foreground ring-border', label: 'Cancelled' },
-};
+// Stores IA redesign: GatePassFormDialog/GatePassesCard/GATE_PASS_STATUS moved to
+// components/DispatchWorkspace.jsx (Dispatch → Gate Passes) — a returnable/non-returnable material
+// pass is a Dispatch-owned gate activity, not a Stores inventory concern. The backend write
+// permission was widened from Stores-only to Stores-or-Dispatch alongside this move (see
+// app/api/gate-passes/route.js).
 
-function GatePassFormDialog({ onClose, router }) {
-  const [type, setType] = useState('returnable');
-  const [party, setParty] = useState('');
-  const [responsiblePerson, setResponsiblePerson] = useState('');
-  const [purpose, setPurpose] = useState('');
-  const [expectedReturnDate, setExpectedReturnDate] = useState('');
-  const [items, setItems] = useState([{ description: '', qty_text: '' }]);
-  const [saving, setSaving] = useState(false);
+// Stores IA redesign: BACKLOG/BacklogTab moved to components/PlanningWorkspace.jsx (Production →
+// Planning → Backlog, "Stores / Material Identity" section) — a technical-debt log isn't a daily
+// operational task, so it no longer sits in Stores' own nav a Stores employee scrolls past daily.
 
-  function updateItem(i, patch) {
-    setItems(items.map((it, idx) => idx === i ? { ...it, ...patch } : it));
-  }
-
-  async function save() {
-    const cleanItems = items.filter(it => it.description.trim());
-    if (!cleanItems.length) return showToast('Add at least one item', 'error');
-    setSaving(true);
-    try {
-      const result = await api('/api/gate-passes', {
-        method: 'POST',
-        body: {
-          type, party, responsible_person: responsiblePerson, purpose,
-          expected_return_date: type === 'returnable' ? expectedReturnDate || null : null,
-          items: cleanItems,
-        },
-      });
-      showToast(`GP-${result.gp_no} created`);
-      router.refresh();
-      onClose();
-    } catch (err) { showToast(err.message, 'error'); }
-    setSaving(false);
-  }
-
-  return (
-    <Dialog open onOpenChange={o => !o && onClose()}>
-      <DialogContent className="max-w-xl">
-        <DialogHeader><DialogTitle>New Gate Pass</DialogTitle></DialogHeader>
-        <div className="flex flex-col gap-3">
-          <div className="inline-flex w-fit rounded-lg border p-0.5">
-            <button type="button" onClick={() => setType('returnable')}
-              className={`rounded-md px-3 py-1 text-sm font-medium transition-colors ${type === 'returnable' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
-              Returnable
-            </button>
-            <button type="button" onClick={() => setType('non_returnable')}
-              className={`rounded-md px-3 py-1 text-sm font-medium transition-colors ${type === 'non_returnable' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
-              Non-returnable
-            </button>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="grid gap-1.5">
-              <Label>Party / destination</Label>
-              <Input value={party} onChange={e => setParty(e.target.value)} autoFocus />
-            </div>
-            <div className="grid gap-1.5">
-              <Label>Responsible person</Label>
-              <Input value={responsiblePerson} onChange={e => setResponsiblePerson(e.target.value)} />
-            </div>
-            <div className="grid gap-1.5">
-              <Label>Purpose</Label>
-              <Input value={purpose} onChange={e => setPurpose(e.target.value)} />
-            </div>
-            {type === 'returnable' && (
-              <div className="grid gap-1.5">
-                <Label>Expected return date</Label>
-                <Input type="date" value={expectedReturnDate} onChange={e => setExpectedReturnDate(e.target.value)} />
-              </div>
-            )}
-          </div>
-          <div className="grid gap-2">
-            <Label>Items</Label>
-            {items.map((it, i) => (
-              <div key={i} className="flex gap-2">
-                <Input placeholder="Description" value={it.description} onChange={e => updateItem(i, { description: e.target.value })} />
-                <Input placeholder="Qty" className="w-24" value={it.qty_text} onChange={e => updateItem(i, { qty_text: e.target.value })} />
-              </div>
-            ))}
-            <Button size="sm" variant="outline" className="w-fit" onClick={() => setItems([...items, { description: '', qty_text: '' }])}>
-              <PlusIcon />Add item
-            </Button>
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={save} disabled={saving}>{saving ? 'Creating…' : 'Create gate pass'}</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function GatePassesCard({ gatePasses, router }) {
-  useEntityHighlight(useSearchParams().get('highlight'));
-  const [adding, setAdding] = useState(false);
-  const [busyId, setBusyId] = useState(null);
-
-  async function act(id, action) {
-    setBusyId(id);
-    try {
-      await api(`/api/gate-passes/${id}`, { method: 'PATCH', body: { action } });
-      showToast(`Gate pass ${action}d`);
-      router.refresh();
-    } catch (err) { showToast(err.message, 'error'); }
-    setBusyId(null);
-  }
-
-  async function toggleItem(gpId, item) {
-    setBusyId(gpId);
-    try {
-      await api(`/api/gate-passes/${gpId}`, { method: 'PATCH', body: { item_id: item.id, returned: !item.returned } });
-      router.refresh();
-    } catch (err) { showToast(err.message, 'error'); }
-    setBusyId(null);
-  }
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Gate Passes</CardTitle>
-        <CardAction><Button size="sm" onClick={() => setAdding(true)}><PlusIcon />New gate pass</Button></CardAction>
-      </CardHeader>
-      <CardContent>
-        {gatePasses.length === 0 ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">No gate passes yet.</p>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>GP #</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Party</TableHead>
-                <TableHead>Responsible</TableHead>
-                <TableHead>Items</TableHead>
-                <TableHead>Return by</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {gatePasses.map(gp => (
-                <TableRow key={gp.id} data-entity-code={`GP-${gp.gp_no}`}>
-                  <TableCell className="font-medium">GP-{gp.gp_no}</TableCell>
-                  <TableCell className="text-muted-foreground">{gp.type === 'returnable' ? 'Returnable' : 'Non-returnable'}</TableCell>
-                  <TableCell>{gp.party || '—'}</TableCell>
-                  <TableCell className="text-muted-foreground">{gp.responsible_person || '—'}</TableCell>
-                  <TableCell>
-                    <div className="flex flex-col gap-1">
-                      {gp.items.map(it => (
-                        <div key={it.id} className="flex items-center gap-1.5 text-xs">
-                          {gp.type === 'returnable' && gp.status === 'issued' ? (
-                            <button type="button" disabled={busyId === gp.id} onClick={() => toggleItem(gp.id, it)}
-                              className={it.returned ? 'text-success' : 'text-muted-foreground'} title="Toggle returned">
-                              {it.returned ? <CheckIcon className="size-3" /> : <XIcon className="size-3" />}
-                            </button>
-                          ) : null}
-                          <span>{it.description}{it.qty_text ? ` · ${it.qty_text}` : ''}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {gp.expected_return_date || '—'}
-                    {gp.is_overdue ? <Badge variant="destructive" className="ml-2">Overdue</Badge> : null}
-                  </TableCell>
-                  <TableCell><Badge className={GATE_PASS_STATUS[gp.status]?.cls}>{GATE_PASS_STATUS[gp.status]?.label || gp.status}</Badge></TableCell>
-                  <TableCell className="flex justify-end gap-1">
-                    {gp.status === 'draft' && (
-                      <>
-                        <Button size="sm" disabled={busyId === gp.id} onClick={() => act(gp.id, 'approve')}>Approve</Button>
-                        <Button size="sm" variant="outline" disabled={busyId === gp.id} onClick={() => act(gp.id, 'cancel')}>Cancel</Button>
-                      </>
-                    )}
-                    {gp.status === 'approved' && (
-                      <>
-                        <Button size="sm" disabled={busyId === gp.id} onClick={() => act(gp.id, 'issue')}>Issue</Button>
-                        <Button size="sm" variant="outline" disabled={busyId === gp.id} onClick={() => act(gp.id, 'cancel')}>Cancel</Button>
-                      </>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </CardContent>
-      {adding && <GatePassFormDialog router={router} onClose={() => setAdding(false)} />}
-    </Card>
-  );
-}
-
-// Inventory Identity & Traceability design review (2026-08-26) — two gaps found and deliberately
-// logged rather than fixed in Phase 0-2, same "log it, don't silently drop it" pattern
-// PlanningWorkspace.jsx's own BACKLOG already uses for Production-side gaps. This is the
-// Stores-side equivalent: Planning's backlog is explicitly Production/Cut-domain, and these two are
-// Stores/Cutting-identity domain instead, so they get their own list rather than living in the
-// wrong department's workspace. Plain array, not a DB table — same lightweight precedent.
-const BACKLOG = [
-  {
-    title: 'Cut-code lineage renumbering: PL-0042-R1 cut again should read PL-0042-U2/-R2, not PL-0042-R1-U1/-R1',
-    status: 'Deferred — needs its own atomic counter first',
-    added: '2026-08-26',
-    body: [
-      `cutPiece() (lib/stock-pieces.js) builds a child's code by string-appending onto the immediate
-       PARENT's code (\`\${source.code}-U\${n}\`), not the ROOT's. Cutting PL-0042 directly gives the
-       intended PL-0042-U1/PL-0042-R1. But cutting that remnant again gives PL-0042-R1-U1/PL-0042-R1-R1
-       — compounding with every generation — instead of the lineage-flat PL-0042-U2/PL-0042-R2 the
-       client actually wants. The genealogy underneath is NOT affected: stock_pieces.parent_id is a
-       real FK, correct at every level regardless of what the code string says — this is purely a
-       display/ID-generation issue, never a traceability gap.`,
-      `Deliberately not fixed alongside Phase 0's cutPiece() correctness fix: computing "the nth used/
-       remnant descendant anywhere under this root" requires walking parent_id up to the root (or
-       storing a denormalized root_id) and a NEW per-root atomic counter — a plain
-       \`SELECT MAX(...)+1\` over sibling codes would reintroduce exactly the kind of race Phase 0 just
-       closed for the status flip. When this is picked up, reuse the same pattern the global
-       \`counters\` table already proves out (INSERT...ON CONFLICT DO UPDATE...RETURNING), keyed by
-       root piece id, not a bare MAX query.`,
-    ],
-  },
-  {
-    title: 'Reserve-from-Stock has no server-side material match — only an advisory, bypassable shortlist',
-    status: 'Deferred — blocked on wider item_id catalog coverage',
-    added: '2026-08-26',
-    body: [
-      `possibleMatches() (this file) computes a soft, client-side shortlist for the Reserve dialog —
-       exact item_id match first, keyword-overlap fallback — but it's advisory only: "Show all items"
-       always bypasses it, and reserveFromStock() (lib/procurement.js) performs zero server-side check
-       that the chosen inventory row's material actually matches the BOM line's requirement. Nothing
-       stops reserving, say, a stainless flange's inventory row against a carbon-steel plate BOM line.`,
-      `Deliberately not hardened yet: item_id (the one reliable signal) is nullable on both
-       bom_items and inventory_items with no backfill for free-typed rows — the overwhelming majority
-       today. A hard filter keyed on item_id alone would incorrectly block most real reservations
-       until catalog linkage is much more broadly adopted. Revisit once that coverage improves.`,
-    ],
-  },
-];
-
-function BacklogTab() {
-  return (
-    <div className="flex flex-col gap-4">
-      {BACKLOG.map(item => (
-        <Card key={item.title}>
-          <CardHeader>
-            <CardTitle className="flex flex-wrap items-center gap-2">
-              {item.title}
-              <Badge variant="outline">{item.status}</Badge>
-              <span className="text-xs font-normal text-muted-foreground">added {item.added}</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3 text-sm text-muted-foreground">
-            {item.body.map((p, i) => <p key={i}>{p.replace(/\s+/g, ' ').trim()}</p>)}
-          </CardContent>
-        </Card>
-      ))}
-    </div>
-  );
-}
-
-// STORES-SALES-CHANGES.md follow-up — the workspace outgrew one long scrolling page (today
-// chips, Inventory, Open requests, Active reservations, Material issued, all stacked). Same
-// sidebar-workspace pattern as Production's Job Card panel (WorkersPanel.jsx): one section per
-// tab, Inventory as the default landing tab since the mode toggle + today-summary glance belong
-// somewhere and Inventory is what Stores opens to most.
-// Ordered to match the real workflow (receive → stock it → fulfill demand → send it back out →
-// reference), not "whenever it was added." Grouped with dividers, same WorkspaceSidebar primitive
-// every other workspace already uses — no new component.
+// Stores IA redesign (per the spec: RECEIVE -> STOCK -> FULFILL DEMAND -> PRODUCTION / ISSUE ->
+// DISPATCH) — the sidebar now exposes business activities, not every underlying process concept.
+// No standalone BOM tab (its bulk-receive-by-project mode folded into Receive a Delivery, see
+// ReceiveDeliveryTab below); Reorder Suggestions moved to Purchase Requests; Gate Passes moved to
+// Dispatch; Backlog moved to Planning; Active Reservations + Allocation & Routing merged onto one
+// "Allocation & Reservations" tab (both are "commit stock to a demand," just two mechanisms).
+// Grouped with labeled dividers (WorkspaceSidebar's divider.label), matching the spec's exact
+// STOCK / FULFILLMENT / PRODUCTION / RECEIVING section order.
 const NAV_ITEMS = (counts) => [
-  { key: 'divider-receiving', divider: true },
-  { key: 'gir', label: 'Gate Inward (GIR)', icon: LogInIcon },
-  // Unified delivery/lot-centric receiving, Phase 3b — search-first, no project pick needed first
-  // (a real gap BomGrnTab below never closed: it only works once a project is already chosen).
-  { key: 'receive', label: 'Receive a Delivery', icon: SearchIcon },
-  { key: 'bom', label: 'BOM', icon: ListChecksIcon },
-  { key: 'divider-stock', divider: true },
+  { key: 'divider-stock', divider: true, label: 'Stock' },
   { key: 'inventory', label: 'Inventory', icon: PackageIcon, badge: counts.lowStock || null },
-  { key: 'reorder', label: 'Reorder Suggestions', icon: AlertTriangleIcon, badge: counts.reorder || null },
-  { key: 'divider-fulfillment', divider: true },
-  { key: 'requests', label: 'Open Requests', icon: ClipboardListIcon, badge: counts.requests || null },
-  { key: 'reservations', label: 'Active Reservations', icon: PackageCheckIcon, badge: counts.reservations || null },
-  { key: 'indents', label: 'Material Indents', icon: BoxesIcon },
-  { key: 'issued', label: 'Material Issued to WIP', icon: TruckIcon },
-  { key: 'allocation', label: 'Allocation & Routing', icon: SplitIcon, badge: counts.splitOrders || null },
-  { key: 'divider-outbound', divider: true },
-  { key: 'gatepasses', label: 'Gate Passes', icon: FileOutputIcon, badge: counts.overdueGatePasses || null },
-  { key: 'divider-reference', divider: true },
-  { key: 'backlog', label: 'Backlog', icon: ListTodoIcon },
+  { key: 'divider-fulfillment', divider: true, label: 'Fulfillment' },
+  { key: 'requests', label: 'Material Demand', icon: ClipboardListIcon, badge: counts.requests || null },
+  { key: 'reservations', label: 'Allocation & Reservations', icon: PackageCheckIcon, badge: (counts.reservations || 0) + (counts.splitOrders || 0) || null },
+  { key: 'divider-production', divider: true, label: 'Production' },
+  { key: 'indents', label: 'Production Requests', icon: BoxesIcon },
+  { key: 'issued', label: 'Issued to WIP', icon: TruckIcon },
+  { key: 'divider-receiving', divider: true, label: 'Receiving' },
+  { key: 'gir', label: 'Gate Inward', icon: LogInIcon },
+  { key: 'receive', label: 'Receive a Delivery', icon: SearchIcon },
 ];
 
 // Stores' own "close this project's BOM" action — mirrors ProcurementWorkspace.jsx's Status tab
@@ -2236,6 +1906,11 @@ const DATE_FILTERS = [
 ];
 
 function ReceiveDeliveryTab({ bomItems, router }) {
+  // Stores IA redesign — "Bulk by project" folds in BomGrnTab's multi-select/one-receipt action
+  // (below), the one real capability neither this search-first flow nor the project-page BomTable
+  // reproduces (both are one line at a time). Two modes on the same Receiving destination instead
+  // of a separate "BOM" nav tab — no functionality lost, no ERP-technical label in the sidebar.
+  const [mode, setMode] = useState('search');
   const [query, setQuery] = useState('');
   const [dateFilter, setDateFilter] = useState('all');
   // A line still in Enquiry/Comparison has no supplier chosen and nothing has actually been
@@ -2268,59 +1943,73 @@ function ReceiveDeliveryTab({ bomItems, router }) {
   const showPrompt = dateFilter === 'all' && !q;
 
   return (
-    <Card>
-      <CardHeader><CardTitle>Receive a Delivery</CardTitle></CardHeader>
-      <CardContent className="flex flex-col gap-3 pt-4">
-        <div className="flex gap-2">
-          <Input value={query} onChange={e => setQuery(e.target.value)}
-            placeholder="Search by material, project, PR, or PO number…" autoFocus className="flex-1" />
-          <Select value={dateFilter} onValueChange={setDateFilter}>
-            <SelectTrigger className="h-9 w-36 shrink-0 text-xs"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {DATE_FILTERS.map(f => <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
-        {showPrompt ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">Start typing to find what arrived.</p>
-        ) : results.length === 0 ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">No open lines match.</p>
-        ) : (
-          <div className="flex flex-col divide-y">
-            {results.map(it => {
-              const dates = it.all_expected_dates || [];
-              const title = dates.length > 1 ? dates.map(formatDate).join(', ') : undefined;
-              // Procurement's own context (make/supplier/PO) — already fetched via getSourcingItems(),
-              // just never surfaced on this screen before. Stores confirms the right make/supplier
-              // arrived without opening the Receive dialog first.
-              const procParts = [
-                it.make && `Make: ${it.make}`,
-                it.selected_supplier_name && `Supplier: ${it.selected_supplier_name}`,
-                it.po_ref && `PO: ${it.po_ref}`,
-              ].filter(Boolean);
-              return (
-                <div key={it.id} className="flex flex-wrap items-center gap-3 py-2.5 text-sm">
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium">{it.material_description}</p>
-                    {procParts.length > 0 && (
-                      <p className="truncate text-[11px] text-muted-foreground">{procParts.join(' · ')}</p>
-                    )}
-                  </div>
-                  <span className="w-40 shrink-0 truncate text-xs text-muted-foreground">{it.project_no}</span>
-                  <span className="w-24 shrink-0 truncate text-xs text-muted-foreground">{derivePurchaseStage(it)}</span>
-                  <span className="w-36 shrink-0 truncate text-xs text-muted-foreground" title={title}>
-                    {it.nearest_expected_delivery
-                      ? `Exp. ${formatDate(it.nearest_expected_delivery)}${dates.length > 1 ? ` (+${dates.length - 1})` : ''}`
-                      : '—'}
-                  </span>
-                  <ReceiveBomItemDialog item={it} onDone={() => setQuery('')} />
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </CardContent>
-    </Card>
+    <div className="flex flex-col gap-3">
+      <div className="inline-flex w-fit rounded-lg border p-0.5">
+        <button type="button" onClick={() => setMode('search')}
+          className={`rounded-md px-3 py-1 text-sm font-medium transition-colors ${mode === 'search' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
+          Search
+        </button>
+        <button type="button" onClick={() => setMode('bulk')}
+          className={`rounded-md px-3 py-1 text-sm font-medium transition-colors ${mode === 'bulk' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
+          Bulk by project
+        </button>
+      </div>
+      {mode === 'bulk' ? <BomGrnTab bomItems={bomItems} router={router} /> : (
+        <Card>
+          <CardHeader><CardTitle>Receive a Delivery</CardTitle></CardHeader>
+          <CardContent className="flex flex-col gap-3 pt-4">
+            <div className="flex gap-2">
+              <Input value={query} onChange={e => setQuery(e.target.value)}
+                placeholder="Search by material, project, PR, or PO number…" autoFocus className="flex-1" />
+              <Select value={dateFilter} onValueChange={setDateFilter}>
+                <SelectTrigger className="h-9 w-36 shrink-0 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {DATE_FILTERS.map(f => <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            {showPrompt ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">Start typing to find what arrived.</p>
+            ) : results.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">No open lines match.</p>
+            ) : (
+              <div className="flex flex-col divide-y">
+                {results.map(it => {
+                  const dates = it.all_expected_dates || [];
+                  const title = dates.length > 1 ? dates.map(formatDate).join(', ') : undefined;
+                  // Procurement's own context (make/supplier/PO) — already fetched via getSourcingItems(),
+                  // just never surfaced on this screen before. Stores confirms the right make/supplier
+                  // arrived without opening the Receive dialog first.
+                  const procParts = [
+                    it.make && `Make: ${it.make}`,
+                    it.selected_supplier_name && `Supplier: ${it.selected_supplier_name}`,
+                    it.po_ref && `PO: ${it.po_ref}`,
+                  ].filter(Boolean);
+                  return (
+                    <div key={it.id} className="flex flex-wrap items-center gap-3 py-2.5 text-sm">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-medium">{it.material_description}</p>
+                        {procParts.length > 0 && (
+                          <p className="truncate text-[11px] text-muted-foreground">{procParts.join(' · ')}</p>
+                        )}
+                      </div>
+                      <span className="w-40 shrink-0 truncate text-xs text-muted-foreground">{it.project_no}</span>
+                      <span className="w-24 shrink-0 truncate text-xs text-muted-foreground">{derivePurchaseStage(it)}</span>
+                      <span className="w-36 shrink-0 truncate text-xs text-muted-foreground" title={title}>
+                        {it.nearest_expected_delivery
+                          ? `Exp. ${formatDate(it.nearest_expected_delivery)}${dates.length > 1 ? ` (+${dates.length - 1})` : ''}`
+                          : '—'}
+                      </span>
+                      <ReceiveBomItemDialog item={it} onDone={() => setQuery('')} />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+    </div>
   );
 }
 
@@ -2393,7 +2082,7 @@ function BomGrnTab({ bomItems, router }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>BOM — close received lines</CardTitle>
+        <CardTitle>Bulk receive by project</CardTitle>
         <CardAction>
           <Select value={project} onValueChange={p => { setProject(p); setSelected(new Set()); }}>
             <SelectTrigger className="h-8 w-44 text-xs"><SelectValue placeholder="Choose a project…" /></SelectTrigger>
@@ -2598,7 +2287,7 @@ function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavi
 
 export default function StoresWorkspace({
   inventoryItems, openRequests = [], activeReservations = [], projects = [],
-  reorderSuggestions = [], gateInwardReceipts = [], gatePasses = [], certificates = [], bomItems = [],
+  gateInwardReceipts = [], certificates = [], bomItems = [],
   splitOrders = [],
   initialTab,
 }) {
@@ -2607,12 +2296,10 @@ export default function StoresWorkspace({
     lowStock: inventoryItems.filter(isLowStock).length,
     requests: openRequests.length,
     reservations: activeReservations.length,
-    reorder: reorderSuggestions.length,
-    overdueGatePasses: gatePasses.filter(g => g.is_overdue).length,
     splitOrders: splitOrders.length,
   });
   // Deep-link tab selection (Part B) — same server-prop pattern QcWorkspace.jsx already proved
-  // out; `?tab=gir`/`?tab=gatepasses` were dead query strings before this (nothing read them).
+  // out; `?tab=gir` were dead query strings before this (nothing read them).
   const [tab, setTab] = useState(navItems.some(i => i.key === initialTab) ? initialTab : 'inventory');
 
   return (
@@ -2625,16 +2312,14 @@ export default function StoresWorkspace({
       )}
       {tab === 'indents' && <IndentsCard router={router} />}
       {tab === 'reservations' && (
-        <ActiveReservationsCard activeReservations={activeReservations} router={router} />
+        <div className="flex flex-col gap-4">
+          <ActiveReservationsCard activeReservations={activeReservations} router={router} />
+          <AllocationRoutingSection splitOrders={splitOrders} router={router} />
+        </div>
       )}
       {tab === 'issued' && <MaterialIssuesCard projects={projects} />}
-      {tab === 'allocation' && <AllocationRoutingSection splitOrders={splitOrders} router={router} />}
-      {tab === 'reorder' && <ReorderSuggestionsCard reorderSuggestions={reorderSuggestions} router={router} />}
       {tab === 'gir' && <GateInwardReceiptsCard gateInwardReceipts={gateInwardReceipts} router={router} />}
       {tab === 'receive' && <ReceiveDeliveryTab bomItems={bomItems} router={router} />}
-      {tab === 'gatepasses' && <GatePassesCard gatePasses={gatePasses} router={router} />}
-      {tab === 'bom' && <BomGrnTab bomItems={bomItems} router={router} />}
-      {tab === 'backlog' && <BacklogTab />}
     </WorkspaceSidebar>
   );
 }

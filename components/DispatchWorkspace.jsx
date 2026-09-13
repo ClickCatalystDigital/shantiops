@@ -11,19 +11,23 @@
 // Draft -> Ready -> Dispatched (a list's own status). BOM-item eligibility is always Ready to Pack /
 // Waiting (whether a line qualifies to be pulled into a list). Never mixed.
 import { useState, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { api, showToast, formatDate, formatMoney } from '@/lib/client';
+import { useEntityHighlight } from '@/lib/use-entity-highlight';
 import WorkspaceSidebar from './WorkspaceSidebar';
 import DispatchBoard from './DispatchBoard';
 import { DispatchApprovalsPanel } from './MaterialApprovalPanels';
 import { Card, CardHeader, CardTitle, CardAction, CardContent } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
+import { Label } from './ui/label';
 import { Badge } from './ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from './ui/dialog';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import {
   PackageIcon, PackageCheckIcon, ClipboardListIcon, TruckIcon, FileTextIcon,
-  SearchIcon, XIcon, ClipboardCheckIcon,
+  SearchIcon, XIcon, ClipboardCheckIcon, FileOutputIcon, PlusIcon, CheckIcon,
 } from 'lucide-react';
 
 const STAGE_LABEL = { draft: 'Draft', packed: 'Ready', dispatched: 'Dispatched' };
@@ -345,10 +349,216 @@ function DocumentsTab({ lists, initialMissingEway = false }) {
   );
 }
 
+// ---- Tab 5: Gate Passes (moved here from StoresWorkspace.jsx, Stores IA redesign — returnable/
+// non-returnable material leaving/entering the gate is a Dispatch-owned activity; the backend write
+// permission was widened from Stores-only to Stores-or-Dispatch alongside this move, see
+// app/api/gate-passes/route.js and [id]/route.js) ----
+
+// STERP item 15, Returnable / Non-Returnable Gate Pass. Overdue is computed server-side
+// (lib/data.js getGatePasses, is_overdue) — never a client-side date check that could drift from
+// what got saved.
+const GATE_PASS_STATUS = {
+  draft: { cls: '', label: 'Draft' },
+  approved: { cls: 'bg-info/10 text-info ring-info/20', label: 'Approved' },
+  issued: { cls: 'bg-warning/10 text-warning ring-warning/20', label: 'Issued' },
+  returned: { cls: 'bg-success/10 text-success ring-success/20', label: 'Returned' },
+  cancelled: { cls: 'bg-muted text-muted-foreground ring-border', label: 'Cancelled' },
+};
+
+function GatePassFormDialog({ onClose, router }) {
+  const [type, setType] = useState('returnable');
+  const [party, setParty] = useState('');
+  const [responsiblePerson, setResponsiblePerson] = useState('');
+  const [purpose, setPurpose] = useState('');
+  const [expectedReturnDate, setExpectedReturnDate] = useState('');
+  const [items, setItems] = useState([{ description: '', qty_text: '' }]);
+  const [saving, setSaving] = useState(false);
+
+  function updateItem(i, patch) {
+    setItems(items.map((it, idx) => idx === i ? { ...it, ...patch } : it));
+  }
+
+  async function save() {
+    const cleanItems = items.filter(it => it.description.trim());
+    if (!cleanItems.length) return showToast('Add at least one item', 'error');
+    setSaving(true);
+    try {
+      const result = await api('/api/gate-passes', {
+        method: 'POST',
+        body: {
+          type, party, responsible_person: responsiblePerson, purpose,
+          expected_return_date: type === 'returnable' ? expectedReturnDate || null : null,
+          items: cleanItems,
+        },
+      });
+      showToast(`GP-${result.gp_no} created`);
+      router.refresh();
+      onClose();
+    } catch (err) { showToast(err.message, 'error'); }
+    setSaving(false);
+  }
+
+  return (
+    <Dialog open onOpenChange={o => !o && onClose()}>
+      <DialogContent className="max-w-xl">
+        <DialogHeader><DialogTitle>New Gate Pass</DialogTitle></DialogHeader>
+        <div className="flex flex-col gap-3">
+          <div className="inline-flex w-fit rounded-lg border p-0.5">
+            <button type="button" onClick={() => setType('returnable')}
+              className={`rounded-md px-3 py-1 text-sm font-medium transition-colors ${type === 'returnable' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
+              Returnable
+            </button>
+            <button type="button" onClick={() => setType('non_returnable')}
+              className={`rounded-md px-3 py-1 text-sm font-medium transition-colors ${type === 'non_returnable' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
+              Non-returnable
+            </button>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-1.5">
+              <Label>Party / destination</Label>
+              <Input value={party} onChange={e => setParty(e.target.value)} autoFocus />
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Responsible person</Label>
+              <Input value={responsiblePerson} onChange={e => setResponsiblePerson(e.target.value)} />
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Purpose</Label>
+              <Input value={purpose} onChange={e => setPurpose(e.target.value)} />
+            </div>
+            {type === 'returnable' && (
+              <div className="grid gap-1.5">
+                <Label>Expected return date</Label>
+                <Input type="date" value={expectedReturnDate} onChange={e => setExpectedReturnDate(e.target.value)} />
+              </div>
+            )}
+          </div>
+          <div className="grid gap-2">
+            <Label>Items</Label>
+            {items.map((it, i) => (
+              <div key={i} className="flex gap-2">
+                <Input placeholder="Description" value={it.description} onChange={e => updateItem(i, { description: e.target.value })} />
+                <Input placeholder="Qty" className="w-24" value={it.qty_text} onChange={e => updateItem(i, { qty_text: e.target.value })} />
+              </div>
+            ))}
+            <Button size="sm" variant="outline" className="w-fit" onClick={() => setItems([...items, { description: '', qty_text: '' }])}>
+              <PlusIcon />Add item
+            </Button>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={save} disabled={saving}>{saving ? 'Creating…' : 'Create gate pass'}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function GatePassesCard({ gatePasses }) {
+  const router = useRouter();
+  useEntityHighlight(useSearchParams().get('highlight'));
+  const [adding, setAdding] = useState(false);
+  const [busyId, setBusyId] = useState(null);
+
+  async function act(id, action) {
+    setBusyId(id);
+    try {
+      await api(`/api/gate-passes/${id}`, { method: 'PATCH', body: { action } });
+      showToast(`Gate pass ${action}d`);
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+    setBusyId(null);
+  }
+
+  async function toggleItem(gpId, item) {
+    setBusyId(gpId);
+    try {
+      await api(`/api/gate-passes/${gpId}`, { method: 'PATCH', body: { item_id: item.id, returned: !item.returned } });
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+    setBusyId(null);
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Gate Passes</CardTitle>
+        <CardAction><Button size="sm" onClick={() => setAdding(true)}><PlusIcon />New gate pass</Button></CardAction>
+      </CardHeader>
+      <CardContent>
+        {gatePasses.length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">No gate passes yet.</p>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>GP #</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Party</TableHead>
+                <TableHead>Responsible</TableHead>
+                <TableHead>Items</TableHead>
+                <TableHead>Return by</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {gatePasses.map(gp => (
+                <TableRow key={gp.id} data-entity-code={`GP-${gp.gp_no}`}>
+                  <TableCell className="font-medium">GP-{gp.gp_no}</TableCell>
+                  <TableCell className="text-muted-foreground">{gp.type === 'returnable' ? 'Returnable' : 'Non-returnable'}</TableCell>
+                  <TableCell>{gp.party || '—'}</TableCell>
+                  <TableCell className="text-muted-foreground">{gp.responsible_person || '—'}</TableCell>
+                  <TableCell>
+                    <div className="flex flex-col gap-1">
+                      {gp.items.map(it => (
+                        <div key={it.id} className="flex items-center gap-1.5 text-xs">
+                          {gp.type === 'returnable' && gp.status === 'issued' ? (
+                            <button type="button" disabled={busyId === gp.id} onClick={() => toggleItem(gp.id, it)}
+                              className={it.returned ? 'text-success' : 'text-muted-foreground'} title="Toggle returned">
+                              {it.returned ? <CheckIcon className="size-3" /> : <XIcon className="size-3" />}
+                            </button>
+                          ) : null}
+                          <span>{it.description}{it.qty_text ? ` · ${it.qty_text}` : ''}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {gp.expected_return_date || '—'}
+                    {gp.is_overdue ? <Badge variant="destructive" className="ml-2">Overdue</Badge> : null}
+                  </TableCell>
+                  <TableCell><Badge className={GATE_PASS_STATUS[gp.status]?.cls}>{GATE_PASS_STATUS[gp.status]?.label || gp.status}</Badge></TableCell>
+                  <TableCell className="flex justify-end gap-1">
+                    {gp.status === 'draft' && (
+                      <>
+                        <Button size="sm" disabled={busyId === gp.id} onClick={() => act(gp.id, 'approve')}>Approve</Button>
+                        <Button size="sm" variant="outline" disabled={busyId === gp.id} onClick={() => act(gp.id, 'cancel')}>Cancel</Button>
+                      </>
+                    )}
+                    {gp.status === 'approved' && (
+                      <>
+                        <Button size="sm" disabled={busyId === gp.id} onClick={() => act(gp.id, 'issue')}>Issue</Button>
+                        <Button size="sm" variant="outline" disabled={busyId === gp.id} onClick={() => act(gp.id, 'cancel')}>Cancel</Button>
+                      </>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+      {adding && <GatePassFormDialog router={router} onClose={() => setAdding(false)} />}
+    </Card>
+  );
+}
+
 // ---- Shell ----
 
-export default function DispatchWorkspace({ lists, pendingItems, flowCounts, approvalQueue = [], initialTab }) {
-  const [tab, setTab] = useState(['board', 'pending', 'deliveries', 'documents', 'approvals'].includes(initialTab) ? initialTab : 'board');
+export default function DispatchWorkspace({ lists, pendingItems, flowCounts, approvalQueue = [], gatePasses = [], initialTab }) {
+  const [tab, setTab] = useState(['board', 'pending', 'deliveries', 'documents', 'approvals', 'gatepasses'].includes(initialTab) ? initialTab : 'board');
   // A one-shot seed for Documents' "Missing E-Way Bill" chip when arrived at via the Packing Lists
   // pill — DocumentsTab remounts fresh on every tab switch (conditionally rendered below), so this
   // only matters at the instant of that specific navigation, not as an ongoing controlled value.
@@ -360,12 +570,16 @@ export default function DispatchWorkspace({ lists, pendingItems, flowCounts, app
   // Not yet submitted or rejected — the two states Dispatch actually needs to act on from this tab;
   // "pending review"/"approved" are informational only, not counted as needing Dispatch's own action.
   const approvalActionCount = approvalQueue.filter(r => !r.approval_status || r.approval_status === 'rejected').length;
+  const overdueGatePassesCount = gatePasses.filter(g => g.is_overdue).length;
 
   const navItems = [
     { key: 'board', label: 'Packing Lists', icon: PackageCheckIcon },
     { key: 'pending', label: 'Pending Items', icon: ClipboardListIcon, badge: pendingReadyCount || null },
     { key: 'deliveries', label: 'Deliveries', icon: TruckIcon, badge: awaitingAckCount || null },
     { key: 'documents', label: 'Documents', icon: FileTextIcon, badge: missingEwayCount || null },
+    // Stores IA redesign — Gate Passes moved here from Stores (a returnable/non-returnable material
+    // pass is a real Dispatch-owned gate activity, not an inventory concern).
+    { key: 'gatepasses', label: 'Gate Passes', icon: FileOutputIcon, badge: overdueGatePassesCount || null },
     // Inward + Pre-Dispatch QC/Production Approval Workflow — Dispatch's own Submit/Resubmit +
     // status tab (the retired top-level /material-review page's Dispatch-facing read-only view,
     // plus the Submit/Resubmit action that used to live inline on PackingDetail.jsx).
@@ -392,6 +606,7 @@ export default function DispatchWorkspace({ lists, pendingItems, flowCounts, app
       {tab === 'pending' && <PendingItemsTab items={pendingItems} />}
       {tab === 'deliveries' && <DeliveriesTab lists={lists} />}
       {tab === 'documents' && <DocumentsTab lists={lists} initialMissingEway={docsPrefilter} />}
+      {tab === 'gatepasses' && <GatePassesCard gatePasses={gatePasses} />}
       {tab === 'approvals' && <DispatchApprovalsPanel rows={approvalQueue} />}
     </WorkspaceSidebar>
   );

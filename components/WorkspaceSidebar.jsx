@@ -146,7 +146,14 @@ export default function WorkspaceSidebar({ title, icon: TitleIcon = LayoutPanelT
                 <SidebarMenu>
                   {items.map(item => {
                     if (item.divider) return (
-                      <SidebarMenuItem key={item.key}><SidebarSeparator className="my-1" /></SidebarMenuItem>
+                      <SidebarMenuItem key={item.key}>
+                        {item.label && (
+                          <div className="mt-2 px-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70 group-data-[collapsible=icon]:hidden">
+                            {item.label}
+                          </div>
+                        )}
+                        <SidebarSeparator className="my-1" />
+                      </SidebarMenuItem>
                     );
                     const Icon = item.icon || LayoutPanelTopIcon;
                     if (item.group) return (
