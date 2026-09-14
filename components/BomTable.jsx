@@ -555,6 +555,13 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
   // The Actions column exists for edit/delete (dialogFields) OR the D10 cancel button — Design has
   // no editable fields at all (no BOM_FIELD_OWNERS entry) but still needs this column for Cancel.
   const hasActions = dialogFields.length > 0 || canCancel;
+  // Finding #9 (E2E cycle trace) — "Prod. Done" used to render as a plain scrolling column near the
+  // end of a wide table, geometrically trapped under the left-pinned Actions zone at any realistic
+  // viewport width (no scroll position could clear it — document.elementFromPoint() at its own
+  // center always resolved to the Delete button). Right-pinning it, same idiom as the left-pinned
+  // group, makes it always reachable regardless of scroll position or table width. Still gated on
+  // visibleBomColumns() via `columns` — Procurement/Engineering's narrowed views keep not showing it.
+  const hasProductionDone = columns.includes('production_done');
 
   const needle = q.trim().toLowerCase();
   const rows = bom.filter(b => {
@@ -783,7 +790,11 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
                 <TableHead className={`w-24 bg-background md:sticky md:left-[27rem] md:z-10 ${hasActions ? '' : 'md:border-r'}`}>Packing</TableHead>
               )}
               {hasActions && <TableHead className={`w-20 bg-background md:sticky ${actionsLeft} md:z-10 md:border-r`} />}
-              {columns.map(c => <TableHead key={c} className={COLUMN_WIDTHS[c] || 'w-28'}>{FIELD_LABELS[c]}</TableHead>)}
+              {columns.filter(c => c !== 'production_done').map(c => <TableHead key={c} className={COLUMN_WIDTHS[c] || 'w-28'}>{FIELD_LABELS[c]}</TableHead>)}
+              {/* Right-pinned, mirrors the left-pinned group — see hasProductionDone above. */}
+              {hasProductionDone && (
+                <TableHead className="w-20 bg-background md:sticky md:right-0 md:z-10 md:border-l">{FIELD_LABELS.production_done}</TableHead>
+              )}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -885,23 +896,9 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
                     </div>
                   </TableCell>
                 )}
-                {columns.map(c => (
+                {columns.filter(c => c !== 'production_done').map(c => (
                   <TableCell key={c} className="overflow-hidden text-muted-foreground">
-                    {c === 'production_done' ? (
-                      // A requires_manufacturing=0 line never gets a production_done tick — it
-                      // becomes packable the moment it's Received (Feature C, lib/data.js's
-                      // getProjectBom). Without this, the column read as a blank "—", identical to a
-                      // manufacturing line that's simply not done yet — no way to tell "skips
-                      // Production entirely" from "still waiting on Production" at a glance.
-                      !r.requires_manufacturing ? (
-                        <span className="text-xs italic text-muted-foreground" title="No fabrication needed — packable as soon as it's Received.">
-                          Direct to packing
-                        </span>
-                      ) : canToggleProductionDone ? (
-                        <input type="checkbox" checked={!!r.production_done} aria-label="Production done"
-                          onChange={e => toggleProductionDone(r, e.target.checked)} />
-                      ) : (r.production_done ? 'Done' : '—')
-                    ) : c === 'grn_ref' && r.receipt_id ? (
+                    {c === 'grn_ref' && r.receipt_id ? (
                       // Once a receipt is linked, grn_ref is derived from it and read-only here —
                       // the single-source-of-truth guarantee Feature A depends on. Print links reach
                       // the same tag PDF either scoped to just this line or the whole receipt.
@@ -933,6 +930,23 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
                     ) : <TruncatedCell value={r[c]} />}
                   </TableCell>
                 ))}
+                {hasProductionDone && (
+                  <TableCell className="w-20 whitespace-nowrap bg-background text-muted-foreground md:sticky md:right-0 md:z-10 md:border-l">
+                    {/* A requires_manufacturing=0 line never gets a production_done tick — it
+                        becomes packable the moment it's Received (Feature C, lib/data.js's
+                        getProjectBom). Without this, the column read as a blank "—", identical to a
+                        manufacturing line that's simply not done yet — no way to tell "skips
+                        Production entirely" from "still waiting on Production" at a glance. */}
+                    {!r.requires_manufacturing ? (
+                      <span className="text-xs italic text-muted-foreground" title="No fabrication needed — packable as soon as it's Received.">
+                        Direct to packing
+                      </span>
+                    ) : canToggleProductionDone ? (
+                      <input type="checkbox" checked={!!r.production_done} aria-label="Production done"
+                        onChange={e => toggleProductionDone(r, e.target.checked)} />
+                    ) : (r.production_done ? 'Done' : '—')}
+                  </TableCell>
+                )}
               </TableRow>
             ))}
           </TableBody>

@@ -183,9 +183,16 @@ export function ItemSearchField({ line, onChange }) {
       // and a blank default must never clobber whatever MOC the line already had typed into it.
       ...(item.default_moc && { moc: item.default_moc }),
       // Requires-manufacturing default — always reseeded fresh on pick, same as category/
-      // traceability; NOT NULL DEFAULT 1 on the DB side means an un-set catalog item still resolves
-      // to checked, matching every composer's own emptyLine() default.
-      requires_manufacturing: item.default_requires_manufacturing !== 0 && item.default_requires_manufacturing !== false,
+      // traceability. An explicit catalog-level value (0 or 1) always wins. When the catalog item
+      // has none set (true for most rows — never backfilled), fall back to its own bom_category
+      // instead of a blanket "checked": a 'standard' item (the catalog's bought-out valves/
+      // fittings/fasteners bucket) defaults off, everything else still defaults on. Same
+      // category-fallback-with-item-override shape as defaultTraceabilityFromCategory above.
+      // (E2E cycle trace F-10: the old blanket-true fallback let a real bought-out item silently
+      // default to "needs manufacturing" with no catalog signal ever overriding it.)
+      requires_manufacturing: item.default_requires_manufacturing != null
+        ? !!item.default_requires_manufacturing
+        : category !== 'standard',
       // Traceability requirements: the item master's own recommendation wins when it has one set;
       // otherwise fall back to the category default (or all-off, for a non-dimensional/uncategorized
       // pick) — always seeded fresh on pick, same as category itself, editable from there.

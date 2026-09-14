@@ -73,7 +73,20 @@ function ItemMasterForm({ id, facets, onClose, onSaved }) {
   }, [id]);
 
   function set(field, value) {
-    setForm(f => ({ ...f, [field]: value }));
+    setForm(f => {
+      const next = { ...f, [field]: value };
+      // Real-data finding (E2E cycle trace F-10's root cause): every existing catalog row already
+      // carries an explicit default_requires_manufacturing (the schema's own NOT NULL DEFAULT 1
+      // means it's never actually left null) — so BomLineFields.jsx's category fallback for a null
+      // value, while correct, can only ever matter for a brand-new item. Seed it here, on the same
+      // category change, but only while it's still genuinely untouched (undefined) — an existing
+      // saved item's already-explicit value (loaded via the edit fetch above) is never undefined,
+      // so this can never silently flip a real item someone already decided on.
+      if (field === 'bom_category' && f.default_requires_manufacturing === undefined) {
+        next.default_requires_manufacturing = value === 'standard' ? 0 : undefined;
+      }
+      return next;
+    });
     if (field === 'item_name') setDuplicates(null); // name changed, any prior duplicate check is stale
     // A BOM Category change makes the old default dimensions describe the wrong shape entirely
     // (a plate's Thickness means nothing once switched to "round") — same reset BomTable's own

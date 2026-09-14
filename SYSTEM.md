@@ -10785,6 +10785,91 @@ Approve/Issue/Cancel actions for a Dispatch-only user; Purchase Requests' Reorde
 Planning's two-section Backlog both render correctly with real content; `/help?dept=Dispatch` shows
 Gate Passes, `/help?dept=Stores` doesn't. Zero console errors across the session.
 
+## 5cq. E2E order-lifecycle re-check on SB-1052 — a real routing-gate bug found and fixed, plus its source-level prevention (2026-09-14)
+
+A follow-up pass re-checking §5ak's original disposable order-lifecycle run's own leftover
+scenario (`ZZ-E2E-DELETE-ME`, SB-1052, project 240 — real Prod. Done/Requires-Manufacturing/
+routing bugs from an earlier round of this same investigation had already been fixed, §5be-era work)
+found one more real, previously-undiscovered bug in the same family, plus its correct source-level
+prevention — not a re-litigation of anything already fixed.
+
+**The bug, traced with real `usb_audit` timestamps, not assumed.** Item D (Angle Support,
+`requires_manufacturing=1`) was routed to Manufacturing via `route-self` at 20:35 (2026-09-13,
+the correct default at receive time), then Production genuinely marked it `production_done=1` at
+21:59 the same day — yet it stayed **permanently excluded** from every `readyForPacking`
+computation. `lib/data.js` deliberately duplicates this predicate byte-identically at 3 sites
+(`getProjectBom()`, `getDispatchWork()`'s bottleneck count, `getPendingPackingItems()`, each
+commented "never a second, independently-drifting definition") — all three read:
+
+```js
+return baseReady && b.self_routed_to !== 'production' && !pendingInwardIds.has(b.id);
+```
+
+`self_routed_to` is written once at receive time (`route-self`/`route-to`/the inline receive-time
+routing write) and never re-checked against `production_done` — so once routed to Manufacturing, a
+line was blocked from `readyForPacking` **forever**, contradicting the very comment two lines above
+it, which explicitly describes `production_done` as the thing that should lift the block. Fixed at
+all 3 duplicate sites, identically:
+
+```js
+!(b.self_routed_to === 'production' && !b.production_done)
+```
+
+— a `'production'` routing now blocks only until `production_done` flips true, matching the
+comment's own stated intent. **Blast-radius checked against the live DB before shipping**: exactly
+2 rows anywhere in the database satisfied the old-vs-new predicate difference, both disposable test
+data (SB-1052 itself, and a second, previously-unnoticed test project `SB-1053`/project 241 with an
+identical A/B/C/D scenario) — zero real production data was affected.
+
+**A second, related finding, checked against real data rather than assumed**: the routing-gate
+comment names an "override" scenario — Stores routing a `requires_manufacturing=0` item to
+Manufacturing anyway. Queried every routing decision ever made in this database (3,626 rows): **zero
+rows have ever combined `requires_manufacturing=0` with `routed_to='production'`** — this override
+has never actually happened, it's a theoretical UI affordance, not a used business flow. Per the
+confirmed model (a non-manufacturing item goes Stores → Packing directly; only a manufacturing-
+required item ever goes through Production first), fixed at the source instead of accommodating a
+combination that's never occurred: `ReceiveBomItemDialog.jsx`'s routing picker (both the primary
+item's Select and the per-sibling Select) now renders a fixed "Direct to Dispatch" line instead of an
+interactive Select when `requires_manufacturing` is false — `needsRouting`, the pre-fill effect
+(`setRoutedTo(d.requires_manufacturing ? 'production' : 'dispatch')`), and every submit-time
+validation are all left completely untouched, since the server's own mandatory routing requirement
+(`receive/route.js`'s `t.needsRouting = t.isFullyReceived && !hasChildren`, independent of
+`requires_manufacturing`) still requires a routing value for every fully-received normal-project
+line — only the *render* changes; `routedTo` is already correctly pre-filled to `'dispatch'` and
+still submits exactly the same way.
+
+**Live-verified end to end through the real UI, not just via a data-layer check.** As `admin`,
+against the real dev server: clicked "Generate Draft Packing List" on SB-1052's Dispatch panel — a
+new draft packing list (PL-1042) was created containing exactly item D (`bom_item` 4216), confirmed
+via a direct DB read of `packing_items`. SB-1052's full A/B/C/D reconciliation is now correct: B
+dispatched (PL-1039), A+C on the original draft (PL-1040), D on its own new draft (PL-1042) — all
+four items accounted for. Production's own project-page BOM panel correctly showed item D's status as
+"Pending" (not yet on an *approved* packing list — PL-1042 is still draft), matching the documented
+reconciliation rule exactly, and its Prod. Done checkbox rendered correctly (checked, only shown for
+manufacturing-required lines — items A/C correctly show "Direct to packing" text instead).
+
+**F-06 (Route-to resetting when a new receipt is created inside the same Receive dialog) — ruled
+out at the code level, not reproduced.** The effect that resets `routedTo` on open
+(`ReceiveBomItemDialog.jsx`) has a dependency array of `[open, item.id, item.qty_text]` — creating a
+new receipt only ever calls `ReceiptPicker`'s own `onChange(receiptId)`, which touches none of those
+three, so the effect cannot re-fire mid-session. Not a bug; the original investigation's suspicion
+doesn't hold up against the actual code.
+
+**Cleanup**: both disposable projects (SB-1052/240, SB-1053/241) and every row across the full
+transitive closure of tables referencing them (a real, deep dependency graph — `bom_items`,
+`packing_lists`/`packing_items`, `job_cards`, `milestones`, `qc_records`, `inward_approvals`,
+`pre_dispatch_approvals`, `po_items`, and more, discovered live via `PRAGMA foreign_key_list` rather
+than assumed from memory, confirming Turso enforces foreign keys on this connection — the same
+correction this file's own history already made once elsewhere) were deleted via a generic recursive
+cascade-purge script, built specifically because a hand-maintained table list kept missing a level
+each time a new FK surfaced. Zero residue confirmed by direct query afterward. All 9 temporary
+debug/query scripts created during this investigation were deleted from `scripts/`.
+
+Environment note, not a code bug: this session hit a real host disk-full (`ENOSPC`) condition
+mid-verification that corrupted the dev server's `.next` build cache (this codebase's own documented
+risk of running a build against a tree a `next dev` process is actively serving, §20) — recovered by
+clearing `.next` and restarting once disk space was freed.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own

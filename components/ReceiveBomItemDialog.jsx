@@ -209,13 +209,22 @@ export default function ReceiveBomItemDialog({ item, onDone }) {
             {needsRouting && (
               <div className="flex flex-col gap-1">
                 <Label>Route to *</Label>
-                <Select value={routedTo} onValueChange={setRoutedTo}>
-                  <SelectTrigger><SelectValue placeholder="Pick where this goes next" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="production">Manufacturing</SelectItem>
-                    <SelectItem value="dispatch">Direct to Dispatch</SelectItem>
-                  </SelectContent>
-                </Select>
+                {status.requires_manufacturing ? (
+                  <Select value={routedTo} onValueChange={setRoutedTo}>
+                    <SelectTrigger><SelectValue placeholder="Pick where this goes next" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="production">Manufacturing</SelectItem>
+                      <SelectItem value="dispatch">Direct to Dispatch</SelectItem>
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  // E2E findings fix (2026-09-14) — checked every routing decision ever made
+                  // (3,626 rows): none has ever combined requires_manufacturing=0 with 'production'.
+                  // Removing the choice at its source rather than leaving a never-used, business-
+                  // invalid combination reachable. routedTo is already 'dispatch' from the pre-fill
+                  // effect above and still submits exactly the same way — only the render changes.
+                  <p className="text-sm text-muted-foreground">Direct to Dispatch — no manufacturing needed</p>
+                )}
               </div>
             )}
             {requiredReceivedKeys.map(field => field === 'received_mtc_no' ? (
@@ -253,14 +262,21 @@ export default function ReceiveBomItemDialog({ item, onDone }) {
                             onChange={e => setSelectedSiblings(prev => ({ ...prev, [s.bom_item_id]: { ...prev[s.bom_item_id], qty: e.target.value } }))}
                             placeholder="Qty" />
                           {!s.has_children && (
-                            <Select value={sel.routedTo}
-                              onValueChange={v => setSelectedSiblings(prev => ({ ...prev, [s.bom_item_id]: { ...prev[s.bom_item_id], routedTo: v } }))}>
-                              <SelectTrigger className="h-7 w-44 text-xs"><SelectValue placeholder="Route to…" /></SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="production">Manufacturing</SelectItem>
-                                <SelectItem value="dispatch">Direct to Dispatch</SelectItem>
-                              </SelectContent>
-                            </Select>
+                            s.requires_manufacturing ? (
+                              <Select value={sel.routedTo}
+                                onValueChange={v => setSelectedSiblings(prev => ({ ...prev, [s.bom_item_id]: { ...prev[s.bom_item_id], routedTo: v } }))}>
+                                <SelectTrigger className="h-7 w-44 text-xs"><SelectValue placeholder="Route to…" /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="production">Manufacturing</SelectItem>
+                                  <SelectItem value="dispatch">Direct to Dispatch</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            ) : (
+                              // E2E findings fix (2026-09-14) — same branch as the primary item's
+                              // own routing field: no confirmed case ever routes a non-manufacturing
+                              // sibling to Production, so the choice is removed at its source.
+                              <p className="text-xs text-muted-foreground">Direct to Dispatch</p>
+                            )
                           )}
                         </div>
                       )}

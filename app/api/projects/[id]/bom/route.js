@@ -91,5 +91,11 @@ export async function GET(req, { params }) {
        OR EXISTS (SELECT 1 FROM stock_pieces sp WHERE sp.bom_item_id = b.id AND sp.status = 'reserved')
      ) ORDER BY b.sort_order, b.id`, [params.id]
   );
-  return NextResponse.json({ items });
+  // Finding #8 (E2E cycle trace) — this route's own item list has no packing-list linkage at all,
+  // but ProductionBomTab renders it through the shared BomTable, whose Packing column needs
+  // pendingIds to tell "packed" from "pending." Reusing getProjectBom()'s own pending array (the
+  // same source the project page's Production panel already gets it right from) rather than
+  // duplicating that computation here.
+  const { pending } = await getProjectBom(params.id);
+  return NextResponse.json({ items, pending: pending.map(p => p.id) });
 }

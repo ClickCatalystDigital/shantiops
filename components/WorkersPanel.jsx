@@ -95,6 +95,7 @@ const DIMENSIONAL_CATEGORIES = new Set(SHAPE_CATEGORIES);
 function ProductionBomTab({ projects }) {
   const [projectId, setProjectId] = useState('');
   const [bom, setBom] = useState(null);
+  const [pendingIds, setPendingIds] = useState([]);
   const [progress, setProgress] = useState(null);
   const [indents, setIndents] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -108,13 +109,13 @@ function ProductionBomTab({ projects }) {
     // jobCards (Phase 3, §0/§7) — optional Job Card picker on the indent, so it can resolve back to
     // a Work Order via the direct job_card_id -> work_order_id FK chain instead of only the indirect
     // bom_item_id join. Best-effort: a project with no open cards yet simply shows no picker.
-    const [{ items }, prog, ind, cards] = await Promise.all([
+    const [{ items, pending }, prog, ind, cards] = await Promise.all([
       api(`/api/projects/${projectId}/bom`),
       api(`/api/production/fabrication-progress?project_id=${projectId}`),
       api(`/api/material-indents?project_id=${projectId}`),
       api(`/api/job-cards?project_id=${projectId}&status=progress`).catch(() => []),
     ]);
-    setBom(items); setProgress(prog); setIndents(ind); setJobCards(cards);
+    setBom(items); setPendingIds(pending || []); setProgress(prog); setIndents(ind); setJobCards(cards);
   }
 
   useEffect(() => {
@@ -246,7 +247,12 @@ function ProductionBomTab({ projects }) {
             </div>
           )}
 
-          <BomTable projectId={Number(projectId)} bom={bom} editableFields={BOM_FIELD_OWNERS.Production} department="Production" />
+          {/* onSaved=loadAll — bom/pendingIds here are client-fetched local state, not server
+              props; router.refresh() alone (BomTable's own toggleProductionDone) can't touch them,
+              same gap this file's own comment on the onSaved prop already names ReleaseBomTab as
+              the precedent for. Found live while verifying the Prod. Done checkbox fix: the PATCH
+              succeeded (200) but the checkbox never visually updated without a manual reload. */}
+          <BomTable projectId={Number(projectId)} bom={bom} pendingIds={pendingIds} onSaved={loadAll} editableFields={BOM_FIELD_OWNERS.Production} department="Production" />
         </>
       )}
       {cutFor && (
