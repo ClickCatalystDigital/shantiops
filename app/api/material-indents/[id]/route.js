@@ -2,8 +2,9 @@
 // already-'released' item (see lib/indent-status.mjs's rollup rules) — material already handed over
 // is a completed fact, not something a later cancellation can undo.
 import { NextResponse } from 'next/server';
-import { execute, queryAll, queryOne } from '@/lib/db';
+import { execute, queryAll } from '@/lib/db';
 import { getFreshSessionUser, isInternal, canAccessDepartment } from '@/lib/auth';
+import { getMaterialIndentDetail } from '@/lib/data';
 import { releasePiece } from '@/lib/stock-pieces';
 import { rollupIndentStatus } from '@/lib/indent-status.mjs';
 import { audit } from '@/lib/usb';
@@ -11,18 +12,9 @@ import { audit } from '@/lib/usb';
 export async function GET(req, { params }) {
   const user = await getFreshSessionUser();
   if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  const indent = await queryOne(
-    `SELECT mi.*, p.project_no FROM material_indents mi LEFT JOIN projects p ON p.id = mi.project_id WHERE mi.id = ?`,
-    [params.id]);
-  if (!indent) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  const items = await queryAll(
-    `SELECT mii.*, b.material_description AS bom_description, i.description AS inventory_description,
-            i.tracking_mode AS tracking_mode
-       FROM material_indent_items mii
-       LEFT JOIN bom_items b ON b.id = mii.bom_item_id
-       LEFT JOIN inventory_items i ON i.id = mii.inventory_item_id
-      WHERE mii.indent_id = ?`, [params.id]);
-  return NextResponse.json({ ...indent, items });
+  const detail = await getMaterialIndentDetail(params.id);
+  if (!detail) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  return NextResponse.json({ ...detail.indent, items: detail.items });
 }
 
 export async function PATCH(req, { params }) {

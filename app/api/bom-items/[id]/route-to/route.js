@@ -10,6 +10,7 @@ import { execute, queryOne, queryAll } from '@/lib/db';
 import { audit } from '@/lib/usb';
 import { getAssemblyRollupMap } from '@/lib/data';
 import { itemRollupQty } from '@/lib/bom-structure.mjs';
+import { notifyDepartment } from '@/lib/notify';
 
 const VALID_ROUTES = new Set(['production', 'dispatch']);
 
@@ -55,6 +56,16 @@ export async function POST(req, { params }) {
       { error: `Not fully allocated yet: ${notReady.map(c => c.project_no).join(', ')}` }, { status: 400 });
   }
 
+  // Read the prior routing decision for each child before overwriting it — Material Indent's
+  // "material ready to indent" notification below must fire only on a genuine transition INTO
+  // 'production', not on every re-click of an already-production-routed cell (idempotent) or on a
+  // move to 'dispatch'.
+  const priorRows = await queryAll(
+    `SELECT child_project_id, routed_to FROM bom_item_child_routing
+      WHERE bom_item_id = ? AND child_project_id IN (${placeholders})`,
+    [item.id, ...ids]);
+  const priorRoutedTo = new Map(priorRows.map(r => [r.child_project_id, r.routed_to]));
+
   for (const child of children) {
     await execute(
       `INSERT INTO bom_item_child_routing (bom_item_id, child_project_id, routed_to, decided_by)
@@ -68,5 +79,22 @@ export async function POST(req, { params }) {
     actor: user.username,
     detail: `bom_item #${item.id} -> ${routedTo} for ${children.length} unit(s)`,
   });
+
+  // Material Indent bridge — notify Production only on the transition into 'production' for each
+  // child, not on an idempotent re-route. Best-effort, never blocks the routing action itself.
+  if (routedTo === 'production') {
+    try {
+      for (const child of children) {
+        if (priorRoutedTo.get(child.id) !== 'production') {
+          await notifyDepartment('Production', {
+            kind: 'indent_ready', title: 'Material ready to indent',
+            body: `${item.material_description || 'Item'} — routed to Production`,
+            project_id: child.id,
+          });
+        }
+      }
+    } catch { /* notification is best-effort */ }
+  }
+
   return NextResponse.json({ ok: true, routed: children.length, routed_to: routedTo });
 }

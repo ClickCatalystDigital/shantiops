@@ -10870,6 +10870,90 @@ mid-verification that corrupted the dev server's `.next` build cache (this codeb
 risk of running a build against a tree a `next dev` process is actively serving, §20) — recovered by
 clearing `.next` and restarting once disk space was freed.
 
+## 5cr. Material Indent — full-cycle E2E verification, one real bug found and fixed at the root (2026-09-14)
+
+A separate, related plan ("Material Indent — research findings & implementation-ready plan") had
+been implemented in this same working tree — notification bridge (§8), Production's cross-project
+worklist (§9), grouped multi-select create (§10), PDF (§11), and discoverability fixes (§12/§14) —
+but none of it had been live-verified per the plan's own §17 checklist, and none of it was committed.
+Asked directly to run that checklist end to end and fix anything found. Tested against the real dev
+DB with disposable data (projects SB-1055/SB-1056), driven through the real routes — first via a
+session-cookie curl harness (faster than the browser given this session's severe remote-Turso
+latency, 15-65s per request observed throughout), then confirmed visually in the browser as
+`production_head` and `stores_head` once the backend was proven correct.
+
+**Verified correct, no code needed:**
+- Notification fires on the transition into `routed_to='production'`, across all 3 real write paths
+  (`route-self`, `route-to`, the inline routing block inside `receive/route.js`).
+- Idempotent — re-routing an already-`'production'` line does not re-fire; a genuine
+  `dispatch → production` correction does re-fire (real `notifications` rows checked directly, not
+  inferred from the UI).
+- Grouped create — one `material_indents` header with N `material_indent_items` rows from one
+  multi-select action, not N separate indents.
+- Release (full + partial, via the existing `issueMaterial()` path) — correct `material_issues` rows,
+  correct status rollup, correct notification fan-out to both the department and the original raiser.
+- PDF re-download reflects live DB state, not a frozen snapshot (issued/remaining/status all update
+  between downloads).
+- Non-manufacturing exclusion — a `requires_manufacturing=0` line routed to `'dispatch'` never
+  reaches the worklist query at all (confirmed live: zero rows, zero notification fired).
+- The cross-project constraint — a deliberately mismatched indent (created via direct API, bypassing
+  the worklist UI's own single-project grouping) is correctly rejected at release time with the
+  documented `"This item's project doesn't match the indent"` error.
+- The "already indented" exclusion math, which looked wrong on first read (a partially-released
+  line showed 0 remaining) — investigated instead of patched: it's correct. Once a line's full
+  required quantity is already covered by one indent, Production is correctly never offered a second
+  one for the same material regardless of Stores' release progress — that's the real, intended
+  defense against double-indenting the same requirement, not a bug. Left untouched.
+- Both UI surfaces — Production's `MaterialIndentWorklist.jsx` (checkbox selection, per-project
+  "Create Material Indent" button, the "Just created" banner + Download PDF link, correct disabled/
+  "Fully indented already" state after creation) and Stores' `IndentsCard` (search, bulk-select,
+  per-line Release with a qty cap, correct busy-state reset even on a server-rejected release) —
+  clicked through live, not just exercised via API.
+
+**One real bug found and fixed, at the root, reusing an existing convention — not a patch.** The
+PDF's Status column made a real status value hyphenate mid-word in the actual rendered document —
+`"partially_released"` broke as `"partially_re-\nleased"`. Root cause was two-fold, both in
+`lib/material-indent-pdf.js`'s `COLS` array: the column widths summed to 104% (a genuine arithmetic
+bug), and the raw snake_case string had no space to wrap at, so react-pdf's hyphenation algorithm
+split the word itself. Fixed by rebalancing the widths to sum to exactly 100% and rendering the
+status with `.replace(/_/g, ' ')` — the identical convention `lib/reports/render.js`'s
+`DRAWING_REGISTER_COLS` already uses for the same class of value, not a new pattern invented for
+this file. Verified by reading the actual rendered PDF (not just `pdftotext`'s text extraction,
+which can't reveal a layout-only defect) before and after.
+
+**Access-control finding, flagged rather than silently fixed**: `app/production/workers/page.js`
+gates on `inDepartment(user, 'Production')` — a stricter, PM-excluding check, unlike every other
+department's route (`canAccessDepartment`, which passes any PM). This was a deliberate, documented
+choice for the Workers/attendance sub-feature this route originally hosted alone (§3a: "a
+shop-floor attendance concept the other departments don't have") — but the same page has since grown
+to host Work Orders, Job Cards, BOM, Forecast, and now Material Indent, none of which have that same
+reason to exclude a PM. The practical effect: `admin` (a PM) cannot reach any of it via the browser,
+confirmed directly (`curl -I` returns a real `307` to `/`). Not changed — this is a real product/
+access-model decision, not an obviously-wrong bug, and changing auth gating as a side effect of a
+verification task would be exactly the kind of unrequested scope creep to avoid. Verification
+proceeded as `production_head`/`stores_head` instead, the route's actual intended users.
+
+**Commit scope, deliberately narrower than the whole feature.** This working tree had a second,
+unrelated feature (a Gate Pass PDF + a stock-piece lineage-code fix) landing concurrently from a
+different session while this verification ran. Checked every shared file's diff before staging
+anything (`git diff <file>`, hunk by hunk) — `lib/data.js` and `components/WorkersPanel.jsx` each
+had one Material-Indent hunk and one unrelated hunk, cleanly separable and staged via a hand-built
+patch (`git apply --cached`) rather than the whole file. `components/StoresWorkspace.jsx` had grown
+to 25+ intermixed hunks spanning both features by the time this check ran — too entangled to split
+safely without risking either feature — left **entirely uncommitted**, exactly as found. This means
+Stores' own "Material Indents" tab-rename/PDF-link (confirmed working live, in the browser, as part
+of this same verification pass) is not yet part of any commit; it will land whenever that file's
+other, unrelated work is committed. Every file actually committed here was independently confirmed
+free of that other feature's code before staging.
+
+**Cleanup**: both disposable projects (SB-1055/244, SB-1056/245) and their full transitive FK
+closure were removed via the same generic recursive cascade-purge script this session's earlier
+E2E-fix cleanup (§5cq) already proved — plus 20 orphaned `notifications` rows found separately (a
+real, pre-existing gap: `bom_released`-kind notifications never carry `project_id` at all, so they
+survive a project-scoped cascade purge and need a direct content match to clean up — not fixed,
+just cleaned; the gap itself is out of this pass's scope). Zero residue confirmed by direct query.
+All temporary debug/query scripts deleted from `scripts/` afterward.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own

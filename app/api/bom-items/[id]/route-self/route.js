@@ -16,6 +16,7 @@ import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { execute, queryOne } from '@/lib/db';
 import { audit } from '@/lib/usb';
+import { notifyDepartment } from '@/lib/notify';
 
 const VALID_ROUTES = new Set(['production', 'dispatch']);
 
@@ -46,6 +47,13 @@ export async function POST(req, { params }) {
     return NextResponse.json({ error: 'Not received yet' }, { status: 400 });
   }
 
+  // Same transition-guard rule as route-to/route.js — read the prior decision before overwriting
+  // it, so the Material Indent "ready to indent" notification below fires only on a genuine move
+  // into 'production', never on an idempotent re-route.
+  const prior = await queryOne(
+    'SELECT routed_to FROM bom_item_child_routing WHERE bom_item_id = ? AND child_project_id = ?',
+    [item.id, item.project_id]);
+
   await execute(
     `INSERT INTO bom_item_child_routing (bom_item_id, child_project_id, routed_to, decided_by)
      VALUES (?, ?, ?, ?)
@@ -57,6 +65,17 @@ export async function POST(req, { params }) {
     actor: user.username,
     detail: `bom_item #${item.id} -> ${routedTo}`,
   });
+
+  if (routedTo === 'production' && prior?.routed_to !== 'production') {
+    try {
+      await notifyDepartment('Production', {
+        kind: 'indent_ready', title: 'Material ready to indent',
+        body: `${item.material_description || 'Item'} — routed to Production`,
+        project_id: item.project_id,
+      });
+    } catch { /* notification is best-effort */ }
+  }
+
   return NextResponse.json({ ok: true, routed_to: routedTo });
 }
 

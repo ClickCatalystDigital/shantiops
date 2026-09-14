@@ -18,7 +18,7 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectGroup, SelectItem,
 } from '@/components/ui/select';
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table';
-import { PlusIcon, HouseIcon, ClipboardListIcon, UsersIcon, HardHatIcon, PackageIcon, ScissorsIcon, TrashIcon, ClipboardIcon, TrendingUpIcon, ClipboardCheckIcon } from 'lucide-react';
+import { PlusIcon, HouseIcon, ClipboardListIcon, UsersIcon, HardHatIcon, PackageIcon, PackageCheckIcon, ScissorsIcon, TrashIcon, ClipboardIcon, TrendingUpIcon, ClipboardCheckIcon } from 'lucide-react';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 import JobCardBoard from '@/components/JobCardBoard';
 import BomTable from '@/components/BomTable';
@@ -29,6 +29,7 @@ import ProductionForecastPanel from '@/components/ProductionForecastPanel';
 import CutDialog from '@/components/CutDialog';
 import SearchableSelect from '@/components/SearchableSelect';
 import { PreDispatchApprovalsPanel } from '@/components/MaterialApprovalPanels';
+import MaterialIndentWorklist from '@/components/MaterialIndentWorklist';
 import { DIMENSIONAL_CATEGORIES as SHAPE_CATEGORIES } from '@/lib/bom-fields.mjs';
 
 // Renamed from "Workers" to "Job Card" (PRODUCTION-MODULE-DESIGN.md §3.1 nav decision) — job cards
@@ -38,7 +39,7 @@ import { DIMENSIONAL_CATEGORIES as SHAPE_CATEGORIES } from '@/lib/bom-fields.mjs
 // BOM/Forecast/Daily Sheet/Workers Roster all live here too now, so the workspace name needs to
 // cover the whole thing; Job Card stays exactly as it was, just as the default sub-tab, same
 // "workspace name ≠ default sub-tab" shape every other department tab already has.
-const WORKSPACE_TABS = ['jobcards', 'workorders', 'bom', 'forecast', 'sheet', 'roster', 'approvals'];
+const WORKSPACE_TABS = ['jobcards', 'workorders', 'bom', 'indent', 'forecast', 'sheet', 'roster', 'approvals'];
 
 export default function WorkersPanel({ date, sheet, workers, projects, trades, jobCards, operations, workstations, preDispatchApprovals = [], canDecideProduction = false }) {
   // Operations' Production pipeline glance (ProductionFlow.jsx) links a stage straight into a
@@ -55,6 +56,10 @@ export default function WorkersPanel({ date, sheet, workers, projects, trades, j
     { key: 'workorders', label: 'Work Orders', icon: ClipboardIcon },
     { key: 'jobcards', label: 'Job Card', icon: HardHatIcon },
     { key: 'bom', label: 'BOM', icon: PackageIcon },
+    // Material Indent bridge — the cross-project worklist of material Stores has routed here,
+    // ready to indent (plan §9). Separate from "BOM"'s own per-project single-line raise form,
+    // which stays exactly as it was.
+    { key: 'indent', label: 'Material Indent', icon: PackageCheckIcon },
     { key: 'forecast', label: 'Forecast', icon: TrendingUpIcon },
     { key: 'sheet', label: 'Daily Sheet', icon: ClipboardListIcon },
     { key: 'roster', label: 'Workers Roster', icon: UsersIcon },
@@ -71,6 +76,7 @@ export default function WorkersPanel({ date, sheet, workers, projects, trades, j
       )}
       {tab === 'workorders' && <WorkOrdersPanel projects={projects} operations={operations} workstations={workstations} initialStatus={initialWoStatus} />}
       {tab === 'bom' && <ProductionBomTab projects={projects} />}
+      {tab === 'indent' && <MaterialIndentWorklist />}
       {tab === 'forecast' && <ProductionForecastPanel />}
       {tab === 'sheet' && <DailySheetWorkspace date={date} sheet={sheet} projects={projects} />}
       {tab === 'roster' && <Roster workers={workers} trades={trades} />}
@@ -215,9 +221,12 @@ function ProductionBomTab({ projects }) {
             {indents?.length > 0 && (
               <div className="flex flex-col gap-1 pt-1">
                 {indents.slice(0, 8).map(ind => (
-                  <div key={ind.id} className="flex items-center justify-between text-xs text-muted-foreground">
+                  <div key={ind.id} className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
                     <span>{ind.indent_no} · {ind.items?.map(it => it.bom_description || it.inventory_description).filter(Boolean).join(', ')}</span>
-                    <Badge variant="outline" className="text-[10px]">{ind.status}</Badge>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <Badge variant="outline" className="text-[10px]">{ind.status}</Badge>
+                      <a href={`/api/material-indents/${ind.id}/pdf`} target="_blank" rel="noreferrer" className="underline">PDF</a>
+                    </div>
                   </div>
                 ))}
               </div>

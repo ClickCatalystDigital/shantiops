@@ -41,6 +41,7 @@ import { getAssemblyRollupMap, getProjectUnitCounts, getPlannedRecipients } from
 import { itemRollupQty } from '@/lib/bom-structure.mjs';
 import { missingTraceabilityFields, applyReceivedSideEffects, creditBomItemReceipt, maybeCreatePieceStock, maybeReserveScalarStock, notifyInwardApprovalPending } from '@/lib/bom-receiving';
 import { audit } from '@/lib/usb';
+import { notifyDepartment } from '@/lib/notify';
 
 // Read-only helper for the dialog's own "remaining outstanding" default and running-total display
 // (Phase 3d) — the same required/received-so-far computation POST already does, exposed so the UI
@@ -219,6 +220,15 @@ export async function POST(req, { params }) {
       return NextResponse.json(
         { error: `Item #${t.item.id} needs a routing decision (Manufacturing or Direct to Dispatch) to complete this receipt` }, { status: 400 });
     }
+    // Material Indent bridge — same transition-guard rule as route-to/route-self: read the prior
+    // routing decision now so the post-transaction notification below fires only on a genuine move
+    // into 'production', never on an idempotent re-route.
+    if (t.needsRouting) {
+      const prior = await queryOne(
+        'SELECT routed_to FROM bom_item_child_routing WHERE bom_item_id = ? AND child_project_id = ?',
+        [t.item.id, t.item.project_id]);
+      t.priorRoutedTo = prior?.routed_to || null;
+    }
   }
 
   // Computed before the transaction (nextNumber isn't tx-aware) — same tolerance for a wasted
@@ -272,6 +282,8 @@ export async function POST(req, { params }) {
           item: t.item, receiptId, isFullyReceived: credit.isFullyReceived, grnRef: credit.grnRef, targetChanged,
           totalReceived: t.totalReceived, requiredQty: t.requiredQty, qty: t.qty,
           bomItemReceiptId: credit.bomItemReceiptId, inwardApprovalId: credit.inwardApprovalId,
+          routedToProduction: credit.isFullyReceived && t.needsRouting && t.routedTo === 'production',
+          priorRoutedTo: t.priorRoutedTo || null,
         });
       }
       return out;
@@ -301,6 +313,20 @@ export async function POST(req, { params }) {
     if (!r.isFullyReceived) continue;
     const finalChanged = { ...r.targetChanged, purchase_status: 'Received', grn_ref: r.grnRef, receipt_id: r.receiptId };
     await applyReceivedSideEffects(r.item, finalChanged);
+  }
+
+  // Material Indent bridge — fired only after the transaction has actually committed, and only for
+  // targets whose routing genuinely transitioned into 'production' (never on a target whose write
+  // rolled back, and never on a target that was already routed to production). Best-effort.
+  for (const r of results) {
+    if (!r.routedToProduction || r.priorRoutedTo === 'production') continue;
+    try {
+      await notifyDepartment('Production', {
+        kind: 'indent_ready', title: 'Material ready to indent',
+        body: `${r.item.material_description || 'Item'} — routed to Production`,
+        project_id: r.item.project_id,
+      });
+    } catch { /* notification is best-effort */ }
   }
 
   const receipt = await queryOne('SELECT inward_batch_no FROM stock_receipts WHERE id = ?', [results[0].receiptId]);

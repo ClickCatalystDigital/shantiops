@@ -32,7 +32,13 @@ export async function GET(req) {
       [projectId]
     ));
   }
-  return NextResponse.json({ error: 'bom_item_id or project_id is required' }, { status: 400 });
+  // No filter — Stores' own cross-project "what left the building recently" glance (StoresWorkspace's
+  // Issued to WIP tab), so it doesn't force picking a project before showing anything.
+  return NextResponse.json(await queryAll(
+    `SELECT mi.*, b.material_description, b.moc, b.size_spec, p.project_no, p.customer_name
+       FROM material_issues mi JOIN bom_items b ON b.id = mi.bom_item_id JOIN projects p ON p.id = b.project_id
+      ORDER BY mi.issued_at DESC LIMIT 50`
+  ));
 }
 
 export async function POST(req) {
