@@ -62,8 +62,27 @@ export async function POST(req) {
       }
     }
     if (line.bom_item_id) {
-      const bomItem = await queryOne('SELECT id FROM bom_items WHERE id = ?', [line.bom_item_id]);
+      const bomItem = await queryOne('SELECT id, material_description FROM bom_items WHERE id = ?', [line.bom_item_id]);
       if (!bomItem) return NextResponse.json({ error: 'BOM item not found' }, { status: 404 });
+      // Material Indent routing bypass fix — a Material Indent is Production's own request for
+      // material Stores has already routed to them; nothing here previously verified that, so any
+      // received (or reserved-piece) BOM line could be indented regardless of whether Stores routed
+      // it to Dispatch instead, or never routed it at all. Enforced server-side, not just by the
+      // correct MaterialIndentWorklist UI, which is a display filter, not a trust boundary. One row
+      // with routed_to='production' anywhere for this bom_item_id correctly covers both an
+      // ordinary/sibling project's own self-routing (child_project_id = the item's own project_id,
+      // the only value it can take there) and a split-master's per-child routing — material_indent_items
+      // has no per-child column to be more specific than that, a pre-existing, documented limitation
+      // this fix doesn't attempt to solve.
+      const routed = await queryOne(
+        "SELECT 1 FROM bom_item_child_routing WHERE bom_item_id = ? AND routed_to = 'production'",
+        [line.bom_item_id]
+      );
+      if (!routed) {
+        return NextResponse.json({
+          error: `${bomItem.material_description || `Item #${line.bom_item_id}`} is not routed to Production yet — Stores must route it before it can be indented`,
+        }, { status: 400 });
+      }
     }
   }
 

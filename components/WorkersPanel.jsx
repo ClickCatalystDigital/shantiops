@@ -105,23 +105,16 @@ function ProductionBomTab({ projects }) {
   const [progress, setProgress] = useState(null);
   const [indents, setIndents] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [indentForm, setIndentForm] = useState({ bom_item_id: '', qty: '', job_card_id: '' });
-  const [busy, setBusy] = useState(false);
   const [cutFor, setCutFor] = useState(null);
-  const [jobCards, setJobCards] = useState([]);
   const router = useRouter();
 
   async function loadAll() {
-    // jobCards (Phase 3, §0/§7) — optional Job Card picker on the indent, so it can resolve back to
-    // a Work Order via the direct job_card_id -> work_order_id FK chain instead of only the indirect
-    // bom_item_id join. Best-effort: a project with no open cards yet simply shows no picker.
-    const [{ items, pending }, prog, ind, cards] = await Promise.all([
+    const [{ items, pending }, prog, ind] = await Promise.all([
       api(`/api/projects/${projectId}/bom`),
       api(`/api/production/fabrication-progress?project_id=${projectId}`),
       api(`/api/material-indents?project_id=${projectId}`),
-      api(`/api/job-cards?project_id=${projectId}&status=progress`).catch(() => []),
     ]);
-    setBom(items); setPendingIds(pending || []); setProgress(prog); setIndents(ind); setJobCards(cards);
+    setBom(items); setPendingIds(pending || []); setProgress(prog); setIndents(ind);
   }
 
   useEffect(() => {
@@ -133,30 +126,6 @@ function ProductionBomTab({ projects }) {
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
-
-  // Material Indent hard gate (Feature B) — Production can no longer issue material to itself
-  // (POST /api/material-issues is Stores-only now); this raises an indent instead, which Stores
-  // must explicitly release before the material actually leaves Stores.
-  async function raiseIndent() {
-    if (!indentForm.bom_item_id) return showToast('Pick a BOM item', 'error');
-    const qty = Number(indentForm.qty);
-    if (!qty || qty <= 0) return showToast('Enter a quantity', 'error');
-    setBusy(true);
-    try {
-      await api('/api/material-indents', {
-        method: 'POST',
-        body: {
-          project_id: Number(projectId),
-          job_card_id: indentForm.job_card_id ? Number(indentForm.job_card_id) : undefined,
-          items: [{ bom_item_id: Number(indentForm.bom_item_id), qty_requested: qty }],
-        },
-      });
-      showToast('Indent raised — Stores will release it');
-      setIndentForm({ bom_item_id: '', qty: '', job_card_id: '' });
-      await loadAll();
-    } catch (err) { showToast(err.message, 'error'); }
-    setBusy(false);
-  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -193,32 +162,13 @@ function ProductionBomTab({ projects }) {
             </div>
           )}
 
-          <div className="flex flex-col gap-2">
-            <p className="text-sm font-medium">Raise Material Indent</p>
-            <p className="text-xs text-muted-foreground">
-              Stores must explicitly release this before the material leaves Stores — Production can
-              no longer issue material directly.
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <Select value={indentForm.bom_item_id} onValueChange={v => setIndentForm({ ...indentForm, bom_item_id: v })}>
-                <SelectTrigger className="w-72"><SelectValue placeholder="BOM item" /></SelectTrigger>
-                <SelectContent><SelectGroup>
-                  {bom.map(b => <SelectItem key={b.id} value={String(b.id)}>{b.material_description} {b.size_spec ? `· ${b.size_spec}` : ''}</SelectItem>)}
-                </SelectGroup></SelectContent>
-              </Select>
-              <Input type="number" min="0" placeholder="Qty" className="w-24" value={indentForm.qty}
-                onChange={e => setIndentForm({ ...indentForm, qty: e.target.value })} />
-              {jobCards.length > 0 && (
-                <Select value={indentForm.job_card_id} onValueChange={v => setIndentForm({ ...indentForm, job_card_id: v })}>
-                  <SelectTrigger className="w-56"><SelectValue placeholder="Job Card (optional)" /></SelectTrigger>
-                  <SelectContent><SelectGroup>
-                    {jobCards.map(jc => <SelectItem key={jc.id} value={String(jc.id)}>{jc.jc_no || `#${jc.id}`} {jc.section}{jc.wo_no ? ` · ${jc.wo_no}` : ''}</SelectItem>)}
-                  </SelectGroup></SelectContent>
-                </Select>
-              )}
-              <Button size="sm" onClick={raiseIndent} disabled={busy}>Raise Indent</Button>
-            </div>
-            {indents?.length > 0 && (
+          {indents?.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <p className="text-sm font-medium">Material Indents for this project</p>
+              <p className="text-xs text-muted-foreground">
+                To raise a new indent, use the "Material Indent" tab — it only offers material Stores
+                has actually routed to Production.
+              </p>
               <div className="flex flex-col gap-1 pt-1">
                 {indents.slice(0, 8).map(ind => (
                   <div key={ind.id} className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
@@ -230,8 +180,8 @@ function ProductionBomTab({ projects }) {
                   </div>
                 ))}
               </div>
-            )}
-          </div>
+            </div>
+          )}
 
           {bom.some(b => DIMENSIONAL_CATEGORIES.has(b.category)) && (
             <div className="flex flex-col gap-2">

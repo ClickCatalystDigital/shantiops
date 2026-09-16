@@ -1,18 +1,18 @@
 # Stores Department — Authoritative Specification
 
-**Status: AUDIT COMPLETE + ROUND 1 FIXES APPLIED.** This document describes the Stores department
-**as it is actually implemented in the codebase today**, verified by reading the real source files
-(not by re-reading old plan files, and not from memory of what was discussed in chat). Every claim
-below carries a file/line citation. Where the implementation diverges from an earlier plan, or
-where a different mechanism does the same job in two places, that is called out explicitly in §18
-(Gaps) — now split into **Fixed this round** and **Still open**.
+**Status: AUDIT COMPLETE + ROUND 1 + ROUND 2 FIXES APPLIED.** This document describes the Stores
+department **as it is actually implemented in the codebase today**, verified by reading the real
+source files (not by re-reading old plan files, and not from memory of what was discussed in chat).
+Every claim below carries a file/line citation. Where the implementation diverges from an earlier
+plan, or where a different mechanism does the same job in two places, that is called out explicitly
+in §18 (Gaps) — now split into **Fixed (Round 1)**, **Fixed (Round 2)**, and **Still open**.
 
 **How this was produced:** every table schema, every API route, every `lib/*.js` function, and
 every relevant React component listed in §19 was read directly, in full or in the specific,
 cited region, during the original audit. No claim here is inferred from a docstring, a plan file,
 or a prior conversation summary alone — each was cross-checked against the real `CREATE TABLE`
 statement, the real route handler, or the real component code. §20 states plainly what has and has
-not been verified, updated after the round below.
+not been verified, updated after each round below.
 
 **Round 1 fixes (applied after the original audit, no other architectural/UI change made):**
 - **Gap #1 (Critical) — fixed.** `getChildRoutingBoard()` (§15, multi-unit split-order routing)
@@ -27,6 +27,38 @@ not been verified, updated after the round below.
 - Verified: `npm run lint` clean; every real caller of both changed functions traced through
   (§18's "Fixed this round" entries carry the full trace). No browser/live-DB verification —
   same boundary as the original audit, see §20.
+
+**Round 2 fixes (a separate, later targeted delta audit against the model
+"Material Demand → Reservation → Allocation → {Production → Material Indent → Issue → Issued to
+WIP} / {Dispatch → Packing → Dispatch}" — found three new, previously-undocumented gaps in exactly
+that chain, none of which Round 1 touched or knew about; all three fixed):**
+- **Gap #8 (Critical, new this round) — fixed.** `issueMaterial()`'s scalar floor check (§12)
+  counted *every* active `inventory_reservations` row against an inventory_item, including the
+  reservation belonging to the very `bom_item_id` being issued for — so any line whose own demand
+  had already been reserved (which is essentially every scalar catalog-linked line reaching a
+  Material Indent, since `maybeReserveScalarStock()`/`releaseScalarFromInwardHold()` auto-reserve
+  100% of what's received against that same line, §3/§4) self-blocked the first time Production
+  tried to Issue it, throwing `"Insufficient stock — only 0 available"` against material that
+  physically existed and was reserved specifically for that line. See §12/§14 for the fix
+  (`consumeReservedStock()`, a new `qty_issued` column) and §18 for the full trace.
+- **Gap #9 (new this round) — fixed.** `POST /api/material-indents` performed zero check that a
+  submitted `bom_item_id` was actually routed to Production (`bom_item_child_routing`) — combined
+  with `components/WorkersPanel.jsx::ProductionBomTab`'s own free-form "Raise Material Indent"
+  picker (populated from every Received/reserved-piece line on a project, independent of routing),
+  Production could indent material Stores had routed to Dispatch, or never routed at all. See §10
+  for the fix.
+- **Gap #10 (new this round) — fixed.** The redundant, unguarded indent-creation path itself
+  (`ProductionBomTab`'s mini-form) is removed; `MaterialIndentWorklist.jsx` is now the single UI
+  entry point for creating a Production indent. See §10.
+- Verified: `npm run lint` clean (877 files); `scripts/inventory-reservations-selfcheck.mjs`
+  (extended, 13 cases) and a new `scripts/material-indent-routing-gate-selfcheck.mjs` (5 cases), both
+  hand-mirroring the real fixed logic against an in-memory DB — same precedent this file's own §19
+  already established for DB-dependent `.js` code that only loads through Next's bundler. Every
+  pre-existing selfcheck this round could plausibly affect
+  (`material-indent-selfcheck.mjs`, `production-routing-selfcheck.mjs`,
+  `child-routing-selfcheck.mjs`, `remnant-cutting-selfcheck.mjs` — confirming piece-tracking/
+  `cutPiece()` is genuinely untouched) re-run clean. **No browser/live-DB click-through** — same
+  boundary as Round 1, see §20.
 
 ---
 
@@ -130,7 +162,10 @@ because they don't sit on this main line:
 - **§14 Reservations** — `inventory_items`-level Reserve→Issue (`ActiveReservationsCard`), used both
   by the automatic matcher (`lib/remnant-match.js`, `lib/procurement.js`'s `autoReserveFromStock`)
   and by manual Stores action. This is what actually moves `on_hand` for a scalar catalog item; it
-  runs whether or not the line ever reaches Allocate.
+  runs whether or not the line ever reaches Allocate. **"Structurally independent" here means it's a
+  separate write path, not that it's disconnected from §12's Issue any more — Round 2 reconciled the
+  two (§12/§14): a Material Indent's Issue now draws down a bom_item's own reservation first, rather
+  than the two silently competing over the same `on_hand`/`available` figures.**
 - **§6 Remnants** — Production's Cut action (`lib/stock-pieces.js`'s `cutPiece()`) creates new
   `pending_receipt` stock outside the receiving flow entirely; it re-enters the same custody model
   at `confirmPieceReceipt()`.
@@ -619,6 +654,16 @@ would delete those rows from the one screen that acts on them — Procurement al
 `pending_review=1` line, so Stores not seeing it either would make it permanently invisible and
 un-actionable. **Left unchanged, confirmed correct as-is.**
 
+**Round 2 — `getOpenBomItems()`'s own `reserved_qty` column, checked and deliberately left as
+`SUM(qty)`, not `SUM(qty − qty_issued)`.** Every genuine pool-availability read in the codebase was
+switched to the `qty_issued`-aware sum this round (§14) — this one wasn't, on purpose: it feeds a
+"Reserved from stock, no action needed" badge (not a floor check), and structurally, a row
+`getOpenBomItems()` can even return (`purchase_status NOT IN ('Received','Cancelled','In-Stock')`,
+i.e. still pre-receipt) can never have a reservation with `qty_issued > 0` in the first place — a
+Material Indent Issue against a bom_item requires it to be routed to Production, which requires
+`purchase_status='Received'` first (§10). So this is a provably-inert distinction for this specific
+read, left unchanged to keep the fix's surface area to genuinely affected reads only.
+
 **Naming note, a real point of confusion this audit surfaced**: `app/stores/page.js` fetches BOTH
 `getOpenBomItems()` (assigned to prop `openRequests`, feeds Material Demand) AND `getSourcingItems()`
 (assigned to prop `bomItems`, feeds Receive a Delivery / Allocate a Delivery search) — the prop name
@@ -643,9 +688,18 @@ lib/data.js :: getPendingProductionMaterialLines()   ◄── the worklist Prod
         ▼
 components/MaterialIndentWorklist.jsx  (rendered inside components/WorkersPanel.jsx, tab='indent')
    — checkbox multi-select, "Create Material Indent (N)" — single OR multiple lines in one action
+   — THE ONLY UI PATH to create a Production indent (Round 2, Gap #10 — see below)
         │
         ▼  POST /api/material-indents   (gated: production.indent.create — a Production action,
         │  not a Stores one)
+        │
+        │  ROUND 2, Gap #9 — server-side routing check, added this round: for every line carrying a
+        │  bom_item_id, requires EXISTS(bom_item_child_routing WHERE bom_item_id=? AND
+        │  routed_to='production') — rejects the whole request (400, naming the offending item)
+        │  otherwise. One row anywhere for that bom_item_id is enough (covers both the self-routed
+        │  and split-child UNION shapes above); material_indent_items still has no per-child column,
+        │  so this can't be more precise than "at least one child cell is routed to Production" for
+        │  a split-master line — a pre-existing, documented limitation, not solved by this fix.
         ▼
 material_indents  (header: indent_no, project_id, job_card_id, requested_by, status)
 material_indent_items  (per line: inventory_item_id [resolved via getInventoryItemForBomItem,
@@ -654,10 +708,27 @@ material_indent_items  (per line: inventory_item_id [resolved via getInventoryIt
         ▼  notifyDepartment('Stores', kind:'indent_raised', actionKey:'stores.indent.release')
 ```
 
-**Validation, server-side** (`app/api/material-indents/route.js:49-68`): every line needs either a
+**Validation, server-side** (`app/api/material-indents/route.js`): every line needs either a
 `bom_item_id` or `inventory_item_id`; a non-piece-tracked inventory line requires a real
 `bom_item_id` (since `material_issues.bom_item_id` is `NOT NULL` — only a piece-tracked line's
-consumption path, Cut, doesn't need one).
+consumption path, Cut, doesn't need one); a `bom_item_id` line additionally requires the new
+routing check above (Round 2).
+
+**Round 2, Gap #9/#10 — the full finding.** Before this round, nothing enforced that indent
+creation actually corresponded to real Production routing, on either side of the trust boundary:
+- `POST /api/material-indents` itself never checked `bom_item_child_routing` at all — a direct or
+  forged request could indent any existing `bom_item_id`, routed to Dispatch or never routed.
+- `components/WorkersPanel.jsx::ProductionBomTab`'s own "Raise Material Indent" mini-form (a
+  second, older, unguarded UI path — predates `MaterialIndentWorklist.jsx`) populated its BOM-item
+  picker from `GET /api/projects/[id]/bom` (every `purchase_status IN ('Received','In-Stock')` line,
+  or a line with a reserved piece) — **zero reference to routing**. A Production user could pick
+  any received line on the project, including one Stores had explicitly routed to Dispatch, and
+  raise a real indent against it through the normal UI.
+
+**Fixed**: the routing check above is now the real trust boundary (server-side, both UI paths and
+any direct API call), and the redundant mini-form is gone — `ProductionBomTab` keeps its Master BOM
+view, fabrication progress, and Cutting & Remnant sections unchanged, plus a read-only "Material
+Indents for this project" list pointing at the Material Indent tab for creation.
 
 ---
 
@@ -698,14 +769,24 @@ Scalar / batch line:
         │  project cross-check: item's bom_item.project_id must equal the indent's own project_id
         ▼
    lib/material-issues.js :: issueMaterial({bomItemId, qty, jobCardId, indentItemId, ...})
-        │  scalar: floor-checks available (on_hand − active reservations) BEFORE inserting —
-        │          rejects on insufficient stock; decrements on_hand whenever a real
-        │          inventory_items row exists, REGARDLESS of whether it's been costed yet
-        │          (Round 1 fix — §18 Gap #3: previously both the floor check and the decrement
-        │          were incorrectly gated on totalCost > 0, so a never-costed line's on_hand
-        │          silently never moved on a real issue and was never floor-checked either)
+        │  scalar:
+        │    1. lib/procurement.js :: consumeReservedStock({bomItemId, qty})  ◄── Round 2, Gap #8
+        │       CAS-claims THIS bom_item's own active inventory_reservations rows first, oldest
+        │       row first (qty − qty_issued per row), before touching anything else — a reservation
+        │       is the commitment ledger for its own bom_item, so Issue draws it down rather than
+        │       treating it as generic pool stock. Returns {consumed, shortfall}.
+        │    2. only if shortfall > 0 (a non-catalog-linked line that was never auto-reserved, or
+        │       Production indenting more than was ever reserved): the pre-existing general floor
+        │       check — available = on_hand − SUM(qty − qty_issued) across every OTHER active
+        │       reservation on this inventory_item — rejects on insufficient stock.
+        │    on_hand decrements exactly once, for the full requested qty, regardless of the
+        │    consumed/shortfall split; bom_items.purchase_status is NOT touched by this path
+        │    (Round 1 fix — §18 Gap #3, unchanged by Round 2: previously both the floor check and
+        │    the decrement were incorrectly gated on totalCost > 0, so a never-costed line's
+        │    on_hand silently never moved on a real issue and was never floor-checked either)
         │  batch/serial: already-issued-via-Reserve→Issue lines get an audit-only row (I11's
         │          no-double-consumption guard); otherwise consumeStock() does real FIFO allocation
+        │          — untouched by Round 2, consumeReservedStock only runs in the scalar branch
         ▼
    material_issues row INSERTED + (if costed — totalCost > 0, unchanged, a separate gate from the
    physical stock movement above) a journal entry posted (materialConsumptionLines)
@@ -719,7 +800,32 @@ Piece-tracked line:
 
 **Direct issue also exists** outside the indent flow — `POST /api/material-issues` (Stores' own
 "Log an issue" button, `MaterialIssuesCard`, `StoresWorkspace.jsx:1307+`), same `issueMaterial()`
-function, `indentItemId: null`.
+function, `indentItemId: null`. Goes through the identical `consumeReservedStock()`-first scalar
+path above, so it's protected by the same fix.
+
+**Round 2, Gap #8 — the full finding.** Confirmed by tracing the real receive-time side effect: for
+any scalar, catalog-linked, `source='bom'` line, `lib/bom-receiving.js :: maybeReserveScalarStock()`
+→ `releaseScalarFromInwardHold()` (§3/§4) auto-reserves **100% of the received quantity against
+that same `bom_item_id`**, the moment QC approves the inward review — this is not an edge case, it
+is the normal path essentially every routed-to-Production scalar line goes through before a
+Material Indent is ever raised against it. Before this fix, `issueMaterial()`'s scalar floor check
+summed *every* active reservation on the inventory_item with no exclusion for whose bom_item it
+belonged to — so a line's own auto-reservation (created for exactly this line's own demand) counted
+as stock "already committed elsewhere," making `available` read `0` and the very first Material
+Indent release against that line throw `"Insufficient stock — only 0 available"`, regardless of how
+much physical stock actually existed. The same shape of bug applied identically to a **manually**
+reserved line (existing common-pool stock reserved against a not-yet-received demand via the
+Material Demand screen) — the mechanism is the same regardless of Auto/Manual origin (§14), so
+Reservation as a whole was structurally disconnected from Material-Indent-driven Issue, not just
+the auto-reserve-on-receipt case.
+
+A simpler fix — just excluding the requesting `bom_item_id` from the floor-check sum — was
+considered and rejected: it removes the self-block but doesn't *bound* Issue by what was actually
+reserved, which would let a line silently over-consume into unrelated common on_hand beyond its own
+committed amount. The shipped fix (`consumeReservedStock()`, §14) bounds Issue by the bom_item's
+own reservation first, falling back to the general pool only for any genuine shortfall — this is
+what "Issue consumes the reservation" (rather than being an independent stock consumption) means in
+practice.
 
 ---
 
@@ -746,39 +852,77 @@ one read, no distinction in this view between the two origins.
 lib/procurement.js :: reserveFromStock({inventoryItemId, bomItemId, qty})
    — piece/serial-tracked lines rejected outright (their own reserve actions exist elsewhere)
    — materialMismatchReason() guard
-   — TOCTOU-safe: available = on_hand − active reservations, re-read inside one transaction
+   — TOCTOU-safe: available = on_hand − SUM(qty − qty_issued) across active reservations,
+     re-read inside one transaction  ◄── qty_issued term added Round 2, see below
    — shortfall → splits the bom_item (splitQtyText/cloneBomItemForSplit, qty_resolved=1 on the
      clone so a later re-read never re-applies the unit-count multiplier — a documented,
      previously-real double-counting bug, now fixed at the source)
         │
         ▼
-inventory_reservations  (inventory_item_id, bom_item_id, qty, status: active|released|issued)
+inventory_reservations  (inventory_item_id, bom_item_id, qty, qty_issued [Round 2, new column,
+        default 0], status: active|released|issued)
         │
         ├─ Manual: components/StoresWorkspace.jsx :: ActiveReservationsCard
         │    POST /api/inventory-reservations/[id]/issue    → issueReservation()
         │    POST /api/inventory-reservations/[id]/release   → releaseReservation()
         │
-        └─ Automatic (Auto allocation mode only — lib/procurement.js :: getAllocationMode(),
-             app_settings key 'stores_allocation_mode', default 'auto'):
-             lib/procurement.js :: autoReserveFromStock()  — exact catalog identity match
-             (bom_item.item_id === inventory_items.item_id) ONLY, never fuzzy keyword — called
-             from matchProjectPlainStock() at Release BOM time
+        ├─ Automatic (Auto allocation mode only — lib/procurement.js :: getAllocationMode(),
+        │    app_settings key 'stores_allocation_mode', default 'auto'):
+        │    lib/procurement.js :: autoReserveFromStock()  — exact catalog identity match
+        │    (bom_item.item_id === inventory_items.item_id) ONLY, never fuzzy keyword — called
+        │    from matchProjectPlainStock() at Release BOM time
         │
-        ▼  issueReservation() — the real D9 "confirm" moment
-   inventory_items.on_hand -= qty  (scalar) — OR consumeStock() (batch, real FIFO allocation)
-   bom_items.purchase_status = 'In-Stock', inventory_item_id/inventory_qty stamped
+        └─ Also always auto-created at physical receipt for a scalar catalog-linked source='bom'
+             line, once QC approves the inward review (lib/bom-receiving.js ::
+             releaseScalarFromInwardHold(), §3/§4) — 100% of the received qty, against that same
+             bom_item_id. This is the reservation Round 2's Gap #8 fix (below) is actually about:
+             it's the normal path, not an edge case.
+        │
+        ▼  TWO consumers, reconciled since Round 2 (previously independent — see §12's Gap #8):
+   ┌─────────────────────────────────────┬──────────────────────────────────────────────┐
+   │ issueReservation() — the D9 button   │ lib/procurement.js :: consumeReservedStock()  │
+   │ ("Active Reservations" tab, whole-   │ ("Round 2) — called from issueMaterial()'s    │
+   │ row Issue)                           │ scalar branch (§12), i.e. Material Indent     │
+   │                                       │ release / a direct "Log an issue"             │
+   ├─────────────────────────────────────┼──────────────────────────────────────────────┤
+   │ remaining = qty − qty_issued          │ claims THIS bom_item's own active rows,       │
+   │ (may already be < qty if a Material  │ oldest-first, CAS per row, up to `qty`         │
+   │ Indent partially drew this row down  │ requested — supports partial consumption,     │
+   │ first) — CAS-claims the whole        │ can span several rows (e.g. two partial        │
+   │ remainder, issues it                  │ receipts each auto-reserved their own row)    │
+   ├─────────────────────────────────────┼──────────────────────────────────────────────┤
+   │ on_hand -= remaining (scalar) — OR    │ never touches on_hand or purchase_status —    │
+   │ consumeStock(qty: remaining) (batch)  │ the caller (issueMaterial) owns both, exactly │
+   │ bom_items.purchase_status='In-Stock', │ once, for the full requested qty regardless   │
+   │ inventory_item_id/inventory_qty       │ of how much came from a reservation vs the    │
+   │ stamped to `remaining`                │ general pool                                  │
+   └─────────────────────────────────────┴──────────────────────────────────────────────┘
+   A row stays `status='active'` while `remaining > 0` — no new status literal was added, this
+   is the same `active|released|issued` set as before. Either consumer can partially or fully
+   claim a row; whichever runs second on an already-partially-claimed row correctly reads its
+   real remaining amount (the write to `qty_issued` is CAS-guarded on both sides).
 ```
 
+**Round 2, Gap #8 fix, in one sentence**: an Issue (either mechanism above) now draws down its own
+bom_item's reservation first — the actual commitment the business already made to that line — and
+only falls back to checking the shared pool for whatever wasn't already reserved for it. See §12
+for the full before/after trace and why a simpler "just exclude this bom_item from the floor check"
+fix was rejected.
+
 **Release never touches `on_hand`** — nothing was decremented at Reserve time, only committed
-against `available` (on_hand minus active reservations). A released reservation against a
+against `available` (on_hand minus active, unissued reservations). A released reservation against a
 `pending_review`-gated line re-notifies Stores it needs a fresh decision (`releaseReservation()`,
-`lib/procurement.js:444-457`).
+unchanged by Round 2 — it still just flips the whole row to `released` regardless of `qty_issued`,
+which is correct: a row can only be released while still `active`, and `qty_issued` on a released
+row simply stays as permanent history of whatever was issued from it before release).
 
 **Manual mode exists as a toggle but has no distinct enforcement code path of its own** — Auto mode
 runs `autoReserveFromStock`/`matchProjectPlainStock` at Release BOM; Manual mode simply never calls
 them, leaving every line to be reserved by hand via `ActiveReservationsCard`. This is by design
 (`getAllocationMode()`'s own header comment: "undo the old always-manual behavior only by choosing
-it here, not by special-casing every caller").
+it here, not by special-casing every caller"). Unaffected by Round 2 — the auto-reserve-at-receipt
+path (the bottom branch in the diagram above) is separate from allocation mode entirely; it fires
+for a scalar catalog-linked line's own receipt regardless of Auto/Manual.
 
 ---
 
@@ -906,8 +1050,77 @@ Dispatch on pre-dispatch decision.
 Ranked by real-world impact, not by section order. Each states exactly what was checked, not just
 what's suspected. **Round 1** (this same working session, after the original audit) closed the one
 Critical gap and one of the two "Important" gaps the user judged genuinely functional; the third
-("Important") item turned out, on investigation, not to be a gap at all. Everything else below is
-unchanged from the original audit and remains open.
+("Important") item turned out, on investigation, not to be a gap at all. **Round 2** was a separate,
+later, narrowly-scoped delta audit against a specific business-model statement — "Material Demand →
+Reservation → Allocation → {Production → Material Indent → Issue → Issued to WIP} / {Dispatch →
+Packing → Dispatch}" — rather than a re-audit of everything in this document; it found three new
+gaps in exactly that chain (none overlapping Gaps #1-#7 below, none previously documented anywhere
+in this file) and fixed all three. Gaps #2, #4, #6, #7 (Round 1) remain open and untouched by
+either round.
+
+### Fixed — Round 2
+
+**Gap #8 (Critical) — `issueMaterial()`'s scalar floor check counted a bom_item's own reservation as
+unavailable-elsewhere stock, self-blocking Material Indent Issue. FIXED.** Full finding and fix in
+§12/§14 above — not repeated here in full to avoid the two copies drifting apart. In short: the
+floor check summed *every* active `inventory_reservations` row against an inventory_item with no
+exclusion for the reservation belonging to the very `bom_item_id` being issued for; since a scalar
+catalog-linked `source='bom'` line auto-reserves 100% of its own received quantity against itself
+the moment QC approves inward review (§3/§4 — the normal path, not an edge case), the very first
+Material Indent release against essentially any such line threw `"Insufficient stock — only 0
+available"` against material that physically existed and was reserved specifically for it.
+
+**Fix applied**: new `inventory_reservations.qty_issued` column (default 0); new
+`lib/procurement.js :: consumeReservedStock({bomItemId, qty})` claims a bom_item's own active
+reservations first (oldest row first, CAS-guarded, supports partial consumption across several
+rows); `issueMaterial()`'s scalar branch calls it before the (still-present, now `qty_issued`-aware)
+general floor check, which now only runs against any genuine shortfall. `issueReservation()`
+(the Active Reservations "Issue" button) updated to issue only `qty − qty_issued` (the true
+remaining amount), so it can never double-decrement `on_hand` for a row a Material Indent release
+already partially consumed. `bom_items.purchase_status` is not touched by the Material Indent/WIP
+path (unchanged); `issueReservation()`'s own `purchase_status → 'In-Stock'` behavior for direct
+stock/SAS fulfillment is preserved exactly. Explicitly rejected: excluding the requesting bom_item
+from the floor-check sum without the `qty_issued` reconciliation — that would remove the self-block
+but not *bound* Issue by what was actually reserved, letting a line silently over-consume into
+unrelated common on_hand.
+
+**Verified, code-level**: 13 hand-mirrored cases in `scripts/inventory-reservations-selfcheck.mjs`
+(extended) — full self-consumption with no false "Insufficient stock," full issue → `qty_issued =
+qty`/`status='issued'`, partial issue → `status` stays `active` with the correct remaining, two
+reservation rows for one bom_item consumed oldest-first, a *different* bom_item's reservation still
+correctly blocking an unrelated draw (the Round-1 protection this fix must not reopen), and
+`issueReservation()` correctly issuing only the remainder after a prior partial Material Indent
+release. `npm run lint` clean. Every real caller of `issueMaterial()`
+(`app/api/material-indents/.../release/route.js`, `app/api/material-issues/route.js`) and of
+`issueReservation()` (`app/api/inventory-reservations/[id]/issue/route.js`) traced — neither needed
+its own change beyond what already flowed through the shared functions. Batch/serial tracking modes
+are structurally unaffected: `consumeReservedStock()` is only wired into `issueMaterial()`'s scalar
+branch, and `issueReservation()`'s `remaining` computation is numerically identical to the old
+`res.qty` for a batch-tracked row specifically, since nothing else can ever set that row's
+`qty_issued` above 0 before it runs (traced, not assumed).
+
+**Gap #9 — `POST /api/material-indents` performed zero check that a submitted `bom_item_id` was
+routed to Production. FIXED.** Full finding in §10 above. Enforced server-side now: every line with
+a `bom_item_id` requires a real `bom_item_child_routing` row naming it `routed_to='production'`,
+rejecting the whole request otherwise. **Verified**: new `scripts/material-indent-routing-gate-
+selfcheck.mjs` (5 cases) hand-mirrors the exact SQL guard — accepts self-routed-to-Production and a
+split-master line with at least one child cell routed to Production, rejects Dispatch-routed,
+never-routed, and a split-master with every child routed to Dispatch only. `MaterialIndentWorklist.jsx`'s
+own correct, already-filtered flow required no change and was re-traced to confirm it still passes
+the new server-side gate trivially (it only ever submits already-routed lines).
+
+**Gap #10 — `components/WorkersPanel.jsx::ProductionBomTab` maintained a second, unguarded
+BOM-item picker for indent creation, independent of routing. FIXED (by removal).** Full finding in
+§10 above. The redundant "Raise Material Indent" mini-form (its own `indentForm` state, `raiseIndent()`
+handler, and the now-orphaned `jobCards`/`busy` state its Job Card picker needed) is removed
+entirely; `MaterialIndentWorklist.jsx` (the "Material Indent" tab) is the single UI entry point for
+creating a Production indent. `ProductionBomTab`'s Master BOM view, fabrication-progress cards, and
+Cutting & Remnant section are unchanged; a read-only "Material Indents for this project" list (the
+same data, same PDF links) remains, now pointing at the Material Indent tab instead of offering its
+own create action. **Verified**: `npm run lint` clean; grepped the file for any other reference to
+the removed state/handler names (`indentForm`, `raiseIndent`, the local `jobCards`/`busy`) — none
+found outside the removed block or unrelated scopes (a different `busy` in the `Roster` sub-component,
+the top-level `WorkersPanel`'s own unrelated `jobCards` prop).
 
 ### Fixed — Round 1
 
@@ -1078,9 +1291,30 @@ batch-children/route.js` + `app/api/packing/batch-children/route.js` (gate-check
 `avg_cost`'s `NOT NULL DEFAULT 0` schema means an uncosted item's `totalCost` is always exactly `0`,
 never `null`, before touching the Gap #3 fix).
 
+**Round 2 additions** (the delta audit + implementation, separate from the original audit and
+Round 1 above): `lib/procurement.js` (re-read in full — `reserveFromStock`, `autoReserveFromStock`,
+`issueReservation`, `releaseReservation`, `releaseReservationsForItem`, the new
+`consumeReservedStock`), `lib/material-issues.js` (`issueMaterial`, full — both the batch/serial
+branch, confirmed unaffected, and the rewritten scalar branch), `lib/bom-receiving.js`
+(`maybeReserveScalarStock`/`releaseScalarFromInwardHold`, re-read to confirm the auto-reserve-at-
+receipt path is the normal case Gap #8 is about, not an edge case), `lib/inventory-batches.js`
+(`getIssuedAllocationsForBomItem`, confirmed its `inventory_reservations` join reads only
+`bom_item_id`, never `qty`/`qty_issued` — no interaction with the Round 2 schema change),
+`app/api/material-indents/route.js` (full, POST handler), `app/api/inventory-items/[id]/reserve/
+route.js`, `app/api/inventory-reservations/[id]/issue/route.js`, `components/WorkersPanel.jsx`
+(`ProductionBomTab`, full — before removing its duplicate indent-raise form), `components/
+MaterialIndentWorklist.jsx` (re-confirmed it never submits a line without `bom_item_id`, so the new
+server-side routing gate never rejects its own output). Every other `SUM(qty)`-shaped read against
+`inventory_reservations` across the codebase was individually traced (`refreshPrAwardState`,
+`getSourcingItems()`'s "reserved from stock" badge, `getOpenBomItems()`'s Material Demand
+`reserved_qty`, `getInventoryItems()`, `getReorderSuggestions()`) to classify each as either a
+demand-satisfaction read (left unchanged — a partially-issued reservation still represents fulfilled
+demand) or a pool-availability read (changed to `SUM(qty − qty_issued)`) — see §14's own note and
+§9's untouched status for the reasoning per read site.
+
 ---
 
-## 20. What this audit + Round 1 verified, and what it explicitly did not
+## 20. What this audit + Round 1 + Round 2 verified, and what none of them did
 
 **Verified (direct source-code reading, cross-checked against real schema/route/component code):**
 - Every table's real, current column set (via `addColumn` history + base `CREATE TABLE`, not a
@@ -1111,26 +1345,48 @@ never `null`, before touching the Gap #3 fix).
   `category_fields_json` persistence, both original pending-inward-gate fixes, the Allocate table's
   three-column split, and Round 1's own three items) are present in the current working tree exactly
   as described, by reading the actual current file contents.
-- `npm run lint` — clean, 876 JavaScript files, re-run after Round 1's fixes.
+- **Round 2's Gap #8 fix**: `consumeReservedStock()`'s CAS shape (per-row `WHERE status='active' AND
+  qty_issued = ? AND qty_issued + ? <= qty`, matching `material_indent_items.qty_released`'s own
+  established CAS-claim precedent this codebase already used elsewhere), `issueMaterial()`'s new
+  consume-then-shortfall-check ordering, and `issueReservation()`'s `remaining`-aware decrement —
+  all confirmed both by direct code reading and by 13 hand-mirrored assertions run against a real
+  in-memory libsql DB (`scripts/inventory-reservations-selfcheck.mjs`), not just reasoned about.
+  Batch/serial tracking modes confirmed structurally unreachable by the change (traced, not assumed
+  — see §18's Gap #8 entry).
+- **Round 2's Gap #9/#10 fixes**: the new routing-check SQL confirmed both by direct code reading
+  and by 5 hand-mirrored assertions (`scripts/material-indent-routing-gate-selfcheck.mjs`);
+  `ProductionBomTab`'s removed state/handler confirmed to have no other reference anywhere in
+  `components/WorkersPanel.jsx` (grepped, not assumed).
+- `npm run lint` — clean, 877 JavaScript files, re-run after Round 2's fixes.
 
-**NOT verified — explicitly out of scope, per instruction, for both the original audit and Round 1:**
-- No browser/UI click-through was performed at any point. Every UI description above is derived
-  from reading the component source, not from observing the rendered page — this includes Round 1's
-  fixes: `ChildRoutingPanel.jsx`'s disabled-checkbox behavior for a newly-not-ready cell, and
-  `issueMaterial()`'s new "Insufficient stock" error surfacing in either UI, were confirmed by
-  reading the consuming code, not by clicking through the app.
-- No live query was run against the real (shared, remote) Turso database at any point — no claim
-  here, in either the original audit or Round 1, rests on "I checked and there are N real rows in
-  this state right now."
+**NOT verified — explicitly out of scope, per instruction, for the original audit, Round 1, and
+Round 2 alike:**
+- No browser/UI click-through was performed at any point, in any round. Every UI description above
+  is derived from reading the component source, not from observing the rendered page — this
+  includes Round 1's fixes (`ChildRoutingPanel.jsx`'s disabled-checkbox behavior, `issueMaterial()`'s
+  "Insufficient stock" error surfacing) and Round 2's (the removed `ProductionBomTab` form's absence
+  in the rendered UI, the new routing-rejection message actually appearing in
+  `MaterialIndentWorklist.jsx` or `ProductionBomTab`'s now-plain-display list).
+- No live query was run against the real (shared, remote) Turso database at any point, in any
+  round — no claim here rests on "I checked and there are N real rows in this state right now," and
+  Round 2's `qty_issued` backfill migration (`UPDATE inventory_reservations SET qty_issued = qty
+  WHERE status = 'issued' AND qty_issued = 0`) has not been confirmed to have actually run against
+  the real dev database — only that it's correct SQL and will run automatically on the next
+  `migrate()` call (the standard `addColumn`/idempotent-migration path this codebase already uses
+  for every other additive schema change).
 - The interaction between Stores and the QC statutory-document/certificate workflow
   (`bom_item_child_certificates`' write side) was read only far enough to confirm Stores never
   writes to it — the QC-side mechanics that populate it were not independently re-audited here
   (already covered in this codebase's own QC documentation).
 - Gate Inward Receipts / Gate Passes (§0's diagram references them only at the very top) were
   confirmed to exist and gate correctly at a schema level, but their own full UI/route flow was not
-  re-traced in either pass — they're upstream of Receiving, not part of the 17 numbered sections
+  re-traced in any pass — they're upstream of Receiving, not part of the 17 numbered sections
   originally requested.
+- Round 2 was explicitly scoped to the Reservation → Allocation → Material Indent → Issue chain
+  named in its own brief — it did not re-audit any other part of this document, and nothing outside
+  §9/§10/§12/§14/§18 above was touched or re-verified this round.
 
-This document is accurate as of the current working tree, including Round 1's fixes. Gaps #2, #4,
-#6, and #7 remain open and untouched — no further architectural/UI change has been made beyond
-Gap #1's data-layer fix and Gap #3's floor-check/decrement fix.
+This document is accurate as of the current working tree, including Round 1's and Round 2's fixes.
+Gaps #2, #4, #6, and #7 (Round 1, original audit) remain open and untouched by either round — no
+architectural/UI change beyond what's explicitly named in the Round 1 and Round 2 fix summaries at
+the top of this document has been made.
