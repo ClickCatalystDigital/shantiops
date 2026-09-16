@@ -31,11 +31,11 @@ export async function POST(req) {
   const itemCode = b.item_code || await nextNumber('inventory_item_code', 'INV');
 
   const { lastId } = await execute(
-    `INSERT INTO inventory_items (description, spec, on_hand, location, reorder_point, item_code, item_id, category, moc)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO inventory_items (description, spec, on_hand, location, reorder_point, item_code, item_id, category, moc, category_fields_json)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [description, b.spec || null, Number(b.on_hand) || 0, b.location || null,
       b.reorder_point != null && b.reorder_point !== '' ? Number(b.reorder_point) : null, itemCode,
-      b.item_id ? Number(b.item_id) : null, b.category || null, b.moc || null]
+      b.item_id ? Number(b.item_id) : null, b.category || null, b.moc || null, b.category_fields_json || null]
   );
   await audit('inventory_item_created', { actor: user.username, detail: description });
   return NextResponse.json({ id: Number(lastId) });

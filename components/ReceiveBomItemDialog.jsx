@@ -41,6 +41,12 @@ function unitSuffix(qtyText) {
   return String(qtyText || '').replace(/^\s*[\d.]+\s*/, '').trim();
 }
 
+// A sibling recipient's own leading qty_text number — the honest default for how much of this
+// delivery covers that project, before Stores overrides it.
+function siblingDefaultQty(s) {
+  return String(parseFloat((s.qty_text.match(/^\s*([\d.]+)/) || [])[1]) || 0);
+}
+
 export default function ReceiveBomItemDialog({ item, onDone }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -107,13 +113,23 @@ export default function ReceiveBomItemDialog({ item, onDone }) {
         delete next[s.bom_item_id];
         return next;
       }
-      const defaultQty = parseFloat((s.qty_text.match(/^\s*([\d.]+)/) || [])[1]) || 0;
-      return { ...prev, [s.bom_item_id]: { qty: String(defaultQty || '') } };
+      return { ...prev, [s.bom_item_id]: { qty: siblingDefaultQty(s) } };
     });
   }
 
   const siblings = status?.planned_recipients?.kind === 'sibling' ? status.planned_recipients.recipients : [];
   const lots = status?.planned_recipients?.kind === 'child' ? (status.planned_recipients.lots || []) : [];
+
+  // Procurement already told us which sibling projects this PR line was split across, and how
+  // much each expects — respect that by default instead of making Stores re-select every one by
+  // hand. Fires once per dialog open (status only transitions null -> object once); the empty-prev
+  // guard means a user who unchecks everything themselves is never overridden.
+  useEffect(() => {
+    if (!siblings.length) return;
+    setSelectedSiblings(prev => (Object.keys(prev).length
+      ? prev
+      : Object.fromEntries(siblings.map(s => [s.bom_item_id, { qty: siblingDefaultQty(s) }]))));
+  }, [status]);
 
   async function submit(e) {
     e.preventDefault();
@@ -209,6 +225,18 @@ export default function ReceiveBomItemDialog({ item, onDone }) {
                   onChange={e => setReceivedFields(prev => ({ ...prev, [field]: e.target.value }))} />
               </div>
             ))}
+            {/* Heat number is always recordable, not just when Engineering flagged this line
+                requires_heat_no — the backend (lib/bom-receiving.js) already accepts it
+                unconditionally, this line just never rendered the field when it wasn't required.
+                Matches AddPieceDialog's own precedent (heat number there is plain and optional). */}
+            {!item.requires_heat_no && (
+              <div className="flex flex-col gap-1">
+                <Label htmlFor="receive-heat_no">Heat number (optional)</Label>
+                <Input id="receive-heat_no"
+                  value={receivedFields.received_heat_no || ''}
+                  onChange={e => setReceivedFields(prev => ({ ...prev, received_heat_no: e.target.value }))} />
+              </div>
+            )}
             {siblings.length > 0 && (
               <div className="flex flex-col gap-2 rounded-md border border-dashed p-2">
                 <p className="text-xs font-medium text-muted-foreground">

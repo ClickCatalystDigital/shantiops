@@ -9,7 +9,7 @@ import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { setTrackingMode } from '@/lib/tracking-mode';
 
-const FIELDS = ['description', 'spec', 'on_hand', 'location', 'reorder_point', 'item_code', 'item_id', 'category', 'moc'];
+const FIELDS = ['description', 'spec', 'on_hand', 'location', 'reorder_point', 'item_code', 'item_id', 'category', 'moc', 'category_fields_json'];
 const NUMERIC = new Set(['on_hand', 'reorder_point', 'item_id']);
 const TRACKING_MODES = new Set(['scalar', 'piece', 'batch', 'serial']);
 

@@ -23,7 +23,7 @@ import {
 } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { PlusIcon, PencilIcon, PackageCheckIcon, UndoIcon, TruckIcon, PackageIcon, ClipboardListIcon, LayersIcon, LogInIcon, SearchIcon, ChevronRightIcon, BoxesIcon, HashIcon, ArrowRightLeftIcon } from 'lucide-react';
+import { PlusIcon, PencilIcon, PackageCheckIcon, UndoIcon, TruckIcon, PackageIcon, ClipboardListIcon, LayersIcon, LogInIcon, SearchIcon, ChevronRightIcon, BoxesIcon, HashIcon, ArrowRightLeftIcon, Share2Icon } from 'lucide-react';
 import { api, showToast, formatDate } from '@/lib/client';
 import { formatMoney } from '@/lib/format';
 import { derivePurchaseStage } from '@/lib/bom-fields.mjs';
@@ -169,11 +169,18 @@ function possibleMatches(request, inventoryItems) {
     .map(m => ({ item: m.item, exact: false }));
 }
 
-// Structured dims don't round-trip back from a saved flat `spec` string on edit — same pre-existing
-// limitation the old SpecField had for plate/geometry shapes (inventory_items has no columns for
-// length/width/thickness, only the derived string). Rolled/tee categories round-trip fine since
-// their `fields.size` IS the spec string directly.
-function initCategoryFields(category, spec) {
+// Prefer the item's own structured category_fields_json (real dims, round-trips exactly). Falls
+// back to reconstructing a rolled/tee item's `fields.size` from the flat spec string — the one
+// case that round-trips even without structured data, since fields.size IS the spec string. A
+// legacy plate/geometry row saved before category_fields_json existed still won't round-trip its
+// individual L/W/T back out of the flattened string — expected for un-migrated data, not a bug.
+function initCategoryFields(category, spec, categoryFieldsJson) {
+  if (categoryFieldsJson) {
+    try {
+      const parsed = JSON.parse(categoryFieldsJson);
+      if (parsed && typeof parsed === 'object') return parsed;
+    } catch { /* malformed, fall through */ }
+  }
   if (category && (ROLLED_CATEGORIES.includes(category) || category === 'tee')) return { size: spec || '' };
   return {};
 }
@@ -182,7 +189,7 @@ function ItemFormDialog({ item, onClose, router }) {
   const editing = !!item;
   const [description, setDescription] = useState(item?.description || '');
   const [spec, setSpec] = useState(item?.spec || '');
-  const [categoryFields, setCategoryFields] = useState(() => initCategoryFields(item?.category, item?.spec));
+  const [categoryFields, setCategoryFields] = useState(() => initCategoryFields(item?.category, item?.spec, item?.category_fields_json));
   const [onHand, setOnHand] = useState(item?.on_hand ?? 0);
   const [location, setLocation] = useState(item?.location || '');
   const [reorderPoint, setReorderPoint] = useState(item?.reorder_point ?? '');
@@ -250,6 +257,9 @@ function ItemFormDialog({ item, onClose, router }) {
         location: location.trim() || null, reorder_point: reorderPoint === '' ? null : reorderPoint,
         item_code: itemCode.trim() || null, item_id: itemId,
         category: category || null, moc: moc.trim() || null,
+        // The structured dims themselves — `spec` above is just their flattened display string.
+        // Dimensions column (inventoryDimensions()) reads this back through categoryDisplaySpec().
+        category_fields_json: category && Object.keys(categoryFields).length ? JSON.stringify(categoryFields) : null,
       };
       if (editing) await api(`/api/inventory-items/${item.id}`, { method: 'PATCH', body });
       else await api('/api/inventory-items', { method: 'POST', body });
@@ -2008,7 +2018,7 @@ const NAV_ITEMS = (counts) => [
   { key: 'inventory', label: 'Inventory', icon: PackageIcon, badge: counts.lowStock || null },
   { key: 'divider-fulfillment', divider: true, label: 'Fulfillment' },
   { key: 'requests', label: 'Material Demand', icon: ClipboardListIcon, badge: counts.requests || null },
-  { key: 'reservations', label: 'Allocation & Reservations', icon: PackageCheckIcon, badge: (counts.reservations || 0) + (counts.splitOrders || 0) || null },
+  { key: 'reservations', label: 'Active Reservations', icon: PackageCheckIcon, badge: counts.reservations || null },
   { key: 'divider-production', divider: true, label: 'Production' },
   { key: 'indents', label: 'Material Indents', icon: BoxesIcon },
   { key: 'issued', label: 'Issued to WIP', icon: TruckIcon },
@@ -2018,6 +2028,12 @@ const NAV_ITEMS = (counts) => [
   // Routing decoupled from receiving (gentle-snuggling-wozniak.md §5/§8) — a fully-received,
   // routing-eligible line lands here instead of asking for Production/Dispatch at receive time.
   { key: 'allocate', label: 'Allocate', icon: ArrowRightLeftIcon, badge: counts.allocate || null },
+  // Multi-unit split orders (master + N child projects) are a genuinely different workflow from
+  // everything above — was previously stacked under "Allocation & Reservations", reading as the
+  // same thing as plain Reserve→Issue. Its own labeled section so it's only ever reached when a
+  // real split order actually needs it.
+  { key: 'divider-multi', divider: true, label: 'Multi-Unit Orders' },
+  { key: 'split-allocation', label: 'Allocation & Routing', icon: Share2Icon, badge: counts.splitOrders || null },
 ];
 
 // Stores' own "close this project's BOM" action — mirrors ProcurementWorkspace.jsx's Status tab
@@ -2435,7 +2451,8 @@ function AllocateTab({ items: initialItems, router }) {
                     <TableHead className="w-24">Qty</TableHead>
                     <TableHead className="w-24 text-center">Production</TableHead>
                     <TableHead className="w-24 text-center">Dispatch</TableHead>
-                    <TableHead className="w-20 text-center text-muted-foreground">Default</TableHead>
+                    <TableHead className="w-28 text-center text-muted-foreground" title="This line's own frozen value, set by Engineering — read-only here, never editable from Allocate">Requires Mfg</TableHead>
+                    <TableHead className="w-28 text-center text-muted-foreground" title="Corrects the catalog item's own learned default for FUTURE orders — has no effect on this line's routing or readiness">Catalog Default</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -2454,12 +2471,14 @@ function AllocateTab({ items: initialItems, router }) {
                           <Checkbox checked={row.routing === 'dispatch'} onCheckedChange={v => v && setRouting(it.id, 'dispatch')} aria-label="Route to Dispatch" />
                         </TableCell>
                         <TableCell className="text-center">
+                          <Badge variant="outline" className="text-xs font-normal">{it.requires_manufacturing ? 'Yes' : 'No'}</Badge>
+                        </TableCell>
+                        <TableCell className="text-center">
                           {it.item_id ? (
                             <Checkbox checked={!!row.defaultValue} onCheckedChange={v => setDefaultValue(it.id, !!v)}
                               className="opacity-70" aria-label="Catalog manufacturing default" />
                           ) : (
-                            <Checkbox checked={!!it.requires_manufacturing} disabled
-                              className="opacity-40" aria-label="Not catalog-linked — no default to correct" title="Not catalog-linked — no default to correct" />
+                            <span className="text-xs text-muted-foreground" title="Not catalog-linked — no catalog default to correct">—</span>
                           )}
                         </TableCell>
                       </TableRow>
@@ -2649,15 +2668,13 @@ export default function StoresWorkspace({
       )}
       {tab === 'indents' && <IndentsCard router={router} />}
       {tab === 'reservations' && (
-        <div className="flex flex-col gap-4">
-          <ActiveReservationsCard activeReservations={activeReservations} router={router} />
-          <AllocationRoutingSection splitOrders={splitOrders} router={router} />
-        </div>
+        <ActiveReservationsCard activeReservations={activeReservations} router={router} />
       )}
       {tab === 'issued' && <MaterialIssuesCard projects={projects} />}
       {tab === 'gir' && <GateInwardReceiptsCard gateInwardReceipts={gateInwardReceipts} router={router} />}
       {tab === 'receive' && <ReceiveDeliveryTab bomItems={bomItems} pendingInwardApprovals={pendingInwardApprovals} router={router} />}
       {tab === 'allocate' && <AllocateTab items={unroutedItems} router={router} />}
+      {tab === 'split-allocation' && <AllocationRoutingSection splitOrders={splitOrders} router={router} />}
     </WorkspaceSidebar>
   );
 }
