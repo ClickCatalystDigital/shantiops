@@ -5,6 +5,7 @@
 // Picking a project auto-selects its series. Neither set → everything. Deep-linked from a project's
 // QC summary card via ?tab= and ?project=.
 import { useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import WorkspaceSidebar from './WorkspaceSidebar';
 import TcBank from './TcBank';
 import MaterialCertificatePanel from './MaterialCertificatePanel';
@@ -12,11 +13,13 @@ import StatutoryDocsPanel from './StatutoryDocsPanel';
 import CalibrationPanel from './CalibrationPanel';
 import NcrPanel from './NcrPanel';
 import QcHoldPanel from './QcHoldPanel';
+import QcPanel from './QcPanel';
+import JobWorkPanel from './JobWorkPanel';
 import SearchableSelect from './SearchableSelect';
 import { InwardApprovalsPanel, PreDispatchApprovalsPanel } from './MaterialApprovalPanels';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { QC_SERIES } from '@/lib/qc-series';
-import { FlaskConicalIcon, FileTextIcon, GaugeIcon, AlertTriangleIcon, LockIcon, LinkIcon, ClipboardCheckIcon, InboxIcon, TruckIcon } from 'lucide-react';
+import { FlaskConicalIcon, FileTextIcon, GaugeIcon, AlertTriangleIcon, LockIcon, LinkIcon, ClipboardCheckIcon, InboxIcon, TruckIcon, ListChecksIcon } from 'lucide-react';
 
 // "Assign to Units" is a sub-tab of Test Certificates, not a new top-level tab — same group/children
 // shape ProcurementWorkspace.jsx's own "Suppliers" (Roster/Analysis) nav item already uses. It's
@@ -30,6 +33,9 @@ const ITEMS = [
       { key: 'tc-assign', label: 'Assign to Units', icon: LinkIcon },
     ],
   },
+  // Project View redesign, Wave 1 — the canonical qc_records/job_work_inspections editor, the one
+  // real gap this workspace had (nothing off the project page could touch either table before this).
+  { key: 'test-records', label: 'Test Records', icon: ListChecksIcon },
   { key: 'docs', label: 'Documents', icon: FileTextIcon },
   { key: 'ncr', label: 'NCR', icon: AlertTriangleIcon },
   { key: 'holds', label: 'Hold Points', icon: LockIcon },
@@ -52,8 +58,10 @@ const SERIES_OPTIONS = [{ value: null, label: 'All models' }, ...QC_SERIES.map(s
 
 const certProjectIds = c => (c.project_ids ? String(c.project_ids).split(',').map(Number) : []);
 
-export default function QcWorkspace({ projects = [], certificates = [], documents = [], calibrationItems = [], ncrs = [], holdPoints = [], splitOrders = [], canDisposition = false, canVerify = false, canClose = false, inwardApprovals = [], preDispatchApprovals = [], canDecideInward = false, canDecideQcPreDispatch = false, initialTab, initialProject }) {
+export default function QcWorkspace({ projects = [], certificates = [], documents = [], calibrationItems = [], ncrs = [], holdPoints = [], splitOrders = [], canDisposition = false, canVerify = false, canClose = false, inwardApprovals = [], preDispatchApprovals = [], canDecideInward = false, canDecideQcPreDispatch = false, testRecords = [], jobWorkInspections = [], workOrders = [], bomAssemblies = [], hydroMilestoneId = null, canEditQc = false, canEditProductionQc = false, initialTab, initialProject }) {
   const [tab, setTab] = useState(FLAT_TAB_KEYS.includes(initialTab) ? initialTab : 'tc-bank');
+  const router = useRouter();
+  const searchParams = useSearchParams();
 
   // "Assign to Units" operates on a whole split ORDER, not one unit — its own picker, independent
   // of the Model/Project header the other tabs share (real user feedback: reusing that picker to
@@ -80,6 +88,13 @@ export default function QcWorkspace({ projects = [], certificates = [], document
   function pickProject(id) {
     setProjectId(id);
     if (id != null) setSeries(projects.find(p => p.id === id)?.series || null); // auto-select series
+    // URL-sync (same pattern ProcurementWorkspace.jsx's project filter already uses) — needed for
+    // real reasons here, not just deep-link survival: the Test Records tab's data is fetched
+    // server-side per-project (qc_records/job_work_inspections have no "everything" query mode,
+    // unlike certs/docs), so app/qc/page.js needs ?project= to know what to fetch.
+    const params = new URLSearchParams(searchParams.toString());
+    if (id == null) params.delete('project'); else params.set('project', String(id));
+    router.replace(`?${params.toString()}`, { scroll: false });
   }
 
   const shownCerts = projectId != null
@@ -124,6 +139,35 @@ export default function QcWorkspace({ projects = [], certificates = [], document
       header={tab === 'tc-assign' ? assignHeader : ['calibration', 'holds', 'inward-approvals', 'predispatch-approvals'].includes(tab) ? null : header}>
       {tab === 'tc-bank' ? (
         <TcBank certificates={shownCerts} projects={projectsSorted} defaultProjectIds={projectId != null ? [projectId] : []} />
+      ) : tab === 'test-records' ? (
+        projectId == null ? (
+          <Card>
+            <CardHeader><CardTitle>Test Records</CardTitle></CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">Pick a project above to view and log its test records.</p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="flex flex-col gap-4">
+            {/* Same 4-instance split as the project page's QC tab: one general log plus three
+                test-type-specific instances with their own link fields, all QC-owned. */}
+            <QcPanel projectId={projectId} canEdit={canEditQc}
+              records={testRecords.filter(r => !/hydro/i.test(r.test_type) && !['Incoming Inspection', 'Finished Goods Inspection', 'Subassembly Inspection'].includes(r.test_type))} />
+            <QcPanel projectId={projectId} canEdit={canEditQc} title="Incoming Inspection" defaultTestType="Incoming Inspection"
+              records={testRecords.filter(r => r.test_type === 'Incoming Inspection')} />
+            <QcPanel projectId={projectId} canEdit={canEditQc} title="Finished Goods Inspection" defaultTestType="Finished Goods Inspection"
+              records={testRecords.filter(r => r.test_type === 'Finished Goods Inspection')}
+              linkField="work_order_id" linkOptions={workOrders.map(w => ({ id: w.id, label: w.wo_no }))} showDispatchToggle />
+            <QcPanel projectId={projectId} canEdit={canEditQc} title="Subassembly Inspection" defaultTestType="Subassembly Inspection"
+              records={testRecords.filter(r => r.test_type === 'Subassembly Inspection')}
+              linkField="assembly_id" linkOptions={bomAssemblies.map(a => ({ id: a.id, label: a.name }))} />
+            {/* Hydro Test — Production-owned, not QC-owned (moved off QC in an earlier round), same
+                canEditProductionQc gate and reworkMilestoneId the project page's Production tab uses. */}
+            <QcPanel projectId={projectId} canEdit={canEditProductionQc} title="Hydro Test" defaultTestType="Hydro Test"
+              records={testRecords.filter(r => /hydro/i.test(r.test_type))} reworkMilestoneId={hydroMilestoneId} />
+            <JobWorkPanel projectId={projectId} canEdit={canEditQc} records={jobWorkInspections} />
+          </div>
+        )
       ) : tab === 'tc-assign' ? (
         assignOrderId ? (
           <MaterialCertificatePanel masterProjectId={assignOrderId} certificates={certificates} />

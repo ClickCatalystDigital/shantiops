@@ -1,18 +1,35 @@
-// app/projects/[id]/page.js
-
+// app/projects/[id]/page.js — Project View redesign. One unified layout for every internal role
+// (Decision A): a project-context/history page, not a department operational workspace. Row 1 stays
+// the read-only milestone tracker (Decision B, unchanged). Row 2 is always 3 fixed columns, the
+// third a live, multi-department-capable "who's actually got this right now" card (Decision C,
+// lib/data.js's getDepartmentState). Lower rows accumulate as the project moves through departments
+// and never disappear or swap (Decision D). Milestone EDITING moved off this page entirely, onto a
+// new PM-only route (Decision E, /projects/[id]/milestones) — this page has no MilestoneBoard/Drawer,
+// no StagesPanel/Kanban, no Incidents/TicketsPanel, and no full Scope-of-Supply editor (moved to
+// /projects, Part 4) anymore. Every full editor this page used to embed inline (QC's test records,
+// Dispatch's Pending PDF/history, Stores' receive dialog, Production's Prod.Done toggle) now has an
+// equivalent, verified-first home on its own main workspace — this page only summarizes and links.
 import { notFound, redirect } from 'next/navigation';
-import { getProjectDetail, getProjectBom, getProjectPackingLists, getQcRecords, getQcDocuments, getQcProjectSummary, getProjectTasks, getProjectStages, getStageTemplates, getProjectDesignSummary, getScopeOfSupply, activeDepartmentStatus, getBomAssembliesFlat, getJobWorkInspections, getWorkOrders } from '@/lib/data';
-import { getFreshSessionUser, isCustomer, isPM, isHead, isDesignHead, headDepartments, canAccessDepartment, roleHome } from '@/lib/auth';
+import Link from 'next/link';
+import {
+  getProjectDetail, getProjectBom, getProjectPackingLists, getProjectDesignSummary, getScopeOfSupply,
+  getDepartmentState, getQcProjectSummary, getJobCards, getMaterialIndentsByProject,
+  getProjectInventoryItems, attachDeliveryLotDates,
+} from '@/lib/data';
+import { getFreshSessionUser, isCustomer, isPM, isHead, headDepartments, canAccessDepartment, roleHome } from '@/lib/auth';
 import { canPerformAction } from '@/lib/action-permissions';
-import { DEPARTMENTS } from '@/lib/milestones';
-import { editableBomFields } from '@/lib/bom-fields.mjs';
 import ProjectHeader from '@/components/ProjectHeader';
 import TodayBand from '@/components/TodayBand';
 import PortfolioDelayTimeline from '@/components/PortfolioDelayTimeline';
-import DepartmentPanel from '@/components/DepartmentPanel';
-import ProjectDepartmentTabs from '@/components/ProjectDepartmentTabs';
-import { DepartmentPills, DepartmentProgress } from '@/components/DepartmentStatus';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import DepartmentStateCard from '@/components/DepartmentStateCard';
+import ProjectDesignRow from '@/components/ProjectDesignRow';
+import ProcurementQueue from '@/components/ProcurementQueue';
+import StoresSummaryCard from '@/components/StoresSummaryCard';
+import ProductionSummaryCard from '@/components/ProductionSummaryCard';
+import QcProjectSummary from '@/components/QcProjectSummary';
+import DispatchSummaryCard from '@/components/DispatchSummaryCard';
+import CommonBomCard from '@/components/CommonBomCard';
+import InstallationMilestoneActions from '@/components/InstallationMilestoneActions';
 import ChildUnitBomCard from '@/components/ChildUnitBomCard';
 import ProductionBatchJobCardPanel from '@/components/ProductionBatchJobCardPanel';
 import QcBatchDocumentPanel from '@/components/QcBatchDocumentPanel';
@@ -27,122 +44,89 @@ export default async function ProjectDetail({ params }) {
   const data = await getProjectDetail(params.id);
   if (!data) notFound();
   const { project, milestones, health, blocker, hasChildren } = data;
-  const { bom, pending, imports } = await getProjectBom(params.id);
-  const bomAssemblies = await getBomAssembliesFlat(params.id); // STERP item 16, §5o — assign-to-assembly picker
-  const packingLists = await getProjectPackingLists(params.id);
-  const qcRecords = await getQcRecords(params.id);
-  const qcDocuments = await getQcDocuments(params.id);
-  const qcSummary = await getQcProjectSummary(params.id);
-  const jobWorkInspections = await getJobWorkInspections(params.id); // STERP item 33, §5p
-  const workOrders = await getWorkOrders({ projectId: params.id }); // STERP item 31's dispatch-eligibility link, §5p
-  const tasks = await getProjectTasks(project.id);
-  const stages = await getProjectStages(project.id);
-  const { templates: stageTemplates, items: stageTemplateItems } = await getStageTemplates();
-  const designSummary = await getProjectDesignSummary(project.id);
-  const scopeOfSupply = await getScopeOfSupply(project.id);
-  // Row 2 slot 3 — which department(s) currently have the ball, and what they're actually doing,
-  // same departmentProgress shape the Projects list uses (lib/data.js's activeDepartmentStatus,
-  // shared with getProjectsWithStatus), just scoped to this one project's own milestones instead of
-  // recomputed from a fresh query. Replaces the old Design-chip-or-BOM-rollup guess, which showed
-  // Design's own progress (or a BOM rollup once Procurement had the BOM) regardless of which
-  // department actually held the project at the time.
-  const { departmentProgress } = activeDepartmentStatus(milestones);
+
+  const [
+    { bom }, packingLists, designSummary, scopeOfSupply, departmentState, qcSummary,
+    jobCards, materialIndents, inventoryItems,
+  ] = await Promise.all([
+    getProjectBom(params.id),
+    getProjectPackingLists(params.id),
+    getProjectDesignSummary(project.id),
+    getScopeOfSupply(project.id),
+    getDepartmentState(project),
+    getQcProjectSummary(params.id),
+    getJobCards({ projectId: project.id }),
+    getMaterialIndentsByProject(project.id),
+    getProjectInventoryItems(project.id),
+  ]);
+  // Expected delivery lots (Decision K) — reuses the exact function Stores' own Receive-a-Delivery
+  // tab already uses, never a second calculation. Only meaningful for open (not yet terminal) lines.
+  const openForDelivery = bom.filter(b => !['Received', 'In-Stock', 'Cancelled'].includes(b.purchase_status));
+  const withDates = await attachDeliveryLotDates(openForDelivery);
+  const deliveryLotsCount = withDates.filter(it => it.nearest_expected_delivery).length;
 
   const pm = isPM(user);
   const head = isHead(user);
   const myDepts = headDepartments(user);
-
-  // Needs-attention is scoped to what this user acts on: a head sees only their department(s).
   const attentionMilestones = head ? milestones.filter(m => myDepts.includes(m.department)) : milestones;
 
-  // Shared data every DepartmentPanel/tab needs.
-  const panelData = {
-    milestones, head, projectId: project.id, bom, pending, packingLists, bomAssemblies,
-    canUploadBom: canAccessDepartment(user, 'Engineering') || canAccessDepartment(user, 'Design'),
-    canPack: canAccessDepartment(user, 'Dispatch'),
-    bomFields: editableBomFields(user), // field-level BOM edit scope (enforced again in the API)
-    bomImports: imports,
-    qcRecords, qcDocuments, qcSummary, canEditQc: canAccessDepartment(user, 'QC'),
-    jobWorkInspections, workOrders,
-    canEditProductionQc: canAccessDepartment(user, 'Production'),
-    // One query for all 8 tabs — DepartmentPanel filters client-side, same as it already does for
-    // milestones. A head only ever sees their own department's panel, and a PM's canAccessDepartment
-    // is unconditionally true for every department, so a single flag matches the real permission
-    // surface (no per-department map needed).
-    tasks, canRaiseTickets: pm || head,
-    stages, stageTemplates, stageTemplateItems, canManageStages: pm || head,
-    designSummary,
-    scopeOfSupply, canEditScope: canAccessDepartment(user, 'Design') || canAccessDepartment(user, 'Engineering'),
-    // Explicit shortcut actions that mark one specific milestone done directly, standing in for
-    // milestones with no other data signal to auto-detect from (lib/milestone-auto.js's comments
-    // explain why each of these three can't be inferred the way Production/QC/Dispatch/Procurement
-    // are). Design head internally approving the design, and Installation confirming its own two
-    // milestones on the ground, are real actions — just not something this app can see happen on
-    // its own the way a job card or a QC record closing can.
-    canApproveDesign: isDesignHead(user),
-    // Permission-aware UI (roadmap item 4, SYSTEM.md §5j): match the real server-side gate
-    // (requireAction in app/api/milestones/[id]/route.js) exactly, rather than the coarser
-    // department-access check this used to be — a Member who'd get a 403 doesn't see the button.
-    canMarkInstallation: await canPerformAction(user, 'Installation', 'installation.milestone.complete'),
-  };
+  const designMilestone = milestones.find(m => m.milestone_key === 'design');
+  const designSignedOff = !!(designMilestone?.actual_end || designMilestone?.status === 'done');
+
+  // Accumulate-once-reached visibility, never based on the viewer's own department access (Decision
+  // A — every authorized viewer sees the same context). Each gate reads data already fetched for
+  // the card's own content, using signals that are realistically forward-only in normal operation
+  // (purchase_status advancement, job cards/packing lists that are never deleted) so a card doesn't
+  // flicker away once the underlying work finishes — see the plan's own Part 6/J note on this.
+  const showProcurement = bom.length > 0;
+  const showStores = bom.some(b => ['Transit', 'Received', 'In-Stock'].includes(b.purchase_status));
+  const showProduction = jobCards.length > 0 || materialIndents.length > 0;
+  const showQc = qcSummary.certs_total > 0 || qcSummary.docs_total > 0 || qcSummary.ncrs_total > 0;
+  const showDispatch = packingLists.length > 0;
+
+  const canMarkInstallation = await canPerformAction(user, 'Installation', 'installation.milestone.complete');
 
   return (
     <main className="container flex flex-col gap-6 py-8">
-      {/* Row 1: same Milestone Tracker as the Executive dashboard, scoped to this one project —
-          shown to every internal role (heads get the full chain as read-only context), now leading
-          the page instead of sitting below the identity row. Full width since the stage bar needs
-          the room. */}
+      {pm && (
+        <div className="flex justify-end">
+          <Link href={`/projects/${project.id}/milestones`} className="text-sm text-muted-foreground underline underline-offset-2 hover:text-foreground">
+            Manage Milestones
+          </Link>
+        </div>
+      )}
+
+      {/* Row 1 — unchanged: the same read-only Milestone Tracker every role sees. */}
       <PortfolioDelayTimeline projects={[{ ...project, milestones }]} />
 
-      {/* Row 2: identity, Open Actions (TodayBand — this project's own overdue/blocked/due-soon
-          milestones, the same exception-only ATTENTION set as Operations' cross-project version,
-          just scoped to one project), and a third slot showing who currently has the ball —
-          department pill(s) + that department's own milestone progress here, computed the same way
-          the Projects list computes it (activeDepartmentStatus), not a phase-specific guess. */}
+      {/* Row 2 — always 3 fixed columns. */}
       <div className="grid items-start gap-6 lg:grid-cols-3">
         <ProjectHeader project={project} health={health} blocker={blocker} milestones={milestones} />
         <TodayBand milestones={attentionMilestones} />
-        <Card>
-          <CardHeader><CardTitle>Currently With</CardTitle></CardHeader>
-          <CardContent className="flex flex-col gap-2">
-            {departmentProgress.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Not started yet.</p>
-            ) : (
-              <>
-                <DepartmentPills departmentProgress={departmentProgress} />
-                <DepartmentProgress departmentProgress={departmentProgress} />
-              </>
-            )}
-          </CardContent>
-        </Card>
+        <DepartmentStateCard departments={departmentState} />
       </div>
 
-      {/* Multi-unit BOM split, Phase 3/4 — only a child project (master_project_id set) or a master
-          that's actually been split (hasChildren) shows either of these; every ordinary project is
-          completely unaffected. */}
-      {project.master_project_id && (
-        <ChildUnitBomCard projectId={project.id} unitNo={project.unit_no} />
-      )}
-      {/* Allocation (AllocationPanel) and Routing (ChildRoutingPanel) both moved to Stores' own
-          Allocation & Routing tab (/stores) — Stores' actual daily allocate-then-route workflow
-          lives there now, inline, instead of requiring a trip to this (often very large — 181+
-          BOM lines) project page per order. */}
+      {/* Multi-unit split — untouched by this redesign. */}
+      {project.master_project_id && <ChildUnitBomCard projectId={project.id} unitNo={project.unit_no} />}
       {hasChildren && canAccessDepartment(user, 'Production') && <ProductionBatchJobCardPanel projectId={project.id} />}
       {hasChildren && canAccessDepartment(user, 'QC') && <QcBatchDocumentPanel projectId={project.id} />}
       {hasChildren && canAccessDepartment(user, 'Dispatch') && <DispatchBatchPackingPanel projectId={project.id} />}
 
-      {pm ? (
-        // PM/admin: the all-departments tabbed card.
-        <ProjectDepartmentTabs departments={DEPARTMENTS} {...panelData} />
-      ) : (
-        // Functional head: their own department(s), stacked.
-        myDepts.map(d => (
-          <section key={d} className="flex flex-col gap-3">
-            <h2 className="text-lg font-semibold">{d}</h2>
-            <DepartmentPanel department={d} {...panelData} />
-          </section>
-        ))
+      {/* Lower rows — accumulate, never swap. */}
+      <ProjectDesignRow projectId={project.id} scopeOfSupply={scopeOfSupply}
+        calcSheets={designSummary?.calcSheets} drawings={designSummary?.drawings} designSignedOff={designSignedOff} />
+
+      {canAccessDepartment(user, 'Installation') && (milestones.some(m => m.department === 'Installation')) && (
+        <InstallationMilestoneActions projectId={project.id} milestones={milestones.filter(m => m.department === 'Installation')} canMark={canMarkInstallation} />
       )}
+
+      {showProcurement && <ProcurementQueue bom={bom} />}
+      {showStores && <StoresSummaryCard projectId={project.id} inventoryCount={inventoryItems.length} deliveryLotsCount={deliveryLotsCount} />}
+      {showProduction && <ProductionSummaryCard jobCards={jobCards} materialIndents={materialIndents} />}
+      {showQc && <QcProjectSummary projectId={project.id} summary={qcSummary} canManage={canAccessDepartment(user, 'QC')} />}
+      {showDispatch && <DispatchSummaryCard projectId={project.id} packingLists={packingLists} />}
+
+      <CommonBomCard projectId={project.id} bom={bom} />
     </main>
   );
 }

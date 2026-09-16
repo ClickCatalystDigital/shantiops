@@ -10,7 +10,8 @@ import { getFreshSessionUser, canAccessDepartment, roleHome } from '@/lib/auth';
 import {
   getInventoryItems, getOpenBomItems, getActiveReservations, getActiveProjectsList,
   getGateInwardReceipts, getTestCertificates, getSourcingItems,
-  getSplitOrdersNeedingStoresAction, attachDeliveryLotDates,
+  getSplitOrdersNeedingStoresAction, attachDeliveryLotDates, getPendingInwardApprovals,
+  getUnroutedReceivedItems,
 } from '@/lib/data';
 import StoresWorkspace from '@/components/StoresWorkspace';
 
@@ -20,10 +21,10 @@ export default async function StoresPage({ searchParams }) {
   const user = await getFreshSessionUser();
   if (!canAccessDepartment(user, 'Stores')) redirect(roleHome(user));
 
-  const [inventoryItems, openRequests, activeReservations, projects, gateInwardReceipts, certificates, bomItems, splitOrders] = await Promise.all([
+  const [inventoryItems, openRequests, activeReservations, projects, gateInwardReceipts, certificates, bomItems, splitOrders, pendingInwardApprovals, unroutedItems] = await Promise.all([
     getInventoryItems(), getOpenBomItems(), getActiveReservations(), getActiveProjectsList(),
     getGateInwardReceipts(), getTestCertificates(), getSourcingItems(),
-    getSplitOrdersNeedingStoresAction(),
+    getSplitOrdersNeedingStoresAction(), getPendingInwardApprovals(), getUnroutedReceivedItems(),
   ]);
 
   // Lot-aware expected-delivery dates for Receive a Delivery only — merged in after the shared
@@ -33,5 +34,6 @@ export default async function StoresPage({ searchParams }) {
   const sp = await searchParams;
   return <StoresWorkspace inventoryItems={inventoryItems} openRequests={openRequests} activeReservations={activeReservations}
     projects={projects} gateInwardReceipts={gateInwardReceipts}
-    certificates={certificates} bomItems={bomItems} splitOrders={splitOrders} initialTab={sp?.tab} />;
+    certificates={certificates} bomItems={bomItems} splitOrders={splitOrders}
+    pendingInwardApprovals={pendingInwardApprovals} unroutedItems={unroutedItems} initialTab={sp?.tab} />;
 }

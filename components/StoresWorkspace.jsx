@@ -23,7 +23,7 @@ import {
 } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { PlusIcon, PencilIcon, PackageCheckIcon, UndoIcon, TruckIcon, PackageIcon, ClipboardListIcon, LayersIcon, LogInIcon, SearchIcon, ChevronRightIcon, BoxesIcon, HashIcon } from 'lucide-react';
+import { PlusIcon, PencilIcon, PackageCheckIcon, UndoIcon, TruckIcon, PackageIcon, ClipboardListIcon, LayersIcon, LogInIcon, SearchIcon, ChevronRightIcon, BoxesIcon, HashIcon, ArrowRightLeftIcon } from 'lucide-react';
 import { api, showToast, formatDate } from '@/lib/client';
 import { formatMoney } from '@/lib/format';
 import { derivePurchaseStage } from '@/lib/bom-fields.mjs';
@@ -38,15 +38,32 @@ import { pieceDimsLabel } from '@/components/CutDialog';
 import { pieceKindLabel, groupPiecesByRoot } from '@/components/PieceLineage';
 import ReceiptPicker from '@/components/ReceiptPicker';
 import ReceiveBomItemDialog from '@/components/ReceiveBomItemDialog';
-import { normalizeWords } from '@/lib/match-utils';
+import { normalizeWords, materialMismatchReason } from '@/lib/match-utils';
 import { pieceWeight } from '@/lib/piece-weight';
 import { todayISO, toISODate } from '@/lib/date';
 import {
   CATEGORY_LABEL, ROLLED_CATEGORIES, OTHER_SIZE, categoryDisplaySpec,
 } from '@/lib/section-shapes';
+import { defaultCategoryFields } from '@/components/BomLineFields';
 
 function isLowStock(item) {
   return item.reorder_point != null && item.available <= item.reorder_point;
+}
+
+// Inventory dimensional model (gentle-snuggling-wozniak.md §4.1) — reuses the exact same
+// categoryDisplaySpec() formatter a BOM line's own spec already renders through, against the
+// new inventory_items.category_fields_json column, instead of a second dimensional schema. Falls
+// back to the pre-existing flattened `spec` string for a legacy row with no structured dims yet —
+// nothing is lost for un-migrated data.
+function inventoryDimensions(it) {
+  if (it.category_fields_json) {
+    try {
+      const fields = JSON.parse(it.category_fields_json) || {};
+      const label = categoryDisplaySpec(it.category, fields);
+      if (label) return label;
+    } catch { /* malformed, fall through to the flattened string */ }
+  }
+  return it.spec || '—';
 }
 
 // Cutting & Remnant Management — plate/section stock, layered on top of the plain on_hand number
@@ -65,7 +82,9 @@ const PIECE_STATUS = {
   scrap: { cls: 'bg-danger/10 text-danger ring-danger/20', label: 'Scrap' },
   // A freshly cut remnant (Phase 2, design 18.4) — not yet reservable/matchable until Stores
   // confirms the physical piece is actually back on the shelf, same open->confirmed idea GIR uses.
-  pending_receipt: { cls: 'bg-info/10 text-info ring-info/20', label: 'Pending receipt' },
+  // Label reads as a location signal (gentle-snuggling-wozniak.md §9), not a bare status word — the
+  // only real "where is this piece" cue that exists on a piece today.
+  pending_receipt: { cls: 'bg-info/10 text-info ring-info/20', label: 'Cut — pending Stores' },
 };
 
 // Sentinel-project rows (source='stock'/'sas', Phase 6.4) have no real project_no to show.
@@ -191,12 +210,32 @@ function ItemFormDialog({ item, onClose, router }) {
       setCatalogOpen(rows.length > 0);
     } catch { /* catalog search is best-effort — free text still works */ }
   }
+  // Mirrors ItemSearchField.pick() (components/BomLineFields.jsx) — the Item Master's own
+  // structured dimensional/MOC defaults were already correctly consumed on the BOM side; this was
+  // the one real reuse gap (gentle-snuggling-wozniak.md §4/§9): Stores' own New Item pick ignored
+  // them entirely and only ever seeded free-text `spec` from `detail_desc`. requires_manufacturing
+  // is deliberately NOT carried over — it's a bom_items-line concept (Production routing for one
+  // BOM line), inventory_items has no equivalent column.
   function pickCatalogItem(it) {
+    const category = it.bom_category || '';
+    let itemDefaultDims = {};
+    if (it.default_category_fields_json) {
+      try { itemDefaultDims = JSON.parse(it.default_category_fields_json) || {}; } catch { /* malformed, ignore */ }
+    }
     setDescription(it.item_name);
-    setSpec(it.detail_desc || '');
+    // A dimensional category derives its spec from Length/Width/Thickness entered next — seeding it
+    // from the catalog's free-text detail_desc here would freeze stale text in place, same reasoning
+    // ItemSearchField.pick() uses.
+    setSpec(DIMENSIONAL_CATEGORIES.some(c => c.value === category) ? '' : (it.detail_desc || ''));
     setItemCode(it.item_code || '');
     setItemId(it.id);
     setCatalogUom(it.uom || null);
+    if (category) {
+      setCategory(category);
+      setCategoryFields({ ...defaultCategoryFields(category), ...itemDefaultDims });
+    }
+    // Never clobber a blank — a generic gasket/fitting item legitimately has no default MOC.
+    if (it.default_moc) setMoc(it.default_moc);
     setCatalogOpen(false);
   }
 
@@ -471,10 +510,16 @@ const TRANSFERABLE_STATUSES = new Set(['available', 'reserved', 'pending_receipt
 
 // Piece row shared by both the root and its expanded children — kept as one function so the two
 // look consistent rather than two hand-maintained near-duplicates.
-function PieceRow({ p, indent, kindLabel, busyId, onRelease, onReserve, onConfirmReceipt, onTransfer }) {
+// pl-8/12/16 for depth 1/2/3+ — depth 1 matches the old fixed pl-8 exactly (byte-identical for the
+// common single-generation case), deeper generations get progressively more indent instead of
+// flattening to the same level. Capped rather than scaling forever — a lineage chain deep enough to
+// need more than 3 visual levels is vanishingly rare and would just crowd the table.
+const PIECE_INDENT_CLASSES = ['', 'pl-8', 'pl-12', 'pl-16'];
+function PieceRow({ p, depth = 0, kindLabel, busyId, onRelease, onReserve, onConfirmReceipt, onTransfer }) {
+  const indentClass = PIECE_INDENT_CLASSES[Math.min(depth, PIECE_INDENT_CLASSES.length - 1)];
   return (
     <TableRow>
-      <TableCell className={`font-medium ${indent ? 'pl-8' : ''}`}>{p.code}</TableCell>
+      <TableCell className={`font-medium ${indentClass}`}>{p.code}</TableCell>
       <TableCell className="text-muted-foreground">{pieceDimsLabel(p)}</TableCell>
       <TableCell className="tnum">{p.weight_kg} kg</TableCell>
       {/* Phase 8 — unit_cost (Phase 6's own per-piece cost, set at Vendor Bill approval) had zero
@@ -648,7 +693,7 @@ function PiecesDialog({ inventoryItem, onClose, router, certificates = [], proje
                             </TableCell>
                           </TableRow>
                           {isOpen && children.map(c => (
-                            <PieceRow key={c.id} p={c} indent kindLabel={pieceKindLabel(c)} busyId={busyId} onRelease={release} onReserve={setReservingPiece} onConfirmReceipt={confirmReceipt} onTransfer={setTransferringPiece} />
+                            <PieceRow key={c.id} p={c} depth={c.depth} kindLabel={pieceKindLabel(c)} busyId={busyId} onRelease={release} onReserve={setReservingPiece} onConfirmReceipt={confirmReceipt} onTransfer={setTransferringPiece} />
                           ))}
                         </Fragment>
                       );
@@ -1045,6 +1090,11 @@ function ReserveDialog({ request, inventoryItems, matches, onClose, router }) {
   // isn't in the (imperfect, word-overlap-based) match set.
   const [showAll, setShowAll] = useState(matches.length === 0);
   const pickable = showAll ? inventoryItems : matches.map(m => m.item);
+  // Same check the server enforces (lib/procurement.js's reserveFromStock) — surfaced here so a
+  // real conflict (picked via "Show all items", since the shortlist above is already filtered to
+  // plausible matches) is visible before Reserve is clicked, not only as a rejected round-trip.
+  const selectedItem = pickable.find(i => String(i.id) === inventoryItemId);
+  const mismatch = selectedItem ? materialMismatchReason(request, selectedItem) : null;
 
   async function reserve() {
     if (!inventoryItemId) return showToast('Choose an inventory item', 'error');
@@ -1098,33 +1148,38 @@ function ReserveDialog({ request, inventoryItems, matches, onClose, router }) {
               Requested: {request.qty_text || '—'}{request.qty_breakdown ? ` (${request.qty_breakdown.label})` : ''}. Reserving less than requested splits the remainder to keep procuring.
             </p>
           </div>
+          {mismatch && (
+            <p className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+              This stock doesn't match the requirement — {mismatch}.
+            </p>
+          )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={reserve} disabled={saving || !pickable.length}>{saving ? 'Reserving…' : 'Reserve'}</Button>
+          <Button onClick={reserve} disabled={saving || !pickable.length || !!mismatch}>{saving ? 'Reserving…' : 'Reserve'}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
 
+// Redesign (2026-09-14, direct feedback: "why is this so obscure") — same data and actions as
+// before, four real fixes: (1) card title now matches the nav label ("Open requests" told nobody
+// this was Material Demand), (2) grouped by project instead of one flat cross-project table, since
+// that's the unit a Stores head actually thinks in, (3) already-covered lines (auto-reserved /
+// remnant-matched) visually recede — small, muted, no action row — instead of sitting at the same
+// weight as a line that genuinely needs a decision, (4) a line needing a real decision gets a
+// left accent stripe so it reads at a glance, not just from a small badge buried in a cell.
 function OpenRequestsCard({ openRequests, inventoryItems, router }) {
   const [reserveFor, setReserveFor] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [q, setQ] = useState('');
-  // Phase 3 (G3) — piece/serial-tracked lines are never reserved through this generic, qty-blind
-  // dialog; they already have (or, for serial, now gain) their own Reserve action in the
-  // Pieces/Serials dialogs. reserveFromStock() rejects these server-side too (defense in depth) —
-  // this filter just keeps the picker from offering an option that would only ever error.
   const reservableInventoryItems = inventoryItems.filter(it => it.tracking_mode !== 'piece' && it.tracking_mode !== 'serial');
   const needle = q.trim().toLowerCase();
   const shown = openRequests.filter(r => !needle
     || r.material_description.toLowerCase().includes(needle)
     || (r.project_no || '').toLowerCase().includes(needle));
 
-  // Manual-mode gate (STORES-SALES-CHANGES.md) — a pending_review line hasn't been sent to
-  // Procurement yet; Procure is the explicit "no, buy it" decision. Reserve already works
-  // unmodified on these rows (reserveFromStock never checked purchase_status/pending_review).
   async function procure(r) {
     setBusyId(r.id);
     try {
@@ -1135,76 +1190,72 @@ function OpenRequestsCard({ openRequests, inventoryItems, router }) {
     setBusyId(null);
   }
 
+  const groups = new Map();
+  shown.forEach(r => {
+    const key = requestLabel(r);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(r);
+  });
+
   return (
     <Card>
-      <CardHeader><CardTitle>Open requests</CardTitle></CardHeader>
-      <CardContent>
+      <CardHeader>
+        <CardTitle>Material Demand</CardTitle>
+        <p className="text-sm text-muted-foreground">What's currently needed, and whether it can be filled from stock or needs a decision.</p>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
         {openRequests.length > 0 && <SearchBox value={q} onChange={setQ} placeholder="Search by description or project…" />}
         {openRequests.length === 0 ? (
           <p className="py-6 text-center text-sm text-muted-foreground">Nothing open.</p>
         ) : shown.length === 0 ? (
           <p className="py-6 text-center text-sm text-muted-foreground">No requests match.</p>
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Description</TableHead>
-                <TableHead>Qty</TableHead>
-                <TableHead>Project / Source</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {shown.map(r => {
-                const matches = possibleMatches(r, reservableInventoryItems);
-                return (
-                  <TableRow key={r.id}>
-                    <TableCell className="font-medium">
-                      {r.material_description}
-                      {!r.requires_manufacturing && (
-                        <div className="mt-1">
-                          <Badge variant="outline" className="text-xs font-normal text-muted-foreground"
-                            title="Bought-out — skips Production, packable the moment it's received.">
-                            Direct to packing
-                          </Badge>
+          [...groups.entries()].map(([label, rows]) => (
+            <div key={label} className="flex flex-col gap-1">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
+              <div className="flex flex-col divide-y rounded-md border">
+                {rows.map(r => {
+                  const matches = possibleMatches(r, reservableInventoryItems);
+                  const covered = r.reserved_piece_count > 0 || r.reserved_qty > 0;
+                  return (
+                    <div key={r.id}
+                      className={`flex flex-wrap items-center gap-3 px-3 py-2.5 text-sm ${covered ? '' : 'border-l-2 border-l-warning'}`}>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-medium">{r.material_description}</span>
+                          {r.source === 'stock' && <Badge variant="outline" className="border-dashed text-[10px]">Build Stock</Badge>}
+                          {!r.requires_manufacturing && (
+                            <span className="text-xs text-muted-foreground" title="Bought-out — skips Production, packable the moment it's received.">
+                              · Direct to packing
+                            </span>
+                          )}
                         </div>
-                      )}
-                      {matches.length > 0 && (
-                        <div className="mt-1 flex flex-wrap gap-1">
-                          {matches.map(({ item, exact }) => (
-                            <Badge key={item.id} variant="outline"
-                              className={exact ? 'border-success/30 bg-success-surface text-xs font-normal text-success' : 'text-xs font-normal text-muted-foreground'}
-                              title={exact ? 'Same catalog item — a real match, not a guess.' : 'Non-binding keyword overlap — confirm before reserving.'}>
-                              {exact ? '✓' : '≈'} {item.item_code ? `${item.item_code} · ` : ''}{item.description} ({item.available} avail)
-                            </Badge>
-                          ))}
-                        </div>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {r.qty_text || '—'}{r.qty_breakdown && ` (${r.qty_breakdown.label})`}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {r.source === 'stock'
-                        ? <Badge variant="outline" className="border-dashed">Build Stock</Badge>
-                        : requestLabel(r)}
-                    </TableCell>
-                    <TableCell>
-                      {r.reserved_piece_count > 0
-                        ? <Badge className="border-info/30 bg-info-surface text-info" title="Cutting & Remnant Management matched this line to stock automatically — ready for Production to cut. No action needed here.">Remnant reserved</Badge>
-                        : r.reserved_qty > 0
-                        ? <Badge className="border-info/30 bg-info-surface text-info" title="Allocation Mode: Auto already reserved this from stock the moment the requirement was created. No action needed here.">Auto-reserved</Badge>
-                        : r.pending_review
-                        ? <Badge className="border-warning/30 bg-warning-surface text-warning" title="Not visible to Procurement yet — Reserve or Procure it.">Stores Review</Badge>
-                        : <Badge variant="secondary">{r.purchase_status || 'Enquiry'}</Badge>}
-                    </TableCell>
-                    <TableCell className="flex justify-end gap-1">
-                      {!(r.reserved_piece_count > 0) && !(r.reserved_qty > 0) && (
-                        <>
-                          {/* Reserve is the default action — Stores shouldn't procure new material
-                              when existing stock can cover the line, so Reserve gets the solid/
-                              primary button and Procure (a real choice, not a fallback) is outline. */}
+                        <span className="text-xs text-muted-foreground tnum">
+                          {r.qty_text || '—'}{r.qty_breakdown && ` (${r.qty_breakdown.label})`}
+                        </span>
+                        {matches.length > 0 && !covered && (
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {matches.map(({ item, exact }) => (
+                              <Badge key={item.id} variant="outline"
+                                className={exact ? 'border-success/30 bg-success-surface text-[10px] font-normal text-success' : 'text-[10px] font-normal text-muted-foreground'}
+                                title={exact ? 'Same catalog item — a real match, not a guess.' : 'Non-binding keyword overlap — confirm before reserving.'}>
+                                {exact ? '✓' : '≈'} {item.item_code ? `${item.item_code} · ` : ''}{item.description} ({item.available} avail)
+                              </Badge>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      {covered ? (
+                        <Badge className="shrink-0 border-info/30 bg-info-surface text-[10px] text-info"
+                          title={r.reserved_piece_count > 0
+                            ? 'Cutting & Remnant Management matched this line to stock automatically — ready for Production to cut. No action needed here.'
+                            : 'Allocation Mode: Auto already reserved this from stock the moment the requirement was created. No action needed here.'}>
+                          {r.reserved_piece_count > 0 ? 'Remnant reserved' : 'Auto-reserved'}
+                        </Badge>
+                      ) : (
+                        <div className="flex shrink-0 items-center gap-2">
+                          {r.pending_review ? <Badge className="border-warning/30 bg-warning-surface text-[10px] text-warning">Stores Review</Badge>
+                            : <Badge variant="secondary" className="text-[10px]">{r.purchase_status || 'Enquiry'}</Badge>}
                           <Button size="sm" disabled={!reservableInventoryItems.length} onClick={() => setReserveFor(r)}>
                             Reserve from stock
                           </Button>
@@ -1213,14 +1264,14 @@ function OpenRequestsCard({ openRequests, inventoryItems, router }) {
                               {busyId === r.id ? 'Sending…' : 'Procure'}
                             </Button>
                           )}
-                        </>
+                        </div>
                       )}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))
         )}
       </CardContent>
       {reserveFor && (
@@ -1238,30 +1289,27 @@ function OpenRequestsCard({ openRequests, inventoryItems, router }) {
 // Production's own concern, not Stores'). Distinct from the Reserve→Issue action above: that one
 // finalizes a *stock* reservation (decrements on_hand, marks the line In-Stock); this one just logs
 // that material physically left Stores for WIP — it doesn't touch on_hand or purchase_status.
+// Redesign (2026-09-14) — this used to hard-gate the whole screen behind "pick a project first,"
+// which is backwards for a daily "what left the building today" glance. Now defaults to a
+// cross-project recent log (GET /api/material-issues with no filter); logging a new issue is its
+// own explicit, secondary action that reveals the project/BOM-item picker instead of blocking the
+// whole card.
 function MaterialIssuesCard({ projects }) {
+  const [recent, setRecent] = useState(null);
+  const [logging, setLogging] = useState(false);
   const [projectId, setProjectId] = useState('');
   const [bom, setBom] = useState(null);
-  const [issues, setIssues] = useState(null);
-  const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({ bom_item_id: '', qty: '' });
   const [busy, setBusy] = useState(false);
 
-  async function loadAll() {
-    const [{ items }, iss] = await Promise.all([
-      api(`/api/projects/${projectId}/bom`),
-      api(`/api/material-issues?project_id=${projectId}`),
-    ]);
-    setBom(items); setIssues(iss);
+  async function loadRecent() {
+    setRecent(await api('/api/material-issues'));
   }
+  useEffect(() => { loadRecent().catch(err => showToast(err.message, 'error')); }, []);
 
   useEffect(() => {
-    if (!projectId) { setBom(null); setIssues(null); return; }
-    let cancelled = false;
-    setLoading(true);
-    loadAll().catch(err => !cancelled && showToast(err.message, 'error'))
-      .finally(() => !cancelled && setLoading(false));
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (!projectId) { setBom(null); return; }
+    api(`/api/projects/${projectId}/bom`).then(({ items }) => setBom(items)).catch(err => showToast(err.message, 'error'));
   }, [projectId]);
 
   async function logIssue() {
@@ -1273,55 +1321,76 @@ function MaterialIssuesCard({ projects }) {
       await api('/api/material-issues', { method: 'POST', body: { bom_item_id: Number(form.bom_item_id), qty } });
       showToast('Material issue logged');
       setForm({ bom_item_id: '', qty: '' });
-      await loadAll();
+      setLogging(false); setProjectId('');
+      await loadRecent();
     } catch (err) { showToast(err.message, 'error'); }
     setBusy(false);
   }
 
   return (
     <Card>
-      <CardHeader><CardTitle>Material issued to WIP</CardTitle></CardHeader>
-      <CardContent className="flex flex-col gap-3">
-        <Select value={projectId} onValueChange={setProjectId}>
-          <SelectTrigger className="w-64"><SelectValue placeholder="Select a project" /></SelectTrigger>
-          <SelectContent><SelectGroup>
-            {projects.map(p => <SelectItem key={p.id} value={String(p.id)}>{p.project_no} · {p.customer_name}</SelectItem>)}
-          </SelectGroup></SelectContent>
-        </Select>
-        {!projectId ? (
-          <p className="py-4 text-center text-sm text-muted-foreground">Pick a project to log material leaving Stores for WIP.</p>
-        ) : loading || !bom ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
-        ) : (
-          <>
-            <div className="flex flex-wrap gap-2">
-              <Select value={form.bom_item_id} onValueChange={v => setForm({ ...form, bom_item_id: v })}>
-                <SelectTrigger className="w-72"><SelectValue placeholder="BOM item" /></SelectTrigger>
-                <SelectContent><SelectGroup>
-                  {bom.map(b => <SelectItem key={b.id} value={String(b.id)}>{b.material_description} {b.size_spec ? `· ${b.size_spec}` : ''}</SelectItem>)}
-                </SelectGroup></SelectContent>
-              </Select>
-              <Input type="number" min="0" placeholder="Qty" className="w-24" value={form.qty}
-                onChange={e => setForm({ ...form, qty: e.target.value })} />
-              <Button size="sm" onClick={logIssue} disabled={busy}><TruckIcon />Log issue</Button>
-            </div>
-            {issues?.length > 0 && (
-              <div className="flex flex-col gap-1 pt-1">
-                {issues.slice(0, 8).map(i => (
-                  <div key={i.id} className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span>{i.material_description}</span>
-                    <span className="tnum">qty {i.qty} · {i.issued_by}</span>
-                  </div>
-                ))}
+      <CardHeader>
+        <CardTitle>Issued to WIP</CardTitle>
+        <p className="text-sm text-muted-foreground">What's left Stores for the shop floor, most recent first.</p>
+        <CardAction>
+          <Button size="sm" variant={logging ? 'outline' : 'default'} onClick={() => setLogging(l => !l)}>
+            <TruckIcon />{logging ? 'Cancel' : 'Log an issue'}
+          </Button>
+        </CardAction>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        {logging && (
+          <div className="flex flex-col gap-2 rounded-md border bg-muted/30 p-3">
+            <Select value={projectId} onValueChange={setProjectId}>
+              <SelectTrigger className="w-64"><SelectValue placeholder="Select a project" /></SelectTrigger>
+              <SelectContent><SelectGroup>
+                {projects.map(p => <SelectItem key={p.id} value={String(p.id)}>{p.project_no} · {p.customer_name}</SelectItem>)}
+              </SelectGroup></SelectContent>
+            </Select>
+            {projectId && (
+              <div className="flex flex-wrap gap-2">
+                {!bom ? <p className="text-sm text-muted-foreground">Loading…</p> : (
+                  <>
+                    <Select value={form.bom_item_id} onValueChange={v => setForm({ ...form, bom_item_id: v })}>
+                      <SelectTrigger className="w-72"><SelectValue placeholder="BOM item" /></SelectTrigger>
+                      <SelectContent><SelectGroup>
+                        {bom.map(b => <SelectItem key={b.id} value={String(b.id)}>{b.material_description} {b.size_spec ? `· ${b.size_spec}` : ''}</SelectItem>)}
+                      </SelectGroup></SelectContent>
+                    </Select>
+                    <Input type="number" min="0" placeholder="Qty" className="w-24" value={form.qty}
+                      onChange={e => setForm({ ...form, qty: e.target.value })} />
+                    <Button size="sm" onClick={logIssue} disabled={busy}>Log issue</Button>
+                  </>
+                )}
               </div>
             )}
-          </>
+          </div>
+        )}
+        {recent === null ? (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : recent.length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">Nothing issued yet.</p>
+        ) : (
+          <div className="flex flex-col divide-y rounded-md border">
+            {recent.map(i => (
+              <div key={i.id} className="flex flex-wrap items-center gap-3 px-3 py-2 text-sm">
+                <div className="min-w-0 flex-1">
+                  <span className="font-medium">{i.material_description}</span>
+                  <div className="text-xs text-muted-foreground">{i.project_no} · {i.customer_name}</div>
+                </div>
+                <span className="shrink-0 text-xs text-muted-foreground tnum">qty {i.qty} · {i.issued_by} · {formatDate(i.issued_at)}</span>
+              </div>
+            ))}
+          </div>
         )}
       </CardContent>
     </Card>
   );
 }
 
+// Grouped by project, same pattern as Material Demand above — "Ready to Issue" instead of "Active
+// reservations" (jargon that didn't say what to do here; every one of these rows is committed
+// stock waiting on a single click to actually hand it over).
 function ActiveReservationsCard({ activeReservations, router }) {
   const [busyId, setBusyId] = useState(null);
 
@@ -1338,42 +1407,46 @@ function ActiveReservationsCard({ activeReservations, router }) {
     }
   }
 
+  const groups = new Map();
+  activeReservations.forEach(r => {
+    const key = requestLabel(r);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(r);
+  });
+
   return (
     <Card>
-      <CardHeader><CardTitle>Active reservations</CardTitle></CardHeader>
-      <CardContent>
+      <CardHeader>
+        <CardTitle>Ready to Issue</CardTitle>
+        <p className="text-sm text-muted-foreground">Stock already committed — issuing hands it over and closes the line.</p>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
         {activeReservations.length === 0 ? (
           <p className="py-6 text-center text-sm text-muted-foreground">No active reservations.</p>
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Item</TableHead>
-                <TableHead>Reserved for</TableHead>
-                <TableHead>Qty</TableHead>
-                <TableHead>Project / Source</TableHead>
-                <TableHead></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {activeReservations.map(r => (
-                <TableRow key={r.id}>
-                  <TableCell className="font-medium">{r.inventory_description}</TableCell>
-                  <TableCell className="text-muted-foreground">{r.material_description}</TableCell>
-                  <TableCell>{r.qty}</TableCell>
-                  <TableCell className="text-muted-foreground">{requestLabel(r)}</TableCell>
-                  <TableCell className="flex gap-1">
-                    <Button size="sm" disabled={busyId === r.id} onClick={() => act(r.id, 'issue')}>
-                      <PackageCheckIcon />Issue
-                    </Button>
-                    <Button size="sm" variant="outline" disabled={busyId === r.id} onClick={() => act(r.id, 'release')}>
-                      <UndoIcon />Release
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          [...groups.entries()].map(([label, rows]) => (
+            <div key={label} className="flex flex-col gap-1">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
+              <div className="flex flex-col divide-y rounded-md border">
+                {rows.map(r => (
+                  <div key={r.id} className="flex flex-wrap items-center gap-3 border-l-2 border-l-success px-3 py-2.5 text-sm">
+                    <div className="min-w-0 flex-1">
+                      <span className="font-medium">{r.inventory_description}</span>
+                      <div className="text-xs text-muted-foreground">{r.material_description} · qty {r.qty}</div>
+                    </div>
+                    <div className="flex shrink-0 gap-1">
+                      <Button size="sm" disabled={busyId === r.id} onClick={() => act(r.id, 'issue')}>
+                        <PackageCheckIcon />Issue
+                      </Button>
+                      <Button size="sm" variant="outline" disabled={busyId === r.id} onClick={() => act(r.id, 'release')}>
+                        <UndoIcon />Release
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))
         )}
       </CardContent>
     </Card>
@@ -1529,7 +1602,10 @@ function IndentsCard({ router }) {
 
   return (
     <Card>
-      <CardHeader><CardTitle>Material Indents</CardTitle></CardHeader>
+      <CardHeader>
+        <CardTitle>Material Indents</CardTitle>
+        <p className="text-sm text-muted-foreground">What Production has requested — release a line to hand the material over.</p>
+      </CardHeader>
       {selected.size > 0 && (
         <div className="flex items-center gap-2 border-y bg-muted/40 px-4 py-3 text-sm">
           <span className="font-medium">{selected.size} selected</span>
@@ -1539,7 +1615,7 @@ function IndentsCard({ router }) {
           <Button size="sm" variant="ghost" className="h-7" disabled={busy} onClick={() => setSelected(new Set())}>Clear</Button>
         </div>
       )}
-      <CardContent className="flex flex-col divide-y pt-4">
+      <CardContent className="flex flex-col gap-3 pt-4">
         {indents === null ? (
           <p className="py-6 text-center text-sm text-muted-foreground">Loading…</p>
         ) : indents.length === 0 ? (
@@ -1556,12 +1632,13 @@ function IndentsCard({ router }) {
             {shown.length === 0 ? (
               <p className="py-6 text-center text-sm text-muted-foreground">No indents match.</p>
             ) : shown.map(indent => (
-              <div key={indent.id} className="py-3">
-                <div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
-                  <span className="font-medium text-foreground">{indent.indent_no}</span>
-                  <span>{indent.project_no || '—'} · raised by {indent.requested_by}</span>
+              <div key={indent.id} className="rounded-md border bg-muted/20 py-3">
+                <div className="mb-1 flex items-center gap-2 px-3 text-sm">
+                  <span className="font-semibold">{indent.indent_no}</span>
+                  <span className="text-muted-foreground">{indent.project_no || '—'} · raised by {indent.requested_by}</span>
+                  <a href={`/api/material-indents/${indent.id}/pdf`} target="_blank" rel="noreferrer" className="text-xs underline">PDF</a>
                 </div>
-                <div className="flex flex-col divide-y pl-2">
+                <div className="flex flex-col divide-y px-3">
                   {indent.items.filter(it => ['open', 'partially_released'].includes(it.status)).map(item => (
                     <IndentItemRow key={item.id} indent={indent} item={item}
                       selectable={item.tracking_mode !== 'piece'}
@@ -1665,7 +1742,10 @@ function AllocationRoutingSection({ splitOrders, router }) {
 
   return (
     <Card>
-      <CardHeader><CardTitle>Allocation & Routing</CardTitle></CardHeader>
+      <CardHeader>
+        <CardTitle>Split-Order Allocation</CardTitle>
+        <p className="text-sm text-muted-foreground">Multi-unit orders — which physical unit gets which material, and whether it goes to Production or Dispatch.</p>
+      </CardHeader>
       <CardContent>
         {splitOrders.length === 0 ? (
           <p className="py-6 text-center text-sm text-muted-foreground">No split orders need attention right now.</p>
@@ -1710,15 +1790,28 @@ function AllocationRoutingSection({ splitOrders, router }) {
 // reserve/available inventory model above; Stores owns it because no separate gate department
 // exists. grn_ref links back to the ordinary GRN paperwork once Procurement/Stores actually
 // receives what came through the gate.
-function GirFormDialog({ onClose, router }) {
-  const [form, setForm] = useState({ vehicle_no: '', supplier_name: '', driver_name: '', material_ref: '', security_seal_ok: false, security_docs_ok: false, security_remarks: '' });
+// `editing` — the GIR row being fixed (a mistyped vehicle/supplier/driver/material-ref/security
+// field), or null to log a new entry. Only ever passed while the GIR is still 'open' (the card's
+// own Edit button is hidden once closed) — the server re-enforces the same guard regardless.
+function GirFormDialog({ editing, onClose, router }) {
+  const [form, setForm] = useState(editing ? {
+    vehicle_no: editing.vehicle_no || '', supplier_name: editing.supplier_name || '',
+    driver_name: editing.driver_name || '', material_ref: editing.material_ref || '',
+    security_seal_ok: !!editing.security_seal_ok, security_docs_ok: !!editing.security_docs_ok,
+    security_remarks: editing.security_remarks || '',
+  } : { vehicle_no: '', supplier_name: '', driver_name: '', material_ref: '', security_seal_ok: false, security_docs_ok: false, security_remarks: '' });
   const [saving, setSaving] = useState(false);
 
   async function save() {
     setSaving(true);
     try {
-      const result = await api('/api/gate-inward-receipts', { method: 'POST', body: form });
-      showToast(`GIR-${result.gir_no} logged`);
+      if (editing) {
+        await api(`/api/gate-inward-receipts/${editing.id}`, { method: 'PATCH', body: { edit: true, ...form } });
+        showToast(`GIR-${editing.gir_no} updated`);
+      } else {
+        const result = await api('/api/gate-inward-receipts', { method: 'POST', body: form });
+        showToast(`GIR-${result.gir_no} logged`);
+      }
       router.refresh();
       onClose();
     } catch (err) { showToast(err.message, 'error'); }
@@ -1728,7 +1821,7 @@ function GirFormDialog({ onClose, router }) {
   return (
     <Dialog open onOpenChange={o => !o && onClose()}>
       <DialogContent>
-        <DialogHeader><DialogTitle>New Gate Inward Receipt</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>{editing ? `Edit GIR-${editing.gir_no}` : 'New Gate Inward Receipt'}</DialogTitle></DialogHeader>
         <div className="grid grid-cols-2 gap-3">
           <div className="grid gap-1.5">
             <Label>Vehicle no.</Label>
@@ -1763,7 +1856,9 @@ function GirFormDialog({ onClose, router }) {
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={save} disabled={saving}>{saving ? 'Logging…' : 'Log entry'}</Button>
+          <Button onClick={save} disabled={saving}>
+            {saving ? (editing ? 'Saving…' : 'Logging…') : (editing ? 'Save changes' : 'Log entry')}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -1773,14 +1868,25 @@ function GirFormDialog({ onClose, router }) {
 function GateInwardReceiptsCard({ gateInwardReceipts, router }) {
   useEntityHighlight(useSearchParams().get('highlight'));
   const [adding, setAdding] = useState(false);
+  const [editingGir, setEditingGir] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [grnById, setGrnById] = useState({});
+  const [q, setQ] = useState('');
+  const needle = q.trim().toLowerCase();
+  const shown = gateInwardReceipts.filter(g => !needle
+    || String(g.gir_no).includes(needle)
+    || (g.vehicle_no || '').toLowerCase().includes(needle)
+    || (g.supplier_name || '').toLowerCase().includes(needle)
+    || (g.driver_name || '').toLowerCase().includes(needle)
+    || (g.material_ref || '').toLowerCase().includes(needle));
 
   // Closing requires a GRN reference — the app-layer guard on the PATCH route (a close with no
   // grn_ref anywhere, existing or in this same call, 400s) so "closed" always means "actually
   // received," not just "gate entry acknowledged."
   async function close(g) {
-    const grn_ref = grnById[g.id];
+    // Same precedence as the input's own defaultValue/disabled logic below — if the user never
+    // touched the field, fall back to the GIR's own stored value, then to a linked receipt's.
+    const grn_ref = grnById[g.id] ?? g.grn_ref ?? g.linked_receipts?.[0]?.grn_ref;
     setBusyId(g.id);
     try {
       await api(`/api/gate-inward-receipts/${g.id}`, { method: 'PATCH', body: { close: true, ...(grn_ref ? { grn_ref } : {}) } });
@@ -1796,9 +1902,14 @@ function GateInwardReceiptsCard({ gateInwardReceipts, router }) {
         <CardTitle>Gate Inward Receipts</CardTitle>
         <CardAction><Button size="sm" onClick={() => setAdding(true)}><PlusIcon />New GIR</Button></CardAction>
       </CardHeader>
-      <CardContent>
+      <CardContent className="flex flex-col gap-3">
+        {gateInwardReceipts.length > 0 && (
+          <SearchBox value={q} onChange={setQ} placeholder="Search by GIR #, vehicle, supplier, driver, or material ref…" />
+        )}
         {gateInwardReceipts.length === 0 ? (
           <p className="py-6 text-center text-sm text-muted-foreground">No gate entries logged yet.</p>
+        ) : shown.length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">No gate entries match.</p>
         ) : (
           <Table>
             <TableHeader>
@@ -1814,7 +1925,7 @@ function GateInwardReceiptsCard({ gateInwardReceipts, router }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {gateInwardReceipts.map(g => (
+              {shown.map(g => (
                 <TableRow key={g.id} data-entity-code={`GIR-${g.gir_no}`}>
                   <TableCell className="font-medium">GIR-{g.gir_no}</TableCell>
                   <TableCell>{g.vehicle_no || '—'}</TableCell>
@@ -1826,18 +1937,40 @@ function GateInwardReceiptsCard({ gateInwardReceipts, router }) {
                     {!g.security_seal_ok && !g.security_docs_ok && '—'}
                   </TableCell>
                   <TableCell>
+                    {/* A linked receipt (made via ReceiptPicker.jsx when Stores actually received the
+                        material) is shown here so Close can pull a real reference instead of always
+                        needing separate free-text entry — the two logs stay independent concepts,
+                        but this makes the existing cross-reference between them visible. */}
+                    {g.linked_receipts?.length > 0 && (
+                      <div className="mb-1 flex flex-wrap gap-1">
+                        {g.linked_receipts.map(r => (
+                          <Badge key={r.id} variant="outline" className="text-[10px] font-normal"
+                            title="A Stores receipt already references this gate entry">
+                            {r.inward_batch_no}{r.supplier_name ? ` · ${r.supplier_name}` : ''}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
                     {g.status === 'open' ? (
-                      <Input className="w-32" placeholder="GRN ref" defaultValue={g.grn_ref || ''}
+                      <Input className="w-32" placeholder="GRN ref"
+                        defaultValue={g.grn_ref || g.linked_receipts?.[0]?.grn_ref || ''}
                         onChange={e => setGrnById({ ...grnById, [g.id]: e.target.value })} />
                     ) : (g.grn_ref || '—')}
                   </TableCell>
                   <TableCell><Badge variant={g.status === 'closed' ? 'secondary' : 'outline'}>{g.status}</Badge></TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="flex justify-end gap-1">
                     {g.status === 'open' && (
-                      <Button size="sm" variant="outline" disabled={busyId === g.id || !(grnById[g.id] ?? g.grn_ref)} onClick={() => close(g)}
-                        title={(grnById[g.id] ?? g.grn_ref) ? undefined : 'Enter a GRN reference before closing'}>
-                        Close
-                      </Button>
+                      <>
+                        <Button size="sm" variant="ghost" title="Edit" onClick={() => setEditingGir(g)}>
+                          <PencilIcon className="size-4" />
+                        </Button>
+                        <Button size="sm" variant="outline"
+                          disabled={busyId === g.id || !(grnById[g.id] ?? g.grn_ref ?? g.linked_receipts?.[0]?.grn_ref)}
+                          onClick={() => close(g)}
+                          title={(grnById[g.id] ?? g.grn_ref ?? g.linked_receipts?.[0]?.grn_ref) ? undefined : 'Enter a GRN reference before closing'}>
+                          Close
+                        </Button>
+                      </>
                     )}
                   </TableCell>
                 </TableRow>
@@ -1847,6 +1980,7 @@ function GateInwardReceiptsCard({ gateInwardReceipts, router }) {
         )}
       </CardContent>
       {adding && <GirFormDialog router={router} onClose={() => setAdding(false)} />}
+      {editingGir && <GirFormDialog editing={editingGir} router={router} onClose={() => setEditingGir(null)} />}
     </Card>
   );
 }
@@ -1876,11 +2010,14 @@ const NAV_ITEMS = (counts) => [
   { key: 'requests', label: 'Material Demand', icon: ClipboardListIcon, badge: counts.requests || null },
   { key: 'reservations', label: 'Allocation & Reservations', icon: PackageCheckIcon, badge: (counts.reservations || 0) + (counts.splitOrders || 0) || null },
   { key: 'divider-production', divider: true, label: 'Production' },
-  { key: 'indents', label: 'Production Requests', icon: BoxesIcon },
+  { key: 'indents', label: 'Material Indents', icon: BoxesIcon },
   { key: 'issued', label: 'Issued to WIP', icon: TruckIcon },
   { key: 'divider-receiving', divider: true, label: 'Receiving' },
   { key: 'gir', label: 'Gate Inward', icon: LogInIcon },
-  { key: 'receive', label: 'Receive a Delivery', icon: SearchIcon },
+  { key: 'receive', label: 'Receive a Delivery', icon: SearchIcon, badge: counts.pendingInward || null },
+  // Routing decoupled from receiving (gentle-snuggling-wozniak.md §5/§8) — a fully-received,
+  // routing-eligible line lands here instead of asking for Production/Dispatch at receive time.
+  { key: 'allocate', label: 'Allocate', icon: ArrowRightLeftIcon, badge: counts.allocate || null },
 ];
 
 // Stores' own "close this project's BOM" action — mirrors ProcurementWorkspace.jsx's Status tab
@@ -1905,7 +2042,42 @@ const DATE_FILTERS = [
   { value: 'week', label: 'Due this week' },
 ];
 
-function ReceiveDeliveryTab({ bomItems, router }) {
+// Real, previously-invisible gap: once Stores receives something and QC holds it for inward review
+// (Inward + Pre-Dispatch Approval Workflow), the material simply disappears from every Stores
+// screen — getPendingInwardApprovals() already existed and already backs QC's own Approvals →
+// Inward tab, but nothing on Stores' own side ever read it, so "why can't I use this, did I even
+// receive it" had no answer here. Read-only by design (the decision stays QC's, unchanged) — same
+// warning pill BomTable.jsx's own "Pending QC review" badge already uses, so it reads as the same
+// signal wherever it shows up.
+function AwaitingQcClearanceCard({ pendingInwardApprovals }) {
+  if (!pendingInwardApprovals.length) return null;
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Awaiting QC clearance</CardTitle>
+        <p className="text-sm text-muted-foreground">Received, but not yet usable — QC needs to sign off before this can be reserved or routed.</p>
+      </CardHeader>
+      <CardContent>
+        <div className="flex flex-col divide-y rounded-md border">
+          {pendingInwardApprovals.map(a => (
+            <div key={a.id} className="flex flex-wrap items-center gap-3 px-3 py-2.5 text-sm">
+              <span className="shrink-0 rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning">Pending QC review</span>
+              <div className="min-w-0 flex-1">
+                <div className="font-medium">{a.material_description}</div>
+                <div className="text-xs text-muted-foreground">
+                  {a.project_no ? `${a.project_no} · ` : ''}{a.qty_received} received{a.received_by ? ` by ${a.received_by}` : ''}
+                  {a.received_at ? ` · ${formatDate(a.received_at)}` : ''}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ReceiveDeliveryTab({ bomItems, pendingInwardApprovals = [], router }) {
   // Stores IA redesign — "Bulk by project" folds in BomGrnTab's multi-select/one-receipt action
   // (below), the one real capability neither this search-first flow nor the project-page BomTable
   // reproduces (both are one line at a time). Two modes on the same Receiving destination instead
@@ -1944,6 +2116,7 @@ function ReceiveDeliveryTab({ bomItems, router }) {
 
   return (
     <div className="flex flex-col gap-3">
+      <AwaitingQcClearanceCard pendingInwardApprovals={pendingInwardApprovals} />
       <div className="inline-flex w-fit rounded-lg border p-0.5">
         <button type="button" onClick={() => setMode('search')}
           className={`rounded-md px-3 py-1 text-sm font-medium transition-colors ${mode === 'search' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
@@ -2019,12 +2192,6 @@ function BomGrnTab({ bomItems, router }) {
   const [receiptId, setReceiptId] = useState(null);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(null);
-  // Unified delivery/lot-centric receiving, Phase 2 — this bulk action always sends each line's own
-  // full qty_text, so a selected line on a normal (childless) project will complete on this call and
-  // now needs an explicit routing decision (route-self, no silent default). Applied uniformly across
-  // the whole selection rather than per-line — a master-project line is exempt (routes per-child
-  // later via Allocation & Routing) and never needs this.
-  const [routedTo, setRoutedTo] = useState('');
 
   const projects = useMemo(() => [...new Set(bomItems.map(it => it.project_no))].sort(), [bomItems]);
   const shown = project === 'all' ? [] : bomItems.filter(it => it.project_no === project);
@@ -2043,16 +2210,10 @@ function BomGrnTab({ bomItems, router }) {
     setSelected(new Set(allShownSelected ? [] : shownIds));
   }
 
-  const selectedIds = [...selected];
-  const needsRoutingChoice = selectedIds.some(id => !bomItems.find(b => b.id === id)?.has_children);
-
   async function apply() {
     const ids = [...selected];
     if (!ids.length) return showToast('Select at least one line', 'error');
     if (!receiptId) return showToast('Choose or create a receipt', 'error');
-    if (needsRoutingChoice && !routedTo) {
-      return showToast('Pick where the material goes — Manufacturing or Direct to Dispatch', 'error');
-    }
     setBusy(true);
     setProgress({ done: 0, total: ids.length });
     let failed = 0;
@@ -2061,10 +2222,7 @@ function BomGrnTab({ bomItems, router }) {
       try {
         await api(`/api/bom-items/${id}/receive`, {
           method: 'POST',
-          body: {
-            qty_text: it?.qty_text || '1', receipt: { existing_receipt_id: receiptId },
-            routed_to: it?.has_children ? undefined : routedTo,
-          },
+          body: { qty_text: it?.qty_text || '1', receipt: { existing_receipt_id: receiptId } },
         });
       } catch { failed++; }
       setProgress(p => ({ done: p.done + 1, total: p.total }));
@@ -2073,7 +2231,6 @@ function BomGrnTab({ bomItems, router }) {
     setProgress(null);
     setSelected(new Set());
     setReceiptId(null);
-    setRoutedTo('');
     showToast(failed ? `${ids.length - failed} of ${ids.length} received — ${failed} failed (try them individually via Receive on the BOM table)` : `${ids.length} line${ids.length === 1 ? '' : 's'} received`,
       failed ? 'warning' : undefined);
     router.refresh();
@@ -2096,18 +2253,6 @@ function BomGrnTab({ bomItems, router }) {
         <div className="flex flex-col gap-2 border-y bg-muted/40 px-4 py-3 text-sm">
           <span className="font-medium">{selected.size} selected — receiving all against one receipt</span>
           <ReceiptPicker value={receiptId} onChange={setReceiptId} requireInvoice />
-          {needsRoutingChoice && (
-            <div className="flex flex-col gap-1">
-              <Label className="text-xs">Route to (applies to every selected line, except split-order ones) *</Label>
-              <Select value={routedTo} onValueChange={setRoutedTo}>
-                <SelectTrigger className="h-8 w-64 text-xs"><SelectValue placeholder="Pick where this goes" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="production">Manufacturing</SelectItem>
-                  <SelectItem value="dispatch">Direct to Dispatch</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          )}
           <div className="flex gap-2">
             <Button size="sm" className="h-7" disabled={busy} onClick={apply}>
               {busy ? `Receiving ${progress?.done ?? 0}/${progress?.total ?? 0}…` : 'Receive selected'}
@@ -2143,6 +2288,190 @@ function BomGrnTab({ bomItems, router }) {
         )}
       </CardContent>
     </Card>
+  );
+}
+
+// Stores' Allocate screen (gentle-snuggling-wozniak.md §5/§8/§9) — the queue that closes the loop
+// once routing was decoupled from receiving: every fully-received, routing-eligible line lands
+// here, unrouted, until Stores picks Production or Dispatch. "Default" is a deliberately separate,
+// subtly-styled final column — the catalog's own manufacturing default (items.
+// default_requires_manufacturing), the SAME field Engineering's Item Master edit UI already
+// writes, correctable here too when Stores notices it's wrong. It answers a genuinely different
+// question than routing ("what's the material's learned default for FUTURE orders" vs. "what
+// happens to THIS received line") and never touches this line's own frozen requires_manufacturing.
+function AllocateTab({ items: initialItems, router }) {
+  const [items, setItems] = useState(initialItems);
+  const [selected, setSelected] = useState(() => new Set(initialItems.map(it => it.id)));
+  // Per-row staged values, keyed by bom_item id — routing always has a value (mutually exclusive,
+  // pre-filled from this line's own frozen requires_manufacturing, matching the old Receive
+  // dialog's pre-fill exactly); defaultValue only means something for a catalog-linked row.
+  const [rowState, setRowState] = useState(() => Object.fromEntries(initialItems.map(it => [it.id, {
+    routing: it.requires_manufacturing ? 'production' : 'dispatch',
+    defaultValue: !!it.default_requires_manufacturing,
+  }])));
+  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState(null);
+  // Rows where routing succeeded but the Default write failed (§8's partial-failure handling) —
+  // kept visible with their own "Retry Default" action even though they've already left the
+  // unrouted queue, instead of silently losing the correction.
+  const [partial, setPartial] = useState([]);
+
+  useEffect(() => { setItems(initialItems); setSelected(new Set(initialItems.map(it => it.id))); }, [initialItems]);
+
+  function setRouting(id, routing) {
+    setRowState(prev => ({ ...prev, [id]: { ...prev[id], routing } }));
+  }
+  function setDefaultValue(id, defaultValue) {
+    setRowState(prev => ({ ...prev, [id]: { ...prev[id], defaultValue } }));
+  }
+  function toggleOne(id, checked) {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (checked) next.add(id); else next.delete(id);
+      return next;
+    });
+  }
+  const allSelected = items.length > 0 && items.every(it => selected.has(it.id));
+  function toggleAll() { setSelected(new Set(allSelected ? [] : items.map(it => it.id))); }
+
+  async function retryDefault(row) {
+    try {
+      await api(`/api/item-master/${row.itemId}`, { method: 'PATCH', body: { default_requires_manufacturing: row.defaultValue } });
+      setPartial(prev => prev.filter(p => p.id !== row.id));
+      showToast('Default corrected');
+    } catch (err) { showToast(err.message, 'error'); }
+  }
+
+  async function apply() {
+    const ids = items.map(it => it.id).filter(id => selected.has(id));
+    if (!ids.length) return showToast('Select at least one line', 'error');
+    setBusy(true);
+    setProgress({ done: 0, total: ids.length });
+    const routedIds = []; // fully removed from the unrouted queue (routing succeeded)
+    const newPartial = [];
+    let routingFailed = 0;
+    for (const id of ids) {
+      const it = items.find(x => x.id === id);
+      const row = rowState[id];
+      // Routing and Default are independent writes — one failing never blocks or skips the other
+      // (§8's partial-failure handling); both are attempted whenever both were changed.
+      let routingOk = false;
+      try {
+        await api(`/api/bom-items/${id}/route-self`, { method: 'POST', body: { routed_to: row.routing } });
+        routingOk = true;
+      } catch { routingOk = false; }
+      if (routingOk) routedIds.push(id); else routingFailed++;
+
+      // Default is only ever attempted for a catalog-linked row whose staged value actually
+      // differs from what's already on the catalog item — never a redundant write.
+      const defaultChanged = it.item_id && row.defaultValue !== !!it.default_requires_manufacturing;
+      if (defaultChanged) {
+        try {
+          await api(`/api/item-master/${it.item_id}`, { method: 'PATCH', body: { default_requires_manufacturing: row.defaultValue } });
+        } catch {
+          // Only worth tracking as a distinct "needs retry" row when routing succeeded — otherwise
+          // the whole row (Default checkbox included) is already back in the main queue for a
+          // normal retry, no separate escape hatch needed.
+          if (routingOk) newPartial.push({ id, itemId: it.item_id, material_description: it.material_description, defaultValue: row.defaultValue });
+        }
+      }
+      setProgress(p => ({ done: p.done + 1, total: p.total }));
+    }
+    setBusy(false);
+    setProgress(null);
+    setItems(prev => prev.filter(it => !routedIds.includes(it.id)));
+    setSelected(prev => { const next = new Set(prev); routedIds.forEach(id => next.delete(id)); return next; });
+    if (newPartial.length) setPartial(prev => [...prev, ...newPartial]);
+    const fullyOk = routedIds.length - newPartial.length;
+    const parts = [];
+    if (fullyOk > 0) parts.push(`${fullyOk} fully applied`);
+    if (newPartial.length) parts.push(`${newPartial.length} routed but Default failed (see below)`);
+    if (routingFailed) parts.push(`${routingFailed} failed`);
+    showToast(parts.join(' · ') || 'Nothing applied', (newPartial.length || routingFailed) ? 'warning' : undefined);
+    router.refresh();
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      {partial.length > 0 && (
+        <Card>
+          <CardHeader><CardTitle className="text-sm">Needs a retry — Default didn't save</CardTitle></CardHeader>
+          <CardContent className="flex flex-col divide-y pt-2">
+            {partial.map(p => (
+              <div key={p.id} className="flex items-center gap-3 py-2 text-sm">
+                <span className="min-w-0 flex-1 truncate">{p.material_description}</span>
+                <span className="shrink-0 text-xs text-muted-foreground">Default → {p.defaultValue ? 'Yes' : 'No'}</span>
+                <Button size="sm" variant="outline" className="h-7 shrink-0 text-xs" onClick={() => retryDefault(p)}>Retry Default</Button>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+      <Card>
+        <CardHeader>
+          <CardTitle>Allocate</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Received material waiting to be routed to Production or Dispatch. "Default" corrects the
+            catalog's own manufacturing default for future orders — it doesn't change this line.
+          </p>
+        </CardHeader>
+        <CardContent className="pt-4">
+          {items.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">Nothing waiting to be routed.</p>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-center gap-2 border-b bg-muted/40 px-1 py-2">
+                <span className="text-sm font-medium">{selected.size} selected</span>
+                <Button size="sm" className="h-7" disabled={busy || !selected.size} onClick={apply}>
+                  {busy ? `Applying ${progress?.done ?? 0}/${progress?.total ?? 0}…` : 'Apply Allocations'}
+                </Button>
+              </div>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-8"><Checkbox checked={allSelected} onCheckedChange={toggleAll} aria-label="Select all" /></TableHead>
+                    <TableHead>Material</TableHead>
+                    <TableHead className="w-36">Project</TableHead>
+                    <TableHead className="w-24">Qty</TableHead>
+                    <TableHead className="w-24 text-center">Production</TableHead>
+                    <TableHead className="w-24 text-center">Dispatch</TableHead>
+                    <TableHead className="w-20 text-center text-muted-foreground">Default</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {items.map(it => {
+                    const row = rowState[it.id] || {};
+                    return (
+                      <TableRow key={it.id}>
+                        <TableCell><Checkbox checked={selected.has(it.id)} onCheckedChange={v => toggleOne(it.id, !!v)} aria-label="Select item" /></TableCell>
+                        <TableCell className="max-w-0 truncate">{it.material_description}</TableCell>
+                        <TableCell className="truncate text-xs text-muted-foreground">{it.project_no}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">{it.qty_breakdown?.label || it.qty_text}</TableCell>
+                        <TableCell className="text-center">
+                          <Checkbox checked={row.routing === 'production'} onCheckedChange={v => v && setRouting(it.id, 'production')} aria-label="Route to Production" />
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Checkbox checked={row.routing === 'dispatch'} onCheckedChange={v => v && setRouting(it.id, 'dispatch')} aria-label="Route to Dispatch" />
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {it.item_id ? (
+                            <Checkbox checked={!!row.defaultValue} onCheckedChange={v => setDefaultValue(it.id, !!v)}
+                              className="opacity-70" aria-label="Catalog manufacturing default" />
+                          ) : (
+                            <Checkbox checked={!!it.requires_manufacturing} disabled
+                              className="opacity-40" aria-label="Not catalog-linked — no default to correct" title="Not catalog-linked — no default to correct" />
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
@@ -2228,11 +2557,14 @@ function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavi
               <TableHeader>
                 <TableRow>
                   <TableHead>Description</TableHead>
-                  <TableHead>Spec</TableHead>
+                  <TableHead>Grade</TableHead>
+                  <TableHead>Dimensions</TableHead>
                   <TableHead>On-hand</TableHead>
                   <TableHead>Available</TableHead>
                   <TableHead>Location</TableHead>
                   <TableHead>Minimum</TableHead>
+                  <TableHead>Tracking</TableHead>
+                  <TableHead>Avg. Cost</TableHead>
                   <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
@@ -2244,7 +2576,8 @@ function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavi
                       {it.description}
                       {it.catalog_item_code && <div className="text-xs font-normal text-muted-foreground">{it.catalog_item_code}</div>}
                     </TableCell>
-                    <TableCell className="text-muted-foreground">{it.spec || '—'}</TableCell>
+                    <TableCell className="text-muted-foreground">{it.moc || '—'}</TableCell>
+                    <TableCell className="text-muted-foreground">{inventoryDimensions(it)}</TableCell>
                     <TableCell>{it.on_hand}</TableCell>
                     <TableCell>
                       {it.available}
@@ -2252,6 +2585,8 @@ function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavi
                     </TableCell>
                     <TableCell className="text-muted-foreground">{it.location || '—'}</TableCell>
                     <TableCell className="text-muted-foreground">{it.reorder_point ?? '—'}</TableCell>
+                    <TableCell className="text-muted-foreground">{it.tracking_mode || 'scalar'}</TableCell>
+                    <TableCell className="text-muted-foreground">{it.avg_cost ? formatMoney(it.avg_cost) : '—'}</TableCell>
                     <TableCell className="flex justify-end gap-1">
                       {(DIMENSIONAL_CATEGORIES.some(c => c.value === it.category) || it.track_pieces) && (
                         <Button size="icon-sm" variant="ghost" title="Pieces" onClick={() => setPiecesFor(it)}><LayersIcon /></Button>
@@ -2288,7 +2623,7 @@ function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavi
 export default function StoresWorkspace({
   inventoryItems, openRequests = [], activeReservations = [], projects = [],
   gateInwardReceipts = [], certificates = [], bomItems = [],
-  splitOrders = [],
+  splitOrders = [], pendingInwardApprovals = [], unroutedItems = [],
   initialTab,
 }) {
   const router = useRouter();
@@ -2297,6 +2632,8 @@ export default function StoresWorkspace({
     requests: openRequests.length,
     reservations: activeReservations.length,
     splitOrders: splitOrders.length,
+    pendingInward: pendingInwardApprovals.length,
+    allocate: unroutedItems.length,
   });
   // Deep-link tab selection (Part B) — same server-prop pattern QcWorkspace.jsx already proved
   // out; `?tab=gir` were dead query strings before this (nothing read them).
@@ -2319,7 +2656,8 @@ export default function StoresWorkspace({
       )}
       {tab === 'issued' && <MaterialIssuesCard projects={projects} />}
       {tab === 'gir' && <GateInwardReceiptsCard gateInwardReceipts={gateInwardReceipts} router={router} />}
-      {tab === 'receive' && <ReceiveDeliveryTab bomItems={bomItems} router={router} />}
+      {tab === 'receive' && <ReceiveDeliveryTab bomItems={bomItems} pendingInwardApprovals={pendingInwardApprovals} router={router} />}
+      {tab === 'allocate' && <AllocateTab items={unroutedItems} router={router} />}
     </WorkspaceSidebar>
   );
 }

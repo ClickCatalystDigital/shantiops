@@ -5,7 +5,7 @@
 import { NextResponse } from 'next/server';
 import { queryOne, execute } from '@/lib/db';
 import { getFreshSessionUser } from '@/lib/auth';
-import { requireEngineeringAction } from '@/lib/action-permissions';
+import { requireEngineeringAction, requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { CATEGORY_LABEL } from '@/lib/section-shapes';
 
@@ -40,8 +40,6 @@ export async function GET(req, { params }) {
 
 export async function PATCH(req, { params }) {
   const user = await getFreshSessionUser();
-  const denied = await requireEngineeringAction(user, 'engineering.item_master.write');
-  if (denied) return denied;
 
   const existing = await queryOne('SELECT id, item_name FROM items WHERE id = ?', [params.id]);
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -62,6 +60,17 @@ export async function PATCH(req, { params }) {
 
   const cols = EDITABLE_FIELDS.filter(f => f in b);
   if (!cols.length) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
+
+  // Two concepts, two writers, one field (gentle-snuggling-wozniak.md §8) — Stores may also
+  // correct default_requires_manufacturing directly (the Allocate screen's "Default" checkbox),
+  // the same field/route Engineering's own Item Master edit UI already writes. Deliberately an
+  // exact-match on the single-field case: a request bundling this field with any other Item
+  // Master field falls straight through to the unmodified Engineering/Design-only path, so
+  // Stores can never smuggle a wider edit through this narrower door.
+  const isDefaultOnly = cols.length === 1 && cols[0] === 'default_requires_manufacturing';
+  let denied = await requireEngineeringAction(user, 'engineering.item_master.write');
+  if (denied && isDefaultOnly) denied = await requireAction(user, 'Stores', 'stores.bom.set_manufacturing_default');
+  if (denied) return denied;
 
   await execute(
     `UPDATE items SET ${cols.map(f => `${f} = ?`).join(', ')} WHERE id = ?`,

@@ -3,7 +3,7 @@
 import { redirect } from 'next/navigation';
 import { getFreshSessionUser, canAccessDepartment, isDepartmentHead, roleHome } from '@/lib/auth';
 import { canPerformAction } from '@/lib/action-permissions';
-import { getTestCertificates, getAllQcDocuments, getActiveProjectsList, getCalibrationItems, getReceivedProjectIds, getAllocatedChildProjectIds, getNcrs, getQcHoldPoints, getPendingInwardApprovals, getPendingPreDispatchApprovals } from '@/lib/data';
+import { getTestCertificates, getAllQcDocuments, getActiveProjectsList, getCalibrationItems, getReceivedProjectIds, getAllocatedChildProjectIds, getNcrs, getQcHoldPoints, getPendingInwardApprovals, getPendingPreDispatchApprovals, getQcRecords, getJobWorkInspections, getWorkOrders, getBomAssembliesFlat, getMilestoneIdByKey } from '@/lib/data';
 import QcWorkspace from '@/components/QcWorkspace';
 
 export const dynamic = 'force-dynamic';
@@ -61,10 +61,29 @@ export default async function QcPage({ searchParams }) {
     .filter(p => mastersWithChildren.has(p.id))
     .map(p => ({ id: p.id, project_no: p.project_no, customer_name: p.customer_name, unit_count: p.unit_count }));
 
+  // Test Records tab (Project View redesign, Wave 1) — the one genuine gap /qc had: qc_records/
+  // job_work_inspections have never had any editor off the project page. Fetched only for the
+  // currently-selected project (URL-synced by QcWorkspace's picker, same ?project= deep-link this
+  // page already reads for the cert/doc tabs) — qc_records/job_work_inspections are per-project
+  // queries with no "everything" mode, unlike certs/docs' fetch-all-then-filter shape.
+  const testRecordsProjectId = sp?.project ? Number(sp.project) : null;
+  const [testRecords, jobWorkInspections, workOrders, bomAssemblies, hydroMilestoneId] = testRecordsProjectId
+    ? await Promise.all([
+        getQcRecords(testRecordsProjectId),
+        getJobWorkInspections(testRecordsProjectId),
+        getWorkOrders({ projectId: testRecordsProjectId }),
+        getBomAssembliesFlat(testRecordsProjectId),
+        getMilestoneIdByKey(testRecordsProjectId, 'hydro_test'),
+      ])
+    : [[], [], [], [], null];
+
   return <QcWorkspace projects={projects} certificates={certificates} documents={documents}
     calibrationItems={calibrationItems} ncrs={ncrs} holdPoints={holdPoints} splitOrders={splitOrders}
     canDisposition={canDisposition} canVerify={canVerify} canClose={canClose}
     inwardApprovals={inwardApprovals} preDispatchApprovals={preDispatchApprovals}
     canDecideInward={isDepartmentHead(user, 'QC')} canDecideQcPreDispatch={isDepartmentHead(user, 'QC')}
+    testRecords={testRecords} jobWorkInspections={jobWorkInspections} workOrders={workOrders}
+    bomAssemblies={bomAssemblies} hydroMilestoneId={hydroMilestoneId}
+    canEditQc={canAccessDepartment(user, 'QC')} canEditProductionQc={canAccessDepartment(user, 'Production')}
     initialTab={sp?.tab} initialProject={sp?.project} />;
 }

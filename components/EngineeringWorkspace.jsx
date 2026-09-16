@@ -21,6 +21,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import {
   LayersIcon, SearchIcon, Repeat2Icon, FileEditIcon, PlusIcon,
   ClipboardListIcon, CheckIcon, FileStackIcon, FilterIcon, GitBranchIcon, BoxIcon, HistoryIcon,
+  BadgeCheckIcon,
 } from 'lucide-react';
 import { api, showToast, formatDate } from '@/lib/client';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
@@ -38,7 +39,7 @@ import ItemMasterPanel from '@/components/ItemMasterPanel';
 // "Apply to project" picker lives inside a dialog, not the workspace level) — a single/multi
 // "current project" doesn't map onto either any more than it does onto Purchase Requests' own
 // per-line multi-project repeater.
-const SINGLE_PROJECT_TABS = ['structure', 'pr_release'];
+const SINGLE_PROJECT_TABS = ['structure', 'pr_release', 'design_signoff'];
 const MULTI_PROJECT_TABS = ['where_used', 'common_uncommon', 'ecn'];
 
 // Same labeling convention as ProcurementWorkspace.jsx's projectLabel — a stock/sas BOM row's
@@ -67,6 +68,9 @@ function projectLabel(r) {
 const ITEMS = [
   { key: 'item_master', label: 'Item Master', icon: BoxIcon },
   { key: 'item_master_divider', divider: true },
+  // Project View redesign, Decision F — the Approve Design action's new home, relocated off the
+  // unified Project View (which now only shows a read-only "Design signed off" badge).
+  { key: 'design_signoff', label: 'Design Sign-off', icon: BadgeCheckIcon },
   { key: 'structure', label: 'BOMs', icon: LayersIcon },
   { key: 'structure_templates', label: 'Structure Templates', icon: GitBranchIcon },
   { key: 'where_used', label: 'Where-Used', icon: SearchIcon },
@@ -349,6 +353,56 @@ function EcnTab({ projects, projectIds = [], canApprove }) {
   );
 }
 
+// ---------- Design Sign-off ----------
+// Project View redesign, Decision F — relocated from the old DesignPanel.jsx project-page card.
+// Same underlying action (PATCH the `design` milestone to done), same isDesignHead-only gate,
+// just reached from here instead of duplicated on the now-read-only unified Project View.
+function DesignSignoffTab({ projectId }) {
+  const [state, setState] = useState(null); // { milestoneId, done } | 'none' | null (loading)
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!projectId) { setState(null); return; }
+    let cancelled = false;
+    api(`/api/projects/${projectId}/design-signoff`)
+      .then(r => !cancelled && setState(r))
+      .catch(() => !cancelled && setState('none'));
+    return () => { cancelled = true; };
+  }, [projectId]);
+
+  async function approve() {
+    setBusy(true);
+    try {
+      await api(`/api/milestones/${state.milestoneId}`, { method: 'PATCH', body: { status: 'done' } });
+      showToast('Design approved');
+      setState(s => ({ ...s, done: true }));
+    } catch (err) { showToast(err.message, 'error'); } finally { setBusy(false); }
+  }
+
+  if (!projectId) {
+    return <Card><CardContent className="py-10 text-center text-muted-foreground">Pick a project above to review its Design sign-off.</CardContent></Card>;
+  }
+  if (state === null) return <p className="text-sm text-muted-foreground">Loading…</p>;
+  if (state === 'none') {
+    return <Card><CardContent className="py-10 text-center text-muted-foreground">This project has no Design milestone.</CardContent></Card>;
+  }
+  return (
+    <Card>
+      <CardContent className="flex items-center justify-between gap-3 py-4">
+        <div>
+          <p className="text-sm font-medium">Internal design sign-off</p>
+          <p className="text-xs text-muted-foreground">Marks the Design milestone complete once the head is satisfied it's ready to proceed.</p>
+        </div>
+        {state.done ? (
+          <span className="flex items-center gap-1 text-sm text-success"><CheckIcon className="size-4" />Approved</span>
+        ) : (
+          <Button size="sm" disabled={busy} onClick={approve}>{busy ? 'Approving…' : 'Approve Design'}</Button>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ---------- Shared project selector header ----------
 // Round 3 Phase A: one control, rendered via WorkspaceSidebar's `header` prop, owned by the shell so
 // its state survives a tab switch. Shape follows the active tab — single project (BOMs/Release BOM),
@@ -426,7 +480,7 @@ function ProjectHeaderBar({
 
 // ---------- Shell ----------
 
-export default function EngineeringWorkspace({ projects, canApproveEcn = false, initialTab, departments = [] }) {
+export default function EngineeringWorkspace({ projects, canApproveEcn = false, initialTab, initialProject, departments = [] }) {
   const [tab, setTab] = useState(ITEMS.some(i => i.key === initialTab) ? initialTab : 'structure');
   // Same small cross-tab handoff PrWorkspace.jsx owns internally for its own "PR Templates" tab —
   // reusing this workspace's existing setTab instead of a second tab-state.
@@ -436,7 +490,10 @@ export default function EngineeringWorkspace({ projects, canApproveEcn = false, 
     setTab('pr_raise');
   }
 
-  const [globalProjectId, setGlobalProjectId] = useState('');
+  // Deep-link precision (BM- entity-ref resolution, lib/entity-refs.js) — pre-selects the project a
+  // ?project= link named, same validate-against-the-real-list guard QcWorkspace.jsx's own picker uses.
+  const [globalProjectId, setGlobalProjectId] = useState(
+    () => initialProject && projects.some(p => String(p.id) === String(initialProject)) ? String(initialProject) : '');
   const [globalShowReleased, setGlobalShowReleased] = useState(false);
   const [globalProjectIds, setGlobalProjectIds] = useState(new Set());
   // Bumped after a successful BOM upload from the header bar — BomStructureWorkspace owns all its
@@ -466,6 +523,7 @@ export default function EngineeringWorkspace({ projects, canApproveEcn = false, 
           globalProjectIds={globalProjectIds} setGlobalProjectIds={setGlobalProjectIds}
           onImported={() => setBomReloadNonce(n => n + 1)} />
       )}>
+      {tab === 'design_signoff' && <DesignSignoffTab projectId={globalProjectId} />}
       {tab === 'structure' && (
         <BomStructureWorkspace key={bomReloadNonce} projects={projects}
           projectId={globalProjectId} onProjectIdChange={setGlobalProjectId}

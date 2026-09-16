@@ -18,9 +18,12 @@ await run(`CREATE TABLE inventory_items (
 await run(`CREATE TABLE stock_pieces (
   id INTEGER PRIMARY KEY AUTOINCREMENT, inventory_item_id INTEGER, code TEXT, kind TEXT,
   length_mm REAL, width_mm REAL, thickness_mm REAL, kg_per_m REAL, density REAL, weight_kg REAL DEFAULT 0,
-  status TEXT DEFAULT 'available', source TEXT DEFAULT 'purchase', parent_id INTEGER,
-  project_id INTEGER, bom_item_id INTEGER
+  status TEXT DEFAULT 'available', source TEXT DEFAULT 'purchase', parent_id INTEGER, root_id INTEGER,
+  heat_no TEXT, project_id INTEGER, bom_item_id INTEGER
 )`);
+// Same shape as lib/db.js's real counters table — nextSeq() below mirrors nextPieceSeq() in
+// lib/stock-pieces.js, the atomic root-relative sequence behind the flattened lineage-code fix.
+await run(`CREATE TABLE counters (name TEXT PRIMARY KEY, value INTEGER NOT NULL DEFAULT 1000)`);
 await run(`CREATE TABLE bom_items (
   id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER, material_description TEXT, moc TEXT,
   size_spec TEXT, qty_text TEXT, purchase_status TEXT, category TEXT, category_fields_json TEXT,
@@ -46,6 +49,26 @@ assert.strictEqual(pieceWeight({ kind: 'linear', length_mm: 6000, kg_per_m: 5 })
 assert.strictEqual(pieceWeight({ kind: 'plate', length_mm: 0, width_mm: 100, thickness_mm: 10 }), 0, 'zero dimension yields zero weight, not NaN/negative');
 console.log('pieceWeight: ok');
 
+// ---- lineage code + heat-in-id (mirrors lib/stock-pieces.js's rootCode/sanitizeHeatForCode/
+// nextPieceSeq) — the Planning Backlog fix: every descendant of one physical delivery is numbered
+// flat against the ROOT's own code, never compounding onto whichever immediate parent was cut, and
+// a known heat number rides directly in the code string.
+function sanitizeHeatForCode(heatNo) { return String(heatNo || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10); }
+function rootCode(kind, id, heatNo) {
+  const base = `${kind === 'plate' ? 'PL' : 'LN'}-${String(id).padStart(4, '0')}`;
+  const h = sanitizeHeatForCode(heatNo);
+  return h ? `${base}-H${h}` : base;
+}
+async function nextSeq(rootId, letter) {
+  const r = await run(
+    `INSERT INTO counters (name, value) VALUES (?, 1)
+     ON CONFLICT(name) DO UPDATE SET value = value + 1
+     RETURNING value`,
+    [`piece_seq:${rootId}:${letter}`]
+  );
+  return r.rows[0].value;
+}
+
 // ---- cutPiece (mirrors lib/stock-pieces.js's transaction, minus withTransaction wrapping) ----
 // Phase 0 fix mirrored here: the status flip is a compare-and-swap (WHERE ... AND status = ...),
 // and any present-but-invalid used/remnant entry hard-throws instead of being silently skipped.
@@ -63,33 +86,45 @@ async function cutPiece({ sourcePieceId, used = [], remnants = [], projectId, bo
   for (const u of used) if (!(pieceWeight(dims(u)) > 0)) throw new Error('Used piece: enter valid dimensions');
   for (const r of remnants) if (!(pieceWeight(dims(r)) > 0)) throw new Error('Remnant: enter valid dimensions');
 
+  const rootId = source.root_id || source.id;
+  const rootRow = rootId === source.id ? source : await one('SELECT code FROM stock_pieces WHERE id = ?', [rootId]);
+  const rootCodeStr = rootRow.code;
+
   const flip = await run("UPDATE stock_pieces SET status = 'consumed' WHERE id = ? AND status = 'reserved'", [sourcePieceId]);
   if (Number(flip.rowsAffected) !== 1) throw new Error(`Can't cut — must be reserved first (currently ${source.status})`);
+  const childIds = { used: [], remnants: [] };
   for (const u of used) {
-    await run(
-      `INSERT INTO stock_pieces (inventory_item_id, kind, length_mm, width_mm, thickness_mm, density, kg_per_m, weight_kg, status, source, parent_id, project_id, bom_item_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'consumed', 'remnant', ?, ?, ?)`,
+    const seq = await nextSeq(rootId, 'U');
+    const ins = await run(
+      `INSERT INTO stock_pieces (inventory_item_id, kind, length_mm, width_mm, thickness_mm, density, kg_per_m, weight_kg, status, source, parent_id, root_id, heat_no, project_id, bom_item_id, code)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'consumed', 'remnant', ?, ?, ?, ?, ?, ?)`,
       [source.inventory_item_id, source.kind, u.length_mm || null, u.width_mm || null, u.thickness_mm || null,
-        source.density, source.kg_per_m, round2(pieceWeight(dims(u))), sourcePieceId, projectId || null, bomItemId || null]
+        source.density, source.kg_per_m, round2(pieceWeight(dims(u))), sourcePieceId, rootId, source.heat_no || null,
+        projectId || null, bomItemId || null, `${rootCodeStr}-U${seq}`]
     );
+    childIds.used.push(Number(ins.lastInsertRowid));
   }
   for (const r of remnants) {
-    await run(
-      `INSERT INTO stock_pieces (inventory_item_id, kind, length_mm, width_mm, thickness_mm, density, kg_per_m, weight_kg, status, source, parent_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'available', 'remnant', ?)`,
+    const seq = await nextSeq(rootId, 'R');
+    const ins = await run(
+      `INSERT INTO stock_pieces (inventory_item_id, kind, length_mm, width_mm, thickness_mm, density, kg_per_m, weight_kg, status, source, parent_id, root_id, heat_no, code)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'available', 'remnant', ?, ?, ?, ?)`,
       [source.inventory_item_id, source.kind, r.length_mm || null, r.width_mm || null, r.thickness_mm || null,
-        source.density, source.kg_per_m, round2(pieceWeight(dims(r))), sourcePieceId]
+        source.density, source.kg_per_m, round2(pieceWeight(dims(r))), sourcePieceId, rootId, source.heat_no || null,
+        `${rootCodeStr}-R${seq}`]
     );
+    childIds.remnants.push(Number(ins.lastInsertRowid));
   }
   if (scrapWeight > 0) {
-    await run(`INSERT INTO stock_pieces (inventory_item_id, kind, weight_kg, status, source, parent_id) VALUES (?, ?, ?, 'scrap', 'remnant', ?)`,
-      [source.inventory_item_id, source.kind, scrapWeight, sourcePieceId]);
+    const seq = await nextSeq(rootId, 'S');
+    await run(`INSERT INTO stock_pieces (inventory_item_id, kind, weight_kg, status, source, parent_id, root_id, heat_no, code) VALUES (?, ?, ?, 'scrap', 'remnant', ?, ?, ?, ?)`,
+      [source.inventory_item_id, source.kind, scrapWeight, sourcePieceId, rootId, source.heat_no || null, `${rootCodeStr}-S${seq}`]);
   }
   if (bomItemId) {
     const remaining = await one("SELECT COUNT(*) AS n FROM stock_pieces WHERE bom_item_id = ? AND status = 'reserved'", [bomItemId]);
     if (remaining.n === 0) await run("UPDATE bom_items SET purchase_status = 'In-Stock' WHERE id = ?", [bomItemId]);
   }
-  return { usedWeight: round2(usedWeight), remnantWeight: round2(remnantWeight), scrapWeight };
+  return { usedWeight: round2(usedWeight), remnantWeight: round2(remnantWeight), scrapWeight, childIds };
 }
 
 await run(`INSERT INTO inventory_items (id, description, moc, category) VALUES (1, 'MS Plate 10mm', 'IS 2062 E250', 'plate')`);
@@ -169,6 +204,41 @@ console.log('cutPiece concurrency guard: ok (A0.1)');
   assert.strictEqual(noChildren.rows[0].n, 0, 'zero children must be written when the cut is rejected');
 }
 console.log('cutPiece invalid-input guard: ok (A0.2)');
+
+// ---- rootCode/sanitizeHeatForCode: pure logic, direct assertions ----
+{
+  assert.strictEqual(rootCode('plate', 7, null), 'PL-0007', 'no heat -> bare root code, unchanged from before this fix');
+  assert.strictEqual(rootCode('linear', 7, ''), 'LN-0007', 'blank heat -> no H segment');
+  assert.strictEqual(rootCode('plate', 42, '62A/5678'), 'PL-0042-H62A5678', 'heat is sanitized (slash stripped) and embedded');
+  assert.strictEqual(rootCode('plate', 42, 'sail heat 001'), 'PL-0042-HSAILHEAT00', 'lowercase uppercased, spaces stripped, capped at 10 chars');
+  assert.strictEqual(rootCode('plate', 42, '///'), 'PL-0042', 'a heat number that sanitizes to nothing falls back to the bare code, never a dangling "-H"');
+}
+console.log('rootCode/sanitizeHeatForCode: ok');
+
+// ---- lineage-code flattening (Planning Backlog fix): a remnant cut a SECOND time must read
+// PL-000N-R2, not the old compounding PL-000N-R1-R1 ----
+{
+  // Root code must already carry the heat segment, matching what receivePiece() computes at real
+  // insert time — a fixture with a bare code + a heat_no would be an inconsistent state that never
+  // actually occurs, since rootCode() is what produces a root's own code in the first place.
+  await run(`INSERT INTO stock_pieces (id, inventory_item_id, code, kind, length_mm, width_mm, thickness_mm, density, weight_kg, status, heat_no)
+             VALUES (200, 1, ?, 'plate', 1500, 6000, 10, 7850, 706.5, 'reserved', '62A5678')`, [rootCode('plate', 200, '62A5678')]);
+  const first = await cutPiece({ sourcePieceId: 200, used: [{ length_mm: 1000, width_mm: 2000, thickness_mm: 10 }], remnants: [{ length_mm: 500, width_mm: 2000, thickness_mm: 10 }] });
+  const usedChild = await one('SELECT code, heat_no FROM stock_pieces WHERE id = ?', [first.childIds.used[0]]);
+  const remnantChild = await one('SELECT id, code, status, heat_no FROM stock_pieces WHERE id = ?', [first.childIds.remnants[0]]);
+  assert.strictEqual(usedChild.code, 'PL-0200-H62A5678-U1', 'first used child carries the root heat + flat U1 (verifies both fixes together)');
+  assert.strictEqual(remnantChild.code, 'PL-0200-H62A5678-R1', 'first remnant child is flat R1, and inherits the heat number');
+  assert.strictEqual(remnantChild.heat_no, '62A5678', 'heat number inherited from the root, not re-entered');
+
+  // Cut that remnant again — the actual regression this whole fix exists for.
+  await run("UPDATE stock_pieces SET status = 'reserved' WHERE id = ?", [remnantChild.id]);
+  const second = await cutPiece({ sourcePieceId: remnantChild.id, used: [{ length_mm: 300, width_mm: 2000, thickness_mm: 10 }], remnants: [{ length_mm: 150, width_mm: 2000, thickness_mm: 10 }] });
+  const usedChild2 = await one('SELECT code FROM stock_pieces WHERE id = ?', [second.childIds.used[0]]);
+  const remnantChild2 = await one('SELECT code FROM stock_pieces WHERE id = ?', [second.childIds.remnants[0]]);
+  assert.strictEqual(usedChild2.code, 'PL-0200-H62A5678-U2', 'second-generation used child continues the ROOT\'s U sequence (U2), not PL-0200-R1-U1');
+  assert.strictEqual(remnantChild2.code, 'PL-0200-H62A5678-R2', 'second-generation remnant is flat R2, not the old compounding PL-0200-R1-R1');
+}
+console.log('lineage-code flattening: ok (a re-cut remnant numbers flat against the root, heat number rides in every descendant\'s code)');
 
 // ---- remnant matching (mirrors lib/remnant-match.js, minus imports it can't load standalone) ----
 function normalizeMaterial(s) { return String(s || '').trim().toLowerCase().replace(/\s+/g, ' '); }

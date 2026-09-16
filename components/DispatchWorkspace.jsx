@@ -28,6 +28,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import {
   PackageIcon, PackageCheckIcon, ClipboardListIcon, TruckIcon, FileTextIcon,
   SearchIcon, XIcon, ClipboardCheckIcon, FileOutputIcon, PlusIcon, CheckIcon,
+  DownloadIcon, PencilIcon,
 } from 'lucide-react';
 
 const STAGE_LABEL = { draft: 'Draft', packed: 'Ready', dispatched: 'Dispatched' };
@@ -101,10 +102,27 @@ function SearchBox({ value, onChange, placeholder }) {
 
 function PackingListsTab({ lists, flowCounts, pendingReadyCount, awaitingAckCount, missingEwayCount, onNavigate }) {
   const [focusedStatus, setFocusedStatus] = useState(null);
+  // Project View redesign, Wave 1 — /dispatch had no per-project view at all (DispatchBoard's own
+  // kanban has no project filter). Same free-text idiom DeliveriesTab/DocumentsTab already use,
+  // just matched against project_no/customer_name instead of packing_no. getPackingLists() already
+  // joins project_no per list — no new query.
+  const [projectQ, setProjectQ] = useState('');
 
   function toggleStatus(key) {
     setFocusedStatus(cur => (cur === key ? null : key));
   }
+
+  const needle = projectQ.trim().toLowerCase();
+  const projectFiltered = needle
+    ? lists.filter(l => (l.project_no || '').toLowerCase().includes(needle) || (l.customer_name || '').toLowerCase().includes(needle))
+    : lists;
+  // "Pending PDF" needs one specific project — surfaced only once the search has narrowed to
+  // exactly one project's lists (the same route the project page's own PackingPanel already links,
+  // never duplicated here).
+  const matchedProjectIds = needle ? [...new Set(projectFiltered.map(l => l.project_id).filter(Boolean))] : [];
+  const singleMatch = matchedProjectIds.length === 1
+    ? projectFiltered.find(l => l.project_id === matchedProjectIds[0])
+    : null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -116,6 +134,16 @@ function PackingListsTab({ lists, flowCounts, pendingReadyCount, awaitingAckCoun
         <StatPill dot="bg-warning" value={awaitingAckCount} label="Delivery Follow-up" onClick={() => onNavigate('deliveries')} />
         <StatPill dot="bg-danger" value={missingEwayCount} label="Missing E-Way Bills" onClick={() => onNavigate('documents', { missingEway: true })} />
       </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <SearchBox value={projectQ} onChange={setProjectQ} placeholder="Search by project no. or customer…" />
+        {singleMatch && (
+          <Button asChild variant="outline" size="sm">
+            <a href={`/api/projects/${singleMatch.project_id}/pending-pdf`} target="_blank" rel="noreferrer">
+              <DownloadIcon className="size-3.5" /> Pending PDF — {singleMatch.project_no}
+            </a>
+          </Button>
+        )}
+      </div>
       <div className="border-t pt-4">
         {focusedStatus && (
           <button type="button" onClick={() => setFocusedStatus(null)}
@@ -123,7 +151,7 @@ function PackingListsTab({ lists, flowCounts, pendingReadyCount, awaitingAckCoun
             Showing: {STAGE_LABEL[focusedStatus]} only <XIcon className="size-3" />
           </button>
         )}
-        <DispatchBoard lists={lists} statusFilter={focusedStatus} />
+        <DispatchBoard lists={projectFiltered} statusFilter={focusedStatus} />
       </div>
     </div>
   );
@@ -365,13 +393,18 @@ const GATE_PASS_STATUS = {
   cancelled: { cls: 'bg-muted text-muted-foreground ring-border', label: 'Cancelled' },
 };
 
-function GatePassFormDialog({ onClose, router }) {
-  const [type, setType] = useState('returnable');
-  const [party, setParty] = useState('');
-  const [responsiblePerson, setResponsiblePerson] = useState('');
-  const [purpose, setPurpose] = useState('');
-  const [expectedReturnDate, setExpectedReturnDate] = useState('');
-  const [items, setItems] = useState([{ description: '', qty_text: '' }]);
+// `editing` — the gate pass row being fixed (typo in party/responsible person/purpose/item text),
+// or null to create a new one. Only ever passed for a still-draft pass (GatePassesCard's own Edit
+// button is hidden past draft) — the server re-enforces the same status guard regardless.
+function GatePassFormDialog({ editing, onClose, router }) {
+  const [type, setType] = useState(editing?.type || 'returnable');
+  const [party, setParty] = useState(editing?.party || '');
+  const [responsiblePerson, setResponsiblePerson] = useState(editing?.responsible_person || '');
+  const [purpose, setPurpose] = useState(editing?.purpose || '');
+  const [expectedReturnDate, setExpectedReturnDate] = useState(editing?.expected_return_date || '');
+  const [items, setItems] = useState(editing?.items?.length
+    ? editing.items.map(it => ({ description: it.description, qty_text: it.qty_text || '' }))
+    : [{ description: '', qty_text: '' }]);
   const [saving, setSaving] = useState(false);
 
   function updateItem(i, patch) {
@@ -383,15 +416,23 @@ function GatePassFormDialog({ onClose, router }) {
     if (!cleanItems.length) return showToast('Add at least one item', 'error');
     setSaving(true);
     try {
-      const result = await api('/api/gate-passes', {
-        method: 'POST',
-        body: {
-          type, party, responsible_person: responsiblePerson, purpose,
-          expected_return_date: type === 'returnable' ? expectedReturnDate || null : null,
-          items: cleanItems,
-        },
-      });
-      showToast(`GP-${result.gp_no} created`);
+      if (editing) {
+        await api(`/api/gate-passes/${editing.id}`, {
+          method: 'PATCH',
+          body: { edit: { party, responsible_person: responsiblePerson, purpose, expected_return_date: expectedReturnDate, items: cleanItems } },
+        });
+        showToast(`GP-${editing.gp_no} updated`);
+      } else {
+        const result = await api('/api/gate-passes', {
+          method: 'POST',
+          body: {
+            type, party, responsible_person: responsiblePerson, purpose,
+            expected_return_date: type === 'returnable' ? expectedReturnDate || null : null,
+            items: cleanItems,
+          },
+        });
+        showToast(`GP-${result.gp_no} created`);
+      }
       router.refresh();
       onClose();
     } catch (err) { showToast(err.message, 'error'); }
@@ -401,18 +442,23 @@ function GatePassFormDialog({ onClose, router }) {
   return (
     <Dialog open onOpenChange={o => !o && onClose()}>
       <DialogContent className="max-w-xl">
-        <DialogHeader><DialogTitle>New Gate Pass</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>{editing ? `Edit GP-${editing.gp_no}` : 'New Gate Pass'}</DialogTitle></DialogHeader>
         <div className="flex flex-col gap-3">
-          <div className="inline-flex w-fit rounded-lg border p-0.5">
-            <button type="button" onClick={() => setType('returnable')}
-              className={`rounded-md px-3 py-1 text-sm font-medium transition-colors ${type === 'returnable' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
-              Returnable
-            </button>
-            <button type="button" onClick={() => setType('non_returnable')}
-              className={`rounded-md px-3 py-1 text-sm font-medium transition-colors ${type === 'non_returnable' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
-              Non-returnable
-            </button>
-          </div>
+          {/* Type (returnable / non-returnable) is fixed at creation — it decides whether an expected
+              return date even applies, and letting it flip mid-edit would leave a returnable pass's
+              own return-tracking history (§ item returned flags) describing the wrong kind of pass. */}
+          {!editing && (
+            <div className="inline-flex w-fit rounded-lg border p-0.5">
+              <button type="button" onClick={() => setType('returnable')}
+                className={`rounded-md px-3 py-1 text-sm font-medium transition-colors ${type === 'returnable' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
+                Returnable
+              </button>
+              <button type="button" onClick={() => setType('non_returnable')}
+                className={`rounded-md px-3 py-1 text-sm font-medium transition-colors ${type === 'non_returnable' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
+                Non-returnable
+              </button>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-1.5">
               <Label>Party / destination</Label>
@@ -448,7 +494,9 @@ function GatePassFormDialog({ onClose, router }) {
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={save} disabled={saving}>{saving ? 'Creating…' : 'Create gate pass'}</Button>
+          <Button onClick={save} disabled={saving}>
+            {saving ? (editing ? 'Saving…' : 'Creating…') : (editing ? 'Save changes' : 'Create gate pass')}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -459,6 +507,7 @@ function GatePassesCard({ gatePasses }) {
   const router = useRouter();
   useEntityHighlight(useSearchParams().get('highlight'));
   const [adding, setAdding] = useState(false);
+  const [editingGp, setEditingGp] = useState(null);
   const [busyId, setBusyId] = useState(null);
 
   async function act(id, action) {
@@ -532,6 +581,19 @@ function GatePassesCard({ gatePasses }) {
                   <TableCell><Badge className={GATE_PASS_STATUS[gp.status]?.cls}>{GATE_PASS_STATUS[gp.status]?.label || gp.status}</Badge></TableCell>
                   <TableCell className="flex justify-end gap-1">
                     {gp.status === 'draft' && (
+                      <Button size="sm" variant="ghost" title="Edit" onClick={() => setEditingGp(gp)}>
+                        <PencilIcon className="size-4" />
+                      </Button>
+                    )}
+                    {/* asChild renders the <a> itself with button styling — a <Button> (a real
+                        <button>) can't be nested inside an <a>, invalid HTML per the same rule
+                        §5c's InfoButton note already flags for this codebase. */}
+                    <Button asChild size="sm" variant="ghost" title="Download PDF">
+                      <a href={`/api/gate-passes/${gp.id}/pdf`} target="_blank" rel="noopener noreferrer">
+                        <DownloadIcon className="size-4" />
+                      </a>
+                    </Button>
+                    {gp.status === 'draft' && (
                       <>
                         <Button size="sm" disabled={busyId === gp.id} onClick={() => act(gp.id, 'approve')}>Approve</Button>
                         <Button size="sm" variant="outline" disabled={busyId === gp.id} onClick={() => act(gp.id, 'cancel')}>Cancel</Button>
@@ -551,6 +613,7 @@ function GatePassesCard({ gatePasses }) {
         )}
       </CardContent>
       {adding && <GatePassFormDialog router={router} onClose={() => setAdding(false)} />}
+      {editingGp && <GatePassFormDialog editing={editingGp} router={router} onClose={() => setEditingGp(null)} />}
     </Card>
   );
 }

@@ -116,40 +116,50 @@ const BACKLOG = [
 const STORES_BACKLOG = [
   {
     title: 'Cut-code lineage renumbering: PL-0042-R1 cut again should read PL-0042-U2/-R2, not PL-0042-R1-U1/-R1',
-    status: 'Deferred — needs its own atomic counter first',
+    status: 'Shipped 2026-09-14',
     added: '2026-08-26',
     body: [
-      `cutPiece() (lib/stock-pieces.js) builds a child's code by string-appending onto the immediate
-       PARENT's code (\`\${source.code}-U\${n}\`), not the ROOT's. Cutting PL-0042 directly gives the
-       intended PL-0042-U1/PL-0042-R1. But cutting that remnant again gives PL-0042-R1-U1/PL-0042-R1-R1
-       — compounding with every generation — instead of the lineage-flat PL-0042-U2/PL-0042-R2 the
-       client actually wants. The genealogy underneath is NOT affected: stock_pieces.parent_id is a
-       real FK, correct at every level regardless of what the code string says — this is purely a
-       display/ID-generation issue, never a traceability gap.`,
-      `Deliberately not fixed alongside Phase 0's cutPiece() correctness fix: computing "the nth used/
-       remnant descendant anywhere under this root" requires walking parent_id up to the root (or
-       storing a denormalized root_id) and a NEW per-root atomic counter — a plain
-       \`SELECT MAX(...)+1\` over sibling codes would reintroduce exactly the kind of race Phase 0 just
-       closed for the status flip. When this is picked up, reuse the same pattern the global
-       \`counters\` table already proves out (INSERT...ON CONFLICT DO UPDATE...RETURNING), keyed by
-       root piece id, not a bare MAX query.`,
+      `Resolved — stock_pieces gained a root_id column (self-referencing on every new row;
+       cutPiece()'s own \`source.root_id || source.id\` fallback correctly treats a pre-existing NULL
+       row as its own root the first time it's ever cut). Every descendant's code is now built off
+       the ROOT's own code via a real atomic per-root sequence (nextPieceSeq(), the exact
+       INSERT...ON CONFLICT DO UPDATE...RETURNING pattern this note originally pointed at — run
+       inside cutPiece()'s own transaction, not the shared nextCounterValue() helper, so a rolled-back
+       cut can never leave a permanent gap). Cutting PL-0042-R1 a second time now correctly produces
+       PL-0042-U2/PL-0042-R2, not the old compounding PL-0042-R1-U1/-R1.`,
+      `Same round: heat number now rides directly in the code (PL-0042-H62A5678, sanitized to A-Z0-9
+       and capped at 10 chars) whenever one was captured at receipt — a direct request, so the heat
+       is readable off the physical tag without a separate lookup. Verified in
+       scripts/remnant-cutting-selfcheck.mjs (a real cut-then-recut-the-remnant scenario, asserting
+       the flat U2/R2 numbering and heat inheritance end to end).`,
+      `Original write-up, kept for history: cutPiece() (lib/stock-pieces.js) used to build a child's
+       code by string-appending onto the immediate PARENT's code (\`\${source.code}-U\${n}\`), not the
+       ROOT's — compounding with every cut generation. The genealogy underneath was never affected
+       (stock_pieces.parent_id is a real FK, correct at every level regardless of the code string) —
+       this was purely a display/ID-generation issue, never a traceability gap.`,
     ],
   },
   {
     title: 'Reserve-from-Stock has no server-side material match — only an advisory, bypassable shortlist',
-    status: 'Deferred — blocked on wider item_id catalog coverage',
+    status: 'Shipped 2026-09-14',
     added: '2026-08-26',
     body: [
-      `possibleMatches() (StoresWorkspace.jsx) computes a soft, client-side shortlist for the Reserve
-       dialog — exact item_id match first, keyword-overlap fallback — but it's advisory only: "Show
-       all items" always bypasses it, and reserveFromStock() (lib/procurement.js) performs zero
-       server-side check that the chosen inventory row's material actually matches the BOM line's
-       requirement. Nothing stops reserving, say, a stainless flange's inventory row against a
-       carbon-steel plate BOM line.`,
-      `Deliberately not hardened yet: item_id (the one reliable signal) is nullable on both
-       bom_items and inventory_items with no backfill for free-typed rows — the overwhelming majority
-       today. A hard filter keyed on item_id alone would incorrectly block most real reservations
-       until catalog linkage is much more broadly adopted. Revisit once that coverage improves.`,
+      `Resolved — not by requiring item_id (still sparse on most real rows, exactly the reason this
+       was deferred), but by checking the signals that ARE already present on both sides:
+       lib/match-utils.js's materialMismatchReason() blocks only on ACTIVE disagreement (both sides
+       have a category or moc set, and they genuinely differ — never on one or both being blank), so
+       it can't misfire on missing catalog data the way an item_id-only filter would have. category
+       is a fixed taxonomy (a plate line can never draw from an angle-section row); moc goes through
+       normalizeMaterial()'s strip-all-punctuation equality check, the same one lib/remnant-match.js
+       and lib/tc-match.js already trust — never a fuzzy/substring match. Wired into
+       reserveFromStock() (lib/procurement.js), the one real choke point behind every Reserve path
+       (manual dialog, receipt-driven, and Auto-allocation-mode's own item_id-matched path), so the
+       fix covers all three at once. The manual Reserve dialog also shows the same conflict inline
+       before submit, not only as a rejected round-trip.`,
+      `Original write-up, kept for history: possibleMatches() (StoresWorkspace.jsx) computed a soft,
+       client-side shortlist for the Reserve dialog, but it was advisory only — "Show all items"
+       always bypassed it, and reserveFromStock() performed zero server-side check that the chosen
+       inventory row's material actually matched the BOM line's requirement.`,
     ],
   },
 ];

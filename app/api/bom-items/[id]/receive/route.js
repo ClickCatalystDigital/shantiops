@@ -216,14 +216,15 @@ export async function POST(req, { params }) {
     t.totalReceived = (Number(priorReceived.total) || 0) + t.qty;
     t.isFullyReceived = requiredQty <= 0 || t.totalReceived >= requiredQty;
     t.needsRouting = t.isFullyReceived && !(await projectHasChildren(t.item.project_id));
-    if (t.needsRouting && !['production', 'dispatch'].includes(t.routedTo)) {
-      return NextResponse.json(
-        { error: `Item #${t.item.id} needs a routing decision (Manufacturing or Direct to Dispatch) to complete this receipt` }, { status: 400 });
-    }
-    // Material Indent bridge — same transition-guard rule as route-to/route-self: read the prior
-    // routing decision now so the post-transaction notification below fires only on a genuine move
-    // into 'production', never on an idempotent re-route.
-    if (t.needsRouting) {
+    // Routing decoupled from receiving (gentle-snuggling-wozniak.md, §5/§10) — no longer required
+    // to complete a receipt; a childless line lands in Stores' Allocate queue instead and gets
+    // routed there. This route still accepts an optional routed_to for a caller that supplies one
+    // (kept for compatibility — no UI sends it anymore, so this is effectively dead but harmless).
+    t.willRoute = t.needsRouting && ['production', 'dispatch'].includes(t.routedTo);
+    if (t.willRoute) {
+      // Material Indent bridge — same transition-guard rule as route-to/route-self: read the prior
+      // routing decision now so the post-transaction notification below fires only on a genuine move
+      // into 'production', never on an idempotent re-route.
       const prior = await queryOne(
         'SELECT routed_to FROM bom_item_child_routing WHERE bom_item_id = ? AND child_project_id = ?',
         [t.item.id, t.item.project_id]);
@@ -269,7 +270,7 @@ export async function POST(req, { params }) {
         // multi-recipient submission gets one required routing confirmation per recipient, all
         // committed atomically with the receipt itself, never a follow-up call that could fail
         // independently and leave a receipt with no routing decision.
-        if (credit.isFullyReceived && t.needsRouting) {
+        if (credit.isFullyReceived && t.willRoute) {
           await tx.execute({
             sql: `INSERT INTO bom_item_child_routing (bom_item_id, child_project_id, routed_to, decided_by)
                   VALUES (?, ?, ?, ?)
@@ -282,7 +283,7 @@ export async function POST(req, { params }) {
           item: t.item, receiptId, isFullyReceived: credit.isFullyReceived, grnRef: credit.grnRef, targetChanged,
           totalReceived: t.totalReceived, requiredQty: t.requiredQty, qty: t.qty,
           bomItemReceiptId: credit.bomItemReceiptId, inwardApprovalId: credit.inwardApprovalId,
-          routedToProduction: credit.isFullyReceived && t.needsRouting && t.routedTo === 'production',
+          routedToProduction: credit.isFullyReceived && t.willRoute && t.routedTo === 'production',
           priorRoutedTo: t.priorRoutedTo || null,
         });
       }

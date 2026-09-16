@@ -10954,6 +10954,112 @@ survive a project-scoped cascade purge and need a direct content match to clean 
 just cleaned; the gap itself is out of this pass's scope). Zero residue confirmed by direct query.
 All temporary debug/query scripts deleted from `scripts/` afterward.
 
+## 5cs. Stores Allocate workflow — routing decoupled from receiving, remnant/lineage fixes, Inventory dimensional model (2026-09-16)
+
+A real, extensive plan-mode round: the user's original ask (why does a remnant show `consumed`,
+why does a twice-cut piece's lineage look flat, will a remnant show up in Inventory, why does
+Inventory's Spec column look like free text, and a request for a bulk Stores "Allocate" screen so
+routing isn't a one-line-at-a-time decision buried inside Receive) was rejected on its first draft
+and revised twice more before implementation — see the plan's own §0 for the full research trail
+(6 background research agents, live-DB verification of the real `PL-0073-H62A5678` piece tree, and
+a live permission-boundary check of the Item Master route before touching anything). The plan file
+itself (`gentle-snuggling-wozniak.md`) is the fuller record; this section is the as-built summary.
+
+**Routing decoupled from receiving.** `ReceiveBomItemDialog.jsx`/`BomGrnTab` no longer ask for a
+Production/Dispatch decision at receive time — receiving is now purely quantity + traceability.
+`receive/route.js`'s mandatory-routing 400 guard is gone (`t.willRoute` replaces `t.needsRouting`
+as the gate on whether the routing INSERT actually runs — the route still accepts an optional
+`routed_to` if a caller sends one, harmless/unused by any UI now). This closed a real regression the
+decoupling would otherwise have introduced: all 3 duplicated `readyForPacking` predicates
+(`getProjectBom()`, `getPendingPackingItems()`, `getDispatchWork()`) previously treated an unrouted
+line (`self_routed_to = NULL`) as equivalent to "routed to dispatch" — safe only while routing was
+mandatory at receive time. Fixed identically at all 3 sites: a routing-eligible line (`source='bom'`,
+no split-order children) now requires an *explicit* `self_routed_to='dispatch'` or (`='production'`
+AND `production_done`) to be ready; every other population (stock/sas, split-master items) is
+completely unaffected.
+
+**New Allocate tab** (Stores' Receiving sidebar group, right after "Receive a Delivery") — the
+queue every fully-received, routing-eligible line lands in until Stores decides. New
+`getUnroutedReceivedItems()` (`lib/data.js`). Table: `Material | Project | Qty | Production ☐ |
+Dispatch ☐ | Default ☑`. Production/Dispatch are mutually exclusive (two checkboxes acting as a
+radio pair — unchecking the currently-checked one is a no-op, only checking the other one moves
+the value), reused unmodified via the existing `route-self` route (confirmed already a real upsert
+— `ON CONFLICT(bom_item_id, child_project_id) DO UPDATE` — so a retry can never duplicate a
+routing row).
+
+**"Default" — a deliberately simple two-concept model, not the three-layer design first drafted.**
+The user's real mental model: **Default** ("what's the material's learned default?") and
+**Routing** ("what happens to THIS received line?") are two independent questions, answered by two
+existing fields — never a new per-line override field, never a cross-department approval-task
+detour. Default reflects/edits `items.default_requires_manufacturing` directly — the *same* field
+Engineering's own Item Master edit UI already writes (§5bv/§5bo) — correctable by either
+department when they notice it's wrong, with no frequency-based promotion mechanism; whoever
+corrects it does so directly, and every future `ItemSearchField.pick()` reads the corrected value.
+This required one real, deliberate security-boundary widening, confirmed with the user only after
+tracing the exact restriction: `PATCH /api/item-master/[id]` was gated by `requireEngineeringAction()`
+(Engineering/Design/PM only) for its *entire* field set. The route now has one narrow branch — when
+the submitted body's editable-field set is *exactly* `['default_requires_manufacturing']`, it also
+accepts `requireAction(user, 'Stores', 'stores.bom.set_manufacturing_default')` (new, open-by-default
+action key). Any request touching any other Item Master field, alone or combined with this one, still
+requires the unmodified Engineering/Design path — Stores gains no broader access. Default has zero
+effect on this line's own `bom_items.requires_manufacturing` (frozen, Engineering-owned, untouched by
+this whole feature), its routing, or its readiness — the two fields answer genuinely different
+questions and are never conflated. For a non-catalog-linked row (no `item_id`), Default renders
+disabled/read-only, showing the line's own `requires_manufacturing` for information only.
+
+**Apply Allocations — explicit partial-failure handling**, since a row can trigger up to two
+independent HTTP writes (routing via `route-self`, Default via the widened Item Master route),
+neither wrapped in a shared transaction. Both are always attempted when both changed — one failing
+never blocks or skips the other. A row whose routing succeeds is removed from the queue immediately;
+if its Default write then fails, it's tracked in a separate "Needs a retry" card with its own
+"Retry Default" action (re-issues only the failed PATCH, never re-sends the already-succeeded
+routing call) rather than being silently dropped. A row whose routing itself fails simply stays in
+the unrouted queue for an ordinary retry. Both underlying writes are idempotent by design (a plain
+upsert; a plain `UPDATE ... SET x = ?`), so any retry is always safe.
+
+**Remnant lineage/return — the real bug, and what turned out not to be a bug.**
+`components/PieceLineage.jsx`'s default-exported lineage view (used from `CutDialog.jsx`'s "View
+lineage") hardcoded `depth={1}` for every child regardless of its real value — a genuinely-cut
+second-generation piece (`-U2`/`-R2`/`-S2`) rendered at the same indent as the first generation,
+even though `groupPiecesByRoot()` (same file) already computed real per-piece depth correctly.
+One-line fix: `depth={c.depth}` instead of the hardcoded `1`. Verified against the real
+`PL-0073-H62A5678` tree (ids 73-79, queried live before implementation) — R1 (id 75) is genuinely
+`consumed` after being cut again (expected, not a bug — the lineage stays fully visible, `listPieces()`
+has no status filter), R2 (id 78) is a live example of a remnant sitting at `pending_receipt`,
+and U2/R2/S2 are true depth-2 descendants the old hardcoded-depth bug would have misrendered.
+The remnant-return question (does a cut remnant auto-enter "pending receipt," or does Production
+need an explicit "Return to Stores" action?) resolved definitively from the code alone, no new
+workflow needed: `cutPiece()`'s remnant branch already unconditionally inserts at
+`status='pending_receipt'` — automatic, zero Production action beyond the cut itself. The only real
+gap was a missing notification: `cutPiece()` now calls `notifyDepartment('Stores', ...)` (mirroring
+`releasePiece()`'s own precedent) when a remnant is created, and `CutDialog.jsx`'s toast names the
+new remnant code(s) and states it needs Stores confirmation.
+
+**Inventory dimensional model.** Two distinct, correctly-separated gaps: Stores' own
+`pickCatalogItem()` never consumed the Item Master's existing `default_category_fields_json`/
+`default_moc`/`bom_category` defaults (a reuse gap — `ItemSearchField.pick()` on the BOM side
+already did this correctly); `inventory_items` itself had zero structured-dimension storage (a real
+missing-schema gap). Fixed both: `pickCatalogItem()` now mirrors `ItemSearchField.pick()`
+(`components/BomLineFields.jsx`) — `requires_manufacturing` deliberately NOT carried over, since
+it's a `bom_items`-line concept with no `inventory_items` equivalent. New
+`inventory_items.category_fields_json` column, reusing the *exact* JSON shape `bom_items`/`items`
+already use — never a second schema. The Inventory table's flattened `Spec` column is replaced with
+`Grade` (`moc`) + `Dimensions` (`categoryDisplaySpec()`, the same canonical formatter a BOM line's
+own spec already renders through, reused against the new column — falls back to the legacy
+flattened string for any un-migrated row), plus `Tracking`/`Avg. Cost` columns (already-fetched,
+previously unrendered `inventory_items` columns).
+
+**Not yet live-verified.** `npm run lint` and the pre-existing `remnant-cutting-selfcheck.mjs`
+(unaffected — it hand-mirrors `cutPiece()`'s logic against an in-memory DB, never imports the real
+function) both pass clean, and every design decision was traced against the real schema/routes
+during planning. Live/browser verification was attempted but blocked by a real, reproducible
+environment issue unrelated to this feature: the dev server's *first* request to the shared Turso
+DB inside `next dev`'s own request-handling context was taking 30-120+ seconds, confirmed via a
+standalone script that the database and network path themselves are fast (sub-second) — isolated
+to something in how `next dev`'s dev-mode pipeline (Node 23.9.0) interacts with the
+`@libsql/client`/undici networking stack, not this feature's own code. Flagged rather than
+worked around; end-to-end verification deferred to the user.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own

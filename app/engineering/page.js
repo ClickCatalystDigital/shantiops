@@ -39,5 +39,5 @@ export default async function EngineeringPage({ searchParams }) {
     : headDepartments(user).filter(d => ['Engineering', 'Design', 'Stores'].includes(d));
 
   return <EngineeringWorkspace projects={projects}
-    canApproveEcn={canApproveEcn} initialTab={sp?.tab} departments={departments} />;
+    canApproveEcn={canApproveEcn} initialTab={sp?.tab} initialProject={sp?.project} departments={departments} />;
 }

@@ -170,7 +170,7 @@ export default function CutDialog({ bomItem = null, initialSource = null, projec
         length_mm: parseNum(r.length_mm), width_mm: parseNum(r.width_mm), thickness_mm: parseNum(r.thickness_mm),
         ...(withPart && r.part_name ? { part_name: r.part_name } : {}),
       }));
-      await api(`/api/stock-pieces/${sourcePieceId}/cut`, {
+      const res = await api(`/api/stock-pieces/${sourcePieceId}/cut`, {
         method: 'POST',
         body: {
           used: toDims(used, true), remnants: toDims(remnants),
@@ -178,7 +178,9 @@ export default function CutDialog({ bomItem = null, initialSource = null, projec
           ...(bomItem ? { bom_item_id: bomItem.id } : {}),
         },
       });
-      showToast('Cut recorded');
+      showToast(res.remnantCodes?.length
+        ? `Cut recorded — ${res.remnantCodes.join(', ')} needs Stores confirmation`
+        : 'Cut recorded');
       await onDone?.();
       router.refresh();
       onClose();

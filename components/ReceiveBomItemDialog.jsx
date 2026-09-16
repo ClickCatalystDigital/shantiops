@@ -6,12 +6,14 @@
 // fields the line's own requires_* flags demand. Submits to POST /api/bom-items/[id]/receive —
 // the one place a Stores user can move a line into 'Received'.
 //
-// Unified delivery/lot-centric receiving, Phase 3d/2 — the quantity field now defaults to the
-// remaining outstanding amount (not the full original qty_text) with a visible running total, and a
-// line whose own project has no child units (Phase 2's self-routing case) now requires an explicit
-// Manufacturing/Direct-to-Dispatch confirmation before the receipt can complete. When this item's
-// own PR was split across sibling projects (§Phase 0/3c), eligible siblings can be credited from
-// this same physical delivery in one submission via the optional `splits` array.
+// Unified delivery/lot-centric receiving, Phase 3d/2 — the quantity field defaults to the
+// remaining outstanding amount (not the full original qty_text) with a visible running total. When
+// this item's own PR was split across sibling projects (§Phase 0/3c), eligible siblings can be
+// credited from this same physical delivery in one submission via the optional `splits` array.
+//
+// Routing decoupled from receiving (gentle-snuggling-wozniak.md, §5/§9) — receiving is now purely
+// quantity + traceability. A childless line lands in Stores' Allocate queue once it's fully
+// received; Production-vs-Dispatch is decided there, not here.
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, showToast } from '@/lib/client';
@@ -53,10 +55,9 @@ export default function ReceiveBomItemDialog({ item, onDone }) {
   const [testCertificateId, setTestCertificateId] = useState(null);
   const [certPickerOpen, setCertPickerOpen] = useState(false);
 
-  // Phase 3d — required/received-so-far/has_children/planned siblings, fetched once on open.
+  // Phase 3d — required/received-so-far/planned siblings, fetched once on open.
   const [status, setStatus] = useState(null);
-  const [routedTo, setRoutedTo] = useState('');
-  const [selectedSiblings, setSelectedSiblings] = useState({}); // bom_item_id -> { qty, routedTo }
+  const [selectedSiblings, setSelectedSiblings] = useState({}); // bom_item_id -> { qty }
   const [lotLabel, setLotLabel] = useState('');
 
   const requiredReceivedKeys = Object.entries(REQUIRES_TO_RECEIVED)
@@ -69,7 +70,6 @@ export default function ReceiveBomItemDialog({ item, onDone }) {
       setStatus(d);
       const suffix = unitSuffix(item.qty_text);
       if (d.remaining != null) setQtyText(suffix ? `${d.remaining} ${suffix}` : String(d.remaining));
-      setRoutedTo(d.requires_manufacturing ? 'production' : 'dispatch');
       // Unified delivery/lot-centric receiving, Phase 0/3b — a master/child PO line with more than
       // one declared lot needs Stores to say which physical delivery this is before the reference
       // applies; a single (or no) lot needs no field at all, silently defaulting to '1' server-side.
@@ -108,19 +108,10 @@ export default function ReceiveBomItemDialog({ item, onDone }) {
         return next;
       }
       const defaultQty = parseFloat((s.qty_text.match(/^\s*([\d.]+)/) || [])[1]) || 0;
-      return { ...prev, [s.bom_item_id]: { qty: String(defaultQty || ''), routedTo: s.has_children ? '' : (s.requires_manufacturing ? 'production' : 'dispatch') } };
+      return { ...prev, [s.bom_item_id]: { qty: String(defaultQty || '') } };
     });
   }
 
-  // Mirrors the backend's own isFullyReceived check exactly (required_qty<=0 → always treated as
-  // completing, same as an unparseable qty_text server-side) — a routing decision is only actually
-  // required once THIS call completes the line, never on a genuinely partial receipt. The dialog
-  // previously required it on every call regardless, blocking a partial receipt for no backend reason.
-  const enteredQty = parseFloat((qtyText.match(/^\s*([\d.]+)/) || [])[1]) || 0;
-  const willComplete = status
-    ? (status.required_qty ? status.received_so_far + enteredQty >= status.required_qty : true)
-    : false;
-  const needsRouting = status && !status.has_children && willComplete;
   const siblings = status?.planned_recipients?.kind === 'sibling' ? status.planned_recipients.recipients : [];
   const lots = status?.planned_recipients?.kind === 'child' ? (status.planned_recipients.lots || []) : [];
 
@@ -128,13 +119,10 @@ export default function ReceiveBomItemDialog({ item, onDone }) {
     e.preventDefault();
     if (!receiptId) return showToast('Choose or create a receipt', 'error');
     if (item.requires_mtc && !testCertificateId) return showToast('Pick or add a test certificate first', 'error');
-    if (needsRouting && !routedTo) return showToast('Pick where this material goes — Manufacturing or Direct to Dispatch', 'error');
     if (lots.length > 1 && !lotLabel) return showToast('Pick which lot this delivery is', 'error');
     for (const sid of Object.keys(selectedSiblings)) {
       const s = selectedSiblings[sid];
       if (!(Number(s.qty) > 0)) return showToast('Enter a valid quantity for every selected sibling item', 'error');
-      const meta = siblings.find(x => String(x.bom_item_id) === sid);
-      if (meta && !meta.has_children && !s.routedTo) return showToast('Pick a routing decision for every selected sibling item', 'error');
     }
     setBusy(true);
     try {
@@ -145,10 +133,10 @@ export default function ReceiveBomItemDialog({ item, onDone }) {
         method: 'POST',
         body: {
           qty_text: qtyText, receipt: { existing_receipt_id: receiptId },
-          test_certificate_id: testCertificateId, routed_to: needsRouting ? routedTo : undefined,
+          test_certificate_id: testCertificateId,
           lot_label: lotLabel || undefined,
           splits: Object.entries(selectedSiblings).map(([bomItemId, s]) => ({
-            bom_item_id: Number(bomItemId), qty: Number(s.qty), routed_to: s.routedTo || undefined,
+            bom_item_id: Number(bomItemId), qty: Number(s.qty),
           })),
           ...receivedFields,
         },
@@ -167,7 +155,7 @@ export default function ReceiveBomItemDialog({ item, onDone }) {
     <>
       <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setOpen(true)}>Receive</Button>
       <Dialog open={open} onOpenChange={setOpen}>
-        {/* This dialog nests several Selects (Receipt/Lot/Route/per-sibling Route) — each one
+        {/* This dialog nests several Selects (Receipt/Lot) — each one
             portals its popup to document.body, outside this DialogContent's own subtree, so
             Radix's DismissableLayer sees a click inside any of them as "outside the dialog" and
             closes it. Same fix as SheetContent's own guard in CertForm.jsx: ignore an outside
@@ -206,27 +194,6 @@ export default function ReceiveBomItemDialog({ item, onDone }) {
                 </p>
               ) : null}
             </div>
-            {needsRouting && (
-              <div className="flex flex-col gap-1">
-                <Label>Route to *</Label>
-                {status.requires_manufacturing ? (
-                  <Select value={routedTo} onValueChange={setRoutedTo}>
-                    <SelectTrigger><SelectValue placeholder="Pick where this goes next" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="production">Manufacturing</SelectItem>
-                      <SelectItem value="dispatch">Direct to Dispatch</SelectItem>
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  // E2E findings fix (2026-09-14) — checked every routing decision ever made
-                  // (3,626 rows): none has ever combined requires_manufacturing=0 with 'production'.
-                  // Removing the choice at its source rather than leaving a never-used, business-
-                  // invalid combination reachable. routedTo is already 'dispatch' from the pre-fill
-                  // effect above and still submits exactly the same way — only the render changes.
-                  <p className="text-sm text-muted-foreground">Direct to Dispatch — no manufacturing needed</p>
-                )}
-              </div>
-            )}
             {requiredReceivedKeys.map(field => field === 'received_mtc_no' ? (
               <div key={field} className="flex flex-col gap-1">
                 <Label>{RECEIVED_FIELD_LABELS[field]} *</Label>
@@ -261,23 +228,6 @@ export default function ReceiveBomItemDialog({ item, onDone }) {
                             value={sel.qty}
                             onChange={e => setSelectedSiblings(prev => ({ ...prev, [s.bom_item_id]: { ...prev[s.bom_item_id], qty: e.target.value } }))}
                             placeholder="Qty" />
-                          {!s.has_children && (
-                            s.requires_manufacturing ? (
-                              <Select value={sel.routedTo}
-                                onValueChange={v => setSelectedSiblings(prev => ({ ...prev, [s.bom_item_id]: { ...prev[s.bom_item_id], routedTo: v } }))}>
-                                <SelectTrigger className="h-7 w-44 text-xs"><SelectValue placeholder="Route to…" /></SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="production">Manufacturing</SelectItem>
-                                  <SelectItem value="dispatch">Direct to Dispatch</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            ) : (
-                              // E2E findings fix (2026-09-14) — same branch as the primary item's
-                              // own routing field: no confirmed case ever routes a non-manufacturing
-                              // sibling to Production, so the choice is removed at its source.
-                              <p className="text-xs text-muted-foreground">Direct to Dispatch</p>
-                            )
-                          )}
                         </div>
                       )}
                     </div>

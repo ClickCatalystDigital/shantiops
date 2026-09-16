@@ -28,8 +28,13 @@ export function pieceKindLabel(p) {
 }
 
 // One group per originally-received piece (root, `parent_id == null`) — every cut child (used/
-// remnant/scrap) nests under the root it came from. Children sorted oldest-cut-first (ascending id)
-// for a natural "what happened to this piece" reading order.
+// remnant/scrap), at any depth, nests under the root it ultimately came from. Previously only
+// collected DIRECT children — a remnant cut a second time (its own used/remnant/scrap) simply
+// vanished from this view, present in the data (root_id/parent_id both correct) but never shown.
+// Now walks the full descendant tree; each piece carries a `depth` (1 = direct child, 2 =
+// grandchild, ...) so the UI can indent proportionally instead of flattening every generation to
+// the same level. Children sorted oldest-cut-first (ascending id) for a natural "what happened to
+// this piece" reading order, depth-first so a branch's own descendants stay grouped together.
 export function groupPiecesByRoot(pieces) {
   const childrenByParent = new Map();
   for (const p of pieces) {
@@ -37,10 +42,18 @@ export function groupPiecesByRoot(pieces) {
     if (!childrenByParent.has(p.parent_id)) childrenByParent.set(p.parent_id, []);
     childrenByParent.get(p.parent_id).push(p);
   }
+  function collectDescendants(parentId, depth, out) {
+    const kids = (childrenByParent.get(parentId) || []).sort((a, b) => a.id - b.id);
+    for (const k of kids) {
+      out.push({ ...k, depth });
+      collectDescendants(k.id, depth + 1, out);
+    }
+  }
   const groups = [];
   for (const p of pieces) {
     if (p.parent_id) continue;
-    const children = (childrenByParent.get(p.id) || []).sort((a, b) => a.id - b.id);
+    const children = [];
+    collectDescendants(p.id, 1, children);
     groups.push({ root: p, children });
   }
   return groups;
@@ -73,7 +86,7 @@ export default function PieceLineage({ pieces, currentPieceId }) {
   return (
     <div className="rounded-md border bg-muted/20 p-2">
       <LineageRow p={group.root} depth={0} />
-      {group.children.map(c => <LineageRow key={c.id} p={c} depth={1} />)}
+      {group.children.map(c => <LineageRow key={c.id} p={c} depth={c.depth} />)}
     </div>
   );
 }
