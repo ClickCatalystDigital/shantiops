@@ -1,11 +1,11 @@
-// Project View redesign, Wave 3 — the canonical, never-duplicated Sales Order + Calc Sheets +
-// Drawings row. Introduced at Design phase, stays exactly here unchanged through every later phase
-// (Decision D — lower rows accumulate, never swap). Supersedes DesignPanel.jsx's old project-page
-// card: the standalone Design Sign-off card, Activity feed, and full ScopeOfSupplyPanel are all
-// gone from here (Decision F/G) — Sign-off surfaces as a small badge below, Activity has no other
-// consumer, and full SoS editing moved to /projects (Part 4). Drawings gets the real 3-state
-// approval indicators (Decision H): internal check/dash always shown, customer conditional —
-// blank (not a dash) when the drawing was never sent to the customer at all.
+// Project View — the Scope of Supply + Calc Sheets + Drawings row. Scope of Supply is a real Card
+// with a blank state (a bare button row rendered nothing at all when the project had no SO yet —
+// per direct instruction, fixed to always show a card, with a "Create Scope of Supply" link to
+// /projects when empty). The standalone "Design signed off" badge is removed — per direct
+// instruction, that wasn't asked for; what WAS asked for (per-drawing internal/customer approval
+// ticks) already exists below, unchanged. Full SoS editing stays on /projects. Drawings keeps the
+// real 3-state approval indicators: internal check/dash always shown, customer conditional — blank
+// (not a dash) when the drawing was never sent to the customer at all.
 'use client';
 
 import Link from 'next/link';
@@ -32,25 +32,36 @@ function ApprovalDot({ state }) {
     : <span className="text-muted-foreground">—</span>;
 }
 
-export default function ProjectDesignRow({ projectId, scopeOfSupply = [], calcSheets = [], drawings = [], designSignedOff = false }) {
+export default function ProjectDesignRow({ projectId, scopeOfSupply = [], calcSheets = [], drawings = [] }) {
   // DG- deep links (lib/entity-refs.js's resolveDrawing) append ?highlight= to scroll-to/flash the
   // right row — this is the one card on the redesigned page carrying data-entity-code, so it's the
   // one that needs to actually read it.
   useEntityHighlight(useSearchParams().get('highlight'));
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-2">
-        {scopeOfSupply.map(sos => (
-          <Button key={sos.id} asChild size="sm" variant="outline">
-            <a href={`/api/scope-of-supply/${sos.id}/pdf`} target="_blank" rel="noreferrer">
-              <DownloadIcon data-icon="inline-start" />Sales Order — {sos.title}
-            </a>
-          </Button>
-        ))}
-        {designSignedOff && (
-          <span className="inline-flex items-center gap-1 text-xs text-success"><CheckIcon className="size-3.5" />Design signed off</span>
-        )}
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Scope of Supply</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-wrap items-center gap-2">
+          {scopeOfSupply.length === 0 ? (
+            <div className="flex w-full items-center justify-between gap-3">
+              <p className="text-sm text-muted-foreground">No Scope of Supply yet.</p>
+              <Button asChild size="sm" variant="outline">
+                <Link href={`/projects?project=${projectId}`}>Create Scope of Supply</Link>
+              </Button>
+            </div>
+          ) : (
+            scopeOfSupply.map(sos => (
+              <Button key={sos.id} asChild size="sm" variant="outline">
+                <a href={`/api/scope-of-supply/${sos.id}/pdf`} target="_blank" rel="noreferrer">
+                  <DownloadIcon data-icon="inline-start" />{sos.title}
+                </a>
+              </Button>
+            ))
+          )}
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Card>

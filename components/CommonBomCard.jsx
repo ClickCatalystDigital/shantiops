@@ -1,60 +1,55 @@
-// Project View redesign, Decision I — the common BOM reference section. Read-only, collapsed by
-// default, downloadable as Excel, always the last row, present across the whole lifecycle. All
-// operational editing (add/edit/delete, Cancel, Receive, Prod. Done) stays on the relevant main
-// workspaces (/engineering, /stores, /production) — this is reference-only.
+// Project View — the project's real BOM, restored to the full-featured shared BomTable per direct
+// instruction: same card as before the redesign, all its capabilities (search/filter, Add/Edit/
+// Delete, department-scoped editable columns, Cancel, Receive, Prod. Done, import history) — the
+// only thing dropped is the PMB-upload control, since importing now happens from the Engineering
+// BOM workspace's own "Import PMB (.xlsx)" button. Not collapsible (same as the old BomPanel.jsx).
 'use client';
 
-import { useState } from 'react';
+import Link from 'next/link';
 import { Card, CardHeader, CardTitle, CardAction, CardContent } from './ui/card';
 import { Button } from './ui/button';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
-import { ChevronDownIcon, DownloadIcon } from 'lucide-react';
+import { DownloadIcon } from 'lucide-react';
+import BomTable from './BomTable';
 
-export default function CommonBomCard({ projectId, bom = [] }) {
-  const [open, setOpen] = useState(false);
+export default function CommonBomCard({
+  projectId, bom = [], pendingIds = [], editableFields = [], department, canCancel = false,
+  assemblies = [], imports = [],
+}) {
+  const canStructure = editableFields.includes('material_description');
   return (
     <Card>
       <CardHeader>
-        <button type="button" onClick={() => setOpen(o => !o)} className="flex items-center gap-2 text-left">
-          <ChevronDownIcon className={`size-4 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`} />
-          <CardTitle>Bill of Materials</CardTitle>
-          <span className="text-xs text-muted-foreground">({bom.length} item{bom.length === 1 ? '' : 's'})</span>
-        </button>
-        <CardAction>
+        <CardTitle>
+          Bill of Materials <span className="text-xs font-normal text-muted-foreground">({bom.length} item{bom.length === 1 ? '' : 's'})</span>
+        </CardTitle>
+        <CardAction className="flex items-center gap-3">
+          {canStructure && (
+            <Link href="/engineering?tab=structure" className="text-sm text-primary hover:underline">
+              Manage assemblies
+            </Link>
+          )}
           <Button asChild size="sm" variant="outline">
             <a href={`/api/projects/${projectId}/bom/xlsx`}><DownloadIcon data-icon="inline-start" />Download Excel</a>
           </Button>
         </CardAction>
       </CardHeader>
-      {open && (
-        <CardContent className="overflow-x-auto p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Description</TableHead>
-                <TableHead>MOC</TableHead>
-                <TableHead>Size / Spec</TableHead>
-                <TableHead>Qty</TableHead>
-                <TableHead>Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {bom.map(b => (
-                <TableRow key={b.id}>
-                  <TableCell className="font-medium">{b.material_description}</TableCell>
-                  <TableCell className="text-muted-foreground">{b.moc || '—'}</TableCell>
-                  <TableCell className="text-muted-foreground">{b.size_spec || '—'}</TableCell>
-                  <TableCell className="text-muted-foreground">{b.qty_text || '—'}</TableCell>
-                  <TableCell className="text-muted-foreground">{b.purchase_status || 'Enquiry'}</TableCell>
-                </TableRow>
-              ))}
-              {bom.length === 0 && (
-                <TableRow><TableCell colSpan={5} className="text-center text-sm text-muted-foreground">No BOM yet.</TableCell></TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      )}
+      <CardContent className="flex flex-col gap-4">
+        <BomTable projectId={projectId} bom={bom} pendingIds={pendingIds} editableFields={editableFields}
+          department={department} canCancel={canCancel} assemblies={assemblies} />
+        {imports.length > 0 && (
+          <div className="flex flex-col gap-1 border-t pt-3">
+            <span className="text-xs font-medium">Import history</span>
+            {imports.map(imp => (
+              <div key={imp.id} className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                <a href={`/api/bom-imports/${imp.id}/file`} className="hover:underline">
+                  Rev {imp.revision} · {imp.filename}
+                </a>
+                <span>{new Date(imp.created_at).toLocaleDateString()} · {imp.imported_by}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
     </Card>
   );
 }

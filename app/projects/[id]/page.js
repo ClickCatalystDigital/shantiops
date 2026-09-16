@@ -6,16 +6,21 @@
 // and never disappear or swap (Decision D). Milestone EDITING moved off this page entirely, onto a
 // new PM-only route (Decision E, /projects/[id]/milestones) — this page has no MilestoneBoard/Drawer,
 // no StagesPanel/Kanban, no Incidents/TicketsPanel, and no full Scope-of-Supply editor (moved to
-// /projects, Part 4) anymore. Every full editor this page used to embed inline (QC's test records,
-// Dispatch's Pending PDF/history, Stores' receive dialog, Production's Prod.Done toggle) now has an
-// equivalent, verified-first home on its own main workspace — this page only summarizes and links.
+// /projects, Part 4) anymore. Most editors this page used to embed inline (QC's test records,
+// Dispatch's Pending PDF/history, Stores' receive dialog, Production's Prod.Done toggle) now have an
+// equivalent, verified-first home on their own main workspace — this page only summarizes and links.
+// The BOM card is the one deliberate exception, per direct instruction: it's the full shared
+// BomTable (search/filter/Add/Edit/Delete/Cancel/Receive/Prod.Done, same as every department panel),
+// column/edit-scoped to the viewer's own department(s) — the only thing missing versus the old
+// BomPanel.jsx is PMB upload, which now lives on the Engineering BOM workspace's own Import button.
 import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import {
   getProjectDetail, getProjectBom, getProjectPackingLists, getProjectDesignSummary, getScopeOfSupply,
   getDepartmentState, getQcProjectSummary, getJobCards, getMaterialIndentsByProject,
-  getProjectInventoryItems, attachDeliveryLotDates,
+  getProjectInventoryItems, attachDeliveryLotDates, getBomAssembliesFlat,
 } from '@/lib/data';
+import { BOM_FIELD_OWNERS } from '@/lib/bom-fields.mjs';
 import { getFreshSessionUser, isCustomer, isPM, isHead, headDepartments, canAccessDepartment, roleHome } from '@/lib/auth';
 import { canPerformAction } from '@/lib/action-permissions';
 import ProjectHeader from '@/components/ProjectHeader';
@@ -46,8 +51,8 @@ export default async function ProjectDetail({ params }) {
   const { project, milestones, health, blocker, hasChildren } = data;
 
   const [
-    { bom }, packingLists, designSummary, scopeOfSupply, departmentState, qcSummary,
-    jobCards, materialIndents, inventoryItems,
+    { bom, pending, imports }, packingLists, designSummary, scopeOfSupply, departmentState, qcSummary,
+    jobCards, materialIndents, inventoryItems, assemblies,
   ] = await Promise.all([
     getProjectBom(params.id),
     getProjectPackingLists(params.id),
@@ -58,6 +63,7 @@ export default async function ProjectDetail({ params }) {
     getJobCards({ projectId: project.id }),
     getMaterialIndentsByProject(project.id),
     getProjectInventoryItems(project.id),
+    getBomAssembliesFlat(project.id),
   ]);
   // Expected delivery lots (Decision K) — reuses the exact function Stores' own Receive-a-Delivery
   // tab already uses, never a second calculation. Only meaningful for open (not yet terminal) lines.
@@ -70,8 +76,18 @@ export default async function ProjectDetail({ params }) {
   const myDepts = headDepartments(user);
   const attentionMilestones = head ? milestones.filter(m => myDepts.includes(m.department)) : milestones;
 
-  const designMilestone = milestones.find(m => m.milestone_key === 'design');
-  const designSignedOff = !!(designMilestone?.actual_end || designMilestone?.status === 'done');
+  // Restored BOM card — same viewer-department resolution ReleaseBomTab (components/PrWorkspace.jsx)
+  // already uses: a PM gets every department's editable fields (and a column-view department string
+  // outside the narrowed Procurement/Engineering set, lib/bom-fields.mjs); a head gets the union of
+  // their own granted departments.
+  const bomDepartments = pm ? Object.keys(BOM_FIELD_OWNERS) : myDepts;
+  const bomEditableFields = bomDepartments.flatMap(d => BOM_FIELD_OWNERS[d] || []);
+  const bomTableDepartment =
+    bomDepartments.length > 0 && bomDepartments.every(d => ['Design', 'Engineering'].includes(d)) ? 'Engineering'
+      : bomDepartments.includes('Stores') ? 'Stores'
+        : bomDepartments.includes('Production') ? 'Production'
+          : bomDepartments[0] || 'Engineering';
+  const canCancelBom = bomDepartments.includes('Design') || bomDepartments.includes('Engineering');
 
   // Accumulate-once-reached visibility, never based on the viewer's own department access (Decision
   // A — every authorized viewer sees the same context). Each gate reads data already fetched for
@@ -114,7 +130,7 @@ export default async function ProjectDetail({ params }) {
 
       {/* Lower rows — accumulate, never swap. */}
       <ProjectDesignRow projectId={project.id} scopeOfSupply={scopeOfSupply}
-        calcSheets={designSummary?.calcSheets} drawings={designSummary?.drawings} designSignedOff={designSignedOff} />
+        calcSheets={designSummary?.calcSheets} drawings={designSummary?.drawings} />
 
       {canAccessDepartment(user, 'Installation') && (milestones.some(m => m.department === 'Installation')) && (
         <InstallationMilestoneActions projectId={project.id} milestones={milestones.filter(m => m.department === 'Installation')} canMark={canMarkInstallation} />
@@ -126,7 +142,9 @@ export default async function ProjectDetail({ params }) {
       {showQc && <QcProjectSummary projectId={project.id} summary={qcSummary} canManage={canAccessDepartment(user, 'QC')} />}
       {showDispatch && <DispatchSummaryCard projectId={project.id} packingLists={packingLists} />}
 
-      <CommonBomCard projectId={project.id} bom={bom} />
+      <CommonBomCard projectId={project.id} bom={bom} pendingIds={pending.map(p => p.id)}
+        editableFields={bomEditableFields} department={bomTableDepartment} canCancel={canCancelBom}
+        assemblies={assemblies} imports={imports} />
     </main>
   );
 }
