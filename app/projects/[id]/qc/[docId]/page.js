@@ -58,6 +58,7 @@ export default async function QcDocumentPage({ params }) {
       parts={detail.parts}
       mountings={detail.mountings}
       groups={detail.groups}
+      form4aGroups={detail.form4aGroups}
       seams={detail.seams}
       certificates={certificates}
       bomItems={bomItems}

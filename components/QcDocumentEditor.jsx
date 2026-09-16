@@ -329,7 +329,7 @@ function PartTitleField({ part, partNo, bomItems, onLink, canEdit }) {
   );
 }
 
-function PartRow({ part, selected, onToggle, onOpenPicker, onRemove, onEdit, onUnlink, onLinkBomItem, bomItems, canEdit }) {
+function PartRow({ part, selected, onToggle, onOpenPicker, onRemove, onEdit, onUnlink, onLinkBomItem, bomItems, canEdit, groupName, onUnassignGroup }) {
   const linked = !!part.test_certificate_id;
   // A real named part (Design's breakdown, components/PrWorkspace.jsx's NamedPartsEditor) is any
   // row whose name differs from its own BOM line's material_description — the plain single-row
@@ -348,6 +348,16 @@ function PartRow({ part, selected, onToggle, onOpenPicker, onRemove, onEdit, onU
       <div className="flex min-w-0 flex-1 flex-col">
         <PartTitleField part={part} partNo={part.part_no} bomItems={bomItems} onLink={onLinkBomItem} canEdit={canEdit} />
         <span className="text-xs text-muted-foreground">{sizeText(part)} · qty {part.qty}</span>
+        {groupName && (
+          <span className="mt-0.5 flex w-fit items-center gap-1 rounded-full border bg-muted/30 px-1.5 py-0.5 text-xs text-muted-foreground">
+            {groupName}
+            {onUnassignGroup && (
+              <button aria-label="Remove from group" onClick={() => onUnassignGroup(part)} className="hover:text-destructive">
+                <XIcon className="size-3" />
+              </button>
+            )}
+          </span>
+        )}
         {isNamedPart && (
           <span className="text-xs text-muted-foreground">
             {part.pieces_cut}/{part.qty} cut{part.linked_piece_code ? ` · matched to ${part.linked_piece_code}` : ''}
@@ -1125,7 +1135,7 @@ function MountingsCard({ documentId, mountings, bomItems, certificates, canEdit,
   );
 }
 
-export default function QcDocumentEditor({ project, document, parts, certificates, mountings = [], groups = [], seams = [], bomItems = [], approvals = [], assemblies = [], unitCertsByItem = {}, canEdit, currentUserName }) {
+export default function QcDocumentEditor({ project, document, parts, certificates, mountings = [], groups = [], form4aGroups = [], seams = [], bomItems = [], approvals = [], assemblies = [], unitCertsByItem = {}, canEdit, currentUserName }) {
   const router = useRouter();
   // parts comes straight from the server prop, no local copy — router.refresh() after linking
   // re-fetches it server-side and flows the new value straight back in, same as QcPanel does for
@@ -1170,6 +1180,51 @@ export default function QcDocumentEditor({ project, document, parts, certificate
     : byFilter;
   const usedIds = useMemo(() => new Set(parts.filter(p => p.test_certificate_id).map(p => p.test_certificate_id)), [parts]);
   const allShownSelected = shown.length > 0 && shown.every(p => selected.has(p.id));
+  const form4aGroupsById = useMemo(() => new Map(form4aGroups.map(g => [g.id, g])), [form4aGroups]);
+
+  // Form IV A's manual lettered-section groups (lib/qc-form4a-sections.mjs) — a plain QC-typed tag
+  // on top of the existing parts list, not a BOM-tree derivation. "+ New group" (sentinel value) is
+  // a native prompt() rather than a second dialog, matching this file's own precedent for a single
+  // short text input (IiiaGroupCard's own removeGroup confirm below).
+  const [groupAssignBusy, setGroupAssignBusy] = useState(false);
+  async function assignSelectedToGroup(value) {
+    if (!value || selected.size === 0) return;
+    setGroupAssignBusy(true);
+    try {
+      let groupId = value;
+      if (value === '__new__') {
+        const name = window.prompt('New group name (e.g. "Shell")');
+        if (!name || !name.trim()) { setGroupAssignBusy(false); return; }
+        const res = await api(`/api/qc-documents/${document.id}/form4a-groups`, { method: 'POST', body: { name: name.trim() } });
+        groupId = res.id;
+      }
+      await api(`/api/qc-documents/${document.id}/form4a-groups/${groupId}/parts`, {
+        method: 'POST', body: { part_ids: [...selected] },
+      });
+      showToast(`Added ${selected.size} part${selected.size === 1 ? '' : 's'} to group`);
+      setSelected(new Set());
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+    setGroupAssignBusy(false);
+  }
+
+  async function unassignFromGroup(part) {
+    try {
+      await api(`/api/qc-documents/${document.id}/form4a-groups/${part.form4a_group_id}/parts`, {
+        method: 'DELETE', body: { part_ids: [part.id] },
+      });
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+  }
+
+  async function deleteForm4aGroup(g) {
+    if (!window.confirm(`Delete group "${g.name}"? Its parts go back to the flat list.`)) return;
+    try {
+      await api(`/api/qc-documents/${document.id}/form4a-groups/${g.id}`, { method: 'DELETE' });
+      showToast('Group deleted');
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+  }
 
   function toggle(id) {
     setSelected(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -1389,6 +1444,24 @@ export default function QcDocumentEditor({ project, document, parts, certificate
         )}
         {ivaOpen && (
         <CardContent className="flex flex-col gap-3">
+          {/* Form IV A's own lettered-section groups (lib/qc-form4a-sections.mjs) — a plain QC-typed
+              tag layered on top of this same flat parts list, not a nested card-per-group structure
+              like Form III A's. Select some parts below, then "Add to group…" in the sticky bar. */}
+          {form4aGroups.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-xs text-muted-foreground">Groups:</span>
+              {form4aGroups.map(g => (
+                <span key={g.id} className="flex items-center gap-1 rounded-full border bg-muted/30 px-2 py-0.5 text-xs">
+                  {g.name} <span className="text-muted-foreground">({parts.filter(p => p.form4a_group_id === g.id).length})</span>
+                  {canEdit && (
+                    <button aria-label={`Delete group ${g.name}`} onClick={() => deleteForm4aGroup(g)} className="text-muted-foreground hover:text-destructive">
+                      <XIcon className="size-3" />
+                    </button>
+                  )}
+                </span>
+              ))}
+            </div>
+          )}
           <div className="flex items-center gap-2">
             <div className="relative flex-1">
               <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -1412,7 +1485,9 @@ export default function QcDocumentEditor({ project, document, parts, certificate
             {shown.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">No matches.</p>}
             {shown.map(p => (
               <PartRow key={p.id} part={p} selected={selected.has(p.id)} onToggle={toggle} onOpenPicker={openPicker}
-                onRemove={removePart} onEdit={setEditingPart} onUnlink={unlinkPart} onLinkBomItem={linkBomItem} bomItems={bomItems} canEdit={canEdit} />
+                onRemove={removePart} onEdit={setEditingPart} onUnlink={unlinkPart} onLinkBomItem={linkBomItem} bomItems={bomItems} canEdit={canEdit}
+                groupName={p.form4a_group_id ? form4aGroupsById.get(p.form4a_group_id)?.name : null}
+                onUnassignGroup={canEdit ? unassignFromGroup : undefined} />
             ))}
           </div>
         </CardContent>
@@ -1425,6 +1500,13 @@ export default function QcDocumentEditor({ project, document, parts, certificate
         <div className="sticky bottom-4 flex items-center justify-between rounded-xl bg-popover p-3 text-sm shadow-lg ring-1 ring-foreground/10">
           <span>{selected.size} selected</span>
           <div className="flex items-center gap-2">
+            <Select value="" onValueChange={assignSelectedToGroup} disabled={groupAssignBusy}>
+              <SelectTrigger size="sm" className="w-40"><SelectValue placeholder="Add to group…" /></SelectTrigger>
+              <SelectContent>
+                {form4aGroups.map(g => <SelectItem key={g.id} value={String(g.id)}>{g.name}</SelectItem>)}
+                <SelectItem value="__new__">+ New group…</SelectItem>
+              </SelectContent>
+            </Select>
             <Button size="sm" variant="outline" className="text-destructive hover:text-destructive" onClick={removeSelectedParts}>Delete</Button>
             <Button size="sm" onClick={() => openPicker([...selected])}>Link to certificate…</Button>
           </div>
