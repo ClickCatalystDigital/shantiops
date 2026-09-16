@@ -13,10 +13,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 
 function LineRow({ line, cells, childrenById, onDone }) {
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState(new Set());
+  const [filter, setFilter] = useState('');
   const [busy, setBusy] = useState(false);
 
   const ready = cells.filter(c => c.ready);
@@ -58,21 +60,29 @@ function LineRow({ line, cells, childrenById, onDone }) {
       </button>
       {open && (
         <div className="mt-2 flex flex-col gap-2">
-          <div className="flex flex-wrap gap-3">
-            {cells.map(c => {
-              const child = childrenById.get(c.child_project_id);
-              if (!child) return null;
-              return (
-                <label key={c.child_project_id} className={`flex items-center gap-1.5 text-xs ${!c.ready ? 'text-muted-foreground' : ''}`}>
-                  <Checkbox disabled={!c.ready} checked={selected.has(c.child_project_id)} onCheckedChange={() => toggle(c.child_project_id)} />
-                  {child.project_no}
-                  {c.ready
-                    ? (c.routed_to ? <span>(→ {c.routed_to})</span> : null)
-                    : <span>({c.allocated}/{c.per_unit_required})</span>}
-                </label>
-              );
-            })}
+          {cells.length > 6 && (
+            <Input className="h-7 w-40 text-xs" placeholder="Filter units…" value={filter} onChange={e => setFilter(e.target.value)} />
+          )}
+          <div className="flex max-h-32 flex-wrap gap-3 overflow-y-auto">
+            {cells
+              .filter(c => !filter.trim() || childrenById.get(c.child_project_id)?.project_no.toLowerCase().includes(filter.trim().toLowerCase()))
+              .map(c => {
+                const child = childrenById.get(c.child_project_id);
+                if (!child) return null;
+                return (
+                  <label key={c.child_project_id} className={`flex items-center gap-1.5 text-xs ${!c.ready ? 'text-muted-foreground' : ''}`}>
+                    <Checkbox disabled={!c.ready} checked={selected.has(c.child_project_id)} onCheckedChange={() => toggle(c.child_project_id)} />
+                    {child.project_no}
+                    {c.ready
+                      ? (c.routed_to ? <span>(→ {c.routed_to})</span> : null)
+                      : <span>({c.allocated}/{c.per_unit_required})</span>}
+                  </label>
+                );
+              })}
           </div>
+          {selected.size > 0 && (
+            <p className="text-xs tnum text-muted-foreground">Selected: {selected.size} unit{selected.size === 1 ? '' : 's'}</p>
+          )}
           <div className="flex gap-2">
             <Button size="sm" variant="outline" className="h-7 text-xs" disabled={busy || !selected.size} onClick={() => route('production')}>
               → Production

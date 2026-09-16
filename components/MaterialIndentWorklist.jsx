@@ -149,12 +149,17 @@ export default function MaterialIndentWorklist() {
                       <span className="text-xs text-muted-foreground tnum">
                         {r.catalog_item_code ? `${r.catalog_item_code} · ` : ''}
                         {r.moc ? `${r.moc} · ` : ''}
-                        {unclear ? 'Required qty unclear — raise from the BOM tab instead' : `Required: ${r.required_qty} ${unitSuffix(r.qty_text)}`}
-                        {r.piece && ` · Piece ${r.piece.code}${r.piece.heat_no ? ` (heat ${r.piece.heat_no})` : ''}`}
-                        {alreadyFull && ' · Fully indented already'}
-                        {!alreadyFull && (r.already_indented_open + r.already_indented_released) > 0 &&
-                          ` · ${r.already_indented_open + r.already_indented_released} already indented, ${remaining} remaining`}
+                        {r.piece ? `Piece ${r.piece.code}${r.piece.heat_no ? ` (heat ${r.piece.heat_no})` : ''}` : null}
                       </span>
+                      {unclear ? (
+                        <span className="text-xs text-warning">Required qty unclear — raise from the BOM tab instead</span>
+                      ) : (
+                        <div className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-muted-foreground tnum">
+                          <span>Required <span className="font-medium text-foreground">{r.required_qty} {unitSuffix(r.qty_text)}</span></span>
+                          <span>Already indented <span className="font-medium text-foreground">{r.already_indented_open + r.already_indented_released}</span></span>
+                          <span>Remaining <span className="font-medium text-foreground">{alreadyFull ? 'Fully indented' : remaining}</span></span>
+                        </div>
+                      )}
                     </div>
                   </label>
                 );

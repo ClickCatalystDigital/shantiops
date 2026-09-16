@@ -277,8 +277,11 @@ function ItemFormDialog({ item, onClose, router }) {
     <Dialog open onOpenChange={o => !o && onClose()}>
       {/* CategoryFieldsBlock's own DimensionInput (a dimensional category's mm/m unit toggle) is a
           raw Select whose popup portals outside this DialogContent — same outside-click guard as
-          ReceiveBomItemDialog.jsx. */}
-      <DialogContent
+          ReceiveBomItemDialog.jsx. Widened (sm: prefix required — a bare max-w-* has no effect
+          against DialogContent's own default sm:max-w-sm, tailwind-merge only dedupes within the
+          same variant scope) — CategoryFieldsBlock's dimensional grid (Size/Weight/Length) was
+          cramped at the default 384px, squeezing the Length number input down to almost nothing. */}
+      <DialogContent className="sm:max-w-xl"
         onPointerDownOutside={e => { if (e.target.closest('[data-slot="select-content"]')) e.preventDefault(); }}>
         <DialogHeader><DialogTitle>{editing ? 'Edit inventory item' : 'New inventory item'}</DialogTitle></DialogHeader>
         <div className="grid grid-cols-2 gap-3">
@@ -1087,12 +1090,13 @@ function TransferOwnershipDialog({ piece, projects, onClose, onTransferred, rout
   );
 }
 
-function ReserveDialog({ request, inventoryItems, matches, onClose, router }) {
+function ReserveDialog({ request, inventoryItems, matches, onClose, router, defaultQty }) {
   const [inventoryItemId, setInventoryItemId] = useState('');
   // rolled_qty already reflects any Local Quantity multiplier on the item's own BOM-tree node —
   // falls back to a plain leading-number parse for rows the server hasn't annotated (e.g. non-'bom'
-  // source stock/SAS lines with no assembly_id at all).
-  const [qty, setQty] = useState(request.rolled_qty ?? leadingQty(request.qty_text));
+  // source stock/SAS lines with no assembly_id at all). defaultQty (Material Demand's "Reserve
+  // remaining" action) overrides both — the outstanding amount, not the whole requirement.
+  const [qty, setQty] = useState(defaultQty ?? request.rolled_qty ?? leadingQty(request.qty_text));
   const [saving, setSaving] = useState(false);
   // Default to the possibleMatches() shortlist (already computed by the parent for the row's
   // badges) instead of every inventory item — a request has no guaranteed FK to one specific item,
@@ -1180,8 +1184,20 @@ function ReserveDialog({ request, inventoryItems, matches, onClose, router }) {
 // remnant-matched) visually recede — small, muted, no action row — instead of sitting at the same
 // weight as a line that genuinely needs a decision, (4) a line needing a real decision gets a
 // left accent stripe so it reads at a glance, not just from a small badge buried in a cell.
+// Required/Reserved/Outstanding numbers for one Material Demand row — reserve_qty already reflects
+// this line's own rollup multiplier (rolled_qty, lib/bom-structure.mjs), so the two are directly
+// comparable. required is null only when qty_text doesn't parse at all (rare); the caller falls
+// back to the old binary covered/uncovered treatment in that case, same as before this pass.
+function reservationProgress(r) {
+  const required = r.rolled_qty ?? null;
+  const reserved = r.reserved_qty || 0;
+  if (required == null) return { required, reserved, outstanding: null };
+  return { required, reserved, outstanding: Math.max(0, required - reserved) };
+}
+
 function OpenRequestsCard({ openRequests, inventoryItems, router }) {
   const [reserveFor, setReserveFor] = useState(null);
+  const [reserveQty, setReserveQty] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [q, setQ] = useState('');
   const reservableInventoryItems = inventoryItems.filter(it => it.tracking_mode !== 'piece' && it.tracking_mode !== 'serial');
@@ -1226,10 +1242,18 @@ function OpenRequestsCard({ openRequests, inventoryItems, router }) {
               <div className="flex flex-col divide-y rounded-md border">
                 {rows.map(r => {
                   const matches = possibleMatches(r, reservableInventoryItems);
-                  const covered = r.reserved_piece_count > 0 || r.reserved_qty > 0;
+                  const remnantMatched = r.reserved_piece_count > 0;
+                  const { required, reserved, outstanding } = reservationProgress(r);
+                  // Three states, not two: nothing reserved yet needs a decision; some-but-not-all
+                  // needs "reserve the rest" (previously read identically to fully reserved); fully
+                  // covered needs no action. A remnant match is always the fully-covered state —
+                  // Cutting & Remnant Management reserves the whole requirement or none of it.
+                  const fullyCovered = remnantMatched || (required != null ? outstanding <= 0 && reserved > 0 : reserved > 0);
+                  const partiallyReserved = !fullyCovered && reserved > 0;
+                  const needsDecision = !fullyCovered && !partiallyReserved;
                   return (
                     <div key={r.id}
-                      className={`flex flex-wrap items-center gap-3 px-3 py-2.5 text-sm ${covered ? '' : 'border-l-2 border-l-warning'}`}>
+                      className={`flex flex-wrap items-center gap-3 px-3 py-2.5 text-sm ${needsDecision ? 'border-l-2 border-l-warning' : ''}`}>
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="font-medium">{r.material_description}</span>
@@ -1243,7 +1267,14 @@ function OpenRequestsCard({ openRequests, inventoryItems, router }) {
                         <span className="text-xs text-muted-foreground tnum">
                           {r.qty_text || '—'}{r.qty_breakdown && ` (${r.qty_breakdown.label})`}
                         </span>
-                        {matches.length > 0 && !covered && (
+                        {partiallyReserved && required != null && (
+                          <div className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-muted-foreground tnum">
+                            <span>Required <span className="font-medium text-foreground">{required}</span></span>
+                            <span>Reserved <span className="font-medium text-foreground">{reserved}</span></span>
+                            <span>Outstanding <span className="font-medium text-warning">{outstanding}</span></span>
+                          </div>
+                        )}
+                        {matches.length > 0 && needsDecision && (
                           <div className="mt-1 flex flex-wrap gap-1">
                             {matches.map(({ item, exact }) => (
                               <Badge key={item.id} variant="outline"
@@ -1255,19 +1286,23 @@ function OpenRequestsCard({ openRequests, inventoryItems, router }) {
                           </div>
                         )}
                       </div>
-                      {covered ? (
-                        <Badge className="shrink-0 border-info/30 bg-info-surface text-[10px] text-info"
-                          title={r.reserved_piece_count > 0
-                            ? 'Cutting & Remnant Management matched this line to stock automatically — ready for Production to cut. No action needed here.'
-                            : 'Allocation Mode: Auto already reserved this from stock the moment the requirement was created. No action needed here.'}>
-                          {r.reserved_piece_count > 0 ? 'Remnant reserved' : 'Auto-reserved'}
-                        </Badge>
+                      {fullyCovered ? (
+                        <div className="flex shrink-0 flex-col items-end gap-0.5">
+                          <Badge className="border-info/30 bg-info-surface text-[10px] text-info">Reserved</Badge>
+                          {/* A bom_item's reserved_qty is a SUM across however many reservations
+                              exist against it — no single "source" to attribute at this level (see
+                              Ready to Issue, one row per real reservation, for that detail). Remnant
+                              matches are always a distinct, unambiguous mechanism, so that one case
+                              still gets its own label. */}
+                          {remnantMatched && <span className="text-[10px] text-muted-foreground">Remnant match</span>}
+                        </div>
                       ) : (
                         <div className="flex shrink-0 items-center gap-2">
                           {r.pending_review ? <Badge className="border-warning/30 bg-warning-surface text-[10px] text-warning">Stores Review</Badge>
                             : <Badge variant="secondary" className="text-[10px]">{r.purchase_status || 'Enquiry'}</Badge>}
-                          <Button size="sm" disabled={!reservableInventoryItems.length} onClick={() => setReserveFor(r)}>
-                            Reserve from stock
+                          <Button size="sm" disabled={!reservableInventoryItems.length}
+                            onClick={() => { setReserveFor(r); setReserveQty(partiallyReserved ? outstanding : null); }}>
+                            {partiallyReserved ? 'Reserve remaining' : 'Reserve from stock'}
                           </Button>
                           {r.pending_review === 1 && (
                             <Button size="sm" variant="outline" disabled={busyId === r.id} onClick={() => procure(r)}>
@@ -1286,7 +1321,7 @@ function OpenRequestsCard({ openRequests, inventoryItems, router }) {
       </CardContent>
       {reserveFor && (
         <ReserveDialog request={reserveFor} inventoryItems={reservableInventoryItems} matches={possibleMatches(reserveFor, reservableInventoryItems)}
-          router={router} onClose={() => setReserveFor(null)} />
+          router={router} defaultQty={reserveQty} onClose={() => { setReserveFor(null); setReserveQty(null); }} />
       )}
     </Card>
   );
@@ -1311,6 +1346,9 @@ function MaterialIssuesCard({ projects }) {
   const [bom, setBom] = useState(null);
   const [form, setForm] = useState({ bom_item_id: '', qty: '' });
   const [busy, setBusy] = useState(false);
+  const [q, setQ] = useState('');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
 
   async function loadRecent() {
     setRecent(await api('/api/material-issues'));
@@ -1376,23 +1414,47 @@ function MaterialIssuesCard({ projects }) {
             )}
           </div>
         )}
+        {recent !== null && recent.length > 0 && (
+          <div className="flex flex-wrap items-end gap-2">
+            <SearchBox value={q} onChange={setQ} placeholder="Search by material or project…" />
+            <div className="grid gap-1"><Label className="text-xs">From</Label>
+              <Input type="date" className="h-8 w-36 text-xs" value={fromDate} onChange={e => setFromDate(e.target.value)} /></div>
+            <div className="grid gap-1"><Label className="text-xs">To</Label>
+              <Input type="date" className="h-8 w-36 text-xs" value={toDate} onChange={e => setToDate(e.target.value)} /></div>
+          </div>
+        )}
         {recent === null ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : recent.length === 0 ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">Nothing issued yet.</p>
-        ) : (
-          <div className="flex flex-col divide-y rounded-md border">
-            {recent.map(i => (
-              <div key={i.id} className="flex flex-wrap items-center gap-3 px-3 py-2 text-sm">
-                <div className="min-w-0 flex-1">
-                  <span className="font-medium">{i.material_description}</span>
-                  <div className="text-xs text-muted-foreground">{i.project_no} · {i.customer_name}</div>
+          <p className="py-6 text-center text-sm text-muted-foreground">
+            Nothing issued yet — logging an issue, or Stores releasing a Material Indent, adds it here.
+          </p>
+        ) : (() => {
+          const needle = q.trim().toLowerCase();
+          const shown = recent.filter(i => {
+            if (needle && !(i.material_description || '').toLowerCase().includes(needle)
+              && !(i.project_no || '').toLowerCase().includes(needle)) return false;
+            const d = String(i.issued_at || '').slice(0, 10);
+            if (fromDate && d < fromDate) return false;
+            if (toDate && d > toDate) return false;
+            return true;
+          });
+          return shown.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">No issues match.</p>
+          ) : (
+            <div className="flex flex-col divide-y rounded-md border">
+              {shown.map(i => (
+                <div key={i.id} className="flex flex-wrap items-center gap-3 px-3 py-2 text-sm">
+                  <div className="min-w-0 flex-1">
+                    <span className="font-medium">{i.material_description}</span>
+                    <div className="text-xs text-muted-foreground">{i.project_no} · {i.customer_name}</div>
+                  </div>
+                  <span className="shrink-0 text-xs text-muted-foreground tnum">qty {i.qty} · {i.issued_by} · {formatDate(i.issued_at)}</span>
                 </div>
-                <span className="shrink-0 text-xs text-muted-foreground tnum">qty {i.qty} · {i.issued_by} · {formatDate(i.issued_at)}</span>
-              </div>
-            ))}
-          </div>
-        )}
+              ))}
+            </div>
+          );
+        })()}
       </CardContent>
     </Card>
   );
@@ -1401,14 +1463,15 @@ function MaterialIssuesCard({ projects }) {
 // Grouped by project, same pattern as Material Demand above — "Ready to Issue" instead of "Active
 // reservations" (jargon that didn't say what to do here; every one of these rows is committed
 // stock waiting on a single click to actually hand it over).
-function ActiveReservationsCard({ activeReservations, router }) {
+function ActiveReservationsCard({ activeReservations, inventoryItems, router }) {
   const [busyId, setBusyId] = useState(null);
+  const invById = useMemo(() => new Map(inventoryItems.map(it => [it.id, it])), [inventoryItems]);
 
   async function act(id, action) {
     setBusyId(id);
     try {
       await api(`/api/inventory-reservations/${id}/${action}`, { method: 'POST' });
-      showToast(action === 'issue' ? 'Issued — item marked In-Stock' : 'Reservation released');
+      showToast(action === 'issue' ? 'Issued — item marked In-Stock' : 'Reservation unreserved');
       router.refresh();
     } catch (err) {
       showToast(err.message, 'error');
@@ -1432,28 +1495,45 @@ function ActiveReservationsCard({ activeReservations, router }) {
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {activeReservations.length === 0 ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">No active reservations.</p>
+          <p className="py-6 text-center text-sm text-muted-foreground">
+            Nothing committed yet — reserving stock against a request in Material Demand puts it here, ready to hand over.
+          </p>
         ) : (
           [...groups.entries()].map(([label, rows]) => (
             <div key={label} className="flex flex-col gap-1">
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
               <div className="flex flex-col divide-y rounded-md border">
-                {rows.map(r => (
-                  <div key={r.id} className="flex flex-wrap items-center gap-3 border-l-2 border-l-success px-3 py-2.5 text-sm">
-                    <div className="min-w-0 flex-1">
-                      <span className="font-medium">{r.inventory_description}</span>
-                      <div className="text-xs text-muted-foreground">{r.material_description} · qty {r.qty}</div>
+                {rows.map(r => {
+                  const item = invById.get(r.inventory_item_id);
+                  return (
+                    <div key={r.id} className="flex flex-wrap items-center gap-3 border-l-2 border-l-success px-3 py-2.5 text-sm">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-medium">{r.inventory_description}</span>
+                          {item?.item_code && <span className="text-xs text-muted-foreground">{item.item_code}</span>}
+                        </div>
+                        <div className="text-xs text-muted-foreground">{r.material_description}</div>
+                        <div className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-muted-foreground tnum">
+                          <span>Required <span className="font-medium text-foreground">{r.qty_text || '—'}</span></span>
+                          <span>Reserved <span className="font-medium text-foreground">{r.qty}</span></span>
+                          {item && <span>On-hand <span className="font-medium text-foreground">{item.on_hand}</span></span>}
+                          {item && <span>Available now <span className="font-medium text-foreground">{item.available}</span></span>}
+                        </div>
+                        <span className="text-[10px] text-muted-foreground">
+                          Source: {r.source === 'auto' ? 'Automatic' : 'Manual'}
+                        </span>
+                      </div>
+                      <div className="flex shrink-0 gap-1">
+                        <Button size="sm" disabled={busyId === r.id} onClick={() => act(r.id, 'issue')}>
+                          <PackageCheckIcon />Issue
+                        </Button>
+                        <Button size="sm" variant="outline" disabled={busyId === r.id} onClick={() => act(r.id, 'release')}>
+                          <UndoIcon />Unreserve
+                        </Button>
+                      </div>
                     </div>
-                    <div className="flex shrink-0 gap-1">
-                      <Button size="sm" disabled={busyId === r.id} onClick={() => act(r.id, 'issue')}>
-                        <PackageCheckIcon />Issue
-                      </Button>
-                      <Button size="sm" variant="outline" disabled={busyId === r.id} onClick={() => act(r.id, 'release')}>
-                        <UndoIcon />Release
-                      </Button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           ))
@@ -1514,8 +1594,10 @@ function IndentItemRow({ indent, item, onDone, selectable, selected, onToggle })
       )}
       <div className="min-w-0 flex-1">
         <span className="font-medium">{item.bom_description || item.inventory_description || `Item #${item.inventory_item_id}`}</span>
-        <div className="text-xs text-muted-foreground tnum">
-          {item.qty_released}/{item.qty_requested} released
+        <div className="flex flex-wrap gap-x-3 text-xs text-muted-foreground tnum">
+          <span>Required <span className="font-medium text-foreground">{item.qty_requested}</span></span>
+          <span>Released <span className="font-medium text-foreground">{item.qty_released}</span></span>
+          <span>Remaining <span className="font-medium text-foreground">{remaining}</span></span>
         </div>
       </div>
       <Badge variant="outline">{item.status}</Badge>
@@ -1942,9 +2024,14 @@ function GateInwardReceiptsCard({ gateInwardReceipts, router }) {
                   <TableCell className="text-muted-foreground">{g.supplier_name || '—'}</TableCell>
                   <TableCell className="text-muted-foreground">{g.driver_name || '—'}</TableCell>
                   <TableCell>
-                    {g.security_seal_ok ? <Badge className="bg-success/10 text-success ring-success/20 mr-1">Seal</Badge> : null}
-                    {g.security_docs_ok ? <Badge className="bg-success/10 text-success ring-success/20">Docs</Badge> : null}
-                    {!g.security_seal_ok && !g.security_docs_ok && '—'}
+                    <div className="flex flex-wrap gap-1">
+                      {g.security_seal_ok
+                        ? <Badge className="bg-success/10 text-success ring-success/20">Seal ✓</Badge>
+                        : <Badge className="bg-warning/10 text-warning ring-warning/20">Seal pending</Badge>}
+                      {g.security_docs_ok
+                        ? <Badge className="bg-success/10 text-success ring-success/20">Docs ✓</Badge>
+                        : <Badge className="bg-warning/10 text-warning ring-warning/20">Docs missing</Badge>}
+                    </div>
                   </TableCell>
                   <TableCell>
                     {/* A linked receipt (made via ReceiptPicker.jsx when Stores actually received the
@@ -2009,16 +2096,20 @@ function GateInwardReceiptsCard({ gateInwardReceipts, router }) {
 // DISPATCH) — the sidebar now exposes business activities, not every underlying process concept.
 // No standalone BOM tab (its bulk-receive-by-project mode folded into Receive a Delivery, see
 // ReceiveDeliveryTab below); Reorder Suggestions moved to Purchase Requests; Gate Passes moved to
-// Dispatch; Backlog moved to Planning; Active Reservations + Allocation & Routing merged onto one
-// "Allocation & Reservations" tab (both are "commit stock to a demand," just two mechanisms).
-// Grouped with labeled dividers (WorkspaceSidebar's divider.label), matching the spec's exact
-// STOCK / FULFILLMENT / PRODUCTION / RECEIVING section order.
+// Dispatch; Backlog moved to Planning. Ready to Issue and Allocation & Routing stay two separate
+// tabs, deliberately not merged — Multi-Unit Orders is rare and reads clearer as its own section
+// than folded into Fulfillment's everyday Reserve->Issue flow. Grouped with labeled dividers
+// (WorkspaceSidebar's divider.label), matching the spec's exact STOCK / FULFILLMENT / PRODUCTION /
+// RECEIVING section order.
 const NAV_ITEMS = (counts) => [
   { key: 'divider-stock', divider: true, label: 'Stock' },
   { key: 'inventory', label: 'Inventory', icon: PackageIcon, badge: counts.lowStock || null },
   { key: 'divider-fulfillment', divider: true, label: 'Fulfillment' },
   { key: 'requests', label: 'Material Demand', icon: ClipboardListIcon, badge: counts.requests || null },
-  { key: 'reservations', label: 'Active Reservations', icon: PackageCheckIcon, badge: counts.reservations || null },
+  // Renamed from "Active Reservations" — the card underneath has always said "Ready to Issue," a
+  // nav/screen naming mismatch fixed here rather than by changing the card's own already-correct,
+  // action-oriented title.
+  { key: 'reservations', label: 'Ready to Issue', icon: PackageCheckIcon, badge: counts.reservations || null },
   { key: 'divider-production', divider: true, label: 'Production' },
   { key: 'indents', label: 'Material Indents', icon: BoxesIcon },
   { key: 'issued', label: 'Issued to WIP', icon: TruckIcon },
@@ -2056,6 +2147,7 @@ const DATE_FILTERS = [
   { value: 'overdue', label: 'Overdue' },
   { value: 'today', label: 'Due today' },
   { value: 'week', label: 'Due this week' },
+  { value: 'custom', label: 'Custom range…' },
 ];
 
 // Real, previously-invisible gap: once Stores receives something and QC holds it for inward review
@@ -2101,6 +2193,13 @@ function ReceiveDeliveryTab({ bomItems, pendingInwardApprovals = [], router }) {
   const [mode, setMode] = useState('search');
   const [query, setQuery] = useState('');
   const [dateFilter, setDateFilter] = useState('all');
+  // Was: "All dates" (the select's own default value) permanently read as "nothing chosen yet" —
+  // browsing required a search term even though the option's whole point is "no date filter." An
+  // explicit engaged flag separates the true untouched landing state from a deliberate pick of any
+  // option, "All dates" included, so selecting it always shows every open line.
+  const [dateEngaged, setDateEngaged] = useState(false);
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
   // A line still in Enquiry/Comparison has no supplier chosen and nothing has actually been
   // ordered — nothing can plausibly be "arriving" yet. Only Ordered (supplier/PO selected) or
   // Transit (PO issued) lines are real candidates. purchase_status is an editable, often-stale
@@ -2115,6 +2214,12 @@ function ReceiveDeliveryTab({ bomItems, pendingInwardApprovals = [], router }) {
   const today = todayISO();
   const weekEnd = toISODate(new Date(Date.now() + 7 * 86400000));
   const matchesDate = it => {
+    if (dateFilter === 'custom') {
+      if (!it.nearest_expected_delivery) return false;
+      if (fromDate && it.nearest_expected_delivery < fromDate) return false;
+      if (toDate && it.nearest_expected_delivery > toDate) return false;
+      return true;
+    }
     if (!it.nearest_expected_delivery) return false;
     if (dateFilter === 'overdue') return it.nearest_expected_delivery < today;
     if (dateFilter === 'today') return it.nearest_expected_delivery === today;
@@ -2127,8 +2232,8 @@ function ReceiveDeliveryTab({ bomItems, pendingInwardApprovals = [], router }) {
         (it.project_no || '').toLowerCase().includes(q) ||
         (it.pr_no || '').toLowerCase().includes(q) ||
         (it.po_ref || '').toLowerCase().includes(q))
-    : (dateFilter === 'all' ? [] : dateFiltered);
-  const showPrompt = dateFilter === 'all' && !q;
+    : (dateEngaged ? dateFiltered : []);
+  const showPrompt = !dateEngaged && !q;
 
   return (
     <div className="flex flex-col gap-3">
@@ -2150,13 +2255,37 @@ function ReceiveDeliveryTab({ bomItems, pendingInwardApprovals = [], router }) {
             <div className="flex gap-2">
               <Input value={query} onChange={e => setQuery(e.target.value)}
                 placeholder="Search by material, project, PR, or PO number…" autoFocus className="flex-1" />
-              <Select value={dateFilter} onValueChange={setDateFilter}>
-                <SelectTrigger className="h-9 w-36 shrink-0 text-xs"><SelectValue /></SelectTrigger>
+              {/* The Select's own controlled value stays '' (unset) until dateEngaged — Radix only
+                  fires onValueChange on a genuine value change, so if the control's real value
+                  already equalled 'all' by default, re-picking the visually-preselected "All
+                  dates" option (the realistic first click, since it's the default) would be a
+                  silent no-op and never engage; onClick on the item doesn't reliably help either,
+                  since Radix can close the popover before a native click completes on it —
+                  verified live, both of those still left the bug reachable. Starting genuinely
+                  unset means every first pick, "All dates" included, is a real '' -> value
+                  transition and always fires. The placeholder keeps "All dates" visible as the
+                  displayed default in the meantime. */}
+              <Select value={dateEngaged ? dateFilter : ''} onValueChange={v => {
+                setDateFilter(v);
+                // Custom needs a from/to pick + Apply first; every other option (All dates
+                // included) is a complete choice the moment it's picked.
+                if (v !== 'custom') setDateEngaged(true);
+              }}>
+                <SelectTrigger className="h-9 w-40 shrink-0 text-xs"><SelectValue placeholder="All dates" /></SelectTrigger>
                 <SelectContent>
                   {DATE_FILTERS.map(f => <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
+            {dateFilter === 'custom' && (
+              <div className="flex flex-wrap items-end gap-2 rounded-md border bg-muted/30 p-2">
+                <div className="grid gap-1"><Label className="text-xs">From</Label>
+                  <Input type="date" className="h-8 w-36 text-xs" value={fromDate} onChange={e => setFromDate(e.target.value)} /></div>
+                <div className="grid gap-1"><Label className="text-xs">To</Label>
+                  <Input type="date" className="h-8 w-36 text-xs" value={toDate} onChange={e => setToDate(e.target.value)} /></div>
+                <Button size="sm" className="h-8" onClick={() => setDateEngaged(true)}>Apply</Button>
+              </div>
+            )}
             {showPrompt ? (
               <p className="py-6 text-center text-sm text-muted-foreground">Start typing to find what arrived.</p>
             ) : results.length === 0 ? (
@@ -2317,7 +2446,10 @@ function BomGrnTab({ bomItems, router }) {
 // happens to THIS received line") and never touches this line's own frozen requires_manufacturing.
 function AllocateTab({ items: initialItems, router }) {
   const [items, setItems] = useState(initialItems);
-  const [selected, setSelected] = useState(() => new Set(initialItems.map(it => it.id)));
+  // Stores UI pass — was pre-selecting every row by default (261 selected on load, no deliberate
+  // action taken); nothing here is safe to bulk-apply sight-unseen. Empty default, the header
+  // checkbox (toggleAll below) is the explicit way to select everything.
+  const [selected, setSelected] = useState(() => new Set());
   // Per-row staged values, keyed by bom_item id — routing always has a value (mutually exclusive,
   // pre-filled from this line's own frozen requires_manufacturing, matching the old Receive
   // dialog's pre-fill exactly); defaultValue only means something for a catalog-linked row.
@@ -2332,7 +2464,7 @@ function AllocateTab({ items: initialItems, router }) {
   // unrouted queue, instead of silently losing the correction.
   const [partial, setPartial] = useState([]);
 
-  useEffect(() => { setItems(initialItems); setSelected(new Set(initialItems.map(it => it.id))); }, [initialItems]);
+  useEffect(() => { setItems(initialItems); setSelected(new Set()); }, [initialItems]);
 
   function setRouting(id, routing) {
     setRowState(prev => ({ ...prev, [id]: { ...prev[id], routing } }));
@@ -2513,6 +2645,8 @@ function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavi
   const [batchesFor, setBatchesFor] = useState(null);
   const [serialsFor, setSerialsFor] = useState(null);
   const [lowOnly, setLowOnly] = useState(false);
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [trackingFilter, setTrackingFilter] = useState('all');
   const [q, setQ] = useState('');
   const [codeMatchId, setCodeMatchId] = useState(null);
   const needle = q.trim().toLowerCase();
@@ -2523,7 +2657,14 @@ function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavi
   const localMatches = it => it.description.toLowerCase().includes(needle)
     || (it.item_code || '').toLowerCase().includes(needle)
     || (it.catalog_item_code || '').toLowerCase().includes(needle);
-  const filtered = (lowOnly ? inventoryItems.filter(isLowStock) : inventoryItems).filter(it => !needle || localMatches(it));
+  // A small, deliberate subset of the possible filters (category, tracking, low-stock) — search
+  // already reaches grade-ish text loosely, and the on-hand/reserved/available column below makes
+  // availability obvious without its own filter, so those two aren't duplicated as dropdowns too.
+  const trackingOptions = [...new Set(inventoryItems.map(it => it.tracking_mode || 'scalar'))].sort();
+  const filtered = (lowOnly ? inventoryItems.filter(isLowStock) : inventoryItems)
+    .filter(it => categoryFilter === 'all' || (it.category || '') === categoryFilter)
+    .filter(it => trackingFilter === 'all' || (it.tracking_mode || 'scalar') === trackingFilter)
+    .filter(it => !needle || localMatches(it));
   // Smart code search (2026-08-26) — if nothing matched locally and the query looks like a real
   // identifier (contains a hyphen, e.g. "PL-0045"), ask the server whether that exact code belongs
   // to a piece/serial/catalog item elsewhere, and surface just that one line if so. Deliberately
@@ -2559,7 +2700,26 @@ function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavi
           </CardAction>
         </CardHeader>
         <CardContent>
-          {inventoryItems.length > 0 && <SearchBox value={q} onChange={setQ} placeholder="Search by description, item code, or a PL-/LN-/SR-/IM- code…" />}
+          {inventoryItems.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 pb-2">
+              <SearchBox value={q} onChange={setQ} placeholder="Search by description, item code, or a PL-/LN-/SR-/IM- code…" />
+              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                <SelectTrigger className="h-8 w-40 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All categories</SelectItem>
+                  <SelectItem value="">Not dimensional</SelectItem>
+                  {DIMENSIONAL_CATEGORIES.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Select value={trackingFilter} onValueChange={setTrackingFilter}>
+                <SelectTrigger className="h-8 w-36 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All tracking</SelectItem>
+                  {trackingOptions.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           {filtered.length === 0 && codeMatchId && (
             <p className="pb-2 text-xs text-muted-foreground">
               No direct match — showing the stock line that owns piece/serial/catalog code "{q.trim()}".
@@ -2569,7 +2729,7 @@ function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavi
             <p className="py-6 text-center text-sm text-muted-foreground">No inventory items yet.</p>
           ) : shown.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">
-              {needle ? 'No items match.' : 'Nothing below its minimum right now.'}
+              {needle || categoryFilter !== 'all' || trackingFilter !== 'all' ? 'No items match.' : 'Nothing below its minimum right now.'}
             </p>
           ) : (
             <Table>
@@ -2578,8 +2738,7 @@ function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavi
                   <TableHead>Description</TableHead>
                   <TableHead>Grade</TableHead>
                   <TableHead>Dimensions</TableHead>
-                  <TableHead>On-hand</TableHead>
-                  <TableHead>Available</TableHead>
+                  <TableHead>Stock</TableHead>
                   <TableHead>Location</TableHead>
                   <TableHead>Minimum</TableHead>
                   <TableHead>Tracking</TableHead>
@@ -2597,10 +2756,18 @@ function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavi
                     </TableCell>
                     <TableCell className="text-muted-foreground">{it.moc || '—'}</TableCell>
                     <TableCell className="text-muted-foreground">{inventoryDimensions(it)}</TableCell>
-                    <TableCell>{it.on_hand}</TableCell>
                     <TableCell>
-                      {it.available}
-                      {isLowStock(it) && <Badge variant="destructive" className="ml-2">Low</Badge>}
+                      {/* On-hand/Reserved/Available as one visible hierarchy — was two bare numbers
+                          side by side, leaving Reserved (the actual gap between them) to be
+                          mentally subtracted every time. */}
+                      <div className="flex flex-col gap-0.5 text-xs tnum">
+                        <span>On-hand <span className="font-medium text-foreground">{it.on_hand}</span></span>
+                        <span>Reserved <span className="font-medium text-foreground">{it.on_hand - it.available}</span></span>
+                        <span className="flex items-center gap-1">
+                          Available <span className="font-medium text-foreground">{it.available}</span>
+                          {isLowStock(it) && <Badge variant="destructive" className="text-[10px]">Low</Badge>}
+                        </span>
+                      </div>
                     </TableCell>
                     <TableCell className="text-muted-foreground">{it.location || '—'}</TableCell>
                     <TableCell className="text-muted-foreground">{it.reorder_point ?? '—'}</TableCell>
@@ -2668,7 +2835,7 @@ export default function StoresWorkspace({
       )}
       {tab === 'indents' && <IndentsCard router={router} />}
       {tab === 'reservations' && (
-        <ActiveReservationsCard activeReservations={activeReservations} router={router} />
+        <ActiveReservationsCard activeReservations={activeReservations} inventoryItems={inventoryItems} router={router} />
       )}
       {tab === 'issued' && <MaterialIssuesCard projects={projects} />}
       {tab === 'gir' && <GateInwardReceiptsCard gateInwardReceipts={gateInwardReceipts} router={router} />}

@@ -18,10 +18,14 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 // Bundle allocation — pick N children in one action, one qty auto-split 1-per-child off the line's
-// own per-unit requirement (server-computed, never hand-typed). Same checkbox idiom as
-// DispatchBatchPackingPanel's own batch action.
+// own per-unit requirement (server-computed, never hand-typed — a real order can have 50+ units, so
+// this always gives each selected unit the same fixed amount rather than a freely-typed quantity,
+// which wouldn't have a sensible per-unit meaning here). Same checkbox idiom as
+// DispatchBatchPackingPanel's own batch action, now with a search filter + running total so picking
+// from a real 50-unit list doesn't mean scanning a flat, unfiltered checkbox grid.
 function BundleAllocate({ line, children, onDone }) {
   const [selected, setSelected] = useState(new Set());
+  const [filter, setFilter] = useState('');
   const [busy, setBusy] = useState(false);
 
   function toggle(id) {
@@ -30,6 +34,8 @@ function BundleAllocate({ line, children, onDone }) {
 
   const perUnit = line.per_unit_qty ?? 1;
   const fits = line.available >= perUnit * selected.size;
+  const needle = filter.trim().toLowerCase();
+  const shownChildren = needle ? children.filter(c => c.project_no.toLowerCase().includes(needle)) : children;
 
   async function submit() {
     if (!selected.size) return showToast('Pick at least one unit', 'error');
@@ -49,14 +55,24 @@ function BundleAllocate({ line, children, onDone }) {
 
   return (
     <div className="flex flex-col gap-1.5">
-      <div className="flex flex-wrap gap-2">
-        {children.map(c => (
-          <label key={c.id} className="flex items-center gap-1 text-xs">
-            <Checkbox checked={selected.has(c.id)} onCheckedChange={() => toggle(c.id)} />
-            {c.project_no}
-          </label>
-        ))}
+      {children.length > 6 && (
+        <Input className="h-7 w-40 text-xs" placeholder="Filter units…" value={filter} onChange={e => setFilter(e.target.value)} />
+      )}
+      <div className="flex max-h-32 flex-wrap gap-2 overflow-y-auto">
+        {shownChildren.length === 0
+          ? <span className="text-xs text-muted-foreground">No units match.</span>
+          : shownChildren.map(c => (
+            <label key={c.id} className="flex items-center gap-1 text-xs">
+              <Checkbox checked={selected.has(c.id)} onCheckedChange={() => toggle(c.id)} />
+              {c.project_no}
+            </label>
+          ))}
       </div>
+      {selected.size > 0 && (
+        <p className="text-xs tnum text-muted-foreground">
+          Selected: {selected.size} unit{selected.size === 1 ? '' : 's'} · {perUnit * selected.size} of {line.available} available
+        </p>
+      )}
       <Button size="sm" variant="outline" className="h-7 w-fit text-xs" disabled={busy || !selected.size || !fits} onClick={submit}>
         {busy ? '…' : `Allocate 1 unit's worth to ${selected.size || 'N'}`}
       </Button>
