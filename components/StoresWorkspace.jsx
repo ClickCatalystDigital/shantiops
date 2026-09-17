@@ -2583,8 +2583,7 @@ function AllocateTab({ items: initialItems, router }) {
                     <TableHead className="w-24">Qty</TableHead>
                     <TableHead className="w-24 text-center">Production</TableHead>
                     <TableHead className="w-24 text-center">Dispatch</TableHead>
-                    <TableHead className="w-28 text-center text-muted-foreground" title="This line's own frozen value, set by Engineering — read-only here, never editable from Allocate">Requires Mfg</TableHead>
-                    <TableHead className="w-28 text-center text-muted-foreground" title="Corrects the catalog item's own learned default for FUTURE orders — has no effect on this line's routing or readiness">Catalog Default</TableHead>
+                    <TableHead className="w-28 text-center text-muted-foreground" title="Corrects the catalog item's own learned default for FUTURE orders — has no effect on this line's routing or readiness">Default</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -2601,9 +2600,6 @@ function AllocateTab({ items: initialItems, router }) {
                         </TableCell>
                         <TableCell className="text-center">
                           <Checkbox checked={row.routing === 'dispatch'} onCheckedChange={v => v && setRouting(it.id, 'dispatch')} aria-label="Route to Dispatch" />
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Badge variant="outline" className="text-xs font-normal">{it.requires_manufacturing ? 'Yes' : 'No'}</Badge>
                         </TableCell>
                         <TableCell className="text-center">
                           {it.item_id ? (
