@@ -281,7 +281,7 @@ function ItemFormDialog({ item, onClose, router }) {
           against DialogContent's own default sm:max-w-sm, tailwind-merge only dedupes within the
           same variant scope) — CategoryFieldsBlock's dimensional grid (Size/Weight/Length) was
           cramped at the default 384px, squeezing the Length number input down to almost nothing. */}
-      <DialogContent className="sm:max-w-xl"
+      <DialogContent className="sm:max-w-2xl"
         onPointerDownOutside={e => { if (e.target.closest('[data-slot="select-content"]')) e.preventDefault(); }}>
         <DialogHeader><DialogTitle>{editing ? 'Edit inventory item' : 'New inventory item'}</DialogTitle></DialogHeader>
         <div className="grid grid-cols-2 gap-3">
