@@ -82,24 +82,30 @@ through both and the received material is neither credited nor reserved. Deferre
 below by explicit decision (2026-09-17) — SAS/trade is a separate workflow, tested and fixed on
 its own.
 
-## ⬜ Phase 3 — Stores Allocate: routing to Production vs Dispatch (not started)
+## ✅ Phase 3 — Stores Allocate: routing to Production vs Dispatch (`phase3_stores_allocate.py`)
 
-Uses Stores' **Allocation & Routing** module (`route-self`/`route-to`) on material that's now
-usable/reserved stock (Phase 2's output, or Phase 1's auto-matched items):
+**Status: COMPLETE, all 14 checks passing.**
 
-1. Route some items to **Production**, some directly to **Dispatch** (bought-out, ready to pack) —
-   both from the same allocation screen.
-2. Confirm each routed item is actually **visible in its own destination module** — the
-   Production-routed items show up on Production's own worklist, the Dispatch-routed items show up
-   wherever Dispatch expects a routable line (ready to be pulled onto a packing list).
-3. **For Production-routed items**: Production creates a **Material Indent** against them.
-4. **Stores releases the indent** — the real physical/paper flow is: the indent gets generated as a
-   PDF, physically taken to Stores, and Stores releases the material for WIP against it in the
-   system. Test the digital half of this (create indent → Stores' release action → material
-   actually leaves for WIP, `material_issues`/WIP state updates correctly) — the PDF itself just
-   needs to render with the right indent contents, not a physical-handoff simulation.
-5. **For Dispatch-routed items**: gets folded into Phase 5, since it needs the packing list format
-   defined first (see the open item below) before there's anything meaningful to assert against.
+Two items, both raised/quoted/selected/issued/received/QC-approved via the same self-contained
+route Phase 2 proves works (no dependency on Phase 2 having run first):
+- **Item PROD** — routed to Production via `route-self`. Confirmed it shows up on Production's own
+  cross-project Material Indent worklist. Production raises a real **Material Indent** against it →
+  the indent's PDF renders (the physical handoff document to Stores) → Stores **releases** the full
+  quantity → confirmed at the data layer: a real `material_issues` row for the full quantity, the
+  indent item + header both roll up to `released`, and the underlying `inventory_reservations` row
+  moves to `qty_issued == qty` with `status='issued'`.
+- **Item DISP** — routed to Dispatch via `route-self`. Confirmed `self_routed_to='dispatch'` on the
+  project's own BOM view, confirmed it does **not** appear on Production's worklist, and confirmed
+  attempting to indent it is correctly **rejected** (`"...not routed to Production yet — Stores must
+  route it before it can be indented"`). Full packing-list generation stays Phase 5's job.
+
+**Real bug found — in the test itself, not the app.** The first run's final assertion queried
+`inventory_reservations WHERE status = 'active'` and got nothing back, because a reservation that's
+been fully consumed correctly moves to `status='issued'` — the app was right, the test's stale
+filter was excluding the very row it needed. Verified directly against the DB
+(`qty=8, qty_issued=8, status='issued'`) before touching the app, then fixed the test's own query
+(drop the `status='active'` filter, assert `status='issued'` instead). Re-ran clean, all 14 pass.
+Test artifacts cleaned up afterward via `reset()`.
 
 ## ⬜ Phase 4 — Production / WIP (not started)
 

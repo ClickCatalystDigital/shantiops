@@ -18,7 +18,7 @@ import Link from 'next/link';
 import {
   getProjectDetail, getProjectBom, getProjectPackingLists, getProjectDesignSummary, getScopeOfSupply,
   getDepartmentState, getQcProjectSummary, getJobCards, getMaterialIndentsByProject,
-  getProjectInventoryItems, attachDeliveryLotDates, getBomAssembliesFlat,
+  getProjectInventoryItems, attachDeliveryLotDates, getBomAssembliesFlat, getCustomers,
 } from '@/lib/data';
 import { BOM_FIELD_OWNERS } from '@/lib/bom-fields.mjs';
 import { getFreshSessionUser, isCustomer, isPM, isHead, headDepartments, canAccessDepartment, roleHome } from '@/lib/auth';
@@ -50,9 +50,13 @@ export default async function ProjectDetail({ params }) {
   if (!data) notFound();
   const { project, milestones, health, blocker, hasChildren } = data;
 
+  // Edit Project (2026-09-18) — same gate PATCH /api/projects/[id] itself enforces
+  // (requireCalcAccess): PM + Design/Engineering heads.
+  const canEditProject = canAccessDepartment(user, 'Design') || canAccessDepartment(user, 'Engineering');
+
   const [
     { bom, pending, imports }, packingLists, designSummary, scopeOfSupply, departmentState, qcSummary,
-    jobCards, materialIndents, inventoryItems, assemblies,
+    jobCards, materialIndents, inventoryItems, assemblies, editCustomers,
   ] = await Promise.all([
     getProjectBom(params.id),
     getProjectPackingLists(params.id),
@@ -64,6 +68,7 @@ export default async function ProjectDetail({ params }) {
     getMaterialIndentsByProject(project.id),
     getProjectInventoryItems(project.id),
     getBomAssembliesFlat(project.id),
+    canEditProject ? getCustomers() : [],
   ]);
   // Expected delivery lots (Decision K) — reuses the exact function Stores' own Receive-a-Delivery
   // tab already uses, never a second calculation. Only meaningful for open (not yet terminal) lines.
@@ -81,7 +86,11 @@ export default async function ProjectDetail({ params }) {
   // outside the narrowed Procurement/Engineering set, lib/bom-fields.mjs); a head gets the union of
   // their own granted departments.
   const bomDepartments = pm ? Object.keys(BOM_FIELD_OWNERS) : myDepts;
-  const bomEditableFields = bomDepartments.flatMap(d => BOM_FIELD_OWNERS[d] || []);
+  // Design has no BOM_FIELD_OWNERS entry of its own — shares Engineering's (lib/bom-fields.mjs's
+  // editableBomFields() does the same mapping for the API side; kept as its own line here rather
+  // than a shared call since PM's bomDepartments/BOM_FIELD_OWNERS-keys shape differs from that
+  // function's full-BOM_FIELDS PM behavior).
+  const bomEditableFields = bomDepartments.flatMap(d => BOM_FIELD_OWNERS[d === 'Design' ? 'Engineering' : d] || []);
   const bomTableDepartment =
     bomDepartments.length > 0 && bomDepartments.every(d => ['Design', 'Engineering'].includes(d)) ? 'Engineering'
       : bomDepartments.includes('Stores') ? 'Stores'
@@ -117,7 +126,8 @@ export default async function ProjectDetail({ params }) {
 
       {/* Row 2 — always 3 fixed columns. */}
       <div className="grid items-start gap-6 lg:grid-cols-3">
-        <ProjectHeader project={project} health={health} blocker={blocker} milestones={milestones} />
+        <ProjectHeader project={project} health={health} blocker={blocker} milestones={milestones}
+          canEdit={canEditProject} customers={editCustomers} scopeOfSupply={scopeOfSupply} />
         <TodayBand milestones={attentionMilestones} />
         <DepartmentStateCard departments={departmentState} />
       </div>

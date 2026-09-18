@@ -4,6 +4,7 @@ import { getFreshSessionUser } from '@/lib/auth';
 import { requireCalcAccess } from '@/lib/calc';
 import { audit } from '@/lib/usb';
 import { COMPANY_NAMES } from '@/lib/qc-doc-pdf.js';
+import { isValidSeries } from '@/lib/qc-series';
 
 // Rename a project's identity (project_no / customer_name) — used e.g. when a demo/seed project
 // is repurposed into a real one instead of creating a duplicate. Gated the same as the rest of
@@ -20,6 +21,20 @@ export async function PATCH(req, { params }) {
   if (b.project_no !== undefined) { fields.push('project_no = ?'); args.push(String(b.project_no).trim()); }
   if (b.customer_name !== undefined) { fields.push('customer_name = ?'); args.push(String(b.customer_name).trim()); }
   if (b.description !== undefined) { fields.push('description = ?'); args.push(b.description || null); }
+  if (b.order_date !== undefined) { fields.push('order_date = ?'); args.push(b.order_date || null); }
+  // Model spec fields (2026-09-18) — series ("Model Category") reuses the same validity check
+  // POST /api/projects already applies at creation; model_design is deliberately free text (a
+  // preset in the UI with a custom escape hatch), so no enum check here either.
+  if (b.series !== undefined) {
+    fields.push('series = ?'); args.push(isValidSeries(b.series) ? b.series : null);
+  }
+  if (b.model_capacity !== undefined) {
+    fields.push('model_capacity = ?'); args.push(b.model_capacity === '' || b.model_capacity == null ? null : Number(b.model_capacity));
+  }
+  if (b.model_pressure !== undefined) {
+    fields.push('model_pressure = ?'); args.push(b.model_pressure === '' || b.model_pressure == null ? null : Number(b.model_pressure));
+  }
+  if (b.model_design !== undefined) { fields.push('model_design = ?'); args.push(b.model_design || null); }
   if (b.company !== undefined) {
     if (!COMPANY_NAMES.includes(b.company)) return NextResponse.json({ error: 'Invalid company' }, { status: 400 });
     fields.push('company = ?'); args.push(b.company);
@@ -58,7 +73,9 @@ export async function PATCH(req, { params }) {
     if (String(e).includes('UNIQUE')) return NextResponse.json({ error: `Project ${b.project_no} already exists` }, { status: 409 });
     throw e;
   }
-  if (b.project_no !== undefined || b.customer_name !== undefined || b.description !== undefined || b.company !== undefined) {
+  if (b.project_no !== undefined || b.customer_name !== undefined || b.description !== undefined || b.company !== undefined
+    || b.order_date !== undefined || b.series !== undefined || b.model_capacity !== undefined
+    || b.model_pressure !== undefined || b.model_design !== undefined) {
     await audit('project_renamed', { actor: user.username, detail: `project ${params.id} -> ${b.project_no || ''}` });
   }
   // A separate audit action, not folded into project_renamed — it silently changes every downstream

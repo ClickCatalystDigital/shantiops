@@ -4,10 +4,13 @@ import { formatDate, formatMoney } from '@/lib/format';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { TriangleAlertIcon, CheckCircle2Icon } from 'lucide-react';
+import EditProjectDialog from './EditProjectDialog';
 
 // Identity + "why delayed" only — progress/current-phase/next-milestone/est-dispatch now live in
 // the Milestone Tracker (PortfolioDelayTimeline) directly below, which shows them per-stage anyway.
-export default function ProjectHeader({ project, health, blocker, milestones = [] }) {
+// `canEdit`/`customers`/`scopeOfSupply` (2026-09-18, all optional) back the Edit dialog — omitted
+// by any caller that hasn't been updated, so no other ProjectHeader usage is affected.
+export default function ProjectHeader({ project, health, blocker, milestones = [], canEdit = false, customers = [], scopeOfSupply = [] }) {
   // Dependency-blocked is a separate signal from `blocker` (biggestBlocker, SLA/human-status
   // driven, lib/sla.js) — deliberately not merged into it or its severity ranking (SYSTEM.md §5j).
   // Shown as its own muted line, only for milestones not already done.
@@ -59,8 +62,9 @@ export default function ProjectHeader({ project, health, blocker, milestones = [
           </div>
         )}
 
-        <div>
+        <div className="flex gap-2">
           <Button asChild variant="outline" size="sm"><Link href={`/portal/${project.id}`}>Customer view ↗</Link></Button>
+          {canEdit && <EditProjectDialog project={project} customers={customers} scopeOfSupply={scopeOfSupply} />}
         </div>
       </CardContent>
     </Card>

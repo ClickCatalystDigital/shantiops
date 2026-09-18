@@ -740,7 +740,9 @@ export function ReleaseBomTab({ projects, departments = [], projectId: controlle
   const [releasing, setReleasing] = useState(false);
   const [unreleasing, setUnreleasing] = useState(false);
   const [applyingTemplate, setApplyingTemplate] = useState(false);
-  const editableFields = departments.flatMap(d => BOM_FIELD_OWNERS[d] || []);
+  // Design has no BOM_FIELD_OWNERS entry of its own — shares Engineering's (same mapping as
+  // lib/bom-fields.mjs's editableBomFields() and app/projects/[id]/page.js's own copy).
+  const editableFields = departments.flatMap(d => BOM_FIELD_OWNERS[d === 'Design' ? 'Engineering' : d] || []);
   // §5ck — same server-side gate the BOM Structure workspace's own Release button now reflects
   // proactively (app/api/projects/[id]/release-bom's POST already 400s on either); this tab has no
   // tree UI to attach the resolve walkthroughs to, so it gets the blocking parity and a pointer to

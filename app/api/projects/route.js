@@ -34,6 +34,10 @@ export async function POST(req) {
   // full code's segments aren't formalized yet — so the number stays manual / the legacy SB counter,
   // not derived from the model.
   const series = isValidSeries(b.series) ? b.series : null;
+  // Model spec fields (2026-09-18) — same shape/validation as PATCH /api/projects/[id]'s edit path.
+  const modelCapacity = b.model_capacity === '' || b.model_capacity == null ? null : Number(b.model_capacity);
+  const modelPressure = b.model_pressure === '' || b.model_pressure == null ? null : Number(b.model_pressure);
+  const modelDesign = b.model_design || null;
   const project_no = b.project_no?.trim() || (await nextNumber('project_no', 'SB'));
   // Which legal entity — decided at the Sale Order (the commercial commitment), not here, when one
   // exists: copy it onto the project. Only a project created without going through Sales falls
@@ -51,10 +55,10 @@ export async function POST(req) {
     // required exactly as before, so the 6 pre-existing free-text-only projects are unaffected.
     const { projectId, sosTitle, itemCount } = await withTransaction(async tx => {
       const r = await tx.execute({
-        sql: `INSERT INTO projects (project_no, customer_name, description, order_date, owner, customer_id, sale_order_id, series, company)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        sql: `INSERT INTO projects (project_no, customer_name, description, order_date, owner, customer_id, sale_order_id, series, company, model_capacity, model_pressure, model_design)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         args: [project_no, b.customer_name.trim(), b.description || null, b.order_date || null, user?.username || null,
-          b.customer_id || null, b.sale_order_id || null, series, company],
+          b.customer_id || null, b.sale_order_id || null, series, company, modelCapacity, modelPressure, modelDesign],
       });
       const id = Number(r.lastInsertRowid);
       // Project, milestones, and the initial Scope of Supply are one business operation. If any

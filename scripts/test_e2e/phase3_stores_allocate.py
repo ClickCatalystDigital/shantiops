@@ -206,10 +206,13 @@ def run(do_reset=True):
     check("A real material_issues row records the full quantity leaving for WIP",
           total_issued == ITEM_PROD["qty"], f"total_issued={total_issued}, expected={ITEM_PROD['qty']}")
 
+    # Fully-consumed reservations correctly move to status='issued' (not left 'active') -- don't
+    # filter on status here, that's the exact thing being asserted.
     reservation = turso_query(
-        "SELECT qty, qty_issued FROM inventory_reservations WHERE bom_item_id = ? AND status = 'active'", [prod_id])
-    check("The active reservation against Item PROD is now fully issued (qty_issued == qty)",
-          bool(reservation) and float(reservation[0]["qty_issued"]) == float(reservation[0]["qty"]),
+        "SELECT qty, qty_issued, status FROM inventory_reservations WHERE bom_item_id = ?", [prod_id])
+    check("The reservation against Item PROD is fully issued (qty_issued == qty, status='issued')",
+          bool(reservation) and reservation[0]["status"] == "issued"
+          and float(reservation[0]["qty_issued"]) == float(reservation[0]["qty"]),
           f"reservation={reservation}")
 
     print("\n".join(report))
