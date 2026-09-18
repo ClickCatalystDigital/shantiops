@@ -6,13 +6,15 @@
 // tagging round): this path now mints too, off the same shared 'sale_order_no' counter, so every
 // sale order gets a real SO-{seq} number regardless of which path created it.
 import { NextResponse } from 'next/server';
-import { execute, queryAll, nextCounterValue } from '@/lib/db';
+import { execute, queryAll, queryOne, nextCounterValue } from '@/lib/db';
 import { getFreshSessionUser, isInternal, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { getSaleOrders } from '@/lib/data';
 import { audit } from '@/lib/usb';
 import { notifyDepartment, notifyPMs } from '@/lib/notify';
 import { COMPANY_NAMES } from '@/lib/qc-doc-pdf.js';
+
+const TRACK_STATUSES = ['Pending', 'Ready', 'WIP', 'Dispatched', 'Closed'];
 
 export async function GET(req) {
   const user = await getFreshSessionUser();
@@ -37,12 +39,26 @@ export async function POST(req) {
   if (actionDenied) return actionDenied;
 
   const b = await req.json();
-  const soNo = `SO-${await nextCounterValue('sale_order_no', 0)}`;
   const company = COMPANY_NAMES.includes(b.company) ? b.company : COMPANY_NAMES[0];
 
+  // Payment Tracker "Add order": the user supplies their own Order ID (SAS-/NIBR-/SB-… scheme) plus
+  // the tracker fields. Without so_no this is exactly the old behavior (mint SO-{seq}).
+  const custom = String(b.so_no ?? '').replace(/\s+/g, ' ').trim();
+  if (custom && await queryOne('SELECT id FROM sale_orders WHERE so_no = ?', [custom])) {
+    return NextResponse.json({ error: `Order ID ${custom} already exists` }, { status: 409 });
+  }
+  const trackStatus = b.track_status ?? 'Pending';
+  if (!TRACK_STATUSES.includes(trackStatus)) return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
+  const total = b.total === undefined || b.total === '' ? 0 : Number(b.total);
+  if (!(total >= 0)) return NextResponse.json({ error: 'Order value must be a number' }, { status: 400 });
+  if (b.order_date && !/^\d{4}-\d{2}-\d{2}$/.test(b.order_date)) return NextResponse.json({ error: 'Invalid date' }, { status: 400 });
+  const soNo = custom || `SO-${await nextCounterValue('sale_order_no', 0)}`;
+
   const { lastId } = await execute(
-    'INSERT INTO sale_orders (so_no, customer_name, description, company, created_by) VALUES (?, ?, ?, ?, ?)',
-    [soNo, b.customer_name || null, b.description || null, company, user.username]
+    `INSERT INTO sale_orders (so_no, customer_name, customer_id, description, company, created_by, total, order_date, track_status, status, sales_person_override, remarks)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [soNo, b.customer_name || null, b.customer_id || null, b.description || null, company, user.username, total, b.order_date || null, trackStatus,
+     ['Dispatched', 'Closed'].includes(trackStatus) ? 'fulfilled' : 'open', String(b.sales_person ?? '').trim() || null, String(b.remarks ?? '').trim() || null]
   );
   await audit('sale_order_created', { actor: user.username, detail: soNo });
   try {

@@ -14,7 +14,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
-import { PlusIcon, SearchIcon, ArrowDownIcon, ArrowUpIcon } from 'lucide-react';
+import { PlusIcon, SearchIcon, ArrowDownIcon, ArrowUpIcon, TrashIcon } from 'lucide-react';
 import SearchableSelect from '@/components/SearchableSelect';
 import { api, showToast } from '@/lib/client';
 import { formatMoney } from '@/lib/format';
@@ -32,6 +32,12 @@ const STAGES = [
 ];
 // Same list as the Settings sheet of the legacy Excel tracker.
 const MODES = ['NEFT/IMPS', 'Cash', 'Cheque', 'Paytm', 'Credit note', 'Debit Note', 'Other'];
+// Salespersons list from the Excel's Settings sheet. The dropdown offers these plus every name
+// already on an order. ponytail: move to a settings table if non-developers need to add names.
+const PEOPLE = ['BDM', 'Amit B', 'Devansh B', 'Sales Desk', 'Sales - AP', 'Sales - KAR', 'Sales - MH', 'Bachan', 'Ojha', 'Namdev', 'Upender', 'TELE CALLER'];
+const TRACK_STATUSES = ['Pending', 'Ready', 'WIP', 'Dispatched', 'Closed'];
+// Tables show exact rupees (payment data must be checkable to the paisa); the KPI cards keep the short L/Cr form.
+const exact = n => '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 // DD-Mon-YYYY from an ISO date/datetime string, sliced (no Date object → no timezone drift).
@@ -50,6 +56,17 @@ const STATUS_STYLE = {
   Dispatched: 'bg-success/10 text-success dark:bg-success/10 dark:hover:bg-success/15',
   Closed: 'bg-foreground text-background dark:bg-foreground dark:hover:bg-foreground/90',
 };
+
+// Borderless dropdown that reads like text in a table cell (Sales Person, Payment Mode).
+function InlineSelect({ value, options, onChange, width = 'w-36' }) {
+  const opts = !value || options.includes(value) ? options : [value, ...options];
+  return (
+    <Select value={value || undefined} onValueChange={onChange}>
+      <SelectTrigger className={`h-7 ${width} gap-1 border-0 bg-transparent px-1 text-sm shadow-none hover:bg-muted dark:bg-transparent dark:hover:bg-muted`}><SelectValue placeholder="—" /></SelectTrigger>
+      <SelectContent>{opts.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
+    </Select>
+  );
+}
 
 // Click-to-edit cell: shows `display`, turns into an input on click; Enter/blur saves, Esc cancels.
 // Dates save on pick (the native calendar opens straight away).
@@ -98,8 +115,8 @@ function Toolbar({ q, setQ, dir, setDir, dateLabel, children }) {
 
 // 1,000+ rows of editable cells is too heavy to mount at once — page it client-side. Default is a
 // small page; the user can raise it, capped at 50.
-const SIZES = [10, 25, 50];
-function Pager({ page, setPage, size, setSize, total }) {
+export const SIZES = [10, 25, 50];
+export function Pager({ page, setPage, size, setSize, total }) {
   if (total <= SIZES[0]) return null;
   const pages = Math.max(1, Math.ceil(total / size));
   const from = page * size + 1, to = Math.min(total, (page + 1) * size);
@@ -122,13 +139,15 @@ function Pager({ page, setPage, size, setSize, total }) {
 const byDate = (dir, get) => (a, b) => (dir === 'desc' ? -1 : 1) * String(get(a)).localeCompare(String(get(b)));
 const matches = (q, parts) => !q.trim() || parts.join(' ').toLowerCase().includes(q.trim().toLowerCase());
 
-export function PaymentOrdersTab({ saleOrders, payments, invoices }) {
+export function PaymentOrdersTab({ saleOrders, payments, invoices, customers = [] }) {
   const router = useRouter();
   const [q, setQ] = useState('');
   const [dir, setDir] = useState('desc');
   const [local, setLocal] = useState({}); // optimistic overlay: { [soId]: { stage_x: 0|1, remarks } }
   const [page, setPage] = useState(0);
   const [size, setSize] = useState(SIZES[0]);
+  const [adding, setAdding] = useState(false);
+  const people = useMemo(() => [...new Set([...PEOPLE, 'Unassigned', ...saleOrders.map(o => o.sales_person).filter(Boolean)])], [saleOrders]);
 
   // All non-cancelled orders with derived fields — the KPI cards read this, the table filters it.
   const all = useMemo(() => {
@@ -180,7 +199,10 @@ export function PaymentOrdersTab({ saleOrders, payments, invoices }) {
 
   return (
     <Card>
-      <CardHeader><CardTitle>Orders</CardTitle></CardHeader>
+      <CardHeader>
+        <CardTitle>Orders</CardTitle>
+        <CardAction><Button size="sm" onClick={() => setAdding(true)}><PlusIcon />Add order</Button></CardAction>
+      </CardHeader>
       <CardContent>
         <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           {kpis.map((pair, i) => (
@@ -212,7 +234,7 @@ export function PaymentOrdersTab({ saleOrders, payments, invoices }) {
                   <TableCell className="font-medium"><EditCell value={r.so_no} display={r.so_no} onSave={v => save(r, { so_no: v })} /></TableCell>
                   <TableCell><EditCell value={r.customer_name} display={r.customer_name || '—'} onSave={v => save(r, { customer_name: v })} /></TableCell>
                   <TableCell><EditCell value={r.invoiceNos} display={r.invoiceNos || '—'} onSave={v => save(r, { invoice_ref: v })} /></TableCell>
-                  <TableCell><EditCell value={r.sales_person} display={r.sales_person || '—'} onSave={v => save(r, { sales_person: v })} /></TableCell>
+                  <TableCell><InlineSelect value={r.sales_person} options={people} onChange={v => save(r, { sales_person: v })} /></TableCell>
                   <TableCell>
                     <Select value={r.track_status || 'Pending'} onValueChange={v => save(r, { track_status: v })}>
                       <SelectTrigger className={`h-7 w-28 gap-1 px-2 text-xs font-medium ${STATUS_STYLE[r.track_status || 'Pending']}`}><SelectValue /></SelectTrigger>
@@ -220,11 +242,11 @@ export function PaymentOrdersTab({ saleOrders, payments, invoices }) {
                     </Select>
                   </TableCell>
                   <TableCell className="tnum">
-                    <EditCell type="number" value={r.total || ''} display={r.total ? formatMoney(r.total) : '—'} disabled={r.item_count > 0}
+                    <EditCell type="number" value={r.total || ''} display={r.total ? exact(r.total) : '—'} disabled={r.item_count > 0}
                       title="Has line items — edit the value via Sale Orders → Items & PDF" onSave={v => save(r, { total: Number(v) || 0 })} />
                   </TableCell>
-                  <TableCell className="tnum">{formatMoney(r.received)}</TableCell>
-                  <TableCell className="tnum">{formatMoney(r.pending)}</TableCell>
+                  <TableCell className="tnum">{exact(r.received)}</TableCell>
+                  <TableCell className="tnum">{exact(r.pending)}</TableCell>
                   <TableCell className="min-w-44">
                     <Input defaultValue={r.remarks || ''} placeholder="Add remark" className="h-8"
                       onBlur={e => { if (e.target.value !== (r.remarks || '')) save(r, { remarks: e.target.value }); }} />
@@ -242,7 +264,70 @@ export function PaymentOrdersTab({ saleOrders, payments, invoices }) {
         )}
         <Pager page={page} setPage={setPage} size={size} setSize={setSize} total={rows.length} />
       </CardContent>
+      {adding && <AddOrderSheet customers={customers} people={people} onClose={() => setAdding(false)} />}
     </Card>
+  );
+}
+
+function AddOrderSheet({ customers, people, onClose }) {
+  const router = useRouter();
+  const [f, setF] = useState({ so_no: '', customer_name: '', customer_id: null, order_date: todayISO(), total: '', sales_person: '', track_status: 'Pending', remarks: '' });
+  const [busy, setBusy] = useState(false);
+  const set = patch => setF(x => ({ ...x, ...patch }));
+
+  async function submit() {
+    setBusy(true);
+    try {
+      await api('/api/sale-orders', { method: 'POST', body: { ...f, so_no: f.so_no.trim(), total: f.total === '' ? 0 : Number(f.total) } });
+      showToast(`Order ${f.so_no.trim()} added`);
+      router.refresh();
+      onClose();
+    } catch (e) {
+      showToast(e.message, 'error');
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Sheet open onOpenChange={o => !o && onClose()}>
+      <SheetContent side="right" className="overflow-y-auto sm:max-w-md">
+        <SheetHeader><SheetTitle>Add order</SheetTitle></SheetHeader>
+        <div className="flex flex-col gap-4 px-4">
+          <div className="space-y-1.5"><Label>Order ID</Label><Input value={f.so_no} onChange={e => set({ so_no: e.target.value })} placeholder="e.g. SAS-506, NIBR-340, SB-1116" autoFocus /></div>
+          <div className="space-y-1.5">
+            <Label>Customer</Label>
+            <SearchableSelect
+              value={f.customer_id ? String(f.customer_id) : ''} displayValue={f.customer_name}
+              options={customers.map(c => ({ value: String(c.id), label: c.name }))}
+              onChange={v => { const c = customers.find(x => String(x.id) === v); set({ customer_id: c?.id ?? null, customer_name: c?.name ?? '' }); }}
+              onTextChange={t => set({ customer_name: t, customer_id: null })}
+              placeholder="Search customer, or type a new name…" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5"><Label>Order date</Label><Input type="date" value={f.order_date} onChange={e => set({ order_date: e.target.value })} /></div>
+            <div className="space-y-1.5"><Label>Order value</Label><Input type="number" min="0" step="any" value={f.total} onChange={e => set({ total: e.target.value })} /></div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Sales person</Label>
+              <Select value={f.sales_person || undefined} onValueChange={v => set({ sales_person: v })}>
+                <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
+                <SelectContent>{people.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Status</Label>
+              <Select value={f.track_status} onValueChange={v => set({ track_status: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>{TRACK_STATUSES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="space-y-1.5"><Label>Remarks</Label><Input value={f.remarks} onChange={e => set({ remarks: e.target.value })} /></div>
+        </div>
+        <SheetFooter><Button onClick={submit} disabled={busy || !f.so_no.trim()}>Add order</Button></SheetFooter>
+      </SheetContent>
+    </Sheet>
   );
 }
 
@@ -334,15 +419,42 @@ function AddPaymentSheet({ saleOrders, payments, invoices, onClose }) {
 }
 
 export function PaymentLogTab({ saleOrders, payments, invoices }) {
+  const router = useRouter();
   const [q, setQ] = useState('');
   const [dir, setDir] = useState('desc');
   const [adding, setAdding] = useState(false);
   const [page, setPage] = useState(0);
   const [size, setSize] = useState(SIZES[0]);
+  const [local, setLocal] = useState({}); // optimistic overlay { [paymentId]: patch | { gone: true } }
 
   const rows = useMemo(() => payments
+    .map(p => ({ ...p, ...local[p.id], invoiceEditable: !p.sales_invoice_id }))
+    .filter(p => !p.gone)
     .filter(p => matches(q, [p.so_no, p.customer_name, p.invoice_no || '', p.mode || '', p.remark || '', fmtDate(p.received_on), p.amount, p.order_value]))
-    .sort(byDate(dir, p => p.received_on || '')), [payments, q, dir]);
+    .sort(byDate(dir, p => p.received_on || '')), [payments, local, q, dir]);
+
+  async function save(p, patch) {
+    setLocal(l => ({ ...l, [p.id]: { ...l[p.id], ...patch, ...('invoice_ref' in patch ? { invoice_no: patch.invoice_ref } : {}) } }));
+    try {
+      await api(`/api/sale-order-payments/${p.id}`, { method: 'PATCH', body: patch });
+      router.refresh();
+    } catch (e) {
+      setLocal(l => ({ ...l, [p.id]: Object.fromEntries(Object.keys(patch).map(k => [k, payments.find(x => x.id === p.id)?.[k]])) }));
+      showToast(e.message, 'error');
+    }
+  }
+
+  async function remove(p) {
+    if (!confirm(`Delete this ${exact(p.amount)} payment on ${p.so_no}? This can't be undone.`)) return;
+    setLocal(l => ({ ...l, [p.id]: { gone: true } }));
+    try {
+      await api(`/api/sale-order-payments/${p.id}`, { method: 'DELETE' });
+      router.refresh();
+    } catch (e) {
+      setLocal(l => ({ ...l, [p.id]: {} }));
+      showToast(e.message, 'error');
+    }
+  }
 
   return (
     <Card>
@@ -357,6 +469,7 @@ export function PaymentLogTab({ saleOrders, payments, invoices }) {
             <TableHeader>
               <TableRow>
                 {['Order ID', 'Customer Name', 'Order Value', 'Invoice Number', 'Payment Received On', 'Payment Mode', 'Remark', 'Amount Received'].map(h => <TableHead key={h}>{h}</TableHead>)}
+                <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -364,12 +477,18 @@ export function PaymentLogTab({ saleOrders, payments, invoices }) {
                 <TableRow key={p.id}>
                   <TableCell className="font-medium">{p.so_no}</TableCell>
                   <TableCell>{p.customer_name || '—'}</TableCell>
-                  <TableCell className="tnum">{p.order_value ? formatMoney(p.order_value) : '—'}</TableCell>
-                  <TableCell>{p.invoice_no || '—'}</TableCell>
-                  <TableCell className="whitespace-nowrap">{fmtDate(p.received_on)}</TableCell>
-                  <TableCell>{p.mode || '—'}</TableCell>
-                  <TableCell className="max-w-64 truncate" title={p.remark || ''}>{p.remark || '—'}</TableCell>
-                  <TableCell className="tnum font-medium">{formatMoney(p.amount)}</TableCell>
+                  <TableCell className="tnum">{p.order_value ? exact(p.order_value) : '—'}</TableCell>
+                  <TableCell>
+                    <EditCell value={p.invoice_ref || ''} display={p.invoice_no || '—'} disabled={!p.invoiceEditable}
+                      title="Linked to a system invoice" onSave={v => save(p, { invoice_ref: v })} />
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap"><EditCell type="date" value={p.received_on || ''} display={fmtDate(p.received_on)} onSave={v => save(p, { received_on: v })} /></TableCell>
+                  <TableCell><InlineSelect value={p.mode} options={MODES} width="w-32" onChange={v => save(p, { mode: v })} /></TableCell>
+                  <TableCell className="max-w-64"><EditCell value={p.remark || ''} display={<span className="block max-w-60 truncate">{p.remark || '—'}</span>} onSave={v => save(p, { remark: v })} /></TableCell>
+                  <TableCell className="tnum font-medium"><EditCell type="number" value={p.amount} display={exact(p.amount)} onSave={v => save(p, { amount: Number(v) })} /></TableCell>
+                  <TableCell className="text-right">
+                    <Button size="icon" variant="ghost" className="size-7 text-muted-foreground hover:text-destructive" aria-label="Delete payment" onClick={() => remove(p)}><TrashIcon /></Button>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

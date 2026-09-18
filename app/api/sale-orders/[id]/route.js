@@ -6,6 +6,7 @@ import { getFreshSessionUser, requireDepartment, canAccessDepartment, isPM } fro
 import { requireAction } from '@/lib/action-permissions';
 import { getSaleOrderDetail } from '@/lib/data';
 import { COMPANY_NAMES } from '@/lib/qc-doc-pdf.js';
+import { audit } from '@/lib/usb';
 
 const STATUSES = ['open', 'fulfilled', 'cancelled'];
 const TRACK_STATUSES = ['Pending', 'Ready', 'WIP', 'Dispatched', 'Closed'];
@@ -70,7 +71,14 @@ export async function PATCH(req, { params }) {
     if (b[`stage_${key}`] !== undefined) { fields.push(`stage_${key} = ?`); args.push(b[`stage_${key}`] ? 1 : 0); }
   }
   if (!fields.length) return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
+  const before = await queryOne('SELECT * FROM sale_orders WHERE id = ?', [params.id]);
+  if (!before) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  // Old → new for every column that actually changes, so money-relevant edits leave a trail.
+  const changed = fields.map((f, i) => [f.split(' ')[0], args[i]]).filter(([c, v]) => String(before[c] ?? '') !== String(v ?? ''));
   args.push(params.id);
   await execute(`UPDATE sale_orders SET ${fields.join(', ')} WHERE id = ?`, args);
+  if (changed.length) {
+    await audit('sale_order_edit', { actor: user.username, detail: `${before.so_no}: ${changed.map(([c, v]) => `${c} ${before[c] ?? '—'} → ${v ?? '—'}`).join('; ')}` });
+  }
   return NextResponse.json({ ok: true });
 }

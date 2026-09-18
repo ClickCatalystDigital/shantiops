@@ -281,12 +281,12 @@ The app trusts the PAYMENT sheet. Please check which side is right.
 
 ### Known gaps in the app (not data problems)
 
-1. **No "Add order" in the Orders tab.** New orders can only come from Sale Orders → New Sale Order (numbered SO-28…, not the SAS-/NIBR-/SB- scheme in the sheet) or from a quotation. Needs an Add-order sheet where the user types the Order ID.
-2. **Payments can't be edited or deleted** (append-only log). A wrong amount, blank date or the 2055 typos can't be fixed on screen. Needs edit (and probably delete-with-reason) on the Payments tab.
-3. **Edits are not audit-logged.** Payment logging is; changing an order's value, status, date, invoice or stage ticks is not.
-4. **Sales Person is free text.** The Excel already shows how that goes (AMT / ABT / AMITB). Should be a dropdown fed by the Settings list.
-5. **Old Sale Orders tab is not paginated** — it now lists all 1,006 orders.
-6. **Access:** the Payment Tracker is visible to Sales only. Accounts and Marketing have no view of it.
-7. **Not yet checked:** light theme, phone-width layout, and edits by a non-PM Sales login beyond `sales_head`.
+Fixed 2026-09-19: **Add order** (Orders tab → "Add order", Order ID typed by the user, duplicate IDs refused), **payments are editable and deletable** on the Payments tab, **every order/payment edit is audit-logged** (`sale_order_edit`, `sale_payment_edit`, `sale_payment_deleted` — old → new), **Sales Person is a dropdown**, and the **old Sale Orders tab is paginated and searchable**. Amounts in the tables now show exact paise.
+
+Still open:
+
+1. **Access:** the Payment Tracker is visible to Sales only. Accounts and Marketing have no view of it.
+2. **Sales Person list is a hard-coded constant** in `components/SalesPaymentTracker.jsx` (`PEOPLE`), mirroring the Settings list. Move it to the settings table if it changes often.
+3. **Not yet checked:** light theme, phone-width layout, and edits by a non-PM Sales login beyond `sales_head`.
 
 - Rollback of the whole import: `DELETE FROM sale_order_payments WHERE created_by='import:sales-tracker-2026-09-19'; DELETE FROM sale_orders WHERE created_by='import:sales-tracker-2026-09-19';`

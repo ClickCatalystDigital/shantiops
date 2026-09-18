@@ -32,7 +32,7 @@ import {
 import { api, showToast } from '@/lib/client';
 import { formatMoney } from '@/lib/format';
 import ScopeOfSupplySection from '@/components/ScopeOfSupplySection';
-import { PaymentOrdersTab, PaymentLogTab } from '@/components/SalesPaymentTracker';
+import { PaymentOrdersTab, PaymentLogTab, Pager, SIZES } from '@/components/SalesPaymentTracker';
 
 // ponytail: fixed 24h first-response SLA, not a configurable business-hours calendar like Frappe
 // CRM's own SLA doctype (holiday list, service windows). Add a settings row for this if a real
@@ -1321,6 +1321,10 @@ function SaleOrdersTab({ saleOrders, router, canEditSoTax }) {
   const [sasSo, setSasSo] = useState(null);
   const [costingSo, setCostingSo] = useState(null);
   const [itemsSo, setItemsSo] = useState(null);
+  const [q, setQ] = useState('');
+  const [page, setPage] = useState(0);
+  const [size, setSize] = useState(SIZES[0]);
+  const shown = saleOrders.filter(so => !q.trim() || [so.so_no, so.customer_name, so.company].join(' ').toLowerCase().includes(q.trim().toLowerCase()));
   return (
     <Card>
       <CardHeader>
@@ -1328,11 +1332,12 @@ function SaleOrdersTab({ saleOrders, router, canEditSoTax }) {
         <CardAction><Button size="sm" onClick={() => setDialogOpen(true)}><PlusIcon />New Sale Order</Button></CardAction>
       </CardHeader>
       <CardContent>
+        <Input className="mb-3 max-w-sm" placeholder="Search order ID, customer, company…" value={q} onChange={e => { setQ(e.target.value); setPage(0); }} />
         {saleOrders.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No Sale Orders yet.</p> : (
           <Table>
             <TableHeader><TableRow><TableHead>SO No.</TableHead><TableHead>Customer</TableHead><TableHead>Company</TableHead><TableHead>Total</TableHead><TableHead>Status</TableHead><TableHead>Created</TableHead><TableHead /></TableRow></TableHeader>
             <TableBody>
-              {saleOrders.map(so => (
+              {shown.slice(page * size, (page + 1) * size).map(so => (
                 <TableRow key={so.id} data-entity-code={`SO-${so.id}`}>
                   <TableCell className="font-medium">{so.so_no}</TableCell>
                   <TableCell>{so.customer_name || '—'}</TableCell>
@@ -1350,6 +1355,7 @@ function SaleOrdersTab({ saleOrders, router, canEditSoTax }) {
             </TableBody>
           </Table>
         )}
+        <Pager page={page} setPage={setPage} size={size} setSize={setSize} total={shown.length} />
       </CardContent>
       {dialogOpen && <AddSaleOrderDialog router={router} onClose={() => setDialogOpen(false)} />}
       {sasSo && <RequestFromStoresDialog so={sasSo} router={router} onClose={() => setSasSo(null)} />}
@@ -1749,7 +1755,7 @@ export default function SalesWorkspace({ saleOrders, leads, customers, quotation
               initialProject={initialScopeProject} />
           )}
           {activePanel.key === 'invoices' && <InvoicesTab invoices={invoices} creditNotes={creditNotes} router={router} />}
-          {activePanel.key === 'payment_orders' && <PaymentOrdersTab saleOrders={saleOrders} payments={salePayments} invoices={invoices} />}
+          {activePanel.key === 'payment_orders' && <PaymentOrdersTab saleOrders={saleOrders} payments={salePayments} invoices={invoices} customers={customers} />}
           {activePanel.key === 'payment_log' && <PaymentLogTab saleOrders={saleOrders} payments={salePayments} invoices={invoices} />}
           {activePanel.key === 'returns' && <ReturnsTab returns={returns} saleOrders={saleOrders} inventoryItems={inventoryItems} router={router} />}
           {activePanel.key === 'campaigns' && <CampaignsTab campaigns={campaigns} router={router} />}
