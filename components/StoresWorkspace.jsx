@@ -22,8 +22,9 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup } from '@/components/ui/select';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { PlusIcon, PencilIcon, PackageCheckIcon, UndoIcon, TruckIcon, PackageIcon, ClipboardListIcon, LayersIcon, LogInIcon, SearchIcon, ChevronRightIcon, BoxesIcon, HashIcon, ArrowRightLeftIcon, Share2Icon } from 'lucide-react';
+import { PlusIcon, PencilIcon, PackageCheckIcon, UndoIcon, TruckIcon, PackageIcon, ClipboardListIcon, LayersIcon, LogInIcon, SearchIcon, ChevronRightIcon, BoxesIcon, HashIcon, ArrowRightLeftIcon, Share2Icon, SettingsIcon, PuzzleIcon } from 'lucide-react';
 import { api, showToast, formatDate } from '@/lib/client';
 import { formatMoney } from '@/lib/format';
 import { derivePurchaseStage } from '@/lib/bom-fields.mjs';
@@ -1228,6 +1229,7 @@ function OpenRequestsCard({ openRequests, inventoryItems, router }) {
       <CardHeader>
         <CardTitle>Material Demand</CardTitle>
         <p className="text-sm text-muted-foreground">What's currently needed, and whether it can be filled from stock or needs a decision.</p>
+        <CardAction><MatchSettingsPopover router={router} /></CardAction>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {openRequests.length > 0 && <SearchBox value={q} onChange={setQ} placeholder="Search by description or project…" />}
@@ -1284,6 +1286,12 @@ function OpenRequestsCard({ openRequests, inventoryItems, router }) {
                               </Badge>
                             ))}
                           </div>
+                        )}
+                        {needsDecision && r.category === 'plate' && r.combinable_piece_count > 0 && (
+                          <p className="mt-1 flex items-center gap-1 text-[10px] text-muted-foreground" title="Same material/thickness, but individually smaller than required — nothing here reserves them automatically; a human decides whether combining (e.g. cutting and welding) is worth doing.">
+                            <PuzzleIcon className="size-3" />
+                            {r.combinable_piece_count} matching piece{r.combinable_piece_count > 1 ? 's' : ''} in stock, too small alone — manual review
+                          </p>
                         )}
                       </div>
                       {fullyCovered ? (
@@ -1756,6 +1764,74 @@ function IndentsCard({ router }) {
 // created, splitting on partial availability exactly like Cutting & Remnant Management already
 // does for dimensional stock; only a genuine shortfall (or an unmatched line) ever reaches
 // Procurement or needs a Stores decision. Manual keeps the original always-review behavior.
+// Category-specific matching tolerance (2026-09-17 conversation) — plate is the one category with
+// a real measured-dimension tolerance (rolling thickness variance); angle/beam/channel/pipe match
+// on an exact profile designation instead (findCandidates()'s `else` branch), so there's no L/W/
+// generic tolerance knob to add for them — a category earns a field here only once it has a real
+// measured tolerance to configure, never a placeholder for every category up front.
+function PlateThicknessToleranceField() {
+  const [mm, setMm] = useState(null); // null = loading
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    api('/api/settings/remnant-tolerances').then(r => setMm(r.plate?.thickness_mm ?? 0.3)).catch(() => setMm(0.3));
+  }, []);
+
+  async function save() {
+    setSaving(true);
+    try {
+      await api('/api/settings/remnant-tolerances', { method: 'PATCH', body: { plate_thickness_mm: Number(mm) } });
+      showToast(`Plate thickness tolerance set to ${mm}mm`);
+    } catch (err) { showToast(err.message, 'error'); }
+    setSaving(false);
+  }
+
+  if (mm === null) return null;
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Plate thickness tolerance</Label>
+      <p className="text-xs text-muted-foreground">
+        How close a stock plate's thickness may be to a line's required thickness and still auto-match. Length/width
+        always require an exact physical fit — two smaller pieces welded together is a manual decision, never automatic.
+      </p>
+      <div className="flex items-center gap-2">
+        <Input type="number" min="0" step="0.1" value={mm} onChange={e => setMm(e.target.value)} className="h-8 w-20" />
+        <span className="text-sm text-muted-foreground">mm</span>
+        <Button size="sm" disabled={saving} onClick={save}>{saving ? 'Saving…' : 'Save'}</Button>
+      </div>
+    </div>
+  );
+}
+
+// The single "match settings" cog for Material Demand — combines the Allocation Mode toggle
+// (relocated here from Inventory, since its effect only ever shows up on this tab) with the
+// matching engine's own configurable tolerances.
+function MatchSettingsPopover({ router }) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button variant="outline" size="icon-sm" title="Match settings">
+          <SettingsIcon className="size-4" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="flex w-80 flex-col gap-4">
+        <div className="flex flex-col gap-1">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">How auto-match works</p>
+          <ul className="list-disc space-y-1 pl-4 text-xs text-muted-foreground">
+            <li><span className="font-medium text-foreground">Scalar items</span> (nuts, bolts, bought parts): matched by exact catalog identity only — no fuzzy guessing.</li>
+            <li><span className="font-medium text-foreground">Plate</span>: exact material grade + thickness within the tolerance below, and the stock piece must be big enough on its own (L×W, rotation allowed).</li>
+            <li><span className="font-medium text-foreground">Angle / beam / channel / pipe</span>: matched by exact profile designation (e.g. "ISA 50x50x5") + sufficient length. No tolerance setting — the profile is a fixed catalog spec, not a measured dimension, so there's nothing to loosen.</li>
+          </ul>
+        </div>
+        <ReservationModeToggle router={router} />
+        <div className="flex flex-col gap-3 border-t pt-3">
+          <PlateThicknessToleranceField />
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function ReservationModeToggle({ router }) {
   const [mode, setMode] = useState(null); // null = loading
   const [saving, setSaving] = useState(false);
@@ -2677,7 +2753,6 @@ function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavi
 
   return (
     <div className="flex flex-col gap-6">
-      <ReservationModeToggle router={router} />
       <TodaySummary inventoryItems={inventoryItems} openRequests={openRequests} activeReservations={activeReservations}
         onNavigate={onNavigate} onShowLowStock={() => setLowOnly(true)} />
       <Card>

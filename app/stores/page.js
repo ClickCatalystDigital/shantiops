@@ -13,6 +13,7 @@ import {
   getSplitOrdersNeedingStoresAction, attachDeliveryLotDates, getPendingInwardApprovals,
   getUnroutedReceivedItems,
 } from '@/lib/data';
+import { attachCombinablePlateHints } from '@/lib/remnant-match';
 import StoresWorkspace from '@/components/StoresWorkspace';
 
 export const dynamic = 'force-dynamic';
@@ -30,6 +31,8 @@ export default async function StoresPage({ searchParams }) {
   // Lot-aware expected-delivery dates for Receive a Delivery only — merged in after the shared
   // Promise.all so /procurement's own getSourcingItems() calls stay untouched (see attachDeliveryLotDates).
   await attachDeliveryLotDates(bomItems);
+  // Manual-only "could these be combined?" hint for unmatched plate lines on Material Demand.
+  await attachCombinablePlateHints(openRequests);
 
   const sp = await searchParams;
   return <StoresWorkspace inventoryItems={inventoryItems} openRequests={openRequests} activeReservations={activeReservations}
