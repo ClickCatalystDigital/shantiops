@@ -18,6 +18,7 @@ from phase1_reservation import reset as reset_phase1
 from phase1b_tolerance_config import reset as reset_phase1b
 from phase2_procurement import reset as reset_phase2
 from phase3_stores_allocate import reset as reset_phase3
+from phase4_production_wip import reset as reset_phase4
 from phaseT_sas_trade import reset as reset_phaseT
 
 
@@ -30,6 +31,8 @@ def reset_all():
     reset_phase2()
     print("=== Phase 3: Stores Allocate / Material Indent test data ===")
     reset_phase3()
+    print("=== Phase 4: Production / WIP test data ===")
+    reset_phase4()
     print("=== Phase T: SAS trade test data ===")
     reset_phaseT()
     print("All phases reset.")

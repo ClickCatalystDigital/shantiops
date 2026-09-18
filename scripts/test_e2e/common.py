@@ -50,11 +50,23 @@ def turso_execute(sql, args=None):
     return _turso_pipeline(sql, args)
 
 
+def _coerce_cell(cell):
+    """Turso's HTTP pipeline API (Hrana) encodes INTEGER columns as JSON *strings* (to avoid
+    64-bit precision loss over JSON), while REAL columns come through as real JSON numbers already.
+    The app's own JSON API returns real ints for both -- so comparing a turso_query() row's integer
+    column against an int/id from the app's API silently always fails unless coerced here."""
+    t = cell.get("type")
+    v = cell.get("value")
+    if t == "integer" and v is not None:
+        return int(v)
+    return v
+
+
 def turso_query(sql, args=None):
     """Runs one SELECT against the real Turso DB, returning a list of dicts (column name -> value)."""
     result = _turso_pipeline(sql, args)
     cols = [c["name"] for c in result["cols"]]
-    return [dict(zip(cols, [cell.get("value") for cell in row])) for row in result["rows"]]
+    return [dict(zip(cols, [_coerce_cell(cell) for cell in row])) for row in result["rows"]]
 
 
 def api(session, method, path, **kw):

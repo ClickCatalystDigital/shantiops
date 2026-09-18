@@ -9,6 +9,9 @@ Two SAS lines against one real Sale Order, deliberately testing both branches th
   - Item A (item_id 7): usable stock already exists -> Stores' auto-allocation reserves it straight
     away, at raise time, WITHOUT ever going near Procurement (pending_review flips to 1). Stores
     then Issues the reservation (the real "hand it out" action) so it's actually ready to pack.
+    This branch only actually fires when Stores' allocation mode is 'auto'
+    (app/api/purchase-requisitions/route.js) -- run() forces that mode on and restores whatever it
+    found afterward, since it's a real, persisted, app-wide setting, not test-scoped data.
   - Item B (item_id 8): no existing stock -> stays visible to Procurement (pending_review stays 0,
     same Enquiry queue a normal BOM line would land in) -> quote -> select -> issue PO -> receive ->
     QC inward approval, exactly like Phase 2's regular procurement route.
@@ -135,12 +138,28 @@ def set_not_manufactured(session, bom_id):
                     "set_not_manufactured")
 
 
+def get_allocation_mode(session):
+    return must_ok(api(session, "GET", "/api/settings/allocation-mode"), "get_allocation_mode")["mode"]
+
+
+def set_allocation_mode(session, mode):
+    return must_ok(api(session, "PATCH", "/api/settings/allocation-mode", json={"mode": mode}), "set_allocation_mode")
+
+
 def run(do_reset=True):
     if do_reset:
         reset()
     session = requests.Session()
     login(session)
     sentinel_id = get_sentinel_project_id()
+
+    # Item A's whole premise -- existing stock auto-reserves at raise time -- only fires when
+    # Stores' allocation mode is 'auto' (app/api/purchase-requisitions/route.js). This is a real,
+    # persisted, app-wide setting (app_settings.stores_allocation_mode), not test-scoped data --
+    # save whatever it was and restore it, don't just leave it changed.
+    original_mode = get_allocation_mode(session)
+    if original_mode != "auto":
+        set_allocation_mode(session, "auto")
 
     report = []
     passed = True
@@ -152,92 +171,97 @@ def run(do_reset=True):
             passed = False
         report.append(f"[{status}] {label}: {detail}")
 
-    so = create_sale_order(session)
-    print(f"Sale Order {so['so_no']} created.")
+    try:
+        so = create_sale_order(session)
+        print(f"Sale Order {so['so_no']} created.")
 
-    print("Item A: seeding existing usable stock, then Sales raises a SAS request against it...")
-    create_inventory_item(session, ITEM_A, on_hand=ITEM_A["existing_stock"])
-    bom_a = raise_sas(session, ITEM_A, so["so_no"])
-    item_a = get_bom_item_row(bom_a)
-    check("Item A: Stores fulfilled it straight from usable stock -- never went to Procurement (pending_review=1)",
-          item_a and item_a["pending_review"] == 1, f"pending_review={item_a and item_a['pending_review']}")
-    reservation_a = turso_query(
-        "SELECT id, qty FROM inventory_reservations WHERE bom_item_id = ? AND status = 'active'", [bom_a])
-    check("Item A: fully reserved against the trade request from existing stock",
-          bool(reservation_a) and float(reservation_a[0]["qty"]) == ITEM_A["qty"], f"reservation={reservation_a}")
+        print("Item A: seeding existing usable stock, then Sales raises a SAS request against it...")
+        create_inventory_item(session, ITEM_A, on_hand=ITEM_A["existing_stock"])
+        bom_a = raise_sas(session, ITEM_A, so["so_no"])
+        item_a = get_bom_item_row(bom_a)
+        check("Item A: Stores fulfilled it straight from usable stock -- never went to Procurement (pending_review=1)",
+              item_a and item_a["pending_review"] == 1, f"pending_review={item_a and item_a['pending_review']}")
+        reservation_a = turso_query(
+            "SELECT id, qty FROM inventory_reservations WHERE bom_item_id = ? AND status = 'active'", [bom_a])
+        check("Item A: fully reserved against the trade request from existing stock",
+              bool(reservation_a) and float(reservation_a[0]["qty"]) == ITEM_A["qty"], f"reservation={reservation_a}")
 
-    print("Item A: Stores Issues the reservation (the real hand-out action, on_hand decrements, item -> In-Stock)...")
-    must_ok(api(session, "POST", f"/api/inventory-reservations/{reservation_a[0]['id']}/issue"), "issue_reservation")
-    item_a_after_issue = get_bom_item_row(bom_a)
-    check("Item A: purchase_status -> In-Stock once issued", item_a_after_issue["purchase_status"] == "In-Stock",
-          f"purchase_status={item_a_after_issue['purchase_status']}")
-    on_hand_a, _ = get_inventory_on_hand(session, ITEM_A["item_id"])
-    check("Item A: on_hand decremented by the issued qty", on_hand_a == ITEM_A["existing_stock"] - ITEM_A["qty"],
-          f"on_hand={on_hand_a}, expected={ITEM_A['existing_stock'] - ITEM_A['qty']}")
-    set_not_manufactured(session, bom_a)
+        if reservation_a:
+            print("Item A: Stores Issues the reservation (the real hand-out action, on_hand decrements, item -> In-Stock)...")
+            must_ok(api(session, "POST", f"/api/inventory-reservations/{reservation_a[0]['id']}/issue"), "issue_reservation")
+            item_a_after_issue = get_bom_item_row(bom_a)
+            check("Item A: purchase_status -> In-Stock once issued", item_a_after_issue["purchase_status"] == "In-Stock",
+                  f"purchase_status={item_a_after_issue['purchase_status']}")
+            on_hand_a, _ = get_inventory_on_hand(session, ITEM_A["item_id"])
+            check("Item A: on_hand decremented by the issued qty", on_hand_a == ITEM_A["existing_stock"] - ITEM_A["qty"],
+                  f"on_hand={on_hand_a}, expected={ITEM_A['existing_stock'] - ITEM_A['qty']}")
+        set_not_manufactured(session, bom_a)
 
-    print("Item B: no existing stock -> Sales raises a SAS request that Stores can't fulfil...")
-    bom_b = raise_sas(session, ITEM_B, so["so_no"])
-    item_b = get_bom_item_row(bom_b)
-    check("Item B: NOT fulfilled from stock -- correctly requested from Procurement (pending_review=0, visible in Enquiry)",
-          item_b and item_b["pending_review"] == 0, f"pending_review={item_b and item_b['pending_review']}")
-    check("Item B: still in Enquiry, no reservation made", item_b["purchase_status"] == "Enquiry",
-          f"purchase_status={item_b['purchase_status']}")
+        print("Item B: no existing stock -> Sales raises a SAS request that Stores can't fulfil...")
+        bom_b = raise_sas(session, ITEM_B, so["so_no"])
+        item_b = get_bom_item_row(bom_b)
+        check("Item B: NOT fulfilled from stock -- correctly requested from Procurement (pending_review=0, visible in Enquiry)",
+              item_b and item_b["pending_review"] == 0, f"pending_review={item_b and item_b['pending_review']}")
+        check("Item B: still in Enquiry, no reservation made", item_b["purchase_status"] == "Enquiry",
+              f"purchase_status={item_b['purchase_status']}")
 
-    print("Item B: Procurement's regular route -- quote -> select -> issue PO -> receive -> QC approve...")
-    supplier = create_supplier(session)
-    quote_id = must_ok(api(session, "POST", "/api/supplier-quotes",
-                            json={"supplier_id": supplier["id"], "items": [{"bom_item_id": bom_b, "unit_price": 75}]}),
-                        "log_quote")["ids"][0]
-    po_id = must_ok(api(session, "POST", f"/api/bom-items/{bom_b}/select-supplier", json={"quote_id": quote_id}),
-                     "select_supplier")["po_id"]
-    must_ok(api(session, "PATCH", f"/api/purchase-orders/{po_id}", json={"action": "issue"}), "issue_po")
-    must_ok(api(session, "POST", f"/api/bom-items/{bom_b}/receive", json={
-        "qty_text": str(ITEM_B["qty"]),
-        "receipt": {"supplier_id": supplier["id"], "grn_ref": "GRN-PT-B", "invoice_no": "INV-PT-B"},
-    }), "receive")
-    item_b_received = get_bom_item_row(bom_b)
-    check("Item B: purchase_status -> Received on the full delivery", item_b_received["purchase_status"] == "Received",
-          f"purchase_status={item_b_received['purchase_status']}")
+        print("Item B: Procurement's regular route -- quote -> select -> issue PO -> receive -> QC approve...")
+        supplier = create_supplier(session)
+        quote_id = must_ok(api(session, "POST", "/api/supplier-quotes",
+                                json={"supplier_id": supplier["id"], "items": [{"bom_item_id": bom_b, "unit_price": 75}]}),
+                            "log_quote")["ids"][0]
+        po_id = must_ok(api(session, "POST", f"/api/bom-items/{bom_b}/select-supplier", json={"quote_id": quote_id}),
+                         "select_supplier")["po_id"]
+        must_ok(api(session, "PATCH", f"/api/purchase-orders/{po_id}", json={"action": "issue"}), "issue_po")
+        must_ok(api(session, "POST", f"/api/bom-items/{bom_b}/receive", json={
+            "qty_text": str(ITEM_B["qty"]),
+            "receipt": {"supplier_id": supplier["id"], "grn_ref": "GRN-PT-B", "invoice_no": "INV-PT-B"},
+        }), "receive")
+        item_b_received = get_bom_item_row(bom_b)
+        check("Item B: purchase_status -> Received on the full delivery", item_b_received["purchase_status"] == "Received",
+              f"purchase_status={item_b_received['purchase_status']}")
 
-    approvals = must_ok(api(session, "GET", "/api/inward-approvals"), "get_pending_inward_approvals")
-    approval = next(a for a in approvals if a["bom_item_id"] == bom_b and a["status"] == "pending")
-    on_hand_before, _ = get_inventory_on_hand(session, ITEM_B["item_id"])
-    check("Item B: on_hand NOT credited while inward review is pending", on_hand_before in (None, 0),
-          f"on_hand={on_hand_before}")
+        approvals = must_ok(api(session, "GET", "/api/inward-approvals"), "get_pending_inward_approvals")
+        approval = next(a for a in approvals if a["bom_item_id"] == bom_b and a["status"] == "pending")
+        on_hand_before, _ = get_inventory_on_hand(session, ITEM_B["item_id"])
+        check("Item B: on_hand NOT credited while inward review is pending", on_hand_before in (None, 0),
+              f"on_hand={on_hand_before}")
 
-    print("Item B: QC approves the delivery -- this is exactly where the real sas-receiving gap lived...")
-    must_ok(api(session, "POST", f"/api/inward-approvals/{approval['id']}/decide", json={"decision": "approved"}),
-            "decide_inward")
-    on_hand_after, inv_id_b = get_inventory_on_hand(session, ITEM_B["item_id"])
-    check("FIX VERIFIED: Item B's on_hand is credited after QC approval (was silently lost before the fix)",
-          on_hand_after == ITEM_B["qty"], f"on_hand={on_hand_after}, expected={ITEM_B['qty']}")
-    reservation_b = turso_query(
-        "SELECT qty FROM inventory_reservations WHERE bom_item_id = ? AND status = 'active'", [bom_b])
-    check("FIX VERIFIED: Item B is fully reserved against its own trade request (not generic usable stock)",
-          bool(reservation_b) and float(reservation_b[0]["qty"]) == ITEM_B["qty"], f"reservation={reservation_b}")
-    set_not_manufactured(session, bom_b)
+        print("Item B: QC approves the delivery -- this is exactly where the real sas-receiving gap lived...")
+        must_ok(api(session, "POST", f"/api/inward-approvals/{approval['id']}/decide", json={"decision": "approved"}),
+                "decide_inward")
+        on_hand_after, inv_id_b = get_inventory_on_hand(session, ITEM_B["item_id"])
+        check("FIX VERIFIED: Item B's on_hand is credited after QC approval (was silently lost before the fix)",
+              on_hand_after == ITEM_B["qty"], f"on_hand={on_hand_after}, expected={ITEM_B['qty']}")
+        reservation_b = turso_query(
+            "SELECT qty FROM inventory_reservations WHERE bom_item_id = ? AND status = 'active'", [bom_b])
+        check("FIX VERIFIED: Item B is fully reserved against its own trade request (not generic usable stock)",
+              bool(reservation_b) and float(reservation_b[0]["qty"]) == ITEM_B["qty"], f"reservation={reservation_b}")
+        set_not_manufactured(session, bom_b)
 
-    print("Both items now go to Dispatch: generate a draft packing list from the sentinel project's BOM...")
-    pl = must_ok(api(session, "POST", "/api/packing/from-bom", json={"project_id": sentinel_id}), "packing_from_bom")
-    list_id = pl["id"]
-    packed_bom_ids = {r["bom_item_id"] for r in turso_query(
-        "SELECT bom_item_id FROM packing_items WHERE packing_list_id = ?", [list_id])}
-    check("Packing list picked up both trade items", {bom_a, bom_b} <= packed_bom_ids,
-          f"packed_bom_ids={packed_bom_ids}, expected to include {{{bom_a}, {bom_b}}}")
+        print("Both items now go to Dispatch: generate a draft packing list from the sentinel project's BOM...")
+        pl = must_ok(api(session, "POST", "/api/packing/from-bom", json={"project_id": sentinel_id}), "packing_from_bom")
+        list_id = pl["id"]
+        packed_bom_ids = {r["bom_item_id"] for r in turso_query(
+            "SELECT bom_item_id FROM packing_items WHERE packing_list_id = ?", [list_id])}
+        check("Packing list picked up both trade items", {bom_a, bom_b} <= packed_bom_ids,
+              f"packed_bom_ids={packed_bom_ids}, expected to include {{{bom_a}, {bom_b}}}")
 
-    print("Packing -> submit for pre-dispatch review -> QC + Production both approve -> dispatch...")
-    must_ok(api(session, "PATCH", f"/api/packing/{list_id}", json={"status": "packed"}), "mark_packed")
-    submission = must_ok(api(session, "POST", f"/api/packing/{list_id}/submit-for-approval"), "submit_for_approval")
-    must_ok(api(session, "POST", f"/api/pre-dispatch-approvals/{submission['id']}/decide",
-                json={"decision": "approved", "role": "qc"}), "decide_qc")
-    must_ok(api(session, "POST", f"/api/pre-dispatch-approvals/{submission['id']}/decide",
-                json={"decision": "approved", "role": "production"}), "decide_production")
-    must_ok(api(session, "PATCH", f"/api/packing/{list_id}", json={"status": "dispatched"}), "dispatch")
+        print("Packing -> submit for pre-dispatch review -> QC + Production both approve -> dispatch...")
+        must_ok(api(session, "PATCH", f"/api/packing/{list_id}", json={"status": "packed"}), "mark_packed")
+        submission = must_ok(api(session, "POST", f"/api/packing/{list_id}/submit-for-approval"), "submit_for_approval")
+        must_ok(api(session, "POST", f"/api/pre-dispatch-approvals/{submission['id']}/decide",
+                    json={"decision": "approved", "role": "qc"}), "decide_qc")
+        must_ok(api(session, "POST", f"/api/pre-dispatch-approvals/{submission['id']}/decide",
+                    json={"decision": "approved", "role": "production"}), "decide_production")
+        must_ok(api(session, "PATCH", f"/api/packing/{list_id}", json={"status": "dispatched"}), "dispatch")
 
-    final = turso_query("SELECT status, dispatched_at FROM packing_lists WHERE id = ?", [list_id])[0]
-    check("Packing list reaches 'dispatched' with both trade items on it",
-          final["status"] == "dispatched" and final["dispatched_at"], f"final={final}")
+        final = turso_query("SELECT status, dispatched_at FROM packing_lists WHERE id = ?", [list_id])[0]
+        check("Packing list reaches 'dispatched' with both trade items on it",
+              final["status"] == "dispatched" and final["dispatched_at"], f"final={final}")
+    finally:
+        if original_mode != "auto":
+            set_allocation_mode(session, original_mode)
 
     print("\n".join(report))
     print("\n" + ("ALL PASSED" if passed else "SOME FAILED"))

@@ -107,12 +107,41 @@ filter was excluding the very row it needed. Verified directly against the DB
 (drop the `status='active'` filter, assert `status='issued'` instead). Re-ran clean, all 14 pass.
 Test artifacts cleaned up afterward via `reset()`.
 
-## ⬜ Phase 4 — Production / WIP (not started)
+## ✅ Phase 4 — Production / WIP (`phase4_production_wip.py`)
 
-Job Cards against the routed-to-Production items (and the Material Indent → Stores-release flow
-from Phase 3 above, once material is actually in WIP): create a job card, log time, mark it done,
-confirm `production_done` flips and the item becomes ready for packing. Also covers the
-QC hold-point gate (`requires_qc_hold`/`qc-release`) if a route step names a `quality_checkpoint`.
+**Status: COMPLETE, all 15 checks passing.**
+
+Two items, both raised/procured/received/QC-approved/routed to Production the same self-contained
+way earlier phases already prove works:
+- **Item NOHOLD** — the plain path. A Job Card is created **directly** against a real Production
+  milestone — **no Work Order needed** for this (a Work Order is a separate, optional
+  production-control layer above Job Cards, not the same thing as a Project; confirmed live). A
+  Material Indent raised **with a `job_card_id`** correctly links the resulting `material_issues`
+  row back to the Job Card that drew the material — a real, already-working linkage Phase 3 never
+  exercised (it never touched Job Cards). Time logged → card marked `progress` → `done` → its
+  milestone auto-completes. Production then **manually** flips `production_done` — confirmed this
+  is a deliberate design choice, not a gap (a finished Job Card doesn't auto-imply 100% of the
+  physical work is done; there's an explicit code comment saying so). Item then correctly reads as
+  ready for packing.
+- **Item HOLD** — the QC hold-point branch, which genuinely does need a real Work Order:
+  `requires_qc_hold` can only ever be set by `generate-job-cards` off a route step's own
+  `quality_checkpoint` — a plain Job Card has no field for it at all. Built a real Work Order → one
+  route step naming a checkpoint → released → generated its Job Card (confirmed `requires_qc_hold=1`
+  on it) → confirmed marking it `done` is **blocked** (400, "Held for QC") → QC releases the hold →
+  now completes → milestone auto-completes → same manual `production_done` confirmation → ready.
+
+**Closes the loop on "does it reach the packing list" — no new module needed.** Once both items were
+marked ready, called `POST /api/packing/from-bom` — the exact same action Dispatch's own "Generate
+Draft Packing List" button uses, already proven end-to-end (through to a real dispatch) by Phase T.
+Both items correctly landed on the generated draft list.
+
+**One real bug found — in the test's own `reset()`, not the app.** A Work-Order-generated Job Card
+never gets a `notes` value at all (confirmed by reading `generate-job-cards/route.js`'s INSERT
+directly — no `notes` column in it), so `reset()`'s original `WHERE notes = TAG` filter silently
+missed that one Job Card — leaving it (and its time logs) around to throw a real FK error when the
+Work Order it pointed at was deleted next. Exactly the class of trap this file's own note below
+already warns about. Fixed by also matching on `work_order_id`. Verified clean on retry, zero
+residue confirmed across every touched table.
 
 ## ⬜ Phase 5 — Dispatch / Packing (not started)
 
@@ -128,14 +157,46 @@ Phase 1/2 ends up on a real, correctly-formatted, dispatched packing list.
 
 ---
 
-## ⬜ Phase T — Trade (SAS) workflow (after all numbered phases above)
+## ✅ Phase T — Trade (SAS) workflow (`phaseT_sas_trade.py`)
 
-Separate from the main BOM lifecycle by explicit decision (2026-09-17) — Sales raises an SAS request against a Sale Order; Design is not involved. Each SAS request line is uniquely tracked by its bom_items.id, while sale_order_no identifies the parent Sale Order. Stores fulfills the request first from existing usable stock; only when sufficient usable stock is unavailable does the requirement flow to Procurement. Must include:
-- Two explicit fulfillment branches: (A) an SAS item with sufficient existing usable Stores inventory → auto-reserve that stock and bypass Procurement; (B) an SAS item with insufficient/no usable stock → Stores requests Procurement, then quote → supplier selection → PO → delivery → QC inward approval → reserve the received material against the original SAS request → Dispatch/packing list.
-- **Fixing the real gap found in Phase 2's investigation**: a freshly-procured `source='sas'`
-  scalar item currently isn't credited to `on_hand` or reserved on receipt at all — the material
-  arrives but the system loses track of it. Fix `lib/bom-receiving.js` to handle `sas` the same
-  way `bom` is handled (reserve to the sale order / trade request), then test it.
+**Status: COMPLETE, all 12 checks passing.**
+
+Separate from the main BOM lifecycle by explicit decision (2026-09-17) — Sales raises an SAS
+request against a Sale Order; Design is not involved. Both branches proven:
+- **Item A** (existing usable stock) — auto-reserved straight away at raise time, never touches
+  Procurement (`pending_review=1`). Stores then **Issues** the reservation → `purchase_status` →
+  `In-Stock`, `on_hand` decremented by the issued qty.
+- **Item B** (no existing stock) — stays visible to Procurement (`pending_review=0`, real Enquiry
+  queue) → quote → select supplier → issue PO → receive → QC inward approval. **This is exactly
+  where the real gap Phase 2's investigation found lived**: `on_hand` correctly stays uncredited
+  while the inward review is pending, and — the fix under test — is correctly credited **and**
+  reserved against its own trade request the moment QC approves (previously silently lost).
+
+Both items then converge onto one draft packing list generated from the sentinel system project's
+BOM, packed, dual QC+Production pre-dispatch sign-off, dispatched.
+
+**The real fix, already landed**: `lib/bom-receiving.js`'s `maybeReserveScalarStock` now handles
+`source='sas'` the same way `source='bom'` is handled (reserve to the trade request), closing the
+gap where a freshly-procured SAS item used to arrive and then vanish (never credited, never
+reserved). This phase is what proves that fix.
+
+**Two real bugs found while running this — both in the test harness, not the app:**
+1. **Item A's whole premise needs Stores' allocation mode set to `auto`** — the shared dev DB was
+   sitting in `manual` mode (confirmed via `app_settings.stores_allocation_mode`), under which
+   `autoReserveFromStock` never fires at all on insert, regardless of available stock. `run()` now
+   saves whatever mode it found, forces `auto` for the duration, and restores the original mode in
+   a `finally` block — since this is a real, persisted, app-wide setting, not test-scoped data.
+2. **`common.py`'s `turso_query()` was returning INTEGER columns as JSON strings** (Turso's HTTP
+   pipeline/Hrana API encodes them that way to avoid 64-bit precision loss over JSON), while the
+   app's own JSON API returns real ints for the same values — so every check comparing a
+   `turso_query()` row's id/flag column against an int from the API (`pending_review == 1`, a
+   `bom_item_id` set-membership check) silently always failed, even when the underlying data was
+   exactly right. Fixed at the root in `common.py` (`_coerce_cell`, coerces `type: "integer"` cells
+   to real Python ints) rather than patching each phase's own comparisons — this bug would have hit
+   every future phase that reads an integer column via `turso_query` and compares it against
+   anything from the app's API.
+
+Test artifacts cleaned up afterward via `reset()`.
 
 ## ⬜ Phase M — Master/Child (multi-unit split) via Allocation & Routing (last, after Phase T)
 
