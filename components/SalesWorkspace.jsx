@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/componen
 import {
   SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarGroup,
   SidebarGroupContent, SidebarMenu, SidebarMenuItem, SidebarMenuButton,
-  SidebarTrigger, SidebarInset, SidebarRail,
+  SidebarMenuSub, SidebarMenuSubItem, SidebarMenuSubButton, SidebarTrigger, SidebarInset, SidebarRail,
 } from '@/components/ui/sidebar';
 import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
@@ -27,10 +27,12 @@ import {
   PlusIcon, TrashIcon, UserPlusIcon, UsersIcon, FileTextIcon, ShoppingCartIcon,
   MegaphoneIcon, CheckSquareIcon, ContactIcon, MessageCircleIcon, MailIcon, TagIcon,
   InboxIcon, UndoIcon, IndianRupeeIcon, ReceiptIcon, DownloadIcon, UploadIcon, FileCheckIcon,
+  WalletIcon, ClipboardListIcon, BanknoteIcon,
 } from 'lucide-react';
 import { api, showToast } from '@/lib/client';
 import { formatMoney } from '@/lib/format';
 import ScopeOfSupplySection from '@/components/ScopeOfSupplySection';
+import { PaymentOrdersTab, PaymentLogTab } from '@/components/SalesPaymentTracker';
 
 // ponytail: fixed 24h first-response SLA, not a configurable business-hours calendar like Frappe
 // CRM's own SLA doctype (holiday list, service windows). Add a settings row for this if a real
@@ -1337,7 +1339,7 @@ function SaleOrdersTab({ saleOrders, router, canEditSoTax }) {
                   <TableCell><SoCompanyCell so={so} router={router} /></TableCell>
                   <TableCell className="tnum">{so.total ? formatMoney(so.total) : '—'}</TableCell>
                   <TableCell><Badge variant={so.status === 'open' ? 'outline' : 'default'}>{so.status || 'open'}</Badge></TableCell>
-                  <TableCell className="text-muted-foreground">{new Date(so.created_at).toLocaleDateString()}</TableCell>
+                  <TableCell className="text-muted-foreground">{so.created_at ? new Date(so.created_at).toLocaleDateString() : '—'}</TableCell>
                   <TableCell className="flex justify-end gap-2">
                     <Button size="sm" variant="outline" onClick={() => setItemsSo(so)}><FileTextIcon />Items & PDF</Button>
                     {so.project_id && <Button size="sm" variant="outline" onClick={() => setCostingSo(so)}><IndianRupeeIcon />Costing</Button>}
@@ -1648,21 +1650,30 @@ const PANELS = [
   { key: 'sale_orders', label: 'Sale Orders', icon: ShoppingCartIcon, description: 'Accepted orders', salesOnly: true },
   { key: 'scope_of_supply', label: 'Scope of Supply', icon: FileCheckIcon, description: 'Priced deliverables for a converted project', salesOnly: true },
   { key: 'invoices', label: 'Invoices', icon: ReceiptIcon, description: 'Sales Invoices and Credit Notes', salesOnly: true },
+  // Nested group, same shape as QcWorkspace's Approvals (Inward / Pre-Dispatch).
+  {
+    key: 'payment_tracker', label: 'Payment Tracker', icon: WalletIcon, salesOnly: true, group: true,
+    children: [
+      { key: 'payment_orders', label: 'Orders', icon: ClipboardListIcon, description: 'Order stages, value and payment position' },
+      { key: 'payment_log', label: 'Payments', icon: BanknoteIcon, description: 'Log of payments received against orders' },
+    ],
+  },
   { key: 'returns', label: 'Returns', icon: UndoIcon, description: 'Returned material against a Sale Order', salesOnly: true },
   { key: 'campaigns', label: 'Campaigns', icon: MegaphoneIcon, description: 'Marketing initiatives', salesOnly: false },
   { key: 'tasks', label: 'Tasks', icon: CheckSquareIcon, description: 'Every to-do across leads, deals and customers', salesOnly: false },
   { key: 'team', label: 'Team', icon: ContactIcon, description: 'Auto-assign new leads round-robin', salesOnly: false },
 ];
 
-export default function SalesWorkspace({ saleOrders, leads, customers, quotations, campaigns, priceLists = [], returns = [], inventoryItems = [], invoices = [], creditNotes = [], departments = ['Sales', 'Marketing'], users = [], savedViews = [], initialTab, canEditSoTax = false, projects = [], scopeOfSupply = [], initialScopeProject }) {
+export default function SalesWorkspace({ saleOrders, leads, customers, quotations, campaigns, priceLists = [], returns = [], inventoryItems = [], invoices = [], creditNotes = [], departments = ['Sales', 'Marketing'], users = [], savedViews = [], initialTab, canEditSoTax = false, projects = [], scopeOfSupply = [], initialScopeProject, salePayments = [] }) {
   const router = useRouter();
   // Customers/Quotations/Sale Orders are the commercial fulfilment chain — Sales-owned. Marketing
   // shares Leads/Campaigns/Reports (both departments feed the pipeline) but doesn't manage orders.
   const inSales = departments.includes('Sales');
   const items = PANELS.filter(p => !p.salesOnly || inSales);
   // Deep-link tab selection (Part B) — same server-prop pattern as QcWorkspace.jsx.
-  const [panel, setPanel] = useState(items.some(p => p.key === initialTab) ? initialTab : 'leads');
-  const activePanel = items.find(p => p.key === panel) || items[0];
+  const flat = items.flatMap(p => (p.group ? p.children : [p]));
+  const [panel, setPanel] = useState(flat.some(p => p.key === initialTab) ? initialTab : 'leads');
+  const activePanel = flat.find(p => p.key === panel) || flat[0];
 
   return (
     <SidebarProvider>
@@ -1685,7 +1696,23 @@ export default function SalesWorkspace({ saleOrders, leads, customers, quotation
           <SidebarGroup>
             <SidebarGroupContent>
               <SidebarMenu>
-                {items.map(p => (
+                {items.map(p => p.group ? (
+                  <SidebarMenuItem key={p.key}>
+                    <SidebarMenuButton tooltip={p.label} onClick={() => setPanel(p.children[0].key)}>
+                      <p.icon />
+                      <span>{p.label}</span>
+                    </SidebarMenuButton>
+                    <SidebarMenuSub>
+                      {p.children.map(c => (
+                        <SidebarMenuSubItem key={c.key}>
+                          <SidebarMenuSubButton isActive={activePanel.key === c.key} onClick={() => setPanel(c.key)} className="cursor-pointer">
+                            <span>{c.label}</span>
+                          </SidebarMenuSubButton>
+                        </SidebarMenuSubItem>
+                      ))}
+                    </SidebarMenuSub>
+                  </SidebarMenuItem>
+                ) : (
                   <SidebarMenuItem key={p.key}>
                     <SidebarMenuButton isActive={activePanel.key === p.key} tooltip={p.label} onClick={() => setPanel(p.key)}>
                       <p.icon />
@@ -1722,6 +1749,8 @@ export default function SalesWorkspace({ saleOrders, leads, customers, quotation
               initialProject={initialScopeProject} />
           )}
           {activePanel.key === 'invoices' && <InvoicesTab invoices={invoices} creditNotes={creditNotes} router={router} />}
+          {activePanel.key === 'payment_orders' && <PaymentOrdersTab saleOrders={saleOrders} payments={salePayments} invoices={invoices} />}
+          {activePanel.key === 'payment_log' && <PaymentLogTab saleOrders={saleOrders} payments={salePayments} invoices={invoices} />}
           {activePanel.key === 'returns' && <ReturnsTab returns={returns} saleOrders={saleOrders} inventoryItems={inventoryItems} router={router} />}
           {activePanel.key === 'campaigns' && <CampaignsTab campaigns={campaigns} router={router} />}
           {activePanel.key === 'tasks' && <AllTasksTab users={users} />}
