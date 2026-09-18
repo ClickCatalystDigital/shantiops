@@ -13,13 +13,13 @@ import ProjectFormFields from '@/components/ProjectFormFields';
 // V3_CHANGES.md §12 Phase 2f — customer picker wires the new nullable projects.customer_id.
 // customer_name stays required/free-text exactly as before (backward-compat with the 6
 // pre-existing projects); picking a customer here just autofills it and sets the id alongside.
-export default function NewProjectForm({ customers = [] }) {
+export default function NewProjectForm({ customers = [], saleOrders = [] }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [f, setF] = useState({
     series: '', model_capacity: '', model_pressure: '', model_design: '',
     project_no: '', customer_name: '', customer_id: '', description: '', order_date: '',
-    company: 'Shanti Boilers',
+    company: 'Shanti Boilers', sale_order_id: '',
   });
   const [busy, setBusy] = useState(false);
 
@@ -46,7 +46,7 @@ export default function NewProjectForm({ customers = [] }) {
       <DialogContent className="sm:max-w-2xl" onInteractOutside={e => e.preventDefault()}>
         <DialogHeader><DialogTitle>New Project</DialogTitle></DialogHeader>
         <form onSubmit={submit} className="flex flex-col gap-4">
-          <ProjectFormFields f={f} setF={setF} customers={customers} />
+          <ProjectFormFields f={f} setF={setF} customers={customers} saleOrders={saleOrders} />
           <DialogFooter>
             <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
             <Button type="submit" disabled={busy}>{busy ? 'Creating…' : 'Create'}</Button>

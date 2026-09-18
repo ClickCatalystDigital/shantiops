@@ -1,7 +1,6 @@
 import { getProjectsWithStatus, getCustomers, getSaleOrders, groupProjectsByMaster, getScopeOfSupply } from '@/lib/data';
 import { getFreshSessionUser, isDesignHead, canAccessDepartment } from '@/lib/auth';
 import NewProjectForm from '@/components/NewProjectForm';
-import ConvertSaleOrderButton from '@/components/ConvertSaleOrderButton';
 import PageHeader from '@/components/PageHeader';
 import ProjectsListTable from '@/components/ProjectsListTable';
 import ScopeOfSupplySection from '@/components/ScopeOfSupplySection';
@@ -32,8 +31,7 @@ export default async function Projects({ searchParams }) {
   return (
     <main className="container flex flex-col gap-6 py-8">
       <PageHeader title="Projects" description="Every customer order, design → commissioning">
-        {canCreate && <ConvertSaleOrderButton saleOrders={openSaleOrders} />}
-        {canCreate && <NewProjectForm customers={customers} />}
+        {canCreate && <NewProjectForm customers={customers} saleOrders={openSaleOrders} />}
       </PageHeader>
 
       <ProjectsListTable projects={grouped} />

@@ -1309,8 +1309,9 @@ function SaleOrderItemsSheet({ so, onClose, onSaved, canEditTax }) {
 // Convert-to-Project used to live here (STORES-SALES-CHANGES.md §2b/§4) but was only reachable by
 // a Design head who also held Sales/Marketing access — /sales itself is gated on those departments,
 // so a Design-only head (the common case) could never reach it despite the button/API both being
-// gated on isDesignHead. Moved to Design's own Projects tab (ConvertSaleOrderButton.jsx), the
-// surface every Design head can actually reach; not duplicated here.
+// gated on isDesignHead. Moved to Design's own Projects tab (a standalone ConvertSaleOrderButton
+// at first, 2026-09-18 folded into NewProjectForm's own Sale Order picker instead — same
+// POST /api/projects + sale_order_id call, one dialog instead of two); not duplicated here.
 function SaleOrdersTab({ saleOrders, router, canEditSoTax }) {
   useEntityHighlight(useSearchParams().get('highlight'));
   const [dialogOpen, setDialogOpen] = useState(false);

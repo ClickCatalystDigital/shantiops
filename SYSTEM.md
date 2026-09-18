@@ -11593,6 +11593,22 @@ hierarchy + audit trail was judged sufficient; revisit if that proves too light.
   `DialogContent className="max-w-*"` call sites elsewhere (`InstallationWorkspace.jsx`,
   `ProcurementWorkspace.jsx`, `SalesWorkspace.jsx`, `QcDocumentEditor.jsx`) use the same unprefixed
   pattern and have not been audited.
+  **Third gotcha, already hit (2026-09-18, `components/NewProjectForm.jsx`/`EditProjectDialog.jsx`):**
+  a native shadcn `Select` nested inside a `Dialog` can close the **whole Dialog**, not just itself,
+  when the user clicks anywhere else in the dialog's own content while the Select's dropdown is
+  open — even after adding `modal={false}` to the `Select` (the fix this codebase already applied
+  successfully at two other call sites, `CertForm.jsx`/`ReceiptPicker.jsx`, for the more common
+  version of this same class of bug). Confirmed live, not assumed: `modal={false}` alone did **not**
+  stop it here; a `console.trace()` on the Dialog's own `onOpenChange` proved Radix's own `Dialog`
+  primitive was the one calling `onOpenChange(false)`, not any app code — this is Radix's dismissable-
+  layer stack (`@radix-ui/react-dismissable-layer`) misidentifying an in-dialog click as "outside"
+  while a second, portaled dismissable layer (the open Select) is also live, not a bug in this app's
+  own event handling. The fix that actually worked: `onInteractOutside={e => e.preventDefault()}`
+  directly on the affected `DialogContent`, which disables outside-pointer/-focus dismissal for that
+  one dialog while leaving Escape, the X button, Cancel, and a successful submit all still closing it
+  normally (verified live, in that order, after applying the fix). Reach for this — not another round
+  of `modal={false}` — the next time a `Select` (or any other Radix popup) nested inside a `Dialog`
+  closes the dialog itself on an ordinary click elsewhere in the form.
 - **Responsive layout:** the content column is defined once — an unlayered `.container` rule in
   `app/globals.css` (centered, `max-width: 1760px`, fluid `clamp` padding) — so it's balanced on a
   1920 monitor (symmetric gutters) and comfortable on mobile. **Mobile is app-like:** desktop
