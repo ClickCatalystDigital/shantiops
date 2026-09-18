@@ -1,11 +1,17 @@
 // app/api/scope-of-supply/[id]/items/route.js — add a line item to a Scope of Supply document
-// (SL/Product/Qty/Unit Price/Basic Value on the real Order Acknowledgement layout).
+// (SL/Product/Qty/Unit Price/Basic Value on the real Order Acknowledgement layout). unit_price/
+// amount are money fields — gated separately (2026-09-18) so Design/Engineering can add a line
+// (description/qty/uom) without ever being able to set what it's charged at.
 import { NextResponse } from 'next/server';
 import { execute, queryOne, queryAll } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
 
 function canEdit(user) {
-  return canAccessDepartment(user, 'Design') || canAccessDepartment(user, 'Engineering');
+  return canAccessDepartment(user, 'Design') || canAccessDepartment(user, 'Engineering')
+    || canEditMoney(user);
+}
+function canEditMoney(user) {
+  return canAccessDepartment(user, 'Sales') || canAccessDepartment(user, 'Marketing');
 }
 
 export async function POST(req, { params }) {
@@ -15,6 +21,9 @@ export async function POST(req, { params }) {
   if (!header) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   const b = await req.json();
+  if ((b.unit_price !== undefined || b.amount !== undefined) && !canEditMoney(user)) {
+    return NextResponse.json({ error: 'Not editable by your department: unit_price, amount' }, { status: 403 });
+  }
   const description = String(b.description || '').trim();
   if (!description) return NextResponse.json({ error: 'Description is required' }, { status: 400 });
 

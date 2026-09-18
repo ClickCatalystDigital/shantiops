@@ -2,13 +2,17 @@
 // replacing DesignPanel.jsx's inert "awaiting Work Order / Scope of Supply format" placeholder.
 // One row is auto-created on project creation when a sale_order_id is set (app/api/projects/
 // route.js); this route covers manual add (for projects that predate this, or a second WO) and
-// listing by project. Shared by Design and Engineering — same work order, not department-split.
+// listing by project. Shared by Design, Engineering, and (2026-09-18) Sales/Marketing — the
+// commercial owner of the document's pricing, given its own view in SalesWorkspace.jsx. Money
+// fields (unit_price/amount/tax_pct) are additionally gated to canEditMoney below, in the routes
+// that actually touch them.
 import { NextResponse } from 'next/server';
 import { execute, queryAll } from '@/lib/db';
 import { getFreshSessionUser, isInternal, canAccessDepartment } from '@/lib/auth';
 
 function canEditScope(user) {
-  return canAccessDepartment(user, 'Design') || canAccessDepartment(user, 'Engineering');
+  return canAccessDepartment(user, 'Design') || canAccessDepartment(user, 'Engineering')
+    || canAccessDepartment(user, 'Sales') || canAccessDepartment(user, 'Marketing');
 }
 
 export async function GET(req) {

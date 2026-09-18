@@ -77,6 +77,16 @@ export default async function ProjectDetail({ params }) {
   const deliveryLotsCount = withDates.filter(it => it.nearest_expected_delivery).length;
 
   const pm = isPM(user);
+  // Scope of Supply pricing (2026-09-18) — Sales' business, not Design/Engineering's; PM sees
+  // everything. Gates the whole download-link card in ProjectDesignRow, since every link there
+  // points at the fully priced PDF.
+  const canSeeMoney = pm || canAccessDepartment(user, 'Sales') || canAccessDepartment(user, 'Marketing');
+  // Neither of these two client components ever renders a price/line-item field — hiding the UI
+  // isn't enough on its own (the raw scopeOfSupply rows, unit_price/amount/tax_pct included, would
+  // still ship to the browser as React props otherwise); project down to exactly what each one
+  // reads before it ever reaches a 'use client' component.
+  const sosFileOnly = scopeOfSupply.map(s => ({ id: s.id, pdf_key: s.pdf_key, pdf_url: s.pdf_url }));
+  const sosTitleOnly = scopeOfSupply.map(s => ({ id: s.id, title: s.title }));
   const head = isHead(user);
   const myDepts = headDepartments(user);
   const attentionMilestones = head ? milestones.filter(m => myDepts.includes(m.department)) : milestones;
@@ -127,7 +137,7 @@ export default async function ProjectDetail({ params }) {
       {/* Row 2 — always 3 fixed columns. */}
       <div className="grid items-start gap-6 lg:grid-cols-3">
         <ProjectHeader project={project} health={health} blocker={blocker} milestones={milestones}
-          canEdit={canEditProject} customers={editCustomers} scopeOfSupply={scopeOfSupply} />
+          canEdit={canEditProject} customers={editCustomers} scopeOfSupply={sosFileOnly} />
         <TodayBand milestones={attentionMilestones} />
         <DepartmentStateCard departments={departmentState} />
       </div>
@@ -139,7 +149,7 @@ export default async function ProjectDetail({ params }) {
       {hasChildren && canAccessDepartment(user, 'Dispatch') && <DispatchBatchPackingPanel projectId={project.id} />}
 
       {/* Lower rows — accumulate, never swap. */}
-      <ProjectDesignRow projectId={project.id} scopeOfSupply={scopeOfSupply}
+      <ProjectDesignRow projectId={project.id} scopeOfSupply={canSeeMoney ? sosTitleOnly : []} canSeeMoney={canSeeMoney}
         calcSheets={designSummary?.calcSheets} drawings={designSummary?.drawings} />
 
       {canAccessDepartment(user, 'Installation') && (milestones.some(m => m.department === 'Installation')) && (

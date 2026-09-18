@@ -5,7 +5,7 @@
 // CalcWorkspace's page.
 import { redirect } from 'next/navigation';
 import { getFreshSessionUser, canAccessDepartment, headDepartments, isPM, roleHome } from '@/lib/auth';
-import { getSaleOrders, getLeads, getCustomers, getQuotations, getCampaigns, getFunctionalHeads, getPriceLists, getSalesReturns, getInventoryItems, getSalesInvoices, getSalesCreditNotes } from '@/lib/data';
+import { getSaleOrders, getLeads, getCustomers, getQuotations, getCampaigns, getFunctionalHeads, getPriceLists, getSalesReturns, getInventoryItems, getSalesInvoices, getSalesCreditNotes, getActiveProjectsList, getScopeOfSupply } from '@/lib/data';
 import { queryAll } from '@/lib/db';
 import SalesWorkspace from '@/components/SalesWorkspace';
 
@@ -25,21 +25,29 @@ export default async function SalesPage({ searchParams }) {
   // CRM_DEPARTMENTS above deliberately excludes Accounts, so this needs its own check rather than
   // reusing `departments`.
   const canEditSoTax = isPM(user) || canAccessDepartment(user, 'Accounts');
+  // Scope of Supply (2026-09-18) — the same document/picker Design/Engineering already have on
+  // /projects (components/ScopeOfSupplySection.jsx, reused verbatim), just with money visible:
+  // Sales owns pricing, and Design/Engineering's own copy of this panel now hides it. Sales-only,
+  // same "commercial fulfilment chain" bucket as Customers/Quotations/Sale Orders/Invoices above.
+  const inSales = departments.includes('Sales');
+  const sp = await searchParams;
+  const scopeProjectId = inSales && sp?.project ? Number(sp.project) : null;
 
-  const [saleOrders, leads, customers, quotations, campaigns, priceLists, returns, inventoryItems, invoices, creditNotes, heads, savedViewRows] = await Promise.all([
+  const [saleOrders, leads, customers, quotations, campaigns, priceLists, returns, inventoryItems, invoices, creditNotes, heads, savedViewRows, projects, scopeOfSupply] = await Promise.all([
     getSaleOrders(), getLeads(), getCustomers(), getQuotations(), getCampaigns(), getPriceLists(), getSalesReturns(), getInventoryItems(),
     getSalesInvoices(), getSalesCreditNotes(),
     getFunctionalHeads(),
     queryAll('SELECT * FROM crm_saved_views WHERE user = ? AND entity = ? ORDER BY pinned DESC, created_at DESC', [user.username, 'leads']),
+    inSales ? getActiveProjectsList() : [],
+    scopeProjectId ? getScopeOfSupply(scopeProjectId) : [],
   ]);
   // "Assign to" pool for Tasks/Team — any active head who holds Sales or Marketing (a dual-dept
   // head shows up for both), same filter-after-getFunctionalHeads pattern app/production/page.js
   // already uses for its own assignee dropdown.
   const crmUsers = heads.filter(h => h.active && h.departments.some(d => CRM_DEPARTMENTS.includes(d)));
   const savedViews = savedViewRows.map(r => ({ ...r, filters: JSON.parse(r.filters || '{}') }));
-  const sp = await searchParams;
 
   return (
-    <SalesWorkspace saleOrders={saleOrders} leads={leads} customers={customers} quotations={quotations} campaigns={campaigns} priceLists={priceLists} returns={returns} inventoryItems={inventoryItems} invoices={invoices} creditNotes={creditNotes} departments={departments} users={crmUsers} savedViews={savedViews} initialTab={sp?.tab} canEditSoTax={canEditSoTax} />
+    <SalesWorkspace saleOrders={saleOrders} leads={leads} customers={customers} quotations={quotations} campaigns={campaigns} priceLists={priceLists} returns={returns} inventoryItems={inventoryItems} invoices={invoices} creditNotes={creditNotes} departments={departments} users={crmUsers} savedViews={savedViews} initialTab={sp?.tab} canEditSoTax={canEditSoTax} projects={projects} scopeOfSupply={scopeOfSupply} initialScopeProject={sp?.project} />
   );
 }

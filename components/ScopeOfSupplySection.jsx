@@ -12,7 +12,7 @@ import SearchableSelect from './SearchableSelect';
 import ScopeOfSupplyPanel from './ScopeOfSupplyPanel';
 import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
 
-export default function ScopeOfSupplySection({ projects = [], scopeOfSupply = [], canEdit = false, initialProject }) {
+export default function ScopeOfSupplySection({ projects = [], scopeOfSupply = [], canEdit = false, canSeeMoney = false, initialProject }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initProject = initialProject && projects.some(p => String(p.id) === String(initialProject)) ? Number(initialProject) : null;
@@ -37,7 +37,7 @@ export default function ScopeOfSupplySection({ projects = [], scopeOfSupply = []
         {projectId == null ? (
           <p className="text-sm text-muted-foreground">Pick a project above to view or edit its Scope of Supply.</p>
         ) : (
-          <ScopeOfSupplyPanel projectId={projectId} scopeOfSupply={scopeOfSupply} canEdit={canEdit} />
+          <ScopeOfSupplyPanel projectId={projectId} scopeOfSupply={scopeOfSupply} canEdit={canEdit} canSeeMoney={canSeeMoney} />
         )}
       </CardContent>
     </Card>

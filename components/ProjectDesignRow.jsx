@@ -1,11 +1,16 @@
 // Project View — the Scope of Supply + Calc Sheets + Drawings row. Scope of Supply is a real Card
 // with a blank state (a bare button row rendered nothing at all when the project had no SO yet —
-// per direct instruction, fixed to always show a card, with a "Create Scope of Supply" link to
-// /projects when empty). The standalone "Design signed off" badge is removed — per direct
-// instruction, that wasn't asked for; what WAS asked for (per-drawing internal/customer approval
-// ticks) already exists below, unchanged. Full SoS editing stays on /projects. Drawings keeps the
-// real 3-state approval indicators: internal check/dash always shown, customer conditional — blank
-// (not a dash) when the drawing was never sent to the customer at all.
+// per direct instruction, fixed to always show a card, with a "Create Scope of Supply" link when
+// empty). The standalone "Design signed off" badge is removed — per direct instruction, that
+// wasn't asked for; what WAS asked for (per-drawing internal/customer approval ticks) already
+// exists below, unchanged. Drawings keeps the real 3-state approval indicators: internal check/dash
+// always shown, customer conditional — blank (not a dash) when the drawing was never sent to the
+// customer at all.
+// `canSeeMoney` (2026-09-18) gates the whole Scope of Supply card, not just its numbers — every
+// download link here points at the fully priced PDF (lib/sos-pdf.js), so a Design/Engineering
+// viewer (who no longer sees pricing anywhere else, and no longer has an editor to reach at all —
+// full SoS editing moved to Sales' own workspace) must not have a one-click path to it either.
+// Calc Sheets and Drawings are unrelated and always render for every viewer, unchanged.
 'use client';
 
 import Link from 'next/link';
@@ -32,36 +37,38 @@ function ApprovalDot({ state }) {
     : <span className="text-muted-foreground">—</span>;
 }
 
-export default function ProjectDesignRow({ projectId, scopeOfSupply = [], calcSheets = [], drawings = [] }) {
+export default function ProjectDesignRow({ projectId, scopeOfSupply = [], calcSheets = [], drawings = [], canSeeMoney = false }) {
   // DG- deep links (lib/entity-refs.js's resolveDrawing) append ?highlight= to scroll-to/flash the
   // right row — this is the one card on the redesigned page carrying data-entity-code, so it's the
   // one that needs to actually read it.
   useEntityHighlight(useSearchParams().get('highlight'));
   return (
     <div className="flex flex-col gap-4">
-      <Card>
-        <CardHeader>
-          <CardTitle>Scope of Supply</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-wrap items-center gap-2">
-          {scopeOfSupply.length === 0 ? (
-            <div className="flex w-full items-center justify-between gap-3">
-              <p className="text-sm text-muted-foreground">No Scope of Supply yet.</p>
-              <Button asChild size="sm" variant="outline">
-                <Link href={`/projects?project=${projectId}`}>Create Scope of Supply</Link>
-              </Button>
-            </div>
-          ) : (
-            scopeOfSupply.map(sos => (
-              <Button key={sos.id} asChild size="sm" variant="outline">
-                <a href={`/api/scope-of-supply/${sos.id}/pdf`} target="_blank" rel="noreferrer">
-                  <DownloadIcon data-icon="inline-start" />{sos.title}
-                </a>
-              </Button>
-            ))
-          )}
-        </CardContent>
-      </Card>
+      {canSeeMoney && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Scope of Supply</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-wrap items-center gap-2">
+            {scopeOfSupply.length === 0 ? (
+              <div className="flex w-full items-center justify-between gap-3">
+                <p className="text-sm text-muted-foreground">No Scope of Supply yet.</p>
+                <Button asChild size="sm" variant="outline">
+                  <Link href={`/sales?tab=scope_of_supply&project=${projectId}`}>Create Scope of Supply</Link>
+                </Button>
+              </div>
+            ) : (
+              scopeOfSupply.map(sos => (
+                <Button key={sos.id} asChild size="sm" variant="outline">
+                  <a href={`/api/scope-of-supply/${sos.id}/pdf`} target="_blank" rel="noreferrer">
+                    <DownloadIcon data-icon="inline-start" />{sos.title}
+                  </a>
+                </Button>
+              ))
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Card>

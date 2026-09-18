@@ -1,15 +1,18 @@
 'use client';
 
-// The confirmed order's handoff to Design + Engineering — matches the client's real Order
-// Acknowledgement paper form now (2026-08-17 "complete SOS" pass), not the earlier freeform
-// title+spec blob: a document header (client block, PO/offer refs, payment/freight/delivery
-// terms) plus priced line items plus totals, and a PDF export in that same layout
-// (lib/sos-pdf.js). One header is auto-created on project creation when a sale_order_id is set
-// (app/api/projects/route.js), pre-filled with priced line items from the Sale Order and payment
-// terms from the quotation; this panel is where Design/Engineering fill in the rest (PO
-// no./date, freight/delivery terms, prepared-by) and release it. Shared by both departments (same
-// work order, not department-split), so this one component renders in both DesignPanel.jsx and
-// DepartmentPanel.jsx's Engineering slot.
+// The confirmed order's handoff to Design + Engineering (scope/spec) and Sales (pricing) — matches
+// the client's real Order Acknowledgement paper form (2026-08-17 "complete SOS" pass): a document
+// header (client block, PO/offer refs, payment/freight/delivery terms) plus priced line items plus
+// totals, and a PDF export in that same layout (lib/sos-pdf.js). One header is auto-created on
+// project creation when a sale_order_id is set (app/api/projects/route.js), pre-filled with priced
+// line items from the Sale Order and payment terms from the quotation.
+// `canEdit` gates the operational fields (description/qty/uom, PO no./date, terms, release) —
+// Design, Engineering, and Sales/Marketing all get this. `canSeeMoney` (2026-09-18) separately
+// gates unit price/basic value/GST%/totals: Sales/Marketing/PM only — "how much we're charging" is
+// not something Design/Engineering need to see or touch, enforced server-side too (the PATCH/POST
+// routes 403 on unit_price/amount/tax_pct from anyone without it), not just hidden here. When a
+// money field is hidden, this component must never send its key in a request body at all — a
+// present-but-empty key would still trip the server's own guard for an otherwise-unrelated edit.
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, showToast } from '@/lib/client';
@@ -61,15 +64,18 @@ function HeaderField({ label, value, onSave, canEdit, type = 'text' }) {
   );
 }
 
-function ItemRow({ item, canEdit, onSaved }) {
+function ItemRow({ item, canEdit, canSeeMoney, onSaved }) {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({ description: item.description, qty: item.qty ?? '', uom: item.uom || '', unit_price: item.unit_price ?? '' });
   const [saving, setSaving] = useState(false);
+  const colCount = 3 + (canSeeMoney ? 1 : 0) + (canEdit ? 1 : 0);
 
   async function save() {
     setSaving(true);
     try {
-      await api(`/api/scope-of-supply/${item.scope_of_supply_id}/items/${item.id}`, { method: 'PATCH', body: form });
+      const body = { description: form.description, qty: form.qty, uom: form.uom };
+      if (canSeeMoney) body.unit_price = form.unit_price;
+      await api(`/api/scope-of-supply/${item.scope_of_supply_id}/items/${item.id}`, { method: 'PATCH', body });
       setEditing(false);
       onSaved();
     } catch (err) { showToast(err.message, 'error'); } finally { setSaving(false); }
@@ -86,12 +92,12 @@ function ItemRow({ item, canEdit, onSaved }) {
   if (editing) {
     return (
       <TableRow>
-        <TableCell colSpan={canEdit ? 5 : 4}>
+        <TableCell colSpan={colCount}>
           <div className="flex flex-wrap items-center gap-2">
             <Input className="min-w-40 flex-1" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Description" />
             <Input className="w-20" value={form.qty} onChange={e => setForm({ ...form, qty: e.target.value })} placeholder="Qty" />
             <Input className="w-20" value={form.uom} onChange={e => setForm({ ...form, uom: e.target.value })} placeholder="UoM" />
-            <Input className="w-28" value={form.unit_price} onChange={e => setForm({ ...form, unit_price: e.target.value })} placeholder="Unit price" />
+            {canSeeMoney && <Input className="w-28" value={form.unit_price} onChange={e => setForm({ ...form, unit_price: e.target.value })} placeholder="Unit price" />}
             <Button size="sm" disabled={saving} onClick={save}>{saving ? 'Saving…' : 'Save'}</Button>
             <Button size="sm" variant="outline" onClick={() => setEditing(false)}>Cancel</Button>
           </div>
@@ -103,8 +109,8 @@ function ItemRow({ item, canEdit, onSaved }) {
     <TableRow>
       <TableCell className="font-medium">{item.description}</TableCell>
       <TableCell className="text-muted-foreground">{[item.qty, item.uom].filter(Boolean).join(' ') || '—'}</TableCell>
-      <TableCell className="text-muted-foreground tnum">{fmt(item.unit_price)}</TableCell>
-      <TableCell className="tnum">{fmt(item.amount)}</TableCell>
+      {canSeeMoney && <TableCell className="text-muted-foreground tnum">{fmt(item.unit_price)}</TableCell>}
+      {canSeeMoney && <TableCell className="tnum">{fmt(item.amount)}</TableCell>}
       {canEdit && (
         <TableCell className="flex justify-end gap-1">
           <Button size="icon-sm" variant="ghost" onClick={() => setEditing(true)}><PencilIcon className="size-3.5" /></Button>
@@ -115,7 +121,7 @@ function ItemRow({ item, canEdit, onSaved }) {
   );
 }
 
-function AddItemRow({ sosId, canEdit, onAdded }) {
+function AddItemRow({ sosId, canEdit, canSeeMoney, onAdded }) {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ description: '', qty: '', uom: '', unit_price: '' });
   const [saving, setSaving] = useState(false);
@@ -124,7 +130,9 @@ function AddItemRow({ sosId, canEdit, onAdded }) {
     if (!form.description.trim()) return showToast('Description is required', 'error');
     setSaving(true);
     try {
-      await api(`/api/scope-of-supply/${sosId}/items`, { method: 'POST', body: form });
+      const body = { description: form.description, qty: form.qty, uom: form.uom };
+      if (canSeeMoney) body.unit_price = form.unit_price;
+      await api(`/api/scope-of-supply/${sosId}/items`, { method: 'POST', body });
       setForm({ description: '', qty: '', uom: '', unit_price: '' });
       setOpen(false);
       onAdded();
@@ -144,14 +152,16 @@ function AddItemRow({ sosId, canEdit, onAdded }) {
       <Input className="min-w-40 flex-1" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Description" autoFocus />
       <Input className="w-20" value={form.qty} onChange={e => setForm({ ...form, qty: e.target.value })} placeholder="Qty" />
       <Input className="w-20" value={form.uom} onChange={e => setForm({ ...form, uom: e.target.value })} placeholder="UoM" />
-      <Input className="w-28" value={form.unit_price} onChange={e => setForm({ ...form, unit_price: e.target.value })} placeholder="Unit price" />
+      {canSeeMoney && <Input className="w-28" value={form.unit_price} onChange={e => setForm({ ...form, unit_price: e.target.value })} placeholder="Unit price" />}
       <Button size="sm" disabled={saving} onClick={add}>{saving ? 'Adding…' : 'Add'}</Button>
       <Button size="sm" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
     </div>
   );
 }
 
-function SosDocument({ sos, canEdit, router }) {
+function SosDocument({ sos, canEdit, canSeeMoney, router }) {
+  const colCount = 3 + (canSeeMoney ? 1 : 0) + (canEdit ? 1 : 0);
+
   async function saveField(field, value) {
     try {
       await api(`/api/scope-of-supply/${sos.id}`, { method: 'PATCH', body: { [field]: value } });
@@ -196,7 +206,7 @@ function SosDocument({ sos, canEdit, router }) {
           <HeaderField label="PO No" value={sos.po_no} canEdit={canEdit} onSave={v => saveField('po_no', v)} />
           <HeaderField label="PO Date" type="date" value={sos.po_date} canEdit={canEdit} onSave={v => saveField('po_date', v)} />
           <HeaderField label="Prepared By" value={sos.prepared_by} canEdit={canEdit} onSave={v => saveField('prepared_by', v)} />
-          <HeaderField label="GST %" value={sos.tax_pct} canEdit={canEdit} onSave={v => saveField('tax_pct', v)} />
+          {canSeeMoney && <HeaderField label="GST %" value={sos.tax_pct} canEdit={canEdit} onSave={v => saveField('tax_pct', v)} />}
         </div>
 
         <Table>
@@ -204,25 +214,29 @@ function SosDocument({ sos, canEdit, router }) {
             <TableRow>
               <TableHead>Product</TableHead>
               <TableHead>Qty</TableHead>
-              <TableHead>Unit Price</TableHead>
-              <TableHead>Basic Value</TableHead>
+              {canSeeMoney && <TableHead>Unit Price</TableHead>}
+              {canSeeMoney && <TableHead>Basic Value</TableHead>}
               {canEdit && <TableHead></TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
-            {sos.items.map(it => <ItemRow key={it.id} item={{ ...it, scope_of_supply_id: sos.id }} canEdit={canEdit} onSaved={() => router.refresh()} />)}
+            {sos.items.map(it => (
+              <ItemRow key={it.id} item={{ ...it, scope_of_supply_id: sos.id }} canEdit={canEdit} canSeeMoney={canSeeMoney} onSaved={() => router.refresh()} />
+            ))}
             {sos.items.length === 0 && (
-              <TableRow><TableCell colSpan={canEdit ? 5 : 4} className="text-center text-sm text-muted-foreground">No line items yet.</TableCell></TableRow>
+              <TableRow><TableCell colSpan={colCount} className="text-center text-sm text-muted-foreground">No line items yet.</TableCell></TableRow>
             )}
           </TableBody>
         </Table>
-        <AddItemRow sosId={sos.id} canEdit={canEdit} onAdded={() => router.refresh()} />
+        <AddItemRow sosId={sos.id} canEdit={canEdit} canSeeMoney={canSeeMoney} onAdded={() => router.refresh()} />
 
-        <div className="flex flex-col items-end gap-1 border-t pt-3 text-sm">
-          <div className="flex w-48 justify-between"><span className="text-muted-foreground">Basic Total</span><span className="tnum">{fmt(sos.basicTotal)}</span></div>
-          <div className="flex w-48 justify-between"><span className="text-muted-foreground">GST @ {sos.tax_pct}%</span><span className="tnum">{fmt(sos.taxAmount)}</span></div>
-          <div className="flex w-48 justify-between border-t pt-1 font-semibold"><span>Grand Total</span><span className="tnum">{fmt(sos.grandTotal)}</span></div>
-        </div>
+        {canSeeMoney && (
+          <div className="flex flex-col items-end gap-1 border-t pt-3 text-sm">
+            <div className="flex w-48 justify-between"><span className="text-muted-foreground">Basic Total</span><span className="tnum">{fmt(sos.basicTotal)}</span></div>
+            <div className="flex w-48 justify-between"><span className="text-muted-foreground">GST @ {sos.tax_pct}%</span><span className="tnum">{fmt(sos.taxAmount)}</span></div>
+            <div className="flex w-48 justify-between border-t pt-1 font-semibold"><span>Grand Total</span><span className="tnum">{fmt(sos.grandTotal)}</span></div>
+          </div>
+        )}
 
         <div className="grid gap-3 border-t pt-3 sm:grid-cols-3">
           <HeaderField label="Payment terms" value={sos.payment_terms} canEdit={canEdit} onSave={v => saveField('payment_terms', v)} />
@@ -234,7 +248,7 @@ function SosDocument({ sos, canEdit, router }) {
   );
 }
 
-export default function ScopeOfSupplyPanel({ projectId, scopeOfSupply = [], canEdit = false }) {
+export default function ScopeOfSupplyPanel({ projectId, scopeOfSupply = [], canEdit = false, canSeeMoney = false }) {
   const router = useRouter();
   const [title, setTitle] = useState('');
   const [adding, setAdding] = useState(false);
@@ -259,7 +273,7 @@ export default function ScopeOfSupplyPanel({ projectId, scopeOfSupply = [], canE
           </CardContent>
         </Card>
       )}
-      {scopeOfSupply.map(sos => <SosDocument key={sos.id} sos={sos} canEdit={canEdit} router={router} />)}
+      {scopeOfSupply.map(sos => <SosDocument key={sos.id} sos={sos} canEdit={canEdit} canSeeMoney={canSeeMoney} router={router} />)}
       {canEdit && (
         <div className="flex gap-2">
           <Input placeholder="New work order title" value={title} onChange={e => setTitle(e.target.value)} />

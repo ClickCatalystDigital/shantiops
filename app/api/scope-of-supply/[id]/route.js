@@ -1,21 +1,30 @@
 // app/api/scope-of-supply/[id]/route.js — PATCH covers editing the document header (title, the
 // commercial refs/terms the printable version needs) and releasing it (draft -> released), same
-// field-level shape as app/api/opportunities/[id]/route.js.
+// field-level shape as app/api/opportunities/[id]/route.js. tax_pct is the one money field this
+// route touches — gated separately (Sales/Marketing/PM only, 2026-09-18): Design/Engineering may
+// edit every other header field but not what's being charged.
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
 
 const TEXT_FIELDS = ['po_no', 'payment_terms', 'freight_terms', 'delivery_terms', 'prepared_by'];
 
+function canEditMoney(user) {
+  return canAccessDepartment(user, 'Sales') || canAccessDepartment(user, 'Marketing');
+}
+
 export async function PATCH(req, { params }) {
   const user = await getFreshSessionUser();
-  if (!canAccessDepartment(user, 'Design') && !canAccessDepartment(user, 'Engineering')) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
+  const canEdit = canAccessDepartment(user, 'Design') || canAccessDepartment(user, 'Engineering')
+    || canEditMoney(user);
+  if (!canEdit) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const existing = await queryOne('SELECT id FROM scope_of_supply WHERE id = ?', [params.id]);
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   const b = await req.json();
+  if (b.tax_pct !== undefined && !canEditMoney(user)) {
+    return NextResponse.json({ error: 'Not editable by your department: tax_pct' }, { status: 403 });
+  }
   const fields = [];
   const args = [];
   if (b.title !== undefined) { fields.push('title = ?'); args.push(String(b.title).trim()); }

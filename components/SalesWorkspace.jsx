@@ -26,10 +26,11 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/com
 import {
   PlusIcon, TrashIcon, UserPlusIcon, UsersIcon, FileTextIcon, ShoppingCartIcon,
   MegaphoneIcon, CheckSquareIcon, ContactIcon, MessageCircleIcon, MailIcon, TagIcon,
-  InboxIcon, UndoIcon, IndianRupeeIcon, ReceiptIcon, DownloadIcon, UploadIcon,
+  InboxIcon, UndoIcon, IndianRupeeIcon, ReceiptIcon, DownloadIcon, UploadIcon, FileCheckIcon,
 } from 'lucide-react';
 import { api, showToast } from '@/lib/client';
 import { formatMoney } from '@/lib/format';
+import ScopeOfSupplySection from '@/components/ScopeOfSupplySection';
 
 // ponytail: fixed 24h first-response SLA, not a configurable business-hours calendar like Frappe
 // CRM's own SLA doctype (holiday list, service windows). Add a settings row for this if a real
@@ -1645,6 +1646,7 @@ const PANELS = [
   { key: 'quotations', label: 'Quotations', icon: FileTextIcon, description: 'Proposals sent to customers', salesOnly: true },
   { key: 'price_lists', label: 'Price Lists', icon: TagIcon, description: 'Customer/product rates and validity', salesOnly: true },
   { key: 'sale_orders', label: 'Sale Orders', icon: ShoppingCartIcon, description: 'Accepted orders', salesOnly: true },
+  { key: 'scope_of_supply', label: 'Scope of Supply', icon: FileCheckIcon, description: 'Priced deliverables for a converted project', salesOnly: true },
   { key: 'invoices', label: 'Invoices', icon: ReceiptIcon, description: 'Sales Invoices and Credit Notes', salesOnly: true },
   { key: 'returns', label: 'Returns', icon: UndoIcon, description: 'Returned material against a Sale Order', salesOnly: true },
   { key: 'campaigns', label: 'Campaigns', icon: MegaphoneIcon, description: 'Marketing initiatives', salesOnly: false },
@@ -1652,7 +1654,7 @@ const PANELS = [
   { key: 'team', label: 'Team', icon: ContactIcon, description: 'Auto-assign new leads round-robin', salesOnly: false },
 ];
 
-export default function SalesWorkspace({ saleOrders, leads, customers, quotations, campaigns, priceLists = [], returns = [], inventoryItems = [], invoices = [], creditNotes = [], departments = ['Sales', 'Marketing'], users = [], savedViews = [], initialTab, canEditSoTax = false }) {
+export default function SalesWorkspace({ saleOrders, leads, customers, quotations, campaigns, priceLists = [], returns = [], inventoryItems = [], invoices = [], creditNotes = [], departments = ['Sales', 'Marketing'], users = [], savedViews = [], initialTab, canEditSoTax = false, projects = [], scopeOfSupply = [], initialScopeProject }) {
   const router = useRouter();
   // Customers/Quotations/Sale Orders are the commercial fulfilment chain — Sales-owned. Marketing
   // shares Leads/Campaigns/Reports (both departments feed the pipeline) but doesn't manage orders.
@@ -1715,6 +1717,10 @@ export default function SalesWorkspace({ saleOrders, leads, customers, quotation
           {activePanel.key === 'quotations' && <QuotationsTab quotations={quotations} customers={customers} router={router} />}
           {activePanel.key === 'price_lists' && <PriceListsTab priceLists={priceLists} customers={customers} router={router} />}
           {activePanel.key === 'sale_orders' && <SaleOrdersTab saleOrders={saleOrders} router={router} canEditSoTax={canEditSoTax} />}
+          {activePanel.key === 'scope_of_supply' && (
+            <ScopeOfSupplySection projects={projects} scopeOfSupply={scopeOfSupply} canEdit canSeeMoney
+              initialProject={initialScopeProject} />
+          )}
           {activePanel.key === 'invoices' && <InvoicesTab invoices={invoices} creditNotes={creditNotes} router={router} />}
           {activePanel.key === 'returns' && <ReturnsTab returns={returns} saleOrders={saleOrders} inventoryItems={inventoryItems} router={router} />}
           {activePanel.key === 'campaigns' && <CampaignsTab campaigns={campaigns} router={router} />}

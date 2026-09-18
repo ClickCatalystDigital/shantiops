@@ -3,7 +3,13 @@ import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
 
 function canEdit(user) {
-  return canAccessDepartment(user, 'Design') || canAccessDepartment(user, 'Engineering');
+  return canAccessDepartment(user, 'Design') || canAccessDepartment(user, 'Engineering')
+    || canEditMoney(user);
+}
+// unit_price/amount are money fields — gated separately (2026-09-18), same reasoning as the
+// sibling create route: Design/Engineering may edit a line's description/qty/uom, not its price.
+function canEditMoney(user) {
+  return canAccessDepartment(user, 'Sales') || canAccessDepartment(user, 'Marketing');
 }
 
 export async function PATCH(req, { params }) {
@@ -13,6 +19,9 @@ export async function PATCH(req, { params }) {
   if (!item) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   const b = await req.json();
+  if ((b.unit_price !== undefined || b.amount !== undefined) && !canEditMoney(user)) {
+    return NextResponse.json({ error: 'Not editable by your department: unit_price, amount' }, { status: 403 });
+  }
   const next = {
     description: b.description !== undefined ? String(b.description).trim() : item.description,
     spec: b.spec !== undefined ? (b.spec?.trim() || null) : item.spec,
