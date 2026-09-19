@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne, queryAll, withTransaction } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
+import { audit } from '@/lib/usb';
 
 const TEMPLATE_DEPARTMENTS = ['Engineering', 'Design', 'Stores'];
 function canTouch(user) { return TEMPLATE_DEPARTMENTS.some(d => canAccessDepartment(user, d)); }
@@ -8,7 +9,7 @@ function canTouch(user) { return TEMPLATE_DEPARTMENTS.some(d => canAccessDepartm
 export async function GET(req, { params }) {
   const user = await getFreshSessionUser();
   if (!canTouch(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  const template = await queryOne('SELECT * FROM bom_templates WHERE id = ?', [params.id]);
+  const template = await queryOne('SELECT * FROM bom_templates WHERE id = ? AND archived_at IS NULL', [params.id]);
   if (!template) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   const items = await queryAll('SELECT * FROM bom_template_items WHERE template_id = ? ORDER BY sort_order, id', [params.id]);
   return NextResponse.json({ ...template, items });
@@ -25,7 +26,7 @@ export async function GET(req, { params }) {
 export async function PATCH(req, { params }) {
   const user = await getFreshSessionUser();
   if (!canTouch(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  const existing = await queryOne('SELECT id FROM bom_templates WHERE id = ?', [params.id]);
+  const existing = await queryOne('SELECT id FROM bom_templates WHERE id = ? AND archived_at IS NULL', [params.id]);
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   const b = await req.json();
   const name = String(b.name || '').trim();
@@ -54,10 +55,34 @@ export async function PATCH(req, { params }) {
   return NextResponse.json({ ok: true });
 }
 
+// A template that BOM lines already reference (bom_items.template_id) is ARCHIVED, not deleted: hidden
+// from every list/picker, row kept so those lines keep their "via <template>" label and FK (Turso
+// enforces it). An unused template is really deleted — items and header in ONE transaction. This used
+// to delete the items first and then the template, so on a used template the second delete threw and
+// left the template emptied but not deleted. The usage count decides (local SQLite dev doesn't enforce
+// FKs); the catch is only the race fallback (applied between the count and the delete → the whole
+// transaction rolls back, then archive).
 export async function DELETE(req, { params }) {
   const user = await getFreshSessionUser();
   if (!canTouch(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  await execute('DELETE FROM bom_template_items WHERE template_id = ?', [params.id]);
-  await execute('DELETE FROM bom_templates WHERE id = ?', [params.id]);
-  return NextResponse.json({ ok: true });
+  const row = await queryOne('SELECT id, name FROM bom_templates WHERE id = ? AND archived_at IS NULL', [params.id]);
+  if (!row) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
+  const used = await queryOne('SELECT COUNT(*) AS n FROM bom_items WHERE template_id = ?', [row.id]);
+  let archived = used.n > 0;
+  if (!archived) {
+    try {
+      await withTransaction(async tx => {
+        await tx.execute({ sql: 'DELETE FROM bom_template_items WHERE template_id = ?', args: [row.id] });
+        await tx.execute({ sql: 'DELETE FROM bom_templates WHERE id = ?', args: [row.id] });
+      });
+    } catch (err) {
+      if (!/FOREIGN KEY/i.test(String(err?.message))) throw err;
+      archived = true;
+    }
+  }
+  if (archived) await execute('UPDATE bom_templates SET archived_at = CURRENT_TIMESTAMP WHERE id = ?', [row.id]);
+  await audit(archived ? 'bom_template_archive' : 'bom_template_delete',
+    { actor: user.username, detail: `template ${row.id} ("${row.name}")` });
+  return NextResponse.json({ ok: true, archived });
 }

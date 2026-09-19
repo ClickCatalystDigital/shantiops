@@ -16,9 +16,12 @@ export async function GET(req) {
   const kindParam = new URL(req.url).searchParams.get('kind');
   const kind = KINDS.has(kindParam) ? kindParam : null;
   const templates = await queryAll(
-    `SELECT t.*, (SELECT COUNT(*) FROM bom_template_items i WHERE i.template_id = t.id) AS item_count
+    // archived_at IS NULL: a template deleted while BOM lines already reference it is archived (see
+    // DELETE [id]) and must vanish from every list/picker. used_count feeds the delete dialog wording.
+    `SELECT t.*, (SELECT COUNT(*) FROM bom_template_items i WHERE i.template_id = t.id) AS item_count,
+            (SELECT COUNT(*) FROM bom_items b WHERE b.template_id = t.id) AS used_count
        FROM bom_templates t
-      ${kind ? 'WHERE t.kind = ?' : ''}
+      WHERE t.archived_at IS NULL ${kind ? 'AND t.kind = ?' : ''}
       ORDER BY t.name`,
     kind ? [kind] : []
   );

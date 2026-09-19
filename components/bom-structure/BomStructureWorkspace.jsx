@@ -31,7 +31,7 @@ import { nodePath } from '@/lib/bom-tree.mjs';
 export default function BomStructureWorkspace({
   projects, projectId: controlledProjectId, onProjectIdChange,
   showReleased: controlledShowReleased, onShowReleasedChange,
-  initialSelectedId, hideRelease, banner, hideRootActions,
+  initialSelectedId, hideRelease, banner, hideRootActions, canClearBom = false,
 }) {
   const router = useRouter();
   const controlled = controlledProjectId !== undefined;
@@ -178,8 +178,20 @@ export default function BomStructureWorkspace({
   async function saveBomAsTemplate(payload) {
     try {
       const res = await api(`/api/projects/${projectId}/save-bom-as-template`, { method: 'POST', body: payload });
-      showToast(`Whole-BOM template saved — ${res.rootCount} root(s), ${res.nodeCount} node(s), ${res.itemCount} item(s)`);
+      showToast(payload.overwrite_template_id
+        ? (res.unchanged
+          ? 'Template already matches this BOM — nothing changed'
+          : `Template updated to v${res.version} — ${res.rootCount} root(s), ${res.nodeCount} node(s), ${res.itemCount} item(s)`)
+        : `Whole-BOM template saved — ${res.rootCount} root(s), ${res.nodeCount} node(s), ${res.itemCount} item(s)`);
     } catch (err) { showToast(err.message, 'error'); }
+  }
+  // Throws on refusal (unlike the toast-and-swallow handlers above) so ClearBomDialog can show the
+  // server's all-or-nothing reason inline and stay open.
+  async function clearBom() {
+    const res = await api(`/api/projects/${projectId}/clear-bom`, { method: 'POST' });
+    setSelectedId(null);
+    reloadAll();
+    showToast(`BOM deleted — ${res.deletedNodes} node(s), ${res.deletedItems} item(s)`);
   }
   async function saveUnitCount(n) {
     try {
@@ -335,6 +347,9 @@ export default function BomStructureWorkspace({
               onBuildFromTemplates={buildFromTemplates} onSaveBomAsTemplate={saveBomAsTemplate}
               unitCount={selectedProject?.unit_count} onSaveUnitCount={saveUnitCount}
               projectId={projectId}
+              onClearBom={canClearBom && !hideRootActions ? clearBom : undefined}
+              nodeCount={assemblies.length}
+              projectLabel={selectedProject ? `${selectedProject.project_no} · ${selectedProject.customer_name}` : ''}
               onResolveUncategorized={uncategorizedItems.length ? () => setResolvingCategories(true) : undefined}
               onResolveUnassigned={unassignedItems.length ? () => setResolvingUnassigned(true) : undefined}
             />

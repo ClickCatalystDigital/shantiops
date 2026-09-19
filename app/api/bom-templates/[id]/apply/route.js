@@ -22,7 +22,7 @@ export async function POST(req, { params }) {
   // which pre-fills the Raise PR form and submits through /api/purchase-requisitions instead) — a
   // direct insert would silently skip the real PR record that kind is supposed to produce, so it's
   // rejected outright rather than only relied on the UI never offering the button.
-  const template = await queryOne('SELECT kind FROM bom_templates WHERE id = ?', [params.id]);
+  const template = await queryOne('SELECT kind FROM bom_templates WHERE id = ? AND archived_at IS NULL', [params.id]);
   if (!template) return NextResponse.json({ error: 'Template not found' }, { status: 404 });
   if (template.kind !== 'bom') return NextResponse.json({ error: 'This is a PR template — use "Use in Raise PR" instead' }, { status: 400 });
 

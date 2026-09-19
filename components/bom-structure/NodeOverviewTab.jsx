@@ -12,9 +12,42 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import RelatedItemsCard from '@/components/RelatedItemsCard';
 import { api } from '@/lib/client';
-import { NODE_TYPE_SUGGESTIONS, effectiveNodeLevel } from '@/lib/bom-tree.mjs';
+import { NODE_TYPE_SUGGESTIONS, effectiveNodeLevel, templateVersionState } from '@/lib/bom-tree.mjs';
 
 const OTHER = '__other__';
+
+// One muted line for a node that a Structure Template built (lineage is stamped on root nodes only).
+// Applied BOMs are independent copies, so a newer template version is information, never an action —
+// the wording says so. The template list only holds active templates, so "not found" = removed.
+// Looked up client-side (not joined into getBomStructure) so nothing time-varying is ever frozen into
+// a release snapshot. A failed/forbidden fetch simply shows nothing.
+function TemplateLineage({ node }) {
+  const [info, setInfo] = useState(null);
+  useEffect(() => {
+    setInfo(null);
+    if (!node.structure_template_id) return undefined;
+    let cancelled = false;
+    api('/api/bom-structure-templates')
+      .then(list => {
+        if (cancelled) return;
+        const t = list.find(x => x.id === node.structure_template_id);
+        setInfo({ name: t?.name, current: t?.version, found: !!t });
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [node.id, node.structure_template_id]);
+  if (!info) return null;
+  const state = templateVersionState({ stamped: node.structure_template_version, current: info.current, found: info.found });
+  if (state === 'removed') return <p className="text-xs text-muted-foreground">Built from a template that has since been removed.</p>;
+  return (
+    <p className="text-xs text-muted-foreground">
+      Built from template “{info.name}”{node.structure_template_version != null && ` · v${node.structure_template_version}`}
+      {state === 'stale' && (
+        <span className="text-warning"> · newer version v{info.current} available — this node is unchanged</span>
+      )}
+    </p>
+  );
+}
 
 // Templates one rung below this node's own level become its children when applied — the same rung
 // MoveAssemblyDialog's own step-2 picker already uses for "parent one level up." A System-level
@@ -74,6 +107,7 @@ export default function NodeOverviewTab({ node, byId, onSaveQty, onSaveNodeType,
 
   return (
     <div className="flex flex-col gap-4">
+      {node.structure_template_id && <TemplateLineage node={node} />}
       <div className="grid grid-cols-2 gap-4">
         <div className="flex flex-col gap-1.5">
           <Label>Local quantity</Label>

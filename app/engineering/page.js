@@ -20,9 +20,10 @@ export default async function EngineeringPage({ searchParams }) {
   // Where-Used/Common-Uncommon/Change Notes are all client-fetched now (round 3 Phase A, the shared
   // project-selector filter needs to re-query them live) — no more server-preloaded changeNotes/
   // partUsage props, same precedent WhereUsedTab's own search always followed.
-  const [projects, canApproveEcn] = await Promise.all([
+  const [projects, canApproveEcn, canClearBom] = await Promise.all([
     getActiveProjectsList(),
     canPerformAction(user, 'Engineering', 'engineering.ecn.approve'),
+    canPerformAction(user, 'Engineering', 'engineering.bom.clear'),
   ]);
 
   // Requests' three tabs (Purchase Requests/Release BOM/PR Templates) are now also reachable from
@@ -39,5 +40,5 @@ export default async function EngineeringPage({ searchParams }) {
     : headDepartments(user).filter(d => ['Engineering', 'Design', 'Stores'].includes(d));
 
   return <EngineeringWorkspace projects={projects}
-    canApproveEcn={canApproveEcn} initialTab={sp?.tab} initialProject={sp?.project} departments={departments} />;
+    canApproveEcn={canApproveEcn} canClearBom={canClearBom} initialTab={sp?.tab} initialProject={sp?.project} departments={departments} />;
 }

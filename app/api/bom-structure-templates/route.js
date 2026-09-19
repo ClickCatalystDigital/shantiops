@@ -17,15 +17,25 @@ export async function GET(req) {
   const url = new URL(req.url);
   const level = url.searchParams.get('level');
   const series = url.searchParams.get('series');
-  const where = [];
+  // Archived templates (deleted while already in use, see DELETE [id]) never show in any list/picker.
+  const where = ['t.archived_at IS NULL'];
   const args = [];
-  if (level) { where.push('level = ?'); args.push(level); }
-  if (series) { where.push('(series = ? OR series IS NULL)'); args.push(series); }
+  if (level) { where.push('t.level = ?'); args.push(level); }
+  if (series) { where.push('(t.series = ? OR t.series IS NULL)'); args.push(series); }
+  // used_nodes/used_projects feed the delete dialog's "already used on N nodes" wording (lineage is
+  // stamped on root nodes only, bom_assemblies.structure_template_id). Real projects only: the hidden
+  // template-sandbox project (is_system) holds throwaway nodes stamped with the template being edited,
+  // which are not "a BOM that used it".
   const templates = await queryAll(
-    `SELECT id, name, level, series, description, node_count, item_count, root_count, is_default, source_project_no, created_by, created_at
-       FROM bom_structure_templates
-       ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
-       ORDER BY is_default DESC, name`,
+    `SELECT t.id, t.name, t.level, t.series, t.description, t.node_count, t.item_count, t.root_count, t.is_default,
+            t.source_project_no, t.created_by, t.created_at, t.version,
+            (SELECT COUNT(*) FROM bom_assemblies a JOIN projects p ON p.id = a.project_id
+              WHERE a.structure_template_id = t.id AND COALESCE(p.is_system, 0) = 0) AS used_nodes,
+            (SELECT COUNT(DISTINCT a.project_id) FROM bom_assemblies a JOIN projects p ON p.id = a.project_id
+              WHERE a.structure_template_id = t.id AND COALESCE(p.is_system, 0) = 0) AS used_projects
+       FROM bom_structure_templates t
+      WHERE ${where.join(' AND ')}
+      ORDER BY t.is_default DESC, t.name`,
     args
   );
   return NextResponse.json(templates);

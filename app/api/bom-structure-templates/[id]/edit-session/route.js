@@ -17,7 +17,7 @@ export async function POST(req, { params }) {
   const denied = await requireEngineeringAction(user, 'engineering.assembly.add');
   if (denied) return denied;
 
-  const template = await queryOne('SELECT * FROM bom_structure_templates WHERE id = ?', [params.id]);
+  const template = await queryOne('SELECT * FROM bom_structure_templates WHERE id = ? AND archived_at IS NULL', [params.id]);
   if (!template) return NextResponse.json({ error: 'Template not found' }, { status: 404 });
   // A whole-BOM (multi-root) template can't safely go through the single-root sandbox flow yet:
   // insertTemplateTree only ever tracks the FIRST root it creates, so Update Template would silently
@@ -25,7 +25,7 @@ export async function POST(req, { params }) {
   // other roots as permanent orphaned garbage under the sentinel project. Server-side, not just a UI
   // disable — never trust the client alone on a path that can destroy real template content.
   if (template.root_count > 1) {
-    return NextResponse.json({ error: 'Whole-BOM templates (multiple systems) can\'t be edited via the sandbox yet — re-save from a real project to update one.' }, { status: 400 });
+    return NextResponse.json({ error: 'Whole-BOM templates (multiple systems) can\'t be edited via the sandbox yet — open the project whose BOM is right and use Save Entire BOM as Template → Update existing template.' }, { status: 400 });
   }
   const sentinel = await queryOne('SELECT id FROM projects WHERE is_system = 1 LIMIT 1');
   if (!sentinel) return NextResponse.json({ error: 'Sentinel project not found — check migrate() ran' }, { status: 500 });

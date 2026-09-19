@@ -20,12 +20,64 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { PencilIcon, TrashIcon, LayoutTemplateIcon } from 'lucide-react';
 import BomStructureWorkspace from './bom-structure/BomStructureWorkspace';
+import DeleteTemplateDialog from './DeleteTemplateDialog';
+import Link from 'next/link';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { NODE_TYPE_SUGGESTIONS } from '@/lib/bom-tree.mjs';
+
+// "6 nodes in 1 project" — shared by the row badge and the delete dialog so the wording can't drift.
+function structureUsage(t) {
+  if (!(t.used_nodes > 0)) return null;
+  return `${t.used_nodes} node${t.used_nodes === 1 ? '' : 's'} in ${t.used_projects} project${t.used_projects === 1 ? '' : 's'}`;
+}
+
+// Read-only "where is this template used" — one row per node it built, real projects only. Applied BOMs
+// are independent copies: this is for judging impact before updating/removing, nothing here edits them.
+function UsageDialog({ template, onClose }) {
+  const [data, setData] = useState(null);
+  useEffect(() => {
+    api(`/api/bom-structure-templates/${template.id}/usage`).then(setData).catch(err => { showToast(err.message, 'error'); onClose(); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [template.id]);
+  return (
+    <Dialog open onOpenChange={o => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Where “{template.name}” is used</DialogTitle>
+          <DialogDescription>
+            These BOMs were built from this template and keep their own copy — updating or removing the template never changes them.
+          </DialogDescription>
+        </DialogHeader>
+        {data === null ? (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : (
+          <div className="flex max-h-72 flex-col divide-y overflow-y-auto rounded-md border">
+            {data.nodes.map(n => (
+              <div key={n.node_id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+                <div className="flex min-w-0 flex-col">
+                  <Link href={`/engineering?tab=structure&project=${n.project_id}`} className="font-medium text-primary hover:underline">
+                    {n.project_no}{n.customer_name ? ` · ${n.customer_name}` : ''}
+                  </Link>
+                  <span className="truncate text-xs text-muted-foreground">Node: {n.node_name}</span>
+                </div>
+                <span className={`shrink-0 text-xs ${n.version != null && n.version < data.currentVersion ? 'text-warning' : 'text-muted-foreground'}`}>
+                  {n.version != null ? `v${n.version}` : 'before versioning'}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 export default function BomStructureTemplateManager() {
   const [templates, setTemplates] = useState(null);
   const [levelFilter, setLevelFilter] = useState('All');
   const [session, setSession] = useState(null); // {templateId, name, projectId, nodeId}
+  const [deleting, setDeleting] = useState(null); // the template whose bin was clicked
+  const [viewingUsage, setViewingUsage] = useState(null); // the template whose "Used on…" was clicked
   const [openingId, setOpeningId] = useState(null); // guards a rapid double-click leaking a second, untracked sandbox node
 
   function reload() {
@@ -39,12 +91,12 @@ export default function BomStructureTemplateManager() {
       reload();
     } catch (err) { showToast(err.message, 'error'); }
   }
+  // Throws on failure so DeleteTemplateDialog can show the reason inline. The server archives (instead
+  // of deleting) a template already used on BOM nodes — same request, `archived` says which happened.
   async function remove(t) {
-    if (!window.confirm(`Delete template "${t.name}"? This does not affect any BOM it was already applied to.`)) return;
-    try {
-      await api(`/api/bom-structure-templates/${t.id}`, { method: 'DELETE' });
-      reload();
-    } catch (err) { showToast(err.message, 'error'); }
+    const res = await api(`/api/bom-structure-templates/${t.id}`, { method: 'DELETE' });
+    showToast(res.archived ? 'Template removed — existing BOMs are unchanged' : 'Template deleted');
+    reload();
   }
   async function openEditor(t) {
     if (openingId) return; // a rapid double-click would otherwise create two sandbox nodes, only one ever tracked/cleaned
@@ -131,6 +183,7 @@ export default function BomStructureTemplateManager() {
                 <div className="flex min-w-0 flex-col gap-0.5">
                   <span className="flex items-center gap-1.5 text-sm font-medium">
                     {t.name}
+                    <Badge variant="outline" className="text-[10px] font-normal">v{t.version ?? 1}</Badge>
                     <button type="button" onClick={() => toggleDefault(t)} title={t.is_default ? 'Default — click to unset' : 'Set as default'} className={t.is_default ? 'text-warning' : 'text-muted-foreground/40 hover:text-warning'}>★</button>
                   </span>
                   <span className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
@@ -141,22 +194,34 @@ export default function BomStructureTemplateManager() {
                     <span>{t.node_count} node{t.node_count === 1 ? '' : 's'} · {t.item_count} item{t.item_count === 1 ? '' : 's'}</span>
                   </span>
                   {t.source_project_no && <span className="text-xs text-muted-foreground">{t.source_project_no}</span>}
+                  {t.used_nodes > 0 && (
+                    <button type="button" onClick={() => setViewingUsage(t)} className="w-fit text-left text-xs text-muted-foreground underline decoration-dotted hover:text-primary">
+                      Used on {structureUsage(t)}
+                    </button>
+                  )}
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
                   {t.root_count > 1 ? (
                     <Tooltip><TooltipTrigger asChild>
                       <span><Button size="icon-sm" variant="ghost" className="text-primary" disabled aria-label="View / edit"><PencilIcon /></Button></span>
-                    </TooltipTrigger><TooltipContent>Whole-BOM templates can't be edited via the sandbox yet — re-save from a real project to update</TooltipContent></Tooltip>
+                    </TooltipTrigger><TooltipContent>Whole-BOM templates can't be edited here — open the project whose BOM is right and use Save Entire BOM as Template → Update existing template</TooltipContent></Tooltip>
                   ) : (
                     <Button size="icon-sm" variant="ghost" className="text-primary" onClick={() => openEditor(t)} disabled={!!openingId} aria-label="View / edit"><PencilIcon /></Button>
                   )}
-                  <Button size="icon-sm" variant="ghost" className="text-danger" onClick={() => remove(t)} aria-label="Delete"><TrashIcon /></Button>
+                  <Button size="icon-sm" variant="ghost" className="text-danger" onClick={() => setDeleting(t)} aria-label="Delete"><TrashIcon /></Button>
                 </div>
               </div>
             ))}
           </div>
         )}
       </div>
+      {viewingUsage && <UsageDialog template={viewingUsage} onClose={() => setViewingUsage(null)} />}
+      {deleting && (
+        <DeleteTemplateDialog
+          name={deleting.name} usage={structureUsage(deleting)}
+          onClose={() => setDeleting(null)} onConfirm={() => remove(deleting)}
+        />
+      )}
     </Card>
   );
 }

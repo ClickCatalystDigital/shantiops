@@ -24,8 +24,23 @@ export async function POST(req, { params }) {
   if (!project) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   const b = await req.json();
+  // overwrite_template_id = "Update existing template" (the safe way to change a whole-BOM template —
+  // the sandbox editor can't, it only tracks one root). Validated up front, before the tree walk.
+  // The template keeps its own name/series/description (no UNIQUE(level, series, name) clash risk);
+  // only its content, counts, source and version change. Applied BOMs are independent copies and are
+  // never touched.
+  let overwrite = null;
+  if (b.overwrite_template_id) {
+    overwrite = await queryOne(
+      'SELECT id, name, level, tree_json, version FROM bom_structure_templates WHERE id = ? AND archived_at IS NULL',
+      [b.overwrite_template_id]);
+    if (!overwrite) return NextResponse.json({ error: 'Template not found' }, { status: 404 });
+    if (overwrite.level !== 'System') {
+      return NextResponse.json({ error: 'Only whole-BOM (System-level) templates can be updated from a project' }, { status: 400 });
+    }
+  }
   const name = String(b.name || '').trim();
-  if (!name) return NextResponse.json({ error: 'Name is required' }, { status: 400 });
+  if (!overwrite && !name) return NextResponse.json({ error: 'Name is required' }, { status: 400 });
 
   const all = await queryAll(
     'SELECT id, parent_id, name, node_type, qty FROM bom_assemblies WHERE project_id = ? ORDER BY sort_order, id',
@@ -57,6 +72,26 @@ export async function POST(req, { params }) {
 
   const tree = buildTemplateTree(rootNodes, childrenByParent, itemsByAssembly);
   const { nodeCount, itemCount, rootCount } = computeTemplateCounts(tree);
+
+  if (overwrite) {
+    // Version +1 only when the content really changed (a no-op re-save must not flag every node built
+    // from this template as out of date).
+    const changed = overwrite.tree_json !== JSON.stringify(tree);
+    await execute(
+      `UPDATE bom_structure_templates
+          SET tree_json = ?, node_count = ?, item_count = ?, root_count = ?, source_project_no = ?,
+              version = version + ${changed ? 1 : 0}
+        WHERE id = ?`,
+      [JSON.stringify(tree), nodeCount, itemCount, rootCount, `Captured from ${project.project_no}`, overwrite.id]);
+    await audit('bom_structure_template_update', {
+      actor: user.username,
+      detail: `updated whole-BOM template ${overwrite.id} ("${overwrite.name}") from project ${params.id} — v${overwrite.version}${changed ? ` -> v${overwrite.version + 1}` : ' (unchanged)'}, ${rootCount} root(s), ${nodeCount} node(s), ${itemCount} item(s)`,
+    });
+    return NextResponse.json({
+      id: overwrite.id, nodeCount, itemCount, rootCount,
+      version: overwrite.version + (changed ? 1 : 0), unchanged: !changed,
+    });
+  }
 
   const { lastId } = await execute(
     `INSERT INTO bom_structure_templates

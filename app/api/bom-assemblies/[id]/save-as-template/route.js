@@ -74,15 +74,19 @@ export async function POST(req, { params }) {
   // caller sends (the sandbox screen's own header fields), matching the metadata this route already
   // takes for a fresh create.
   if (b.overwrite_template_id) {
-    const existing = await queryOne('SELECT id FROM bom_structure_templates WHERE id = ?', [b.overwrite_template_id]);
+    const existing = await queryOne('SELECT id, tree_json, version FROM bom_structure_templates WHERE id = ? AND archived_at IS NULL', [b.overwrite_template_id]);
     if (!existing) return NextResponse.json({ error: 'Template not found' }, { status: 404 });
+    // Version +1 only when the content really changed — a no-op re-save must not raise a "newer version
+    // available" hint on every node built from this template.
+    const changed = existing.tree_json !== JSON.stringify(tree);
     // level must be re-saved too, not just content — if the sandbox node's own classification was
     // changed (the Overview tab's "Classified as" selector) before clicking Update Template, the
     // template's advertised level would otherwise silently drift from what its root node actually
     // is, breaking the Overview-tab/bootstrap picker filters that key off this column.
     await execute(
       `UPDATE bom_structure_templates
-          SET name = ?, level = ?, series = ?, description = ?, tree_json = ?, node_count = ?, item_count = ?, root_count = ?
+          SET name = ?, level = ?, series = ?, description = ?, tree_json = ?, node_count = ?, item_count = ?, root_count = ?,
+              version = version + ${changed ? 1 : 0}
         WHERE id = ?`,
       [name, level, b.series?.trim() || null, b.description?.trim() || null, JSON.stringify(tree),
         nodeCount, itemCount, rootCount, b.overwrite_template_id]
@@ -91,7 +95,7 @@ export async function POST(req, { params }) {
       actor: user.username,
       detail: `updated template ${b.overwrite_template_id} ("${name}") from sandbox node ${node.id} — ${nodeCount} node(s), ${itemCount} item(s)`,
     });
-    return NextResponse.json({ id: Number(b.overwrite_template_id), nodeCount, itemCount });
+    return NextResponse.json({ id: Number(b.overwrite_template_id), nodeCount, itemCount, version: existing.version + (changed ? 1 : 0), unchanged: !changed });
   }
 
   const { lastId } = await execute(

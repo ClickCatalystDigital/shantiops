@@ -23,7 +23,7 @@ export async function POST(req, { params }) {
   if (!target) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   const b = await req.json();
-  const template = await queryOne('SELECT * FROM bom_structure_templates WHERE id = ?', [b.template_id]);
+  const template = await queryOne('SELECT * FROM bom_structure_templates WHERE id = ? AND archived_at IS NULL', [b.template_id]);
   if (!template) return NextResponse.json({ error: 'Template not found' }, { status: 404 });
   let tree = [];
   try { tree = JSON.parse(template.tree_json); } catch { /* treat corrupt data as empty, not a crash */ }
@@ -52,6 +52,14 @@ export async function insertTemplateTree(tree, projectId, parentId, templateId, 
   );
   let nextSort = (siblingMax?.m ?? -1) + 1;
 
+  // Version of the template being applied, stamped alongside the lineage id on root nodes so a node can
+  // later say "built from v2, v3 is available". Looked up here (not passed in) so none of the three
+  // callers changes; a missing template (never true today) just stamps NULL.
+  const tplRow = templateId != null
+    ? await queryOne('SELECT version FROM bom_structure_templates WHERE id = ?', [templateId])
+    : null;
+  const templateVersion = tplRow?.version ?? null;
+
   const idMap = new Map(); // tempId -> real bom_assemblies id
   let rootId = null;
   for (const entry of flat) {
@@ -60,8 +68,8 @@ export async function insertTemplateTree(tree, projectId, parentId, templateId, 
     // structure_template_id (lineage) is stamped on root entries only — a template's own top-level
     // node(s), not every descendant it brought along.
     const { lastId } = await execute(
-      'INSERT INTO bom_assemblies (project_id, parent_id, name, qty, sort_order, node_type, structure_template_id, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [projectId, realParentId, entry.name, entry.qty, isRoot ? nextSort++ : 0, entry.node_type, isRoot ? templateId : null, username]
+      'INSERT INTO bom_assemblies (project_id, parent_id, name, qty, sort_order, node_type, structure_template_id, structure_template_version, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [projectId, realParentId, entry.name, entry.qty, isRoot ? nextSort++ : 0, entry.node_type, isRoot ? templateId : null, isRoot ? templateVersion : null, username]
     );
     idMap.set(entry.tempId, Number(lastId));
     if (isRoot && rootId == null) rootId = Number(lastId);

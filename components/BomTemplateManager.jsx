@@ -16,6 +16,7 @@ import { Label } from './ui/label';
 import { Badge } from './ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup } from './ui/select';
 import { TrashIcon, PlusIcon } from 'lucide-react';
+import DeleteTemplateDialog from '@/components/DeleteTemplateDialog';
 import SearchableSelect from './SearchableSelect';
 import CategoryFieldsBlock from './CategoryFieldsBlock';
 import { categoryDisplaySpec } from '@/lib/section-shapes';
@@ -196,6 +197,12 @@ function ApplyTemplateDialog({ template, projects, onClose, router }) {
 // One section (a card + list) per kind — same row actions either way except the one action whose
 // meaning genuinely differs (Apply direct-inserts a BOM template; a PR template has no equivalent
 // single-project action, so it hands off to Raise PR instead).
+// "4 BOM lines" — shared by the row badge and the delete dialog so the wording can't drift. Only 'bom'
+// templates are ever stamped on lines (PR templates just pre-fill the Raise PR form), so PR is always null.
+function templateUsage(t) {
+  return t.used_count > 0 ? `${t.used_count} BOM line${t.used_count === 1 ? '' : 's'}` : null;
+}
+
 function TemplateSection({ title, kind, templates, onNew, onEdit, onDelete, onApply, onUseInRaisePr }) {
   return (
     <Card>
@@ -216,6 +223,7 @@ function TemplateSection({ title, kind, templates, onNew, onEdit, onDelete, onAp
               <span className="text-sm font-medium">{t.name}</span>
               {t.series && <Badge variant="outline" className="ml-2 text-xs font-normal">{t.series}</Badge>}
               <span className="ml-2 text-xs text-muted-foreground">{t.item_count} item{t.item_count === 1 ? '' : 's'}</span>
+              {t.used_count > 0 && <span className="ml-2 text-xs text-muted-foreground">· Used on {templateUsage(t)}</span>}
             </div>
             <div className="flex items-center gap-1">
               <Button size="sm" variant="outline" onClick={() => onEdit(t)}>View/Edit</Button>
@@ -243,19 +251,19 @@ export default function BomTemplateManager({ kind, title, projects, onUseInRaise
   const [templates, setTemplates] = useState(null);
   const [formTarget, setFormTarget] = useState(null); // { templateId?, kind }
   const [applyTarget, setApplyTarget] = useState(null); // a BOM template
+  const [deleting, setDeleting] = useState(null); // the template whose bin was clicked
 
   function load() {
     api(`/api/bom-templates?kind=${kind}`).then(setTemplates).catch(err => showToast(err.message, 'error'));
   }
   useEffect(load, [kind]);
 
+  // Throws on failure so DeleteTemplateDialog shows the reason inline. The server archives a template
+  // BOM lines already reference (`archived: true`) instead of deleting it.
   async function remove(t) {
-    if (!window.confirm(`Delete template "${t.name}"?`)) return;
-    try {
-      await api(`/api/bom-templates/${t.id}`, { method: 'DELETE' });
-      showToast('Template deleted');
-      load();
-    } catch (err) { showToast(err.message, 'error'); }
+    const res = await api(`/api/bom-templates/${t.id}`, { method: 'DELETE' });
+    showToast(res.archived ? 'Template removed — existing BOMs are unchanged' : 'Template deleted');
+    load();
   }
 
   async function useInRaisePr(t) {
@@ -274,8 +282,16 @@ export default function BomTemplateManager({ kind, title, projects, onUseInRaise
   }
 
   return (
-    <TemplateSection title={title} kind={kind} templates={templates}
-      onNew={() => setFormTarget({ kind })} onEdit={t => setFormTarget({ templateId: t.id, kind })}
-      onDelete={remove} onApply={setApplyTarget} onUseInRaisePr={onUseInRaisePr ? useInRaisePr : undefined} />
+    <>
+      <TemplateSection title={title} kind={kind} templates={templates}
+        onNew={() => setFormTarget({ kind })} onEdit={t => setFormTarget({ templateId: t.id, kind })}
+        onDelete={setDeleting} onApply={setApplyTarget} onUseInRaisePr={onUseInRaisePr ? useInRaisePr : undefined} />
+      {deleting && (
+        <DeleteTemplateDialog
+          name={deleting.name} usage={templateUsage(deleting)}
+          onClose={() => setDeleting(null)} onConfirm={() => remove(deleting)}
+        />
+      )}
+    </>
   );
 }

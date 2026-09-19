@@ -23,7 +23,12 @@ export async function POST(req) {
   if (!templateIds.length) return NextResponse.json({ error: 'template_ids is required' }, { status: 400 });
 
   const templates = await queryAll(
-    `SELECT * FROM bom_structure_templates WHERE id IN (${templateIds.map(() => '?').join(',')})`, templateIds);
+    `SELECT * FROM bom_structure_templates WHERE archived_at IS NULL AND id IN (${templateIds.map(() => '?').join(',')})`, templateIds);
+  // Refuse the whole request rather than silently building fewer templates than were picked (a stale
+  // picker can still list one that was archived/deleted since).
+  if (templates.length !== new Set(templateIds).size) {
+    return NextResponse.json({ error: 'A selected template is no longer available — refresh and pick again.' }, { status: 400 });
+  }
 
   let totalNodes = 0, totalItems = 0;
   const rootIds = [];

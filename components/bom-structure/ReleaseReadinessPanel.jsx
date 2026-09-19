@@ -11,11 +11,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
-  LayoutTemplateIcon, BookmarkPlusIcon,
+  LayoutTemplateIcon, BookmarkPlusIcon, Trash2Icon,
   PackageIcon, FileTextIcon, UnlinkIcon, TagIcon, ClipboardListIcon,
 } from 'lucide-react';
 import BuildFromTemplatesDialog from './BuildFromTemplatesDialog';
 import SaveBomAsTemplateDialog from './SaveBomAsTemplateDialog';
+import ClearBomDialog from './ClearBomDialog';
 import SplitIntoUnitsButton from './SplitIntoUnitsButton';
 
 // Whole-BOM Unit Count — the user's own proposed shape: a small always-on control living right next
@@ -82,9 +83,11 @@ function Stat({ value, label, tone, onClick, icon: Icon }) {
 export default function ReleaseReadinessPanel({
   status, rootCount, onBuildFromTemplates, onSaveBomAsTemplate,
   unitCount, onSaveUnitCount, projectId, onResolveUncategorized, onResolveUnassigned,
+  onClearBom, nodeCount, projectLabel,
 }) {
   const [buildingFromTemplates, setBuildingFromTemplates] = useState(false);
   const [savingBomAsTemplate, setSavingBomAsTemplate] = useState(false);
+  const [clearingBom, setClearingBom] = useState(false);
   if (!status) return null;
   return (
     <Card>
@@ -114,6 +117,16 @@ export default function ReleaseReadinessPanel({
                 </Button>
               </TooltipTrigger><TooltipContent>Save Entire BOM as Template</TooltipContent></Tooltip>
             )}
+            {onClearBom && (status.bomCount > 0 || nodeCount > 0) && (
+              <Tooltip><TooltipTrigger asChild>
+                {/* span wrapper: a disabled button swallows pointer events, so the tooltip needs a live parent */}
+                <span>
+                  <Button size="icon" variant="outline" disabled={status.released} onClick={() => setClearingBom(true)} aria-label="Delete entire BOM">
+                    <Trash2Icon />
+                  </Button>
+                </span>
+              </TooltipTrigger><TooltipContent>{status.released ? "Released BOMs can't be deleted" : 'Delete entire BOM'}</TooltipContent></Tooltip>
+            )}
           </div>
         </div>
       </CardContent>
@@ -122,7 +135,16 @@ export default function ReleaseReadinessPanel({
         <BuildFromTemplatesDialog onClose={() => setBuildingFromTemplates(false)} onApply={onBuildFromTemplates} />
       )}
       {savingBomAsTemplate && (
-        <SaveBomAsTemplateDialog rootCount={rootCount} onClose={() => setSavingBomAsTemplate(false)} onSave={onSaveBomAsTemplate} />
+        <SaveBomAsTemplateDialog
+          rootCount={rootCount} nodeCount={nodeCount} itemCount={status.bomCount - status.unassignedCount}
+          unassignedCount={status.unassignedCount}
+          onClose={() => setSavingBomAsTemplate(false)} onSave={onSaveBomAsTemplate} />
+      )}
+      {clearingBom && (
+        <ClearBomDialog
+          projectLabel={projectLabel} itemCount={status.bomCount} nodeCount={nodeCount}
+          onClose={() => setClearingBom(false)} onConfirm={onClearBom}
+        />
       )}
     </Card>
   );
