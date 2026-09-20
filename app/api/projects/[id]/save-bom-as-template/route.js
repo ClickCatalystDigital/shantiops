@@ -43,7 +43,7 @@ export async function POST(req, { params }) {
   if (!overwrite && !name) return NextResponse.json({ error: 'Name is required' }, { status: 400 });
 
   const all = await queryAll(
-    'SELECT id, parent_id, name, node_type, qty FROM bom_assemblies WHERE project_id = ? ORDER BY sort_order, id',
+    'SELECT id, parent_id, name, node_type, qty, config_json FROM bom_assemblies WHERE project_id = ? ORDER BY sort_order, id',
     [params.id]);
   const childrenByParent = new Map();
   for (const a of all) {

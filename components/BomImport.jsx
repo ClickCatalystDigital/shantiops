@@ -28,6 +28,10 @@ export default function BomImport({ projectId, format = 'xlsx', onImported }) {
   // Sparse — only rows the user actually overrides from parsePmb's own best-effort inference.
   // Keyed "sheetIndex-itemIndex", matching the server's own indexing on confirm.
   const [categoryOverrides, setCategoryOverrides] = useState({});
+  // Datasheet rows (TYPE / FLOW cfm…) are imported as the node's Configuration by default; "Treat as item"
+  // sends one back to an ordinary BOM item. Sparse, keyed "sheetIndex-c<i>" against the preview's config list.
+  const [configOverrides, setConfigOverrides] = useState({});
+  const asItemCount = Object.values(configOverrides).filter(v => v === 'item').length;
   const accept = format === 'csv' ? '.csv' : '.xlsx';
   const label = format === 'csv' ? 'Import CSV' : 'Upload PMB';
 
@@ -42,6 +46,7 @@ export default function BomImport({ projectId, format = 'xlsx', onImported }) {
       const { preview } = await api(`/api/projects/${projectId}/bom/import`, { method: 'POST', body: fd });
       setPreview(preview);
       setCategoryOverrides({});
+      setConfigOverrides({});
     } catch (err) {
       showToast(err.message, 'error');
       setFile(null);
@@ -58,12 +63,16 @@ export default function BomImport({ projectId, format = 'xlsx', onImported }) {
       fd.append('confirm', '1');
       if (preview.existingItems > 0) fd.append('replace', '1');
       if (Object.keys(categoryOverrides).length) fd.append('categoryOverrides', JSON.stringify(categoryOverrides));
+      if (asItemCount) fd.append('configOverrides', JSON.stringify(configOverrides));
       const res = await api(`/api/projects/${projectId}/bom/import`, { method: 'POST', body: fd });
+      const cfgCount = (res.tree?.configsAdded || 0) + (res.tree?.configsUpdated || 0);
       showToast(`Imported ${res.inserted} items (revision ${res.revision})`
+        + (cfgCount ? ` and ${cfgCount} configuration row${cfgCount === 1 ? '' : 's'}` : '')
         + (res.learned ? ` — learned ${res.learned} spelling correction${res.learned === 1 ? '' : 's'} for next time` : ''));
       setPreview(null);
       setFile(null);
       setCategoryOverrides({});
+      setConfigOverrides({});
       router.refresh();
       onImported?.(res);
     } catch (err) { showToast(err.message, 'error'); }
@@ -97,7 +106,8 @@ export default function BomImport({ projectId, format = 'xlsx', onImported }) {
           {preview && (
             <div className="flex flex-col gap-4 text-sm">
               <p className="text-muted-foreground">
-                {preview.totalItems} items detected across {preview.sheets.length} sheets
+                {preview.totalItems + asItemCount} items detected across {preview.sheets.length} sheets
+                {preview.totalConfigs - asItemCount > 0 && <> · <span className="font-medium text-foreground">{preview.totalConfigs - asItemCount} datasheet row{preview.totalConfigs - asItemCount === 1 ? '' : 's'} → saved as configuration</span></>}
                 {preview.totalSkipped > 0 && <> · <span className="text-warning font-medium">{preview.totalSkipped} rows skipped</span></>}
               </p>
 
@@ -162,6 +172,35 @@ export default function BomImport({ projectId, format = 'xlsx', onImported }) {
                       </div>
                     </details>
                   )}
+                  {s.configs?.length > 0 && (
+                    <details className="mt-1" open>
+                      <summary className="cursor-pointer text-xs font-medium">
+                        Configuration ({s.configs.length}) — datasheet fields saved on the subsystem, not as BOM items
+                      </summary>
+                      <div className="mt-2 flex max-h-56 flex-col divide-y overflow-y-auto rounded-md border pr-1">
+                        {s.configs.map((c, ci) => {
+                          const key = `${sheetIndex}-c${ci}`;
+                          const asItem = configOverrides[key] === 'item';
+                          return (
+                            <div key={ci} className={`flex items-center gap-2 px-2 py-1 text-xs ${asItem ? 'bg-warning/5' : ''}`}>
+                              <span className="w-1/3 shrink-0 truncate text-muted-foreground" title={c.group_label || s.name}>{c.group_label || s.name}</span>
+                              <span className="w-1/4 shrink-0 truncate font-medium" title={c.label}>{c.label}</span>
+                              <span className="flex-1 truncate" title={c.value}>{c.value || <em className="text-muted-foreground">blank — fill in later</em>}</span>
+                              <label className="flex shrink-0 items-center gap-1 text-muted-foreground">
+                                <input type="checkbox" checked={asItem}
+                                  onChange={e => setConfigOverrides(prev => {
+                                    const next = { ...prev };
+                                    if (e.target.checked) next[key] = 'item'; else delete next[key];
+                                    return next;
+                                  })} />
+                                Treat as item
+                              </label>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </details>
+                  )}
                   {s.skipped?.length > 0 && (
                     <details className="mt-1">
                       <summary className="cursor-pointer text-xs text-warning">
@@ -195,7 +234,7 @@ export default function BomImport({ projectId, format = 'xlsx', onImported }) {
               <DialogFooter>
                 <Button variant="ghost" onClick={() => setPreview(null)}>Cancel</Button>
                 <Button variant={replacing ? 'destructive' : 'default'} disabled={busy} onClick={confirm}>
-                  {busy ? 'Importing…' : replacing ? `Replace BOM with ${preview.totalItems} items` : `Import ${preview.totalItems} items`}
+                  {busy ? 'Importing…' : replacing ? `Replace BOM with ${preview.totalItems + asItemCount} items` : `Import ${preview.totalItems + asItemCount} items`}
                 </Button>
               </DialogFooter>
             </div>

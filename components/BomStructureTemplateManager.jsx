@@ -18,17 +18,53 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { PencilIcon, TrashIcon, LayoutTemplateIcon } from 'lucide-react';
+import { PencilIcon, PenLineIcon, TrashIcon, LayoutTemplateIcon } from 'lucide-react';
 import BomStructureWorkspace from './bom-structure/BomStructureWorkspace';
 import DeleteTemplateDialog from './DeleteTemplateDialog';
 import Link from 'next/link';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import { NODE_TYPE_SUGGESTIONS } from '@/lib/bom-tree.mjs';
 
 // "6 nodes in 1 project" — shared by the row badge and the delete dialog so the wording can't drift.
 function structureUsage(t) {
   if (!(t.used_nodes > 0)) return null;
   return `${t.used_nodes} node${t.used_nodes === 1 ? '' : 's'} in ${t.used_projects} project${t.used_projects === 1 ? '' : 's'}`;
+}
+
+// Rename only — a template is linked to BOMs by id, so a new name changes what is displayed, never any BOM.
+// The server rejects an empty or duplicate name (same level + model); the message shows inline.
+function RenameDialog({ template, onClose, onRenamed }) {
+  const [name, setName] = useState(template.name);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const changed = name.trim() && name.trim() !== template.name;
+  async function submit() {
+    if (!changed) return;
+    setBusy(true); setError('');
+    try {
+      await api(`/api/bom-structure-templates/${template.id}`, { method: 'PATCH', body: { name: name.trim() } });
+      showToast('Template renamed');
+      onRenamed();
+      onClose();
+    } catch (err) { setError(err.message || 'Could not rename the template.'); } finally { setBusy(false); }
+  }
+  return (
+    <Dialog open onOpenChange={o => !o && !busy && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Rename template</DialogTitle>
+          <DialogDescription>Only the name changes. BOMs already built from this template are not affected.</DialogDescription>
+        </DialogHeader>
+        <Input value={name} onChange={e => setName(e.target.value)} autoFocus onKeyDown={e => e.key === 'Enter' && submit()} />
+        {error && <p className="text-sm text-destructive">{error}</p>}
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
+          <Button onClick={submit} disabled={busy || !changed}>{busy ? 'Saving…' : 'Rename'}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 // Read-only "where is this template used" — one row per node it built, real projects only. Applied BOMs
@@ -77,6 +113,7 @@ export default function BomStructureTemplateManager() {
   const [levelFilter, setLevelFilter] = useState('All');
   const [session, setSession] = useState(null); // {templateId, name, projectId, nodeId}
   const [deleting, setDeleting] = useState(null); // the template whose bin was clicked
+  const [renaming, setRenaming] = useState(null); // the template whose rename icon was clicked
   const [viewingUsage, setViewingUsage] = useState(null); // the template whose "Used on…" was clicked
   const [openingId, setOpeningId] = useState(null); // guards a rapid double-click leaking a second, untracked sandbox node
 
@@ -201,6 +238,7 @@ export default function BomStructureTemplateManager() {
                   )}
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
+                  <Button size="icon-sm" variant="ghost" className="text-muted-foreground" onClick={() => setRenaming(t)} aria-label="Rename" title="Rename"><PenLineIcon /></Button>
                   {t.root_count > 1 ? (
                     <Tooltip><TooltipTrigger asChild>
                       <span><Button size="icon-sm" variant="ghost" className="text-primary" disabled aria-label="View / edit"><PencilIcon /></Button></span>
@@ -215,6 +253,7 @@ export default function BomStructureTemplateManager() {
           </div>
         )}
       </div>
+      {renaming && <RenameDialog template={renaming} onClose={() => setRenaming(null)} onRenamed={reload} />}
       {viewingUsage && <UsageDialog template={viewingUsage} onClose={() => setViewingUsage(null)} />}
       {deleting && (
         <DeleteTemplateDialog

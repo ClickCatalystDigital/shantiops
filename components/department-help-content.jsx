@@ -10,7 +10,7 @@ import {
   ListChecksIcon, MessageSquareIcon, WrenchIcon, BellIcon, TagIcon, InboxIcon, UndoIcon,
   ScissorsIcon, ClipboardIcon, AlertTriangleIcon, LogInIcon, FileOutputIcon,
   HeadsetIcon, FileSignatureIcon, LayersIcon, Repeat2Icon, FileEditIcon, Undo2Icon,
-  LandmarkIcon, PercentIcon, BookIcon, LockIcon,
+  LandmarkIcon, PercentIcon, BookIcon, LockIcon, LayoutTemplateIcon, SlidersHorizontalIcon,
 } from 'lucide-react';
 
 // System-architecture diagrams (2026-08-27) — verified against the actual schema/routes, not the
@@ -407,6 +407,29 @@ const FEATURE_FOUNDATIONS = {
       'Duplicate a node to reuse a proven sub-structure on the same project — items clone as fresh, independent rows, but linked drawings do not carry over; re-link whatever actually applies to the copy.',
     ],
     watchOut: 'A BOM item left unassigned (no node) still works exactly as before — assigning it to the tree is optional, not a requirement. Deleting a node never deletes its items; they fall back to Unassigned. And nothing here forces a change through an ECN — inline edits still save immediately, same as always.',
+  },
+  bomConfiguration: {
+    value: 'A fan, pump or boiler system has a datasheet: type, flow, static head, speed, motor rating. These are facts about the system, not things to buy. Keeping them as "items" made the BOM look bigger than it is, forced you to categorise them, and could even send them to Procurement as material to source. Configuration gives them their own place on the system itself.',
+    outcome: 'Each system or subsystem carries its own datasheet on its Overview tab. Datasheet rows in a PMB import are recognised automatically and saved there, so the BOM item list only holds real things to buy.',
+    checklist: [
+      'At import, look at the “Configuration” list in the preview. If a row is really something to buy, tick “Treat as item” next to it.',
+      'Open a system or subsystem → Overview → Configuration to add, edit, reorder or remove rows, then click Save. Put units inside the text (for example “FLOW cfm” = “2400”).',
+      'If an older import left datasheet rows in the item list, the node shows a yellow note “items look like datasheet fields”. Click Review & convert, tick what to move, and confirm.',
+      'Templates, Duplicate and the Final BOM card and PDF all carry the configuration along with the node.',
+    ],
+    watchOut: 'Only clear datasheet rows are moved automatically: a row with a quantity, a material, or PR/PO/receipt data stays an item (for example a motor line that names a make and a PO). Converting old items deletes those item rows, so it only works before the BOM is released and never on lines that already have orders or receipts.',
+  },
+  structureTemplates: {
+    value: 'Building the same structure again for every boiler is slow and easy to get wrong. A Structure Template lets you build it once, fix it in one place, and reuse it. Every project still gets its own independent copy, so a template can never disturb an order that is already running.',
+    outcome: 'A new project’s BOM starts from a saved template instead of a blank page, you know which version each part was built from, and you can see which projects used a template before you rename, update, or remove it.',
+    checklist: [
+      'Save a template only from a BOM you are happy with. Check the names, quantities, and items first.',
+      'Give it a clear name and model (for example “SF-500 Complete Package”) so the next person can find it.',
+      'After applying a template, look over the lines it added. Sizes and quantities may need adjusting for this particular order.',
+      'Before updating or removing a template, click “Used on…” to see which projects used it. None of them will change, but you should know who is affected.',
+      'Put loose (unassigned) items onto a node before saving. Only items on a node are saved into a template.',
+    ],
+    watchOut: 'A template is a copy, not a live link. Updating, renaming, or deleting a template never changes a BOM that already used it, and a newer version is only a hint, never an automatic change. There is no undo for an update: the old content is not kept. To be safe, check the before-and-after counts the dialog shows.',
   },
   whereUsed: {
     value: 'Where-Used answers "if I change this part, what else does it affect?" across every project at once — the question a flat, per-project BOM can never answer on its own.',
@@ -896,9 +919,28 @@ export const DEPARTMENT_HELP = {
       feature('bomStructure', 'BOMs (assemblies)', LayersIcon, [
         'Open the Engineering tab (top nav) → BOMs, pick a project, then work its tree: search, filter by missing drawing / pending ECN, rename, reorder (Move Up/Down), Move to… a new parent, or Duplicate a node — all from the tree pane.',
         'Select a node to add or assign BOM items, link Drawings, review its Engineering Change Note history, and set its quantity multiplier — right from that node’s own tabs, no need to leave the workspace. Calculation sheets link to a drawing instead — from Calc Sheets → Calc Links.',
+        'A system’s datasheet (type, flow, speed, motor rating…) is kept in the node’s Overview → Configuration, not as BOM items — see “Configuration (datasheet fields)”.',
         'The project picker (in the sidebar header, shared with Release BOM — pick a project once, both tabs stay on it) only shows unreleased projects by default (searchable — type to filter) — toggle "Show released too" to bring an already-released one back into the list; a project already open stays visible either way.',
         'Below the editable tree, the read-only "Final BOM" card is the same structure as a clean, full-depth outline — search a node or item, Expand/Collapse all, or download a print-ready PDF. Any line with more than one number in its quantity (e.g. "2 Nos 1 No") gets a warning flag — only the first number feeds the roll-up total. A node with real cut/consumed stock against it shows the actual weight recorded so far, never a projected or scaled figure.',
         'Once a project has been released more than once, a "Live / Rev N" picker appears on the Final BOM card — pick a past revision to see the tree exactly as it looked at that release (a clear banner marks it as frozen, not live); "Live" always shows the current state, including anything changed after the last release.',
+      ]),
+      feature('bomConfiguration', 'Configuration (datasheet fields)', SlidersHorizontalIcon, [
+        'What it is: the datasheet of a system or subsystem, such as TYPE, FLOW cfm, STATIC HEAD, SPEED RPM, TYPE OF MOUNTING, MEDIUM, OPERATING TEMP and MOTOR RATING for a fan. It is a list of label and value pairs saved on the node, not BOM items.',
+        'From an import: when you upload a PMB, rows like these are recognised and shown in the preview under “Configuration (N)” for each sheet, and are saved on the right subsystem instead of the item list. Tick “Treat as item” on any row you want kept as an item.',
+        'Edit it: select the system or subsystem → Overview → Configuration. Add rows, change text, move rows up or down, remove rows, then click Save (Discard undoes unsaved changes). Two rows cannot share the same label.',
+        'Fix old imports: if items on a node look like datasheet fields, a yellow note offers “Review & convert”. Pick the rows and confirm; they become configuration and the item rows are removed. This is refused after the BOM is released, and for lines raised through a Purchase Request or that already have quotes, orders or receipts.',
+        'Where you see it: the node’s Overview, the Final BOM card and its PDF (shown under the node, no quantity), and any Structure Template saved from it.',
+      ]),
+      feature('structureTemplates', 'Structure Templates', LayoutTemplateIcon, [
+        'What it is: a Structure Template is a saved copy of part of a BOM: one system with all its parts, or every system of a whole boiler. You save it once and reuse it on any new project instead of building the same tree again.',
+        'Where to find them: Engineering → Structure Templates. Each row shows the template name, its version (v1, v2…), its level (System, Subsystem…), the model, how many nodes and items it holds, and where it has been used. The star marks the default template for that level and model.',
+        'Save one: build the structure in a project’s BOMs tab. To save one piece, select that node and click the bookmark icon (“Save as template”). To save the whole BOM, click the bookmark icon at the top (“Save Entire BOM as Template”). Give it a name and, if you like, a model such as SF.',
+        'Use one: on a new project’s BOMs tab, click “Build from Templates” (the layout icon) and tick the templates you want. To add a smaller template under a node, open that node’s Overview tab and use “Apply Template”. You get a copy that you are free to change.',
+        'Rename one: click the small pen icon on the template’s row, type the new name, and save. Only the name changes.',
+        'Change what is inside: for a single-system template, click the pencil, edit it in the editor, then click “Update Template”. For a whole-BOM template (several systems) the pencil is switched off. Instead, apply the template to a draft project, edit that BOM, then click “Save Entire BOM as Template”, choose “Update existing template”, pick it, check the before-and-after counts, and confirm.',
+        'Versions: each time a template’s content is updated its version goes up (v1 → v2). Saving without any change does not raise it. A node built from an older version shows an orange note, “newer version available”. That note is only information; nothing in your BOM changes unless you choose to rebuild it.',
+        'See where it is used: click “Used on N nodes in M projects” on the row. You get a list of projects and nodes, with the version each was built from, and you can click a project to jump to its BOM.',
+        'Delete (bin icon): if the template was never used, it is deleted for good. If BOMs were already built from it, it is only removed from the lists (archived), and those BOMs carry on exactly as they are.',
       ]),
       feature('whereUsed', 'Where-Used', SearchIcon, ['Open the Engineering tab → Where-Used, search a part description, and see every project (and assembly, where assigned) that carries a matching part.', 'The header\'s project filter (checkboxes, pick one or several) narrows the search to only those projects — leave it empty to search everything, same as before.']),
       feature('commonUncommon', 'Common / Uncommon', Repeat2Icon, ['Open the Engineering tab → Common/Uncommon to see which parts are reused across 2+ projects versus used on exactly one — a starting point for stocking decisions, not a Stores action in itself.', 'The header\'s project filter genuinely recomputes common/uncommon against just the projects you pick, not a display trick — a part can read differently filtered than it does across everything.']),

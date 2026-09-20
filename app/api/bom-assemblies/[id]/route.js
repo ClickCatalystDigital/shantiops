@@ -4,6 +4,7 @@ import { getFreshSessionUser } from '@/lib/auth';
 import { requireEngineeringAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { wouldCreateCycle } from '@/lib/bom-structure.mjs';
+import { validateConfigInput, serializeConfig } from '@/lib/bom-config.mjs';
 
 // BOM workspace Phase 2 — the load-bearing gap this whole feature was blocked on: there was no way
 // to rename, reparent, reorder, or set a node_type after creation. Reuses the same
@@ -60,6 +61,13 @@ export async function PATCH(req, { params }) {
   if (b.sort_order !== undefined) {
     sets.push('sort_order = ?'); values.push(Number(b.sort_order) || 0);
   }
+  // Node Configuration (datasheet fields) — the whole list is saved at once (small, explicit Save in the UI).
+  // Validated strictly here; an empty list clears it back to NULL.
+  if (b.config !== undefined) {
+    const err = validateConfigInput(b.config);
+    if (err) return NextResponse.json({ error: err }, { status: 400 });
+    sets.push('config_json = ?'); values.push(serializeConfig(b.config));
+  }
   if (b.parent_id !== undefined) {
     const newParentId = b.parent_id === null ? null : Number(b.parent_id);
     if (newParentId != null) {
@@ -79,7 +87,10 @@ export async function PATCH(req, { params }) {
   if (sets.length === 0) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
 
   await execute(`UPDATE bom_assemblies SET ${sets.join(', ')} WHERE id = ?`, [...values, row.id]);
-  await audit('bom_assembly_edit', { actor: user.username, detail: `project ${row.project_id}: ${row.name}` });
+  await audit('bom_assembly_edit', {
+    actor: user.username,
+    detail: `project ${row.project_id}: ${row.name}${b.config !== undefined ? ` (configuration: ${Array.isArray(b.config) ? b.config.length : 0} row(s))` : ''}`,
+  });
   return NextResponse.json({ ok: true });
 }
 

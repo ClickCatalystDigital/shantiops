@@ -7,7 +7,7 @@ import { notifyDepartment } from '@/lib/notify';
 import { parsePmb } from '@/lib/pmb.mjs';
 import { getAllocationMode } from '@/lib/procurement';
 import { findBlockedIds } from '@/lib/bom-item-guard';
-import { buildAssemblyTreeFromImport } from '@/lib/bom-tree-from-import';
+import { buildAssemblyTreeFromImport, configHasHome } from '@/lib/bom-tree-from-import';
 import { suggestCategoryFromGroups, suggestSpellingCorrection } from '@/lib/section-shapes';
 import { normalizeWords } from '@/lib/match-utils';
 
@@ -28,6 +28,30 @@ const MAX_UPLOAD_BYTES = 5 * 1024 * 1024; // real files run ~50-120KB; this is d
 const MAX_IMPORT_ROWS = 5000; // ponytail: real PMB/CSV files are 50-500 rows; this exists to fail
 // fast on a malformed/huge file rather than run thousands of sequential execute() calls. Raise if a
 // legitimate file ever needs more.
+
+// Datasheet rows (TYPE / FLOW cfm / MOTOR RATING…) arrive from the parser as per-sheet `configs` — they become
+// the node's Configuration, not BOM items. Two things send an entry BACK to an ordinary item, using the exact
+// item record the parser built for it (so the result is identical to how it imported before configuration existed):
+//   1. it has no node to live on (a generic CSV sheet with no heading) — a row is never silently dropped;
+//   2. the user chose "Treat as item" for it in the preview (`overrides`, keyed "<sheet>-c<i>" against the list
+//      AFTER step 1, so preview and confirm always agree).
+// Sent-back items are APPENDED after the sheet's real items, so no category-override key ("<sheet>-<itemIndex>",
+// derived from the preview's item order) ever moves.
+function settleConfigs(parsed, overrides = {}) {
+  parsed.sheets.forEach((sheet, si) => {
+    if (!sheet.configs?.length) return;
+    const homeless = sheet.configs.filter(e => !configHasHome(e));
+    sheet.items.push(...homeless.map(e => e.item));
+    sheet.configs = sheet.configs.filter(e => configHasHome(e));
+    const flipped = sheet.configs.filter((e, ci) => overrides[`${si}-c${ci}`] === 'item');
+    if (flipped.length) {
+      sheet.items.push(...flipped.map(e => e.item));
+      sheet.configs = sheet.configs.filter((e, ci) => overrides[`${si}-c${ci}`] !== 'item');
+    }
+  });
+  parsed.totalItems = parsed.sheets.reduce((a, sh) => a + sh.items.length, 0);
+  parsed.totalConfigs = parsed.sheets.reduce((a, sh) => a + (sh.configs?.length || 0), 0);
+}
 
 export async function POST(req, { params }) {
   const user = await getFreshSessionUser();
@@ -55,12 +79,21 @@ export async function POST(req, { params }) {
   } catch (e) {
     return NextResponse.json({ error: `Could not read file: ${e.message}` }, { status: 400 });
   }
-  if (!parsed.totalItems) {
+  // The user's "Treat as item" choices for datasheet rows (confirm phase only; the preview never has any).
+  let configOverrides = {};
+  try {
+    const raw = form.get('configOverrides');
+    if (raw) configOverrides = JSON.parse(raw);
+  } catch { configOverrides = {}; }
+  settleConfigs(parsed, form.get('confirm') === '1' ? configOverrides : {});
+
+  // A file of ONLY datasheet rows is still a valid import, and the row limit counts them too.
+  if (!parsed.totalItems && !parsed.totalConfigs) {
     return NextResponse.json({ error: 'No BOM items found in this file' }, { status: 400 });
   }
-  if (parsed.totalItems > MAX_IMPORT_ROWS) {
+  if (parsed.totalItems + parsed.totalConfigs > MAX_IMPORT_ROWS) {
     return NextResponse.json(
-      { error: `File has ${parsed.totalItems} rows — the limit is ${MAX_IMPORT_ROWS}. Split it into smaller files.` },
+      { error: `File has ${parsed.totalItems + parsed.totalConfigs} rows — the limit is ${MAX_IMPORT_ROWS}. Split it into smaller files.` },
       { status: 400 });
   }
 
@@ -176,8 +209,12 @@ export async function POST(req, { params }) {
             category_suggestion: it.category_suggestion || null,
           })),
           skipped: s.skipped,
+          // Datasheet rows recognised on this sheet (lean: label/value/heading only). Index in this list is the
+          // key for "Treat as item" (configOverrides "<sheet>-c<i>").
+          configs: (s.configs || []).map(e => ({ label: e.label, value: e.value, group_label: e.group_label })),
         })),
         totalItems: parsed.totalItems,
+        totalConfigs: parsed.totalConfigs,
         totalSkipped: parsed.totalSkipped,
         existingItems: existing.n,
         blockedCount: blockedIds.size,
@@ -196,7 +233,7 @@ export async function POST(req, { params }) {
     'SELECT MAX(revision) AS r FROM bom_imports WHERE project_id = ?', [params.id]);
   const revision = (prev?.r || 0) + 1;
   const summary = JSON.stringify(parsed.sheets.map(s => ({
-    name: s.name, items: s.items.length, skipped: s.skipped.length,
+    name: s.name, items: s.items.length, configs: s.configs?.length || 0, skipped: s.skipped.length,
   })));
 
   // Allocation Mode gate, refined 2026-08-20 — applies only to genuinely fresh rows (a row
@@ -279,7 +316,10 @@ export async function POST(req, { params }) {
     // Auto-builds bom_assemblies from this import's own section/group_label data — same
     // transaction as the insert loop above, so a failure here can't leave items inserted with no
     // tree built for them. Scoped to importId, so it only ever touches rows just inserted above.
-    const tree = await buildAssemblyTreeFromImport({ tx, projectId: Number(params.id), importId, username: user.username });
+    const tree = await buildAssemblyTreeFromImport({
+      tx, projectId: Number(params.id), importId, username: user.username,
+      configEntries: parsed.sheets.flatMap(sh => sh.configs || []),
+    });
 
     for (const [word, category] of learnedCorrections) {
       await tx.execute({
@@ -296,9 +336,10 @@ export async function POST(req, { params }) {
     detail: JSON.stringify({
       project_id: Number(params.id), filename: file.name, revision,
       inserted: n, skipped: parsed.totalSkipped, previous_items: existing.n,
+      configs: parsed.totalConfigs,
     }),
   });
-  if (tree.itemsAssigned > 0) {
+  if (tree.itemsAssigned > 0 || tree.configsAdded > 0 || tree.configsUpdated > 0) {
     await audit('bom_assembly_auto_build', {
       actor: user.username,
       detail: JSON.stringify({ project_id: Number(params.id), import_id: importId, ...tree }),

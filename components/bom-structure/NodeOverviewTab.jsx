@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import RelatedItemsCard from '@/components/RelatedItemsCard';
+import NodeConfigCard from './NodeConfigCard';
 import { api } from '@/lib/client';
 import { NODE_TYPE_SUGGESTIONS, effectiveNodeLevel, templateVersionState } from '@/lib/bom-tree.mjs';
 
@@ -59,7 +60,7 @@ function childLevelFor(level) {
   return i >= 0 && i < NODE_TYPE_SUGGESTIONS.length - 1 ? NODE_TYPE_SUGGESTIONS[i + 1] : null;
 }
 
-export default function NodeOverviewTab({ node, byId, onSaveQty, onSaveNodeType, onApplyTemplate }) {
+export default function NodeOverviewTab({ node, byId, onSaveQty, onSaveNodeType, onApplyTemplate, onSaveConfig, onConverted }) {
   const [qtyDraft, setQtyDraft] = useState(String(node.qty));
   const isCustomType = node.node_type && !NODE_TYPE_SUGGESTIONS.includes(node.node_type);
   const [customTypeOpen, setCustomTypeOpen] = useState(isCustomType);
@@ -127,6 +128,8 @@ export default function NodeOverviewTab({ node, byId, onSaveQty, onSaveNodeType,
           <p className="text-xs text-muted-foreground">Computed live from every parent above this node — never hand-edited.</p>
         </div>
       </div>
+
+      {onSaveConfig && <NodeConfigCard node={node} onSaveConfig={onSaveConfig} onConverted={onConverted} />}
 
       {node.items?.length > 0 && (
         <div className="flex flex-col gap-1.5 border-t pt-3">

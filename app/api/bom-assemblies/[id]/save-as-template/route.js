@@ -5,6 +5,7 @@ import { requireEngineeringAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { NODE_TYPE_SUGGESTIONS, effectiveNodeLevel } from '@/lib/bom-tree.mjs';
 import { buildTemplateTree, computeTemplateCounts } from '@/lib/bom-structure.mjs';
+import { parseConfig } from '@/lib/bom-config.mjs';
 
 // Captures this NODE ITSELF (its own name/type/qty/items, plus every descendant recursively) as a
 // new bom_structure_templates row with one root — "save this branch, starting here." Capturing the
@@ -28,7 +29,7 @@ export async function POST(req, { params }) {
   // ORDER BY sort_order — a template must preserve the real build order, not whatever order SQLite
   // happens to return; childrenByParent/itemsByAssembly below just push in query order, so the
   // ordering has to be correct at the source.
-  const all = await queryAll('SELECT id, parent_id, name, node_type, qty FROM bom_assemblies WHERE project_id = ? ORDER BY sort_order, id', [node.project_id]);
+  const all = await queryAll('SELECT id, parent_id, name, node_type, qty, config_json FROM bom_assemblies WHERE project_id = ? ORDER BY sort_order, id', [node.project_id]);
   const byId = new Map(all.map(a => [a.id, a]));
   const childrenByParent = new Map();
   for (const a of all) {
@@ -59,8 +60,10 @@ export async function POST(req, { params }) {
     itemsByAssembly.get(it.assembly_id).push(it);
   }
 
-  const hasContent = (childrenByParent.get(node.id)?.length || 0) > 0 || (itemsByAssembly.get(node.id)?.length || 0) > 0;
-  if (!hasContent) return NextResponse.json({ error: 'This node has no children or items to save as a template' }, { status: 400 });
+  // Configuration (datasheet fields) counts as content: a subsystem that is only a datasheet is still worth saving.
+  const hasContent = (childrenByParent.get(node.id)?.length || 0) > 0 || (itemsByAssembly.get(node.id)?.length || 0) > 0
+    || parseConfig(node.config_json).length > 0;
+  if (!hasContent) return NextResponse.json({ error: 'This node has no children, items or configuration to save as a template' }, { status: 400 });
 
   const tree = buildTemplateTree(rootNodes, childrenByParent, itemsByAssembly);
   const { nodeCount, itemCount, rootCount } = computeTemplateCounts(tree);

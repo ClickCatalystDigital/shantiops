@@ -26,9 +26,26 @@ export async function PATCH(req, { params }) {
   const user = await getFreshSessionUser();
   const denied = await requireEngineeringAction(user, 'engineering.assembly.add');
   if (denied) return denied;
-  const existing = await queryOne('SELECT id, level, series, tree_json FROM bom_structure_templates WHERE id = ? AND archived_at IS NULL', [params.id]);
+  const existing = await queryOne('SELECT id, name, level, series, tree_json FROM bom_structure_templates WHERE id = ? AND archived_at IS NULL', [params.id]);
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   const b = await req.json();
+
+  // Validate a rename BEFORE any write (the default-flag update below would otherwise already have run).
+  // Templates are linked by id everywhere (lineage columns, version stamps), never by name, so a rename
+  // can't affect any BOM — it only changes what is displayed. Renaming never bumps the version.
+  // The unique check is done here (not left to UNIQUE(level, series, name)) because SQLite treats NULLs as
+  // distinct, so two same-named templates with no model would slip past the constraint.
+  if (b.name != null) {
+    const newName = String(b.name).trim();
+    if (!newName) return NextResponse.json({ error: 'Name is required' }, { status: 400 });
+    const nextSeries = b.series !== undefined ? (b.series?.trim() || null) : existing.series;
+    const clash = await queryOne(
+      `SELECT id FROM bom_structure_templates
+        WHERE archived_at IS NULL AND id != ? AND level = ? AND name = ? AND (series = ? OR (series IS NULL AND ? IS NULL))`,
+      [existing.id, existing.level, newName, nextSeries, nextSeries]);
+    if (clash) return NextResponse.json({ error: 'A template with that name already exists for this level and model.' }, { status: 409 });
+    b.name = newName;
+  }
 
   if (b.is_default) {
     // Scoped the same way the UNIQUE constraint is (level, series) — only one default per that pair.
@@ -41,7 +58,7 @@ export async function PATCH(req, { params }) {
 
   const fields = [];
   const args = [];
-  if (b.name != null) { fields.push('name = ?'); args.push(String(b.name).trim()); }
+  if (b.name != null) { fields.push('name = ?'); args.push(b.name); }
   if (b.series !== undefined) { fields.push('series = ?'); args.push(b.series?.trim() || null); }
   if (b.description !== undefined) { fields.push('description = ?'); args.push(b.description?.trim() || null); }
   if (Array.isArray(b.tree)) {
@@ -54,6 +71,9 @@ export async function PATCH(req, { params }) {
   if (fields.length) {
     args.push(params.id);
     await execute(`UPDATE bom_structure_templates SET ${fields.join(', ')} WHERE id = ?`, args);
+  }
+  if (b.name != null && b.name !== existing.name) {
+    await audit('bom_structure_template_rename', { actor: user.username, detail: `template ${existing.id}: "${existing.name}" -> "${b.name}"` });
   }
   return NextResponse.json({ ok: true });
 }

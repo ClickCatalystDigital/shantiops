@@ -5,6 +5,7 @@ import { requireEngineeringAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { getAllocationMode } from '@/lib/procurement';
 import { flattenTemplateTree } from '@/lib/bom-structure.mjs';
+import { serializeConfig } from '@/lib/bom-config.mjs';
 import { DIMENSIONAL_CATEGORIES } from '@/lib/bom-fields.mjs';
 import { categoryDisplaySpec } from '@/lib/section-shapes';
 
@@ -68,8 +69,8 @@ export async function insertTemplateTree(tree, projectId, parentId, templateId, 
     // structure_template_id (lineage) is stamped on root entries only — a template's own top-level
     // node(s), not every descendant it brought along.
     const { lastId } = await execute(
-      'INSERT INTO bom_assemblies (project_id, parent_id, name, qty, sort_order, node_type, structure_template_id, structure_template_version, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [projectId, realParentId, entry.name, entry.qty, isRoot ? nextSort++ : 0, entry.node_type, isRoot ? templateId : null, isRoot ? templateVersion : null, username]
+      'INSERT INTO bom_assemblies (project_id, parent_id, name, qty, sort_order, node_type, structure_template_id, structure_template_version, config_json, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [projectId, realParentId, entry.name, entry.qty, isRoot ? nextSort++ : 0, entry.node_type, isRoot ? templateId : null, isRoot ? templateVersion : null, serializeConfig(entry.config), username]
     );
     idMap.set(entry.tempId, Number(lastId));
     if (isRoot && rootId == null) rootId = Number(lastId);

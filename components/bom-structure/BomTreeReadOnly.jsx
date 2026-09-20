@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
-  ChevronRightIcon, ChevronDownIcon, PackageIcon, ListTreeIcon, ScaleIcon, AlertTriangleIcon, SearchIcon, DownloadIcon, HistoryIcon,
+  ChevronRightIcon, ChevronDownIcon, PackageIcon, ListTreeIcon, ScaleIcon, AlertTriangleIcon, SearchIcon, DownloadIcon, HistoryIcon, SlidersHorizontalIcon,
 } from 'lucide-react';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { Input } from '@/components/ui/input';
@@ -124,6 +124,18 @@ function AssemblyRow({ node, depth, childrenByParent, collapsedIds, toggleCollap
         >
           <ScaleIcon className="size-3 shrink-0" />
           {node.weight_kg.toFixed(1)} kg cut so far ({node.weight_items_known} of {node.weight_items_total} items have recorded weight)
+        </div>
+      )}
+
+      {(node.config || []).length > 0 && (
+        <div
+          className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 pb-1 text-[11px] text-muted-foreground/80"
+          style={{ paddingLeft: `${(ancestorLines.length + (depth > 0 ? 1 : 0)) * 1.25 + 1.25}rem` }}
+        >
+          <SlidersHorizontalIcon className="size-3 shrink-0 self-center" />
+          {node.config.map(c => (
+            <span key={c.label}><span className="font-medium">{c.label}</span>{`: ${c.value || '—'}`}</span>
+          ))}
         </div>
       )}
 

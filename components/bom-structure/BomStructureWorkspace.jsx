@@ -144,6 +144,13 @@ export default function BomStructureWorkspace({
       reloadStructure();
     } catch (err) { showToast(err.message, 'error'); }
   }
+  // Throws on failure (unlike the toast-and-swallow handlers around it) so the Configuration card can show the
+  // server's reason inline and keep the user's unsaved edits.
+  async function saveConfig(node, config) {
+    await api(`/api/bom-assemblies/${node.id}`, { method: 'PATCH', body: { config } });
+    await reloadStructure();
+    showToast('Configuration saved');
+  }
   async function saveNodeType(node, nodeType) {
     try {
       await api(`/api/bom-assemblies/${node.id}`, { method: 'PATCH', body: { node_type: nodeType } });
@@ -373,7 +380,7 @@ export default function BomStructureWorkspace({
                 projectBom={projectBom} assemblies={assembliesFlat} unassignedItems={unassignedItems} byId={byId}
                 onSaveQty={saveQty} onSaveNodeType={saveNodeType} onRename={renameNode} onMoveTo={setMovingNode}
                 onDuplicate={duplicateNode} onDelete={deleteNode} onSaved={reloadAll} onLinkChange={reloadAll}
-                onApplyTemplate={applyTemplatesToNode} onSaveAsTemplate={saveAsTemplate}
+                onApplyTemplate={applyTemplatesToNode} onSaveAsTemplate={saveAsTemplate} onSaveConfig={saveConfig}
               />
             ) : selectedId === 'unassigned' ? (
               <div className="flex h-full flex-col gap-1 overflow-y-auto p-4">

@@ -48,9 +48,9 @@ export async function POST(req, { params }) {
     const isRoot = node.id === source.id;
     const newParentId = isRoot ? source.parent_id : idMap.get(node.parent_id);
     const { lastId } = await execute(
-      'INSERT INTO bom_assemblies (project_id, parent_id, name, qty, sort_order, node_type, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO bom_assemblies (project_id, parent_id, name, qty, sort_order, node_type, config_json, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
       [node.project_id, newParentId, isRoot ? `${node.name} (Copy)` : node.name, node.qty,
-        isRoot ? nextRootSort : node.sort_order, node.node_type, user.username]
+        isRoot ? nextRootSort : node.sort_order, node.node_type, node.config_json ?? null, user.username]
     );
     idMap.set(node.id, Number(lastId));
     if (isRoot) newRootId = Number(lastId);
