@@ -11114,7 +11114,47 @@ A PMB sheet lists a fan's datasheet (TYPE / FLOW cfm / STATIC HEAD / SPEED RPM /
 - **Convert old items** (human-triggered only): `POST /api/bom-assemblies/[id]/convert-items-to-config` (needs `engineering.assembly.add` **and** `engineering.bom.delete_item`). Only rows that meet the rule above (vocabulary waived because a person chose them); refused on a released BOM, PR-raised lines, and anything blocked by `findBlockedIds`; one transaction merges config then deletes the items; the audit entry stores every converted label/value because it is not undoable per item. Real projects were **not** converted automatically.
 - **Carry-through**: templates (`config` emitted only when non-empty, so old templates re-save byte-identical with no version bump), duplicate, Final BOM card and its PDF. Configuration is not an item: never counted, categorised or released.
 - **Verified**: selfchecks (`bom-config`, `bom-structure`, `pmb`), and all six stored real workbooks re-parsed (old items = new items + config, ~15 config rows per file); end-to-end import of SB-1108's real file on a disposable project: tree shape identical to the real project, fan subsystems carry their datasheet, none in the item list, Replace makes no duplicates.
+- **Safety-valve datasheet (2026-09-21)**: `MIN RELIEVING CAP` (incl. the sheets' "RELIEVEING" typo) joined the vocabulary. Two rule changes, both narrow: (1) a SET PRESSURE row may carry a quantity — it is the number of valves set to that pressure, the valve line carries the real quantity — but only for the real label (never "SET PRESSURE GAUGE") and never with a MOC; (2) a row with **no description** whose spec cell holds "<config label> - <value>" (the second line under each SET PRESSURE row, previously skipped as "no description") becomes configuration, labelled by the row it continues, e.g. `MIN RELIEVEING CAP (SET PRESSURE - I)`, so the two valves don't merge into one label. Verified on STF-IBR-057 through the dev UI: F.D. and I.D. fan nodes each hold their own 7 rows, Boiler Mounting & Fittings holds the 4 relief-valve rows. Already-imported real projects still hold these as items until converted.
+- **Units and multi-value cells (2026-09-21)**: (1) A configuration row is `{label, value, unit}`; the unit is its own box after the input (suggestion list + free text). The unit typed with the value wins ("300 mmWC"), else the unit the label carries ("FLOW cfm" -> label `FLOW`, unit `cfm`), else a fixed default for SET PRESSURE (KG/CM2(G)), MIN RELIEVING CAP (Kg/hr) and OPERATING TEMP (°C) — defaults and label units apply only to a plain number, never to text like "AMBIENT". Units are a whitelist in `lib/bom-config.mjs` (`configParts`), so ranges/sizes like "0-21KG/CM2(G)" stay as typed. Rows saved before this have no `unit` key and are split on read (`parseConfig`), no migration. (2) Quantity stays TEXT (`qty_text`) but is written in one shape, "<number> <unit>" (`lib/qty-units.mjs`, same unit list as the BOM dialog's dropdown: Nos, Kgs, Mtr, Box, Ltr, Roll, Set, Pair), and the item dialog now shows a clean "2 Nos" as the number plus the unit dropdown. (3) A PMB cell holding several values becomes one item per value when the size cell has exactly as many segments as the quantity cell has quantities (`splitVariants` in `lib/pmb.mjs`: widest gap first, then narrower; a single MOC/make is copied to each item, or lined up when it has the same segment count). A mismatch is never guessed — the row stays one item with the existing ambiguous-quantity flag. On STF-IBR-057/060/061 this splits 12/12/16 rows into 35/35/46 items; the rows it leaves (e.g. "5/8\" - 2 1/2\" 1/2\" - 2\"" with "100 Nos 25 Nos") need a person. Already-imported items are not changed.
+- **Follow-ups (2026-09-21)**: the unit list gained Sqm, Bag and Pkt (with aliases such as "SQ MTR", "Bags", "PKT"; an unknown multi-word unit is left as typed, a single unknown word is kept). "Review & convert" now shows on any node with a convertible row, not only when a known label is present (unrecognized rows unticked, softer wording). New human-triggered **Split multi-value items** on a node's Items tab (`/api/bom-assemblies/[id]/split-multi-value-items`, same rule as the importer via `lib/multi-value.mjs`): the original row keeps its id as value #1, the others are copies of it (every column) with their own size/quantity; refused for a released BOM, PR-raised lines, items with downstream activity (`findBlockedIds`) or structured dimensions; audited as `bom_items_split_multi_value`. Quantities without a unit stay blank on purpose — the unit will come from the Item Master link, the next step. New rows land after the node's other items (sort order is all 0), not next to the row they came from.
 - **Known limits**: fixed label vocabulary (a new label like PHASE imports as an item until added or converted by hand); split-child units don't show their master node's configuration; the in-card Final BOM search does not search configuration text.
+
+## 5cy. Item Master matching — linking BOM lines to catalog rows, and remembering the answer (2026-09-21)
+
+The Item Master keeps one row per size ("BQ PLATE 12 MM SA 516 GR 70 …", "MS ANGLE 50 X 50 X 5 MM"); a PMB line names the same thing
+differently ("BQ PLATE MATERIAL" + grade in MOC + "2500 X 12000 X 12THK." in size). Before this, a line linked only when its description
+equalled a catalog name exactly. Decision: the Item Master stays flat (it mirrors the ERP and every downstream link uses `items.id`);
+matching is by attributes plus a small memory.
+
+- **Attributes** (`lib/item-attributes.mjs`, pure): `keyDim(category, text)` reads the SHAPE-DEFINING size — plate thickness, angle AxBxT,
+  channel/beam AxB, pipe OD x wall, round/square diameter/side, flat WxT (length and width of a plate are per-cut, so the catalog row
+  never carries them). A line naming two profiles (angle + channel) or two diameters gives no key. `gradeMatches` compares the line's
+  MOC with the grade written in the catalog name (generic "MS/CS/CI" say nothing; a specific short grade like EN-8 does rule a row out).
+  `stemOf` is a catalog name minus its size — rows differing only by size share a stem = a "family".
+- **Matcher** (`lib/item-match.mjs`, pure), strongest first: exact memory -> family memory (breaks a tie between rows of the same size)
+  -> attribute (category + size + grade leaves exactly ONE catalog row) -> suggestions (several rows, partial match, or similar words
+  from the DESCRIPTION only). Only memory / family / attribute are 'auto' (pre-filled, editable); suggestions are never applied. Two
+  guards found on real data: a line with a generic grade never auto-links to the only row of that size if that row is a specific SA-516 /
+  BQ / Form IV grade, and a size-only match with a contradicting grade is a suggestion, not a link.
+- **Memory** (`item_link_memory`, `lib/item-link.js`): 'exact' = description + MOC + size -> catalog row; 'family' = description + MOC ->
+  one anchor row of a real family (>= 2 catalog rows with that stem). Written ONLY from explicit human decisions — a link through
+  `linkBomItem` (the "Link to Item Master" control, the edit dialog, the review queue) or a choice made in the import preview — never from
+  the matcher's own auto-links, so it cannot reinforce itself. Confidence is Laplace-smoothed (`(approvals+1)/(approvals+rejections+2)`,
+  trusted at >= 0.6 with >= 1 approval): one confirmation acts, linking the same line to a different row or unlinking it counts a
+  rejection and pulls the old answer back to suggest-only.
+- **Import** (`app/api/projects/[id]/bom/import/route.js`): after the category tiers, every line the exact-name check did not link goes
+  through the matcher. The preview lists per sheet "Item Master links" (pre-filled where certain, one-click "Use:" suggestions, catalog
+  search, "no link"); `catalogOverrides` (item id, 0 = none) are applied at confirm and learned from.
+- **Unit from the link**: a bare quantity ("50") takes the catalog row's unit (`fillUnitFromCatalog`) when linked — never for plates
+  (the catalog lists BQ plates by the metre but they are counted) and never over a unit the sheet already gave.
+- **Already-imported lines**: "not linked to catalog" tile in the BOM readiness panel (informational, never blocks Release) opens the
+  review queue (`ResolveCatalogDialog`, `/api/projects/[id]/catalog-suggestions`): confident matches pre-ticked, the rest listed with
+  candidates; accepting links them in batches of 25 and teaches the memory.
+- **Real-data check** (six STF-IBR PMBs, 1,498 lines the exact-name rule did not link): 123 auto by attributes (all sampled ones correct),
+  425 with suggestions, 950 none (mostly bought-out items with free descriptions — these depend on memory and the review queue).
+- **Known limits**: the memory key is the description as typed (a re-worded description misses memory, though attribute matching still
+  covers dimensional lines); pipes are only keyed for the 53 of 239 catalog rows written "OD x wall"; catalog `uom` is not always right
+  (BQ plates) so unit fill is skipped for plates; a 60-second in-process cache holds the catalog index.
 
 ## 6. Customer Portal (read-only, external)
 

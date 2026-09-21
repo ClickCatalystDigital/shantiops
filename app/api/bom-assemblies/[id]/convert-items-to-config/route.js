@@ -40,7 +40,7 @@ async function loadCandidates(node) {
     else if (it.pr_item_id != null) reason = 'Raised through a Purchase Request';
     else if (blocked.has(it.id)) reason = 'Has quotes, orders, receipts or other activity';
     out.push({
-      id: it.id, label: cls.label, value: cls.value,
+      id: it.id, label: cls.label, value: cls.value, unit: cls.unit,
       suggested: isConfigLabel(it.material_description), // matches the known datasheet vocabulary
       convertible: !reason, reason,
     });
@@ -90,7 +90,7 @@ export async function POST(req, { params }) {
   }
 
   // Merge first, then convert only the items whose label really landed in the list (the row cap).
-  const merged = mergeConfig(parseConfig(node.config_json), eligible.map(c => ({ label: c.label, value: c.value })));
+  const merged = mergeConfig(parseConfig(node.config_json), eligible.map(c => ({ label: c.label, value: c.value, unit: c.unit })));
   const present = new Set(merged.list.map(e => e.label.toLowerCase()));
   const converted = [];
   for (const c of eligible) {
@@ -111,7 +111,7 @@ export async function POST(req, { params }) {
     actor: user.username,
     detail: JSON.stringify({
       project_id: node.project_id, node_id: node.id, node: node.name,
-      converted: converted.map(c => ({ id: c.id, label: c.label, value: c.value })),
+      converted: converted.map(c => ({ id: c.id, label: c.label, value: c.value, unit: c.unit })),
       skipped: skipped.length,
     }),
   });

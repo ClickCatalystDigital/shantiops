@@ -26,6 +26,7 @@ import {
   ItemSearchField, CATEGORY_OPTIONS, defaultCategoryFields, finalizeCategoryFields, validateCategoryFields,
 } from '@/components/BomLineFields';
 import { categoryDisplaySpec } from '@/lib/section-shapes';
+import { QTY_UNITS as SHARED_QTY_UNITS, normalizeUnit, splitQtyUnit } from '@/lib/qty-units.mjs';
 import { PencilIcon, TrashIcon } from '@heroicons/react/24/solid';
 import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, XCircleIcon } from 'lucide-react';
 
@@ -156,13 +157,17 @@ const SIZE_UNITS = ['mm', 'inch', 'm', 'ft', 'NB', '—'];
 // Box 45, LTR/Ltr 26, Roll 3 — casing collapsed to one canonical spelling each) plus Set/Pair, two
 // common real-world BOM units that don't happen to appear in the current catalog import but are
 // worth offering directly rather than only through free text.
-const QTY_UNITS = ['Nos', 'Kgs', 'Mtr', 'Box', 'Ltr', 'Roll', 'Set', 'Pair', '—'];
+const QTY_UNITS = [...SHARED_QTY_UNITS, '—'];
 // Item Master's own uom is free text (case/spelling drift: "kgs" vs "Kgs", "LTR" vs "Ltr") — this
 // is the one place that drift gets resolved, so a catalog pick's uom can default the Qty dropdown
 // to one of the fixed QTY_UNITS values above instead of silently matching nothing.
 function normalizeQtyUnit(raw) {
-  const v = String(raw || '').trim().toLowerCase();
-  return QTY_UNITS.find(u => u.toLowerCase() === v) || null;
+  return normalizeUnit(raw); // shared with the PMB importer (lib/qty-units.mjs) so "No"/"Mtrs." resolve the same way everywhere
+}
+
+function initialQty(text) {
+  const q = splitQtyUnit(text);
+  return q && (!q.unit || QTY_UNITS.includes(q.unit)) ? { qty_text: q.num, qtyUnit: q.unit || '—' } : { qty_text: text || '', qtyUnit: '—' };
 }
 
 let sizeRowKey = 1;
@@ -246,12 +251,10 @@ function AddItemForm({
         categoryFields: safeParseCategoryFields(existingItem.category_fields_json),
         size_spec: DIMENSIONAL_CATEGORIES.includes(existingItem.category) ? '' : (existingItem.size_spec || ''),
         unit: 'mm',
-        // The existing qty_text is kept exactly as-is (however messy — e.g. "1. 1.  1" on a real
-        // legacy multi-size row) and qtyUnit starts at '—' (append nothing) rather than guessing a
-        // unit, same reasoning as size_spec above: never auto-parse free text that predates this
-        // feature, just hand it back unchanged for the user to clean up themselves.
-        qty_text: existingItem.qty_text || '',
-        qtyUnit: '—',
+        // A clean "2 Nos" is shown as the number "2" with the unit picked in the dropdown (the importer now writes
+        // this shape). Anything else — messy legacy text like "1. 1.  1", several values, an unknown unit — is kept
+        // exactly as-is with the unit at '—' (append nothing), never guessed at.
+        ...initialQty(existingItem.qty_text),
       }]
     : [emptySizeRow()]);
   const [traceability, setTraceability] = useState({

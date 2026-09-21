@@ -20,6 +20,7 @@ import MoveAssemblyDialog from './MoveAssemblyDialog';
 import ReleaseReadinessPanel from './ReleaseReadinessPanel';
 import ResolveCategoriesDialog from './ResolveCategoriesDialog';
 import ResolveUnassignedDialog from './ResolveUnassignedDialog';
+import ResolveCatalogDialog from './ResolveCatalogDialog';
 import { nodePath } from '@/lib/bom-tree.mjs';
 
 // `projectId`/`onProjectIdChange`/`showReleased`/`onShowReleasedChange` (round 3 Phase A, all
@@ -55,6 +56,7 @@ export default function BomStructureWorkspace({
   const [releasing, setReleasing] = useState(false);
   const [resolvingCategories, setResolvingCategories] = useState(false);
   const [resolvingUnassigned, setResolvingUnassigned] = useState(false);
+  const [resolvingCatalog, setResolvingCatalog] = useState(false);
 
   function loadStructure(pid) {
     return api(`/api/bom-assemblies?project_id=${pid}`).then(setAssemblies).catch(err => showToast(err.message, 'error'));
@@ -255,6 +257,7 @@ export default function BomStructureWorkspace({
   const unassignedItems = (projectBom || []).filter(r => !r.assembly_id);
   // `_path` gives the "Resolve categories" walkthrough the same "where does this live" context the
   // tree already shows — computed once here (byId is already in scope), not inside the dialog.
+  const unlinkedCount = (projectBom || []).filter(r => !r.item_id && (r.source || 'bom') === 'bom').length; // not linked to the Item Master
   const uncategorizedItems = (projectBom || []).filter(r => !r.category)
     .map(r => ({ ...r, _path: r.assembly_id ? nodePath(r.assembly_id, byId) : null }));
   const selectedNode = selectedId != null && selectedId !== 'unassigned' ? byId.get(selectedId) : null;
@@ -359,6 +362,8 @@ export default function BomStructureWorkspace({
               projectLabel={selectedProject ? `${selectedProject.project_no} · ${selectedProject.customer_name}` : ''}
               onResolveUncategorized={uncategorizedItems.length ? () => setResolvingCategories(true) : undefined}
               onResolveUnassigned={unassignedItems.length ? () => setResolvingUnassigned(true) : undefined}
+              unlinkedCount={unlinkedCount}
+              onResolveCatalog={unlinkedCount ? () => setResolvingCatalog(true) : undefined}
             />
           )}
           <ResizablePanelGroup direction="horizontal" className="min-h-[28rem] overflow-hidden rounded-md border">
@@ -418,6 +423,9 @@ export default function BomStructureWorkspace({
           onClose={closeResolveCategories}
           onOpenInTree={openInTreeFromResolve}
         />
+      )}
+      {resolvingCatalog && (
+        <ResolveCatalogDialog projectId={projectId} onClose={() => { setResolvingCatalog(false); reloadAll(); }} />
       )}
       {resolvingUnassigned && (
         <ResolveUnassignedDialog

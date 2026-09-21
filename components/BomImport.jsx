@@ -19,6 +19,8 @@ const CATEGORY_PREVIEW_OPTIONS = [
   ...Object.entries(CATEGORY_LABEL).map(([value, label]) => ({ value, label })),
 ];
 
+const catalogNames = {}; // id -> name for catalog rows found by search in the preview, so a picked row shows its name
+
 export default function BomImport({ projectId, format = 'xlsx', onImported }) {
   const router = useRouter();
   const fileRef = useRef(null);
@@ -31,6 +33,9 @@ export default function BomImport({ projectId, format = 'xlsx', onImported }) {
   // Datasheet rows (TYPE / FLOW cfm…) are imported as the node's Configuration by default; "Treat as item"
   // sends one back to an ordinary BOM item. Sparse, keyed "sheetIndex-c<i>" against the preview's config list.
   const [configOverrides, setConfigOverrides] = useState({});
+  // Item Master links: the matcher pre-fills what it is sure of; this holds only the rows a person changed. Value = catalog item id,
+  // or 0 for "do not link". Keyed "sheetIndex-itemIndex" like categoryOverrides.
+  const [catalogOverrides, setCatalogOverrides] = useState({});
   const asItemCount = Object.values(configOverrides).filter(v => v === 'item').length;
   const accept = format === 'csv' ? '.csv' : '.xlsx';
   const label = format === 'csv' ? 'Import CSV' : 'Upload PMB';
@@ -47,6 +52,7 @@ export default function BomImport({ projectId, format = 'xlsx', onImported }) {
       setPreview(preview);
       setCategoryOverrides({});
       setConfigOverrides({});
+      setCatalogOverrides({});
     } catch (err) {
       showToast(err.message, 'error');
       setFile(null);
@@ -64,6 +70,7 @@ export default function BomImport({ projectId, format = 'xlsx', onImported }) {
       if (preview.existingItems > 0) fd.append('replace', '1');
       if (Object.keys(categoryOverrides).length) fd.append('categoryOverrides', JSON.stringify(categoryOverrides));
       if (asItemCount) fd.append('configOverrides', JSON.stringify(configOverrides));
+      if (Object.keys(catalogOverrides).length) fd.append('catalogOverrides', JSON.stringify(catalogOverrides));
       const res = await api(`/api/projects/${projectId}/bom/import`, { method: 'POST', body: fd });
       const cfgCount = (res.tree?.configsAdded || 0) + (res.tree?.configsUpdated || 0);
       showToast(`Imported ${res.inserted} items (revision ${res.revision})`
@@ -108,6 +115,7 @@ export default function BomImport({ projectId, format = 'xlsx', onImported }) {
               <p className="text-muted-foreground">
                 {preview.totalItems + asItemCount} items detected across {preview.sheets.length} sheets
                 {preview.totalConfigs - asItemCount > 0 && <> · <span className="font-medium text-foreground">{preview.totalConfigs - asItemCount} datasheet row{preview.totalConfigs - asItemCount === 1 ? '' : 's'} → saved as configuration</span></>}
+                {preview.totalSplitRows > 0 && <> · <span className="font-medium text-foreground">{preview.totalSplitRows} multi-value row{preview.totalSplitRows === 1 ? '' : 's'} split into {preview.totalSplitItems} items</span></>}
                 {preview.totalSkipped > 0 && <> · <span className="text-warning font-medium">{preview.totalSkipped} rows skipped</span></>}
               </p>
 
@@ -172,6 +180,50 @@ export default function BomImport({ projectId, format = 'xlsx', onImported }) {
                       </div>
                     </details>
                   )}
+                  {s.items?.length > 0 && (() => {
+                    const cur = (it, key) => (Object.prototype.hasOwnProperty.call(catalogOverrides, key) ? catalogOverrides[key] : (it.catalog?.itemId || 0));
+                    const linked = s.items.filter((it, ii) => cur(it, `${sheetIndex}-${ii}`)).length;
+                    const toReview = s.items.filter((it, ii) => !cur(it, `${sheetIndex}-${ii}`) && it.catalog?.level === 'suggest').length;
+                    return (
+                      <details className="mt-1">
+                        <summary className="cursor-pointer text-xs text-muted-foreground">
+                          Item Master links ({linked} linked{toReview > 0 && <>, {toReview} with suggestions to review</>}) — pre-filled where
+                          the match is certain; change or clear any
+                        </summary>
+                        <div className="mt-2 flex max-h-72 flex-col gap-2 overflow-y-auto pr-1">
+                          {s.items.map((it, itemIndex) => {
+                            const key = `${sheetIndex}-${itemIndex}`;
+                            const value = cur(it, key);
+                            const options = [{ value: 0, label: '— no link —' }, ...(it.catalog?.candidates || []).map(c => ({ value: c.id, label: c.name }))];
+                            return (
+                              <div key={itemIndex} className="flex flex-col gap-0.5">
+                                <div className="flex items-center gap-2">
+                                  <span className="flex-1 truncate text-xs" title={it.material_description}>{it.material_description}</span>
+                                  <SearchableSelect
+                                    className="w-72 shrink-0" value={value} options={options} placeholder="Search the catalog…"
+                                    displayValue={value ? (it.catalog?.candidates?.find(c => c.id === value)?.name || catalogNames[value] || `Item ${value}`) : ''}
+                                    onChange={v => { setCatalogOverrides(prev => ({ ...prev, [key]: v })); }}
+                                    asyncOptions={async q => (await api(`/api/items?search=${encodeURIComponent(q)}`)).slice(0, 8).map(r => { catalogNames[r.id] = r.item_name; return { value: r.id, label: r.item_name }; })}
+                                  />
+                                </div>
+                                {it.catalog?.reason && (
+                                  <p className={`text-[11px] ${it.catalog.level === 'suggest' ? 'text-warning' : 'text-muted-foreground'}`}>
+                                    {it.catalog.level === 'suggest' && !value ? 'Suggestions: ' : ''}{it.catalog.reason}
+                                  </p>
+                                )}
+                                {it.catalog?.level === 'suggest' && !value && it.catalog.candidates.slice(0, 3).map(c => (
+                                  <button key={c.id} type="button" className="max-w-full truncate text-left text-[11px] text-primary hover:underline" title={c.name}
+                                    onClick={() => setCatalogOverrides(prev => ({ ...prev, [key]: c.id }))}>
+                                    Use: {c.name}
+                                  </button>
+                                ))}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </details>
+                    );
+                  })()}
                   {s.configs?.length > 0 && (
                     <details className="mt-1" open>
                       <summary className="cursor-pointer text-xs font-medium">
@@ -185,7 +237,7 @@ export default function BomImport({ projectId, format = 'xlsx', onImported }) {
                             <div key={ci} className={`flex items-center gap-2 px-2 py-1 text-xs ${asItem ? 'bg-warning/5' : ''}`}>
                               <span className="w-1/3 shrink-0 truncate text-muted-foreground" title={c.group_label || s.name}>{c.group_label || s.name}</span>
                               <span className="w-1/4 shrink-0 truncate font-medium" title={c.label}>{c.label}</span>
-                              <span className="flex-1 truncate" title={c.value}>{c.value || <em className="text-muted-foreground">blank — fill in later</em>}</span>
+                              <span className="flex-1 truncate" title={`${c.value} ${c.unit || ''}`}>{c.value ? `${c.value}${c.unit ? ' ' + c.unit : ''}` : <em className="text-muted-foreground">blank — fill in later{c.unit ? ` (${c.unit})` : ''}</em>}</span>
                               <label className="flex shrink-0 items-center gap-1 text-muted-foreground">
                                 <input type="checkbox" checked={asItem}
                                   onChange={e => setConfigOverrides(prev => {

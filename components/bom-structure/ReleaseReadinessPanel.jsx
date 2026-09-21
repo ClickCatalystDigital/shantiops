@@ -12,7 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   LayoutTemplateIcon, BookmarkPlusIcon, Trash2Icon,
-  PackageIcon, FileTextIcon, UnlinkIcon, TagIcon, ClipboardListIcon,
+  PackageIcon, FileTextIcon, UnlinkIcon, TagIcon, ClipboardListIcon, LinkIcon,
 } from 'lucide-react';
 import BuildFromTemplatesDialog from './BuildFromTemplatesDialog';
 import SaveBomAsTemplateDialog from './SaveBomAsTemplateDialog';
@@ -82,7 +82,7 @@ function Stat({ value, label, tone, onClick, icon: Icon }) {
 
 export default function ReleaseReadinessPanel({
   status, rootCount, onBuildFromTemplates, onSaveBomAsTemplate,
-  unitCount, onSaveUnitCount, projectId, onResolveUncategorized, onResolveUnassigned,
+  unitCount, onSaveUnitCount, projectId, onResolveUncategorized, onResolveUnassigned, unlinkedCount, onResolveCatalog,
   onClearBom, nodeCount, projectLabel,
 }) {
   const [buildingFromTemplates, setBuildingFromTemplates] = useState(false);
@@ -97,6 +97,8 @@ export default function ReleaseReadinessPanel({
           <Stat value={status.drawingLinked} label="drawing-linked" icon={FileTextIcon} />
           <Stat value={status.unassignedCount} label="unassigned" tone="warn" icon={UnlinkIcon} onClick={onResolveUnassigned} />
           <Stat value={status.uncategorizedCount} label="uncategorized" tone="warn" icon={TagIcon} onClick={onResolveUncategorized} />
+          {/* Informational, never blocks Release: linking to the Item Master is what unlocks matching against Inventory and units. */}
+          <Stat value={unlinkedCount ?? 0} label="not linked to catalog" icon={LinkIcon} onClick={onResolveCatalog} />
           <Stat value={status.pendingEcnCount} label={status.pendingEcnCount === 1 ? 'pending ECN' : 'pending ECNs'} tone="warn" icon={ClipboardListIcon} />
         </div>
         <div className="flex items-center gap-3">

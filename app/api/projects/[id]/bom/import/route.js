@@ -10,6 +10,8 @@ import { findBlockedIds } from '@/lib/bom-item-guard';
 import { buildAssemblyTreeFromImport, configHasHome } from '@/lib/bom-tree-from-import';
 import { suggestCategoryFromGroups, suggestSpellingCorrection } from '@/lib/section-shapes';
 import { normalizeWords } from '@/lib/match-utils';
+import { getCatalogIndex, matchLines, recordItemLink, recordItemRejection } from '@/lib/item-link';
+import { fillUnitFromCatalog } from '@/lib/item-match.mjs';
 
 // PMB (.xlsx) or CSV import — Engineering, Design, or PM (Design got the same BOM-entry capability
 // as Engineering, 2026-08-25; CSV unified into this same pipeline the same day — parsePmb's
@@ -167,6 +169,28 @@ export async function POST(req, { params }) {
     }
   }
 
+  // Item Master matching (2026-09-21) — for every line the exact-name check above did not link, ask the matcher (memory ->
+  // family -> category + shape-defining size + grade -> suggestions; lib/item-match.mjs). An 'auto' answer is pre-filled and stays
+  // editable in the preview (catalogOverrides); a 'suggest' answer only lists candidates. Runs AFTER the category tiers because
+  // the matcher needs the line's category.
+  const catalogIndex = await getCatalogIndex();
+  const unlinked = [];
+  for (const sheet of parsed.sheets) {
+    for (const it of sheet.items) {
+      if (it.item_id) it.catalog = { level: 'name', itemId: it.item_id, reason: 'Same name as a catalog item', candidates: [{ id: it.item_id, name: catalogIndex.byId.get(it.item_id)?.item_name }] };
+      else unlinked.push(it);
+    }
+  }
+  const matched = await matchLines(unlinked);
+  unlinked.forEach((it, i) => {
+    const m = matched[i];
+    it.catalog = { level: m.level, reason: m.reason, itemId: m.itemId || null, candidates: m.candidates.slice(0, 5) };
+    if (m.itemId) {
+      it.item_id = m.itemId;
+      if (!it.category) it.category = catalogIndex.byId.get(m.itemId)?.bom_category || it.category;
+    }
+  });
+
   // Scoped to import_id IS NOT NULL — a Replace only ever tears down what a *previous* PMB/CSV
   // import put here, never a PR-raised line (bom_items.pr_item_id), a manually-added row, or a
   // structure-template-applied one. Those three origins have nothing to do with "I uploaded a
@@ -207,14 +231,17 @@ export async function POST(req, { params }) {
           items: s.items.map(it => ({
             material_description: it.material_description, moc: it.moc, category: it.category,
             category_suggestion: it.category_suggestion || null,
+            catalog: it.catalog || null,
           })),
           skipped: s.skipped,
           // Datasheet rows recognised on this sheet (lean: label/value/heading only). Index in this list is the
           // key for "Treat as item" (configOverrides "<sheet>-c<i>").
-          configs: (s.configs || []).map(e => ({ label: e.label, value: e.value, group_label: e.group_label })),
+          configs: (s.configs || []).map(e => ({ label: e.label, value: e.value, unit: e.unit || '', group_label: e.group_label })),
         })),
         totalItems: parsed.totalItems,
         totalConfigs: parsed.totalConfigs,
+        totalSplitRows: parsed.totalSplitRows,
+        totalSplitItems: parsed.totalSplitItems,
         totalSkipped: parsed.totalSkipped,
         existingItems: existing.n,
         blockedCount: blockedIds.size,
@@ -254,6 +281,16 @@ export async function POST(req, { params }) {
     const raw = form.get('categoryOverrides');
     if (raw) categoryOverrides = JSON.parse(raw);
   } catch { categoryOverrides = {}; }
+
+  // Sparse catalog-link overrides from the preview — keyed like categoryOverrides; the value is a catalog item id, or 0 for "do
+  // not link". Only rows a person actually touched appear here.
+  let catalogOverrides = {};
+  try {
+    const raw = form.get('catalogOverrides');
+    if (raw) catalogOverrides = JSON.parse(raw);
+  } catch { catalogOverrides = {}; }
+  const learnLinks = []; // explicit human decisions, recorded after the transaction commits
+  const learnRejections = [];
 
   // Replace-delete, the revision record, and every item insert happen in one transaction — a
   // failure partway through (network drop, DB hiccup) previously could leave the project with fewer
@@ -298,6 +335,17 @@ export async function POST(req, { params }) {
         if (it.category_suggestion && category === it.category_suggestion.category) {
           learnedCorrections.set(it.category_suggestion.word.toUpperCase(), category);
         }
+        let itemId = it.item_id;
+        if (Object.prototype.hasOwnProperty.call(catalogOverrides, overrideKey)) {
+          const chosen = Number(catalogOverrides[overrideKey]) || null;
+          if (chosen && !catalogIndex.byId.has(chosen)) throw new Error(`Unknown catalog item ${chosen}`);
+          if (chosen) learnLinks.push({ line: it, itemId: chosen });
+          else if (it.item_id && ['memory', 'family'].includes(it.catalog?.level)) learnRejections.push({ line: it, itemId: it.item_id });
+          if (chosen && it.item_id && chosen !== it.item_id && ['memory', 'family'].includes(it.catalog?.level)) learnRejections.push({ line: it, itemId: it.item_id });
+          itemId = chosen;
+        }
+        // A bare number picks up its unit from the catalog row it is linked to (never for plates; the sheet's own unit always wins).
+        const qtyText = itemId ? fillUnitFromCatalog(it.qty_text, catalogIndex.byId.get(itemId)?.uom, category) : it.qty_text;
         await tx.execute({
           sql: `INSERT INTO bom_items
                   (project_id, material_description, moc, size_spec, sort_order, section, group_label,
@@ -305,9 +353,9 @@ export async function POST(req, { params }) {
                    pending_qty_text, bqtc_ref, issued_ref, received_ref, remarks, import_id, pending_review, item_id, category)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           args: [params.id, it.material_description, it.moc, it.size_spec, n, it.section, it.group_label,
-            it.make, it.qty_text, it.purchase_status, it.pr_ref, it.po_ref, it.grn_ref,
+            it.make, qtyText, it.purchase_status, it.pr_ref, it.po_ref, it.grn_ref,
             it.grn_qty_text, it.pending_qty_text, it.bqtc_ref, it.issued_ref, it.received_ref,
-            it.remarks, importId, it.purchase_status ? 0 : freshPendingReview, it.item_id, category],
+            it.remarks, importId, it.purchase_status ? 0 : freshPendingReview, itemId, category],
         });
         n++;
       }
@@ -330,6 +378,11 @@ export async function POST(req, { params }) {
 
     return { importId, n, tree, learned: learnedCorrections.size };
   });
+
+  // Learn from the deliberate choices only (a link the person picked, a remembered link they overrode) — never from the
+  // matcher's own auto-links, so it cannot reinforce itself. Best-effort: the import itself has already committed.
+  for (const l of learnLinks) { try { await recordItemLink(l.line, l.itemId, user.username); } catch { /* best-effort */ } }
+  for (const r of learnRejections) { try { await recordItemRejection(r.line, r.itemId); } catch { /* best-effort */ } }
 
   await audit(replacing ? 'bom_replace' : 'bom_import', {
     actor: user.username,

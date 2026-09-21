@@ -134,7 +134,7 @@ function AssemblyRow({ node, depth, childrenByParent, collapsedIds, toggleCollap
         >
           <SlidersHorizontalIcon className="size-3 shrink-0 self-center" />
           {node.config.map(c => (
-            <span key={c.label}><span className="font-medium">{c.label}</span>{`: ${c.value || '—'}`}</span>
+            <span key={c.label}><span className="font-medium">{c.label}</span>{`: ${c.value || '—'}${c.value && c.unit ? ' ' + c.unit : ''}`}</span>
           ))}
         </div>
       )}

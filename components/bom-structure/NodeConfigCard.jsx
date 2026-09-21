@@ -11,7 +11,8 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { PlusIcon, ArrowUpIcon, ArrowDownIcon, Trash2Icon, SlidersHorizontalIcon, AlertTriangleIcon } from 'lucide-react';
-import { CONFIG_LIMITS } from '@/lib/bom-config.mjs';
+import SearchableSelect from '@/components/SearchableSelect';
+import { CONFIG_LIMITS, CONFIG_UNIT_SUGGESTIONS } from '@/lib/bom-config.mjs';
 import { api, showToast } from '@/lib/client';
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -58,7 +59,8 @@ export default function NodeConfigCard({ node, onSaveConfig, onConverted }) {
     finally { setConverting(false); }
   }
 
-  const dirty = !same(rows.map(r => ({ label: r.label, value: r.value })), saved.map(r => ({ label: r.label, value: r.value })));
+  const pick = r => ({ label: r.label, value: r.value, unit: r.unit || '' });
+  const dirty = !same(rows.map(pick), saved.map(pick));
   const labelKeys = rows.map(r => r.label.trim().toLowerCase()).filter(Boolean);
   const duplicated = new Set(labelKeys.filter((k, i) => labelKeys.indexOf(k) !== i));
   const canSave = dirty && !saving && duplicated.size === 0;
@@ -74,7 +76,7 @@ export default function NodeConfigCard({ node, onSaveConfig, onConverted }) {
 
   async function save() {
     setSaving(true); setError('');
-    try { await onSaveConfig(rows.filter(r => r.label.trim())); }
+    try { await onSaveConfig(rows.filter(r => r.label.trim()).map(pick)); }
     catch (err) { setError(err.message || 'Could not save the configuration.'); }
     finally { setSaving(false); }
   }
@@ -98,15 +100,21 @@ export default function NodeConfigCard({ node, onSaveConfig, onConverted }) {
       ) : (
         <div className="flex flex-col divide-y rounded-md border">
           {rows.map((r, i) => (
-            <div key={i} className="flex items-center gap-2 px-2 py-1.5">
+            <div key={i} className="grid grid-cols-[minmax(0,1.5fr)_minmax(0,1.5fr)_5.5rem_auto] items-center gap-2 px-2 py-1.5">
               <Input
                 value={r.label} maxLength={CONFIG_LIMITS.label} placeholder="Label (e.g. FLOW cfm)"
-                className={`h-8 w-2/5 ${duplicated.has(r.label.trim().toLowerCase()) ? 'border-warning' : ''}`}
+                className={`h-8 min-w-0 ${duplicated.has(r.label.trim().toLowerCase()) ? 'border-warning' : ''}`}
                 onChange={e => update(i, { label: e.target.value })}
               />
               <Input
                 value={r.value} maxLength={CONFIG_LIMITS.value} placeholder="Value (e.g. 2400)"
-                className="h-8 flex-1" onChange={e => update(i, { value: e.target.value })}
+                className="h-8 min-w-0" onChange={e => update(i, { value: e.target.value })}
+              />
+              <SearchableSelect
+                className="min-w-0" inputClassName="h-8" placeholder="Unit"
+                value={r.unit || ''} displayValue={r.unit || ''}
+                onChange={unit => update(i, { unit })} onTextChange={unit => update(i, { unit })}
+                options={CONFIG_UNIT_SUGGESTIONS.map(u => ({ value: u, label: u }))}
               />
               <div className="flex shrink-0 items-center">
                 <Button size="icon-sm" variant="ghost" onClick={() => move(i, -1)} disabled={i === 0} aria-label="Move up"><ArrowUpIcon /></Button>
@@ -118,13 +126,20 @@ export default function NodeConfigCard({ node, onSaveConfig, onConverted }) {
         </div>
       )}
 
-      {cands.some(c => c.suggested) && (
+      {cands.length > 0 && (
         <div className="rounded-md border border-warning/40 bg-warning/5 p-2.5 text-xs">
           <div className="flex items-center justify-between gap-2">
-            <span>
-              <strong>{cands.filter(c => c.suggested).length}</strong> item{cands.filter(c => c.suggested).length === 1 ? '' : 's'} on this node look like datasheet fields, not things to buy.
-              Converting moves them here and removes them from the BOM item list.
-            </span>
+            {cands.some(c => c.suggested) ? (
+              <span>
+                <strong>{cands.filter(c => c.suggested).length}</strong> item{cands.filter(c => c.suggested).length === 1 ? '' : 's'} on this node look like datasheet fields, not things to buy.
+                Converting moves them here and removes them from the BOM item list.
+              </span>
+            ) : (
+              <span>
+                <strong>{cands.length}</strong> item{cands.length === 1 ? '' : 's'} on this node {cands.length === 1 ? 'has' : 'have'} no quantity or material, so {cands.length === 1 ? 'it' : 'they'} may be {cands.length === 1 ? 'a datasheet field' : 'datasheet fields'}.
+                Tick any that are; converting moves them here and removes them from the BOM item list.
+              </span>
+            )}
             <Button size="sm" variant="outline" onClick={() => setReviewing(v => !v)}>{reviewing ? 'Hide' : 'Review & convert'}</Button>
           </div>
           {reviewing && (
@@ -137,7 +152,7 @@ export default function NodeConfigCard({ node, onSaveConfig, onConverted }) {
                       onChange={e => setPicked(prev => { const n = new Set(prev); if (e.target.checked) n.add(c.id); else n.delete(c.id); return n; })}
                     />
                     <span className="w-1/3 shrink-0 truncate font-medium" title={c.label}>{c.label}{!c.suggested && <span className="ml-1 font-normal text-muted-foreground">(no quantity or material)</span>}</span>
-                    <span className="flex-1 truncate" title={c.value}>{c.value || <em className="text-muted-foreground">blank</em>}</span>
+                    <span className="flex-1 truncate" title={`${c.value} ${c.unit || ''}`}>{c.value ? `${c.value}${c.unit ? ' ' + c.unit : ''}` : <em className="text-muted-foreground">blank</em>}</span>
                     {!c.convertible && <span className="shrink-0 text-muted-foreground">{c.reason}</span>}
                   </label>
                 ))}
@@ -163,7 +178,7 @@ export default function NodeConfigCard({ node, onSaveConfig, onConverted }) {
       <div>
         <Button
           size="sm" variant="outline" disabled={rows.length >= CONFIG_LIMITS.rows}
-          onClick={() => setRows([...rows, { label: '', value: '' }])}
+          onClick={() => setRows([...rows, { label: '', value: '', unit: '' }])}
         >
           <PlusIcon data-icon="inline-start" />Add row
         </Button>
