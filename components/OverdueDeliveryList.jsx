@@ -11,6 +11,7 @@ import { Card, CardContent } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Textarea } from './ui/textarea';
+import { TrashIcon } from 'lucide-react';
 import { projectLabel } from '@/lib/project-label';
 import { todayISO } from '@/lib/date';
 
@@ -43,13 +44,26 @@ function FollowupLog({ bomItemId }) {
     setBusy(false);
   }
 
+  async function remove(id) {
+    try {
+      await api(`/api/bom-items/${bomItemId}/delivery-followups/${id}`, { method: 'DELETE' });
+      setFollowups(fs => fs.filter(f => f.id !== id));
+    } catch (err) { showToast(err.message, 'error'); }
+  }
+
   return (
     <div className="flex flex-col gap-2 rounded-md border bg-muted/30 p-2">
       {followups.length === 0 && <p className="text-xs text-muted-foreground">No follow-ups logged yet.</p>}
       {followups.map(f => (
-        <div key={f.id} className="rounded-md border bg-background px-2 py-1.5 text-xs">
-          <p>{f.note}</p>
-          <p className="mt-0.5 text-muted-foreground">{f.created_by || 'unknown'} · {formatDate(f.created_at)}</p>
+        <div key={f.id} className="flex items-start justify-between gap-2 rounded-md border bg-background px-2 py-1.5 text-xs">
+          <div className="min-w-0">
+            <p>{f.note}</p>
+            <p className="mt-0.5 text-muted-foreground">{f.created_by || 'unknown'} · {formatDate(f.created_at)}</p>
+          </div>
+          <button type="button" aria-label="Remove follow-up" onClick={() => remove(f.id)}
+            className="shrink-0 text-muted-foreground hover:text-destructive">
+            <TrashIcon className="size-3.5" />
+          </button>
         </div>
       ))}
       <div className="flex gap-2">
