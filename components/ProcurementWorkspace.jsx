@@ -14,6 +14,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEntityHighlight } from '@/lib/use-entity-highlight';
 import { api, showToast, formatDate, formatMoney } from '@/lib/client';
+import { todayISO } from '@/lib/date';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from './ui/card';
 import MasterImport from './MasterImport';
 import { Button } from './ui/button';
@@ -23,7 +24,7 @@ import { Label } from './ui/label';
 import { Badge } from './ui/badge';
 import { Checkbox } from './ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from './ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from './ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import PdfPreview from './PdfPreview';
 import PaymentTermsField from './PaymentTermsField';
@@ -37,7 +38,9 @@ import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 import SupplierAnalysis from '@/components/SupplierAnalysis';
 import PoDeliveryLotsWorkspace from '@/components/PoDeliveryLotsWorkspace';
 import TraceabilityBadges from '@/components/TraceabilityBadges';
-import { SearchIcon, GitCompareIcon, FileTextIcon, ListChecksIcon, Building2Icon, ShoppingCartIcon, BarChart3Icon, LayoutDashboardIcon, Undo2Icon, PlusIcon, ReceiptIcon, TrashIcon, DownloadIcon, CalendarClockIcon } from 'lucide-react';
+import { SearchIcon, GitCompareIcon, FileTextIcon, ListChecksIcon, Building2Icon, ShoppingCartIcon, BarChart3Icon, LayoutDashboardIcon, Undo2Icon, PlusIcon, ReceiptIcon, TrashIcon, DownloadIcon, CalendarClockIcon, AlertTriangleIcon } from 'lucide-react';
+import AddCustomItemDialog from './AddCustomItemDialog';
+import OverdueDeliveryList from './OverdueDeliveryList';
 
 // Enquiry/Selection are for items still working toward a PO — once one's issued (Ordered, Phase
 // 5.1 — was Transit pre-5.1) or closed out, it's Status's job to show it, not theirs.
@@ -445,6 +448,7 @@ function Enquiry({ items, allItems, sourceView, quotesByItem, suppliers, rfqSumm
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [rfqDialogOpen, setRfqDialogOpen] = useState(false);
   const isPr = sourceView === 'pr';
+  const isCustom = sourceView === 'custom';
 
   // Same eligibility rule PMB rows already applied per-row, generalized so a PR group's own open
   // constituent ids can be filtered by it too.
@@ -460,10 +464,18 @@ function Enquiry({ items, allItems, sourceView, quotesByItem, suppliers, rfqSumm
       // per-project order aggregatePrGroups()'s own Map iteration would otherwise produce.
       .sort((a, b) => new Date(b.pr_created_at) - new Date(a.pr_created_at))
     : null;
-  const shownPmb = isPr ? null : items.filter(it => !it.pr_item_id && !it.selected_quote_id && !OUT_OF_PIPELINE.includes(it.purchase_status))
-    .filter(it => !needle || it.material_description.toLowerCase().includes(needle) || it.project_no.toLowerCase().includes(needle));
+  // PMB Items excludes both PR-raised rows (their own bucket) and custom items (source='custom',
+  // which also have no pr_item_id and would otherwise silently fall in here) — Custom Items is the
+  // mirror of that same filter, on source alone.
+  const shownPmb = isPr || isCustom ? null
+    : items.filter(it => !it.pr_item_id && it.source !== 'custom' && !it.selected_quote_id && !OUT_OF_PIPELINE.includes(it.purchase_status))
+      .filter(it => !needle || it.material_description.toLowerCase().includes(needle) || it.project_no.toLowerCase().includes(needle));
+  const shownCustom = isCustom
+    ? items.filter(it => it.source === 'custom' && !it.selected_quote_id && !OUT_OF_PIPELINE.includes(it.purchase_status))
+      .filter(it => !needle || it.material_description.toLowerCase().includes(needle))
+    : null;
 
-  const shownIds = isPr ? groups.flatMap(g => g.sourcing_bom_item_ids) : shownPmb.map(it => it.id);
+  const shownIds = isPr ? groups.flatMap(g => g.sourcing_bom_item_ids) : isCustom ? shownCustom.map(it => it.id) : shownPmb.map(it => it.id);
   const allShownSelected = shownIds.length > 0 && shownIds.every(id => selectedIds.has(id));
 
   function toggle(id) {
@@ -478,7 +490,8 @@ function Enquiry({ items, allItems, sourceView, quotesByItem, suppliers, rfqSumm
   }
   function toggleAllShown() { toggleIds(shownIds, allShownSelected); }
   const selectedItems = allItems.filter(it => selectedIds.has(it.id));
-  const empty = isPr ? groups.length === 0 : shownPmb.length === 0;
+  const shownCount = isPr ? groups.length : isCustom ? shownCustom.length : shownPmb.length;
+  const empty = shownCount === 0;
 
   return (
     <Card>
@@ -486,7 +499,7 @@ function Enquiry({ items, allItems, sourceView, quotesByItem, suppliers, rfqSumm
         {shownIds.length > 0 && (
           <div className="mb-2 flex items-center gap-3 border-b pb-2">
             <input type="checkbox" className="size-4" checked={allShownSelected} onChange={toggleAllShown} />
-            <span className="text-xs text-muted-foreground">Select all ({isPr ? groups.length : shownPmb.length})</span>
+            <span className="text-xs text-muted-foreground">Select all ({shownCount})</span>
             {selectedIds.size > 0 && (
               <div className="ml-auto flex items-center gap-2">
                 <span className="text-xs text-muted-foreground">{selectedIds.size} selected</span>
@@ -498,7 +511,7 @@ function Enquiry({ items, allItems, sourceView, quotesByItem, suppliers, rfqSumm
         )}
         {empty && (
           <p className="py-6 text-center text-sm text-muted-foreground">
-            {isPr ? 'No PR lines waiting on Enquiry right now.' : 'Nothing to enquire right now.'}
+            {isPr ? 'No PR lines waiting on Enquiry right now.' : isCustom ? 'No custom items waiting on Enquiry right now.' : 'Nothing to enquire right now.'}
           </p>
         )}
         {isPr
@@ -507,7 +520,7 @@ function Enquiry({ items, allItems, sourceView, quotesByItem, suppliers, rfqSumm
               selected={g.sourcing_bom_item_ids.every(id => selectedIds.has(id))}
               onToggle={() => toggleIds(g.sourcing_bom_item_ids, g.sourcing_bom_item_ids.every(id => selectedIds.has(id)))} />
           ))
-          : shownPmb.map(it => (
+          : (isCustom ? shownCustom : shownPmb).map(it => (
             <EnquiryRow key={it.id} it={it} quotes={quotesByItem[it.id] || []} suppliers={suppliers} router={router}
               rfqSummary={rfqSummaryByItem[it.id]} selected={selectedIds.has(it.id)} onToggle={() => toggle(it.id)} />
           ))}
@@ -702,7 +715,21 @@ function Selection({ items, allItems, sourceView, quotesByItem, router, q }) {
       </Card>
     );
   }
-  const shown = items.filter(it => !it.pr_item_id && selectionEligible(it, quotesByItem))
+  if (sourceView === 'custom') {
+    const shownCustom = items.filter(it => it.source === 'custom' && selectionEligible(it, quotesByItem))
+      .filter(it => !needle || it.material_description.toLowerCase().includes(needle));
+    return (
+      <Card>
+        <CardContent className="flex flex-col pt-4">
+          {shownCustom.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">Nothing ready to compare yet — log a quote in Enquiry first.</p>}
+          {shownCustom.map(it => <SelectionRow key={it.id} it={it} quotes={quotesByItem[it.id] || []} router={router} />)}
+        </CardContent>
+      </Card>
+    );
+  }
+  // PMB Items excludes custom items too (same reasoning as Enquiry's own shownPmb) — a custom item
+  // has no pr_item_id and would otherwise fall through into this bucket.
+  const shown = items.filter(it => !it.pr_item_id && it.source !== 'custom' && selectionEligible(it, quotesByItem))
     .filter(it => !needle || it.material_description.toLowerCase().includes(needle) || it.project_no.toLowerCase().includes(needle));
   return (
     <Card>
@@ -1769,17 +1796,35 @@ const SEARCH_PLACEHOLDER = {
   'suppliers-analysis': 'Search supplier or item…',
   returns: 'Search PO number or item…',
   vendor_bills: 'Search bill number, PO, or supplier…',
+  overdues: 'Search supplier or item…',
 };
 
-export default function ProcurementWorkspace({ sourcingItems, suppliers, purchaseOrders, quotes, rfqSummaryByItem = {}, purchaseReturns = [], inventoryItems = [], vendorBills = [], debitNotes = [], tdsRates = [], initialTab, initialProject }) {
+export default function ProcurementWorkspace({ sourcingItems, suppliers, purchaseOrders, quotes, rfqSummaryByItem = {}, purchaseReturns = [], inventoryItems = [], vendorBills = [], debitNotes = [], tdsRates = [], activeProjects = [], overdueDeliveries = [], initialTab, initialProject }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [poView, setPoView] = useState('active');
   const [analysisView, setAnalysisView] = useState('dashboard');
+  const [addItemOpen, setAddItemOpen] = useState(false);
+  // Once-daily reminder — a real overdue delivery exists and this browser hasn't already
+  // acknowledged one today (no server-side "seen" state exists or is warranted for a low-stakes
+  // reminder like this one; localStorage is per-browser, matching "when they sign in" closely
+  // enough without inventing new per-user state).
+  const [reminderOpen, setReminderOpen] = useState(false);
+  useEffect(() => {
+    if (!overdueDeliveries.length) return;
+    if (localStorage.getItem('procurement-overdue-seen-date') === todayISO()) return;
+    setReminderOpen(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  function dismissReminder() {
+    localStorage.setItem('procurement-overdue-seen-date', todayISO());
+    setReminderOpen(false);
+  }
   // "PMB Items" (today's per-row bom_items view, unchanged) vs "PR Items" (grouped by the shared
-  // PR line a project split came from) — Enquiry/Selection each render one or the other.
+  // PR line a project split came from) vs "Custom Items" (Procurement's own ad hoc "+ Add Item,"
+  // no PMB import and no PR behind it) — Enquiry/Selection each render one of the three.
   const [sourceView, setSourceView] = useState('pmb');
   // Deep-linked + persisted like `tab` above — a project picked on Enquiry/Selection shouldn't
   // silently reset to "All projects" on a real page reload, same complaint the `?tab=` deep-link
@@ -1829,6 +1874,7 @@ export default function ProcurementWorkspace({ sourcingItems, suppliers, purchas
     // of one entity" shape Suppliers' Roster/Analysis group has. Sits right after Purchase Orders
     // to match the real lifecycle: issue -> schedule delivery -> track status -> returns/bills.
     { key: 'orders-lots', label: 'Delivery Lots', icon: CalendarClockIcon },
+    { key: 'overdues', label: 'Overdues', icon: AlertTriangleIcon },
     { key: 'state', label: 'Status', icon: ListChecksIcon },
     { key: 'returns', label: 'Returns', icon: Undo2Icon },
     { key: 'vendor_bills', label: 'Vendor Bills', icon: ReceiptIcon },
@@ -1856,12 +1902,20 @@ export default function ProcurementWorkspace({ sourcingItems, suppliers, purchas
       <div className="flex flex-wrap items-center gap-2">
         <Input value={search} onChange={e => setSearch(e.target.value)}
           placeholder={SEARCH_PLACEHOLDER[tab]} className="h-8 w-72" />
+        {/* "+ Add Item" only on the Custom Items tab, left of the PMB/PR/Custom toggle — the
+            toggle itself is a fixed order, so whichever element the row pushes right first (Add
+            Item when present, the toggle otherwise) carries ml-auto; the other just follows it. */}
+        {(tab === 'enquiry' || tab === 'selection') && sourceView === 'custom' && (
+          <Button size="sm" className="ml-auto" onClick={() => setAddItemOpen(true)}><PlusIcon data-icon="inline-start" />Add Item</Button>
+        )}
         {(tab === 'enquiry' || tab === 'selection') && (
-          <div className="ml-auto flex gap-1 rounded-md border p-0.5">
+          <div className={`flex gap-1 rounded-md border p-0.5 ${sourceView === 'custom' ? '' : 'ml-auto'}`}>
             <Button size="sm" variant={sourceView === 'pmb' ? 'secondary' : 'ghost'} className="h-7 px-2.5 text-xs"
               onClick={() => setSourceView('pmb')}>PMB Items</Button>
             <Button size="sm" variant={sourceView === 'pr' ? 'secondary' : 'ghost'} className="h-7 px-2.5 text-xs"
               onClick={() => setSourceView('pr')}>PR Items</Button>
+            <Button size="sm" variant={sourceView === 'custom' ? 'secondary' : 'ghost'} className="h-7 px-2.5 text-xs"
+              onClick={() => setSourceView('custom')}>Custom Items</Button>
           </div>
         )}
         {(tab === 'enquiry' || tab === 'selection') && sourceView === 'pmb' && bomProjects.length > 0 && (
@@ -1902,6 +1956,7 @@ export default function ProcurementWorkspace({ sourcingItems, suppliers, purchas
       {tab === 'selection' && <Selection items={projectItems} allItems={activeItems} sourceView={sourceView} quotesByItem={quotesByItem} router={router} q={search} />}
       {tab === 'orders' && <PurchaseOrders orders={purchaseOrders} q={search} view={poView} suppliers={suppliers} tdsRates={tdsRates} />}
       {tab === 'orders-lots' && <PoDeliveryLotsWorkspace purchaseOrders={purchaseOrders} />}
+      {tab === 'overdues' && <OverdueDeliveryList items={overdueDeliveries} q={search} />}
       {tab === 'state' && <State items={sourcingItems} router={router} q={search} statusFilter={statusFilter} />}
       {tab === 'suppliers-roster' && <Suppliers suppliers={suppliers} quotes={quotes} q={search} />}
       {tab === 'suppliers-analysis' && <SupplierAnalysis view={analysisView} suppliers={suppliers} quotes={quotes} purchaseOrders={purchaseOrders} q={search} />}
@@ -1917,6 +1972,25 @@ export default function ProcurementWorkspace({ sourcingItems, suppliers, purchas
           debitNotes={debitNotes} router={router}
         />
       )}
+      {addItemOpen && (
+        <AddCustomItemDialog activeProjects={activeProjects} onClose={() => setAddItemOpen(false)}
+          onCreated={() => { setAddItemOpen(false); router.refresh(); }} />
+      )}
+      <Dialog open={reminderOpen} onOpenChange={v => !v && dismissReminder()}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Overdue deliveries</DialogTitle>
+            <DialogDescription>
+              {overdueDeliveries.length} {overdueDeliveries.length === 1 ? 'delivery is' : 'deliveries are'} overdue —
+              expected on-site but not yet received.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={dismissReminder}>Dismiss</Button>
+            <Button onClick={() => { dismissReminder(); setTab('overdues'); }}>View Overdues</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </WorkspaceSidebar>
   );
 }

@@ -43,7 +43,9 @@ export async function POST(req) {
   }
   const actionDenied = await requireAction(user, ownerDept, 'crm.opportunity.create');
   if (actionDenied) return actionDenied;
-  const stage = (b.stage && await isValidStage(b.stage)) ? b.stage : 'Lead';
+  // 'Lead - Cold' is the 9-value funnel's own starting stage (Sales CRM expansion Phase 0c —
+  // was 'Lead' under the old 5-value pipeline).
+  const stage = (b.stage && await isValidStage(b.stage)) ? b.stage : 'Lead - Cold';
 
   // customer_id — V3_CHANGES.md §12 Phase 1d wires up the previously-dead FK; customer_name stays
   // as a fallback/display cache when no real customer record is picked.

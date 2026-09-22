@@ -2,12 +2,20 @@
 // lead/opportunity/customer, exactly one FK set per row (notifications-style). GET filters by
 // whichever id query param is passed; POST requires exactly one of the three.
 import { NextResponse } from 'next/server';
-import { execute } from '@/lib/db';
+import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, isInternal, canAccessDepartment } from '@/lib/auth';
+import { requireAction } from '@/lib/action-permissions';
 import { getCrmNotes } from '@/lib/data';
 
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
-const NOTE_TYPES = ['call', 'email', 'meeting', 'note'];
+// 'diary' isn't its own note_type — a Diary entry's real Action Type is still call/email/meeting/
+// note (the legacy form's "Action Type*" field), and diary-ness is signaled by which diary fields
+// (below) are actually populated, not by a separate enum value. 'feedback' IS a distinct, real
+// note_type (Phase 5's 3 Feedback reports filter on it directly).
+const NOTE_TYPES = ['call', 'email', 'meeting', 'note', 'feedback'];
+// Any of these present means this is a Diary entry (Phase 1) — its own authority (sales.diary.write),
+// distinct from just leaving a plain note.
+const DIARY_FIELDS = ['visit_date', 'action_taken', 'plan_date', 'plan_of_action', 'next_plan_date', 'in_time', 'out_time'];
 
 export async function GET(req) {
   const user = await getFreshSessionUser();
@@ -37,10 +45,30 @@ export async function POST(req) {
   const callType = noteType === 'call' && ['incoming', 'outgoing'].includes(b.call_type) ? b.call_type : null;
   const durationSeconds = noteType === 'call' && b.duration_seconds ? Number(b.duration_seconds) : null;
 
+  // Diary (Phase 1) — its own gate (Gap #17: actions on a Lead follow the record's own owner_dept,
+  // never hardcoded to Sales) since it's a distinct authority from just leaving a plain note.
+  const isDiaryEntry = DIARY_FIELDS.some(k => b[k]);
+  if (isDiaryEntry && b.lead_id) {
+    const lead = await queryOne('SELECT owner_dept FROM leads WHERE id = ?', [b.lead_id]);
+    if (lead) {
+      const denied = await requireAction(user, lead.owner_dept, 'sales.diary.write');
+      if (denied) return denied;
+    }
+  }
+
   const { lastId } = await execute(
-    `INSERT INTO crm_notes (lead_id, opportunity_id, customer_id, note_type, content, call_type, duration_seconds, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [b.lead_id || null, b.opportunity_id || null, b.customer_id || null, noteType, content, callType, durationSeconds, user.username]
+    `INSERT INTO crm_notes (
+       lead_id, opportunity_id, customer_id, note_type, content, call_type, duration_seconds,
+       visit_date, action_taken, is_value_addition, in_time, out_time, plan_date, plan_time,
+       plan_for, plan_of_action, next_plan_date, alert_mode, send_alert_sms, contact_id,
+       product_id, location, feedback_responded, created_by
+     )
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [b.lead_id || null, b.opportunity_id || null, b.customer_id || null, noteType, content, callType, durationSeconds,
+      b.visit_date || null, b.action_taken || null, b.is_value_addition ? 1 : 0, b.in_time || null, b.out_time || null,
+      b.plan_date || null, b.plan_time || null, b.plan_for || null, b.plan_of_action || null, b.next_plan_date || null,
+      b.alert_mode || null, b.send_alert_sms || null, b.contact_id || null, b.product_id || null, b.location || null,
+      b.feedback_responded != null ? (b.feedback_responded ? 1 : 0) : null, user.username]
   );
   return NextResponse.json({ id: Number(lastId) });
 }

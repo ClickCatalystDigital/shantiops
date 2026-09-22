@@ -34,7 +34,10 @@ export async function POST(req, { params }) {
   const seq = await nextCounterValue('sale_order_no', 0);
   const soNo = `SO-${seq}`;
   const b = await req.json().catch(() => ({}));
-  const company = COMPANY_NAMES.includes(b.company) ? b.company : COMPANY_NAMES[0];
+  // Real bug, fixed: the UI's own convert call sends an empty body, so this always silently
+  // defaulted to Shanti Boilers regardless of which company the quotation was actually for —
+  // fall back to the quotation's own company first, COMPANY_NAMES[0] only as the last resort.
+  const company = COMPANY_NAMES.includes(b.company) ? b.company : (COMPANY_NAMES.includes(quotation.company) ? quotation.company : COMPANY_NAMES[0]);
 
   const { lastId } = await execute(
     `INSERT INTO sale_orders

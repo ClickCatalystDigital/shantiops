@@ -191,8 +191,15 @@ export default function PdfPreview({ open, onOpenChange, url, title, description
         {status === 'loading' && <p className="py-12 text-center text-sm text-muted-foreground">Rendering PDF…</p>}
         {status === 'error' && <p className="py-12 text-center text-sm text-destructive">{error}</p>}
         {Array.from({ length: numPages }).map((_, i) => (
-          <div key={i} className="flex shrink-0 items-center justify-center p-2" style={{ minHeight: 200, scrollSnapAlign: zoom <= 1 ? 'center' : undefined }}>
-            <canvas ref={el => { canvasRefs.current[i] = el; }} className="rounded-md border shadow-sm bg-white" draggable={false} />
+          <div key={i} className="flex shrink-0 items-center p-2" style={{ minHeight: 200, scrollSnapAlign: zoom <= 1 ? 'center' : undefined }}>
+            {/* mx-auto (margin centering), not justify-center (flex centering): once the canvas
+                overflows its wrapper past fit zoom, flex-centering pushes its left edge to a
+                negative x the browser won't let scrollLeft reach (0 is the minimum), making the
+                true left edge of the page permanently unreachable. margin:auto resolves to 0 once
+                content overflows, so the canvas sits flush-left and scrollWidth is computed
+                correctly on both sides — still visually centered at fit zoom, where there's no
+                overflow either way. */}
+            <canvas ref={el => { canvasRefs.current[i] = el; }} className="mx-auto rounded-md border shadow-sm bg-white" draggable={false} />
           </div>
         ))}
       </div>

@@ -23,16 +23,24 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
+import { Textarea } from '@/components/ui/textarea';
+import SearchableSelect from '@/components/SearchableSelect';
+import { PRODUCT_TYPES } from '@/lib/sales-product-types';
+import { COMPANY_NAMES } from '@/lib/company-profiles.js';
 import {
   PlusIcon, TrashIcon, UserPlusIcon, UsersIcon, FileTextIcon, ShoppingCartIcon,
   MegaphoneIcon, CheckSquareIcon, ContactIcon, MessageCircleIcon, MailIcon, TagIcon,
   InboxIcon, UndoIcon, IndianRupeeIcon, ReceiptIcon, DownloadIcon, UploadIcon, FileCheckIcon,
-  WalletIcon, ClipboardListIcon, BanknoteIcon,
+  WalletIcon, ClipboardListIcon, BanknoteIcon, Building2Icon, PackageIcon, TargetIcon, StarIcon,
+  PencilIcon,
 } from 'lucide-react';
 import { api, showToast } from '@/lib/client';
+import { todayISO } from '@/lib/date';
 import { formatMoney } from '@/lib/format';
 import ScopeOfSupplySection from '@/components/ScopeOfSupplySection';
 import { PaymentOrdersTab, PaymentLogTab, Pager, SIZES } from '@/components/SalesPaymentTracker';
+import { CreatePoFlow } from '@/components/SaleOrderWizard';
+import { renderTemplate } from '@/lib/email-template.mjs';
 
 // ponytail: fixed 24h first-response SLA, not a configurable business-hours calendar like Frappe
 // CRM's own SLA doctype (holiday list, service windows). Add a settings row for this if a real
@@ -69,12 +77,13 @@ function ContactLinks({ phone, email }) {
 
 // --- Notes / Call Log (shared across Lead/Opportunity/Customer detail views) ------------------
 
-function NotesPanel({ leadId, opportunityId, customerId }) {
+function NotesPanel({ leadId, lead, opportunityId, customerId, users = [], salesProducts = [], router }) {
   const [notes, setNotes] = useState([]);
   const [note, setNote] = useState('');
   const [logCall, setLogCall] = useState(false);
   const [callType, setCallType] = useState('outgoing');
   const [durationMin, setDurationMin] = useState('');
+  const [diaryOpen, setDiaryOpen] = useState(false);
 
   function load() {
     const q = leadId ? `lead_id=${leadId}` : opportunityId ? `opportunity_id=${opportunityId}` : `customer_id=${customerId}`;
@@ -97,13 +106,17 @@ function NotesPanel({ leadId, opportunityId, customerId }) {
 
   return (
     <div>
-      <div className="mb-2 text-sm font-semibold">Notes / activity</div>
+      <div className="mb-2 flex items-center justify-between">
+        <div className="text-sm font-semibold">Notes / activity</div>
+        {lead && <Button size="sm" variant="outline" onClick={() => setDiaryOpen(true)}>Add to Diary</Button>}
+      </div>
       <div className="flex flex-col gap-1.5">
         {notes.map(n => (
           <div key={n.id} className="rounded border px-2 py-1.5 text-sm">
             <span className="text-muted-foreground">
               {n.note_type}{n.note_type === 'call' && n.call_type ? ` (${n.call_type}${n.duration_seconds ? `, ${Math.round(n.duration_seconds / 60)}m` : ''})` : ''}:
             </span> {n.content}
+            <DiarySummaryTooltip note={n} />
           </div>
         ))}
         {notes.length === 0 && <p className="text-sm text-muted-foreground">No activity yet.</p>}
@@ -130,7 +143,160 @@ function NotesPanel({ leadId, opportunityId, customerId }) {
           </div>
         )}
       </div>
+      {diaryOpen && lead && (
+        <AddToDiaryDialog lead={lead} users={users} salesProducts={salesProducts} router={router}
+          onClose={() => setDiaryOpen(false)} onSaved={load} />
+      )}
     </div>
+  );
+}
+
+// Compact follow-up summary — reused wherever the checklist calls for it: NotesPanel (here), the
+// Funnel Report drill-down, and the Home calendar overlay (Phase 4/5).
+export function DiarySummaryTooltip({ note }) {
+  if (!note.next_plan_date && !note.plan_of_action) return null;
+  return (
+    <div className="mt-1 rounded bg-muted/40 px-2 py-1 text-xs text-muted-foreground">
+      {note.next_plan_date && <span>Next follow-up: {note.next_plan_date}{note.plan_time ? ` ${note.plan_time}` : ''}. </span>}
+      {note.plan_for && <span>For: {note.plan_for}. </span>}
+      {note.plan_of_action && <span>{note.plan_of_action}</span>}
+    </div>
+  );
+}
+
+// Diary (Phase 1) — the legacy "Update Sales Call Section" form, 3 fieldsets, reusing crm_notes
+// (not a new entity). Lead-only (a Diary entry logs field-sales activity against a Lead/Enquiry).
+function AddToDiaryDialog({ lead, users, salesProducts, onClose, onSaved, router }) {
+  const [f, setF] = useState({
+    visit_date: todayISO(), note_type: 'call', is_value_addition: false, action_taken: '',
+    in_time: '', out_time: '', alert_mode: 'Not Required', plan_date: '', plan_time: '',
+    plan_for: '', plan_of_action: '', send_alert_sms: 'No Alert', contact_id: '', product: '', product_id: null,
+    location: '',
+  });
+  const [contacts, setContacts] = useState([]);
+  const [files, setFiles] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const set = (k) => (v) => setF(prev => ({ ...prev, [k]: v }));
+  const setText = (k) => (e) => setF(prev => ({ ...prev, [k]: e.target.value }));
+
+  useEffect(() => {
+    if (!lead.converted_customer_id) return;
+    api(`/api/contacts?customer_id=${lead.converted_customer_id}`).then(setContacts).catch(() => {});
+  }, [lead.converted_customer_id]);
+
+  async function save() {
+    if (!f.action_taken.trim()) return showToast('Action Taken is required', 'error');
+    setSaving(true);
+    try {
+      const { id: noteId } = await api('/api/crm-notes', { method: 'POST', body: {
+        lead_id: lead.id, content: f.action_taken.trim(), note_type: f.note_type,
+        visit_date: f.visit_date, action_taken: f.action_taken.trim(),
+        is_value_addition: f.is_value_addition, in_time: f.in_time || null, out_time: f.out_time || null,
+        alert_mode: f.alert_mode, plan_date: f.plan_date || null, plan_time: f.plan_time || null,
+        plan_for: f.plan_for || null, plan_of_action: f.plan_of_action || null,
+        next_plan_date: f.plan_date || null, send_alert_sms: f.send_alert_sms,
+        contact_id: f.contact_id || null, product_id: f.product_id || null, location: f.location || null,
+      } });
+      for (const file of files) {
+        const form = new FormData();
+        form.append('file', file);
+        await api(`/api/crm-notes/${noteId}/upload`, { method: 'POST', body: form });
+      }
+      showToast('Diary entry logged');
+      router.refresh();
+      onSaved?.();
+      onClose();
+    } catch (err) { showToast(err.message, 'error'); } finally { setSaving(false); }
+  }
+
+  return (
+    <Dialog open onOpenChange={o => !o && onClose()}>
+      <DialogContent className="sm:max-w-2xl">
+        <DialogHeader><DialogTitle>Add to Diary — {lead.lead_name}</DialogTitle></DialogHeader>
+        <div className="flex flex-col gap-5 max-h-[70vh] overflow-y-auto pr-1">
+          <div>
+            <div className="mb-2 text-sm font-semibold">Update Sales Call Section</div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="grid gap-1.5"><Label>Date</Label><Input type="date" value={f.visit_date} onChange={setText('visit_date')} /></div>
+              <div className="grid gap-1.5"><RequiredLabel>Action Type</RequiredLabel>
+                <Select value={f.note_type} onValueChange={set('note_type')}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="call">Call</SelectItem>
+                    <SelectItem value="email">Email</SelectItem>
+                    <SelectItem value="meeting">Meeting</SelectItem>
+                    <SelectItem value="note">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center gap-2 sm:col-span-2">
+                <Checkbox id="dv-value-add" checked={f.is_value_addition} onCheckedChange={v => set('is_value_addition')(!!v)} />
+                <Label htmlFor="dv-value-add" className="font-normal">Is Value Addition</Label>
+              </div>
+              <div className="grid gap-1.5 sm:col-span-2"><RequiredLabel>Action Taken</RequiredLabel><Textarea rows={2} value={f.action_taken} onChange={setText('action_taken')} /></div>
+            </div>
+          </div>
+
+          <div>
+            <div className="mb-2 text-sm font-semibold">Employee Work Done on Client Meetings</div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="grid gap-1.5"><Label>In time</Label><Input type="time" value={f.in_time} onChange={setText('in_time')} /></div>
+              <div className="grid gap-1.5"><Label>Out time</Label><Input type="time" value={f.out_time} onChange={setText('out_time')} /></div>
+              <div className="grid gap-1.5"><Label>Alert</Label>
+                <Select value={f.alert_mode} onValueChange={set('alert_mode')}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Not Required">Not Required</SelectItem>
+                    <SelectItem value="All seniors">All seniors</SelectItem>
+                    <SelectItem value="Selected seniors">Selected seniors</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-1.5 sm:col-span-3"><Label>Attach files</Label>
+                <Input type="file" multiple onChange={e => setFiles(Array.from(e.target.files || []))} />
+                {files.length > 0 && <p className="text-xs text-muted-foreground">{files.length} file(s) selected — uploaded once this entry is saved.</p>}
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div className="mb-2 text-sm font-semibold">Diary Section</div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="grid gap-1.5"><Label>Plan date</Label><Input type="date" value={f.plan_date} onChange={setText('plan_date')} /></div>
+              <div className="grid gap-1.5"><Label>Plan time</Label><Input type="time" value={f.plan_time} onChange={setText('plan_time')} /></div>
+              <div className="grid gap-1.5"><Label>Plan of Action for</Label>
+                <SearchableSelect value={f.plan_for} onChange={set('plan_for')} options={users.map(u => ({ value: u.username, label: u.display_name || u.username }))} placeholder="Select a person…" />
+              </div>
+              <div className="grid gap-1.5"><Label>Send Alert SMS</Label>
+                <Select value={f.send_alert_sms} onValueChange={set('send_alert_sms')}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="No Alert">No Alert</SelectItem>
+                    <SelectItem value="SMS">SMS</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-1.5 sm:col-span-2"><Label>Plan of action</Label><Textarea rows={2} value={f.plan_of_action} onChange={setText('plan_of_action')} /></div>
+              <div className="grid gap-1.5"><Label>Contact</Label>
+                {lead.converted_customer_id
+                  ? <Select value={f.contact_id} onValueChange={set('contact_id')}>
+                      <SelectTrigger><SelectValue placeholder="Select a contact…" /></SelectTrigger>
+                      <SelectContent>{contacts.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}</SelectContent>
+                    </Select>
+                  : <p className="text-xs text-muted-foreground pt-2">Convert this lead to a customer first to pick a contact.</p>}
+              </div>
+              <div className="grid gap-1.5"><Label>Product</Label>
+                <ProductSearchField products={salesProducts} value={f.product}
+                  onChange={v => setF(prev => ({ ...prev, product: v, product_id: null }))}
+                  onPick={p => setF(prev => ({ ...prev, product: p.product_name, product_id: p.id }))} />
+              </div>
+              <div className="grid gap-1.5 sm:col-span-2"><Label>Location</Label><Input value={f.location} onChange={setText('location')} /></div>
+            </div>
+          </div>
+        </div>
+        <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save Diary Entry'}</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -241,7 +407,49 @@ function AddLeadDialog({ onClose, router }) {
   );
 }
 
-function LeadDetailSheet({ lead, users, onClose, router }) {
+// Enquiry detail fields not already covered by the summary line above — only shown when at least
+// one is actually set, so a plain Lead created through the simpler AddLeadDialog renders nothing
+// extra here.
+const ENQUIRY_DETAIL_FIELDS = [
+  ['address', 'Address'], ['website', 'Web address'], ['product', 'Product'], ['reference', 'Reference'],
+  ['short_name', 'Short name'], ['district', 'District'], ['sub_location', 'Sub location'],
+  ['telephone', 'Telephone'], ['order_expected_in', 'Order expected in'], ['week_number', 'Week number'],
+  ['account_manager', 'A/C Manager'], ['initiated_by', 'Initiated by'], ['district_code', 'District code'],
+  ['pin_code', 'Pin code'],
+];
+
+function LeadDetailSheet({ lead, users, customers, salesProducts = [], branches = [], onClose, router }) {
+  const extra = ENQUIRY_DETAIL_FIELDS.filter(([k]) => lead[k]);
+  const [action, setAction] = useState(null); // null | 'offer' | 'po' | 'lost'
+  const [newQuotationId, setNewQuotationId] = useState(null);
+  const [offerCustomerId, setOfferCustomerId] = useState(null);
+  const [resolving, setResolving] = useState(false);
+  const [closing, setClosing] = useState(false);
+
+  // Create Commercial Offer's own customer-resolution prerequisite (Gap #12) — silently run the
+  // same Lead -> Customer conversion "Create PO" already runs, before ever opening
+  // NewQuotationDialog, so a not-yet-converted lead never forces a manual customer pick instead.
+  async function startCommercialOffer() {
+    if (lead.converted_customer_id) { setOfferCustomerId(lead.converted_customer_id); setAction('offer'); return; }
+    setResolving(true);
+    try {
+      const res = await api(`/api/leads/${lead.id}/convert`, { method: 'POST', body: {} });
+      router.refresh();
+      setOfferCustomerId(res.customer_id);
+      setAction('offer');
+    } catch (err) { showToast(err.message, 'error'); } finally { setResolving(false); }
+  }
+
+  async function closeSalesCall() {
+    setClosing(true);
+    try {
+      await api(`/api/leads/${lead.id}/close-sales-call`, { method: 'POST', body: {} });
+      showToast('Sales Call closed');
+      router.refresh();
+      onClose();
+    } catch (err) { showToast(err.message, 'error'); } finally { setClosing(false); }
+  }
+
   return (
     <Sheet open onOpenChange={o => !o && onClose()}>
       <SheetContent className="w-full sm:max-w-lg">
@@ -249,29 +457,244 @@ function LeadDetailSheet({ lead, users, onClose, router }) {
           <SheetTitle>{lead.lead_name}</SheetTitle>
         </SheetHeader>
         <div className="flex flex-col gap-5 overflow-y-auto px-4 pb-4">
+          {lead.sales_call_closed_at && (
+            <div className="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+              Closed on {lead.sales_call_closed_at.slice(0, 10)}{lead.sales_call_closed_by ? ` by ${lead.sales_call_closed_by}` : ''}
+              {lead.lost_reason && <> — {lead.lost_reason}</>}
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
             {lead.company_name && <span>Company: {lead.company_name}</span>}
             {lead.source && <span>Source: {lead.source}</span>}
-            {lead.territory && <span>Territory: {lead.territory}</span>}
-            {lead.industry && <span>Industry: {lead.industry}</span>}
-            {lead.assigned_to && <span>Assigned: {lead.assigned_to}</span>}
+            {lead.territory && <span>State: {lead.territory}</span>}
+            {lead.industry && <span>Segment: {lead.industry}</span>}
+            {lead.assigned_to && <span>Team: {lead.assigned_to}</span>}
+            {lead.enquiry_date && <span>Enquiry date: {lead.enquiry_date}</span>}
             <ContactLinks phone={lead.phone} email={lead.email} />
           </div>
+          {extra.length > 0 && (
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 rounded-md border p-3 text-sm">
+              {extra.map(([k, label]) => (
+                <div key={k}><span className="text-muted-foreground">{label}: </span>{lead[k]}</div>
+              ))}
+            </div>
+          )}
+          {lead.notes && <p className="text-sm"><span className="text-muted-foreground">Remarks: </span>{lead.notes}</p>}
+
+          <div>
+            <div className="mb-2 text-sm font-semibold">Actions</div>
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" variant="outline" disabled={resolving} onClick={startCommercialOffer}>{resolving ? 'Preparing…' : 'Create Commercial Offer'}</Button>
+              <Button size="sm" variant="outline" onClick={() => setAction('po')}>Create PO</Button>
+              <Button size="sm" variant="outline" disabled={closing} onClick={closeSalesCall}>Close Sales Call</Button>
+              <Button size="sm" variant="outline" className="text-destructive" onClick={() => setAction('lost')}>Order Lost</Button>
+            </div>
+          </div>
+
           <TasksPanel leadId={lead.id} users={users} />
-          <NotesPanel leadId={lead.id} />
+          <NotesPanel leadId={lead.id} lead={lead} users={users} salesProducts={salesProducts} router={router} />
         </div>
         <SheetFooter><Button variant="outline" onClick={onClose}>Close</Button></SheetFooter>
       </SheetContent>
+
+      {action === 'offer' && !newQuotationId && (
+        <NewQuotationDialog customers={customers} initialCustomerId={offerCustomerId || ''} router={router}
+          onCreated={setNewQuotationId} onClose={() => setAction(null)} />
+      )}
+      {action === 'offer' && newQuotationId && (
+        <SendCommercialOfferDialog quotationId={newQuotationId} router={router} onClose={() => { setAction(null); setNewQuotationId(null); }} />
+      )}
+      {action === 'po' && <CreatePoFlow lead={lead} branches={branches} router={router} onClose={() => setAction(null)} />}
+      {action === 'lost' && <OrderLostDialog lead={lead} router={router} onClose={() => setAction(null)} />}
     </Sheet>
   );
 }
 
-const LEAD_FILTER_DEFAULT = { status: 'all', source: 'all', search: '' };
+// Phase 3.1 — Order Lost, a terminal action distinct from Close Sales Call (real business outcome:
+// no order ever happened, vs. sale_orders.status='cancelled' — a genuine order that fell through —
+// which this dialog deliberately never touches, Gap #26).
+function OrderLostDialog({ lead, onClose, router }) {
+  const [reason, setReason] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    if (!reason.trim()) return showToast('A reason is required', 'error');
+    setSaving(true);
+    try {
+      await api(`/api/leads/${lead.id}`, { method: 'PATCH', body: {
+        sales_call_status: 'Order Lost', lost_reason: reason.trim(), sales_call_closed_at: new Date().toISOString(),
+      } });
+      showToast('Marked as Order Lost');
+      router.refresh();
+      onClose();
+    } catch (err) { showToast(err.message, 'error'); } finally { setSaving(false); }
+  }
+
+  return (
+    <Dialog open onOpenChange={o => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Order Lost — {lead.lead_name}</DialogTitle></DialogHeader>
+        <div className="grid gap-1.5"><RequiredLabel>Reason</RequiredLabel><Textarea rows={3} value={reason} onChange={e => setReason(e.target.value)} autoFocus /></div>
+        <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button variant="destructive" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Mark as Order Lost'}</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+const LEAD_FILTER_DEFAULT = { status: 'all', source: 'all', branch: 'all', search: '' };
+
+const INDIA_STATES = [
+  'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa', 'Gujarat',
+  'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Karnataka', 'Kerala', 'Madhya Pradesh', 'Maharashtra',
+  'Manipur', 'Meghalaya', 'Mizoram', 'Nagaland', 'Odisha', 'Punjab', 'Rajasthan', 'Sikkim',
+  'Tamil Nadu', 'Telangana', 'Tripura', 'Uttar Pradesh', 'Uttarakhand', 'West Bengal',
+  'Andaman and Nicobar Islands', 'Chandigarh', 'Dadra and Nagar Haveli and Daman and Diu', 'Delhi',
+  'Jammu and Kashmir', 'Ladakh', 'Lakshadweep', 'Puducherry',
+].map(s => ({ value: s, label: s }));
+
+const ENQUIRY_STATUS_OPTIONS = [
+  { value: 'new', label: 'New' }, { value: 'contacted', label: 'Contacted' },
+  { value: 'qualified', label: 'Qualified' }, { value: 'converted', label: 'Converted' },
+  { value: 'lost', label: 'Lost' },
+];
+
+const SOURCE_SEED = ['Website', 'Referral', 'Exhibition', 'Cold Call', 'Tender', 'Existing Customer'];
+
+// Options grown from whatever's already been typed into this field across existing rows (District/
+// Sub Location have no fixed real-world list) — same "grows with usage" idiom as this app's other
+// free-typed-with-suggestions fields (MOC, UoM), via SearchableSelect's own onTextChange hybrid mode.
+function distinctOptions(leads, field, seed = []) {
+  const values = new Set(seed);
+  for (const l of leads) if (l[field]) values.add(l[field]);
+  return [...values].sort().map(v => ({ value: v, label: v }));
+}
+
+function RequiredLabel({ children }) {
+  return <Label>{children} <span className="text-destructive">*</span></Label>;
+}
+
+// Product Master (Phase 0b) — free-typed-with-suggestions against the already-fetched
+// sales_products list (small master, no pagination, same local-filter idiom as distinctOptions'
+// District/State fields elsewhere in this file — a live API search isn't warranted at this table's
+// size). Picking a real row wires product_id for real linkage; free typing still works for a
+// product that isn't in the master yet.
+function ProductSearchField({ products, value, onChange, onPick }) {
+  const [open, setOpen] = useState(false);
+  const q = (value || '').trim().toLowerCase();
+  const results = q.length < 1 ? [] : products.filter(p =>
+    p.product_name.toLowerCase().includes(q) || (p.product_code || '').toLowerCase().includes(q) || (p.product_type || '').toLowerCase().includes(q)
+  ).slice(0, 8);
+
+  return (
+    <div className="relative">
+      <Input value={value} onChange={e => { onChange(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(results.length > 0)} onBlur={() => setTimeout(() => setOpen(false), 150)}
+        placeholder="Search products, or type…" />
+      {open && results.length > 0 && (
+        <div className="absolute top-full z-10 mt-1 w-full rounded-md border bg-popover shadow-md">
+          {results.map(p => (
+            <button key={p.id} type="button" className="flex w-full flex-col items-start gap-0.5 border-b px-3 py-1.5 text-left text-sm last:border-b-0 hover:bg-muted/40"
+              onMouseDown={() => { onPick(p); setOpen(false); }}>
+              <span className="font-medium">{p.product_name}</span>
+              <span className="text-xs text-muted-foreground">{[p.product_code, p.product_type].filter(Boolean).join(' · ') || '—'}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AddEnquiryDialog({ leads, users, salesProducts, onClose, router }) {
+  const [f, setF] = useState({
+    enquiry_date: todayISO(), organization: '', address: '', website: '', email: '', product: '', product_id: null,
+    assigned_to: '', reference: '', short_name: '', territory: '', district: '', sub_location: '',
+    phone: '', order_expected_in: '', week_number: '', notes: '', industry: '',
+    account_manager: '', initiated_by: '', district_code: '', pin_code: '', status: 'new',
+    telephone: '', source: '',
+  });
+  const [saving, setSaving] = useState(false);
+  const set = (k) => (v) => setF(prev => ({ ...prev, [k]: v }));
+  const setText = (k) => (e) => setF(prev => ({ ...prev, [k]: e.target.value }));
+
+  const districtOpts = distinctOptions(leads, 'district');
+  const subLocationOpts = distinctOptions(leads, 'sub_location');
+  const sourceOpts = distinctOptions(leads, 'source', SOURCE_SEED);
+  const teamOpts = users.map(u => ({ value: u.username, label: u.display_name || u.username }));
+
+  async function save() {
+    if (!f.organization.trim()) return showToast('Organization is required', 'error');
+    if (!f.address.trim()) return showToast('Address is required', 'error');
+    setSaving(true);
+    try {
+      await api('/api/leads', { method: 'POST', body: f });
+      showToast('Enquiry added');
+      router.refresh();
+      onClose();
+    } catch (err) { showToast(err.message, 'error'); } finally { setSaving(false); }
+  }
+
+  return (
+    <Dialog open onOpenChange={o => !o && onClose()}>
+      <DialogContent className="sm:max-w-4xl">
+        <DialogHeader><DialogTitle>New Enquiry</DialogTitle></DialogHeader>
+        <div className="flex flex-col gap-4 max-h-[70vh] overflow-y-auto pr-1">
+          <div className="grid gap-1.5 max-w-56">
+            <Label>Enquiry date</Label>
+            <Input type="date" value={f.enquiry_date} onChange={setText('enquiry_date')} />
+          </div>
+          <div className="grid grid-cols-1 gap-x-6 gap-y-3 md:grid-cols-3">
+            {/* column 1 */}
+            <div className="flex flex-col gap-3">
+              <div className="grid gap-1.5"><RequiredLabel>Organization</RequiredLabel><Input value={f.organization} onChange={setText('organization')} autoFocus /></div>
+              <div className="grid gap-1.5"><RequiredLabel>Address</RequiredLabel><Textarea rows={2} value={f.address} onChange={setText('address')} /></div>
+              <div className="grid gap-1.5"><Label>Web address</Label><Input value={f.website} onChange={setText('website')} placeholder="https://…" /></div>
+              <div className="grid gap-1.5"><Label>Email id</Label><Input type="email" value={f.email} onChange={setText('email')} /></div>
+              <div className="grid gap-1.5"><Label>Product</Label>
+                <ProductSearchField products={salesProducts} value={f.product}
+                  onChange={v => setF(prev => ({ ...prev, product: v, product_id: null }))}
+                  onPick={p => setF(prev => ({ ...prev, product: p.product_name, product_id: p.id }))} />
+              </div>
+              <div className="grid gap-1.5"><Label>Team</Label><SearchableSelect value={f.assigned_to} onChange={set('assigned_to')} options={teamOpts} placeholder="Select a person…" /></div>
+              <div className="grid gap-1.5"><Label>Reference</Label><Input value={f.reference} onChange={setText('reference')} /></div>
+            </div>
+
+            {/* column 2 */}
+            <div className="flex flex-col gap-3">
+              <div className="grid gap-1.5"><Label>Organization short name</Label><Input value={f.short_name} onChange={setText('short_name')} /></div>
+              <div className="grid gap-1.5"><Label>State</Label><SearchableSelect value={f.territory} onChange={set('territory')} options={INDIA_STATES} displayValue={f.territory} onTextChange={set('territory')} placeholder="Select or type…" /></div>
+              <div className="grid gap-1.5"><Label>District</Label><SearchableSelect value={f.district} onChange={set('district')} options={districtOpts} displayValue={f.district} onTextChange={set('district')} placeholder="Select or type…" /></div>
+              <div className="grid gap-1.5"><Label>Sub location</Label><SearchableSelect value={f.sub_location} onChange={set('sub_location')} options={subLocationOpts} displayValue={f.sub_location} onTextChange={set('sub_location')} placeholder="Select or type…" /></div>
+              <div className="grid gap-1.5"><Label>Telephone no</Label><Input value={f.telephone} onChange={setText('telephone')} /></div>
+              <div className="grid gap-1.5"><Label>Order expected in</Label><Input value={f.order_expected_in} onChange={setText('order_expected_in')} placeholder="e.g. Q2 2027" /></div>
+              <div className="grid gap-1.5"><Label>Week number</Label><Input value={f.week_number} onChange={setText('week_number')} /></div>
+              <div className="grid gap-1.5"><Label>Remarks</Label><Textarea rows={2} value={f.notes} onChange={setText('notes')} /></div>
+              <div className="grid gap-1.5"><Label>Segment</Label><Input value={f.industry} onChange={setText('industry')} /></div>
+            </div>
+
+            {/* column 3 */}
+            <div className="flex flex-col gap-3">
+              <div className="grid gap-1.5"><Label>A/C Manager</Label><SearchableSelect value={f.account_manager} onChange={set('account_manager')} options={teamOpts} placeholder="Select a person…" /></div>
+              <div className="grid gap-1.5"><Label>Initiated by</Label><SearchableSelect value={f.initiated_by} onChange={set('initiated_by')} options={teamOpts} placeholder="Select a person…" /></div>
+              <div className="grid gap-1.5"><Label>District code</Label><Input value={f.district_code} onChange={setText('district_code')} /></div>
+              <div className="grid gap-1.5"><Label>Pin code</Label><Input value={f.pin_code} onChange={setText('pin_code')} /></div>
+              <div className="grid gap-1.5"><Label>Status</Label><SearchableSelect value={f.status} onChange={set('status')} options={ENQUIRY_STATUS_OPTIONS} placeholder="Select…" /></div>
+              <div className="grid gap-1.5"><Label>Mobile number</Label><Input value={f.phone} onChange={setText('phone')} /></div>
+              <div className="grid gap-1.5"><Label>Source</Label><SearchableSelect value={f.source} onChange={set('source')} options={sourceOpts} displayValue={f.source} onTextChange={set('source')} placeholder="Select or type…" /></div>
+            </div>
+          </div>
+        </div>
+        <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Create'}</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 // STERP "Sales Enquiry" (SYSTEM.md §5e) — a raw enquiry already IS a status='new' lead
-// (isSlaBreached already special-cases it as the unactioned bucket); reuses this exact component
-// under the Enquiry nav entry with initialStatus='new' rather than a second table/entity.
-function LeadsTab({ leads, users, savedViews, router, initialStatus = 'all' }) {
+// (isSlaBreached already special-cases it as the unactioned bucket); reuses this exact list/table
+// under the Enquiry nav entry (initialStatus='new') rather than a second table/entity — only the
+// creation dialog differs (isEnquiry picks AddEnquiryDialog's fuller form over AddLeadDialog's).
+function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], savedViews, router, initialStatus = 'all', isEnquiry = false }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [busyId, setBusyId] = useState(null);
   const [selected, setSelected] = useState(null);
@@ -283,6 +706,7 @@ function LeadsTab({ leads, users, savedViews, router, initialStatus = 'all' }) {
   const filtered = leads.filter(l =>
     (filters.status === 'all' || l.status === filters.status) &&
     (filters.source === 'all' || l.source === filters.source) &&
+    (filters.branch === 'all' || String(l.branch_id) === filters.branch) &&
     (!filters.search || l.lead_name.toLowerCase().includes(filters.search.toLowerCase()) || (l.company_name || '').toLowerCase().includes(filters.search.toLowerCase()))
   );
 
@@ -308,8 +732,8 @@ function LeadsTab({ leads, users, savedViews, router, initialStatus = 'all' }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Leads</CardTitle>
-        <CardAction><Button size="sm" onClick={() => setDialogOpen(true)}><PlusIcon />New Lead</Button></CardAction>
+        <CardTitle>{isEnquiry ? 'Enquiry' : 'Leads'}</CardTitle>
+        <CardAction><Button size="sm" onClick={() => setDialogOpen(true)}><PlusIcon />{isEnquiry ? 'New Enquiry' : 'New Lead'}</Button></CardAction>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         {views.length > 0 && (
@@ -337,6 +761,15 @@ function LeadsTab({ leads, users, savedViews, router, initialStatus = 'all' }) {
               </SelectContent>
             </Select>
           )}
+          {branches.length > 0 && (
+            <Select value={filters.branch} onValueChange={v => setFilters(f => ({ ...f, branch: v }))}>
+              <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All branches</SelectItem>
+                {branches.map(b => <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          )}
           <div className="ml-auto flex items-center gap-1.5">
             <Input placeholder="Save current filters as…" value={viewName} onChange={e => setViewName(e.target.value)} className="w-44" />
             <Button size="sm" variant="outline" onClick={saveView}>Save view</Button>
@@ -344,11 +777,16 @@ function LeadsTab({ leads, users, savedViews, router, initialStatus = 'all' }) {
         </div>
         {filtered.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No leads match.</p> : (
           <Table>
-            <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Company</TableHead><TableHead>Source</TableHead><TableHead>Status</TableHead><TableHead>Owner</TableHead><TableHead>Assigned</TableHead><TableHead /></TableRow></TableHeader>
+            <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Company</TableHead><TableHead>Source</TableHead><TableHead>Status</TableHead><TableHead>Sales Call Status</TableHead><TableHead>Owner</TableHead><TableHead>Assigned</TableHead><TableHead /></TableRow></TableHeader>
             <TableBody>
               {filtered.map(l => (
                 <TableRow key={l.id} className="cursor-pointer" onClick={() => setSelected(l)}>
-                  <TableCell className="font-medium">{l.lead_name}</TableCell>
+                  <TableCell className="font-medium">
+                    <div className="flex items-center gap-1.5">
+                      {l.lead_name}
+                      {!!l.is_vip && <StarIcon className="size-3.5 fill-amber-400 text-amber-400" aria-label="VIP" />}
+                    </div>
+                  </TableCell>
                   <TableCell className="text-muted-foreground">{l.company_name || '—'}</TableCell>
                   <TableCell className="text-muted-foreground">{l.source || '—'}</TableCell>
                   <TableCell>
@@ -357,6 +795,7 @@ function LeadsTab({ leads, users, savedViews, router, initialStatus = 'all' }) {
                       {isSlaBreached(l) && <Badge variant="destructive">SLA overdue</Badge>}
                     </div>
                   </TableCell>
+                  <TableCell className="text-muted-foreground">{l.sales_call_status || '—'}</TableCell>
                   <TableCell className="text-muted-foreground">{l.owner_dept}</TableCell>
                   <TableCell className="text-muted-foreground">{l.assigned_to || '—'}</TableCell>
                   <TableCell onClick={e => e.stopPropagation()}>
@@ -370,8 +809,10 @@ function LeadsTab({ leads, users, savedViews, router, initialStatus = 'all' }) {
           </Table>
         )}
       </CardContent>
-      {dialogOpen && <AddLeadDialog router={router} onClose={() => setDialogOpen(false)} />}
-      {selected && <LeadDetailSheet lead={selected} users={users} router={router} onClose={() => setSelected(null)} />}
+      {dialogOpen && (isEnquiry
+        ? <AddEnquiryDialog leads={leads} users={users} salesProducts={salesProducts} router={router} onClose={() => setDialogOpen(false)} />
+        : <AddLeadDialog router={router} onClose={() => setDialogOpen(false)} />)}
+      {selected && <LeadDetailSheet lead={selected} users={users} customers={customers} salesProducts={salesProducts} branches={branches} router={router} onClose={() => setSelected(null)} />}
     </Card>
   );
 }
@@ -616,16 +1057,25 @@ function QuotationItemField({ item, customerId, onChange }) {
   );
 }
 
-export function NewQuotationDialog({ customers, opportunityId = null, initialCustomerId = '', onClose, router }) {
+const QUOTATION_TYPE_SEED = ['Sales', 'Service', 'Spares', 'AMC'];
+
+// Phase 3.2 — company/type/dates surfaced as real inputs (were dead columns before), per-line
+// discount %. onCreated (optional) lets a caller (the Commercial Offer flow) chain straight into
+// SendCommercialOfferDialog instead of just closing.
+export function NewQuotationDialog({ customers, opportunityId = null, initialCustomerId = '', onClose, onCreated, router }) {
   const [customerId, setCustomerId] = useState(initialCustomerId ? String(initialCustomerId) : '');
+  const [company, setCompany] = useState(COMPANY_NAMES[0]);
+  const [quotationType, setQuotationType] = useState('Sales');
+  const [quotationDate, setQuotationDate] = useState(todayISO());
+  const [validUntil, setValidUntil] = useState(() => { const d = new Date(); d.setDate(d.getDate() + 15); return d.toISOString().slice(0, 10); });
   const [taxPct, setTaxPct] = useState('18');
-  const [items, setItems] = useState([{ item_description: '', qty: 1, uom: 'Nos', rate: 0, item_id: null }]);
+  const [items, setItems] = useState([{ item_description: '', qty: 1, uom: 'Nos', rate: 0, discount_pct: 0, item_id: null }]);
   const [saving, setSaving] = useState(false);
 
   function updateItem(i, patch) {
     setItems(prev => prev.map((it, idx) => idx === i ? { ...it, ...patch } : it));
   }
-  function addRow() { setItems(prev => [...prev, { item_description: '', qty: 1, uom: 'Nos', rate: 0, item_id: null }]); }
+  function addRow() { setItems(prev => [...prev, { item_description: '', qty: 1, uom: 'Nos', rate: 0, discount_pct: 0, item_id: null }]); }
   function removeRow(i) { setItems(prev => prev.filter((_, idx) => idx !== i)); }
 
   async function save() {
@@ -636,41 +1086,132 @@ export function NewQuotationDialog({ customers, opportunityId = null, initialCus
     try {
       const res = await api('/api/quotations', {
         method: 'POST',
-        body: { customer_id: customerId, opportunity_id: opportunityId, tax_pct: Number(taxPct) || 0, items: cleanItems },
+        body: {
+          customer_id: customerId, opportunity_id: opportunityId, tax_pct: Number(taxPct) || 0, items: cleanItems,
+          company, quotation_type: quotationType, quotation_date: quotationDate, valid_until: validUntil,
+        },
       });
       showToast(`Quotation ${res.quotation_no} created`);
       router.refresh();
+      if (onCreated) onCreated(res.id);
       onClose();
     } catch (err) { showToast(err.message, 'error'); } finally { setSaving(false); }
   }
 
   return (
     <Dialog open onOpenChange={o => !o && onClose()}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader><DialogTitle>New Quotation</DialogTitle></DialogHeader>
-        <div className="flex flex-col gap-3">
-          <div className="grid gap-1.5">
-            <Label>Customer</Label>
-            <Select value={customerId} onValueChange={setCustomerId}>
-              <SelectTrigger><SelectValue placeholder="Choose customer" /></SelectTrigger>
-              <SelectContent>{customers.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}</SelectContent>
-            </Select>
+        <div className="flex flex-col gap-3 max-h-[70vh] overflow-y-auto pr-1">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="grid gap-1.5">
+              <Label>Customer</Label>
+              <Select value={customerId} onValueChange={setCustomerId}>
+                <SelectTrigger><SelectValue placeholder="Choose customer" /></SelectTrigger>
+                <SelectContent>{customers.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Company</Label>
+              <Select value={company} onValueChange={setCompany}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>{COMPANY_NAMES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Quotation type</Label>
+              <SearchableSelect value={quotationType} onChange={setQuotationType} options={QUOTATION_TYPE_SEED.map(t => ({ value: t, label: t }))} displayValue={quotationType} onTextChange={setQuotationType} placeholder="Select or type…" />
+            </div>
+            <div className="grid gap-1.5"><Label>GST %</Label><Input type="number" value={taxPct} onChange={e => setTaxPct(e.target.value)} /></div>
+            <div className="grid gap-1.5"><Label>Quotation date</Label><Input type="date" value={quotationDate} onChange={e => setQuotationDate(e.target.value)} /></div>
+            <div className="grid gap-1.5"><Label>Valid until</Label><Input type="date" value={validUntil} onChange={e => setValidUntil(e.target.value)} /></div>
           </div>
           <div className="flex flex-col gap-2">
             <Label>Line items</Label>
             {items.map((it, i) => (
               <div key={i} className="flex items-start gap-2">
                 <QuotationItemField item={it} customerId={customerId} onChange={patch => updateItem(i, patch)} />
-                <Input placeholder="Qty" type="number" value={it.qty} onChange={e => updateItem(i, { qty: e.target.value })} className="w-20" />
-                <Input placeholder="Rate" type="number" value={it.rate} onChange={e => updateItem(i, { rate: e.target.value })} className="w-32" />
+                <Input placeholder="Qty" type="number" value={it.qty} onChange={e => updateItem(i, { qty: e.target.value })} className="w-16" />
+                <Input placeholder="Rate" type="number" value={it.rate} onChange={e => updateItem(i, { rate: e.target.value })} className="w-24" />
+                <Input placeholder="Disc %" type="number" value={it.discount_pct} onChange={e => updateItem(i, { discount_pct: e.target.value })} className="w-20" />
                 <Button size="sm" variant="ghost" onClick={() => removeRow(i)}><TrashIcon className="size-4" /></Button>
               </div>
             ))}
             <Button size="sm" variant="outline" onClick={addRow}><PlusIcon />Add line</Button>
           </div>
-          <div className="grid gap-1.5 sm:w-40"><Label>GST %</Label><Input type="number" value={taxPct} onChange={e => setTaxPct(e.target.value)} /></div>
         </div>
         <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Create Quotation'}</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Phase 3.2 — Commercial Offer. Operates on an EXISTING quotation (created via NewQuotationDialog
+// just before this opens). Company/template picker, editable subject+body, Preview PDF, Send Email.
+export function SendCommercialOfferDialog({ quotationId, onClose, router }) {
+  const [quotation, setQuotation] = useState(null);
+  const [templates, setTemplates] = useState([]);
+  const [templateId, setTemplateId] = useState('');
+  const [subject, setSubject] = useState('');
+  const [body, setBody] = useState('');
+  const [sending, setSending] = useState(false);
+
+  useEffect(() => {
+    api(`/api/quotations/${quotationId}`).then(setQuotation).catch(err => showToast(err.message, 'error'));
+  }, [quotationId]);
+
+  useEffect(() => {
+    if (!quotation) return;
+    api(`/api/email-templates?company=${encodeURIComponent(quotation.company)}&active=1`).then(rows => {
+      setTemplates(rows);
+      if (rows.length) applyTemplate(rows[0]);
+    }).catch(() => {});
+  }, [quotation?.company]);
+
+  function applyTemplate(t) {
+    if (!quotation) return;
+    setTemplateId(String(t.id));
+    const vars = { customer_name: quotation.customer_name, quotation_no: quotation.quotation_no, total: formatMoney(quotation.total), valid_until: quotation.valid_until };
+    const rendered = renderTemplate(t.body, vars);
+    const regards = t.regards ? `\n\n${renderTemplate(t.regards, vars)}` : '';
+    setSubject(renderTemplate(t.subject || '', vars));
+    setBody(rendered + regards);
+  }
+
+  async function send() {
+    if (!subject.trim() || !body.trim()) return showToast('Subject and body are required', 'error');
+    setSending(true);
+    try {
+      await api(`/api/quotations/${quotationId}/send-email`, { method: 'POST', body: { subject: subject.trim(), body: body.trim(), email_template_id: templateId || null } });
+      showToast('Commercial Offer emailed');
+      router.refresh();
+      onClose();
+    } catch (err) { showToast(err.message, 'error'); } finally { setSending(false); }
+  }
+
+  if (!quotation) return null;
+
+  return (
+    <Dialog open onOpenChange={o => !o && onClose()}>
+      <DialogContent className="sm:max-w-2xl">
+        <DialogHeader><DialogTitle>Send Commercial Offer — {quotation.quotation_no}</DialogTitle></DialogHeader>
+        <div className="flex flex-col gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="grid gap-1.5"><Label>Company</Label><Input value={quotation.company} disabled /></div>
+            {templates.length > 0 && (
+              <div className="grid gap-1.5"><Label>Template</Label>
+                <Select value={templateId} onValueChange={v => applyTemplate(templates.find(t => String(t.id) === v))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>{templates.map(t => <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+          <div className="grid gap-1.5"><Label>Subject</Label><Input value={subject} onChange={e => setSubject(e.target.value)} /></div>
+          <div className="grid gap-1.5"><Label>Body</Label><Textarea rows={8} value={body} onChange={e => setBody(e.target.value)} /></div>
+          <a href={`/api/quotations/${quotationId}/pdf`} target="_blank" rel="noopener noreferrer" className="text-xs text-info hover:underline">Preview Commercial Offer PDF ↗</a>
+        </div>
+        <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={send} disabled={sending}>{sending ? 'Sending…' : 'Send Email'}</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -1639,6 +2180,322 @@ function TeamTab({ users, departments }) {
   );
 }
 
+// --- Branches (Phase 0a) — Sales/CRM-scoped only, no delete (deactivate-don't-delete, same as
+// sales_stages), rename/toggle via inline click-to-edit cells. ------------------------------------
+
+function AddBranchDialog({ onClose, router }) {
+  const [name, setName] = useState('');
+  const [region, setRegion] = useState('');
+  const [saving, setSaving] = useState(false);
+  async function save() {
+    if (!name.trim()) return showToast('Name is required', 'error');
+    setSaving(true);
+    try {
+      await api('/api/branches', { method: 'POST', body: { name: name.trim(), region: region.trim() || null } });
+      showToast('Branch added');
+      router.refresh();
+      onClose();
+    } catch (err) { showToast(err.message, 'error'); } finally { setSaving(false); }
+  }
+  return (
+    <Dialog open onOpenChange={o => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>New Branch</DialogTitle></DialogHeader>
+        <div className="flex flex-col gap-3">
+          <div className="grid gap-1.5"><Label>Name</Label><Input value={name} onChange={e => setName(e.target.value)} autoFocus /></div>
+          <div className="grid gap-1.5"><Label>Region (optional)</Label><Input value={region} onChange={e => setRegion(e.target.value)} /></div>
+        </div>
+        <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Add Branch'}</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function BranchesTab({ branches, router }) {
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [busyId, setBusyId] = useState(null);
+
+  async function toggleActive(b) {
+    setBusyId(b.id);
+    try {
+      await api(`/api/branches/${b.id}`, { method: 'PATCH', body: { active: b.active ? 0 : 1 } });
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); } finally { setBusyId(null); }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Branches</CardTitle>
+        <CardAction><Button size="sm" onClick={() => setDialogOpen(true)}><PlusIcon />New Branch</Button></CardAction>
+      </CardHeader>
+      <CardContent>
+        {branches.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No branches yet.</p> : (
+          <Table>
+            <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Region</TableHead><TableHead>Status</TableHead><TableHead /></TableRow></TableHeader>
+            <TableBody>
+              {branches.map(b => (
+                <TableRow key={b.id}>
+                  <TableCell className="font-medium">{b.name}</TableCell>
+                  <TableCell className="text-muted-foreground">{b.region || '—'}</TableCell>
+                  <TableCell><Badge variant={b.active ? 'default' : 'outline'}>{b.active ? 'Active' : 'Inactive'}</Badge></TableCell>
+                  <TableCell><Button size="sm" variant="outline" disabled={busyId === b.id} onClick={() => toggleActive(b)}>{b.active ? 'Deactivate' : 'Activate'}</Button></TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+      {dialogOpen && <AddBranchDialog router={router} onClose={() => setDialogOpen(false)} />}
+    </Card>
+  );
+}
+
+// --- Product Master (Phase 0b) — SN/Code/Name/Type/Description/Price, "add data later per
+// product" (every field but the name is optional). No delete — a product may already be
+// referenced from real leads/quotation/sale-order lines. ------------------------------------------
+
+function ProductDialog({ product, onClose, router }) {
+  const isEdit = !!product;
+  const [f, setF] = useState({
+    product_code: product?.product_code || '', product_name: product?.product_name || '',
+    product_type: product?.product_type || '', description: product?.description || '',
+    price: product?.price ?? '',
+  });
+  const [saving, setSaving] = useState(false);
+  const set = (k) => (v) => setF(prev => ({ ...prev, [k]: v }));
+  const typeOpts = distinctOptions([], 'x', PRODUCT_TYPES);
+
+  async function save() {
+    if (!f.product_name.trim()) return showToast('Product name is required', 'error');
+    setSaving(true);
+    try {
+      const body = { ...f, product_name: f.product_name.trim(), price: f.price === '' ? null : Number(f.price) };
+      if (isEdit) await api(`/api/sales-products/${product.id}`, { method: 'PATCH', body });
+      else await api('/api/sales-products', { method: 'POST', body });
+      showToast(isEdit ? 'Product updated' : 'Product added');
+      router.refresh();
+      onClose();
+    } catch (err) { showToast(err.message, 'error'); } finally { setSaving(false); }
+  }
+
+  return (
+    <Dialog open onOpenChange={o => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>{isEdit ? 'Edit Product' : 'New Product'}</DialogTitle></DialogHeader>
+        <div className="flex flex-col gap-3">
+          <div className="grid gap-1.5"><Label>Product code (leave blank to auto-generate)</Label><Input value={f.product_code} onChange={e => set('product_code')(e.target.value)} /></div>
+          <div className="grid gap-1.5"><RequiredLabel>Product name</RequiredLabel><Input value={f.product_name} onChange={e => set('product_name')(e.target.value)} autoFocus /></div>
+          <div className="grid gap-1.5"><Label>Product type</Label><SearchableSelect value={f.product_type} onChange={set('product_type')} options={typeOpts} displayValue={f.product_type} onTextChange={set('product_type')} placeholder="Select or type…" /></div>
+          <div className="grid gap-1.5"><Label>Description</Label><Textarea rows={2} value={f.description} onChange={e => set('description')(e.target.value)} /></div>
+          <div className="grid gap-1.5"><Label>Price (optional — can add later)</Label><Input type="number" value={f.price} onChange={e => set('price')(e.target.value)} /></div>
+        </div>
+        <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? 'Saving…' : isEdit ? 'Save' : 'Add Product'}</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ProductsTab({ salesProducts, router }) {
+  const [dialogState, setDialogState] = useState(null); // null | true (new) | product (edit)
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Product Master</CardTitle>
+        <CardAction><Button size="sm" onClick={() => setDialogState(true)}><PlusIcon />New Product</Button></CardAction>
+      </CardHeader>
+      <CardContent>
+        {salesProducts.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No products yet — add data as it becomes available.</p> : (
+          <Table>
+            <TableHeader><TableRow><TableHead>Code</TableHead><TableHead>Name</TableHead><TableHead>Type</TableHead><TableHead>Price</TableHead><TableHead>Status</TableHead><TableHead /></TableRow></TableHeader>
+            <TableBody>
+              {salesProducts.map(p => (
+                <TableRow key={p.id} className="cursor-pointer" onClick={() => setDialogState(p)}>
+                  <TableCell className="text-muted-foreground">{p.product_code || '—'}</TableCell>
+                  <TableCell className="font-medium">{p.product_name}</TableCell>
+                  <TableCell className="text-muted-foreground">{p.product_type || '—'}</TableCell>
+                  <TableCell className="text-muted-foreground">{p.price != null ? formatMoney(p.price) : '—'}</TableCell>
+                  <TableCell><Badge variant={p.active ? 'default' : 'outline'}>{p.active ? 'Active' : 'Inactive'}</Badge></TableCell>
+                  <TableCell><Button size="icon" variant="ghost" onClick={e => { e.stopPropagation(); setDialogState(p); }}><PencilIcon className="size-3.5" /></Button></TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+      {dialogState && <ProductDialog product={dialogState === true ? null : dialogState} router={router} onClose={() => setDialogState(null)} />}
+    </Card>
+  );
+}
+
+// --- Email Templates (Phase 3.2) — one per company, feeds Commercial Offer's own picker. ---------
+
+function EmailTemplateDialog({ template, onClose, router }) {
+  const isEdit = !!template;
+  const [f, setF] = useState({
+    name: template?.name || '', company: template?.company || COMPANY_NAMES[0],
+    subject: template?.subject || '', body: template?.body || '', regards: template?.regards || '',
+  });
+  const [saving, setSaving] = useState(false);
+  const set = (k) => (v) => setF(prev => ({ ...prev, [k]: v }));
+
+  async function save() {
+    if (!f.name.trim()) return showToast('Name is required', 'error');
+    if (!f.body.trim()) return showToast('Body is required', 'error');
+    setSaving(true);
+    try {
+      if (isEdit) await api(`/api/email-templates/${template.id}`, { method: 'PATCH', body: f });
+      else await api('/api/email-templates', { method: 'POST', body: f });
+      showToast(isEdit ? 'Template updated' : 'Template added');
+      router.refresh();
+      onClose();
+    } catch (err) { showToast(err.message, 'error'); } finally { setSaving(false); }
+  }
+
+  return (
+    <Dialog open onOpenChange={o => !o && onClose()}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader><DialogTitle>{isEdit ? 'Edit Email Template' : 'New Email Template'}</DialogTitle></DialogHeader>
+        <div className="flex flex-col gap-3">
+          <div className="grid gap-1.5"><RequiredLabel>Name</RequiredLabel><Input value={f.name} onChange={e => set('name')(e.target.value)} autoFocus /></div>
+          <div className="grid gap-1.5"><Label>Company</Label>
+            <Select value={f.company} onValueChange={set('company')}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>{COMPANY_NAMES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          <div className="grid gap-1.5"><Label>Subject (tokens: customer_name, quotation_no, total, valid_until)</Label><Input value={f.subject} onChange={e => set('subject')(e.target.value)} /></div>
+          <div className="grid gap-1.5"><RequiredLabel>Body</RequiredLabel><Textarea rows={6} value={f.body} onChange={e => set('body')(e.target.value)} /></div>
+          <div className="grid gap-1.5"><Label>Regards (signature block)</Label><Textarea rows={2} value={f.regards} onChange={e => set('regards')(e.target.value)} /></div>
+        </div>
+        <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? 'Saving…' : isEdit ? 'Save' : 'Add Template'}</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function EmailTemplatesTab({ router }) {
+  const [templates, setTemplates] = useState([]);
+  const [dialogState, setDialogState] = useState(null);
+
+  function load() { api('/api/email-templates').then(setTemplates).catch(() => {}); }
+  useEffect(load, []);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Email Templates</CardTitle>
+        <CardAction><Button size="sm" onClick={() => setDialogState(true)}><PlusIcon />New Template</Button></CardAction>
+      </CardHeader>
+      <CardContent>
+        {templates.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No templates yet.</p> : (
+          <Table>
+            <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Company</TableHead><TableHead>Status</TableHead><TableHead /></TableRow></TableHeader>
+            <TableBody>
+              {templates.map(t => (
+                <TableRow key={t.id} className="cursor-pointer" onClick={() => setDialogState(t)}>
+                  <TableCell className="font-medium">{t.name}</TableCell>
+                  <TableCell className="text-muted-foreground">{t.company}</TableCell>
+                  <TableCell><Badge variant={t.active ? 'default' : 'outline'}>{t.active ? 'Active' : 'Inactive'}</Badge></TableCell>
+                  <TableCell><Button size="icon" variant="ghost" onClick={e => { e.stopPropagation(); setDialogState(t); }}><PencilIcon className="size-3.5" /></Button></TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+      {dialogState && <EmailTemplateDialog template={dialogState === true ? null : dialogState} router={router}
+        onClose={() => { setDialogState(null); load(); }} />}
+    </Card>
+  );
+}
+
+// --- Sales Targets (Phase 0e) — Branch + A/C Manager + period ('YYYY-MM'), Head-gated server-side
+// (sales.target.write is seeded requires_head=1) — any 403 just surfaces via the toast. ------------
+
+function TargetDialog({ branches, onClose, router }) {
+  const [branchId, setBranchId] = useState('');
+  const [accountManager, setAccountManager] = useState('');
+  const [period, setPeriod] = useState(todayISO().slice(0, 7));
+  const [amount, setAmount] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    if (!/^\d{4}-\d{2}$/.test(period)) return showToast("Period must be 'YYYY-MM'", 'error');
+    const targetAmount = Number(amount);
+    if (!Number.isFinite(targetAmount) || targetAmount < 0) return showToast('Target amount must be a non-negative number', 'error');
+    setSaving(true);
+    try {
+      await api('/api/sales-targets', { method: 'POST', body: { branch_id: branchId || null, account_manager: accountManager || null, period, target_amount: targetAmount } });
+      showToast('Target saved');
+      router.refresh();
+      onClose();
+    } catch (err) { showToast(err.message, 'error'); } finally { setSaving(false); }
+  }
+
+  return (
+    <Dialog open onOpenChange={o => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Set Sales Target</DialogTitle></DialogHeader>
+        <div className="flex flex-col gap-3">
+          <div className="grid gap-1.5"><Label>Branch (optional)</Label>
+            <Select value={branchId} onValueChange={setBranchId}>
+              <SelectTrigger><SelectValue placeholder="All branches" /></SelectTrigger>
+              <SelectContent>{branches.map(b => <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          <div className="grid gap-1.5"><Label>A/C Manager (username, optional)</Label><Input value={accountManager} onChange={e => setAccountManager(e.target.value)} /></div>
+          <div className="grid gap-1.5"><RequiredLabel>Period</RequiredLabel><Input type="month" value={period} onChange={e => setPeriod(e.target.value)} /></div>
+          <div className="grid gap-1.5"><RequiredLabel>Target amount</RequiredLabel><Input type="number" value={amount} onChange={e => setAmount(e.target.value)} /></div>
+        </div>
+        <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save Target'}</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function TargetsTab({ salesTargets, branches, router }) {
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [busyId, setBusyId] = useState(null);
+
+  async function remove(t) {
+    setBusyId(t.id);
+    try {
+      await api(`/api/sales-targets/${t.id}`, { method: 'DELETE' });
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); } finally { setBusyId(null); }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Sales Targets</CardTitle>
+        <CardAction><Button size="sm" onClick={() => setDialogOpen(true)}><PlusIcon />Set Target</Button></CardAction>
+      </CardHeader>
+      <CardContent>
+        {salesTargets.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No targets set yet. Reports' Targets/T/A columns read zero until one exists for the period.</p> : (
+          <Table>
+            <TableHeader><TableRow><TableHead>Period</TableHead><TableHead>Branch</TableHead><TableHead>A/C Manager</TableHead><TableHead>Target</TableHead><TableHead /></TableRow></TableHeader>
+            <TableBody>
+              {salesTargets.map(t => (
+                <TableRow key={t.id}>
+                  <TableCell className="font-medium">{t.period}</TableCell>
+                  <TableCell className="text-muted-foreground">{t.branch_name || 'All branches'}</TableCell>
+                  <TableCell className="text-muted-foreground">{t.account_manager || '—'}</TableCell>
+                  <TableCell>{formatMoney(t.target_amount)}</TableCell>
+                  <TableCell><Button size="icon" variant="ghost" disabled={busyId === t.id} onClick={() => remove(t)}><TrashIcon className="size-3.5" /></Button></TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+      {dialogOpen && <TargetDialog branches={branches} router={router} onClose={() => setDialogOpen(false)} />}
+    </Card>
+  );
+}
+
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 
 // -----------------------------------------------------------------------------------------------
@@ -1668,9 +2525,20 @@ const PANELS = [
   { key: 'campaigns', label: 'Campaigns', icon: MegaphoneIcon, description: 'Marketing initiatives', salesOnly: false },
   { key: 'tasks', label: 'Tasks', icon: CheckSquareIcon, description: 'Every to-do across leads, deals and customers', salesOnly: false },
   { key: 'team', label: 'Team', icon: ContactIcon, description: 'Auto-assign new leads round-robin', salesOnly: false },
+  // Masters (Phase 0) — Branches/Product Master/Sales Targets, shared by both Sales and Marketing
+  // (the same reach Enquiry/Leads already have), same nested-group shape as Payment Tracker above.
+  {
+    key: 'masters', label: 'Masters', icon: PackageIcon, salesOnly: false, group: true,
+    children: [
+      { key: 'branches', label: 'Branches', icon: Building2Icon, description: 'Office/location list for Enquiry and Sale Orders' },
+      { key: 'products', label: 'Products', icon: PackageIcon, description: 'The sellable-SKU catalog' },
+      { key: 'targets', label: 'Targets', icon: TargetIcon, description: 'Monthly Sales Targets per branch/manager' },
+      { key: 'email_templates', label: 'Email Templates', icon: MailIcon, description: 'Commercial Offer wording, per company' },
+    ],
+  },
 ];
 
-export default function SalesWorkspace({ saleOrders, leads, customers, quotations, campaigns, priceLists = [], returns = [], inventoryItems = [], invoices = [], creditNotes = [], departments = ['Sales', 'Marketing'], users = [], savedViews = [], initialTab, canEditSoTax = false, projects = [], scopeOfSupply = [], initialScopeProject, salePayments = [] }) {
+export default function SalesWorkspace({ saleOrders, leads, customers, quotations, campaigns, priceLists = [], returns = [], inventoryItems = [], invoices = [], creditNotes = [], departments = ['Sales', 'Marketing'], users = [], savedViews = [], initialTab, canEditSoTax = false, projects = [], scopeOfSupply = [], initialScopeProject, salePayments = [], branches = [], salesProducts = [], salesTargets = [] }) {
   const router = useRouter();
   // Customers/Quotations/Sale Orders are the commercial fulfilment chain — Sales-owned. Marketing
   // shares Leads/Campaigns/Reports (both departments feed the pipeline) but doesn't manage orders.
@@ -1744,8 +2612,8 @@ export default function SalesWorkspace({ saleOrders, leads, customers, quotation
           </div>
         </div>
         <div className="flex-1 overflow-auto p-4">
-          {activePanel.key === 'enquiry' && <LeadsTab leads={leads} users={users} savedViews={savedViews} router={router} initialStatus="new" />}
-          {activePanel.key === 'leads' && <LeadsTab leads={leads} users={users} savedViews={savedViews} router={router} />}
+          {activePanel.key === 'enquiry' && <LeadsTab leads={leads} users={users} customers={customers} salesProducts={salesProducts} branches={branches} savedViews={savedViews} router={router} initialStatus="new" isEnquiry />}
+          {activePanel.key === 'leads' && <LeadsTab leads={leads} users={users} customers={customers} salesProducts={salesProducts} branches={branches} savedViews={savedViews} router={router} />}
           {activePanel.key === 'customers' && <CustomersTab customers={customers} router={router} />}
           {activePanel.key === 'quotations' && <QuotationsTab quotations={quotations} customers={customers} router={router} />}
           {activePanel.key === 'price_lists' && <PriceListsTab priceLists={priceLists} customers={customers} router={router} />}
@@ -1761,6 +2629,10 @@ export default function SalesWorkspace({ saleOrders, leads, customers, quotation
           {activePanel.key === 'campaigns' && <CampaignsTab campaigns={campaigns} router={router} />}
           {activePanel.key === 'tasks' && <AllTasksTab users={users} />}
           {activePanel.key === 'team' && <TeamTab users={users} departments={departments} />}
+          {activePanel.key === 'branches' && <BranchesTab branches={branches} router={router} />}
+          {activePanel.key === 'products' && <ProductsTab salesProducts={salesProducts} router={router} />}
+          {activePanel.key === 'targets' && <TargetsTab salesTargets={salesTargets} branches={branches} router={router} />}
+          {activePanel.key === 'email_templates' && <EmailTemplatesTab router={router} />}
         </div>
       </SidebarInset>
     </SidebarProvider>

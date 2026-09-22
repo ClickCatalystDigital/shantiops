@@ -99,7 +99,7 @@ function AddOpportunityDialog({ departments, customers, onClose, router }) {
   );
 }
 
-function OpportunityDetailSheet({ opportunity, users, customers, onClose, router }) {
+function OpportunityDetailSheet({ opportunity, users, customers, lostStages, onClose, router }) {
   const [items, setItems] = useState([]);
   const [notes, setNotes] = useState([]);
   const [note, setNote] = useState('');
@@ -171,7 +171,7 @@ function OpportunityDetailSheet({ opportunity, users, customers, onClose, router
               <div className="grid gap-1"><Label className="text-xs">Source</Label><Input value={source} onChange={e => setSource(e.target.value)} /></div>
               <div className="grid gap-1"><Label className="text-xs">Next contact</Label><Input type="date" value={nextContactDate} onChange={e => setNextContactDate(e.target.value)} /></div>
             </div>
-            {opportunity.stage === 'Lost' && (
+            {lostStages.has(opportunity.stage) && (
               <div className="grid gap-1"><Label className="text-xs">Lost reason</Label><Input value={lostReason} onChange={e => setLostReason(e.target.value)} placeholder="Why was this lost?" /></div>
             )}
           </div>
@@ -247,7 +247,7 @@ export default function PipelineWorkspace({ opportunities, departments, customer
       // "Good practices"). Opens the detail sheet so the reason is entered inline there —
       // window.prompt() isn't reliable across browsers/embeds, so this reuses the existing
       // detail-sheet edit pattern instead of a blocking dialog.
-      if (stage === 'Lost') setSelected({ ...opp, stage });
+      if (lostStages.has(stage)) setSelected({ ...opp, stage });
     } catch (err) {
       showToast(err.message, 'error');
     } finally {
@@ -296,7 +296,7 @@ export default function PipelineWorkspace({ opportunities, departments, customer
                   >
                     <div className="font-medium">{o.title}</div>
                     {o.customer_name && <div className="text-xs text-muted-foreground">{o.customer_name}</div>}
-                    {o.stage === 'Lost' && o.lost_reason && <div className="text-xs text-muted-foreground">Lost: {o.lost_reason}</div>}
+                    {lostStages.has(o.stage) && o.lost_reason && <div className="text-xs text-muted-foreground">Lost: {o.lost_reason}</div>}
                     <div className="mt-1 flex items-center justify-between">
                       <div className="flex items-center gap-1">
                         <Badge variant="outline">{o.owner_dept}</Badge>
@@ -312,7 +312,7 @@ export default function PipelineWorkspace({ opportunities, departments, customer
         )}
       </CardContent>
       {dialogOpen && <AddOpportunityDialog departments={departments} customers={customers} router={router} onClose={() => setDialogOpen(false)} />}
-      {selected && <OpportunityDetailSheet opportunity={selected} users={users} customers={customers} router={router} onClose={() => setSelected(null)} />}
+      {selected && <OpportunityDetailSheet opportunity={selected} users={users} customers={customers} lostStages={lostStages} router={router} onClose={() => setSelected(null)} />}
     </Card>
   );
 }

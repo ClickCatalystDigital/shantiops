@@ -3,10 +3,10 @@
 // this plan establishes (also: Quotation→Sale Order, Applicant→Employee). Reuses an existing
 // customer matched by exact name rather than always creating a duplicate.
 import { NextResponse } from 'next/server';
-import { execute, queryOne } from '@/lib/db';
+import { queryOne } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
-import { audit } from '@/lib/usb';
+import { resolveLeadToCustomer } from '@/lib/crm';
 
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 
@@ -21,30 +21,14 @@ export async function POST(req, { params }) {
   const actionDenied = await requireAction(user, lead.owner_dept, 'crm.lead.convert');
   if (actionDenied) return actionDenied;
 
-  const companyName = lead.company_name || lead.lead_name;
-  let customer = await queryOne('SELECT * FROM customers WHERE name = ?', [companyName]);
-  let customerId;
-  if (customer) {
-    customerId = customer.id;
-  } else {
-    const { lastId } = await execute(
-      'INSERT INTO customers (name, phone, email) VALUES (?, ?, ?)',
-      [companyName, lead.phone || null, lead.email || null]
-    );
-    customerId = Number(lastId);
-  }
-
   const b = await req.json().catch(() => ({}));
-  const { lastId: oppId } = await execute(
-    `INSERT INTO opportunities (customer_id, customer_name, title, owner_dept, campaign_id, created_by)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [customerId, companyName, b.title || `${companyName} — opportunity`, lead.owner_dept, lead.campaign_id, user.username]
-  );
-
-  await execute(
-    `UPDATE leads SET status = 'converted', converted_customer_id = ?, converted_opportunity_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-    [customerId, Number(oppId), params.id]
-  );
-  await audit('lead_converted', { actor: user.username, detail: `lead #${params.id} -> customer #${customerId}, opportunity #${oppId}` });
-  return NextResponse.json({ customer_id: customerId, opportunity_id: Number(oppId) });
+  // The new Opportunity's stage is seeded from the Lead's own current sales_call_status (the
+  // 9-value Sales Call funnel, Sales CRM expansion Phase 0c/2.0) rather than left to
+  // `opportunities.stage`'s own DB-level DEFAULT — that default was 'Lead', a name the funnel
+  // reseed retired, and SQLite can't cheaply ALTER a column's DEFAULT on an already-created table,
+  // so every INSERT here must supply a real, current stage explicitly. Starting the Opportunity
+  // mid-funnel exactly where the Lead already was avoids a real inconsistency (a Lead already at
+  // "Hot Offers" silently reappearing as a brand-new "Lead - Cold" Opportunity).
+  const { customerId, opportunityId } = await resolveLeadToCustomer(lead, { title: b.title, username: user.username });
+  return NextResponse.json({ customer_id: customerId, opportunity_id: opportunityId });
 }

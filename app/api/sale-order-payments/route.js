@@ -1,10 +1,20 @@
 // app/api/sale-order-payments/route.js — Sales Payment Tracker log (lib/db.js sale_order_payments).
 // Append-only by design (no PATCH/DELETE): it's a log; a wrong entry is corrected by Accounts.
 import { NextResponse } from 'next/server';
-import { execute, queryOne } from '@/lib/db';
-import { getFreshSessionUser, requireDepartment, isPM } from '@/lib/auth';
+import { execute, queryAll, queryOne } from '@/lib/db';
+import { getFreshSessionUser, requireDepartment, isPM, isInternal } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
+
+// Scoped read — the PO wizard's own embedded Payment Collection section (Phase 2.5) needs this
+// one Sale Order's own log without pulling the whole page-level getSalePayments() list.
+export async function GET(req) {
+  const user = await getFreshSessionUser();
+  if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const soId = new URL(req.url).searchParams.get('sale_order_id');
+  if (!soId) return NextResponse.json({ error: 'sale_order_id is required' }, { status: 400 });
+  return NextResponse.json(await queryAll('SELECT * FROM sale_order_payments WHERE sale_order_id = ? ORDER BY received_on DESC, id DESC', [soId]));
+}
 
 export async function POST(req) {
   const user = await getFreshSessionUser();

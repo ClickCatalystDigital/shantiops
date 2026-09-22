@@ -4,7 +4,7 @@
 // same material gets bought once for several boilers, not per project.
 import { redirect } from 'next/navigation';
 import { getFreshSessionUser, canAccessDepartment, roleHome } from '@/lib/auth';
-import { getSourcingItems, getSuppliers, getPurchaseOrders, getAllQuotes, getRfqSummaryByItem, getPurchaseReturns, getInventoryItems, getVendorBills, getPurchaseDebitNotes, getVendorTdsRates } from '@/lib/data';
+import { getSourcingItems, getSuppliers, getPurchaseOrders, getAllQuotes, getRfqSummaryByItem, getPurchaseReturns, getInventoryItems, getVendorBills, getPurchaseDebitNotes, getVendorTdsRates, getActiveProjectsList, getOverdueDeliveries } from '@/lib/data';
 import ProcurementWorkspace from '@/components/ProcurementWorkspace';
 
 export const dynamic = 'force-dynamic';
@@ -14,7 +14,7 @@ export default async function ProcurementPage({ searchParams }) {
   if (!canAccessDepartment(user, 'Procurement')) redirect(roleHome(user));
 
   const sp = await searchParams;
-  const [sourcingItems, suppliers, purchaseOrders, quotes, rfqSummaryByItem, purchaseReturns, inventoryItems, vendorBills, debitNotes, tdsRates] = await Promise.all([
+  const [sourcingItems, suppliers, purchaseOrders, quotes, rfqSummaryByItem, purchaseReturns, inventoryItems, vendorBills, debitNotes, tdsRates, activeProjects, overdueDeliveries] = await Promise.all([
     getSourcingItems(),
     getSuppliers(),
     getPurchaseOrders(),
@@ -25,6 +25,8 @@ export default async function ProcurementPage({ searchParams }) {
     getVendorBills(),
     getPurchaseDebitNotes(),
     getVendorTdsRates(),
+    getActiveProjectsList(),
+    getOverdueDeliveries(),
   ]);
 
   return (
@@ -40,6 +42,8 @@ export default async function ProcurementPage({ searchParams }) {
         vendorBills={vendorBills}
         debitNotes={debitNotes}
         tdsRates={tdsRates}
+        activeProjects={activeProjects}
+        overdueDeliveries={overdueDeliveries}
         initialTab={sp?.tab}
         initialProject={sp?.project}
       />

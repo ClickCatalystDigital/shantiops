@@ -54,11 +54,16 @@ export async function POST(req) {
   if (b.order_date && !/^\d{4}-\d{2}-\d{2}$/.test(b.order_date)) return NextResponse.json({ error: 'Invalid date' }, { status: 400 });
   const soNo = custom || `SO-${await nextCounterValue('sale_order_no', 0)}`;
 
+  // Phase 2 — PO/Sale-Order wizard's Step 1 (Gap #34: a real row exists the moment Continue fires,
+  // not only at final Submit, so a closed tab/crashed browser never loses the whole form).
+  const createAs = ['PO', 'RFD', 'Approved'].includes(b.create_as) ? b.create_as : 'PO';
+
   const { lastId } = await execute(
-    `INSERT INTO sale_orders (so_no, customer_name, customer_id, description, company, created_by, total, order_date, track_status, status, sales_person_override, remarks)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO sale_orders (so_no, customer_name, customer_id, description, company, created_by, total, order_date, track_status, status, sales_person_override, remarks, create_as, branch_id, order_stage)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [soNo, b.customer_name || null, b.customer_id || null, b.description || null, company, user.username, total, b.order_date || null, trackStatus,
-     ['Dispatched', 'Closed'].includes(trackStatus) ? 'fulfilled' : 'open', String(b.sales_person ?? '').trim() || null, String(b.remarks ?? '').trim() || null]
+     ['Dispatched', 'Closed'].includes(trackStatus) ? 'fulfilled' : 'open', String(b.sales_person ?? '').trim() || null, String(b.remarks ?? '').trim() || null,
+     createAs, b.branch_id || null, b.order_stage || null]
   );
   await audit('sale_order_created', { actor: user.username, detail: soNo });
   try {

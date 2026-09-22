@@ -70,6 +70,26 @@ export async function PATCH(req, { params }) {
   for (const key of ['advance', 'dispatched', 'site_completed', 'commissioning', 'pending_issue', 'cleared_issue']) {
     if (b[`stage_${key}`] !== undefined) { fields.push(`stage_${key} = ?`); args.push(b[`stage_${key}`] ? 1 : 0); }
   }
+  // Phase 2 — PO/Sale-Order wizard's own fields. Charges/discount/GST are handled by
+  // PUT /api/sale-orders/[id]/items instead (they need to be recomputed together with the line
+  // items' own totals), not this generic PATCH.
+  for (const key of ['create_as', 'br_order_control_no', 'address_type', 'order_address', 'contact_person',
+    'contact_mobile', 'order_stage', 'dispatch_comment', 'installation_comment', 'form_type',
+    'expected_payment_mode', 'cheque_dd_no', 'payment_plan']) {
+    if (b[key] !== undefined) { fields.push(`${key} = ?`); args.push(b[key] ? String(b[key]).trim() : null); }
+  }
+  for (const key of ['branch_id', 'contact_id']) {
+    if (b[key] !== undefined) { fields.push(`${key} = ?`); args.push(b[key] || null); }
+  }
+  for (const key of ['expected_delivery_date', 'form_due_on']) {
+    if (b[key] !== undefined) { fields.push(`${key} = ?`); args.push(b[key] || null); }
+  }
+  for (const key of ['advance_with_order', 'against_installation', 'payment_plan_days']) {
+    if (b[key] !== undefined) { fields.push(`${key} = ?`); args.push(b[key] === '' || b[key] == null ? null : Number(b[key])); }
+  }
+  for (const key of ['is_account_clear', 'is_form_applicable']) {
+    if (b[key] !== undefined) { fields.push(`${key} = ?`); args.push(b[key] ? 1 : 0); }
+  }
   if (!fields.length) return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
   const before = await queryOne('SELECT * FROM sale_orders WHERE id = ?', [params.id]);
   if (!before) return NextResponse.json({ error: 'Not found' }, { status: 404 });
