@@ -23,6 +23,9 @@ import {
   AlertTriangleIcon, PencilRulerIcon, FileEditIcon, ShoppingCartIcon,
   ScrollTextIcon, BanknoteIcon, HourglassIcon, FlaskConicalIcon, ClipboardCheckIcon, ShieldAlertIcon,
   CalendarClockIcon, PackageCheckIcon,
+  TableIcon, CalendarDaysIcon, MapPinIcon, SlidersHorizontalIcon, AlertCircleIcon, RepeatIcon,
+  MessageSquareIcon, UserCheckIcon, FileTextIcon, XCircleIcon, CheckCircleIcon, CreditCardIcon,
+  Settings2Icon,
 } from 'lucide-react';
 import TrialBalanceCard from '@/components/reports/TrialBalanceCard';
 import CustomerLedgerCard from '@/components/reports/CustomerLedgerCard';
@@ -64,6 +67,12 @@ import {
   LeadFunnelReport, LeadsBySourceReport, CampaignPerformanceReport,
   SalesPipelineReport, ByDepartmentReport, AgentPerformanceReport,
 } from '@/components/CrmReportPanels';
+import {
+  SalesCallProspectSummaryReport, DateWiseSalesCallReport, LocationWiseSalesCallReport,
+  SalesCallFunnelReport, NeglectedSalesCallReport, CustomerFollowUpReport, ClientFeedbackReport,
+  EmployeeFollowUpReport, QuotationListingReport, FeedbackNotRespondedReport, FeedbackResponseReport,
+  EmployeeExpenseReport, SalesCallCustomizeReport,
+} from '@/components/SalesCallReportPanels';
 
 // Exported so app/reports/page.js's consolidated admin/manager view (all departments' reports in
 // one sidebar, see the `groups` prop below) can reuse the exact same key→component mapping instead
@@ -130,6 +139,20 @@ export const SCREEN = {
   'lead_funnel': LeadFunnelReport,
   'leads_by_source': LeadsBySourceReport,
   'campaign_performance': CampaignPerformanceReport,
+  // Sales CRM expansion Phase 5 (13 reports) — same `hasOwnControls`/crmData shape as the 6 above.
+  'sales_call_prospect_summary': SalesCallProspectSummaryReport,
+  'sales_call_date_wise': DateWiseSalesCallReport,
+  'sales_call_location_wise': LocationWiseSalesCallReport,
+  'sales_call_funnel': SalesCallFunnelReport,
+  'neglected_sales_call': NeglectedSalesCallReport,
+  'customer_follow_up': CustomerFollowUpReport,
+  'client_feedback': ClientFeedbackReport,
+  'employee_follow_up': EmployeeFollowUpReport,
+  'quotation_listing': QuotationListingReport,
+  'feedback_not_responded': FeedbackNotRespondedReport,
+  'feedback_response': FeedbackResponseReport,
+  'employee_expense': EmployeeExpenseReport,
+  'sales_call_customize': SalesCallCustomizeReport,
 };
 
 // Per-report sidebar icon (2026-08-23) — every entry used to render with the same BarChart3Icon,
@@ -149,6 +172,13 @@ const ICON = {
   'sales-register': ReceiptIcon, 'sales_pipeline': FilterIcon, 'by_department': PieChartIcon,
   'agent_performance': UserRoundIcon,
   'lead_funnel': UsersIcon, 'leads_by_source': Share2Icon, 'campaign_performance': MegaphoneIcon,
+  'sales_call_prospect_summary': TableIcon, 'sales_call_date_wise': CalendarDaysIcon,
+  'sales_call_location_wise': MapPinIcon, 'sales_call_funnel': SlidersHorizontalIcon,
+  'neglected_sales_call': AlertCircleIcon, 'customer_follow_up': RepeatIcon,
+  'client_feedback': MessageSquareIcon, 'employee_follow_up': UserCheckIcon,
+  'quotation_listing': FileTextIcon, 'feedback_not_responded': XCircleIcon,
+  'feedback_response': CheckCircleIcon, 'employee_expense': CreditCardIcon,
+  'sales_call_customize': Settings2Icon,
   'dispatch-register': TruckIcon, 'eway-bill-register': ScrollTextIcon, 'freight-cost-summary': BanknoteIcon,
   'dispatch-aging': HourglassIcon, 'test-certificate-register': FlaskConicalIcon,
   'qc-inspection-summary': ClipboardCheckIcon, 'ncr-register': ShieldAlertIcon,

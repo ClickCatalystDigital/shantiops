@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { api, showToast } from '@/lib/client';
@@ -18,7 +18,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectGroup, SelectItem,
 } from '@/components/ui/select';
-import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, FolderKanbanIcon } from 'lucide-react';
+import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, FolderKanbanIcon, UsersRoundIcon } from 'lucide-react';
+import { Label } from '@/components/ui/label';
 
 // The view + its cursor live in the URL (?view=&month=/date=/year=), not in state — this repo
 // reads on the server, so navigating re-renders with fresh data instead of us hand-rolling a
@@ -30,24 +31,33 @@ export default function ProductionToday({
   const [dayOpen, setDayOpen] = useState(null);
   const [newTask, setNewTask] = useState({ title: '', due_date: today, assigned_to: '', department: deptsToShow[0] || '' });
   const [busy, setBusy] = useState(false);
+  const [expenseDate, setExpenseDate] = useState(null); // Sales CRM expansion Phase 4 — "Add Expenses"
   const combined = deptsToShow.length > 1;
 
   // Month/Week share one grid renderer (7 columns); Year gets its own 12-mini-month block below.
   const gridDays = useMemo(() => (view === 'week' ? weekDays(date) : monthGridDays(month)), [view, date, month]);
   const cursorMonth = Number(month.split('-')[1]) - 1;
 
+  // Sales CRM expansion Phase 4 — Diary follow-ups due on a day join the same merged map, tagged
+  // kind:'followup'. deptsToShow.includes('Sales'|'Marketing') is what actually gates whether
+  // events.followups has any rows at all (getDepartmentCalendar), so this stays a no-op for every
+  // other department's calendar.
   const byDate = useMemo(() => {
     const map = {};
     const add = (date, item) => { if (date) (map[date] ||= []).push(item); };
     for (const t of events.tasks) add(t.date, { ...t, kind: 'task' });
     for (const m of events.milestones) add(m.date, { ...m, kind: 'milestone' });
+    for (const f of events.followups || []) add(f.date, { ...f, kind: 'followup' });
     return map;
   }, [events]);
+  const showsCrm = deptsToShow.includes('Sales') || deptsToShow.includes('Marketing');
 
   // A combined multi-department view needs each pill to say which department it's from.
   function pillText(it) {
     const prefix = combined && it.department ? `[${it.department}] ` : '';
-    return it.kind === 'milestone' ? `${prefix}${it.project_no} · ${it.title}` : `${prefix}${it.title}`;
+    if (it.kind === 'milestone') return `${prefix}${it.project_no} · ${it.title}`;
+    if (it.kind === 'followup') return `${prefix}${it.company_name || it.lead_name}${it.plan_time ? ` · ${it.plan_time}` : ''}`;
+    return `${prefix}${it.title}`;
   }
 
   // Jump to "today" — in whichever view is passed, defaulting to the currently active one. Used
@@ -200,7 +210,8 @@ export default function ProductionToday({
                       it.kind === 'task' && (it.status === 'done'
                         ? (isWeek ? 'border-muted-foreground/40 text-muted-foreground line-through' : 'bg-muted text-muted-foreground line-through')
                         : (isWeek ? 'border-primary text-foreground' : 'bg-primary/15 text-primary')),
-                      it.kind === 'milestone' && (isWeek ? 'border-amber-500 text-foreground' : 'bg-amber-500/15 text-amber-700 dark:text-amber-400'))}>
+                      it.kind === 'milestone' && (isWeek ? 'border-amber-500 text-foreground' : 'bg-amber-500/15 text-amber-700 dark:text-amber-400'),
+                      it.kind === 'followup' && (isWeek ? 'border-sky-500 text-foreground' : 'bg-sky-500/15 text-sky-700 dark:text-sky-400'))}>
                       {pillText(it)}
                     </span>
                   ))}
@@ -308,11 +319,101 @@ export default function ProductionToday({
                     </Link>
                   </>
                 )}
+                {it.kind === 'followup' && (
+                  <div className="flex w-full flex-col gap-1">
+                    <div className="flex items-center gap-2">
+                      <UsersRoundIcon className="size-4 shrink-0 text-sky-600" />
+                      <span className="min-w-0 flex-1 truncate font-medium">{it.company_name || it.lead_name}</span>
+                      {it.plan_time && <span className="shrink-0 text-xs tnum text-muted-foreground">{it.plan_time}</span>}
+                    </div>
+                    <div className="flex flex-wrap gap-x-3 gap-y-0.5 pl-6 text-xs text-muted-foreground">
+                      {(it.in_time || it.out_time) && <span>{[it.in_time, it.out_time].filter(Boolean).join(' – ')}</span>}
+                      {it.location && <span>{it.location}</span>}
+                      {it.plan_for && <span>For: {it.plan_for}</span>}
+                      {it.note_type && <span>{it.note_type}</span>}
+                    </div>
+                    {(it.content || it.plan_of_action) && (
+                      <p className="pl-6 text-xs text-muted-foreground">
+                        {it.content ? `Objective: ${it.content}` : ''}{it.plan_of_action ? ` · Action: ${it.plan_of_action}` : ''}
+                      </p>
+                    )}
+                    <div className="flex gap-1.5 pl-6 pt-1">
+                      <Link href={`/sales?tab=enquiry&highlight=LD-${it.lead_id}&diary=now`}>
+                        <Button size="sm" variant="outline">Update Now</Button>
+                      </Link>
+                      <Link href={`/sales?tab=enquiry&highlight=LD-${it.lead_id}&diary=advanced`}>
+                        <Button size="sm" variant="outline">Advanced Update</Button>
+                      </Link>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
+            {(byDate[dayOpen] || []).length === 0 && <p className="py-2 text-center text-sm text-muted-foreground">Nothing scheduled.</p>}
           </div>
+          {showsCrm && dayOpen && (
+            <div className="flex flex-wrap gap-2 border-t pt-3">
+              <Link href={`/sales?tab=enquiry`}><Button size="sm" variant="outline"><PlusIcon />New Enquiry</Button></Link>
+              <Button size="sm" variant="outline" onClick={() => setExpenseDate(dayOpen)}>Add Expenses</Button>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
+
+      {expenseDate && <AddExpenseDialog date={expenseDate} onClose={() => setExpenseDate(null)} />}
     </div>
+  );
+}
+
+// Home calendar's "Add Expenses" (Phase 4, Gap #9) — a real, scoped self-submission against the
+// existing HR expense-claims module (app/api/expense-claims/route.js's own POST now resolves the
+// caller's employee_id server-side for a non-HR user, never trusts one from the client). One line
+// item is enough for a quick entry from the calendar; HR's own fuller multi-line claim UI is
+// untouched and still the place for anything more involved.
+function AddExpenseDialog({ date, onClose }) {
+  const [types, setTypes] = useState([]);
+  const [typeId, setTypeId] = useState('');
+  const [amount, setAmount] = useState('');
+  const [description, setDescription] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => { api('/api/expense-claim-types').then(setTypes).catch(() => {}); }, []);
+
+  async function save() {
+    if (!(Number(amount) > 0)) return showToast('Amount must be a positive number', 'error');
+    setSaving(true);
+    try {
+      await api('/api/expense-claims', { method: 'POST', body: {
+        claim_date: date,
+        items: [{ expense_claim_type_id: typeId || null, expense_date: date, amount: Number(amount), description: description.trim() || null }],
+      } });
+      showToast('Expense submitted');
+      onClose();
+    } catch (err) { showToast(err.message, 'error'); } finally { setSaving(false); }
+  }
+
+  return (
+    <Dialog open onOpenChange={o => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Add Expenses — {formatDate(date)}</DialogTitle></DialogHeader>
+        <div className="flex flex-col gap-3">
+          {types.length > 0 && (
+            <div className="grid gap-1.5">
+              <Label>Type</Label>
+              <Select value={typeId} onValueChange={setTypeId}>
+                <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
+                <SelectContent>{types.map(t => <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+          )}
+          <div className="grid gap-1.5"><Label>Amount</Label><Input type="number" value={amount} onChange={e => setAmount(e.target.value)} autoFocus /></div>
+          <div className="grid gap-1.5"><Label>Description</Label><Input value={description} onChange={e => setDescription(e.target.value)} /></div>
+        </div>
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={save} disabled={saving}>{saving ? 'Submitting…' : 'Submit'}</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

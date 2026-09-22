@@ -77,13 +77,15 @@ function ContactLinks({ phone, email }) {
 
 // --- Notes / Call Log (shared across Lead/Opportunity/Customer detail views) ------------------
 
-function NotesPanel({ leadId, lead, opportunityId, customerId, users = [], salesProducts = [], router }) {
+function NotesPanel({ leadId, lead, opportunityId, customerId, users = [], salesProducts = [], router, autoOpenDiary = false }) {
   const [notes, setNotes] = useState([]);
   const [note, setNote] = useState('');
   const [logCall, setLogCall] = useState(false);
   const [callType, setCallType] = useState('outgoing');
   const [durationMin, setDurationMin] = useState('');
-  const [diaryOpen, setDiaryOpen] = useState(false);
+  // Home calendar's Update Now/Advanced Update (Phase 4) land here already asking for the diary
+  // form open — same deep-link intent as ?highlight, just for an action instead of a scroll target.
+  const [diaryOpen, setDiaryOpen] = useState(autoOpenDiary);
 
   function load() {
     const q = leadId ? `lead_id=${leadId}` : opportunityId ? `opportunity_id=${opportunityId}` : `customer_id=${customerId}`;
@@ -420,6 +422,9 @@ const ENQUIRY_DETAIL_FIELDS = [
 
 function LeadDetailSheet({ lead, users, customers, salesProducts = [], branches = [], onClose, router }) {
   const extra = ENQUIRY_DETAIL_FIELDS.filter(([k]) => lead[k]);
+  // Home calendar's ?diary=now|advanced deep-link (Phase 4) — opens straight into the diary form
+  // instead of the plain detail sheet.
+  const autoOpenDiary = ['now', 'advanced'].includes(useSearchParams().get('diary'));
   const [action, setAction] = useState(null); // null | 'offer' | 'po' | 'lost'
   const [newQuotationId, setNewQuotationId] = useState(null);
   const [offerCustomerId, setOfferCustomerId] = useState(null);
@@ -492,7 +497,7 @@ function LeadDetailSheet({ lead, users, customers, salesProducts = [], branches 
           </div>
 
           <TasksPanel leadId={lead.id} users={users} />
-          <NotesPanel leadId={lead.id} lead={lead} users={users} salesProducts={salesProducts} router={router} />
+          <NotesPanel leadId={lead.id} lead={lead} users={users} salesProducts={salesProducts} router={router} autoOpenDiary={autoOpenDiary} />
         </div>
         <SheetFooter><Button variant="outline" onClick={onClose}>Close</Button></SheetFooter>
       </SheetContent>
@@ -697,7 +702,10 @@ function AddEnquiryDialog({ leads, users, salesProducts, onClose, router }) {
 function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], savedViews, router, initialStatus = 'all', isEnquiry = false }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [busyId, setBusyId] = useState(null);
-  const [selected, setSelected] = useState(null);
+  // Home calendar's "Update Now"/"Advanced Update" deep-link (Phase 4) — same click-to-open
+  // pattern JobCardBoard.jsx already uses for ?highlight=, not just scroll-and-flash.
+  const highlightCode = useSearchParams().get('highlight');
+  const [selected, setSelected] = useState(() => leads.find(l => `LD-${l.id}` === highlightCode) || null);
   const [filters, setFilters] = useState({ ...LEAD_FILTER_DEFAULT, status: initialStatus });
   const [views, setViews] = useState(savedViews);
   const [viewName, setViewName] = useState('');
@@ -780,7 +788,7 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
             <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Company</TableHead><TableHead>Source</TableHead><TableHead>Status</TableHead><TableHead>Sales Call Status</TableHead><TableHead>Owner</TableHead><TableHead>Assigned</TableHead><TableHead /></TableRow></TableHeader>
             <TableBody>
               {filtered.map(l => (
-                <TableRow key={l.id} className="cursor-pointer" onClick={() => setSelected(l)}>
+                <TableRow key={l.id} data-entity-code={`LD-${l.id}`} className="cursor-pointer" onClick={() => setSelected(l)}>
                   <TableCell className="font-medium">
                     <div className="flex items-center gap-1.5">
                       {l.lead_name}

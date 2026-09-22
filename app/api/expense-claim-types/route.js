@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server';
 import { execute } from '@/lib/db';
-import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
+import { getFreshSessionUser, requireDepartment, isInternal } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { getExpenseClaimTypes } from '@/lib/data';
 
+// Widened to any internal user (Phase 4, Gap #9) — self-submitting a claim needs the same type
+// list HR itself picks from; the write side below is still HR-only.
 export async function GET() {
   const user = await getFreshSessionUser();
-  const denied = requireDepartment(user, 'HR');
-  if (denied) return denied;
+  if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   return NextResponse.json(await getExpenseClaimTypes());
 }
 

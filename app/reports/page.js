@@ -11,7 +11,10 @@
 // no department access to consolidate).
 import { redirect } from 'next/navigation';
 import { getFreshSessionUser, canAccessDepartment, headDepartments, roleHome } from '@/lib/auth';
-import { getCompanySettings, getLeads, getOpportunities, getCampaigns, getSalesStages, getCrmTasks, getLeadNotes, getFunctionalHeads } from '@/lib/data';
+import {
+  getCompanySettings, getLeads, getOpportunities, getCampaigns, getSalesStages, getCrmTasks, getLeadNotes, getFunctionalHeads,
+  getBranches, getSalesTargets, getDiaryNotes, getExpenseClaims, getQuotations, getSaleOrders, getSalesProducts,
+} from '@/lib/data';
 import { reportsForDepartment, REPORT_DEPARTMENTS } from '@/lib/reports/catalog';
 import ReportsWorkspace from '@/components/ReportsWorkspace';
 
@@ -20,12 +23,15 @@ const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 // Same data the standalone /crm-reports page fetches (app/crm-reports/page.js) — the 6 CRM
 // analytics catalog entries (lib/reports/catalog.js, §5an) need it, fetched only when a Sales or
 // Marketing report could actually be in view, not on every unrelated department's Reports tab.
+// Sales CRM expansion Phase 5 widened this with branches/targets/diary notes/expense claims/
+// quotations — the 13 new Sales Call reports' own shared data, same "one fetch, many reports" idiom.
 async function getCrmData() {
-  const [leads, opportunities, campaigns, stages, tasks, notes, heads] = await Promise.all([
+  const [leads, opportunities, campaigns, stages, tasks, notes, heads, branches, salesTargets, diaryNotes, expenseClaims, quotations, saleOrders, salesProducts] = await Promise.all([
     getLeads(), getOpportunities(), getCampaigns(), getSalesStages(), getCrmTasks(), getLeadNotes(), getFunctionalHeads(),
+    getBranches(), getSalesTargets(), getDiaryNotes(), getExpenseClaims(), getQuotations(), getSaleOrders(), getSalesProducts(),
   ]);
   const users = heads.filter(h => h.active && h.departments.some(d => CRM_DEPARTMENTS.includes(d)));
-  return { leads, opportunities, campaigns, stages, tasks, notes, users };
+  return { leads, opportunities, campaigns, stages, tasks, notes, users, branches, salesTargets, diaryNotes, expenseClaims, quotations, saleOrders, salesProducts };
 }
 
 export const dynamic = 'force-dynamic';
