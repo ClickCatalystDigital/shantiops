@@ -3,7 +3,7 @@
 import { redirect } from 'next/navigation';
 import { getFreshSessionUser, canAccessDepartment, isDepartmentHead, roleHome } from '@/lib/auth';
 import { canPerformAction } from '@/lib/action-permissions';
-import { getTestCertificates, getAllQcDocuments, getActiveProjectsList, getCalibrationItems, getReceivedProjectIds, getAllocatedChildProjectIds, getNcrs, getQcHoldPoints, getPendingInwardApprovals, getPendingPreDispatchApprovals, getQcRecords, getJobWorkInspections, getWorkOrders, getBomAssembliesFlat, getMilestoneIdByKey } from '@/lib/data';
+import { getTestCertificates, getAllQcDocuments, getActiveProjectsList, getCalibrationItems, getReceivedProjectIds, getReleasedBomProjectIds, getAllocatedChildProjectIds, getNcrs, getQcHoldPoints, getPendingInwardApprovals, getPendingPreDispatchApprovals, getQcRecords, getJobWorkInspections, getWorkOrders, getBomAssembliesFlat, getMilestoneIdByKey } from '@/lib/data';
 import QcWorkspace from '@/components/QcWorkspace';
 
 export const dynamic = 'force-dynamic';
@@ -13,7 +13,7 @@ export default async function QcPage({ searchParams }) {
   if (!canAccessDepartment(user, 'QC')) redirect(roleHome(user));
 
   const sp = await searchParams;
-  const [allProjects, certificates, documents, calibrationItems, receivedIds, allocatedChildIds, ncrs, holdPoints, canDisposition, canVerify, canClose, inwardApprovals, preDispatchApprovals] = await Promise.all([
+  const [allProjects, certificates, documents, calibrationItems, receivedIds, releasedBomIds, allocatedChildIds, ncrs, holdPoints, canDisposition, canVerify, canClose, inwardApprovals, preDispatchApprovals] = await Promise.all([
     // QC is the one deliberate exception to getActiveProjectsList()'s master-only default — real QC
     // documents are created per split-child unit, so QC's own picker needs children visible.
     getActiveProjectsList({ includeChildren: true }),
@@ -21,6 +21,7 @@ export default async function QcPage({ searchParams }) {
     getAllQcDocuments(),
     getCalibrationItems(), // STERP items 34/35, §5p — not project-scoped, so not filtered below
     getReceivedProjectIds(),
+    getReleasedBomProjectIds(), // ponytail: TEMPORARY — see lib/data.js
     getAllocatedChildProjectIds(),
     getNcrs(),
     getQcHoldPoints(),
@@ -39,6 +40,9 @@ export default async function QcPage({ searchParams }) {
   // ever disappears. ponytail: pre-staging a doc for a project not yet receiving isn't supported;
   // widen this set if that need shows up.
   const relevant = new Set(receivedIds);
+  // ponytail: TEMPORARY — also show projects whose BOM is released, before Stores has received
+  // anything, so QC can pre-stage statutory documents. See getReleasedBomProjectIds() in lib/data.js.
+  for (const id of releasedBomIds) relevant.add(id);
   // A split child never carries its own bom_items (all real material lives on the master), so
   // getReceivedProjectIds() can only ever see the master directly — but a master receiving
   // material for SOME units (e.g. 1-20 of 50) must not make every other unit relevant too. Only a
