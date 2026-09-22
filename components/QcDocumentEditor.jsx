@@ -812,26 +812,49 @@ function IiiaGroupsCard({ documentId, drawings, groups, parts, assemblies, bomIt
 const EMPTY_MOUNT = { description: '', size: '', moc: '', serial_numbers: '', make: '', qty: '' };
 
 function MountingsCard({ documentId, mountings, bomItems, certificates, canEdit, router }) {
-  // `_key` is a locally-generated identity, never persisted (the server route only reads its own
-  // whitelisted fields, so this extra prop round-trips harmlessly in the Save payload) — needed
-  // because "Add row" prepends (client point: new rows go on top), which shifts every existing row's
-  // ARRAY INDEX by one. Keying selection/edits by index instead of `_key` would silently point every
-  // open selection at the wrong row the moment a row was added above it. `keySeq` only ever counts up,
-  // so a key is never reused even after rows are deleted.
-  const keySeq = useRef(mountings.length);
-  const [rows, setRows] = useState(() => mountings.map((m, i) => ({ ...m, _key: i })));
-  const [busy, setBusy] = useState(false);
+  // No Save button, no local-only buffer — every row is a real, already-persisted qc_mountings row
+  // (created via POST the instant "Add row" is clicked), so `r.id` is always real and stable. Each
+  // edit is committed on its own: a discrete pick (SearchableSelect's onChange) saves immediately,
+  // free typing (onTextChange / a plain Input) is debounced ~600ms after the last keystroke so we're
+  // not firing a request per character. Delete is a real DELETE the moment it's clicked, not a local
+  // filter waiting on a Save click that might never come — that gap was the actual bug: a "deleted"
+  // row that was never persisted reappeared on the next reload with nothing needing to "sync".
+  const [rows, setRows] = useState(() => [...mountings]);
   const [syncBusy, setSyncBusy] = useState(false);
   const [open, setOpen] = useState(true);
   const [q, setQ] = useState('');
   const [selected, setSelected] = useState(new Set());
-  const setCell = (key, k) => e => setRows(rs => rs.map(r => (r._key === key ? { ...r, [k]: e.target.value } : r)));
 
-  // Certificate linking — real ids (r.id, not the local _key), a separate action from the bulk-edit
-  // rows/save() buffer above so it commits immediately, same "own atomic action" precedent link-parts
-  // already established. Cert display fields (certificate_no, tc_cast_no, …) are read live from the
-  // `mountings` prop by id, never buffered into `rows` — router.refresh() alone (no remount needed)
-  // is what surfaces a freshly-linked certificate.
+  const saveTimers = useRef(new Map());
+  async function commitRow(row) {
+    try {
+      await api(`/api/qc-documents/${documentId}/mountings/${row.id}`, {
+        method: 'PATCH',
+        body: {
+          description: row.description, size: row.size, moc: row.moc,
+          serial_numbers: row.serial_numbers, make: row.make, qty: row.qty, bom_item_id: row.bom_item_id,
+        },
+      });
+    } catch (err) { showToast(err.message, 'error'); }
+  }
+  // Row-level debounce (one timer per row id, cancel-and-replace) rather than per-field — a rapid
+  // edit to a second field before the first one's timer fires just reschedules with the row's own
+  // current full state, which already includes the first edit, so nothing is lost either way.
+  function scheduleSave(row, delay) {
+    clearTimeout(saveTimers.current.get(row.id));
+    saveTimers.current.set(row.id, setTimeout(() => commitRow(row), delay));
+  }
+  function updateRow(id, patch, { immediate = false } = {}) {
+    const row = { ...rows.find(r => r.id === id), ...patch };
+    setRows(rs => rs.map(r => (r.id === id ? row : r)));
+    scheduleSave(row, immediate ? 0 : 600);
+  }
+  const setCell = (id, k) => e => updateRow(id, { [k]: e.target.value });
+
+  // Certificate linking — its own atomic action, same precedent link-parts already established. Cert
+  // display fields (certificate_no, tc_cast_no, …) are read live from the `mountings` prop by id,
+  // never buffered into `rows` — router.refresh() alone (no remount needed) is what surfaces a
+  // freshly-linked certificate.
   const [certPickerOpen, setCertPickerOpen] = useState(false);
   const [certPickerIds, setCertPickerIds] = useState([]);
   const [linkSiblings, setLinkSiblings] = useState(false);
@@ -855,14 +878,28 @@ function MountingsCard({ documentId, mountings, bomItems, certificates, canEdit,
       router.refresh();
     } catch (err) { showToast(err.message, 'error'); }
   }
-  function toggleRow(key) {
-    setSelected(s => { const n = new Set(s); if (n.has(key)) n.delete(key); else n.add(key); return n; });
+  function toggleRow(id) {
+    setSelected(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  }
+  async function deleteRows(ids) {
+    try {
+      await Promise.all(ids.map(id => api(`/api/qc-documents/${documentId}/mountings/${id}`, { method: 'DELETE' })));
+      setRows(rs => rs.filter(r => !ids.includes(r.id)));
+      setSelected(s => { const n = new Set(s); ids.forEach(id => n.delete(id)); return n; });
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
   }
   function deleteSelected() {
     if (!selected.size) return;
     if (!window.confirm(`Remove ${selected.size} selected item${selected.size === 1 ? '' : 's'}?`)) return;
-    setRows(rs => rs.filter(r => !selected.has(r._key)));
-    setSelected(new Set());
+    deleteRows([...selected]);
+  }
+  async function addRow() {
+    try {
+      const res = await api(`/api/qc-documents/${documentId}/mountings`, { method: 'POST' });
+      setRows(rs => [{ ...EMPTY_MOUNT, id: res.id, bom_item_id: null }, ...rs]);
+      router.refresh(); // pulls the new row into `mountings` so its cert badge (blank until then) resolves
+    } catch (err) { showToast(err.message, 'error'); }
   }
   // MOC and Make both get a searchable-but-not-locked picker: STANDARD_MOC is the app's own existing
   // canonical vocabulary (already what PrWorkspace's raw-material MOC field searches), extended with
@@ -884,57 +921,49 @@ function MountingsCard({ documentId, mountings, bomItems, certificates, canEdit,
   // so description is always overwritten by the pick — that's the explicit "this is what this row
   // is" action now, not a blank-only autofill. The other fields stay fill-if-blank: picking a title
   // shouldn't clobber a size/MOC/make the user already typed in by hand.
-  function setBomLink(key, id) {
-    const item = id ? bomItems.find(b => b.id === id) : null;
-    setRows(rs => rs.map(r => (r._key !== key ? r : {
-      ...r, bom_item_id: id,
-      description: item ? item.material_description : r.description,
-      size: r.size || item?.size_spec || r.size,
-      moc: r.moc || item?.moc || r.moc,
-      make: r.make || item?.make || r.make,
-      qty: r.qty || item?.qty_text || r.qty,
-    })));
+  // Picking an item saves immediately (a discrete action, not continuous typing) — description is
+  // always overwritten by the pick (that's the explicit "this is what this row is" action now), the
+  // other fields stay fill-if-blank so a size/MOC/make the user already typed by hand isn't clobbered.
+  function setBomLink(id, pickedId) {
+    const item = pickedId ? bomItems.find(b => b.id === pickedId) : null;
+    const row = rows.find(r => r.id === id);
+    updateRow(id, {
+      bom_item_id: pickedId,
+      description: item ? item.material_description : row.description,
+      size: row.size || item?.size_spec || row.size,
+      moc: row.moc || item?.moc || row.moc,
+      make: row.make || item?.make || row.make,
+      qty: row.qty || item?.qty_text || row.qty,
+    }, { immediate: true });
   }
-  const setDescription = (key, text) => setRows(rs => rs.map(r => (r._key === key ? { ...r, description: text } : r)));
+  const setDescription = (id, text) => updateRow(id, { description: text });
   // Qty is stored as one compound string ("40 SQ MTR") — the box only ever shows/edits the leading
   // number; the unit sits in its own label, sourced from whichever BOM item this row is linked to
   // (parseUnit'd from that item's own qty_text) so it updates the moment the link changes, and
   // falling back to whatever unit was already in the row's own text for a row with no link at all.
   // Typing a new number recombines it with that same unit before saving, so the stored value stays
   // in the one format every other reader of `qty` (the PDF, sync) already expects.
-  const setQtyNumber = (key, unit) => e => {
+  const setQtyNumber = (id, unit) => e => {
     const num = e.target.value;
-    setRows(rs => rs.map(r => (r._key === key ? { ...r, qty: unit ? `${num} ${unit}`.trim() : num } : r)));
+    updateRow(id, { qty: unit ? `${num} ${unit}`.trim() : num });
   };
 
   // Filter AFTER pairing each row with its display position — `i` here is only ever used for the
-  // "N." label and Save's sort_order, never for identity (every handler above keys by the stable
-  // `_key` instead, precisely so a search filter or a prepended row can never point an edit/selection
-  // at the wrong row).
+  // "N." label, never for identity (every handler above keys by the row's own real `id`, so a search
+  // filter can never point an edit/selection at the wrong row).
   const needle = q.trim().toLowerCase();
   const shown = rows.map((r, i) => ({ r, i })).filter(({ r }) => {
     if (!needle) return true;
     return [r.description, r.size, r.moc, r.make, r.serial_numbers, r.qty]
       .some(v => v && String(v).toLowerCase().includes(needle));
   });
-  const allShownSelected = shown.length > 0 && shown.every(({ r }) => selected.has(r._key));
-  // Only saved rows (real r.id) are cert-linkable — a just-added, unsaved row must be Saved first.
-  const selectedRealIds = rows.filter(r => selected.has(r._key) && r.id != null).map(r => r.id);
+  const allShownSelected = shown.length > 0 && shown.every(({ r }) => selected.has(r.id));
+  const selectedIds = [...selected];
   function toggleSelectShown() {
     setSelected(s => {
-      if (allShownSelected) { const n = new Set(s); shown.forEach(({ r }) => n.delete(r._key)); return n; }
-      return new Set([...s, ...shown.map(({ r }) => r._key)]);
+      if (allShownSelected) { const n = new Set(s); shown.forEach(({ r }) => n.delete(r.id)); return n; }
+      return new Set([...s, ...shown.map(({ r }) => r.id)]);
     });
-  }
-
-  async function save() {
-    setBusy(true);
-    try {
-      await api(`/api/qc-documents/${documentId}/mountings`, { method: 'POST', body: { rows } });
-      showToast('Bought-out items saved');
-      router.refresh();
-    } catch (err) { showToast(err.message, 'error'); }
-    setBusy(false);
   }
 
   async function syncBom() {
@@ -954,12 +983,9 @@ function MountingsCard({ documentId, mountings, bomItems, certificates, canEdit,
         <CardAction>
           <div className="flex items-center gap-1">
             {canEdit && (
-              <>
-                <Button size="sm" variant="outline" disabled={syncBusy} onClick={syncBom}>
-                  <RefreshCwIcon data-icon="inline-start" />{syncBusy ? 'Syncing…' : 'Sync from BOM'}
-                </Button>
-                <Button size="sm" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save'}</Button>
-              </>
+              <Button size="sm" variant="outline" disabled={syncBusy} onClick={syncBom}>
+                <RefreshCwIcon data-icon="inline-start" />{syncBusy ? 'Syncing…' : 'Sync from BOM'}
+              </Button>
             )}
             <CollapseButton open={open} onToggle={() => setOpen(o => !o)} label="bought-out items" />
           </div>
@@ -983,15 +1009,15 @@ function MountingsCard({ documentId, mountings, bomItems, certificates, canEdit,
           </div>
           {canEdit && (
             <>
-              <Button size="sm" variant="outline" onClick={() => setRows(rs => [{ ...EMPTY_MOUNT, _key: keySeq.current++ }, ...rs])}>
+              <Button size="sm" variant="outline" onClick={addRow}>
                 <PlusIcon data-icon="inline-start" />Add row
               </Button>
               <Button size="sm" variant="outline" disabled={shown.length === 0} onClick={toggleSelectShown}>
                 {allShownSelected ? 'Deselect all' : 'Select all'}
               </Button>
-              {selectedRealIds.length > 0 && (
-                <Button size="sm" variant="outline" onClick={() => openCertPicker(selectedRealIds)}>
-                  Link certificate ({selectedRealIds.length})
+              {selectedIds.length > 0 && (
+                <Button size="sm" variant="outline" onClick={() => openCertPicker(selectedIds)}>
+                  Link certificate ({selectedIds.length})
                 </Button>
               )}
               {selected.size > 0 && (
@@ -1020,18 +1046,17 @@ function MountingsCard({ documentId, mountings, bomItems, certificates, canEdit,
             // row's own qty text for a row with no link at all (e.g. a purely manual "5 Bags" entry).
             const linkedItem = bomItems.find(b => b.id === r.bom_item_id);
             const qtyUnit = parseUnit(linkedItem?.qty_text) || parseUnit(r.qty);
-            const key = r._key;
             return (
-          <div key={key} className="flex flex-wrap items-center gap-2 border-t py-2 first:border-t-0">
-            <Checkbox className="shrink-0" checked={selected.has(key)} onCheckedChange={() => toggleRow(key)} />
+          <div key={r.id} className="flex flex-wrap items-center gap-2 border-t py-2 first:border-t-0">
+            <Checkbox className="shrink-0" checked={selected.has(r.id)} onCheckedChange={() => toggleRow(r.id)} />
             <span className="w-5 shrink-0 text-sm font-medium text-muted-foreground">{i + 1}.</span>
             {canEdit ? (
               <SearchableSelect
                 className="w-56 shrink-0 text-sm"
                 value={r.bom_item_id ? String(r.bom_item_id) : ''}
-                onChange={id => setBomLink(key, id ? Number(id) : null)}
+                onChange={id => setBomLink(r.id, id ? Number(id) : null)}
                 displayValue={r.description}
-                onTextChange={text => setDescription(key, text)}
+                onTextChange={text => setDescription(r.id, text)}
                 options={bomItems.map(b => ({ value: String(b.id), label: b.material_description }))}
                 placeholder="Description — type or pick from BOM"
               />
@@ -1044,37 +1069,36 @@ function MountingsCard({ documentId, mountings, bomItems, certificates, canEdit,
                 tag, so it's monospaced; Qty is a genuine number now (split from its unit above),
                 so it's the one field that can safely be type="number"; Size stays plain free text —
                 dimensional data has no reusable vocabulary the way a maker's name or MOC grade does. */}
-            <Input value={r.size || ''} onChange={setCell(key, 'size')} disabled={!canEdit}
+            <Input value={r.size || ''} onChange={setCell(r.id, 'size')} disabled={!canEdit}
               placeholder="Size" className="h-8 w-36 text-xs" />
             {canEdit ? (
               <SearchableSelect className="h-8 w-24 shrink-0 text-xs" value="" displayValue={r.moc}
-                onChange={v => setCell(key, 'moc')({ target: { value: v } })}
-                onTextChange={text => setCell(key, 'moc')({ target: { value: text } })}
+                onChange={v => updateRow(r.id, { moc: v }, { immediate: true })}
+                onTextChange={text => setCell(r.id, 'moc')({ target: { value: text } })}
                 options={mocOptions.map(m => ({ value: m, label: m }))} placeholder="MOC" />
             ) : (
               <span className="w-24 shrink-0 truncate rounded-full bg-muted/50 px-2 py-1 text-center text-xs font-medium">{r.moc || '—'}</span>
             )}
             {canEdit ? (
               <SearchableSelect className="h-8 w-28 shrink-0 text-xs" value="" displayValue={r.make}
-                onChange={v => setCell(key, 'make')({ target: { value: v } })}
-                onTextChange={text => setCell(key, 'make')({ target: { value: text } })}
+                onChange={v => updateRow(r.id, { make: v }, { immediate: true })}
+                onTextChange={text => setCell(r.id, 'make')({ target: { value: text } })}
                 options={makeOptions.map(m => ({ value: m, label: m }))} placeholder="Make" />
             ) : (
               <span className="w-28 shrink-0 truncate text-xs">{r.make || '—'}</span>
             )}
-            <Input value={r.serial_numbers || ''} onChange={setCell(key, 'serial_numbers')} disabled={!canEdit}
+            <Input value={r.serial_numbers || ''} onChange={setCell(r.id, 'serial_numbers')} disabled={!canEdit}
               placeholder="Serial No(s)" className="h-8 w-36 font-mono text-xs" />
             <div className="flex w-32 shrink-0 items-center gap-1">
-              <Input value={parseNumber(r.qty)} onChange={setQtyNumber(key, qtyUnit)} disabled={!canEdit}
+              <Input value={parseNumber(r.qty)} onChange={setQtyNumber(r.id, qtyUnit)} disabled={!canEdit}
                 placeholder="Qty" type="number" inputMode="decimal" className="h-8 w-16 text-right text-xs font-medium" />
               <span className="truncate text-xs text-muted-foreground" title={qtyUnit}>{qtyUnit}</span>
             </div>
             {/* Cert data is read live from the `mountings` prop (never the local `rows` edit buffer)
-                — router.refresh() alone surfaces a fresh link with no remount needed. Only a
-                real, already-saved row (r.id set — not a just-added, unsaved local row) can be
-                cert-linked; a brand-new row has to be Saved first. */}
+                — router.refresh() alone surfaces a fresh link with no remount needed. Blank right
+                after "Add row" until that refresh lands, since the new row isn't in the prop yet. */}
             {(() => {
-              const live = r.id != null ? mountings.find(m => m.id === r.id) : null;
+              const live = mountings.find(m => m.id === r.id);
               if (!live) return <span className="ml-auto" />;
               const linked = !!live.test_certificate_id;
               return (
@@ -1107,8 +1131,7 @@ function MountingsCard({ documentId, mountings, bomItems, certificates, canEdit,
               );
             })()}
             {canEdit && (
-              <Button size="icon-sm" variant="ghost" aria-label="Remove row"
-                onClick={() => setRows(rs => rs.filter(row => row._key !== key))}>
+              <Button size="icon-sm" variant="ghost" aria-label="Remove row" onClick={() => deleteRows([r.id])}>
                 <Trash2Icon className="size-3.5" />
               </Button>
             )}

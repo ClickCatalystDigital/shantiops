@@ -42,7 +42,7 @@ export async function GET(req, { params }) {
   // (a project isn't always linked to a real CRM customer row), so this stays a plain left join
   // with an honest '—' fallback in the render rather than assuming every project has one.
   const project = await queryOne(
-    `SELECT p.id, p.project_no, p.customer_name, p.series, c.phone AS customer_phone
+    `SELECT p.id, p.project_no, p.customer_name, p.series, p.model_capacity, c.phone AS customer_phone
      FROM projects p LEFT JOIN customers c ON c.id = p.customer_id WHERE p.id = ?`,
     [detail.document.project_id]);
   const pdf = await renderQcFolderPdf(detail.document, detail.parts, detail.mountings, project, detail.groups, detail.form4aGroups, detail.seams);

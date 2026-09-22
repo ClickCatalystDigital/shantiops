@@ -13,6 +13,8 @@
     { "name": "shanti-ops-stores-ia", "runtimeExecutable": "npm", "runtimeArgs": ["run", "dev", "--", "-p", "3016"], "port": 3016, "autoPort": false },
     { "name": "shanti-ops-e2e-verify", "runtimeExecutable": "npm", "runtimeArgs": ["run", "dev", "--", "-p", "3017"], "port": 3017, "autoPort": false },
     { "name": "shanti-ops-indent-verify", "runtimeExecutable": "npm", "runtimeArgs": ["run", "dev", "--", "-p", "3018"], "port": 3018, "autoPort": false },
-    { "name": "shanti-ops-stores-demo", "runtimeExecutable": "npm", "runtimeArgs": ["run", "dev", "--", "-p", "3019"], "port": 3019, "autoPort": false }
+    { "name": "shanti-ops-stores-demo", "runtimeExecutable": "npm", "runtimeArgs": ["run", "dev", "--", "-p", "3019"], "port": 3019, "autoPort": false },
+    { "name": "shanti-ops-qc-mountings", "runtimeExecutable": "npm", "runtimeArgs": ["run", "dev", "--", "-p", "3020"], "port": 3020, "autoPort": false },
+    { "name": "shanti-ops-qc-mountings-verify", "runtimeExecutable": "npm", "runtimeArgs": ["run", "dev", "--", "-p", "3021"], "port": 3021, "autoPort": false }
   ]
 }
