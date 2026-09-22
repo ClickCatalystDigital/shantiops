@@ -21,7 +21,7 @@ import {
   getProjectInventoryItems, attachDeliveryLotDates, getBomAssembliesFlat, getCustomers,
 } from '@/lib/data';
 import { BOM_FIELD_OWNERS } from '@/lib/bom-fields.mjs';
-import { getFreshSessionUser, isCustomer, isPM, isHead, headDepartments, canAccessDepartment, roleHome } from '@/lib/auth';
+import { getFreshSessionUser, isCustomer, isPM, isHead, headDepartments, canAccessDepartment, isDepartmentHead, roleHome } from '@/lib/auth';
 import { canPerformAction } from '@/lib/action-permissions';
 import ProjectHeader from '@/components/ProjectHeader';
 import TodayBand from '@/components/TodayBand';
@@ -53,6 +53,9 @@ export default async function ProjectDetail({ params }) {
   // Edit Project (2026-09-18) — same gate PATCH /api/projects/[id] itself enforces
   // (requireCalcAccess): PM + Design/Engineering heads.
   const canEditProject = canAccessDepartment(user, 'Design') || canAccessDepartment(user, 'Engineering');
+  // Delete Entire Project (2026-09-22) — stricter than Edit on purpose: PM + Design/Engineering
+  // HEAD, not any member, matching DELETE /api/projects/[id]'s own gate.
+  const canDeleteProject = isPM(user) || isDepartmentHead(user, 'Design') || isDepartmentHead(user, 'Engineering');
 
   const [
     { bom, pending, imports }, packingLists, designSummary, scopeOfSupply, departmentState, qcSummary,
@@ -137,7 +140,7 @@ export default async function ProjectDetail({ params }) {
       {/* Row 2 — always 3 fixed columns. */}
       <div className="grid items-start gap-6 lg:grid-cols-3">
         <ProjectHeader project={project} health={health} blocker={blocker} milestones={milestones}
-          canEdit={canEditProject} customers={editCustomers} scopeOfSupply={sosFileOnly} />
+          canEdit={canEditProject} canDelete={canDeleteProject} customers={editCustomers} scopeOfSupply={sosFileOnly} />
         <TodayBand milestones={attentionMilestones} />
         <DepartmentStateCard departments={departmentState} />
       </div>

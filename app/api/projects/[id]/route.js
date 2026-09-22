@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
-import { getFreshSessionUser } from '@/lib/auth';
+import { getFreshSessionUser, isPM, isDepartmentHead } from '@/lib/auth';
 import { requireCalcAccess } from '@/lib/calc';
 import { audit } from '@/lib/usb';
 import { COMPANY_NAMES } from '@/lib/qc-doc-pdf.js';
 import { isValidSeries } from '@/lib/qc-series';
+import { getProjectDeletePreview, deleteProjectCascade } from '@/lib/project-delete';
 
 // Rename a project's identity (project_no / customer_name) — used e.g. when a demo/seed project
 // is repurposed into a real one instead of creating a duplicate. Gated the same as the rest of
@@ -90,5 +91,43 @@ export async function PATCH(req, { params }) {
       detail: `project ${params.id} -> customer_id ${b.customer_id ?? '(unchanged)'}, sale_order_id ${b.sale_order_id ?? '(unchanged)'}`,
     });
   }
+  return NextResponse.json({ ok: true });
+}
+
+// Stricter than Edit on purpose (PM + Design/Engineering HEAD, not any member with department
+// access) — this is destructive and hard to reverse. Review, then decide, not a bare block: a
+// project with real activity (POs, invoices, shared QC documents...) is only refused outright when
+// it has a genuine hard blocker (live split-order children); everything else is deletable once the
+// caller passes `confirmOverride: true` — meaning they've seen lib/project-delete.js's own review
+// list and chose to proceed anyway. Always re-derives that list server-side, never trusts the
+// client's own copy of it.
+export async function DELETE(req, { params }) {
+  const user = await getFreshSessionUser();
+  if (!(isPM(user) || isDepartmentHead(user, 'Design') || isDepartmentHead(user, 'Engineering'))) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+  const body = await req.json().catch(() => ({}));
+
+  const preview = await getProjectDeletePreview(params.id);
+  if (!preview) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  if (preview.hardBlockers.length > 0) {
+    return NextResponse.json({ error: "This can't be deleted.", hardBlockers: preview.hardBlockers }, { status: 409 });
+  }
+  if (preview.needsReview && !body.confirmOverride) {
+    return NextResponse.json({
+      error: 'This project has real activity — review it, then confirm to delete anyway.',
+      needsReview: true, reviewItems: preview.reviewItems,
+    }, { status: 409 });
+  }
+
+  const projectNo = preview.project.project_no;
+  const overriding = preview.needsReview && body.confirmOverride;
+  await deleteProjectCascade(params.id, user.username, { confirmOverride: !!body.confirmOverride });
+  await audit('project_deleted', {
+    actor: user.username,
+    detail: overriding
+      ? `project ${params.id} (${projectNo}) — deleted with review override: ${preview.reviewItems.map(b => `${b.label} (${b.count})`).join(', ')}`
+      : `project ${params.id} (${projectNo})`,
+  });
   return NextResponse.json({ ok: true });
 }
