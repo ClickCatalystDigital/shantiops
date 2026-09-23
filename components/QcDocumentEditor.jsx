@@ -344,7 +344,13 @@ function PartRow({ part, selected, onToggle, onOpenPicker, onRemove, onEdit, onU
   const fallbackClassified = linkedBomItem && classificationSource(linkedBomItem) === 'fallback';
   return (
     <div className="flex items-start gap-3 py-2.5 text-sm">
-      <Checkbox className="mt-0.5" checked={selected} onCheckedChange={() => onToggle(part.id)} />
+      <Checkbox
+        className="mt-0.5"
+        checked={selected}
+        disabled={!!groupName}
+        title={groupName ? `Already in "${groupName}" — remove it from the group first` : undefined}
+        onCheckedChange={() => onToggle(part.id)}
+      />
       <div className="flex min-w-0 flex-1 flex-col">
         <PartTitleField part={part} partNo={part.part_no} bomItems={bomItems} onLink={onLinkBomItem} canEdit={canEdit} />
         <span className="text-xs text-muted-foreground">{sizeText(part)} · qty {part.qty}</span>
@@ -1202,7 +1208,10 @@ export default function QcDocumentEditor({ project, document, parts, certificate
         .some(v => v && String(v).toLowerCase().includes(needle)))
     : byFilter;
   const usedIds = useMemo(() => new Set(parts.filter(p => p.test_certificate_id).map(p => p.test_certificate_id)), [parts]);
-  const allShownSelected = shown.length > 0 && shown.every(p => selected.has(p.id));
+  // A part already in a Form IV A group has its own checkbox disabled (PartRow, above) — "Select
+  // all" has to agree with that, or it'd silently select rows a click on their own checkbox can't.
+  const selectableShown = useMemo(() => shown.filter(p => !p.form4a_group_id), [shown]);
+  const allShownSelected = selectableShown.length > 0 && selectableShown.every(p => selected.has(p.id));
   const form4aGroupsById = useMemo(() => new Map(form4aGroups.map(g => [g.id, g])), [form4aGroups]);
 
   // Form IV A's manual lettered-section groups (lib/qc-form4a-sections.mjs) — a plain QC-typed tag
@@ -1257,7 +1266,7 @@ export default function QcDocumentEditor({ project, document, parts, certificate
   // not literally all 54 rows — so a narrowed search ("GUSSET") plus one click bulk-links just that
   // result set.
   function toggleSelectShown() {
-    const ids = shown.map(p => p.id);
+    const ids = selectableShown.map(p => p.id);
     setSelected(s => {
       const n = new Set(s);
       ids.forEach(id => (allShownSelected ? n.delete(id) : n.add(id)));
@@ -1490,7 +1499,7 @@ export default function QcDocumentEditor({ project, document, parts, certificate
               <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Search part name, number, or certificate" className="pl-8" />
             </div>
-            <Button size="sm" variant="outline" disabled={shown.length === 0} onClick={toggleSelectShown}>
+            <Button size="sm" variant="outline" disabled={selectableShown.length === 0} onClick={toggleSelectShown}>
               {allShownSelected ? 'Deselect all' : 'Select all'}
             </Button>
             {canEdit && (
