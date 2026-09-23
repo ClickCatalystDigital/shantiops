@@ -9,6 +9,7 @@ import { getBomStructure, getProjectBom } from '@/lib/data';
 import { markMilestoneDone } from '@/lib/milestone-auto';
 import { matchProjectBom } from '@/lib/remnant-match';
 import { getAllocationMode, matchProjectPlainStock, notifyProcurementIfShortfall } from '@/lib/procurement';
+import { learnCategoryIfConfirmed } from '@/lib/category-learning';
 import { audit } from '@/lib/usb';
 
 function canRelease(user) {
@@ -158,6 +159,17 @@ export async function POST(req, { params }) {
       [params.id]
     );
     for (const line of openLines) await notifyProcurementIfShortfall(line.id);
+  } catch (err) { /* best-effort */ }
+
+  // Release only happens once every source='bom' line is categorized (the gate above) — a good
+  // moment to sweep the whole BOM for any spelling-correction pattern a manual/bulk edit confirmed
+  // without going through the PATCH route's own per-edit learn call, so nothing gets missed by the
+  // time the project actually ships.
+  try {
+    const categorized = await queryAll(
+      'SELECT material_description, category FROM bom_items WHERE project_id = ? AND category IS NOT NULL',
+      [params.id]);
+    for (const it of categorized) await learnCategoryIfConfirmed(it.material_description, it.category, user.username);
   } catch (err) { /* best-effort */ }
 
   return NextResponse.json({ ok: true, remnantMatches: matched.length, autoReserved: plainMatched.length, revision });

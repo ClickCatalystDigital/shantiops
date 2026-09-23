@@ -4,6 +4,7 @@ import { getFreshSessionUser, canAccessDepartment, isInternal } from '@/lib/auth
 import { requireBomAction } from '@/lib/action-permissions';
 import { getProjectBom } from '@/lib/data';
 import { CATEGORY_LABEL } from '@/lib/section-shapes.js';
+import { learnCategoryIfConfirmed } from '@/lib/category-learning';
 
 const MAX_PASTE_ROWS = 500; // a human pasting rows has a much lower realistic ceiling than a bulk
 // file import (see bom/import/route.js's MAX_IMPORT_ROWS) — past this, use CSV import instead.
@@ -49,6 +50,12 @@ export async function POST(req, { params }) {
     }
     return n;
   });
+  // One category picked for the whole pasted batch — still a real confirmed decision per row,
+  // best-effort, same as every other manual category pick.
+  for (const r of rows) {
+    if (!r.material_description?.trim()) continue;
+    try { await learnCategoryIfConfirmed(r.material_description.trim(), category, user.username); } catch { /* best-effort */ }
+  }
   return NextResponse.json({ inserted: n });
 }
 

@@ -8,6 +8,7 @@ import { BOM_FIELDS } from '@/lib/bom-fields.mjs';
 import { CATEGORY_LABEL } from '@/lib/section-shapes.js';
 import { matchAndReserve } from '@/lib/remnant-match';
 import { getAllocationMode, autoReserveFromStock, notifyProcurementIfShortfall } from '@/lib/procurement';
+import { learnCategoryIfConfirmed } from '@/lib/category-learning';
 
 // Add a single BOM item in-app (materials get added mid-project — the BOM definition is
 // Engineering's, so this is Engineering/PM-gated like upload).
@@ -61,6 +62,7 @@ export async function POST(req) {
     actor: user.username,
     detail: JSON.stringify({ bom_item_id: Number(res.lastId), project_id: b.project_id, description: values[0] }),
   });
+  try { await learnCategoryIfConfirmed(values[0], b.category, user.username); } catch { /* best-effort */ }
   try {
     await notifyDepartment('Stores', {
       kind: 'bom_released', title: 'New BOM item', body: values[0],

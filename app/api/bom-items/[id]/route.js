@@ -12,6 +12,7 @@ import { findBlockingReferences } from '@/lib/bom-item-guard';
 import { missingTraceabilityFields, applyReceivedSideEffects } from '@/lib/bom-receiving';
 import { releasePiece } from '@/lib/stock-pieces';
 import { rollupIndentStatus } from '@/lib/indent-status.mjs';
+import { learnCategoryIfConfirmed } from '@/lib/category-learning';
 
 // Field-level department scoping — the trust boundary of the PMB module. A head may only write
 // the columns their department owns (BOM_FIELD_OWNERS); a PM writes anything. Enforced here, not
@@ -113,6 +114,16 @@ export async function PATCH(req, { params }) {
   await execute(
     `UPDATE bom_items SET ${Object.keys(changed).map(k => `${k} = ?`).join(', ')} WHERE id = ?`,
     [...Object.values(changed), params.id]);
+
+  // Same learning the PMB import route does at confirm time, now reachable from a manual pick too
+  // (the composer, BomTable's dropdown, or the Resolve Categories walkthrough all PATCH through
+  // here) — best-effort, never blocks the save.
+  if ('category' in changed) {
+    try {
+      await learnCategoryIfConfirmed(
+        changed.material_description ?? item.material_description, changed.category, user.username);
+    } catch { /* learning is best-effort — the category itself already saved */ }
+  }
 
   // V2-CHANGES.md Group 6 Phase 6.3 gap found post-ship, live-verified: the Status tab's manual
   // override can also set purchase_status='Cancelled', bypassing the dedicated

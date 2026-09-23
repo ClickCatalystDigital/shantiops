@@ -22,6 +22,7 @@ import { getAllocationMode, autoReserveFromStock, notifyProcurementIfShortfall }
 import { matchAndReserve } from '@/lib/remnant-match';
 import { DIMENSIONAL_CATEGORIES } from '@/lib/bom-fields.mjs';
 import { getPurchaseRequisitions } from '@/lib/data';
+import { learnCategoryIfConfirmed } from '@/lib/category-learning';
 
 const PR_DEPARTMENTS = ['Engineering', 'Design', 'Stores', 'Sales'];
 
@@ -107,6 +108,9 @@ export async function POST(req) {
     // carry one. origin defaults to 'manual' — 'bom' is reserved for a future auto-BOM generator,
     // not produced by anything this round.
     const category = source === 'bom' && CATEGORIES.has(line.category) ? line.category : null;
+    if (category) {
+      try { await learnCategoryIfConfirmed(line.material_description.trim(), category, user.username); } catch { /* best-effort */ }
+    }
     const categoryFieldsJson = category && line.category_fields ? JSON.stringify(line.category_fields) : null;
     // Design's optional named-part breakdown (one purchased line -> several separately-named
     // fabricated parts) — see components/PrWorkspace.jsx's NamedPartsEditor. Same shape as

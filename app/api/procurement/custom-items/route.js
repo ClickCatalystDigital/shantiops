@@ -9,6 +9,7 @@ import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { CATEGORY_LABEL } from '@/lib/section-shapes';
+import { learnCategoryIfConfirmed } from '@/lib/category-learning';
 
 export async function POST(req) {
   const user = await getFreshSessionUser();
@@ -57,6 +58,9 @@ export async function POST(req) {
       description: b.material_description.trim(), source: 'custom',
     }),
   });
+  if (category) {
+    try { await learnCategoryIfConfirmed(b.material_description.trim(), category, user.username); } catch { /* best-effort */ }
+  }
 
   return NextResponse.json({ id: Number(res.lastId) });
 }
