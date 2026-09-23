@@ -8,12 +8,7 @@ import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEntityHighlight } from '@/lib/use-entity-highlight';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
-import {
-  SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarGroup,
-  SidebarGroupContent, SidebarMenu, SidebarMenuItem, SidebarMenuButton,
-  SidebarMenuSub, SidebarMenuSubItem, SidebarMenuSubButton, SidebarTrigger, SidebarInset, SidebarRail,
-} from '@/components/ui/sidebar';
-import { Separator } from '@/components/ui/separator';
+import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -2508,42 +2503,57 @@ const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 
 // -----------------------------------------------------------------------------------------------
 
-// Same sidebar-workspace pattern as components/CalcWorkspace.jsx — a flat PANELS array (no
-// groups needed here, unlike Calc's Engineering/Governance/Drawings sections) filtered by
-// department instead of grouped, same shadcn Sidebar primitives, same local-state active-panel
-// mechanism as the Tabs it replaces.
-const PANELS = [
-  { key: 'enquiry', label: 'Enquiry', icon: InboxIcon, description: 'New, not-yet-qualified enquiries', salesOnly: false },
-  { key: 'leads', label: 'Leads', icon: UserPlusIcon, description: 'Prospects not yet qualified', salesOnly: false },
-  { key: 'customers', label: 'Customers', icon: UsersIcon, description: 'Accounts, contacts and addresses', salesOnly: true },
-  { key: 'quotations', label: 'Quotations', icon: FileTextIcon, description: 'Proposals sent to customers', salesOnly: true },
-  { key: 'price_lists', label: 'Price Lists', icon: TagIcon, description: 'Customer/product rates and validity', salesOnly: true },
-  { key: 'sale_orders', label: 'Sale Orders', icon: ShoppingCartIcon, description: 'Accepted orders', salesOnly: true },
-  { key: 'scope_of_supply', label: 'Scope of Supply', icon: FileCheckIcon, description: 'Priced deliverables for a converted project', salesOnly: true },
-  { key: 'invoices', label: 'Invoices', icon: ReceiptIcon, description: 'Sales Invoices and Credit Notes', salesOnly: true },
-  // Nested group, same shape as QcWorkspace's Approvals (Inward / Pre-Dispatch).
-  {
-    key: 'payment_tracker', label: 'Payment Tracker', icon: WalletIcon, salesOnly: true, group: true,
-    children: [
-      { key: 'payment_orders', label: 'Orders', icon: ClipboardListIcon, description: 'Order stages, value and payment position' },
-      { key: 'payment_log', label: 'Payments', icon: BanknoteIcon, description: 'Log of payments received against orders' },
-    ],
-  },
-  { key: 'returns', label: 'Returns', icon: UndoIcon, description: 'Returned material against a Sale Order', salesOnly: true },
-  { key: 'campaigns', label: 'Campaigns', icon: MegaphoneIcon, description: 'Marketing initiatives', salesOnly: false },
-  { key: 'tasks', label: 'Tasks', icon: CheckSquareIcon, description: 'Every to-do across leads, deals and customers', salesOnly: false },
-  { key: 'team', label: 'Team', icon: ContactIcon, description: 'Auto-assign new leads round-robin', salesOnly: false },
-  // Masters (Phase 0) — Branches/Product Master/Sales Targets, shared by both Sales and Marketing
-  // (the same reach Enquiry/Leads already have), same nested-group shape as Payment Tracker above.
-  {
-    key: 'masters', label: 'Masters', icon: PackageIcon, salesOnly: false, group: true,
-    children: [
-      { key: 'branches', label: 'Branches', icon: Building2Icon, description: 'Office/location list for Enquiry and Sale Orders' },
-      { key: 'products', label: 'Products', icon: PackageIcon, description: 'The sellable-SKU catalog' },
-      { key: 'targets', label: 'Targets', icon: TargetIcon, description: 'Monthly Sales Targets per branch/manager' },
-      { key: 'email_templates', label: 'Email Templates', icon: MailIcon, description: 'Commercial Offer wording, per company' },
-    ],
-  },
+// Sidebar IA reorg (2026-09-23) — was a single flat PANELS array (17 entries, 2 nested), which
+// components/WorkspaceSidebar.jsx's own `groups` mode renders as labeled, collapsible sections
+// instead (real accordion — a closed group's items aren't in the DOM at all, not just visually
+// dimmed; see WorkspaceSidebar.jsx). Grouped by the sales journey, not by which panels happened to
+// ship in the same round — "Pipeline" is deliberately NOT used as a group label here: that name
+// already belongs to the separate top-nav Opportunities tab (/pipeline), and reusing it for
+// Enquiry/Leads would recreate the exact conceptual duplication a design review flagged.
+const PANEL_GROUPS = [
+  { label: 'Leads & Enquiries', items: [
+    { key: 'enquiry', label: 'Enquiry', icon: InboxIcon, description: 'New, not-yet-qualified enquiries', salesOnly: false },
+    { key: 'leads', label: 'Leads', icon: UserPlusIcon, description: 'Prospects not yet qualified', salesOnly: false },
+  ] },
+  { label: 'Commercial', items: [
+    { key: 'customers', label: 'Customers', icon: UsersIcon, description: 'Accounts, contacts and addresses', salesOnly: true },
+    { key: 'quotations', label: 'Quotations', icon: FileTextIcon, description: 'Proposals sent to customers', salesOnly: true },
+    { key: 'price_lists', label: 'Price Lists', icon: TagIcon, description: 'Customer/product rates and validity', salesOnly: true },
+    { key: 'sale_orders', label: 'Sale Orders', icon: ShoppingCartIcon, description: 'Accepted orders', salesOnly: true },
+    { key: 'scope_of_supply', label: 'Scope of Supply', icon: FileCheckIcon, description: 'Priced deliverables for a converted project', salesOnly: true },
+  ] },
+  { label: 'Billing & Payments', items: [
+    { key: 'invoices', label: 'Invoices', icon: ReceiptIcon, description: 'Sales Invoices and Credit Notes', salesOnly: true },
+    // Nested group, same shape as QcWorkspace's Approvals (Inward / Pre-Dispatch).
+    {
+      key: 'payment_tracker', label: 'Payment Tracker', icon: WalletIcon, salesOnly: true, group: true,
+      children: [
+        { key: 'payment_orders', label: 'Orders', icon: ClipboardListIcon, description: 'Order stages, value and payment position' },
+        { key: 'payment_log', label: 'Payments', icon: BanknoteIcon, description: 'Log of payments received against orders' },
+      ],
+    },
+    { key: 'returns', label: 'Returns', icon: UndoIcon, description: 'Returned material against a Sale Order', salesOnly: true },
+  ] },
+  { label: 'Marketing', items: [
+    { key: 'campaigns', label: 'Campaigns', icon: MegaphoneIcon, description: 'Marketing initiatives', salesOnly: false },
+  ] },
+  { label: 'Activity', items: [
+    { key: 'tasks', label: 'Tasks', icon: CheckSquareIcon, description: 'Every to-do across leads, deals and customers', salesOnly: false },
+    { key: 'team', label: 'Team', icon: ContactIcon, description: 'Auto-assign new leads round-robin', salesOnly: false },
+  ] },
+  { label: 'Setup', items: [
+    // Branches/Product Master/Sales Targets, shared by both Sales and Marketing (the same reach
+    // Enquiry/Leads already have), same nested-group shape as Payment Tracker above.
+    {
+      key: 'masters', label: 'Masters', icon: PackageIcon, salesOnly: false, group: true,
+      children: [
+        { key: 'branches', label: 'Branches', icon: Building2Icon, description: 'Office/location list for Enquiry and Sale Orders' },
+        { key: 'products', label: 'Products', icon: PackageIcon, description: 'The sellable-SKU catalog' },
+        { key: 'targets', label: 'Targets', icon: TargetIcon, description: 'Monthly Sales Targets per branch/manager' },
+        { key: 'email_templates', label: 'Email Templates', icon: MailIcon, description: 'Commercial Offer wording, per company' },
+      ],
+    },
+  ] },
 ];
 
 export default function SalesWorkspace({ saleOrders, leads, customers, quotations, campaigns, priceLists = [], returns = [], inventoryItems = [], invoices = [], creditNotes = [], departments = ['Sales', 'Marketing'], users = [], savedViews = [], initialTab, canEditSoTax = false, projects = [], scopeOfSupply = [], initialScopeProject, salePayments = [], branches = [], salesProducts = [], salesTargets = [] }) {
@@ -2551,75 +2561,28 @@ export default function SalesWorkspace({ saleOrders, leads, customers, quotation
   // Customers/Quotations/Sale Orders are the commercial fulfilment chain — Sales-owned. Marketing
   // shares Leads/Campaigns/Reports (both departments feed the pipeline) but doesn't manage orders.
   const inSales = departments.includes('Sales');
-  const items = PANELS.filter(p => !p.salesOnly || inSales);
+  // Filter salesOnly per-item, then drop any group left with zero items — a Marketing-only session
+  // must never see an empty "Commercial"/"Billing & Payments" header with nothing under it.
+  const groups = PANEL_GROUPS
+    .map(g => ({ ...g, items: g.items.filter(p => !p.salesOnly || inSales) }))
+    .filter(g => g.items.length > 0);
   // Deep-link tab selection (Part B) — same server-prop pattern as QcWorkspace.jsx.
-  const flat = items.flatMap(p => (p.group ? p.children : [p]));
+  const flat = groups.flatMap(g => g.items.flatMap(p => (p.group ? p.children : [p])));
   const [panel, setPanel] = useState(flat.some(p => p.key === initialTab) ? initialTab : 'leads');
   const activePanel = flat.find(p => p.key === panel) || flat[0];
 
   return (
-    <SidebarProvider>
-      <Sidebar collapsible="icon">
-        <SidebarHeader className="gap-2 px-3 py-3.5 group-data-[collapsible=icon]:px-2">
-          <div className="flex items-center gap-2.5 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0">
-            <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-              <MegaphoneIcon className="size-4" />
-            </div>
-            <div className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight group-data-[collapsible=icon]:hidden">
-              {inSales ? 'Sales' : 'Marketing'}
-            </div>
-            <SidebarTrigger className="ml-auto group-data-[collapsible=icon]:hidden" />
-          </div>
-          <div className="hidden justify-center group-data-[collapsible=icon]:flex">
-            <SidebarTrigger aria-label="Expand Sales or Marketing sidebar" />
-          </div>
-        </SidebarHeader>
-        <SidebarContent>
-          <SidebarGroup>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {items.map(p => p.group ? (
-                  <SidebarMenuItem key={p.key}>
-                    <SidebarMenuButton tooltip={p.label} onClick={() => setPanel(p.children[0].key)}>
-                      <p.icon />
-                      <span>{p.label}</span>
-                    </SidebarMenuButton>
-                    <SidebarMenuSub>
-                      {p.children.map(c => (
-                        <SidebarMenuSubItem key={c.key}>
-                          <SidebarMenuSubButton isActive={activePanel.key === c.key} onClick={() => setPanel(c.key)} className="cursor-pointer">
-                            <span>{c.label}</span>
-                          </SidebarMenuSubButton>
-                        </SidebarMenuSubItem>
-                      ))}
-                    </SidebarMenuSub>
-                  </SidebarMenuItem>
-                ) : (
-                  <SidebarMenuItem key={p.key}>
-                    <SidebarMenuButton isActive={activePanel.key === p.key} tooltip={p.label} onClick={() => setPanel(p.key)}>
-                      <p.icon />
-                      <span>{p.label}</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        </SidebarContent>
-        <SidebarRail />
-      </Sidebar>
-
-      <SidebarInset>
-        <div className="flex items-center gap-3 border-b bg-muted/20 px-4 py-3.5">
-          <SidebarTrigger className="md:hidden" />
-          <Separator orientation="vertical" className="h-5 md:hidden" />
+    <WorkspaceSidebar title={inSales ? 'Sales' : 'Marketing'} icon={MegaphoneIcon} groups={groups}
+      activeKey={panel} onChange={setPanel} searchPlaceholder="Search…" searchNoun="sections"
+      header={
+        <>
           <activePanel.icon className="size-4 text-muted-foreground" />
           <div className="min-w-0 flex-1">
             <h1 className="text-base font-semibold leading-tight">{activePanel.label}</h1>
             <p className="text-xs text-muted-foreground">{activePanel.description}</p>
           </div>
-        </div>
-        <div className="flex-1 overflow-auto p-4">
+        </>
+      }>
           {activePanel.key === 'enquiry' && <LeadsTab leads={leads} users={users} customers={customers} salesProducts={salesProducts} branches={branches} savedViews={savedViews} router={router} initialStatus="new" isEnquiry />}
           {activePanel.key === 'leads' && <LeadsTab leads={leads} users={users} customers={customers} salesProducts={salesProducts} branches={branches} savedViews={savedViews} router={router} />}
           {activePanel.key === 'customers' && <CustomersTab customers={customers} router={router} />}
@@ -2641,8 +2604,6 @@ export default function SalesWorkspace({ saleOrders, leads, customers, quotation
           {activePanel.key === 'products' && <ProductsTab salesProducts={salesProducts} router={router} />}
           {activePanel.key === 'targets' && <TargetsTab salesTargets={salesTargets} branches={branches} router={router} />}
           {activePanel.key === 'email_templates' && <EmailTemplatesTab router={router} />}
-        </div>
-      </SidebarInset>
-    </SidebarProvider>
+    </WorkspaceSidebar>
   );
 }

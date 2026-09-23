@@ -213,7 +213,8 @@ export default function ReportsWorkspace({ department, reports, groups, companie
     : { items: reports.map(r => ({ key: r.key, label: r.title, icon: ICON[r.key] || BarChart3Icon })) };
 
   return (
-    <WorkspaceSidebar title={groups ? (title || 'All Reports') : `${department} Reports`} icon={BarChart3Icon} {...sidebarProps} activeKey={key} onChange={setKey}>
+    <WorkspaceSidebar title={groups ? (title || 'All Reports') : `${department} Reports`} icon={BarChart3Icon} {...sidebarProps} activeKey={key} onChange={setKey}
+      searchPlaceholder="Search reports…" searchNoun="reports">
       <div className="flex flex-col gap-4">
         {!active?.hasOwnControls && (
           <div className="flex items-center justify-between gap-2">

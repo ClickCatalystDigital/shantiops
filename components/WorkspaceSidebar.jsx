@@ -22,16 +22,21 @@ import { cn } from '@/lib/utils';
 // tabs users have to remember are related.
 // `header` (optional): custom node rendered in a pinned bar above scrollable children, replacing
 // the default mobile-only trigger bar with one that's visible at every breakpoint.
-export default function WorkspaceSidebar({ title, icon: TitleIcon = LayoutPanelTopIcon, items, groups, activeKey, onChange, children, nested = false, hideHeader = false, header }) {
+export default function WorkspaceSidebar({ title, icon: TitleIcon = LayoutPanelTopIcon, items, groups, activeKey, onChange, children, nested = false, hideHeader = false, header, searchPlaceholder = 'Search…', searchNoun = 'items' }) {
+  // A `groups` entry can itself be a `group: true, children: [...]` item (e.g. Sales' Payment
+  // Tracker nested under "Billing & Payments") — flatten those the same way flat `items` mode
+  // already does below, so activeItem/defaultOpenGroup/search all see the real leaf keys.
+  const flattenGroupItems = list => list.flatMap(item => item.group ? item.children : item);
   const flatItems = groups
-    ? groups.flatMap(g => g.items)
+    ? groups.flatMap(g => flattenGroupItems(g.items))
     : items.filter(item => !item.divider).flatMap(item => item.group ? item.children : item);
   const activeItem = flatItems.find(item => item.key === activeKey) || flatItems[0];
   // Accordion, one department open at a time — a `groups` sidebar with many sections (e.g. Reports'
   // 9 departments, 44 items total) used to render every group fully expanded, so "navigate" meant
   // scroll past everything else. Default open = whichever group holds the active item, so switching
-  // reports never surprises you by collapsing your own place.
-  const defaultOpenGroup = groups?.find(g => g.items.some(i => i.key === activeKey))?.label ?? groups?.[0]?.label;
+  // reports never surprises you by collapsing your own place. Matches a nested group's own child
+  // key too, not just a leaf item's key directly in `g.items`.
+  const defaultOpenGroup = groups?.find(g => flattenGroupItems(g.items).some(i => i.key === activeKey))?.label ?? groups?.[0]?.label;
   const [openGroup, setOpenGroup] = useState(defaultOpenGroup);
 
   // Search across groups (2026-08-23) — only meaningful for the `groups` render mode: a flat
@@ -39,12 +44,15 @@ export default function WorkspaceSidebar({ title, icon: TitleIcon = LayoutPanelT
   // multi-department view can run 9 departments / 40+ report buttons behind the accordion, which
   // is exactly what search needs to cut through. Matching groups auto-expand while a query is
   // active (bypassing the normal one-open-at-a-time accordion) so every hit is visible at once
-  // without extra clicking; clearing the box reverts to the last manually-opened group.
+  // without extra clicking; clearing the box reverts to the last manually-opened group. A nested
+  // `group: true` item stays visible if its own label matches OR any of its children's do — a
+  // search for "Payments" should surface the Payment Tracker parent with its Payments child shown.
   const [query, setQuery] = useState('');
   const needle = query.trim().toLowerCase();
+  const itemMatches = i => i.label.toLowerCase().includes(needle) || (i.group && i.children.some(c => c.label.toLowerCase().includes(needle)));
   const searchedGroups = groups && needle
     ? groups
-        .map(g => ({ ...g, items: g.items.filter(i => i.label.toLowerCase().includes(needle)) }))
+        .map(g => ({ ...g, items: g.items.filter(itemMatches) }))
         .filter(g => g.items.length > 0)
     : groups;
 
@@ -97,7 +105,7 @@ export default function WorkspaceSidebar({ title, icon: TitleIcon = LayoutPanelT
           {groups && (
             <div className="relative px-2 pb-2 pt-1 group-data-[collapsible=icon]:hidden">
               <SearchIcon className="pointer-events-none absolute left-4.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-              <Input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search reports…"
+              <Input value={query} onChange={e => setQuery(e.target.value)} placeholder={searchPlaceholder}
                 className="h-8 pl-7 pr-7 text-sm" />
               {query && (
                 <button type="button" aria-label="Clear search" onClick={() => setQuery('')}
@@ -108,7 +116,7 @@ export default function WorkspaceSidebar({ title, icon: TitleIcon = LayoutPanelT
             </div>
           )}
           {groups && needle && searchedGroups.length === 0 && (
-            <p className="px-4 py-3 text-xs text-muted-foreground">No reports match "{query.trim()}".</p>
+            <p className="px-4 py-3 text-xs text-muted-foreground">No {searchNoun} match "{query.trim()}".</p>
           )}
           {searchedGroups ? searchedGroups.map(group => {
             const isOpen = needle ? true : openGroup === group.label;
@@ -126,6 +134,26 @@ export default function WorkspaceSidebar({ title, icon: TitleIcon = LayoutPanelT
                 <SidebarMenu>
                   {group.items.map(item => {
                     const Icon = item.icon || LayoutPanelTopIcon;
+                    // Same nested-parent shape flat `items` mode already renders (lines below) —
+                    // a labeled section can contain a `group: true` item with its own children
+                    // (e.g. Payment Tracker's Orders/Payments under "Billing & Payments").
+                    if (item.group) return (
+                      <SidebarMenuItem key={item.key}>
+                        <SidebarMenuButton isActive={item.children.some(c => c.key === activeKey)} tooltip={item.label} onClick={() => onChange(item.children[0].key)}>
+                          <Icon />
+                          <span>{item.label}</span>
+                        </SidebarMenuButton>
+                        <SidebarMenuSub>
+                          {item.children.map(child => (
+                            <SidebarMenuSubItem key={child.key}>
+                              <SidebarMenuSubButton isActive={activeKey === child.key} onClick={() => onChange(child.key)} className="cursor-pointer">
+                                <span>{child.label}</span>
+                              </SidebarMenuSubButton>
+                            </SidebarMenuSubItem>
+                          ))}
+                        </SidebarMenuSub>
+                      </SidebarMenuItem>
+                    );
                     return (
                       <SidebarMenuItem key={item.key}>
                         <SidebarMenuButton isActive={activeKey === item.key} tooltip={item.label} onClick={() => onChange(item.key)}>
