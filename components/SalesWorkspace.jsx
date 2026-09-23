@@ -24,7 +24,7 @@ import { PRODUCT_TYPES } from '@/lib/sales-product-types';
 import { COMPANY_NAMES } from '@/lib/company-profiles.js';
 import {
   PlusIcon, TrashIcon, UserPlusIcon, UsersIcon, FileTextIcon, ShoppingCartIcon,
-  MegaphoneIcon, CheckSquareIcon, ContactIcon, MessageCircleIcon, MailIcon, TagIcon,
+  CheckSquareIcon, ContactIcon, MessageCircleIcon, MailIcon, TagIcon,
   InboxIcon, UndoIcon, IndianRupeeIcon, ReceiptIcon, DownloadIcon, UploadIcon, FileCheckIcon,
   WalletIcon, ClipboardListIcon, BanknoteIcon, Building2Icon, PackageIcon, TargetIcon, StarIcon,
   PencilIcon,
@@ -2030,60 +2030,8 @@ function ReturnsTab({ returns, saleOrders, inventoryItems, router }) {
   );
 }
 
-// --- Campaigns -------------------------------------------------------------------------------------
-
-function AddCampaignDialog({ onClose, router }) {
-  const [name, setName] = useState('');
-  const [saving, setSaving] = useState(false);
-  async function save() {
-    if (!name.trim()) return showToast('Name is required', 'error');
-    setSaving(true);
-    try {
-      await api('/api/campaigns', { method: 'POST', body: { name: name.trim() } });
-      showToast('Campaign added');
-      router.refresh();
-      onClose();
-    } catch (err) { showToast(err.message, 'error'); } finally { setSaving(false); }
-  }
-  return (
-    <Dialog open onOpenChange={o => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>New Campaign</DialogTitle></DialogHeader>
-        <div className="grid gap-1.5"><Label>Name</Label><Input value={name} onChange={e => setName(e.target.value)} autoFocus /></div>
-        <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Add Campaign'}</Button></DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function CampaignsTab({ campaigns, router }) {
-  const [dialogOpen, setDialogOpen] = useState(false);
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Campaigns</CardTitle>
-        <CardAction><Button size="sm" onClick={() => setDialogOpen(true)}><PlusIcon />New Campaign</Button></CardAction>
-      </CardHeader>
-      <CardContent>
-        {campaigns.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No campaigns yet.</p> : (
-          <Table>
-            <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Status</TableHead><TableHead>Owner</TableHead></TableRow></TableHeader>
-            <TableBody>
-              {campaigns.map(c => (
-                <TableRow key={c.id}>
-                  <TableCell className="font-medium">{c.name}</TableCell>
-                  <TableCell><Badge variant="outline">{c.status}</Badge></TableCell>
-                  <TableCell className="text-muted-foreground">{c.owner_dept}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </CardContent>
-      {dialogOpen && <AddCampaignDialog router={router} onClose={() => setDialogOpen(false)} />}
-    </Card>
-  );
-}
+// Campaigns/AddCampaignDialog moved to components/MarketingWorkspace.jsx (2026-09-24) — Marketing
+// has its own tab/URL now (/market), split from Sales.
 
 // --- Tasks (sidebar panel — every CRM task across leads/opportunities/customers) ---------------
 
@@ -2510,42 +2458,44 @@ const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 // ship in the same round — "Pipeline" is deliberately NOT used as a group label here: that name
 // already belongs to the separate top-nav Opportunities tab (/pipeline), and reusing it for
 // Enquiry/Leads would recreate the exact conceptual duplication a design review flagged.
+//
+// Marketing split off (2026-09-24) into its own tab/URL/component (/market,
+// components/MarketingWorkspace.jsx) — this workspace is Sales-exclusive now, so the old
+// per-item `salesOnly` flag (used to filter this same array down for a Marketing viewer) is gone;
+// every item below always renders for whoever reaches /sales.
 const PANEL_GROUPS = [
   { label: 'Leads & Enquiries', items: [
-    { key: 'enquiry', label: 'Enquiry', icon: InboxIcon, description: 'New, not-yet-qualified enquiries', salesOnly: false },
-    { key: 'leads', label: 'Leads', icon: UserPlusIcon, description: 'Prospects not yet qualified', salesOnly: false },
+    { key: 'enquiry', label: 'Enquiry', icon: InboxIcon, description: 'New, not-yet-qualified enquiries' },
+    { key: 'leads', label: 'Leads', icon: UserPlusIcon, description: 'Prospects not yet qualified' },
   ] },
   { label: 'Commercial', items: [
-    { key: 'customers', label: 'Customers', icon: UsersIcon, description: 'Accounts, contacts and addresses', salesOnly: true },
-    { key: 'quotations', label: 'Quotations', icon: FileTextIcon, description: 'Proposals sent to customers', salesOnly: true },
-    { key: 'price_lists', label: 'Price Lists', icon: TagIcon, description: 'Customer/product rates and validity', salesOnly: true },
-    { key: 'sale_orders', label: 'Sale Orders', icon: ShoppingCartIcon, description: 'Accepted orders', salesOnly: true },
-    { key: 'scope_of_supply', label: 'Scope of Supply', icon: FileCheckIcon, description: 'Priced deliverables for a converted project', salesOnly: true },
+    { key: 'customers', label: 'Customers', icon: UsersIcon, description: 'Accounts, contacts and addresses' },
+    { key: 'quotations', label: 'Quotations', icon: FileTextIcon, description: 'Proposals sent to customers' },
+    { key: 'price_lists', label: 'Price Lists', icon: TagIcon, description: 'Customer/product rates and validity' },
+    { key: 'sale_orders', label: 'Sale Orders', icon: ShoppingCartIcon, description: 'Accepted orders' },
+    { key: 'scope_of_supply', label: 'Scope of Supply', icon: FileCheckIcon, description: 'Priced deliverables for a converted project' },
   ] },
   { label: 'Billing & Payments', items: [
-    { key: 'invoices', label: 'Invoices', icon: ReceiptIcon, description: 'Sales Invoices and Credit Notes', salesOnly: true },
+    { key: 'invoices', label: 'Invoices', icon: ReceiptIcon, description: 'Sales Invoices and Credit Notes' },
     // Nested group, same shape as QcWorkspace's Approvals (Inward / Pre-Dispatch).
     {
-      key: 'payment_tracker', label: 'Payment Tracker', icon: WalletIcon, salesOnly: true, group: true,
+      key: 'payment_tracker', label: 'Payment Tracker', icon: WalletIcon, group: true,
       children: [
         { key: 'payment_orders', label: 'Orders', icon: ClipboardListIcon, description: 'Order stages, value and payment position' },
         { key: 'payment_log', label: 'Payments', icon: BanknoteIcon, description: 'Log of payments received against orders' },
       ],
     },
-    { key: 'returns', label: 'Returns', icon: UndoIcon, description: 'Returned material against a Sale Order', salesOnly: true },
-  ] },
-  { label: 'Marketing', items: [
-    { key: 'campaigns', label: 'Campaigns', icon: MegaphoneIcon, description: 'Marketing initiatives', salesOnly: false },
+    { key: 'returns', label: 'Returns', icon: UndoIcon, description: 'Returned material against a Sale Order' },
   ] },
   { label: 'Activity', items: [
-    { key: 'tasks', label: 'Tasks', icon: CheckSquareIcon, description: 'Every to-do across leads, deals and customers', salesOnly: false },
-    { key: 'team', label: 'Team', icon: ContactIcon, description: 'Auto-assign new leads round-robin', salesOnly: false },
+    { key: 'tasks', label: 'Tasks', icon: CheckSquareIcon, description: 'Every to-do across leads, deals and customers' },
+    { key: 'team', label: 'Team', icon: ContactIcon, description: 'Auto-assign new leads round-robin' },
   ] },
   { label: 'Setup', items: [
-    // Branches/Product Master/Sales Targets, shared by both Sales and Marketing (the same reach
-    // Enquiry/Leads already have), same nested-group shape as Payment Tracker above.
+    // Branches/Product Master/Sales Targets/Email Templates — Sales-operational masters, same
+    // nested-group shape as Payment Tracker above.
     {
-      key: 'masters', label: 'Masters', icon: PackageIcon, salesOnly: false, group: true,
+      key: 'masters', label: 'Masters', icon: PackageIcon, group: true,
       children: [
         { key: 'branches', label: 'Branches', icon: Building2Icon, description: 'Office/location list for Enquiry and Sale Orders' },
         { key: 'products', label: 'Products', icon: PackageIcon, description: 'The sellable-SKU catalog' },
@@ -2556,23 +2506,18 @@ const PANEL_GROUPS = [
   ] },
 ];
 
-export default function SalesWorkspace({ saleOrders, leads, customers, quotations, campaigns, priceLists = [], returns = [], inventoryItems = [], invoices = [], creditNotes = [], departments = ['Sales', 'Marketing'], users = [], savedViews = [], initialTab, canEditSoTax = false, projects = [], scopeOfSupply = [], initialScopeProject, salePayments = [], branches = [], salesProducts = [], salesTargets = [] }) {
+export default function SalesWorkspace({ saleOrders, leads, customers, quotations, priceLists = [], returns = [], inventoryItems = [], invoices = [], creditNotes = [], departments = ['Sales'], users = [], savedViews = [], initialTab, canEditSoTax = false, projects = [], scopeOfSupply = [], initialScopeProject, salePayments = [], branches = [], salesProducts = [], salesTargets = [] }) {
   const router = useRouter();
-  // Customers/Quotations/Sale Orders are the commercial fulfilment chain — Sales-owned. Marketing
-  // shares Leads/Campaigns/Reports (both departments feed the pipeline) but doesn't manage orders.
-  const inSales = departments.includes('Sales');
-  // Filter salesOnly per-item, then drop any group left with zero items — a Marketing-only session
-  // must never see an empty "Commercial"/"Billing & Payments" header with nothing under it.
-  const groups = PANEL_GROUPS
-    .map(g => ({ ...g, items: g.items.filter(p => !p.salesOnly || inSales) }))
-    .filter(g => g.items.length > 0);
+  // Sales-only now — Marketing has its own tab/URL (/market, MarketingWorkspace.jsx). No more
+  // per-viewer group filtering; every group in PANEL_GROUPS always renders here.
+  const groups = PANEL_GROUPS;
   // Deep-link tab selection (Part B) — same server-prop pattern as QcWorkspace.jsx.
   const flat = groups.flatMap(g => g.items.flatMap(p => (p.group ? p.children : [p])));
   const [panel, setPanel] = useState(flat.some(p => p.key === initialTab) ? initialTab : 'leads');
   const activePanel = flat.find(p => p.key === panel) || flat[0];
 
   return (
-    <WorkspaceSidebar title={inSales ? 'Sales' : 'Marketing'} icon={MegaphoneIcon} groups={groups}
+    <WorkspaceSidebar title="Sales" icon={TagIcon} groups={groups}
       activeKey={panel} onChange={setPanel} searchPlaceholder="Search…" searchNoun="sections"
       header={
         <>
@@ -2597,7 +2542,6 @@ export default function SalesWorkspace({ saleOrders, leads, customers, quotation
           {activePanel.key === 'payment_orders' && <PaymentOrdersTab saleOrders={saleOrders} payments={salePayments} invoices={invoices} customers={customers} />}
           {activePanel.key === 'payment_log' && <PaymentLogTab saleOrders={saleOrders} payments={salePayments} invoices={invoices} />}
           {activePanel.key === 'returns' && <ReturnsTab returns={returns} saleOrders={saleOrders} inventoryItems={inventoryItems} router={router} />}
-          {activePanel.key === 'campaigns' && <CampaignsTab campaigns={campaigns} router={router} />}
           {activePanel.key === 'tasks' && <AllTasksTab users={users} />}
           {activePanel.key === 'team' && <TeamTab users={users} departments={departments} />}
           {activePanel.key === 'branches' && <BranchesTab branches={branches} router={router} />}
