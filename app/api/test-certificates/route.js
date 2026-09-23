@@ -9,11 +9,12 @@ import { getTestCertificates } from '@/lib/data';
 
 // Phase 4 (QC statutory-forms plan) — Stores needs to browse/pick from the bank while receiving an
 // MTC-required BOM line (components/ReceiveBomItemDialog.jsx); QC already reads this server-side via
-// getTestCertificates() on its own pages. Read-only, so both departments (canAccessDepartment already
-// passes a PM through either check).
+// getTestCertificates() on its own pages. Production reads it too (Job Card §5l addendum — linking
+// which certified plate/heat a stage's work was verified against). Read-only, so all three
+// departments (canAccessDepartment already passes a PM through any check).
 export async function GET(req) {
   const user = await getFreshSessionUser();
-  if (!canAccessDepartment(user, 'Stores') && !canAccessDepartment(user, 'QC')) {
+  if (!canAccessDepartment(user, 'Stores') && !canAccessDepartment(user, 'QC') && !canAccessDepartment(user, 'Production')) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
   const projectId = new URL(req.url).searchParams.get('project_id');

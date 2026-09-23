@@ -7,7 +7,7 @@ import {
   SunIcon, MoonIcon, SettingsIcon, LogOutIcon, LayoutGridIcon, BarChart3Icon,
   LayoutDashboardIcon, FolderKanbanIcon, PackageIcon, ShieldCheckIcon, InfoIcon,
   CalendarDaysIcon, HardHatIcon, ShoppingCartIcon, InboxIcon, FlaskConicalIcon,
-  TagIcon, WarehouseIcon, TrendingUpIcon, UsersIcon, CalculatorIcon, MapPinIcon, NetworkIcon,
+  TagIcon, WarehouseIcon, TrendingUpIcon, UsersIcon, CalculatorIcon, MapPinIcon, NetworkIcon, MegaphoneIcon,
   LandmarkIcon, ClipboardListIcon, PencilRulerIcon,
 } from 'lucide-react';
 import { DEPARTMENTS } from '@/lib/milestones';
@@ -53,7 +53,7 @@ export default function Nav({ user, reportDepartments = [] }) {
   // the user's tab set on the next render without hard-coded per-user roles.
   const deptTabs = [];
   const addDeptTab = (depts, href, label, icon) => {
-    if (isDeptPM && (href === '/production' || href === '/production/workers')) return;
+    if (isDeptPM && (href === '/production' || href === '/production/shop')) return;
     if (depts.some(d => tabDepartments.includes(d))) deptTabs.push({ href, label, icon });
   };
   // Tasks (/production) dropped — identical content to Home for a Production head, kept as a
@@ -65,11 +65,11 @@ export default function Nav({ user, reportDepartments = [] }) {
   // Procurement → Stores → Production → QC → Dispatch → Installation → Accounts), not alphabetical
   // or historical add-order — makes the tab strip itself read as the pipeline during a live demo.
   // HR is orthogonal to the boiler pipeline, kept last among department tabs.
-  // Label follows the same inSales split SalesWorkspace.jsx's own sidebar header already uses — a
-  // Marketing-only head (no Sales grant) gets a tab that actually says "Marketing", matching what
-  // they see the moment they click in, instead of an always-"Sales" label regardless of which of
-  // the two departments actually granted them access.
-  addDeptTab(['Sales', 'Marketing'], '/sales', tabDepartments.includes('Sales') ? 'Sales' : 'Marketing', TagIcon);
+  // Sales and Marketing each get their own independently-gated tab/URL (2026-09-24) — was one
+  // shared call producing one tab for either department; now a head granted both (via Settings →
+  // Access Matrix, already department-agnostic, no change needed there) sees both tabs.
+  addDeptTab(['Sales'], '/sales', 'Sales', TagIcon);
+  addDeptTab(['Marketing'], '/market', 'Marketing', MegaphoneIcon);
   addDeptTab(['Sales', 'Marketing'], '/pipeline', 'Pipeline', TrendingUpIcon);
   addDeptTab(['Design', 'Engineering'], '/calc', 'Calc Sheets', CalculatorIcon);
   addDeptTab(['Design', 'Engineering'], '/calc-drawings', 'Drawings', PencilRulerIcon);
@@ -80,7 +80,7 @@ export default function Nav({ user, reportDepartments = [] }) {
   addDeptTab(['Design', 'Engineering'], '/engineering', 'Engineering', NetworkIcon);
   addDeptTab(['Procurement'], '/procurement', 'Procurement', ShoppingCartIcon);
   addDeptTab(['Stores'], '/stores', 'Inventory', WarehouseIcon);
-  addDeptTab(['Production'], '/production/workers', 'Shop Floor', HardHatIcon);
+  addDeptTab(['Production'], '/production/shop', 'Shop Floor', HardHatIcon);
   // Deferred backlog / planning-notes page for Production-side work that needs real scoping before
   // it's built (starting with the stock-piece Cut UI gap found 2026-08-26) — same department gate
   // as Shop Floor, deliberately separate from it since it's write-once notes, not a live workspace.

@@ -5,7 +5,7 @@
 // (lib/milestone-auto.js) keeps working for against_order Work Orders exactly as it does for
 // hand-created cards.
 import { NextResponse } from 'next/server';
-import { execute, queryAll, queryOne } from '@/lib/db';
+import { execute, queryAll, queryOne, nextNumber } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
@@ -36,15 +36,18 @@ export async function POST(req, { params }) {
   let created = 0;
   for (const op of ops) {
     const section = op.department || op.operation_name || `Work Order route step #${op.seq}`;
+    // jc_no — every other job_cards INSERT path (manual create, batch-children) already mints one;
+    // this was the one real gap (found while verifying the printed traveler, which now shows it).
+    const jcNo = await nextNumber('jc_no', 'JC');
     // Hold-point gate (plan §5d) — a route step that already names a QC checkpoint IS a hold point,
     // no separate ITP document type needed.
     await execute(
       `INSERT INTO job_cards
          (project_id, milestone_id, section, operation_id, workstation_id, qty_planned, work_order_id,
-          work_order_operation_id, requires_qc_hold, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          work_order_operation_id, requires_qc_hold, created_by, jc_no)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [wo.project_id, op.milestone_id, section, op.operation_id, op.workstation_id, wo.qty_planned,
-        wo.id, op.id, op.quality_checkpoint ? 1 : 0, user.username]
+        wo.id, op.id, op.quality_checkpoint ? 1 : 0, user.username, jcNo]
     );
     created++;
   }

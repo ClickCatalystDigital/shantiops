@@ -9,6 +9,9 @@ import { getWorkOrderDetail } from '@/lib/data';
 import { audit } from '@/lib/usb';
 
 const BASELINE_FIELDS = ['qty_planned', 'planned_start', 'planned_end', 'product_description'];
+// Printed Job Card traveler header fields — informational/compliance metadata, not the WO's
+// production baseline, so these stay freely editable at any status (no Change Note needed).
+const TRAVELER_FIELDS = ['drawing_approved_on', 'drg_nos', 'boiler_plate_nos', 'ibr_bvi'];
 const TRANSITIONS = {
   draft: ['released', 'cancelled'],
   released: ['in_progress', 'cancelled'],
@@ -50,7 +53,7 @@ export async function PATCH(req, { params }) {
 
   const actionDenied = await requireAction(user, 'Production', 'production.workorder.edit');
   if (actionDenied) return actionDenied;
-  const keys = Object.keys(b).filter(k => ['notes', ...BASELINE_FIELDS].includes(k));
+  const keys = Object.keys(b).filter(k => ['notes', ...BASELINE_FIELDS, ...TRAVELER_FIELDS].includes(k));
   if (!keys.length) return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
   const lockedKeys = keys.filter(k => BASELINE_FIELDS.includes(k));
   if (lockedKeys.length && wo.status !== 'draft') {

@@ -146,7 +146,7 @@ export async function OperationsPage({ searchParams }) {
     cards.push({
       dept: 'Production', flow: <ProductionFlow counts={counts} bare />, outgoing, incoming,
       work, columns: BOM_WORK_COLUMNS, sourcingItems, emptyMessage: 'Nothing received and awaiting production yet.',
-      href: '/production/workers', linkLabel: 'Open Job Card workspace →',
+      href: '/production/shop', linkLabel: 'Open Job Card workspace →',
     });
   }
   if (deptsToShow.includes('Engineering')) {

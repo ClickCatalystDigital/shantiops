@@ -10,7 +10,7 @@ import { syncProductionMilestoneById } from '@/lib/milestone-auto';
 import { notifyDepartment } from '@/lib/notify';
 
 const STATUSES = ['pending', 'progress', 'done'];
-const EDITABLE = ['workstation_id', 'qty_planned', 'qty_done', 'qty_rejected', 'status', 'is_paused', 'planned_start', 'planned_end', 'notes'];
+const EDITABLE = ['workstation_id', 'qty_planned', 'qty_done', 'qty_rejected', 'status', 'is_paused', 'planned_start', 'planned_end', 'notes', 'test_certificate_id'];
 
 export async function GET(req, { params }) {
   const user = await getFreshSessionUser();

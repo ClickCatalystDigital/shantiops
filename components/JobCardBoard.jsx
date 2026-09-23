@@ -21,6 +21,7 @@ import {
 import { PlusIcon } from 'lucide-react';
 import QuickAddInline from '@/components/QuickAddInline';
 import { RaiseNcrDialog } from '@/components/NcrPanel';
+import CertPicker from '@/components/CertPicker';
 
 const COLUMNS = [
   { key: 'pending', label: 'Pending' },
@@ -293,6 +294,10 @@ function JobCardDetailSheet({ id, onClose, router, workers }) {
   const [hoursForm, setHoursForm] = useState({ employee_id: '', minutes: '', fromTime: '', toTime: '' });
   const [consumableForm, setConsumableForm] = useState({ item_name: '', qty: '', unit: '' });
   const [raisingNcr, setRaisingNcr] = useState(false);
+  // Test Certificate link (§5l addendum) — which certified plate/heat this stage's work was
+  // verified against. Fetched lazily, same pattern as ReceiveBomItemDialog's own cert picker.
+  const [certificates, setCertificates] = useState([]);
+  const [certPickerOpen, setCertPickerOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -300,6 +305,11 @@ function JobCardDetailSheet({ id, onClose, router, workers }) {
       .catch(err => showToast(err.message, 'error'));
     return () => { cancelled = true; };
   }, [id]);
+
+  useEffect(() => {
+    if (!detail?.project_id) return;
+    api(`/api/test-certificates?project_id=${detail.project_id}`).then(setCertificates).catch(() => {});
+  }, [detail?.project_id]);
 
   async function refresh() {
     setDetail(await api(`/api/job-cards/${id}`));
@@ -427,6 +437,21 @@ function JobCardDetailSheet({ id, onClose, router, workers }) {
               <QtyField label="Rejected" value={detail.qty_rejected} onSave={v => updateField('qty_rejected', v)} />
             </div>
 
+            <div className="flex flex-col gap-1">
+              <Label className="text-xs text-muted-foreground">Test Certificate No.</Label>
+              <div className="flex items-center gap-2">
+                <Button type="button" size="sm" variant="outline" className="flex-1 justify-start font-normal"
+                  onClick={() => setCertPickerOpen(true)}>
+                  {detail.test_certificate_no
+                    ? `${detail.test_certificate_no} · ${detail.test_certificate_cast_no}`
+                    : 'Link a certificate…'}
+                </Button>
+                {detail.test_certificate_id && (
+                  <Button type="button" size="sm" variant="ghost" onClick={() => updateField('test_certificate_id', null)}>Unlink</Button>
+                )}
+              </div>
+            </div>
+
             <div className="flex flex-col gap-2 border-t pt-4">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-medium">Time logged</p>
@@ -505,6 +530,11 @@ function JobCardDetailSheet({ id, onClose, router, workers }) {
       {raisingNcr && detail && (
         <RaiseNcrDialog open onOpenChange={setRaisingNcr}
           projectId={detail.project_id} jobCardId={detail.id} onRaised={refresh} />
+      )}
+      {detail && (
+        <CertPicker open={certPickerOpen} onOpenChange={setCertPickerOpen} title="Link test certificate"
+          certificates={certificates} project={{ id: detail.project_id }}
+          onPick={certId => updateField('test_certificate_id', certId)} />
       )}
     </Sheet>
   );

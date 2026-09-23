@@ -6,6 +6,7 @@ import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { deleteObject } from '@/lib/r2';
+import { findBlockingReferences } from '@/lib/test-certificate-guard';
 
 const EDITABLE = [
   'certificate_no', 'cast_no', 'heat_no', 'plate_no', 'material_spec', 'steel_maker',
@@ -87,11 +88,10 @@ export async function DELETE(req, { params }) {
   const cert = await queryOne('SELECT id, pdf_key, certificate_no FROM test_certificates WHERE id = ?', [params.id]);
   if (!cert) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  const used = await queryOne(
-    'SELECT COUNT(*) AS n FROM qc_document_parts WHERE test_certificate_id = ?', [params.id]);
-  if (used.n > 0) {
+  const { blocked, reasons } = await findBlockingReferences(params.id);
+  if (blocked) {
     return NextResponse.json(
-      { error: `Still used by ${used.n} statutory-document part${used.n === 1 ? '' : 's'} — unlink it there first` },
+      { error: `Can't delete — this certificate ${reasons.map(r => r.label).join(' and ')}. Unlink it there first.` },
       { status: 409 });
   }
 

@@ -279,7 +279,7 @@ function DailySheet({ date, rows, projects }) {
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-3">
         <Input type="date" value={date} className="w-44" aria-label="Sheet date"
-          onChange={e => e.target.value && router.push(`/production/workers?date=${e.target.value}`)} />
+          onChange={e => e.target.value && router.push(`/production/shop?date=${e.target.value}`)} />
         <p className="text-sm text-muted-foreground tnum">
           {count('present')} present · {count('half')} half day · {count('absent')} absent ·{' '}
           {rows.filter(r => !r.status).length} unmarked
@@ -411,7 +411,7 @@ function Roster({ workers, trades }) {
 
   async function toggleActive(w) {
     try {
-      await api(`/api/production/workers/${w.id}`, { method: 'PATCH', body: { active: !w.active } });
+      await api(`/api/production/shop/${w.id}`, { method: 'PATCH', body: { active: !w.active } });
       router.refresh();
     } catch (err) { showToast(err.message, 'error'); }
   }
@@ -454,7 +454,7 @@ function RosterRow({ w, router, trades, onToggle }) {
 
   async function saveField(field, value) {
     try {
-      await api(`/api/production/workers/${w.id}`, { method: 'PATCH', body: { [field]: value } });
+      await api(`/api/production/shop/${w.id}`, { method: 'PATCH', body: { [field]: value } });
       router.refresh();
     } catch (err) {
       if (field === 'name') setName(w.name); // roll back to the server's value
@@ -526,7 +526,7 @@ function AddWorkerDialog({ router, trades: initialTrades }) {
     if (!query.trim()) return;
     setSearching(true);
     try {
-      setResults(await api(`/api/production/workers?search=${encodeURIComponent(query.trim())}`));
+      setResults(await api(`/api/production/shop?search=${encodeURIComponent(query.trim())}`));
       setCreateMode(false);
     } catch (err) { showToast(err.message, 'error'); }
     setSearching(false);
@@ -535,7 +535,7 @@ function AddWorkerDialog({ router, trades: initialTrades }) {
   async function activate(employeeId) {
     setBusy(true);
     try {
-      await api('/api/production/workers', { method: 'POST', body: { employee_id: employeeId, trade: trade || null } });
+      await api('/api/production/shop', { method: 'POST', body: { employee_id: employeeId, trade: trade || null } });
       showToast('Worker added to Production roster');
       setOpen(false); reset(); router.refresh();
     } catch (err) { showToast(err.message, 'error'); }
@@ -546,7 +546,7 @@ function AddWorkerDialog({ router, trades: initialTrades }) {
     if (!createName.trim()) return showToast('Worker name is required', 'error');
     setBusy(true);
     try {
-      await api('/api/production/workers', { method: 'POST', body: { name: createName.trim(), trade: trade || null } });
+      await api('/api/production/shop', { method: 'POST', body: { name: createName.trim(), trade: trade || null } });
       showToast('Worker added');
       setOpen(false); reset(); router.refresh();
     } catch (err) { showToast(err.message, 'error'); }

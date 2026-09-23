@@ -124,13 +124,13 @@ export default function ProductionFlow({ counts, bare = false }) {
             help="Draft Work Orders whose Process Route Card already has at least one step defined." />
           <IndicatorChip label="Material" value={counts.material?.value ?? 0} href={counts.material?.href}
             help="Material issued from Stores to WIP, plus plate/section pieces actually cut, across active projects." />
-          <IndicatorChip label="Labour" href="/production/workers?tab=workorders"
+          <IndicatorChip label="Labour" href="/production/shop?tab=workorders"
             help="Logged hours and labor cost per Job Card and Work Order — open a Work Order and Load Costing." />
-          <IndicatorChip label="Costing" href="/production/workers?tab=workorders"
+          <IndicatorChip label="Costing" href="/production/shop?tab=workorders"
             help="Planned vs. actual material and labor — open a Work Order and Load Costing." />
-          <IndicatorChip label="Forecast" href="/production/workers?tab=forecast"
+          <IndicatorChip label="Forecast" href="/production/shop?tab=forecast"
             help="Upcoming Work Orders, workstation load, and outstanding material demand for the next 30 days." />
-          <IndicatorChip label="Change Notes" value={counts.changeNotes ?? 0} href="/production/workers?tab=workorders"
+          <IndicatorChip label="Change Notes" value={counts.changeNotes ?? 0} href="/production/shop?tab=workorders"
             help="Controlled baseline changes logged against released Work Orders (quantity, dates, product description)." />
         </div>
 
@@ -159,13 +159,13 @@ export default function ProductionFlow({ counts, bare = false }) {
           <div className="flex flex-wrap items-center gap-y-4">
             {SECONDARY_STAGES.map((s, i) => (
               <div key={s.key} className="flex items-center">
-                <StageBox value={counts[s.key] || 0} label={s.label} help={s.help} tone={s.tone} href="/production/workers?tab=jobcards" />
+                <StageBox value={counts[s.key] || 0} label={s.label} help={s.help} tone={s.tone} href="/production/shop?tab=jobcards" />
                 {i < SECONDARY_STAGES.length - 1 && <ChevronRightIcon className="mx-1.5 size-4 shrink-0 text-muted-foreground/40" />}
               </div>
             ))}
             <div className="flex items-center">
               <ChevronDownIcon className="mx-1.5 size-4 shrink-0 text-danger/40" />
-              <StageBox value={counts.rework || 0} label="Rework (open)" help={REWORK_HELP} tone="danger" href="/production/workers?tab=jobcards" />
+              <StageBox value={counts.rework || 0} label="Rework (open)" help={REWORK_HELP} tone="danger" href="/production/shop?tab=jobcards" />
             </div>
           </div>
         </div>
@@ -180,7 +180,7 @@ export default function ProductionFlow({ counts, bare = false }) {
         <CardTitle>Production</CardTitle>
         <CardAction>
           <Button asChild size="sm" variant="outline">
-            <Link href="/production/workers">Open Job Card workspace →</Link>
+            <Link href="/production/shop">Open Job Card workspace →</Link>
           </Button>
         </CardAction>
       </CardHeader>

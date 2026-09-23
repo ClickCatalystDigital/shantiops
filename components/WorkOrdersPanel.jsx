@@ -45,6 +45,11 @@ export default function WorkOrdersPanel({ projects, operations, workstations, in
   const router = useRouter();
   const [workOrders, setWorkOrders] = useState(null);
   const [openId, setOpenId] = useState(null);
+  // Reusable Process Route Card templates (§5l addendum) — fetched once, threaded into the detail
+  // sheet, refetched whenever a "Save as template" completes so a newly-saved one is pickable right away.
+  const [routeTemplates, setRouteTemplates] = useState([]);
+  function loadRouteTemplates() { api('/api/work-order-route-templates').then(setRouteTemplates).catch(() => {}); }
+  useEffect(() => { loadRouteTemplates(); }, []);
   const [status, setStatus] = useState(STATUS_OPTIONS.some(o => o.value === initialStatus) ? initialStatus : 'all');
   const [projectFilter, setProjectFilter] = useState('all');
   // Deep-link "click-to-open detail" (Part B) — a WO- reference opens the same detail sheet a row
@@ -130,6 +135,7 @@ export default function WorkOrdersPanel({ projects, operations, workstations, in
       )}
       {openId && (
         <WorkOrderDetail id={openId} projects={projects} operations={operations} workstations={workstations}
+          routeTemplates={routeTemplates} onRouteTemplateSaved={loadRouteTemplates}
           onClose={() => setOpenId(null)} onChanged={() => { load(); router.refresh(); }} />
       )}
     </div>
@@ -211,7 +217,7 @@ function NewWorkOrderDialog({ projects, onCreated }) {
   );
 }
 
-function WorkOrderDetail({ id, projects, operations, workstations, onClose, onChanged }) {
+function WorkOrderDetail({ id, projects, operations, workstations, routeTemplates, onRouteTemplateSaved, onClose, onChanged }) {
   const [detail, setDetail] = useState(null);
   const [busy, setBusy] = useState(false);
   const [bomItems, setBomItems] = useState(null);
@@ -219,6 +225,8 @@ function WorkOrderDetail({ id, projects, operations, workstations, onClose, onCh
   const [opForm, setOpForm] = useState({ operation_id: '', workstation_id: '', milestone_id: '', department: '', planned_minutes: '', quality_checkpoint: '' });
   const [matForm, setMatForm] = useState({ bom_item_id: '', description: '', qty_required: '', unit_cost: '' });
   const [noteForm, setNoteForm] = useState({ field: 'qty_planned', new_value: '', reason: '' });
+  const [applyTemplateId, setApplyTemplateId] = useState('');
+  const [saveTemplateOpen, setSaveTemplateOpen] = useState(false);
 
   async function refresh() {
     setDetail(await api(`/api/work-orders/${id}`));
@@ -258,6 +266,25 @@ function WorkOrderDetail({ id, projects, operations, workstations, onClose, onCh
   async function removeOperation(opId) {
     setBusy(true);
     try { await api(`/api/work-orders/${id}/operations/${opId}`, { method: 'DELETE' }); await refresh(); onChanged(); }
+    catch (err) { showToast(err.message, 'error'); } finally { setBusy(false); }
+  }
+
+  async function applyRouteTemplate() {
+    if (!applyTemplateId) return;
+    setBusy(true);
+    try {
+      const { created } = await api(`/api/work-orders/${id}/apply-route-template`, {
+        method: 'POST', body: { template_id: Number(applyTemplateId) },
+      });
+      showToast(`${created} step(s) added`);
+      setApplyTemplateId('');
+      await refresh(); onChanged();
+    } catch (err) { showToast(err.message, 'error'); } finally { setBusy(false); }
+  }
+
+  async function saveTravelerField(field, value) {
+    setBusy(true);
+    try { await api(`/api/work-orders/${id}`, { method: 'PATCH', body: { [field]: value } }); await refresh(); }
     catch (err) { showToast(err.message, 'error'); } finally { setBusy(false); }
   }
 
@@ -329,6 +356,14 @@ function WorkOrderDetail({ id, projects, operations, workstations, onClose, onCh
             </p>
             <RelatedItemsCard type="work_order" id={detail.id} className="flex flex-col gap-1.5 -mt-2" />
 
+            {/* Printed Job Card traveler header fields — free text, typed once (§5l addendum) */}
+            <div className="grid grid-cols-2 gap-2 border-t pt-4">
+              <TravelerField label="Drawing Approved On" type="date" value={detail.drawing_approved_on} onSave={v => saveTravelerField('drawing_approved_on', v)} />
+              <TravelerField label="IBR / BVI" value={detail.ibr_bvi} onSave={v => saveTravelerField('ibr_bvi', v)} />
+              <TravelerField label="DRG. Nos." value={detail.drg_nos} onSave={v => saveTravelerField('drg_nos', v)} />
+              <TravelerField label="Boiler Plate Nos." value={detail.boiler_plate_nos} onSave={v => saveTravelerField('boiler_plate_nos', v)} />
+            </div>
+
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant={STATUS_VARIANT[detail.status]}>{detail.status.replace('_', ' ')}</Badge>
               {detail.progress.delayed && <Badge variant="destructive">Delayed</Badge>}
@@ -341,6 +376,13 @@ function WorkOrderDetail({ id, projects, operations, workstations, onClose, onCh
               {['draft', 'released', 'in_progress'].includes(detail.status) && (
                 <Button size="sm" variant="ghost" className="text-destructive" disabled={busy} onClick={() => transition('cancelled')}>Cancel</Button>
               )}
+              {detail.operations.length > 0 && (
+                <Button size="sm" variant="outline" asChild>
+                  <a href={`/api/work-orders/${id}/job-card-pdf`} target="_blank" rel="noreferrer">
+                    <DownloadIcon data-icon="inline-start" />Print Job Card
+                  </a>
+                </Button>
+              )}
               <span className="ml-auto text-sm tnum text-muted-foreground">
                 {detail.progress.qtyDone}/{detail.progress.qtyPlanned} done ({detail.progress.pct}%)
                 {detail.progress.qtyRejected > 0 ? ` · ${detail.progress.qtyRejected} rejected` : ''}
@@ -349,7 +391,25 @@ function WorkOrderDetail({ id, projects, operations, workstations, onClose, onCh
 
             {/* Process Route Card */}
             <div className="flex flex-col gap-2 border-t pt-4">
-              <p className="text-sm font-medium">Process Route Card</p>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-medium">Process Route Card</p>
+                {detail.operations.length > 0 && (
+                  <Button size="sm" variant="outline" disabled={busy} onClick={() => setSaveTemplateOpen(true)}>Save as template</Button>
+                )}
+              </div>
+              {detail.status === 'draft' && routeTemplates.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <Select value={applyTemplateId} onValueChange={setApplyTemplateId}>
+                    <SelectTrigger className="flex-1"><SelectValue placeholder="Apply a saved route template…" /></SelectTrigger>
+                    <SelectContent><SelectGroup>
+                      {routeTemplates.map(t => (
+                        <SelectItem key={t.id} value={String(t.id)}>{t.name}{t.series ? ` · ${t.series}` : ''}</SelectItem>
+                      ))}
+                    </SelectGroup></SelectContent>
+                  </Select>
+                  <Button size="sm" disabled={busy || !applyTemplateId} onClick={applyRouteTemplate}>Apply</Button>
+                </div>
+              )}
               {detail.operations.length === 0 && <p className="text-xs text-muted-foreground">No route steps yet.</p>}
               {detail.operations.map(op => (
                 <div key={op.id} className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm">
@@ -499,6 +559,72 @@ function WorkOrderDetail({ id, projects, operations, workstations, onClose, onCh
           </div>
         )}
       </SheetContent>
+      {detail && (
+        <SaveRouteTemplateDialog open={saveTemplateOpen} onOpenChange={setSaveTemplateOpen}
+          workOrderId={id} stepCount={detail.operations.length}
+          onSaved={() => { onRouteTemplateSaved(); showToast('Route template saved'); }} />
+      )}
     </Sheet>
+  );
+}
+
+// "Save this route as a reusable template" — captured from a real built route, same "captured, not
+// typed from scratch" precedent as bom_structure_templates' own sandbox-capture flow.
+function SaveRouteTemplateDialog({ open, onOpenChange, workOrderId, stepCount, onSaved }) {
+  const [busy, setBusy] = useState(false);
+  const [name, setName] = useState('');
+  const [series, setSeries] = useState('');
+
+  async function save() {
+    if (!name.trim()) return showToast('Name is required', 'error');
+    setBusy(true);
+    try {
+      await api('/api/work-order-route-templates', {
+        method: 'POST', body: { name, series, from_work_order_id: workOrderId },
+      });
+      onOpenChange(false);
+      setName(''); setSeries('');
+      onSaved();
+    } catch (err) { showToast(err.message, 'error'); } finally { setBusy(false); }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Save route as template</DialogTitle></DialogHeader>
+        <div className="flex flex-col gap-3">
+          <p className="text-sm text-muted-foreground">
+            Saves this Work Order's current {stepCount} route step(s) as a reusable template — apply it
+            to any future Work Order in one click instead of rebuilding it by hand.
+          </p>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="rt-name">Template name</Label>
+            <Input id="rt-name" placeholder="e.g. Standard Shell &amp; Tube Boiler" value={name} onChange={e => setName(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="rt-series">Boiler model (optional)</Label>
+            <Input id="rt-series" placeholder="e.g. CF — leave blank for any model" value={series} onChange={e => setSeries(e.target.value)} />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save template'}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Blur-to-save free-text/date field — same inline-edit idiom as JobCardBoard.jsx's QtyField.
+function TravelerField({ label, value, onSave, type = 'text' }) {
+  const [v, setV] = useState(value || '');
+  useEffect(() => { setV(value || ''); }, [value]);
+  return (
+    <div className="flex flex-col gap-1">
+      <Label className="text-xs text-muted-foreground">{label}</Label>
+      <Input type={type} className="h-8" value={v}
+        onChange={e => setV(e.target.value)}
+        onBlur={() => v !== (value || '') && onSave(v)} />
+    </div>
   );
 }

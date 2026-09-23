@@ -2,7 +2,7 @@
 // product as-is), QC-Head-gated regardless of who raised the NCR. One transaction covers only the
 // actual writes; audit/notify happen after commit, per lib/db.js's withTransaction convention.
 import { NextResponse } from 'next/server';
-import { execute, queryOne, withTransaction } from '@/lib/db';
+import { execute, queryOne, withTransaction, nextNumber } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
@@ -50,16 +50,18 @@ export async function POST(req, { params }) {
     }
     if (!milestoneId) return NextResponse.json({ error: "Can't create a rework card — no milestone to attach it to" }, { status: 400 });
 
+    // jc_no — every other job_cards INSERT path already mints one (this was a real gap).
+    const jcNo = await nextNumber('jc_no', 'JC');
     const result = await withTransaction(async tx => {
       // requires_qc_hold is explicitly 0 — this card is reactive rework, not generated from a route
       // step, and must not silently inherit a hold flag from unrelated logic.
       const ins = await tx.execute({
         sql: `INSERT INTO job_cards
                 (project_id, milestone_id, section, bom_item_id, work_order_id, work_order_operation_id,
-                 operation_id, workstation_id, qty_planned, rework_of_job_card_id, ncr_id, requires_qc_hold, created_by)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 0, ?)`,
+                 operation_id, workstation_id, qty_planned, rework_of_job_card_id, ncr_id, requires_qc_hold, created_by, jc_no)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 0, ?, ?)`,
         args: [card.project_id, milestoneId, card.section, card.bom_item_id, card.work_order_id,
-          card.work_order_operation_id, card.operation_id, card.workstation_id, ncr.job_card_id, ncr.id, user.username],
+          card.work_order_operation_id, card.operation_id, card.workstation_id, ncr.job_card_id, ncr.id, user.username, jcNo],
       });
       const newCardId = Number(ins.lastInsertRowid);
       await tx.execute({
