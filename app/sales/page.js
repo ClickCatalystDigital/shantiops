@@ -33,9 +33,15 @@ export default async function SalesPage({ searchParams }) {
   const sp = await searchParams;
   const scopeProjectId = inSales && sp?.project ? Number(sp.project) : null;
 
+  // Customers/Quotations/Price Lists/Returns/Inventory/Invoices/Credit Notes/Sale Orders are the
+  // salesOnly:true panels in components/SalesWorkspace.jsx — Marketing's sidebar never renders them,
+  // so there's no reason to ship this data (customer PII, pricing, deal values) into a
+  // Marketing-only session's page payload. Gated the same way getActiveProjectsList/getSalePayments
+  // already were below (2026-09-23 isolation fix).
   const [saleOrders, leads, customers, quotations, campaigns, priceLists, returns, inventoryItems, invoices, creditNotes, heads, savedViewRows, projects, scopeOfSupply, salePayments, branches, salesProducts, salesTargets] = await Promise.all([
-    getSaleOrders(), getLeads(), getCustomers(), getQuotations(), getCampaigns(), getPriceLists(), getSalesReturns(), getInventoryItems(),
-    getSalesInvoices(), getSalesCreditNotes(),
+    inSales ? getSaleOrders() : [], getLeads(), inSales ? getCustomers() : [], inSales ? getQuotations() : [], getCampaigns(),
+    inSales ? getPriceLists() : [], inSales ? getSalesReturns() : [], inSales ? getInventoryItems() : [],
+    inSales ? getSalesInvoices() : [], inSales ? getSalesCreditNotes() : [],
     getFunctionalHeads(),
     queryAll('SELECT * FROM crm_saved_views WHERE user = ? AND entity = ? ORDER BY pinned DESC, created_at DESC', [user.username, 'leads']),
     inSales ? getActiveProjectsList() : [],

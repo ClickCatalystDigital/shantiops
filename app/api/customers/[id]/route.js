@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, isInternal, canAccessDepartment, isPM } from '@/lib/auth';
+import { requireCrmAction } from '@/lib/action-permissions';
 import { getCustomerDetail } from '@/lib/data';
 import { audit } from '@/lib/usb';
 
@@ -20,6 +21,10 @@ export async function GET(req, { params }) {
 export async function PATCH(req, { params }) {
   const user = await getFreshSessionUser();
   if (!canAccessCrm(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  // Sibling POST /api/customers already gates on this key — the edit/deactivate path (2026-09-23
+  // isolation fix) didn't, so it stayed open to Marketing even after requireCrmAction's own fix.
+  const actionDenied = await requireCrmAction(user, 'sales.customer.write');
+  if (actionDenied) return actionDenied;
 
   const b = await req.json();
   const fields = [];

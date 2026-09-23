@@ -7,6 +7,7 @@ import { randomBytes } from 'crypto';
 import bcrypt from 'bcryptjs';
 import { execute, queryOne, queryAll } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment, isPM } from '@/lib/auth';
+import { requireCrmAction } from '@/lib/action-permissions';
 import { sendMail } from '@/lib/mail';
 import { audit } from '@/lib/usb';
 
@@ -17,6 +18,10 @@ function canAccessCrm(user) {
 export async function POST(req, { params }) {
   const user = await getFreshSessionUser();
   if (!canAccessCrm(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  // Creates a real login and sends a real email to an external customer — had no action-key gate
+  // at all (2026-09-23 isolation fix); reuses the same key POST /api/customers already enforces.
+  const actionDenied = await requireCrmAction(user, 'sales.customer.write');
+  if (actionDenied) return actionDenied;
 
   const b = await req.json();
   const enabled = !!b.enabled;
