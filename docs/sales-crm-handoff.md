@@ -71,8 +71,11 @@ built, with verification notes). Branch: `claude/exciting-mccarthy-cj760h`.
 - The first request after a `lib/db.js` change takes ~5 min (migrate over the network). For a new
   column you need right away, run the `ALTER TABLE … ADD COLUMN` directly (migrate skips existing
   columns) — that's what the old-CRM import did.
-- `/sales` still loads everything server-side (1,006 orders, now ~9k customers) — Phase 2a fixes this
-  with paged API loading. Customers/Products tabs got client-side search + paging meanwhile.
+- **Priority after the company selector:** `/sales` still sends everything to the browser — 9,068
+  customers, 1,826 products (with descriptions), 1,006 orders: the page is **9.2 MB** (3.6 s warm on
+  the dev server). Phase 2a (server-side paged API loading per tab, customer/product pickers that
+  search via API instead of a full list) fixes this. Customers/Products tabs got client-side search
+  + paging meanwhile. `queryAll` now returns plain objects (was thousands of dev warnings).
 - Pure helpers with selfchecks (`node lib/<name>-selfcheck.mjs`): `sales-lines`, `sales-people`,
   `customer-match`, `lead-stage`, `legacy-crm-import`, `gst-calc`.
 - Open question for the client: the PO wizard screen was verified through its API, not clicked in
