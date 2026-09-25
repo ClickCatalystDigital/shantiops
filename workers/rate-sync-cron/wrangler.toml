@@ -12,3 +12,4 @@ crons = ["0 21 * * *"]
 # (wrangler secret put), never committed here.
 [vars]
 SYNC_URL = "https://shantiops.onrender.com/api/statutory-rates/sync"
+REMINDERS_URL = "https://shantiops.onrender.com/api/sales/quotation-reminders"

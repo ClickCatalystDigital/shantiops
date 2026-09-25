@@ -11,6 +11,7 @@
 export default {
   async scheduled(event, env, ctx) {
     ctx.waitUntil(runSync(env));
+    ctx.waitUntil(runReminders(env));
   },
 
   // Manual trigger for testing, gated by the same shared secret the cron uses — lets you confirm
@@ -63,5 +64,16 @@ async function pingHealthcheck(env, kind, detail) {
   } catch {
     // Healthcheck ping itself failing shouldn't throw out of runSync — the sync result already
     // computed above is what matters and gets returned/logged regardless.
+  }
+}
+
+// Sales CRM plan 2d — daily quotation follow-up reminders. Optional: only runs once REMINDERS_URL is
+// set (wrangler.toml [vars]); the app also sweeps hourly on its own, so this is the punctual path.
+async function runReminders(env) {
+  if (!env.REMINDERS_URL) return;
+  try {
+    await fetch(env.REMINDERS_URL, { method: 'POST', headers: { 'x-sync-key': env.RATE_SYNC_KEY } });
+  } catch {
+    // Best effort — the in-app hourly sweep is the fallback.
   }
 }

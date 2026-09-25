@@ -4,7 +4,7 @@
 // Sale Orders | Campaigns, same multi-tab-in-one-file precedent as ProcurementWorkspace.jsx.
 // Customer detail (contacts/addresses/notes) opens in a right-side Sheet, same drawer pattern
 // HrWorkspace.jsx's employee detail uses.
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEntityHighlight } from '@/lib/use-entity-highlight';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
@@ -32,6 +32,7 @@ import {
 import { api, showToast } from '@/lib/client';
 import { todayISO } from '@/lib/date';
 import { formatMoney } from '@/lib/format';
+import { quotationFollowupReason, REMINDER_LABELS } from '@/lib/quotation-reminders.mjs';
 import ScopeOfSupplySection from '@/components/ScopeOfSupplySection';
 import { PaymentOrdersTab, PaymentLogTab, Pager, SIZES } from '@/components/SalesPaymentTracker';
 import { CreatePoFlow } from '@/components/SaleOrderWizard';
@@ -204,7 +205,7 @@ export function AddToDiaryDialog({ lead, users, salesProducts, onClose, onSaved,
     visit_date: todayISO(), note_type: 'call', is_value_addition: false, action_taken: '',
     in_time: '', out_time: '', alert_mode: 'Not Required', plan_date: '', plan_time: '',
     plan_for: '', plan_of_action: '', plan_note_type: '', send_alert_sms: 'No Alert', contact_id: '', product: '', product_id: null,
-    location: '',
+    location: '', alert_users: [],
   });
   const [contacts, setContacts] = useState([]);
   const [files, setFiles] = useState([]);
@@ -225,7 +226,7 @@ export function AddToDiaryDialog({ lead, users, salesProducts, onClose, onSaved,
         lead_id: lead.id, content: f.action_taken.trim(), note_type: f.note_type,
         visit_date: f.visit_date, action_taken: f.action_taken.trim(),
         is_value_addition: f.is_value_addition, in_time: f.in_time || null, out_time: f.out_time || null,
-        alert_mode: f.alert_mode, plan_date: f.plan_date || null, plan_time: f.plan_time || null,
+        alert_mode: f.alert_mode, alert_users: f.alert_mode === 'Selected seniors' ? f.alert_users : [], plan_date: f.plan_date || null, plan_time: f.plan_time || null,
         plan_for: f.plan_for || null, plan_of_action: f.plan_of_action || null, plan_note_type: f.plan_note_type || null,
         next_plan_date: f.plan_date || null, send_alert_sms: f.send_alert_sms,
         contact_id: f.contact_id || null, product_id: f.product_id || null, location: f.location || null,
@@ -285,6 +286,19 @@ export function AddToDiaryDialog({ lead, users, salesProducts, onClose, onSaved,
                   </SelectContent>
                 </Select>
               </div>
+              {f.alert_mode === 'Selected seniors' && (
+                <div className="grid gap-1.5 sm:col-span-3"><Label>Alert these people</Label>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1.5 rounded-md border px-3 py-2">
+                    {users.map(u => (
+                      <label key={u.username} className="flex items-center gap-2 text-sm">
+                        <Checkbox checked={f.alert_users.includes(u.username)}
+                          onCheckedChange={c => setF(prev => ({ ...prev, alert_users: c ? [...prev.alert_users, u.username] : prev.alert_users.filter(x => x !== u.username) }))} />
+                        {u.display_name || u.username}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className="grid gap-1.5 sm:col-span-3"><Label>Attach files</Label>
                 <Input type="file" multiple onChange={e => setFiles(Array.from(e.target.files || []))} />
                 {files.length > 0 && <p className="text-xs text-muted-foreground">{files.length} file(s) selected — uploaded once this entry is saved.</p>}
@@ -1576,12 +1590,41 @@ export function SendCommercialOfferDialog({ quotationId, onClose, router }) {
   );
 }
 
+function QuotationStatusSelect({ q, busy, onChange }) {
+  return (
+    <Select value={q.status} onValueChange={v => onChange(q, v)} disabled={busy}>
+      <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+      <SelectContent>
+        {['draft', 'sent', 'accepted', 'rejected', 'expired'].map(s => <SelectItem key={s} value={s} className="capitalize">{s}</SelectItem>)}
+      </SelectContent>
+    </Select>
+  );
+}
+
+function QuotationConvertButtons({ q, busy, onConvert, onInvoice }) {
+  if (q.status !== 'accepted') return null;
+  return (
+    <div className="flex gap-2">
+      <Button size="sm" variant="outline" disabled={busy} onClick={() => onConvert(q)}>Convert to SO</Button>
+      <Button size="sm" variant="outline" disabled={busy} onClick={() => onInvoice(q)}>Convert to Invoice</Button>
+    </div>
+  );
+}
+
 function QuotationsTab({ quotations, customers, salesProducts = [], router }) {
   useEntityHighlight(useSearchParams().get('highlight'));
   const [dialogOpen, setDialogOpen] = useState(false);
   const [busyId, setBusyId] = useState(null);
   const [rcmQuotation, setRcmQuotation] = useState(null);
   const [isReverseCharge, setIsReverseCharge] = useState(false);
+  // Plan 2d — same rule the reminder sweep uses, so the filter matches the notifications.
+  const [followupOnly, setFollowupOnly] = useState(false);
+  const withReason = useMemo(() => {
+    const today = todayISO();
+    return quotations.map(q => ({ ...q, followup: quotationFollowupReason(q, today) }));
+  }, [quotations]);
+  const followupCount = withReason.filter(q => q.followup).length;
+  const shown = followupOnly ? withReason.filter(q => q.followup) : withReason;
 
   async function setStatus(q, status) {
     setBusyId(q.id);
@@ -1611,41 +1654,47 @@ function QuotationsTab({ quotations, customers, salesProducts = [], router }) {
     <Card>
       <CardHeader>
         <CardTitle>Quotations</CardTitle>
-        <CardAction><Button size="sm" onClick={() => setDialogOpen(true)}><PlusIcon />New Quotation</Button></CardAction>
+        <CardAction className="flex gap-2">
+          <Button size="sm" variant={followupOnly ? 'default' : 'outline'} onClick={() => setFollowupOnly(v => !v)}>
+            Needs follow-up{followupCount ? ` (${followupCount})` : ''}
+          </Button>
+          <Button size="sm" onClick={() => setDialogOpen(true)}><PlusIcon />New Quotation</Button>
+        </CardAction>
       </CardHeader>
       <CardContent>
-        {quotations.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No quotations yet.</p> : (
-          <Table>
+        {shown.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">{followupOnly ? 'Nothing needs a follow-up.' : 'No quotations yet.'}</p> : (<>
+          <Table className="hidden md:table">
             <TableHeader><TableRow><TableHead>Quotation No.</TableHead><TableHead>Customer</TableHead><TableHead>Total</TableHead><TableHead>Status</TableHead><TableHead /></TableRow></TableHeader>
             <TableBody>
-              {quotations.map(q => (
+              {shown.map(q => (
                 <TableRow key={q.id} data-entity-code={`QT-${q.id}`}>
                   <TableCell className="font-medium">
                     <a href={`/api/quotations/${q.id}/pdf`} target="_blank" rel="noreferrer" className="text-primary hover:underline">{q.quotation_no}</a>
+                    {q.followup && <div><Badge variant="outline" className="mt-1 border-amber-500/50 text-amber-700 dark:text-amber-400">{REMINDER_LABELS[q.followup]}</Badge></div>}
                   </TableCell>
                   <TableCell>{q.customer_name}</TableCell>
                   <TableCell className="tnum">{formatMoney(q.total)}</TableCell>
-                  <TableCell>
-                    <Select value={q.status} onValueChange={v => setStatus(q, v)} disabled={busyId === q.id}>
-                      <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {['draft', 'sent', 'accepted', 'rejected', 'expired'].map(s => <SelectItem key={s} value={s} className="capitalize">{s}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-                  <TableCell>
-                    {q.status === 'accepted' && (
-                      <div className="flex gap-2">
-                        <Button size="sm" variant="outline" disabled={busyId === q.id} onClick={() => convert(q)}>Convert to SO</Button>
-                        <Button size="sm" variant="outline" disabled={busyId === q.id} onClick={() => { setIsReverseCharge(false); setRcmQuotation(q); }}>Convert to Invoice</Button>
-                      </div>
-                    )}
-                  </TableCell>
+                  <TableCell><QuotationStatusSelect q={q} busy={busyId === q.id} onChange={setStatus} /></TableCell>
+                  <TableCell><QuotationConvertButtons q={q} busy={busyId === q.id} onConvert={convert} onInvoice={q => { setIsReverseCharge(false); setRcmQuotation(q); }} /></TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
-        )}
+          <div className="flex flex-col gap-2 md:hidden">
+            {shown.map(q => (
+              <div key={q.id} data-entity-code={`QT-${q.id}`} className="flex flex-col gap-2 rounded-md border px-3 py-2 text-sm">
+                <div className="flex items-center justify-between gap-2">
+                  <a href={`/api/quotations/${q.id}/pdf`} target="_blank" rel="noreferrer" className="font-medium text-primary hover:underline">{q.quotation_no}</a>
+                  <span className="tnum">{formatMoney(q.total)}</span>
+                </div>
+                <div className="text-muted-foreground">{q.customer_name}</div>
+                {q.followup && <Badge variant="outline" className="w-fit border-amber-500/50 text-amber-700 dark:text-amber-400">{REMINDER_LABELS[q.followup]}</Badge>}
+                <QuotationStatusSelect q={q} busy={busyId === q.id} onChange={setStatus} />
+                <QuotationConvertButtons q={q} busy={busyId === q.id} onConvert={convert} onInvoice={q => { setIsReverseCharge(false); setRcmQuotation(q); }} />
+              </div>
+            ))}
+          </div>
+        </>        )}
       </CardContent>
       {dialogOpen && <NewQuotationDialog customers={customers} salesProducts={salesProducts} router={router} onClose={() => setDialogOpen(false)} />}
       {rcmQuotation && (

@@ -39,6 +39,8 @@ export async function PATCH(req, { params }) {
     if (b[key] !== undefined) { fields.push(`${key} = ?`); args.push(b[key]); }
   }
   if (!fields.length) return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
+  // Plan 2d — marking a quotation 'sent' by hand records when (the follow-up reminder counts from it).
+  if (b.status === 'sent') fields.push('sent_at = COALESCE(sent_at, CURRENT_TIMESTAMP)');
   fields.push('updated_at = CURRENT_TIMESTAMP');
   args.push(params.id);
   await execute(`UPDATE quotations SET ${fields.join(', ')} WHERE id = ?`, args);

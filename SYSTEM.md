@@ -11524,6 +11524,20 @@ in place (both lazy-loaded from `SalesWorkspace.jsx`; products + stages fetched 
 **Advanced** still deep-links to `/sales`. A Sales member's calendar shows only their own follow-ups
 (`getDepartmentCalendar(..., { salesMember })`).
 
+**Plan 2c–2e — Diary alerts, quotation reminders, mobile (2026-09-25).** Diary save
+(`app/api/crm-notes/route.js` `sendDiaryAlerts`, best effort after the insert): "All seniors" →
+heads of the enquiry's department; "Selected seniors" → the ticked users (new `crm_notes.alert_users`
+CSV; an empty selection is refused); the "Plan of Action for" person gets a `diary_plan` notice. The
+writer is never alerted; dedupe `diary:<note id>`. Quotation reminders: pure rule
+`lib/quotation-reminders.mjs` (selfcheck) — a `sent` quotation with no sale order that expires within
+3 days, has expired, or was sent ≥7 days ago with no Diary note since → `quotation_followup` to the
+enquiry's A/C manager (else assignee, else creator), dedupe per quotation + reason.
+`sweepQuotationReminders()` runs from `POST /api/sales/quotation-reminders` (`x-sync-key` =
+`RATE_SYNC_KEY`; the cron Worker calls it daily once redeployed with `REMINDERS_URL`) and, as a
+backup, from the bell's read path at most hourly (`app_settings.quotation_reminders_last_run`).
+PATCHing a quotation to `sent` stamps `sent_at` if blank. Quotations tab: "Needs follow-up" filter
+(same rule) + reason badge + phone cards. Verified live with `ZZ-` rows (deleted).
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own
