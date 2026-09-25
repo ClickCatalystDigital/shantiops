@@ -41,6 +41,18 @@ connect well enough for daily use:
 - **Import from the client's current CRM** later: products, customers & contacts, open enquiries +
   diary history, past quotations.
 
+## Current data (read-only check of the shared database, 2026-09-25)
+
+| Table | Rows | What it means for the plan |
+|---|---|---|
+| `leads` | **0** | Status unification (1a) and stage history (1c) need no backfill. |
+| `crm_notes` (Diary) | **0** | Nothing to re-point. |
+| `opportunities` | 5 — all demo seed rows from 25 Aug (3 Sales, 2 Marketing), no linked lead, no items, and stages still named `Lead/Qualified/Quoted/Won`, which no longer exist in `sales_stages` | No Sales migration needed (1b): the 3 Sales demo rows are left inert. Marketing's 2 untouched. |
+| `quotations` | 2 (both accepted, `company` blank) | 1f/1g apply to new quotations; the 2 blank-company rows get a letterhead default (Shanti Boilers) on read, flagged. |
+| `sale_orders` | 1,006 — all from the legacy Excel import; 12 distinct sales-person names ("Amit B" 400, "Sales Desk" 237, "Unassigned" 122, "BDM" 115, "Devansh B" 84 …) | Only 2 active Sales users exist (`sales_head`, `sales`/kalyani). Legacy names won't match users → under 2a these orders are Head-only; 1i keeps each legacy name visible (read-only) rather than forcing a user. |
+| `sales_products`, `branches`, `sales_targets` | **0** each | Masters are empty until the client's data arrives; verification uses `ZZ-` test rows. Prospect Summary / Employee 360 will show real numbers only once branches, targets and managers exist. |
+| `customers` | 340 | Duplicate check (1k) and Customer 360 work against these. |
+
 ## Ground rules (every phase)
 
 - **The shared Turso database is treated as production.** Before any data migration: back up the
@@ -52,6 +64,8 @@ connect well enough for daily use:
   old tables left in place, inert, never dropped.
 - Permissions through `requireCrmAction` / `ACTION_CATALOG` (`lib/action-permissions.js`); new admin
   actions Head-only. Audit via `audit()`.
+- Keep `docs/sales-crm-plan.md` in sync with this plan (first commit of implementation copies the
+  "Current data" section across).
 - Each phase updates the Sales guide (`components/department-help-content.jsx`) and adds one dated
   SYSTEM.md section.
 
@@ -77,9 +91,8 @@ then 1i–1k.
   tasks, `quotations`, `sale_orders` (new nullable `lead_id` on quotations and sale orders).
 - **Board view** toggle on the Leads tab (same native HTML5 drag pattern as
   `components/PipelineWorkspace.jsx`); dragging sets `sales_call_status`.
-- One-time migration, **Sales-owned opportunities only** (`owner_dept='Sales'`), after a backup:
-  copy value/items onto the source lead (only where the lead has none), re-point notes/tasks/
-  quotations/orders. An opportunity with no lead becomes a lead. `opportunities` stays in place.
+- **No data migration needed** (see Current data): the only Sales opportunities are 3 demo rows
+  with no lead, notes or items. They are left in place, inert. `opportunities` stays in the schema.
 - `resolveLeadToCustomer` (`lib/crm.js`) stops creating an opportunity for Sales leads.
 - Sales Pipeline / By Department / Agent Performance reports read leads.
 - The **Pipeline** nav tab is removed for Sales users (`components/Nav.jsx`); a Sales user hitting
@@ -258,7 +271,9 @@ Can start any time after Phase 1.
   (visibility), and `marketing_head` (confirm Marketing's `/pipeline` and Campaigns are unchanged).
 - Phase 1 golden path: enquiry with 2 products → Commercial Offer pre-filled → convert → PO wizard
   shows the same lines, derived GST/PAN/SOS fields, correct totals → order PDF → Prospect Summary
-  counts it under the right manager. Board drag changes stage and writes history; a migrated
-  opportunity's value/items appear on its enquiry; a Sales user's `/pipeline` redirects.
+  counts it under the right manager. Board drag changes stage and writes history; a Sales user's
+  `/pipeline` redirects; a Marketing user's `/pipeline` still shows its 2 opportunities.
+- After each step, re-run the row counts in "Current data" to confirm nothing outside the test rows
+  changed (the 1,006 imported orders, 340 customers, 2 quotations, 5 opportunities).
 - Phase 3: each upgraded report's CSV and Excel match the on-screen table row for row.
 - Every migration: backup taken, restore proven, dry-run counts reviewed before `--apply`.
