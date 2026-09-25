@@ -26,6 +26,7 @@ import {
   TableIcon, CalendarDaysIcon, MapPinIcon, SlidersHorizontalIcon, AlertCircleIcon, RepeatIcon,
   MessageSquareIcon, UserCheckIcon, FileTextIcon, XCircleIcon, CheckCircleIcon, CreditCardIcon,
   Settings2Icon,
+  LayoutDashboardIcon,
 } from 'lucide-react';
 import TrialBalanceCard from '@/components/reports/TrialBalanceCard';
 import CustomerLedgerCard from '@/components/reports/CustomerLedgerCard';
@@ -59,6 +60,7 @@ import CashFlowStatementCard from '@/components/reports/CashFlowStatementCard';
 import { DispatchRegisterCard, EwayBillRegisterCard, FreightCostSummaryCard, DispatchAgingCard } from '@/components/reports/DispatchReportCards';
 import { TestCertificateRegisterCard, QcInspectionSummaryCard, NcrRegisterCard, CalibrationStatusCard, JobWorkInspectionRegisterCard } from '@/components/reports/QcReportCards';
 import ManagementReportCard from '@/components/executive/ManagementReportCard';
+import { EmployeePerformance360Report, SalesOverviewReport } from '@/components/SalesInsightReports';
 import ProjectProfitabilityCard from '@/components/executive/ProjectProfitabilityCard';
 import CustomerProfitabilityCard from '@/components/executive/CustomerProfitabilityCard';
 import ProcurementSpendCard from '@/components/executive/ProcurementSpendCard';
@@ -144,6 +146,8 @@ export const SCREEN = {
   'sales_call_date_wise': DateWiseSalesCallReport,
   'sales_call_location_wise': LocationWiseSalesCallReport,
   'sales_call_funnel': SalesCallFunnelReport,
+  'sales_overview': SalesOverviewReport,
+  'employee_performance_360': EmployeePerformance360Report,
   'neglected_sales_call': NeglectedSalesCallReport,
   'customer_follow_up': CustomerFollowUpReport,
   'client_feedback': ClientFeedbackReport,
@@ -173,7 +177,7 @@ const ICON = {
   'agent_performance': UserRoundIcon,
   'lead_funnel': UsersIcon, 'leads_by_source': Share2Icon, 'campaign_performance': MegaphoneIcon,
   'sales_call_prospect_summary': TableIcon, 'sales_call_date_wise': CalendarDaysIcon,
-  'sales_call_location_wise': MapPinIcon, 'sales_call_funnel': SlidersHorizontalIcon,
+  'sales_call_location_wise': MapPinIcon, 'sales_call_funnel': SlidersHorizontalIcon, 'sales_overview': LayoutDashboardIcon, 'employee_performance_360': UserCheckIcon,
   'neglected_sales_call': AlertCircleIcon, 'customer_follow_up': RepeatIcon,
   'client_feedback': MessageSquareIcon, 'employee_follow_up': UserCheckIcon,
   'quotation_listing': FileTextIcon, 'feedback_not_responded': XCircleIcon,
@@ -232,13 +236,18 @@ export default function ReportsWorkspace({ department, reports, groups, companie
                     <DownloadIcon data-icon="inline-start" />PDF
                   </a>
                 </Button>
-                {!active.noTable && (
+                {!active.noTable && (<>
                   <Button asChild size="sm" variant="outline">
                     <a href={`/api/reports/${active.key}/export?format=xlsx${showCompanySwitcher ? `&company=${encodeURIComponent(company)}` : ''}`}>
                       <FileSpreadsheetIcon data-icon="inline-start" />Excel
                     </a>
                   </Button>
-                )}
+                  <Button asChild size="sm" variant="outline">
+                    <a href={`/api/reports/${active.key}/export?format=csv${showCompanySwitcher ? `&company=${encodeURIComponent(company)}` : ''}`}>
+                      <FileSpreadsheetIcon data-icon="inline-start" />CSV
+                    </a>
+                  </Button>
+                </>)}
               </div>
             )}
           </div>

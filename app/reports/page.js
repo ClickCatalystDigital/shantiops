@@ -9,6 +9,7 @@
 // audience. Single-department heads and the pure 'executive' role never hit this branch: a head's
 // own Nav tab always carries ?dept=, and 'executive' keeps its own /executive/reports tab (it has
 // no department access to consolidate).
+import { queryAll } from '@/lib/db';
 import { getSelectedCompany } from '@/lib/company-filter-server';
 import { filterByCompany } from '@/lib/company-filter.mjs';
 import { salesScope } from '@/lib/sales-visibility';
@@ -41,6 +42,8 @@ async function getCrmData(includeSales, user) {
     getBranches(), getSalesTargets(), getDiaryNotes(), getExpenseClaims(),
     includeSales ? getQuotations() : [], includeSales ? getSaleOrders() : [], getSalesProducts(),
   ]);
+  // Plan 3c — stage history for Employee 360's days-per-stage (small table; scoped below with leads).
+  const stageHistory = includeSales ? await queryAll('SELECT id, lead_id, from_stage, to_stage, changed_by, changed_at FROM lead_stage_history') : [];
   const users = heads.filter(h => h.active && h.departments.some(d => CRM_DEPARTMENTS.includes(d)));
   // Global company selector: the Sales report cards read quotations/orders; filter them here.
   const company = getSelectedCompany();
@@ -48,7 +51,9 @@ async function getCrmData(includeSales, user) {
   // Plan 2a: a Sales member's reports cover only their own records.
   const me = salesScope(user);
   const scoped = me ? scopeSalesLists(me, base) : base;
+  const visibleLeadIds = new Set(scoped.leads.map(l => l.id));
   return { opportunities, campaigns, stages, tasks, notes, users, branches, salesTargets, expenseClaims, salesProducts,
+    stageHistory: stageHistory.filter(h => visibleLeadIds.has(h.lead_id)),
     leads: scoped.leads, quotations: scoped.quotations, saleOrders: scoped.saleOrders, diaryNotes: scoped.diaryNotes };
 }
 

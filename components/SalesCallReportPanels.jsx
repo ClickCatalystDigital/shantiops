@@ -5,6 +5,7 @@
 // CrmReportPanels.jsx's 6 analytics reports — client-rendered off the crmData fetch
 // app/reports/page.js's getCrmData() already widened for this phase, no new per-report query.
 import { personKey, personLabel } from '@/lib/sales-people.mjs';
+import { funnelRows } from '@/lib/lead-stage.mjs';
 import { useMemo, useState } from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -136,9 +137,9 @@ export function SalesCallProspectSummaryReport({ leads, diaryNotes, salesTargets
               <TableCell className="tnum">{r.vip}</TableCell>
               <TableCell className="tnum">{r.appointments}</TableCell>
               <TableCell className="tnum">{r.orders}</TableCell>
-              <TableCell className="tnum">{r.target ? formatMoney(r.target) : '—'}</TableCell>
+              <TableCell className="tnum" data-raw={r.target || 0}>{r.target ? formatMoney(r.target) : '—'}</TableCell>
               <TableCell className="tnum">{r.ta == null ? '—' : `${r.ta}%`}</TableCell>
-              <TableCell className="tnum">{r.expenses ? formatMoney(r.expenses) : '—'}</TableCell>
+              <TableCell className="tnum" data-raw={r.expenses || 0}>{r.expenses ? formatMoney(r.expenses) : '—'}</TableCell>
               <TableCell className="tnum">{r.fUps}</TableCell>
               <TableCell className="tnum">{r.actualFUps}</TableCell>
               <TableCell className="tnum">{r.pfpRatio == null ? '—' : `${r.pfpRatio}%`}</TableCell>
@@ -190,64 +191,95 @@ export function LocationWiseSalesCallReport({ leads, branches }) {
 
 // --- 4. Sales call funnel report, with drill-down --------------------------------------------------
 
-export function SalesCallFunnelReport({ leads, stages, salesProducts }) {
+export function SalesCallFunnelReport({ leads, stages, salesProducts, quotations = [], diaryNotes = [], users = [] }) {
   const [drill, setDrill] = useState(null); // stage name
-  const funnelStages = [...stages].sort((a, b) => a.sort_order - b.sort_order);
+  // Plan 3d — Value = Σ expected_value of the stage's enquiries; weighted by the stage's
+  // probability (Masters → Funnel Stages, lib/lead-stage.mjs stageProbability).
+  const rows = useMemo(() => funnelRows(leads, stages), [leads, stages]);
+  const open = rows.filter(r => !r.isWon && !r.isLost);
+  const total = { count: rows.reduce((s, r) => s + r.count, 0), value: rows.reduce((s, r) => s + r.value, 0), weighted: rows.reduce((s, r) => s + r.weighted, 0) };
+  const openValue = open.reduce((s, r) => s + r.value, 0);
+  const forecast = open.reduce((s, r) => s + r.weighted, 0);
+  const won = rows.filter(r => r.isWon).reduce((s, r) => s + r.count, 0);
+  const lost = rows.filter(r => r.isLost).reduce((s, r) => s + r.count, 0);
 
-  // Value/Probability — a Lead carries no monetary value field anywhere in this app (that lives on
-  // opportunities, a different record this funnel deliberately doesn't use, per the plan's own
-  // "Lead-shaped data, not opportunities.stage" note). Value stays honestly 0 rather than guessed;
-  // Probability is a placeholder weighting (Gap #7 — no real source exists yet), editable once one does.
-  const rows = funnelStages.map(s => {
-    const matching = leads.filter(l => l.sales_call_status === s.name);
-    const probability = s.is_won ? 100 : s.is_lost ? 0 : Math.max(0, 100 - s.sort_order * 12);
-    return { stage: s.name, count: matching.length, value: 0, probability, probabilityValue: 0 };
-  });
-  const totalRow = { count: rows.reduce((s, r) => s + r.count, 0), value: rows.reduce((s, r) => s + r.value, 0) };
-
+  // Latest quotation per enquiry, and its latest Diary note (for the follow-up hover text).
+  const latestQuote = useMemo(() => {
+    const m = new Map();
+    for (const q of quotations) if (q.lead_id && (!m.has(q.lead_id) || q.id > m.get(q.lead_id).id)) m.set(q.lead_id, q);
+    return m;
+  }, [quotations]);
+  const latestNote = useMemo(() => {
+    const m = new Map();
+    for (const n of diaryNotes) if (n.lead_id && (!m.has(n.lead_id) || n.id > m.get(n.lead_id).id)) m.set(n.lead_id, n);
+    return m;
+  }, [diaryNotes]);
   const drillRows = drill ? leads.filter(l => l.sales_call_status === drill) : [];
+  const productName = l => salesProducts?.find(p => p.id === l.product_id)?.product_type || salesProducts?.find(p => p.id === l.product_id)?.product_name || l.product || '—';
 
   return (
-    <ReportShell title="Sales Call Funnel Report" description="Click a stage's count to drill into its leads.">
-      <Table>
-        <TableHeader><TableRow>{['S.N.', 'Funnel Stage', 'No of Sales Call', 'Value', 'Probability (%)', 'Probability (Value)'].map(h => <TableHead key={h}>{h}</TableHead>)}</TableRow></TableHeader>
-        <TableBody>
-          {rows.map((r, i) => (
-            <TableRow key={r.stage}>
-              <TableCell>{i + 1}</TableCell>
-              <TableCell>{r.stage}</TableCell>
-              <TableCell className="tnum">
-                <button className="text-primary hover:underline disabled:text-muted-foreground disabled:no-underline" disabled={!r.count} onClick={() => setDrill(r.stage)}>{r.count}</button>
-              </TableCell>
-              <TableCell className="tnum">{formatMoney(r.value)}</TableCell>
-              <TableCell className="tnum">{r.probability}%</TableCell>
-              <TableCell className="tnum">{formatMoney(r.probabilityValue)}</TableCell>
+    <ReportShell title="Sales Call Funnel Report" description="Enquiries by funnel stage, their expected value, and the value weighted by each stage's win probability. Click a count to see the enquiries.">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {[['Open enquiries', open.reduce((s, r) => s + r.count, 0)], ['Open value', formatMoney(openValue)], ['Weighted forecast', formatMoney(forecast)], ['Win rate', won + lost ? `${Math.round((won / (won + lost)) * 100)}%` : '—']].map(([label, value]) => (
+          <div key={label} className="rounded-lg border p-3"><div className="text-xs text-muted-foreground">{label}</div><div className="text-lg font-semibold tnum">{value}</div></div>
+        ))}
+      </div>
+      <BarList items={rows.filter(r => r.value > 0).map(r => ({ label: r.stage, value: r.value }))} valueFmt={formatMoney} />
+      <div data-export-title="Funnel">
+        <Table>
+          <TableHeader><TableRow>{['S.N.', 'Funnel Stage', 'No of Sales Call', 'Value', 'Probability (%)', 'Probability (Value)'].map(h => <TableHead key={h}>{h}</TableHead>)}</TableRow></TableHeader>
+          <TableBody>
+            {rows.map((r, i) => (
+              <TableRow key={r.stage}>
+                <TableCell>{i + 1}</TableCell>
+                <TableCell>{r.stage}</TableCell>
+                <TableCell className="tnum" data-raw={r.count}>
+                  <button className="text-primary hover:underline disabled:text-muted-foreground disabled:no-underline" disabled={!r.count} onClick={() => setDrill(r.stage)}>{r.count}</button>
+                </TableCell>
+                <TableCell className="tnum" data-raw={r.value}>{formatMoney(r.value)}</TableCell>
+                <TableCell className="tnum" data-raw={r.probability}>{r.probability}%</TableCell>
+                <TableCell className="tnum" data-raw={r.weighted}>{formatMoney(r.weighted)}</TableCell>
+              </TableRow>
+            ))}
+            <TableRow className="font-semibold">
+              <TableCell colSpan={2}>Total</TableCell>
+              <TableCell className="tnum" data-raw={total.count}>{total.count}</TableCell>
+              <TableCell className="tnum" data-raw={total.value}>{formatMoney(total.value)}</TableCell>
+              <TableCell />
+              <TableCell className="tnum" data-raw={total.weighted}>{formatMoney(total.weighted)}</TableCell>
             </TableRow>
-          ))}
-          <TableRow className="font-semibold">
-            <TableCell colSpan={2}>Total</TableCell>
-            <TableCell className="tnum">{totalRow.count}</TableCell>
-            <TableCell className="tnum">{formatMoney(totalRow.value)}</TableCell>
-            <TableCell />
-            <TableCell />
-          </TableRow>
-        </TableBody>
-      </Table>
+          </TableBody>
+        </Table>
+      </div>
 
       <Sheet open={!!drill} onOpenChange={o => !o && setDrill(null)}>
-        <SheetContent className="w-full sm:max-w-lg">
-          <SheetHeader><SheetTitle>{drill} — {drillRows.length} lead(s)</SheetTitle></SheetHeader>
-          <div className="flex flex-col gap-2 overflow-y-auto px-4 pb-4">
-            {drillRows.map(l => (
-              <div key={l.id} className="rounded-md border p-3 text-sm">
-                <div className="font-medium">{l.company_name || l.lead_name}{l.short_name ? ` (${l.short_name})` : ''}</div>
-                <div className="text-xs text-muted-foreground">{[l.address, l.enquiry_date, l.phone, l.email].filter(Boolean).join(' · ')}</div>
-                <div className="text-xs text-muted-foreground">
-                  {salesProducts?.find(p => p.id === l.product_id)?.product_name || l.product || '—'} ·{' '}
-                  {l.order_expected_in || '—'} · {l.account_manager || l.assigned_to || '—'}
-                </div>
-              </div>
-            ))}
+        <SheetContent className="w-full sm:max-w-5xl">
+          <SheetHeader><SheetTitle>{drill} — {drillRows.length} enquir{drillRows.length === 1 ? 'y' : 'ies'}</SheetTitle></SheetHeader>
+          <div className="overflow-auto px-4 pb-4">
+            <Table>
+              <TableHeader><TableRow>{['Customer', 'Short name', 'Address', 'Enquiry date', 'Contact', 'Email', 'Product type', 'Stage / latest quote', 'Expected', 'A/C manager'].map(h => <TableHead key={h}>{h}</TableHead>)}</TableRow></TableHeader>
+              <TableBody>
+                {drillRows.map(l => {
+                  const q = latestQuote.get(l.id);
+                  const n = latestNote.get(l.id);
+                  const tip = n ? [n.visit_date || n.created_at?.slice(0, 10), n.content, n.next_plan_date ? `Next: ${n.next_plan_date}` : ''].filter(Boolean).join(' · ') : 'No Diary entries yet';
+                  return (
+                    <TableRow key={l.id} title={tip}>
+                      <TableCell className="font-medium"><a className="text-primary hover:underline" href={`/sales?tab=leads&highlight=LD-${l.id}`}>{l.company_name || l.lead_name}</a></TableCell>
+                      <TableCell>{l.short_name || '—'}</TableCell>
+                      <TableCell className="max-w-48 truncate">{l.address || '—'}</TableCell>
+                      <TableCell className="tnum whitespace-nowrap">{l.enquiry_date || '—'}</TableCell>
+                      <TableCell>{[l.phone, l.telephone].filter(Boolean).join(' · ') || '—'}</TableCell>
+                      <TableCell>{l.email || '—'}</TableCell>
+                      <TableCell>{productName(l)}</TableCell>
+                      <TableCell>{l.sales_call_status}{q ? ` · ${q.quotation_no} ${formatMoney(q.total)}` : ''}</TableCell>
+                      <TableCell>{l.order_expected_in || '—'}</TableCell>
+                      <TableCell>{personLabel(l.account_manager || l.assigned_to, users) || '—'}</TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
           </div>
         </SheetContent>
       </Sheet>
@@ -405,7 +437,7 @@ export function QuotationListingReport({ quotations }) {
               <TableCell className="tnum">{q.quotation_date || '—'}</TableCell>
               <TableCell>{q.quotation_type || '—'}</TableCell>
               <TableCell><Badge variant={q.status === 'accepted' ? 'default' : 'outline'}>{q.status}</Badge></TableCell>
-              <TableCell className="tnum">{formatMoney(q.total)}</TableCell>
+              <TableCell className="tnum" data-raw={q.total || 0}>{formatMoney(q.total)}</TableCell>
             </TableRow>
           ))}
         </TableBody>

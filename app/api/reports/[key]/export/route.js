@@ -7,7 +7,7 @@ import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { COMPANY_NAMES } from '@/lib/qc-doc-pdf.js';
 import { getReport } from '@/lib/reports/catalog';
 import { renderCatalogPdf } from '@/lib/reports/render';
-import { toWorkbook } from '@/lib/reports/excel';
+import { toWorkbook, toCsv } from '@/lib/reports/excel';
 import { currentFyBounds } from '@/lib/date';
 
 export const runtime = 'nodejs';
@@ -28,7 +28,7 @@ export async function GET(req, { params }) {
 
   const { searchParams } = new URL(req.url);
   const format = searchParams.get('format') || 'pdf';
-  if (!['pdf', 'xlsx'].includes(format)) return NextResponse.json({ error: 'format must be pdf or xlsx' }, { status: 400 });
+  if (!['pdf', 'xlsx', 'csv'].includes(format)) return NextResponse.json({ error: 'format must be pdf, xlsx or csv' }, { status: 400 });
 
   const company = COMPANY_NAMES.includes(searchParams.get('company')) ? searchParams.get('company') : COMPANY_NAMES[0];
   let from = searchParams.get('from') || undefined;
@@ -56,6 +56,14 @@ export async function GET(req, { params }) {
     ? report.subtitle(result, { from, to, asOf, period })
     : (from && to ? `${from} to ${to}` : undefined);
 
+  if (format === 'csv') {
+    return new NextResponse('\ufeff' + toCsv({ table }), {
+      headers: {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': `attachment; filename="${report.key}.csv"`,
+      },
+    });
+  }
   if (format === 'xlsx') {
     const buf = toWorkbook({ table });
     return new NextResponse(buf, {

@@ -41,7 +41,7 @@ import CustomerPicker from '@/components/CustomerPicker';
 import { defaultCompanyClient } from '@/lib/company-filter.mjs';
 import { useLeadConvert, SimilarCustomersHint, useSimilarCustomers } from '@/components/ConvertLeadChoice';
 import { renderTemplate } from '@/lib/email-template.mjs';
-import { DEFAULT_STAGE, isEnquiryStage, isSlaBreached } from '@/lib/lead-stage.mjs';
+import { DEFAULT_STAGE, isEnquiryStage, isSlaBreached, stageProbability } from '@/lib/lead-stage.mjs';
 import { QTY_UNITS } from '@/lib/qty-units.mjs';
 import { lineAmount, quotationTotals } from '@/lib/sales-lines.mjs';
 
@@ -2943,13 +2943,57 @@ const PANEL_GROUPS = [
         { key: 'branches', label: 'Branches', icon: Building2Icon, description: 'Office/location list for Enquiry and Sale Orders' },
         { key: 'products', label: 'Products', icon: PackageIcon, description: 'The sellable-SKU catalog' },
         { key: 'targets', label: 'Targets', icon: TargetIcon, description: 'Monthly Sales Targets per branch/manager' },
+        { key: 'funnel_stages', label: 'Funnel Stages', icon: TargetIcon, description: 'Win probability per funnel stage' },
         { key: 'email_templates', label: 'Email Templates', icon: MailIcon, description: 'Commercial Offer wording, per company' },
       ],
     },
   ] },
 ];
 
-export default function SalesWorkspace({ saleOrders, leads, customers, quotations, priceLists = [], returns = [], inventoryItems = [], invoices = [], creditNotes = [], departments = ['Sales'], users = [], savedViews = [], initialTab, canEditSoTax = false, projects = [], scopeOfSupply = [], initialScopeProject, salePayments = [], branches = [], salesProducts = [], salesTargets = [], stages = [] }) {
+// Sales CRM plan 3d — win probability per funnel stage (feeds the Funnel report's weighted value).
+function FunnelStagesTab({ stages, canEdit, router }) {
+  const [draft, setDraft] = useState({});
+  const [saving, setSaving] = useState(null);
+  async function save(s) {
+    setSaving(s.id);
+    try {
+      await api(`/api/sales-stages/${s.id}`, { method: 'PATCH', body: { probability_pct: draft[s.id] ?? '' } });
+      showToast(`${s.name} saved`);
+      setDraft(d => { const n = { ...d }; delete n[s.id]; return n; });
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); } finally { setSaving(null); }
+  }
+  return (
+    <Card>
+      <CardHeader><CardTitle>Funnel Stages</CardTitle></CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <p className="text-sm text-muted-foreground">Probability % is the chance an enquiry at this stage becomes an order. The Funnel report multiplies each stage's value by it. Blank uses the default (Order Received 100%, Order Lost 0%, earlier stages lower).{canEdit ? '' : ' Only a Sales Head can change these.'}</p>
+        <Table>
+          <TableHeader><TableRow><TableHead>Stage</TableHead><TableHead>Probability %</TableHead><TableHead /></TableRow></TableHeader>
+          <TableBody>
+            {[...stages].sort((a, b) => a.sort_order - b.sort_order).map(s => {
+              const val = draft[s.id] ?? (s.probability_pct ?? '');
+              return (
+                <TableRow key={s.id}>
+                  <TableCell>{s.name}</TableCell>
+                  <TableCell>
+                    {canEdit
+                      ? <Input type="number" min={0} max={100} className="w-24" value={val} placeholder={String(stageProbability({ ...s, probability_pct: null }))}
+                          onChange={e => setDraft(d => ({ ...d, [s.id]: e.target.value }))} />
+                      : <span className="tnum">{stageProbability(s)}%</span>}
+                  </TableCell>
+                  <TableCell>{canEdit && draft[s.id] !== undefined && <Button size="sm" variant="outline" disabled={saving === s.id} onClick={() => save(s)}>Save</Button>}</TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  );
+}
+
+export default function SalesWorkspace({ saleOrders, leads, customers, quotations, priceLists = [], returns = [], inventoryItems = [], invoices = [], creditNotes = [], departments = ['Sales'], users = [], savedViews = [], initialTab, canEditSoTax = false, projects = [], scopeOfSupply = [], initialScopeProject, salePayments = [], branches = [], salesProducts = [], salesTargets = [], stages = [], isSalesHead = false }) {
   const router = useRouter();
   // Sales-only now — Marketing has its own tab/URL (/market, MarketingWorkspace.jsx). No more
   // per-viewer group filtering; every group in PANEL_GROUPS always renders here.
@@ -2991,6 +3035,7 @@ export default function SalesWorkspace({ saleOrders, leads, customers, quotation
           {activePanel.key === 'products' && <ProductsTab salesProducts={salesProducts} router={router} />}
           {activePanel.key === 'targets' && <TargetsTab salesTargets={salesTargets} branches={branches} router={router} />}
           {activePanel.key === 'email_templates' && <EmailTemplatesTab router={router} />}
+          {activePanel.key === 'funnel_stages' && <FunnelStagesTab stages={stages} canEdit={isSalesHead} router={router} />}
     </WorkspaceSidebar>
   );
 }

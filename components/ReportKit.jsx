@@ -8,7 +8,10 @@
 // print stylesheet (app/globals.css, #report-print-area) — no charting/PDF dependency added.
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { DownloadIcon } from 'lucide-react';
+import { useRef } from 'react';
+import { DownloadIcon, FileSpreadsheetIcon } from 'lucide-react';
+import { exportTables } from '@/lib/table-export';
+import { showToast } from '@/lib/client';
 
 export function BarList({ items, valueFmt = String, colorFor = () => 'bg-chart-1' }) {
   const max = Math.max(1, ...items.map(i => i.value));
@@ -41,19 +44,24 @@ export function StatRow({ stats }) {
   );
 }
 
-export function ReportShell({ title, description, action, children }) {
+// Sales CRM plan 3b — every report on this shell gets CSV + Excel of the tables it renders.
+export function ReportShell({ title, description, action, children, exportable = true }) {
+  const ref = useRef(null);
+  const download = format => exportTables(ref.current, title, format).catch(e => showToast(e.message, 'error'));
   return (
     <Card id="report-print-area">
       <CardHeader>
         <CardTitle>{title}</CardTitle>
         <CardAction className="flex items-center gap-2">
           {action}
-          <Button size="sm" variant="outline" onClick={() => window.print()}><DownloadIcon />Download PDF</Button>
+          {exportable && <Button size="sm" variant="outline" onClick={() => download('csv')}><FileSpreadsheetIcon />CSV</Button>}
+          {exportable && <Button size="sm" variant="outline" onClick={() => download('xlsx')}><FileSpreadsheetIcon />Excel</Button>}
+          <Button size="sm" variant="outline" onClick={() => window.print()}><DownloadIcon />PDF</Button>
         </CardAction>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {description && <p className="text-sm text-muted-foreground">{description}</p>}
-        {children}
+        <div ref={ref} className="contents">{children}</div>
       </CardContent>
     </Card>
   );

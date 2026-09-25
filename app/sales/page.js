@@ -7,7 +7,7 @@
 // (/market, components/MarketingWorkspace.jsx), so this page no longer needs the
 // Sales-or-Marketing dual-department resolution it used to carry.
 import { redirect } from 'next/navigation';
-import { getFreshSessionUser, canAccessDepartment, isPM, roleHome } from '@/lib/auth';
+import { getFreshSessionUser, canAccessDepartment, isPM, roleHome, isDepartmentHead } from '@/lib/auth';
 import { getSelectedCompany } from '@/lib/company-filter-server';
 import { filterByCompany } from '@/lib/company-filter.mjs';
 import { salesScope } from '@/lib/sales-visibility';
@@ -54,6 +54,6 @@ export default async function SalesPage({ searchParams }) {
   const savedViews = savedViewRows.map(r => ({ ...r, filters: JSON.parse(r.filters || '{}') }));
 
   return (
-    <SalesWorkspace saleOrders={saleOrders} leads={leads} customers={customers} quotations={quotations} priceLists={priceLists} returns={returns} inventoryItems={inventoryItems} invoices={invoices} creditNotes={creditNotes} departments={['Sales']} users={crmUsers} savedViews={savedViews} initialTab={sp?.tab} canEditSoTax={canEditSoTax} projects={projects} scopeOfSupply={scopeOfSupply} initialScopeProject={sp?.project} salePayments={salePayments} branches={branches} salesProducts={salesProducts} salesTargets={salesTargets} stages={stages} />
+    <SalesWorkspace saleOrders={saleOrders} leads={leads} customers={customers} quotations={quotations} priceLists={priceLists} returns={returns} inventoryItems={inventoryItems} invoices={invoices} creditNotes={creditNotes} departments={['Sales']} users={crmUsers} savedViews={savedViews} initialTab={sp?.tab} canEditSoTax={canEditSoTax} projects={projects} scopeOfSupply={scopeOfSupply} initialScopeProject={sp?.project} salePayments={salePayments} branches={branches} salesProducts={salesProducts} salesTargets={salesTargets} stages={stages} isSalesHead={isDepartmentHead(user, 'Sales')} />
   );
 }

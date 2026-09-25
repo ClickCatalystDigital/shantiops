@@ -11538,6 +11538,22 @@ backup, from the bell's read path at most hourly (`app_settings.quotation_remind
 PATCHing a quotation to `sent` stamps `sent_at` if blank. Quotations tab: "Needs follow-up" filter
 (same rule) + reason badge + phone cards. Verified live with `ZZ-` rows (deleted).
 
+**Plan 3 — Sales reports (2026-09-25).** (3a/3b) Every `ReportShell` report now has CSV + Excel
+next to PDF: `lib/table-export.js` reads the visible tables on screen (a cell's `data-raw` carries the
+exact amount, since `formatMoney` abbreviates), one sheet per table (`data-export-title` names it) —
+so a download can't disagree with the screen. Catalog reports' export route gained `format=csv`
+(`lib/reports/excel.js` `toCsv`) and a CSV button. (3d) `sales_stages.probability_pct` (NULL = default:
+won 100, lost 0, else declining by position — `stageProbability`), editable by a Sales Head/PM in
+Masters → Funnel Stages (`PATCH /api/sales-stages/[id]`, audited). `funnelRows()` (selfcheck):
+Value = Σ `expected_value`, weighted = Value × %. The Funnel report has KPI tiles (open value, weighted
+forecast, win rate), a value chart, and a drill-down table (link to the enquiry, latest quotation,
+last Diary entry on hover). (3c) Employee Performance 360 and (3e) Sales Overview
+(`components/SalesInsightReports.jsx`), counting in `lib/sales-insights.mjs` (selfcheck): ownership
+= enquiry A/C manager → assignee → creator; quotations and orders inherit from their enquiry (orders
+first use their Sales Person, legacy names stay their own row); cancelled orders and draft
+quotations excluded; days-per-stage from `lead_stage_history` (added to the report data, scoped to
+visible enquiries). Other Sales reports keep their layout and gain the downloads.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own

@@ -73,7 +73,7 @@ export function CampaignPerformanceReport({ leads, opportunities, campaigns }) {
         <TableHeader><TableRow><TableHead>Campaign</TableHead><TableHead>Leads</TableHead><TableHead>Opportunity value</TableHead></TableRow></TableHeader>
         <TableBody>
           {rows.length === 0 ? <TableRow><TableCell colSpan={3} className="text-muted-foreground">No campaigns yet.</TableCell></TableRow> : rows.map(r => (
-            <TableRow key={r.label}><TableCell className="font-medium">{r.label}</TableCell><TableCell className="tnum">{r.leadCount}</TableCell><TableCell className="tnum">{formatMoney(r.oppValue)}</TableCell></TableRow>
+            <TableRow key={r.label}><TableCell className="font-medium">{r.label}</TableCell><TableCell className="tnum">{r.leadCount}</TableCell><TableCell className="tnum" data-raw={r.oppValue || 0}>{formatMoney(r.oppValue)}</TableCell></TableRow>
           ))}
         </TableBody>
       </Table>
@@ -140,8 +140,8 @@ export function ByDepartmentReport({ leads, opportunities: rawOpportunities = []
               <TableCell className="font-medium">{d.dept}</TableCell>
               <TableCell className="tnum">{d.leadCount}</TableCell>
               <TableCell className="tnum">{d.conversionRate == null ? '—' : `${d.conversionRate}%`}</TableCell>
-              <TableCell className="tnum">{formatMoney(d.openValue)}</TableCell>
-              <TableCell className="tnum">{formatMoney(d.wonValue)}</TableCell>
+              <TableCell className="tnum" data-raw={d.openValue || 0}>{formatMoney(d.openValue)}</TableCell>
+              <TableCell className="tnum" data-raw={d.wonValue || 0}>{formatMoney(d.wonValue)}</TableCell>
               <TableCell className="tnum">{d.winRate == null ? '—' : `${d.winRate}%`}</TableCell>
             </TableRow>
           ))}
@@ -237,7 +237,7 @@ export function AgentPerformanceReport({ leads, opportunities: rawOpportunities 
                 <TableCell className="tnum">{r.leadCount}</TableCell>
                 <TableCell className="tnum">{r.conversionRate == null ? '—' : `${r.conversionRate}%`}</TableCell>
                 <TableCell className="tnum">{r.taskCount ? `${r.followUpRate}% (${r.taskCount})` : '—'}</TableCell>
-                <TableCell className="tnum">{formatMoney(r.wonValue)}</TableCell>
+                <TableCell className="tnum" data-raw={r.wonValue || 0}>{formatMoney(r.wonValue)}</TableCell>
                 <TableCell className="tnum">{r.avgResponseHours == null ? '—' : `${r.avgResponseHours}h`}</TableCell>
                 <TableCell className="text-muted-foreground">{r.topLostReason || '—'}</TableCell>
               </TableRow>
