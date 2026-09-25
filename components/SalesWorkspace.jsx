@@ -561,6 +561,7 @@ function LeadDetailSheet({ lead, users, customers, salesProducts = [], branches 
       {action === 'offer' && !newQuotationId && (
         <NewQuotationDialog customers={customers} initialCustomerId={offerCustomerId || ''} leadId={lead.id} router={router}
           salesProducts={salesProducts} initialItems={quoteLinesFromLead(lead, salesProducts)}
+          initialCustomerName={lead.company_name || lead.lead_name}
           onCreated={setNewQuotationId} onClose={() => setAction(null)} />
       )}
       {action === 'offer' && newQuotationId && (
@@ -1347,7 +1348,7 @@ export function quoteLinesFromLead(lead, salesProducts = []) {
   }));
 }
 
-export function NewQuotationDialog({ customers, opportunityId = null, leadId = null, initialCustomerId = '', initialItems = null, salesProducts = null, onClose, onCreated, router }) {
+export function NewQuotationDialog({ customers, opportunityId = null, leadId = null, initialCustomerId = '', initialCustomerName = '', initialItems = null, salesProducts = null, onClose, onCreated, router }) {
   const [customerId, setCustomerId] = useState(initialCustomerId ? String(initialCustomerId) : '');
   const [company, setCompany] = useState(COMPANY_NAMES[0]);
   const [quotationType, setQuotationType] = useState('Sales');
@@ -1357,6 +1358,10 @@ export function NewQuotationDialog({ customers, opportunityId = null, leadId = n
   const [items, setItems] = useState(() => (initialItems?.length ? initialItems : [blankQuoteLine()]));
   const [saving, setSaving] = useState(false);
   const useProducts = Array.isArray(salesProducts);
+  // A customer just created from the enquiry isn't in `customers` until the page refresh lands —
+  // show it by name meanwhile instead of a blank picker.
+  const customerOptions = customerId && initialCustomerName && !customers.some(c => String(c.id) === customerId)
+    ? [...customers, { id: Number(customerId), name: initialCustomerName }] : customers;
 
   function updateItem(i, patch) {
     setItems(prev => prev.map((it, idx) => idx === i ? { ...it, ...patch } : it));
@@ -1403,7 +1408,7 @@ export function NewQuotationDialog({ customers, opportunityId = null, leadId = n
               <Label>Customer</Label>
               <Select value={customerId} onValueChange={setCustomerId}>
                 <SelectTrigger><SelectValue placeholder="Choose customer" /></SelectTrigger>
-                <SelectContent>{customers.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}</SelectContent>
+                <SelectContent>{customerOptions.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div className="grid gap-1.5">

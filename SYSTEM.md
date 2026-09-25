@@ -11401,6 +11401,43 @@ quotations, 1,006 imported sale orders, 340 customers; Product/Branch/Target mas
   browser (Enquiry tab hides a lost/closed enquiry; Leads table and sheet show the stage); test
   rows deleted, all baseline counts unchanged.
 
+**1d–1g — products flow from enquiry to quotation, with GST per line (2026-09-25).**
+- Product Master (`sales_products`) gains `unit`, `hsn_code`, `gst_pct` and a schema-only
+  `bom_structure_template_id` (the future "this product is built from that BOM template" link).
+  Product data itself arrives later from the client's current CRM.
+- An enquiry can hold several products: new `lead_products` (lead_id CASCADE, product_id SET NULL,
+  description, qty, unit, rate, gst_pct), guarded backfill `lead_products_backfill_v1` (0 rows on
+  the live DB). `lib/crm.js` `resolveProductLines()` validates (before an enquiry exists, so a bad
+  line never half-saves one) and `writeLeadProducts()` replaces the list, mirrors line 1 into
+  `leads.product_id/product` for the older reports, and — unless the request set it — sets
+  `expected_value` to the lines' total (qty blank = 1). It never bumps `updated_at` on creation
+  (SLA). `PATCH /api/leads/[id]` takes `products`; the lone `product_id` field is no longer
+  patchable. UI: a product-line editor on New Enquiry and a Products card on the enquiry sheet.
+- Quotation lines pick from the Product Master (unit, rate, HSN, GST % fill in, all editable).
+  Create Commercial Offer starts with the enquiry's products; the customer it just created shows
+  by name even before the page's customer list refreshes. Marketing's Pipeline (no
+  `salesProducts` passed) keeps the Item Master search.
+- One money module, `lib/sales-lines.mjs` (selfcheck `lib/sales-lines-selfcheck.mjs`), wrapping
+  `computeSaleOrderTotals` → `gstSplit`: each line has its own GST % (blank = the dialog's
+  Default GST %); quotations store `cgst_amount/sgst_amount/igst_amount`; `tax_pct` holds the
+  rate only when every line shares one (else 0). Line validation runs before a quotation number is
+  taken. Quotation → Sale Order copies product, discount and line GST (`item_tax_pct`) plus the
+  split; quotation → invoice now taxes per line and uses the quotation's own company (it always
+  used the first company before). The quotation PDF prints Sr No / Particular / HSN / Unit / Qty /
+  Rate / Disc % / Rate after Disc / GST % / Amount and CGST+SGST or IGST; quotations made before
+  this keep their "GST @ X%" line.
+- Price Lists stay keyed to the Item Master, so Sales quotation lines no longer auto-fill from them
+  (the table had 0 rows); re-keying them to products is Phase 4.
+- Verified live with `ZZ-` rows: an enquiry with a picked product + a free-text line (blank row
+  dropped, product defaults filled, expected value ₹10,25,000, SLA untouched); unknown product and
+  negative qty refused with nothing saved; a mixed-rate quotation (18% / 5% / blank→12%) came to
+  ₹9,21,000 + ₹1,63,120 — CGST/SGST 81,560 each for a same-state customer, IGST 1,63,120 for an
+  out-of-state one — matching a hand calculation; refused attempts used no quotation number;
+  Sale Order and invoice kept per-line GST; both PDFs and an old quotation's PDF read correctly;
+  in the browser, the Products card, the pre-filled Commercial Offer and the New Enquiry editor
+  worked with no page errors. All test rows removed; counters restored (quotation 30, sale order
+  27, invoice 36); baseline counts unchanged.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own
