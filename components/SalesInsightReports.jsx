@@ -220,3 +220,45 @@ export function SalesOverviewReport(props) {
     </ReportShell>
   );
 }
+
+// Plan 4 — who we compete with: how often each competitor shows up, how many orders we lost to
+// them, and the prices they quoted. Entries come from Order Lost and Customer 360.
+export function CompetitorAnalysisReport({ competitors = [] }) {
+  const rows = useMemo(() => {
+    const m = new Map();
+    for (const c of competitors) {
+      const key = c.competitor.trim().toLowerCase();
+      if (!m.has(key)) m.set(key, { name: c.competitor.trim(), seen: 0, lost: 0, prices: [], products: new Set(), customers: new Set() });
+      const r = m.get(key);
+      r.seen++; if (c.lost_to) r.lost++;
+      if (c.price != null) r.prices.push(Number(c.price));
+      if (c.product) r.products.add(c.product);
+      if (c.customer_name || c.lead_name) r.customers.add(c.customer_name || c.lead_name);
+    }
+    return [...m.values()].map(r => ({ ...r, avgPrice: r.prices.length ? Math.round(r.prices.reduce((a, b) => a + b, 0) / r.prices.length) : null }))
+      .sort((a, b) => b.lost - a.lost || b.seen - a.seen);
+  }, [competitors]);
+  return (
+    <ReportShell title="Competitor Analysis" description="Competitors recorded on enquiries (Order Lost → Lost to competitor) and on customers (Customer 360). Names are grouped regardless of capitals.">
+      <Kpis items={[['Competitors', rows.length], ['Entries', competitors.length], ['Orders lost to a competitor', competitors.filter(c => c.lost_to).length]]} />
+      <Chart title="Orders lost, by competitor"><BarList items={rows.filter(r => r.lost).map(r => ({ label: r.name, value: r.lost }))} /></Chart>
+      <div data-export-title="Competitors">
+        <Table>
+          <TableHeader><TableRow>{['Competitor', 'Times seen', 'Orders lost to them', 'Average price', 'Products', 'Customers'].map(h => <TableHead key={h}>{h}</TableHead>)}</TableRow></TableHeader>
+          <TableBody>
+            {rows.length === 0 ? <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground">No competitors recorded yet.</TableCell></TableRow> : rows.map(r => (
+              <TableRow key={r.name}>
+                <TableCell className="font-medium">{r.name}</TableCell>
+                <TableCell className="tnum">{r.seen}</TableCell>
+                <TableCell className="tnum">{r.lost}</TableCell>
+                <TableCell className="tnum" data-raw={r.avgPrice ?? ''}>{r.avgPrice == null ? '—' : formatMoney(r.avgPrice)}</TableCell>
+                <TableCell>{[...r.products].join(', ') || '—'}</TableCell>
+                <TableCell>{[...r.customers].join(', ') || '—'}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </ReportShell>
+  );
+}

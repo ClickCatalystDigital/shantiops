@@ -33,6 +33,7 @@ export async function POST(req, { params }) {
     [params.id]
   );
   if (!quotation) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  if (quotation.approval_status === 'pending') return NextResponse.json({ error: 'This quotation\'s discount needs a Sales Head\'s approval before it can be sent' }, { status: 409 });
   const b = await req.json();
   const subject = String(b.subject || '').trim();
   const body = String(b.body || '').trim();

@@ -4,7 +4,10 @@
 // opportunities' bulk-PUT — a quotation is created whole, not built up incrementally in the UI).
 import { scopeRows } from '@/lib/sales-visibility';
 import { NextResponse } from 'next/server';
-import { execute, queryOne, nextCounterValue } from '@/lib/db';
+import { execute, queryOne, nextCounterValue, getAppSetting } from '@/lib/db';
+import { approvalFor, maxDiscount, DEFAULT_DISCOUNT_APPROVAL_PCT, revisionNumber } from '@/lib/quotation-approval.mjs';
+import { hiddenSalesRecord } from '@/lib/sales-visibility';
+import { notifyDepartmentHeads } from '@/lib/notify';
 import { getFreshSessionUser, canAccessDepartment, isPM } from '@/lib/auth';
 import { requireCrmAction } from '@/lib/action-permissions';
 import { getQuotations } from '@/lib/data';
@@ -58,14 +61,29 @@ export async function POST(req) {
   }
   const customer = await queryOne('SELECT state_code FROM customers WHERE id = ?', [b.customer_id]);
   if (!customer) return NextResponse.json({ error: 'Unknown customer' }, { status: 400 });
+  // Plan 4 — a revision ("Revise" on an existing quotation) keeps the chain's first number with an
+  // -R<n> suffix and doesn't use a new number from the sequence; the one it replaces becomes 'revised'.
+  let revision = null;
+  if (b.revision_of) {
+    const hidden = await hiddenSalesRecord(user, 'quotation', b.revision_of);
+    if (hidden) return hidden;
+    const prev = await queryOne('SELECT id, status, parent_quotation_id, customer_id FROM quotations WHERE id = ?', [b.revision_of]);
+    if (!prev) return NextResponse.json({ error: 'The quotation being revised was not found' }, { status: 404 });
+    if (prev.status === 'accepted' || prev.status === 'revised') return NextResponse.json({ error: `A ${prev.status} quotation can't be revised` }, { status: 409 });
+    const rootId = prev.parent_quotation_id || prev.id;
+    const root = await queryOne('SELECT id, quotation_no FROM quotations WHERE id = ?', [rootId]);
+    const top = await queryOne('SELECT MAX(revision_no) AS n FROM quotations WHERE id = ? OR parent_quotation_id = ?', [rootId, rootId]);
+    const n = (Number(top?.n) || 0) + 1;
+    revision = { prevId: prev.id, rootId, n, no: revisionNumber(root.quotation_no, n) };
+  }
   const now = new Date();
   const fyStart = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1; // FY = Apr-Mar
-  const seq = await nextCounterValue('quotation_no', 0);
+  const seq = revision ? null : await nextCounterValue('quotation_no', 0);
   // Company-aware numbering (real bug, previously always hardcoded /SB/ regardless of which
   // company the quotation was actually for) — reads the same invoice_prefix company_settings
   // already carries for every other document.
   const companyRow = await queryOne('SELECT invoice_prefix, state_code FROM company_settings WHERE company = ?', [company]);
-  const quotationNo = `QTN-${seq}/${companyRow?.invoice_prefix || 'SB'}/${fyStart}-${String((fyStart + 1) % 100).padStart(2, '0')}`;
+  const quotationNo = revision ? revision.no : `QTN-${seq}/${companyRow?.invoice_prefix || 'SB'}/${fyStart}-${String((fyStart + 1) % 100).padStart(2, '0')}`;
 
   const t = quotationTotals(items, {
     companyStateCode: companyRow?.state_code || null,
@@ -73,14 +91,20 @@ export async function POST(req) {
     fallbackGstPct: b.tax_pct === '' || b.tax_pct == null ? 18 : Number(b.tax_pct),
   });
 
+  // Plan 4 — a discount above the Head's threshold needs approval before it can be sent.
+  const threshold = await getAppSetting('sales_discount_approval_pct', String(DEFAULT_DISCOUNT_APPROVAL_PCT));
+  const approvalStatus = approvalFor(items, threshold);
+
   const { lastId } = await execute(
     `INSERT INTO quotations
        (quotation_no, customer_id, opportunity_id, lead_id, quotation_date, valid_until, subtotal, tax_pct, tax_amount, total,
-        cgst_amount, sgst_amount, igst_amount, terms, notes, created_by, company, quotation_type)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        cgst_amount, sgst_amount, igst_amount, terms, notes, created_by, company, quotation_type, max_discount_pct, approval_status,
+        parent_quotation_id, revision_no)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [quotationNo, b.customer_id, b.opportunity_id || null, b.lead_id || null, b.quotation_date || null, b.valid_until || null,
       t.subtotal, t.uniformGstPct ?? 0, t.taxAmount, t.total, t.cgst, t.sgst, t.igst,
-      b.terms || null, b.notes || null, user.username, company, b.quotation_type || null]
+      b.terms || null, b.notes || null, user.username, company, b.quotation_type || null, maxDiscount(items), approvalStatus,
+      revision ? revision.rootId : null, revision ? revision.n : 0]
   );
   const quotationId = Number(lastId);
   let sortOrder = 0;
@@ -93,6 +117,17 @@ export async function POST(req) {
     );
   }
   await audit('quotation_created', { actor: user.username, detail: quotationNo });
+  if (revision) {
+    await execute(`UPDATE quotations SET status = 'revised', updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [revision.prevId]);
+    await audit('quotation_revised', { actor: user.username, detail: `#${revision.prevId} → ${quotationNo}` });
+  }
+  if (approvalStatus === 'pending') {
+    await notifyDepartmentHeads('Sales', {
+      kind: 'quotation_approval', title: `Discount approval needed — ${quotationNo}`,
+      body: `${maxDiscount(items)}% discount (limit ${threshold}%), raised by ${user.display_name || user.username}`,
+      dedupe_key: `quotation_approval:${quotationId}`,
+    }).catch(() => {});
+  }
 
   // A quotation existing is real proof the opportunity has reached the "offer sent" stage —
   // advance it forward if it hasn't already, same one-way/rank idiom as advancePurchaseStatus

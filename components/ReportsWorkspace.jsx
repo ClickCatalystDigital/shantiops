@@ -27,6 +27,7 @@ import {
   MessageSquareIcon, UserCheckIcon, FileTextIcon, XCircleIcon, CheckCircleIcon, CreditCardIcon,
   Settings2Icon,
   LayoutDashboardIcon,
+  SwordsIcon,
 } from 'lucide-react';
 import TrialBalanceCard from '@/components/reports/TrialBalanceCard';
 import CustomerLedgerCard from '@/components/reports/CustomerLedgerCard';
@@ -60,7 +61,7 @@ import CashFlowStatementCard from '@/components/reports/CashFlowStatementCard';
 import { DispatchRegisterCard, EwayBillRegisterCard, FreightCostSummaryCard, DispatchAgingCard } from '@/components/reports/DispatchReportCards';
 import { TestCertificateRegisterCard, QcInspectionSummaryCard, NcrRegisterCard, CalibrationStatusCard, JobWorkInspectionRegisterCard } from '@/components/reports/QcReportCards';
 import ManagementReportCard from '@/components/executive/ManagementReportCard';
-import { EmployeePerformance360Report, SalesOverviewReport } from '@/components/SalesInsightReports';
+import { EmployeePerformance360Report, SalesOverviewReport, CompetitorAnalysisReport } from '@/components/SalesInsightReports';
 import ProjectProfitabilityCard from '@/components/executive/ProjectProfitabilityCard';
 import CustomerProfitabilityCard from '@/components/executive/CustomerProfitabilityCard';
 import ProcurementSpendCard from '@/components/executive/ProcurementSpendCard';
@@ -148,6 +149,7 @@ export const SCREEN = {
   'sales_call_funnel': SalesCallFunnelReport,
   'sales_overview': SalesOverviewReport,
   'employee_performance_360': EmployeePerformance360Report,
+  'competitor_analysis': CompetitorAnalysisReport,
   'neglected_sales_call': NeglectedSalesCallReport,
   'customer_follow_up': CustomerFollowUpReport,
   'client_feedback': ClientFeedbackReport,
@@ -177,7 +179,7 @@ const ICON = {
   'agent_performance': UserRoundIcon,
   'lead_funnel': UsersIcon, 'leads_by_source': Share2Icon, 'campaign_performance': MegaphoneIcon,
   'sales_call_prospect_summary': TableIcon, 'sales_call_date_wise': CalendarDaysIcon,
-  'sales_call_location_wise': MapPinIcon, 'sales_call_funnel': SlidersHorizontalIcon, 'sales_overview': LayoutDashboardIcon, 'employee_performance_360': UserCheckIcon,
+  'sales_call_location_wise': MapPinIcon, 'sales_call_funnel': SlidersHorizontalIcon, 'sales_overview': LayoutDashboardIcon, 'employee_performance_360': UserCheckIcon, 'competitor_analysis': SwordsIcon,
   'neglected_sales_call': AlertCircleIcon, 'customer_follow_up': RepeatIcon,
   'client_feedback': MessageSquareIcon, 'employee_follow_up': UserCheckIcon,
   'quotation_listing': FileTextIcon, 'feedback_not_responded': XCircleIcon,
@@ -204,9 +206,9 @@ const ICON = {
 // `hasOwnControls: true` (currently only the Management reports folded into this view) to mean "my
 // own Screen component renders its own company switcher and PDF button" — the parent then renders
 // neither and passes `companies` (the full list) instead of a single controlled `company` string.
-export default function ReportsWorkspace({ department, reports, groups, companies, crmData, title }) {
+export default function ReportsWorkspace({ department, reports, groups, companies, crmData, title, initialReport, customerFilter }) {
   const allReports = groups ? groups.flatMap(g => g.reports) : reports;
-  const [key, setKey] = useState(allReports[0]?.key);
+  const [key, setKey] = useState(allReports.some(r => r.key === initialReport) ? initialReport : allReports[0]?.key);
   const [company, setCompany] = useState(companies[0]?.company);
   const active = allReports.find(r => r.key === key) || allReports[0];
   const Screen = active ? SCREEN[active.key] : null;
@@ -220,6 +222,12 @@ export default function ReportsWorkspace({ department, reports, groups, companie
     <WorkspaceSidebar title={groups ? (title || 'All Reports') : `${department} Reports`} icon={BarChart3Icon} {...sidebarProps} activeKey={key} onChange={setKey}
       searchPlaceholder="Search reports…" searchNoun="reports">
       <div className="flex flex-col gap-4">
+        {customerFilter && active?.hasOwnControls && (
+          <div className="flex items-center justify-between gap-2 rounded-md border border-dashed px-3 py-2 text-sm">
+            <span>Showing only <span className="font-medium">{customerFilter}</span></span>
+            <a className="text-primary hover:underline" href={`/reports${department ? `?dept=${encodeURIComponent(department)}` : ''}`}>Show everyone</a>
+          </div>
+        )}
         {!active?.hasOwnControls && (
           <div className="flex items-center justify-between gap-2">
             <div className="flex gap-2">

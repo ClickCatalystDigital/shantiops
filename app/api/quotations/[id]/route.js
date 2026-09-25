@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server';
+import { blockedByApproval } from '@/lib/quotation-approval.mjs';
 import { hiddenSalesRecord } from '@/lib/sales-visibility';
-import { execute } from '@/lib/db';
+import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment, isPM } from '@/lib/auth';
 import { requireCrmAction } from '@/lib/action-permissions';
 import { getQuotationDetail } from '@/lib/data';
 import { audit } from '@/lib/usb';
 
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
-const STATUSES = ['draft', 'sent', 'accepted', 'rejected', 'expired'];
+const STATUSES = ['draft', 'sent', 'accepted', 'rejected', 'expired', 'revised'];
 function canAccessCrm(user) {
   return isPM(user) || CRM_DEPARTMENTS.some(d => canAccessDepartment(user, d));
 }
@@ -32,6 +33,10 @@ export async function PATCH(req, { params }) {
   const b = await req.json();
   if (b.status !== undefined && !STATUSES.includes(b.status)) {
     return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
+  }
+  if (b.status !== undefined) {
+    const cur = await queryOne('SELECT approval_status FROM quotations WHERE id = ?', [params.id]);
+    if (blockedByApproval(cur, b.status)) return NextResponse.json({ error: 'This quotation\'s discount needs a Sales Head\'s approval first' }, { status: 409 });
   }
   const fields = [];
   const args = [];

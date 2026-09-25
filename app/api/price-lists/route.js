@@ -16,18 +16,21 @@ export async function GET(req) {
   if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const { searchParams } = new URL(req.url);
+  // Sales CRM plan 4 — Sales price lists are keyed to the Product Master (product_id); item_id
+  // lookups stay for any older Item-Master rows.
+  const productId = searchParams.get('product_id');
   const itemId = searchParams.get('item_id');
-  if (itemId) {
+  if (productId || itemId) {
     const customerId = searchParams.get('customer_id');
     const rows = await queryAll(
       `SELECT * FROM price_lists
-        WHERE item_id = ?
+        WHERE ${productId ? 'product_id' : 'item_id'} = ?
           AND (customer_id IS NULL OR customer_id = ?)
           AND (valid_from IS NULL OR date(valid_from) <= date('now'))
           AND (valid_until IS NULL OR date(valid_until) >= date('now'))
         ORDER BY (customer_id IS NULL), valid_from DESC
         LIMIT 1`,
-      [itemId, customerId || -1]
+      [productId || itemId, customerId || -1]
     );
     return NextResponse.json(rows[0] || null);
   }
@@ -43,16 +46,19 @@ export async function POST(req) {
   if (actionDenied) return actionDenied;
 
   const b = await req.json();
-  if (!b.item_id) return NextResponse.json({ error: 'Item is required' }, { status: 400 });
+  if (!b.product_id && !b.item_id) return NextResponse.json({ error: 'Pick a product' }, { status: 400 });
+  if (b.product_id && !(await queryAll('SELECT id FROM sales_products WHERE id = ?', [b.product_id])).length) {
+    return NextResponse.json({ error: 'Unknown product' }, { status: 400 });
+  }
   const rate = Number(b.rate);
   if (!(rate > 0)) return NextResponse.json({ error: 'Rate must be a positive number' }, { status: 400 });
 
   const { lastId } = await execute(
-    `INSERT INTO price_lists (customer_id, item_id, rate, uom, valid_from, valid_until, notes, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [b.customer_id || null, b.item_id, rate, b.uom || null, b.valid_from || null, b.valid_until || null,
+    `INSERT INTO price_lists (customer_id, product_id, item_id, rate, uom, valid_from, valid_until, notes, created_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [b.customer_id || null, b.product_id || null, b.product_id ? null : b.item_id, rate, b.uom || null, b.valid_from || null, b.valid_until || null,
       b.notes || null, user.username]
   );
-  await audit('price_list_created', { actor: user.username, detail: `item ${b.item_id}${b.customer_id ? ` / customer ${b.customer_id}` : ' / default'}` });
+  await audit('price_list_created', { actor: user.username, detail: `${b.product_id ? `product ${b.product_id}` : `item ${b.item_id}`}${b.customer_id ? ` / customer ${b.customer_id}` : ' / default'}` });
   return NextResponse.json({ id: Number(lastId) });
 }

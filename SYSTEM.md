@@ -11554,6 +11554,28 @@ first use their Sales Person, legacy names stay their own row); cancelled orders
 quotations excluded; days-per-stage from `lead_stage_history` (added to the report data, scoped to
 visible enquiries). Other Sales reports keep their layout and gain the downloads.
 
+**Plan 4 — Customer 360 and CRM depth (2026-09-25).** *Customer 360* (Sales customer sheet,
+`components/Customer360.jsx`, `GET /api/customers/[id]/overview`): enquiries, Diary, quotations,
+orders + payments received, invoices + receipts, projects, service calls/contracts, competitors and
+the installed base — ordered items with warranty from `lib/installed-base.mjs` `warrantyWindow`
+(selfcheck; accepted else standard days, from dispatch ('D') or commissioning/site installation
+('I') on the order's project; not started until that date exists). Member visibility follows 2a.
+"Open in Reports" → `/reports?dept=Sales&report=<key>&customer=<id>` (Reports honours `report=` and
+filters all Sales report data to the customer, with a "Show everyone" link). *Competitors*:
+`customer_competitors` (customer and/or enquiry, competitor, product, price, `lost_to`),
+`/api/competitors` (+ `[id]` DELETE), captured from Order Lost ("Lost to competitor") and Customer
+360; Reports → Competitor Analysis. *Quotation revisions*: `quotations.parent_quotation_id` /
+`revision_no`; "Revise" reopens the form pre-filled and `POST /api/quotations` with `revision_of`
+saves `<first no>-R<n>` (no new sequence number), marking the previous one `revised` (accepted/revised
+can't be revised). *Discount approval*: `lib/quotation-approval.mjs` (selfcheck); a line discount
+above `app_settings.sales_discount_approval_pct` (default 10, Head-editable on the Quotations tab via
+`/api/settings/sales-discount-approval`) sets `approval_status='pending'`, notifies Sales Heads, and
+blocks sent/accepted and email sending until `POST /api/quotations/[id]/approve` (Head-only,
+`sales.quotation.approve_discount` seeded requires_head). *Price Lists → Product Master*:
+`price_lists` rebuilt once (0 rows at the time) with `item_id` nullable + `product_id`
+(`rekeyPriceListsToProducts`, a no-op once rebuilt); New Price picks a product; quotation lines take
+the price-list rate (customer first, else default) on product pick and on customer change.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own

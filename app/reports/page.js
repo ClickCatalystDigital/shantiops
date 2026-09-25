@@ -36,7 +36,7 @@ const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 // leads_by_source, campaign_performance in components/CrmReportPanels.jsx) read either field.
 // Every other field here stays unconditional — branches/products are genuinely shared masters,
 // diary is shared owner_dept-gated activity data, expenseClaims/salesTargets aren't part of this fix.
-async function getCrmData(includeSales, user) {
+async function getCrmData(includeSales, user, customerId = null) {
   const [leads, opportunities, campaigns, stages, tasks, notes, heads, branches, salesTargets, diaryNotes, expenseClaims, quotations, saleOrders, salesProducts] = await Promise.all([
     getLeads(), getOpportunities(), getCampaigns(), getSalesStages(), getCrmTasks(), getLeadNotes(), getFunctionalHeads(),
     getBranches(), getSalesTargets(), getDiaryNotes(), getExpenseClaims(),
@@ -44,6 +44,9 @@ async function getCrmData(includeSales, user) {
   ]);
   // Plan 3c — stage history for Employee 360's days-per-stage (small table; scoped below with leads).
   const stageHistory = includeSales ? await queryAll('SELECT id, lead_id, from_stage, to_stage, changed_by, changed_at FROM lead_stage_history') : [];
+  const competitors = includeSales ? await queryAll(
+    `SELECT cc.*, c.name AS customer_name, l.company_name AS lead_name FROM customer_competitors cc
+       LEFT JOIN customers c ON c.id = cc.customer_id LEFT JOIN leads l ON l.id = cc.lead_id ORDER BY cc.id DESC`) : [];
   const users = heads.filter(h => h.active && h.departments.some(d => CRM_DEPARTMENTS.includes(d)));
   // Global company selector: the Sales report cards read quotations/orders; filter them here.
   const company = getSelectedCompany();
@@ -51,13 +54,28 @@ async function getCrmData(includeSales, user) {
   // Plan 2a: a Sales member's reports cover only their own records.
   const me = salesScope(user);
   const scoped = me ? scopeSalesLists(me, base) : base;
+  // Plan 4 — "Open in Reports" from Customer 360 (?customer=<id>) narrows every Sales report to one customer.
+  if (customerId) {
+    const cid = Number(customerId);
+    scoped.leads = scoped.leads.filter(l => Number(l.converted_customer_id) === cid);
+    const ids = new Set(scoped.leads.map(l => l.id));
+    scoped.quotations = scoped.quotations.filter(q => Number(q.customer_id) === cid || ids.has(q.lead_id));
+    scoped.saleOrders = scoped.saleOrders.filter(so => Number(so.customer_id) === cid || ids.has(so.lead_id));
+    scoped.diaryNotes = scoped.diaryNotes.filter(n => Number(n.customer_id) === cid || ids.has(n.lead_id));
+  }
   const visibleLeadIds = new Set(scoped.leads.map(l => l.id));
   return { opportunities, campaigns, stages, tasks, notes, users, branches, salesTargets, expenseClaims, salesProducts,
     stageHistory: stageHistory.filter(h => visibleLeadIds.has(h.lead_id)),
+    competitors: competitors.filter(c => (c.lead_id ? visibleLeadIds.has(c.lead_id) : (!me || c.created_by === me) && (!customerId || Number(c.customer_id) === Number(customerId)))),
     leads: scoped.leads, quotations: scoped.quotations, saleOrders: scoped.saleOrders, diaryNotes: scoped.diaryNotes };
 }
 
 export const dynamic = 'force-dynamic';
+
+async function customerName(id) {
+  const rows = await queryAll('SELECT name FROM customers WHERE id = ?', [Number(id)]);
+  return rows[0]?.name || `Customer #${id}`;
+}
 
 // Same admin/manager definition Nav.jsx's isDeptPM uses — kept in sync by comment, not import,
 // since Nav.jsx is a client component and this file needs its own server-side check.
@@ -105,12 +123,12 @@ export default async function ReportsPage({ searchParams }) {
     // Only fetch CRM data when Sales/Marketing is actually in view — same guard the
     // single-department branch below already uses, not assumed just because this is the
     // multi-department branch.
-    const crmData = myReportDepts.some(d => CRM_DEPARTMENTS.includes(d)) ? await getCrmData(myReportDepts.includes('Sales'), user) : undefined;
+    const crmData = myReportDepts.some(d => CRM_DEPARTMENTS.includes(d)) ? await getCrmData(myReportDepts.includes('Sales'), user, sp?.customer) : undefined;
     // Title reflects what's actually shown — "All Reports" only when it truly is all of them.
     const title = isPmView ? 'All Reports' : `${myReportDepts.join(' & ')} Reports`;
     return (
       <main className="min-h-[calc(100svh-3.5rem)]">
-        <ReportsWorkspace groups={groups} companies={companies} crmData={crmData} title={title} />
+        <ReportsWorkspace groups={groups} companies={companies} crmData={crmData} title={title} initialReport={sp?.report} customerFilter={sp?.customer ? await customerName(sp.customer) : null} />
       </main>
     );
   }
@@ -125,11 +143,11 @@ export default async function ReportsPage({ searchParams }) {
   }));
   if (!reports.length) redirect(roleHome(user));
 
-  const crmData = CRM_DEPARTMENTS.includes(department) ? await getCrmData(department === 'Sales', user) : undefined;
+  const crmData = CRM_DEPARTMENTS.includes(department) ? await getCrmData(department === 'Sales', user, sp?.customer) : undefined;
 
   return (
     <main className="min-h-[calc(100svh-3.5rem)]">
-      <ReportsWorkspace department={department} reports={reports} companies={companies} crmData={crmData} />
+      <ReportsWorkspace department={department} reports={reports} companies={companies} crmData={crmData} initialReport={sp?.report} customerFilter={sp?.customer ? await customerName(sp.customer) : null} />
     </main>
   );
 }

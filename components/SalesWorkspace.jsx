@@ -32,6 +32,7 @@ import {
 import { api, showToast } from '@/lib/client';
 import { todayISO } from '@/lib/date';
 import { formatMoney } from '@/lib/format';
+import Customer360 from '@/components/Customer360';
 import { quotationFollowupReason, REMINDER_LABELS } from '@/lib/quotation-reminders.mjs';
 import ScopeOfSupplySection from '@/components/ScopeOfSupplySection';
 import { PaymentOrdersTab, PaymentLogTab, Pager, SIZES } from '@/components/SalesPaymentTracker';
@@ -610,15 +611,22 @@ function LeadDetailSheet({ lead, users, customers, salesProducts = [], branches 
 // which this dialog deliberately never touches, Gap #26).
 function OrderLostDialog({ lead, onClose, router }) {
   const [reason, setReason] = useState('');
+  const [competitor, setCompetitor] = useState({ competitor: '', product: '', price: '' });
   const [saving, setSaving] = useState(false);
 
   async function save() {
     if (!reason.trim()) return showToast('A reason is required', 'error');
+    if (competitor.price !== '' && !(Number(competitor.price) >= 0)) return showToast('Competitor price must be a number', 'error');
     setSaving(true);
     try {
       await api(`/api/leads/${lead.id}`, { method: 'PATCH', body: {
         sales_call_status: 'Order Lost', lost_reason: reason.trim(), sales_call_closed_at: new Date().toISOString(),
       } });
+      // Plan 4 — who we lost to (optional), for the Competitor Analysis report and Customer 360.
+      if (competitor.competitor.trim()) {
+        await api('/api/competitors', { method: 'POST', body: { lead_id: lead.id, ...competitor, lost_to: true, notes: reason.trim() } })
+          .catch(err => showToast(`Marked lost, but the competitor wasn't saved: ${err.message}`, 'error'));
+      }
       showToast('Marked as Order Lost');
       router.refresh();
       onClose();
@@ -630,6 +638,11 @@ function OrderLostDialog({ lead, onClose, router }) {
       <DialogContent>
         <DialogHeader><DialogTitle>Order Lost — {lead.lead_name}</DialogTitle></DialogHeader>
         <div className="grid gap-1.5"><RequiredLabel>Reason</RequiredLabel><Textarea rows={3} value={reason} onChange={e => setReason(e.target.value)} autoFocus /></div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="grid gap-1.5"><Label>Lost to competitor (optional)</Label><Input value={competitor.competitor} onChange={e => setCompetitor(c => ({ ...c, competitor: e.target.value }))} /></div>
+          <div className="grid gap-1.5"><Label>Their product</Label><Input value={competitor.product} onChange={e => setCompetitor(c => ({ ...c, product: e.target.value }))} /></div>
+          <div className="grid gap-1.5"><Label>Their price (₹)</Label><Input type="number" min={0} value={competitor.price} onChange={e => setCompetitor(c => ({ ...c, price: e.target.value }))} /></div>
+        </div>
         <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button variant="destructive" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Mark as Order Lost'}</Button></DialogFooter>
       </DialogContent>
     </Dialog>
@@ -1174,7 +1187,7 @@ function CustomerDetailSheet({ customerId, onClose, router }) {
 
   return (
     <Sheet open onOpenChange={o => !o && onClose()}>
-      <SheetContent className="w-full sm:max-w-lg">
+      <SheetContent className="w-full sm:max-w-3xl">
         <SheetHeader><SheetTitle>{detail ? detail.name : 'Loading…'}</SheetTitle></SheetHeader>
         {detail && (
           <div className="flex flex-col gap-5 overflow-y-auto px-4 pb-4">
@@ -1182,6 +1195,8 @@ function CustomerDetailSheet({ customerId, onClose, router }) {
               <span>{detail.gst_no || 'No GST on file'}</span>
               <ContactLinks phone={detail.phone} email={detail.email} />
             </div>
+
+            <Customer360 customerId={detail.id} />
 
             <OldCrmSummary detail={detail} />
 
@@ -1399,10 +1414,10 @@ export function quoteLinesFromLead(lead, salesProducts = []) {
   }));
 }
 
-export function NewQuotationDialog({ customers, opportunityId = null, leadId = null, initialCustomerId = '', initialCustomerName = '', initialItems = null, salesProducts = null, onClose, onCreated, router }) {
+export function NewQuotationDialog({ customers, opportunityId = null, leadId = null, initialCustomerId = '', initialCustomerName = '', initialItems = null, salesProducts = null, revisionOf = null, initial = null, onClose, onCreated, router }) {
   const [customerId, setCustomerId] = useState(initialCustomerId ? String(initialCustomerId) : '');
-  const [company, setCompany] = useState(defaultCompanyClient);
-  const [quotationType, setQuotationType] = useState('Sales');
+  const [company, setCompany] = useState(() => initial?.company || defaultCompanyClient());
+  const [quotationType, setQuotationType] = useState(initial?.quotation_type || 'Sales');
   const [quotationDate, setQuotationDate] = useState(todayISO());
   const [validUntil, setValidUntil] = useState(() => { const d = new Date(); d.setDate(d.getDate() + 15); return d.toISOString().slice(0, 10); });
   const [taxPct, setTaxPct] = useState('18');
@@ -1420,12 +1435,25 @@ export function NewQuotationDialog({ customers, opportunityId = null, leadId = n
   }
   function addRow() { setItems(prev => [...prev, blankQuoteLine()]); }
   function removeRow(i) { setItems(prev => prev.filter((_, idx) => idx !== i)); }
-  function pickProduct(i, p) {
+  // Plan 4 — a price list rate (customer-specific first, else the default) beats the product's list price.
+  async function priceListRate(productId, custId) {
+    try { return await api(`/api/price-lists?product_id=${productId}${custId ? `&customer_id=${custId}` : ''}`); } catch { return null; }
+  }
+  async function pickProduct(i, p) {
     updateItem(i, {
       item_description: p.product_name, product_id: p.id, uom: p.unit || items[i].uom,
       rate: p.price ?? items[i].rate, gst_pct: p.gst_pct ?? items[i].gst_pct, hsn_code: p.hsn_code || '',
     });
+    const pl = await priceListRate(p.id, customerId);
+    if (pl) updateItem(i, { rate: pl.rate });
   }
+  // Customer changed after products were picked → re-check each product line's price list rate.
+  useEffect(() => {
+    if (!customerId) return;
+    items.forEach((it, i) => {
+      if (it.product_id) priceListRate(it.product_id, customerId).then(pl => { if (pl) updateItem(i, { rate: pl.rate }); });
+    });
+  }, [customerId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const preview = quotationTotals(items.filter(it => it.item_description.trim()), { fallbackGstPct: taxPct === '' ? 18 : Number(taxPct) });
 
@@ -1440,9 +1468,10 @@ export function NewQuotationDialog({ customers, opportunityId = null, leadId = n
         body: {
           customer_id: customerId, opportunity_id: opportunityId, lead_id: leadId, tax_pct: taxPct === '' ? 18 : Number(taxPct), items: cleanItems,
           company, quotation_type: quotationType, quotation_date: quotationDate, valid_until: validUntil,
+          revision_of: revisionOf, terms: initial?.terms || null, notes: initial?.notes || null,
         },
       });
-      showToast(`Quotation ${res.quotation_no} created`);
+      showToast(`Quotation ${res.quotation_no} ${revisionOf ? 'saved as a revision' : 'created'}`);
       router.refresh();
       if (onCreated) onCreated(res.id);
       onClose();
@@ -1453,7 +1482,7 @@ export function NewQuotationDialog({ customers, opportunityId = null, leadId = n
   return (
     <Dialog open onOpenChange={o => !o && onClose()}>
       <DialogContent className="sm:max-w-5xl">
-        <DialogHeader><DialogTitle>New Quotation</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>{revisionOf ? `Revise ${initial?.quotation_no || 'quotation'}` : 'New Quotation'}</DialogTitle></DialogHeader>
         <div className="flex flex-col gap-3 max-h-[70vh] overflow-y-auto pr-1">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className="grid gap-1.5">
@@ -1591,6 +1620,7 @@ export function SendCommercialOfferDialog({ quotationId, onClose, router }) {
 }
 
 function QuotationStatusSelect({ q, busy, onChange }) {
+  if (q.status === 'revised') return <Badge variant="secondary">Revised</Badge>;
   return (
     <Select value={q.status} onValueChange={v => onChange(q, v)} disabled={busy}>
       <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
@@ -1601,17 +1631,50 @@ function QuotationStatusSelect({ q, busy, onChange }) {
   );
 }
 
-function QuotationConvertButtons({ q, busy, onConvert, onInvoice }) {
-  if (q.status !== 'accepted') return null;
+function QuotationConvertButtons({ q, busy, onConvert, onInvoice, onRevise, onApprove, canApprove }) {
   return (
-    <div className="flex gap-2">
-      <Button size="sm" variant="outline" disabled={busy} onClick={() => onConvert(q)}>Convert to SO</Button>
-      <Button size="sm" variant="outline" disabled={busy} onClick={() => onInvoice(q)}>Convert to Invoice</Button>
+    <div className="flex flex-wrap gap-2">
+      {q.approval_status === 'pending' && canApprove && <Button size="sm" disabled={busy} onClick={() => onApprove(q)}>Approve discount</Button>}
+      {q.status === 'accepted' && <Button size="sm" variant="outline" disabled={busy} onClick={() => onConvert(q)}>Convert to SO</Button>}
+      {q.status === 'accepted' && <Button size="sm" variant="outline" disabled={busy} onClick={() => onInvoice(q)}>Convert to Invoice</Button>}
+      {!['accepted', 'revised'].includes(q.status) && <Button size="sm" variant="ghost" disabled={busy} onClick={() => onRevise(q)}>Revise</Button>}
     </div>
   );
 }
 
-function QuotationsTab({ quotations, customers, salesProducts = [], router }) {
+function QuotationBadges({ q }) {
+  return (
+    <div className="mt-1 flex flex-wrap gap-1">
+      {q.revision_no > 0 && <Badge variant="secondary">R{q.revision_no}</Badge>}
+      {q.approval_status === 'pending' && <Badge variant="outline" className="border-amber-500/50 text-amber-700 dark:text-amber-400">Discount {q.max_discount_pct}% — needs Head approval</Badge>}
+      {q.approval_status === 'approved' && <Badge variant="outline">Discount approved{q.approved_by ? ` by ${q.approved_by}` : ''}</Badge>}
+      {q.followup && <Badge variant="outline" className="border-amber-500/50 text-amber-700 dark:text-amber-400">{REMINDER_LABELS[q.followup]}</Badge>}
+    </div>
+  );
+}
+
+// Plan 4 — the line discount % above which a quotation needs a Sales Head's approval.
+function DiscountApprovalSetting({ canEdit }) {
+  const [pct, setPct] = useState(null);
+  const [draft, setDraft] = useState('');
+  useEffect(() => { api('/api/settings/sales-discount-approval').then(r => { setPct(r.pct); setDraft(String(r.pct)); }).catch(() => {}); }, []);
+  if (pct == null) return null;
+  async function save() {
+    try { const r = await api('/api/settings/sales-discount-approval', { method: 'PATCH', body: { pct: draft } }); setPct(r.pct); showToast('Saved'); }
+    catch (err) { showToast(err.message, 'error'); }
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+      <span>A line discount above</span>
+      {canEdit
+        ? <><Input type="number" min={0} max={100} value={draft} onChange={e => setDraft(e.target.value)} className="h-8 w-20" />%{String(pct) !== draft && <Button size="sm" variant="outline" onClick={save}>Save</Button>}</>
+        : <span className="font-medium text-foreground">{pct}%</span>}
+      <span>needs a Sales Head's approval before the quotation can be sent or accepted.</span>
+    </div>
+  );
+}
+
+function QuotationsTab({ quotations, customers, salesProducts = [], isSalesHead = false, router }) {
   useEntityHighlight(useSearchParams().get('highlight'));
   const [dialogOpen, setDialogOpen] = useState(false);
   const [busyId, setBusyId] = useState(null);
@@ -1625,6 +1688,26 @@ function QuotationsTab({ quotations, customers, salesProducts = [], router }) {
   }, [quotations]);
   const followupCount = withReason.filter(q => q.followup).length;
   const shown = followupOnly ? withReason.filter(q => q.followup) : withReason;
+  const [revising, setRevising] = useState(null); // { q, items }
+
+  async function revise(q) {
+    setBusyId(q.id);
+    try {
+      const d = await api(`/api/quotations/${q.id}`);
+      setRevising({ q: d, items: d.items.map(it => ({
+        item_description: it.item_description, qty: it.qty ?? 1, uom: it.uom || 'Nos', rate: it.rate ?? 0,
+        discount_pct: it.discount_pct ?? 0, gst_pct: it.gst_pct ?? '', product_id: it.product_id || null, hsn_code: it.hsn_code || '', item_id: null,
+      })) });
+    } catch (err) { showToast(err.message, 'error'); } finally { setBusyId(null); }
+  }
+  async function approve(q) {
+    setBusyId(q.id);
+    try {
+      await api(`/api/quotations/${q.id}/approve`, { method: 'POST', body: {} });
+      showToast(`${q.quotation_no} approved`);
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); } finally { setBusyId(null); }
+  }
 
   async function setStatus(q, status) {
     setBusyId(q.id);
@@ -1662,6 +1745,7 @@ function QuotationsTab({ quotations, customers, salesProducts = [], router }) {
         </CardAction>
       </CardHeader>
       <CardContent>
+        <div className="mb-3"><DiscountApprovalSetting canEdit={isSalesHead} /></div>
         {shown.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">{followupOnly ? 'Nothing needs a follow-up.' : 'No quotations yet.'}</p> : (<>
           <Table className="hidden md:table">
             <TableHeader><TableRow><TableHead>Quotation No.</TableHead><TableHead>Customer</TableHead><TableHead>Total</TableHead><TableHead>Status</TableHead><TableHead /></TableRow></TableHeader>
@@ -1670,12 +1754,12 @@ function QuotationsTab({ quotations, customers, salesProducts = [], router }) {
                 <TableRow key={q.id} data-entity-code={`QT-${q.id}`}>
                   <TableCell className="font-medium">
                     <a href={`/api/quotations/${q.id}/pdf`} target="_blank" rel="noreferrer" className="text-primary hover:underline">{q.quotation_no}</a>
-                    {q.followup && <div><Badge variant="outline" className="mt-1 border-amber-500/50 text-amber-700 dark:text-amber-400">{REMINDER_LABELS[q.followup]}</Badge></div>}
+                    <QuotationBadges q={q} />
                   </TableCell>
                   <TableCell>{q.customer_name}</TableCell>
                   <TableCell className="tnum">{formatMoney(q.total)}</TableCell>
                   <TableCell><QuotationStatusSelect q={q} busy={busyId === q.id} onChange={setStatus} /></TableCell>
-                  <TableCell><QuotationConvertButtons q={q} busy={busyId === q.id} onConvert={convert} onInvoice={q => { setIsReverseCharge(false); setRcmQuotation(q); }} /></TableCell>
+                  <TableCell><QuotationConvertButtons q={q} busy={busyId === q.id} onConvert={convert} onInvoice={q => { setIsReverseCharge(false); setRcmQuotation(q); }} onRevise={revise} onApprove={approve} canApprove={isSalesHead} /></TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -1688,15 +1772,22 @@ function QuotationsTab({ quotations, customers, salesProducts = [], router }) {
                   <span className="tnum">{formatMoney(q.total)}</span>
                 </div>
                 <div className="text-muted-foreground">{q.customer_name}</div>
-                {q.followup && <Badge variant="outline" className="w-fit border-amber-500/50 text-amber-700 dark:text-amber-400">{REMINDER_LABELS[q.followup]}</Badge>}
+                <QuotationBadges q={q} />
                 <QuotationStatusSelect q={q} busy={busyId === q.id} onChange={setStatus} />
-                <QuotationConvertButtons q={q} busy={busyId === q.id} onConvert={convert} onInvoice={q => { setIsReverseCharge(false); setRcmQuotation(q); }} />
+                <QuotationConvertButtons q={q} busy={busyId === q.id} onConvert={convert} onInvoice={q => { setIsReverseCharge(false); setRcmQuotation(q); }} onRevise={revise} onApprove={approve} canApprove={isSalesHead} />
               </div>
             ))}
           </div>
         </>        )}
       </CardContent>
       {dialogOpen && <NewQuotationDialog customers={customers} salesProducts={salesProducts} router={router} onClose={() => setDialogOpen(false)} />}
+      {revising && (
+        <NewQuotationDialog customers={customers} salesProducts={salesProducts} router={router}
+          revisionOf={revising.q.id} initial={revising.q} initialItems={revising.items}
+          initialCustomerId={revising.q.customer_id} initialCustomerName={revising.q.customer_name}
+          leadId={revising.q.lead_id} opportunityId={revising.q.opportunity_id}
+          onClose={() => setRevising(null)} />
+      )}
       {rcmQuotation && (
         <Dialog open onOpenChange={o => !o && setRcmQuotation(null)}>
           <DialogContent className="max-w-md">
@@ -1836,51 +1927,8 @@ function InvoicesTab({ invoices, creditNotes, router }) {
 
 // --- Price Lists (STERP, SYSTEM.md §5e) ------------------------------------------------------------
 
-// Same catalog search-as-you-type as QuotationItemField, minus the price lookup — this dialog IS
-// where a rate gets entered, so there's nothing to auto-fill from.
-function PriceListItemField({ value, onChange }) {
-  const [results, setResults] = useState([]);
-  const [open, setOpen] = useState(false);
-
-  async function onType(v) {
-    onChange({ item_name: v, item_id: null });
-    if (v.trim().length < 2) { setResults([]); setOpen(false); return; }
-    try {
-      const rows = await api(`/api/items?search=${encodeURIComponent(v.trim())}`);
-      setResults(rows);
-      setOpen(rows.length > 0);
-    } catch { /* catalog search is best-effort */ }
-  }
-  function pick(it) {
-    onChange({ item_name: it.item_name, item_id: it.id, uom: it.uom || '' });
-    setOpen(false);
-  }
-
-  return (
-    <div className="relative">
-      <Input placeholder="Search the item catalog" value={value.item_name}
-        onChange={e => onType(e.target.value)}
-        onFocus={() => setOpen(results.length > 0)} onBlur={() => setTimeout(() => setOpen(false), 150)} />
-      {open && (
-        <div className="absolute top-full z-10 mt-1 w-full rounded-md border bg-popover shadow-md">
-          {results.map(it => (
-            <button key={it.id} type="button" className="flex w-full flex-col items-start gap-0.5 border-b px-3 py-1.5 text-left text-sm last:border-b-0 hover:bg-muted/40"
-              title={it.hsn_code ? `HSN ${it.hsn_code}` : undefined} onMouseDown={() => pick(it)}>
-              <span className="font-medium">{it.item_name}</span>
-              <span className="text-xs text-muted-foreground">
-                {it.item_code ? `${it.item_code} · ` : ''}{it.uom || '—'}
-                {(it.category || it.material_process_type) && ` · ${[it.category, it.material_process_type].filter(Boolean).join(' · ')}`}
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function AddPriceListDialog({ customers, onClose, router }) {
-  const [item, setItem] = useState({ item_name: '', item_id: null, uom: '' });
+function AddPriceListDialog({ customers, salesProducts = [], onClose, router }) {
+  const [item, setItem] = useState({ item_name: '', product_id: null, uom: '' });
   const [plCustomerName, setPlCustomerName] = useState('');
   const [customerId, setCustomerId] = useState('__all__');
   const [rate, setRate] = useState('');
@@ -1890,14 +1938,14 @@ function AddPriceListDialog({ customers, onClose, router }) {
   const [saving, setSaving] = useState(false);
 
   async function save() {
-    if (!item.item_id) return showToast('Pick an item from the catalog', 'error');
+    if (!item.product_id) return showToast('Pick a product from the Product Master', 'error');
     if (!(Number(rate) > 0)) return showToast('Rate must be a positive number', 'error');
     setSaving(true);
     try {
       await api('/api/price-lists', {
         method: 'POST',
         body: {
-          item_id: item.item_id, customer_id: customerId === '__all__' ? null : customerId,
+          product_id: item.product_id, customer_id: customerId === '__all__' ? null : customerId,
           rate: Number(rate), uom: item.uom || null, valid_from: validFrom || null, valid_until: validUntil || null,
           notes: notes.trim() || null,
         },
@@ -1914,8 +1962,11 @@ function AddPriceListDialog({ customers, onClose, router }) {
         <DialogHeader><DialogTitle>New Price</DialogTitle></DialogHeader>
         <div className="flex flex-col gap-3">
           <div className="grid gap-1.5">
-            <Label>Item</Label>
-            <PriceListItemField value={item} onChange={patch => setItem(prev => ({ ...prev, ...patch }))} />
+            <Label>Product</Label>
+            <ProductSearchField products={salesProducts} value={item.item_name}
+              onChange={v => setItem(prev => ({ ...prev, item_name: v, product_id: null }))}
+              onPick={p => setItem({ item_name: p.product_name, product_id: p.id, uom: p.unit || '' })} />
+            {item.item_name && !item.product_id && <p className="text-xs text-muted-foreground">Pick a product from the list.</p>}
           </div>
           <div className="grid gap-1.5">
             <Label>Customer</Label>
@@ -1924,7 +1975,7 @@ function AddPriceListDialog({ customers, onClose, router }) {
               onChange={(id, n) => { setCustomerId(id); setPlCustomerName(n); }} />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div className="grid gap-1.5"><Label>Rate</Label><Input type="number" value={rate} onChange={e => setRate(e.target.value)} autoFocus={!!item.item_id} /></div>
+            <div className="grid gap-1.5"><Label>Rate</Label><Input type="number" value={rate} onChange={e => setRate(e.target.value)} autoFocus={!!item.product_id} /></div>
             <div className="grid gap-1.5"><Label>UoM</Label><Input value={item.uom} onChange={e => setItem(prev => ({ ...prev, uom: e.target.value }))} /></div>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -1972,7 +2023,7 @@ function PriceListRow({ pl, router }) {
   );
 }
 
-function PriceListsTab({ priceLists, customers, router }) {
+function PriceListsTab({ priceLists, customers, salesProducts = [], router }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   return (
     <Card>
@@ -1985,12 +2036,12 @@ function PriceListsTab({ priceLists, customers, router }) {
           <p className="py-6 text-center text-sm text-muted-foreground">No prices set yet — quotations fall back to a manually typed rate.</p>
         ) : (
           <Table>
-            <TableHeader><TableRow><TableHead>Item</TableHead><TableHead>Customer</TableHead><TableHead>Rate</TableHead><TableHead>Validity</TableHead><TableHead /></TableRow></TableHeader>
+            <TableHeader><TableRow><TableHead>Product</TableHead><TableHead>Customer</TableHead><TableHead>Rate</TableHead><TableHead>Validity</TableHead><TableHead /></TableRow></TableHeader>
             <TableBody>{priceLists.map(pl => <PriceListRow key={pl.id} pl={pl} router={router} />)}</TableBody>
           </Table>
         )}
       </CardContent>
-      {dialogOpen && <AddPriceListDialog customers={customers} router={router} onClose={() => setDialogOpen(false)} />}
+      {dialogOpen && <AddPriceListDialog customers={customers} salesProducts={salesProducts} router={router} onClose={() => setDialogOpen(false)} />}
     </Card>
   );
 }
@@ -3018,8 +3069,8 @@ export default function SalesWorkspace({ saleOrders, leads, customers, quotation
           {activePanel.key === 'enquiry' && <LeadsTab leads={leads} users={users} customers={customers} salesProducts={salesProducts} branches={branches} savedViews={savedViews} stages={stages} router={router} isEnquiry />}
           {activePanel.key === 'leads' && <LeadsTab leads={leads} users={users} customers={customers} salesProducts={salesProducts} branches={branches} stages={stages} savedViews={savedViews} router={router} />}
           {activePanel.key === 'customers' && <CustomersTab customers={customers} router={router} />}
-          {activePanel.key === 'quotations' && <QuotationsTab quotations={quotations} customers={customers} salesProducts={salesProducts} router={router} />}
-          {activePanel.key === 'price_lists' && <PriceListsTab priceLists={priceLists} customers={customers} router={router} />}
+          {activePanel.key === 'quotations' && <QuotationsTab quotations={quotations} customers={customers} salesProducts={salesProducts} isSalesHead={isSalesHead} router={router} />}
+          {activePanel.key === 'price_lists' && <PriceListsTab priceLists={priceLists} customers={customers} salesProducts={salesProducts} router={router} />}
           {activePanel.key === 'sale_orders' && <SaleOrdersTab saleOrders={saleOrders} router={router} canEditSoTax={canEditSoTax} />}
           {activePanel.key === 'scope_of_supply' && (
             <ScopeOfSupplySection projects={projects} scopeOfSupply={scopeOfSupply} canEdit canSeeMoney
