@@ -11506,6 +11506,31 @@ tab pages through `GET /api/customers?paged=1&q=&offset=&limit=`. The product li
 and old-CRM attributes (`GET /api/sales-products/[id]` loads them for editing). `/sales` went from
 9.2 MB to 3.0 MB (0.7 MB with one company selected).
 
+**Company selector reaches every company-owned screen (2026-09-25, later).** Report: switching the
+dropdown "changed nothing" on the Payment Tracker. The filter itself was correct; three things hid it:
+the refresh was silent (a heavy page re-rendered for several seconds with no sign of work), "All" and
+"Shanti Boilers" look the same (92% of orders are Boilers, newest first, and rows had no company
+mark), and the page number didn't reset, so page 13 of 1,091 orders became an empty page of 85.
+Fixed: `CompanySelector` refreshes in a transition (spinner, control disabled); `SalesWorkspace`
+wraps its tabs in a `Fragment` keyed by the company, so a switch starts each tab fresh (page,
+search, pending edits); Orders/Payments headers say "<company or All companies> · N orders" /
+"· N payments · ₹total"; with All, rows carry an SB/STF tag (`companyShort`, `lib/company-filter.mjs`).
+Who sees the selector and whose pages it narrows is one rule, `canUseCompanySelector(user)`: PMs
+plus Sales/Marketing/Accounts/Procurement/Dispatch heads. `getSelectedCompanyFor(user)` returns null
+for anyone else, so a Design/Production head is never filtered by a cookie they can't see.
+Now narrowed: Projects list; Procurement POs, vendor bills and debit notes (a PO's company comes from
+its lines' first real project when `purchase_orders.company` is blank, true of all 17 today); Dispatch
+packing lists, pending lines and approval queue (via the project); Executive KPIs, timeline and
+forecast (`getExecutiveSummary(company)`); Home's Sales card (`getSalesFlowCounts(company)`); and
+`GET /api/sale-orders|quotations|sales-invoices` (the last only without `project_id`). Accounts,
+Reports-catalog and Management-report cards keep their own company buttons (a ledger needs exactly
+one company) but start on the selected one (`lib/use-company-default.js`). Customer 360 stays
+all-company with an SB/STF tag per quotation, order and invoice. Still all-company, by design:
+customers, products, suppliers, stock, sourcing lines, gate passes, and the flow/pipeline counts
+other than Sales. Verified live: APIs 1,006 + 85 = 1,091 orders; payments 1,905 + 257 = 2,162
+(₹81.71 Cr + ₹21.11 Cr = ₹102.82 Cr); in the browser the spinner shows, page 121–130 of 1,091
+becomes 1–10 of 85, and switching back to All restores 1,091.
+
 **Plan 2a — own-records visibility (2026-09-25).** `lib/sales-visibility.mjs` (selfcheck) +
 `lib/sales-visibility.js`: a Sales **member** (Sales access, not Head, not PM) sees only enquiries
 where they are A/C manager / assignee / initiator / creator, and the quotations, orders (also by

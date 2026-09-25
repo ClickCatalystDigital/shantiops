@@ -4,7 +4,7 @@
 // Sale Orders | Campaigns, same multi-tab-in-one-file precedent as ProcurementWorkspace.jsx.
 // Customer detail (contacts/addresses/notes) opens in a right-side Sheet, same drawer pattern
 // HrWorkspace.jsx's employee detail uses.
-import { useState, useEffect, useMemo } from 'react';
+import { Fragment, useState, useEffect, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEntityHighlight } from '@/lib/use-entity-highlight';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
@@ -3060,7 +3060,7 @@ function FunnelStagesTab({ stages, canEdit, router }) {
   );
 }
 
-export default function SalesWorkspace({ saleOrders, leads, customers, quotations, priceLists = [], returns = [], inventoryItems = [], invoices = [], creditNotes = [], departments = ['Sales'], users = [], savedViews = [], initialTab, canEditSoTax = false, projects = [], scopeOfSupply = [], initialScopeProject, salePayments = [], branches = [], salesProducts = [], salesTargets = [], stages = [], isSalesHead = false }) {
+export default function SalesWorkspace({ saleOrders, leads, customers, quotations, priceLists = [], returns = [], inventoryItems = [], invoices = [], creditNotes = [], departments = ['Sales'], users = [], savedViews = [], initialTab, canEditSoTax = false, projects = [], scopeOfSupply = [], initialScopeProject, salePayments = [], branches = [], salesProducts = [], salesTargets = [], stages = [], isSalesHead = false, company = null }) {
   const router = useRouter();
   // Sales-only now — Marketing has its own tab/URL (/market, MarketingWorkspace.jsx). No more
   // per-viewer group filtering; every group in PANEL_GROUPS always renders here.
@@ -3082,6 +3082,9 @@ export default function SalesWorkspace({ saleOrders, leads, customers, quotation
           </div>
         </>
       }>
+          {/* Keyed by the global company selection: switching company remounts the tab, so its page,
+              search and optimistic edits start fresh instead of pointing past the new, shorter list. */}
+          <Fragment key={company || 'all'}>
           {activePanel.key === 'enquiry' && <LeadsTab leads={leads} users={users} customers={customers} salesProducts={salesProducts} branches={branches} savedViews={savedViews} stages={stages} router={router} isEnquiry />}
           {activePanel.key === 'leads' && <LeadsTab leads={leads} users={users} customers={customers} salesProducts={salesProducts} branches={branches} stages={stages} savedViews={savedViews} router={router} />}
           {activePanel.key === 'customers' && <CustomersTab customers={customers} router={router} />}
@@ -3093,8 +3096,8 @@ export default function SalesWorkspace({ saleOrders, leads, customers, quotation
               initialProject={initialScopeProject} />
           )}
           {activePanel.key === 'invoices' && <InvoicesTab invoices={invoices} creditNotes={creditNotes} router={router} />}
-          {activePanel.key === 'payment_orders' && <PaymentOrdersTab saleOrders={saleOrders} payments={salePayments} invoices={invoices} customers={customers} users={users} />}
-          {activePanel.key === 'payment_log' && <PaymentLogTab saleOrders={saleOrders} payments={salePayments} invoices={invoices} />}
+          {activePanel.key === 'payment_orders' && <PaymentOrdersTab saleOrders={saleOrders} payments={salePayments} invoices={invoices} customers={customers} users={users} company={company} />}
+          {activePanel.key === 'payment_log' && <PaymentLogTab saleOrders={saleOrders} payments={salePayments} invoices={invoices} company={company} />}
           {activePanel.key === 'returns' && <ReturnsTab returns={returns} saleOrders={saleOrders} inventoryItems={inventoryItems} router={router} />}
           {activePanel.key === 'tasks' && <AllTasksTab users={users} />}
           {activePanel.key === 'team' && <TeamTab users={users} departments={departments} />}
@@ -3103,6 +3106,7 @@ export default function SalesWorkspace({ saleOrders, leads, customers, quotation
           {activePanel.key === 'targets' && <TargetsTab salesTargets={salesTargets} branches={branches} router={router} />}
           {activePanel.key === 'email_templates' && <EmailTemplatesTab router={router} />}
           {activePanel.key === 'funnel_stages' && <FunnelStagesTab stages={stages} canEdit={isSalesHead} router={router} />}
+          </Fragment>
     </WorkspaceSidebar>
   );
 }

@@ -15,6 +15,8 @@ import { getSaleOrders } from '@/lib/data';
 import { audit } from '@/lib/usb';
 import { notifyDepartment, notifyPMs } from '@/lib/notify';
 import { COMPANY_NAMES } from '@/lib/qc-doc-pdf.js';
+import { getSelectedCompanyFor } from '@/lib/company-filter-server';
+import { filterByCompany } from '@/lib/company-filter.mjs';
 
 const TRACK_STATUSES = ['Pending', 'Ready', 'WIP', 'Dispatched', 'Closed'];
 
@@ -35,9 +37,10 @@ export async function GET(req) {
         ORDER BY so.created_at DESC LIMIT 20`,
       [`%${search}%`, `%${search}%`]
     );
-    return NextResponse.json(await scopeRows(user, 'saleOrders', rows));
+    return NextResponse.json(await scopeRows(user, 'saleOrders', filterByCompany(rows, getSelectedCompanyFor(user))));
   }
-  return NextResponse.json(await scopeRows(user, 'saleOrders', await getSaleOrders()));
+  // Global company selector (top bar) narrows the list the same way the pages do.
+  return NextResponse.json(await scopeRows(user, 'saleOrders', filterByCompany(await getSaleOrders(), getSelectedCompanyFor(user))));
 }
 
 export async function POST(req) {

@@ -27,7 +27,7 @@ export async function GET(req, { params }) {
        FROM leads WHERE converted_customer_id = ? ORDER BY id DESC`, [id]);
   const leadIds = leads.map(l => l.id);
   const [quotations, saleOrders, projects] = await Promise.all([
-    queryAll(`SELECT id, quotation_no, quotation_date, status, total, lead_id, created_by, revision_no, approval_status
+    queryAll(`SELECT id, quotation_no, quotation_date, status, total, lead_id, created_by, revision_no, approval_status, company
                 FROM quotations WHERE customer_id = ? ORDER BY id DESC`, [id]),
     queryAll(`SELECT so.id, so.so_no, so.order_date, so.status, so.total, so.lead_id, so.quotation_id, so.created_by,
                      so.sales_person_override, so.company,
@@ -41,7 +41,7 @@ export async function GET(req, { params }) {
     `SELECT id, lead_id, customer_id, note_type, content, visit_date, next_plan_date, created_by, created_at
        FROM crm_notes WHERE customer_id = ? OR lead_id IN (${inList(leadIds)}) ORDER BY id DESC LIMIT 50`, [id, ...leadIds]);
   const invoices = await queryAll(
-    `SELECT si.id, si.invoice_no, si.invoice_date, si.status, si.total, si.sale_order_id, si.quotation_id, si.created_by,
+    `SELECT si.id, si.invoice_no, si.invoice_date, si.status, si.total, si.sale_order_id, si.quotation_id, si.created_by, si.company,
             (SELECT COALESCE(SUM(r.amount), 0) FROM customer_receipts r WHERE r.sales_invoice_id = si.id) AS received
        FROM sales_invoices si WHERE si.customer_id = ? ORDER BY si.id DESC`, [id]);
 

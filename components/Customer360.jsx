@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { TrashIcon } from 'lucide-react';
+import { companyShort } from '@/lib/company-filter.mjs';
 
 const WARRANTY = {
   active: w => `Warranty to ${formatDate(w.end)} (${w.daysLeft} days left)`,
@@ -80,21 +81,21 @@ export default function Customer360({ customerId }) {
 
       <Section title="Quotations" count={d.quotations.length} report="quotation_listing" customerId={customerId}>
         <Rows items={d.quotations} empty="No quotations." render={q => (
-          <Row key={q.id}><a className="text-primary hover:underline" href={`/api/quotations/${q.id}/pdf`} target="_blank" rel="noreferrer">{q.quotation_no}</a>
+          <Row key={q.id}><a className="text-primary hover:underline" href={`/api/quotations/${q.id}/pdf`} target="_blank" rel="noreferrer">{q.quotation_no}</a><span className="ml-1.5 rounded border px-1 text-[10px] font-medium text-muted-foreground" title={q.company || 'Shanti Boilers'}>{companyShort(q)}</span>
             <span className="text-xs text-muted-foreground">{q.status}{q.approval_status === 'pending' ? ' · needs approval' : ''} · {formatMoney(q.total)}</span></Row>
         )} />
       </Section>
 
       <Section title="Orders & payments" count={d.orders.length}>
         <Rows items={d.orders} empty="No orders." render={o => (
-          <Row key={o.id}><span>{o.so_no}{o.order_date ? ` · ${formatDate(o.order_date)}` : ''}</span>
+          <Row key={o.id}><span>{o.so_no}<span className="ml-1.5 rounded border px-1 text-[10px] font-medium text-muted-foreground" title={o.company || 'Shanti Boilers'}>{companyShort(o)}</span>{o.order_date ? ` · ${formatDate(o.order_date)}` : ''}</span>
             <span className="text-xs text-muted-foreground tnum">{formatMoney(o.total)} · received {formatMoney(o.received) || '₹0'}{o.status === 'cancelled' ? ' · cancelled' : ''}</span></Row>
         )} />
       </Section>
 
       <Section title="Invoices" count={d.invoices.length}>
         <Rows items={d.invoices} empty="No invoices." render={i => (
-          <Row key={i.id}><a className="text-primary hover:underline" href={`/api/sales-invoices/${i.id}/pdf`} target="_blank" rel="noreferrer">{i.invoice_no}</a>
+          <Row key={i.id}><a className="text-primary hover:underline" href={`/api/sales-invoices/${i.id}/pdf`} target="_blank" rel="noreferrer">{i.invoice_no}</a><span className="ml-1.5 rounded border px-1 text-[10px] font-medium text-muted-foreground" title={i.company || 'Shanti Boilers'}>{companyShort(i)}</span>
             <span className="text-xs text-muted-foreground tnum">{i.status} · {formatMoney(i.total)} · received {formatMoney(i.received) || '₹0'}</span></Row>
         )} />
       </Section>

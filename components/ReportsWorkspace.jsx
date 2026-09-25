@@ -77,6 +77,7 @@ import {
   EmployeeFollowUpReport, QuotationListingReport, FeedbackNotRespondedReport, FeedbackResponseReport,
   EmployeeExpenseReport, SalesCallCustomizeReport,
 } from '@/components/SalesCallReportPanels';
+import { useCompanyDefault } from '@/lib/use-company-default';
 
 // Exported so app/reports/page.js's consolidated admin/manager view (all departments' reports in
 // one sidebar, see the `groups` prop below) can reuse the exact same key→component mapping instead
@@ -211,7 +212,7 @@ const ICON = {
 export default function ReportsWorkspace({ department, reports, groups, companies, crmData, title, initialReport, customerFilter }) {
   const allReports = groups ? groups.flatMap(g => g.reports) : reports;
   const [key, setKey] = useState(allReports.some(r => r.key === initialReport) ? initialReport : allReports[0]?.key);
-  const [company, setCompany] = useState(companies[0]?.company);
+  const [company, setCompany] = useCompanyDefault(companies);
   const active = allReports.find(r => r.key === key) || allReports[0];
   const Screen = active ? SCREEN[active.key] : null;
   const showCompanySwitcher = !active?.hasOwnControls && active?.needsCompany !== false;

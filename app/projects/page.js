@@ -3,6 +3,8 @@ import { getFreshSessionUser, isDesignHead } from '@/lib/auth';
 import NewProjectForm from '@/components/NewProjectForm';
 import PageHeader from '@/components/PageHeader';
 import ProjectsListTable from '@/components/ProjectsListTable';
+import { getSelectedCompanyFor } from '@/lib/company-filter-server';
+import { filterByCompany } from '@/lib/company-filter.mjs';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,11 +24,13 @@ export default async function Projects() {
   // Multi-unit split — a master's real children (master_project_id set) are grouped under their
   // master here instead of appearing as N+1 separate top-level rows; a project with no children is
   // completely unaffected (childSummary null, children []).
-  const grouped = groupProjectsByMaster(projects);
+  // Global company selector — only for viewers who can see it (Design/Production heads always see all).
+  const company = getSelectedCompanyFor(user);
+  const grouped = groupProjectsByMaster(filterByCompany(projects, company));
 
   return (
     <main className="container flex flex-col gap-6 py-8">
-      <PageHeader title="Projects" description="Every customer order, design → commissioning">
+      <PageHeader title="Projects" description={company ? `${company} · every customer order, design → commissioning` : 'Every customer order, design → commissioning'}>
         {canCreate && <NewProjectForm customers={customers} />}
       </PageHeader>
 

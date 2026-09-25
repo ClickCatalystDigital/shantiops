@@ -6,10 +6,10 @@
 // mutations go through PATCH /api/sale-orders/[id] and POST /api/sale-order-payments.
 import { salesPeopleOptions } from '@/lib/sales-people.mjs';
 import CustomerPicker from '@/components/CustomerPicker';
-import { defaultCompanyClient } from '@/lib/company-filter.mjs';
+import { defaultCompanyClient, companyShort } from '@/lib/company-filter.mjs';
 import { useState, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardAction, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -120,6 +120,11 @@ function Toolbar({ q, setQ, dir, setDir, dateLabel, children }) {
 // 1,000+ rows of editable cells is too heavy to mount at once — page it client-side. Default is a
 // small page; the user can raise it, capped at 50.
 export const SIZES = [10, 25, 50];
+// Small SB / STF tag so rows of the two companies can be told apart under "All companies".
+function CompanyTag({ row }) {
+  return <span className="rounded border px-1 text-[10px] font-medium text-muted-foreground" title={row.company || 'Shanti Boilers'}>{companyShort(row)}</span>;
+}
+
 export function Pager({ page, setPage, size, setSize, total }) {
   if (total <= SIZES[0]) return null;
   const pages = Math.max(1, Math.ceil(total / size));
@@ -143,7 +148,7 @@ export function Pager({ page, setPage, size, setSize, total }) {
 const byDate = (dir, get) => (a, b) => (dir === 'desc' ? -1 : 1) * String(get(a)).localeCompare(String(get(b)));
 const matches = (q, parts) => !q.trim() || parts.join(' ').toLowerCase().includes(q.trim().toLowerCase());
 
-export function PaymentOrdersTab({ saleOrders, payments, invoices, customers = [], users = [] }) {
+export function PaymentOrdersTab({ saleOrders, payments, invoices, customers = [], users = [], company = null }) {
   const router = useRouter();
   const [q, setQ] = useState('');
   const [dir, setDir] = useState('desc');
@@ -206,6 +211,7 @@ export function PaymentOrdersTab({ saleOrders, payments, invoices, customers = [
     <Card>
       <CardHeader>
         <CardTitle>Orders</CardTitle>
+        <CardDescription>{company || 'All companies'} · {kpiOrders.length} orders</CardDescription>
         <CardAction><Button size="sm" onClick={() => setAdding(true)}><PlusIcon />Add order</Button></CardAction>
       </CardHeader>
       <CardContent>
@@ -236,7 +242,12 @@ export function PaymentOrdersTab({ saleOrders, payments, invoices, customers = [
               {rows.slice(page * size, (page + 1) * size).map(r => (
                 <TableRow key={r.id}>
                   <TableCell className="whitespace-nowrap"><EditCell type="date" value={r.orderDate} display={fmtDate(r.orderDate)} onSave={v => save(r, { order_date: v })} /></TableCell>
-                  <TableCell className="font-medium"><EditCell value={r.so_no} display={r.so_no} onSave={v => save(r, { so_no: v })} /></TableCell>
+                  <TableCell className="font-medium">
+                    <div className="flex items-center gap-1.5">
+                      <EditCell value={r.so_no} display={r.so_no} onSave={v => save(r, { so_no: v })} />
+                      {!company && <CompanyTag row={r} />}
+                    </div>
+                  </TableCell>
                   <TableCell><EditCell value={r.customer_name} display={r.customer_name || '—'} onSave={v => save(r, { customer_name: v })} /></TableCell>
                   <TableCell><EditCell value={r.invoiceNos} display={r.invoiceNos || '—'} onSave={v => save(r, { invoice_ref: v })} /></TableCell>
                   <TableCell><InlineSelect value={r.sales_person} options={people} onChange={v => save(r, { sales_person: v })} /></TableCell>
@@ -421,7 +432,7 @@ function AddPaymentSheet({ saleOrders, payments, invoices, onClose }) {
   );
 }
 
-export function PaymentLogTab({ saleOrders, payments, invoices }) {
+export function PaymentLogTab({ saleOrders, payments, invoices, company = null }) {
   const router = useRouter();
   const [q, setQ] = useState('');
   const [dir, setDir] = useState('desc');
@@ -463,6 +474,7 @@ export function PaymentLogTab({ saleOrders, payments, invoices }) {
     <Card>
       <CardHeader>
         <CardTitle>Payments</CardTitle>
+        <CardDescription>{company || 'All companies'} · {rows.length} payments · {formatMoney(rows.reduce((n, p) => n + (p.amount || 0), 0))}</CardDescription>
         <CardAction><Button size="sm" onClick={() => setAdding(true)}><PlusIcon />Log payment</Button></CardAction>
       </CardHeader>
       <CardContent>
@@ -478,7 +490,7 @@ export function PaymentLogTab({ saleOrders, payments, invoices }) {
             <TableBody>
               {rows.slice(page * size, (page + 1) * size).map(p => (
                 <TableRow key={p.id}>
-                  <TableCell className="font-medium">{p.so_no}</TableCell>
+                  <TableCell className="font-medium whitespace-nowrap">{p.so_no}{!company && <> <CompanyTag row={p} /></>}</TableCell>
                   <TableCell>{p.customer_name || '—'}</TableCell>
                   <TableCell className="tnum">{p.order_value ? exact(p.order_value) : '—'}</TableCell>
                   <TableCell>

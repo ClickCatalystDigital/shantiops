@@ -54,6 +54,6 @@ export default async function SalesPage({ searchParams }) {
   const savedViews = savedViewRows.map(r => ({ ...r, filters: JSON.parse(r.filters || '{}') }));
 
   return (
-    <SalesWorkspace saleOrders={saleOrders} leads={leads} customers={customers} quotations={quotations} priceLists={priceLists} returns={returns} inventoryItems={inventoryItems} invoices={invoices} creditNotes={creditNotes} departments={['Sales']} users={crmUsers} savedViews={savedViews} initialTab={sp?.tab} canEditSoTax={canEditSoTax} projects={projects} scopeOfSupply={scopeOfSupply} initialScopeProject={sp?.project} salePayments={salePayments} branches={branches} salesProducts={salesProducts} salesTargets={salesTargets} stages={stages} isSalesHead={isDepartmentHead(user, 'Sales')} />
+    <SalesWorkspace saleOrders={saleOrders} leads={leads} customers={customers} quotations={quotations} priceLists={priceLists} returns={returns} inventoryItems={inventoryItems} invoices={invoices} creditNotes={creditNotes} departments={['Sales']} users={crmUsers} savedViews={savedViews} initialTab={sp?.tab} canEditSoTax={canEditSoTax} projects={projects} scopeOfSupply={scopeOfSupply} initialScopeProject={sp?.project} salePayments={salePayments} branches={branches} salesProducts={salesProducts} salesTargets={salesTargets} stages={stages} isSalesHead={isDepartmentHead(user, 'Sales')} company={company} />
   );
 }
