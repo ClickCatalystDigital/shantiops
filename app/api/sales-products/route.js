@@ -42,9 +42,10 @@ export async function POST(req) {
 
   try {
     const { lastId } = await execute(
-      `INSERT INTO sales_products (product_code, product_name, product_type, description, price, created_by)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [productCode, productName, b.product_type || null, b.description || null, b.price != null ? Number(b.price) : null, user.username]
+      `INSERT INTO sales_products (product_code, product_name, product_type, description, price, unit, hsn_code, gst_pct, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [productCode, productName, b.product_type || null, b.description || null, b.price != null && b.price !== '' ? Number(b.price) : null,
+        b.unit || null, b.hsn_code || null, b.gst_pct != null && b.gst_pct !== '' ? Number(b.gst_pct) : null, user.username]
     );
     await audit('sales_product_created', { actor: user.username, detail: `${productCode} — ${productName}` });
     return NextResponse.json({ id: Number(lastId), product_code: productCode });

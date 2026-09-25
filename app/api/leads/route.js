@@ -6,6 +6,7 @@ import { getFreshSessionUser, isInternal, canAccessDepartment } from '@/lib/auth
 import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { DEFAULT_STAGE, leadStateForStage } from '@/lib/lead-stage.mjs';
+import { resolveProductLines, writeLeadProducts } from '@/lib/crm';
 
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 function canAccessCrm(user) {
@@ -66,6 +67,16 @@ export async function POST(req) {
   const stageRow = await queryOne('SELECT name, is_won, is_lost FROM sales_stages WHERE name = ? AND active = 1', [stage]);
   if (!stageRow) return NextResponse.json({ error: `Unknown stage "${stage}"` }, { status: 400 });
 
+  // Plan 1e — product lines (the older single product_id/product fields still work as one line).
+  // Validated before the enquiry exists, so a bad line never leaves a half-saved enquiry.
+  const productInput = Array.isArray(b.products) ? b.products
+    : (b.product_id || b.product ? [{ product_id: b.product_id, description: b.product }] : null);
+  let productLines = null;
+  if (productInput) {
+    try { productLines = await resolveProductLines(productInput); }
+    catch (err) { return NextResponse.json({ error: err.message }, { status: err.status || 500 }); }
+  }
+
   const assignedTo = b.assigned_to || await nextAssignee(ownerDept);
   const { lastId } = await execute(
     `INSERT INTO leads (
@@ -89,6 +100,9 @@ export async function POST(req) {
   // updated_at stays equal to created_at — "untouched since creation" is what the SLA check reads.
   await execute('INSERT INTO lead_stage_history (lead_id, from_stage, to_stage, changed_by) VALUES (?, ?, ?, ?)',
     [id, null, stage, user.username]);
+  if (productLines?.length) {
+    await writeLeadProducts(id, productLines, { setExpectedValue: !(Number(b.expected_value) > 0) });
+  }
   await audit('lead_created', { actor: user.username, detail: leadName });
   return NextResponse.json({ id });
 }

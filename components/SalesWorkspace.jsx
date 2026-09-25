@@ -37,6 +37,8 @@ import { PaymentOrdersTab, PaymentLogTab, Pager, SIZES } from '@/components/Sale
 import { CreatePoFlow } from '@/components/SaleOrderWizard';
 import { renderTemplate } from '@/lib/email-template.mjs';
 import { DEFAULT_STAGE, isEnquiryStage, isSlaBreached } from '@/lib/lead-stage.mjs';
+import { QTY_UNITS } from '@/lib/qty-units.mjs';
+import { lineAmount, quotationTotals } from '@/lib/sales-lines.mjs';
 
 // First-response SLA (24h, untouched since creation) lives in lib/lead-stage.mjs with the rest of
 // the stage rules, so this list and the reports can never disagree. ponytail: fixed 24h, not a
@@ -438,7 +440,7 @@ function AddLeadDialog({ onClose, router }) {
 // one is actually set, so a plain Lead created through the simpler AddLeadDialog renders nothing
 // extra here.
 const ENQUIRY_DETAIL_FIELDS = [
-  ['address', 'Address'], ['website', 'Web address'], ['product', 'Product'], ['reference', 'Reference'],
+  ['address', 'Address'], ['website', 'Web address'], ['reference', 'Reference'],
   ['short_name', 'Short name'], ['district', 'District'], ['sub_location', 'Sub location'],
   ['telephone', 'Telephone'], ['order_expected_in', 'Order expected in'], ['week_number', 'Week number'],
   ['account_manager', 'A/C Manager'], ['initiated_by', 'Initiated by'], ['district_code', 'District code'],
@@ -521,6 +523,7 @@ function LeadDetailSheet({ lead, users, customers, salesProducts = [], branches 
             {lead.converted_customer_id && <Badge variant="secondary">Customer linked</Badge>}
           </div>
           <ExpectedValueField lead={lead} router={router} />
+          <LeadProductsCard lead={lead} salesProducts={salesProducts} router={router} />
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
             {lead.company_name && <span>Company: {lead.company_name}</span>}
             {lead.source && <span>Source: {lead.source}</span>}
@@ -557,6 +560,7 @@ function LeadDetailSheet({ lead, users, customers, salesProducts = [], branches 
 
       {action === 'offer' && !newQuotationId && (
         <NewQuotationDialog customers={customers} initialCustomerId={offerCustomerId || ''} leadId={lead.id} router={router}
+          salesProducts={salesProducts} initialItems={quoteLinesFromLead(lead, salesProducts)}
           onCreated={setNewQuotationId} onClose={() => setAction(null)} />
       )}
       {action === 'offer' && newQuotationId && (
@@ -658,17 +662,135 @@ function ProductSearchField({ products, value, onChange, onPick }) {
   );
 }
 
+// Sales CRM plan 1e — an enquiry's product lines. Picking a product fills its unit, price and GST %
+// (all still editable); free text works while the Product Master is empty. Amount = qty × rate
+// (qty blank counts as 1) — the same rule the server uses for the enquiry's expected value.
+const UNIT_OPTIONS = QTY_UNITS.map(u => ({ value: u, label: u }));
+export const blankProductLine = () => ({ product_id: null, description: '', qty: '', unit: '', rate: '', gst_pct: '' });
+
+export function productLinesFromLead(lead) {
+  return (lead?.products || []).map(p => ({
+    product_id: p.product_id || null, description: p.description || '',
+    qty: p.qty ?? '', unit: p.unit || '', rate: p.rate ?? '', gst_pct: p.gst_pct ?? '',
+  }));
+}
+
+function productLinesTotal(lines) {
+  return lines.reduce((a, l) => (l.rate === '' || l.rate == null ? a : a + (Number(l.qty) || 1) * Number(l.rate)), 0);
+}
+
+function ProductLinesEditor({ products = [], lines, onChange }) {
+  const patch = (i, p) => onChange(lines.map((l, j) => (j === i ? { ...l, ...p } : l)));
+  const pick = (i, p) => patch(i, {
+    product_id: p.id, description: p.product_name,
+    unit: p.unit || lines[i].unit, rate: p.price ?? lines[i].rate, gst_pct: p.gst_pct ?? lines[i].gst_pct,
+  });
+  const total = productLinesTotal(lines);
+  return (
+    <div className="flex flex-col gap-2">
+      {lines.length > 0 && (
+        <div className="hidden gap-2 text-xs text-muted-foreground md:grid md:grid-cols-[minmax(0,1fr)_5rem_6rem_7rem_5rem_6rem_2rem]">
+          <span>Product</span><span>Qty</span><span>Unit</span><span>Rate (₹)</span><span>GST %</span><span className="text-right">Amount</span><span />
+        </div>
+      )}
+      {lines.map((l, i) => {
+        const amount = l.rate === '' || l.rate == null ? null : (Number(l.qty) || 1) * Number(l.rate);
+        return (
+          <div key={i} className="grid grid-cols-2 gap-2 rounded-md border p-2 md:grid-cols-[minmax(0,1fr)_5rem_6rem_7rem_5rem_6rem_2rem] md:items-center md:border-0 md:p-0">
+            <div className="col-span-2 md:col-span-1">
+              <ProductSearchField products={products} value={l.description}
+                onChange={v => patch(i, { description: v, product_id: null })} onPick={p => pick(i, p)} />
+              {l.product_id && <div className="mt-0.5 text-xs text-muted-foreground">From Product Master</div>}
+            </div>
+            <Input type="number" min="0" aria-label="Qty" placeholder="Qty" value={l.qty} onChange={e => patch(i, { qty: e.target.value })} />
+            <SearchableSelect value={l.unit} onChange={v => patch(i, { unit: v })} options={UNIT_OPTIONS} displayValue={l.unit} onTextChange={v => patch(i, { unit: v })} placeholder="Unit" />
+            <Input type="number" min="0" aria-label="Rate" placeholder="Rate" value={l.rate} onChange={e => patch(i, { rate: e.target.value })} />
+            <Input type="number" min="0" max="100" aria-label="GST %" placeholder="GST %" value={l.gst_pct} onChange={e => patch(i, { gst_pct: e.target.value })} />
+            <div className="text-right text-sm tnum">{amount == null ? '—' : formatMoney(amount)}</div>
+            <Button type="button" variant="ghost" size="icon" aria-label="Remove product" onClick={() => onChange(lines.filter((_, j) => j !== i))}>
+              <TrashIcon className="size-4" />
+            </Button>
+          </div>
+        );
+      })}
+      <div className="flex items-center justify-between gap-2">
+        <Button type="button" variant="outline" size="sm" onClick={() => onChange([...lines, blankProductLine()])}>
+          <PlusIcon className="size-4" /> Add product
+        </Button>
+        {total > 0 && <div className="text-sm"><span className="text-muted-foreground">Total (before GST): </span><span className="font-semibold tnum">{formatMoney(total)}</span></div>}
+      </div>
+    </div>
+  );
+}
+
+// Read-only list on the enquiry sheet, with Edit → the same editor.
+function LeadProductsCard({ lead, salesProducts, router }) {
+  const [editing, setEditing] = useState(false);
+  const [lines, setLines] = useState(() => productLinesFromLead(lead));
+  const [saving, setSaving] = useState(false);
+  const saved = lead.products || [];
+
+  async function save() {
+    setSaving(true);
+    try {
+      await api(`/api/leads/${lead.id}`, { method: 'PATCH', body: { products: lines } });
+      showToast('Products saved');
+      setEditing(false);
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); } finally { setSaving(false); }
+  }
+
+  return (
+    <div className="rounded-md border p-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <div className="text-sm font-semibold">Products</div>
+        {!editing && (
+          <Button size="sm" variant="ghost" onClick={() => { setLines(productLinesFromLead(lead)); setEditing(true); }}>
+            <PencilIcon className="size-3.5" /> {saved.length ? 'Edit' : 'Add'}
+          </Button>
+        )}
+      </div>
+      {editing ? (
+        <div className="flex flex-col gap-3">
+          <ProductLinesEditor products={salesProducts} lines={lines} onChange={setLines} />
+          <p className="text-xs text-muted-foreground">Saving sets the expected value to the products' total (when rates are given).</p>
+          <div className="flex justify-end gap-2">
+            <Button size="sm" variant="outline" onClick={() => setEditing(false)}>Cancel</Button>
+            <Button size="sm" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save products'}</Button>
+          </div>
+        </div>
+      ) : saved.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No products yet.</p>
+      ) : (
+        <ul className="flex flex-col divide-y text-sm">
+          {saved.map(p => (
+            <li key={p.id} className="flex items-baseline justify-between gap-3 py-1.5">
+              <span className="min-w-0">
+                <span className="font-medium">{p.description}</span>
+                <span className="text-muted-foreground">{p.qty != null ? ` · ${p.qty}${p.unit ? ` ${p.unit}` : ''}` : ''}{p.gst_pct != null ? ` · GST ${p.gst_pct}%` : ''}</span>
+              </span>
+              <span className="shrink-0 tnum">{p.rate != null ? formatMoney((p.qty || 1) * p.rate) : '—'}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function AddEnquiryDialog({ leads, users, salesProducts, stages = [], onClose, router }) {
   const [f, setF] = useState({
-    enquiry_date: todayISO(), organization: '', address: '', website: '', email: '', product: '', product_id: null,
+    enquiry_date: todayISO(), organization: '', address: '', website: '', email: '',
     assigned_to: '', reference: '', short_name: '', territory: '', district: '', sub_location: '',
     phone: '', order_expected_in: '', week_number: '', notes: '', industry: '',
     account_manager: '', initiated_by: '', district_code: '', pin_code: '', sales_call_status: DEFAULT_STAGE, expected_value: '',
     telephone: '', source: '',
   });
+  const [products, setProducts] = useState([blankProductLine()]);
   const [saving, setSaving] = useState(false);
   const set = (k) => (v) => setF(prev => ({ ...prev, [k]: v }));
   const setText = (k) => (e) => setF(prev => ({ ...prev, [k]: e.target.value }));
+  const productsTotal = productLinesTotal(products);
 
   const districtOpts = distinctOptions(leads, 'district');
   const subLocationOpts = distinctOptions(leads, 'sub_location');
@@ -680,7 +802,7 @@ function AddEnquiryDialog({ leads, users, salesProducts, stages = [], onClose, r
     if (!f.address.trim()) return showToast('Address is required', 'error');
     setSaving(true);
     try {
-      await api('/api/leads', { method: 'POST', body: f });
+      await api('/api/leads', { method: 'POST', body: { ...f, products } });
       showToast('Enquiry added');
       router.refresh();
       onClose();
@@ -703,11 +825,6 @@ function AddEnquiryDialog({ leads, users, salesProducts, stages = [], onClose, r
               <div className="grid gap-1.5"><RequiredLabel>Address</RequiredLabel><Textarea rows={2} value={f.address} onChange={setText('address')} /></div>
               <div className="grid gap-1.5"><Label>Web address</Label><Input value={f.website} onChange={setText('website')} placeholder="https://…" /></div>
               <div className="grid gap-1.5"><Label>Email id</Label><Input type="email" value={f.email} onChange={setText('email')} /></div>
-              <div className="grid gap-1.5"><Label>Product</Label>
-                <ProductSearchField products={salesProducts} value={f.product}
-                  onChange={v => setF(prev => ({ ...prev, product: v, product_id: null }))}
-                  onPick={p => setF(prev => ({ ...prev, product: p.product_name, product_id: p.id }))} />
-              </div>
               <div className="grid gap-1.5"><Label>Team</Label><SearchableSelect value={f.assigned_to} onChange={set('assigned_to')} options={teamOpts} placeholder="Select a person…" /></div>
               <div className="grid gap-1.5"><Label>Reference</Label><Input value={f.reference} onChange={setText('reference')} /></div>
             </div>
@@ -731,11 +848,15 @@ function AddEnquiryDialog({ leads, users, salesProducts, stages = [], onClose, r
               <div className="grid gap-1.5"><Label>Initiated by</Label><SearchableSelect value={f.initiated_by} onChange={set('initiated_by')} options={teamOpts} placeholder="Select a person…" /></div>
               <div className="grid gap-1.5"><Label>District code</Label><Input value={f.district_code} onChange={setText('district_code')} /></div>
               <div className="grid gap-1.5"><Label>Pin code</Label><Input value={f.pin_code} onChange={setText('pin_code')} /></div>
-              <div className="grid gap-1.5"><Label>Expected value (₹)</Label><Input type="number" min="0" value={f.expected_value} onChange={setText('expected_value')} /></div>
+              <div className="grid gap-1.5"><Label>Expected value (₹)</Label><Input type="number" min="0" value={f.expected_value} onChange={setText('expected_value')} placeholder={productsTotal > 0 ? `${productsTotal} (from products)` : ''} /></div>
               <div className="grid gap-1.5"><Label>Stage</Label><SearchableSelect value={f.sales_call_status} onChange={set('sales_call_status')} options={stages.filter(s => !s.is_won && !s.is_lost).map(s => ({ value: s.name, label: s.name }))} placeholder="Select…" /></div>
               <div className="grid gap-1.5"><Label>Mobile number</Label><Input value={f.phone} onChange={setText('phone')} /></div>
               <div className="grid gap-1.5"><Label>Source</Label><SearchableSelect value={f.source} onChange={set('source')} options={sourceOpts} displayValue={f.source} onTextChange={set('source')} placeholder="Select or type…" /></div>
             </div>
+          </div>
+          <div className="grid gap-1.5">
+            <Label>Products</Label>
+            <ProductLinesEditor products={salesProducts} lines={products} onChange={setProducts} />
           </div>
         </div>
         <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Create'}</Button></DialogFooter>
@@ -1211,21 +1332,45 @@ const QUOTATION_TYPE_SEED = ['Sales', 'Service', 'Spares', 'AMC'];
 // Phase 3.2 — company/type/dates surfaced as real inputs (were dead columns before), per-line
 // discount %. onCreated (optional) lets a caller (the Commercial Offer flow) chain straight into
 // SendCommercialOfferDialog instead of just closing.
-export function NewQuotationDialog({ customers, opportunityId = null, leadId = null, initialCustomerId = '', onClose, onCreated, router }) {
+// Sales CRM plan 1f/1g — lines pick from the Product Master (unit, price, HSN and GST % fill in,
+// all editable); each line carries its own GST %, the "Default GST %" covers lines left blank.
+// CGST+SGST vs IGST is decided on save from the company's and customer's states. Callers that
+// don't pass salesProducts (Marketing's Pipeline) keep the older Item Master search.
+const blankQuoteLine = () => ({ item_description: '', qty: 1, uom: 'Nos', rate: 0, discount_pct: 0, gst_pct: '', product_id: null, hsn_code: '', item_id: null });
+
+export function quoteLinesFromLead(lead, salesProducts = []) {
+  const byId = new Map(salesProducts.map(p => [p.id, p]));
+  return (lead?.products || []).map(p => ({
+    ...blankQuoteLine(),
+    item_description: p.description, qty: p.qty ?? 1, uom: p.unit || 'Nos', rate: p.rate ?? 0,
+    gst_pct: p.gst_pct ?? '', product_id: p.product_id || null, hsn_code: byId.get(p.product_id)?.hsn_code || '',
+  }));
+}
+
+export function NewQuotationDialog({ customers, opportunityId = null, leadId = null, initialCustomerId = '', initialItems = null, salesProducts = null, onClose, onCreated, router }) {
   const [customerId, setCustomerId] = useState(initialCustomerId ? String(initialCustomerId) : '');
   const [company, setCompany] = useState(COMPANY_NAMES[0]);
   const [quotationType, setQuotationType] = useState('Sales');
   const [quotationDate, setQuotationDate] = useState(todayISO());
   const [validUntil, setValidUntil] = useState(() => { const d = new Date(); d.setDate(d.getDate() + 15); return d.toISOString().slice(0, 10); });
   const [taxPct, setTaxPct] = useState('18');
-  const [items, setItems] = useState([{ item_description: '', qty: 1, uom: 'Nos', rate: 0, discount_pct: 0, item_id: null }]);
+  const [items, setItems] = useState(() => (initialItems?.length ? initialItems : [blankQuoteLine()]));
   const [saving, setSaving] = useState(false);
+  const useProducts = Array.isArray(salesProducts);
 
   function updateItem(i, patch) {
     setItems(prev => prev.map((it, idx) => idx === i ? { ...it, ...patch } : it));
   }
-  function addRow() { setItems(prev => [...prev, { item_description: '', qty: 1, uom: 'Nos', rate: 0, discount_pct: 0, item_id: null }]); }
+  function addRow() { setItems(prev => [...prev, blankQuoteLine()]); }
   function removeRow(i) { setItems(prev => prev.filter((_, idx) => idx !== i)); }
+  function pickProduct(i, p) {
+    updateItem(i, {
+      item_description: p.product_name, product_id: p.id, uom: p.unit || items[i].uom,
+      rate: p.price ?? items[i].rate, gst_pct: p.gst_pct ?? items[i].gst_pct, hsn_code: p.hsn_code || '',
+    });
+  }
+
+  const preview = quotationTotals(items.filter(it => it.item_description.trim()), { fallbackGstPct: taxPct === '' ? 18 : Number(taxPct) });
 
   async function save() {
     if (!customerId) return showToast('Customer is required', 'error');
@@ -1236,7 +1381,7 @@ export function NewQuotationDialog({ customers, opportunityId = null, leadId = n
       const res = await api('/api/quotations', {
         method: 'POST',
         body: {
-          customer_id: customerId, opportunity_id: opportunityId, lead_id: leadId, tax_pct: Number(taxPct) || 0, items: cleanItems,
+          customer_id: customerId, opportunity_id: opportunityId, lead_id: leadId, tax_pct: taxPct === '' ? 18 : Number(taxPct), items: cleanItems,
           company, quotation_type: quotationType, quotation_date: quotationDate, valid_until: validUntil,
         },
       });
@@ -1247,12 +1392,13 @@ export function NewQuotationDialog({ customers, opportunityId = null, leadId = n
     } catch (err) { showToast(err.message, 'error'); } finally { setSaving(false); }
   }
 
+  const GRID = 'md:grid-cols-[minmax(0,1fr)_4rem_5.5rem_6.5rem_4.5rem_4.5rem_6rem_2rem]';
   return (
     <Dialog open onOpenChange={o => !o && onClose()}>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className="sm:max-w-5xl">
         <DialogHeader><DialogTitle>New Quotation</DialogTitle></DialogHeader>
         <div className="flex flex-col gap-3 max-h-[70vh] overflow-y-auto pr-1">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className="grid gap-1.5">
               <Label>Customer</Label>
               <Select value={customerId} onValueChange={setCustomerId}>
@@ -1271,22 +1417,46 @@ export function NewQuotationDialog({ customers, opportunityId = null, leadId = n
               <Label>Quotation type</Label>
               <SearchableSelect value={quotationType} onChange={setQuotationType} options={QUOTATION_TYPE_SEED.map(t => ({ value: t, label: t }))} displayValue={quotationType} onTextChange={setQuotationType} placeholder="Select or type…" />
             </div>
-            <div className="grid gap-1.5"><Label>GST %</Label><Input type="number" value={taxPct} onChange={e => setTaxPct(e.target.value)} /></div>
             <div className="grid gap-1.5"><Label>Quotation date</Label><Input type="date" value={quotationDate} onChange={e => setQuotationDate(e.target.value)} /></div>
             <div className="grid gap-1.5"><Label>Valid until</Label><Input type="date" value={validUntil} onChange={e => setValidUntil(e.target.value)} /></div>
+            <div className="grid gap-1.5"><Label>Default GST %</Label><Input type="number" min="0" max="100" value={taxPct} onChange={e => setTaxPct(e.target.value)} /></div>
           </div>
           <div className="flex flex-col gap-2">
             <Label>Line items</Label>
+            <div className={`hidden gap-2 text-xs text-muted-foreground md:grid ${GRID}`}>
+              <span>{useProducts ? 'Product' : 'Description'}</span><span>Qty</span><span>Unit</span><span>Rate (₹)</span><span>Disc %</span><span>GST %</span><span className="text-right">Amount</span><span />
+            </div>
             {items.map((it, i) => (
-              <div key={i} className="flex items-start gap-2">
-                <QuotationItemField item={it} customerId={customerId} onChange={patch => updateItem(i, patch)} />
-                <Input placeholder="Qty" type="number" value={it.qty} onChange={e => updateItem(i, { qty: e.target.value })} className="w-16" />
-                <Input placeholder="Rate" type="number" value={it.rate} onChange={e => updateItem(i, { rate: e.target.value })} className="w-24" />
-                <Input placeholder="Disc %" type="number" value={it.discount_pct} onChange={e => updateItem(i, { discount_pct: e.target.value })} className="w-20" />
-                <Button size="sm" variant="ghost" onClick={() => removeRow(i)}><TrashIcon className="size-4" /></Button>
+              <div key={i} className={`grid grid-cols-2 gap-2 rounded-md border p-2 md:items-start md:border-0 md:p-0 ${GRID}`}>
+                <div className="col-span-2 md:col-span-1">
+                  {useProducts ? (
+                    <>
+                      <ProductSearchField products={salesProducts} value={it.item_description}
+                        onChange={v => updateItem(i, { item_description: v, product_id: null })} onPick={p => pickProduct(i, p)} />
+                      {it.product_id && <div className="mt-0.5 text-xs text-muted-foreground">From Product Master{it.hsn_code ? ` · HSN ${it.hsn_code}` : ''}</div>}
+                    </>
+                  ) : (
+                    <QuotationItemField item={it} customerId={customerId} onChange={patch => updateItem(i, patch)} />
+                  )}
+                </div>
+                <Input aria-label="Qty" placeholder="Qty" type="number" min="0" value={it.qty} onChange={e => updateItem(i, { qty: e.target.value })} />
+                <SearchableSelect value={it.uom} onChange={v => updateItem(i, { uom: v })} options={UNIT_OPTIONS} displayValue={it.uom} onTextChange={v => updateItem(i, { uom: v })} placeholder="Unit" />
+                <Input aria-label="Rate" placeholder="Rate" type="number" min="0" value={it.rate} onChange={e => updateItem(i, { rate: e.target.value })} />
+                <Input aria-label="Discount %" placeholder="Disc %" type="number" min="0" max="100" value={it.discount_pct} onChange={e => updateItem(i, { discount_pct: e.target.value })} />
+                <Input aria-label="GST %" placeholder={taxPct || '18'} type="number" min="0" max="100" value={it.gst_pct} onChange={e => updateItem(i, { gst_pct: e.target.value })} />
+                <div className="self-center text-right text-sm tnum">{formatMoney(lineAmount(it))}</div>
+                <Button size="icon" variant="ghost" aria-label="Remove line" onClick={() => removeRow(i)}><TrashIcon className="size-4" /></Button>
               </div>
             ))}
-            <Button size="sm" variant="outline" onClick={addRow}><PlusIcon />Add line</Button>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <Button size="sm" variant="outline" onClick={addRow}><PlusIcon />Add line</Button>
+              <div className="min-w-56 text-sm">
+                <div className="flex justify-between gap-4"><span className="text-muted-foreground">Sub total</span><span className="tnum">{formatMoney(preview.subtotal)}</span></div>
+                <div className="flex justify-between gap-4"><span className="text-muted-foreground">GST</span><span className="tnum">{formatMoney(preview.taxAmount)}</span></div>
+                <div className="flex justify-between gap-4 border-t pt-1 font-semibold"><span>Total</span><span className="tnum">{formatMoney(preview.total)}</span></div>
+                <p className="mt-1 text-xs text-muted-foreground">Split into CGST + SGST or IGST from the customer's state on save.</p>
+              </div>
+            </div>
           </div>
         </div>
         <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Create Quotation'}</Button></DialogFooter>
@@ -1366,7 +1536,7 @@ export function SendCommercialOfferDialog({ quotationId, onClose, router }) {
   );
 }
 
-function QuotationsTab({ quotations, customers, router }) {
+function QuotationsTab({ quotations, customers, salesProducts = [], router }) {
   useEntityHighlight(useSearchParams().get('highlight'));
   const [dialogOpen, setDialogOpen] = useState(false);
   const [busyId, setBusyId] = useState(null);
@@ -1437,7 +1607,7 @@ function QuotationsTab({ quotations, customers, router }) {
           </Table>
         )}
       </CardContent>
-      {dialogOpen && <NewQuotationDialog customers={customers} router={router} onClose={() => setDialogOpen(false)} />}
+      {dialogOpen && <NewQuotationDialog customers={customers} salesProducts={salesProducts} router={router} onClose={() => setDialogOpen(false)} />}
       {rcmQuotation && (
         <Dialog open onOpenChange={o => !o && setRcmQuotation(null)}>
           <DialogContent className="max-w-md">
@@ -2357,7 +2527,8 @@ function ProductDialog({ product, onClose, router }) {
   const [f, setF] = useState({
     product_code: product?.product_code || '', product_name: product?.product_name || '',
     product_type: product?.product_type || '', description: product?.description || '',
-    price: product?.price ?? '',
+    price: product?.price ?? '', unit: product?.unit || '', hsn_code: product?.hsn_code || '',
+    gst_pct: product?.gst_pct ?? '',
   });
   const [saving, setSaving] = useState(false);
   const set = (k) => (v) => setF(prev => ({ ...prev, [k]: v }));
@@ -2367,7 +2538,7 @@ function ProductDialog({ product, onClose, router }) {
     if (!f.product_name.trim()) return showToast('Product name is required', 'error');
     setSaving(true);
     try {
-      const body = { ...f, product_name: f.product_name.trim(), price: f.price === '' ? null : Number(f.price) };
+      const body = { ...f, product_name: f.product_name.trim(), price: f.price === '' ? null : Number(f.price), gst_pct: f.gst_pct === '' ? null : Number(f.gst_pct) };
       if (isEdit) await api(`/api/sales-products/${product.id}`, { method: 'PATCH', body });
       else await api('/api/sales-products', { method: 'POST', body });
       showToast(isEdit ? 'Product updated' : 'Product added');
@@ -2386,6 +2557,11 @@ function ProductDialog({ product, onClose, router }) {
           <div className="grid gap-1.5"><Label>Product type</Label><SearchableSelect value={f.product_type} onChange={set('product_type')} options={typeOpts} displayValue={f.product_type} onTextChange={set('product_type')} placeholder="Select or type…" /></div>
           <div className="grid gap-1.5"><Label>Description</Label><Textarea rows={2} value={f.description} onChange={e => set('description')(e.target.value)} /></div>
           <div className="grid gap-1.5"><Label>Price (optional — can add later)</Label><Input type="number" value={f.price} onChange={e => set('price')(e.target.value)} /></div>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="grid gap-1.5"><Label>Unit</Label><SearchableSelect value={f.unit} onChange={set('unit')} options={QTY_UNITS.map(u => ({ value: u, label: u }))} displayValue={f.unit} onTextChange={set('unit')} placeholder="Nos…" /></div>
+            <div className="grid gap-1.5"><Label>HSN code</Label><Input value={f.hsn_code} onChange={e => set('hsn_code')(e.target.value)} /></div>
+            <div className="grid gap-1.5"><Label>GST %</Label><Input type="number" min="0" value={f.gst_pct} onChange={e => set('gst_pct')(e.target.value)} placeholder="18" /></div>
+          </div>
         </div>
         <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? 'Saving…' : isEdit ? 'Save' : 'Add Product'}</Button></DialogFooter>
       </DialogContent>
@@ -2405,7 +2581,7 @@ function ProductsTab({ salesProducts, router }) {
       <CardContent>
         {salesProducts.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No products yet — add data as it becomes available.</p> : (
           <Table>
-            <TableHeader><TableRow><TableHead>Code</TableHead><TableHead>Name</TableHead><TableHead>Type</TableHead><TableHead>Price</TableHead><TableHead>Status</TableHead><TableHead /></TableRow></TableHeader>
+            <TableHeader><TableRow><TableHead>Code</TableHead><TableHead>Name</TableHead><TableHead>Type</TableHead><TableHead>Price</TableHead><TableHead>Unit</TableHead><TableHead>GST %</TableHead><TableHead>Status</TableHead><TableHead /></TableRow></TableHeader>
             <TableBody>
               {salesProducts.map(p => (
                 <TableRow key={p.id} className="cursor-pointer" onClick={() => setDialogState(p)}>
@@ -2413,6 +2589,8 @@ function ProductsTab({ salesProducts, router }) {
                   <TableCell className="font-medium">{p.product_name}</TableCell>
                   <TableCell className="text-muted-foreground">{p.product_type || '—'}</TableCell>
                   <TableCell className="text-muted-foreground">{p.price != null ? formatMoney(p.price) : '—'}</TableCell>
+                  <TableCell className="text-muted-foreground">{p.unit || '—'}</TableCell>
+                  <TableCell className="text-muted-foreground">{p.gst_pct != null ? `${p.gst_pct}%` : '—'}</TableCell>
                   <TableCell><Badge variant={p.active ? 'default' : 'outline'}>{p.active ? 'Active' : 'Inactive'}</Badge></TableCell>
                   <TableCell><Button size="icon" variant="ghost" onClick={e => { e.stopPropagation(); setDialogState(p); }}><PencilIcon className="size-3.5" /></Button></TableCell>
                 </TableRow>
@@ -2677,7 +2855,7 @@ export default function SalesWorkspace({ saleOrders, leads, customers, quotation
           {activePanel.key === 'enquiry' && <LeadsTab leads={leads} users={users} customers={customers} salesProducts={salesProducts} branches={branches} savedViews={savedViews} stages={stages} router={router} isEnquiry />}
           {activePanel.key === 'leads' && <LeadsTab leads={leads} users={users} customers={customers} salesProducts={salesProducts} branches={branches} stages={stages} savedViews={savedViews} router={router} />}
           {activePanel.key === 'customers' && <CustomersTab customers={customers} router={router} />}
-          {activePanel.key === 'quotations' && <QuotationsTab quotations={quotations} customers={customers} router={router} />}
+          {activePanel.key === 'quotations' && <QuotationsTab quotations={quotations} customers={customers} salesProducts={salesProducts} router={router} />}
           {activePanel.key === 'price_lists' && <PriceListsTab priceLists={priceLists} customers={customers} router={router} />}
           {activePanel.key === 'sale_orders' && <SaleOrdersTab saleOrders={saleOrders} router={router} canEditSoTax={canEditSoTax} />}
           {activePanel.key === 'scope_of_supply' && (

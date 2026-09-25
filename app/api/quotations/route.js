@@ -10,6 +10,7 @@ import { getQuotations } from '@/lib/data';
 import { audit } from '@/lib/usb';
 import { COMPANY_NAMES } from '@/lib/company-profiles.js';
 import { setLeadStage } from '@/lib/crm';
+import { quotationTotals } from '@/lib/sales-lines.mjs';
 
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 function canAccessCrm(user) {
@@ -33,45 +34,61 @@ export async function POST(req) {
   const items = Array.isArray(b.items) ? b.items.filter(it => String(it.item_description || '').trim()) : [];
   if (!items.length) return NextResponse.json({ error: 'At least one line item is required' }, { status: 400 });
 
+  const company = COMPANY_NAMES.includes(b.company) ? b.company : COMPANY_NAMES[0];
+  // Plan 1f/1g — each line carries its own GST % (defaulted from its product; a blank line falls
+  // back to the document's GST %). Rate after Discount stays derived, never stored. CGST+SGST vs
+  // IGST follows the issuing company's and the customer's states, same rule as invoices and the PO
+  // wizard (lib/sales-lines.mjs quotationTotals -> lib/gst-calc.mjs gstSplit).
+  for (const it of items) {
+    for (const k of ['qty', 'rate', 'discount_pct', 'gst_pct']) {
+      const v = it[k];
+      if (v !== '' && v != null && !(Number.isFinite(Number(v)) && Number(v) >= 0)) {
+        return NextResponse.json({ error: `${k} must be a number ≥ 0` }, { status: 400 });
+      }
+    }
+    if (Number(it.discount_pct) > 100 || Number(it.gst_pct) > 100) {
+      return NextResponse.json({ error: 'Discount % and GST % must be 100 or less' }, { status: 400 });
+    }
+  }
+  const productIds = [...new Set(items.map(it => Number(it.product_id)).filter(Boolean))];
+  if (productIds.length) {
+    const found = await queryOne(`SELECT COUNT(*) AS n FROM sales_products WHERE id IN (${productIds.map(() => '?').join(',')})`, productIds);
+    if (Number(found?.n) !== productIds.length) return NextResponse.json({ error: 'Unknown product on a line' }, { status: 400 });
+  }
+  const customer = await queryOne('SELECT state_code FROM customers WHERE id = ?', [b.customer_id]);
+  if (!customer) return NextResponse.json({ error: 'Unknown customer' }, { status: 400 });
   const now = new Date();
   const fyStart = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1; // FY = Apr-Mar
   const seq = await nextCounterValue('quotation_no', 0);
   // Company-aware numbering (real bug, previously always hardcoded /SB/ regardless of which
   // company the quotation was actually for) — reads the same invoice_prefix company_settings
   // already carries for every other document.
-  const company = COMPANY_NAMES.includes(b.company) ? b.company : COMPANY_NAMES[0];
-  const companyRow = await queryOne('SELECT invoice_prefix FROM company_settings WHERE company = ?', [company]);
+  const companyRow = await queryOne('SELECT invoice_prefix, state_code FROM company_settings WHERE company = ?', [company]);
   const quotationNo = `QTN-${seq}/${companyRow?.invoice_prefix || 'SB'}/${fyStart}-${String((fyStart + 1) % 100).padStart(2, '0')}`;
 
-  // Rate after Discount stays derived, never stored — amount = qty * rate * (1 - discount_pct/100).
-  const lineAmount = (it) => {
-    const qty = Number(it.qty) || 0;
-    const rate = Number(it.rate) || 0;
-    const discountPct = Number(it.discount_pct) || 0;
-    return qty * rate * (1 - discountPct / 100);
-  };
-  const subtotal = items.reduce((a, it) => a + lineAmount(it), 0);
-  const taxPct = Number(b.tax_pct) || 0;
-  const taxAmount = subtotal * taxPct / 100;
-  const total = subtotal + taxAmount;
+  const t = quotationTotals(items, {
+    companyStateCode: companyRow?.state_code || null,
+    customerStateCode: customer.state_code || null,
+    fallbackGstPct: b.tax_pct === '' || b.tax_pct == null ? 18 : Number(b.tax_pct),
+  });
 
   const { lastId } = await execute(
     `INSERT INTO quotations
-       (quotation_no, customer_id, opportunity_id, lead_id, quotation_date, valid_until, subtotal, tax_pct, tax_amount, total, terms, notes, created_by, company, quotation_type)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (quotation_no, customer_id, opportunity_id, lead_id, quotation_date, valid_until, subtotal, tax_pct, tax_amount, total,
+        cgst_amount, sgst_amount, igst_amount, terms, notes, created_by, company, quotation_type)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [quotationNo, b.customer_id, b.opportunity_id || null, b.lead_id || null, b.quotation_date || null, b.valid_until || null,
-      subtotal, taxPct, taxAmount, total, b.terms || null, b.notes || null, user.username, company, b.quotation_type || null]
+      t.subtotal, t.uniformGstPct ?? 0, t.taxAmount, t.total, t.cgst, t.sgst, t.igst,
+      b.terms || null, b.notes || null, user.username, company, b.quotation_type || null]
   );
   const quotationId = Number(lastId);
   let sortOrder = 0;
-  for (const it of items) {
-    const qty = Number(it.qty) || 0;
-    const rate = Number(it.rate) || 0;
-    const discountPct = Number(it.discount_pct) || 0;
+  for (const it of t.lines) {
     await execute(
-      `INSERT INTO quotation_items (quotation_id, item_description, hsn_code, qty, uom, rate, discount_pct, amount, sort_order)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [quotationId, it.item_description.trim(), it.hsn_code || null, qty, it.uom || null, rate, discountPct, lineAmount(it), sortOrder++]
+      `INSERT INTO quotation_items (quotation_id, item_description, hsn_code, qty, uom, rate, discount_pct, gst_pct, product_id, amount, sort_order)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [quotationId, String(it.item_description).trim(), it.hsn_code || null, Number(it.qty) || 0, it.uom || null, Number(it.rate) || 0,
+        Number(it.discount_pct) || 0, it.gst_pct, it.product_id ? Number(it.product_id) : null, it.amount, sortOrder++]
     );
   }
   await audit('quotation_created', { actor: user.username, detail: quotationNo });

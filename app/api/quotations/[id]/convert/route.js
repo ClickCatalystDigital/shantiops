@@ -41,18 +41,24 @@ export async function POST(req, { params }) {
 
   const { lastId } = await execute(
     `INSERT INTO sale_orders
-       (so_no, customer_name, customer_id, opportunity_id, lead_id, quotation_id, description, subtotal, tax_pct, tax_amount, total, company, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (so_no, customer_name, customer_id, opportunity_id, lead_id, quotation_id, description, subtotal, tax_pct, tax_amount, total,
+        cgst_amount, sgst_amount, igst_amount, company, created_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [soNo, quotation.customer_name, quotation.customer_id, quotation.opportunity_id, quotation.lead_id || null, quotation.id,
-      `Converted from ${quotation.quotation_no}`, quotation.subtotal, quotation.tax_pct, quotation.tax_amount, quotation.total, company, user.username]
+      `Converted from ${quotation.quotation_no}`, quotation.subtotal, quotation.tax_pct, quotation.tax_amount, quotation.total,
+      quotation.cgst_amount || 0, quotation.sgst_amount || 0, quotation.igst_amount || 0, company, user.username]
   );
   const soId = Number(lastId);
   let sortOrder = 0;
   for (const it of items) {
     await execute(
-      `INSERT INTO sale_order_items (sale_order_id, item_description, hsn_code, qty, uom, rate, amount, sort_order)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [soId, it.item_description, it.hsn_code, it.qty, it.uom, it.rate, it.amount, sortOrder++]
+      `INSERT INTO sale_order_items (sale_order_id, item_description, hsn_code, qty, uom, rate, amount, sort_order,
+         product_id, discount_pct, item_tax_pct)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      // Plan 1f/1g — the order keeps the quotation line's product, discount and own GST % (a
+      // quotation made before per-line GST carries only its document rate).
+      [soId, it.item_description, it.hsn_code, it.qty, it.uom, it.rate, it.amount, sortOrder++,
+        it.product_id || null, it.discount_pct || 0, it.gst_pct ?? quotation.tax_pct ?? 0]
     );
   }
   await audit('quotation_converted', { actor: user.username, detail: `${quotation.quotation_no} -> ${soNo}` });

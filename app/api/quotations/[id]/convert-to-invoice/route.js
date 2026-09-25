@@ -9,7 +9,8 @@ import { requireCrmAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { notifyDepartment, notifyPMs } from '@/lib/notify';
 import { COMPANY_NAMES } from '@/lib/qc-doc-pdf.js';
-import { financialYear, gstSplit } from '@/lib/gst-calc.mjs';
+import { financialYear } from '@/lib/gst-calc.mjs';
+import { quotationTotals } from '@/lib/sales-lines.mjs';
 import { todayISO } from '@/lib/date';
 
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
@@ -34,7 +35,9 @@ export async function POST(req, { params }) {
   const items = await queryAll('SELECT * FROM quotation_items WHERE quotation_id = ? ORDER BY sort_order', [params.id]);
 
   const b = await req.json().catch(() => ({}));
-  const company = COMPANY_NAMES.includes(b.company) ? b.company : COMPANY_NAMES[0];
+  // The quotation's own company, not always the first one (same fix convert/route.js already has) —
+  // it decides both the invoice series and the CGST+SGST vs IGST split.
+  const company = COMPANY_NAMES.includes(b.company) ? b.company : (COMPANY_NAMES.includes(quotation.company) ? quotation.company : COMPANY_NAMES[0]);
   const companyRow = await queryOne('SELECT * FROM company_settings WHERE company = ?', [company]);
   const saleOrder = await queryOne('SELECT id FROM sale_orders WHERE quotation_id = ?', [params.id]);
   // The project this invoice belongs to, if one exists yet — via the same sale_order_id link
@@ -48,12 +51,14 @@ export async function POST(req, { params }) {
   const seq = await nextCounterValue(`invoice_no:${company}:${fy}`, 0);
   const invoiceNo = `${companyRow?.invoice_prefix || 'INV'}/${seq}/${fy}`;
 
-  const split = gstSplit({
-    taxableAmount: quotation.subtotal,
-    ratePct: quotation.tax_pct,
-    companyStateCode: companyRow?.state_code,
-    customerStateCode: quotation.customer_state_code,
+  // Plan 1g — tax per line at the line's own GST % (a quotation made before per-line GST falls back
+  // to its single document rate), recomputed here against the issuing company's state.
+  const t = quotationTotals(items.map(it => ({ ...it, amount: it.amount })), {
+    companyStateCode: companyRow?.state_code || null,
+    customerStateCode: quotation.customer_state_code || null,
+    fallbackGstPct: quotation.tax_pct || 0,
   });
+  const split = { cgst: t.cgst, sgst: t.sgst, igst: t.igst, taxAmount: t.taxAmount };
   // Reverse charge: the customer self-assesses GST entirely, so nothing is charged to them for it —
   // the invoice total is just the taxable value (lib/ledger.mjs's salesInvoiceLines() posts nothing
   // to GST Output Payable in this case either).
@@ -70,11 +75,11 @@ export async function POST(req, { params }) {
   );
   const invoiceId = Number(lastId);
   let sortOrder = 0;
-  for (const it of items) {
+  for (const it of t.lines) {
     await execute(
       `INSERT INTO sales_invoice_items (sales_invoice_id, item_description, hsn_code, qty, uom, rate, amount, gst_rate_pct, sort_order)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [invoiceId, it.item_description, it.hsn_code, it.qty, it.uom, it.rate, it.amount, quotation.tax_pct, sortOrder++]
+      [invoiceId, it.item_description, it.hsn_code, it.qty, it.uom, it.rate, it.amount, it.gst_pct, sortOrder++]
     );
   }
   await audit('quotation_converted_to_invoice', { actor: user.username, detail: `${quotation.quotation_no} -> ${invoiceNo}` });
