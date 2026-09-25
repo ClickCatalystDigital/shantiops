@@ -3,6 +3,7 @@
 // app/api/sales-invoices/[id]/credit-note (real per-company per-FY series via `counters`).
 // Recording a receipt posts Bank & Cash / Accounts Receivable directly — it does not touch the
 // invoice's own Sales Invoice journal entry (Revenue/GST were already posted at issue).
+import { hiddenSalesRecord } from '@/lib/sales-visibility';
 import { NextResponse } from 'next/server';
 import { execute, queryOne, queryAll, nextCounterValue } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment, isPM } from '@/lib/auth';
@@ -23,12 +24,16 @@ function canView(user) {
 
 export async function GET(req, { params }) {
   const user = await getFreshSessionUser();
+  const hidden = await hiddenSalesRecord(user, 'invoice', params.id); // plan 2a — a member sees only their own
+  if (hidden) return hidden;
   if (!canView(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   return NextResponse.json(await queryAll('SELECT * FROM customer_receipts WHERE sales_invoice_id = ? ORDER BY receipt_date, id', [params.id]));
 }
 
 export async function POST(req, { params }) {
   const user = await getFreshSessionUser();
+  const hidden = await hiddenSalesRecord(user, 'invoice', params.id); // plan 2a — a member sees only their own
+  if (hidden) return hidden;
   const isAccountsOnly = !canAccessCrm(user) && canAccessDepartment(user, 'Accounts');
   if (!canAccessCrm(user) && !isAccountsOnly) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const actionDenied = isAccountsOnly

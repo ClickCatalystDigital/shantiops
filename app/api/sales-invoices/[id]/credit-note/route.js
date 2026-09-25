@@ -1,6 +1,7 @@
 // app/api/sales-invoices/[id]/credit-note/route.js — ACCOUNTING-IMPLEMENTATION-PLAN.md Phase 2.
 // Replaces sales_returns.credit_note_ref's free text with a real linked document; sales_returns
 // itself is untouched — this is the document a return can now point at by number.
+import { hiddenSalesRecord } from '@/lib/sales-visibility';
 import { NextResponse } from 'next/server';
 import { execute, queryOne, nextCounterValue } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment, isPM } from '@/lib/auth';
@@ -18,6 +19,8 @@ function canAccessCrm(user) {
 
 export async function POST(req, { params }) {
   const user = await getFreshSessionUser();
+  const hidden = await hiddenSalesRecord(user, 'invoice', params.id); // plan 2a — a member sees only their own
+  if (hidden) return hidden;
   if (!canAccessCrm(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const actionDenied = await requireCrmAction(user, 'sales.credit_note.write');
   if (actionDenied) return actionDenied;

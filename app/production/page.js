@@ -4,7 +4,7 @@ import { DEPARTMENTS } from '@/lib/milestones';
 import {
   getDepartmentCalendar, getOpenDepartmentTasks, getFunctionalHeads,
 } from '@/lib/data';
-import { todayISO, todayMonth, monthGridBounds, weekBounds, yearBounds } from '@/lib/date';
+import { todayISO, todayMonth, monthGridBounds, weekBounds, yearBounds, shiftWeek } from '@/lib/date';
 import ProductionToday from '@/components/ProductionToday';
 import { salesScope } from '@/lib/sales-visibility';
 
@@ -31,10 +31,13 @@ export default async function ProductionTodayPage({ searchParams }) {
 
   const [from, to] = view === 'week' ? weekBounds(date) : view === 'year' ? yearBounds(year) : monthGridBounds(month);
 
-  const [events, openTasks, heads] = await Promise.all([
+  // Sales/Marketing's "Follow-ups" panel: today + 7 days, whatever month/week is on screen.
+  const crmDepts = deptsToShow.filter(d => d === 'Sales' || d === 'Marketing');
+  const [events, openTasks, heads, upcoming] = await Promise.all([
     getDepartmentCalendar(deptsToShow, from, to, { salesMember: salesScope(user) }),
     getOpenDepartmentTasks(deptsToShow, today),
     getFunctionalHeads(),
+    crmDepts.length ? getDepartmentCalendar(crmDepts, today, shiftWeek(today, 1), { salesMember: salesScope(user) }) : null,
   ]);
   // Assignable = operators actually in one of the departments being shown. Picks up new heads automatically.
   const operators = heads.filter(o => o.active && o.departments.some(d => deptsToShow.includes(d)));
@@ -50,6 +53,7 @@ export default async function ProductionTodayPage({ searchParams }) {
         deptFilter={deptFilter}
         deptsToShow={deptsToShow}
         events={events}
+        upcomingFollowups={upcoming?.followups || []}
         openTasks={openTasks}
         operators={operators}
         salesUsers={heads.filter(h => h.active && h.departments.includes('Sales')).map(h => ({ username: h.username, display_name: h.display_name }))}

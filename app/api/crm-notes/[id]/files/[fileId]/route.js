@@ -1,6 +1,7 @@
 // app/api/crm-notes/[id]/files/[fileId]/route.js — proxied read-back + delete, same shape as
 // calc-drawings' own [id]/files/[fileId] route. Access is inherited from the parent note (any CRM
 // user with Sales/Marketing access), never a broader "any logged-in internal user" shortcut.
+import { hiddenSalesRecord } from '@/lib/sales-visibility';
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
@@ -14,6 +15,8 @@ function canAccessCrm(user) {
 
 export async function GET(req, { params }) {
   const user = await getFreshSessionUser();
+  const hidden = await hiddenSalesRecord(user, 'note', params.id); // plan 2a — a member sees only their own
+  if (hidden) return hidden;
   if (!canAccessCrm(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const file = await queryOne('SELECT file_key, file_name FROM crm_note_files WHERE id = ? AND note_id = ?', [params.fileId, params.id]);
@@ -31,6 +34,8 @@ export async function GET(req, { params }) {
 
 export async function DELETE(req, { params }) {
   const user = await getFreshSessionUser();
+  const hidden = await hiddenSalesRecord(user, 'note', params.id); // plan 2a — a member sees only their own
+  if (hidden) return hidden;
   if (!canAccessCrm(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const file = await queryOne('SELECT file_key FROM crm_note_files WHERE id = ? AND note_id = ?', [params.fileId, params.id]);

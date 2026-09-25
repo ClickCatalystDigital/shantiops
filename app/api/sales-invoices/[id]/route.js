@@ -1,5 +1,6 @@
 // app/api/sales-invoices/[id]/route.js — status/payment_ref updates. Same shape as
 // app/api/quotations/[id]/route.js's PATCH.
+import { hiddenSalesRecord } from '@/lib/sales-visibility';
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment, isPM } from '@/lib/auth';
@@ -21,6 +22,8 @@ function canView(user) {
 
 export async function GET(req, { params }) {
   const user = await getFreshSessionUser();
+  const hidden = await hiddenSalesRecord(user, 'invoice', params.id); // plan 2a — a member sees only their own
+  if (hidden) return hidden;
   if (!canView(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const detail = await getSalesInvoiceDetail(params.id);
   if (!detail) return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -35,6 +38,8 @@ const ACCOUNTS_PAYMENT_FIELDS = ['status', 'payment_ref'];
 
 export async function PATCH(req, { params }) {
   const user = await getFreshSessionUser();
+  const hidden = await hiddenSalesRecord(user, 'invoice', params.id); // plan 2a — a member sees only their own
+  if (hidden) return hidden;
   const b = await req.json();
   const isCrm = canAccessCrm(user);
   const isAccountsPaymentOnly = !isCrm && canAccessDepartment(user, 'Accounts');

@@ -1,7 +1,8 @@
 # Sales CRM — handoff for the next chat (2026-09-25)
 
 Read this first, then `docs/sales-crm-plan.md` (the full phased plan) and `SYSTEM.md` §5db (what is
-built, with verification notes). Branch: `claude/exciting-mccarthy-cj760h`.
+built, with verification notes). Branch: `claude/exciting-mccarthy-cj760h`, continued on
+`claude/dazzling-galileo-wu42y6` (gap review, 2026-09-25).
 
 ## Where we are
 
@@ -15,6 +16,9 @@ built, with verification notes). Branch: `claude/exciting-mccarthy-cj760h`.
 | Phase 2b–2e — calendar overlay, real Diary alerts, quotation reminders, mobile cards | **Done** |
 | Phase 3 — reports: CSV/Excel on every report, Employee 360, real funnel, Sales Overview | **Done** |
 | Phase 4 — Customer 360, competitors, installed base, quotation revisions + discount approval, Price Lists → products | **Done** |
+| Gap review — visibility holes, Create PO stage, customer address, Home follow-ups, date bug, fresh-DB boot | **Done** (SYSTEM.md §5db "Gap review") |
+| Remove test data from the shared DB | **Waiting** — this environment's network blocked the Turso host |
+| Old-CRM enquiry import (605 rows, PDF-extracted CSV) | **Waiting** on the client's choice of source (see below) |
 | Deferred (not this run) | Zoho email (hosting decision), Marketing workspace, SMS/WhatsApp |
 
 ## Left for the client / next chat

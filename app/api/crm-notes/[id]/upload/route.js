@@ -1,6 +1,7 @@
 // app/api/crm-notes/[id]/upload/route.js — Diary's "Attach Files" (Phase 1). Same shape as
 // calc-drawings' own upload route: formData -> arrayBuffer -> Buffer -> putObject -> store the R2
 // key. Best-effort: an unconfigured bucket 502s this route without touching anything already saved.
+import { hiddenSalesRecord } from '@/lib/sales-visibility';
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
@@ -14,13 +15,15 @@ function canAccessCrm(user) {
 
 export async function POST(req, { params }) {
   const user = await getFreshSessionUser();
+  const hidden = await hiddenSalesRecord(user, 'note', params.id); // plan 2a — a member sees only their own
+  if (hidden) return hidden;
   if (!canAccessCrm(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const note = await queryOne('SELECT id FROM crm_notes WHERE id = ?', [params.id]);
   if (!note) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  const form = await req.formData();
-  const file = form.get('file');
+  const form = await req.formData().catch(() => null);
+  const file = form?.get('file');
   if (!file || typeof file.arrayBuffer !== 'function') {
     return NextResponse.json({ error: 'No file provided' }, { status: 400 });
   }

@@ -93,7 +93,7 @@ function FollowupTable({ rows, onUpdate }) {
 }
 
 export default function ProductionToday({
-  view, month, date, year, today, deptFilter, deptsToShow, events, openTasks, operators, salesUsers = [],
+  view, month, date, year, today, deptFilter, deptsToShow, events, openTasks, operators, salesUsers = [], upcomingFollowups = [],
 }) {
   const router = useRouter();
   const [dayOpen, setDayOpen] = useState(null);
@@ -139,6 +139,8 @@ export default function ProductionToday({
     return map;
   }, [events]);
   const showsCrm = deptsToShow.includes('Sales') || deptsToShow.includes('Marketing');
+  const upcomingSorted = useMemo(() => [...upcomingFollowups]
+    .sort((a, b) => (a.date + (a.plan_time || '')).localeCompare(b.date + (b.plan_time || ''))), [upcomingFollowups]);
 
   // A combined multi-department view needs each pill to say which department it's from.
   function pillText(it) {
@@ -311,13 +313,43 @@ export default function ProductionToday({
             })}
           </div>
           <div className="mt-2 flex flex-wrap gap-3 text-xs text-muted-foreground">
+            {showsCrm && <span className="flex items-center gap-1"><span className="size-2 rounded-full bg-sky-500" />Follow-ups</span>}
             <span className="flex items-center gap-1"><span className="size-2 rounded-full bg-primary" />Tasks</span>
-            <span className="flex items-center gap-1"><span className="size-2 rounded-full bg-amber-500" />Milestones</span>
+            {/* Sales/Marketing own no milestones — only show the key when a department that does is in view. */}
+            {deptsToShow.some(d => !['Sales', 'Marketing'].includes(d)) && (
+              <span className="flex items-center gap-1"><span className="size-2 rounded-full bg-amber-500" />Milestones</span>
+            )}
           </div>
           </>
           )}
         </CardContent>
       </Card>
+
+      <div className="flex flex-col gap-4">
+      {/* Sales/Marketing: the Diary follow-ups due today and in the next 7 days, each one click
+          from Update Now — the calendar pills alone were easy to miss. */}
+      {showsCrm && (
+        <Card>
+          <CardHeader><CardTitle>Follow-ups</CardTitle></CardHeader>
+          <CardContent className="flex flex-col gap-1">
+            {upcomingSorted.length === 0 && (
+              <p className="py-2 text-center text-sm text-muted-foreground">No follow-ups planned for the next 7 days.</p>
+            )}
+            {upcomingSorted.map(f => (
+              <div key={`fu-${f.id}`} className="flex items-center gap-2 rounded-md px-1 py-1.5 hover:bg-muted">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm">{f.company_name || f.lead_name}</p>
+                  {f.plan_of_action && <p className="truncate text-xs text-muted-foreground">{f.plan_of_action}</p>}
+                </div>
+                <span className={cn('shrink-0 text-xs tnum', f.date === today ? 'font-medium text-foreground' : 'text-muted-foreground')}>
+                  {f.date === today ? 'today' : formatDate(f.date)}{f.plan_time ? ` · ${f.plan_time}` : ''}
+                </span>
+                <Button size="sm" variant="outline" className="shrink-0" onClick={() => openDiary(f.lead_id)}>Update</Button>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       {/* To dos */}
       <Card>
@@ -380,6 +412,8 @@ export default function ProductionToday({
           </div>
         </CardContent>
       </Card>
+
+      </div>
 
       {/* Day details */}
       <Dialog open={!!dayOpen} onOpenChange={o => !o && setDayOpen(null)}>

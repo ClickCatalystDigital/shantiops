@@ -51,7 +51,10 @@ export function CreatePoStep1Dialog({ lead, branches, stages = [], onClose, onCr
   const stageNames = stages.length ? stages.map(st => st.name) : SALES_CALL_STATUSES;
   const [expectedDate, setExpectedDate] = useState(lead.expected_order_date || todayISO());
   const [weekNumber, setWeekNumber] = useState(lead.week_number || isoWeekNumber(lead.expected_order_date || todayISO()));
-  const [status, setStatus] = useState(lead.sales_call_status || 'Lead - Cold');
+  // Recording an order is the win — default to the won stage (Order Received), so the enquiry
+  // counts in the funnel and win rate without anyone having to remember to change it.
+  const wonStage = stages.find(st => st.is_won)?.name;
+  const [status, setStatus] = useState(wonStage || lead.sales_call_status || 'Lead - Cold');
   const [continueCall, setContinueCall] = useState('no');
   const [isVip, setIsVip] = useState(!!lead.is_vip);
   const [branchId, setBranchId] = useState(lead.branch_id ? String(lead.branch_id) : '');
@@ -238,7 +241,7 @@ function ItemsTable({ items, products, onChange, onRemove }) {
 }
 
 function ReadOnly({ label, value }) {
-  return <div className="grid gap-0.5"><span className="text-xs text-muted-foreground">{label}</span><span className="text-sm">{value || '—'}</span></div>;
+  return <div className="grid min-w-0 gap-0.5"><span className="text-xs text-muted-foreground">{label}</span><span className="text-sm [overflow-wrap:anywhere]">{value || '—'}</span></div>;
 }
 
 // Payment Collection (Phase 2.5) — "same as what we add new payments inside payments tab":
@@ -408,7 +411,7 @@ export function SaleOrderDetailsSheet({ saleOrderId, branches, salesProducts = [
 
           <Card>
             <CardHeader><CardTitle className="text-sm">References</CardTitle></CardHeader>
-            <CardContent className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <CardContent className="grid grid-cols-2 gap-3">
               <ReadOnly label="Our GST No" value={ref.company_gstin} />
               <ReadOnly label="Entity Code" value={ref.entity_code} />
               <ReadOnly label="Our PAN" value={ref.company_pan} />
@@ -416,7 +419,7 @@ export function SaleOrderDetailsSheet({ saleOrderId, branches, salesProducts = [
               <ReadOnly label="Customer Code" value={ref.customer_code} />
               <ReadOnly label="Customer PAN" value={ref.customer_pan} />
               <ReadOnly label="Customer GST No" value={ref.customer_gst_no} />
-              <p className="col-span-2 text-xs text-muted-foreground sm:col-span-4">Read only — change these in Accounts → Company Settings or the customer record.</p>
+              <p className="col-span-2 text-xs text-muted-foreground">Read only — change these in Accounts → Company Settings or the customer record.</p>
             </CardContent>
           </Card>
 

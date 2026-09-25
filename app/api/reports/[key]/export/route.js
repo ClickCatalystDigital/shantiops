@@ -46,7 +46,7 @@ export async function GET(req, { params }) {
 
   let result;
   try {
-    result = await report.compute(company, { from, to, customerId, supplierId, itemId, asOf, period, horizonDays });
+    result = await report.compute(company, { from, to, customerId, supplierId, itemId, asOf, period, horizonDays, user });
   } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 400 });
   }

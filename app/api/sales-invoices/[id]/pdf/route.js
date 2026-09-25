@@ -1,5 +1,6 @@
 // app/api/sales-invoices/[id]/pdf/route.js — REPORT-ENGINE-PLAN.md §7. Same shape/gating as every
 // other per-record PDF route (po-pdf, bom-pdf).
+import { hiddenSalesRecord } from '@/lib/sales-visibility';
 import { NextResponse } from 'next/server';
 import { getFreshSessionUser, requireDepartment, isCustomer, canAccessProject } from '@/lib/auth';
 import { getSalesInvoiceDetail } from '@/lib/data';
@@ -9,6 +10,8 @@ export const runtime = 'nodejs';
 
 export async function GET(req, { params }) {
   const user = await getFreshSessionUser();
+  const hidden = await hiddenSalesRecord(user, 'invoice', params.id); // plan 2a — a member sees only their own
+  if (hidden) return hidden;
   const invoice = await getSalesInvoiceDetail(params.id);
   if (!invoice) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 

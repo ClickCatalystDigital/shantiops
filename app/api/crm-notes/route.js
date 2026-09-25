@@ -43,6 +43,9 @@ export async function POST(req) {
   if (setCount !== 1) {
     return NextResponse.json({ error: 'Exactly one of lead_id, opportunity_id, customer_id is required' }, { status: 400 });
   }
+  // Plan 2a — a member can only write on their own enquiry (same rule as reading its Diary).
+  const hiddenLead = b.lead_id ? await hiddenSalesRecord(user, 'lead', b.lead_id) : null;
+  if (hiddenLead) return hiddenLead;
   const noteType = NOTE_TYPES.includes(b.note_type) ? b.note_type : 'note';
   // Call Log fields (Frappe CRM parity) — only meaningful when note_type is 'call', silently
   // ignored otherwise rather than 400ing, since the client always sends whatever the form has.

@@ -11576,6 +11576,33 @@ blocks sent/accepted and email sending until `POST /api/quotations/[id]/approve`
 (`rekeyPriceListsToProducts`, a no-op once rebuilt); New Price picks a product; quotation lines take
 the price-list rate (customer first, else default) on product pick and on customer change.
 
+**Gap review + fixes (2026-09-25, later).** Full flow re-run on a fresh local database (enquiry → offer
+→ accept → order → payment → invoice → Diary) as the Sales Head and two Sales members, plus a
+Chromium sweep of every `/sales` tab and every Sales report. Fixed:
+- *Member visibility holes (2a)*: Diary attachments (`crm-notes/[id]/files`, `[id]/upload`) and every
+  `sales-invoices` route (list, detail, PDF, receipts, credit note) weren't scoped; a member could also
+  add Diary entries to, quote on, or open an order against another member's enquiry (`crm-notes` POST,
+  `quotations` POST, `sale-orders` POST now check `lead_id`). The Sales Register report and its
+  PDF/CSV export ignored visibility — `computeSalesRegister` now takes the user (the generic export
+  route passes `user` to every `compute()`; only this one reads it). `hiddenSalesRecord` gained
+  `invoice` and `note`, `scopeRows` gained `invoices`.
+- *Create PO* defaulted its stage to the enquiry's current stage, so a booked order left the enquiry at
+  Hot Offers and it never counted as won — now defaults to the won stage (`is_won`).
+- *Enquiry → customer* copied only name/phone/email; now also address, district (→ city), pin code,
+  website, A/C manager (new customers only; a picked existing customer isn't changed).
+- *PO sheet References* overlapped (a `sm:grid-cols-4` grid inside a narrow sheet) — now 2 columns.
+- *Home calendar for Sales*: legend said "Tasks · Milestones" and follow-ups had no key or list. Now
+  "Follow-ups" is in the legend, Milestones only shows when a milestone-owning department is in view,
+  and a Follow-ups panel lists today + 7 days (loaded separately, so it crosses month ends).
+- *`formatDate`* printed in the viewer's time zone after parsing as IST, so a server or browser outside
+  IST showed every date one day early — pinned to `Asia/Kolkata`. (Known, not changed: DB
+  `CURRENT_TIMESTAMP` values are UTC but `formatDate` reads them as IST, so a stamp late in the IST
+  evening can show the next day's date.)
+- *Brand-new database boot*: `migrate()` failed on an empty DB (columns added before their table, a
+  backfill before its column, the retired `workers` table). `addColumn` now parks a column whose table
+  doesn't exist yet and adds it right after that table's CREATE; one-time backfills run at the end.
+  Existing databases are unaffected.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own

@@ -4,9 +4,13 @@ import { NextResponse } from 'next/server';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { getSalesRegisterLines } from '@/lib/data';
 import { COMPANY_NAMES } from '@/lib/qc-doc-pdf.js';
+import { scopeRows } from '@/lib/sales-visibility';
 
-export async function computeSalesRegister(company, { from, to } = {}) {
-  const invoices = await getSalesRegisterLines(company, { from, to });
+// `user` (optional) scopes the register to a Sales member's own invoices (plan 2a); the JSON route
+// and the PDF/Excel export both pass it.
+export async function computeSalesRegister(company, { from, to, user } = {}) {
+  let invoices = await getSalesRegisterLines(company, { from, to });
+  if (user) invoices = await scopeRows(user, 'invoices', invoices);
   return {
     invoices,
     totalSubtotal: invoices.reduce((s, i) => s + (i.subtotal || 0), 0),
@@ -23,5 +27,5 @@ export async function GET(req) {
   const company = COMPANY_NAMES.includes(searchParams.get('company')) ? searchParams.get('company') : COMPANY_NAMES[0];
   const from = searchParams.get('from') || undefined;
   const to = searchParams.get('to') || undefined;
-  return NextResponse.json(await computeSalesRegister(company, { from, to }));
+  return NextResponse.json(await computeSalesRegister(company, { from, to, user }));
 }

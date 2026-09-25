@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server';
 import { getFreshSessionUser, canAccessDepartment, isPM } from '@/lib/auth';
 import { getSalesInvoices } from '@/lib/data';
+import { scopeRows } from '@/lib/sales-visibility';
 
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 function canAccessCrm(user) {
@@ -18,5 +19,6 @@ export async function GET(req) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
   const projectId = new URL(req.url).searchParams.get('project_id');
-  return NextResponse.json(await getSalesInvoices({ projectId: projectId ? Number(projectId) : undefined }));
+  const rows = await getSalesInvoices({ projectId: projectId ? Number(projectId) : undefined });
+  return NextResponse.json(await scopeRows(user, 'invoices', rows)); // plan 2a
 }

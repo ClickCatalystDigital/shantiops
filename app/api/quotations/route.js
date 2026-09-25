@@ -63,6 +63,10 @@ export async function POST(req) {
   if (!customer) return NextResponse.json({ error: 'Unknown customer' }, { status: 400 });
   // Plan 4 — a revision ("Revise" on an existing quotation) keeps the chain's first number with an
   // -R<n> suffix and doesn't use a new number from the sequence; the one it replaces becomes 'revised'.
+  if (b.lead_id) { // plan 2a — only on an enquiry this user can see
+    const hiddenLead = await hiddenSalesRecord(user, 'lead', b.lead_id);
+    if (hiddenLead) return hiddenLead;
+  }
   let revision = null;
   if (b.revision_of) {
     const hidden = await hiddenSalesRecord(user, 'quotation', b.revision_of);

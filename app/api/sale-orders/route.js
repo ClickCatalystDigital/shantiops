@@ -5,7 +5,7 @@
 // path (app/api/quotations/[id]/convert/route.js), which always minted SO-{seq}. Fixed (entity-ref
 // tagging round): this path now mints too, off the same shared 'sale_order_no' counter, so every
 // sale order gets a real SO-{seq} number regardless of which path created it.
-import { scopeRows } from '@/lib/sales-visibility';
+import { scopeRows, hiddenSalesRecord } from '@/lib/sales-visibility';
 import { NextResponse } from 'next/server';
 import { checkSalesPerson } from '@/lib/sales-people';
 import { execute, queryAll, queryOne, nextCounterValue } from '@/lib/db';
@@ -41,6 +41,10 @@ export async function POST(req) {
   if (actionDenied) return actionDenied;
 
   const b = await req.json();
+  if (b.lead_id) { // plan 2a — only on an enquiry this user can see
+    const hiddenLead = await hiddenSalesRecord(user, 'lead', b.lead_id);
+    if (hiddenLead) return hiddenLead;
+  }
   const company = COMPANY_NAMES.includes(b.company) ? b.company : COMPANY_NAMES[0];
 
   // Payment Tracker "Add order": the user supplies their own Order ID (SAS-/NIBR-/SB-… scheme) plus
