@@ -199,7 +199,7 @@ export function DiarySummaryTooltip({ note }) {
 
 // Diary (Phase 1) — the legacy "Update Sales Call Section" form, 3 fieldsets, reusing crm_notes
 // (not a new entity). Lead-only (a Diary entry logs field-sales activity against a Lead/Enquiry).
-function AddToDiaryDialog({ lead, users, salesProducts, onClose, onSaved, router }) {
+export function AddToDiaryDialog({ lead, users, salesProducts, onClose, onSaved, router }) {
   const [f, setF] = useState({
     visit_date: todayISO(), note_type: 'call', is_value_addition: false, action_taken: '',
     in_time: '', out_time: '', alert_mode: 'Not Required', plan_date: '', plan_time: '',
@@ -765,7 +765,7 @@ function LeadProductsCard({ lead, salesProducts, router }) {
   );
 }
 
-function AddEnquiryDialog({ leads, users, salesProducts, stages = [], onClose, router }) {
+export function AddEnquiryDialog({ leads = [], users, salesProducts, stages = [], onClose, router }) {
   const [f, setF] = useState({
     enquiry_date: todayISO(), organization: '', address: '', website: '', email: '',
     assigned_to: '', reference: '', short_name: '', territory: '', district: '', sub_location: '',

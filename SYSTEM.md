@@ -11516,6 +11516,14 @@ the `/sales` page lists, the Sales report data (`app/reports/page.js`), the list
 crm-notes (`hiddenSalesRecord` → 404). Imported legacy orders (no matching user) are Head-only.
 Verified live with a throwaway member login (deleted after).
 
+**Plan 2b — Home calendar follow-ups in place (2026-09-25).** The day dialog on Home lists Diary
+follow-ups as a table (SN, date/time, in/out, organization, location, contact, objective, task type,
+action taken; cards below md). **Update Now** loads the enquiry (`GET /api/leads/[id]`, same
+visibility guard) and opens `AddToDiaryDialog` on the page; **New Enquiry** opens `AddEnquiryDialog`
+in place (both lazy-loaded from `SalesWorkspace.jsx`; products + stages fetched once on first use);
+**Advanced** still deep-links to `/sales`. A Sales member's calendar shows only their own follow-ups
+(`getDepartmentCalendar(..., { salesMember })`).
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own

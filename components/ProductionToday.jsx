@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useEffect } from 'react';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { api, showToast } from '@/lib/client';
 import { formatDate } from '@/lib/format';
@@ -24,14 +25,101 @@ import { Label } from '@/components/ui/label';
 // The view + its cursor live in the URL (?view=&month=/date=/year=), not in state — this repo
 // reads on the server, so navigating re-renders with fresh data instead of us hand-rolling a
 // fetch layer. Each view keeps its own cursor param so switching views and back doesn't lose it.
+// The Sales dialogs are only needed when a Sales head opens a follow-up, so they load on demand.
+const AddToDiaryDialog = dynamic(() => import('./SalesWorkspace').then(m => m.AddToDiaryDialog), { ssr: false });
+const AddEnquiryDialog = dynamic(() => import('./SalesWorkspace').then(m => m.AddEnquiryDialog), { ssr: false });
+
+// Sales CRM plan 2b — the day's Diary follow-ups as a table (cards below md).
+function FollowupTable({ rows, onUpdate }) {
+  if (!rows.length) return null;
+  const inOut = r => [r.in_time, r.out_time].filter(Boolean).join(' – ') || '—';
+  const contact = r => [r.contact_name, r.contact_phone].filter(Boolean).join(' · ') || '—';
+  const actions = r => (
+    <div className="flex gap-1.5">
+      <Button size="sm" variant="outline" onClick={() => onUpdate(r.lead_id)}>Update Now</Button>
+      <Link href={`/sales?tab=enquiry&highlight=LD-${r.lead_id}&diary=advanced`}>
+        <Button size="sm" variant="ghost">Advanced</Button>
+      </Link>
+    </div>
+  );
+  return (
+    <>
+      <div className="hidden overflow-x-auto rounded-md border md:block">
+        <table className="w-full text-xs">
+          <thead className="bg-muted/40 text-left text-muted-foreground">
+            <tr>{['SN', 'Date', 'In / Out', 'Organization', 'Location', 'Contact', 'Objective', 'Task type', 'Action taken', ''].map(h =>
+              <th key={h} className="px-2 py-1.5 font-medium">{h}</th>)}</tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={r.id ?? i} className="border-t align-top">
+                <td className="px-2 py-1.5 tnum">{i + 1}</td>
+                <td className="px-2 py-1.5 whitespace-nowrap">{formatDate(r.date)}{r.plan_time ? ` ${r.plan_time}` : ''}</td>
+                <td className="px-2 py-1.5 whitespace-nowrap">{inOut(r)}</td>
+                <td className="px-2 py-1.5 font-medium">{r.company_name || r.lead_name}</td>
+                <td className="px-2 py-1.5">{r.location || r.lead_location || '—'}</td>
+                <td className="px-2 py-1.5">{contact(r)}</td>
+                <td className="px-2 py-1.5">{r.plan_of_action || '—'}</td>
+                <td className="px-2 py-1.5">{r.plan_note_type || r.note_type || '—'}</td>
+                <td className="px-2 py-1.5">{r.action_taken || r.content || '—'}</td>
+                <td className="px-2 py-1.5">{actions(r)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="flex flex-col gap-2 md:hidden">
+        {rows.map((r, i) => (
+          <div key={r.id ?? i} className="flex flex-col gap-1 rounded-md border px-3 py-2 text-sm">
+            <div className="flex items-center gap-2">
+              <UsersRoundIcon className="size-4 shrink-0 text-sky-600" />
+              <span className="min-w-0 flex-1 truncate font-medium">{r.company_name || r.lead_name}</span>
+              {r.plan_time && <span className="shrink-0 text-xs tnum text-muted-foreground">{r.plan_time}</span>}
+            </div>
+            <div className="flex flex-wrap gap-x-3 gap-y-0.5 pl-6 text-xs text-muted-foreground">
+              <span>{inOut(r)}</span>
+              {(r.location || r.lead_location) && <span>{r.location || r.lead_location}</span>}
+              {contact(r) !== '—' && <span>{contact(r)}</span>}
+              {(r.plan_note_type || r.note_type) && <span>{r.plan_note_type || r.note_type}</span>}
+            </div>
+            {r.plan_of_action && <p className="pl-6 text-xs text-muted-foreground">Objective: {r.plan_of_action}</p>}
+            {(r.action_taken || r.content) && <p className="pl-6 text-xs text-muted-foreground">Done: {r.action_taken || r.content}</p>}
+            <div className="pl-6 pt-1">{actions(r)}</div>
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
 export default function ProductionToday({
-  view, month, date, year, today, deptFilter, deptsToShow, events, openTasks, operators,
+  view, month, date, year, today, deptFilter, deptsToShow, events, openTasks, operators, salesUsers = [],
 }) {
   const router = useRouter();
   const [dayOpen, setDayOpen] = useState(null);
   const [newTask, setNewTask] = useState({ title: '', due_date: today, assigned_to: '', department: deptsToShow[0] || '' });
   const [busy, setBusy] = useState(false);
   const [expenseDate, setExpenseDate] = useState(null); // Sales CRM expansion Phase 4 — "Add Expenses"
+  // Sales CRM plan 2b — Update Now / New Enquiry open the Sales dialogs here instead of navigating.
+  const [diaryLead, setDiaryLead] = useState(null);
+  const [enquiryOpen, setEnquiryOpen] = useState(false);
+  const [crmRefs, setCrmRefs] = useState(null); // { products, stages }, fetched once on first use
+  const loadCrmRefs = async () => {
+    if (crmRefs) return crmRefs;
+    const [products, stages] = await Promise.all([api('/api/sales-products'), api('/api/sales-stages')]);
+    const refs = { products, stages };
+    setCrmRefs(refs);
+    return refs;
+  };
+  const openDiary = async (leadId) => {
+    try {
+      const [lead] = await Promise.all([api(`/api/leads/${leadId}`), loadCrmRefs()]);
+      setDiaryLead(lead);
+    } catch (e) { showToast(e.message, 'error'); }
+  };
+  const openEnquiry = async () => {
+    try { await loadCrmRefs(); setEnquiryOpen(true); } catch (e) { showToast(e.message, 'error'); }
+  };
   const combined = deptsToShow.length > 1;
 
   // Month/Week share one grid renderer (7 columns); Year gets its own 12-mini-month block below.
@@ -295,10 +383,10 @@ export default function ProductionToday({
 
       {/* Day details */}
       <Dialog open={!!dayOpen} onOpenChange={o => !o && setDayOpen(null)}>
-        <DialogContent>
+        <DialogContent className={(byDate[dayOpen] || []).some(it => it.kind === 'followup') ? 'sm:max-w-5xl' : undefined}>
           <DialogHeader><DialogTitle>{dayOpen ? formatDate(dayOpen) : ''}</DialogTitle></DialogHeader>
           <div className="flex flex-col gap-2">
-            {(byDate[dayOpen] || []).map((it, i) => (
+            {(byDate[dayOpen] || []).filter(it => it.kind !== 'followup').map((it, i) => (
               <div key={i} className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
                 {it.kind === 'task' && (
                   <>
@@ -319,41 +407,14 @@ export default function ProductionToday({
                     </Link>
                   </>
                 )}
-                {it.kind === 'followup' && (
-                  <div className="flex w-full flex-col gap-1">
-                    <div className="flex items-center gap-2">
-                      <UsersRoundIcon className="size-4 shrink-0 text-sky-600" />
-                      <span className="min-w-0 flex-1 truncate font-medium">{it.company_name || it.lead_name}</span>
-                      {it.plan_time && <span className="shrink-0 text-xs tnum text-muted-foreground">{it.plan_time}</span>}
-                    </div>
-                    <div className="flex flex-wrap gap-x-3 gap-y-0.5 pl-6 text-xs text-muted-foreground">
-                      {(it.in_time || it.out_time) && <span>{[it.in_time, it.out_time].filter(Boolean).join(' – ')}</span>}
-                      {it.location && <span>{it.location}</span>}
-                      {it.plan_for && <span>For: {it.plan_for}</span>}
-                      {it.note_type && <span>{it.note_type}</span>}
-                    </div>
-                    {(it.content || it.plan_of_action) && (
-                      <p className="pl-6 text-xs text-muted-foreground">
-                        {it.content ? `Objective: ${it.content}` : ''}{it.plan_of_action ? ` · Action: ${it.plan_of_action}` : ''}
-                      </p>
-                    )}
-                    <div className="flex gap-1.5 pl-6 pt-1">
-                      <Link href={`/sales?tab=enquiry&highlight=LD-${it.lead_id}&diary=now`}>
-                        <Button size="sm" variant="outline">Update Now</Button>
-                      </Link>
-                      <Link href={`/sales?tab=enquiry&highlight=LD-${it.lead_id}&diary=advanced`}>
-                        <Button size="sm" variant="outline">Advanced Update</Button>
-                      </Link>
-                    </div>
-                  </div>
-                )}
               </div>
             ))}
+            <FollowupTable rows={(byDate[dayOpen] || []).filter(it => it.kind === 'followup')} onUpdate={openDiary} />
             {(byDate[dayOpen] || []).length === 0 && <p className="py-2 text-center text-sm text-muted-foreground">Nothing scheduled.</p>}
           </div>
           {showsCrm && dayOpen && (
             <div className="flex flex-wrap gap-2 border-t pt-3">
-              <Link href={`/sales?tab=enquiry`}><Button size="sm" variant="outline"><PlusIcon />New Enquiry</Button></Link>
+              <Button size="sm" variant="outline" onClick={openEnquiry}><PlusIcon />New Enquiry</Button>
               <Button size="sm" variant="outline" onClick={() => setExpenseDate(dayOpen)}>Add Expenses</Button>
             </div>
           )}
@@ -361,6 +422,14 @@ export default function ProductionToday({
       </Dialog>
 
       {expenseDate && <AddExpenseDialog date={expenseDate} onClose={() => setExpenseDate(null)} />}
+      {diaryLead && crmRefs && (
+        <AddToDiaryDialog lead={diaryLead} users={salesUsers} salesProducts={crmRefs.products} router={router}
+          onClose={() => setDiaryLead(null)} />
+      )}
+      {enquiryOpen && crmRefs && (
+        <AddEnquiryDialog users={salesUsers} salesProducts={crmRefs.products} stages={crmRefs.stages} router={router}
+          onClose={() => setEnquiryOpen(false)} />
+      )}
     </div>
   );
 }

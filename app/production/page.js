@@ -6,6 +6,7 @@ import {
 } from '@/lib/data';
 import { todayISO, todayMonth, monthGridBounds, weekBounds, yearBounds } from '@/lib/date';
 import ProductionToday from '@/components/ProductionToday';
+import { salesScope } from '@/lib/sales-visibility';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,7 +32,7 @@ export default async function ProductionTodayPage({ searchParams }) {
   const [from, to] = view === 'week' ? weekBounds(date) : view === 'year' ? yearBounds(year) : monthGridBounds(month);
 
   const [events, openTasks, heads] = await Promise.all([
-    getDepartmentCalendar(deptsToShow, from, to),
+    getDepartmentCalendar(deptsToShow, from, to, { salesMember: salesScope(user) }),
     getOpenDepartmentTasks(deptsToShow, today),
     getFunctionalHeads(),
   ]);
@@ -51,6 +52,7 @@ export default async function ProductionTodayPage({ searchParams }) {
         events={events}
         openTasks={openTasks}
         operators={operators}
+        salesUsers={heads.filter(h => h.active && h.departments.includes('Sales')).map(h => ({ username: h.username, display_name: h.display_name }))}
       />
     </main>
   );

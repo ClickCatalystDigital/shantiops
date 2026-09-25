@@ -2,12 +2,24 @@
 // app/api/opportunities/[id]/route.js.
 import { hiddenSalesRecord } from '@/lib/sales-visibility';
 import { NextResponse } from 'next/server';
-import { execute, queryOne } from '@/lib/db';
+import { execute, queryAll, queryOne } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
 import { audit } from '@/lib/usb';
 import { setLeadStage, resolveProductLines, writeLeadProducts } from '@/lib/crm';
 
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
+
+// One enquiry with its product lines — used by the Home calendar's in-place Diary update.
+export async function GET(req, { params }) {
+  const user = await getFreshSessionUser();
+  if (!CRM_DEPARTMENTS.some(d => canAccessDepartment(user, d))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const hidden = await hiddenSalesRecord(user, 'lead', params.id); // plan 2a: own records only
+  if (hidden) return hidden;
+  const lead = await queryOne('SELECT * FROM leads WHERE id = ?', [params.id]);
+  if (!lead) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  const products = await queryAll('SELECT * FROM lead_products WHERE lead_id = ? ORDER BY sort_order, id', [params.id]);
+  return NextResponse.json({ ...lead, products });
+}
 
 export async function PATCH(req, { params }) {
   const user = await getFreshSessionUser();
