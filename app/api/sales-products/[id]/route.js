@@ -2,14 +2,22 @@
 // referenced from real leads/quotation/sale-order lines, same deactivate-don't-delete convention
 // as branches/sales_stages.
 import { NextResponse } from 'next/server';
-import { execute } from '@/lib/db';
-import { getFreshSessionUser } from '@/lib/auth';
+import { execute, queryOne } from '@/lib/db';
+import { getFreshSessionUser, isInternal } from '@/lib/auth';
 import { requireCrmAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 
 const EDITABLE = ['product_code', 'product_name', 'product_type', 'description', 'price', 'unit', 'hsn_code', 'gst_pct', 'active',
   'category', 'cost_price', 'warranty_days', 'serviceable'];
 const NUMERIC = new Set(['price', 'gst_pct', 'cost_price', 'warranty_days']);
+
+// Full product (the list sent to /sales leaves out description/attributes to stay light).
+export async function GET(req, { params }) {
+  const user = await getFreshSessionUser();
+  if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const row = await queryOne('SELECT * FROM sales_products WHERE id = ?', [params.id]);
+  return row ? NextResponse.json(row) : NextResponse.json({ error: 'Not found' }, { status: 404 });
+}
 
 export async function PATCH(req, { params }) {
   const user = await getFreshSessionUser();

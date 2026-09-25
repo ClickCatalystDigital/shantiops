@@ -9,7 +9,7 @@ built, with verification notes). Branch: `claude/exciting-mccarthy-cj760h`.
 |---|---|
 | Phase 1 — enquiry → quotation → PO (1a–1k) | **Done**, verified live, committed |
 | Old-CRM data import — Product Master + customer summary | **Done**, applied to the shared DB (see below) |
-| **Next: global company selector** (All / Shanti Boilers / Shanti Techno Fab) | Not started — do this first |
+| Global company selector (All / Shanti Boilers / Shanti Techno Fab) | **Done** (SYSTEM.md §5db) |
 | Then: import Techno Fab orders + payment log (client will send files) | Waiting on files |
 | Phase 2 — own-records visibility + server-side paging, calendar overlay, real Diary alerts, quotation reminders, mobile cards | Not started |
 | Phase 3 — reports: shared layout, CSV/Excel, Employee 360, real funnel, Sales Overview | Not started |

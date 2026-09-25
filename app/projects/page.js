@@ -16,7 +16,7 @@ export default async function Projects() {
   // Sales' full copy didn't already cover. See app/projects/[id]/page.js's ProjectDesignRow for the
   // read-only, money-gated download-link card that replaces it on the project detail page.
   const [projects, customers, saleOrders] = await Promise.all([
-    getProjectsWithStatus(), canCreate ? getCustomers() : [], canCreate ? getSaleOrders() : [],
+    getProjectsWithStatus(), [] /* customers: CustomerPicker searches the API */, canCreate ? getSaleOrders() : [],
   ]);
   const openSaleOrders = saleOrders.filter(so => !so.project_id && so.item_count > 0);
   // Multi-unit split — a master's real children (master_project_id set) are grouped under their

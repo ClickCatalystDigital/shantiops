@@ -11493,6 +11493,19 @@ client: `docs/legacy-crm-import-issues.md`, `docs/legacy-crm-possible-duplicates
 and Products tabs got search + paging; the customer sheet shows "From the old CRM"; the product form
 shows the new fields. `getCustomers()` no longer sends the summary blobs to the list.
 
+**Company selector + lighter /sales (2026-09-25).** A global "All companies / Shanti Boilers /
+Shanti Techno Fab" dropdown in the top bar (`components/CompanySelector.jsx`, shown to PMs and
+Sales/Marketing/Accounts) stores the `company` cookie; `lib/company-filter-server.js`
+`getSelectedCompany()` + `lib/company-filter.mjs` `filterByCompany()` (selfcheck; blank company =
+Shanti Boilers) narrow `/sales` orders, quotations, invoices, credit notes, payments and the Sales
+report data. Customers and products are shared, never filtered. New quotations, Create PO orders
+and Payment Tracker "Add order" default to the selected company. Customers are no longer preloaded
+anywhere (`/sales`, `/projects`, project page, `/pipeline`): `components/CustomerPicker.jsx`
+searches `GET /api/customers?search=` (name/code/GST/phone/district/A/C manager), and the Customers
+tab pages through `GET /api/customers?paged=1&q=&offset=&limit=`. The product list omits description
+and old-CRM attributes (`GET /api/sales-products/[id]` loads them for editing). `/sales` went from
+9.2 MB to 3.0 MB (0.7 MB with one company selected).
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own

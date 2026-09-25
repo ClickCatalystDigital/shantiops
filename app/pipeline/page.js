@@ -21,7 +21,7 @@ export default async function PipelinePage() {
 
   const departments = isPM(user) ? PIPELINE_DEPARTMENTS : headDepartments(user).filter(d => PIPELINE_DEPARTMENTS.includes(d));
   const [allOpportunities, customers, stages, heads] = await Promise.all([
-    getOpportunities(), getCustomers(), getSalesStages(), getFunctionalHeads(),
+    getOpportunities(), [], getSalesStages(), getFunctionalHeads(),
   ]);
   const opportunities = allOpportunities.filter(o => o.owner_dept === 'Marketing');
   const crmUsers = heads.filter(h => h.active && h.departments.some(d => PIPELINE_DEPARTMENTS.includes(d)));

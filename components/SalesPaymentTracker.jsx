@@ -5,6 +5,8 @@
 // Payments (an append-only log, added through a right-side Sheet). Data comes from server props;
 // mutations go through PATCH /api/sale-orders/[id] and POST /api/sale-order-payments.
 import { salesPeopleOptions } from '@/lib/sales-people.mjs';
+import CustomerPicker from '@/components/CustomerPicker';
+import { defaultCompanyClient } from '@/lib/company-filter.mjs';
 import { useState, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
@@ -281,7 +283,7 @@ function AddOrderSheet({ customers, people, onClose }) {
   async function submit() {
     setBusy(true);
     try {
-      await api('/api/sale-orders', { method: 'POST', body: { ...f, so_no: f.so_no.trim(), total: f.total === '' ? 0 : Number(f.total) } });
+      await api('/api/sale-orders', { method: 'POST', body: { ...f, company: defaultCompanyClient(), so_no: f.so_no.trim(), total: f.total === '' ? 0 : Number(f.total) } });
       showToast(`Order ${f.so_no.trim()} added`);
       router.refresh();
       onClose();
@@ -299,10 +301,8 @@ function AddOrderSheet({ customers, people, onClose }) {
           <div className="space-y-1.5"><Label>Order ID</Label><Input value={f.so_no} onChange={e => set({ so_no: e.target.value })} placeholder="e.g. SAS-506, NIBR-340, SB-1116" autoFocus /></div>
           <div className="space-y-1.5">
             <Label>Customer</Label>
-            <SearchableSelect
-              value={f.customer_id ? String(f.customer_id) : ''} displayValue={f.customer_name}
-              options={customers.map(c => ({ value: String(c.id), label: c.name }))}
-              onChange={v => { const c = customers.find(x => String(x.id) === v); set({ customer_id: c?.id ?? null, customer_name: c?.name ?? '' }); }}
+            <CustomerPicker value={f.customer_id} name={f.customer_name}
+              onChange={(id, n) => set({ customer_id: Number(id) || null, customer_name: n || '' })}
               onTextChange={t => set({ customer_name: t, customer_id: null })}
               placeholder="Search customer, or type a new name…" />
           </div>

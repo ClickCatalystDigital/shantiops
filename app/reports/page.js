@@ -9,6 +9,8 @@
 // audience. Single-department heads and the pure 'executive' role never hit this branch: a head's
 // own Nav tab always carries ?dept=, and 'executive' keeps its own /executive/reports tab (it has
 // no department access to consolidate).
+import { getSelectedCompany } from '@/lib/company-filter-server';
+import { filterByCompany } from '@/lib/company-filter.mjs';
 import { redirect } from 'next/navigation';
 import { getFreshSessionUser, canAccessDepartment, headDepartments, roleHome } from '@/lib/auth';
 import {
@@ -38,7 +40,10 @@ async function getCrmData(includeSales) {
     includeSales ? getQuotations() : [], includeSales ? getSaleOrders() : [], getSalesProducts(),
   ]);
   const users = heads.filter(h => h.active && h.departments.some(d => CRM_DEPARTMENTS.includes(d)));
-  return { leads, opportunities, campaigns, stages, tasks, notes, users, branches, salesTargets, diaryNotes, expenseClaims, quotations, saleOrders, salesProducts };
+  // Global company selector: the Sales report cards read quotations/orders; filter them here.
+  const company = getSelectedCompany();
+  return { leads, opportunities, campaigns, stages, tasks, notes, users, branches, salesTargets, diaryNotes, expenseClaims,
+    quotations: filterByCompany(quotations, company), saleOrders: filterByCompany(saleOrders, company), salesProducts };
 }
 
 export const dynamic = 'force-dynamic';

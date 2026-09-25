@@ -8,6 +8,8 @@
 // Sales-or-Marketing dual-department resolution it used to carry.
 import { redirect } from 'next/navigation';
 import { getFreshSessionUser, canAccessDepartment, isPM, roleHome } from '@/lib/auth';
+import { getSelectedCompany } from '@/lib/company-filter-server';
+import { filterByCompany } from '@/lib/company-filter.mjs';
 import { getSaleOrders, getLeads, getCustomers, getQuotations, getFunctionalHeads, getPriceLists, getSalesReturns, getInventoryItems, getSalesInvoices, getSalesCreditNotes, getActiveProjectsList, getScopeOfSupply, getSalePayments, getBranches, getSalesProducts, getSalesTargets, getSalesStages } from '@/lib/data';
 import { queryAll } from '@/lib/db';
 import SalesWorkspace from '@/components/SalesWorkspace';
@@ -26,8 +28,8 @@ export default async function SalesPage({ searchParams }) {
   // Sales owns pricing, and Design/Engineering's own copy of this panel now hides it.
   const scopeProjectId = sp?.project ? Number(sp.project) : null;
 
-  const [saleOrders, leads, customers, quotations, priceLists, returns, inventoryItems, invoices, creditNotes, heads, savedViewRows, projects, scopeOfSupply, salePayments, branches, salesProducts, salesTargets, stages] = await Promise.all([
-    getSaleOrders(), getLeads(), getCustomers(), getQuotations(),
+  let [saleOrders, leads, customers, quotations, priceLists, returns, inventoryItems, invoices, creditNotes, heads, savedViewRows, projects, scopeOfSupply, salePayments, branches, salesProducts, salesTargets, stages] = await Promise.all([
+    getSaleOrders(), getLeads(), [], getQuotations(), // customers: searched via API (CustomerPicker), not preloaded
     getPriceLists(), getSalesReturns(), getInventoryItems(),
     getSalesInvoices(), getSalesCreditNotes(),
     getFunctionalHeads(),
@@ -37,6 +39,9 @@ export default async function SalesPage({ searchParams }) {
     getSalePayments(),
     getBranches(), getSalesProducts(), getSalesTargets(), getSalesStages(),
   ]);
+  // Global company selector (top bar): narrows the company-owned lists; customers/products are shared.
+  const company = getSelectedCompany();
+  [saleOrders, quotations, invoices, creditNotes, salePayments] = [saleOrders, quotations, invoices, creditNotes, salePayments].map(r => filterByCompany(r, company));
   // "Assign to" pool for Tasks/Team — any active head who holds Sales, same filter-after-
   // getFunctionalHeads pattern app/production/page.js already uses for its own assignee dropdown.
   const crmUsers = heads.filter(h => h.active && h.departments.includes('Sales'));

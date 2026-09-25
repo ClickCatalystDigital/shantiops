@@ -19,6 +19,7 @@ import {
   DropdownMenuLabel,
 } from '@/components/ui/dropdown-menu';
 import NotificationBell from './NotificationBell';
+import CompanySelector from './CompanySelector';
 
 export default function Nav({ user, reportDepartments = [] }) {
   const pathname = usePathname();
@@ -33,6 +34,8 @@ export default function Nav({ user, reportDepartments = [] }) {
   // Help (`isPM()`-gated, unchanged) still shows executive every department's guide.
   const isDeptPM = user && ['admin', 'manager'].includes(user.role);
   const departments = user?.departments || [];
+  // Global company filter (Sales orders/quotations/invoices/payments + Sales reports).
+  const showCompany = isPMUser || ['Sales', 'Marketing', 'Accounts'].some(d => departments.includes(d));
   const tabDepartments = isDeptPM ? DEPARTMENTS : departments;
   // Departments the user can browse: PM → all; head → their granted list. Packing lives under Dispatch.
   const accessibleDepts = isPMUser ? DEPARTMENTS : departments;
@@ -195,6 +198,7 @@ export default function Nav({ user, reportDepartments = [] }) {
           </nav>
 
           <div className="ml-auto flex items-center gap-1">
+            {showCompany && <CompanySelector />}
             <NotificationBell />
             <Button asChild variant="ghost" size="icon-sm" aria-label="Help">
               <Link href="/help"><InfoIcon /></Link>

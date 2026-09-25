@@ -36,6 +36,8 @@ import ScopeOfSupplySection from '@/components/ScopeOfSupplySection';
 import { PaymentOrdersTab, PaymentLogTab, Pager, SIZES } from '@/components/SalesPaymentTracker';
 import { CreatePoFlow } from '@/components/SaleOrderWizard';
 import ProductSearchField from '@/components/ProductSearchField';
+import CustomerPicker from '@/components/CustomerPicker';
+import { defaultCompanyClient } from '@/lib/company-filter.mjs';
 import { useLeadConvert, SimilarCustomersHint, useSimilarCustomers } from '@/components/ConvertLeadChoice';
 import { renderTemplate } from '@/lib/email-template.mjs';
 import { DEFAULT_STAGE, isEnquiryStage, isSlaBreached } from '@/lib/lead-stage.mjs';
@@ -1244,16 +1246,21 @@ function OldCrmSummary({ detail }) {
   );
 }
 
-function CustomersTab({ customers, router }) {
+function CustomersTab({ router }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedId, setSelectedId] = useState(null);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
   const [size, setSize] = useState(SIZES[0]);
-  const q = search.trim().toLowerCase();
-  const filtered = !q ? customers : customers.filter(c =>
-    [c.name, c.party_code, c.gst_no, c.phone, c.city, c.account_manager].some(v => v && String(v).toLowerCase().includes(q)));
-  const shown = filtered.slice(page * size, (page + 1) * size);
+  const [data, setData] = useState({ rows: [], total: 0, loading: true });
+  // Server-side search + paging (9k+ customers since the old-CRM import).
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const qs = new URLSearchParams({ paged: '1', q: search.trim(), offset: String(page * size), limit: String(size) });
+      api(`/api/customers?${qs}`).then(d => setData({ ...d, loading: false })).catch(err => { showToast(err.message, 'error'); setData(x => ({ ...x, loading: false })); });
+    }, 250);
+    return () => clearTimeout(t);
+  }, [search, page, size]);
   return (
     <Card>
       <CardHeader>
@@ -1261,13 +1268,13 @@ function CustomersTab({ customers, router }) {
         <CardAction><Button size="sm" onClick={() => setDialogOpen(true)}><PlusIcon />New Customer</Button></CardAction>
       </CardHeader>
       <CardContent>
-        <Input className="mb-3 max-w-sm" placeholder={`Search ${customers.length} customers — name, code, GST, phone, district, A/C manager`}
+        <Input className="mb-3 max-w-sm" placeholder="Search name, code, GST, phone, district, A/C manager"
           value={search} onChange={e => { setSearch(e.target.value); setPage(0); }} />
-        {filtered.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">{customers.length ? 'No customers match.' : 'No customers yet.'}</p> : (
+        {data.rows.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">{data.loading ? 'Loading…' : search ? 'No customers match.' : 'No customers yet.'}</p> : (
           <Table>
             <TableHeader><TableRow><TableHead>Name</TableHead><TableHead className="hidden md:table-cell">Code</TableHead><TableHead className="hidden md:table-cell">District</TableHead><TableHead className="hidden md:table-cell">A/C Manager</TableHead><TableHead>GST No</TableHead><TableHead>Phone</TableHead></TableRow></TableHeader>
             <TableBody>
-              {shown.map(c => (
+              {data.rows.map(c => (
                 <TableRow key={c.id} className="cursor-pointer" onClick={() => setSelectedId(c.id)}>
                   <TableCell className="font-medium">{c.name}</TableCell>
                   <TableCell className="hidden text-muted-foreground md:table-cell">{c.party_code || '—'}</TableCell>
@@ -1280,7 +1287,7 @@ function CustomersTab({ customers, router }) {
             </TableBody>
           </Table>
         )}
-        <Pager page={page} setPage={setPage} size={size} setSize={setSize} total={filtered.length} />
+        <Pager page={page} setPage={setPage} size={size} setSize={setSize} total={data.total} />
       </CardContent>
       {dialogOpen && <AddCustomerDialog router={router} onClose={() => setDialogOpen(false)} />}
       {selectedId && <CustomerDetailSheet customerId={selectedId} router={router} onClose={() => setSelectedId(null)} />}
@@ -1380,7 +1387,7 @@ export function quoteLinesFromLead(lead, salesProducts = []) {
 
 export function NewQuotationDialog({ customers, opportunityId = null, leadId = null, initialCustomerId = '', initialCustomerName = '', initialItems = null, salesProducts = null, onClose, onCreated, router }) {
   const [customerId, setCustomerId] = useState(initialCustomerId ? String(initialCustomerId) : '');
-  const [company, setCompany] = useState(COMPANY_NAMES[0]);
+  const [company, setCompany] = useState(defaultCompanyClient);
   const [quotationType, setQuotationType] = useState('Sales');
   const [quotationDate, setQuotationDate] = useState(todayISO());
   const [validUntil, setValidUntil] = useState(() => { const d = new Date(); d.setDate(d.getDate() + 15); return d.toISOString().slice(0, 10); });
@@ -1388,10 +1395,11 @@ export function NewQuotationDialog({ customers, opportunityId = null, leadId = n
   const [items, setItems] = useState(() => (initialItems?.length ? initialItems : [blankQuoteLine()]));
   const [saving, setSaving] = useState(false);
   const useProducts = Array.isArray(salesProducts);
-  // A customer just created from the enquiry isn't in `customers` until the page refresh lands —
-  // show it by name meanwhile instead of a blank picker.
-  const customerOptions = customerId && initialCustomerName && !customers.some(c => String(c.id) === customerId)
-    ? [...customers, { id: Number(customerId), name: initialCustomerName }] : customers;
+  // Customers are searched through the API (CustomerPicker), not passed in as a full list.
+  const [customerName, setCustomerName] = useState(initialCustomerName || (customers || []).find(c => String(c.id) === String(initialCustomerId))?.name || '');
+  useEffect(() => {
+    if (customerId && !customerName) api(`/api/customers/${customerId}`).then(c => setCustomerName(c.name)).catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   function updateItem(i, patch) {
     setItems(prev => prev.map((it, idx) => idx === i ? { ...it, ...patch } : it));
@@ -1436,10 +1444,7 @@ export function NewQuotationDialog({ customers, opportunityId = null, leadId = n
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className="grid gap-1.5">
               <Label>Customer</Label>
-              <Select value={customerId} onValueChange={setCustomerId}>
-                <SelectTrigger><SelectValue placeholder="Choose customer" /></SelectTrigger>
-                <SelectContent>{customerOptions.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}</SelectContent>
-              </Select>
+              <CustomerPicker value={customerId} name={customerName} onChange={(id, n) => { setCustomerId(id); setCustomerName(n); }} placeholder="Choose customer" />
             </div>
             <div className="grid gap-1.5">
               <Label>Company</Label>
@@ -1827,6 +1832,7 @@ function PriceListItemField({ value, onChange }) {
 
 function AddPriceListDialog({ customers, onClose, router }) {
   const [item, setItem] = useState({ item_name: '', item_id: null, uom: '' });
+  const [plCustomerName, setPlCustomerName] = useState('');
   const [customerId, setCustomerId] = useState('__all__');
   const [rate, setRate] = useState('');
   const [validFrom, setValidFrom] = useState('');
@@ -1864,13 +1870,9 @@ function AddPriceListDialog({ customers, onClose, router }) {
           </div>
           <div className="grid gap-1.5">
             <Label>Customer</Label>
-            <Select value={customerId} onValueChange={setCustomerId}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all__">All customers (default rate)</SelectItem>
-                {customers.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <CustomerPicker value={customerId} name={customerId === '__all__' ? 'All customers (default rate)' : plCustomerName}
+              extraOptions={[{ value: '__all__', label: 'All customers (default rate)' }]}
+              onChange={(id, n) => { setCustomerId(id); setPlCustomerName(n); }} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-1.5"><Label>Rate</Label><Input type="number" value={rate} onChange={e => setRate(e.target.value)} autoFocus={!!item.item_id} /></div>
@@ -2634,6 +2636,8 @@ function ProductsTab({ salesProducts, router }) {
   const filtered = !q ? salesProducts : salesProducts.filter(p =>
     [p.product_code, p.product_name, p.product_type, p.hsn_code, p.category].some(v => v && String(v).toLowerCase().includes(q)));
   const shown = filtered.slice(page * size, (page + 1) * size);
+  // The list leaves out description/attributes; load the full product before editing.
+  function openProduct(p) { api(`/api/sales-products/${p.id}`).then(setDialogState).catch(err => showToast(err.message, 'error')); }
 
   return (
     <Card>
@@ -2649,7 +2653,7 @@ function ProductsTab({ salesProducts, router }) {
             <TableHeader><TableRow><TableHead>Code</TableHead><TableHead>Name</TableHead><TableHead>Type</TableHead><TableHead>Price</TableHead><TableHead>Unit</TableHead><TableHead>GST %</TableHead><TableHead>Status</TableHead><TableHead /></TableRow></TableHeader>
             <TableBody>
               {shown.map(p => (
-                <TableRow key={p.id} className="cursor-pointer" onClick={() => setDialogState(p)}>
+                <TableRow key={p.id} className="cursor-pointer" onClick={() => openProduct(p)}>
                   <TableCell className="text-muted-foreground">{p.product_code || '—'}</TableCell>
                   <TableCell className="font-medium">{p.product_name}</TableCell>
                   <TableCell className="text-muted-foreground">{p.product_type || '—'}</TableCell>
@@ -2657,7 +2661,7 @@ function ProductsTab({ salesProducts, router }) {
                   <TableCell className="text-muted-foreground">{p.unit || '—'}</TableCell>
                   <TableCell className="text-muted-foreground">{p.gst_pct != null ? `${p.gst_pct}%` : '—'}</TableCell>
                   <TableCell><Badge variant={p.active ? 'default' : 'outline'}>{p.active ? 'Active' : 'Inactive'}</Badge></TableCell>
-                  <TableCell><Button size="icon" variant="ghost" onClick={e => { e.stopPropagation(); setDialogState(p); }}><PencilIcon className="size-3.5" /></Button></TableCell>
+                  <TableCell><Button size="icon" variant="ghost" onClick={e => { e.stopPropagation(); openProduct(p); }}><PencilIcon className="size-3.5" /></Button></TableCell>
                 </TableRow>
               ))}
             </TableBody>

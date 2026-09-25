@@ -5,6 +5,7 @@
 // next to Company — Edit never passes it, since linking a Sale Order after creation (PATCH already
 // supports it) doesn't replay the Scope-of-Supply auto-population POST /api/projects does at
 // creation time, so showing the picker there would imply behavior Edit doesn't actually have.
+import CustomerPicker from '@/components/CustomerPicker';
 import { useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -40,6 +41,7 @@ function ModelDesignField({ value, onChange }) {
   );
 }
 
+// Customers are searched through the API (CustomerPicker); the `customers` prop is no longer needed.
 export default function ProjectFormFields({ f, setF, customers = [], saleOrders = null }) {
   // BOILER- prefix only makes sense for models the folder generator itself treats as a boiler
   // (lib/qc-models.js) — PRS/HEADERS are a different equipment noun, so no preview is shown for
@@ -132,17 +134,10 @@ export default function ProjectFormFields({ f, setF, customers = [], saleOrders 
 
       <div className="flex flex-col gap-1.5">
         <Label>Customer *</Label>
-        <SearchableSelect
-          value={f.customer_id}
-          displayValue={f.customer_name}
-          onChange={id => {
-            const c = customers.find(x => String(x.id) === id);
-            setF({ ...f, customer_id: id, customer_name: c?.name || f.customer_name });
-          }}
+        <CustomerPicker value={f.customer_id} name={f.customer_name}
+          onChange={(id, n) => setF({ ...f, customer_id: id, customer_name: n || f.customer_name })}
           onTextChange={text => setF({ ...f, customer_name: text, customer_id: '' })}
-          options={customers.map(c => ({ value: String(c.id), label: c.name }))}
-          placeholder="Search or type a customer name"
-        />
+          placeholder="Search or type a customer name" />
       </div>
 
       <div className="flex flex-col gap-1.5">

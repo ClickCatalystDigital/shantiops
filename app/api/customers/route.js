@@ -15,13 +15,25 @@ function canAccessCrm(user) {
 export async function GET(req) {
   const user = await getFreshSessionUser();
   if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  const search = new URL(req.url).searchParams.get('search');
+  const sp = new URL(req.url).searchParams;
+  const search = sp.get('search');
+  const COLS = 'id, name, party_code, gst_no, phone, city, state_code, account_manager';
+  const where = "active = 1 AND (name LIKE ? OR party_code LIKE ? OR gst_no LIKE ? OR phone LIKE ? OR city LIKE ? OR account_manager LIKE ?)";
+  // Paged list for the Customers tab: ?paged=1&q=&offset=&limit= -> { rows, total }.
+  if (sp.get('paged')) {
+    const like = `%${(sp.get('q') || '').trim()}%`;
+    const limit = Math.min(Math.max(Number(sp.get('limit')) || 25, 1), 100);
+    const offset = Math.max(Number(sp.get('offset')) || 0, 0);
+    const args = Array(6).fill(like);
+    const [rows, count] = await Promise.all([
+      queryAll(`SELECT ${COLS} FROM customers WHERE ${where} ORDER BY name LIMIT ? OFFSET ?`, [...args, limit, offset]),
+      queryAll(`SELECT COUNT(*) AS n FROM customers WHERE ${where}`, args),
+    ]);
+    return NextResponse.json({ rows, total: count[0].n });
+  }
   if (search) {
-    const rows = await queryAll(
-      "SELECT * FROM customers WHERE active = 1 AND name LIKE ? ORDER BY name LIMIT 20",
-      [`%${search}%`]
-    );
-    return NextResponse.json(rows);
+    const like = `%${search.trim()}%`;
+    return NextResponse.json(await queryAll(`SELECT ${COLS} FROM customers WHERE ${where} ORDER BY name LIMIT 20`, Array(6).fill(like)));
   }
   return NextResponse.json(await queryAll('SELECT * FROM customers WHERE active = 1 ORDER BY name'));
 }

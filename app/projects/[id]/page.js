@@ -71,7 +71,7 @@ export default async function ProjectDetail({ params }) {
     getMaterialIndentsByProject(project.id),
     getProjectInventoryItems(project.id),
     getBomAssembliesFlat(project.id),
-    canEditProject ? getCustomers() : [],
+    [], // customers: CustomerPicker searches the API
   ]);
   // Expected delivery lots (Decision K) — reuses the exact function Stores' own Receive-a-Delivery
   // tab already uses, never a second calculation. Only meaningful for open (not yet terminal) lines.

@@ -32,6 +32,7 @@ import { computeSaleOrderTotals } from '@/lib/sale-order-calc.mjs';
 import ProductSearchField from '@/components/ProductSearchField';
 import SearchableSelect from '@/components/SearchableSelect';
 import { useLeadConvert } from '@/components/ConvertLeadChoice';
+import { defaultCompanyClient } from '@/lib/company-filter.mjs';
 
 const SALES_CALL_STATUSES = ['Lead - Cold', 'Lead - Hot', 'Lead Project - Dropped', 'Proposals', 'Hot Offers', 'Order Received', 'Order Lost', 'Follow up stage', 'OEM Follow Ups Monthly'];
 
@@ -81,7 +82,7 @@ export function CreatePoStep1Dialog({ lead, branches, stages = [], onClose, onCr
 
 
       const so = await api('/api/sale-orders', { method: 'POST', body: {
-        customer_id: customerId, customer_name: lead.company_name || lead.lead_name, company: COMPANY_NAMES[0],
+        customer_id: customerId, customer_name: lead.company_name || lead.lead_name, company: defaultCompanyClient(),
         order_date: expectedDate || null, sales_person: lead.account_manager || null, create_as: 'PO',
         branch_id: branchId || null, order_stage: status, lead_id: lead.id,
       } });

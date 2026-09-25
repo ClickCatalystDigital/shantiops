@@ -5,6 +5,7 @@
 // hardcoded array — decision 5), and a detail Sheet for line items + the shared CRM notes
 // timeline (decision 4). Kanban drag-and-drop unchanged from A4 — same native-HTML5 pattern as
 // StagesPanel.jsx's Kanban.
+import CustomerPicker from '@/components/CustomerPicker';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -22,6 +23,7 @@ import { TasksPanel, NewQuotationDialog } from '@/components/SalesWorkspace';
 
 function AddOpportunityDialog({ departments, customers, onClose, router }) {
   const [title, setTitle] = useState('');
+  const [customerName, setCustomerName] = useState('');
   const [customerId, setCustomerId] = useState('');
   const [valueNum, setValueNum] = useState('');
   const [source, setSource] = useState('');
@@ -32,13 +34,12 @@ function AddOpportunityDialog({ departments, customers, onClose, router }) {
     if (!title.trim()) return showToast('Title is required', 'error');
     setSaving(true);
     try {
-      const customer = customers.find(c => String(c.id) === customerId);
       await api('/api/opportunities', {
         method: 'POST',
         body: {
           title: title.trim(),
           customer_id: customerId || null,
-          customer_name: customer?.name || null,
+          customer_name: customerName || null,
           value_num: valueNum ? Number(valueNum) : null,
           source: source || null,
           owner_dept: ownerDept,
@@ -65,10 +66,7 @@ function AddOpportunityDialog({ departments, customers, onClose, router }) {
           </div>
           <div className="grid gap-1.5">
             <Label>Customer (optional)</Label>
-            <Select value={customerId} onValueChange={setCustomerId}>
-              <SelectTrigger><SelectValue placeholder="Choose customer" /></SelectTrigger>
-              <SelectContent>{customers.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}</SelectContent>
-            </Select>
+            <CustomerPicker value={customerId} name={customerName} onChange={(id, n) => { setCustomerId(id); setCustomerName(n); }} placeholder="Choose customer" />
           </div>
           <div className="grid gap-1.5">
             <Label>Value ₹ (optional)</Label>
