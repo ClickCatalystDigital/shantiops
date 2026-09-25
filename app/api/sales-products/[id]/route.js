@@ -7,8 +7,9 @@ import { getFreshSessionUser } from '@/lib/auth';
 import { requireCrmAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 
-const EDITABLE = ['product_code', 'product_name', 'product_type', 'description', 'price', 'unit', 'hsn_code', 'gst_pct', 'active'];
-const NUMERIC = new Set(['price', 'gst_pct']);
+const EDITABLE = ['product_code', 'product_name', 'product_type', 'description', 'price', 'unit', 'hsn_code', 'gst_pct', 'active',
+  'category', 'cost_price', 'warranty_days', 'serviceable'];
+const NUMERIC = new Set(['price', 'gst_pct', 'cost_price', 'warranty_days']);
 
 export async function PATCH(req, { params }) {
   const user = await getFreshSessionUser();
@@ -21,7 +22,7 @@ export async function PATCH(req, { params }) {
   for (const key of EDITABLE) {
     if (b[key] === undefined) continue;
     fields.push(`${key} = ?`);
-    args.push(key === 'active' ? (b[key] ? 1 : 0) : NUMERIC.has(key) ? (b[key] != null && b[key] !== '' ? Number(b[key]) : null) : (b[key] || null));
+    args.push(key === 'active' ? (b[key] ? 1 : 0) : key === 'serviceable' ? (b[key] == null ? null : b[key] ? 1 : 0) : NUMERIC.has(key) ? (b[key] != null && b[key] !== '' ? Number(b[key]) : null) : (b[key] || null));
   }
   if (!fields.length) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
   fields.push('updated_at = CURRENT_TIMESTAMP');

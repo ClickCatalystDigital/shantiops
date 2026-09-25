@@ -1167,6 +1167,8 @@ function CustomerDetailSheet({ customerId, onClose, router }) {
               <ContactLinks phone={detail.phone} email={detail.email} />
             </div>
 
+            <OldCrmSummary detail={detail} />
+
             <div>
               <div className="mb-2 text-sm font-semibold">Customer Portal</div>
               <div className="flex items-center gap-2">
@@ -1218,9 +1220,40 @@ function CustomerDetailSheet({ customerId, onClose, router }) {
   );
 }
 
+// Old-CRM import (2026-09-25): what the previous CRM knew about this party, read only.
+function OldCrmSummary({ detail }) {
+  let s = null;
+  try { s = detail.legacy_crm_json ? JSON.parse(detail.legacy_crm_json) : null; } catch { s = null; }
+  if (!s && !detail.account_manager && !detail.products_of_interest && !detail.party_code) return null;
+  const stages = s ? Object.entries(s.stages || {}) : [];
+  return (
+    <div className="flex flex-col gap-1.5 text-sm">
+      <div className="text-sm font-semibold">From the old CRM</div>
+      {detail.party_code && <div><span className="text-muted-foreground">Organization code:</span> {detail.party_code}</div>}
+      {detail.account_manager && <div><span className="text-muted-foreground">A/C Manager:</span> {detail.account_manager}</div>}
+      {detail.city && <div><span className="text-muted-foreground">District:</span> {detail.city}</div>}
+      {detail.products_of_interest && <div><span className="text-muted-foreground">Products:</span> {detail.products_of_interest}</div>}
+      {s && (
+        <>
+          <div><span className="text-muted-foreground">Sales calls:</span> {s.open_calls} open, {s.closed_calls} closed{stages.length ? ` — ${stages.map(([k, v]) => `${k} ${v}`).join(', ')}` : ''}</div>
+          <div><span className="text-muted-foreground">Quoted:</span> {formatMoney(s.quote_total)} · <span className="text-muted-foreground">Orders:</span> {s.orders} ({formatMoney(s.order_value)}) · <span className="text-muted-foreground">Collected:</span> {formatMoney(s.collection)}</div>
+          {s.other_names?.length > 0 && <div className="text-xs text-muted-foreground">Also recorded as: {s.other_names.join('; ')}</div>}
+        </>
+      )}
+    </div>
+  );
+}
+
 function CustomersTab({ customers, router }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedId, setSelectedId] = useState(null);
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(0);
+  const [size, setSize] = useState(SIZES[0]);
+  const q = search.trim().toLowerCase();
+  const filtered = !q ? customers : customers.filter(c =>
+    [c.name, c.party_code, c.gst_no, c.phone, c.city, c.account_manager].some(v => v && String(v).toLowerCase().includes(q)));
+  const shown = filtered.slice(page * size, (page + 1) * size);
   return (
     <Card>
       <CardHeader>
@@ -1228,13 +1261,18 @@ function CustomersTab({ customers, router }) {
         <CardAction><Button size="sm" onClick={() => setDialogOpen(true)}><PlusIcon />New Customer</Button></CardAction>
       </CardHeader>
       <CardContent>
-        {customers.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No customers yet.</p> : (
+        <Input className="mb-3 max-w-sm" placeholder={`Search ${customers.length} customers — name, code, GST, phone, district, A/C manager`}
+          value={search} onChange={e => { setSearch(e.target.value); setPage(0); }} />
+        {filtered.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">{customers.length ? 'No customers match.' : 'No customers yet.'}</p> : (
           <Table>
-            <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>GST No</TableHead><TableHead>Phone</TableHead></TableRow></TableHeader>
+            <TableHeader><TableRow><TableHead>Name</TableHead><TableHead className="hidden md:table-cell">Code</TableHead><TableHead className="hidden md:table-cell">District</TableHead><TableHead className="hidden md:table-cell">A/C Manager</TableHead><TableHead>GST No</TableHead><TableHead>Phone</TableHead></TableRow></TableHeader>
             <TableBody>
-              {customers.map(c => (
+              {shown.map(c => (
                 <TableRow key={c.id} className="cursor-pointer" onClick={() => setSelectedId(c.id)}>
                   <TableCell className="font-medium">{c.name}</TableCell>
+                  <TableCell className="hidden text-muted-foreground md:table-cell">{c.party_code || '—'}</TableCell>
+                  <TableCell className="hidden text-muted-foreground md:table-cell">{c.city || '—'}</TableCell>
+                  <TableCell className="hidden text-muted-foreground md:table-cell">{c.account_manager || '—'}</TableCell>
                   <TableCell className="text-muted-foreground">{c.gst_no || '—'}</TableCell>
                   <TableCell className="text-muted-foreground">{c.phone || '—'}</TableCell>
                 </TableRow>
@@ -1242,6 +1280,7 @@ function CustomersTab({ customers, router }) {
             </TableBody>
           </Table>
         )}
+        <Pager page={page} setPage={setPage} size={size} setSize={setSize} total={filtered.length} />
       </CardContent>
       {dialogOpen && <AddCustomerDialog router={router} onClose={() => setDialogOpen(false)} />}
       {selectedId && <CustomerDetailSheet customerId={selectedId} router={router} onClose={() => setSelectedId(null)} />}
@@ -2524,8 +2563,11 @@ function ProductDialog({ product, onClose, router }) {
     product_code: product?.product_code || '', product_name: product?.product_name || '',
     product_type: product?.product_type || '', description: product?.description || '',
     price: product?.price ?? '', unit: product?.unit || '', hsn_code: product?.hsn_code || '',
-    gst_pct: product?.gst_pct ?? '',
+    gst_pct: product?.gst_pct ?? '', category: product?.category || '', cost_price: product?.cost_price ?? '',
+    warranty_days: product?.warranty_days ?? '', serviceable: product?.serviceable ?? null,
   });
+  let attrs = {};
+  try { attrs = product?.attributes_json ? JSON.parse(product.attributes_json) : {}; } catch { attrs = {}; }
   const [saving, setSaving] = useState(false);
   const set = (k) => (v) => setF(prev => ({ ...prev, [k]: v }));
   const typeOpts = distinctOptions([], 'x', PRODUCT_TYPES);
@@ -2534,7 +2576,8 @@ function ProductDialog({ product, onClose, router }) {
     if (!f.product_name.trim()) return showToast('Product name is required', 'error');
     setSaving(true);
     try {
-      const body = { ...f, product_name: f.product_name.trim(), price: f.price === '' ? null : Number(f.price), gst_pct: f.gst_pct === '' ? null : Number(f.gst_pct) };
+      const n = v => (v === '' || v == null ? null : Number(v));
+      const body = { ...f, product_name: f.product_name.trim(), price: n(f.price), gst_pct: n(f.gst_pct), cost_price: n(f.cost_price), warranty_days: n(f.warranty_days) };
       if (isEdit) await api(`/api/sales-products/${product.id}`, { method: 'PATCH', body });
       else await api('/api/sales-products', { method: 'POST', body });
       showToast(isEdit ? 'Product updated' : 'Product added');
@@ -2558,6 +2601,23 @@ function ProductDialog({ product, onClose, router }) {
             <div className="grid gap-1.5"><Label>HSN code</Label><Input value={f.hsn_code} onChange={e => set('hsn_code')(e.target.value)} /></div>
             <div className="grid gap-1.5"><Label>GST %</Label><Input type="number" min="0" value={f.gst_pct} onChange={e => set('gst_pct')(e.target.value)} placeholder="18" /></div>
           </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="grid gap-1.5"><Label>Category</Label>
+              <Select value={f.category || ''} onValueChange={set('category')}>
+                <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
+                <SelectContent><SelectItem value="Standard Product">Standard Product</SelectItem><SelectItem value="Premium Product">Premium Product</SelectItem></SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-1.5"><Label>Cost price</Label><Input type="number" min="0" value={f.cost_price} onChange={e => set('cost_price')(e.target.value)} /></div>
+            <div className="grid gap-1.5"><Label>Warranty (days)</Label><Input type="number" min="0" value={f.warranty_days} onChange={e => set('warranty_days')(e.target.value)} /></div>
+          </div>
+          <label className="flex items-center gap-2 text-sm"><Checkbox checked={!!f.serviceable} onCheckedChange={v => set('serviceable')(v ? 1 : 0)} />Serviceable product</label>
+          {(product?.legacy_code || Object.keys(attrs).length > 0) && (
+            <p className="text-xs text-muted-foreground">
+              From the old CRM:{product?.legacy_code && product.legacy_code !== product.product_code ? ` code ${product.legacy_code};` : ''}
+              {' '}{Object.entries(attrs).map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v === true ? 'Yes' : v === false ? 'No' : v}`).join(' · ')}
+            </p>
+          )}
         </div>
         <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? 'Saving…' : isEdit ? 'Save' : 'Add Product'}</Button></DialogFooter>
       </DialogContent>
@@ -2567,6 +2627,13 @@ function ProductDialog({ product, onClose, router }) {
 
 function ProductsTab({ salesProducts, router }) {
   const [dialogState, setDialogState] = useState(null); // null | true (new) | product (edit)
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(0);
+  const [size, setSize] = useState(SIZES[0]);
+  const q = search.trim().toLowerCase();
+  const filtered = !q ? salesProducts : salesProducts.filter(p =>
+    [p.product_code, p.product_name, p.product_type, p.hsn_code, p.category].some(v => v && String(v).toLowerCase().includes(q)));
+  const shown = filtered.slice(page * size, (page + 1) * size);
 
   return (
     <Card>
@@ -2575,11 +2642,13 @@ function ProductsTab({ salesProducts, router }) {
         <CardAction><Button size="sm" onClick={() => setDialogState(true)}><PlusIcon />New Product</Button></CardAction>
       </CardHeader>
       <CardContent>
-        {salesProducts.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No products yet — add data as it becomes available.</p> : (
+        <Input className="mb-3 max-w-sm" placeholder={`Search ${salesProducts.length} products — code, name, type, HSN`}
+          value={search} onChange={e => { setSearch(e.target.value); setPage(0); }} />
+        {filtered.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">{salesProducts.length ? 'No products match.' : 'No products yet — add data as it becomes available.'}</p> : (
           <Table>
             <TableHeader><TableRow><TableHead>Code</TableHead><TableHead>Name</TableHead><TableHead>Type</TableHead><TableHead>Price</TableHead><TableHead>Unit</TableHead><TableHead>GST %</TableHead><TableHead>Status</TableHead><TableHead /></TableRow></TableHeader>
             <TableBody>
-              {salesProducts.map(p => (
+              {shown.map(p => (
                 <TableRow key={p.id} className="cursor-pointer" onClick={() => setDialogState(p)}>
                   <TableCell className="text-muted-foreground">{p.product_code || '—'}</TableCell>
                   <TableCell className="font-medium">{p.product_name}</TableCell>
@@ -2595,6 +2664,7 @@ function ProductsTab({ salesProducts, router }) {
           </Table>
         )}
       </CardContent>
+      <CardContent className="pt-0"><Pager page={page} setPage={setPage} size={size} setSize={setSize} total={filtered.length} /></CardContent>
       {dialogState && <ProductDialog product={dialogState === true ? null : dialogState} router={router} onClose={() => setDialogState(null)} />}
     </Card>
   );

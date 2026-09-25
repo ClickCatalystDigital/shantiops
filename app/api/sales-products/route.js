@@ -26,6 +26,8 @@ export async function GET(req) {
   return NextResponse.json(await queryAll('SELECT * FROM sales_products ORDER BY product_name'));
 }
 
+const numOrNull = v => (v != null && v !== '' ? Number(v) : null);
+
 export async function POST(req) {
   const user = await getFreshSessionUser();
   const denied = await requireCrmAction(user, 'sales.product.write');
@@ -42,10 +44,12 @@ export async function POST(req) {
 
   try {
     const { lastId } = await execute(
-      `INSERT INTO sales_products (product_code, product_name, product_type, description, price, unit, hsn_code, gst_pct, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [productCode, productName, b.product_type || null, b.description || null, b.price != null && b.price !== '' ? Number(b.price) : null,
-        b.unit || null, b.hsn_code || null, b.gst_pct != null && b.gst_pct !== '' ? Number(b.gst_pct) : null, user.username]
+      `INSERT INTO sales_products (product_code, product_name, product_type, description, price, unit, hsn_code, gst_pct,
+         category, cost_price, warranty_days, serviceable, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [productCode, productName, b.product_type || null, b.description || null, numOrNull(b.price),
+        b.unit || null, b.hsn_code || null, numOrNull(b.gst_pct),
+        b.category || null, numOrNull(b.cost_price), numOrNull(b.warranty_days), b.serviceable == null ? null : b.serviceable ? 1 : 0, user.username]
     );
     await audit('sales_product_created', { actor: user.username, detail: `${productCode} — ${productName}` });
     return NextResponse.json({ id: Number(lastId), product_code: productCode });

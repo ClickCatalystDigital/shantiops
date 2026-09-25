@@ -11476,6 +11476,23 @@ quotations, 1,006 imported sale orders, 340 customers; Product/Branch/Target mas
   plan type saved; order PDF renders. All test rows removed, `sale_order_no` restored to 27,
   baseline counts unchanged. The wizard screen itself was not click-tested in a browser.
 
+**Old-CRM import — Product Master + customer summary (2026-09-25).** `scripts/import-legacy-crm.mjs`
+(parser `lib/legacy-crm-import.mjs`, selfcheck) loaded the old CRM's ProductData.csv (1,826 products)
+and its per-organization Customer summary (4 parts, 8,988 rows) into `sales_products` and `customers`.
+New columns: products `category`, `cost_price`, `warranty_days` (fills the PO wizard's Warranty Std),
+`serviceable`, `legacy_code`, `attributes_json`; customers `account_manager`, `products_of_interest`,
+`legacy_crm_json` (calls by stage, quote/order/collection totals), `source` (import tag). Rules: 0.0
+GST/price/cost = not set (NULL), shared product codes kept as "CODE (2)" with the original in
+`legacy_code`, customers merged only on the same code or the same multi-word name (Pvt/Ltd/M/s
+ignored) with no code or district conflict, existing customers only get blank fields filled, a
+matched existing customer is claimed so a second organization with another code can't overwrite it
+(bug caught in the first full run, rolled back and fixed). Result: 8,728 new + 119 existing =
+8,847 organizations; 16 test rows skipped, 1 unreadable. Rollback proven (tables identical to the
+backup) before the full run; manifest `scripts/data/legacy-crm-import-manifest.json`. Issues for the
+client: `docs/legacy-crm-import-issues.md`, `docs/legacy-crm-possible-duplicates.csv`. UI: Customers
+and Products tabs got search + paging; the customer sheet shows "From the old CRM"; the product form
+shows the new fields. `getCustomers()` no longer sends the summary blobs to the list.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own

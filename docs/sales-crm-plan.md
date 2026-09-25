@@ -5,7 +5,7 @@ for now").
 
 ## Status (2026-09-25)
 
-**Phase 1 is done** (1a–1k; SYSTEM.md §5db). Paused before Phase 2 at the client's request: new
+**Phase 1 is done** (1a–1k; SYSTEM.md §5db), and the old CRM's Product Master and customer summary are imported. Handoff for the next chat: `docs/sales-crm-handoff.md`. Paused before Phase 2 at the client's request: new
 data is coming (Product Master, more customers — with duplicates — and Techno Fab orders and
 payment log), and a global company selector (All / Shanti Boilers / Shanti Techno Fab) is to be
 added first. Phases 2–4 follow after that.

@@ -154,7 +154,7 @@ function lineMoney(it) {
 }
 
 function pickProduct(p) {
-  return { product_id: p.id, product_code: p.product_code || '', item_description: p.product_name, uom: p.unit || '', rate: p.price ?? '', item_tax_pct: p.gst_pct ?? '', hsn_code: p.hsn_code || null };
+  return { product_id: p.id, product_code: p.product_code || '', item_description: p.product_name, uom: p.unit || '', rate: p.price ?? '', item_tax_pct: p.gst_pct ?? '', hsn_code: p.hsn_code || null, ...(p.warranty_days ? { warranty_std_days: p.warranty_days } : {}) };
 }
 
 // Items On Order — a table on desktop, one card per line below md (plan 2e). Product Code picks from
