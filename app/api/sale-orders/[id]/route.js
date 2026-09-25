@@ -1,7 +1,8 @@
 // app/api/sale-orders/[id]/route.js — V3_CHANGES.md §12 Phase 2e. sale_orders previously had no
 // [id] route at all (list + create only). Adds detail (with items) + status PATCH.
 import { NextResponse } from 'next/server';
-import { execute, queryOne } from '@/lib/db';
+import { checkSalesPerson } from '@/lib/sales-people';
+import { execute, queryAll, queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment, canAccessDepartment, isPM } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { getSaleOrderDetail } from '@/lib/data';
@@ -16,7 +17,27 @@ export async function GET(req, { params }) {
   if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const detail = await getSaleOrderDetail(params.id);
   if (!detail) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  return NextResponse.json(detail);
+  // Sales CRM plan 1h — an order with no lines yet suggests its quotation's lines, else its
+  // enquiry's products. Only a suggestion: nothing is saved until "Save Items On Order".
+  let prefill_items = [];
+  if (!detail.items.length) {
+    if (detail.quotation_id) {
+      prefill_items = await queryAll(
+        `SELECT qi.product_id, qi.item_description, qi.hsn_code, qi.qty, qi.uom, qi.rate, qi.discount_pct,
+                COALESCE(qi.gst_pct, q.tax_pct) AS item_tax_pct, sp.product_code
+           FROM quotation_items qi JOIN quotations q ON q.id = qi.quotation_id
+           LEFT JOIN sales_products sp ON sp.id = qi.product_id
+          WHERE qi.quotation_id = ? ORDER BY qi.sort_order, qi.id`, [detail.quotation_id]);
+    }
+    if (!prefill_items.length && detail.lead_id) {
+      prefill_items = await queryAll(
+        `SELECT lp.product_id, lp.description AS item_description, sp.hsn_code, lp.qty, lp.unit AS uom, lp.rate,
+                0 AS discount_pct, COALESCE(lp.gst_pct, sp.gst_pct) AS item_tax_pct, sp.product_code
+           FROM lead_products lp LEFT JOIN sales_products sp ON sp.id = lp.product_id
+          WHERE lp.lead_id = ? ORDER BY lp.sort_order, lp.id`, [detail.lead_id]);
+    }
+  }
+  return NextResponse.json({ ...detail, prefill_items });
 }
 
 export async function PATCH(req, { params }) {
@@ -54,8 +75,13 @@ export async function PATCH(req, { params }) {
     if (b.order_date && !/^\d{4}-\d{2}-\d{2}$/.test(b.order_date)) return NextResponse.json({ error: 'Invalid date' }, { status: 400 });
     fields.push('order_date = ?'); args.push(b.order_date || null);
   }
-  for (const [body, col] of [['invoice_ref', 'invoice_ref'], ['sales_person', 'sales_person_override']]) {
-    if (b[body] !== undefined) { fields.push(`${col} = ?`); args.push(String(b[body]).trim() || null); }
+  if (b.invoice_ref !== undefined) { fields.push('invoice_ref = ?'); args.push(String(b.invoice_ref).trim() || null); }
+  if (b.sales_person !== undefined) {
+    // Plan 1i — a Sales username; keeping the current value or an already-used legacy name is fine.
+    const cur = await queryOne('SELECT sales_person_override FROM sale_orders WHERE id = ?', [params.id]);
+    const chk = await checkSalesPerson(b.sales_person, { current: cur?.sales_person_override, allowLegacy: true, label: 'Sales Person' });
+    if (chk.error) return NextResponse.json({ error: chk.error }, { status: 400 });
+    fields.push('sales_person_override = ?'); args.push(chk.value);
   }
   if (b.total !== undefined) {
     const total = Number(b.total);
@@ -89,6 +115,11 @@ export async function PATCH(req, { params }) {
   }
   for (const key of ['is_account_clear', 'is_form_applicable']) {
     if (b[key] !== undefined) { fields.push(`${key} = ?`); args.push(b[key] ? 1 : 0); }
+  }
+  // Sales CRM plan 1h — Order Stage is one of the funnel stages, not free text.
+  if (b.order_stage) {
+    const st = await queryOne('SELECT 1 FROM sales_stages WHERE name = ? AND active = 1', [String(b.order_stage).trim()]);
+    if (!st) return NextResponse.json({ error: `Unknown order stage "${b.order_stage}"` }, { status: 400 });
   }
   if (!fields.length) return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
   const before = await queryOne('SELECT * FROM sale_orders WHERE id = ?', [params.id]);

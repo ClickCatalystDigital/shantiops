@@ -1,6 +1,7 @@
 // app/api/leads/route.js — V3_CHANGES.md §12 Phase 1. Same shape as app/api/opportunities/route.js:
 // two-department gate (Sales|Marketing), GET open to any internal user, POST department-scoped.
 import { NextResponse } from 'next/server';
+import { checkSalesPerson } from '@/lib/sales-people';
 import { execute, queryAll, queryOne } from '@/lib/db';
 import { getFreshSessionUser, isInternal, canAccessDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
@@ -77,6 +78,14 @@ export async function POST(req) {
     catch (err) { return NextResponse.json({ error: err.message }, { status: err.status || 500 }); }
   }
 
+  // Plan 1i — a Sales enquiry's A/C manager / Initiated by are Sales usernames, not free text.
+  if (ownerDept === 'Sales') {
+    for (const [k, label] of [['account_manager', 'A/C Manager'], ['initiated_by', 'Initiated by']]) {
+      const chk = await checkSalesPerson(b[k], { label });
+      if (chk.error) return NextResponse.json({ error: chk.error }, { status: 400 });
+      b[k] = chk.value;
+    }
+  }
   const assignedTo = b.assigned_to || await nextAssignee(ownerDept);
   const { lastId } = await execute(
     `INSERT INTO leads (

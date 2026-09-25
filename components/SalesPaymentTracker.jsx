@@ -4,6 +4,7 @@
 // Orders: Orders (one row per order, milestone checkboxes + remarks, editable inline) and
 // Payments (an append-only log, added through a right-side Sheet). Data comes from server props;
 // mutations go through PATCH /api/sale-orders/[id] and POST /api/sale-order-payments.
+import { salesPeopleOptions } from '@/lib/sales-people.mjs';
 import { useState, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
@@ -34,7 +35,6 @@ const STAGES = [
 const MODES = ['NEFT/IMPS', 'Cash', 'Cheque', 'Paytm', 'Credit note', 'Debit Note', 'Other'];
 // Salespersons list from the Excel's Settings sheet. The dropdown offers these plus every name
 // already on an order. ponytail: move to a settings table if non-developers need to add names.
-const PEOPLE = ['BDM', 'Amit B', 'Devansh B', 'Sales Desk', 'Sales - AP', 'Sales - KAR', 'Sales - MH', 'Bachan', 'Ojha', 'Namdev', 'Upender', 'TELE CALLER'];
 const TRACK_STATUSES = ['Pending', 'Ready', 'WIP', 'Dispatched', 'Closed'];
 // Tables show exact rupees (payment data must be checkable to the paisa); the KPI cards keep the short L/Cr form.
 const exact = n => '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
@@ -58,12 +58,14 @@ const STATUS_STYLE = {
 };
 
 // Borderless dropdown that reads like text in a table cell (Sales Person, Payment Mode).
+// Options may be plain strings or { value, label }.
 function InlineSelect({ value, options, onChange, width = 'w-36' }) {
-  const opts = !value || options.includes(value) ? options : [value, ...options];
+  const norm = options.map(o => (typeof o === 'string' ? { value: o, label: o } : o));
+  const opts = !value || norm.some(o => o.value === value) ? norm : [{ value, label: value }, ...norm];
   return (
     <Select value={value || undefined} onValueChange={onChange}>
       <SelectTrigger className={`h-7 ${width} gap-1 border-0 bg-transparent px-1 text-sm shadow-none hover:bg-muted dark:bg-transparent dark:hover:bg-muted`}><SelectValue placeholder="—" /></SelectTrigger>
-      <SelectContent>{opts.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
+      <SelectContent>{opts.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
     </Select>
   );
 }
@@ -139,7 +141,7 @@ export function Pager({ page, setPage, size, setSize, total }) {
 const byDate = (dir, get) => (a, b) => (dir === 'desc' ? -1 : 1) * String(get(a)).localeCompare(String(get(b)));
 const matches = (q, parts) => !q.trim() || parts.join(' ').toLowerCase().includes(q.trim().toLowerCase());
 
-export function PaymentOrdersTab({ saleOrders, payments, invoices, customers = [] }) {
+export function PaymentOrdersTab({ saleOrders, payments, invoices, customers = [], users = [] }) {
   const router = useRouter();
   const [q, setQ] = useState('');
   const [dir, setDir] = useState('desc');
@@ -147,7 +149,8 @@ export function PaymentOrdersTab({ saleOrders, payments, invoices, customers = [
   const [page, setPage] = useState(0);
   const [size, setSize] = useState(SIZES[0]);
   const [adding, setAdding] = useState(false);
-  const people = useMemo(() => [...new Set([...PEOPLE, 'Unassigned', ...saleOrders.map(o => o.sales_person).filter(Boolean)])], [saleOrders]);
+  // Plan 1i — active Sales users first, then the legacy names already on imported orders.
+  const people = useMemo(() => salesPeopleOptions(users, saleOrders.map(o => o.sales_person)), [users, saleOrders]);
 
   // All non-cancelled orders with derived fields — the KPI cards read this, the table filters it.
   const all = useMemo(() => {
@@ -312,7 +315,7 @@ function AddOrderSheet({ customers, people, onClose }) {
               <Label>Sales person</Label>
               <Select value={f.sales_person || undefined} onValueChange={v => set({ sales_person: v })}>
                 <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
-                <SelectContent>{people.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent>
+                <SelectContent>{people.map(p => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div className="space-y-1.5">

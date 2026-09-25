@@ -3,6 +3,13 @@
 Revised 2026-09-25. Scope is **Sales only** — Marketing will be designed later (see "Marketing,
 for now").
 
+## Status (2026-09-25)
+
+**Phase 1 is done** (1a–1k; SYSTEM.md §5db). Paused before Phase 2 at the client's request: new
+data is coming (Product Master, more customers — with duplicates — and Techno Fab orders and
+payment log), and a global company selector (All / Shanti Boilers / Shanti Techno Fab) is to be
+added first. Phases 2–4 follow after that.
+
 ## Context
 
 The Sales department (`/sales`, Sales reports) already has most of the client's spec built

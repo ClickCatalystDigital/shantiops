@@ -35,6 +35,8 @@ import { formatMoney } from '@/lib/format';
 import ScopeOfSupplySection from '@/components/ScopeOfSupplySection';
 import { PaymentOrdersTab, PaymentLogTab, Pager, SIZES } from '@/components/SalesPaymentTracker';
 import { CreatePoFlow } from '@/components/SaleOrderWizard';
+import ProductSearchField from '@/components/ProductSearchField';
+import { useLeadConvert, SimilarCustomersHint, useSimilarCustomers } from '@/components/ConvertLeadChoice';
 import { renderTemplate } from '@/lib/email-template.mjs';
 import { DEFAULT_STAGE, isEnquiryStage, isSlaBreached } from '@/lib/lead-stage.mjs';
 import { QTY_UNITS } from '@/lib/qty-units.mjs';
@@ -199,7 +201,7 @@ function AddToDiaryDialog({ lead, users, salesProducts, onClose, onSaved, router
   const [f, setF] = useState({
     visit_date: todayISO(), note_type: 'call', is_value_addition: false, action_taken: '',
     in_time: '', out_time: '', alert_mode: 'Not Required', plan_date: '', plan_time: '',
-    plan_for: '', plan_of_action: '', send_alert_sms: 'No Alert', contact_id: '', product: '', product_id: null,
+    plan_for: '', plan_of_action: '', plan_note_type: '', send_alert_sms: 'No Alert', contact_id: '', product: '', product_id: null,
     location: '',
   });
   const [contacts, setContacts] = useState([]);
@@ -222,7 +224,7 @@ function AddToDiaryDialog({ lead, users, salesProducts, onClose, onSaved, router
         visit_date: f.visit_date, action_taken: f.action_taken.trim(),
         is_value_addition: f.is_value_addition, in_time: f.in_time || null, out_time: f.out_time || null,
         alert_mode: f.alert_mode, plan_date: f.plan_date || null, plan_time: f.plan_time || null,
-        plan_for: f.plan_for || null, plan_of_action: f.plan_of_action || null,
+        plan_for: f.plan_for || null, plan_of_action: f.plan_of_action || null, plan_note_type: f.plan_note_type || null,
         next_plan_date: f.plan_date || null, send_alert_sms: f.send_alert_sms,
         contact_id: f.contact_id || null, product_id: f.product_id || null, location: f.location || null,
       } });
@@ -296,12 +298,23 @@ function AddToDiaryDialog({ lead, users, salesProducts, onClose, onSaved, router
               <div className="grid gap-1.5"><Label>Plan of Action for</Label>
                 <SearchableSelect value={f.plan_for} onChange={set('plan_for')} options={users.map(u => ({ value: u.username, label: u.display_name || u.username }))} placeholder="Select a person…" />
               </div>
+              <div className="grid gap-1.5"><Label>Plan Action Type</Label>
+                <Select value={f.plan_note_type} onValueChange={set('plan_note_type')}>
+                  <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="call">Call</SelectItem>
+                    <SelectItem value="email">Email</SelectItem>
+                    <SelectItem value="meeting">Meeting</SelectItem>
+                    <SelectItem value="note">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="grid gap-1.5"><Label>Send Alert SMS</Label>
                 <Select value={f.send_alert_sms} onValueChange={set('send_alert_sms')}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="No Alert">No Alert</SelectItem>
-                    <SelectItem value="SMS">SMS</SelectItem>
+                    <SelectItem value="SMS" disabled>SMS — coming later</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -479,6 +492,7 @@ function LeadDetailSheet({ lead, users, customers, salesProducts = [], branches 
   const [offerCustomerId, setOfferCustomerId] = useState(null);
   const [resolving, setResolving] = useState(false);
   const [closing, setClosing] = useState(false);
+  const { convert: convertLead, dialog: convertDialog } = useLeadConvert();
 
   // Create Commercial Offer's own customer-resolution prerequisite (Gap #12) — silently run the
   // same Lead -> Customer conversion "Create PO" already runs, before ever opening
@@ -487,9 +501,10 @@ function LeadDetailSheet({ lead, users, customers, salesProducts = [], branches 
     if (lead.converted_customer_id) { setOfferCustomerId(lead.converted_customer_id); setAction('offer'); return; }
     setResolving(true);
     try {
-      const res = await api(`/api/leads/${lead.id}/convert`, { method: 'POST', body: {} });
+      const customerId = await convertLead(lead);
+      if (!customerId) return;
       router.refresh();
-      setOfferCustomerId(res.customer_id);
+      setOfferCustomerId(customerId);
       setAction('offer');
     } catch (err) { showToast(err.message, 'error'); } finally { setResolving(false); }
   }
@@ -567,7 +582,8 @@ function LeadDetailSheet({ lead, users, customers, salesProducts = [], branches 
       {action === 'offer' && newQuotationId && (
         <SendCommercialOfferDialog quotationId={newQuotationId} router={router} onClose={() => { setAction(null); setNewQuotationId(null); }} />
       )}
-      {action === 'po' && <CreatePoFlow lead={lead} branches={branches} router={router} onClose={() => setAction(null)} />}
+      {convertDialog}
+      {action === 'po' && <CreatePoFlow lead={lead} branches={branches} salesProducts={salesProducts} users={users} stages={stages} router={router} onClose={() => setAction(null)} />}
       {action === 'lost' && <OrderLostDialog lead={lead} router={router} onClose={() => setAction(null)} />}
     </Sheet>
   );
@@ -629,38 +645,6 @@ function distinctOptions(leads, field, seed = []) {
 
 function RequiredLabel({ children }) {
   return <Label>{children} <span className="text-destructive">*</span></Label>;
-}
-
-// Product Master (Phase 0b) — free-typed-with-suggestions against the already-fetched
-// sales_products list (small master, no pagination, same local-filter idiom as distinctOptions'
-// District/State fields elsewhere in this file — a live API search isn't warranted at this table's
-// size). Picking a real row wires product_id for real linkage; free typing still works for a
-// product that isn't in the master yet.
-function ProductSearchField({ products, value, onChange, onPick }) {
-  const [open, setOpen] = useState(false);
-  const q = (value || '').trim().toLowerCase();
-  const results = q.length < 1 ? [] : products.filter(p =>
-    p.product_name.toLowerCase().includes(q) || (p.product_code || '').toLowerCase().includes(q) || (p.product_type || '').toLowerCase().includes(q)
-  ).slice(0, 8);
-
-  return (
-    <div className="relative">
-      <Input value={value} onChange={e => { onChange(e.target.value); setOpen(true); }}
-        onFocus={() => setOpen(results.length > 0)} onBlur={() => setTimeout(() => setOpen(false), 150)}
-        placeholder="Search products, or type…" />
-      {open && results.length > 0 && (
-        <div className="absolute top-full z-10 mt-1 w-full rounded-md border bg-popover shadow-md">
-          {results.map(p => (
-            <button key={p.id} type="button" className="flex w-full flex-col items-start gap-0.5 border-b px-3 py-1.5 text-left text-sm last:border-b-0 hover:bg-muted/40"
-              onMouseDown={() => { onPick(p); setOpen(false); }}>
-              <span className="font-medium">{p.product_name}</span>
-              <span className="text-xs text-muted-foreground">{[p.product_code, p.product_type].filter(Boolean).join(' · ') || '—'}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
 }
 
 // Sales CRM plan 1e — an enquiry's product lines. Picking a product fills its unit, price and GST %
@@ -787,6 +771,7 @@ function AddEnquiryDialog({ leads, users, salesProducts, stages = [], onClose, r
     account_manager: '', initiated_by: '', district_code: '', pin_code: '', sales_call_status: DEFAULT_STAGE, expected_value: '',
     telephone: '', source: '',
   });
+  const similarOrgs = useSimilarCustomers({ name: f.organization, phone: f.phone });
   const [products, setProducts] = useState([blankProductLine()]);
   const [saving, setSaving] = useState(false);
   const set = (k) => (v) => setF(prev => ({ ...prev, [k]: v }));
@@ -822,7 +807,8 @@ function AddEnquiryDialog({ leads, users, salesProducts, stages = [], onClose, r
           <div className="grid grid-cols-1 gap-x-6 gap-y-3 md:grid-cols-3">
             {/* column 1 */}
             <div className="flex flex-col gap-3">
-              <div className="grid gap-1.5"><RequiredLabel>Organization</RequiredLabel><Input value={f.organization} onChange={setText('organization')} autoFocus /></div>
+              <div className="grid gap-1.5"><RequiredLabel>Organization</RequiredLabel><Input value={f.organization} onChange={setText('organization')} autoFocus />
+                <SimilarCustomersHint matches={similarOrgs} /></div>
               <div className="grid gap-1.5"><RequiredLabel>Address</RequiredLabel><Textarea rows={2} value={f.address} onChange={setText('address')} /></div>
               <div className="grid gap-1.5"><Label>Web address</Label><Input value={f.website} onChange={setText('website')} placeholder="https://…" /></div>
               <div className="grid gap-1.5"><Label>Email id</Label><Input type="email" value={f.email} onChange={setText('email')} /></div>
@@ -947,6 +933,7 @@ function LeadBoard({ leads, stages, onOpen, onLost, router }) {
 // isEnquiryStage) — only the creation dialog differs (isEnquiry picks AddEnquiryDialog's fuller
 // form over AddLeadDialog's).
 function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], stages = [], savedViews, router, isEnquiry = false }) {
+  const { convert: convertLeadRow, dialog: convertRowDialog } = useLeadConvert();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [busyId, setBusyId] = useState(null);
   // Home calendar's "Update Now"/"Advanced Update" deep-link (Phase 4) — same click-to-open
@@ -972,7 +959,8 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
   async function convert(lead) {
     setBusyId(lead.id);
     try {
-      await api(`/api/leads/${lead.id}/convert`, { method: 'POST', body: {} });
+      const customerId = await convertLeadRow(lead);
+      if (!customerId) return;
       showToast('Linked to a customer');
       router.refresh();
     } catch (err) { showToast(err.message, 'error'); } finally { setBusyId(null); }
@@ -1083,6 +1071,7 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
         ? <AddEnquiryDialog leads={leads} users={users} salesProducts={salesProducts} stages={stages} router={router} onClose={() => setDialogOpen(false)} />
         : <AddLeadDialog router={router} onClose={() => setDialogOpen(false)} />)}
       {lostLead && <OrderLostDialog lead={lostLead} router={router} onClose={() => setLostLead(null)} />}
+      {convertRowDialog}
       {selected && <LeadDetailSheet lead={leads.find(l => l.id === selected.id) || selected} users={users} customers={customers} salesProducts={salesProducts} branches={branches} stages={stages} router={router} onClose={() => setSelected(null)} />}
     </Card>
   );
@@ -1095,6 +1084,7 @@ function AddCustomerDialog({ onClose, router }) {
   const [gst, setGst] = useState('');
   const [phone, setPhone] = useState('');
   const [saving, setSaving] = useState(false);
+  const similar = useSimilarCustomers({ name, gst_no: gst, phone });
 
   async function save() {
     if (!name.trim()) return showToast('Name is required', 'error');
@@ -1113,6 +1103,7 @@ function AddCustomerDialog({ onClose, router }) {
         <DialogHeader><DialogTitle>New Customer</DialogTitle></DialogHeader>
         <div className="flex flex-col gap-3">
           <div className="grid gap-1.5"><Label>Name</Label><Input value={name} onChange={e => setName(e.target.value)} autoFocus /></div>
+          <SimilarCustomersHint matches={similar} />
           <div className="grid gap-1.5"><Label>GST No (optional)</Label><Input value={gst} onChange={e => setGst(e.target.value)} /></div>
           <div className="grid gap-1.5"><Label>Phone (optional)</Label><Input value={phone} onChange={e => setPhone(e.target.value)} /></div>
         </div>
@@ -2868,7 +2859,7 @@ export default function SalesWorkspace({ saleOrders, leads, customers, quotation
               initialProject={initialScopeProject} />
           )}
           {activePanel.key === 'invoices' && <InvoicesTab invoices={invoices} creditNotes={creditNotes} router={router} />}
-          {activePanel.key === 'payment_orders' && <PaymentOrdersTab saleOrders={saleOrders} payments={salePayments} invoices={invoices} customers={customers} />}
+          {activePanel.key === 'payment_orders' && <PaymentOrdersTab saleOrders={saleOrders} payments={salePayments} invoices={invoices} customers={customers} users={users} />}
           {activePanel.key === 'payment_log' && <PaymentLogTab saleOrders={saleOrders} payments={salePayments} invoices={invoices} />}
           {activePanel.key === 'returns' && <ReturnsTab returns={returns} saleOrders={saleOrders} inventoryItems={inventoryItems} router={router} />}
           {activePanel.key === 'tasks' && <AllTasksTab users={users} />}

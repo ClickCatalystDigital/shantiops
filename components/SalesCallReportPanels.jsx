@@ -4,6 +4,7 @@
 // Management Report" + follow-up/feedback/expense reports. Same hasOwnControls shape as
 // CrmReportPanels.jsx's 6 analytics reports — client-rendered off the crmData fetch
 // app/reports/page.js's getCrmData() already widened for this phase, no new per-report query.
+import { personKey, personLabel } from '@/lib/sales-people.mjs';
 import { useMemo, useState } from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -38,7 +39,9 @@ function MonthPicker({ value, onChange }) {
 
 // --- 1. Sales Call Prospect Summary Report -------------------------------------------------------
 
-export function SalesCallProspectSummaryReport({ leads, diaryNotes, salesTargets, expenseClaims, saleOrders, branches, stages }) {
+export function SalesCallProspectSummaryReport({ leads, diaryNotes, salesTargets, expenseClaims, saleOrders, branches, stages, users = [] }) {
+  // Plan 1i — managers matched by username or display name, legacy text kept as its own row.
+  const pk = v => personKey(v, users) || '—';
   const [period, setPeriod] = useState(todayMonth());
   const [from, to] = monthBounds(period);
   const firmSort = firmStageSortOrder(stages);
@@ -46,10 +49,10 @@ export function SalesCallProspectSummaryReport({ leads, diaryNotes, salesTargets
   const rows = useMemo(() => {
     const groups = new Map(); // key: branch_id|manager
     for (const l of leads) {
-      const key = `${l.branch_id || ''}|${l.account_manager || l.assigned_to || '—'}`;
+      const key = `${l.branch_id || ''}|${pk(l.account_manager || l.assigned_to)}`;
       if (!groups.has(key)) {
         groups.set(key, {
-          branchId: l.branch_id, manager: l.account_manager || l.assigned_to || '—',
+          branchId: l.branch_id, manager: pk(l.account_manager || l.assigned_to),
           prospect: 0, firmProspect: 0, vip: 0, orders: 0,
         });
       }
@@ -63,13 +66,13 @@ export function SalesCallProspectSummaryReport({ leads, diaryNotes, salesTargets
     }
     for (const so of saleOrders) {
       if (!inRange(so.order_date || so.created_at?.slice(0, 10), from, to)) continue;
-      const key = `${so.branch_id || ''}|${so.sales_person_override || '—'}`;
+      const key = `${so.branch_id || ''}|${pk(so.sales_person_override)}`;
       const g = groups.get(key);
       if (g) g.orders++;
     }
     const salesCallsByKey = new Map(), appointmentsByKey = new Map(), fUpsByKey = new Map(), actualFUpsByKey = new Map();
     for (const n of diaryNotes) {
-      const key = `${n.branch_id || ''}|${n.account_manager || '—'}`;
+      const key = `${n.branch_id || ''}|${pk(n.account_manager)}`;
       if (inRange(n.visit_date || n.created_at?.slice(0, 10), from, to)) salesCallsByKey.set(key, (salesCallsByKey.get(key) || 0) + 1);
       if (inRange(n.plan_date, from, to)) appointmentsByKey.set(key, (appointmentsByKey.get(key) || 0) + 1);
       if (inRange(n.next_plan_date, from, to)) {
@@ -84,7 +87,7 @@ export function SalesCallProspectSummaryReport({ leads, diaryNotes, salesTargets
     const targetsByKey = new Map();
     for (const t of salesTargets) {
       if (t.period !== period) continue;
-      targetsByKey.set(`${t.branch_id || ''}|${t.account_manager || '—'}`, t.target_amount);
+      targetsByKey.set(`${t.branch_id || ''}|${pk(t.account_manager)}`, t.target_amount);
     }
     // Expenses — company-agnostic on purpose (no direct link between expense_claims and either
     // legal entity), matched to a manager by employee_name (best real signal available).
@@ -97,7 +100,7 @@ export function SalesCallProspectSummaryReport({ leads, diaryNotes, salesTargets
     return [...groups.values()].map(g => {
       const key = `${g.branchId || ''}|${g.manager}`;
       const salesCalls = salesCallsByKey.get(key) || 0;
-      const orderValue = saleOrders.filter(so => inRange(so.order_date, from, to) && `${so.branch_id || ''}|${so.sales_person_override || '—'}` === key)
+      const orderValue = saleOrders.filter(so => inRange(so.order_date, from, to) && `${so.branch_id || ''}|${pk(so.sales_person_override)}` === key)
         .reduce((s, so) => s + (so.total || 0), 0);
       const target = targetsByKey.get(key) || 0;
       return {
@@ -105,13 +108,13 @@ export function SalesCallProspectSummaryReport({ leads, diaryNotes, salesTargets
         branchName: branches.find(b => b.id === g.branchId)?.name || '—',
         salesCalls, appointments: appointmentsByKey.get(key) || 0,
         target, ta: target > 0 ? Math.round((orderValue / target) * 100) : null,
-        expenses: expensesByManager.get(g.manager) || 0,
+        expenses: expensesByManager.get(personLabel(g.manager, users)) || expensesByManager.get(g.manager) || 0,
         fUps: fUpsByKey.get(key) || 0, actualFUps: actualFUpsByKey.get(key) || 0,
         pfpRatio: g.prospect > 0 ? Math.round((g.firmProspect / g.prospect) * 100) : null,
         fpoRatio: g.firmProspect > 0 ? Math.round((g.orders / g.firmProspect) * 100) : null,
       };
     }).filter(r => r.prospect > 0 || r.salesCalls > 0);
-  }, [leads, diaryNotes, salesTargets, expenseClaims, saleOrders, branches, from, to, period, firmSort]);
+  }, [leads, diaryNotes, salesTargets, expenseClaims, saleOrders, branches, from, to, period, firmSort, users]);
 
   return (
     <ReportShell title="Sales Call Prospect Summary Report"
@@ -126,7 +129,7 @@ export function SalesCallProspectSummaryReport({ leads, diaryNotes, salesTargets
             <TableRow key={i}>
               <TableCell>{branches.find(b => b.id === r.branchId)?.region || '—'}</TableCell>
               <TableCell>{r.branchName}</TableCell>
-              <TableCell>{r.manager}</TableCell>
+              <TableCell>{personLabel(r.manager, users)}</TableCell>
               <TableCell className="tnum">{r.prospect}</TableCell>
               <TableCell className="tnum">{r.firmProspect}</TableCell>
               <TableCell className="tnum">{r.salesCalls}</TableCell>

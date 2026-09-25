@@ -14,6 +14,7 @@ import { getFreshSessionUser, requireDepartment, canAccessDepartment, isPM } fro
 import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { computeSaleOrderTotals } from '@/lib/sale-order-calc.mjs';
+import { lineAmount } from '@/lib/sales-lines.mjs';
 
 export async function PUT(req, { params }) {
   const user = await getFreshSessionUser();
@@ -45,11 +46,13 @@ export async function PUT(req, { params }) {
   const rows = items.map((it, i) => {
     const qty = it.qty !== undefined && it.qty !== '' ? Number(it.qty) : null;
     const rate = it.rate !== undefined && it.rate !== '' ? Number(it.rate) : null;
-    const amount = it.amount !== undefined && it.amount !== '' ? Number(it.amount) : (qty != null && rate != null ? qty * rate : 0);
+    const discountPct = it.discount_pct !== undefined && it.discount_pct !== '' ? Number(it.discount_pct) || 0 : 0;
+    // Line discount (from the quotation) comes off before tax: qty × rate × (1 − disc %).
+    const amount = it.amount !== undefined && it.amount !== '' ? Number(it.amount) : (qty != null && rate != null ? lineAmount({ qty, rate, discount_pct: discountPct }) : 0);
     return {
       item_description: String(it.item_description || '').trim(),
       hsn_code: it.hsn_code ? String(it.hsn_code).trim() : null,
-      qty, uom: it.uom || null, rate, amount, sort_order: i,
+      qty, uom: it.uom || null, rate, amount, sort_order: i, discount_pct: discountPct,
       product_id: it.product_id || null,
       warranty_std_days: it.warranty_std_days ? Number(it.warranty_std_days) : null,
       warranty_accepted_days: it.warranty_accepted_days ? Number(it.warranty_accepted_days) : null,
@@ -59,6 +62,9 @@ export async function PUT(req, { params }) {
       item_tax_pct: it.item_tax_pct !== undefined && it.item_tax_pct !== '' ? Number(it.item_tax_pct) : 0,
     };
   });
+  const bad = rows.find(r => [r.qty, r.rate, r.amount, r.discount_pct, r.item_tax_pct].some(v => v != null && (!Number.isFinite(v) || v < 0)));
+  if (bad) return NextResponse.json({ error: `Line "${bad.item_description || '?'}" has a negative or invalid number` }, { status: 400 });
+  if (rows.some(r => r.discount_pct > 100 || r.item_tax_pct > 100)) return NextResponse.json({ error: 'Discount % and Tax % must be 100 or less' }, { status: 400 });
   if (rows.some(r => !r.item_description)) {
     return NextResponse.json({ error: 'Every line needs a description' }, { status: 400 });
   }
@@ -67,10 +73,10 @@ export async function PUT(req, { params }) {
   // issuing company), per-line tax rate. Opt-in via any of these keys being present, so the plain
   // SO-items editor (no discount/charges concept) keeps its original flat tax_pct*subtotal path
   // byte-for-byte.
-  const hasWizardFields = ['discount_pct', 'packing_forwarding_amount', 'insurance_amount', 'freight_amount', 'other_charges_amount']
+  const hasWizardFields = ['discount_pct', 'discount_amount', 'packing_forwarding_amount', 'insurance_amount', 'freight_amount', 'other_charges_amount']
     .some(k => b[k] !== undefined);
 
-  let subtotal, discountAmount = 0, cgstAmount = 0, sgstAmount = 0, igstAmount = 0, taxAmount, total;
+  let subtotal, discountAmount = 0, discountPctOut = 0, cgstAmount = 0, sgstAmount = 0, igstAmount = 0, taxAmount, total;
   if (hasWizardFields) {
     let customerStateCode = null;
     if (so.customer_id) {
@@ -80,11 +86,12 @@ export async function PUT(req, { params }) {
     const companyRow = await queryOne('SELECT state_code FROM company_settings WHERE company = ?', [so.company]);
     const totals = computeSaleOrderTotals({
       items: rows, discountPct: Number(b.discount_pct) || 0,
+      discountAmount: b.discount_amount === undefined || b.discount_amount === '' ? null : Number(b.discount_amount),
       packingForwarding: Number(b.packing_forwarding_amount) || 0, insurance: Number(b.insurance_amount) || 0,
       freight: Number(b.freight_amount) || 0, other: Number(b.other_charges_amount) || 0,
       companyStateCode: companyRow?.state_code || null, customerStateCode,
     });
-    subtotal = totals.subtotal; discountAmount = totals.discountAmount;
+    subtotal = totals.subtotal; discountAmount = totals.discountAmount; discountPctOut = totals.discountPct;
     cgstAmount = totals.cgst; sgstAmount = totals.sgst; igstAmount = totals.igst;
     taxAmount = totals.taxAmount; total = totals.total;
   } else {
@@ -99,18 +106,18 @@ export async function PUT(req, { params }) {
       `INSERT INTO sale_order_items (
          sale_order_id, item_description, hsn_code, qty, uom, rate, amount, sort_order,
          product_id, warranty_std_days, warranty_accepted_days, from_date_of,
-         installation_required, preventive_maintenance, item_tax_pct
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         installation_required, preventive_maintenance, item_tax_pct, discount_pct
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [params.id, r.item_description, r.hsn_code, r.qty, r.uom, r.rate, r.amount, r.sort_order,
         r.product_id, r.warranty_std_days, r.warranty_accepted_days, r.from_date_of,
-        r.installation_required, r.preventive_maintenance, r.item_tax_pct]);
+        r.installation_required, r.preventive_maintenance, r.item_tax_pct, r.discount_pct]);
   }
   const fields = ['subtotal = ?', 'tax_pct = ?', 'tax_amount = ?', 'total = ?'];
   const args = [subtotal, taxPct, taxAmount, total];
   if (hasWizardFields) {
     fields.push('discount_amount = ?', 'discount_pct = ?', 'cgst_amount = ?', 'sgst_amount = ?', 'igst_amount = ?',
       'packing_forwarding_amount = ?', 'insurance_amount = ?', 'freight_amount = ?', 'other_charges_amount = ?');
-    args.push(discountAmount, Number(b.discount_pct) || 0, cgstAmount, sgstAmount, igstAmount,
+    args.push(discountAmount, discountPctOut, cgstAmount, sgstAmount, igstAmount,
       Number(b.packing_forwarding_amount) || 0, Number(b.insurance_amount) || 0, Number(b.freight_amount) || 0, Number(b.other_charges_amount) || 0);
   }
   args.push(params.id);

@@ -6,6 +6,7 @@
 // tagging round): this path now mints too, off the same shared 'sale_order_no' counter, so every
 // sale order gets a real SO-{seq} number regardless of which path created it.
 import { NextResponse } from 'next/server';
+import { checkSalesPerson } from '@/lib/sales-people';
 import { execute, queryAll, queryOne, nextCounterValue } from '@/lib/db';
 import { getFreshSessionUser, isInternal, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
@@ -52,6 +53,9 @@ export async function POST(req) {
   const total = b.total === undefined || b.total === '' ? 0 : Number(b.total);
   if (!(total >= 0)) return NextResponse.json({ error: 'Order value must be a number' }, { status: 400 });
   if (b.order_date && !/^\d{4}-\d{2}-\d{2}$/.test(b.order_date)) return NextResponse.json({ error: 'Invalid date' }, { status: 400 });
+  // Plan 1i — checked before the order number is taken.
+  const person = await checkSalesPerson(b.sales_person, { allowLegacy: true, label: 'Sales Person' });
+  if (person.error) return NextResponse.json({ error: person.error }, { status: 400 });
   const soNo = custom || `SO-${await nextCounterValue('sale_order_no', 0)}`;
 
   // Phase 2 — PO/Sale-Order wizard's Step 1 (Gap #34: a real row exists the moment Continue fires,
@@ -62,7 +66,7 @@ export async function POST(req) {
     `INSERT INTO sale_orders (so_no, customer_name, customer_id, description, company, created_by, total, order_date, track_status, status, sales_person_override, remarks, create_as, branch_id, order_stage, lead_id)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [soNo, b.customer_name || null, b.customer_id || null, b.description || null, company, user.username, total, b.order_date || null, trackStatus,
-     ['Dispatched', 'Closed'].includes(trackStatus) ? 'fulfilled' : 'open', String(b.sales_person ?? '').trim() || null, String(b.remarks ?? '').trim() || null,
+     ['Dispatched', 'Closed'].includes(trackStatus) ? 'fulfilled' : 'open', person.value, String(b.remarks ?? '').trim() || null,
      createAs, b.branch_id || null, b.order_stage || null, b.lead_id || null]
   );
   await audit('sale_order_created', { actor: user.username, detail: soNo });

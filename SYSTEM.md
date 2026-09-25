@@ -11438,6 +11438,44 @@ quotations, 1,006 imported sale orders, 340 customers; Product/Branch/Target mas
   worked with no page errors. All test rows removed; counters restored (quotation 30, sale order
   27, invoice 36); baseline counts unchanged.
 
+**1h–1k — PO wizard, account manager, Diary plan type, duplicate customers (2026-09-25).**
+- **PO wizard (1h)** (`components/SaleOrderWizard.jsx`): Items On Order is a table (Product Code
+  picker from the Product Master — `components/ProductSearchField.jsx`, moved out of
+  SalesWorkspace — Description, Warranty Std/Accepted, From Date Of D/I, Inst Req, Preventive
+  Maintenance, Qty, Unit, Unit Price, Disc %, Tax %, Total Price), cards below `md`, live totals
+  from the same `computeSaleOrderTotals`. An order with no lines is pre-filled (not saved) from its
+  quotation's lines, else its enquiry's `lead_products` (`GET /api/sale-orders/[id]` →
+  `prefill_items`). Order discount as % or amount (`computeSaleOrderTotals` takes an optional
+  `discountAmount`, clamped to the subtotal; the % is derived). Line `discount_pct` is stored and
+  taken off before tax. `PUT …/items` refuses negative/invalid numbers and % > 100.
+  `getSaleOrderDetail()` adds a read-only `references` object shown on screen and on the order PDF:
+  our GST No / PAN / Entity Code (`company_settings.gstin/pan/invoice_prefix`), the customer's
+  Customer Code / PAN / GST No, and SOS No(s) (`SOS-<scope_of_supply.id>` of the project made from
+  the order). Order Stage is a funnel-stage dropdown (PATCH refuses an unknown stage); Address is 3
+  lines. The PDF prints the same item columns.
+- **A/C manager (1i)**: stored as a username. `lib/sales-people.mjs` (`personKey`/`personLabel`/
+  `salesPeopleOptions`, selfcheck) maps legacy text to a user by username or display name, else
+  keeps it as its own row; `lib/sales-people.js` `checkSalesPerson()` refuses a new value that is
+  not an active Sales user (enquiry A/C Manager/Initiated by on create; Sale Order Sales Person on
+  create/edit — keeping the current value or a legacy name already on another order is allowed, so
+  the 1,006 imported orders are untouched). Payment Tracker's hard-coded list is gone (users +
+  legacy names); Prospect Summary groups by `personKey` (orders were dropped on a spelling mismatch).
+- **Diary (1j)**: `crm_notes.plan_note_type` (call/email/meeting/other) + "Plan Action Type" in
+  Add to Diary; the SMS option shows "coming later" and can't be picked.
+- **Duplicate customers (1k)**: `lib/customer-match.mjs` (selfcheck) — same GST No, same phone
+  (last 10 digits), or a similar name ignoring Pvt/Ltd/… (Jaccard ≥ 0.6, or all words of the
+  shorter name in the longer). `POST /api/leads/[id]/convert` returns 409 + `duplicates` before
+  creating a new customer; the caller retries with `customer_id` (link) or `create_new: true`.
+  `components/ConvertLeadChoice.jsx` `useLeadConvert()` shows that choice at all three convert
+  points (row convert, Create Commercial Offer, Create PO — which now converts before touching the
+  enquiry, so a cancel changes nothing). Add Customer / Add Enquiry show a non-blocking list of
+  similar customers (`GET /api/customers/similar`). `api()` errors now carry `status` and `data`.
+- Verified live with `ZZ-` rows: prefill from enquiry products; discount ₹10,000 on 810,000 +
+  IGST 144,000 + freight 5,000 = 949,000; bad stage / negative qty / unknown Sales Person / unknown
+  A/C manager refused; legacy "Amit B" accepted; duplicate 409 then link to the existing customer;
+  plan type saved; order PDF renders. All test rows removed, `sale_order_no` restored to 27,
+  baseline counts unchanged. The wizard screen itself was not click-tested in a browser.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own

@@ -27,6 +27,11 @@ import { todayISO } from '@/lib/date';
 import { formatMoney } from '@/lib/format';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { COMPANY_NAMES } from '@/lib/company-profiles.js';
+import { lineAmount } from '@/lib/sales-lines.mjs';
+import { computeSaleOrderTotals } from '@/lib/sale-order-calc.mjs';
+import ProductSearchField from '@/components/ProductSearchField';
+import SearchableSelect from '@/components/SearchableSelect';
+import { useLeadConvert } from '@/components/ConvertLeadChoice';
 
 const SALES_CALL_STATUSES = ['Lead - Cold', 'Lead - Hot', 'Lead Project - Dropped', 'Proposals', 'Hot Offers', 'Order Received', 'Order Lost', 'Follow up stage', 'OEM Follow Ups Monthly'];
 
@@ -41,7 +46,8 @@ function isoWeekNumber(dateISO) {
 
 // --- Step 1 -----------------------------------------------------------------------------------
 
-export function CreatePoStep1Dialog({ lead, branches, onClose, onCreated, router }) {
+export function CreatePoStep1Dialog({ lead, branches, stages = [], onClose, onCreated, router }) {
+  const stageNames = stages.length ? stages.map(st => st.name) : SALES_CALL_STATUSES;
   const [expectedDate, setExpectedDate] = useState(lead.expected_order_date || todayISO());
   const [weekNumber, setWeekNumber] = useState(lead.week_number || isoWeekNumber(lead.expected_order_date || todayISO()));
   const [status, setStatus] = useState(lead.sales_call_status || 'Lead - Cold');
@@ -49,6 +55,7 @@ export function CreatePoStep1Dialog({ lead, branches, onClose, onCreated, router
   const [isVip, setIsVip] = useState(!!lead.is_vip);
   const [branchId, setBranchId] = useState(lead.branch_id ? String(lead.branch_id) : '');
   const [saving, setSaving] = useState(false);
+  const { convert: convertLead, dialog: convertDialog } = useLeadConvert();
 
   function onDateChange(v) {
     setExpectedDate(v);
@@ -58,6 +65,12 @@ export function CreatePoStep1Dialog({ lead, branches, onClose, onCreated, router
   async function continueToOrder() {
     setSaving(true);
     try {
+      // Customer first: if the person cancels the duplicate check, the enquiry is left untouched.
+      let customerId = lead.converted_customer_id;
+      if (!customerId) {
+        customerId = await convertLead(lead); // may ask: existing customer or new (plan 1k)
+        if (!customerId) { setSaving(false); return; }
+      }
       await api(`/api/leads/${lead.id}`, { method: 'PATCH', body: {
         expected_order_date: expectedDate || null, week_number: weekNumber || null,
         sales_call_status: status, is_vip: isVip, branch_id: branchId || null,
@@ -66,11 +79,6 @@ export function CreatePoStep1Dialog({ lead, branches, onClose, onCreated, router
         sales_call_closed_at: continueCall === 'no' ? new Date().toISOString() : undefined,
       } });
 
-      let customerId = lead.converted_customer_id;
-      if (!customerId) {
-        const res = await api(`/api/leads/${lead.id}/convert`, { method: 'POST', body: {} });
-        customerId = res.customer_id;
-      }
 
       const so = await api('/api/sale-orders', { method: 'POST', body: {
         customer_id: customerId, customer_name: lead.company_name || lead.lead_name, company: COMPANY_NAMES[0],
@@ -84,6 +92,8 @@ export function CreatePoStep1Dialog({ lead, branches, onClose, onCreated, router
   }
 
   return (
+    <>
+    {convertDialog}
     <Dialog open onOpenChange={o => !o && onClose()}>
       <DialogContent>
         <DialogHeader><DialogTitle>Create PO — {lead.lead_name}</DialogTitle></DialogHeader>
@@ -107,7 +117,7 @@ export function CreatePoStep1Dialog({ lead, branches, onClose, onCreated, router
           <div className="grid gap-1.5"><Label>Sales Call Status</Label>
             <Select value={status} onValueChange={setStatus}>
               <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>{SALES_CALL_STATUSES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
+              <SelectContent>{stageNames.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
             </Select>
           </div>
           <div className="grid gap-1.5">
@@ -125,6 +135,7 @@ export function CreatePoStep1Dialog({ lead, branches, onClose, onCreated, router
         <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={continueToOrder} disabled={saving}>{saving ? 'Creating…' : 'Continue'}</Button></DialogFooter>
       </DialogContent>
     </Dialog>
+    </>
   );
 }
 
@@ -134,26 +145,99 @@ function Field({ label, children }) {
   return <div className="grid gap-1.5">{label && <Label className="text-xs">{label}</Label>}{children}</div>;
 }
 
-function ItemRow({ it, onChange, onRemove }) {
-  const set = (k) => (v) => onChange({ [k]: v });
+const BLANK_ITEM = () => ({ product_id: null, product_code: '', item_description: '', qty: '', uom: '', rate: '', discount_pct: 0, item_tax_pct: '', warranty_std_days: '', warranty_accepted_days: '', from_date_of: '', installation_required: 0, preventive_maintenance: '' });
+
+// Sales CRM plan 1h — one line's pre-tax amount (after its own discount) and its total incl. tax.
+function lineMoney(it) {
+  const amount = lineAmount(it);
+  return { amount, total: amount * (1 + (Number(it.item_tax_pct) || 0) / 100) };
+}
+
+function pickProduct(p) {
+  return { product_id: p.id, product_code: p.product_code || '', item_description: p.product_name, uom: p.unit || '', rate: p.price ?? '', item_tax_pct: p.gst_pct ?? '', hsn_code: p.hsn_code || null };
+}
+
+// Items On Order — a table on desktop, one card per line below md (plan 2e). Product Code picks from
+// the Product Master and fills description, unit, price and tax (all still editable).
+function ItemsTable({ items, products, onChange, onRemove }) {
+  const cell = 'p-1 align-top';
+  const num = 'h-8 w-20 text-right';
+  const fields = (it, i) => {
+    const set = k => e => onChange(i, { [k]: e?.target ? e.target.value : e });
+    return {
+      code: <ProductSearchField products={products} value={it.product_code || ''} onChange={v => onChange(i, { product_code: v, product_id: null })} onPick={p => onChange(i, pickProduct(p))} />,
+      desc: <Input className="h-8 min-w-48" placeholder="Description" value={it.item_description || ''} onChange={set('item_description')} />,
+      wStd: <Input className={num} placeholder="days" value={it.warranty_std_days ?? ''} onChange={set('warranty_std_days')} />,
+      wAcc: <Input className={num} placeholder="days" value={it.warranty_accepted_days ?? ''} onChange={set('warranty_accepted_days')} />,
+      from: (
+        <Select value={it.from_date_of || ''} onValueChange={set('from_date_of')}>
+          <SelectTrigger className="h-8 w-20"><SelectValue placeholder="—" /></SelectTrigger>
+          <SelectContent><SelectItem value="D">D — Delivery</SelectItem><SelectItem value="I">I — Installation</SelectItem></SelectContent>
+        </Select>
+      ),
+      inst: <Checkbox checked={!!it.installation_required} onCheckedChange={v => onChange(i, { installation_required: v ? 1 : 0 })} aria-label="Installation required" />,
+      pm: <Input className="h-8 w-28" placeholder="e.g. 2 visits/yr" value={it.preventive_maintenance || ''} onChange={set('preventive_maintenance')} />,
+      qty: <Input className={num} value={it.qty ?? ''} onChange={set('qty')} />,
+      uom: <Input className="h-8 w-16" placeholder="Nos" value={it.uom || ''} onChange={set('uom')} />,
+      rate: <Input className="h-8 w-28 text-right" value={it.rate ?? ''} onChange={set('rate')} />,
+      disc: <Input className={num} value={it.discount_pct ?? 0} onChange={set('discount_pct')} />,
+      tax: <Input className={num} value={it.item_tax_pct ?? ''} onChange={set('item_tax_pct')} />,
+      total: <span className="whitespace-nowrap font-medium">{formatMoney(lineMoney(it).total)}</span>,
+      del: <Button size="icon" variant="ghost" onClick={() => onRemove(i)} aria-label="Remove line"><TrashIcon className="size-3.5" /></Button>,
+    };
+  };
   return (
-    <div className="grid grid-cols-2 gap-1.5 rounded border p-2 sm:grid-cols-6">
-      <Input placeholder="Product code / description" className="sm:col-span-2" value={it.item_description || ''} onChange={e => set('item_description')(e.target.value)} />
-      <Input placeholder="Qty" value={it.qty ?? ''} onChange={e => set('qty')(e.target.value)} />
-      <Input placeholder="UoM" value={it.uom || ''} onChange={e => set('uom')(e.target.value)} />
-      <Input placeholder="Unit Price" value={it.rate ?? ''} onChange={e => set('rate')(e.target.value)} />
-      <Input placeholder="Tax %" value={it.item_tax_pct ?? ''} onChange={e => set('item_tax_pct')(e.target.value)} />
-      <Input placeholder="Warranty Std (days)" value={it.warranty_std_days ?? ''} onChange={e => set('warranty_std_days')(e.target.value)} />
-      <Input placeholder="Warranty Accepted (days)" value={it.warranty_accepted_days ?? ''} onChange={e => set('warranty_accepted_days')(e.target.value)} />
-      <Select value={it.from_date_of || ''} onValueChange={set('from_date_of')}>
-        <SelectTrigger><SelectValue placeholder="From Date Of" /></SelectTrigger>
-        <SelectContent><SelectItem value="D">Delivery (D)</SelectItem><SelectItem value="I">Installation (I)</SelectItem></SelectContent>
-      </Select>
-      <label className="flex items-center gap-1.5 text-xs"><Checkbox checked={!!it.installation_required} onCheckedChange={v => onChange({ installation_required: !!v })} />Inst Req</label>
-      <Input placeholder="Preventive Maintenance" value={it.preventive_maintenance || ''} onChange={e => set('preventive_maintenance')(e.target.value)} />
-      <Button size="icon" variant="ghost" onClick={onRemove}><TrashIcon className="size-3.5" /></Button>
-    </div>
+    <>
+      <div className="hidden overflow-x-auto md:block">
+        <table className="w-full text-xs">
+          <thead className="text-left text-muted-foreground">
+            <tr>
+              <th className={cell} rowSpan={2}>Product Code</th><th className={cell} rowSpan={2}>Description</th>
+              <th className={`${cell} text-center`} colSpan={2}>Warranty</th><th className={cell} rowSpan={2}>From Date Of (D/I)</th>
+              <th className={cell} rowSpan={2}>Inst Req</th><th className={cell} rowSpan={2}>Preventive Maintenance</th>
+              <th className={cell} rowSpan={2}>Qty</th><th className={cell} rowSpan={2}>Unit</th><th className={cell} rowSpan={2}>Unit Price</th>
+              <th className={cell} rowSpan={2}>Disc %</th><th className={cell} rowSpan={2}>Tax %</th><th className={`${cell} text-right`} rowSpan={2}>Total Price</th><th rowSpan={2} />
+            </tr>
+            <tr><th className={cell}>Std</th><th className={cell}>Accepted</th></tr>
+          </thead>
+          <tbody>
+            {items.map((it, i) => {
+              const f = fields(it, i);
+              return (
+                <tr key={i} className="border-t">
+                  <td className={`${cell} w-40`}>{f.code}</td><td className={cell}>{f.desc}</td><td className={cell}>{f.wStd}</td><td className={cell}>{f.wAcc}</td>
+                  <td className={cell}>{f.from}</td><td className={`${cell} pt-2.5 text-center`}>{f.inst}</td><td className={cell}>{f.pm}</td>
+                  <td className={cell}>{f.qty}</td><td className={cell}>{f.uom}</td><td className={cell}>{f.rate}</td><td className={cell}>{f.disc}</td><td className={cell}>{f.tax}</td>
+                  <td className={`${cell} pt-2.5 text-right`}>{f.total}</td><td className={cell}>{f.del}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div className="flex flex-col gap-2 md:hidden">
+        {items.map((it, i) => {
+          const f = fields(it, i);
+          const L = (t, c) => <label className="grid gap-1 text-xs text-muted-foreground">{t}{c}</label>;
+          return (
+            <div key={i} className="grid grid-cols-2 gap-2 rounded border p-2">
+              <div className="col-span-2">{L('Product Code', f.code)}</div>
+              <div className="col-span-2">{L('Description', f.desc)}</div>
+              {L('Warranty Std (days)', f.wStd)}{L('Warranty Accepted (days)', f.wAcc)}
+              {L('From Date Of', f.from)}<label className="flex items-center gap-2 pt-5 text-xs">{f.inst} Inst Req</label>
+              <div className="col-span-2">{L('Preventive Maintenance', f.pm)}</div>
+              {L('Qty', f.qty)}{L('Unit', f.uom)}{L('Unit Price', f.rate)}{L('Disc %', f.disc)}{L('Tax %', f.tax)}
+              <div className="flex items-end justify-between"><span className="text-sm">{f.total}</span>{f.del}</div>
+            </div>
+          );
+        })}
+      </div>
+    </>
   );
+}
+
+function ReadOnly({ label, value }) {
+  return <div className="grid gap-0.5"><span className="text-xs text-muted-foreground">{label}</span><span className="text-sm">{value || '—'}</span></div>;
 }
 
 // Payment Collection (Phase 2.5) — "same as what we add new payments inside payments tab":
@@ -210,15 +294,20 @@ function PaymentCollectionCard({ saleOrderId }) {
   );
 }
 
-export function SaleOrderDetailsSheet({ saleOrderId, branches, onClose, router }) {
+export function SaleOrderDetailsSheet({ saleOrderId, branches, salesProducts = [], users = [], stages = [], onClose, router }) {
   const [so, setSo] = useState(null);
   const [items, setItems] = useState([]);
+  const [prefilled, setPrefilled] = useState(false);
+  const [discountMode, setDiscountMode] = useState('pct'); // 'pct' | 'amount'
   const [saving, setSaving] = useState(null);
 
   function load() {
     api(`/api/sale-orders/${saleOrderId}`).then(d => {
       setSo(d);
-      setItems(d.items.length ? d.items : [{ item_description: '', qty: '', uom: '', rate: '', item_tax_pct: 0 }]);
+      const codeOf = id => salesProducts.find(p => p.id === id)?.product_code || '';
+      const src = d.items.length ? d.items : d.prefill_items || [];
+      setPrefilled(!d.items.length && src.length > 0);
+      setItems(src.length ? src.map(it => ({ ...BLANK_ITEM(), ...it, product_code: it.product_code || codeOf(it.product_id), item_tax_pct: it.item_tax_pct ?? '' })) : [BLANK_ITEM()]);
     }).catch(err => showToast(err.message, 'error'));
   }
   useEffect(load, [saleOrderId]);
@@ -234,7 +323,7 @@ export function SaleOrderDetailsSheet({ saleOrderId, branches, onClose, router }
   }
 
   function updateRow(i, patch) { setItems(rows => rows.map((r, idx) => idx === i ? { ...r, ...patch } : r)); }
-  function addRow() { setItems(rows => [...rows, { item_description: '', qty: '', uom: '', rate: '', item_tax_pct: 0 }]); }
+  function addRow() { setItems(rows => [...rows, BLANK_ITEM()]); }
   function removeRow(i) { setItems(rows => rows.filter((_, idx) => idx !== i)); }
 
   async function saveItems() {
@@ -244,7 +333,8 @@ export function SaleOrderDetailsSheet({ saleOrderId, branches, onClose, router }
     try {
       await api(`/api/sale-orders/${saleOrderId}/items`, { method: 'PUT', body: {
         items: rows, tax_pct: so.tax_pct || 0,
-        discount_pct: so.discount_pct || 0, packing_forwarding_amount: so.packing_forwarding_amount || 0,
+        discount_pct: discountMode === 'pct' ? (so.discount_pct || 0) : undefined,
+        discount_amount: discountMode === 'amount' ? (so.discount_amount || 0) : undefined, packing_forwarding_amount: so.packing_forwarding_amount || 0,
         insurance_amount: so.insurance_amount || 0, freight_amount: so.freight_amount || 0, other_charges_amount: so.other_charges_amount || 0,
       } });
       showToast('Items On Order saved');
@@ -267,10 +357,26 @@ export function SaleOrderDetailsSheet({ saleOrderId, branches, onClose, router }
 
   if (!so) return null;
   const set = (k) => (v) => setSo(prev => ({ ...prev, [k]: v }));
+  const ref = so.references || {};
+  // Live preview of the totals before saving — the same calc the server runs on save.
+  const preview = computeSaleOrderTotals({
+    items: items.filter(it => String(it.item_description || '').trim()).map(it => ({ amount: lineAmount(it), item_tax_pct: it.item_tax_pct })),
+    discountPct: discountMode === 'pct' ? Number(so.discount_pct) || 0 : 0,
+    discountAmount: discountMode === 'amount' ? so.discount_amount : null,
+    packingForwarding: so.packing_forwarding_amount, insurance: so.insurance_amount, freight: so.freight_amount, other: so.other_charges_amount,
+    companyStateCode: ref.company_state_code, customerStateCode: ref.customer_state_code,
+  });
+  const stageNames = stages.length ? stages.map(st => st.name) : SALES_CALL_STATUSES;
+  // A/C Manager is a Sales username (plan 1i). A legacy free-text name on an imported order is kept
+  // visible as its own option so opening the order never silently changes it.
+  const managerOpts = users.map(u => ({ value: u.username, label: u.display_name || u.username }));
+  if (so.sales_person_override && !managerOpts.some(o => o.value === so.sales_person_override)) {
+    managerOpts.unshift({ value: so.sales_person_override, label: `${so.sales_person_override} (not a user)` });
+  }
 
   return (
     <Sheet open onOpenChange={o => !o && onClose()}>
-      <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
+      <SheetContent className="w-full sm:max-w-6xl overflow-y-auto">
         <SheetHeader><SheetTitle>{so.so_no} — {so.customer_name}</SheetTitle></SheetHeader>
         <div className="flex flex-col gap-4 px-4 pb-4">
           <Card>
@@ -300,6 +406,20 @@ export function SaleOrderDetailsSheet({ saleOrderId, branches, onClose, router }
           </Card>
 
           <Card>
+            <CardHeader><CardTitle className="text-sm">References</CardTitle></CardHeader>
+            <CardContent className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <ReadOnly label="Our GST No" value={ref.company_gstin} />
+              <ReadOnly label="Entity Code" value={ref.entity_code} />
+              <ReadOnly label="Our PAN" value={ref.company_pan} />
+              <ReadOnly label="SOS No" value={ref.sos_numbers?.length ? `${ref.sos_numbers.join(', ')} (${ref.job_nos.join(', ')})` : 'Not yet — made when Design converts this order'} />
+              <ReadOnly label="Customer Code" value={ref.customer_code} />
+              <ReadOnly label="Customer PAN" value={ref.customer_pan} />
+              <ReadOnly label="Customer GST No" value={ref.customer_gst_no} />
+              <p className="col-span-2 text-xs text-muted-foreground sm:col-span-4">Read only — change these in Accounts → Company Settings or the customer record.</p>
+            </CardContent>
+          </Card>
+
+          <Card>
             <CardHeader><CardTitle className="text-sm">Customer Details</CardTitle></CardHeader>
             <CardContent className="grid grid-cols-2 gap-3">
               <Field label="Customer"><Input value={so.customer_name || ''} onChange={e => set('customer_name')(e.target.value)} /></Field>
@@ -309,11 +429,23 @@ export function SaleOrderDetailsSheet({ saleOrderId, branches, onClose, router }
                   <SelectContent><SelectItem value="Default">Default</SelectItem><SelectItem value="Other">Other</SelectItem></SelectContent>
                 </Select>
               </Field>
-              {so.address_type === 'Other' && <Field label="Address"><Textarea rows={2} className="col-span-2" value={so.order_address || ''} onChange={e => set('order_address')(e.target.value)} /></Field>}
+              {so.address_type === 'Other'
+                ? <div className="col-span-2"><Field label="Address (3 lines)"><Textarea rows={3} value={so.order_address || ''} onChange={e => set('order_address')(e.target.value)} /></Field></div>
+                : <div className="col-span-2"><ReadOnly label="Address (customer default)" value={ref.customer_address?.join(', ')} /></div>}
               <Field label="Contact Person"><Input value={so.contact_person || ''} onChange={e => set('contact_person')(e.target.value)} /></Field>
               <Field label="Mobile Number"><Input value={so.contact_mobile || ''} onChange={e => set('contact_mobile')(e.target.value)} /></Field>
-              <Field label="Order Stage"><Input value={so.order_stage || ''} onChange={e => set('order_stage')(e.target.value)} /></Field>
-              <Field label="A/C Manager Name"><Input value={so.sales_person_override || ''} onChange={e => set('sales_person_override')(e.target.value)} /></Field>
+              <Field label="Order Stage">
+                <Select value={so.order_stage || ''} onValueChange={set('order_stage')}>
+                  <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
+                  <SelectContent>
+                    {so.order_stage && !stageNames.includes(so.order_stage) && <SelectItem value={so.order_stage}>{so.order_stage}</SelectItem>}
+                    {stageNames.map(n => <SelectItem key={n} value={n}>{n}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field label="A/C Manager">
+                <SearchableSelect value={so.sales_person_override || ''} onChange={set('sales_person_override')} options={managerOpts} placeholder="Select a person…" />
+              </Field>
               <Button size="sm" className="col-span-2 w-fit" disabled={saving === 'fields'} onClick={() => saveField({
                 customer_name: so.customer_name, address_type: so.address_type, order_address: so.order_address,
                 contact_person: so.contact_person, contact_mobile: so.contact_mobile, order_stage: so.order_stage,
@@ -338,18 +470,32 @@ export function SaleOrderDetailsSheet({ saleOrderId, branches, onClose, router }
           <Card>
             <CardHeader><CardTitle className="text-sm">Items On Order</CardTitle></CardHeader>
             <CardContent className="flex flex-col gap-2">
-              {items.map((it, i) => <ItemRow key={i} it={it} onChange={p => updateRow(i, p)} onRemove={() => removeRow(i)} />)}
+              {prefilled && <p className="text-xs text-muted-foreground">Filled in from the {so.quotation_id ? 'quotation' : 'enquiry'} — check and Save.</p>}
+              <ItemsTable items={items} products={salesProducts} onChange={updateRow} onRemove={removeRow} />
               <Button size="sm" variant="outline" className="w-fit" onClick={addRow}><PlusIcon />Add line</Button>
-              <div className="grid grid-cols-2 gap-3 border-t pt-2 sm:grid-cols-4">
-                <Field label="Discount %"><Input value={so.discount_pct || 0} onChange={e => set('discount_pct')(e.target.value)} /></Field>
+              <div className="grid grid-cols-2 gap-3 border-t pt-2 sm:grid-cols-5">
+                <Field label="Discount">
+                  <div className="flex gap-1">
+                    <Select value={discountMode} onValueChange={setDiscountMode}>
+                      <SelectTrigger className="w-16"><SelectValue /></SelectTrigger>
+                      <SelectContent><SelectItem value="pct">%</SelectItem><SelectItem value="amount">₹</SelectItem></SelectContent>
+                    </Select>
+                    {discountMode === 'pct'
+                      ? <Input value={so.discount_pct ?? 0} onChange={e => set('discount_pct')(e.target.value)} />
+                      : <Input value={so.discount_amount ?? 0} onChange={e => set('discount_amount')(e.target.value)} />}
+                  </div>
+                </Field>
                 <Field label="Pkg &amp; Fwd"><Input value={so.packing_forwarding_amount || 0} onChange={e => set('packing_forwarding_amount')(e.target.value)} /></Field>
                 <Field label="Insurance"><Input value={so.insurance_amount || 0} onChange={e => set('insurance_amount')(e.target.value)} /></Field>
                 <Field label="Freight"><Input value={so.freight_amount || 0} onChange={e => set('freight_amount')(e.target.value)} /></Field>
                 <Field label="Other Charges"><Input value={so.other_charges_amount || 0} onChange={e => set('other_charges_amount')(e.target.value)} /></Field>
               </div>
-              <div className="flex items-center justify-between border-t pt-2 text-sm">
-                <span className="text-muted-foreground">Sub Total {formatMoney(so.subtotal)} · CGST {formatMoney(so.cgst_amount)} · SGST {formatMoney(so.sgst_amount)} · IGST {formatMoney(so.igst_amount)}</span>
-                <span className="font-semibold">Total {formatMoney(so.total)}</span>
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-2 text-sm">
+                <span className="text-muted-foreground">
+                  Sub Total {formatMoney(preview.subtotal)} · Discount {formatMoney(preview.discountAmount)} ({preview.discountPct}%)
+                  {preview.igst ? ` · IGST ${formatMoney(preview.igst)}` : ` · CGST ${formatMoney(preview.cgst)} · SGST ${formatMoney(preview.sgst)}`}
+                </span>
+                <span className="font-semibold">Total Order Value {formatMoney(preview.total)}</span>
               </div>
               <Button size="sm" disabled={saving === 'items'} onClick={saveItems}>{saving === 'items' ? 'Saving…' : 'Save Items On Order'}</Button>
             </CardContent>
@@ -424,8 +570,8 @@ export function SaleOrderDetailsSheet({ saleOrderId, branches, onClose, router }
 }
 
 // Entry point wiring both steps together, used from LeadDetailSheet's "Create PO" action.
-export function CreatePoFlow({ lead, branches, onClose, router }) {
+export function CreatePoFlow({ lead, branches, salesProducts = [], users = [], stages = [], onClose, router }) {
   const [saleOrderId, setSaleOrderId] = useState(null);
-  if (!saleOrderId) return <CreatePoStep1Dialog lead={lead} branches={branches} onClose={onClose} onCreated={setSaleOrderId} router={router} />;
-  return <SaleOrderDetailsSheet saleOrderId={saleOrderId} branches={branches} onClose={onClose} router={router} />;
+  if (!saleOrderId) return <CreatePoStep1Dialog lead={lead} branches={branches} stages={stages} onClose={onClose} onCreated={setSaleOrderId} router={router} />;
+  return <SaleOrderDetailsSheet saleOrderId={saleOrderId} branches={branches} salesProducts={salesProducts} users={users} stages={stages} onClose={onClose} router={router} />;
 }

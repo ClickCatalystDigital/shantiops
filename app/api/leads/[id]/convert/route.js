@@ -3,7 +3,8 @@
 // this plan establishes (also: Quotation→Sale Order, Applicant→Employee). Reuses an existing
 // customer matched by exact name rather than always creating a duplicate.
 import { NextResponse } from 'next/server';
-import { queryOne } from '@/lib/db';
+import { queryAll, queryOne } from '@/lib/db';
+import { similarCustomers } from '@/lib/customer-match.mjs';
 import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { resolveLeadToCustomer } from '@/lib/crm';
@@ -29,6 +30,24 @@ export async function POST(req, { params }) {
   // so every INSERT here must supply a real, current stage explicitly. Starting the Opportunity
   // mid-funnel exactly where the Lead already was avoids a real inconsistency (a Lead already at
   // "Hot Offers" silently reappearing as a brand-new "Lead - Cold" Opportunity).
-  const { customerId, opportunityId } = await resolveLeadToCustomer(lead, { title: b.title, username: user.username });
-  return NextResponse.json({ customer_id: customerId, opportunity_id: opportunityId });
+  // Sales CRM plan 1k — before creating a NEW customer, check for likely duplicates (similar name,
+  // same GST No or phone). If any exist the caller gets 409 + the list and must either pick one
+  // (customer_id) or confirm a new one (create_new: true). An exact-name match links as before.
+  const companyName = lead.company_name || lead.lead_name;
+  if (!b.customer_id && !b.create_new) {
+    const exact = await queryOne('SELECT id FROM customers WHERE name = ?', [companyName]);
+    if (!exact) {
+      const customers = await queryAll('SELECT id, name, gst_no, phone FROM customers WHERE active = 1');
+      const duplicates = similarCustomers({ name: companyName, phone: lead.phone || lead.telephone }, customers);
+      if (duplicates.length) {
+        return NextResponse.json({ error: 'Possible duplicate customers — pick one or create a new customer', duplicates }, { status: 409 });
+      }
+    }
+  }
+  try {
+    const { customerId, opportunityId } = await resolveLeadToCustomer(lead, { title: b.title, username: user.username, customerId: b.customer_id ? Number(b.customer_id) : null });
+    return NextResponse.json({ customer_id: customerId, opportunity_id: opportunityId });
+  } catch (err) {
+    return NextResponse.json({ error: err.message }, { status: err.status || 500 });
+  }
 }
