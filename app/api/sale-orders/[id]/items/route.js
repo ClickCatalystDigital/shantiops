@@ -8,6 +8,7 @@
 // inventing granular single-item routes nothing else here needs yet. Same gate as the existing
 // status PATCH (sales.saleorder.status, labeled "Edit or update a Sale Order" — this is squarely
 // that).
+import { hiddenSalesRecord } from '@/lib/sales-visibility';
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment, canAccessDepartment, isPM } from '@/lib/auth';
@@ -18,6 +19,8 @@ import { lineAmount } from '@/lib/sales-lines.mjs';
 
 export async function PUT(req, { params }) {
   const user = await getFreshSessionUser();
+  const hidden = await hiddenSalesRecord(user, 'sale_order', params.id); // plan 2a: own records only
+  if (hidden) return hidden;
   if (!isPM(user)) {
     const denied = requireDepartment(user, 'Sales');
     if (denied) return denied;

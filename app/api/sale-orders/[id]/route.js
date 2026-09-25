@@ -1,5 +1,6 @@
 // app/api/sale-orders/[id]/route.js — V3_CHANGES.md §12 Phase 2e. sale_orders previously had no
 // [id] route at all (list + create only). Adds detail (with items) + status PATCH.
+import { hiddenSalesRecord } from '@/lib/sales-visibility';
 import { NextResponse } from 'next/server';
 import { checkSalesPerson } from '@/lib/sales-people';
 import { execute, queryAll, queryOne } from '@/lib/db';
@@ -14,6 +15,8 @@ const TRACK_STATUSES = ['Pending', 'Ready', 'WIP', 'Dispatched', 'Closed'];
 
 export async function GET(req, { params }) {
   const user = await getFreshSessionUser();
+  const hidden = await hiddenSalesRecord(user, 'sale_order', params.id); // plan 2a: own records only
+  if (hidden) return hidden;
   if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const detail = await getSaleOrderDetail(params.id);
   if (!detail) return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -42,6 +45,8 @@ export async function GET(req, { params }) {
 
 export async function PATCH(req, { params }) {
   const user = await getFreshSessionUser();
+  const hidden = await hiddenSalesRecord(user, 'sale_order', params.id); // plan 2a: own records only
+  if (hidden) return hidden;
   if (!isPM(user)) {
     const denied = requireDepartment(user, 'Sales');
     if (denied) return denied;

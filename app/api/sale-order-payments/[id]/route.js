@@ -1,5 +1,6 @@
 // app/api/sale-order-payments/[id]/route.js — correct or remove a logged payment. Every change is
 // audit-logged with old → new values (the log is money data; a silent edit would defeat it).
+import { hiddenSalesRecord } from '@/lib/sales-visibility';
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment, isPM } from '@/lib/auth';
@@ -22,6 +23,8 @@ const load = id => queryOne(
 export async function PATCH(req, { params }) {
   const { user, denied } = await guard();
   if (denied) return denied;
+  const hidden = await hiddenSalesRecord(user, 'payment', params.id); // plan 2a: own records only
+  if (hidden) return hidden;
   const before = await load(params.id);
   if (!before) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
@@ -50,6 +53,8 @@ export async function PATCH(req, { params }) {
 export async function DELETE(req, { params }) {
   const { user, denied } = await guard();
   if (denied) return denied;
+  const hidden = await hiddenSalesRecord(user, 'payment', params.id); // plan 2a: own records only
+  if (hidden) return hidden;
   const before = await load(params.id);
   if (!before) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   await execute('DELETE FROM sale_order_payments WHERE id = ?', [params.id]);

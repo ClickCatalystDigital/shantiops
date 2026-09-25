@@ -1,5 +1,6 @@
 // app/api/sale-orders/[id]/attachments/[fileId]/route.js — proxied read-back + delete, same shape
 // as crm-notes'/calc-drawings' own file routes.
+import { hiddenSalesRecord } from '@/lib/sales-visibility';
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, isInternal, requireDepartment, isPM } from '@/lib/auth';
@@ -8,6 +9,8 @@ import { audit } from '@/lib/usb';
 
 export async function GET(req, { params }) {
   const user = await getFreshSessionUser();
+  const hidden = await hiddenSalesRecord(user, 'sale_order', params.id); // plan 2a: own records only
+  if (hidden) return hidden;
   if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const file = await queryOne('SELECT file_key, file_name FROM sale_order_files WHERE id = ? AND sale_order_id = ?', [params.fileId, params.id]);
@@ -25,6 +28,8 @@ export async function GET(req, { params }) {
 
 export async function DELETE(req, { params }) {
   const user = await getFreshSessionUser();
+  const hidden = await hiddenSalesRecord(user, 'sale_order', params.id); // plan 2a: own records only
+  if (hidden) return hidden;
   if (!isPM(user)) {
     const denied = requireDepartment(user, 'Sales');
     if (denied) return denied;

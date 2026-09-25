@@ -11,6 +11,8 @@
 // no department access to consolidate).
 import { getSelectedCompany } from '@/lib/company-filter-server';
 import { filterByCompany } from '@/lib/company-filter.mjs';
+import { salesScope } from '@/lib/sales-visibility';
+import { scopeSalesLists } from '@/lib/sales-visibility.mjs';
 import { redirect } from 'next/navigation';
 import { getFreshSessionUser, canAccessDepartment, headDepartments, roleHome } from '@/lib/auth';
 import {
@@ -33,7 +35,7 @@ const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 // leads_by_source, campaign_performance in components/CrmReportPanels.jsx) read either field.
 // Every other field here stays unconditional — branches/products are genuinely shared masters,
 // diary is shared owner_dept-gated activity data, expenseClaims/salesTargets aren't part of this fix.
-async function getCrmData(includeSales) {
+async function getCrmData(includeSales, user) {
   const [leads, opportunities, campaigns, stages, tasks, notes, heads, branches, salesTargets, diaryNotes, expenseClaims, quotations, saleOrders, salesProducts] = await Promise.all([
     getLeads(), getOpportunities(), getCampaigns(), getSalesStages(), getCrmTasks(), getLeadNotes(), getFunctionalHeads(),
     getBranches(), getSalesTargets(), getDiaryNotes(), getExpenseClaims(),
@@ -42,8 +44,12 @@ async function getCrmData(includeSales) {
   const users = heads.filter(h => h.active && h.departments.some(d => CRM_DEPARTMENTS.includes(d)));
   // Global company selector: the Sales report cards read quotations/orders; filter them here.
   const company = getSelectedCompany();
-  return { leads, opportunities, campaigns, stages, tasks, notes, users, branches, salesTargets, diaryNotes, expenseClaims,
-    quotations: filterByCompany(quotations, company), saleOrders: filterByCompany(saleOrders, company), salesProducts };
+  const base = { leads, quotations: filterByCompany(quotations, company), saleOrders: filterByCompany(saleOrders, company), diaryNotes };
+  // Plan 2a: a Sales member's reports cover only their own records.
+  const me = salesScope(user);
+  const scoped = me ? scopeSalesLists(me, base) : base;
+  return { opportunities, campaigns, stages, tasks, notes, users, branches, salesTargets, expenseClaims, salesProducts,
+    leads: scoped.leads, quotations: scoped.quotations, saleOrders: scoped.saleOrders, diaryNotes: scoped.diaryNotes };
 }
 
 export const dynamic = 'force-dynamic';
@@ -94,7 +100,7 @@ export default async function ReportsPage({ searchParams }) {
     // Only fetch CRM data when Sales/Marketing is actually in view — same guard the
     // single-department branch below already uses, not assumed just because this is the
     // multi-department branch.
-    const crmData = myReportDepts.some(d => CRM_DEPARTMENTS.includes(d)) ? await getCrmData(myReportDepts.includes('Sales')) : undefined;
+    const crmData = myReportDepts.some(d => CRM_DEPARTMENTS.includes(d)) ? await getCrmData(myReportDepts.includes('Sales'), user) : undefined;
     // Title reflects what's actually shown — "All Reports" only when it truly is all of them.
     const title = isPmView ? 'All Reports' : `${myReportDepts.join(' & ')} Reports`;
     return (
@@ -114,7 +120,7 @@ export default async function ReportsPage({ searchParams }) {
   }));
   if (!reports.length) redirect(roleHome(user));
 
-  const crmData = CRM_DEPARTMENTS.includes(department) ? await getCrmData(department === 'Sales') : undefined;
+  const crmData = CRM_DEPARTMENTS.includes(department) ? await getCrmData(department === 'Sales', user) : undefined;
 
   return (
     <main className="min-h-[calc(100svh-3.5rem)]">

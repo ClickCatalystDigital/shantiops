@@ -2,6 +2,7 @@
 // action distinct from Order Lost (which also sets a reason) — closing this way just stops the
 // SLA/neglected-report clock without saying the order was lost. Never disables the other 4
 // actions (Gap #30) — any of them succeeding later implicitly reopens it (app/api/leads/[id]/route.js).
+import { hiddenSalesRecord } from '@/lib/sales-visibility';
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
@@ -9,6 +10,8 @@ import { audit } from '@/lib/usb';
 
 export async function POST(req, { params }) {
   const user = await getFreshSessionUser();
+  const hidden = await hiddenSalesRecord(user, 'lead', params.id); // plan 2a: own records only
+  if (hidden) return hidden;
   const lead = await queryOne('SELECT * FROM leads WHERE id = ?', [params.id]);
   if (!lead) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   if (!canAccessDepartment(user, lead.owner_dept)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });

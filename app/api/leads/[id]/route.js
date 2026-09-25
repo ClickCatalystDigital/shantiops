@@ -1,5 +1,6 @@
 // app/api/leads/[id]/route.js — V3_CHANGES.md §12. Plain field-level PATCH, same shape as
 // app/api/opportunities/[id]/route.js.
+import { hiddenSalesRecord } from '@/lib/sales-visibility';
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
@@ -10,6 +11,8 @@ const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 
 export async function PATCH(req, { params }) {
   const user = await getFreshSessionUser();
+  const hidden = await hiddenSalesRecord(user, 'lead', params.id); // plan 2a: own records only
+  if (hidden) return hidden;
   if (!CRM_DEPARTMENTS.some(d => canAccessDepartment(user, d))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }

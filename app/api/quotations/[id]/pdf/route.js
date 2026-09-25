@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { hiddenSalesRecord } from '@/lib/sales-visibility';
 import { getQuotationDetail } from '@/lib/data';
 import { getFreshSessionUser, canAccessDepartment, isPM } from '@/lib/auth';
 import { renderQuotationPdf } from '@/lib/quotation-pdf';
@@ -9,6 +10,8 @@ const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 
 export async function GET(req, { params }) {
   const user = await getFreshSessionUser();
+  const hidden = await hiddenSalesRecord(user, 'quotation', params.id); // plan 2a: own records only
+  if (hidden) return hidden;
   if (!isPM(user) && !CRM_DEPARTMENTS.some(d => canAccessDepartment(user, d))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }

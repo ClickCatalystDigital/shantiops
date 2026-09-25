@@ -1,6 +1,7 @@
 // app/api/crm-notes/route.js — V3_CHANGES.md §12 decision 4. Shared activity/notes log across
 // lead/opportunity/customer, exactly one FK set per row (notifications-style). GET filters by
 // whichever id query param is passed; POST requires exactly one of the three.
+import { hiddenSalesRecord } from '@/lib/sales-visibility';
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, isInternal, canAccessDepartment } from '@/lib/auth';
@@ -24,6 +25,8 @@ export async function GET(req) {
   const leadId = sp.get('lead_id');
   const opportunityId = sp.get('opportunity_id');
   const customerId = sp.get('customer_id');
+  const hidden = leadId ? await hiddenSalesRecord(user, 'lead', leadId) : null; // plan 2a
+  if (hidden) return hidden;
   return NextResponse.json(await getCrmNotes({ leadId, opportunityId, customerId }));
 }
 

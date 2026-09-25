@@ -2,6 +2,7 @@
 // of Supply PDF for an existing Sale Order. Mirrors app/api/test-certificates/[id]/pdf/route.js
 // exactly (same R2 upload/replace/proxied-read shape, single file per record) — same gate as the
 // other Sale Order edit routes (sales.saleorder.status).
+import { hiddenSalesRecord } from '@/lib/sales-visibility';
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment, isPM } from '@/lib/auth';
@@ -16,6 +17,8 @@ function denyUnlessSales(user) {
 
 export async function POST(req, { params }) {
   const user = await getFreshSessionUser();
+  const hidden = await hiddenSalesRecord(user, 'sale_order', params.id); // plan 2a: own records only
+  if (hidden) return hidden;
   const denied = denyUnlessSales(user);
   if (denied) return denied;
   const actionDenied = await requireAction(user, 'Sales', 'sales.saleorder.status');
@@ -46,6 +49,8 @@ export async function POST(req, { params }) {
 
 export async function DELETE(req, { params }) {
   const user = await getFreshSessionUser();
+  const hidden = await hiddenSalesRecord(user, 'sale_order', params.id); // plan 2a: own records only
+  if (hidden) return hidden;
   const denied = denyUnlessSales(user);
   if (denied) return denied;
   const actionDenied = await requireAction(user, 'Sales', 'sales.saleorder.status');
@@ -67,6 +72,8 @@ export async function DELETE(req, { params }) {
 // read-visibility precedent as Costing — commercial documents aren't Sales-only to look at).
 export async function GET(req, { params }) {
   const user = await getFreshSessionUser();
+  const hidden = await hiddenSalesRecord(user, 'sale_order', params.id); // plan 2a: own records only
+  if (hidden) return hidden;
   if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const so = await queryOne('SELECT pdf_key FROM sale_orders WHERE id = ?', [params.id]);

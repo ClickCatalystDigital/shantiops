@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { hiddenSalesRecord } from '@/lib/sales-visibility';
 import { execute } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment, isPM } from '@/lib/auth';
 import { requireCrmAction } from '@/lib/action-permissions';
@@ -13,6 +14,8 @@ function canAccessCrm(user) {
 
 export async function GET(req, { params }) {
   const user = await getFreshSessionUser();
+  const hidden = await hiddenSalesRecord(user, 'quotation', params.id); // plan 2a: own records only
+  if (hidden) return hidden;
   if (!canAccessCrm(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const detail = await getQuotationDetail(params.id);
   if (!detail) return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -21,6 +24,8 @@ export async function GET(req, { params }) {
 
 export async function PATCH(req, { params }) {
   const user = await getFreshSessionUser();
+  const hidden = await hiddenSalesRecord(user, 'quotation', params.id); // plan 2a: own records only
+  if (hidden) return hidden;
   if (!canAccessCrm(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const actionDenied = await requireCrmAction(user, 'sales.quotation.status');
   if (actionDenied) return actionDenied;

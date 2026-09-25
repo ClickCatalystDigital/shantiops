@@ -4,6 +4,7 @@
 // MAIL_PROVIDER/MAIL_FROM are set — the exact same accepted seam the Customer Portal invite
 // already uses). No mailto: fallback — it can't attach the generated PDF, a strictly worse
 // substitute.
+import { hiddenSalesRecord } from '@/lib/sales-visibility';
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment, isPM } from '@/lib/auth';
@@ -18,6 +19,8 @@ function canAccessCrm(user) {
 
 export async function POST(req, { params }) {
   const user = await getFreshSessionUser();
+  const hidden = await hiddenSalesRecord(user, 'quotation', params.id); // plan 2a: own records only
+  if (hidden) return hidden;
   if (!canAccessCrm(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   // Emails a Sales-owned quotation out to the customer — had no action-key gate at all
   // (2026-09-23 isolation fix). Reuses sales.quotation.status, the closest existing fit (the route

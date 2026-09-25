@@ -2,6 +2,7 @@
 // "accept → auto-create the next record" playbook. Copies header + lines from an accepted
 // Quotation into a new Sale Order. so_no stays free text (bom_items.sale_order_no is a free-text
 // copy of it today, not converted to an FK in this phase).
+import { hiddenSalesRecord } from '@/lib/sales-visibility';
 import { NextResponse } from 'next/server';
 import { execute, queryAll, queryOne, nextCounterValue } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment, isPM } from '@/lib/auth';
@@ -17,6 +18,8 @@ function canAccessCrm(user) {
 
 export async function POST(req, { params }) {
   const user = await getFreshSessionUser();
+  const hidden = await hiddenSalesRecord(user, 'quotation', params.id); // plan 2a: own records only
+  if (hidden) return hidden;
   if (!canAccessCrm(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const actionDenied = await requireCrmAction(user, 'sales.quotation.convert');
   if (actionDenied) return actionDenied;

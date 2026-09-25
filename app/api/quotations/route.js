@@ -2,6 +2,7 @@
 // FY-format sequence po_no uses (app/api/purchase-orders/route.js), a distinct counter/prefix.
 // POST accepts the full item list at once (small form, not a separate line-item endpoint like
 // opportunities' bulk-PUT — a quotation is created whole, not built up incrementally in the UI).
+import { scopeRows } from '@/lib/sales-visibility';
 import { NextResponse } from 'next/server';
 import { execute, queryOne, nextCounterValue } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment, isPM } from '@/lib/auth';
@@ -20,7 +21,7 @@ function canAccessCrm(user) {
 export async function GET() {
   const user = await getFreshSessionUser();
   if (!canAccessCrm(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  return NextResponse.json(await getQuotations());
+  return NextResponse.json(await scopeRows(user, 'quotations', await getQuotations()));
 }
 
 export async function POST(req) {

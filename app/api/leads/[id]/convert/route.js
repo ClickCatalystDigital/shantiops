@@ -2,6 +2,7 @@
 // Opportunity, the first of four uses of the same "accept → auto-create the next record" playbook
 // this plan establishes (also: Quotation→Sale Order, Applicant→Employee). Reuses an existing
 // customer matched by exact name rather than always creating a duplicate.
+import { hiddenSalesRecord } from '@/lib/sales-visibility';
 import { NextResponse } from 'next/server';
 import { queryAll, queryOne } from '@/lib/db';
 import { similarCustomers } from '@/lib/customer-match.mjs';
@@ -13,6 +14,8 @@ const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 
 export async function POST(req, { params }) {
   const user = await getFreshSessionUser();
+  const hidden = await hiddenSalesRecord(user, 'lead', params.id); // plan 2a: own records only
+  if (hidden) return hidden;
   if (!CRM_DEPARTMENTS.some(d => canAccessDepartment(user, d))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }

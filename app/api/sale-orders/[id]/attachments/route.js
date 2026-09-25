@@ -2,6 +2,7 @@
 // `attachments`, distinct from the existing single-file GET/POST .../pdf route (sale_orders.pdf_key
 // — the Order Acknowledgement source document, replaced not accumulated). Same upload shape as
 // calc-drawings'/crm-notes' own upload routes.
+import { hiddenSalesRecord } from '@/lib/sales-visibility';
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment, isPM } from '@/lib/auth';
@@ -10,6 +11,8 @@ import { audit } from '@/lib/usb';
 
 export async function POST(req, { params }) {
   const user = await getFreshSessionUser();
+  const hidden = await hiddenSalesRecord(user, 'sale_order', params.id); // plan 2a: own records only
+  if (hidden) return hidden;
   if (!isPM(user)) {
     const denied = requireDepartment(user, 'Sales');
     if (denied) return denied;

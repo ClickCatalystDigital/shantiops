@@ -10,6 +10,8 @@ import { redirect } from 'next/navigation';
 import { getFreshSessionUser, canAccessDepartment, isPM, roleHome } from '@/lib/auth';
 import { getSelectedCompany } from '@/lib/company-filter-server';
 import { filterByCompany } from '@/lib/company-filter.mjs';
+import { salesScope } from '@/lib/sales-visibility';
+import { scopeSalesLists } from '@/lib/sales-visibility.mjs';
 import { getSaleOrders, getLeads, getCustomers, getQuotations, getFunctionalHeads, getPriceLists, getSalesReturns, getInventoryItems, getSalesInvoices, getSalesCreditNotes, getActiveProjectsList, getScopeOfSupply, getSalePayments, getBranches, getSalesProducts, getSalesTargets, getSalesStages } from '@/lib/data';
 import { queryAll } from '@/lib/db';
 import SalesWorkspace from '@/components/SalesWorkspace';
@@ -42,6 +44,10 @@ export default async function SalesPage({ searchParams }) {
   // Global company selector (top bar): narrows the company-owned lists; customers/products are shared.
   const company = getSelectedCompany();
   [saleOrders, quotations, invoices, creditNotes, salePayments] = [saleOrders, quotations, invoices, creditNotes, salePayments].map(r => filterByCompany(r, company));
+  // Plan 2a: a Sales member sees only their own enquiries and the quotations/orders/invoices/payments
+  // that belong to them; the Sales Head and PMs see everything.
+  const me = salesScope(user);
+  if (me) ({ leads, quotations, saleOrders, invoices, creditNotes, salePayments } = scopeSalesLists(me, { leads, quotations, saleOrders, invoices, creditNotes, salePayments }));
   // "Assign to" pool for Tasks/Team — any active head who holds Sales, same filter-after-
   // getFunctionalHeads pattern app/production/page.js already uses for its own assignee dropdown.
   const crmUsers = heads.filter(h => h.active && h.departments.includes('Sales'));

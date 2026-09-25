@@ -1,5 +1,6 @@
 // app/api/sale-order-payments/route.js — Sales Payment Tracker log (lib/db.js sale_order_payments).
 // Append-only by design (no PATCH/DELETE): it's a log; a wrong entry is corrected by Accounts.
+import { hiddenSalesRecord } from '@/lib/sales-visibility';
 import { NextResponse } from 'next/server';
 import { execute, queryAll, queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment, isPM, isInternal } from '@/lib/auth';
@@ -13,6 +14,8 @@ export async function GET(req) {
   if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const soId = new URL(req.url).searchParams.get('sale_order_id');
   if (!soId) return NextResponse.json({ error: 'sale_order_id is required' }, { status: 400 });
+  const hidden = await hiddenSalesRecord(user, 'sale_order', soId); // plan 2a
+  if (hidden) return hidden;
   return NextResponse.json(await queryAll('SELECT * FROM sale_order_payments WHERE sale_order_id = ? ORDER BY received_on DESC, id DESC', [soId]));
 }
 

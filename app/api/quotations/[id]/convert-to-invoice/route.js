@@ -2,6 +2,7 @@
 // Same "accept -> auto-create the next record" playbook as convert/route.js's Quotation -> Sale
 // Order, one step further: Quotation -> Sales Invoice. Tax split (CGST+SGST vs IGST) is the one
 // real calc in this phase — lib/gst-calc.mjs, not inline here.
+import { hiddenSalesRecord } from '@/lib/sales-visibility';
 import { NextResponse } from 'next/server';
 import { execute, queryAll, queryOne, nextCounterValue } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment, isPM } from '@/lib/auth';
@@ -20,6 +21,8 @@ function canAccessCrm(user) {
 
 export async function POST(req, { params }) {
   const user = await getFreshSessionUser();
+  const hidden = await hiddenSalesRecord(user, 'quotation', params.id); // plan 2a: own records only
+  if (hidden) return hidden;
   if (!canAccessCrm(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const actionDenied = await requireCrmAction(user, 'sales.invoice.create');
   if (actionDenied) return actionDenied;

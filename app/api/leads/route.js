@@ -1,5 +1,6 @@
 // app/api/leads/route.js — V3_CHANGES.md §12 Phase 1. Same shape as app/api/opportunities/route.js:
 // two-department gate (Sales|Marketing), GET open to any internal user, POST department-scoped.
+import { scopeRows } from '@/lib/sales-visibility';
 import { NextResponse } from 'next/server';
 import { checkSalesPerson } from '@/lib/sales-people';
 import { execute, queryAll, queryOne } from '@/lib/db';
@@ -36,9 +37,9 @@ export async function GET(req) {
       "SELECT * FROM leads WHERE lead_name LIKE ? OR company_name LIKE ? ORDER BY created_at DESC LIMIT 20",
       [`%${search}%`, `%${search}%`]
     );
-    return NextResponse.json(rows);
+    return NextResponse.json(await scopeRows(user, 'leads', rows));
   }
-  return NextResponse.json(await queryAll('SELECT * FROM leads ORDER BY created_at DESC'));
+  return NextResponse.json(await scopeRows(user, 'leads', await queryAll('SELECT * FROM leads ORDER BY created_at DESC')));
 }
 
 export async function POST(req) {

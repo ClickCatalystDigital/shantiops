@@ -11,7 +11,8 @@ built, with verification notes). Branch: `claude/exciting-mccarthy-cj760h`.
 | Old-CRM data import — Product Master + customer summary | **Done**, applied to the shared DB (see below) |
 | Global company selector (All / Shanti Boilers / Shanti Techno Fab) | **Done** (SYSTEM.md §5db) |
 | Then: import Techno Fab orders + payment log (client will send files) | Waiting on files |
-| Phase 2 — own-records visibility + server-side paging, calendar overlay, real Diary alerts, quotation reminders, mobile cards | Not started |
+| Phase 2a — own-records visibility + lighter page (customers via API) | **Done** |
+| Phase 2b–2e — calendar overlay, real Diary alerts, quotation reminders, mobile cards | Not started |
 | Phase 3 — reports: shared layout, CSV/Excel, Employee 360, real funnel, Sales Overview | Not started |
 | Phase 4 — Customer 360, competitors, installed base, quotation revisions + discount approval, Price Lists → products | Not started |
 | Deferred (not this run) | Zoho email (hosting decision), Marketing workspace, SMS/WhatsApp |

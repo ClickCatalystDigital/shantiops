@@ -5,6 +5,7 @@
 // path (app/api/quotations/[id]/convert/route.js), which always minted SO-{seq}. Fixed (entity-ref
 // tagging round): this path now mints too, off the same shared 'sale_order_no' counter, so every
 // sale order gets a real SO-{seq} number regardless of which path created it.
+import { scopeRows } from '@/lib/sales-visibility';
 import { NextResponse } from 'next/server';
 import { checkSalesPerson } from '@/lib/sales-people';
 import { execute, queryAll, queryOne, nextCounterValue } from '@/lib/db';
@@ -27,9 +28,9 @@ export async function GET(req) {
       "SELECT * FROM sale_orders WHERE so_no LIKE ? ORDER BY created_at DESC LIMIT 20",
       [`%${search}%`]
     );
-    return NextResponse.json(rows);
+    return NextResponse.json(await scopeRows(user, 'saleOrders', rows));
   }
-  return NextResponse.json(await getSaleOrders());
+  return NextResponse.json(await scopeRows(user, 'saleOrders', await getSaleOrders()));
 }
 
 export async function POST(req) {

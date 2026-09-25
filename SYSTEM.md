@@ -11506,6 +11506,16 @@ tab pages through `GET /api/customers?paged=1&q=&offset=&limit=`. The product li
 and old-CRM attributes (`GET /api/sales-products/[id]` loads them for editing). `/sales` went from
 9.2 MB to 3.0 MB (0.7 MB with one company selected).
 
+**Plan 2a — own-records visibility (2026-09-25).** `lib/sales-visibility.mjs` (selfcheck) +
+`lib/sales-visibility.js`: a Sales **member** (Sales access, not Head, not PM) sees only enquiries
+where they are A/C manager / assignee / initiator / creator, and the quotations, orders (also by
+Sales Person), invoices, credit notes, payments and diary notes that belong to those. Sales Head,
+PMs and other departments are unaffected; Marketing-owned enquiries are never hidden. Enforced in
+the `/sales` page lists, the Sales report data (`app/reports/page.js`), the list GETs
+(`scopeRows`) and every `[id]` route under leads / quotations / sale-orders / sale-order-payments /
+crm-notes (`hiddenSalesRecord` → 404). Imported legacy orders (no matching user) are Head-only.
+Verified live with a throwaway member login (deleted after).
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own
