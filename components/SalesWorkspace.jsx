@@ -1542,7 +1542,7 @@ export function NewQuotationDialog({ customers, opportunityId = null, leadId = n
             </div>
           </div>
         </div>
-        <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Create Quotation'}</Button></DialogFooter>
+        <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? 'Saving…' : (revisionOf ? 'Save revision' : 'Create Quotation')}</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   );

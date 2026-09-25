@@ -12,10 +12,22 @@ built, with verification notes). Branch: `claude/exciting-mccarthy-cj760h`.
 | Global company selector (All / Shanti Boilers / Shanti Techno Fab) | **Done** (SYSTEM.md §5db) |
 | Then: import Techno Fab orders + payment log (client will send files) | Waiting on files |
 | Phase 2a — own-records visibility + lighter page (customers via API) | **Done** |
-| Phase 2b–2e — calendar overlay, real Diary alerts, quotation reminders, mobile cards | Not started |
-| Phase 3 — reports: shared layout, CSV/Excel, Employee 360, real funnel, Sales Overview | Not started |
-| Phase 4 — Customer 360, competitors, installed base, quotation revisions + discount approval, Price Lists → products | Not started |
+| Phase 2b–2e — calendar overlay, real Diary alerts, quotation reminders, mobile cards | **Done** |
+| Phase 3 — reports: CSV/Excel on every report, Employee 360, real funnel, Sales Overview | **Done** |
+| Phase 4 — Customer 360, competitors, installed base, quotation revisions + discount approval, Price Lists → products | **Done** |
 | Deferred (not this run) | Zoho email (hosting decision), Marketing workspace, SMS/WhatsApp |
+
+## Left for the client / next chat
+
+- **Cron Worker**: `workers/rate-sync-cron` now also calls the daily quotation-reminder endpoint
+  (`REMINDERS_URL` in `wrangler.toml`). It only takes effect after `wrangler deploy` — until then the
+  app sends reminders itself, at most hourly, when anyone's notification bell loads.
+- **Settings to fill in**: funnel stage probabilities (Sales → Masters → Funnel Stages; blank = a
+  default), the discount-approval limit (Quotations tab, default 10%), price lists per product.
+- **Techno Fab orders + payments import** — waiting on files.
+- Stage-by-stage and customer-level reports need real enquiry data; today `leads` is empty, so
+  funnel/360 numbers show only imported orders.
+- Other Sales reports (Prospect Summary, Date-wise, etc.) kept their layout; they gained CSV/Excel.
 
 ## Decisions already made by the client (don't re-ask)
 
@@ -78,6 +90,7 @@ built, with verification notes). Branch: `claude/exciting-mccarthy-cj760h`.
   search via API instead of a full list) fixes this. Customers/Products tabs got client-side search
   + paging meanwhile. `queryAll` now returns plain objects (was thousands of dev warnings).
 - Pure helpers with selfchecks (`node lib/<name>-selfcheck.mjs`): `sales-lines`, `sales-people`,
-  `customer-match`, `lead-stage`, `legacy-crm-import`, `gst-calc`.
+  `customer-match`, `lead-stage`, `legacy-crm-import`, `gst-calc`, `company-filter`, `sales-visibility`,
+  `quotation-reminders`, `sales-insights`, `quotation-approval`, `installed-base`.
 - Open question for the client: the PO wizard screen was verified through its API, not clicked in
   a browser — worth a quick manual look.

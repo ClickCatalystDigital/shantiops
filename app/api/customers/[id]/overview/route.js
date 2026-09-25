@@ -35,7 +35,7 @@ export async function GET(req, { params }) {
                 FROM sale_orders so
                WHERE so.customer_id = ? OR so.lead_id IN (${inList(leadIds)})
                ORDER BY so.id DESC`, [id, ...leadIds]),
-    queryAll(`SELECT id, project_no, name, status, sale_order_id FROM projects WHERE customer_id = ? ORDER BY id DESC`, [id]),
+    queryAll(`SELECT id, project_no, description AS name, status, sale_order_id FROM projects WHERE customer_id = ? AND COALESCE(is_system, 0) = 0 ORDER BY id DESC`, [id]),
   ]);
   const diaryNotes = await queryAll(
     `SELECT id, lead_id, customer_id, note_type, content, visit_date, next_plan_date, created_by, created_at
