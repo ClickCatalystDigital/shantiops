@@ -70,5 +70,8 @@ export async function POST(req) {
       b.alert_mode || null, b.send_alert_sms || null, b.contact_id || null, b.product_id || null, b.location || null,
       b.feedback_responded != null ? (b.feedback_responded ? 1 : 0) : null, user.username]
   );
+  // A note/Diary entry is real activity on the enquiry — bump its updated_at so the first-response
+  // SLA check (lib/lead-stage.mjs isSlaBreached: "untouched since creation") sees it.
+  if (b.lead_id) await execute('UPDATE leads SET updated_at = CURRENT_TIMESTAMP WHERE id = ?', [b.lead_id]);
   return NextResponse.json({ id: Number(lastId) });
 }

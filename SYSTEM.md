@@ -11336,6 +11336,47 @@ rows) — a full, queryable provenance trail from category fix through final bac
 was ever deleted; no existing `item_id`/`category` was ever downgraded or overwritten, only filled
 where genuinely `NULL`.
 
+## 5db. Sales CRM plan, Phase 1 — connecting enquiry → quotation → PO (2026-09-25, in progress)
+
+Working plan: `docs/sales-crm-plan.md` (Sales only; Marketing untouched until it gets its own plan).
+Live data at the start (read-only check): 0 leads, 0 Diary notes, 5 demo opportunities, 2
+quotations, 1,006 imported sale orders, 340 customers; Product/Branch/Target masters empty.
+
+**1a + 1c — the funnel stage is the only enquiry status, with history.**
+- `lib/lead-stage.mjs` (pure, `node lib/lead-stage-selfcheck.mjs`) holds every stage rule:
+  `leadStateForStage` (open|won|lost from `sales_stages.is_won/is_lost`), `isEnquiryStage` (the
+  Enquiry tab = open, not closed, before "Proposals"; falls back to the first two open stages if no
+  stage is named Proposals), `isSlaBreached` (still at the default stage and untouched since
+  creation, >24h). Sales screens and CRM reports import it instead of each keeping a copy.
+- `leads.status` is now system-maintained from the stage and can't be set by hand
+  (`PATCH /api/leads/[id]` rejects `status`). Every stage change goes through `setLeadStage()`
+  (`lib/crm.js`): validates the stage, updates `sales_call_status` + `status`, writes a
+  `lead_stage_history` row (new table). Create writes the first history row directly so
+  `updated_at` stays equal to `created_at` (the SLA's "untouched" signal); Diary/notes on a lead now
+  bump `leads.updated_at`.
+- Converting an enquiry to a customer is a link (`converted_customer_id`), not a status: the
+  enquiry keeps its stage. The convert route checks the link (409 "Already linked").
+- UI: Leads table has one Stage column (badge) + stage filter; enquiry form picks a Stage; the
+  enquiry sheet has a Stage selector for the middle stages (Order Received/Order Lost stay on
+  Create PO / Order Lost). Lead Funnel, Customize Sales Call List, By Department and Agent
+  Performance reports read the stage / customer link.
+- **Bug fixed:** Create PO with "don't continue the sales call" hand-set `status='converted'`
+  before calling convert, which then refused with "Already converted" — Create PO failed for any
+  unconverted enquiry. It now closes the sales call instead.
+- **Bug fixed:** the 9-stage funnel migration renamed `sales_stages` rows but not
+  `opportunities.stage`, so all 5 opportunities sat in stages that no longer existed.
+  `migrateOpportunityStageNames` applies the same old→new mapping (backed up first).
+- **Dev speed fix:** `next dev` gives each route its own copy of `lib/db.js`, so `initDB()`'s full
+  `migrate()` re-ran the first time every route was hit (2–3 min each over the network to Turso).
+  The init promise is now cached on `globalThis`, keyed by `migrate()`'s source length so editing a
+  migration still re-runs it. Measured: new routes went from ~170s to ~1s after the first boot.
+- Known, not fixed here (Phase 2a): `/sales` passes all 1,006 sale-order rows to the client as raw
+  libsql Row objects, producing thousands of "Only plain objects" dev warnings and ~60s page loads.
+- Verified live against the shared DB with a disposable `ZZ-` enquiry (create, stage moves, refused
+  manual status and unknown stage, Order Lost, convert twice, history rows) and in a headless
+  browser (Enquiry tab hides a lost/closed enquiry; Leads table and sheet show the stage); test
+  rows deleted, all baseline counts unchanged.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own

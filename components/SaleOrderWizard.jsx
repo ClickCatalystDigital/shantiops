@@ -61,7 +61,9 @@ export function CreatePoStep1Dialog({ lead, branches, onClose, onCreated, router
       await api(`/api/leads/${lead.id}`, { method: 'PATCH', body: {
         expected_order_date: expectedDate || null, week_number: weekNumber || null,
         sales_call_status: status, is_vip: isVip, branch_id: branchId || null,
-        status: continueCall === 'no' ? 'converted' : undefined,
+        // "No — end of the opportunity" closes the sales call; "Yes" leaves it open for further
+        // orders. (Was a hand-set status:'converted', which also made the convert call below fail.)
+        sales_call_closed_at: continueCall === 'no' ? new Date().toISOString() : undefined,
       } });
 
       let customerId = lead.converted_customer_id;

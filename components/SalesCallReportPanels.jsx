@@ -429,14 +429,15 @@ export function EmployeeExpenseReport({ expenseClaims }) {
 
 // --- 13. Customize Sales Call list report ---------------------------------------------------------
 
-export function SalesCallCustomizeReport({ leads, branches }) {
-  const ALL_COLS = ['Organization', 'Source', 'Status', 'Sales Call Status', 'Branch', 'A/C Manager', 'Enquiry Date'];
+export function SalesCallCustomizeReport({ leads, branches, stages = [] }) {
+  // One status column — the funnel stage (docs/sales-crm-plan.md 1a).
+  const ALL_COLS = ['Organization', 'Source', 'Sales Call Status', 'Branch', 'A/C Manager', 'Enquiry Date'];
   const [visibleCols, setVisibleCols] = useState(ALL_COLS);
   const [status, setStatus] = useState('all');
   const [q, setQ] = useState('');
 
   const rows = leads.filter(l =>
-    (status === 'all' || l.status === status) &&
+    (status === 'all' || l.sales_call_status === status) &&
     (!q.trim() || (l.company_name || l.lead_name || '').toLowerCase().includes(q.trim().toLowerCase()))
   );
 
@@ -449,8 +450,8 @@ export function SalesCallCustomizeReport({ leads, branches }) {
       <div className="flex flex-wrap items-center gap-2">
         <Input placeholder="Search organization…" value={q} onChange={e => setQ(e.target.value)} className="w-56" />
         <Select value={status} onValueChange={setStatus}>
-          <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
-          <SelectContent><SelectItem value="all">All statuses</SelectItem>{['new', 'contacted', 'qualified', 'converted', 'lost'].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
+          <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
+          <SelectContent><SelectItem value="all">All stages</SelectItem>{stages.map(s => <SelectItem key={s.name} value={s.name}>{s.name}</SelectItem>)}</SelectContent>
         </Select>
         <div className="flex flex-wrap gap-1.5">
           {ALL_COLS.map(c => (
@@ -465,7 +466,6 @@ export function SalesCallCustomizeReport({ leads, branches }) {
             <TableRow key={l.id}>
               {visibleCols.includes('Organization') && <TableCell>{l.company_name || l.lead_name}</TableCell>}
               {visibleCols.includes('Source') && <TableCell>{l.source || '—'}</TableCell>}
-              {visibleCols.includes('Status') && <TableCell><Badge variant="outline">{l.status}</Badge></TableCell>}
               {visibleCols.includes('Sales Call Status') && <TableCell>{l.sales_call_status || '—'}</TableCell>}
               {visibleCols.includes('Branch') && <TableCell>{branches.find(b => b.id === l.branch_id)?.name || '—'}</TableCell>}
               {visibleCols.includes('A/C Manager') && <TableCell>{l.account_manager || l.assigned_to || '—'}</TableCell>}

@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
 import { audit } from '@/lib/usb';
+import { setLeadStage } from '@/lib/crm';
 
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 
@@ -21,7 +22,6 @@ export async function PATCH(req, { params }) {
   const b = await req.json();
   const fields = [];
   const args = [];
-  const STATUSES = ['new', 'contacted', 'qualified', 'converted', 'lost'];
   for (const [key, col] of [
     ['lead_name', 'lead_name'], ['company_name', 'company_name'], ['phone', 'phone'],
     ['email', 'email'], ['source', 'source'], ['notes', 'notes'], ['campaign_id', 'campaign_id'],
@@ -33,28 +33,39 @@ export async function PATCH(req, { params }) {
   ]) {
     if (b[key] !== undefined) { fields.push(`${col} = ?`); args.push(b[key] || null); }
   }
+  // The funnel stage is the only status (docs/sales-crm-plan.md 1a): leads.status is derived from
+  // it by setLeadStage() and can no longer be set by hand, so a direct `status` is refused.
   if (b.status !== undefined) {
-    if (!STATUSES.includes(b.status)) return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
-    fields.push('status = ?'); args.push(b.status);
+    return NextResponse.json({ error: 'Status follows the funnel stage — set sales_call_status instead' }, { status: 400 });
   }
-  if (b.sales_call_status !== undefined) {
-    fields.push('sales_call_status = ?'); args.push(b.sales_call_status || null);
-  }
+  const stageChange = b.sales_call_status !== undefined;
   if (b.is_vip !== undefined) { fields.push('is_vip = ?'); args.push(b.is_vip ? 1 : 0); }
   // Order Lost (Phase 3.1) explicitly sets these two together — an intentional close, not an
   // implicit reopen-clear below.
   if (b.sales_call_closed_at !== undefined) {
     fields.push('sales_call_closed_at = ?', 'sales_call_closed_by = ?');
     args.push(b.sales_call_closed_at || null, b.sales_call_closed_at ? user.username : null);
-  } else if (fields.length) {
+  } else if (fields.length || stageChange) {
     // Real activity happening again is itself the signal a "closed" lead is no longer actually
     // closed (Gap #30) — any other edit implicitly clears the closed banner, no "Reopen" button.
     fields.push('sales_call_closed_at = NULL', 'sales_call_closed_by = NULL');
   }
-  if (!fields.length) return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
-  fields.push('updated_at = CURRENT_TIMESTAMP');
-  args.push(params.id);
-  await execute(`UPDATE leads SET ${fields.join(', ')} WHERE id = ?`, args);
-  await audit('lead_updated', { actor: user.username, detail: `#${params.id}` });
+  if (!fields.length && !stageChange) return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
+  // Validate the stage before writing anything, so a bad stage never half-applies the other fields.
+  if (stageChange) {
+    const known = await queryOne('SELECT 1 FROM sales_stages WHERE name = ? AND active = 1', [b.sales_call_status || 'Lead - Cold']);
+    if (!known) return NextResponse.json({ error: `Unknown stage "${b.sales_call_status}"` }, { status: 400 });
+  }
+  if (fields.length) {
+    fields.push('updated_at = CURRENT_TIMESTAMP');
+    args.push(params.id);
+    await execute(`UPDATE leads SET ${fields.join(', ')} WHERE id = ?`, args);
+  }
+  let stage = null;
+  if (stageChange) stage = await setLeadStage(params.id, b.sales_call_status, user.username);
+  await audit('lead_updated', {
+    actor: user.username,
+    detail: `#${params.id}${stage?.changed ? ` stage ${stage.from || '—'} -> ${stage.to}` : ''}`,
+  });
   return NextResponse.json({ ok: true });
 }

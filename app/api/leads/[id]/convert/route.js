@@ -17,7 +17,7 @@ export async function POST(req, { params }) {
   }
   const lead = await queryOne('SELECT * FROM leads WHERE id = ?', [params.id]);
   if (!lead) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  if (lead.status === 'converted') return NextResponse.json({ error: 'Already converted' }, { status: 409 });
+  if (lead.converted_customer_id) return NextResponse.json({ error: 'Already linked to a customer' }, { status: 409 });
   const actionDenied = await requireAction(user, lead.owner_dept, 'crm.lead.convert');
   if (actionDenied) return actionDenied;
 

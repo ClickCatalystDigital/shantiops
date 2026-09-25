@@ -11,11 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { formatMoney } from '@/lib/format';
 import { BarList, StatRow, ReportShell } from '@/components/ReportKit';
 
-const SLA_HOURS = 24;
-function isSlaBreached(lead) {
-  if (lead.status !== 'new') return false;
-  return (Date.now() - new Date(lead.created_at).getTime()) / 36e5 > SLA_HOURS;
-}
+import { SLA_HOURS, isSlaBreached } from '@/lib/lead-stage.mjs';
 function countBy(rows, key) {
   const counts = {};
   for (const r of rows) { const k = r[key] || '—'; counts[k] = (counts[k] || 0) + 1; }
@@ -28,17 +24,19 @@ function mostCommon(values) {
   return entries[0]?.[0] || null;
 }
 
-export function LeadFunnelReport({ leads }) {
-  const statuses = ['new', 'contacted', 'qualified', 'converted', 'lost'];
+// Grouped by the funnel stage — the only lead status (docs/sales-crm-plan.md 1a). "Converted" means
+// linked to a customer record; "Won" means the stage reached Order Received.
+export function LeadFunnelReport({ leads, stages = [] }) {
   const totalLeads = leads.length;
-  const converted = leads.filter(l => l.status === 'converted').length;
+  const converted = leads.filter(l => l.converted_customer_id).length;
   const conversionRate = totalLeads > 0 ? Math.round((converted / totalLeads) * 100) : null;
-  const slaBreached = leads.filter(isSlaBreached).length;
-  const items = statuses.map(s => ({ label: s, value: leads.filter(l => l.status === s).length }));
-  const colorFor = i => i.label === 'converted' ? 'bg-success' : i.label === 'lost' ? 'bg-destructive' : 'bg-chart-1';
+  const slaBreached = leads.filter(l => isSlaBreached(l)).length;
+  const ordered = [...stages].sort((a, b) => a.sort_order - b.sort_order);
+  const items = ordered.map(s => ({ label: s.name, value: leads.filter(l => l.sales_call_status === s.name).length, won: s.is_won, lost: s.is_lost }));
+  const colorFor = i => i.won ? 'bg-success' : i.lost ? 'bg-destructive' : 'bg-chart-1';
 
   return (
-    <ReportShell title="Lead Funnel" description="Every lead by status, narrowing from first contact to converted.">
+    <ReportShell title="Lead Funnel" description="Every lead by funnel stage, from first contact to order.">
       <StatRow stats={[
         { label: 'Total leads', value: totalLeads },
         { label: 'Conversion rate', value: conversionRate == null ? '—' : `${conversionRate}%` },
@@ -121,7 +119,7 @@ export function ByDepartmentReport({ leads, opportunities, stages }) {
     const deptOpen = deptOpps.filter(o => !wonStages.has(o.stage) && !lostStages.has(o.stage));
     return {
       dept, leadCount: deptLeads.length,
-      conversionRate: deptLeads.length > 0 ? Math.round((deptLeads.filter(l => l.status === 'converted').length / deptLeads.length) * 100) : null,
+      conversionRate: deptLeads.length > 0 ? Math.round((deptLeads.filter(l => l.converted_customer_id).length / deptLeads.length) * 100) : null,
       openValue: deptOpen.reduce((s, o) => s + (o.value_num || 0), 0),
       wonValue: deptWon.reduce((s, o) => s + (o.value_num || 0), 0),
       winRate: (deptWon.length + deptLost.length) > 0 ? Math.round((deptWon.length / (deptWon.length + deptLost.length)) * 100) : null,
@@ -175,7 +173,7 @@ export function AgentPerformanceReport({ leads, opportunities, tasks, notes, sta
 
   const rows = agents.map(agent => {
     const agentLeads = leads.filter(l => l.assigned_to === agent);
-    const converted = agentLeads.filter(l => l.status === 'converted').length;
+    const converted = agentLeads.filter(l => l.converted_customer_id).length;
     const agentTasks = tasks.filter(t => t.assigned_to === agent);
     const tasksDone = agentTasks.filter(t => t.status === 'done').length;
     const agentOpps = opportunities.filter(o => o.created_by === agent);

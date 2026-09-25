@@ -5,6 +5,7 @@ import { execute, queryAll, queryOne } from '@/lib/db';
 import { getFreshSessionUser, isInternal, canAccessDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
+import { DEFAULT_STAGE, leadStateForStage } from '@/lib/lead-stage.mjs';
 
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 function canAccessCrm(user) {
@@ -59,23 +60,34 @@ export async function POST(req) {
   const actionDenied = await requireAction(user, ownerDept, 'crm.lead.create');
   if (actionDenied) return actionDenied;
 
+  // Every enquiry starts with a real funnel stage (plan 1a) — previously it was left NULL until the
+  // next server restart's migrate() backfill.
+  const stage = b.sales_call_status || DEFAULT_STAGE;
+  const stageRow = await queryOne('SELECT name, is_won, is_lost FROM sales_stages WHERE name = ? AND active = 1', [stage]);
+  if (!stageRow) return NextResponse.json({ error: `Unknown stage "${stage}"` }, { status: 400 });
+
   const assignedTo = b.assigned_to || await nextAssignee(ownerDept);
   const { lastId } = await execute(
     `INSERT INTO leads (
        lead_name, company_name, phone, email, source, campaign_id, owner_dept, notes,
-       territory, industry, next_contact_date, assigned_to, created_by, status,
+       territory, industry, next_contact_date, assigned_to, created_by, status, sales_call_status,
        enquiry_date, address, website, product, product_id, reference, short_name, district, sub_location,
        telephone, order_expected_in, week_number, account_manager, initiated_by, district_code, pin_code
      )
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [leadName, b.company_name || b.organization || null, b.phone || null, b.email || null, b.source || null,
       b.campaign_id || null, ownerDept, b.notes || null, b.territory || null, b.industry || null,
-      b.next_contact_date || null, assignedTo, user.username, b.status || 'new',
+      b.next_contact_date || null, assignedTo, user.username, leadStateForStage([stageRow], stage), stage,
       b.enquiry_date || null, address || null, b.website || null, b.product || null, b.product_id || null, b.reference || null,
       b.short_name || null, b.district || null, b.sub_location || null, b.telephone || null,
       b.order_expected_in || null, b.week_number || null, b.account_manager || null, b.initiated_by || null,
       b.district_code || null, b.pin_code || null]
   );
+  const id = Number(lastId);
+  // First stage-history row (from: none). Written directly rather than via setLeadStage() so
+  // updated_at stays equal to created_at — "untouched since creation" is what the SLA check reads.
+  await execute('INSERT INTO lead_stage_history (lead_id, from_stage, to_stage, changed_by) VALUES (?, ?, ?, ?)',
+    [id, null, stage, user.username]);
   await audit('lead_created', { actor: user.username, detail: leadName });
-  return NextResponse.json({ id: Number(lastId) });
+  return NextResponse.json({ id });
 }

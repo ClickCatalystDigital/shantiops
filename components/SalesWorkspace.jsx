@@ -36,14 +36,44 @@ import ScopeOfSupplySection from '@/components/ScopeOfSupplySection';
 import { PaymentOrdersTab, PaymentLogTab, Pager, SIZES } from '@/components/SalesPaymentTracker';
 import { CreatePoFlow } from '@/components/SaleOrderWizard';
 import { renderTemplate } from '@/lib/email-template.mjs';
+import { DEFAULT_STAGE, isEnquiryStage, isSlaBreached } from '@/lib/lead-stage.mjs';
 
-// ponytail: fixed 24h first-response SLA, not a configurable business-hours calendar like Frappe
-// CRM's own SLA doctype (holiday list, service windows). Add a settings row for this if a real
-// need for a different threshold or per-department SLA shows up.
-const SLA_HOURS = 24;
-function isSlaBreached(lead) {
-  if (lead.status !== 'new') return false;
-  return (Date.now() - new Date(lead.created_at).getTime()) / 36e5 > SLA_HOURS;
+// First-response SLA (24h, untouched since creation) lives in lib/lead-stage.mjs with the rest of
+// the stage rules, so this list and the reports can never disagree. ponytail: fixed 24h, not a
+// configurable business-hours calendar — add a settings row if a real need shows up.
+
+// The funnel stage is the only status a user sees or sets (docs/sales-crm-plan.md 1a).
+function StageBadge({ lead, stages }) {
+  const s = stages.find(x => x.name === lead.sales_call_status);
+  const variant = s?.is_won ? 'default' : s?.is_lost ? 'destructive' : 'outline';
+  return <Badge variant={variant}>{lead.sales_call_status || DEFAULT_STAGE}</Badge>;
+}
+
+// Moves an enquiry through the funnel. Order Received / Order Lost stay on their own actions
+// (Create PO / Order Lost), which also record the order or the reason.
+function StageSelect({ lead, stages, router }) {
+  const [saving, setSaving] = useState(false);
+  const choosable = stages.filter(s => !s.is_won && s.name !== 'Order Lost');
+  async function change(v) {
+    if (v === lead.sales_call_status) return;
+    setSaving(true);
+    try {
+      await api(`/api/leads/${lead.id}`, { method: 'PATCH', body: { sales_call_status: v } });
+      showToast(`Stage: ${v}`);
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); } finally { setSaving(false); }
+  }
+  const current = lead.sales_call_status || DEFAULT_STAGE;
+  const inList = choosable.some(s => s.name === current);
+  return (
+    <Select value={current} onValueChange={change} disabled={saving}>
+      <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
+      <SelectContent>
+        {!inList && <SelectItem value={current} disabled>{current}</SelectItem>}
+        {choosable.map(s => <SelectItem key={s.name} value={s.name}>{s.name}</SelectItem>)}
+      </SelectContent>
+    </Select>
+  );
 }
 
 // WhatsApp/Email quick-links — wa.me and mailto: only. A real WhatsApp Business/email-sending
@@ -415,7 +445,7 @@ const ENQUIRY_DETAIL_FIELDS = [
   ['pin_code', 'Pin code'],
 ];
 
-function LeadDetailSheet({ lead, users, customers, salesProducts = [], branches = [], onClose, router }) {
+function LeadDetailSheet({ lead, users, customers, salesProducts = [], branches = [], stages = [], onClose, router }) {
   const extra = ENQUIRY_DETAIL_FIELDS.filter(([k]) => lead[k]);
   // Home calendar's ?diary=now|advanced deep-link (Phase 4) — opens straight into the diary form
   // instead of the plain detail sheet.
@@ -463,6 +493,11 @@ function LeadDetailSheet({ lead, users, customers, salesProducts = [], branches 
               {lead.lost_reason && <> — {lead.lost_reason}</>}
             </div>
           )}
+          <div className="flex flex-wrap items-center gap-2">
+            <Label className="text-sm text-muted-foreground">Stage</Label>
+            <StageSelect lead={lead} stages={stages} router={router} />
+            {lead.converted_customer_id && <Badge variant="secondary">Customer linked</Badge>}
+          </div>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
             {lead.company_name && <span>Company: {lead.company_name}</span>}
             {lead.source && <span>Source: {lead.source}</span>}
@@ -541,7 +576,7 @@ function OrderLostDialog({ lead, onClose, router }) {
   );
 }
 
-const LEAD_FILTER_DEFAULT = { status: 'all', source: 'all', branch: 'all', search: '' };
+const LEAD_FILTER_DEFAULT = { stage: 'all', source: 'all', branch: 'all', search: '' };
 
 const INDIA_STATES = [
   'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa', 'Gujarat',
@@ -552,11 +587,6 @@ const INDIA_STATES = [
   'Jammu and Kashmir', 'Ladakh', 'Lakshadweep', 'Puducherry',
 ].map(s => ({ value: s, label: s }));
 
-const ENQUIRY_STATUS_OPTIONS = [
-  { value: 'new', label: 'New' }, { value: 'contacted', label: 'Contacted' },
-  { value: 'qualified', label: 'Qualified' }, { value: 'converted', label: 'Converted' },
-  { value: 'lost', label: 'Lost' },
-];
 
 const SOURCE_SEED = ['Website', 'Referral', 'Exhibition', 'Cold Call', 'Tender', 'Existing Customer'];
 
@@ -605,12 +635,12 @@ function ProductSearchField({ products, value, onChange, onPick }) {
   );
 }
 
-function AddEnquiryDialog({ leads, users, salesProducts, onClose, router }) {
+function AddEnquiryDialog({ leads, users, salesProducts, stages = [], onClose, router }) {
   const [f, setF] = useState({
     enquiry_date: todayISO(), organization: '', address: '', website: '', email: '', product: '', product_id: null,
     assigned_to: '', reference: '', short_name: '', territory: '', district: '', sub_location: '',
     phone: '', order_expected_in: '', week_number: '', notes: '', industry: '',
-    account_manager: '', initiated_by: '', district_code: '', pin_code: '', status: 'new',
+    account_manager: '', initiated_by: '', district_code: '', pin_code: '', sales_call_status: DEFAULT_STAGE,
     telephone: '', source: '',
   });
   const [saving, setSaving] = useState(false);
@@ -678,7 +708,7 @@ function AddEnquiryDialog({ leads, users, salesProducts, onClose, router }) {
               <div className="grid gap-1.5"><Label>Initiated by</Label><SearchableSelect value={f.initiated_by} onChange={set('initiated_by')} options={teamOpts} placeholder="Select a person…" /></div>
               <div className="grid gap-1.5"><Label>District code</Label><Input value={f.district_code} onChange={setText('district_code')} /></div>
               <div className="grid gap-1.5"><Label>Pin code</Label><Input value={f.pin_code} onChange={setText('pin_code')} /></div>
-              <div className="grid gap-1.5"><Label>Status</Label><SearchableSelect value={f.status} onChange={set('status')} options={ENQUIRY_STATUS_OPTIONS} placeholder="Select…" /></div>
+              <div className="grid gap-1.5"><Label>Stage</Label><SearchableSelect value={f.sales_call_status} onChange={set('sales_call_status')} options={stages.filter(s => !s.is_won && !s.is_lost).map(s => ({ value: s.name, label: s.name }))} placeholder="Select…" /></div>
               <div className="grid gap-1.5"><Label>Mobile number</Label><Input value={f.phone} onChange={setText('phone')} /></div>
               <div className="grid gap-1.5"><Label>Source</Label><SearchableSelect value={f.source} onChange={set('source')} options={sourceOpts} displayValue={f.source} onTextChange={set('source')} placeholder="Select or type…" /></div>
             </div>
@@ -690,24 +720,25 @@ function AddEnquiryDialog({ leads, users, salesProducts, onClose, router }) {
   );
 }
 
-// STERP "Sales Enquiry" (SYSTEM.md §5e) — a raw enquiry already IS a status='new' lead
-// (isSlaBreached already special-cases it as the unactioned bucket); reuses this exact list/table
-// under the Enquiry nav entry (initialStatus='new') rather than a second table/entity — only the
-// creation dialog differs (isEnquiry picks AddEnquiryDialog's fuller form over AddLeadDialog's).
-function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], savedViews, router, initialStatus = 'all', isEnquiry = false }) {
+// STERP "Sales Enquiry" (SYSTEM.md §5e) — the Enquiry nav entry reuses this exact list/table,
+// narrowed to open, not-closed leads still before the "Proposals" stage (lib/lead-stage.mjs
+// isEnquiryStage) — only the creation dialog differs (isEnquiry picks AddEnquiryDialog's fuller
+// form over AddLeadDialog's).
+function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], stages = [], savedViews, router, isEnquiry = false }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [busyId, setBusyId] = useState(null);
   // Home calendar's "Update Now"/"Advanced Update" deep-link (Phase 4) — same click-to-open
   // pattern JobCardBoard.jsx already uses for ?highlight=, not just scroll-and-flash.
   const highlightCode = useSearchParams().get('highlight');
   const [selected, setSelected] = useState(() => leads.find(l => `LD-${l.id}` === highlightCode) || null);
-  const [filters, setFilters] = useState({ ...LEAD_FILTER_DEFAULT, status: initialStatus });
+  const [filters, setFilters] = useState(LEAD_FILTER_DEFAULT);
   const [views, setViews] = useState(savedViews);
   const [viewName, setViewName] = useState('');
 
   const sources = [...new Set(leads.map(l => l.source).filter(Boolean))];
   const filtered = leads.filter(l =>
-    (filters.status === 'all' || l.status === filters.status) &&
+    (!isEnquiry || (!l.sales_call_closed_at && isEnquiryStage(stages, l.sales_call_status))) &&
+    (filters.stage === 'all' || (l.sales_call_status || DEFAULT_STAGE) === filters.stage) &&
     (filters.source === 'all' || l.source === filters.source) &&
     (filters.branch === 'all' || String(l.branch_id) === filters.branch) &&
     (!filters.search || l.lead_name.toLowerCase().includes(filters.search.toLowerCase()) || (l.company_name || '').toLowerCase().includes(filters.search.toLowerCase()))
@@ -717,7 +748,7 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
     setBusyId(lead.id);
     try {
       await api(`/api/leads/${lead.id}/convert`, { method: 'POST', body: {} });
-      showToast('Converted to Customer + Opportunity');
+      showToast('Linked to a customer');
       router.refresh();
     } catch (err) { showToast(err.message, 'error'); } finally { setBusyId(null); }
   }
@@ -748,11 +779,11 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
         )}
         <div className="flex flex-wrap items-center gap-2">
           <Input placeholder="Search leads…" value={filters.search} onChange={e => setFilters(f => ({ ...f, search: e.target.value }))} className="w-48" />
-          <Select value={filters.status} onValueChange={v => setFilters(f => ({ ...f, status: v }))}>
-            <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
+          <Select value={filters.stage} onValueChange={v => setFilters(f => ({ ...f, stage: v }))}>
+            <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All statuses</SelectItem>
-              {['new', 'contacted', 'qualified', 'converted', 'lost'].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+              <SelectItem value="all">All stages</SelectItem>
+              {stages.filter(s => !isEnquiry || isEnquiryStage(stages, s.name)).map(s => <SelectItem key={s.name} value={s.name}>{s.name}</SelectItem>)}
             </SelectContent>
           </Select>
           {sources.length > 0 && (
@@ -780,7 +811,7 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
         </div>
         {filtered.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No leads match.</p> : (
           <Table>
-            <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Company</TableHead><TableHead>Source</TableHead><TableHead>Status</TableHead><TableHead>Sales Call Status</TableHead><TableHead>Owner</TableHead><TableHead>Assigned</TableHead><TableHead /></TableRow></TableHeader>
+            <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Company</TableHead><TableHead>Source</TableHead><TableHead>Stage</TableHead><TableHead>Owner</TableHead><TableHead>Assigned</TableHead><TableHead /></TableRow></TableHeader>
             <TableBody>
               {filtered.map(l => (
                 <TableRow key={l.id} data-entity-code={`LD-${l.id}`} className="cursor-pointer" onClick={() => setSelected(l)}>
@@ -794,15 +825,15 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
                   <TableCell className="text-muted-foreground">{l.source || '—'}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1.5">
-                      <Badge variant={l.status === 'converted' ? 'default' : 'outline'}>{l.status}</Badge>
+                      <StageBadge lead={l} stages={stages} />
                       {isSlaBreached(l) && <Badge variant="destructive">SLA overdue</Badge>}
+                      {l.sales_call_closed_at && <Badge variant="secondary">Closed</Badge>}
                     </div>
                   </TableCell>
-                  <TableCell className="text-muted-foreground">{l.sales_call_status || '—'}</TableCell>
                   <TableCell className="text-muted-foreground">{l.owner_dept}</TableCell>
                   <TableCell className="text-muted-foreground">{l.assigned_to || '—'}</TableCell>
                   <TableCell onClick={e => e.stopPropagation()}>
-                    {l.status !== 'converted' && (
+                    {!l.converted_customer_id && (
                       <Button size="sm" variant="outline" disabled={busyId === l.id} onClick={() => convert(l)}>Convert</Button>
                     )}
                   </TableCell>
@@ -813,9 +844,9 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
         )}
       </CardContent>
       {dialogOpen && (isEnquiry
-        ? <AddEnquiryDialog leads={leads} users={users} salesProducts={salesProducts} router={router} onClose={() => setDialogOpen(false)} />
+        ? <AddEnquiryDialog leads={leads} users={users} salesProducts={salesProducts} stages={stages} router={router} onClose={() => setDialogOpen(false)} />
         : <AddLeadDialog router={router} onClose={() => setDialogOpen(false)} />)}
-      {selected && <LeadDetailSheet lead={selected} users={users} customers={customers} salesProducts={salesProducts} branches={branches} router={router} onClose={() => setSelected(null)} />}
+      {selected && <LeadDetailSheet lead={leads.find(l => l.id === selected.id) || selected} users={users} customers={customers} salesProducts={salesProducts} branches={branches} stages={stages} router={router} onClose={() => setSelected(null)} />}
     </Card>
   );
 }
@@ -2506,7 +2537,7 @@ const PANEL_GROUPS = [
   ] },
 ];
 
-export default function SalesWorkspace({ saleOrders, leads, customers, quotations, priceLists = [], returns = [], inventoryItems = [], invoices = [], creditNotes = [], departments = ['Sales'], users = [], savedViews = [], initialTab, canEditSoTax = false, projects = [], scopeOfSupply = [], initialScopeProject, salePayments = [], branches = [], salesProducts = [], salesTargets = [] }) {
+export default function SalesWorkspace({ saleOrders, leads, customers, quotations, priceLists = [], returns = [], inventoryItems = [], invoices = [], creditNotes = [], departments = ['Sales'], users = [], savedViews = [], initialTab, canEditSoTax = false, projects = [], scopeOfSupply = [], initialScopeProject, salePayments = [], branches = [], salesProducts = [], salesTargets = [], stages = [] }) {
   const router = useRouter();
   // Sales-only now — Marketing has its own tab/URL (/market, MarketingWorkspace.jsx). No more
   // per-viewer group filtering; every group in PANEL_GROUPS always renders here.
@@ -2528,8 +2559,8 @@ export default function SalesWorkspace({ saleOrders, leads, customers, quotation
           </div>
         </>
       }>
-          {activePanel.key === 'enquiry' && <LeadsTab leads={leads} users={users} customers={customers} salesProducts={salesProducts} branches={branches} savedViews={savedViews} router={router} initialStatus="new" isEnquiry />}
-          {activePanel.key === 'leads' && <LeadsTab leads={leads} users={users} customers={customers} salesProducts={salesProducts} branches={branches} savedViews={savedViews} router={router} />}
+          {activePanel.key === 'enquiry' && <LeadsTab leads={leads} users={users} customers={customers} salesProducts={salesProducts} branches={branches} savedViews={savedViews} stages={stages} router={router} isEnquiry />}
+          {activePanel.key === 'leads' && <LeadsTab leads={leads} users={users} customers={customers} salesProducts={salesProducts} branches={branches} stages={stages} savedViews={savedViews} router={router} />}
           {activePanel.key === 'customers' && <CustomersTab customers={customers} router={router} />}
           {activePanel.key === 'quotations' && <QuotationsTab quotations={quotations} customers={customers} router={router} />}
           {activePanel.key === 'price_lists' && <PriceListsTab priceLists={priceLists} customers={customers} router={router} />}
