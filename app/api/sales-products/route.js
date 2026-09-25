@@ -4,7 +4,7 @@
 // precedent ItemSearchField vs QuotationItemField already set. GET (incl. ?search=) is CRM-wide
 // (Sales OR Marketing) read; POST/PATCH are department-gated writes.
 import { NextResponse } from 'next/server';
-import { execute, queryAll, nextNumber } from '@/lib/db';
+import { execute, queryAll, queryOne, nextNumber } from '@/lib/db';
 import { getFreshSessionUser, isInternal } from '@/lib/auth';
 import { requireCrmAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
@@ -42,14 +42,18 @@ export async function POST(req) {
   // stored verbatim instead.
   const productCode = String(b.product_code || '').trim() || await nextNumber('sales_product_code', 'PRD');
 
+  const templateId = numOrNull(b.bom_structure_template_id);
+  if (templateId && !(await queryOne('SELECT id FROM bom_structure_templates WHERE id = ? AND archived_at IS NULL', [templateId]))) {
+    return NextResponse.json({ error: 'That BOM structure template no longer exists' }, { status: 400 });
+  }
   try {
     const { lastId } = await execute(
       `INSERT INTO sales_products (product_code, product_name, product_type, description, price, unit, hsn_code, gst_pct,
-         category, cost_price, warranty_days, serviceable, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         category, cost_price, warranty_days, serviceable, bom_structure_template_id, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [productCode, productName, b.product_type || null, b.description || null, numOrNull(b.price),
         b.unit || null, b.hsn_code || null, numOrNull(b.gst_pct),
-        b.category || null, numOrNull(b.cost_price), numOrNull(b.warranty_days), b.serviceable == null ? null : b.serviceable ? 1 : 0, user.username]
+        b.category || null, numOrNull(b.cost_price), numOrNull(b.warranty_days), b.serviceable == null ? null : b.serviceable ? 1 : 0, templateId, user.username]
     );
     await audit('sales_product_created', { actor: user.username, detail: `${productCode} — ${productName}` });
     return NextResponse.json({ id: Number(lastId), product_code: productCode });

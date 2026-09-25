@@ -22,11 +22,18 @@ export async function GET(req) {
   const user = await getFreshSessionUser();
   if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-  const search = new URL(req.url).searchParams.get('search');
+  const sp = new URL(req.url).searchParams;
+  const search = sp.get('search');
   if (search) {
+    // Also returns item_count + linked_project for the project forms' order picker. An order may sit
+    // on more than one project (multi-variant convention), so linked orders are labelled, not hidden.
     const rows = await queryAll(
-      "SELECT * FROM sale_orders WHERE so_no LIKE ? ORDER BY created_at DESC LIMIT 20",
-      [`%${search}%`]
+      `SELECT so.*, (SELECT COUNT(*) FROM sale_order_items i WHERE i.sale_order_id = so.id) item_count,
+              (SELECT p.project_no FROM projects p WHERE p.sale_order_id = so.id LIMIT 1) linked_project
+         FROM sale_orders so
+        WHERE (so.so_no LIKE ? OR so.customer_name LIKE ?)
+        ORDER BY so.created_at DESC LIMIT 20`,
+      [`%${search}%`, `%${search}%`]
     );
     return NextResponse.json(await scopeRows(user, 'saleOrders', rows));
   }

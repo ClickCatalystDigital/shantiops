@@ -25,6 +25,8 @@ export default function EditProjectDialog({ project, customers = [], scopeOfSupp
     customer_id: project.customer_id ? String(project.customer_id) : '',
     description: project.description || '', order_date: project.order_date || '',
     company: project.company || 'Shanti Boilers',
+    sale_order_id: project.sale_order_id ? String(project.sale_order_id) : '',
+    sale_order_label: project.sale_order_no || (project.sale_order_id ? `Order #${project.sale_order_id}` : ''),
   });
   const [busy, setBusy] = useState(false);
   // The document's own header row — mostly always exactly one, auto-created at project creation
@@ -37,7 +39,8 @@ export default function EditProjectDialog({ project, customers = [], scopeOfSupp
     e.preventDefault();
     setBusy(true);
     try {
-      await api(`/api/projects/${project.id}`, { method: 'PATCH', body: f });
+      const { sale_order_label, ...body } = f;
+      await api(`/api/projects/${project.id}`, { method: 'PATCH', body: { ...body, customer_id: f.customer_id ? Number(f.customer_id) : null, sale_order_id: f.sale_order_id ? Number(f.sale_order_id) : null } });
       showToast('Project updated');
       setOpen(false);
       router.refresh();
@@ -86,7 +89,7 @@ export default function EditProjectDialog({ project, customers = [], scopeOfSupp
       <DialogContent className="sm:max-w-2xl" onInteractOutside={e => e.preventDefault()}>
         <DialogHeader><DialogTitle>Edit Project</DialogTitle></DialogHeader>
         <form onSubmit={submit} className="flex flex-col gap-4">
-          <ProjectFormFields f={f} setF={setF} customers={customers} />
+          <ProjectFormFields f={f} setF={setF} customers={customers} saleOrderPicker="edit" />
 
           <div className="flex flex-col gap-1.5">
             <Label>Scope of Supply document</Label>

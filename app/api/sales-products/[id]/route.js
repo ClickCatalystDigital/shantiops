@@ -8,8 +8,8 @@ import { requireCrmAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 
 const EDITABLE = ['product_code', 'product_name', 'product_type', 'description', 'price', 'unit', 'hsn_code', 'gst_pct', 'active',
-  'category', 'cost_price', 'warranty_days', 'serviceable'];
-const NUMERIC = new Set(['price', 'gst_pct', 'cost_price', 'warranty_days']);
+  'category', 'cost_price', 'warranty_days', 'serviceable', 'bom_structure_template_id'];
+const NUMERIC = new Set(['price', 'gst_pct', 'cost_price', 'warranty_days', 'bom_structure_template_id']);
 
 // Full product (the list sent to /sales leaves out description/attributes to stay light).
 export async function GET(req, { params }) {
@@ -33,6 +33,10 @@ export async function PATCH(req, { params }) {
     args.push(key === 'active' ? (b[key] ? 1 : 0) : key === 'serviceable' ? (b[key] == null ? null : b[key] ? 1 : 0) : NUMERIC.has(key) ? (b[key] != null && b[key] !== '' ? Number(b[key]) : null) : (b[key] || null));
   }
   if (!fields.length) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
+  if (b.bom_structure_template_id) {
+    const t = await queryOne('SELECT id FROM bom_structure_templates WHERE id = ? AND archived_at IS NULL', [Number(b.bom_structure_template_id)]);
+    if (!t) return NextResponse.json({ error: 'That BOM structure template no longer exists' }, { status: 400 });
+  }
   fields.push('updated_at = CURRENT_TIMESTAMP');
   args.push(params.id);
 

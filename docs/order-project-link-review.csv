@@ -1,0 +1,7 @@
+project_no,project_customer,project_company,sale_order,order_customer,reason
+"SB-1040","Blypin Enterprises Pvt Ltd","Shanti Techno Fab","SB-1040","SPECTRAA TECHNOLOGY SOLUTION","company differs (order: Shanti Boilers)"
+"SB-1057","TEST-STORES-DEMO (safe to ignore) Customer","Shanti Boilers","SB-1057","SUMANTH PUFF RICE","customer differs"
+"STF-IBR-053","Normada Secondary","Shanti Techno Fab","STF-IBR-053-C","NORMADA SECONDARY PASTING","extra order for this project (linked to STF-IBR-053; a project holds one order)"
+"STF-IBR-060","Sunny Processors","Shanti Techno Fab","STF-IBR-060-EXP-03","SUNNY PROCESSORS LTD","no exact order number; similar ones exist"
+"STF-IBR-061","Excel Foods","Shanti Techno Fab","STF-IBR-061-C","DNS AGRO FOODS P LTD (EXCEL FOODS) (GUJARAT FOODS)","extra order for this project (linked to STF-IBR-061; a project holds one order)"
+"SB-1114","Baud Distilleries","Shanti Boilers","SB-1114","Satupali O.S Shop","customer differs"

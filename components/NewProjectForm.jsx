@@ -13,7 +13,7 @@ import ProjectFormFields from '@/components/ProjectFormFields';
 // V3_CHANGES.md §12 Phase 2f — customer picker wires the new nullable projects.customer_id.
 // customer_name stays required/free-text exactly as before (backward-compat with the 6
 // pre-existing projects); picking a customer here just autofills it and sets the id alongside.
-export default function NewProjectForm({ customers = [], saleOrders = [] }) {
+export default function NewProjectForm({ customers = [] }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [f, setF] = useState({
@@ -27,8 +27,11 @@ export default function NewProjectForm({ customers = [], saleOrders = [] }) {
     e.preventDefault();
     setBusy(true);
     try {
-      const { id } = await api('/api/projects', { method: 'POST', body: f });
-      showToast('Project created');
+      const { sale_order_label, ...body } = f;
+      const { id, bomTemplates = [] } = await api('/api/projects', { method: 'POST', body });
+      const built = bomTemplates.filter(t => t.nodes);
+      const failed = bomTemplates.find(t => t.error);
+      showToast(failed ? `Project created. ${failed.error}` : built.length ? `Project created — BOM tree started from ${built.map(t => t.name).join(', ')}` : 'Project created', failed ? 'error' : undefined);
       setOpen(false);
       router.push(`/projects/${id}`);
     } catch (err) { showToast(err.message, 'error'); setBusy(false); }
@@ -46,7 +49,7 @@ export default function NewProjectForm({ customers = [], saleOrders = [] }) {
       <DialogContent className="sm:max-w-2xl" onInteractOutside={e => e.preventDefault()}>
         <DialogHeader><DialogTitle>New Project</DialogTitle></DialogHeader>
         <form onSubmit={submit} className="flex flex-col gap-4">
-          <ProjectFormFields f={f} setF={setF} customers={customers} saleOrders={saleOrders} />
+          <ProjectFormFields f={f} setF={setF} customers={customers} saleOrderPicker="new" />
           <DialogFooter>
             <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
             <Button type="submit" disabled={busy}>{busy ? 'Creating…' : 'Create'}</Button>

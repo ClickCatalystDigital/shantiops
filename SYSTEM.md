@@ -11627,6 +11627,23 @@ tag) and refuses to run if the tag already exists. Loaded 85 orders (₹26,90,25
 (₹21,10,81,830.91) as `company='Shanti Techno Fab'`, tag `import:sales-tracker-stf-2026-09-25`;
 rollback run once live and proven identical first. Client notes: `docs/sales-tracker-stf-data-issues.md`.
 
+**Orders linked to real projects + project pre-fill (2026-09-25).** `scripts/link-orders-to-projects.mjs`
+(dry run / `--apply` / `--rollback`, manifest `scripts/data/order-project-link-manifest.json`) set
+`projects.sale_order_id` only when the numbers match (spaces/hyphens/leading zeros ignored, or a
+letters-only site suffix when it is the only candidate), the company matches and the customer agrees
+(customer_id, a split unit inheriting its master's, or name containment) — 56 linked (SB-1108, the 50
+SB-1109 units, 5 STF-IBR projects), blank `customer_id`s filled from the order; 6 left for people in
+`docs/order-project-link-review.csv` (SB-1040, SB-1114, SB-1057 customer/company mismatch; the extra
+`-C` orders and `STF-IBR-060-EXP-03`). Rollback run live and proven identical first. New/Edit Project
+use `components/SaleOrderPicker.jsx` (searches `GET /api/sale-orders?search=` on number or customer,
+labels orders already on a project — one order may still cover several variant projects, so they are
+not hidden); picking fills customer + `customer_id`, company, order date and a description from the
+lines; SoS lines carry "HSN … · GST …%" in `spec`. `/projects` no longer preloads every order. Products
+can point to a Structure Template (`sales_products.bom_structure_template_id`, picker in Masters →
+Products fed by `GET /api/bom-structure-templates?lite=1`); `POST /api/projects` then builds one
+top-level BOM root per distinct template on the order (`insertTemplateTree`, best-effort after the
+transaction, response `bomTemplates`). Edit Project now sends a blank customer as `null`.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own

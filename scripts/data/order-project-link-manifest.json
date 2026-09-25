@@ -1,0 +1,453 @@
+{
+ "at": "2026-09-25T17:15:07.170Z",
+ "links": [
+  {
+   "project_id": 112,
+   "project_no": "SB-1109-01",
+   "sale_order_id": 972,
+   "so_no": "SB-1109-1-MAN",
+   "how": "site suffix",
+   "set_customer_id": null
+  },
+  {
+   "project_id": 113,
+   "project_no": "SB-1109-02",
+   "sale_order_id": 973,
+   "so_no": "SB-1109-2",
+   "how": "exact",
+   "set_customer_id": 166
+  },
+  {
+   "project_id": 114,
+   "project_no": "SB-1109-03",
+   "sale_order_id": 974,
+   "so_no": "SB-1109-3",
+   "how": "exact",
+   "set_customer_id": 166
+  },
+  {
+   "project_id": 115,
+   "project_no": "SB-1109-04",
+   "sale_order_id": 975,
+   "so_no": "SB-1109-4",
+   "how": "exact",
+   "set_customer_id": 166
+  },
+  {
+   "project_id": 116,
+   "project_no": "SB-1109-05",
+   "sale_order_id": 976,
+   "so_no": "SB-1109-5-KOTHA",
+   "how": "site suffix",
+   "set_customer_id": 166
+  },
+  {
+   "project_id": 117,
+   "project_no": "SB-1109-06",
+   "sale_order_id": 977,
+   "so_no": "SB-1109-6",
+   "how": "exact",
+   "set_customer_id": 166
+  },
+  {
+   "project_id": 118,
+   "project_no": "SB-1109-07",
+   "sale_order_id": 978,
+   "so_no": "SB-1109-7",
+   "how": "exact",
+   "set_customer_id": 166
+  },
+  {
+   "project_id": 119,
+   "project_no": "SB-1109-08",
+   "sale_order_id": 979,
+   "so_no": "SB-1109-8",
+   "how": "exact",
+   "set_customer_id": 166
+  },
+  {
+   "project_id": 120,
+   "project_no": "SB-1109-09",
+   "sale_order_id": 980,
+   "so_no": "SB-1109-9",
+   "how": "exact",
+   "set_customer_id": 166
+  },
+  {
+   "project_id": 121,
+   "project_no": "SB-1109-10",
+   "sale_order_id": 981,
+   "so_no": "SB-1109-10",
+   "how": "exact",
+   "set_customer_id": 166
+  },
+  {
+   "project_id": 122,
+   "project_no": "SB-1109-11",
+   "sale_order_id": 982,
+   "so_no": "SB-1109-11-KHAM",
+   "how": "site suffix",
+   "set_customer_id": 166
+  },
+  {
+   "project_id": 123,
+   "project_no": "SB-1109-12",
+   "sale_order_id": 983,
+   "so_no": "SB-1109-12",
+   "how": "exact",
+   "set_customer_id": 166
+  },
+  {
+   "project_id": 124,
+   "project_no": "SB-1109-13",
+   "sale_order_id": 984,
+   "so_no": "SB-1109-13-MULU",
+   "how": "site suffix",
+   "set_customer_id": 166
+  },
+  {
+   "project_id": 125,
+   "project_no": "SB-1109-14",
+   "sale_order_id": 985,
+   "so_no": "SB-1109-14",
+   "how": "exact",
+   "set_customer_id": 166
+  },
+  {
+   "project_id": 126,
+   "project_no": "SB-1109-15",
+   "sale_order_id": 986,
+   "so_no": "SB-1109-15-ASIF",
+   "how": "site suffix",
+   "set_customer_id": 166
+  },
+  {
+   "project_id": 127,
+   "project_no": "SB-1109-16",
+   "sale_order_id": 987,
+   "so_no": "SB-1109-16",
+   "how": "exact",
+   "set_customer_id": 166
+  },
+  {
+   "project_id": 128,
+   "project_no": "SB-1109-17",
+   "sale_order_id": 988,
+   "so_no": "SB-1109-17",
+   "how": "exact",
+   "set_customer_id": 166
+  },
+  {
+   "project_id": 129,
+   "project_no": "SB-1109-18",
+   "sale_order_id": 989,
+   "so_no": "SB-1109-18",
+   "how": "exact",
+   "set_customer_id": 166
+  },
+  {
+   "project_id": 130,
+   "project_no": "SB-1109-19",
+   "sale_order_id": 990,
+   "so_no": "SB-1109-19",
+   "how": "exact",
+   "set_customer_id": 166
+  },
+  {
+   "project_id": 131,
+   "project_no": "SB-1109-20",
+   "sale_order_id": 991,
+   "so_no": "SB-1109-20",
+   "how": "exact",
+   "set_customer_id": 166
+  },
+  {
+   "project_id": 132,
+   "project_no": "SB-1109-21",
+   "sale_order_id": 992,
+   "so_no": "SB-1109-21",
+   "how": "exact",
+   "set_customer_id": 166
+  },
+  {
+   "project_id": 133,
+   "project_no": "SB-1109-22",
+   "sale_order_id": 993,
+   "so_no": "SB-1109-22",
+   "how": "exact",
+   "set_customer_id": 166
+  },
+  {
+   "project_id": 134,
+   "project_no": "SB-1109-23",
+   "sale_order_id": 994,
+   "so_no": "SB-1109-23",
+   "how": "exact",
+   "set_customer_id": 166
+  },
+  {
+   "project_id": 135,
+   "project_no": "SB-1109-24",
+   "sale_order_id": 995,
+   "so_no": "SB-1109-24",
+   "how": "exact",
+   "set_customer_id": 166
+  },
+  {
+   "project_id": 136,
+   "project_no": "SB-1109-25",
+   "sale_order_id": 996,
+   "so_no": "SB-1109-25",
+   "how": "exact",
+   "set_customer_id": 166
+  },
+  {
+   "project_id": 137,
+   "project_no": "SB-1109-26",
+   "sale_order_id": 997,
+   "so_no": "SB-1109-26",
+   "how": "exact",
+   "set_customer_id": 166
+  },
+  {
+   "project_id": 138,
+   "project_no": "SB-1109-27",
+   "sale_order_id": 998,
+   "so_no": "SB-1109-27",
+   "how": "exact",
+   "set_customer_id": 166
+  },
+  {
+   "project_id": 139,
+   "project_no": "SB-1109-28",
+   "sale_order_id": 999,
+   "so_no": "SB-1109-28",
+   "how": "exact",
+   "set_customer_id": 166
+  },
+  {
+   "project_id": 140,
+   "project_no": "SB-1109-29",
+   "sale_order_id": 1000,
+   "so_no": "SB-1109-29",
+   "how": "exact",
+   "set_customer_id": 166
+  },
+  {
+   "project_id": 141,
+   "project_no": "SB-1109-30",
+   "sale_order_id": 1001,
+   "so_no": "SB-1109-30",
+   "how": "exact",
+   "set_customer_id": 166
+  },
+  {
+   "project_id": 142,
+   "project_no": "SB-1109-31",
+   "sale_order_id": 1002,
+   "so_no": "SB-1109-31",
+   "how": "exact",
+   "set_customer_id": 166
+  },
+  {
+   "project_id": 143,
+   "project_no": "SB-1109-32",
+   "sale_order_id": 1003,
+   "so_no": "SB-1109-32",
+   "how": "exact",
+   "set_customer_id": 166
+  },
+  {
+   "project_id": 144,
+   "project_no": "SB-1109-33",
+   "sale_order_id": 1004,
+   "so_no": "SB-1109-33",
+   "how": "exact",
+   "set_customer_id": 166
+  },
+  {
+   "project_id": 145,
+   "project_no": "SB-1109-34",
+   "sale_order_id": 1005,
+   "so_no": "SB-1109-34",
+   "how": "exact",
+   "set_customer_id": 166
+  },
+  {
+   "project_id": 146,
+   "project_no": "SB-1109-35",
+   "sale_order_id": 1006,
+   "so_no": "SB-1109-35",
+   "how": "exact",
+   "set_customer_id": 166
+  },
+  {
+   "project_id": 147,
+   "project_no": "SB-1109-36",
+   "sale_order_id": 1007,
+   "so_no": "SB-1109-36",
+   "how": "exact",
+   "set_customer_id": 166
+  },
+  {
+   "project_id": 148,
+   "project_no": "SB-1109-37",
+   "sale_order_id": 1008,
+   "so_no": "SB-1109-37",
+   "how": "exact",
+   "set_customer_id": 166
+  },
+  {
+   "project_id": 149,
+   "project_no": "SB-1109-38",
+   "sale_order_id": 1009,
+   "so_no": "SB-1109-38",
+   "how": "exact",
+   "set_customer_id": 166
+  },
+  {
+   "project_id": 150,
+   "project_no": "SB-1109-39",
+   "sale_order_id": 1010,
+   "so_no": "SB-1109-39",
+   "how": "exact",
+   "set_customer_id": 166
+  },
+  {
+   "project_id": 151,
+   "project_no": "SB-1109-40",
+   "sale_order_id": 1011,
+   "so_no": "SB-1109-40",
+   "how": "exact",
+   "set_customer_id": 166
+  },
+  {
+   "project_id": 152,
+   "project_no": "SB-1109-41",
+   "sale_order_id": 1012,
+   "so_no": "SB-1109-41",
+   "how": "exact",
+   "set_customer_id": 166
+  },
+  {
+   "project_id": 153,
+   "project_no": "SB-1109-42",
+   "sale_order_id": 1013,
+   "so_no": "SB-1109-42",
+   "how": "exact",
+   "set_customer_id": 166
+  },
+  {
+   "project_id": 154,
+   "project_no": "SB-1109-43",
+   "sale_order_id": 1014,
+   "so_no": "SB-1109-43",
+   "how": "exact",
+   "set_customer_id": 166
+  },
+  {
+   "project_id": 155,
+   "project_no": "SB-1109-44",
+   "sale_order_id": 1015,
+   "so_no": "SB-1109-44",
+   "how": "exact",
+   "set_customer_id": 166
+  },
+  {
+   "project_id": 156,
+   "project_no": "SB-1109-45",
+   "sale_order_id": 1016,
+   "so_no": "SB-1109-45",
+   "how": "exact",
+   "set_customer_id": 166
+  },
+  {
+   "project_id": 157,
+   "project_no": "SB-1109-46",
+   "sale_order_id": 1017,
+   "so_no": "SB-1109-46",
+   "how": "exact",
+   "set_customer_id": 166
+  },
+  {
+   "project_id": 158,
+   "project_no": "SB-1109-47",
+   "sale_order_id": 1018,
+   "so_no": "SB-1109-47",
+   "how": "exact",
+   "set_customer_id": 166
+  },
+  {
+   "project_id": 159,
+   "project_no": "SB-1109-48",
+   "sale_order_id": 1019,
+   "so_no": "SB-1109-48",
+   "how": "exact",
+   "set_customer_id": 166
+  },
+  {
+   "project_id": 160,
+   "project_no": "SB-1109-49",
+   "sale_order_id": 1020,
+   "so_no": "SB-1109-49",
+   "how": "exact",
+   "set_customer_id": 166
+  },
+  {
+   "project_id": 161,
+   "project_no": "SB-1109-50",
+   "sale_order_id": 1021,
+   "so_no": "SB-1109-50",
+   "how": "exact",
+   "set_customer_id": 166
+  },
+  {
+   "project_id": 213,
+   "project_no": "SB-1108",
+   "sale_order_id": 971,
+   "so_no": "SB-1108",
+   "how": "exact",
+   "set_customer_id": null
+  },
+  {
+   "project_id": 248,
+   "project_no": "STF-IBR-053",
+   "sale_order_id": 1204,
+   "so_no": "STF-IBR-053",
+   "how": "exact",
+   "set_customer_id": null
+  },
+  {
+   "project_id": 250,
+   "project_no": "STF-IBR-061",
+   "sale_order_id": 1214,
+   "so_no": "STF-IBR-061",
+   "how": "exact",
+   "set_customer_id": null
+  },
+  {
+   "project_id": 281,
+   "project_no": "STF-IBR-052",
+   "sale_order_id": 1203,
+   "so_no": "STF-IBR-052",
+   "how": "exact",
+   "set_customer_id": null
+  },
+  {
+   "project_id": 282,
+   "project_no": "STF-IBR-041",
+   "sale_order_id": 1192,
+   "so_no": "STF-IBR-041",
+   "how": "exact",
+   "set_customer_id": null
+  },
+  {
+   "project_id": 283,
+   "project_no": "STF-IBR-050",
+   "sale_order_id": 1201,
+   "so_no": "STF-IBR-050",
+   "how": "exact",
+   "set_customer_id": null
+  }
+ ]
+}

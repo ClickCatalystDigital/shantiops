@@ -6,6 +6,8 @@
 // supports it) doesn't replay the Scope-of-Supply auto-population POST /api/projects does at
 // creation time, so showing the picker there would imply behavior Edit doesn't actually have.
 import CustomerPicker from '@/components/CustomerPicker';
+import SaleOrderPicker from '@/components/SaleOrderPicker';
+import { api } from '@/lib/client';
 import { useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -42,7 +44,7 @@ function ModelDesignField({ value, onChange }) {
 }
 
 // Customers are searched through the API (CustomerPicker); the `customers` prop is no longer needed.
-export default function ProjectFormFields({ f, setF, customers = [], saleOrders = null }) {
+export default function ProjectFormFields({ f, setF, customers = [], saleOrderPicker = null }) {
   // BOILER- prefix only makes sense for models the folder generator itself treats as a boiler
   // (lib/qc-models.js) — PRS/HEADERS are a different equipment noun, so no preview is shown for
   // them yet rather than showing a misleading literal "BOILER-" label.
@@ -50,7 +52,32 @@ export default function ProjectFormFields({ f, setF, customers = [], saleOrders 
   const preview = cfg?.noun === 'Boiler'
     ? `BOILER-${f.series}-${f.model_design || '—'}-${f.model_capacity || '—'}-${f.model_pressure || '—'}`
     : null;
-  const showSaleOrder = Array.isArray(saleOrders) && saleOrders.length > 0;
+  const showSaleOrder = !!saleOrderPicker;
+  const [soNote, setSoNote] = useState('');
+  // Picking an order fills what Sales already recorded: customer (with its id), company, order
+  // date, and a description from the order's product lines. Typed values are only replaced when
+  // blank (description/date), so picking an order never wipes something the user wrote.
+  async function pickOrder(id, row) {
+    if (!id) { setF(prev => ({ ...prev, sale_order_id: '', sale_order_label: '' })); setSoNote(''); return; }
+    const label = row ? [row.so_no, row.customer_name].filter(Boolean).join(' · ') : f.sale_order_label;
+    setF(prev => ({ ...prev, sale_order_id: id, sale_order_label: label }));
+    try {
+      const so = await api(`/api/sale-orders/${id}`);
+      const lines = so.items?.length ? so.items : (so.prefill_items || []);
+      const desc = lines.map(l => [l.qty ? `${l.qty}${l.uom ? ' ' + l.uom : ''} ×` : null, l.item_description].filter(Boolean).join(' ')).filter(Boolean).join('; ');
+      setF(prev => ({
+        ...prev,
+        customer_name: so.customer_name || prev.customer_name,
+        customer_id: so.customer_id ? String(so.customer_id) : prev.customer_id,
+        company: so.company || prev.company,
+        order_date: prev.order_date || so.order_date || '',
+        description: prev.description || desc.slice(0, 500),
+      }));
+      const onOther = row?.linked_project && row.linked_project !== f.project_no ? `Already on ${row.linked_project}. ` : '';
+      setSoNote(onOther + (saleOrderPicker !== 'new' ? '' : so.items?.length ? `${so.items.length} order line(s) will be copied into the Scope of Supply.`
+        : 'This order has no line items yet — the Scope of Supply starts empty.'));
+    } catch (e) { setSoNote(''); }
+  }
 
   return (
     <>
@@ -58,26 +85,8 @@ export default function ProjectFormFields({ f, setF, customers = [], saleOrders 
         {showSaleOrder && (
           <div className="flex flex-col gap-1.5">
             <Label>Sale Order</Label>
-            <Select modal={false} value={f.sale_order_id || 'none'} onValueChange={id => {
-              if (id === 'none') { setF({ ...f, sale_order_id: '' }); return; }
-              const so = saleOrders.find(s => String(s.id) === id);
-              setF({
-                ...f, sale_order_id: id,
-                customer_name: so?.customer_name || f.customer_name,
-                customer_id: '',
-                company: so?.company || f.company,
-              });
-            }}>
-              <SelectTrigger><SelectValue placeholder="None — create from scratch" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">None — create from scratch</SelectItem>
-                {saleOrders.map(s => (
-                  <SelectItem key={s.id} value={String(s.id)}>
-                    {s.so_no}{s.customer_name ? ` · ${s.customer_name}` : ''}{s.total ? ` · ${formatMoney(s.total)}` : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SaleOrderPicker value={f.sale_order_id} label={f.sale_order_label || ''} onChange={pickOrder} />
+            {soNote && <p className="text-xs text-muted-foreground">{soNote}</p>}
           </div>
         )}
         <div className="flex flex-col gap-1.5">

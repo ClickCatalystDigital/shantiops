@@ -5,13 +5,20 @@
 // child items table; node_count/item_count are stamped, not read live, so listing stays one query.
 import { NextResponse } from 'next/server';
 import { execute, queryAll } from '@/lib/db';
-import { getFreshSessionUser } from '@/lib/auth';
+import { getFreshSessionUser, isInternal } from '@/lib/auth';
 import { requireEngineeringAction } from '@/lib/action-permissions';
 import { NODE_TYPE_SUGGESTIONS } from '@/lib/bom-tree.mjs';
 import { computeTemplateCounts } from '@/lib/bom-structure.mjs';
 
 export async function GET(req) {
   const user = await getFreshSessionUser();
+  // ?lite=1 — names only, for the Product Master's "BOM structure template" picker (Sales can pick
+  // one without Engineering access; the template content itself stays Engineering-only).
+  if (new URL(req.url).searchParams.get('lite') === '1') {
+    if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    return NextResponse.json(await queryAll(
+      'SELECT id, name, level, series, root_count FROM bom_structure_templates WHERE archived_at IS NULL ORDER BY name'));
+  }
   const denied = await requireEngineeringAction(user, 'engineering.assembly.add');
   if (denied) return denied;
   const url = new URL(req.url);

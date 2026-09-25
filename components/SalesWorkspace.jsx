@@ -2668,7 +2668,12 @@ function ProductDialog({ product, onClose, router }) {
     price: product?.price ?? '', unit: product?.unit || '', hsn_code: product?.hsn_code || '',
     gst_pct: product?.gst_pct ?? '', category: product?.category || '', cost_price: product?.cost_price ?? '',
     warranty_days: product?.warranty_days ?? '', serviceable: product?.serviceable ?? null,
+    bom_structure_template_id: product?.bom_structure_template_id ? String(product.bom_structure_template_id) : '',
   });
+  // BOM structure template — when a Sale Order with this product becomes a project, the project's
+  // BOM tree is built from it (POST /api/projects). Names only; the content stays Engineering's.
+  const [templates, setTemplates] = useState([]);
+  useEffect(() => { api('/api/bom-structure-templates?lite=1').then(setTemplates).catch(() => {}); }, []);
   let attrs = {};
   try { attrs = product?.attributes_json ? JSON.parse(product.attributes_json) : {}; } catch { attrs = {}; }
   const [saving, setSaving] = useState(false);
@@ -2680,7 +2685,7 @@ function ProductDialog({ product, onClose, router }) {
     setSaving(true);
     try {
       const n = v => (v === '' || v == null ? null : Number(v));
-      const body = { ...f, product_name: f.product_name.trim(), price: n(f.price), gst_pct: n(f.gst_pct), cost_price: n(f.cost_price), warranty_days: n(f.warranty_days) };
+      const body = { ...f, product_name: f.product_name.trim(), price: n(f.price), gst_pct: n(f.gst_pct), cost_price: n(f.cost_price), warranty_days: n(f.warranty_days), bom_structure_template_id: n(f.bom_structure_template_id) };
       if (isEdit) await api(`/api/sales-products/${product.id}`, { method: 'PATCH', body });
       else await api('/api/sales-products', { method: 'POST', body });
       showToast(isEdit ? 'Product updated' : 'Product added');
@@ -2715,6 +2720,16 @@ function ProductDialog({ product, onClose, router }) {
             <div className="grid gap-1.5"><Label>Warranty (days)</Label><Input type="number" min="0" value={f.warranty_days} onChange={e => set('warranty_days')(e.target.value)} /></div>
           </div>
           <label className="flex items-center gap-2 text-sm"><Checkbox checked={!!f.serviceable} onCheckedChange={v => set('serviceable')(v ? 1 : 0)} />Serviceable product</label>
+          <div className="grid gap-1.5"><Label>BOM structure template (optional)</Label>
+            <Select value={f.bom_structure_template_id || 'none'} onValueChange={v => set('bom_structure_template_id')(v === 'none' ? '' : v)}>
+              <SelectTrigger><SelectValue placeholder="None" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">None</SelectItem>
+                {templates.map(t => <SelectItem key={t.id} value={String(t.id)}>{t.name}{t.series ? ` · ${t.series}` : ''}{t.root_count > 1 ? ' · complete BOM' : ` · ${t.level}`}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">A project made from an order with this product starts its BOM tree from this template.</p>
+          </div>
           {(product?.legacy_code || Object.keys(attrs).length > 0) && (
             <p className="text-xs text-muted-foreground">
               From the old CRM:{product?.legacy_code && product.legacy_code !== product.product_code ? ` code ${product.legacy_code};` : ''}

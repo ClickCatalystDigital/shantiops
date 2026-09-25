@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { nextNumber, createProjectMilestones, withTransaction, queryOne, execute } from '@/lib/db';
+import { nextNumber, createProjectMilestones, withTransaction, queryOne, queryAll, execute } from '@/lib/db';
+import { insertTemplateTree } from '@/app/api/bom-assemblies/[id]/apply-template/route';
 import { getFreshSessionUser, isDesignHead, isCustomer, canAccessProject, parseProjectIds } from '@/lib/auth';
 import { getActiveProjectsList } from '@/lib/data';
 import { isValidSeries } from '@/lib/qc-series';
@@ -45,7 +46,8 @@ export async function POST(req) {
   let company = COMPANY_NAMES[0];
   if (b.sale_order_id) {
     const so = await queryOne('SELECT company FROM sale_orders WHERE id = ?', [b.sale_order_id]);
-    if (so?.company) company = so.company;
+    if (!so) return NextResponse.json({ error: 'Sale Order not found' }, { status: 400 });
+    if (so.company) company = so.company;
   } else if (COMPANY_NAMES.includes(b.company)) {
     company = b.company;
   }
@@ -92,14 +94,16 @@ export async function POST(req) {
         });
         const headerId = Number(header.lastInsertRowid);
         const items = await tx.execute({
-          sql: 'SELECT item_description, qty, uom, rate, amount, sort_order, id FROM sale_order_items WHERE sale_order_id = ? ORDER BY sort_order, id',
+          sql: 'SELECT item_description, qty, uom, rate, amount, sort_order, id, hsn_code, item_tax_pct FROM sale_order_items WHERE sale_order_id = ? ORDER BY sort_order, id',
           args: [b.sale_order_id],
         });
         for (const it of items.rows) {
           await tx.execute({
-            sql: `INSERT INTO scope_of_supply_items (scope_of_supply_id, description, qty, uom, unit_price, amount, sale_order_item_id, sort_order)
-                  VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            args: [headerId, it.item_description, it.qty ?? null, it.uom || null, it.rate ?? null, it.amount ?? null, it.id, it.sort_order],
+            sql: `INSERT INTO scope_of_supply_items (scope_of_supply_id, description, spec, qty, uom, unit_price, amount, sale_order_item_id, sort_order)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            args: [headerId, it.item_description,
+              [it.hsn_code ? `HSN ${it.hsn_code}` : null, it.item_tax_pct != null ? `GST ${it.item_tax_pct}%` : null].filter(Boolean).join(' · ') || null,
+              it.qty ?? null, it.uom || null, it.rate ?? null, it.amount ?? null, it.id, it.sort_order],
           });
         }
         itemCount = items.rows.length;
@@ -144,8 +148,32 @@ export async function POST(req) {
       } catch (err) { /* best-effort, same as the notifications above */ }
     }
 
+    // BOM tree from the products sold: each distinct Structure Template linked to a product on the
+    // order lands as its own top-level root (same insert as "Build from Templates"). Best-effort and
+    // outside the transaction — a failure leaves a normal project whose BOM Engineering builds by hand.
+    const bomTemplates = [];
+    if (b.sale_order_id) {
+      try {
+        const tpls = await queryAll(
+          `SELECT DISTINCT t.id, t.name, t.tree_json FROM sale_order_items soi
+             JOIN sales_products sp ON sp.id = soi.product_id
+             JOIN bom_structure_templates t ON t.id = sp.bom_structure_template_id AND t.archived_at IS NULL
+            WHERE soi.sale_order_id = ? ORDER BY t.id`, [b.sale_order_id]);
+        for (const t of tpls) {
+          let tree = [];
+          try { tree = JSON.parse(t.tree_json); } catch { continue; }
+          const r = await insertTemplateTree(tree, projectId, null, t.id, user.username);
+          if (r.nodeCount) bomTemplates.push({ name: t.name, nodes: r.nodeCount, items: r.itemCount });
+        }
+        if (bomTemplates.length) {
+          await audit('bom_assembly_apply_template', { actor: user.username,
+            detail: `project ${projectId} BOM built at creation from ${bomTemplates.map(t => t.name).join(', ')}` });
+        }
+      } catch (err) { bomTemplates.push({ error: 'BOM templates could not be applied — build the tree from Engineering → BOMs.' }); }
+    }
+
     await audit('project_created', { actor: user.username, detail: `${project_no} · ${b.customer_name.trim()}` });
-    return NextResponse.json({ id: projectId, project_no });
+    return NextResponse.json({ id: projectId, project_no, bomTemplates });
   } catch (e) {
     if (String(e).includes('UNIQUE')) {
       return NextResponse.json({ error: `Project ${project_no} already exists` }, { status: 409 });
