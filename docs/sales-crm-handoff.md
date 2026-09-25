@@ -17,8 +17,8 @@ built, with verification notes). Branch: `claude/exciting-mccarthy-cj760h`, cont
 | Phase 3 — reports: CSV/Excel on every report, Employee 360, real funnel, Sales Overview | **Done** |
 | Phase 4 — Customer 360, competitors, installed base, quotation revisions + discount approval, Price Lists → products | **Done** |
 | Gap review — visibility holes, Create PO stage, customer address, Home follow-ups, date bug, fresh-DB boot | **Done** (SYSTEM.md §5db "Gap review") |
-| Remove test data from the shared DB | **Waiting** — this environment's network blocked the Turso host |
-| Old-CRM enquiry import (605 rows, PDF-extracted CSV) | **Waiting** on the client's choice of source (see below) |
+| Remove test data from the shared DB | **Dropped** — client: the Sales Head deletes test rows later if not needed |
+| Old-CRM enquiry import (605 rows, PDF-extracted CSV) | **Done** — 598 enquiries, 459 linked to customers (SYSTEM.md §5db, `docs/enquiry-import-notes.md`) |
 | Deferred (not this run) | Zoho email (hosting decision), Marketing workspace, SMS/WhatsApp |
 
 ## Left for the client / next chat
@@ -29,8 +29,9 @@ built, with verification notes). Branch: `claude/exciting-mccarthy-cj760h`, cont
 - **Settings to fill in**: funnel stage probabilities (Sales → Masters → Funnel Stages; blank = a
   default), the discount-approval limit (Quotations tab, default 10%), price lists per product.
 - **Techno Fab orders + payments import** — waiting on files.
-- Stage-by-stage and customer-level reports need real enquiry data; today `leads` is empty, so
-  funnel/360 numbers show only imported orders.
+- 139 imported enquiries aren't linked to a customer (`docs/enquiry-import-review.csv`) — the Sales Head
+  links them via Convert. Imported enquiries have no A/C manager/value; assign them to show up for members.
+- Next: link sale orders to real projects, then Techno Fab orders + payments (files from the client).
 - Other Sales reports (Prospect Summary, Date-wise, etc.) kept their layout; they gained CSV/Excel.
 
 ## Decisions already made by the client (don't re-ask)

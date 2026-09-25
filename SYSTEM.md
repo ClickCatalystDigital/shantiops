@@ -11603,6 +11603,23 @@ Chromium sweep of every `/sales` tab and every Sales report. Fixed:
   doesn't exist yet and adds it right after that table's CREATE; one-time backfills run at the end.
   Existing databases are unaffected.
 
+**Old-CRM enquiries imported (2026-09-25).** The old CRM's sales call list (PDF, 605 rows, extracted to
+CSV) loaded into `leads` by `scripts/import-enquiries.mjs` (parser + matcher `lib/enquiry-import.mjs`,
+selfcheck). 605 rows → 598 enquiries (7 printed twice). The list has no stage, A/C manager or value:
+every enquiry is at "Lead - Cold", unassigned (Head-only until assigned), no expected value. The 15
+dated within 12 months are open; 583 older are closed sales calls (`sales_call_closed_by = 'old CRM
+import'`). Product text was cut off in the PDF, so it's kept as one free-text `lead_products` line and
+never matched to the Product Master. Customers linked only on an exact full-name match to exactly one
+customer (`compactName`: legal suffixes, spacing and punctuation ignored, initials kept; the old-CRM
+import's "Name (code)" renames count as the same name) — 459 linked, 139 listed in
+`docs/enquiry-import-review.csv` (mostly many customers sharing a first name like "Anil"); the 418
+linked customers with no phone/email got the enquiry's. New `leads.import_tag`; rollback
+`IMPORT_MANIFEST=scripts/data/enquiry-import-manifest.json node scripts/import-enquiries.mjs --rollback`
+(proven byte-identical on a 20-row trial; inserts are batched and guarded so `--resume` can't duplicate).
+New rule `isClosedCall()` (`lib/lead-stage.mjs`, selfchecked): a sales call closed at an open stage is
+not pipeline — left out of the Leads board and `funnelRows()`, still in the Leads list and on the
+customer. Notes: `docs/enquiry-import-notes.md`.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own

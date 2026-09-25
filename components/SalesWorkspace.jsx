@@ -42,7 +42,7 @@ import CustomerPicker from '@/components/CustomerPicker';
 import { defaultCompanyClient } from '@/lib/company-filter.mjs';
 import { useLeadConvert, SimilarCustomersHint, useSimilarCustomers } from '@/components/ConvertLeadChoice';
 import { renderTemplate } from '@/lib/email-template.mjs';
-import { DEFAULT_STAGE, isEnquiryStage, isSlaBreached, stageProbability } from '@/lib/lead-stage.mjs';
+import { DEFAULT_STAGE, isClosedCall, isEnquiryStage, isSlaBreached, stageProbability } from '@/lib/lead-stage.mjs';
 import { QTY_UNITS } from '@/lib/qty-units.mjs';
 import { lineAmount, quotationTotals } from '@/lib/sales-lines.mjs';
 
@@ -885,8 +885,9 @@ export function AddEnquiryDialog({ leads = [], users, salesProducts, stages = []
 // lives here now, over enquiries instead of opportunities. Same native HTML5 drag pattern as
 // PipelineWorkspace.jsx. Dropping on a won stage points to Create PO (which records the order);
 // dropping on Order Lost opens the reason dialog; every other stage changes directly.
-function LeadBoard({ leads, stages, onOpen, onLost, router }) {
+function LeadBoard({ leads: allLeads, stages, onOpen, onLost, router }) {
   const [busyId, setBusyId] = useState(null);
+  const leads = allLeads.filter(l => !isClosedCall(l, stages)); // closed sales calls aren't pipeline
   const ordered = [...stages].sort((a, b) => a.sort_order - b.sort_order);
   const wonNames = new Set(stages.filter(s => s.is_won).map(s => s.name));
   const lostNames = new Set(stages.filter(s => s.is_lost).map(s => s.name));
