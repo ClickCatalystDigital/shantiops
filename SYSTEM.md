@@ -11620,6 +11620,13 @@ New rule `isClosedCall()` (`lib/lead-stage.mjs`, selfchecked): a sales call clos
 not pipeline — left out of the Leads board and `funnelRows()`, still in the Leads list and on the
 customer. Notes: `docs/enquiry-import-notes.md`.
 
+**Techno Fab orders + payments imported (2026-09-25).** `scripts/import-sales-tracker.mjs` now takes
+`--company`, `--tag`, `--initial` (the first run's test-order cleanup + payments-table rebuild, never
+repeated) and `--rollback`; the import is one atomic batch (payments find their order by `so_no` +
+tag) and refuses to run if the tag already exists. Loaded 85 orders (₹26,90,25,647) + 257 payments
+(₹21,10,81,830.91) as `company='Shanti Techno Fab'`, tag `import:sales-tracker-stf-2026-09-25`;
+rollback run once live and proven identical first. Client notes: `docs/sales-tracker-stf-data-issues.md`.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own

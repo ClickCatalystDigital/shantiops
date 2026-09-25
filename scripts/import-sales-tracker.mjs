@@ -1,7 +1,12 @@
 // scripts/import-sales-tracker.mjs — one-off import of the legacy "Order & Payments Tracker" Excel
 // (sheets ORDER + PAYMENT) into sale_orders / sale_order_payments.
 //   node --env-file=.env.local scripts/import-sales-tracker.mjs <file.xlsx>           # dry run, writes nothing
-//   node --env-file=.env.local scripts/import-sales-tracker.mjs <file.xlsx> --apply   # cleanup + import
+//   node --env-file=.env.local scripts/import-sales-tracker.mjs <file.xlsx> --apply   # import
+//   options: --company="Shanti Techno Fab" --tag=import:sales-tracker-stf-2026-09-25
+//            --initial   (first run only: remove the 3 test orders + recreate sale_order_payments)
+//            --rollback  (no file: deletes payments then orders carrying --tag)
+// The import is one atomic batch and refuses to run if rows with the tag already exist, so a lost
+// network response can never leave it half-written or double-written.
 // Payments sheet is the source of truth for money; the ORDER sheet's Received/Pending columns are
 // formulas and are only used to report mismatches. Rollback: everything imported is tagged
 // created_by = TAG (orders + payments).
@@ -9,10 +14,13 @@ import XLSX from 'xlsx';
 import fs from 'fs';
 import { createClient } from '@libsql/client';
 
-const file = process.argv[2];
+const opt = k => process.argv.find(a => a.startsWith(`--${k}=`))?.slice(k.length + 3);
+const file = process.argv.slice(2).find(a => !a.startsWith('--'));
 const APPLY = process.argv.includes('--apply');
-const TAG = 'import:sales-tracker-2026-09-19';
-const COMPANY = 'Shanti Boilers';
+const INITIAL = process.argv.includes('--initial');
+const ROLLBACK = process.argv.includes('--rollback');
+const TAG = opt('tag') || 'import:sales-tracker-2026-09-19';
+const COMPANY = opt('company') || 'Shanti Boilers';
 const TEST_SO = { 37: 'SO-22', 38: 'SO-23', 39: 'SO-24' }; // id → so_no, verified before delete
 const STAGE_COLS = ['advance', 'dispatched', 'site_completed', 'commissioning', 'pending_issue', 'cleared_issue']; // sheet cols 11..16
 const MODES = ['NEFT/IMPS', 'Cash', 'Cheque', 'Paytm', 'Credit note', 'Debit Note', 'Other'];
@@ -22,6 +30,23 @@ const STATUS = { DISPATCHED: 'Dispatched', CLOSED: 'Closed', WIP: 'WIP', READY: 
 
 const db = createClient({ url: process.env.TURSO_URL, authToken: process.env.TURSO_AUTH_TOKEN });
 const q = async (sql, args = []) => (await db.execute({ sql, args })).rows.map(r => ({ ...r }));
+const tagged = async () => (await q('SELECT (SELECT COUNT(*) FROM sale_orders WHERE created_by = ?) o, (SELECT COUNT(*) FROM sale_order_payments WHERE created_by = ?) p', [TAG, TAG]))[0];
+
+if (ROLLBACK) {
+  const before = await tagged();
+  const blockers = await q(`SELECT (SELECT COUNT(*) FROM projects WHERE sale_order_id IN (SELECT id FROM sale_orders WHERE created_by = ?)) proj,
+    (SELECT COUNT(*) FROM sale_order_payments WHERE created_by IS NOT ? AND sale_order_id IN (SELECT id FROM sale_orders WHERE created_by = ?)) pay,
+    (SELECT COUNT(*) FROM sale_order_items WHERE sale_order_id IN (SELECT id FROM sale_orders WHERE created_by = ?)) items`, [TAG, TAG, TAG, TAG]);
+  if (Object.values(blockers[0]).some(n => n > 0)) { console.error('Refusing: imported orders now have projects/items/hand-entered payments:', blockers[0]); process.exit(1); }
+  await db.batch([
+    { sql: 'DELETE FROM sale_order_payments WHERE created_by = ?', args: [TAG] },
+    { sql: 'DELETE FROM sale_orders WHERE created_by = ?', args: [TAG] },
+  ], 'write');
+  console.log(`Rolled back ${TAG}: ${before.o} orders, ${before.p} payments removed. Left:`, await tagged());
+  process.exit(0);
+}
+if (!file) { console.error('Usage: import-sales-tracker.mjs <file.xlsx> [--apply] [--company=..] [--tag=..] [--initial] | --rollback --tag=..'); process.exit(1); }
+console.log(`Company: ${COMPANY}   tag: ${TAG}${INITIAL ? '   (initial run)' : ''}`);
 
 // ---------- helpers ----------
 const clean = v => String(v ?? '').replace(/\s+/g, ' ').trim();
@@ -131,13 +156,18 @@ console.log(`\nRECONCILE  orders whose sheet "Payment Received" ≠ sum of PAYME
 mismatch.slice(0, 12).forEach(o => console.log(`  ${o.so_no.padEnd(18)} sheet ${o.sheet_received.toLocaleString('en-IN')}  payments ${(got.get(o) || 0).toLocaleString('en-IN')}`));
 console.log(`\nSELF-CHECK date parsing: ${dateChecked} payment dates compared with the sheet's own text, ${dateBad} mismatches`);
 
-// what blocks/needs care when removing the 3 test orders
+const existingIds = new Set((await q('SELECT so_no FROM sale_orders')).map(r => nkey(r.so_no)));
+const clash = orders.filter(o => existingIds.has(nkey(o.so_no)));
+console.log(`\nORDER IDs already in the database: ${clash.length}${clash.length ? ' → ' + clash.map(o => o.so_no).join(', ') : ''}`);
+
+// what blocks/needs care when removing the 3 test orders (first run only)
 const refs = [];
+const hits = new Set(); // tables that really hold rows pointing at the test orders
+const ids = Object.keys(TEST_SO).join(',');
+if (INITIAL) {
 for (const t of await q("SELECT name FROM sqlite_master WHERE type='table'")) {
   for (const fk of await q(`PRAGMA foreign_key_list(${t.name})`)) if (['sale_orders', 'sale_order_items'].includes(fk.table)) refs.push([t.name, fk.from, fk.table]);
 }
-const ids = Object.keys(TEST_SO).join(',');
-const hits = new Set(); // tables that really hold rows pointing at the test orders
 console.log(`\nTEST DATA to remove (SO ids ${ids}) — referencing rows:`);
 for (const [t, col, parent] of refs) {
   const n = (await q(parent === 'sale_orders'
@@ -145,10 +175,15 @@ for (const [t, col, parent] of refs) {
     : `SELECT COUNT(*) n FROM ${t} WHERE ${col} IN (SELECT id FROM sale_order_items WHERE sale_order_id IN (${ids}))`))[0].n;
   if (n) { hits.add(t); console.log(`  ${t}.${col} → ${parent}: ${n}`); }
 }
+}
 
 if (!APPLY) { console.log('\nDRY RUN — nothing written. Re-run with --apply to clean up test data and import.'); process.exit(0); }
 if (dateBad) { console.error('Date self-check failed — aborting.'); process.exit(1); }
+if (clash.length) { console.error('Order IDs already exist — aborting.'); process.exit(1); }
+const already = await tagged();
+if (already.o || already.p) { console.error(`Rows tagged ${TAG} already exist (${already.o} orders, ${already.p} payments) — roll back first.`); process.exit(1); }
 
+if (INITIAL) {
 // ---------- apply ----------
 const soRows = await q(`SELECT id, so_no FROM sale_orders WHERE id IN (${ids})`);
 for (const r of soRows) if (TEST_SO[r.id] !== r.so_no) { console.error(`Refusing: id ${r.id} is ${r.so_no}, expected ${TEST_SO[r.id]}`); process.exit(1); }
@@ -178,25 +213,25 @@ await db.batch([
   { sql: 'CREATE INDEX IF NOT EXISTS idx_sale_order_payments_so ON sale_order_payments(sale_order_id)', args: [] },
 ], 'write');
 console.log('\nTest data removed.');
+}
 
-const CH = 150;
-for (let i = 0; i < orders.length; i += CH) {
-  await db.batch(orders.slice(i, i + CH).map(o => ({
+// one atomic batch: every order and payment lands, or none do
+await db.batch([
+  ...orders.map(o => ({
     sql: `INSERT INTO sale_orders (so_no, customer_name, customer_id, status, company, total, created_by, created_at, order_date, invoice_ref, sales_person_override, remarks, track_status,
             stage_advance, stage_dispatched, stage_site_completed, stage_commissioning, stage_pending_issue, stage_cleared_issue)
           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     args: [o.so_no, o.customer, o.customer_id, o.legacy, COMPANY, o.total, TAG, o.date ? `${o.date} 00:00:00` : null, o.date, o.invoice_ref, o.sales_person, o.remarks, o.status, ...o.stages.map(Number)],
-  })), 'write');
-}
-const idBySo = new Map((await q('SELECT id, so_no FROM sale_orders')).map(r => [r.so_no, r.id]));
-for (let i = 0; i < payments.length; i += CH) {
-  await db.batch(payments.slice(i, i + CH).map(p => ({
-    sql: 'INSERT INTO sale_order_payments (sale_order_id, invoice_ref, received_on, mode, amount, remark, created_by) VALUES (?,?,?,?,?,?,?)',
-    args: [idBySo.get(p.order.so_no), p.invoice_ref, p.date, p.mode, p.amount, p.remark, TAG],
-  })), 'write');
-}
+  })),
+  ...payments.map(p => ({
+    sql: `INSERT INTO sale_order_payments (sale_order_id, invoice_ref, received_on, mode, amount, remark, created_by)
+          VALUES ((SELECT id FROM sale_orders WHERE so_no = ? AND created_by = ?),?,?,?,?,?,?)`,
+    args: [p.order.so_no, TAG, p.invoice_ref, p.date, p.mode, p.amount, p.remark, TAG],
+  })),
+], 'write');
+console.log('Imported:', await tagged());
 try { await db.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_sale_orders_so_no ON sale_orders(so_no)'); console.log('Unique index on so_no created.'); } catch (e) { console.log('Unique index NOT created:', e.message); }
-await db.execute({ sql: 'INSERT INTO usb_audit (actor, action, detail) VALUES (?,?,?)', args: ['system:import', 'sales_tracker_import', `${orders.length} orders, ${payments.length} payments`] });
+await db.execute({ sql: 'INSERT INTO usb_audit (actor, action, detail) VALUES (?,?,?)', args: ['system:import', 'sales_tracker_import', `${COMPANY} ${TAG}: ${orders.length} orders, ${payments.length} payments`] });
 
 const [{ n: no }] = await q('SELECT COUNT(*) n FROM sale_orders'); const [{ n: np, s }] = await q('SELECT COUNT(*) n, SUM(amount) s FROM sale_order_payments');
 console.log(`Imported. sale_orders now ${no}; sale_order_payments ${np}, total ${Number(s).toLocaleString('en-IN')}.`);
