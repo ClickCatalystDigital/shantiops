@@ -267,7 +267,11 @@ Can start any time after Phase 1.
   PDF attached; BCC the sender so it shows in their Zoho Sent folder. ZeptoMail (one API key) is the
   alternative if SMTP isn't available.
 - **Marketing workspace** — its own plan later (enquiry capture, handoff to Sales, campaign cost/ROI).
-- SMS/WhatsApp provider; Product → BOM template UI; payment-overdue reminders tied to Accounts.
+- SMS/WhatsApp provider; payment-overdue reminders tied to Accounts.
+- **Auto-assign BOM template from the Sale Order** — the product → Structure Template link exists
+  but stays unused until the templates are final (each BOM still has unallocated items). Then:
+  link products to templates and offer "build the BOM from these templates" at project creation.
+- Open manual reviews and data still to import: `docs/manual-review-checklist.md`.
 
 ---
 
