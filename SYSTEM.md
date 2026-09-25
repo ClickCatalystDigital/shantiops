@@ -11244,6 +11244,98 @@ documents (POs, Vendor Bills, QC docs) they may not have department access to ac
 PDF routes stay gated to Procurement/Sales/QC/Dispatch respectively; only a PM can open every link.
 Widening PDF access was out of scope for this feature and wasn't done.
 
+## 5da. Item Master standardization pass — corrections, new sizes, PMB harvest, family memory, and a real backfill-pipeline gap found and closed (2026-09-24)
+
+A full-day, phased pass over the Item Master catalog and the real STF-IBR-0xx projects imported
+from client PMBs — real, live-database work, not test data, following this codebase's own
+established backup/dry-run/`--apply`/audit discipline throughout (`scripts/restore-items-backup.mjs`
+proves the backup/restore round-trip is a no-op before any `--apply` runs). Phases, in order:
+
+1. **`fix-item-master-categories.mjs`** — corrections to existing `items` rows: category fixes
+   (534 rows touched, including the real BOI→standard mapping error class documented earlier this
+   file), UoM normalization, pipe-naming cleanup.
+2. **`generate-item-master-sizes.mjs`** — `default_moc`/`default_category_fields_json` backfilled
+   onto 166 existing rows via two new pure functions, `deriveDefaultMoc()`/
+   `deriveCategoryFieldsFromName()` (`lib/item-attributes.mjs`) — the inverse of `keyDim()`: reading
+   a catalog row's own name to derive its defaults, rather than matching a BOM line against it. 46
+   new MS-only standard-size rows generated for angle/round/square/flat (SS/other grades and pipe
+   deliberately out of scope this round). Never deletes an `items` row, by design — a manifest file
+   names exactly what was created, for any future deliberate cleanup.
+3. **PMB harvest** (`harvest-pmb-candidates.mjs`, read-only, replicates the real import pipeline
+   exactly) against 4 real client files (STF-IBR-055/060/053/057) found 71 genuinely-uncatalogued
+   dimensional/pipe candidates; hand-verified against the live catalog down to 3 real new rows
+   (`generate-pmb-plate-flat.mjs`: MS PLATES 3.15 MM, MS CHQEURED PLATES 3.15 MM, ALUMINIUM FLAT
+   25x1.5mm) — everything else in the harvest excluded on real evidence (already exists under a
+   different notation, a bundled multi-value cell, a machined component, or genuinely ambiguous).
+4. **A real, pre-existing MS PLATE/PLATES naming split fixed** (`fix-ms-plate-stem-split.mjs`) —
+   `stemOf()` strips size but not a trailing "s", so the 2 legacy singular rows computed a different
+   family stem than the 20 plural ones, and real production `item_link_memory` data showed this
+   actively hurting confidence (two competing family entries, both stuck below the trust threshold
+   despite correct human confirmations on both sides). Renamed the 2 singular rows; family-memory
+   confidence for `alias=plate,moc=ms` was then re-seeded with one fresh, evidence-based confirmation
+   (`seed-plate-family-memory.mjs`) plus 5 more real alias variants (`seed-plate-aliases-memory.mjs`:
+   BODY SHELL MATERIAL / TUBE SHEET MATERIAL / SHEET / FIXING PLATE → plain MS PLATES;
+   CHEQUERED PLATE → its own distinct family) and 2 flat-family variants
+   (`seed-flat-aliases-memory.mjs`).
+5. **`lib/section-shapes.js`** gained a last-resort `inferCategory()` fallback: an unambiguous
+   `L x W x T ... MM THK/THICK` triple with no other keyword match resolves to `plate` — the real,
+   confirmed shape of a transposed-description row ("BODY SHELL MATERIAL", "TUBE SHEET MATERIAL",
+   "BOILER SMOKE BOX") where the PMB names the *use*, not the material. Checked against all 118 real
+   `bom_items` rows containing "THICK"/"THK" before adding it — zero false positives. A `TUBE SHEET`
+   exclusion was added to the existing pipe-keyword rule in the same pass (a "tube sheet" is the flat
+   plate tubes pass *through*, not a tube) after the new fallback exposed that the pipe rule was
+   firing first and silently overriding it. 3 new `STANDARD_MOC` grades (EN-8, SS 202, Copper) and 3
+   new angle sizes, each backed by real, recurring catalog usage.
+6. **`lib/pmb.mjs`/`lib/multi-value.mjs`** gained `splitLabeledSizeList()` — a real client pattern
+   ("PLATE SIZE :" bundling several complete "TH x W x L - qty unit" pieces in one cell) is split
+   into one BOM item per piece at parse time, checked before `classifyConfigRow` so it can never be
+   swept into configuration.
+7. **`lib/bom-config.mjs`** gained `isAlwaysConfigLabel()` for a real, narrow case ("CHIMNEY SIZE:")
+   that bundles a whole chimney's tapered-piece geometry as one note — real MOC/qty attached, but
+   still configuration, not a purchasable line; the real plate/pipe pieces it describes are their own
+   separate BOM items elsewhere on the sheet.
+8. **Real bucket-decision application** (`apply-pmb-bucket-decisions.mjs` round 1, then `-2.mjs`
+   round 2) — a final `verify-pmb-mapping.mjs` pass against the same 4 real files found 232 distinct
+   still-unresolved descriptions; every one was triaged by hand into 4 buckets (proven exact mapping
+   to an existing item → applied via `item_link_memory` exact-key seeds; a real missing size in an
+   already-established family → 1 new item created; bundled/engineered/multi-value cells → documented
+   only, no single Item Master row exists to point at; genuinely ambiguous/real catalog gaps →
+   untouched, per instruction). 12 + 1 new items created across the two rounds, 36 exact-memory
+   seeds written.
+9. **A real backfill-pipeline gap, found and closed this session.** `backfill-project-item-links.mjs`
+   (which re-runs the matching pipeline against an *already-imported* project's real `bom_items`
+   rows) never called `inferCategory()` — that regex tier only ever ran once, at each row's own
+   original *parse* time (`lib/pmb.mjs`'s `buildItem()`), so a later `inferCategory()` improvement
+   (item 5 above) could never reach a row imported before that improvement existed. Confirmed live:
+   `matchLine()` correctly resolves a "BODY SHELL MATERIAL" row once `category` is forced to
+   `'plate'`, but the backfill script left `category` `NULL` for these rows, which also blocks
+   `matchLine`'s entire dimensional tier (gated on `DIMENSIONAL.includes(category)`). Fixed by adding
+   `inferCategory(material_description, size_spec)` as a tier in the script, mirroring `buildItem()`'s
+   own precedence (tried before the fuzzy `suggestCategoryFromGroups()` fallback).
+   **Separately found**: the backfill had only ever been run against 2 of the 6 real STF-IBR-0xx
+   projects with live PMB-imported BOMs (STF-IBR-053/060, projects 248/249) — STF-IBR-061/052/041/050
+   (projects 250/281/282/283) had never had it run at all. Dry-run reviewed, then applied to all 5
+   remaining projects (248 was already fully covered, a genuine no-op): **319 new `item_id` links + 16
+   category fills**, all resolved through the documented `memory`/`family`/`attribute` tiers (never
+   the unconfident `suggest` tier) — 103/86/93/34/3 per project respectively. Re-ran dry (no
+   `--apply`) immediately after on all 5: 0/0 on every one, confirming idempotency. Final per-project
+   coverage (`item_id` / `category` out of total `source='bom'` rows): 248 93/166, 166/166cat; 249
+   152/275, 218/275cat; 250 103/268, 220/268cat; 281 155/399, 399/399cat; 282 177/319, 319/319cat; 283
+   75/250, 250/250cat. Remaining un-linked rows are the already-documented, accepted residue —
+   free-description bought-out items (valves/MCBs/contactors/timers) with no confident single-row
+   match, bundled multi-value cells (Bucket 3), and pre-existing datasheet-field rows imported before
+   `bom_config.mjs`'s classification improved (would import as Configuration today, not a `bom_items`
+   row) — not a code gap, and left for the existing "Resolve categories"/review-queue UI (§5ce)
+   rather than force-matched.
+
+**Verified**: every touched pure module's selfcheck passes (`section-shapes-selfcheck.mjs`,
+`bom-config-selfcheck.mjs`, `item-match-selfcheck.mjs`, the new `multi-value-selfcheck.mjs`,
+`bom-structure-selfcheck.mjs`, `pmb-selfcheck.mjs`); `npm run lint` clean (960 files). Every write
+across all 9 phases is logged to `usb_audit` under `actor='script:item-master-standardize'` (16
+rows) — a full, queryable provenance trail from category fix through final backfill. No `items` row
+was ever deleted; no existing `item_id`/`category` was ever downgraded or overwritten, only filled
+where genuinely `NULL`.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own
