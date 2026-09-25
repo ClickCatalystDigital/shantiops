@@ -62,6 +62,7 @@ import { DispatchRegisterCard, EwayBillRegisterCard, FreightCostSummaryCard, Dis
 import { TestCertificateRegisterCard, QcInspectionSummaryCard, NcrRegisterCard, CalibrationStatusCard, JobWorkInspectionRegisterCard } from '@/components/reports/QcReportCards';
 import ManagementReportCard from '@/components/executive/ManagementReportCard';
 import { EmployeePerformance360Report, SalesOverviewReport, CompetitorAnalysisReport } from '@/components/SalesInsightReports';
+import OrderBookReport from '@/components/OrderBookReport';
 import ProjectProfitabilityCard from '@/components/executive/ProjectProfitabilityCard';
 import CustomerProfitabilityCard from '@/components/executive/CustomerProfitabilityCard';
 import ProcurementSpendCard from '@/components/executive/ProcurementSpendCard';
@@ -148,6 +149,7 @@ export const SCREEN = {
   'sales_call_location_wise': LocationWiseSalesCallReport,
   'sales_call_funnel': SalesCallFunnelReport,
   'sales_overview': SalesOverviewReport,
+  'order_book': OrderBookReport,
   'employee_performance_360': EmployeePerformance360Report,
   'competitor_analysis': CompetitorAnalysisReport,
   'neglected_sales_call': NeglectedSalesCallReport,
@@ -179,7 +181,7 @@ const ICON = {
   'agent_performance': UserRoundIcon,
   'lead_funnel': UsersIcon, 'leads_by_source': Share2Icon, 'campaign_performance': MegaphoneIcon,
   'sales_call_prospect_summary': TableIcon, 'sales_call_date_wise': CalendarDaysIcon,
-  'sales_call_location_wise': MapPinIcon, 'sales_call_funnel': SlidersHorizontalIcon, 'sales_overview': LayoutDashboardIcon, 'employee_performance_360': UserCheckIcon, 'competitor_analysis': SwordsIcon,
+  'sales_call_location_wise': MapPinIcon, 'sales_call_funnel': SlidersHorizontalIcon, 'sales_overview': LayoutDashboardIcon, 'order_book': WalletIcon, 'employee_performance_360': UserCheckIcon, 'competitor_analysis': SwordsIcon,
   'neglected_sales_call': AlertCircleIcon, 'customer_follow_up': RepeatIcon,
   'client_feedback': MessageSquareIcon, 'employee_follow_up': UserCheckIcon,
   'quotation_listing': FileTextIcon, 'feedback_not_responded': XCircleIcon,

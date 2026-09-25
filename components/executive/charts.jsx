@@ -31,7 +31,7 @@ function truncateLabel(s, max = 13) {
 // silently dropped the indicator dot and the series name from every tooltip, leaving only an
 // unlabeled, unit-less number. Reusable ReactNode formatter fixes it, matching the default row's
 // own layout (components/ui/chart.jsx's un-formatted branch) but with an actual ₹/L/Cr unit.
-function moneyTooltipFormatter(value, name, item) {
+export function moneyTooltipFormatter(value, name, item) {
   const color = item?.color ?? item?.payload?.fill;
   return (
     <div className="flex w-full flex-1 items-center justify-between gap-2 leading-none">

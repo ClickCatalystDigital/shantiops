@@ -11644,6 +11644,17 @@ Products fed by `GET /api/bom-structure-templates?lite=1`); `POST /api/projects`
 top-level BOM root per distinct template on the order (`insertTemplateTree`, best-effort after the
 transaction, response `bomTemplates`). Edit Project now sends a blank customer as `null`.
 
+**Order Book & Collections report (2026-09-25).** Sales → Reports → `order_book` (`components/OrderBookReport.jsx`,
+math in `lib/order-book.mjs` + selfcheck): FY picker (orders by order date, collections by payment date),
+tiles (orders, value, received on those orders, outstanding, collected %, collected in period), a
+Recharts column chart of booked-per-month stacked by company plus collected, outstanding aging
+(0–30/31–90/91–180/180+ days/no date), top 10 customers owing, value by sales person and by status,
+and a details table (customer / sales person / status / company) with CSV/Excel. Cancelled orders are
+left out; money truth is the payment log. `app/reports/page.js` now passes `salePayments` (company
+selector + member visibility + customer filter applied). Chart config keys must be CSS-safe
+(`--color-<key>`), so company names are mapped to `co_…` keys. Checked against SQL for FY 2026-27:
+137 orders, ₹14.67 Cr booked, ₹6.26 Cr received, ₹9.42 Cr outstanding, ₹9.51 Cr collected.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own

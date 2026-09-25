@@ -18,7 +18,7 @@ import { redirect } from 'next/navigation';
 import { getFreshSessionUser, canAccessDepartment, headDepartments, roleHome } from '@/lib/auth';
 import {
   getCompanySettings, getLeads, getOpportunities, getCampaigns, getSalesStages, getCrmTasks, getLeadNotes, getFunctionalHeads,
-  getBranches, getSalesTargets, getDiaryNotes, getExpenseClaims, getQuotations, getSaleOrders, getSalesProducts,
+  getBranches, getSalesTargets, getDiaryNotes, getExpenseClaims, getQuotations, getSaleOrders, getSalesProducts, getSalePayments,
 } from '@/lib/data';
 import { reportsForDepartment, REPORT_DEPARTMENTS } from '@/lib/reports/catalog';
 import ReportsWorkspace from '@/components/ReportsWorkspace';
@@ -42,6 +42,8 @@ async function getCrmData(includeSales, user, customerId = null) {
     getBranches(), getSalesTargets(), getDiaryNotes(), getExpenseClaims(),
     includeSales ? getQuotations() : [], includeSales ? getSaleOrders() : [], getSalesProducts(),
   ]);
+  // Order Book & Collections — the payment log (Sales-only data, like quotations/orders).
+  const salePayments = includeSales ? await getSalePayments() : [];
   // Plan 3c — stage history for Employee 360's days-per-stage (small table; scoped below with leads).
   const stageHistory = includeSales ? await queryAll('SELECT id, lead_id, from_stage, to_stage, changed_by, changed_at FROM lead_stage_history') : [];
   const competitors = includeSales ? await queryAll(
@@ -50,7 +52,8 @@ async function getCrmData(includeSales, user, customerId = null) {
   const users = heads.filter(h => h.active && h.departments.some(d => CRM_DEPARTMENTS.includes(d)));
   // Global company selector: the Sales report cards read quotations/orders; filter them here.
   const company = getSelectedCompany();
-  const base = { leads, quotations: filterByCompany(quotations, company), saleOrders: filterByCompany(saleOrders, company), diaryNotes };
+  const base = { leads, quotations: filterByCompany(quotations, company), saleOrders: filterByCompany(saleOrders, company), diaryNotes,
+    salePayments: filterByCompany(salePayments, company) };
   // Plan 2a: a Sales member's reports cover only their own records.
   const me = salesScope(user);
   const scoped = me ? scopeSalesLists(me, base) : base;
@@ -63,11 +66,13 @@ async function getCrmData(includeSales, user, customerId = null) {
     scoped.saleOrders = scoped.saleOrders.filter(so => Number(so.customer_id) === cid || ids.has(so.lead_id));
     scoped.diaryNotes = scoped.diaryNotes.filter(n => Number(n.customer_id) === cid || ids.has(n.lead_id));
   }
+  const visibleOrderIds = new Set(scoped.saleOrders.map(so => Number(so.id)));
   const visibleLeadIds = new Set(scoped.leads.map(l => l.id));
   return { opportunities, campaigns, stages, tasks, notes, users, branches, salesTargets, expenseClaims, salesProducts,
     stageHistory: stageHistory.filter(h => visibleLeadIds.has(h.lead_id)),
     competitors: competitors.filter(c => (c.lead_id ? visibleLeadIds.has(c.lead_id) : (!me || c.created_by === me) && (!customerId || Number(c.customer_id) === Number(customerId)))),
-    leads: scoped.leads, quotations: scoped.quotations, saleOrders: scoped.saleOrders, diaryNotes: scoped.diaryNotes };
+    leads: scoped.leads, quotations: scoped.quotations, saleOrders: scoped.saleOrders, diaryNotes: scoped.diaryNotes,
+    salePayments: (scoped.salePayments || []).filter(p => visibleOrderIds.has(Number(p.sale_order_id))) };
 }
 
 export const dynamic = 'force-dynamic';

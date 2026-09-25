@@ -45,9 +45,10 @@ export async function POST(req) {
   // back to a manual company field on this form.
   let company = COMPANY_NAMES[0];
   if (b.sale_order_id) {
-    const so = await queryOne('SELECT company FROM sale_orders WHERE id = ?', [b.sale_order_id]);
+    const so = await queryOne('SELECT company, customer_id FROM sale_orders WHERE id = ?', [b.sale_order_id]);
     if (!so) return NextResponse.json({ error: 'Sale Order not found' }, { status: 400 });
     if (so.company) company = so.company;
+    if (!b.customer_id && so.customer_id) b.customer_id = so.customer_id; // the order already knows its customer
   } else if (COMPANY_NAMES.includes(b.company)) {
     company = b.company;
   }
