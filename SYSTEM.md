@@ -11370,6 +11370,30 @@ quotations, 1,006 imported sale orders, 340 customers; Product/Branch/Target mas
   `migrate()` re-ran the first time every route was hit (2–3 min each over the network to Turso).
   The init promise is now cached on `globalThis`, keyed by `migrate()`'s source length so editing a
   migration still re-runs it. Measured: new routes went from ~170s to ~1s after the first boot.
+**1b — the enquiry is the deal (Opportunities retired for Sales).**
+- New `leads.expected_value`, `quotations.lead_id`, `sale_orders.lead_id`. "Create Commercial
+  Offer" links the quotation to its enquiry and moves an open enquiry that is earlier than Hot
+  Offers to Hot Offers (via `setLeadStage`, so history is recorded); quotation → Sale Order and
+  Create PO carry `lead_id`. Converting a **Sales** enquiry no longer creates an Opportunity
+  (Marketing leads still do).
+- Leads tab gets a **List / Board** toggle (`LeadBoard`, native HTML5 drag, same pattern as
+  `PipelineWorkspace.jsx`): per-stage count and value, open pipeline value and win rate. Dropping on
+  a won stage points to Create PO (opens the enquiry); dropping on Order Lost opens the reason
+  dialog; other stages change directly. Expected value is editable on the enquiry form and sheet.
+- `dealsFromLeads()` (`lib/lead-stage.mjs`) maps Sales enquiries into the opportunity row shape so
+  Sales Pipeline / By Department / Agent Performance reports and the Executive "Sales Pipeline"
+  tile (`getOpportunityPipelineCounts`) keep their math; Marketing's own opportunities are still
+  included as they are. Agent Performance now attributes Sales won value to the enquiry's A/C
+  manager (else assignee) instead of whoever created an opportunity.
+- Navigation: the Pipeline tab shows for Marketing only; a Sales-only user opening `/pipeline` is
+  redirected to `/sales?tab=leads&view=board`; `/pipeline` lists Marketing-owned opportunities only.
+- No data migration (live data had no Sales enquiries). Verified live: value set/edited and a
+  negative value refused; commercial offer moved the enquiry Cold → Hot Offers with history;
+  accepted quotation → Sale Order carried `lead_id`; opportunity count unchanged (5); in the
+  browser, Board drag Hot Offers → Proposals changed the stage and wrote history, a drop on Order
+  Received showed the Create PO hint and opened the enquiry without changing the stage, a Sales
+  user's `/pipeline` redirected, Marketing's `/pipeline` showed its 2 opportunities, Executive
+  showed "3 deals". Test rows removed; quotation and sale-order counters restored (30 / 27).
 - Known, not fixed here (Phase 2a): `/sales` passes all 1,006 sale-order rows to the client as raw
   libsql Row objects, producing thousands of "Only plain objects" dev warnings and ~60s page loads.
 - Verified live against the shared DB with a disposable `ZZ-` enquiry (create, stage moves, refused

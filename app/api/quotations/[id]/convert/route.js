@@ -41,9 +41,9 @@ export async function POST(req, { params }) {
 
   const { lastId } = await execute(
     `INSERT INTO sale_orders
-       (so_no, customer_name, customer_id, opportunity_id, quotation_id, description, subtotal, tax_pct, tax_amount, total, company, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [soNo, quotation.customer_name, quotation.customer_id, quotation.opportunity_id, quotation.id,
+       (so_no, customer_name, customer_id, opportunity_id, lead_id, quotation_id, description, subtotal, tax_pct, tax_amount, total, company, created_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [soNo, quotation.customer_name, quotation.customer_id, quotation.opportunity_id, quotation.lead_id || null, quotation.id,
       `Converted from ${quotation.quotation_no}`, quotation.subtotal, quotation.tax_pct, quotation.tax_amount, quotation.total, company, user.username]
   );
   const soId = Number(lastId);

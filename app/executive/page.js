@@ -94,7 +94,7 @@ function PipelineCard({ pipeline }) {
       <CardHeader>
         <CardTitle>Sales Pipeline</CardTitle>
         <p className="text-xs text-muted-foreground">
-          <Link href="/pipeline" className="hover:underline">{total} opportunities</Link> · {formatMoney(openValue)} open
+          <Link href="/sales?tab=leads&view=board" className="hover:underline">{total} deals</Link> · {formatMoney(openValue)} open
         </p>
       </CardHeader>
       <CardContent>

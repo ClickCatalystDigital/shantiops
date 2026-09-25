@@ -70,7 +70,9 @@ export default function Nav({ user, reportDepartments = [] }) {
   // Access Matrix, already department-agnostic, no change needed there) sees both tabs.
   addDeptTab(['Sales'], '/sales', 'Sales', TagIcon);
   addDeptTab(['Marketing'], '/market', 'Marketing', MegaphoneIcon);
-  addDeptTab(['Sales', 'Marketing'], '/pipeline', 'Pipeline', TrendingUpIcon);
+  // Sales works its deals on the enquiry Board (/sales?tab=leads&view=board, docs/sales-crm-plan.md
+  // 1b); /pipeline stays for Marketing's own opportunities until Marketing gets its own plan.
+  addDeptTab(['Marketing'], '/pipeline', 'Pipeline', TrendingUpIcon);
   addDeptTab(['Design', 'Engineering'], '/calc', 'Calc Sheets', CalculatorIcon);
   addDeptTab(['Design', 'Engineering'], '/calc-drawings', 'Drawings', PencilRulerIcon);
   // STERP items 16-19 (§5o) — BOM Structure/Where-Used/Common-Uncommon/ECN. Deliberately gated to

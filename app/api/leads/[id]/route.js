@@ -40,6 +40,12 @@ export async function PATCH(req, { params }) {
   }
   const stageChange = b.sales_call_status !== undefined;
   if (b.is_vip !== undefined) { fields.push('is_vip = ?'); args.push(b.is_vip ? 1 : 0); }
+  // The enquiry's own deal value (plan 1b — was the Opportunity's value_num).
+  if (b.expected_value !== undefined) {
+    const v = b.expected_value === '' || b.expected_value == null ? null : Number(b.expected_value);
+    if (v != null && !(Number.isFinite(v) && v >= 0)) return NextResponse.json({ error: 'Expected value must be a positive number' }, { status: 400 });
+    fields.push('expected_value = ?'); args.push(v);
+  }
   // Order Lost (Phase 3.1) explicitly sets these two together — an intentional close, not an
   // implicit reopen-clear below.
   if (b.sales_call_closed_at !== undefined) {

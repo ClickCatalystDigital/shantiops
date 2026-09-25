@@ -1529,7 +1529,7 @@ export const DEPARTMENT_HELP = {
   },
   Sales: {
     title: 'Sales', icon: TrendingUpIcon,
-    intro: ['Sales manages the commercial journey from qualified enquiry to confirmed Sale Order. The CRM keeps customers, contacts, quotations, and orders connected so the factory receives a clean handoff.', 'Marketing shares Leads, Campaigns, Pipeline, Tasks, and Reports. Sales additionally owns Customers, Quotations, and Sale Orders.'],
+    intro: ['Sales manages the commercial journey from qualified enquiry to confirmed Sale Order. The CRM keeps customers, contacts, quotations, and orders connected so the factory receives a clean handoff.', 'Sales owns Enquiries/Leads (list and Board), Customers, Quotations, Sale Orders, payments and its Reports. Marketing works in its own Marketing and Pipeline tabs.'],
     features: [
       feature('enquiry', 'Enquiry', InboxIcon, [
         'Enquiry is the same Leads list, narrowed to open enquiries still at "Lead - Cold" or "Lead - Hot" — not yet quoted, not closed. It is not a second record to fill in.',
@@ -1537,7 +1537,7 @@ export const DEPARTMENT_HELP = {
         'An enquiry nobody has touched 24 hours after it was created is flagged "SLA overdue". Any edit, stage change or Diary entry counts as touching it.',
       ]),
       feature('leads', 'Leads', UserPlusIcon, ['Capture the person/company, contact details, source, territory, and industry.', 'The funnel stage is the enquiry\'s only status. Open the enquiry and change its Stage as the conversation moves (Lead - Cold → Lead - Hot → Proposals → Hot Offers …). Order Received comes from Create PO and Order Lost from the Order Lost action, which also record the order or the reason.', 'Converting links the enquiry to a Customer record so quotations and orders can use it. It does not end the enquiry — it keeps its stage and keeps moving through the funnel.']),
-      feature('pipeline', 'Pipeline', TrendingUpIcon, ['Move opportunities through the configured stages. Keep value, probability, expected close, next contact date, and lost reason current.', 'An opportunity is the active deal; a lead is still an enquiry. Do not leave won work sitting as an open opportunity.', 'Creating a Quotation linked to an opportunity still sitting in Lead or Qualified moves it to Quoted automatically — one-way, so it never pulls a Won or Lost opportunity backward. It does not replace moving a card by hand for every other stage change; it only ever pushes Lead/Qualified forward the moment real commercial evidence (a quotation) exists.']),
+      feature('pipeline', 'Board', TrendingUpIcon, ['The enquiry is the deal — there is no separate opportunity record in Sales. Open Leads and switch to Board to see every enquiry as a card in its funnel stage, with the stage\'s count and value.', 'Drag a card to move it. Dropping on Order Received asks you to use Create PO (which records the order); dropping on Order Lost asks for the reason.', 'Keep each enquiry\'s Expected value current — it drives the Board totals, the funnel report and the Executive pipeline.', 'Creating a Commercial Offer from an enquiry that is still before Hot Offers moves it to Hot Offers automatically. It never pulls a won or lost enquiry back.']),
       feature('customers', 'Customers and contacts', Building2Icon, ['Keep the commercial party, people, and addresses in one place. Reuse these records in quotations and orders instead of creating near-duplicates.']),
       feature('quotations', 'Quotations', FileTextIcon, ['Build the proposal with real line items, rates, taxes/terms as applicable, then generate the PDF. Convert an accepted quotation to a Sale Order.', 'Search the item catalog while typing a line\'s description — picking a match fills in the UoM and, if a Price List entry exists for that item (and this customer, or the default rate), the rate too. You can always overwrite the rate by hand; nothing is locked.']),
       feature('price-lists', 'Price Lists', TagIcon, [
@@ -1604,7 +1604,7 @@ export const DEPARTMENT_HELP = {
     howTo: [
       { section: 'Sale Order', title: 'Capture an enquiry', body: 'Create a Lead with the best contact details and source you have. Add a follow-up task immediately.' },
       { section: 'Sale Order', title: 'Qualify it', body: 'Log calls/notes in the Diary, confirm requirement and timing, and move the Stage forward (Lead - Hot, then Proposals) when it is a real opportunity.' },
-      { section: 'Sale Order', title: 'Create the commercial record', body: 'Convert the lead, work the Opportunity, create a Quotation with real line items, and generate the PDF.' },
+      { section: 'Sale Order', title: 'Create the commercial record', body: 'From the enquiry, use Create Commercial Offer: it links the customer, builds the Quotation with real line items, and generates the PDF.' },
       { section: 'Sale Order', title: 'Confirm the order', body: 'Convert the accepted quotation to a Sale Order and check customer/address details before linking it to a Project.' },
       { section: 'Sale Order', title: 'Hand off cleanly', body: 'Open Sale Orders and use Convert to Project on the order, or link it to a Project already created, then add any commercial note or task that Design/Engineering must know.' },
       {

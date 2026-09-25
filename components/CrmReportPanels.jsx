@@ -11,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { formatMoney } from '@/lib/format';
 import { BarList, StatRow, ReportShell } from '@/components/ReportKit';
 
-import { SLA_HOURS, isSlaBreached } from '@/lib/lead-stage.mjs';
+import { SLA_HOURS, isSlaBreached, dealsFromLeads } from '@/lib/lead-stage.mjs';
 function countBy(rows, key) {
   const counts = {};
   for (const r of rows) { const k = r[key] || '—'; counts[k] = (counts[k] || 0) + 1; }
@@ -81,7 +81,10 @@ export function CampaignPerformanceReport({ leads, opportunities, campaigns }) {
   );
 }
 
-export function SalesPipelineReport({ opportunities, stages }) {
+// Sales pipeline = Sales enquiries (the enquiry is the deal, docs/sales-crm-plan.md 1b) plus
+// Marketing's own opportunities, via dealsFromLeads().
+export function SalesPipelineReport({ leads = [], opportunities: rawOpportunities = [], stages }) {
+  const opportunities = dealsFromLeads(leads, rawOpportunities);
   const wonStages = new Set(stages.filter(s => s.is_won).map(s => s.name));
   const lostStages = new Set(stages.filter(s => s.is_lost).map(s => s.name));
   const stageValue = {}, stageCount = {};
@@ -107,7 +110,8 @@ export function SalesPipelineReport({ opportunities, stages }) {
   );
 }
 
-export function ByDepartmentReport({ leads, opportunities, stages }) {
+export function ByDepartmentReport({ leads, opportunities: rawOpportunities = [], stages }) {
+  const opportunities = dealsFromLeads(leads, rawOpportunities);
   const depts = ['Sales', 'Marketing'];
   const wonStages = new Set(stages.filter(s => s.is_won).map(s => s.name));
   const lostStages = new Set(stages.filter(s => s.is_lost).map(s => s.name));
@@ -150,13 +154,14 @@ export function ByDepartmentReport({ leads, opportunities, stages }) {
 // STERP "Sales Agent Performance" (SYSTEM.md §5e) — every metric here is real, per-agent data
 // EXCEPT two, both flagged in the description and in the table's own column headers rather than
 // silently presented as equivalent to the rest:
-//  - Won value / lost reasons: `opportunities` has no per-agent owner column, only `created_by`
-//    and department-level `owner_dept`. `created_by` is the closest real field, used as a labeled
-//    approximation — it's who created the record, not necessarily who's been running the deal.
+//  - Won value / lost reasons: for Sales these now come from the enquiry itself (its A/C manager,
+//    else assignee — dealsFromLeads()). Marketing opportunities still attribute by `created_by`,
+//    a labeled approximation (who created the record, not necessarily who ran the deal).
 //  - Avg. response time: no first-contact timestamp exists anywhere. Approximated as the time from
 //    `leads.created_at` to that lead's first `crm_notes` row (getLeadNotes()) — the earliest real
 //    sign the lead was actually worked, not a defined SLA field.
-export function AgentPerformanceReport({ leads, opportunities, tasks, notes, stages, users }) {
+export function AgentPerformanceReport({ leads, opportunities: rawOpportunities = [], tasks, notes, stages, users }) {
+  const opportunities = dealsFromLeads(leads, rawOpportunities);
   const wonStages = new Set(stages.filter(s => s.is_won).map(s => s.name));
   const lostStages = new Set(stages.filter(s => s.is_lost).map(s => s.name));
   const displayName = { ...Object.fromEntries(users.map(u => [u.username, u.display_name || u.username])) };

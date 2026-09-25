@@ -75,7 +75,7 @@ export function CreatePoStep1Dialog({ lead, branches, onClose, onCreated, router
       const so = await api('/api/sale-orders', { method: 'POST', body: {
         customer_id: customerId, customer_name: lead.company_name || lead.lead_name, company: COMPANY_NAMES[0],
         order_date: expectedDate || null, sales_person: lead.account_manager || null, create_as: 'PO',
-        branch_id: branchId || null, order_stage: status,
+        branch_id: branchId || null, order_stage: status, lead_id: lead.id,
       } });
 
       router.refresh();

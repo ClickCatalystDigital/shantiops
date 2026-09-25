@@ -445,6 +445,28 @@ const ENQUIRY_DETAIL_FIELDS = [
   ['pin_code', 'Pin code'],
 ];
 
+// The enquiry's own deal value (docs/sales-crm-plan.md 1b) — feeds the Board totals, the funnel
+// report and the Executive pipeline tile. Saved on blur.
+function ExpectedValueField({ lead, router }) {
+  const [value, setValue] = useState(lead.expected_value ?? '');
+  useEffect(() => { setValue(lead.expected_value ?? ''); }, [lead.expected_value]);
+  async function save() {
+    const next = value === '' ? null : Number(value);
+    if (next === (lead.expected_value ?? null)) return;
+    try {
+      await api(`/api/leads/${lead.id}`, { method: 'PATCH', body: { expected_value: next } });
+      showToast('Expected value saved');
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+  }
+  return (
+    <div className="flex items-center gap-2">
+      <Label className="text-sm text-muted-foreground">Expected value (₹)</Label>
+      <Input type="number" min="0" className="w-40" value={value} onChange={e => setValue(e.target.value)} onBlur={save} />
+    </div>
+  );
+}
+
 function LeadDetailSheet({ lead, users, customers, salesProducts = [], branches = [], stages = [], onClose, router }) {
   const extra = ENQUIRY_DETAIL_FIELDS.filter(([k]) => lead[k]);
   // Home calendar's ?diary=now|advanced deep-link (Phase 4) — opens straight into the diary form
@@ -498,6 +520,7 @@ function LeadDetailSheet({ lead, users, customers, salesProducts = [], branches 
             <StageSelect lead={lead} stages={stages} router={router} />
             {lead.converted_customer_id && <Badge variant="secondary">Customer linked</Badge>}
           </div>
+          <ExpectedValueField lead={lead} router={router} />
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
             {lead.company_name && <span>Company: {lead.company_name}</span>}
             {lead.source && <span>Source: {lead.source}</span>}
@@ -533,7 +556,7 @@ function LeadDetailSheet({ lead, users, customers, salesProducts = [], branches 
       </SheetContent>
 
       {action === 'offer' && !newQuotationId && (
-        <NewQuotationDialog customers={customers} initialCustomerId={offerCustomerId || ''} router={router}
+        <NewQuotationDialog customers={customers} initialCustomerId={offerCustomerId || ''} leadId={lead.id} router={router}
           onCreated={setNewQuotationId} onClose={() => setAction(null)} />
       )}
       {action === 'offer' && newQuotationId && (
@@ -640,7 +663,7 @@ function AddEnquiryDialog({ leads, users, salesProducts, stages = [], onClose, r
     enquiry_date: todayISO(), organization: '', address: '', website: '', email: '', product: '', product_id: null,
     assigned_to: '', reference: '', short_name: '', territory: '', district: '', sub_location: '',
     phone: '', order_expected_in: '', week_number: '', notes: '', industry: '',
-    account_manager: '', initiated_by: '', district_code: '', pin_code: '', sales_call_status: DEFAULT_STAGE,
+    account_manager: '', initiated_by: '', district_code: '', pin_code: '', sales_call_status: DEFAULT_STAGE, expected_value: '',
     telephone: '', source: '',
   });
   const [saving, setSaving] = useState(false);
@@ -708,6 +731,7 @@ function AddEnquiryDialog({ leads, users, salesProducts, stages = [], onClose, r
               <div className="grid gap-1.5"><Label>Initiated by</Label><SearchableSelect value={f.initiated_by} onChange={set('initiated_by')} options={teamOpts} placeholder="Select a person…" /></div>
               <div className="grid gap-1.5"><Label>District code</Label><Input value={f.district_code} onChange={setText('district_code')} /></div>
               <div className="grid gap-1.5"><Label>Pin code</Label><Input value={f.pin_code} onChange={setText('pin_code')} /></div>
+              <div className="grid gap-1.5"><Label>Expected value (₹)</Label><Input type="number" min="0" value={f.expected_value} onChange={setText('expected_value')} /></div>
               <div className="grid gap-1.5"><Label>Stage</Label><SearchableSelect value={f.sales_call_status} onChange={set('sales_call_status')} options={stages.filter(s => !s.is_won && !s.is_lost).map(s => ({ value: s.name, label: s.name }))} placeholder="Select…" /></div>
               <div className="grid gap-1.5"><Label>Mobile number</Label><Input value={f.phone} onChange={setText('phone')} /></div>
               <div className="grid gap-1.5"><Label>Source</Label><SearchableSelect value={f.source} onChange={set('source')} options={sourceOpts} displayValue={f.source} onTextChange={set('source')} placeholder="Select or type…" /></div>
@@ -720,6 +744,82 @@ function AddEnquiryDialog({ leads, users, salesProducts, stages = [], onClose, r
   );
 }
 
+// Board view (docs/sales-crm-plan.md 1b) — the enquiry is the deal, so the old /pipeline Kanban
+// lives here now, over enquiries instead of opportunities. Same native HTML5 drag pattern as
+// PipelineWorkspace.jsx. Dropping on a won stage points to Create PO (which records the order);
+// dropping on Order Lost opens the reason dialog; every other stage changes directly.
+function LeadBoard({ leads, stages, onOpen, onLost, router }) {
+  const [busyId, setBusyId] = useState(null);
+  const ordered = [...stages].sort((a, b) => a.sort_order - b.sort_order);
+  const wonNames = new Set(stages.filter(s => s.is_won).map(s => s.name));
+  const lostNames = new Set(stages.filter(s => s.is_lost).map(s => s.name));
+  const stageOf = l => l.sales_call_status || DEFAULT_STAGE;
+  const openValue = leads.filter(l => !wonNames.has(stageOf(l)) && !lostNames.has(stageOf(l))).reduce((a, l) => a + (l.expected_value || 0), 0);
+  const wonCount = leads.filter(l => wonNames.has(stageOf(l))).length;
+  const lostCount = leads.filter(l => lostNames.has(stageOf(l))).length;
+  const winRate = (wonCount + lostCount) > 0 ? Math.round((wonCount / (wonCount + lostCount)) * 100) : null;
+
+  async function move(lead, stage) {
+    if (stageOf(lead) === stage) return;
+    if (wonNames.has(stage)) { showToast('Use Create PO on the enquiry to record the order', 'error'); onOpen(lead); return; }
+    if (stage === 'Order Lost') { onLost(lead); return; }
+    setBusyId(lead.id);
+    try {
+      await api(`/api/leads/${lead.id}`, { method: 'PATCH', body: { sales_call_status: stage } });
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); } finally { setBusyId(null); }
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap gap-4 text-sm">
+        <div><span className="text-muted-foreground">Open pipeline value: </span><span className="font-semibold tnum">{formatMoney(openValue)}</span></div>
+        <div><span className="text-muted-foreground">Win rate: </span><span className="font-semibold tnum">{winRate == null ? '—' : `${winRate}%`}</span><span className="text-muted-foreground"> ({wonCount} won / {lostCount} lost)</span></div>
+      </div>
+      <div className="flex gap-3 overflow-x-auto pb-2">
+        {ordered.map(stage => {
+          const cards = leads.filter(l => stageOf(l) === stage.name);
+          const total = cards.reduce((a, l) => a + (l.expected_value || 0), 0);
+          return (
+            <div key={stage.name}
+              onDragOver={e => e.preventDefault()}
+              onDrop={e => {
+                const id = Number(e.dataTransfer.getData('text/plain'));
+                const lead = leads.find(l => l.id === id);
+                if (lead) move(lead, stage.name);
+              }}
+              className={`flex min-h-[12rem] w-60 shrink-0 flex-col gap-2 rounded-lg border p-2 ${stage.is_won ? 'bg-success/5' : stage.is_lost ? 'bg-destructive/5' : 'bg-muted/30'}`}>
+              <div className="flex items-baseline justify-between gap-2">
+                <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{stage.name}</div>
+                <div className="text-xs text-muted-foreground tnum">{cards.length}{total > 0 ? ` · ${formatMoney(total)}` : ''}</div>
+              </div>
+              {cards.map(l => (
+                <div key={l.id}
+                  draggable={busyId !== l.id}
+                  onDragStart={e => e.dataTransfer.setData('text/plain', String(l.id))}
+                  onClick={() => onOpen(l)}
+                  className="cursor-grab rounded-md border bg-background px-2.5 py-2 text-sm shadow-sm hover:bg-muted/40 active:cursor-grabbing">
+                  <div className="flex items-center gap-1.5 font-medium">
+                    <span className="min-w-0 truncate">{l.company_name || l.lead_name}</span>
+                    {!!l.is_vip && <StarIcon className="size-3.5 shrink-0 fill-amber-400 text-amber-400" aria-label="VIP" />}
+                  </div>
+                  {l.company_name && l.lead_name !== l.company_name && <div className="text-xs text-muted-foreground">{l.lead_name}</div>}
+                  {lostNames.has(stage.name) && l.lost_reason && <div className="text-xs text-muted-foreground">Lost: {l.lost_reason}</div>}
+                  <div className="mt-1 flex items-center justify-between gap-2">
+                    <span className="truncate text-xs text-muted-foreground">{l.account_manager || l.assigned_to || '—'}</span>
+                    {l.expected_value != null && <span className="text-xs font-semibold tnum">{formatMoney(l.expected_value)}</span>}
+                  </div>
+                  {isSlaBreached(l) && <Badge variant="destructive" className="mt-1">SLA overdue</Badge>}
+                </div>
+              ))}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // STERP "Sales Enquiry" (SYSTEM.md §5e) — the Enquiry nav entry reuses this exact list/table,
 // narrowed to open, not-closed leads still before the "Proposals" stage (lib/lead-stage.mjs
 // isEnquiryStage) — only the creation dialog differs (isEnquiry picks AddEnquiryDialog's fuller
@@ -729,9 +829,12 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
   const [busyId, setBusyId] = useState(null);
   // Home calendar's "Update Now"/"Advanced Update" deep-link (Phase 4) — same click-to-open
   // pattern JobCardBoard.jsx already uses for ?highlight=, not just scroll-and-flash.
-  const highlightCode = useSearchParams().get('highlight');
+  const searchParams = useSearchParams();
+  const highlightCode = searchParams.get('highlight');
   const [selected, setSelected] = useState(() => leads.find(l => `LD-${l.id}` === highlightCode) || null);
   const [filters, setFilters] = useState(LEAD_FILTER_DEFAULT);
+  const [view, setView] = useState(!isEnquiry && searchParams.get('view') === 'board' ? 'board' : 'list');
+  const [lostLead, setLostLead] = useState(null);
   const [views, setViews] = useState(savedViews);
   const [viewName, setViewName] = useState('');
 
@@ -767,7 +870,16 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
     <Card>
       <CardHeader>
         <CardTitle>{isEnquiry ? 'Enquiry' : 'Leads'}</CardTitle>
-        <CardAction><Button size="sm" onClick={() => setDialogOpen(true)}><PlusIcon />{isEnquiry ? 'New Enquiry' : 'New Lead'}</Button></CardAction>
+        <CardAction className="flex items-center gap-2">
+          {!isEnquiry && (
+            <div className="flex rounded-md border p-0.5" role="group" aria-label="View">
+              {['list', 'board'].map(v => (
+                <Button key={v} size="sm" variant={view === v ? 'secondary' : 'ghost'} className="h-7 capitalize" onClick={() => setView(v)}>{v}</Button>
+              ))}
+            </div>
+          )}
+          <Button size="sm" onClick={() => setDialogOpen(true)}><PlusIcon />{isEnquiry ? 'New Enquiry' : 'New Lead'}</Button>
+        </CardAction>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         {views.length > 0 && (
@@ -809,7 +921,9 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
             <Button size="sm" variant="outline" onClick={saveView}>Save view</Button>
           </div>
         </div>
-        {filtered.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No leads match.</p> : (
+        {view === 'board' ? (
+          <LeadBoard leads={filtered} stages={stages} onOpen={setSelected} onLost={setLostLead} router={router} />
+        ) : filtered.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No leads match.</p> : (
           <Table>
             <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Company</TableHead><TableHead>Source</TableHead><TableHead>Stage</TableHead><TableHead>Owner</TableHead><TableHead>Assigned</TableHead><TableHead /></TableRow></TableHeader>
             <TableBody>
@@ -846,6 +960,7 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
       {dialogOpen && (isEnquiry
         ? <AddEnquiryDialog leads={leads} users={users} salesProducts={salesProducts} stages={stages} router={router} onClose={() => setDialogOpen(false)} />
         : <AddLeadDialog router={router} onClose={() => setDialogOpen(false)} />)}
+      {lostLead && <OrderLostDialog lead={lostLead} router={router} onClose={() => setLostLead(null)} />}
       {selected && <LeadDetailSheet lead={leads.find(l => l.id === selected.id) || selected} users={users} customers={customers} salesProducts={salesProducts} branches={branches} stages={stages} router={router} onClose={() => setSelected(null)} />}
     </Card>
   );
@@ -1096,7 +1211,7 @@ const QUOTATION_TYPE_SEED = ['Sales', 'Service', 'Spares', 'AMC'];
 // Phase 3.2 — company/type/dates surfaced as real inputs (were dead columns before), per-line
 // discount %. onCreated (optional) lets a caller (the Commercial Offer flow) chain straight into
 // SendCommercialOfferDialog instead of just closing.
-export function NewQuotationDialog({ customers, opportunityId = null, initialCustomerId = '', onClose, onCreated, router }) {
+export function NewQuotationDialog({ customers, opportunityId = null, leadId = null, initialCustomerId = '', onClose, onCreated, router }) {
   const [customerId, setCustomerId] = useState(initialCustomerId ? String(initialCustomerId) : '');
   const [company, setCompany] = useState(COMPANY_NAMES[0]);
   const [quotationType, setQuotationType] = useState('Sales');
@@ -1121,7 +1236,7 @@ export function NewQuotationDialog({ customers, opportunityId = null, initialCus
       const res = await api('/api/quotations', {
         method: 'POST',
         body: {
-          customer_id: customerId, opportunity_id: opportunityId, tax_pct: Number(taxPct) || 0, items: cleanItems,
+          customer_id: customerId, opportunity_id: opportunityId, lead_id: leadId, tax_pct: Number(taxPct) || 0, items: cleanItems,
           company, quotation_type: quotationType, quotation_date: quotationDate, valid_until: validUntil,
         },
       });
@@ -2497,7 +2612,7 @@ const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 const PANEL_GROUPS = [
   { label: 'Leads & Enquiries', items: [
     { key: 'enquiry', label: 'Enquiry', icon: InboxIcon, description: 'New, not-yet-qualified enquiries' },
-    { key: 'leads', label: 'Leads', icon: UserPlusIcon, description: 'Prospects not yet qualified' },
+    { key: 'leads', label: 'Leads', icon: UserPlusIcon, description: 'Every enquiry through the funnel — list or board' },
   ] },
   { label: 'Commercial', items: [
     { key: 'customers', label: 'Customers', icon: UsersIcon, description: 'Accounts, contacts and addresses' },

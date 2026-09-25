@@ -72,16 +72,17 @@ export async function POST(req) {
        lead_name, company_name, phone, email, source, campaign_id, owner_dept, notes,
        territory, industry, next_contact_date, assigned_to, created_by, status, sales_call_status,
        enquiry_date, address, website, product, product_id, reference, short_name, district, sub_location,
-       telephone, order_expected_in, week_number, account_manager, initiated_by, district_code, pin_code
+       telephone, order_expected_in, week_number, account_manager, initiated_by, district_code, pin_code, expected_value
      )
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [leadName, b.company_name || b.organization || null, b.phone || null, b.email || null, b.source || null,
       b.campaign_id || null, ownerDept, b.notes || null, b.territory || null, b.industry || null,
       b.next_contact_date || null, assignedTo, user.username, leadStateForStage([stageRow], stage), stage,
       b.enquiry_date || null, address || null, b.website || null, b.product || null, b.product_id || null, b.reference || null,
       b.short_name || null, b.district || null, b.sub_location || null, b.telephone || null,
       b.order_expected_in || null, b.week_number || null, b.account_manager || null, b.initiated_by || null,
-      b.district_code || null, b.pin_code || null]
+      b.district_code || null, b.pin_code || null,
+      Number(b.expected_value) > 0 ? Number(b.expected_value) : null]
   );
   const id = Number(lastId);
   // First stage-history row (from: none). Written directly rather than via setLeadStage() so

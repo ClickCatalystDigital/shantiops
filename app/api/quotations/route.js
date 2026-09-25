@@ -9,6 +9,7 @@ import { requireCrmAction } from '@/lib/action-permissions';
 import { getQuotations } from '@/lib/data';
 import { audit } from '@/lib/usb';
 import { COMPANY_NAMES } from '@/lib/company-profiles.js';
+import { setLeadStage } from '@/lib/crm';
 
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 function canAccessCrm(user) {
@@ -56,9 +57,9 @@ export async function POST(req) {
 
   const { lastId } = await execute(
     `INSERT INTO quotations
-       (quotation_no, customer_id, opportunity_id, quotation_date, valid_until, subtotal, tax_pct, tax_amount, total, terms, notes, created_by, company, quotation_type)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [quotationNo, b.customer_id, b.opportunity_id || null, b.quotation_date || null, b.valid_until || null,
+       (quotation_no, customer_id, opportunity_id, lead_id, quotation_date, valid_until, subtotal, tax_pct, tax_amount, total, terms, notes, created_by, company, quotation_type)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [quotationNo, b.customer_id, b.opportunity_id || null, b.lead_id || null, b.quotation_date || null, b.valid_until || null,
       subtotal, taxPct, taxAmount, total, b.terms || null, b.notes || null, user.username, company, b.quotation_type || null]
   );
   const quotationId = Number(lastId);
@@ -88,6 +89,19 @@ export async function POST(req) {
       const quoted = await queryOne(`SELECT sort_order FROM sales_stages WHERE name = 'Hot Offers' AND active = 1`);
       if (opp && quoted && opp.sort_order < quoted.sort_order) {
         await execute('UPDATE opportunities SET stage = ? WHERE id = ?', ['Hot Offers', b.opportunity_id]);
+      }
+    } catch (err) { /* best-effort, quotation creation is the user's real intent */ }
+  }
+  // Same rule for the enquiry the quotation was raised from (the enquiry is the deal, plan 1b):
+  // an open enquiry earlier than Hot Offers moves forward to it. Never pulls a won/lost one back.
+  if (b.lead_id) {
+    try {
+      const lead = await queryOne(
+        `SELECT s.sort_order, s.is_won, s.is_lost FROM leads l
+           JOIN sales_stages s ON s.name = l.sales_call_status WHERE l.id = ?`, [b.lead_id]);
+      const quoted = await queryOne(`SELECT sort_order FROM sales_stages WHERE name = 'Hot Offers' AND active = 1`);
+      if (lead && quoted && !lead.is_won && !lead.is_lost && lead.sort_order < quoted.sort_order) {
+        await setLeadStage(b.lead_id, 'Hot Offers', user.username);
       }
     } catch (err) { /* best-effort, quotation creation is the user's real intent */ }
   }

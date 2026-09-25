@@ -59,11 +59,11 @@ export async function POST(req) {
   const createAs = ['PO', 'RFD', 'Approved'].includes(b.create_as) ? b.create_as : 'PO';
 
   const { lastId } = await execute(
-    `INSERT INTO sale_orders (so_no, customer_name, customer_id, description, company, created_by, total, order_date, track_status, status, sales_person_override, remarks, create_as, branch_id, order_stage)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO sale_orders (so_no, customer_name, customer_id, description, company, created_by, total, order_date, track_status, status, sales_person_override, remarks, create_as, branch_id, order_stage, lead_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [soNo, b.customer_name || null, b.customer_id || null, b.description || null, company, user.username, total, b.order_date || null, trackStatus,
      ['Dispatched', 'Closed'].includes(trackStatus) ? 'fulfilled' : 'open', String(b.sales_person ?? '').trim() || null, String(b.remarks ?? '').trim() || null,
-     createAs, b.branch_id || null, b.order_stage || null]
+     createAs, b.branch_id || null, b.order_stage || null, b.lead_id || null]
   );
   await audit('sale_order_created', { actor: user.username, detail: soNo });
   try {
