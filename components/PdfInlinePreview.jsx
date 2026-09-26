@@ -18,7 +18,7 @@ const ZOOM_MIN = 0.5;
 const ZOOM_MAX = 3;
 const ZOOM_STEP = 0.25;
 
-export default function PdfInlinePreview({ file, url, onPick, onRemove, extracting, replaceLabel = 'Replace' }) {
+export default function PdfInlinePreview({ file, url, onPick, onRemove, extracting, replaceLabel = 'Replace', accept = '.pdf', uploadLabel = 'Upload PDF' }) {
   const scrollRef = useRef(null);
   const pdfRef = useRef(null);
   const canvasRefs = useRef([]);
@@ -156,7 +156,7 @@ export default function PdfInlinePreview({ file, url, onPick, onRemove, extracti
 
   return (
     <div className="group relative flex h-full min-h-0 w-full flex-col overflow-hidden rounded-xl border bg-muted/10">
-      <input ref={inputRef} type="file" accept=".pdf" className="hidden" onChange={pick} />
+      <input ref={inputRef} type="file" accept={accept} className="hidden" onChange={pick} />
 
       {!hasContent && (
         <button
@@ -165,7 +165,7 @@ export default function PdfInlinePreview({ file, url, onPick, onRemove, extracti
           className="flex flex-1 flex-col items-center justify-center gap-2 text-muted-foreground transition-colors hover:bg-muted/30 hover:text-foreground"
         >
           <UploadIcon className="size-6" />
-          <span className="text-sm font-medium">Upload PDF</span>
+          <span className="text-sm font-medium">{uploadLabel}</span>
           <span className="text-xs text-muted-foreground/70">Click to attach, or drop it here</span>
         </button>
       )}

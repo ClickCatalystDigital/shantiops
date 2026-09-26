@@ -20,6 +20,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { PlusIcon, PrinterIcon, CheckIcon, PlayIcon, ShieldCheckIcon, Trash2Icon, RotateCcwIcon, ChevronDownIcon } from 'lucide-react';
 import SearchableSelect from '@/components/SearchableSelect';
 import CertPicker from '@/components/CertPicker';
+import FloatingPdfPanel from '@/components/FloatingPdfPanel';
+import PdfInlinePreview from '@/components/PdfInlinePreview';
 
 const STATE_TONE = {
   pending: '', in_progress: 'bg-primary/5', done: 'bg-warning-surface/60', qc_signed: 'bg-success-surface/60',
@@ -133,6 +135,7 @@ function SheetDetail({ id, workers, canProduction, canQc, onClose, onDeleted }) 
   const [showHeader, setShowHeader] = useState(false);
   const [qcRow, setQcRow] = useState(null);
   const curRef = useRef(null);
+  const [scanVer, setScanVer] = useState(0);
 
   const refresh = useCallback(async () => {
     try { setD(await api(`/api/job-sheets/${id}`)); } catch (err) { showToast(err.message, 'error'); }
@@ -159,6 +162,16 @@ function SheetDetail({ id, workers, canProduction, canQc, onClose, onDeleted }) 
     try { await api(`/api/job-sheets/${id}/stages/${row.id}`, { method: 'DELETE' }); await refresh(); }
     catch (err) { showToast(err.message, 'error'); }
   }
+  async function uploadScan(file) {
+    const fd = new FormData(); fd.append('file', file);
+    try { await api(`/api/job-sheets/${id}/scan`, { method: 'POST', body: fd }); setScanVer(v => v + 1); await refresh(); showToast('Scan uploaded'); }
+    catch (err) { showToast(err.message, 'error'); }
+  }
+  async function removeScan() {
+    if (!window.confirm('Remove the uploaded scan?')) return;
+    try { await api(`/api/job-sheets/${id}/scan`, { method: 'DELETE' }); await refresh(); }
+    catch (err) { showToast(err.message, 'error'); }
+  }
   async function deleteSheet() {
     if (!window.confirm(`Delete job card ${d.jc_no} and all its stages?`)) return;
     try { await api(`/api/job-sheets/${id}`, { method: 'DELETE' }); onDeleted(); }
@@ -170,7 +183,21 @@ function SheetDetail({ id, workers, canProduction, canQc, onClose, onDeleted }) 
 
   return (
     <Sheet open onOpenChange={v => !v && onClose()}>
-      <SheetContent className="flex w-full flex-col gap-0 p-0 sm:max-w-5xl">
+      <FloatingPdfPanel open className="hidden w-[min(31vw,540px)] lg:flex">
+        <p className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Job card scan</p>
+        <div className="min-h-0 flex-1">
+          {d?.scan_key && d.scan_type?.startsWith('image/') ? (
+            <ScanImage url={`/api/job-sheets/${id}/scan?v=${scanVer}`} onReplace={canProduction ? uploadScan : null} onRemove={canProduction ? removeScan : null} />
+          ) : (
+            <PdfInlinePreview key={`${d?.scan_key || 'none'}-${scanVer}`} url={d?.scan_key ? `/api/job-sheets/${id}/scan?v=${scanVer}` : undefined}
+              onPick={canProduction ? uploadScan : undefined} onRemove={canProduction && d?.scan_key ? removeScan : undefined}
+              accept=".pdf,image/png,image/jpeg,image/webp" uploadLabel="Upload job card scan (PDF or photo)" />
+          )}
+        </div>
+      </FloatingPdfPanel>
+      <SheetContent className="flex w-full flex-col gap-0 p-0 data-[side=right]:sm:w-[62vw] data-[side=right]:sm:max-w-none"
+        onPointerDownOutside={e => { if (e.target.closest('[data-pdf-panel]')) e.preventDefault(); }}
+        onOpenAutoFocus={e => e.preventDefault()}>
         <SheetHeader className="border-b px-4 py-3">
           <SheetTitle className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <span>{d ? (d.job_number || d.jc_no) : 'Job Card'}</span>
@@ -374,4 +401,30 @@ function printSheet(d) {
     <p><b>NOTES :</b> ${esc(d.notes)}</p><p><b>PRODUCTION I/C SIGNATURE:</b> ${esc(d.production_sign_by)} &nbsp;&nbsp;&nbsp; <b>QC SIGNATURE:</b> ${esc(d.qc_sign_by)}</p>
     <script>window.onload=()=>window.print()</script></body></html>`);
   w.document.close();
+}
+
+// Photo of the paper card: fit-to-panel with simple zoom; Replace/Remove like the PDF viewer.
+function ScanImage({ url, onReplace, onRemove }) {
+  const [zoom, setZoom] = useState(1);
+  const input = useRef(null);
+  return (
+    <div className="flex h-full flex-col overflow-hidden rounded-xl border bg-muted/10">
+      <div className="flex shrink-0 items-center gap-1 border-b p-1.5">
+        <Button size="xs" variant="outline" onClick={() => setZoom(z => Math.max(0.5, z - 0.25))}>−</Button>
+        <Button size="xs" variant="outline" onClick={() => setZoom(1)}>{Math.round(zoom * 100)}%</Button>
+        <Button size="xs" variant="outline" onClick={() => setZoom(z => Math.min(4, z + 0.25))}>+</Button>
+        <div className="flex-1" />
+        {onReplace && <>
+          <input ref={input} type="file" accept=".pdf,image/png,image/jpeg,image/webp" className="hidden"
+            onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) onReplace(f); }} />
+          <Button size="xs" variant="outline" onClick={() => input.current?.click()}>Replace</Button>
+        </>}
+        {onRemove && <Button size="xs" variant="ghost" onClick={onRemove}>Remove</Button>}
+      </div>
+      <div className="min-h-0 flex-1 overflow-auto bg-muted/30 p-2">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={url} alt="Job card scan" style={{ width: `${zoom * 100}%`, maxWidth: 'none' }} className="rounded-md border bg-white" />
+      </div>
+    </div>
+  );
 }
