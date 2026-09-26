@@ -38,8 +38,12 @@ export async function PATCH(req, { params }) {
     return NextResponse.json({ ok: true });
   }
 
-  const denied = requireDepartment(user, 'Production') || await requireAction(user, 'Production', 'production.jobsheet.write');
+  // QC may reopen a stage it signed; everything else here is Production's.
+  const qcReopen = b.action === 'reopen' && canAccessDepartment(user, 'QC');
+  const denied = qcReopen ? null : (requireDepartment(user, 'Production') || await requireAction(user, 'Production', 'production.jobsheet.write'));
   if (denied) return denied;
+  const locked = row.qc_sign_by && !canAccessDepartment(user, 'QC') && !isPM(user);
+  if (locked && b.action !== 'reopen') return bad('QC has signed this stage — QC must reopen it first', 403);
 
   if (b.action === 'start') {
     const fitter = b.fitter_employee_id ? Number(b.fitter_employee_id) : row.fitter_employee_id;
@@ -52,7 +56,7 @@ export async function PATCH(req, { params }) {
               production_sign_by = ?, production_sign_at = CURRENT_TIMESTAMP WHERE id = ?`,
       [date, date, b.fitter_employee_id ? Number(b.fitter_employee_id) : null, user.username, stageId]);
   } else if (b.action === 'reopen') {
-    if (row.qc_sign_by && !canAccessDepartment(user, 'QC') && !isPM(user)) return bad('QC has signed this stage — QC must reopen it', 403);
+    if (locked) return bad('QC has signed this stage — QC must reopen it', 403);
     await execute(
       `UPDATE job_sheet_stages SET end_date = NULL, production_sign_by = NULL, production_sign_at = NULL,
               inspection_date = NULL, test_certificate_id = NULL, qc_sign_by = NULL, qc_sign_at = NULL WHERE id = ?`, [stageId]);
@@ -65,6 +69,8 @@ export async function PATCH(req, { params }) {
     }
     if ('remarks' in b) { sets.push('remarks = ?'); args.push(String(b.remarks || '').trim() || null); }
     if (!sets.length) return bad('Nothing to update');
+    // Clearing the end date un-finishes the stage, so its production sign goes too.
+    if ('end_date' in b && !b.end_date) sets.push('production_sign_by = NULL', 'production_sign_at = NULL');
     await execute(`UPDATE job_sheet_stages SET ${sets.join(', ')} WHERE id = ?`, [...args, stageId]);
   } else return bad('Unknown action');
 
