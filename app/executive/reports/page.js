@@ -9,6 +9,8 @@ import { redirect } from 'next/navigation';
 import { getFreshSessionUser, isManager, roleHome } from '@/lib/auth';
 import { getCompanySettings } from '@/lib/data';
 import ExecutiveReportsWorkspace from '@/components/executive/ExecutiveReportsWorkspace';
+import { getSelectedCompany } from '@/lib/company-filter-server';
+import { narrowCompanies } from '@/lib/company-filter.mjs';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,7 +18,8 @@ export default async function ExecutiveReports() {
   const user = await getFreshSessionUser();
   if (!isManager(user)) redirect(roleHome(user));
 
-  const companies = await getCompanySettings();
+  // Global company selector: each Management report offers only the selected company (All = both).
+  const companies = narrowCompanies(await getCompanySettings(), getSelectedCompany());
 
   return (
     <main className="min-h-[calc(100svh-3.5rem)]">

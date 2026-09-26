@@ -2973,20 +2973,22 @@ const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 // components/MarketingWorkspace.jsx) — this workspace is Sales-exclusive now, so the old
 // per-item `salesOnly` flag (used to filter this same array down for a Marketing viewer) is gone;
 // every item below always renders for whoever reaches /sales.
+// Sidebar, ordered by a salesperson's day (2026-09-26): enquiries first, then customers and the
+// deal (quotation → order → scope), then money, then setup. Tasks and Price Lists are no longer in
+// the sidebar (follow-ups live in the Diary / Home calendar; no price-list data yet) — their tabs
+// still exist and can come back by adding the entry here.
 const PANEL_GROUPS = [
-  { label: 'Leads & Enquiries', items: [
-    { key: 'enquiry', label: 'Enquiry', icon: InboxIcon, description: 'New, not-yet-qualified enquiries' },
-    { key: 'leads', label: 'Leads', icon: UserPlusIcon, description: 'Every enquiry through the funnel — list or board' },
+  { label: 'Enquiries', items: [
+    { key: 'leads', label: 'All Enquiries', icon: UserPlusIcon, description: 'Every enquiry through the funnel — list or board' },
+    { key: 'enquiry', label: 'New Enquiries', icon: InboxIcon, description: 'Enquiries not yet at Proposals' },
+    { key: 'customers', label: 'Customers', icon: UsersIcon, description: 'Accounts, contacts, addresses and Customer 360' },
   ] },
-  { label: 'Commercial', items: [
-    { key: 'customers', label: 'Customers', icon: UsersIcon, description: 'Accounts, contacts and addresses' },
+  { label: 'Deals', items: [
     { key: 'quotations', label: 'Quotations', icon: FileTextIcon, description: 'Proposals sent to customers' },
-    { key: 'price_lists', label: 'Price Lists', icon: TagIcon, description: 'Customer/product rates and validity' },
     { key: 'sale_orders', label: 'Sale Orders', icon: ShoppingCartIcon, description: 'Accepted orders' },
     { key: 'scope_of_supply', label: 'Scope of Supply', icon: FileCheckIcon, description: 'Priced deliverables for a converted project' },
   ] },
-  { label: 'Billing & Payments', items: [
-    { key: 'invoices', label: 'Invoices', icon: ReceiptIcon, description: 'Sales Invoices and Credit Notes' },
+  { label: 'Payments', items: [
     // Nested group, same shape as QcWorkspace's Approvals (Inward / Pre-Dispatch).
     {
       key: 'payment_tracker', label: 'Payment Tracker', icon: WalletIcon, group: true,
@@ -2995,22 +2997,18 @@ const PANEL_GROUPS = [
         { key: 'payment_log', label: 'Payments', icon: BanknoteIcon, description: 'Log of payments received against orders' },
       ],
     },
+    { key: 'invoices', label: 'Invoices', icon: ReceiptIcon, description: 'Sales Invoices and Credit Notes' },
     { key: 'returns', label: 'Returns', icon: UndoIcon, description: 'Returned material against a Sale Order' },
   ] },
-  { label: 'Activity', items: [
-    { key: 'tasks', label: 'Tasks', icon: CheckSquareIcon, description: 'Every to-do across leads, deals and customers' },
-    { key: 'team', label: 'Team', icon: ContactIcon, description: 'Auto-assign new leads round-robin' },
-  ] },
   { label: 'Setup', items: [
-    // Branches/Product Master/Sales Targets/Email Templates — Sales-operational masters, same
-    // nested-group shape as Payment Tracker above.
+    { key: 'team', label: 'Team', icon: ContactIcon, description: 'Auto-assign new leads round-robin' },
     {
       key: 'masters', label: 'Masters', icon: PackageIcon, group: true,
       children: [
-        { key: 'branches', label: 'Branches', icon: Building2Icon, description: 'Office/location list for Enquiry and Sale Orders' },
         { key: 'products', label: 'Products', icon: PackageIcon, description: 'The sellable-SKU catalog' },
-        { key: 'targets', label: 'Targets', icon: TargetIcon, description: 'Monthly Sales Targets per branch/manager' },
         { key: 'funnel_stages', label: 'Funnel Stages', icon: TargetIcon, description: 'Win probability per funnel stage' },
+        { key: 'targets', label: 'Targets', icon: TargetIcon, description: 'Monthly Sales Targets per branch/manager' },
+        { key: 'branches', label: 'Branches', icon: Building2Icon, description: 'Office/location list for Enquiry and Sale Orders' },
         { key: 'email_templates', label: 'Email Templates', icon: MailIcon, description: 'Commercial Offer wording, per company' },
       ],
     },

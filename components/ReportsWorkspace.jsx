@@ -69,7 +69,7 @@ import ProcurementSpendCard from '@/components/executive/ProcurementSpendCard';
 import ManufacturingPerformanceCard from '@/components/executive/ManufacturingPerformanceCard';
 import {
   LeadFunnelReport, LeadsBySourceReport, CampaignPerformanceReport,
-  SalesPipelineReport, ByDepartmentReport, AgentPerformanceReport,
+  SalesPipelineReport, AgentPerformanceReport,
 } from '@/components/CrmReportPanels';
 import {
   SalesCallProspectSummaryReport, DateWiseSalesCallReport, LocationWiseSalesCallReport,
@@ -139,7 +139,6 @@ export const SCREEN = {
   // CRM analytics (2026-08-23, §5an) — also `hasOwnControls: true`, but takes `crmData` (leads/
   // opportunities/campaigns/stages/tasks/notes/users) instead of `companies`; see the render below.
   'sales_pipeline': SalesPipelineReport,
-  'by_department': ByDepartmentReport,
   'agent_performance': AgentPerformanceReport,
   'lead_funnel': LeadFunnelReport,
   'leads_by_source': LeadsBySourceReport,
@@ -178,7 +177,7 @@ const ICON = {
   'cash-flow': WavesIcon, 'bank-reconciliation': LandmarkIcon,
   'stock-valuation': WarehouseIcon, 'inventory-aging': PackageSearchIcon, 'stock-ledger': ListOrderedIcon,
   'purchase-register': ClipboardListIcon, 'open-po-aging': ClockIcon,
-  'sales-register': ReceiptIcon, 'sales_pipeline': FilterIcon, 'by_department': PieChartIcon,
+  'sales-register': ReceiptIcon, 'sales_pipeline': FilterIcon,
   'agent_performance': UserRoundIcon,
   'lead_funnel': UsersIcon, 'leads_by_source': Share2Icon, 'campaign_performance': MegaphoneIcon,
   'sales_call_prospect_summary': TableIcon, 'sales_call_date_wise': CalendarDaysIcon,

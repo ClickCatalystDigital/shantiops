@@ -12,12 +12,11 @@ import { Badge } from '@/components/ui/badge';
 import { BarChart3Icon, TrendingUpIcon, UsersIcon, MegaphoneIcon, PieChartIcon, UserRoundIcon } from 'lucide-react';
 import {
   LeadFunnelReport, LeadsBySourceReport, CampaignPerformanceReport,
-  SalesPipelineReport, ByDepartmentReport, AgentPerformanceReport,
+  SalesPipelineReport, AgentPerformanceReport,
 } from '@/components/CrmReportPanels';
 
 const REPORTS = [
   { key: 'sales_pipeline', label: 'Sales Pipeline', icon: TrendingUpIcon, group: 'Sales' },
-  { key: 'by_department', label: 'By Department', icon: PieChartIcon, group: 'Sales' },
   { key: 'agent_performance', label: 'Agent Performance', icon: UserRoundIcon, group: 'Sales' },
   { key: 'lead_funnel', label: 'Lead Funnel', icon: UsersIcon, group: 'Marketing' },
   { key: 'leads_by_source', label: 'Leads by Source', icon: BarChart3Icon, group: 'Marketing' },
@@ -56,7 +55,6 @@ export default function CrmReportsWorkspace({ leads, opportunities, campaigns, s
       {active?.key === 'leads_by_source' && <LeadsBySourceReport leads={leads} />}
       {active?.key === 'campaign_performance' && <CampaignPerformanceReport leads={leads} opportunities={opportunities} campaigns={campaigns} />}
       {active?.key === 'sales_pipeline' && <SalesPipelineReport opportunities={opportunities} stages={stages} />}
-      {active?.key === 'by_department' && <ByDepartmentReport leads={leads} opportunities={opportunities} stages={stages} />}
       {active?.key === 'agent_performance' && <AgentPerformanceReport leads={leads} opportunities={opportunities} tasks={tasks} notes={notes} stages={stages} users={users} />}
     </WorkspaceSidebar>
   );

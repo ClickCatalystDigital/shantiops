@@ -89,6 +89,7 @@ Details: [enquiry-import-notes.md](enquiry-import-notes.md).
 - [ ] **Project `TEST-PROJ`** (customer 3F INDUSTRIES LIMITED). Real, or a test? Delete if it's a test.
 - [ ] **Customers `ZZ-E2E-DELETE-ME Customer` and `ZZ-E2E2-DELETE-ME Customer`**. Safe to delete: no project or order uses them.
 - Done: project `SB-1058` is already gone.
+- Done (2026-09-26): the 2 test quotations QTN-27 / QTN-28 on those ZZ customers were deleted (backup in `scripts/data/deleted-test-quotations-2026-09-26.json`).
 
 ---
 
@@ -98,13 +99,16 @@ Details: [enquiry-import-notes.md](enquiry-import-notes.md).
 |---|---|---|---|
 | **Diary / follow-up history** | 0 entries | Export of diary notes (date, customer/enquiry, note, next follow-up, who) | New import in the same style as `scripts/import-enquiries.mjs`, linked to enquiries |
 | **Contact persons** | 0 (customers have one phone/email only) | Contact list per customer (name, designation, phone, email) | Import into `contacts`, matched to customers by code/name |
-| **Past quotations** | 2 (demo) | Quotation export with line items | Import into quotations, marked as old, linked to enquiry/customer |
+| **Past quotations** | 0 (the 2 test ones were deleted) | Quotation export with line items | Import into quotations, marked as old, linked to enquiry/customer |
 | **Enquiry stage, A/C manager, value** | All 598 at Lead - Cold, unassigned, no value | Export with stage + owner + value (the PDF didn't have them) | Update the imported enquiries by serial number |
 | **Full product names on enquiries** | Cut off by the PDF | Same export as above (text, not PDF) | Same update |
 | **Branches** | 0 | Branch list | Masters → Branches (by hand) or a small import |
 | **Sales targets** | 0 | Targets per person per month | Masters → Targets |
 | **Price lists** | 0 | Customer / default prices per product | Sales → Price Lists, or an import |
 | **Sales logins** | 3 Sales users (Sales Head, kalyani, kalyani_sales) | A login for each real salesperson: Amit B, Devansh B, BDM, Sales Desk, Santosh Reddy, … | Settings → User Management. Their old orders/enquiries then show under their name. |
+| **Per salesperson** | 0 targets, 0 branches, no A/C manager on any enquiry, 12 order sales-person names that aren't users | Real logins (above), each enquiry's A/C manager, monthly targets per person, branch per person/enquiry | Settings + Masters → Targets / Branches, and the enquiry export above |
+| **Invoices, receipts, credit notes** | 0 invoices (payments are in the Payment Tracker only) | Decide whether past invoices come from the old CRM/Tally, or start fresh from today | Import or new invoices only |
+| **Enquiry → quotation → order links** | Imported orders and enquiries aren't linked to each other | Old-CRM export that carries the enquiry/quotation number on each order | Update by number |
 | **Product → BOM template** | 0 products linked | Final Structure Templates first | **Deferred**. See below. |
 
 ---

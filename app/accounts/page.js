@@ -4,6 +4,8 @@ import { redirect } from 'next/navigation';
 import { getFreshSessionUser, canAccessDepartment, roleHome } from '@/lib/auth';
 import { getCompanySettings, getGstRates, getVendorTdsRates } from '@/lib/data';
 import AccountsWorkspace from '@/components/AccountsWorkspace';
+import { getSelectedCompany } from '@/lib/company-filter-server';
+import { narrowCompanies } from '@/lib/company-filter.mjs';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,9 +13,11 @@ export default async function AccountsPage({ searchParams }) {
   const user = await getFreshSessionUser();
   if (!canAccessDepartment(user, 'Accounts')) redirect(roleHome(user));
 
-  const [companies, gstRates, tdsRates] = await Promise.all([
+  const [allCompanies, gstRates, tdsRates] = await Promise.all([
     getCompanySettings(), getGstRates(), getVendorTdsRates(),
   ]);
+  // Global company selector: every Accounts card offers only the selected company (All = both).
+  const companies = narrowCompanies(allCompanies, getSelectedCompany());
 
   const sp = await searchParams;
   return (

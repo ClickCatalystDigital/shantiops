@@ -11529,6 +11529,23 @@ payments 1,905 + 257 = 2,162 (₹81.71 Cr + ₹21.11 Cr = ₹102.82 Cr); Custome
 order in each company shows one or both; `/reports?dept=Sales|Accounts` offers only Techno Fab when it
 is selected; in the browser page 121–130 of 1,091 becomes 1–10 of 85 and back.
 
+**Sales cleanup + dropdown on Accounts/Executive (2026-09-26).** Sidebar reordered by a
+salesperson's day: Enquiries (All Enquiries, New Enquiries, Customers) → Deals (Quotations, Sale
+Orders, Scope of Supply) → Payments (Payment Tracker, Invoices, Returns) → Setup (Team, Masters).
+Tasks and Price Lists left the sidebar (follow-ups live in the Diary / Home calendar; `price_lists`
+has 0 rows); their tab code stays and comes back by adding the entry to `PANEL_GROUPS`. Reports: "By
+Department" removed (it mixed in Marketing's placeholder opportunities). Sales Pipeline rewritten on
+`funnelRows()`: every active stage in order even at zero, count + expected value, closed sales calls
+left out, Sales enquiries only; Agent Performance and the Executive "Sales Pipeline" tile
+(`getOpportunityPipelineCounts`) also dropped Marketing opportunities and closed calls (the tile read
+598 deals, 583 of them closed old-CRM calls; now 15). The company dropdown now also reaches `/accounts`
+and `/executive/reports` (each card's company buttons come from `narrowCompanies()`, so only the
+selected company is offered) and `/executive` (project KPIs, timeline, risks, forecast,
+`getDependencyHealthSummary(company)`); the pipeline, workforce and procurement tiles stay all-company.
+Procurement is deliberately untouched pending the client. The 2 quotations (QTN-27/28, E2E test rows
+for the ZZ-E2E customers, nothing referencing them) were deleted; rows kept in
+`scripts/data/deleted-test-quotations-2026-09-26.json`, audited as `quotation_deleted`.
+
 **Plan 2a — own-records visibility (2026-09-25).** `lib/sales-visibility.mjs` (selfcheck) +
 `lib/sales-visibility.js`: a Sales **member** (Sales access, not Head, not PM) sees only enquiries
 where they are A/C manager / assignee / initiator / creator, and the quotations, orders (also by

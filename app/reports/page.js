@@ -11,7 +11,7 @@
 // no department access to consolidate).
 import { queryAll } from '@/lib/db';
 import { getSelectedCompany } from '@/lib/company-filter-server';
-import { filterByCompany } from '@/lib/company-filter.mjs';
+import { filterByCompany, narrowCompanies } from '@/lib/company-filter.mjs';
 import { salesScope } from '@/lib/sales-visibility';
 import { scopeSalesLists } from '@/lib/sales-visibility.mjs';
 import { redirect } from 'next/navigation';
@@ -102,8 +102,7 @@ export default async function ReportsPage({ searchParams }) {
   const department = sp?.dept;
   // With a company picked in the top bar, a report's own company buttons offer only that one.
   const allCompanies = await getCompanySettings();
-  const picked = getSelectedCompany();
-  const companies = picked ? allCompanies.filter(c => c.company === picked) : allCompanies;
+  const companies = narrowCompanies(allCompanies, getSelectedCompany());
 
   if (!department) {
     // Generalized (2026-08-23, plan §3) beyond admin/manager: a non-PM head granted 2+ departments

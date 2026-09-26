@@ -11,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { formatMoney } from '@/lib/format';
 import { BarList, StatRow, ReportShell } from '@/components/ReportKit';
 
-import { SLA_HOURS, isSlaBreached, dealsFromLeads } from '@/lib/lead-stage.mjs';
+import { SLA_HOURS, isSlaBreached, dealsFromLeads, funnelRows } from '@/lib/lead-stage.mjs';
 function countBy(rows, key) {
   const counts = {};
   for (const r of rows) { const k = r[key] || '—'; counts[k] = (counts[k] || 0) + 1; }
@@ -83,66 +83,35 @@ export function CampaignPerformanceReport({ leads, opportunities, campaigns }) {
 
 // Sales pipeline = Sales enquiries (the enquiry is the deal, docs/sales-crm-plan.md 1b) plus
 // Marketing's own opportunities, via dealsFromLeads().
-export function SalesPipelineReport({ leads = [], opportunities: rawOpportunities = [], stages }) {
-  const opportunities = dealsFromLeads(leads, rawOpportunities);
-  const wonStages = new Set(stages.filter(s => s.is_won).map(s => s.name));
-  const lostStages = new Set(stages.filter(s => s.is_lost).map(s => s.name));
-  const stageValue = {}, stageCount = {};
-  for (const o of opportunities) {
-    stageValue[o.stage] = (stageValue[o.stage] || 0) + (o.value_num || 0);
-    stageCount[o.stage] = (stageCount[o.stage] || 0) + 1;
-  }
-  const wonValue = opportunities.filter(o => wonStages.has(o.stage)).reduce((s, o) => s + (o.value_num || 0), 0);
-  const wonN = opportunities.filter(o => wonStages.has(o.stage)).length;
-  const lostN = opportunities.filter(o => lostStages.has(o.stage)).length;
+// Every active funnel stage, in order, even at zero — open Sales enquiries (closed sales calls left
+// out, via funnelRows) with their count and expected value. Marketing's placeholder opportunities are
+// not mixed in (Marketing isn't designed yet). Won/lost stages count every enquiry that reached them.
+export function SalesPipelineReport({ leads = [], stages = [] }) {
+  const sales = leads.filter(l => (l.owner_dept || 'Sales') === 'Sales');
+  const rows = funnelRows(sales, stages.filter(s => s.active !== 0));
+  const won = rows.filter(r => r.isWon), lost = rows.filter(r => r.isLost), open = rows.filter(r => !r.isWon && !r.isLost);
+  const sum = (list, k) => list.reduce((t, r) => t + r[k], 0);
+  const wonN = sum(won, 'count'), lostN = sum(lost, 'count');
   const winRate = (wonN + lostN) > 0 ? Math.round((wonN / (wonN + lostN)) * 100) : null;
-  const items = Object.keys(stageCount).map(stage => ({ label: stage, value: stageValue[stage] }));
-  const colorFor = i => wonStages.has(i.label) ? 'bg-success' : lostStages.has(i.label) ? 'bg-destructive' : 'bg-chart-1';
+  const colorFor = i => won.some(r => r.stage === i.label) ? 'bg-success' : lost.some(r => r.stage === i.label) ? 'bg-destructive' : 'bg-chart-1';
 
   return (
-    <ReportShell title="Sales Pipeline" description="Open, won and lost opportunity value by stage.">
+    <ReportShell title="Sales Pipeline" description="Open enquiries and expected value at every funnel stage. Closed sales calls are left out.">
       <StatRow stats={[
-        { label: 'Won value', value: formatMoney(wonValue) },
+        { label: 'Open enquiries', value: sum(open, 'count') },
+        { label: 'Open value', value: formatMoney(sum(open, 'value')) || '₹0' },
+        { label: 'Won value', value: formatMoney(sum(won, 'value')) || '₹0' },
         { label: 'Win rate', value: winRate == null ? '—' : `${winRate}% (${wonN} won / ${lostN} lost)` },
       ]} />
-      <BarList items={items} valueFmt={formatMoney} colorFor={colorFor} />
-    </ReportShell>
-  );
-}
-
-export function ByDepartmentReport({ leads, opportunities: rawOpportunities = [], stages }) {
-  const opportunities = dealsFromLeads(leads, rawOpportunities);
-  const depts = ['Sales', 'Marketing'];
-  const wonStages = new Set(stages.filter(s => s.is_won).map(s => s.name));
-  const lostStages = new Set(stages.filter(s => s.is_lost).map(s => s.name));
-  const rows = depts.map(dept => {
-    const deptLeads = leads.filter(l => l.owner_dept === dept);
-    const deptOpps = opportunities.filter(o => o.owner_dept === dept);
-    const deptWon = deptOpps.filter(o => wonStages.has(o.stage));
-    const deptLost = deptOpps.filter(o => lostStages.has(o.stage));
-    const deptOpen = deptOpps.filter(o => !wonStages.has(o.stage) && !lostStages.has(o.stage));
-    return {
-      dept, leadCount: deptLeads.length,
-      conversionRate: deptLeads.length > 0 ? Math.round((deptLeads.filter(l => l.converted_customer_id).length / deptLeads.length) * 100) : null,
-      openValue: deptOpen.reduce((s, o) => s + (o.value_num || 0), 0),
-      wonValue: deptWon.reduce((s, o) => s + (o.value_num || 0), 0),
-      winRate: (deptWon.length + deptLost.length) > 0 ? Math.round((deptWon.length / (deptWon.length + deptLost.length)) * 100) : null,
-    };
-  });
-  return (
-    <ReportShell title="By Department" description="The one shared pipeline, sliced by which department is driving it — not two separate funnels.">
-      <BarList items={rows.map(r => ({ label: r.dept, value: r.openValue }))} valueFmt={formatMoney} />
-      <Table>
-        <TableHeader><TableRow><TableHead>Department</TableHead><TableHead>Leads</TableHead><TableHead>Conversion</TableHead><TableHead>Open pipeline</TableHead><TableHead>Won value</TableHead><TableHead>Win rate</TableHead></TableRow></TableHeader>
+      <BarList items={rows.map(r => ({ label: r.stage, value: r.count }))} valueFmt={n => `${n} enquir${n === 1 ? 'y' : 'ies'}`} colorFor={colorFor} />
+      <Table data-export-title="Sales Pipeline">
+        <TableHeader><TableRow><TableHead>Stage</TableHead><TableHead className="text-right">Enquiries</TableHead><TableHead className="text-right">Expected value</TableHead></TableRow></TableHeader>
         <TableBody>
-          {rows.map(d => (
-            <TableRow key={d.dept}>
-              <TableCell className="font-medium">{d.dept}</TableCell>
-              <TableCell className="tnum">{d.leadCount}</TableCell>
-              <TableCell className="tnum">{d.conversionRate == null ? '—' : `${d.conversionRate}%`}</TableCell>
-              <TableCell className="tnum" data-raw={d.openValue || 0}>{formatMoney(d.openValue)}</TableCell>
-              <TableCell className="tnum" data-raw={d.wonValue || 0}>{formatMoney(d.wonValue)}</TableCell>
-              <TableCell className="tnum">{d.winRate == null ? '—' : `${d.winRate}%`}</TableCell>
+          {rows.map(r => (
+            <TableRow key={r.stage}>
+              <TableCell>{r.stage}</TableCell>
+              <TableCell className="text-right tnum">{r.count}</TableCell>
+              <TableCell className="text-right tnum" data-raw={r.value}>{r.value ? formatMoney(r.value) : '—'}</TableCell>
             </TableRow>
           ))}
         </TableBody>
@@ -160,8 +129,9 @@ export function ByDepartmentReport({ leads, opportunities: rawOpportunities = []
 //  - Avg. response time: no first-contact timestamp exists anywhere. Approximated as the time from
 //    `leads.created_at` to that lead's first `crm_notes` row (getLeadNotes()) — the earliest real
 //    sign the lead was actually worked, not a defined SLA field.
-export function AgentPerformanceReport({ leads, opportunities: rawOpportunities = [], tasks, notes, stages, users }) {
-  const opportunities = dealsFromLeads(leads, rawOpportunities);
+export function AgentPerformanceReport({ leads, tasks, notes, stages, users }) {
+  // Sales enquiries only — Marketing's placeholder opportunities are not mixed in.
+  const opportunities = dealsFromLeads(leads.filter(l => (l.owner_dept || 'Sales') === 'Sales'), []);
   const wonStages = new Set(stages.filter(s => s.is_won).map(s => s.name));
   const lostStages = new Set(stages.filter(s => s.is_lost).map(s => s.name));
   const displayName = { ...Object.fromEntries(users.map(u => [u.username, u.display_name || u.username])) };
