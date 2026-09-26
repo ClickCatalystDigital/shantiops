@@ -5,8 +5,6 @@ import { NextResponse } from 'next/server';
 import { getFreshSessionUser, canAccessDepartment, isPM } from '@/lib/auth';
 import { getSalesInvoices } from '@/lib/data';
 import { scopeRows } from '@/lib/sales-visibility';
-import { getSelectedCompanyFor } from '@/lib/company-filter-server';
-import { filterByCompany } from '@/lib/company-filter.mjs';
 
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 function canAccessCrm(user) {
@@ -21,8 +19,6 @@ export async function GET(req) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
   const projectId = new URL(req.url).searchParams.get('project_id');
-  let rows = await getSalesInvoices({ projectId: projectId ? Number(projectId) : undefined });
-  // Global company selector — not when asked for one project's invoices (that project is one company).
-  if (!projectId) rows = filterByCompany(rows, getSelectedCompanyFor(user));
+  const rows = await getSalesInvoices({ projectId: projectId ? Number(projectId) : undefined });
   return NextResponse.json(await scopeRows(user, 'invoices', rows)); // plan 2a
 }

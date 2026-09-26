@@ -26,7 +26,6 @@ import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/componen
 import { Button } from '@/components/ui/button';
 import { formatDate } from '@/lib/format';
 import { ArrowRightIcon } from 'lucide-react';
-import { getSelectedCompanyFor } from '@/lib/company-filter-server';
 
 export const dynamic = 'force-dynamic';
 
@@ -105,7 +104,7 @@ export async function OperationsPage({ searchParams }) {
   // Sales/Installation/HR/QC/Accounts pipeline glances — outside this pass's unified-card rollout
   // (no per-project master table exists for any of them yet, see operations-tab-changes.md), so
   // they keep their original standalone-Card treatment.
-  const salesFlow = deptsToShow.includes('Sales') ? await getSalesFlowCounts(getSelectedCompanyFor(user)) : null;
+  const salesFlow = deptsToShow.includes('Sales') ? await getSalesFlowCounts() : null;
   const installationFlow = deptsToShow.includes('Installation') ? await getInstallationFlowCounts() : null;
   const hrFlow = deptsToShow.includes('HR') ? await getHrFlowCounts() : null;
   const qcFlow = deptsToShow.includes('QC') ? await getQcFlowCounts() : null;

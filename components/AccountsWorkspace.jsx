@@ -18,7 +18,6 @@ import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 import TrialBalanceCard, { AccountRow, fmt } from '@/components/reports/TrialBalanceCard';
 import ProfitLossCard from '@/components/reports/ProfitLossCard';
 import BalanceSheetCard from '@/components/reports/BalanceSheetCard';
-import { useCompanyDefault } from '@/lib/use-company-default';
 
 const FIELDS = [
   ['gstin', 'GSTIN'], ['pan', 'PAN'], ['state', 'State'], ['state_code', 'State code'],
@@ -422,7 +421,7 @@ function NewCompanyDialog({ onCreated }) {
 }
 
 function CompanyEntitiesTab({ companies, router }) {
-  const [companyId, setCompanyId] = useCompanyDefault(companies, 'id');
+  const [companyId, setCompanyId] = useState(companies[0]?.id);
   const entity = companies.find(c => c.id === companyId) || companies[0];
   const [refreshKey, setRefreshKey] = useState(0);
   const refresh = () => { router.refresh(); setRefreshKey(k => k + 1); };
@@ -852,7 +851,7 @@ function PeriodLockCard({ company }) {
 }
 
 function LedgerTab({ companies }) {
-  const [company, setCompany] = useCompanyDefault(companies);
+  const [company, setCompany] = useState(companies[0]?.company);
   return (
     <div className="flex flex-col gap-4">
       <div className="flex gap-2">
@@ -1029,7 +1028,7 @@ function DepreciationRunCard({ company }) {
 }
 
 function FixedAssetsTab({ companies }) {
-  const [company, setCompany] = useCompanyDefault(companies);
+  const [company, setCompany] = useState(companies[0]?.company);
   return (
     <div className="flex flex-col gap-4">
       <div className="flex gap-2">
@@ -1252,7 +1251,7 @@ function QuickJeRow({ company, row, accounts, onDone }) {
 }
 
 function BankReconciliationTab({ companies }) {
-  const [company, setCompany] = useCompanyDefault(companies);
+  const [company, setCompany] = useState(companies[0]?.company);
   const [data, setData] = useState(null);
   const [accounts, setAccounts] = useState([]);
   const load = useCallback(() => {
@@ -1580,7 +1579,7 @@ function Gstr3bCard({ company, period }) {
 }
 
 function GstReturnsTab({ companies }) {
-  const [company, setCompany] = useCompanyDefault(companies);
+  const [company, setCompany] = useState(companies[0]?.company);
   const [period, setPeriod] = useState(currentPeriod());
   return (
     <div className="flex flex-col gap-4">

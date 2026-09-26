@@ -6,8 +6,6 @@ import { redirect } from 'next/navigation';
 import { getFreshSessionUser, canAccessDepartment, roleHome } from '@/lib/auth';
 import { getSourcingItems, getSuppliers, getPurchaseOrders, getAllQuotes, getRfqSummaryByItem, getPurchaseReturns, getInventoryItems, getVendorBills, getPurchaseDebitNotes, getVendorTdsRates, getActiveProjectsList, getOverdueDeliveries } from '@/lib/data';
 import ProcurementWorkspace from '@/components/ProcurementWorkspace';
-import { getSelectedCompanyFor } from '@/lib/company-filter-server';
-import { filterByCompany } from '@/lib/company-filter.mjs';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,7 +14,7 @@ export default async function ProcurementPage({ searchParams }) {
   if (!canAccessDepartment(user, 'Procurement')) redirect(roleHome(user));
 
   const sp = await searchParams;
-  let [sourcingItems, suppliers, purchaseOrders, quotes, rfqSummaryByItem, purchaseReturns, inventoryItems, vendorBills, debitNotes, tdsRates, activeProjects, overdueDeliveries] = await Promise.all([
+  const [sourcingItems, suppliers, purchaseOrders, quotes, rfqSummaryByItem, purchaseReturns, inventoryItems, vendorBills, debitNotes, tdsRates, activeProjects, overdueDeliveries] = await Promise.all([
     getSourcingItems(),
     getSuppliers(),
     getPurchaseOrders(),
@@ -30,11 +28,6 @@ export default async function ProcurementPage({ searchParams }) {
     getActiveProjectsList(),
     getOverdueDeliveries(),
   ]);
-
-  // Global company selector: POs (company from their lines' project), vendor bills and debit notes.
-  // Sourcing lines, quotes, suppliers and stock are shared across both companies and stay unfiltered.
-  const company = getSelectedCompanyFor(user);
-  [purchaseOrders, vendorBills, debitNotes] = [purchaseOrders, vendorBills, debitNotes].map(r => filterByCompany(r, company));
 
   return (
     <main className="min-h-[calc(100svh-3.5rem)]">

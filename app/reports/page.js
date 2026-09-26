@@ -100,7 +100,10 @@ export default async function ReportsPage({ searchParams }) {
   const user = await getFreshSessionUser();
   const sp = await searchParams;
   const department = sp?.dept;
-  const companies = await getCompanySettings();
+  // With a company picked in the top bar, a report's own company buttons offer only that one.
+  const allCompanies = await getCompanySettings();
+  const picked = getSelectedCompany();
+  const companies = picked ? allCompanies.filter(c => c.company === picked) : allCompanies;
 
   if (!department) {
     // Generalized (2026-08-23, plan §3) beyond admin/manager: a non-PM head granted 2+ departments

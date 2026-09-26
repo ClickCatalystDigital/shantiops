@@ -43,7 +43,8 @@ export default async function SalesPage({ searchParams }) {
   ]);
   // Global company selector (top bar): narrows the company-owned lists; customers/products are shared.
   const company = getSelectedCompany();
-  [saleOrders, quotations, invoices, creditNotes, salePayments] = [saleOrders, quotations, invoices, creditNotes, salePayments].map(r => filterByCompany(r, company));
+  // Returns follow their order's company; the Scope of Supply project list follows the project's.
+  [saleOrders, quotations, invoices, creditNotes, salePayments, returns, projects] = [saleOrders, quotations, invoices, creditNotes, salePayments, returns, projects].map(r => filterByCompany(r, company));
   // Plan 2a: a Sales member sees only their own enquiries and the quotations/orders/invoices/payments
   // that belong to them; the Sales Head and PMs see everything.
   const me = salesScope(user);

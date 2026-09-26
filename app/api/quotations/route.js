@@ -15,8 +15,6 @@ import { audit } from '@/lib/usb';
 import { COMPANY_NAMES } from '@/lib/company-profiles.js';
 import { setLeadStage } from '@/lib/crm';
 import { quotationTotals } from '@/lib/sales-lines.mjs';
-import { getSelectedCompanyFor } from '@/lib/company-filter-server';
-import { filterByCompany } from '@/lib/company-filter.mjs';
 
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 function canAccessCrm(user) {
@@ -26,7 +24,7 @@ function canAccessCrm(user) {
 export async function GET() {
   const user = await getFreshSessionUser();
   if (!canAccessCrm(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  return NextResponse.json(await scopeRows(user, 'quotations', filterByCompany(await getQuotations(), getSelectedCompanyFor(user))));
+  return NextResponse.json(await scopeRows(user, 'quotations', await getQuotations()));
 }
 
 export async function POST(req) {

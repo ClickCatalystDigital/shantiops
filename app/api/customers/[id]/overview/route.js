@@ -9,6 +9,8 @@ import { salesScope } from '@/lib/sales-visibility';
 import { scopeSalesLists } from '@/lib/sales-visibility.mjs';
 import { warrantyWindow } from '@/lib/installed-base.mjs';
 import { todayISO } from '@/lib/date';
+import { getSelectedCompany } from '@/lib/company-filter-server';
+import { filterByCompany } from '@/lib/company-filter.mjs';
 
 const inList = ids => (ids.length ? ids.map(() => '?').join(',') : 'NULL');
 
@@ -35,7 +37,7 @@ export async function GET(req, { params }) {
                 FROM sale_orders so
                WHERE so.customer_id = ? OR so.lead_id IN (${inList(leadIds)})
                ORDER BY so.id DESC`, [id, ...leadIds]),
-    queryAll(`SELECT id, project_no, description AS name, status, sale_order_id FROM projects WHERE customer_id = ? AND COALESCE(is_system, 0) = 0 ORDER BY id DESC`, [id]),
+    queryAll(`SELECT id, project_no, description AS name, status, sale_order_id, company FROM projects WHERE customer_id = ? AND COALESCE(is_system, 0) = 0 ORDER BY id DESC`, [id]),
   ]);
   const diaryNotes = await queryAll(
     `SELECT id, lead_id, customer_id, note_type, content, visit_date, next_plan_date, created_by, created_at
@@ -47,16 +49,22 @@ export async function GET(req, { params }) {
 
   const me = salesScope(user);
   const scoped = me ? scopeSalesLists(me, { leads, quotations, saleOrders, invoices, diaryNotes }) : { leads, quotations, saleOrders, invoices, diaryNotes };
+  // Global company selector: quotations, orders (so payments + installed base), invoices and
+  // projects (so service calls/contracts) follow it. Enquiries, Diary and competitors are shared.
+  const company = getSelectedCompany();
+  if (company) for (const k of ['quotations', 'saleOrders', 'invoices']) scoped[k] = filterByCompany(scoped[k], company);
 
   // Projects: a member sees the ones behind their own orders.
   const soIds = new Set(scoped.saleOrders.map(s => s.id));
-  const visibleProjects = me ? projects.filter(p => soIds.has(p.sale_order_id)) : projects;
+  const visibleProjects = filterByCompany(me ? projects.filter(p => soIds.has(p.sale_order_id)) : projects, company);
   const projectIds = visibleProjects.map(p => p.id);
+  // Calls/contracts found only by customer name have no project, so no company: shown under All only.
+  const byName = !me && !company;
   const [serviceCalls, serviceContracts, items, milestones, dispatched, competitors] = await Promise.all([
     queryAll(`SELECT id, call_no, project_id, subject, status, priority, created_at FROM service_calls
-               WHERE project_id IN (${inList(projectIds)}) ${me ? '' : 'OR customer_name = ?'} ORDER BY id DESC`, [...projectIds, ...(me ? [] : [customer.name])]),
+               WHERE project_id IN (${inList(projectIds)}) ${byName ? 'OR customer_name = ?' : ''} ORDER BY id DESC`, [...projectIds, ...(byName ? [customer.name] : [])]),
     queryAll(`SELECT id, contract_no, project_id, start_date, end_date, status, visit_frequency FROM service_contracts
-               WHERE project_id IN (${inList(projectIds)}) ${me ? '' : 'OR customer_name = ?'} ORDER BY id DESC`, [...projectIds, ...(me ? [] : [customer.name])]),
+               WHERE project_id IN (${inList(projectIds)}) ${byName ? 'OR customer_name = ?' : ''} ORDER BY id DESC`, [...projectIds, ...(byName ? [customer.name] : [])]),
     queryAll(`SELECT soi.id, soi.sale_order_id, soi.item_description, soi.qty, soi.uom, soi.warranty_std_days, soi.warranty_accepted_days,
                      soi.from_date_of, soi.installation_required, soi.preventive_maintenance, sp.product_code, sp.serviceable
                 FROM sale_order_items soi LEFT JOIN sales_products sp ON sp.id = soi.product_id
@@ -94,7 +102,7 @@ export async function GET(req, { params }) {
   const leadVisible = new Set(scoped.leads.map(l => l.id));
 
   return NextResponse.json({
-    customer,
+    customer, company,
     enquiries: scoped.leads,
     diary: scoped.diaryNotes,
     quotations: scoped.quotations,

@@ -13,8 +13,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { formatDate, formatMoney } from '@/lib/format';
 import { deltaLabel } from '@/lib/delay';
 import { cn } from '@/lib/utils';
-import { getSelectedCompanyFor } from '@/lib/company-filter-server';
-import { filterByCompany } from '@/lib/company-filter.mjs';
 
 export const dynamic = 'force-dynamic';
 
@@ -117,11 +115,8 @@ export default async function Executive() {
   const user = await getFreshSessionUser();
   if (!isManager(user)) redirect(roleHome(user));
 
-  // Global company selector — project KPIs, timeline and forecast follow it; the pipeline, workforce
-  // and procurement tiles stay all-company.
-  const company = getSelectedCompanyFor(user);
   const [{ kpi, delayedBy, topRisks, forecast }, allProjects, snapshot, pipeline, procurementCounts, workforce, dependencyHealth] = await Promise.all([
-    getExecutiveSummary(company),
+    getExecutiveSummary(),
     getProjectsWithStatus(),
     getErpSnapshot(),
     getOpportunityPipelineCounts(),
@@ -132,7 +127,7 @@ export default async function Executive() {
   // Multi-unit split — same filter as getExecutiveSummary()'s own internal one: the portfolio
   // timeline shows one entry per commercial order, never N+1 rows for a split master's real
   // children.
-  const projects = filterByCompany(allProjects.filter(p => !p.master_project_id), company);
+  const projects = allProjects.filter(p => !p.master_project_id);
   const deptRows = Object.entries(dependencyHealth.byDepartment).sort((a, b) => b[1] - a[1]);
   const deptMax = deptRows.reduce((a, [, n]) => Math.max(a, n), 0) || 1;
 
@@ -150,7 +145,7 @@ export default async function Executive() {
 
   return (
     <main className="container flex flex-col gap-6 py-8">
-      <PageHeader title="Executive Overview" description={company ? `Health, risks and delivery forecast · ${company}` : 'Health, risks and delivery forecast across all projects'} />
+      <PageHeader title="Executive Overview" description="Health, risks and delivery forecast across all projects" />
 
       {/* Row 1: KPIs */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">

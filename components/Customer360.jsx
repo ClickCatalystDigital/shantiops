@@ -65,6 +65,7 @@ export default function Customer360({ customerId }) {
 
   return (
     <div className="flex flex-col gap-4">
+      {d.company && <p className="text-xs text-muted-foreground">Showing {d.company} only: quotations, orders, payments, invoices, projects and service. Enquiries, Diary and competitors are shared. Pick "All companies" in the top bar to see both.</p>}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {[['Open enquiries', openEnq], ['Orders', `${d.orders.length} · ${formatMoney(orderValue)}`], ['Received', formatMoney(received)], ['Outstanding', formatMoney(Math.max(0, orderValue - received))],
           ['Quotations', d.quotations.length], ['Projects', d.projects.length], ['Open service calls', openCalls], ['Competitors', d.competitors.length]].map(([l, v]) => (

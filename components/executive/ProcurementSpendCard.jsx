@@ -9,10 +9,9 @@ import { DownloadIcon } from 'lucide-react';
 import { api, showToast } from '@/lib/client';
 import { formatMoney } from '@/lib/format';
 import { RankedSpendChart } from './charts';
-import { useCompanyDefault } from '@/lib/use-company-default';
 
 export default function ProcurementSpendCard({ companies }) {
-  const [company, setCompany] = useCompanyDefault(companies);
+  const [company, setCompany] = useState(companies[0]?.company);
   const [data, setData] = useState(null);
 
   useEffect(() => {
