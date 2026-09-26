@@ -12,7 +12,7 @@ import MaterialCertificatePanel from './MaterialCertificatePanel';
 import StatutoryDocsPanel from './StatutoryDocsPanel';
 import CalibrationPanel from './CalibrationPanel';
 import NcrPanel from './NcrPanel';
-import QcHoldPanel from './QcHoldPanel';
+import JobSheetBoard from './JobSheetBoard';
 import QcPanel from './QcPanel';
 import JobWorkPanel from './JobWorkPanel';
 import SearchableSelect from './SearchableSelect';
@@ -38,7 +38,7 @@ const ITEMS = [
   { key: 'test-records', label: 'Test Records', icon: ListChecksIcon },
   { key: 'docs', label: 'Documents', icon: FileTextIcon },
   { key: 'ncr', label: 'NCR', icon: AlertTriangleIcon },
-  { key: 'holds', label: 'Hold Points', icon: LockIcon },
+  { key: 'holds', label: 'Job Cards', icon: LockIcon },
   { key: 'calibration', label: 'Calibration', icon: GaugeIcon },
   // Inward + Pre-Dispatch QC/Production Approval Workflow — QC's own department-local slice (the
   // retired top-level /material-review page). Production gets its own Pre-Dispatch-only Approvals
@@ -189,7 +189,7 @@ export default function QcWorkspace({ projects = [], certificates = [], document
       ) : tab === 'ncr' ? (
         <NcrPanel ncrs={shownNcrs} canDisposition={canDisposition} canVerify={canVerify} canClose={canClose} />
       ) : tab === 'holds' ? (
-        <QcHoldPanel holdPoints={holdPoints} />
+        <JobSheetBoard projects={projects} canQc />
       ) : tab === 'calibration' ? (
         <CalibrationPanel items={calibrationItems} canEdit />
       ) : tab === 'inward-approvals' ? (

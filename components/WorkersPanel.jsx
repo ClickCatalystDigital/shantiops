@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api, showToast } from '@/lib/client';
 import { formatDate } from '@/lib/format';
@@ -18,19 +18,12 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectGroup, SelectItem,
 } from '@/components/ui/select';
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table';
-import { PlusIcon, HouseIcon, ClipboardListIcon, UsersIcon, HardHatIcon, PackageIcon, PackageCheckIcon, ScissorsIcon, TrashIcon, ClipboardIcon, TrendingUpIcon, ClipboardCheckIcon } from 'lucide-react';
+import { PlusIcon, HouseIcon, ClipboardListIcon, UsersIcon, HardHatIcon, PackageCheckIcon, ClipboardCheckIcon } from 'lucide-react';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
-import JobCardBoard from '@/components/JobCardBoard';
-import BomTable from '@/components/BomTable';
-import { BOM_FIELD_OWNERS } from '@/lib/bom-fields.mjs';
+import JobSheetBoard from '@/components/JobSheetBoard';
 import QuickAddInline from '@/components/QuickAddInline';
-import WorkOrdersPanel from '@/components/WorkOrdersPanel';
-import ProductionForecastPanel from '@/components/ProductionForecastPanel';
-import CutDialog from '@/components/CutDialog';
-import SearchableSelect from '@/components/SearchableSelect';
 import { PreDispatchApprovalsPanel } from '@/components/MaterialApprovalPanels';
 import MaterialIndentWorklist from '@/components/MaterialIndentWorklist';
-import { DIMENSIONAL_CATEGORIES as SHAPE_CATEGORIES } from '@/lib/bom-fields.mjs';
 
 // Renamed from "Workers" to "Job Card" (PRODUCTION-MODULE-DESIGN.md §3.1 nav decision) — job cards
 // get touched far more often per day than the roster/attendance sub-tabs, so work planning is the
@@ -39,7 +32,7 @@ import { DIMENSIONAL_CATEGORIES as SHAPE_CATEGORIES } from '@/lib/bom-fields.mjs
 // BOM/Forecast/Daily Sheet/Workers Roster all live here too now, so the workspace name needs to
 // cover the whole thing; Job Card stays exactly as it was, just as the default sub-tab, same
 // "workspace name ≠ default sub-tab" shape every other department tab already has.
-const WORKSPACE_TABS = ['jobcards', 'workorders', 'bom', 'indent', 'forecast', 'sheet', 'roster', 'approvals'];
+const WORKSPACE_TABS = ['jobcards', 'indent', 'sheet', 'approvals'];
 
 export default function WorkersPanel({ date, sheet, workers, projects, trades, jobCards, operations, workstations, preDispatchApprovals = [], canDecideProduction = false }) {
   // Operations' Production pipeline glance (ProductionFlow.jsx) links a stage straight into a
@@ -48,21 +41,16 @@ export default function WorkersPanel({ date, sheet, workers, projects, trades, j
   const searchParams = useSearchParams();
   const urlTab = searchParams.get('tab');
   const [tab, setTab] = useState(WORKSPACE_TABS.includes(urlTab) ? urlTab : 'jobcards');
-  const initialWoStatus = searchParams.get('wostatus');
   // Sidebar order: Work Orders first (the production-order control view), Job Card second (its
   // execution sub-tab) — Forecast/Daily Sheet/Workers Roster stay separate operational tools, not
   // folded into the Work Order/Job Card workflow (2026-08-19 UX refinement).
   const navItems = [
-    { key: 'workorders', label: 'Work Orders', icon: ClipboardIcon },
     { key: 'jobcards', label: 'Job Card', icon: HardHatIcon },
-    { key: 'bom', label: 'BOM', icon: PackageIcon },
     // Material Indent bridge — the cross-project worklist of material Stores has routed here,
     // ready to indent (plan §9). Separate from "BOM"'s own per-project single-line raise form,
     // which stays exactly as it was.
     { key: 'indent', label: 'Material Indent', icon: PackageCheckIcon },
-    { key: 'forecast', label: 'Forecast', icon: TrendingUpIcon },
-    { key: 'sheet', label: 'Daily Sheet', icon: ClipboardListIcon },
-    { key: 'roster', label: 'Workers Roster', icon: UsersIcon },
+    { key: 'sheet', label: 'Workers', icon: UsersIcon },
     // Inward + Pre-Dispatch QC/Production Approval Workflow — Production's own department-local
     // slice (the retired top-level /material-review page). Only Pre-Dispatch, never Inward — that
     // half is QC-only. No shared cross-department page, per direct instruction.
@@ -72,14 +60,10 @@ export default function WorkersPanel({ date, sheet, workers, projects, trades, j
   return (
     <WorkspaceSidebar title="Shop Floor" icon={HardHatIcon} items={navItems} activeKey={tab} onChange={setTab}>
       {tab === 'jobcards' && (
-        <JobCardBoard jobCards={jobCards} operations={operations} workstations={workstations} projects={projects} workers={workers} />
+        <JobSheetBoard workers={workers} projects={projects} canProduction canQc={false} />
       )}
-      {tab === 'workorders' && <WorkOrdersPanel projects={projects} operations={operations} workstations={workstations} initialStatus={initialWoStatus} />}
-      {tab === 'bom' && <ProductionBomTab projects={projects} />}
       {tab === 'indent' && <MaterialIndentWorklist />}
-      {tab === 'forecast' && <ProductionForecastPanel />}
-      {tab === 'sheet' && <DailySheetWorkspace date={date} sheet={sheet} projects={projects} />}
-      {tab === 'roster' && <Roster workers={workers} trades={trades} />}
+      {tab === 'sheet' && <DailySheetWorkspace date={date} sheet={sheet} projects={projects} workers={workers} trades={trades} />}
       {tab === 'approvals' && (
         <PreDispatchApprovalsPanel rows={preDispatchApprovals} canDecideQc={false} canDecideProduction={canDecideProduction} />
       )}
@@ -87,153 +71,23 @@ export default function WorkersPanel({ date, sheet, workers, projects, trades, j
   );
 }
 
-// Same taxonomy the PR/BOM composer's category dropdown uses (lib/bom-fields.mjs's
-// DIMENSIONAL_CATEGORIES, the shared list also gating lib/remnant-match.js/lib/procurement.js).
-const DIMENSIONAL_CATEGORIES = new Set(SHAPE_CATEGORIES);
 
-
-// Every project has its own Master BOM (§5a) — what's arrived from Stores, what's still pending —
-// which Production needs while deciding what a job card can actually start on. Cross-project here
-// (unlike the project page's BomPanel), so a project picker comes first. Reuses the existing
-// BomTable/getProjectBom exactly as the project page does; no new BOM UI, only a new place to
-// reach it from. Production's field ownership (issued_ref/received_ref only) comes straight from
-// BOM_FIELD_OWNERS — the same server-enforced list the PATCH route checks, so this can't drift.
-function ProductionBomTab({ projects }) {
-  const [projectId, setProjectId] = useState('');
-  const [bom, setBom] = useState(null);
-  const [pendingIds, setPendingIds] = useState([]);
-  const [progress, setProgress] = useState(null);
-  const [indents, setIndents] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [cutFor, setCutFor] = useState(null);
-  const router = useRouter();
-
-  async function loadAll() {
-    const [{ items, pending }, prog, ind] = await Promise.all([
-      api(`/api/projects/${projectId}/bom`),
-      api(`/api/production/fabrication-progress?project_id=${projectId}`),
-      api(`/api/material-indents?project_id=${projectId}`),
-    ]);
-    setBom(items); setPendingIds(pending || []); setProgress(prog); setIndents(ind);
-  }
-
-  useEffect(() => {
-    if (!projectId) { setBom(null); setProgress(null); setIndents(null); return; }
-    let cancelled = false;
-    setLoading(true);
-    loadAll().catch(err => !cancelled && showToast(err.message, 'error'))
-      .finally(() => !cancelled && setLoading(false));
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId]);
-
-  return (
-    <div className="flex flex-col gap-4">
-      <Select value={projectId} onValueChange={setProjectId}>
-        <SelectTrigger className="w-64"><SelectValue placeholder="Select a project" /></SelectTrigger>
-        <SelectContent><SelectGroup>
-          {projects.map(p => <SelectItem key={p.id} value={String(p.id)}>{p.project_no} · {p.customer_name}</SelectItem>)}
-        </SelectGroup></SelectContent>
-      </Select>
-      {!projectId ? (
-        <Card><CardContent className="py-10 text-center text-muted-foreground">
-          Pick a project to see its Master BOM, fabrication progress, and material issues.
-        </CardContent></Card>
-      ) : loading || !bom ? (
-        <p className="text-sm text-muted-foreground">Loading…</p>
-      ) : (
-        <>
-          {progress?.length > 0 && (
-            <div className="flex flex-col gap-2">
-              <p className="text-sm font-medium">Fabrication progress</p>
-              <div className="grid gap-2 sm:grid-cols-2">
-                {progress.map(p => (
-                  <Card key={p.section}><CardContent className="flex flex-col gap-1 py-3">
-                    <div className="flex items-center justify-between text-sm">
-                      <span>{p.section}</span>
-                      <span className="text-muted-foreground tnum">{p.pct}%</span>
-                    </div>
-                    <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-                      <div className="h-full bg-primary" style={{ width: `${p.pct}%` }} />
-                    </div>
-                  </CardContent></Card>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {indents?.length > 0 && (
-            <div className="flex flex-col gap-2">
-              <p className="text-sm font-medium">Material Indents for this project</p>
-              <p className="text-xs text-muted-foreground">
-                To raise a new indent, use the "Material Indent" tab — it only offers material Stores
-                has actually routed to Production.
-              </p>
-              <div className="flex flex-col gap-1 pt-1">
-                {indents.slice(0, 8).map(ind => (
-                  <div key={ind.id} className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                    <span>{ind.indent_no} · {ind.items?.map(it => it.bom_description || it.inventory_description).filter(Boolean).join(', ')}</span>
-                    <div className="flex shrink-0 items-center gap-2">
-                      <Badge variant="outline" className="text-[10px]">{ind.status}</Badge>
-                      <a href={`/api/material-indents/${ind.id}/pdf`} target="_blank" rel="noreferrer" className="underline">PDF</a>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {bom.some(b => DIMENSIONAL_CATEGORIES.has(b.category)) && (
-            <div className="flex flex-col gap-2">
-              <p className="text-sm font-medium">Cutting &amp; remnant</p>
-              <div className="flex flex-col gap-1">
-                {bom.filter(b => DIMENSIONAL_CATEGORIES.has(b.category)).map(b => (
-                  <div key={b.id} className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm">
-                    <div className="flex flex-col">
-                      <span>{b.material_description} {b.size_spec ? `· ${b.size_spec}` : ''}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {b.catalog_item_code ? `${b.catalog_item_code} · ` : ''}{b.qty_text || '—'}
-                        {b.qty_breakdown && ` (${b.qty_breakdown.label})`}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {b.reserved_piece_count > 0 && <Badge className="border-info/30 bg-info-surface text-info">Reserved — ready to cut</Badge>}
-                      <Button size="sm" variant="outline" onClick={() => setCutFor(b)}><ScissorsIcon />Cut</Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* onSaved=loadAll — bom/pendingIds here are client-fetched local state, not server
-              props; router.refresh() alone (BomTable's own toggleProductionDone) can't touch them,
-              same gap this file's own comment on the onSaved prop already names ReleaseBomTab as
-              the precedent for. Found live while verifying the Prod. Done checkbox fix: the PATCH
-              succeeded (200) but the checkbox never visually updated without a manual reload. */}
-          <BomTable projectId={Number(projectId)} bom={bom} pendingIds={pendingIds} onSaved={loadAll} editableFields={BOM_FIELD_OWNERS.Production} department="Production" />
-        </>
-      )}
-      {cutFor && (
-        <CutDialog bomItem={cutFor} projectId={Number(projectId)} router={router} onClose={() => setCutFor(null)} onDone={loadAll} />
-      )}
-    </div>
-  );
-}
 
 // Overview (headcount/attendance stats) + Sheet (the marking form) as one Daily Sheet workspace
 // with a nested sub-sidebar (components/WorkspaceSidebar's `nested` mode — same pattern Payroll
 // uses inside HR), instead of two competing top-level tabs.
-function DailySheetWorkspace({ date, sheet, projects }) {
+function DailySheetWorkspace({ date, sheet, projects, workers, trades }) {
   const [sub, setSub] = useState('overview');
   const subItems = [
     { key: 'overview', label: 'Overview', icon: HouseIcon },
     { key: 'sheet', label: 'Sheet', icon: ClipboardListIcon },
+    { key: 'roster', label: 'Workers Roster', icon: UsersIcon },
   ];
   return (
-    <WorkspaceSidebar title="Daily Sheet" icon={ClipboardListIcon} items={subItems} activeKey={sub} onChange={setSub} nested>
+    <WorkspaceSidebar title="Workers" icon={UsersIcon} items={subItems} activeKey={sub} onChange={setSub} nested>
       {sub === 'overview' && <WorkersHome date={date} sheet={sheet} />}
       {sub === 'sheet' && <DailySheet date={date} rows={sheet} projects={projects} />}
+      {sub === 'roster' && <Roster workers={workers} trades={trades} />}
     </WorkspaceSidebar>
   );
 }

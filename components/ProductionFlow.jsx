@@ -1,174 +1,59 @@
 // components/ProductionFlow.jsx
 'use client';
 
-// Operations' Production pipeline glance — same node/spine shapes as ProcurementFlow.jsx/
-// StoresFlow.jsx (copied, not abstracted, same precedent those files already state). Two spines:
-//   1. The primary lifecycle (2026-08-19 relaunch) — the real factory-wide, aggregate WO-driven
-//      flow: Production Ready → Work Order Created → Work Order Released → Job Cards → Execution
-//      → QC/Rework → Completed. Route/Operations, Material, Labour, Costing, Forecasting, and
-//      Change Notes are supporting/control layers around this (the indicator chips below), not
-//      separate primary stages — Execution already covers route operations, labour, and material
-//      consumption/cutting happening underneath it, and Job Cards stays one stage (not split by
-//      operation type). Every count and every stage's `href` comes straight from
-//      getProductionFlowCounts() (lib/data.js) — each stage links into the real filtered view
-//      behind its number (Work Orders' own status filter, the Job Card board, or the Projects
-//      list), so a head can click through to the actual projects/Work Orders a count represents
-//      instead of just reading a number.
-//   2. The secondary Job Card status spine (unchanged) — every Job Card, work-order-linked or ad
-//      hoc, by status — since ad hoc cards skip the lifecycle above entirely and still need to be
-//      visible somewhere.
+// Operations' Production glance — the 33-stage Job Card (lib/job-sheet-stages.mjs), grouped.
+// Each box counts jobs currently AT that group's stages; click a group to expand it into its
+// individual stage boxes with exact counts. Counts come from getProductionFlowCounts() (lib/data.js).
+import { useState } from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from './ui/card';
 import { Button } from './ui/button';
-import { Popover, PopoverTrigger, PopoverContent } from './ui/popover';
-import { InfoIcon, ChevronRightIcon, ChevronDownIcon } from 'lucide-react';
-
-const LIFECYCLE = [
-  { key: 'productionReady', label: 'Production Ready', tone: 'plain', help: 'Active projects whose released BOM is fully ready for Production — every line at the current release is Received, In-Stock, or Cancelled. A project-level readiness state, not a BOM-line count.' },
-  { key: 'workOrderCreated', label: 'Work Order Created', tone: 'plain', help: 'Work Orders in draft — a production order exists, linked to its project/order or a stock requirement, not yet released.' },
-  { key: 'workOrderReleased', label: 'Work Order Released', tone: 'comparison', help: 'Work Orders released — the production baseline is approved and execution can begin.' },
-  { key: 'jobCards', label: 'Job Cards', tone: 'ordered', help: 'Work-Order-generated Job Cards not yet started — the work has been broken into executable production jobs.' },
-  { key: 'execution', label: 'Execution', tone: 'warning', help: 'Work Orders in progress — active production work: route operations, labour, and material consumption/cutting.' },
-  { key: 'qc', label: 'QC/Rework', tone: 'warning', help: 'Open Hydro Tests awaiting a result, plus open rework cards spawned from a failed test or rejected quantity — inspection, testing, rejection, and rework being handled.' },
-  { key: 'completed', label: 'Completed', tone: 'received', help: 'Work Orders marked Completed — the required production quantity/work is done and closed.' },
-];
-
-const SECONDARY_STAGES = [
-  { key: 'pending', label: 'Pending', tone: 'plain', help: 'Job Cards raised but not yet started.' },
-  { key: 'progress', label: 'In Progress', tone: 'warning', help: 'Job Cards with hours currently being logged against them.' },
-  { key: 'done', label: 'Done', tone: 'received', help: 'Job Cards closed out with a real quantity done — this is what completes a milestone once every card against it reaches here.' },
-];
-const REWORK_HELP = 'Open rework cards — spawned from a failed Hydro Test or a rejected quantity, still Pending or In Progress. A rework card is its own Job Card, linked back to the original, not a status the original moved through.';
-
-const TONE_CLASSES = {
-  plain:      { box: 'bg-card border-border', value: 'text-foreground', label: 'text-muted-foreground', info: 'text-muted-foreground/70 hover:text-foreground' },
-  enquiry:    { box: 'bg-card border-border', value: 'text-muted-foreground', label: 'text-muted-foreground', info: 'text-muted-foreground/70 hover:text-foreground' },
-  comparison: { box: 'bg-comparison-surface border-comparison/30', value: 'text-comparison', label: 'text-muted-foreground', info: 'text-comparison/70 hover:text-comparison' },
-  ordered:    { box: 'bg-ordered-surface border-ordered/20', value: 'text-ordered', label: 'text-muted-foreground', info: 'text-ordered/70 hover:text-ordered' },
-  warning:    { box: 'bg-warning-surface border-warning/20', value: 'text-warning', label: 'text-muted-foreground', info: 'text-warning/60 hover:text-warning' },
-  received:   { box: 'bg-success-surface border-success/20', value: 'text-success', label: 'text-muted-foreground', info: 'text-success/60 hover:text-success' },
-  danger:     { box: 'bg-danger-surface border-danger/20', value: 'text-foreground', label: 'text-danger/90', info: 'text-danger/60 hover:text-danger' },
-};
-
-function InfoButton({ label, help, tone }) {
-  return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <button type="button" aria-label={`What is ${label}?`} className={TONE_CLASSES[tone].info}>
-          <InfoIcon className="size-3" />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent align="center" className="w-64 text-xs text-muted-foreground">{help}</PopoverContent>
-    </Popover>
-  );
-}
-
-// href turns the node into a real drill-through link. The box itself stays a plain div (not an
-// anchor) — InfoButton renders an actual <button> for its Popover trigger, and nesting a button
-// inside an <a> is invalid HTML (and fights click handling); the value and label individually
-// become links instead, sitting beside the info button rather than wrapping it.
-function StageBox({ value, label, help, tone = 'plain', small = false, href }) {
-  const t = TONE_CLASSES[tone];
-  const valueEl = <span className={`${small ? 'text-base' : 'text-lg'} font-semibold tnum leading-none ${t.value}`}>{value}</span>;
-  const labelEl = <span className={`text-xs text-center ${t.label}`}>{label}</span>;
-  return (
-    <div className={`relative z-10 flex ${small ? 'min-w-[7.5rem]' : 'min-w-[6.5rem]'} flex-col items-center gap-1 rounded-lg border px-4 py-2.5 shadow-sm ${t.box} ${href ? 'transition-colors hover:border-primary/50 hover:shadow-md' : ''}`}>
-      <div className="flex items-center gap-1">
-        {href ? <Link href={href}>{valueEl}</Link> : valueEl}
-        <InfoButton label={label} help={help} tone={tone} />
-      </div>
-      {href ? <Link href={href} className="hover:underline">{labelEl}</Link> : labelEl}
-    </div>
-  );
-}
-
-// The info popover sits outside the Link (not nested inside it) — an interactive trigger nested
-// inside an anchor is exactly the a11y/click-conflict trap StageBox's own InfoButton avoids by
-// living beside its box's Link, not inside one.
-function IndicatorChip({ label, value, help, href }) {
-  return (
-    <div className="flex items-center gap-1.5 rounded-full border bg-card px-3 py-1.5 text-xs shadow-sm">
-      <Link href={href} className="flex items-center gap-2 hover:underline">
-        {value != null && <span className="font-semibold tnum text-foreground">{value}</span>}
-        <span className="text-muted-foreground">{label}</span>
-      </Link>
-      {help && (
-        <Popover>
-          <PopoverTrigger asChild>
-            <button type="button" aria-label={`What is ${label}?`} className="text-muted-foreground/70 hover:text-foreground">
-              <InfoIcon className="size-3" />
-            </button>
-          </PopoverTrigger>
-          <PopoverContent align="center" className="w-64 text-xs text-muted-foreground">{help}</PopoverContent>
-        </Popover>
-      )}
-    </div>
-  );
-}
+import { ChevronRightIcon, ChevronDownIcon } from 'lucide-react';
 
 export default function ProductionFlow({ counts, bare = false }) {
-  const lc = counts.lifecycle || {};
+  const [open, setOpen] = useState(null);
+  const groups = counts.groups || [];
+  const openGroup = groups.find(g => g.key === open);
 
-  // Shared between the standalone Card (default) and the bare content used inside
-  // OperationsCard's Row 1 (Operations page unified card) — carries both spines and the
-  // indicator-chip row, not just the primary lifecycle, so embedding never silently drops content.
   const content = (
-    <div className="flex flex-col gap-5">
-        {/* Supporting/control layers around the lifecycle, not sequence nodes — Route/Operations
-            and Material used to be primary stages (2026-08-19 relaunch demoted them here, same
-            underlying counts, just repositioned); Labour/Costing have no cheap existing aggregate
-            to reuse across every open Work Order, so they stay plain links into where the real
-            per-Work-Order numbers already live, same precedent Costing always used. */}
-        <div className="flex flex-wrap items-center gap-2">
-          <IndicatorChip label="Route/Operations" value={counts.route?.value ?? 0} href={counts.route?.href}
-            help="Draft Work Orders whose Process Route Card already has at least one step defined." />
-          <IndicatorChip label="Material" value={counts.material?.value ?? 0} href={counts.material?.href}
-            help="Material issued from Stores to WIP, plus plate/section pieces actually cut, across active projects." />
-          <IndicatorChip label="Labour" href="/production/shop?tab=workorders"
-            help="Logged hours and labor cost per Job Card and Work Order — open a Work Order and Load Costing." />
-          <IndicatorChip label="Costing" href="/production/shop?tab=workorders"
-            help="Planned vs. actual material and labor — open a Work Order and Load Costing." />
-          <IndicatorChip label="Forecast" href="/production/shop?tab=forecast"
-            help="Upcoming Work Orders, workstation load, and outstanding material demand for the next 30 days." />
-          <IndicatorChip label="Change Notes" value={counts.changeNotes ?? 0} href="/production/shop?tab=workorders"
-            help="Controlled baseline changes logged against released Work Orders (quantity, dates, product description)." />
-        </div>
+    <div className="flex flex-col gap-4">
+      <p className="text-xs text-muted-foreground">
+        {counts.total} job card{counts.total === 1 ? '' : 's'} · {counts.finished} finished
+        {counts.waitingOnQc > 0 && <> · <span className="font-medium text-warning">{counts.waitingOnQc} with stages waiting on QC sign</span></>}
+        . Each box counts jobs currently at that stage — click a group to see its stages.
+      </p>
 
-        <div>
-          <p className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">Production lifecycle</p>
-          {/* Wraps left-to-right at any width instead of horizontal scroll — each box+arrow pair
-              is one flex item, so a box that no longer fits drops to the next row on its own and
-              the arrow travels with it, same left-to-right reading order continued. */}
-          <div className="flex flex-wrap items-center gap-y-4">
-            {LIFECYCLE.map((s, i) => (
-              <div key={s.key} className="flex items-center">
-                <StageBox value={lc[s.key]?.value ?? 0} label={s.label} help={s.help} tone={s.tone} href={lc[s.key]?.href} />
-                {i < LIFECYCLE.length - 1 && <ChevronRightIcon className="mx-1.5 size-4 shrink-0 text-muted-foreground/40" />}
-              </div>
+      <div className="flex flex-wrap items-center gap-y-3">
+        {groups.map((g, i) => (
+          <div key={g.key} className="flex items-center">
+            <button type="button" onClick={() => setOpen(open === g.key ? null : g.key)}
+              aria-expanded={open === g.key}
+              className={`flex min-w-[7rem] flex-col items-center gap-1 rounded-lg border px-4 py-2.5 shadow-sm transition-colors hover:border-primary/50 ${open === g.key ? 'border-primary bg-primary/5' : g.count ? 'bg-warning-surface border-warning/20' : 'bg-card'}`}>
+              <span className={`tnum text-xl font-semibold ${g.count ? 'text-foreground' : 'text-muted-foreground'}`}>{g.count}</span>
+              <span className="flex items-center gap-1 text-center text-xs text-muted-foreground">
+                {g.label}
+                <ChevronDownIcon className={`size-3 transition-transform ${open === g.key ? 'rotate-180' : ''}`} />
+              </span>
+            </button>
+            {i < groups.length - 1 && <ChevronRightIcon className="mx-1.5 size-4 shrink-0 text-muted-foreground/40" />}
+          </div>
+        ))}
+      </div>
+
+      {openGroup && (
+        <div className="rounded-lg border bg-muted/30 p-3">
+          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">{openGroup.label}</p>
+          <div className="flex flex-wrap gap-2">
+            {openGroup.stages.map(st => (
+              <Link key={st.no} href={counts.href || '/production/shop?tab=jobcards'}
+                className={`flex items-center gap-2 rounded-md border bg-card px-3 py-1.5 text-xs shadow-sm hover:border-primary/50 ${st.count ? '' : 'opacity-60'}`}>
+                <span className="tnum font-semibold text-foreground">{st.count}</span>
+                <span className="text-muted-foreground">{st.no}. {st.name}</span>
+              </Link>
             ))}
           </div>
         </div>
-
-        {/* Secondary metric — every Job Card by status, work-order-linked or ad hoc (unchanged
-            from the original pipeline; ad hoc cards skip the lifecycle above entirely). Same
-            wrapping flex pattern as the lifecycle row above; Rework is a branch off Done, marked
-            with a down-chevron instead of a right-chevron rather than absolute-positioned SVG
-            geometry, so it wraps with everything else instead of needing fixed coordinates. */}
-        <div className="border-t pt-4">
-          <p className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">Job Card status (secondary)</p>
-          <div className="flex flex-wrap items-center gap-y-4">
-            {SECONDARY_STAGES.map((s, i) => (
-              <div key={s.key} className="flex items-center">
-                <StageBox value={counts[s.key] || 0} label={s.label} help={s.help} tone={s.tone} href="/production/shop?tab=jobcards" />
-                {i < SECONDARY_STAGES.length - 1 && <ChevronRightIcon className="mx-1.5 size-4 shrink-0 text-muted-foreground/40" />}
-              </div>
-            ))}
-            <div className="flex items-center">
-              <ChevronDownIcon className="mx-1.5 size-4 shrink-0 text-danger/40" />
-              <StageBox value={counts.rework || 0} label="Rework (open)" help={REWORK_HELP} tone="danger" href="/production/shop?tab=jobcards" />
-            </div>
-          </div>
-        </div>
+      )}
     </div>
   );
 
