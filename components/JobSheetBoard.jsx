@@ -433,7 +433,8 @@ function ScanImage({ url, onReplace, onRemove }) {
 // Extra fitters/welders on a stage: removable chips + a small "+" picker (the first stays in the dropdown).
 function ExtraWorkers({ r, workers, disabled, onChange }) {
   const ids = (r.extra_worker_ids ? String(r.extra_worker_ids).split(',') : []).map(Number);
-  const names = ids.map(id => workers.find(w => w.id === id)?.name || `#${id}`);
+  const fallback = String(r.extra_worker_names || '').split(', ');
+  const names = ids.map((id, i) => workers.find(w => w.id === id)?.name || fallback[i] || `#${id}`);
   if (disabled && !ids.length) return null;
   return (
     <div className="mt-1 flex flex-wrap items-center gap-1">
