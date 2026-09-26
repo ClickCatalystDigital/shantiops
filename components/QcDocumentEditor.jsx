@@ -1177,6 +1177,18 @@ export default function QcDocumentEditor({ project, document, parts, certificate
   const [linkSiblings, setLinkSiblings] = useState(false);
   const [boilerOpen, setBoilerOpen] = useState(false);
   const [pdfOpen, setPdfOpen] = useState(false);
+  // `document` here is the QC document prop, so the DOM one is reached via window.
+  async function downloadPdf() {
+    try {
+      const res = await fetch(`/api/qc-documents/${document.id}/pdf`);
+      if (!res.ok) throw new Error();
+      const a = window.document.createElement('a');
+      a.href = URL.createObjectURL(await res.blob());
+      a.download = `${document.doc_id.replace(/\//g, '-')}.pdf`;
+      window.document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(a.href);
+    } catch { showToast('Could not download the PDF', 'error'); }
+  }
   const [addPartOpen, setAddPartOpen] = useState(false);
   const [addPartGroupId, setAddPartGroupId] = useState(null);
   const [editingPart, setEditingPart] = useState(null);
@@ -1414,7 +1426,8 @@ export default function QcDocumentEditor({ project, document, parts, certificate
               <AlertTriangleIcon className="size-3.5" />Form III A required — no groups defined yet
             </span>
           )}
-          <Button disabled={incomplete} onClick={() => setPdfOpen(true)}>Preview PDF</Button>
+          <Button disabled={incomplete} onClick={() => setPdfOpen(true)}>Preview</Button>
+          <Button variant="outline" disabled={incomplete} onClick={downloadPdf}>Download</Button>
           {canEdit && (
             <div className="flex items-center gap-1.5">
               <button type="button" role="switch" aria-checked={!!document.customer_visible}
