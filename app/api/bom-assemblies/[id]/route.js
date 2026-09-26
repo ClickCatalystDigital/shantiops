@@ -138,7 +138,9 @@ export async function DELETE(req, { params }) {
     return NextResponse.json({ error: 'This assembly has sub-assemblies — delete those first' }, { status: 409 });
   }
 
-  await execute('UPDATE bom_items SET assembly_id = NULL WHERE assembly_id = ?', [params.id]);
+  // Items of a deleted node move up to its parent (or become unassigned only when it was a top-level node) — deleting a
+  // subsystem must never silently drop its items out of the tree.
+  await execute('UPDATE bom_items SET assembly_id = ? WHERE assembly_id = ?', [row.parent_id ?? null, params.id]);
   await execute('DELETE FROM bom_assemblies WHERE id = ?', [params.id]);
   await audit('bom_assembly_delete', { actor: user.username, detail: `project ${row.project_id}: ${row.name}` });
   return NextResponse.json({ ok: true });
