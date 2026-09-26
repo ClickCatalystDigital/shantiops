@@ -10,6 +10,8 @@ import { requireEngineeringAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { BOM_FIELD_OWNERS } from '@/lib/bom-fields.mjs';
 import { canDecideChangeNote } from '@/lib/bom-structure.mjs';
+import { CATEGORY_LABEL } from '@/lib/section-shapes.js';
+import { checkAssemblyChange } from '@/lib/bom-line';
 
 export async function PATCH(req, { params }) {
   const user = await getFreshSessionUser();
@@ -33,7 +35,17 @@ export async function PATCH(req, { params }) {
     // Re-checked at the trust boundary, not just on the way in — field_changed is stored data by
     // the time it reaches an UPDATE's column list.
     if (row.bom_item_id && row.new_value != null && BOM_FIELD_OWNERS.Engineering.includes(row.field_changed)) {
-      await execute(`UPDATE bom_items SET ${row.field_changed} = ? WHERE id = ?`, [row.new_value, row.bom_item_id]);
+      let value = row.new_value;
+      if (row.field_changed === 'category' && !Object.prototype.hasOwnProperty.call(CATEGORY_LABEL, value)) {
+        return NextResponse.json({ error: `"${value}" is not a valid category — the change was not applied` }, { status: 400 });
+      }
+      if (row.field_changed === 'assembly_id') {
+        const item = await queryOne('SELECT id, project_id, assembly_id FROM bom_items WHERE id = ?', [row.bom_item_id]);
+        const chk = item ? await checkAssemblyChange(item, value) : { error: 'Item not found', status: 404 };
+        if (chk.error) return NextResponse.json({ error: chk.error }, { status: chk.status });
+        value = chk.assemblyId;
+      }
+      await execute(`UPDATE bom_items SET ${row.field_changed} = ? WHERE id = ?`, [value, row.bom_item_id]);
     }
   }
 

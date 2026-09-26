@@ -21,6 +21,7 @@ import { notifyDepartment } from '@/lib/notify';
 import { getAllocationMode, autoReserveFromStock, notifyProcurementIfShortfall } from '@/lib/procurement';
 import { matchAndReserve } from '@/lib/remnant-match';
 import { DIMENSIONAL_CATEGORIES } from '@/lib/bom-fields.mjs';
+import { CATEGORY_LABEL } from '@/lib/section-shapes.js';
 import { getPurchaseRequisitions } from '@/lib/data';
 import { learnCategoryIfConfirmed } from '@/lib/category-learning';
 
@@ -40,7 +41,8 @@ const SAS_RAISERS = new Set(['Sales']);
 // lines, not physical-material categories). DIMENSIONAL_CATEGORIES is the shared, single source of
 // truth (lib/remnant-match.js) for every shape the composer can tag a line with; 'standard' is the
 // one non-dimensional category (an item-master reference + qty, no geometry to match on).
-const CATEGORIES = new Set([...DIMENSIONAL_CATEGORIES, 'standard']);
+// Every category the composer offers (CATEGORY_LABEL) is valid here — 'other' used to be silently dropped to no category.
+const CATEGORIES = new Set(Object.keys(CATEGORY_LABEL));
 
 export async function POST(req) {
   const user = await getFreshSessionUser();
@@ -107,6 +109,9 @@ export async function POST(req) {
     // Category is a 'bom'-source-only concept (a physical material shape); stock/sas lines never
     // carry one. origin defaults to 'manual' — 'bom' is reserved for a future auto-BOM generator,
     // not produced by anything this round.
+    if (source === 'bom' && line.category && !CATEGORIES.has(line.category)) {
+      return NextResponse.json({ error: `Unknown category "${line.category}" on line ${i + 1}` }, { status: 400 });
+    }
     const category = source === 'bom' && CATEGORIES.has(line.category) ? line.category : null;
     if (category) {
       try { await learnCategoryIfConfirmed(line.material_description.trim(), category, user.username); } catch { /* best-effort */ }

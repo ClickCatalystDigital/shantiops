@@ -3,6 +3,7 @@
 // what makes it show up anywhere in Procurement — nothing else needs to "hide" a pending request,
 // it simply isn't a BOM row yet. Rejecting just closes it out, no BOM row is ever created.
 import { NextResponse } from 'next/server';
+import { CATEGORY_LABEL } from '@/lib/section-shapes.js';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
@@ -21,10 +22,14 @@ export async function PATCH(req, { params }) {
 
   const b = await req.json();
   if (b.action === 'accept') {
+    // the line becomes a design-BOM line, which must carry a category (Release BOM requires it)
+    if (!b.category || !Object.prototype.hasOwnProperty.call(CATEGORY_LABEL, b.category)) {
+      return NextResponse.json({ error: 'Choose a category for the new BOM line' }, { status: 400 });
+    }
     const { lastId } = await execute(
-      `INSERT INTO bom_items (project_id, material_description, moc, size_spec, qty_text, pr_ref, purchase_status)
-       VALUES (?, ?, ?, ?, ?, ?, 'Enquiry')`,
-      [request.project_id, request.material_description, request.moc, request.size_spec, request.qty_text, request.pr_ref]
+      `INSERT INTO bom_items (project_id, material_description, moc, size_spec, qty_text, pr_ref, purchase_status, category)
+       VALUES (?, ?, ?, ?, ?, ?, 'Enquiry', ?)`,
+      [request.project_id, request.material_description, request.moc, request.size_spec, request.qty_text, request.pr_ref, b.category]
     );
     const bomItemId = Number(lastId);
     await execute(

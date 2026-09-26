@@ -20,6 +20,7 @@ import MoveAssemblyDialog from './MoveAssemblyDialog';
 import ReleaseReadinessPanel from './ReleaseReadinessPanel';
 import ResolveCategoriesDialog from './ResolveCategoriesDialog';
 import ResolveUnassignedDialog from './ResolveUnassignedDialog';
+import DeleteNodeDialog from './DeleteNodeDialog';
 import ResolveCatalogDialog from './ResolveCatalogDialog';
 import { nodePath } from '@/lib/bom-tree.mjs';
 
@@ -53,6 +54,7 @@ export default function BomStructureWorkspace({
   const [selectedId, setSelectedId] = useState(null);
   const [expandedIds, setExpandedIds] = useState(new Set());
   const [movingNode, setMovingNode] = useState(null);
+  const [deletingNode, setDeletingNode] = useState(null);
   const [releasing, setReleasing] = useState(false);
   const [resolvingCategories, setResolvingCategories] = useState(false);
   const [resolvingUnassigned, setResolvingUnassigned] = useState(false);
@@ -132,11 +134,14 @@ export default function BomStructureWorkspace({
       setSelectedId(res.id);
     } catch (err) { showToast(err.message, 'error'); }
   }
-  async function deleteNode(node) {
-    if (!window.confirm(`Delete "${node.name}"? Items under it become unassigned (not deleted). Sub-assemblies must be removed first.`)) return;
+  // Opens the confirmation dialog (it asks where the items go); the delete itself runs in confirmDeleteNode.
+  function deleteNode(node) { setDeletingNode(node); }
+  async function confirmDeleteNode(moveToId) {
+    const node = deletingNode;
     try {
-      await api(`/api/bom-assemblies/${node.id}`, { method: 'DELETE' });
+      await api(`/api/bom-assemblies/${node.id}${moveToId ? `?move_to=${moveToId}` : ''}`, { method: 'DELETE' });
       if (selectedId === node.id) setSelectedId(null);
+      setDeletingNode(null);
       reloadAll();
     } catch (err) { showToast(err.message, 'error'); }
   }
@@ -255,6 +260,8 @@ export default function BomStructureWorkspace({
 
   const byId = assemblies ? new Map(assemblies.map(a => [a.id, a])) : new Map();
   const unassignedItems = (projectBom || []).filter(r => !r.assembly_id);
+  // what Release BOM actually requires to be placed: Purchase-Request lines are requests, exempt from the node rule
+  const mustAssignItems = unassignedItems.filter(r => !r.pr_item_id && (r.source || 'bom') === 'bom');
   // `_path` gives the "Resolve categories" walkthrough the same "where does this live" context the
   // tree already shows — computed once here (byId is already in scope), not inside the dialog.
   const unlinkedCount = (projectBom || []).filter(r => !r.item_id && (r.source || 'bom') === 'bom').length; // not linked to the Item Master
@@ -361,7 +368,7 @@ export default function BomStructureWorkspace({
               nodeCount={assemblies.length}
               projectLabel={selectedProject ? `${selectedProject.project_no} · ${selectedProject.customer_name}` : ''}
               onResolveUncategorized={uncategorizedItems.length ? () => setResolvingCategories(true) : undefined}
-              onResolveUnassigned={unassignedItems.length ? () => setResolvingUnassigned(true) : undefined}
+              onResolveUnassigned={mustAssignItems.length ? () => setResolvingUnassigned(true) : undefined}
               unlinkedCount={unlinkedCount}
               onResolveCatalog={unlinkedCount ? () => setResolvingCatalog(true) : undefined}
             />
@@ -417,6 +424,10 @@ export default function BomStructureWorkspace({
           onMove={(newParentId, newLevel) => moveTo(movingNode, newParentId, newLevel)}
         />
       )}
+      {deletingNode && (
+        <DeleteNodeDialog node={deletingNode} assemblies={assemblies} byId={byId}
+          onClose={() => setDeletingNode(null)} onConfirm={confirmDeleteNode} />
+      )}
       {resolvingCategories && (
         <ResolveCategoriesDialog
           items={uncategorizedItems}
@@ -429,7 +440,7 @@ export default function BomStructureWorkspace({
       )}
       {resolvingUnassigned && (
         <ResolveUnassignedDialog
-          items={unassignedItems}
+          items={mustAssignItems}
           assemblies={assemblies}
           byId={byId}
           onClose={closeResolveUnassigned}

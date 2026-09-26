@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { execute, queryOne, queryAll } from '@/lib/db';
+import { execute, queryOne, queryAll, withTransaction } from '@/lib/db';
+import { isBomReleased } from '@/lib/bom-line';
 import { getFreshSessionUser } from '@/lib/auth';
 import { requireEngineeringAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
@@ -138,10 +139,38 @@ export async function DELETE(req, { params }) {
     return NextResponse.json({ error: 'This assembly has sub-assemblies — delete those first' }, { status: 409 });
   }
 
-  // Items of a deleted node move up to its parent (or become unassigned only when it was a top-level node) — deleting a
-  // subsystem must never silently drop its items out of the tree.
-  await execute('UPDATE bom_items SET assembly_id = ? WHERE assembly_id = ?', [row.parent_id ?? null, params.id]);
-  await execute('DELETE FROM bom_assemblies WHERE id = ?', [params.id]);
-  await audit('bom_assembly_delete', { actor: user.username, detail: `project ${row.project_id}: ${row.name}` });
-  return NextResponse.json({ ok: true });
+  // A node that still holds items never just disappears with them: the items go to an explicit destination
+  // (?move_to=<node id>, same project), defaulting to the parent. A top-level node has no parent, so it needs a destination.
+  if (await isBomReleased(row.project_id)) {
+    return NextResponse.json({ error: 'This BOM is released — un-release it before deleting a node' }, { status: 409 });
+  }
+  const itemCount = (await queryOne('SELECT COUNT(*) AS n FROM bom_items WHERE assembly_id = ?', [params.id])).n;
+  let moveTo = null;
+  if (itemCount > 0) {
+    const asked = new URL(req.url).searchParams.get('move_to');
+    moveTo = asked ? Number(asked) : row.parent_id;
+    if (moveTo == null) {
+      return NextResponse.json({ error: `This top-level node still holds ${itemCount} item(s) — choose a node to move them to first` }, { status: 409 });
+    }
+    const dest = await queryOne('SELECT id, project_id FROM bom_assemblies WHERE id = ?', [moveTo]);
+    if (!dest || Number(dest.project_id) !== Number(row.project_id) || Number(dest.id) === Number(row.id)) {
+      return NextResponse.json({ error: 'Choose another node of this project to move the items to' }, { status: 400 });
+    }
+  }
+  try {
+    // one transaction: the items are never moved while the node stays behind (or the other way round)
+    await withTransaction(async tx => {
+      if (itemCount > 0) await tx.execute({ sql: 'UPDATE bom_items SET assembly_id = ? WHERE assembly_id = ?', args: [moveTo, params.id] });
+      await tx.execute({ sql: 'DELETE FROM bom_assembly_drawings WHERE assembly_id = ?', args: [params.id] });
+      await tx.execute({ sql: 'DELETE FROM bom_assembly_calc_sheets WHERE assembly_id = ?', args: [params.id] });
+      await tx.execute({ sql: 'DELETE FROM bom_assemblies WHERE id = ?', args: [params.id] });
+    });
+  } catch (err) {
+    if (/FOREIGN KEY|constraint/i.test(String(err?.message))) {
+      return NextResponse.json({ error: 'This node is still referenced (for example by QC records) — nothing was changed' }, { status: 409 });
+    }
+    throw err;
+  }
+  await audit('bom_assembly_delete', { actor: user.username, detail: `project ${row.project_id}: ${row.name}${itemCount ? ` — ${itemCount} item(s) moved to node ${moveTo}` : ''}` });
+  return NextResponse.json({ ok: true, moved: itemCount });
 }

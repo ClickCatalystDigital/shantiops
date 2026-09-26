@@ -9,6 +9,7 @@ import { CATEGORY_LABEL } from '@/lib/section-shapes.js';
 import { matchAndReserve } from '@/lib/remnant-match';
 import { getAllocationMode, autoReserveFromStock, notifyProcurementIfShortfall } from '@/lib/procurement';
 import { learnCategoryIfConfirmed } from '@/lib/category-learning';
+import { checkAssemblyChange } from '@/lib/bom-line';
 
 // Add a single BOM item in-app (materials get added mid-project — the BOM definition is
 // Engineering's, so this is Engineering/PM-gated like upload).
@@ -46,6 +47,12 @@ export async function POST(req) {
     : BOOLEAN_FIELDS.has(f) ? (b[f] ? 1 : 0)
     : typeof b[f] === 'string' && b[f].trim() ? b[f].trim() : null);
   values[0] = b.material_description.trim();
+  const asmIdx = fields.indexOf('assembly_id');
+  if (asmIdx >= 0 && values[asmIdx] != null) {
+    const chk = await checkAssemblyChange({ project_id: b.project_id, assembly_id: null }, values[asmIdx]);
+    if (chk.error) return NextResponse.json({ error: chk.error }, { status: chk.status });
+    values[asmIdx] = chk.assemblyId;
+  }
 
   // Allocation Mode gate (STORES-SALES-CHANGES.md, refined 2026-08-20) — a single item added
   // mid-project is always fresh new demand. Manual mode keeps the original always-review behavior

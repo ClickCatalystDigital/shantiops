@@ -13,6 +13,7 @@ import { missingTraceabilityFields, applyReceivedSideEffects } from '@/lib/bom-r
 import { releasePiece } from '@/lib/stock-pieces';
 import { rollupIndentStatus } from '@/lib/indent-status.mjs';
 import { learnCategoryIfConfirmed } from '@/lib/category-learning';
+import { checkAssemblyChange } from '@/lib/bom-line';
 
 // Field-level department scoping — the trust boundary of the PMB module. A head may only write
 // the columns their department owns (BOM_FIELD_OWNERS); a PM writes anything. Enforced here, not
@@ -96,6 +97,12 @@ export async function PATCH(req, { params }) {
     let v = typeof b[k] === 'string' ? b[k].trim() : b[k];
     if (v === '') v = null;
     changed[k] = v;
+  }
+
+  if ('assembly_id' in changed) {
+    const chk = await checkAssemblyChange(item, changed.assembly_id);
+    if (chk.error) return NextResponse.json({ error: chk.error }, { status: chk.status });
+    changed.assembly_id = chk.assemblyId;
   }
 
   // Traceability enforcement on the free-text GRN path (gap found in review, 2026-08-26) — the

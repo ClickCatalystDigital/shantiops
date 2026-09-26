@@ -3,6 +3,7 @@
 // the BOM (a project's BOM is usually built up piecemeal over days). This is the deliberate,
 // single action that marks it done, distinct from lib/milestone-auto.js's data-inferred triggers.
 import { NextResponse } from 'next/server';
+import { bomGateCounts } from '@/lib/bom-line';
 import { queryOne, queryAll, execute } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
 import { getBomStructure, getProjectBom } from '@/lib/data';
@@ -27,13 +28,9 @@ export async function GET(req, { params }) {
   const drawingLinked = await queryOne('SELECT COUNT(*) AS n FROM bom_items WHERE project_id = ? AND drawing_id IS NOT NULL', [params.id]);
   const pendingEcnCount = await queryOne(
     `SELECT COUNT(*) AS n FROM bom_change_notes WHERE project_id = ? AND status = 'pending'`, [params.id]);
-  const unassignedCount = await queryOne(
-    'SELECT COUNT(*) AS n FROM bom_items WHERE project_id = ? AND assembly_id IS NULL', [params.id]);
-  // Phase 2.3 — category is mandatory at Release for every native/imported 'bom'-source line
-  // (stock/sas lines never feed a statutory document, so they're excluded by design, not a gap).
-  const uncategorizedCount = await queryOne(
-    `SELECT COUNT(*) AS n FROM bom_items WHERE project_id = ? AND source = 'bom' AND category IS NULL`,
-    [params.id]);
+  const gate = await bomGateCounts(params.id); // same definitions the release action enforces
+  const unassignedCount = { n: gate.unassigned };
+  const uncategorizedCount = { n: gate.uncategorized };
   const project = await queryOne('SELECT bom_release_revision FROM projects WHERE id = ?', [params.id]);
   const milestone = await queryOne(
     `SELECT id, status, actual_end FROM milestones WHERE project_id = ? AND milestone_key = 'release_bom'`,
@@ -77,26 +74,18 @@ export async function POST(req, { params }) {
   // path that may arrive uncategorized, but every 'bom'-source line must be resolved by the time
   // the project actually releases). stock/sas lines never feed a statutory document, excluded by
   // design (same source='bom' scoping used everywhere else this taxonomy is enforced).
-  const uncategorized = await queryOne(
-    `SELECT COUNT(*) AS n FROM bom_items WHERE project_id = ? AND source = 'bom' AND category IS NULL`,
-    [params.id]);
-  if (uncategorized.n > 0) {
+  const gates = await bomGateCounts(params.id);
+  if (gates.uncategorized > 0) {
     return NextResponse.json(
-      { error: `${uncategorized.n} item(s) have no category set — resolve this before releasing` },
+      { error: `${gates.uncategorized} item(s) have no category set — resolve this before releasing` },
       { status: 400 });
   }
 
-  // §5ck — the symmetric gate for "assigned to a structure node," same shape/scoping as the
-  // uncategorized check above. Only blocks the release *action* — it never retroactively un-releases
-  // a project that already went out before this gate existed (confirmed live: SB-1040, released once
-  // already, currently sits at 327 of 328 items unassigned; that stays exactly as released, it would
-  // only need resolving if someone ever tries to re-release it).
-  const unassigned = await queryOne(
-    `SELECT COUNT(*) AS n FROM bom_items WHERE project_id = ? AND source = 'bom' AND assembly_id IS NULL`,
-    [params.id]);
-  if (unassigned.n > 0) {
+  // §5ck — the symmetric gate for "assigned to a structure node" (bomGateCounts: PR-raised lines are exempt — they are
+  // requests, not design structure). Only blocks the release *action*; it never retroactively un-releases a project.
+  if (gates.unassigned > 0) {
     return NextResponse.json(
-      { error: `${unassigned.n} item(s) are not assigned to a structure node — resolve this before releasing` },
+      { error: `${gates.unassigned} item(s) are not assigned to a structure node — resolve this before releasing` },
       { status: 400 });
   }
 

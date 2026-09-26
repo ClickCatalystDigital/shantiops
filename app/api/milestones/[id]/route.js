@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
-import { getFreshSessionUser, isInternal, isHead, canAccessDepartment } from '@/lib/auth';
+import { getFreshSessionUser, isInternal, isHead, isPM, canAccessDepartment } from '@/lib/auth';
+import { bomGateCounts } from '@/lib/bom-line';
 import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { todayISO } from '@/lib/date';
@@ -44,6 +45,18 @@ export async function PATCH(req, { params }) {
   if (m.department === 'Installation' && b.status === 'done') {
     const actionDenied = await requireAction(user, 'Installation', 'installation.milestone.complete');
     if (actionDenied) return actionDenied;
+  }
+
+  // Release BOM is completed by the release action, which checks the BOM (category, node). Closing it by hand here would skip
+  // those checks, so a head can't; a PM may (legacy / no-BOM projects) and a project with no design BOM lines is unaffected.
+  if (m.milestone_key === 'release_bom' && !wasDone && !isPM(user) && (b.status === 'done' || (b.actual_end && b.actual_end !== ''))) {
+    const total = await queryOne("SELECT COUNT(*) AS n FROM bom_items WHERE project_id = ? AND source = 'bom'", [m.project_id]);
+    if (total.n > 0) {
+      const gates = await bomGateCounts(m.project_id);
+      if (gates.uncategorized || gates.unassigned) {
+        return NextResponse.json({ error: `Release the BOM from Engineering → BOMs (or Requests → Release BOM): ${gates.uncategorized} item(s) have no category and ${gates.unassigned} are not in a node` }, { status: 400 });
+      }
+    }
   }
 
   const sets = [];
