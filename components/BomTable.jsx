@@ -748,6 +748,11 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
                       {r.purchase_status}
                     </span>
                   ) : null}
+                  {r.needs_spec && !r.item_id && (
+                    <span title={r.needs_spec} className="shrink-0 rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning">
+                      Needs spec
+                    </span>
+                  )}
                   {r.pending_inward_review && (
                     <span className="shrink-0 rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning">
                       Pending QC review
@@ -863,6 +868,11 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
                       sitting in QC's inward-review hold (lib/bom-receiving.js) — a line could
                       silently look done with no visible reason. Surfaces the same signal
                       readyForPacking now correctly gates on (lib/data.js's getProjectBom). */}
+                  {r.needs_spec && !r.item_id && (
+                    <div className="mt-1 rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning w-fit" title={r.needs_spec}>
+                      Needs spec: {r.needs_spec}
+                    </div>
+                  )}
                   {r.pending_inward_review && (
                     <div className="mt-1 rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning w-fit">
                       Pending QC review

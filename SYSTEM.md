@@ -11713,6 +11713,12 @@ selector + member visibility + customer filter applied). Chart config keys must 
 
 **Manual review checklist + deferral (2026-09-25).** `docs/manual-review-checklist.md` lists every open manual review from the imports (6 order↔project links, Techno Fab and Shanti Boilers tracker problems, possible duplicate customers, product code/price/GST gaps, unlinked enquiries, leftover test data) and the data still to bring over from the current CRM (Diary history, contacts, past quotations, enquiry stage/owner/value, branches, targets, price lists, Sales logins). **Deferred:** automatic BOM-template assignment at project creation. The product → template link stays unused until the Structure Templates are final.
 
+## 5dc. Item Master residue pass + "Needs spec" flag (2026-09-26)
+
+A project-by-project pass linked the BOM lines still without an Item Master link. Scripts (dry-run by default, `--apply`, audit rows in `usb_audit`, actor `script:item-residue-2026-09-26`): `report-unlinked-bom-lines.mjs` (read-only per-project report), `resolve-residue.mjs` + `lib-residue-rules.mjs` (per-line rules: link / create Item Master row / configuration / leave, with a hand-reviewed deny list), `apply-links-via-api.mjs` (writes links through `POST /api/projects/[id]/catalog-suggestions`, so the history guard, unit fill and memory learning all apply), `flag-needs-spec.mjs`. Result: ~1,000 lines linked, 159 catalog rows created (same fields as existing rows; mounting-type rows get ERP category `BOI`), datasheet rows converted to node Configuration (unreleased BOMs directly; STF-IBR-052/041/SB-1114 by un-release, convert, re-release; SB-1040 skipped because its BOM cannot pass the release gate), shifted-column rows on SB-1108 corrected, bundled lines split only where sizes and quantities pair one-to-one on open BOMs. `memoryKeys` now keeps a lone digit (lug sizes) so different sizes no longer share one memory key.
+
+**Needs spec.** `bom_items.needs_spec` (TEXT) names what an un-linked line still lacks ("Lug type and size"). Populated by `flag-needs-spec.mjs`; shown as a badge in `BomTable` only while `item_id` is NULL; `linkBomItem` clears it when a link is made. It never changes the description/spec and creates no catalog rows. Remaining questions: `docs/item-master-residue-review.md`.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own
