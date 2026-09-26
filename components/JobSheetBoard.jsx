@@ -259,6 +259,7 @@ function SheetDetail({ id, workers, canProduction, canQc, onClose, onDeleted }) 
                               {workerOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                             </select>
                           ) : (r.fitter_name || '—')}
+                          <ExtraWorkers r={r} workers={workers} disabled={!canProduction || !!r.qc_sign_by} onChange={ids => stage(r, { action: 'edit', extra_workers: ids })} />
                         </td>
                         <td className="px-2 py-1"><DateCell value={r.start_date} disabled={!canProduction || !!r.qc_sign_by} onSave={v => stage(r, { action: 'edit', start_date: v })} /></td>
                         <td className="px-2 py-1"><DateCell value={r.end_date} disabled={!canProduction || !!r.qc_sign_by} onSave={v => stage(r, { action: 'edit', end_date: v })} /></td>
@@ -425,6 +426,30 @@ function ScanImage({ url, onReplace, onRemove }) {
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={url} alt="Job card scan" style={{ width: `${zoom * 100}%`, maxWidth: 'none' }} className="rounded-md border bg-white" />
       </div>
+    </div>
+  );
+}
+
+// Extra fitters/welders on a stage: removable chips + a small "+" picker (the first stays in the dropdown).
+function ExtraWorkers({ r, workers, disabled, onChange }) {
+  const ids = (r.extra_worker_ids ? String(r.extra_worker_ids).split(',') : []).map(Number);
+  const names = ids.map(id => workers.find(w => w.id === id)?.name || `#${id}`);
+  if (disabled && !ids.length) return null;
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-1">
+      {ids.map((id, i) => (
+        <span key={id} className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px]">
+          {names[i]}
+          {!disabled && <button type="button" aria-label="Remove worker" onClick={() => onChange(ids.filter(x => x !== id))}>×</button>}
+        </span>
+      ))}
+      {!disabled && (
+        <select value="" onChange={e => e.target.value && onChange([...ids, Number(e.target.value)])}
+          className="h-5 w-14 rounded border bg-transparent px-0.5 text-[11px]" aria-label="Add worker">
+          <option value="">+ add</option>
+          {workers.filter(w => w.active && w.id !== r.fitter_employee_id && !ids.includes(w.id)).map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+        </select>
+      )}
     </div>
   );
 }

@@ -40,16 +40,18 @@ export async function POST(req) {
   const projectId = absent ? null : Number(b.project_id) || null;
   const milestoneId = absent ? null : Number(b.milestone_id) || null;
   const notes = absent ? null : String(b.notes || '').trim() || null;
+  const allocated = absent ? null : String(b.work_allocated || '').trim() || null;
 
   await execute(
-    `INSERT INTO attendance_days (employee_id, date, status, project_id, milestone_id, notes, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO attendance_days (employee_id, date, status, project_id, milestone_id, notes, work_allocated, created_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(employee_id, date) DO UPDATE SET
        status = excluded.status,
        project_id = excluded.project_id,
        milestone_id = excluded.milestone_id,
-       notes = excluded.notes`,
-    [employeeId, date, b.status, projectId, milestoneId, notes, user.username]
+       notes = excluded.notes,
+       work_allocated = excluded.work_allocated`,
+    [employeeId, date, b.status, projectId, milestoneId, notes, allocated, user.username]
   );
   return NextResponse.json({ ok: true });
 }

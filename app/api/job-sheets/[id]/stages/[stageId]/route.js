@@ -84,6 +84,12 @@ export async function PATCH(req, { params }) {
       sets.push(`${k} = ?`); args.push(b[k] || null);
     }
     if ('remarks' in b) { sets.push('remarks = ?'); args.push(String(b.remarks || '').trim() || null); }
+    if ('extra_workers' in b) {
+      const ids = [...new Set((Array.isArray(b.extra_workers) ? b.extra_workers : []).map(Number).filter(Boolean))];
+      await execute('DELETE FROM job_sheet_stage_workers WHERE stage_id = ?', [stageId]);
+      for (const eid of ids) await execute('INSERT INTO job_sheet_stage_workers (stage_id, employee_id) VALUES (?, ?)', [stageId, eid]);
+    }
+    if (!sets.length && 'extra_workers' in b) { await recomputeSheetDates(sheetId); return NextResponse.json({ ok: true }); }
     if (!sets.length) return bad('Nothing to update');
     // Clearing the end date un-finishes the stage, so its production sign goes too.
     if ('end_date' in b && !b.end_date) sets.push('production_sign_by = NULL', 'production_sign_at = NULL');

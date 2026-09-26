@@ -168,7 +168,7 @@ function WorkerCard({ row, date, projects }) {
     // Absent means no work to record, and the server nulls those columns — mirror that locally so
     // the form can't show values the DB doesn't have (we no longer re-seed from the server).
     const cleaned = next.status === 'absent'
-      ? { ...next, project_id: '', milestone_id: '', notes: '' }
+      ? { ...next, project_id: '', milestone_id: '', notes: '', work_allocated: '' }
       : next;
     setForm(cleaned);
     if (!cleaned.status) return; // nothing to record until attendance is marked
@@ -182,6 +182,7 @@ function WorkerCard({ row, date, projects }) {
           project_id: cleaned.project_id ? Number(cleaned.project_id) : null,
           milestone_id: cleaned.milestone_id ? Number(cleaned.milestone_id) : null,
           notes: cleaned.notes || null,
+          work_allocated: cleaned.work_allocated || null,
         },
       });
       router.refresh();
@@ -239,9 +240,23 @@ function WorkerCard({ row, date, projects }) {
                 </SelectGroup>
               </SelectContent>
             </Select>
-            <Input placeholder="What they worked on today" value={form.notes} className="min-w-48 flex-1"
+          </div>
+        )}
+        {form.status && !absent && (
+          <div className="flex flex-wrap items-center gap-2">
+            <Input placeholder="Work allocated (morning)" value={form.work_allocated} className="min-w-48 flex-1"
+              onChange={e => setForm({ ...form, work_allocated: e.target.value })}
+              onBlur={() => form.work_allocated !== (row.work_allocated || '') && save(form)} />
+            <Input placeholder="Work done" value={form.notes} className="min-w-48 flex-1"
               onChange={e => setForm({ ...form, notes: e.target.value })}
               onBlur={() => form.notes !== (row.notes || '') && save(form)} />
+            {!form.notes && row.suggested_work && (
+              <button type="button" className="rounded-full border px-2.5 py-1 text-xs text-primary hover:bg-primary/5"
+                title="From the job card — click to use as Work done"
+                onClick={() => save({ ...form, notes: row.suggested_work })}>
+                From job card: {row.suggested_work}
+              </button>
+            )}
           </div>
         )}
       </CardContent>
@@ -255,6 +270,7 @@ function stateOf(row) {
     project_id: row.project_id ? String(row.project_id) : '',
     milestone_id: row.milestone_id ? String(row.milestone_id) : '',
     notes: row.notes || '',
+    work_allocated: row.work_allocated || '',
   };
 }
 
