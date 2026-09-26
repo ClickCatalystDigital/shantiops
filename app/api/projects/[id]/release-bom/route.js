@@ -169,7 +169,7 @@ export async function POST(req, { params }) {
     const categorized = await queryAll(
       'SELECT material_description, category FROM bom_items WHERE project_id = ? AND category IS NOT NULL',
       [params.id]);
-    for (const it of categorized) await learnCategoryIfConfirmed(it.material_description, it.category, user.username);
+    for (const it of categorized) await learnCategoryIfConfirmed(it.material_description, it.category, user.username, { remember: false });
   } catch (err) { /* best-effort */ }
 
   return NextResponse.json({ ok: true, remnantMatches: matched.length, autoReserved: plainMatched.length, revision });

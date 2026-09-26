@@ -72,6 +72,8 @@ export async function PATCH(req, { params }) {
   if (denied && isDefaultOnly) denied = await requireAction(user, 'Stores', 'stores.bom.set_manufacturing_default');
   if (denied) return denied;
 
+  // a Stores-side default change must not be masked by an older explicit class
+  if (isDefaultOnly) cols.push('procurement_class'), b.procurement_class = null;
   await execute(
     `UPDATE items SET ${cols.map(f => `${f} = ?`).join(', ')} WHERE id = ?`,
     [...cols.map(f => (b[f] === '' ? null : b[f])), params.id]
