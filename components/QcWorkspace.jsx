@@ -16,7 +16,7 @@ import JobSheetBoard from './JobSheetBoard';
 import QcPanel from './QcPanel';
 import JobWorkPanel from './JobWorkPanel';
 import SearchableSelect from './SearchableSelect';
-import { InwardApprovalsPanel, PreDispatchApprovalsPanel } from './MaterialApprovalPanels';
+import { InwardApprovalsPanel, PreDispatchApprovalsPanel, JobSheetApprovalsPanel } from './MaterialApprovalPanels';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { QC_SERIES } from '@/lib/qc-series';
 import { FlaskConicalIcon, FileTextIcon, GaugeIcon, AlertTriangleIcon, LockIcon, LinkIcon, ClipboardCheckIcon, InboxIcon, TruckIcon, ListChecksIcon } from 'lucide-react';
@@ -48,6 +48,7 @@ const ITEMS = [
     key: 'approvals', label: 'Approvals', icon: ClipboardCheckIcon, group: true,
     children: [
       { key: 'inward-approvals', label: 'Inward', icon: InboxIcon },
+      { key: 'jobsheet-approvals', label: 'Job Card Stages', icon: ListChecksIcon },
       { key: 'predispatch-approvals', label: 'Pre-Dispatch', icon: TruckIcon },
     ],
   },
@@ -58,7 +59,7 @@ const SERIES_OPTIONS = [{ value: null, label: 'All models' }, ...QC_SERIES.map(s
 
 const certProjectIds = c => (c.project_ids ? String(c.project_ids).split(',').map(Number) : []);
 
-export default function QcWorkspace({ projects = [], certificates = [], documents = [], calibrationItems = [], ncrs = [], holdPoints = [], splitOrders = [], canDisposition = false, canVerify = false, canClose = false, inwardApprovals = [], preDispatchApprovals = [], canDecideInward = false, canDecideQcPreDispatch = false, testRecords = [], jobWorkInspections = [], workOrders = [], bomAssemblies = [], hydroMilestoneId = null, canEditQc = false, canEditProductionQc = false, initialTab, initialProject }) {
+export default function QcWorkspace({ projects = [], certificates = [], documents = [], calibrationItems = [], ncrs = [], holdPoints = [], splitOrders = [], canDisposition = false, canVerify = false, canClose = false, inwardApprovals = [], jobSheetStages = [], preDispatchApprovals = [], canDecideInward = false, canDecideQcPreDispatch = false, testRecords = [], jobWorkInspections = [], workOrders = [], bomAssemblies = [], hydroMilestoneId = null, canEditQc = false, canEditProductionQc = false, initialTab, initialProject }) {
   const [tab, setTab] = useState(FLAT_TAB_KEYS.includes(initialTab) ? initialTab : 'tc-bank');
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -136,7 +137,7 @@ export default function QcWorkspace({ projects = [], certificates = [], document
   return (
     <WorkspaceSidebar title="Quality Control" icon={FlaskConicalIcon} items={ITEMS}
       activeKey={tab} onChange={setTab}
-      header={tab === 'tc-assign' ? assignHeader : ['calibration', 'holds', 'inward-approvals', 'predispatch-approvals'].includes(tab) ? null : header}>
+      header={tab === 'tc-assign' ? assignHeader : ['calibration', 'holds', 'inward-approvals', 'jobsheet-approvals', 'predispatch-approvals'].includes(tab) ? null : header}>
       {tab === 'tc-bank' ? (
         <TcBank certificates={shownCerts} projects={projectsSorted} defaultProjectIds={projectId != null ? [projectId] : []} />
       ) : tab === 'test-records' ? (
@@ -192,6 +193,8 @@ export default function QcWorkspace({ projects = [], certificates = [], document
         <JobSheetBoard projects={projects} canQc />
       ) : tab === 'calibration' ? (
         <CalibrationPanel items={calibrationItems} canEdit />
+      ) : tab === 'jobsheet-approvals' ? (
+        <JobSheetApprovalsPanel rows={jobSheetStages} projects={projects} />
       ) : tab === 'inward-approvals' ? (
         <InwardApprovalsPanel rows={inwardApprovals} canDecide={canDecideInward} />
       ) : (

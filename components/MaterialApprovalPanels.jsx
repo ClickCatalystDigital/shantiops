@@ -25,6 +25,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { api, showToast, formatDate } from '@/lib/client';
+import { todayISO } from '@/lib/date';
+import { Input } from '@/components/ui/input';
+import CertPicker from '@/components/CertPicker';
 
 function DecisionButtons({ canDecide, onDecide, busy }) {
   const [reason, setReason] = useState('');
@@ -337,5 +340,79 @@ export function DispatchApprovalsPanel({ rows = [] }) {
           onClose={() => setOpenApprovalId(null)} />
       )}
     </Card>
+  );
+}
+
+// ---------- Job Card stages (QC signs what Production finished) ----------
+
+export function JobSheetApprovalsPanel({ rows }) {
+  const router = useRouter();
+  const [sel, setSel] = useState(null);
+  const [q, setQ] = useState('');
+  const shown = rows.filter(r => !q.trim() || [r.job_number, r.jc_no, r.project_no, r.name].some(v => v?.toLowerCase().includes(q.trim().toLowerCase())));
+  const days = d => Math.max(0, Math.round((Date.now() - new Date(d).getTime()) / 864e5));
+  return (
+    <div className="flex flex-col gap-3">
+      <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Search job / project / stage…" className="w-72" />
+      <Card><CardContent className="p-0">
+        {shown.length === 0 ? <p className="py-10 text-center text-sm text-muted-foreground">No job card stages waiting for QC.</p> : (
+          <Table>
+            <TableHeader><TableRow><TableHead>Job</TableHead><TableHead>Project</TableHead><TableHead>Stage</TableHead>
+              <TableHead>Fitter</TableHead><TableHead>Finished</TableHead><TableHead>Waiting</TableHead></TableRow></TableHeader>
+            <TableBody>
+              {shown.map(r => (
+                <TableRow key={r.id} className="cursor-pointer" onClick={() => setSel(r)}>
+                  <TableCell className="font-medium">{r.job_number || r.jc_no}<span className="ml-2 text-xs text-muted-foreground">{r.jc_no}</span></TableCell>
+                  <TableCell>{r.project_no || '—'}</TableCell><TableCell>{r.name}</TableCell>
+                  <TableCell>{r.fitter_name || '—'}</TableCell><TableCell>{formatDate(r.end_date)}</TableCell>
+                  <TableCell><Badge variant="outline">{days(r.end_date)}d</Badge></TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent></Card>
+      {sel && <JobSheetStageDialog row={sel} onClose={() => setSel(null)} onDone={() => { setSel(null); router.refresh(); }} />}
+    </div>
+  );
+}
+
+function JobSheetStageDialog({ row, onClose, onDone }) {
+  const [date, setDate] = useState(todayISO());
+  const [certs, setCerts] = useState([]);
+  const [certId, setCertId] = useState(null);
+  const [pick, setPick] = useState(false);
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { api(`/api/test-certificates${row.project_id ? `?project_id=${row.project_id}` : ''}`).then(setCerts).catch(() => {}); }, [row.project_id]);
+  const cert = certs.find(c => c.id === certId);
+  async function act(body, msg) {
+    setBusy(true);
+    try { await api(`/api/job-sheets/${row.sheet_id}/stages/${row.id}`, { method: 'PATCH', body }); showToast(msg); onDone(); }
+    catch (err) { showToast(err.message, 'error'); setBusy(false); }
+  }
+  return (
+    <Dialog open onOpenChange={v => !v && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader><DialogTitle>{row.name}</DialogTitle></DialogHeader>
+        <p className="text-xs text-muted-foreground">{row.job_number || row.jc_no} · {row.project_no || 'No project'} · finished {formatDate(row.end_date)}</p>
+        <div className="flex flex-col gap-3">
+          <label className="flex flex-col gap-1 text-sm">Inspection date<Input type="date" value={date} onChange={e => setDate(e.target.value)} /></label>
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" className="flex-1 justify-start font-normal" onClick={() => setPick(true)}>
+              {cert ? `${cert.certificate_no} · ${cert.cast_no}` : 'Link test certificate… (optional)'}</Button>
+            {certId && <Button type="button" variant="ghost" onClick={() => setCertId(null)}>Clear</Button>}
+          </div>
+          <Textarea placeholder="Reason (required only to send back)" value={reason} onChange={e => setReason(e.target.value)} rows={2} />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" className="text-danger hover:text-danger" disabled={busy || !reason.trim()}
+            onClick={() => act({ action: 'send_back', reason }, 'Sent back to Production')}>Send back</Button>
+          <Button disabled={busy} onClick={() => act({ action: 'qc', inspection_date: date, test_certificate_id: certId }, 'Stage QC-signed')}>Approve</Button>
+        </DialogFooter>
+        <CertPicker open={pick} onOpenChange={setPick} title="Link test certificate" certificates={certs}
+          project={row.project_id ? { id: row.project_id } : null} onPick={setCertId} />
+      </DialogContent>
+    </Dialog>
   );
 }

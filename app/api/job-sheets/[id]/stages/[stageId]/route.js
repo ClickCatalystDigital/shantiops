@@ -11,6 +11,7 @@ import { requireAction } from '@/lib/action-permissions';
 import { todayISO } from '@/lib/date';
 import { isISODate, recomputeSheetDates } from '@/lib/job-sheets';
 import { audit } from '@/lib/usb';
+import { notifyDepartment } from '@/lib/notify';
 
 const bad = (m, status = 400) => NextResponse.json({ error: m }, { status });
 
@@ -40,6 +41,21 @@ export async function PATCH(req, { params }) {
 
   // QC may reopen a stage it signed; everything else here is Production's.
   const qcReopen = b.action === 'reopen' && canAccessDepartment(user, 'QC');
+  if (b.action === 'send_back') {
+    const d0 = requireDepartment(user, 'QC') || await requireAction(user, 'QC', 'qc.jobsheet.sign');
+    if (d0) return d0;
+    const reason = String(b.reason || '').trim();
+    if (!reason) return bad('Give a reason for sending it back');
+    if (!row.end_date || row.qc_sign_by) return bad('Only a finished, unsigned stage can be sent back');
+    await execute(`UPDATE job_sheet_stages SET end_date = NULL, production_sign_by = NULL, production_sign_at = NULL,
+      remarks = ? WHERE id = ?`, [`QC sent back: ${reason}`, stageId]);
+    await recomputeSheetDates(sheetId);
+    await audit('job_sheet_stage_sent_back', { actor: user.username, detail: `sheet ${sheetId} · ${row.name} · ${reason}` });
+    try {
+      await notifyDepartment('Production', { kind: 'jobsheet_sent_back', title: `QC sent back "${row.name}": ${reason}`, dedupe_key: `jobsheet_back:${stageId}:${Date.now()}` });
+    } catch { /* best-effort */ }
+    return NextResponse.json({ ok: true });
+  }
   const denied = qcReopen ? null : (requireDepartment(user, 'Production') || await requireAction(user, 'Production', 'production.jobsheet.write'));
   if (denied) return denied;
   const locked = row.qc_sign_by && !canAccessDepartment(user, 'QC') && !isPM(user);
@@ -75,6 +91,14 @@ export async function PATCH(req, { params }) {
   } else return bad('Unknown action');
 
   await recomputeSheetDates(sheetId);
+  if (b.action === 'finish') {
+    // One QC alert per job per day (not one per stage).
+    try {
+      const js = await queryOne('SELECT jc_no, job_number, project_id FROM job_sheets WHERE id = ?', [sheetId]);
+      await notifyDepartment('QC', { kind: 'jobsheet_qc', title: `Job card ${js.job_number || js.jc_no}: stage(s) finished, waiting for QC sign`,
+        project_id: js.project_id, dedupe_key: `jobsheet_qc:${sheetId}:${todayISO()}` });
+    } catch { /* best-effort */ }
+  }
   return NextResponse.json({ ok: true });
 }
 

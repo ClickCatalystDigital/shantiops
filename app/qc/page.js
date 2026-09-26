@@ -3,7 +3,7 @@
 import { redirect } from 'next/navigation';
 import { getFreshSessionUser, canAccessDepartment, isDepartmentHead, roleHome } from '@/lib/auth';
 import { canPerformAction } from '@/lib/action-permissions';
-import { getTestCertificates, getAllQcDocuments, getActiveProjectsList, getCalibrationItems, getReceivedProjectIds, getReleasedBomProjectIds, getAllocatedChildProjectIds, getNcrs, getQcHoldPoints, getPendingInwardApprovals, getPendingPreDispatchApprovals, getQcRecords, getJobWorkInspections, getWorkOrders, getBomAssembliesFlat, getMilestoneIdByKey } from '@/lib/data';
+import { getTestCertificates, getAllQcDocuments, getActiveProjectsList, getCalibrationItems, getReceivedProjectIds, getReleasedBomProjectIds, getAllocatedChildProjectIds, getNcrs, getQcHoldPoints, getPendingInwardApprovals, getPendingPreDispatchApprovals, getPendingJobSheetStages, getQcRecords, getJobWorkInspections, getWorkOrders, getBomAssembliesFlat, getMilestoneIdByKey } from '@/lib/data';
 import QcWorkspace from '@/components/QcWorkspace';
 
 export const dynamic = 'force-dynamic';
@@ -13,7 +13,7 @@ export default async function QcPage({ searchParams }) {
   if (!canAccessDepartment(user, 'QC')) redirect(roleHome(user));
 
   const sp = await searchParams;
-  const [allProjects, certificates, documents, calibrationItems, receivedIds, releasedBomIds, allocatedChildIds, ncrs, holdPoints, canDisposition, canVerify, canClose, inwardApprovals, preDispatchApprovals] = await Promise.all([
+  const [allProjects, certificates, documents, calibrationItems, receivedIds, releasedBomIds, allocatedChildIds, ncrs, holdPoints, canDisposition, canVerify, canClose, inwardApprovals, preDispatchApprovals, jobSheetStages] = await Promise.all([
     // QC is the one deliberate exception to getActiveProjectsList()'s master-only default — real QC
     // documents are created per split-child unit, so QC's own picker needs children visible.
     getActiveProjectsList({ includeChildren: true }),
@@ -33,6 +33,7 @@ export default async function QcPage({ searchParams }) {
     // write route re-enforces the real decide authority server-side via requireAction.
     getPendingInwardApprovals(),
     getPendingPreDispatchApprovals(),
+    getPendingJobSheetStages(),
   ]);
 
   // A project is QC's business once Stores starts receiving its materials — filter the project
