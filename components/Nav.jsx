@@ -11,6 +11,7 @@ import {
   LandmarkIcon, ClipboardListIcon, PencilRulerIcon,
 } from 'lucide-react';
 import { DEPARTMENTS } from '@/lib/milestones';
+import { departmentsFor } from '@/lib/manager-scope.mjs';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import {
@@ -37,9 +38,9 @@ export default function Nav({ user, reportDepartments = [] }) {
   const departments = user?.departments || [];
   // Global company filter — same rule the server uses (lib/company-filter.mjs).
   const showCompany = canUseCompanySelector(user);
-  const tabDepartments = isDeptPM ? DEPARTMENTS : departments;
+  const tabDepartments = isDeptPM ? departmentsFor(user, DEPARTMENTS) : departments;
   // Departments the user can browse: PM → all; head → their granted list. Packing lives under Dispatch.
-  const accessibleDepts = isPMUser ? DEPARTMENTS : departments;
+  const accessibleDepts = isPMUser ? departmentsFor(user, DEPARTMENTS) : departments;
   const activeDept = searchParams.get('dept');
   // Tasks is a shared department-aware workspace; Home remains the common landing tab. Workers
   // stays Production's own shop-floor surface, enforced by the page via inDepartment().

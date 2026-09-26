@@ -32,7 +32,7 @@ import CreateRfqDialog from './CreateRfqDialog';
 import SearchableSelect from './SearchableSelect';
 import { UOM_PRESETS } from '@/lib/uom';
 import { PURCHASE_STATUSES as BOM_STATUSES, CLOSED_STATUSES, OPEN_STATUSES, STATUS_TONE, DEFAULT_PURCHASE_STATUS } from '@/lib/bom-fields.mjs';
-import { aggregatePrGroups } from '@/lib/bom-structure.mjs';
+import { aggregatePrGroups, procurementCategory } from '@/lib/bom-structure.mjs';
 import { projectLabel } from '@/lib/project-label';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 import SupplierAnalysis from '@/components/SupplierAnalysis';
@@ -253,6 +253,7 @@ function EnquiryRow({ it, quotes, suppliers, router, rfqSummary, selected, onTog
                 State tab rendered them. Same canonical badge renderer, reused, not duplicated. */}
             <TraceabilityBadges item={it} className="mt-1 flex flex-wrap gap-1" />
           </div>
+          <CategoryBadge it={it} />
           {it.reserved_qty > 0 && (
             <Badge className="border-success/30 bg-success-surface text-success"
               title={`Partial stock — Stores already reserved ${it.reserved_qty} from inventory. This line's quantity (${it.qty_text || 'remaining'}) is only the unreserved shortfall; do not source the reserved portion again.`}>
@@ -315,9 +316,26 @@ function groupedSupplierQuotes(bomItemIds, quotesByItem) {
 // count housekeeping. Never a fictitious combined stock size — area/length are demand totals, not
 // a claim that one physical sheet/bar of that size exists; which real stock to buy and how to cut
 // it stays a downstream Procurement/Stores decision.
+const CATEGORY_LABEL = { fabrication: 'Fabrication', bought_out: 'Bought Out' };
+function CategoryBadge({ it }) {
+  return <Badge variant="outline" className="text-muted-foreground">{CATEGORY_LABEL[procurementCategory(it)]}</Badge>;
+}
+// A grouped-by-item row's category: Fabrication when any project's line still needs making.
+function groupCategory(group) {
+  return group.constituents.some(c => procurementCategory(c) === 'fabrication') ? 'fabrication' : 'bought_out';
+}
+
 function PrGroupHeaderInfo({ group }) {
   return (
     <>
+      {group.kind === 'item' && (
+        <div className="mt-0.5 flex flex-wrap gap-1">
+          {[...new Set(group.constituents.map(projectLabel))].map(l => {
+            const n = group.constituents.filter(c => projectLabel(c) === l).length;
+            return <Badge key={l} variant="secondary" className="font-normal">{l}{n > 1 ? ` ×${n}` : ''}</Badge>;
+          })}
+        </div>
+      )}
       <p className="truncate text-xs text-muted-foreground">
         {group.moc || '—'}{(group.common_spec || group.size_spec) ? ` · ${group.common_spec || group.size_spec}` : ''}
       </p>
@@ -329,7 +347,8 @@ function PrGroupHeaderInfo({ group }) {
       </p>
       <p className="truncate text-xs text-muted-foreground">
         {group.pr_no && `${group.pr_no} · ${formatDate(group.pr_created_at)} · `}
-        {group.constituents.length} project{group.constituents.length !== 1 ? 's' : ''}
+        {group.kind === 'item' && `${CATEGORY_LABEL[groupCategory(group)]} · `}
+        {new Set(group.constituents.map(projectLabel)).size} project{new Set(group.constituents.map(projectLabel)).size !== 1 ? 's' : ''}
       </p>
     </>
   );
@@ -355,10 +374,10 @@ function PrGroupEnquiryRow({ group, quotesByItem, suppliers, rfqSummaryByItem, r
           <div className="min-w-0 flex-1">
             <span className="font-medium">{group.material_description}</span>
             <PrGroupHeaderInfo group={group} />
-            {(group.unit_mismatch || group.spec_drift) && (
+            {(group.unit_mismatch || (group.spec_drift && group.kind !== 'item')) && (
               <div className="mt-1 flex flex-wrap gap-1">
                 {group.unit_mismatch && <Badge variant="outline" className="text-warning">Unit mismatch across projects — check before quoting</Badge>}
-                {group.spec_drift && <Badge variant="outline" className="text-warning">Spec drift — a project's own MOC/size/category no longer matches the rest</Badge>}
+                {group.spec_drift && group.kind !== 'item' && <Badge variant="outline" className="text-warning">Spec drift — a project's own MOC/size/category no longer matches the rest</Badge>}
               </div>
             )}
           </div>
@@ -443,7 +462,7 @@ function PrGroupEnquiryRow({ group, quotesByItem, suppliers, rfqSummaryByItem, r
   );
 }
 
-function Enquiry({ items, allItems, sourceView, quotesByItem, suppliers, rfqSummaryByItem, router, q }) {
+function Enquiry({ items, allItems, sourceView, quotesByItem, suppliers, rfqSummaryByItem, router, q, categoryFilter }) {
   const needle = q.trim().toLowerCase();
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [rfqDialogOpen, setRfqDialogOpen] = useState(false);
@@ -469,7 +488,13 @@ function Enquiry({ items, allItems, sourceView, quotesByItem, suppliers, rfqSumm
   // mirror of that same filter, on source alone.
   const shownPmb = isPr || isCustom ? null
     : items.filter(it => !it.pr_item_id && it.source !== 'custom' && !it.selected_quote_id && !OUT_OF_PIPELINE.includes(it.purchase_status))
-      .filter(it => !needle || it.material_description.toLowerCase().includes(needle) || it.project_no.toLowerCase().includes(needle));
+      .filter(it => !needle || it.material_description.toLowerCase().includes(needle) || it.project_no.toLowerCase().includes(needle))
+      .filter(it => categoryFilter === 'all' || procurementCategory(it) === categoryFilter);
+  // Same Item Master item on 2+ projects becomes one row with a pill per project; lines with no
+  // item_id (never linked to the catalog) or the only line for their item stay as plain rows.
+  const itemGroups = shownPmb ? aggregatePrGroups(shownPmb, 'item_id').filter(g => g.constituents.length > 1) : [];
+  const groupedIds = new Set(itemGroups.flatMap(g => g.constituents.map(c => c.id)));
+  const singlePmb = shownPmb ? shownPmb.filter(it => !groupedIds.has(it.id)) : null;
   const shownCustom = isCustom
     ? items.filter(it => it.source === 'custom' && !it.selected_quote_id && !OUT_OF_PIPELINE.includes(it.purchase_status))
       .filter(it => !needle || it.material_description.toLowerCase().includes(needle))
@@ -490,7 +515,7 @@ function Enquiry({ items, allItems, sourceView, quotesByItem, suppliers, rfqSumm
   }
   function toggleAllShown() { toggleIds(shownIds, allShownSelected); }
   const selectedItems = allItems.filter(it => selectedIds.has(it.id));
-  const shownCount = isPr ? groups.length : isCustom ? shownCustom.length : shownPmb.length;
+  const shownCount = isPr ? groups.length : isCustom ? shownCustom.length : itemGroups.length + singlePmb.length;
   const empty = shownCount === 0;
 
   return (
@@ -520,10 +545,17 @@ function Enquiry({ items, allItems, sourceView, quotesByItem, suppliers, rfqSumm
               selected={g.sourcing_bom_item_ids.every(id => selectedIds.has(id))}
               onToggle={() => toggleIds(g.sourcing_bom_item_ids, g.sourcing_bom_item_ids.every(id => selectedIds.has(id)))} />
           ))
-          : (isCustom ? shownCustom : shownPmb).map(it => (
+          : [
+            ...itemGroups.map(g => (
+              <PrGroupEnquiryRow key={`item-${g.group_key}`} group={g} quotesByItem={quotesByItem} suppliers={suppliers} rfqSummaryByItem={rfqSummaryByItem} router={router}
+                selected={g.sourcing_bom_item_ids.every(id => selectedIds.has(id))}
+                onToggle={() => toggleIds(g.sourcing_bom_item_ids, g.sourcing_bom_item_ids.every(id => selectedIds.has(id)))} />
+            )),
+            ...(isCustom ? shownCustom : singlePmb).map(it => (
             <EnquiryRow key={it.id} it={it} quotes={quotesByItem[it.id] || []} suppliers={suppliers} router={router}
               rfqSummary={rfqSummaryByItem[it.id]} selected={selectedIds.has(it.id)} onToggle={() => toggle(it.id)} />
-          ))}
+            )),
+          ]}
       </CardContent>
       {rfqDialogOpen && (
         <CreateRfqDialog items={selectedItems} suppliers={suppliers} router={router}
@@ -564,7 +596,7 @@ function SelectionRow({ it, quotes, router }) {
     <div className="flex flex-col gap-2 border-b py-3 last:border-b-0">
       <div className="flex items-center justify-between">
         <div className="min-w-0">
-          <p className="font-medium">{it.material_description}</p>
+          <p className="font-medium">{it.material_description} <CategoryBadge it={it} /></p>
           <ItemContext it={it} />
           <TraceabilityBadges item={it} className="mt-1 flex flex-wrap gap-1" />
         </div>
@@ -620,15 +652,23 @@ function PrGroupSelectionRow({ group, quotesByItem, router }) {
   async function award(supplierId) {
     setBusySupplier(supplierId);
     try {
-      await api(`/api/pr-items/${group.pr_item_id}/select-supplier`, { method: 'POST', body: { supplier_id: supplierId } });
-      showToast('Supplier awarded for this PR line'); router.refresh();
+      if (group.kind === 'item') {
+        await api('/api/items/select-supplier', { method: 'POST', body: { supplier_id: supplierId, bom_item_ids: group.sourcing_bom_item_ids } });
+      } else {
+        await api(`/api/pr-items/${group.pr_item_id}/select-supplier`, { method: 'POST', body: { supplier_id: supplierId } });
+      }
+      showToast(group.kind === 'item' ? 'Supplier awarded for this item' : 'Supplier awarded for this PR line'); router.refresh();
     } catch (err) { showToast(err.message, 'error'); }
     setBusySupplier(null);
   }
   async function undoGroup() {
     setBusySupplier('undo');
     try {
-      await api(`/api/pr-items/${group.pr_item_id}/select-supplier`, { method: 'DELETE' });
+      if (group.kind === 'item') {
+        await api('/api/items/select-supplier', { method: 'DELETE', body: { bom_item_ids: group.sourcing_bom_item_ids } });
+      } else {
+        await api(`/api/pr-items/${group.pr_item_id}/select-supplier`, { method: 'DELETE' });
+      }
       showToast('Award undone'); router.refresh();
     } catch (err) { showToast(err.message, 'error'); }
     setBusySupplier(null);
@@ -652,10 +692,10 @@ function PrGroupSelectionRow({ group, quotesByItem, router }) {
           )}
         </div>
       </div>
-      {(group.unit_mismatch || group.spec_drift) && (
+      {(group.unit_mismatch || (group.spec_drift && group.kind !== 'item')) && (
         <div className="flex flex-wrap gap-1">
           {group.unit_mismatch && <Badge variant="outline" className="text-warning">Unit mismatch across projects</Badge>}
-          {group.spec_drift && <Badge variant="outline" className="text-warning">Spec drift across projects</Badge>}
+          {group.spec_drift && group.kind !== 'item' && <Badge variant="outline" className="text-warning">Spec drift across projects</Badge>}
         </div>
       )}
       <div className="flex flex-col gap-1.5">
@@ -695,7 +735,7 @@ function PrGroupSelectionRow({ group, quotesByItem, router }) {
   );
 }
 
-function Selection({ items, allItems, sourceView, quotesByItem, router, q }) {
+function Selection({ items, allItems, sourceView, quotesByItem, router, q, categoryFilter }) {
   const needle = q.trim().toLowerCase();
   if (sourceView === 'pr') {
     const groups = aggregatePrGroups(allItems)
@@ -730,12 +770,17 @@ function Selection({ items, allItems, sourceView, quotesByItem, router, q }) {
   // PMB Items excludes custom items too (same reasoning as Enquiry's own shownPmb) — a custom item
   // has no pr_item_id and would otherwise fall through into this bucket.
   const shown = items.filter(it => !it.pr_item_id && it.source !== 'custom' && selectionEligible(it, quotesByItem))
-    .filter(it => !needle || it.material_description.toLowerCase().includes(needle) || it.project_no.toLowerCase().includes(needle));
+    .filter(it => !needle || it.material_description.toLowerCase().includes(needle) || it.project_no.toLowerCase().includes(needle))
+    .filter(it => categoryFilter === 'all' || procurementCategory(it) === categoryFilter);
+  const itemGroups = aggregatePrGroups(shown, 'item_id').filter(g => g.constituents.length > 1);
+  const groupedIds = new Set(itemGroups.flatMap(g => g.constituents.map(c => c.id)));
+  const singles = shown.filter(it => !groupedIds.has(it.id));
   return (
     <Card>
       <CardContent className="flex flex-col pt-4">
+        {itemGroups.map(g => <PrGroupSelectionRow key={`item-${g.group_key}`} group={g} quotesByItem={quotesByItem} router={router} />)}
         {shown.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">Nothing ready to compare yet — log a quote in Sourcing first.</p>}
-        {shown.map(it => <SelectionRow key={it.id} it={it} quotes={quotesByItem[it.id] || []} router={router} />)}
+        {singles.map(it => <SelectionRow key={it.id} it={it} quotes={quotesByItem[it.id] || []} router={router} />)}
       </CardContent>
     </Card>
   );
@@ -1826,6 +1871,7 @@ export default function ProcurementWorkspace({ sourcingItems, suppliers, purchas
   // PR line a project split came from) vs "Custom Items" (Procurement's own ad hoc "+ Add Item,"
   // no PMB import and no PR behind it) — Enquiry/Selection each render one of the three.
   const [sourceView, setSourceView] = useState('pmb');
+  const [categoryFilter, setCategoryFilter] = useState('all');
   // Deep-linked + persisted like `tab` above — a project picked on Enquiry/Selection shouldn't
   // silently reset to "All projects" on a real page reload, same complaint the `?tab=` deep-link
   // was already built to solve.
@@ -1923,6 +1969,16 @@ export default function ProcurementWorkspace({ sourcingItems, suppliers, purchas
             options={[{ value: 'all', label: 'All projects' }, ...bomProjects.map(p => ({ value: p, label: p }))]}
             placeholder="All projects" className="w-44" inputClassName="h-8" />
         )}
+        {(tab === 'enquiry' || tab === 'selection') && sourceView === 'pmb' && (
+          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+            <SelectTrigger className="h-8 w-40"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All categories</SelectItem>
+              <SelectItem value="fabrication">Fabrication</SelectItem>
+              <SelectItem value="bought_out">Bought Out</SelectItem>
+            </SelectContent>
+          </Select>
+        )}
         {tab === 'state' && (
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="ml-auto h-8 w-36"><SelectValue /></SelectTrigger>
@@ -1952,8 +2008,8 @@ export default function ProcurementWorkspace({ sourcingItems, suppliers, purchas
         )}
       </div>
       )}
-      {tab === 'enquiry' && <Enquiry items={projectItems} allItems={activeItems} sourceView={sourceView} quotesByItem={quotesByItem} suppliers={suppliers} rfqSummaryByItem={rfqSummaryByItem} router={router} q={search} />}
-      {tab === 'selection' && <Selection items={projectItems} allItems={activeItems} sourceView={sourceView} quotesByItem={quotesByItem} router={router} q={search} />}
+      {tab === 'enquiry' && <Enquiry items={projectItems} allItems={activeItems} sourceView={sourceView} quotesByItem={quotesByItem} suppliers={suppliers} rfqSummaryByItem={rfqSummaryByItem} router={router} q={search} categoryFilter={categoryFilter} />}
+      {tab === 'selection' && <Selection items={projectItems} allItems={activeItems} sourceView={sourceView} quotesByItem={quotesByItem} router={router} q={search} categoryFilter={categoryFilter} />}
       {tab === 'orders' && <PurchaseOrders orders={purchaseOrders} q={search} view={poView} suppliers={suppliers} tdsRates={tdsRates} />}
       {tab === 'orders-lots' && <PoDeliveryLotsWorkspace purchaseOrders={purchaseOrders} />}
       {tab === 'overdues' && <OverdueDeliveryList items={overdueDeliveries} q={search} />}

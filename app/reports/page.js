@@ -20,6 +20,7 @@ import {
   getCompanySettings, getLeads, getOpportunities, getCampaigns, getSalesStages, getCrmTasks, getLeadNotes, getFunctionalHeads,
   getBranches, getSalesTargets, getDiaryNotes, getExpenseClaims, getQuotations, getSaleOrders, getSalesProducts, getSalePayments,
 } from '@/lib/data';
+import { departmentsFor } from '@/lib/manager-scope.mjs';
 import { reportsForDepartment, REPORT_DEPARTMENTS } from '@/lib/reports/catalog';
 import ReportsWorkspace from '@/components/ReportsWorkspace';
 
@@ -111,7 +112,7 @@ export default async function ReportsPage({ searchParams }) {
     // tabs. isDeptPM still gets every department; everyone else gets the intersection with their own
     // grants, and redirects home only if that intersection is empty.
     const isPmView = isDeptPM(user);
-    const myReportDepts = isPmView ? REPORT_DEPARTMENTS : REPORT_DEPARTMENTS.filter(d => headDepartments(user).includes(d));
+    const myReportDepts = isPmView ? departmentsFor(user, REPORT_DEPARTMENTS) : REPORT_DEPARTMENTS.filter(d => headDepartments(user).includes(d));
     if (myReportDepts.length === 0) redirect(roleHome(user));
     const groups = [
       // Management first — the group a PM/admin actually opens most on this consolidated view,
