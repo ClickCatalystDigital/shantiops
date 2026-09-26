@@ -5,6 +5,7 @@ import { requireAction } from '@/lib/action-permissions';
 import { getJobSheetDetail } from '@/lib/data';
 import { isISODate } from '@/lib/job-sheets';
 import { audit } from '@/lib/usb';
+import { deleteObject } from '@/lib/r2';
 
 export async function GET(_req, { params }) {
   const user = await getFreshSessionUser();
@@ -56,8 +57,9 @@ export async function DELETE(_req, { params }) {
   const denied = requireDepartment(user, 'Production') || await requireAction(user, 'Production', 'production.jobsheet.write');
   if (denied) return denied;
   const id = Number(params.id);
-  const sheet = await queryOne('SELECT jc_no FROM job_sheets WHERE id = ?', [id]);
+  const sheet = await queryOne('SELECT jc_no, scan_key FROM job_sheets WHERE id = ?', [id]);
   if (!sheet) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  if (sheet.scan_key) await deleteObject(sheet.scan_key).catch(() => {}); // don't orphan the scan in R2
   await execute('DELETE FROM job_sheet_stages WHERE sheet_id = ?', [id]);
   await execute('DELETE FROM job_sheets WHERE id = ?', [id]);
   await audit('job_sheet_deleted', { actor: user.username, detail: sheet.jc_no });
