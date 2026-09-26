@@ -52,8 +52,9 @@ const STATUS_STYLE = {
   Dispatched: 'bg-success/15 text-foreground dark:bg-success/25 dark:hover:bg-success/30',
   Closed: 'bg-muted-foreground/20 text-foreground dark:bg-muted-foreground/30 dark:hover:bg-muted-foreground/35',
 };
-// Row background when Order Value, Bill Value and Received agree (green) or don't (red).
-const ROW_TONE = { match: 'bg-success/10 hover:bg-success/15', mismatch: 'bg-destructive/10 hover:bg-destructive/15' };
+// Row background: paid in full (green), short by what looks like TDS (yellow), otherwise red.
+// Bill Value is informational only and doesn't affect the colour.
+const ROW_TONE = { match: 'bg-success/10 hover:bg-success/15', tds: 'bg-warning/10 hover:bg-warning/15', mismatch: 'bg-destructive/10 hover:bg-destructive/15' };
 
 // Borderless dropdown that reads like text in a table cell (Sales Person, Payment Mode).
 // Options may be plain strings or { value, label }.
@@ -169,7 +170,7 @@ export function PaymentOrdersTab({ saleOrders, payments, invoices, customers = [
         r.pending = (r.total || 0) - r.received;
         r.stage = currentStage(r);
         r.bill = billValueOf(r, invoices);
-        r.match = r.status === 'cancelled' ? null : matchState({ orderValue: r.total, billValue: r.bill.value, received: r.received });
+        r.match = r.status === 'cancelled' ? null : matchState({ orderValue: r.total, received: r.received });
         return r;
       });
   }, [saleOrders, payments, invoices, local]);

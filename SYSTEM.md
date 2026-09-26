@@ -11552,9 +11552,12 @@ checkbox columns are replaced by one Current Stage dropdown; it writes the same 
 KPI tiles and existing data read unchanged. Current Stage keeps the Excel meaning: the first step
 not yet done. New **Bill Value** column: the sum of the order's issued/paid Sales Invoices
 (`billValueOf()`), else the typed `sale_orders.bill_value` (new nullable column; PATCH refuses it
-once invoices exist). Row tone (`matchState()`): light green when Order Value, Bill Value and
-Received agree within ₹1, light red otherwise, none while the order has no value or no bill (all
-1,091 today) or is cancelled. Remarks moved to the last column and open a dialog. Status badges keep
+once invoices exist); Bill Value is informational only and does not affect the row colour. Row
+tone (`matchState({orderValue, received})`, revised same day): light green when Received equals the
+Order Value within ₹1; light yellow when the shortfall looks like TDS — 0.1%, 1% or 2% of the total
+or of the pre-GST value (total ÷ 1.18), within 3% of that cut for rupee rounding (`TDS_RATES`,
+`GST_FACTOR`); light red otherwise (unpaid, other part payments, overpaid); none when there is no
+order value or the order is cancelled. On live data: 627 green, 22 yellow, 367 red, 75 no value. Remarks moved to the last column and open a dialog. Status badges keep
 their tint with foreground text; Pending is now red. Pure rules in `lib/order-match.mjs`
 (`node lib/order-match-selfcheck.mjs`). Verified on a disposable `ZZ-` order (no colour → red after
 a bill → green with a payment ₹0.50 short; stage and remark saved), removed after; counts unchanged.
