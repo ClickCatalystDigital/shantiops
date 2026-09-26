@@ -97,7 +97,16 @@ export async function PATCH(req, { params }) {
     if (n > 0) return NextResponse.json({ error: 'This order has line items — edit its value via Items & PDF' }, { status: 400 });
     fields.push('total = ?'); args.push(total);
   }
-  // Payment Tracker milestone checkboxes (Advance … Cleared Issue) — plain 0/1 flags.
+  // Bill Value (Payment Tracker) — typed only while the order has no issued/paid Sales Invoice;
+  // once it has one, the invoices are the bill value (lib/order-match.mjs billValueOf).
+  if (b.bill_value !== undefined) {
+    const v = b.bill_value === '' || b.bill_value == null ? null : Number(b.bill_value);
+    if (v !== null && !(v >= 0)) return NextResponse.json({ error: 'Bill value must be a number' }, { status: 400 });
+    const { n } = await queryOne("SELECT COUNT(*) AS n FROM sales_invoices WHERE sale_order_id = ? AND status IN ('issued', 'paid')", [params.id]);
+    if (n > 0) return NextResponse.json({ error: 'This order has Sales Invoices — its bill value comes from them' }, { status: 400 });
+    fields.push('bill_value = ?'); args.push(v);
+  }
+  // Payment Tracker stage flags (Advance … Cleared Issue) — plain 0/1, set together by the Current Stage dropdown.
   for (const key of ['advance', 'dispatched', 'site_completed', 'commissioning', 'pending_issue', 'cleared_issue']) {
     if (b[`stage_${key}`] !== undefined) { fields.push(`stage_${key} = ?`); args.push(b[`stage_${key}`] ? 1 : 0); }
   }

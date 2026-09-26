@@ -11546,6 +11546,19 @@ Procurement is deliberately untouched pending the client. The 2 quotations (QTN-
 for the ZZ-E2E customers, nothing referencing them) were deleted; rows kept in
 `scripts/data/deleted-test-quotations-2026-09-26.json`, audited as `quotation_deleted`.
 
+**Payment Tracker Orders: stage dropdown, Bill Value, row colour (2026-09-26).** The six stage
+checkbox columns are replaced by one Current Stage dropdown; it writes the same six `stage_*` flags
+(`flagsForStage()`: every step before the picked one done, the rest not; Completed = all six), so
+KPI tiles and existing data read unchanged. Current Stage keeps the Excel meaning: the first step
+not yet done. New **Bill Value** column: the sum of the order's issued/paid Sales Invoices
+(`billValueOf()`), else the typed `sale_orders.bill_value` (new nullable column; PATCH refuses it
+once invoices exist). Row tone (`matchState()`): light green when Order Value, Bill Value and
+Received agree within ₹1, light red otherwise, none while the order has no value or no bill (all
+1,091 today) or is cancelled. Remarks moved to the last column and open a dialog. Status badges keep
+their tint with foreground text; Pending is now red. Pure rules in `lib/order-match.mjs`
+(`node lib/order-match-selfcheck.mjs`). Verified on a disposable `ZZ-` order (no colour → red after
+a bill → green with a payment ₹0.50 short; stage and remark saved), removed after; counts unchanged.
+
 **Plan 2a — own-records visibility (2026-09-25).** `lib/sales-visibility.mjs` (selfcheck) +
 `lib/sales-visibility.js`: a Sales **member** (Sales access, not Head, not PM) sees only enquiries
 where they are A/C manager / assignee / initiator / creator, and the quotations, orders (also by

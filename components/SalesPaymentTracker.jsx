@@ -13,7 +13,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardAction, CardDescription }
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Checkbox } from '@/components/ui/checkbox';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
+import { currentStage, flagsForStage, STAGE_OPTIONS, billValueOf, matchState } from '@/lib/order-match.mjs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
@@ -25,14 +27,6 @@ import { todayISO } from '@/lib/date';
 
 // Left → right in the UI. Current Stage = the first UNticked step (what's still to do next);
 // 'Completed' once every box is ticked.
-const STAGES = [
-  { key: 'advance', label: 'Advance' },
-  { key: 'dispatched', label: 'Dispatched' },
-  { key: 'site_completed', label: 'Site Work Completed' },
-  { key: 'commissioning', label: 'Commissioning' },
-  { key: 'pending_issue', label: 'Pending Site Issue' },
-  { key: 'cleared_issue', label: 'Cleared Issue' },
-];
 // Same list as the Settings sheet of the legacy Excel tracker.
 const MODES = ['NEFT/IMPS', 'Cash', 'Cheque', 'Paytm', 'Credit note', 'Debit Note', 'Other'];
 // Salespersons list from the Excel's Settings sheet. The dropdown offers these plus every name
@@ -47,17 +41,19 @@ function fmtDate(iso) {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || '');
   return m ? `${m[3]}-${MONTHS[Number(m[2]) - 1]}-${m[1]}` : '—';
 }
-const currentStage = so => STAGES.find(s => !so[`stage_${s.key}`])?.label || 'Completed';
 
-// Tracker status (sale_orders.track_status) → badge look. Pending is intentionally uncolored.
+// Tracker status (sale_orders.track_status) → badge look: a tinted background per status, text in
+// the normal foreground colour (black in light mode, white in dark).
 const STATUS_STYLE = {
   // dark: twins are needed — SelectTrigger's own dark:bg-input/30 otherwise wins over the plain bg.
-  Pending: 'border bg-transparent text-foreground dark:bg-transparent',
-  Ready: 'bg-info/10 text-info dark:bg-info/10 dark:hover:bg-info/15',
-  WIP: 'bg-warning/10 text-warning dark:bg-warning/10 dark:hover:bg-warning/15',
-  Dispatched: 'bg-success/10 text-success dark:bg-success/10 dark:hover:bg-success/15',
-  Closed: 'bg-foreground text-background dark:bg-foreground dark:hover:bg-foreground/90',
+  Pending: 'bg-destructive/15 text-foreground dark:bg-destructive/25 dark:hover:bg-destructive/30',
+  Ready: 'bg-info/15 text-foreground dark:bg-info/25 dark:hover:bg-info/30',
+  WIP: 'bg-warning/20 text-foreground dark:bg-warning/25 dark:hover:bg-warning/30',
+  Dispatched: 'bg-success/15 text-foreground dark:bg-success/25 dark:hover:bg-success/30',
+  Closed: 'bg-muted-foreground/20 text-foreground dark:bg-muted-foreground/30 dark:hover:bg-muted-foreground/35',
 };
+// Row background when Order Value, Bill Value and Received agree (green) or don't (red).
+const ROW_TONE = { match: 'bg-success/10 hover:bg-success/15', mismatch: 'bg-destructive/10 hover:bg-destructive/15' };
 
 // Borderless dropdown that reads like text in a table cell (Sales Person, Payment Mode).
 // Options may be plain strings or { value, label }.
@@ -156,6 +152,7 @@ export function PaymentOrdersTab({ saleOrders, payments, invoices, customers = [
   const [page, setPage] = useState(0);
   const [size, setSize] = useState(SIZES[0]);
   const [adding, setAdding] = useState(false);
+  const [remarkFor, setRemarkFor] = useState(null);
   // Plan 1i — active Sales users first, then the legacy names already on imported orders.
   const people = useMemo(() => salesPeopleOptions(users, saleOrders.map(o => o.sales_person)), [users, saleOrders]);
 
@@ -171,12 +168,14 @@ export function PaymentOrdersTab({ saleOrders, payments, invoices, customers = [
         r.received = received.get(so.id) || 0;
         r.pending = (r.total || 0) - r.received;
         r.stage = currentStage(r);
+        r.bill = billValueOf(r, invoices);
+        r.match = r.status === 'cancelled' ? null : matchState({ orderValue: r.total, billValue: r.bill.value, received: r.received });
         return r;
       });
   }, [saleOrders, payments, invoices, local]);
 
   const rows = useMemo(() => all
-    .filter(r => matches(q, [r.so_no, r.customer_name, r.invoiceNos, r.sales_person, r.track_status, r.remarks || '', r.stage, fmtDate(r.orderDate), r.total]))
+    .filter(r => matches(q, [r.so_no, r.customer_name, r.invoiceNos, r.sales_person, r.track_status, r.remarks || '', r.stage, fmtDate(r.orderDate), r.total, r.bill.value ?? '']))
     .sort(byDate(dir, r => r.orderDate)), [all, q, dir]);
 
   // KPI columns — each is a stacked pair. Stage-based ones follow Current Stage; the site/dispatch
@@ -234,13 +233,12 @@ export function PaymentOrdersTab({ saleOrders, payments, invoices, customers = [
           <Table>
             <TableHeader>
               <TableRow>
-                {['Order Date', 'Order ID', 'Customer Name', 'Invoice No', 'Sales Person', 'Status', 'Order Value', 'Payment Received', 'Payment Pending', 'Remarks', 'Current Stage'].map(h => <TableHead key={h}>{h}</TableHead>)}
-                {STAGES.map(s => <TableHead key={s.key} className="text-center">{s.label}</TableHead>)}
+                {['Order Date', 'Order ID', 'Customer Name', 'Invoice No', 'Sales Person', 'Status', 'Order Value', 'Bill Value', 'Payment Received', 'Payment Pending', 'Current Stage', 'Remarks'].map(h => <TableHead key={h}>{h}</TableHead>)}
               </TableRow>
             </TableHeader>
             <TableBody>
               {rows.slice(page * size, (page + 1) * size).map(r => (
-                <TableRow key={r.id}>
+                <TableRow key={r.id} className={ROW_TONE[r.match] || ''}>
                   <TableCell className="whitespace-nowrap"><EditCell type="date" value={r.orderDate} display={fmtDate(r.orderDate)} onSave={v => save(r, { order_date: v })} /></TableCell>
                   <TableCell className="font-medium">
                     <div className="flex items-center gap-1.5">
@@ -261,18 +259,24 @@ export function PaymentOrdersTab({ saleOrders, payments, invoices, customers = [
                     <EditCell type="number" value={r.total || ''} display={r.total ? exact(r.total) : '—'} disabled={r.item_count > 0}
                       title="Has line items — edit the value via Sale Orders → Items & PDF" onSave={v => save(r, { total: Number(v) || 0 })} />
                   </TableCell>
+                  <TableCell className="tnum">
+                    <EditCell type="number" value={r.bill.value ?? ''} display={r.bill.value != null ? exact(r.bill.value) : '—'} disabled={r.bill.fromInvoices}
+                      title="From this order's Sales Invoices" onSave={v => save(r, { bill_value: v === '' ? null : Number(v) })} />
+                  </TableCell>
                   <TableCell className="tnum">{exact(r.received)}</TableCell>
                   <TableCell className="tnum">{exact(r.pending)}</TableCell>
-                  <TableCell className="min-w-44">
-                    <Input defaultValue={r.remarks || ''} placeholder="Add remark" className="h-8"
-                      onBlur={e => { if (e.target.value !== (r.remarks || '')) save(r, { remarks: e.target.value }); }} />
+                  <TableCell>
+                    <Select value={r.stage} onValueChange={v => save(r, flagsForStage(v))}>
+                      <SelectTrigger className="h-7 w-44 gap-1 px-2 text-xs font-medium"><SelectValue /></SelectTrigger>
+                      <SelectContent>{STAGE_OPTIONS.map(v => <SelectItem key={v} value={v}>{v}</SelectItem>)}</SelectContent>
+                    </Select>
                   </TableCell>
-                  <TableCell className="whitespace-nowrap font-medium">{r.stage}</TableCell>
-                  {STAGES.map(s => (
-                    <TableCell key={s.key} className="text-center">
-                      <Checkbox checked={!!r[`stage_${s.key}`]} onCheckedChange={v => save(r, { [`stage_${s.key}`]: v ? 1 : 0 })} aria-label={s.label} />
-                    </TableCell>
-                  ))}
+                  <TableCell className="max-w-56">
+                    <button type="button" onClick={() => setRemarkFor(r)} title={r.remarks || 'Add remark'}
+                      className={`block w-full truncate rounded px-1 py-0.5 text-left text-sm hover:bg-muted ${r.remarks ? '' : 'text-muted-foreground'}`}>
+                      {r.remarks || 'Add remark'}
+                    </button>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -281,7 +285,26 @@ export function PaymentOrdersTab({ saleOrders, payments, invoices, customers = [
         <Pager page={page} setPage={setPage} size={size} setSize={setSize} total={rows.length} />
       </CardContent>
       {adding && <AddOrderSheet customers={customers} people={people} onClose={() => setAdding(false)} />}
+      {remarkFor && <RemarksDialog order={remarkFor} onClose={() => setRemarkFor(null)} onSave={v => { save(remarkFor, { remarks: v }); setRemarkFor(null); }} />}
     </Card>
+  );
+}
+
+// Remarks get a roomy overlay instead of a cramped cell input.
+function RemarksDialog({ order, onClose, onSave }) {
+  const [text, setText] = useState(order.remarks || '');
+  return (
+    <Dialog open onOpenChange={o => { if (!o) onClose(); }}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader><DialogTitle>Remarks · {order.so_no}</DialogTitle></DialogHeader>
+        <p className="text-xs text-muted-foreground">{order.customer_name || '—'}</p>
+        <Textarea value={text} onChange={e => setText(e.target.value)} rows={8} autoFocus placeholder="Add a remark" />
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={() => (text.trim() === (order.remarks || '').trim() ? onClose() : onSave(text.trim()))}>Save</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
