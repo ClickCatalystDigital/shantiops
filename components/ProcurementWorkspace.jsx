@@ -316,13 +316,14 @@ function groupedSupplierQuotes(bomItemIds, quotesByItem) {
 // count housekeeping. Never a fictitious combined stock size — area/length are demand totals, not
 // a claim that one physical sheet/bar of that size exists; which real stock to buy and how to cut
 // it stays a downstream Procurement/Stores decision.
-const CATEGORY_LABEL = { fabrication: 'Fabrication', bought_out: 'Bought Out' };
+const CATEGORY_LABEL = { fabrication: 'Fabrication', bought_out: 'Bought Out', pre_dispatch: 'Pre Dispatch' };
 function CategoryBadge({ it }) {
   return <Badge variant="outline" className="text-muted-foreground">{CATEGORY_LABEL[procurementCategory(it)]}</Badge>;
 }
 // A grouped-by-item row's category: Fabrication when any project's line still needs making.
 function groupCategory(group) {
-  return group.constituents.some(c => procurementCategory(c) === 'fabrication') ? 'fabrication' : 'bought_out';
+  const cats = group.constituents.map(procurementCategory);
+  return cats.includes('fabrication') ? 'fabrication' : cats.includes('pre_dispatch') ? 'pre_dispatch' : 'bought_out';
 }
 
 function PrGroupHeaderInfo({ group }) {
@@ -1976,6 +1977,7 @@ export default function ProcurementWorkspace({ sourcingItems, suppliers, purchas
               <SelectItem value="all">All categories</SelectItem>
               <SelectItem value="fabrication">Fabrication</SelectItem>
               <SelectItem value="bought_out">Bought Out</SelectItem>
+              <SelectItem value="pre_dispatch">Pre Dispatch</SelectItem>
             </SelectContent>
           </Select>
         )}

@@ -282,12 +282,12 @@ function ItemMasterForm({ id, facets, onClose, onSaved }) {
           </div>
 
           <div className="grid gap-1.5">
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox checked={form.default_requires_manufacturing !== 0 && form.default_requires_manufacturing !== false}
-                onCheckedChange={v => set('default_requires_manufacturing', v ? 1 : 0)} />
-              Requires manufacturing by default
-            </label>
-            <p className="text-xs text-muted-foreground">A bought-out item (a valve, a gauge) never needs Production's own fabrication step — uncheck for those.</p>
+            <label className="text-sm font-medium">Procurement class</label>
+            <SearchableSelect
+              value={form.procurement_class || (form.default_requires_manufacturing === 0 || form.default_requires_manufacturing === false ? 'bought_out' : 'fabrication')}
+              onChange={v => setForm(f => ({ ...f, procurement_class: v, default_requires_manufacturing: v === 'fabrication' ? 1 : 0 }))}
+              options={[{ value: 'fabrication', label: 'Fabrication' }, { value: 'bought_out', label: 'Bought Out' }, { value: 'pre_dispatch', label: 'Pre Dispatch' }]} />
+            <p className="text-xs text-muted-foreground">Fabrication = made by Production. Bought Out = bought and used as is. Pre Dispatch = bought ready to ship. Fix it here if a line is classed wrongly.</p>
           </div>
 
           {isEdit && <p className="text-xs text-muted-foreground">Item Code: <span className="font-mono">{form.item_code}</span> — assigned at creation, cannot be changed.</p>}

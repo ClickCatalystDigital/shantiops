@@ -12,6 +12,7 @@ import { suggestCategoryFromGroups, suggestSpellingCorrection } from '@/lib/sect
 import { normalizeWords } from '@/lib/match-utils';
 import { getCatalogIndex, matchLines, recordItemLink, recordItemRejection } from '@/lib/item-link';
 import { fillUnitFromCatalog } from '@/lib/item-match.mjs';
+import { memoryKeys } from '@/lib/item-attributes.mjs';
 
 // PMB (.xlsx) or CSV import — Engineering, Design, or PM (Design got the same BOM-entry capability
 // as Engineering, 2026-08-25; CSV unified into this same pipeline the same day — parsePmb's
@@ -153,6 +154,17 @@ export async function POST(req, { params }) {
           if (hit) { it.category = hit; break; }
         }
       }
+    }
+  }
+
+  // Tier 3b — a person's category for this exact wording (category_memory), reused whatever the wording's words are.
+  const memRows = await queryAll('SELECT alias_key, category FROM category_memory');
+  if (memRows.length) {
+    const memMap = new Map(memRows.map(r => [r.alias_key, r.category]));
+    for (const sheet of parsed.sheets) for (const it of sheet.items) {
+      if (it.category) continue;
+      const hit = memMap.get(memoryKeys({ material_description: it.material_description }).alias);
+      if (hit) it.category = hit;
     }
   }
 
@@ -323,6 +335,7 @@ export async function POST(req, { params }) {
     // fixed twice in one file only writes once; INSERT OR REPLACE below lets a later correct answer
     // for the same word supersede an earlier, possibly wrong one.
     const learnedCorrections = new Map();
+    const learnedMemory = [];
 
     let n = 0;
     for (let sheetIndex = 0; sheetIndex < parsed.sheets.length; sheetIndex++) {
@@ -332,6 +345,7 @@ export async function POST(req, { params }) {
         const overrideKey = `${sheetIndex}-${itemIndex}`;
         const category = Object.prototype.hasOwnProperty.call(categoryOverrides, overrideKey)
           ? (categoryOverrides[overrideKey] || null) : it.category;
+        if (category && Object.prototype.hasOwnProperty.call(categoryOverrides, overrideKey)) learnedMemory.push([it.material_description, category]);
         if (it.category_suggestion && category === it.category_suggestion.category) {
           learnedCorrections.set(it.category_suggestion.word.toUpperCase(), category);
         }
@@ -369,6 +383,10 @@ export async function POST(req, { params }) {
       configEntries: parsed.sheets.flatMap(sh => sh.configs || []),
     });
 
+    for (const [desc, cat] of learnedMemory) {
+      const alias = memoryKeys({ material_description: desc }).alias;
+      if (alias) await tx.execute({ sql: 'INSERT OR REPLACE INTO category_memory (alias_key, category, confirmed_by) VALUES (?, ?, ?)', args: [alias, cat, user.username] });
+    }
     for (const [word, category] of learnedCorrections) {
       await tx.execute({
         sql: 'INSERT OR REPLACE INTO category_word_corrections (word, category, confirmed_by) VALUES (?, ?, ?)',

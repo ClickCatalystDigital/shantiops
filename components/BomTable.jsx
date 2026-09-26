@@ -25,7 +25,7 @@ import CategoryFieldsBlock from '@/components/CategoryFieldsBlock';
 import {
   ItemSearchField, CATEGORY_OPTIONS, defaultCategoryFields, finalizeCategoryFields, validateCategoryFields,
 } from '@/components/BomLineFields';
-import { categoryDisplaySpec } from '@/lib/section-shapes';
+import { categoryDisplaySpec, fieldsFromSizeSpec } from '@/lib/section-shapes';
 import { QTY_UNITS as SHARED_QTY_UNITS, normalizeUnit, splitQtyUnit } from '@/lib/qty-units.mjs';
 import { PencilIcon, TrashIcon } from '@heroicons/react/24/solid';
 import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, XCircleIcon } from 'lucide-react';
@@ -248,7 +248,8 @@ function AddItemForm({
   const [sizeRows, setSizeRows] = useState(() => existingItem
     ? [{
         key: sizeRowKey++,
-        categoryFields: safeParseCategoryFields(existingItem.category_fields_json),
+        // PMB imports carry only the size text: pre-fill the boxes from it (person confirms on save) instead of showing them empty
+        categoryFields: (() => { const f = safeParseCategoryFields(existingItem.category_fields_json); return Object.keys(f).length || !DIMENSIONAL_CATEGORIES.includes(existingItem.category) ? f : fieldsFromSizeSpec(existingItem.category, existingItem.size_spec); })(),
         size_spec: DIMENSIONAL_CATEGORIES.includes(existingItem.category) ? '' : (existingItem.size_spec || ''),
         unit: 'mm',
         // A clean "2 Nos" is shown as the number "2" with the unit picked in the dropdown (the importer now writes
