@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { getFreshSessionUser, inDepartment, isDepartmentHead, roleHome } from '@/lib/auth';
+import { getFreshSessionUser, canAccessDepartment, isDepartmentHead, roleHome } from '@/lib/auth';
 import {
   getWorkerSheet, getWorkers, getProductionMilestoneOptions, getTrades,
   getOperations, getWorkstations, getPendingPreDispatchApprovals,
@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function ProductionWorkersPage({ searchParams }) {
   const user = await getFreshSessionUser();
-  if (!inDepartment(user, 'Production')) redirect(roleHome(user));
+  if (!canAccessDepartment(user, 'Production')) redirect(roleHome(user));
 
   // Validate before this reaches a SQL bound param.
   const date = /^\d{4}-\d{2}-\d{2}$/.test(searchParams?.date || '') ? searchParams.date : todayISO();

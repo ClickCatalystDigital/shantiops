@@ -58,7 +58,7 @@ export default function Nav({ user, reportDepartments = [] }) {
   // the user's tab set on the next render without hard-coded per-user roles.
   const deptTabs = [];
   const addDeptTab = (depts, href, label, icon) => {
-    if (isDeptPM && (href === '/production' || href === '/production/shop')) return;
+    if (isDeptPM && href === '/production') return;
     if (depts.some(d => tabDepartments.includes(d))) deptTabs.push({ href, label, icon });
   };
   // Tasks (/production) dropped — identical content to Home for a Production head, kept as a
