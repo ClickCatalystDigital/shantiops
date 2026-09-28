@@ -12,6 +12,7 @@ import { todayISO } from '@/lib/date';
 import { isISODate, recomputeSheetDates } from '@/lib/job-sheets';
 import { audit } from '@/lib/usb';
 import { notifyDepartment } from '@/lib/notify';
+import { syncProductionFromJobSheets } from '@/lib/milestone-auto';
 
 const bad = (m, status = 400) => NextResponse.json({ error: m }, { status });
 
@@ -36,6 +37,12 @@ export async function PATCH(req, { params }) {
       `UPDATE job_sheet_stages SET inspection_date = ?, test_certificate_id = ?, qc_sign_by = ?, qc_sign_at = CURRENT_TIMESTAMP WHERE id = ?`,
       [insp, cert, user.username, stageId]);
     await audit('job_sheet_stage_qc', { actor: user.username, detail: `sheet ${sheetId} · ${row.name}` });
+    // Every stage across the project's job_sheet(s) reaching qc_signed collapses the 13 Production
+    // milestone keys done together — re-check on every QC sign, since this could be the last one.
+    try {
+      const sheet = await queryOne('SELECT project_id FROM job_sheets WHERE id = ?', [sheetId]);
+      if (sheet?.project_id) await syncProductionFromJobSheets(sheet.project_id, user.username);
+    } catch { /* best-effort */ }
     return NextResponse.json({ ok: true });
   }
 

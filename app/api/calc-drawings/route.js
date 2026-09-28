@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getFreshSessionUser, hasActiveDesignResponsibility } from '@/lib/auth';
 import { requireCalcAccess, requireCalcReadAccess, getCalcDrawings, addDrawing, findDesignEmployeeByName, findMyDesignEmployee } from '@/lib/calc';
 import { audit } from '@/lib/usb';
+import { maybeStartMilestone } from '@/lib/milestone-auto';
 
 // CALC-CHANGES2.md §B — list/create drawings for a project. Mirrors calc-notes' route shape.
 export async function GET(req) {
@@ -49,5 +50,6 @@ export async function POST(req) {
 
   const id = await addDrawing({ projectId: b.projectId, name, description: b.description, drawingType: b.drawingType, assignedTo });
   await audit('calc_drawing_created', { actor: user.username, detail: name });
+  try { await maybeStartMilestone(b.projectId, 'release_drawings', user.username); } catch { /* best-effort */ }
   return NextResponse.json({ id });
 }

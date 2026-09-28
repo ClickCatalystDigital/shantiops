@@ -19,6 +19,7 @@ import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { getChildRoutingBoard } from '@/lib/data';
 import { audit } from '@/lib/usb';
+import { maybeStartMilestone } from '@/lib/milestone-auto';
 
 export async function POST(req) {
   const user = await getFreshSessionUser();
@@ -79,6 +80,7 @@ export async function POST(req) {
       'INSERT INTO packing_lists (project_id, packing_no, customer_name, created_by, bom_release_revision_at_creation) VALUES (?, ?, ?, ?, ?)',
       [child.id, packing_no, master.customer_name, user?.username || null, master.bom_release_revision ?? null]);
     const listId = Number(pl.lastId);
+    try { await maybeStartMilestone(child.id, 'packing', user?.username); } catch { /* best-effort */ }
 
     let s = 1;
     for (const cell of newCells) {

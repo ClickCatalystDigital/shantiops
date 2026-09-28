@@ -7,6 +7,7 @@ import { requireAction } from '@/lib/action-permissions';
 import { getProjectBom, getAssemblyRollupMap } from '@/lib/data';
 import { itemRollupQty } from '@/lib/bom-structure.mjs';
 import { audit } from '@/lib/usb';
+import { maybeStartMilestone } from '@/lib/milestone-auto';
 
 // Auto-generate a DRAFT packing list from a project's still-pending BOM lines. Prefills
 // material_description / moc / size_spec / make from each BOM row, and qty when the BOM's free-text
@@ -51,6 +52,7 @@ export async function POST(req) {
     [project_id, packing_no, project.customer_name, user?.username || null]
   );
   const listId = Number(pl.lastId);
+  try { await maybeStartMilestone(project_id, 'packing', user?.username); } catch { /* best-effort */ }
 
   const rollupById = await getAssemblyRollupMap(project_id);
   let s = 1;

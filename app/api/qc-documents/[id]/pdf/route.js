@@ -3,6 +3,7 @@ import { getQcDocumentDetail } from '@/lib/data';
 import { queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment, isCustomer, canAccessProject } from '@/lib/auth';
 import { renderQcFolderPdf } from '@/lib/qc-folder-pdf';
+import { checkpointSummaryFromDetail } from '@/lib/qc-checkpoints.mjs';
 
 export const runtime = 'nodejs';
 
@@ -26,15 +27,20 @@ export async function GET(req, { params }) {
     if (denied) return denied;
   }
 
-  // A document with zero parts trivially has zero unlinked parts — "complete" has to mean
-  // something was actually certified, not just that nothing is missing.
-  if (!detail.parts.length) {
-    return NextResponse.json({ error: 'This document has no parts yet' }, { status: 409 });
+  // Every checkpoint that actually applies to this document's model, not just Form IV A's parts
+  // (milestone-automation plan §C — a deliberate tightening of the old, narrower gate). "Form
+  // exists" is never treated as "form complete": zero applicable checkpoints, or any one of them
+  // incomplete (unlinked mountings, a blank required header field, 0 Form III A groups on a model
+  // that requires one), refuses the same way an unlinked Form IV A part always did.
+  // Derived from the SAME detail already fetched above, not a second, independently-timed query —
+  // the gate must never observe a moment newer than what actually gets rendered below.
+  const checkpoints = checkpointSummaryFromDetail(detail.document, detail.parts, detail.mountings, detail.groups);
+  if (!checkpoints || !checkpoints.totalCount) {
+    return NextResponse.json({ error: 'Nothing to check on this document yet' }, { status: 409 });
   }
-  const unlinked = detail.parts.filter(p => !p.test_certificate_id);
-  if (unlinked.length) {
+  if (!checkpoints.allComplete) {
     return NextResponse.json(
-      { error: `${unlinked.length} part${unlinked.length === 1 ? '' : 's'} still need${unlinked.length === 1 ? 's' : ''} a certificate` },
+      { error: `${checkpoints.totalCount - checkpoints.completeCount} statutory checkpoint(s) still need to be completed` },
       { status: 409 });
   }
 

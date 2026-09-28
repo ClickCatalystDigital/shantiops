@@ -6,6 +6,7 @@ import { audit } from '@/lib/usb';
 import { notifyProjectCustomers } from '@/lib/notify';
 import { COMPANY_NAMES } from '@/lib/qc-doc-pdf.js';
 import { QC_HEADER_FIELDS } from '@/lib/qc-document-fields';
+import { getQcDocumentCheckpointSummary } from '@/lib/data';
 
 const EDITABLE = [...QC_HEADER_FIELDS.map(f => f.key), 'manifest_extra'];
 const REQUIRED_KEYS = new Set(QC_HEADER_FIELDS.filter(f => f.required).map(f => f.key));
@@ -28,17 +29,17 @@ export async function PATCH(req, { params }) {
   if (!keys.length) return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
   if (keys.includes('customer_visible') && b.customer_visible) {
     // Same hard gate the PDF route enforces — a document can only go in front of the customer once
-    // it's actually complete, not partway through being built (§6 investigation). Zero parts is not
-    // "complete" even though it's vacuously zero unlinked — a document must have actually certified
-    // something.
-    const counts = await queryOne(
-      `SELECT COUNT(*) AS total, SUM(CASE WHEN test_certificate_id IS NULL THEN 1 ELSE 0 END) AS unlinked
-         FROM qc_document_parts WHERE document_id = ?`, [params.id]);
-    if (!counts.total) {
-      return NextResponse.json({ error: 'This document has no parts yet' }, { status: 409 });
+    // every checkpoint that actually applies to its model is complete, not just Form IV A's parts
+    // (milestone-automation plan §C — a deliberate tightening; a document could pass the old,
+    // narrower gate with unlinked mountings or a bare header).
+    const summary = await getQcDocumentCheckpointSummary(params.id);
+    if (!summary || !summary.totalCount) {
+      return NextResponse.json({ error: 'Nothing to check on this document yet' }, { status: 409 });
     }
-    if (counts.unlinked > 0) {
-      return NextResponse.json({ error: `${counts.unlinked} part${counts.unlinked === 1 ? '' : 's'} still need${counts.unlinked === 1 ? 's' : ''} a certificate` }, { status: 409 });
+    if (!summary.allComplete) {
+      return NextResponse.json(
+        { error: `${summary.totalCount - summary.completeCount} statutory checkpoint(s) still need to be completed` },
+        { status: 409 });
     }
   }
   // The UI gate (lib/qc-document-fields.js's `required`) is never the real enforcement. A partial

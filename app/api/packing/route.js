@@ -3,6 +3,7 @@ import { execute, nextNumber, queryAll } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
+import { maybeStartMilestone } from '@/lib/milestone-auto';
 
 export async function POST(req) {
   const user = await getFreshSessionUser();
@@ -25,6 +26,9 @@ export async function POST(req) {
      b.dispatch_through || null, b.contact_person || null, user?.username || null]
   );
   await audit('packing_created', { actor: user.username, detail: `${packing_no} · project ${b.project_id || '—'} (manual)` });
+  if (b.project_id) {
+    try { await maybeStartMilestone(b.project_id, 'packing', user.username); } catch { /* best-effort */ }
+  }
   return NextResponse.json({ id: Number(r.lastId), packing_no });
 }
 

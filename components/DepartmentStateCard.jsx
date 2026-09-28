@@ -2,9 +2,10 @@
 // card. Renders getDepartmentState()'s array directly: can show more than one department at once
 // (e.g. Procurement + Stores, a real, expected overlap — never forced to a single "current"
 // department), each with its own real trigger and, only where one genuinely exists, a fraction.
-// Deliberately independent of DepartmentStatus.jsx's DepartmentPills/DepartmentProgress — those stay
-// exactly as they are, still shared with the Projects list (lib/data.js's activeDepartmentStatus),
-// which this redesign does not touch.
+// Deliberately independent of DepartmentStatus.jsx's DepartmentPills/DepartmentProgress — a
+// different rendering of the same underlying {department, trigger, fraction} shape the Projects
+// list now also consumes (lib/data.js's getBatchDepartmentStates), just laid out for a full card
+// instead of a compact table cell.
 import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
 import { Badge } from './ui/badge';
 

@@ -5,6 +5,7 @@ import { requireCalcAccess, updateDrawing, getDrawingFiles, deleteDrawing, isAss
 import { deleteObject } from '@/lib/r2';
 import { audit } from '@/lib/usb';
 import { notifyDepartmentHeads, notifyUser } from '@/lib/notify';
+import { syncReleaseDrawingsMilestone, maybeStartMilestone } from '@/lib/milestone-auto';
 
 const PATCHABLE = { status: 'status', assignedTo: 'assigned_to', dueDate: 'due_date', notes: 'notes', name: 'name', description: 'description', drawingType: 'drawing_type', customerVisible: 'customer_visible' };
 
@@ -88,6 +89,18 @@ export async function PATCH(req, { params }) {
 
   await updateDrawing(params.id, fields);
   await audit('calc_drawing_edit', { actor: user.username, detail: `drawing ${params.id}` });
+
+  // Release All Drawings = every drawing on the project internally signed off — re-check whenever a
+  // status change could be the one that completes it. Design Approval (customer-facing, separate
+  // track) starts the moment the first drawing is shared, independent of internal approval.
+  try {
+    if (fields.status && ['approved', 'as_built'].includes(fields.status)) {
+      await syncReleaseDrawingsMilestone(drawing.project_id, user.username);
+    }
+    if (b.customerVisible !== undefined && Number(b.customerVisible) === 1 && !drawing.customer_visible) {
+      await maybeStartMilestone(drawing.project_id, 'design_approval', user.username);
+    }
+  } catch { /* best-effort */ }
 
   // A real status transition -> notify whoever needs to know. Two directions, never both: a
   // Designer submitting pages the Head (existing behavior); a Head approving/sending

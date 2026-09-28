@@ -4,10 +4,12 @@ import { getFunctionalHeads, getDesignTeamMembers, getAvailableSystemEmployees }
 import { queryOne, queryAll } from '@/lib/db';
 import { ACTION_CATALOG } from '@/lib/action-permissions';
 import { MILESTONE_TEMPLATE } from '@/lib/milestones';
+import { MILESTONE_AUTOMATION_CATALOG } from '@/lib/milestone-auto';
 import ChangePasswordForm from '@/components/ChangePasswordForm';
 import ProfileForm from '@/components/ProfileForm';
 import AccessMatrix from '@/components/AccessMatrix';
 import ActionPermissionsPanel from '@/components/ActionPermissionsPanel';
+import MilestoneAutomationPanel from '@/components/MilestoneAutomationPanel';
 import DependencyChainPanel from '@/components/DependencyChainPanel';
 import UserManagement from '@/components/UserManagement';
 import TotpSetup from '@/components/TotpSetup';
@@ -28,6 +30,7 @@ export default async function Settings() {
     ? !!(await queryOne('SELECT totp_secret FROM users WHERE id = ?', [user.id]))?.totp_secret
     : false;
   const actionPermissions = isPM(user) ? await queryAll('SELECT department, action_key, requires_head FROM action_permissions') : [];
+  const milestoneAutomation = isPM(user) ? await queryAll('SELECT milestone_key, auto_start, auto_complete FROM milestone_automation') : [];
   // Dependency chain (SYSTEM.md §5j) — current effective depends_on_key per milestone_key, plus
   // whether every project actually agrees (they should, nothing per-project has diverged this
   // yet, but the chain is per-row so it's not guaranteed — flag it rather than silently picking).
@@ -61,6 +64,7 @@ export default async function Settings() {
           <h2 className="text-lg font-semibold">Access Management</h2>
           <AccessMatrix heads={heads} canAssignHead={isAdmin(user) || ['manager', 'executive'].includes(user.role)} />
           <ActionPermissionsPanel catalog={ACTION_CATALOG} permissions={actionPermissions} />
+          <MilestoneAutomationPanel catalog={MILESTONE_AUTOMATION_CATALOG} current={milestoneAutomation} />
           <DependencyChainPanel template={MILESTONE_TEMPLATE} current={dependencyCurrent} />
           <UserManagement heads={heads} availableEmployees={availableEmployees} isAdmin={isAdmin(user)} />
 
