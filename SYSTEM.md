@@ -11897,6 +11897,29 @@ the source. `docs/quotation-import-notes.md`/`docs/quotation-import-review.csv` 
 `docs/manual-review-checklist.md` §8's quotations row is updated to match. Source files
 (`quotations-register.tsv`, `quotations-sent.tsv`) were never git-added, same as `enq.csv`/`enq.xls`.
 
+**Follow-on data-gap pass (2026-09-29)** — three narrow, evidence-backed backfills, no schema
+change. Investigated first, not guessed: **GST%** — every populated `gst_pct` value anywhere in the
+system (843 `sales_products` + 2,773 Item Master rows, 3,600+ real values) is 18%, zero exceptions
+— safe default for the 983 rows that were `NULL`, filled via
+`scripts/backfill-product-gst-and-relink-customers.mjs`. **`sale_orders.customer_id`** — the real
+cause of ~907 unlinked orders was traced by re-reading `scripts/import-sales-tracker.mjs`'s own
+matcher (`cnorm`, case/punctuation-insensitive exact match — already correct, not a matcher-quality
+bug as first suspected): 136 orders' customers were created the **same day** as the 2026-09-25 order
+import (the 8,728-row old-CRM customer import evidently landed after that day's order-matching step
+ran) plus 1 genuine pre-existing miss ("VIRCHOW BIOTECH PVT LTD") — 137 total, relinked by re-running
+the identical `cnorm` logic against the now-complete customer table, same script. The remaining ~770
+(709 Shanti Boilers + 61 Shanti Techno Fab, unaffected) genuinely have no matching customer at all —
+real companies never entered as a customer, confirmed by checking only 3 of the 907 had a truly
+blank `customer_name` to begin with. **HSN code** — `scripts/backfill-hsn-from-sibling-family.mjs`
+filled 77 of 1,034 missing-HSN products where every other product sharing its name (with sizes/
+dimensions stripped, e.g. "AIR LOCK-RAV-100/125/150") that already had an HSN code all agreed on the
+same one (e.g. → `84029000`); a family whose known members disagreed was skipped, never guessed. 957
+products have no sibling evidence at all and stay `NULL` — a real classification job, not inferrable
+from this data. Also confirmed, not built: `nextNumber('sales_product_code', 'PRD')` is a real,
+correctly-wired generator (`app/api/sales-products/route.js`) — the 34 blank/junk product codes
+(§5db §5, "NA"/"o"/duplicate rows) are a pre-existing small source-data defect, not a broken
+generator. All three backfills dry-run first, `usb_audit`-logged, backed up under `scripts/data/`.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own

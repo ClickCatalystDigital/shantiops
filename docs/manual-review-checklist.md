@@ -47,7 +47,13 @@ Row numbers and full tables: [sales-tracker-data-issues.md](sales-tracker-data-i
 - [ ] **A8**: 33 orders where the sheet's "Payment Received" disagrees with the payment list.
 - [ ] **A10**: the PAYMENT sheet header is damaged (A1 + row 2 `#REF!`); 43 orders have no value; order IDs are typed inconsistently ("NIBR - 190" vs "NIBR-190").
 - [ ] **Client questions B1, B3–B8**: HKM order shape, banner totals, the "closed" column, blank status, sales-person names, creating customers from the sheet, extra columns. (B2, "which order belongs to SB-1109-01-50", is **done**: the 50 units are now linked to their orders.)
-- [ ] **849 Shanti Boilers orders not linked to a customer** (names kept as text). Link them as customers are confirmed.
+- [ ] **709 Shanti Boilers orders still not linked to a customer** (was 849; names kept as text).
+  Link them as customers are confirmed.
+  - Done (2026-09-29): re-ran the exact same name-matching the original import used, now that the
+    8,728-row old-CRM customer import has landed — **137 orders** whose customer now exists but
+    didn't when the order import first ran were linked (`scripts/backfill-product-gst-and-relink-customers.mjs`).
+    The remaining 709 genuinely have no matching customer at all — real companies never entered as a
+    customer, not a matcher problem — still need creating/linking by hand.
 
 ---
 
@@ -69,7 +75,15 @@ Details: [legacy-crm-import-issues.md](legacy-crm-import-issues.md) (Products).
 - [ ] **24 product codes used by two different products**. The second copy is shown as "CODE (2)". Give each its own code.
 - [ ] **34 products with no code**.
 - [ ] **126 products with price 0** (imported with no price).
-- [ ] **983 products with GST 0%** (imported with GST blank). Confirm which are really exempt; the rest need their GST %.
+- Done (2026-09-29): **GST %** — every populated GST value anywhere in the system (products and the
+  Item Master, 3,600+ rows) was 18%, zero exceptions, so the 983 blank rows were filled with 18%
+  by default (`scripts/backfill-product-gst-and-relink-customers.mjs`). If any of these products are
+  genuinely GST-exempt, correct them by hand — nothing here can tell exempt from "never entered".
+- Done (2026-09-29): **HSN code** — 77 of 1,034 missing-HSN products were filled where every sibling
+  product with the same name (ignoring size/dimension) already agreed on one HSN code
+  (`scripts/backfill-hsn-from-sibling-family.mjs`, e.g. "AIR LOCK-RAV-100/125/150" → 84029000).
+  **957 still have no HSN** — no sibling evidence exists to infer from; these need a real answer from
+  whoever classifies the catalog, not a guess.
 
 ---
 

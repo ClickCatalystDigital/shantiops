@@ -1,0 +1,387 @@
+[
+  {
+    "id": 2469,
+    "hsn": "84029000",
+    "name": "AIR LOCK-RAV-100"
+  },
+  {
+    "id": 2470,
+    "hsn": "84029000",
+    "name": "AIR LOCK-RAV-125"
+  },
+  {
+    "id": 2471,
+    "hsn": "84029000",
+    "name": "AIR LOCK-RAV-150"
+  },
+  {
+    "id": 2473,
+    "hsn": "84029000",
+    "name": "AIR LOCK-RAV-250"
+  },
+  {
+    "id": 2487,
+    "hsn": "84029000",
+    "name": "AIR PRE HEATER -APH-400"
+  },
+  {
+    "id": 2488,
+    "hsn": "84029000",
+    "name": "AIR PRE HEATER -APH-500"
+  },
+  {
+    "id": 2658,
+    "hsn": "84021200",
+    "name": "BOILER-AF-100"
+  },
+  {
+    "id": 2662,
+    "hsn": "84021200",
+    "name": "BOILER-AF-250"
+  },
+  {
+    "id": 2723,
+    "hsn": "84021200",
+    "name": "BOILER-CF-800"
+  },
+  {
+    "id": 2752,
+    "hsn": "84029010",
+    "name": "BOILER ERW TUBES - 63.5 OD x 3.66 x 4.5 MTRS"
+  },
+  {
+    "id": 2753,
+    "hsn": "84029010",
+    "name": "BOILER ERW TUBES - 63.5 OD x 3.66 x 4 MTRS"
+  },
+  {
+    "id": 2754,
+    "hsn": "84029010",
+    "name": "BOILER ERW TUBES - 63.5 OD x 3.66 x 5.5 MTRS"
+  },
+  {
+    "id": 2755,
+    "hsn": "84029010",
+    "name": "BOILER ERW TUBES - 63.5 OD x 3.66 x 5 MTRS"
+  },
+  {
+    "id": 2756,
+    "hsn": "84029010",
+    "name": "BOILER ERW TUBES - 63.5 OD x 3.66 x 6.1 MTRS"
+  },
+  {
+    "id": 2757,
+    "hsn": "84029010",
+    "name": "BOILER ERW TUBES - 63.5 OD x 3.66 x 7 MTRS"
+  },
+  {
+    "id": 2786,
+    "hsn": "84021200",
+    "name": "Boiler-MF-200"
+  },
+  {
+    "id": 2834,
+    "hsn": "84021200",
+    "name": "BOILER-NON IBR-GF-MINI-10"
+  },
+  {
+    "id": 2835,
+    "hsn": "84021200",
+    "name": "BOILER-NON IBR-GF-MINI-15"
+  },
+  {
+    "id": 2836,
+    "hsn": "84021200",
+    "name": "BOILER-NON IBR-GF-MINI-20"
+  },
+  {
+    "id": 2829,
+    "hsn": "84021200",
+    "name": "BOILER-NON IBR-GF-80"
+  },
+  {
+    "id": 2856,
+    "hsn": "84021200",
+    "name": "BOILER-OF-100"
+  },
+  {
+    "id": 2869,
+    "hsn": "84021200",
+    "name": "BOILER-OF-500-17B"
+  },
+  {
+    "id": 2874,
+    "hsn": "84138130",
+    "name": "BOILER PUMP - 10 HP"
+  },
+  {
+    "id": 2875,
+    "hsn": "84138130",
+    "name": "BOILER PUMP - 1.5 HP"
+  },
+  {
+    "id": 2877,
+    "hsn": "84138130",
+    "name": "BOILER PUMP - 3 HP"
+  },
+  {
+    "id": 2905,
+    "hsn": "84021200",
+    "name": "BOILER-SF-150-DB"
+  },
+  {
+    "id": 2914,
+    "hsn": "84021200",
+    "name": "BOILER-SF-200-DB"
+  },
+  {
+    "id": 2915,
+    "hsn": "84021200",
+    "name": "BOILER-SF-200-WB"
+  },
+  {
+    "id": 2923,
+    "hsn": "84021200",
+    "name": "Boiler-SF-30"
+  },
+  {
+    "id": 2924,
+    "hsn": "84021200",
+    "name": "BOILER-SF-30"
+  },
+  {
+    "id": 2960,
+    "hsn": "84021200",
+    "name": "BOILER-SIB-GF-30"
+  },
+  {
+    "id": 2969,
+    "hsn": "84021200",
+    "name": "BOILER-SIB-SF-10"
+  },
+  {
+    "id": 3007,
+    "hsn": "84029000",
+    "name": "CHIMNEY STRAIGHT - 350 MM X 18M"
+  },
+  {
+    "id": 3020,
+    "hsn": "84029000",
+    "name": "CHIMNEY STRAIGHT - 600 MM X 18M"
+  },
+  {
+    "id": 3008,
+    "hsn": "84029000",
+    "name": "CHIMNEY STRAIGHT - 375 MM DIA"
+  },
+  {
+    "id": 3015,
+    "hsn": "84029000",
+    "name": "CHIMNEY STRAIGHT -500 MM DIA"
+  },
+  {
+    "id": 3021,
+    "hsn": "84029000",
+    "name": "CHIMNEY STRAIGHT - 650 MM DIA"
+  },
+  {
+    "id": 3024,
+    "hsn": "84029000",
+    "name": "CHIMNEY TAPPERED - 1.5D-375 DIA"
+  },
+  {
+    "id": 3025,
+    "hsn": "84029000",
+    "name": "CHIMNEY TAPPERED - 1.5D- 475 DIA"
+  },
+  {
+    "id": 3034,
+    "hsn": "84029000",
+    "name": "CHIMNEY TAPPERED -2D-1000 DIA"
+  },
+  {
+    "id": 3035,
+    "hsn": "84029000",
+    "name": "CHIMNEY TAPPERED -2D-1100 DIA"
+  },
+  {
+    "id": 3036,
+    "hsn": "84029000",
+    "name": "CHIMNEY TAPPERED-2D-350 DIA"
+  },
+  {
+    "id": 3037,
+    "hsn": "84029000",
+    "name": "CHIMNEY TAPPERED -2D-400 DIA"
+  },
+  {
+    "id": 3030,
+    "hsn": "84029000",
+    "name": "CHIMNEY TAPPERED -1.5D-750"
+  },
+  {
+    "id": 3031,
+    "hsn": "84029000",
+    "name": "CHIMNEY TAPPERED -1.5D-750"
+  },
+  {
+    "id": 3063,
+    "hsn": "84039000",
+    "name": "CONDENSAT RECOVERY PUMP - 40 NB"
+  },
+  {
+    "id": 3270,
+    "hsn": "8402",
+    "name": "EXPANSION BELLOW - 10 HP"
+  },
+  {
+    "id": 3272,
+    "hsn": "8402",
+    "name": "EXPANSION BELLOW - 5 HP"
+  },
+  {
+    "id": 3273,
+    "hsn": "8402",
+    "name": "EXPANSION BELLOW- 7.5 HP"
+  },
+  {
+    "id": 3314,
+    "hsn": "84029000",
+    "name": "FIRE DOOR"
+  },
+  {
+    "id": 3317,
+    "hsn": "84029000",
+    "name": "FIRE DOOR"
+  },
+  {
+    "id": 3318,
+    "hsn": "84029000",
+    "name": "FIRE DOOR"
+  },
+  {
+    "id": 3319,
+    "hsn": "84029000",
+    "name": "FIRE DOOR"
+  },
+  {
+    "id": 3590,
+    "hsn": "84021200",
+    "name": "HOT WATER GENERATOR-HWG-GF-200"
+  },
+  {
+    "id": 3591,
+    "hsn": "84021200",
+    "name": "HOT WATER GENERATOR-HWG-GF-300"
+  },
+  {
+    "id": 3639,
+    "hsn": "73063090",
+    "name": "INSULATION SBH-OF/GF-250/300/350"
+  },
+  {
+    "id": 3682,
+    "hsn": "84029000",
+    "name": "MOBRAY CONTROLLER , IBR , 21.50 KGS - CC 400"
+  },
+  {
+    "id": 3683,
+    "hsn": "84029000",
+    "name": "MOBRAY CONTROLLER , IBR , 21.50 KGS - CC 450"
+  },
+  {
+    "id": 3694,
+    "hsn": "85011019",
+    "name": "MOTOR 1440 RPM 0.5 HP"
+  },
+  {
+    "id": 3697,
+    "hsn": "85011019",
+    "name": "MOTOR 1440 RPM 1.5 HP"
+  },
+  {
+    "id": 3699,
+    "hsn": "85011019",
+    "name": "MOTOR 1440 RPM 1 HP"
+  },
+  {
+    "id": 3745,
+    "hsn": "84029000",
+    "name": "MS TANK -OHT-0.5 KL"
+  },
+  {
+    "id": 3749,
+    "hsn": "84029000",
+    "name": "MS TANK -OHT-1 KL"
+  },
+  {
+    "id": 3750,
+    "hsn": "84029000",
+    "name": "MS TANK -OHT-2 KL"
+  },
+  {
+    "id": 3752,
+    "hsn": "84029000",
+    "name": "MS TANK -OHT-4 KL"
+  },
+  {
+    "id": 3753,
+    "hsn": "84029000",
+    "name": "MS TANK -OHT-5 KL"
+  },
+  {
+    "id": 3754,
+    "hsn": "84029000",
+    "name": "MS TANK -OHT-6 KL"
+  },
+  {
+    "id": 3755,
+    "hsn": "84029000",
+    "name": "MS TANK -OHT-8 KL"
+  },
+  {
+    "id": 3982,
+    "hsn": "84814000",
+    "name": "SAFETY VALVE,CI,F/E,IBR,25 NB, DOUBLE POST"
+  },
+  {
+    "id": 4019,
+    "hsn": "84814000",
+    "name": "SAFETY VALVES , CS , F/E , IBR - 50 NB X 75 - CL150- 10.54 KGS"
+  },
+  {
+    "id": 4093,
+    "hsn": "84029000",
+    "name": "Single Cyclone Dust Collector- SDC-40-SIB"
+  },
+  {
+    "id": 4127,
+    "hsn": "84021200",
+    "name": "SITE INSTALLATION-SBH-SF-40"
+  },
+  {
+    "id": 4130,
+    "hsn": "84029000",
+    "name": "SLEEVE H 309"
+  },
+  {
+    "id": 4133,
+    "hsn": "84029000",
+    "name": "SLEEVE H 315"
+  },
+  {
+    "id": 4216,
+    "hsn": "84029000",
+    "name": "TWIN CYCLONE DUST COLLECTOR-TCDC-100"
+  },
+  {
+    "id": 4220,
+    "hsn": "84029000",
+    "name": "TWIN CYCLONE DUST COLLECTOR-TCDC-400"
+  },
+  {
+    "id": 4221,
+    "hsn": "84029000",
+    "name": "TWIN CYCLONE DUST COLLECTOR-TCDC-500"
+  }
+]
