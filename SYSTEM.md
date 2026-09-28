@@ -11719,6 +11719,91 @@ A project-by-project pass linked the BOM lines still without an Item Master link
 
 **Needs spec.** `bom_items.needs_spec` (TEXT) names what an un-linked line still lacks ("Lug type and size"). Populated by `flag-needs-spec.mjs`; shown as a badge in `BomTable` only while `item_id` is NULL; `linkBomItem` clears it when a link is made. It never changes the description/spec and creates no catalog rows. Remaining questions: `docs/item-master-residue-review.md`.
 
+## 5dd. Old CRM diary export imported — first real Diary history in the app (2026-09-28)
+
+Closes the "Diary / follow-up history — 0 entries" gap `docs/manual-review-checklist.md` §8 had
+open since §5db. Source: the old CRM's "Quick Planner" report (`enq.csv`, 20,167 rows and an
+identical tab-delimited `enq.xls` — CSV chosen, RFC-quoted, no advantage to the tab file). Two real
+findings drove the design, both confirmed against the live file/DB, not assumed:
+
+- **A back-anchored row shift** in 154 rows (0.76%) — a mangled multi-line Location/Contact block
+  pushes later columns right by 1–2 positions, and a naive header-name read loses the true `Status`
+  off the end (it lands in one of the header's two duplicate blank trailing columns).
+  `S.N./Date/IN Time/Organization` are always front-anchored; `Objective/Task Type/Entry For/
+  Created By/Status` are always the last 5 real values regardless of shift — reading from both ends
+  recovers all 20,167 rows with zero loss.
+- **"Last Followup" is a per-organization snapshot, not per-row history** — the same text (`"Date
+  DD/MM/YYYY, Action Taken <text>"`) repeats identically across every one of an org's rows (e.g.
+  "sm feeds," 135 rows spanning a year, all showing the identical one note). 20,166 rows collapse
+  to **2,199 real distinct (org, note-text) pairs** — that's what's imported, not one row per line.
+
+`lib/diary-import.mjs` (pure, no DB) + `scripts/import-diary-followups.mjs` (dry-run default,
+`--apply`/`--rollback`/`--limit`, same shape as `scripts/import-enquiries.mjs`) implement this.
+Notes attach to `crm_notes.customer_id` only, **never `lead_id`** — confirmed live that `GET
+/api/customers/[id]/overview` already reads `crm_notes WHERE customer_id = ? OR lead_id IN (...)`,
+and confirmed via `getDiaryNotes()`'s own `crm_notes n JOIN leads l ON l.id = n.lead_id` (a plain
+INNER JOIN) that a customer-only note is **structurally invisible** to the Home calendar's
+follow-up panel and every Sales Call report (`NeglectedSalesCallReport`, `CustomerFollowUpReport`,
+`SalesCallProspectSummaryReport` all consume `getDiaryNotes()`'s output) — so the ~1,939 imported
+notes (many with a `plan_for` that's a legacy desk code, not a real user, and a `next_plan_date`
+already in the past) can never surface there as a pile of unassigned-looking overdue follow-ups.
+They only ever show on Customer 360's Diary tab, which today renders `content`/`visit_date`/
+`created_by` only — `next_plan_date`/`plan_of_action`/`plan_for` are stored (available for a future
+feature) but not currently displayed anywhere.
+
+**Matching**: reused `customerMatcher`/`compactName` from `lib/enquiry-import.mjs` outright (same
+exact-name-to-one-customer rule the earlier enquiry import used) — of 2,078 organizations with real
+history, 1,864 (89.7%) matched exactly one customer; 214 didn't (ambiguous/similar/no-match) and
+are skipped, listed in `docs/diary-import-review.csv`. A separate 214 organizations (coincidentally
+the same count — verified disjoint, zero overlap, via a direct check) have a scheduled follow-up
+but **zero note text ever logged** — skipped rather than given a fabricated placeholder note
+(decision confirmed directly with the user), listed in the same review CSV.
+
+**`Task Type → note_type/plan_note_type`**: Phone→`call`, E-mail→`email`, Appointment→`meeting`,
+everything else (SMS/Offer Submission/Others/Support/Courier)→`note` — matching the real enum
+`app/api/crm-notes/route.js` enforces, not a paraphrase. `Entry For` and `Created By` are identical
+in 100% of real rows once correctly parsed, stored as free text in `created_by`/`plan_for` (no
+`checkSalesPerson()` gate applies — this is a direct-DB import, not the API route).
+
+**Contacts** (`contacts` table, `customer_id NOT NULL`) — seeded best-effort from the noisy
+`Contact Person` cell (raw top values were mostly junk: `md` ×589, `SD2` ×387, `aa`/`AA` ×282,
+`SRIVAARI` ×236 — salesperson-code leftovers and placeholders, not names). After filtering out
+known salesperson-code substrings, bare short-code/initials patterns, the organization's own name
+typed again, and phone-number-looking strings — 186 distinct (customer, contact name) pairs
+survived and were inserted, decided explicitly with the user as "create them anyway, accepting
+some low-quality entries" over skipping. `customers.account_manager` was **not** touched anywhere
+in this import (confirmed by grep — no `UPDATE customers` statement exists in the script).
+
+**Schema, additive only**: `crm_notes.import_tag TEXT`, `contacts.import_tag TEXT` (neither table
+had a rollback tag before this; same `leads.import_tag` convention). Rollback:
+`node scripts/import-diary-followups.mjs --rollback` — simpler than the enquiry import's, since no
+other table was ever `UPDATE`d, only inserted into.
+
+**One genuine near-duplicate found and correctly deduped, not a bug**: the `NOT EXISTS` idempotency
+guard caught exactly one real collision — "M/S GLN ENTERPRISE SANKUDA" and "M/S GLN
+ENTERPRISESANKUDA" (a missing space) are the same real organization, both correctly resolved to
+customer id 11557 via `compactName`, and happened to share byte-identical note text on the same
+date — inserted once, not twice, as intended (1,939 real rows landed from 1,940 attempted).
+
+**Note insertion order matters for display and was fixed before this shipped**: Customer 360 lists
+notes by `ORDER BY id DESC` (newest-id-first), which only reads as chronological if rows are
+inserted in date order — a bulk import iterating by (org, then note-group) has no natural date
+order otherwise. Caught live: "Krijan Biotech" (2 real notes, May and September 2026) initially
+showed the older note first because it happened to get inserted with a higher id. Fixed by sorting
+`notesToInsert` by `visit_date` ascending before the batch insert, re-applied, and re-verified live
+in the browser — newest note now correctly shows first.
+
+**Live-verified in the browser** (fresh dev server, `migrate()` confirmed to have actually applied
+the two new columns via `PRAGMA table_info` before `--apply` ran): Customer 360 for "Krijan Biotech
+Private Limited" shows both real notes in correct chronological order with correct dates/
+salesperson attribution; "SM feeds" shows its one real note; "Patra Flour Mill Pvt. Ltd." shows its
+imported contact ("Kanu Patra") and a note correctly tagged `meeting`. `/reports?dept=Sales` —
+Neglected Sales Call and Customer Follow-up reports both load with zero console errors, and (as
+predicted by the INNER JOIN trace above) show only pre-existing lead-based data, completely
+unaffected by the new customer-only notes. `docs/diary-import-notes.md`/`docs/diary-import-
+review.csv` record the full run; `docs/manual-review-checklist.md` §8's Diary row is updated to
+match.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own

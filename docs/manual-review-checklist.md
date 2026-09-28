@@ -83,6 +83,22 @@ Details: [enquiry-import-notes.md](enquiry-import-notes.md).
 
 ---
 
+## 6a. Diary follow-ups (from the old CRM's Quick Planner export)
+
+Details: [diary-import-notes.md](diary-import-notes.md).
+
+- [ ] **214 organizations not linked to a customer**: no match, several matches, or only a similar
+  name. The list is [diary-import-review.csv](diary-import-review.csv) (kind = `no_customer_match`)
+  — link them from the customer, then re-run a small follow-up import if the note is still wanted.
+- [ ] **214 organizations have a scheduled follow-up but no note was ever logged for them** —
+  genuinely never contacted, or the CRM's status was never typed up. Same review CSV (kind =
+  `no_history_ever_logged`). Worth a look to see who's actually gone cold.
+- [ ] **186 contacts seeded from the Contact Person cell** are best-effort — the raw data was noisy
+  (salesperson codes, placeholder text). A few may still be wrong (a company name instead of a
+  person, for example). Spot-check the newest customers if this matters.
+
+---
+
 ## 7. Leftover test data (ours)
 
 - [ ] **Project `SB-1057`** ("TEST-STORES-DEMO (safe to ignore) Customer"). Delete via Projects → Delete Project.
@@ -97,7 +113,7 @@ Details: [enquiry-import-notes.md](enquiry-import-notes.md).
 
 | Data | Now in Shanti Ops | What's needed | How it will be loaded |
 |---|---|---|---|
-| **Diary / follow-up history** | 0 entries | Export of diary notes (date, customer/enquiry, note, next follow-up, who) | New import in the same style as `scripts/import-enquiries.mjs`, linked to enquiries |
+| **Diary / follow-up history** | **Done (2026-09-28)** — 1,939 notes + 186 contacts imported from the old CRM's Quick Planner export, linked to customers (not enquiries — see §6a) | — | — |
 | **Contact persons** | 0 (customers have one phone/email only) | Contact list per customer (name, designation, phone, email) | Import into `contacts`, matched to customers by code/name |
 | **Past quotations** | 0 (the 2 test ones were deleted) | Quotation export with line items | Import into quotations, marked as old, linked to enquiry/customer |
 | **Enquiry stage, A/C manager, value** | All 598 at Lead - Cold, unassigned, no value | Export with stage + owner + value (the PDF didn't have them) | Update the imported enquiries by serial number |

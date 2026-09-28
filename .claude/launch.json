@@ -247,6 +247,19 @@
       ],
       "port": 3040,
       "autoPort": false
+    },
+    {
+      "name": "shanti-ops-diary-import",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--",
+        "-p",
+        "3041"
+      ],
+      "port": 3041,
+      "autoPort": false
     }
   ]
 }
