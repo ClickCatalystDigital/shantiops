@@ -99,6 +99,25 @@ Details: [diary-import-notes.md](diary-import-notes.md).
 
 ---
 
+## 6b. Quotation register (from the old CRM)
+
+Details: [quotation-import-notes.md](quotation-import-notes.md).
+
+- [ ] **303 quotation numbers not linked to a customer** — no match, several matches, or only a
+  similar name — not imported. [quotation-import-review.csv](quotation-import-review.csv)
+  (kind = `no_customer_match`); link them from the customer, then re-import if wanted.
+- [ ] **49 rows (21 quotation numbers) are the same number used by two different customers** — a
+  real data error in the source register, not imported either way (same review CSV, kind =
+  `excluded_same_quotation_number_used_by_a_different_customer`). Worth asking whoever kept the
+  register which customer each one actually belongs to, then correcting by hand.
+- [ ] **129 rows had no quotation number at all** and 21 were obvious test rows — neither imported
+  (same review CSV, `excluded_no_quotation_number`/`excluded_test_junk_customer_name`).
+- [ ] **No products, price, or line items exist for any of the 2,221 imported quotations** — they're
+  real header records (customer, number, date, status) only. If the old CRM (or Tally) has the
+  actual quote line items anywhere, that's a separate, bigger import.
+
+---
+
 ## 7. Leftover test data (ours)
 
 - [ ] **Project `SB-1057`** ("TEST-STORES-DEMO (safe to ignore) Customer"). Delete via Projects → Delete Project.
@@ -115,7 +134,7 @@ Details: [diary-import-notes.md](diary-import-notes.md).
 |---|---|---|---|
 | **Diary / follow-up history** | **Done (2026-09-28)** — 1,939 notes + 186 contacts imported from the old CRM's Quick Planner export, linked to customers (not enquiries — see §6a) | — | — |
 | **Contact persons** | 0 (customers have one phone/email only) | Contact list per customer (name, designation, phone, email) | Import into `contacts`, matched to customers by code/name |
-| **Past quotations** | 0 (the 2 test ones were deleted) | Quotation export with line items | Import into quotations, marked as old, linked to enquiry/customer |
+| **Past quotations** | **Done (2026-09-28)** — 2,221 header-only quotations imported from the old CRM's register (2,217 draft, 4 sent), linked to customers. No line items exist in the source, so no product/price data came with them — see §6b | — | — |
 | **Enquiry stage, A/C manager, value** | All 598 at Lead - Cold, unassigned, no value | Export with stage + owner + value (the PDF didn't have them) | Update the imported enquiries by serial number |
 | **Full product names on enquiries** | Cut off by the PDF | Same export as above (text, not PDF) | Same update |
 | **Branches** | 0 | Branch list | Masters → Branches (by hand) or a small import |

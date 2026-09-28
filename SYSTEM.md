@@ -11835,6 +11835,68 @@ confirmed with a full database-wide scan (every TEXT column, every table), not j
   a UI label. Left untouched since fixing it would mean rewriting 8,847 rows' JSON for something no
   user can ever see — revisit if that changes.
 
+## 5de. Old CRM quotation register imported — first real quotations in the app (2026-09-28)
+
+Closes the "Past quotations — 0" gap from the same checklist. Source: two pasted exports of the old
+CRM's quotation register — 2,728 rows at `Status=Open`, a separate 5-row batch at
+`Status=Sent to Customer` (the user explicitly corrected these are two distinct real statuses, not
+one set — respected literally, not merged). **Header-only data**: `Sr.No./Customer/Quotation No./
+Quotation Date/Prepared By/Status/Remarks` — no products, price, qty, or line items anywhere, so
+every imported row is a shell (`subtotal`/`tax_amount`/`total` = 0, zero `quotation_items`) — real
+quote-issuance/pipeline history, not commercial figures.
+
+`lib/quotation-register-import.mjs` (pure, its own selfcheck) + `scripts/import-quotations.mjs`
+(dry-run default, `--apply`/`--rollback`/`--limit`, same shape as the diary/enquiry importers).
+`quotations.import_tag TEXT` added (additive, same rollback-tag convention as `crm_notes`/
+`contacts`) — the table had none before this.
+
+**Three real issues found and handled, never guessed**, since `quotation_no TEXT NOT NULL UNIQUE`:
+- **129 rows have a blank quotation number** — no formal quote was ever issued, nothing to anchor
+  a unique number to. Excluded, listed in `docs/quotation-import-review.csv`.
+- **21 rows are test/junk customer rows** ("Test", "test for check", "TEST - PUJAN") — excluded
+  outright, not real customers.
+- **49 rows (21 distinct numbers) reuse the same quotation number across two genuinely different
+  customers** — a real data-entry error in the source (a formal sequential number can't legitimately
+  belong to two unrelated companies). Since there's no way to tell which customer the real number
+  belongs to, both sides of every such collision are excluded rather than guessed at, listed in the
+  same review CSV.
+- **112 groups (250 rows) reuse the same number for the *same* customer on different dates** — a
+  real revision chain, not an error. Modeled with this app's own existing shape
+  (`quotations.parent_quotation_id`/`revision_no`, `revisionNumber()` from `lib/quotation-approval.mjs`
+  reused verbatim — `"<no>-R1"`, `"-R2"` …) rather than inventing a second convention.
+
+**Customer matching**: the same conservative exact-name-to-one-customer matcher every prior import
+used (`customerKey` from `lib/customer-match.mjs`). Of 2,551 remaining candidates, 2,110 distinct
+quotation numbers (2,221 rows, once revisions are counted) matched exactly one customer and were
+imported; 303 did not (ambiguous/similar/no-match) and are listed in the same review CSV, not
+imported — `customer_id INTEGER NOT NULL` on `quotations` makes this a hard requirement, not a
+choice.
+
+**Status mapping, decided on the source's own literal wording, not reinterpreted**: `Open` →
+`draft` (the source explicitly does not call these "sent," so calling them `sent` would misrepresent
+2,217 real records); `Sent to Customer` → `sent`, with `sent_at` set to the row's own
+`quotation_date` (the earliest real evidence of when it was sent — not left to
+`quotationFollowupReason()`'s `sent_at || quotation_date` fallback, since the real date was already
+known). `company` derived from an unambiguous `SB/`/`STF/` quotation-number prefix only (1,416 SB,
+437 STF); left `NULL` for the 368 rows with a typo'd/legacy-format prefix (`QTF/`, `SFT/`, bare
+numbers, etc.) rather than guessed — the app's own established default (blank = Shanti Boilers)
+covers it. `created_by` stores the real "Prepared By" salesperson name as plain text (no
+`checkSalesPerson()` gate — a direct-DB import, matching the diary import's precedent for the same
+field) — no attempt made to reconcile these names against real user accounts, out of scope here.
+
+**Live-verified against the real (previously empty) `quotations` table**: a small `--limit` trial +
+rollback round-trip confirmed clean insert/delete with zero residue; a second, larger trial
+specifically caught 3 real revision chains and confirmed `parent_quotation_id` correctly points at
+the root row's real id (not just the pure-lib unit test) before the full apply ran. Full apply: 2,221
+of 2,221 attempted rows landed (zero `NOT EXISTS` collisions — nothing pre-existed to collide with),
+111 of those are revision rows all with a non-null `parent_quotation_id`, `status` splits exactly
+2,217 `draft` / 4 `sent` (the 5th "Sent to Customer" row had a blank quotation number and was
+correctly excluded, not silently dropped), all 4 `sent` rows carry a real `sent_at`, zero
+`quotation_items` rows exist for any of them, and the date range (2022-09-13 to 2026-09-26) matches
+the source. `docs/quotation-import-notes.md`/`docs/quotation-import-review.csv` record the full run;
+`docs/manual-review-checklist.md` §8's quotations row is updated to match. Source files
+(`quotations-register.tsv`, `quotations-sent.tsv`) were never git-added, same as `enq.csv`/`enq.xls`.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own
