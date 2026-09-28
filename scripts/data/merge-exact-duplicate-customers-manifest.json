@@ -1,0 +1,2910 @@
+{
+  "groups": [
+    {
+      "canonicalId": 12546,
+      "moved": {
+        "sale_orders.customer_id": [
+          {
+            "rowId": 698,
+            "from": 54
+          }
+        ]
+      },
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 54,
+            "name": "LINK WELL TELESYSTEMS PVT LTD",
+            "party_code": null,
+            "gst_no": "36AAACL3452E1ZU",
+            "pan": "AAACL3452E",
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": "B-45&46 ELECTRONIC COMPLEX, KUSHAIGUDA, HYDERABAD-500062, PH NO-+9-40 66388235",
+            "address2": null,
+            "address3": null,
+            "city": "HYDERABAD",
+            "state": "Telangana",
+            "state_code": "36",
+            "country": "INDIA",
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": "Intrastate",
+            "business_type": "Private Limited Company",
+            "active": 1,
+            "created_at": "2026-09-04 14:29:36",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": null,
+            "products_of_interest": null,
+            "legacy_crm_json": null,
+            "source": null
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 57,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 12614,
+            "name": "Nile Li-Cycle Pvt Ltd",
+            "party_code": "CUSC17155947802170",
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": null,
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 11:59:56",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "BDM Hyderabd",
+            "products_of_interest": "SBH-OF-100-2S",
+            "legacy_crm_json": "{\"open_calls\":0,\"closed_calls\":1,\"stages\":{\"Follow up stage\":1},\"quote_total\":1140000,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":null,\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 130,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 12347,
+            "name": "Creamline Dairy Products Ltd",
+            "party_code": "CUSC17199203372260",
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": null,
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 11:59:55",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "Amit B",
+            "products_of_interest": "Air Nozzle SS - 33D, TUBE FERRULES - 56 ID",
+            "legacy_crm_json": "{\"open_calls\":2,\"closed_calls\":1,\"stages\":{\"Lead - Cold\":3},\"quote_total\":450,\"orders\":1,\"order_value\":22715,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":null,\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 366,
+      "moved": {
+        "projects.customer_id": [
+          {
+            "rowId": 282,
+            "from": 174
+          }
+        ]
+      },
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 174,
+            "name": "IYANTRA INDUSTRIES",
+            "party_code": null,
+            "gst_no": "37BAAPK9332C2ZX",
+            "pan": "BAAPK9332C",
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": "PLOT NO-31, IDA GURRAMPALEM,PENDURTHY, VISAKAPATAM-531173",
+            "address2": null,
+            "address3": null,
+            "city": "VISAKAPATAM",
+            "state": "Andhra Pradesh",
+            "state_code": "37",
+            "country": "INDIA",
+            "pin_code": "531173",
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": "Interstate",
+            "business_type": "Sole Properietorship",
+            "active": 1,
+            "created_at": "2026-09-04 14:29:45",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": null,
+            "products_of_interest": null,
+            "legacy_crm_json": null,
+            "source": null
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 13067,
+      "moved": {
+        "sale_orders.customer_id": [
+          {
+            "rowId": 622,
+            "from": 182
+          }
+        ]
+      },
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 182,
+            "name": "K.B.R.INDUSTRIES",
+            "party_code": null,
+            "gst_no": "29AADFK1227C1ZS",
+            "pan": "AADFK1227C",
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": "NEAR TRISHUL TALKIES, P B ROAD,, DAVANGERE",
+            "address2": null,
+            "address3": null,
+            "city": "DAVANGERE",
+            "state": "Karnataka",
+            "state_code": "29",
+            "country": "INDIA",
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": "Interstate",
+            "business_type": "Partnership",
+            "active": 1,
+            "created_at": "2026-09-04 14:29:46",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": null,
+            "products_of_interest": null,
+            "legacy_crm_json": null,
+            "source": null
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 183,
+      "moved": {
+        "quotations.customer_id": [
+          {
+            "rowId": 3314,
+            "from": 12609
+          },
+          {
+            "rowId": 3578,
+            "from": 12609
+          }
+        ]
+      },
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 12609,
+            "name": "KSR Modern Rice Mill",
+            "party_code": "CUSC17160004618940",
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": null,
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 11:59:56",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "Amit B",
+            "products_of_interest": "AIR LOCK-RAV-150, BOILER-AF-250, BOILER-CF-400, MULTI CYCLONE DUST COLLECTOR-MDC-300, PRS-300-CI",
+            "legacy_crm_json": "{\"open_calls\":1,\"closed_calls\":1,\"stages\":{\"Hot Offers\":1,\"Order Received\":1},\"quote_total\":5555000,\"orders\":1,\"order_value\":2025000,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":null,\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 18095,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 219,
+            "name": "MULUKANOOR WOMEN'S COOPERATIVE DAIRY",
+            "party_code": null,
+            "gst_no": "36AAAAM4241J1ZP",
+            "pan": "AAAAM4241J",
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": "BHEEMADEVERPALLI VILLAGE, BHEEMADEVERPALLI MANDAL, HANAMAKONDA DISTRICT, MOBILE NO-8341631116, CONTACT NO-9849290098",
+            "address2": null,
+            "address3": null,
+            "city": "HANAMAKONDA",
+            "state": "Telangana",
+            "state_code": "36",
+            "country": "INDIA",
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": "Intrastate",
+            "business_type": "Limited Liability Partnership",
+            "active": 1,
+            "created_at": "2026-09-04 14:29:48",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": null,
+            "products_of_interest": null,
+            "legacy_crm_json": null,
+            "source": null
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 225,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 16629,
+            "name": "Nami Lifesciences Pvt Ltd",
+            "party_code": "CUSC16113096787210",
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": null,
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 12:00:03",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "BDM Hyderabd",
+            "products_of_interest": "BOILER-MULTI-FLAME-200, CHIMNEY TAPPERED -1.5D-500 DIA, DUCTINGS-FGD-400 mm, MS TANK -OHT-4 KL, MULTI CYCLONE DUST COLLECTOR-MDC-200, PRS-200-CI, SITE INSTALLATION-2 TPH",
+            "legacy_crm_json": "{\"open_calls\":0,\"closed_calls\":1,\"stages\":{\"Follow up stage\":1},\"quote_total\":3305000,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":null,\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 256,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 10827,
+            "name": "RK industries",
+            "party_code": null,
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": null,
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 11:59:52",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "BDM-AP-TS",
+            "products_of_interest": null,
+            "legacy_crm_json": "{\"open_calls\":1,\"closed_calls\":0,\"stages\":{\"Lead - Cold\":1},\"quote_total\":0,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":null,\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 260,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 261,
+            "name": "Resunga Industries Pvt. Ltd",
+            "party_code": null,
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": "Butwal-18, Rupandehi, Nepal",
+            "address2": null,
+            "address3": null,
+            "city": "RUPANEDHI",
+            "state": null,
+            "state_code": null,
+            "country": "NEPAL",
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": "Export",
+            "business_type": "Private Limited Company",
+            "active": 1,
+            "created_at": "2026-09-04 14:29:52",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": null,
+            "products_of_interest": null,
+            "legacy_crm_json": null,
+            "source": null
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 11961,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 267,
+            "name": "S S B BRICKS",
+            "party_code": null,
+            "gst_no": "36ADBPV7847C1ZB",
+            "pan": "ADBPV7847C",
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": "H.NO:3-3-A/52, SAHEBEGUDA, MANGAPALLY X ROAD, IBRAHIMPATNAM BAGATH, RANAGA REDDY, TELANGANA",
+            "address2": null,
+            "address3": null,
+            "city": "RANAGA REDDY",
+            "state": "Telangana",
+            "state_code": "36",
+            "country": "INDIA",
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": "Intrastate",
+            "business_type": "Sole Properietorship",
+            "active": 1,
+            "created_at": "2026-09-04 14:29:52",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": null,
+            "products_of_interest": null,
+            "legacy_crm_json": null,
+            "source": null
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 11744,
+      "moved": {
+        "sale_orders.customer_id": [
+          {
+            "rowId": 774,
+            "from": 282
+          }
+        ]
+      },
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 282,
+            "name": "SHARVANI LIFE SCIENCES PVT LTD",
+            "party_code": null,
+            "gst_no": "29ABHCS2753F1Z5",
+            "pan": "ABHCS2753F",
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": "PLOT NO: 125 & 126, KIADB INDUSTRIAL ARREA,, KADECHUR VILLAGE YADGIR DISTRICT, PHONE NO:9059869939",
+            "address2": null,
+            "address3": null,
+            "city": "YADGIRI",
+            "state": "Karnataka",
+            "state_code": "29",
+            "country": "INDIA",
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": "Interstate",
+            "business_type": "Private Limited Company",
+            "active": 1,
+            "created_at": "2026-09-04 14:29:53",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": null,
+            "products_of_interest": null,
+            "legacy_crm_json": null,
+            "source": null
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 11859,
+      "moved": {
+        "sale_orders.customer_id": [
+          {
+            "rowId": 533,
+            "from": 284
+          }
+        ]
+      },
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 284,
+            "name": "SHIV RAM AGRO INDUSTRIES",
+            "party_code": null,
+            "gst_no": "18AGCPD8389F4Z4",
+            "pan": "AGCPD8389F",
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": "NA, Don Bosco Bye Pass, Hojai,, Pub Dhaniram Pather, Hojai, Assam, 782435",
+            "address2": null,
+            "address3": null,
+            "city": "Hojai",
+            "state": "Assam",
+            "state_code": "18",
+            "country": "INDIA",
+            "pin_code": "782435",
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": "Interstate",
+            "business_type": "Sole Properietorship",
+            "active": 1,
+            "created_at": "2026-09-04 14:29:53",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": null,
+            "products_of_interest": null,
+            "legacy_crm_json": null,
+            "source": null
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 15923,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 9730,
+            "name": "Shyamsundar",
+            "party_code": null,
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": null,
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 11:59:50",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "Sales Desk2",
+            "products_of_interest": null,
+            "legacy_crm_json": "{\"open_calls\":1,\"closed_calls\":0,\"stages\":{\"Lead - Cold\":1},\"quote_total\":0,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":null,\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 18306,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 9958,
+            "name": "SS Enterprises",
+            "party_code": null,
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": null,
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 11:59:51",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "BDM-AP-TS",
+            "products_of_interest": null,
+            "legacy_crm_json": "{\"open_calls\":1,\"closed_calls\":0,\"stages\":{\"Lead - Hot\":1},\"quote_total\":0,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":null,\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 16345,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 10022,
+            "name": "Shivkumar",
+            "party_code": null,
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": "Jaunpur",
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 11:59:51",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "Sales Desk2",
+            "products_of_interest": null,
+            "legacy_crm_json": "{\"open_calls\":1,\"closed_calls\":0,\"stages\":{\"Lead - Cold\":1},\"quote_total\":0,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":\"Jaunpur\",\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 11736,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 10051,
+            "name": "M. S. Traders",
+            "party_code": null,
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": null,
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 11:59:51",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "Sales Desk2",
+            "products_of_interest": null,
+            "legacy_crm_json": "{\"open_calls\":1,\"closed_calls\":0,\"stages\":{\"Lead - Cold\":1},\"quote_total\":0,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":null,\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 10140,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 16185,
+            "name": "A.R.Enterprises",
+            "party_code": "CUSC16229757990550",
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": null,
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 12:00:02",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "Sales Desk",
+            "products_of_interest": null,
+            "legacy_crm_json": "{\"open_calls\":1,\"closed_calls\":0,\"stages\":{\"Lead Project - Dropped\":1},\"quote_total\":0,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":null,\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        },
+        {
+          "row": {
+            "id": 17743,
+            "name": "Ar Enterprises",
+            "party_code": "CUSC15966767320020",
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": "Ranchi",
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 12:00:05",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "Amit B",
+            "products_of_interest": null,
+            "legacy_crm_json": "{\"open_calls\":1,\"closed_calls\":0,\"stages\":{\"Lead Project - Dropped\":1},\"quote_total\":0,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":\"Ranchi\",\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 12741,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 10155,
+            "name": "Vijay Kumar",
+            "party_code": null,
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": null,
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 11:59:51",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "Sales Desk2",
+            "products_of_interest": null,
+            "legacy_crm_json": "{\"open_calls\":1,\"closed_calls\":0,\"stages\":{\"Lead - Cold\":1},\"quote_total\":0,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":null,\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 10188,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 12145,
+            "name": "RE Sustainability Limited,",
+            "party_code": null,
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": null,
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 11:59:55",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "BDM Hyderabd",
+            "products_of_interest": null,
+            "legacy_crm_json": "{\"open_calls\":1,\"closed_calls\":0,\"stages\":{\"Follow up stage\":1},\"quote_total\":0,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":null,\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 10198,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 10220,
+            "name": "HS Engineering",
+            "party_code": null,
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": null,
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 11:59:51",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "BDM-NE",
+            "products_of_interest": null,
+            "legacy_crm_json": "{\"open_calls\":1,\"closed_calls\":0,\"stages\":{},\"quote_total\":0,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":null,\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 15787,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 10242,
+            "name": "JK Enterprises",
+            "party_code": null,
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": null,
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 11:59:51",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "Sales Desk2",
+            "products_of_interest": null,
+            "legacy_crm_json": "{\"open_calls\":0,\"closed_calls\":1,\"stages\":{\"Proposals\":1},\"quote_total\":0,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":null,\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 10280,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 13686,
+            "name": "anil kumar.",
+            "party_code": "CUSC16909470453110",
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": "Gorakhpur",
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 11:59:58",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "BDM-NE",
+            "products_of_interest": null,
+            "legacy_crm_json": "{\"open_calls\":0,\"closed_calls\":1,\"stages\":{\"Lead - Cold\":1},\"quote_total\":0,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":\"Gorakhpur\",\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 10575,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 11621,
+            "name": "SR ENTERPRISES",
+            "party_code": null,
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": "Barddhaman",
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 11:59:54",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "BDM-NE",
+            "products_of_interest": null,
+            "legacy_crm_json": "{\"open_calls\":1,\"closed_calls\":0,\"stages\":{},\"quote_total\":0,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":\"Barddhaman\",\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 10608,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 15597,
+            "name": "Ramakrishna",
+            "party_code": "CUSC16343499661230",
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": null,
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 12:00:01",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "Sales Desk",
+            "products_of_interest": null,
+            "legacy_crm_json": "{\"open_calls\":1,\"closed_calls\":0,\"stages\":{\"Lead - Cold\":1},\"quote_total\":0,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":null,\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 16959,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 10755,
+            "name": "Srinivasreddy",
+            "party_code": null,
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": "HYDERABAD",
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 11:59:52",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "BDM-AP-TS",
+            "products_of_interest": null,
+            "legacy_crm_json": "{\"open_calls\":1,\"closed_calls\":0,\"stages\":{\"Lead - Hot\":1},\"quote_total\":0,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":\"HYDERABAD\",\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 14329,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 10773,
+            "name": "S K Traders",
+            "party_code": null,
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": null,
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 11:59:52",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "Sales Desk2",
+            "products_of_interest": null,
+            "legacy_crm_json": "{\"open_calls\":0,\"closed_calls\":1,\"stages\":{\"Lead - Cold\":1},\"quote_total\":0,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":null,\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 10914,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 12896,
+            "name": "Manojkumar,",
+            "party_code": "CUSC17102999834500",
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": null,
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 11:59:56",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "BDM Hyderabd",
+            "products_of_interest": null,
+            "legacy_crm_json": "{\"open_calls\":0,\"closed_calls\":1,\"stages\":{\"Lead - Cold\":1},\"quote_total\":0,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":null,\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 10966,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 10999,
+            "name": "R.S. ENTERPRISES",
+            "party_code": null,
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": null,
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 11:59:53",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "Srivaari",
+            "products_of_interest": null,
+            "legacy_crm_json": "{\"open_calls\":1,\"closed_calls\":0,\"stages\":{\"Lead - Cold\":1},\"quote_total\":0,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":null,\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 13289,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 10981,
+            "name": "BosonTech (Pvt) Ltd.",
+            "party_code": null,
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": null,
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 11:59:53",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "Amit B",
+            "products_of_interest": "BOILER-AF-500, MULTI CYCLONE DUST COLLECTOR-MDC-500",
+            "legacy_crm_json": "{\"open_calls\":1,\"closed_calls\":0,\"stages\":{\"Lead - Hot\":1},\"quote_total\":4200000,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":null,\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 11013,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 16544,
+            "name": "VIDYA HERBS PVT LTD",
+            "party_code": "CUSC16160659918780",
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": "Hassan Hassan",
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 12:00:03",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "Sales Desk",
+            "products_of_interest": "BOILER-MULTI-FLAME-500, MULTI CYCLONE DUST COLLECTOR-MDC-500",
+            "legacy_crm_json": "{\"open_calls\":0,\"closed_calls\":1,\"stages\":{\"Hot Offers\":1},\"quote_total\":3270000,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":\"Hassan Hassan\",\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 11038,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 18904,
+            "name": "RE Sustainability Limited, (2)",
+            "party_code": null,
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": null,
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-28 22:37:41",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "BDM Hyderabd",
+            "products_of_interest": null,
+            "legacy_crm_json": "{\"open_calls\":1,\"closed_calls\":0,\"stages\":{\"Follow up stage\":1},\"quote_total\":0,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":null,\"source\":\"old CRM customer summary refresh 29/09/2026\"}",
+            "source": "import:legacy-crm-refresh-2026-09-29"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 11090,
+      "moved": {
+        "quotations.customer_id": [
+          {
+            "rowId": 2859,
+            "from": 11094
+          }
+        ]
+      },
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 11094,
+            "name": "Sri Laxmi Nivasa Ply and Boards",
+            "party_code": null,
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": null,
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 11:59:53",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "Srivaari",
+            "products_of_interest": "AIR LOCK-RAV-200, AIR LOCK VALVE-300",
+            "legacy_crm_json": "{\"open_calls\":0,\"closed_calls\":1,\"stages\":{\"Lead - Cold\":1},\"quote_total\":145000,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":null,\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 14069,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 11218,
+            "name": "SV Engineering",
+            "party_code": null,
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": null,
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 11:59:53",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "BDM-AP-TS",
+            "products_of_interest": null,
+            "legacy_crm_json": "{\"open_calls\":1,\"closed_calls\":0,\"stages\":{\"Lead - Cold\":1},\"quote_total\":0,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":null,\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 12242,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 11346,
+            "name": "R R LABORATORIES",
+            "party_code": null,
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": null,
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 11:59:53",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "Amit B, Srivaari",
+            "products_of_interest": "AIR PRE HEATER -APH-200, ID FAN - 12.5 HP, MOTOR 1440 RPM 12.5 HP",
+            "legacy_crm_json": "{\"open_calls\":2,\"closed_calls\":0,\"stages\":{\"Lead - Cold\":1,\"Follow up stage\":1},\"quote_total\":404500,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":null,\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 13609,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 11413,
+            "name": "BS Engineering",
+            "party_code": null,
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": null,
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 11:59:53",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "Amit B",
+            "products_of_interest": "AIR PRE HEATER -APH-300, BOILER-SF-250-WB, STEAM HEADER - IBR",
+            "legacy_crm_json": "{\"open_calls\":1,\"closed_calls\":0,\"stages\":{\"Proposals\":1},\"quote_total\":2475000,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":null,\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 11627,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 11952,
+            "name": "S K",
+            "party_code": "CUSC17326090071750",
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": null,
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 11:59:55",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "Sales Desk2",
+            "products_of_interest": "CHIMNEY STRAIGHT- 350 DIA X 15 M, DUCTINGS-FGD-300 mm, PRS-100-17B, WATER PRE HEATER -WPH-100",
+            "legacy_crm_json": "{\"open_calls\":1,\"closed_calls\":0,\"stages\":{\"Order Received\":1},\"quote_total\":830000,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":null,\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 11644,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 11719,
+            "name": "SRI TECH LIPID PROCESS TECHNOLOGIES PVT.LTD",
+            "party_code": "CUSC17387493027110",
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": null,
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 11:59:54",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "Sales1",
+            "products_of_interest": null,
+            "legacy_crm_json": "{\"open_calls\":0,\"closed_calls\":1,\"stages\":{\"Proposals\":1},\"quote_total\":0,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":null,\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 11653,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 14700,
+            "name": "Hubert health care pvt ltd",
+            "party_code": "CUSC16754114086250",
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": "Raichur",
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 12:00:00",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "BDM Hyderabd",
+            "products_of_interest": null,
+            "legacy_crm_json": "{\"open_calls\":0,\"closed_calls\":1,\"stages\":{\"Lead - Cold\":1},\"quote_total\":0,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":\"Raichur\",\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 11858,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 13210,
+            "name": "SN ENGINEERING",
+            "party_code": "CUSC17009048337550",
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": null,
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 11:59:57",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "Sales Desk",
+            "products_of_interest": "BOILER-OF-50",
+            "legacy_crm_json": "{\"open_calls\":1,\"closed_calls\":0,\"stages\":{\"Lead - Cold\":1},\"quote_total\":875000,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":null,\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        },
+        {
+          "row": {
+            "id": 13481,
+            "name": "S.N.Engineering",
+            "party_code": "CUSC16952763630440",
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": "South 24 Parganas",
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 11:59:57",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "Sales Desk2",
+            "products_of_interest": null,
+            "legacy_crm_json": "{\"open_calls\":0,\"closed_calls\":1,\"stages\":{\"Lead - Cold\":1},\"quote_total\":0,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":\"South 24 Parganas\",\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 11951,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 12971,
+            "name": "Compass India Food Services Pvt Ltd",
+            "party_code": "CUSC17073733773790",
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": null,
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 11:59:56",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "Amit B",
+            "products_of_interest": "BOILER-NON IBR-OF-10-MINI, CHIMNEY STRAIGHT- 200 MM DIA X 10 M, DUCTING-ICD-GF/OF-50, MS TANK -OHT-0.5 KL, MS TANK -OHT-2 KL",
+            "legacy_crm_json": "{\"open_calls\":1,\"closed_calls\":0,\"stages\":{\"Follow up stage\":1},\"quote_total\":699500,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":null,\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 11999,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 15425,
+            "name": "Chandrashekhar",
+            "party_code": "CUSC16437653215110",
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": null,
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 12:00:01",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "Sales Desk",
+            "products_of_interest": null,
+            "legacy_crm_json": "{\"open_calls\":1,\"closed_calls\":0,\"stages\":{\"Lead Project - Dropped\":1},\"quote_total\":0,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":null,\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 12143,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 14864,
+            "name": "Shiva kumar",
+            "party_code": "CUSC16724504067600",
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": null,
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 12:00:00",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "Amit B",
+            "products_of_interest": null,
+            "legacy_crm_json": "{\"open_calls\":1,\"closed_calls\":0,\"stages\":{\"Lead - Cold\":1},\"quote_total\":0,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":null,\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 12155,
+      "moved": {
+        "quotations.customer_id": [
+          {
+            "rowId": 4340,
+            "from": 14264
+          },
+          {
+            "rowId": 4341,
+            "from": 14264
+          }
+        ]
+      },
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 14264,
+            "name": "OM ALLOY CASTING",
+            "party_code": "CUSC16817317800850",
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": null,
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 11:59:59",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "Sales Desk",
+            "products_of_interest": "BOILER-SF-50, CHIMNEY STRAIGHT- 200 MM DIA X 10 M, DUCTING-FGD-250D X 3M, SINGLE CYCLONE DUST COLLECTOR-SDC-50",
+            "legacy_crm_json": "{\"open_calls\":1,\"closed_calls\":0,\"stages\":{\"Lead - Cold\":1},\"quote_total\":1140000,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":null,\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 12159,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 14392,
+            "name": "indusply wood",
+            "party_code": "CUSC16797294745490",
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": null,
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 11:59:59",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "Sales Desk",
+            "products_of_interest": null,
+            "legacy_crm_json": "{\"open_calls\":0,\"closed_calls\":1,\"stages\":{\"Lead - Cold\":1},\"quote_total\":0,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":null,\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 12287,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 15896,
+            "name": "Rakeshkumar",
+            "party_code": "CUSC16281302696140",
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": "Moradabad",
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 12:00:02",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "Amit B",
+            "products_of_interest": null,
+            "legacy_crm_json": "{\"open_calls\":1,\"closed_calls\":0,\"stages\":{\"Lead - Cold\":1},\"quote_total\":0,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":\"Moradabad\",\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 12345,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 13171,
+            "name": "KEP Engineering Services Pvt.Ltd",
+            "party_code": "CUSC17015961144590",
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": null,
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 11:59:57",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "Amit B, Sales Desk",
+            "products_of_interest": "BOILER-NON IBR-GF-85-V, CHIMNEY STRAIGHT- 200 MM DIA X 6, DUCTING-ICD-GF/OF-50, GAS TRAIN - 40 MM, MS TANK -OHT-2 KL",
+            "legacy_crm_json": "{\"open_calls\":2,\"closed_calls\":0,\"stages\":{\"Lead - Cold\":1,\"Follow up stage\":1},\"quote_total\":1314500,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":null,\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 13883,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 14753,
+            "name": "M/S CANVA BIO",
+            "party_code": "CUSC16749055659570",
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": null,
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 12:00:00",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "BDM Hyderabd",
+            "products_of_interest": "AIR PRE HEATER -APH-200, BOILER-SF-200-WB, CHIMNEY TAPPERED - 1.5D- 475 DIA, DUCTINGS-FGD-350 mm, TWIN CYCLONE DUST COLLECTOR-TCDC-150/200",
+            "legacy_crm_json": "{\"open_calls\":1,\"closed_calls\":0,\"stages\":{\"Order Received\":1},\"quote_total\":2925000,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":null,\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 13918,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 13990,
+            "name": "J M J Industries",
+            "party_code": "CUSC16863781791160",
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": null,
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 11:59:58",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "Amit B",
+            "products_of_interest": null,
+            "legacy_crm_json": "{\"open_calls\":1,\"closed_calls\":0,\"stages\":{\"Lead - Cold\":1},\"quote_total\":0,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":null,\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 14531,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 17037,
+            "name": "Indian Dairy Equipment & Fabricators",
+            "party_code": "CUSC16031895349500",
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": null,
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 12:00:04",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "Sales Desk",
+            "products_of_interest": "EXPANSION BEND, IBR -SC/40- 50 MM (2\\)\"",
+            "legacy_crm_json": "{\"open_calls\":0,\"closed_calls\":1,\"stages\":{\"Follow up stage\":1},\"quote_total\":6500,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":null,\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 14538,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 14805,
+            "name": "Shri Rukmani Branded Homes Pvt. Ltd.",
+            "party_code": "CUSC16741853148490",
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": "Indore",
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 12:00:00",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "Sales Desk2",
+            "products_of_interest": null,
+            "legacy_crm_json": "{\"open_calls\":0,\"closed_calls\":1,\"stages\":{\"Lead - Cold\":1},\"quote_total\":0,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":\"Indore\",\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 14701,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 14729,
+            "name": "CHAKRA CHEM LIFESCIENCE PVT LTD",
+            "party_code": "CUSC16750652431850",
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": "Raichur",
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 12:00:00",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "BDM-NE",
+            "products_of_interest": null,
+            "legacy_crm_json": "{\"open_calls\":0,\"closed_calls\":1,\"stages\":{\"Lead - Hot\":1},\"quote_total\":0,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":\"Raichur\",\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 14703,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 14713,
+            "name": "Maha Lakshmi Doors",
+            "party_code": "CUSC16752287094920",
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": null,
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 12:00:00",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "Devansh Trivedi",
+            "products_of_interest": null,
+            "legacy_crm_json": "{\"open_calls\":0,\"closed_calls\":1,\"stages\":{\"Lead - Cold\":1},\"quote_total\":0,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":null,\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 14838,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 16966,
+            "name": "Shree Jaya Laboratories (P) Ltd",
+            "party_code": "CUSC16040394193420",
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": null,
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 12:00:04",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "Sales Desk",
+            "products_of_interest": "MOBRAY CONTROLLER, IBR, 10.54 KGS - CC 400",
+            "legacy_crm_json": "{\"open_calls\":0,\"closed_calls\":1,\"stages\":{\"Lead - Cold\":1},\"quote_total\":13000,\"orders\":1,\"order_value\":13000,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":null,\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 14921,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 17932,
+            "name": "Srihaas Life Sciences P Ltd",
+            "party_code": "CUSC15946254263990",
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": null,
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 12:00:06",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "Amit B, Sales Desk",
+            "products_of_interest": "AIR PRE HEATER -APH-200, BOILER-MULTI-FLAME-200, BOILER-SF-200-WB, CHIMNEY TAPPERED -1.5D-500 DIA, DUCTINGS-FGD-200 mm, MS TANK -OHT-3 KL, MULTI CYCLONE DUST COLLECTOR-MDC-200, PRS-200-CI",
+            "legacy_crm_json": "{\"open_calls\":0,\"closed_calls\":2,\"stages\":{\"Lead - Cold\":1,\"Lead - Hot\":1},\"quote_total\":5623500,\"orders\":1,\"order_value\":1500000,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":null,\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 15562,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 15564,
+            "name": "MS Biotech Pvt Ltd",
+            "party_code": "CUSC16346956627340",
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": null,
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 12:00:01",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "Sales Desk",
+            "products_of_interest": null,
+            "legacy_crm_json": "{\"open_calls\":1,\"closed_calls\":0,\"stages\":{\"Lead - Cold\":1},\"quote_total\":0,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":null,\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 16823,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 17798,
+            "name": "sri vishnu explosives pvt,ltd.",
+            "party_code": "001",
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": null,
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 12:00:06",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "Sales Desk",
+            "products_of_interest": null,
+            "legacy_crm_json": "{\"open_calls\":0,\"closed_calls\":1,\"stages\":{\"Order Received\":1},\"quote_total\":0,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":null,\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 16843,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 16857,
+            "name": "Laxmi Traders,",
+            "party_code": "CUSC16063685021840",
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": null,
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 12:00:04",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "Sales Desk",
+            "products_of_interest": "BOILER-SF-200-WB, MULTI CYCLONE DUST COLLECTOR-MDC-200",
+            "legacy_crm_json": "{\"open_calls\":0,\"closed_calls\":1,\"stages\":{\"Lead - Cold\":1},\"quote_total\":1200000,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":null,\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 16860,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 16861,
+            "name": "Reecon Aqua Green Technologies PVT. LTD",
+            "party_code": "CUSC16058783472100",
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": "Bangalore Bangalore",
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 12:00:04",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "Sales Desk",
+            "products_of_interest": "BOILER-NON IBR-GF-MINI-10, BOILER-NON IBR-GF-MINI-15, BOILER-NON IBR-GF-MINI-20",
+            "legacy_crm_json": "{\"open_calls\":0,\"closed_calls\":1,\"stages\":{\"Lead - Hot\":1},\"quote_total\":1070000,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":\"Bangalore Bangalore\",\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 16940,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 17258,
+            "name": "Vijayalakshmi Rice Mill",
+            "party_code": "CUSC16009148465050",
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": null,
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 12:00:04",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "Amit B",
+            "products_of_interest": null,
+            "legacy_crm_json": "{\"open_calls\":1,\"closed_calls\":0,\"stages\":{\"Lead - Cold\":1},\"quote_total\":0,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":null,\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 17095,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 18067,
+            "name": "Ravikumar",
+            "party_code": "CUSC15933346105500",
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": null,
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 12:00:06",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "Amit B",
+            "products_of_interest": "BOILER-SF-200-17B-E, CHIMNEY STRAIGHT -500 MM DIA, DUCTINGS-FGD-450 mm, MULTI CYCLONE DUST COLLECTOR-MDC-200, WATER PRE HEATER -WPH-200",
+            "legacy_crm_json": "{\"open_calls\":1,\"closed_calls\":0,\"stages\":{\"Lead Project - Dropped\":1},\"quote_total\":2065000,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":null,\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 17250,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 17293,
+            "name": "A- One Engineers",
+            "party_code": "CUSC16005906859690",
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": null,
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 12:00:04",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "Sales Desk",
+            "products_of_interest": null,
+            "legacy_crm_json": "{\"open_calls\":0,\"closed_calls\":1,\"stages\":{\"Lead Project - Dropped\":1},\"quote_total\":0,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":null,\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 18139,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 18410,
+            "name": "Durgaprasad",
+            "party_code": "CUSC15904912461400",
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": null,
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 12:00:07",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "BDM Hyderabd",
+            "products_of_interest": null,
+            "legacy_crm_json": "{\"open_calls\":0,\"closed_calls\":1,\"stages\":{\"Lead Project - Dropped\":1},\"quote_total\":0,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":null,\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 18354,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 18359,
+            "name": "KK Industries",
+            "party_code": "CUSC15908560305470",
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": null,
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-25 12:00:06",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "Amit B",
+            "products_of_interest": null,
+            "legacy_crm_json": "{\"open_calls\":1,\"closed_calls\":0,\"stages\":{\"Lead Project - Dropped\":1},\"quote_total\":0,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":null,\"source\":\"old CRM customer summary 25/09/2026\"}",
+            "source": "import:legacy-crm-2026-09-25"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 18589,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 18599,
+            "name": "HS Engineering (2)",
+            "party_code": null,
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": null,
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-28 22:37:41",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "BDM-NE",
+            "products_of_interest": null,
+            "legacy_crm_json": "{\"open_calls\":1,\"closed_calls\":0,\"stages\":{},\"quote_total\":0,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":null,\"source\":\"old CRM customer summary refresh 29/09/2026\"}",
+            "source": "import:legacy-crm-refresh-2026-09-29"
+          }
+        }
+      ]
+    },
+    {
+      "canonicalId": 18774,
+      "moved": {},
+      "portalMoved": false,
+      "deleted": [
+        {
+          "row": {
+            "id": 18785,
+            "name": "R.S. ENTERPRISES (2)",
+            "party_code": null,
+            "gst_no": null,
+            "pan": null,
+            "phone": null,
+            "fax": null,
+            "email": null,
+            "website": null,
+            "address": null,
+            "address2": null,
+            "address3": null,
+            "city": null,
+            "state": null,
+            "state_code": null,
+            "country": null,
+            "pin_code": null,
+            "area": null,
+            "excise_range": null,
+            "division": null,
+            "gst_trans_type": null,
+            "business_type": null,
+            "active": 1,
+            "created_at": "2026-09-28 22:37:41",
+            "portal_enabled": 0,
+            "portal_user_id": null,
+            "initial_email_sent_at": null,
+            "account_manager": "Srivaari",
+            "products_of_interest": null,
+            "legacy_crm_json": "{\"open_calls\":1,\"closed_calls\":0,\"stages\":{\"Lead - Cold\":1},\"quote_total\":0,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":null,\"source\":\"old CRM customer summary refresh 29/09/2026\"}",
+            "source": "import:legacy-crm-refresh-2026-09-29"
+          }
+        }
+      ]
+    }
+  ]
+}

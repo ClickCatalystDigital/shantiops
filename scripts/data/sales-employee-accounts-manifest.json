@@ -1,0 +1,82 @@
+{
+  "created": [
+    {
+      "id": 61,
+      "username": "srivaari",
+      "displayName": "Srivaari",
+      "designation": "Director"
+    },
+    {
+      "id": 62,
+      "username": "amit_b",
+      "displayName": "Amit B",
+      "designation": "Director"
+    },
+    {
+      "id": 63,
+      "username": "sales_desk2",
+      "displayName": "Sales Desk2",
+      "designation": "Incharge - Business Development"
+    },
+    {
+      "id": 64,
+      "username": "sales_desk",
+      "displayName": "Sales Desk",
+      "designation": "Incharge - Business Development"
+    },
+    {
+      "id": 65,
+      "username": "devansh_trivedi",
+      "displayName": "DevanshTrivedi",
+      "designation": "Director"
+    },
+    {
+      "id": 66,
+      "username": "sales2",
+      "displayName": "Sales2",
+      "designation": "Manager Marketing"
+    },
+    {
+      "id": 67,
+      "username": "bdm_hyderabad",
+      "displayName": "BDM Hyderabd",
+      "designation": "Manager Marketing"
+    },
+    {
+      "id": 68,
+      "username": "bdm_siliguri",
+      "displayName": "BDM-Siliguri",
+      "designation": "Sales Executive"
+    },
+    {
+      "id": 69,
+      "username": "bdm_ap_ts",
+      "displayName": "BDM-AP-TS",
+      "designation": "Sales Executive"
+    },
+    {
+      "id": 70,
+      "username": "sales1",
+      "displayName": "Sales1",
+      "designation": "Sales Executive"
+    },
+    {
+      "id": 71,
+      "username": "bdm_ne",
+      "displayName": "BDM-NE",
+      "designation": "Sales Executive"
+    },
+    {
+      "id": 72,
+      "username": "bdm_kolkata",
+      "displayName": "BDM-KOLKATA",
+      "designation": "Sales Executive"
+    },
+    {
+      "id": 73,
+      "username": "bdm_up",
+      "displayName": "BDM-UP",
+      "designation": "Sales Executive"
+    }
+  ]
+}

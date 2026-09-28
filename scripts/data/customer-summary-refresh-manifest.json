@@ -1,0 +1,15 @@
+{
+  "tag": "import:legacy-crm-refresh-2026-09-29",
+  "updated": [
+    {
+      "id": 9946,
+      "before": {
+        "party_code": null,
+        "city": null,
+        "account_manager": "Sales Desk2",
+        "products_of_interest": null,
+        "legacy_crm_json": "{\"open_calls\":1,\"closed_calls\":0,\"stages\":{\"Proposals\":1},\"quote_total\":0,\"orders\":0,\"order_value\":0,\"collection\":0,\"amc\":0,\"amc_value\":0,\"merged_rows\":1,\"other_names\":[],\"district\":null,\"source\":\"old CRM customer summary 25/09/2026\"}"
+      }
+    }
+  ]
+}
