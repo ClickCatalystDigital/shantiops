@@ -1,0 +1,749 @@
+{
+ "tag": "import:diary-followups-2026-09-28",
+ "before": [
+  {
+   "id": 414,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 415,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 416,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 417,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 418,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 419,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 420,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 421,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 422,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 423,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 424,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 425,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 426,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 427,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 428,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 429,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 430,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 431,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 432,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 433,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 434,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 435,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 436,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 437,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 438,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 439,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 440,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 441,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 442,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 443,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 444,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 445,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 446,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 447,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 448,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 449,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 450,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 451,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 452,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 453,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 454,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 455,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 456,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 457,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 458,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 459,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 460,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 461,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 462,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 463,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 464,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 465,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 466,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 467,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 468,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 469,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 470,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 471,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 472,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 473,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 474,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 475,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 476,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 477,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 478,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 479,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 480,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 481,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 482,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 483,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 484,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 485,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 486,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 487,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 488,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 489,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 490,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 491,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 492,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 493,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 494,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 495,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 496,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 497,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 498,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 499,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 500,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 501,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 502,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 503,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 504,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 505,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 506,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 507,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 508,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 509,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 510,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 511,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 512,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 513,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 514,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 515,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 516,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 517,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 518,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 519,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 520,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 521,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 522,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 523,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 524,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 525,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 526,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 527,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 528,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 529,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 530,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 531,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 532,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 533,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 534,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 535,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 536,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 537,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 538,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 539,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 540,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 541,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 542,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 543,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 544,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 545,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 546,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 547,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 548,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 549,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 550,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 551,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 552,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 553,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 554,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 555,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 556,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 557,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 558,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 559,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 560,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 561,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 562,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 563,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 564,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 565,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 566,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 567,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 568,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 569,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 570,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 571,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 572,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 573,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 574,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 575,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 576,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 577,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 578,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 579,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 580,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 581,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 582,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 583,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 584,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 585,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 586,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 587,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 588,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 589,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 590,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 591,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 592,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 593,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 594,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 595,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 596,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 597,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 598,
+   "notes": "From the old CRM diary import."
+  },
+  {
+   "id": 599,
+   "notes": "From the old CRM diary import."
+  }
+ ]
+}

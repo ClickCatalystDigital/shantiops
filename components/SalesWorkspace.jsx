@@ -1252,7 +1252,8 @@ function CustomerDetailSheet({ customerId, onClose, router }) {
   );
 }
 
-// Old-CRM import (2026-09-25): what the previous CRM knew about this party, read only.
+// Account summary carried over from an earlier data migration (2026-09-25) — our own data now,
+// shown as a plain summary rather than called out by where it came from.
 function OldCrmSummary({ detail }) {
   let s = null;
   try { s = detail.legacy_crm_json ? JSON.parse(detail.legacy_crm_json) : null; } catch { s = null; }
@@ -1260,7 +1261,7 @@ function OldCrmSummary({ detail }) {
   const stages = s ? Object.entries(s.stages || {}) : [];
   return (
     <div className="flex flex-col gap-1.5 text-sm">
-      <div className="text-sm font-semibold">From the old CRM</div>
+      <div className="text-sm font-semibold">Account Summary</div>
       {detail.party_code && <div><span className="text-muted-foreground">Organization code:</span> {detail.party_code}</div>}
       {detail.account_manager && <div><span className="text-muted-foreground">A/C Manager:</span> {detail.account_manager}</div>}
       {detail.city && <div><span className="text-muted-foreground">District:</span> {detail.city}</div>}
@@ -2732,7 +2733,7 @@ function ProductDialog({ product, onClose, router }) {
           </div>
           {(product?.legacy_code || Object.keys(attrs).length > 0) && (
             <p className="text-xs text-muted-foreground">
-              From the old CRM:{product?.legacy_code && product.legacy_code !== product.product_code ? ` code ${product.legacy_code};` : ''}
+              Additional details:{product?.legacy_code && product.legacy_code !== product.product_code ? ` also known as code ${product.legacy_code};` : ''}
               {' '}{Object.entries(attrs).map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v === true ? 'Yes' : v === false ? 'No' : v}`).join(' · ')}
             </p>
           )}

@@ -11804,6 +11804,37 @@ unaffected by the new customer-only notes. `docs/diary-import-notes.md`/`docs/di
 review.csv` record the full run; `docs/manual-review-checklist.md` §8's Diary row is updated to
 match.
 
+**Follow-up, same day (2026-09-28) — every "old CRM" label removed from anything a user sees.**
+Raised directly: the data migrated from a prior system is now this app's own real data, and
+shouldn't read as borrowed/second-class. Found and fixed every genuinely user-visible instance,
+confirmed with a full database-wide scan (every TEXT column, every table), not just a code grep:
+- `components/SalesWorkspace.jsx`'s Customer 360 section heading "From the old CRM" → **"Account
+  Summary"**; the Product Master's "From the old CRM: code X" line → **"Additional details: also
+  known as code X"**. Two matching passages in `components/department-help-content.jsx` reworded
+  to match (no more "Source 'Old CRM'"/"'From the old CRM' block" framing).
+- **Three stored data values, not just UI copy**, found because they render as plain text
+  somewhere (not inside a labeled block, so relabeling the block alone wouldn't have hidden them):
+  `leads.source = 'Old CRM'` (598 rows, shown as "Source: Old CRM" in the Leads table, filter, and
+  enquiry detail) → cleared to `NULL` (the true original lead source isn't known, so left honestly
+  blank rather than invented); `leads.notes` (598 rows, "Remarks: Imported from the old CRM sales
+  call list (row N).") → **"Historical sales call record (row N)."**; `leads.sales_call_closed_by`
+  (583 rows, "Closed on … by old CRM import") + the matching `lead_stage_history.changed_by` (598
+  rows) → **"historical import"**. All four backed up first
+  (`scripts/data/leads-source-clear-backup-2026-09-28.json`,
+  `scripts/data/leads-notes-backfill-backup-2026-09-28.json`,
+  `scripts/data/closed-by-backfill-backup-2026-09-28.json`) and `scripts/import-enquiries.mjs`'s own
+  constants (`CLOSED_BY`, `noteFor()`) updated so a future rollback+reapply produces the same
+  neutral text, not the old wording again.
+- This diary import's own `contacts.notes = 'From the old CRM diary import.'` (186 rows) got the
+  same fix → **"From historical call records."**, backed up
+  (`scripts/data/contacts-notes-backfill-backup-2026-09-28.json`) and the script itself updated.
+- **One deliberately left as-is, flagged rather than silently decided either way**:
+  `customers.legacy_crm_json`'s internal `source` key (`'old CRM customer summary 25/09/2026'`, all
+  8,847 rows) — confirmed by reading `OldCrmSummary`'s own render logic that this specific JSON key
+  is never read or displayed anywhere; it's pure internal import bookkeeping inside a JSON blob, not
+  a UI label. Left untouched since fixing it would mean rewriting 8,847 rows' JSON for something no
+  user can ever see — revisit if that changes.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own

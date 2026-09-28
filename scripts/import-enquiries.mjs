@@ -16,7 +16,7 @@ import { parseEnquiries, customerMatcher, isOpenEnquiry } from '../lib/enquiry-i
 const TAG = 'import:enquiry-calls-2026-09-25';
 const STAGE = 'Lead - Cold';
 const CUTOFF = '2025-09-25'; // 12 months before the import
-const CLOSED_BY = 'old CRM import';
+const CLOSED_BY = 'historical import';
 const args = process.argv.slice(2);
 const APPLY = args.includes('--apply'), ROLLBACK = args.includes('--rollback');
 const LIMIT = args.includes('--limit') ? Number(args[args.indexOf('--limit') + 1]) : Infinity; // for a rollback trial
@@ -98,7 +98,7 @@ if (!n) fs.writeFileSync(MANIFEST, JSON.stringify({ tag: TAG, at: now, customers
 
 // Every statement is guarded (NOT EXISTS on the enquiry's own row number, carried in notes), so a
 // batch that is retried after a lost network response can't create duplicates.
-const noteFor = r => [`Imported from the old CRM sales call list (row ${r.serial}).`, r.state ? `State: ${r.state}.` : ''].filter(Boolean).join(' ');
+const noteFor = r => [`Historical sales call record (row ${r.serial}).`, r.state ? `State: ${r.state}.` : ''].filter(Boolean).join(' ');
 async function retry(fn) {
   for (let i = 1; ; i++) {
     try { return await fn(); } catch (err) { if (i >= 4) throw err; console.log(`  retry ${i}: ${err.message}`); await new Promise(res => setTimeout(res, 2000 * i)); }
@@ -112,7 +112,7 @@ for (let i = 0; i < enquiries.length; i += CHUNK) {
       sql: `INSERT INTO leads (lead_name, company_name, short_name, phone, telephone, email, address, district, enquiry_date, product,
               source, status, owner_dept, notes, converted_customer_id, sales_call_status, sales_call_closed_at, sales_call_closed_by,
               created_by, created_at, updated_at, import_tag)
-            SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Old CRM', 'open', 'Sales', ?, ?, ?, ?, ?, NULL, ?, ?, ?
+            SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'open', 'Sales', ?, ?, ?, ?, ?, NULL, ?, ?, ?
             WHERE NOT EXISTS (SELECT 1 FROM leads WHERE import_tag = ? AND notes = ?)`,
       args: [r.name, r.name, r.short_name, r.phone, r.telephone, r.email, r.address, r.district, r.enquiry_date, r.products,
         notes, e.customerId, STAGE, e.open ? null : now, e.open ? null : CLOSED_BY, `${r.enquiry_date} 00:00:00`, now, TAG, TAG, notes],

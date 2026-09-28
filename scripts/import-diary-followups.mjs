@@ -175,7 +175,7 @@ for (let i = 0; i < contacts.length; i += CHUNK) {
   await retry(() => db.batch(contacts.slice(i, i + CHUNK).map(c => ({
     sql: `INSERT INTO contacts (customer_id, name, notes, import_tag)
           SELECT ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM contacts WHERE import_tag = ? AND customer_id = ? AND name = ?)`,
-    args: [c.customerId, c.name, 'From the old CRM diary import.', TAG, TAG, c.customerId, c.name],
+    args: [c.customerId, c.name, 'From historical call records.', TAG, TAG, c.customerId, c.name],
   })), 'write'));
   console.log(`  contacts ${Math.min(i + CHUNK, contacts.length)}/${contacts.length}`);
 }

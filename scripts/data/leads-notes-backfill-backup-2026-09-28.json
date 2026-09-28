@@ -1,0 +1,2397 @@
+{
+ "tag": "import:enquiry-calls-2026-09-25",
+ "before": [
+  {
+   "id": 687,
+   "notes": "Imported from the old CRM sales call list (row 472)."
+  },
+  {
+   "id": 688,
+   "notes": "Imported from the old CRM sales call list (row 473)."
+  },
+  {
+   "id": 689,
+   "notes": "Imported from the old CRM sales call list (row 570)."
+  },
+  {
+   "id": 690,
+   "notes": "Imported from the old CRM sales call list (row 474)."
+  },
+  {
+   "id": 691,
+   "notes": "Imported from the old CRM sales call list (row 475)."
+  },
+  {
+   "id": 692,
+   "notes": "Imported from the old CRM sales call list (row 460). State: Kerala."
+  },
+  {
+   "id": 693,
+   "notes": "Imported from the old CRM sales call list (row 493)."
+  },
+  {
+   "id": 694,
+   "notes": "Imported from the old CRM sales call list (row 504)."
+  },
+  {
+   "id": 695,
+   "notes": "Imported from the old CRM sales call list (row 596). State: Karnataka."
+  },
+  {
+   "id": 696,
+   "notes": "Imported from the old CRM sales call list (row 571)."
+  },
+  {
+   "id": 697,
+   "notes": "Imported from the old CRM sales call list (row 499). State: Karnataka."
+  },
+  {
+   "id": 698,
+   "notes": "Imported from the old CRM sales call list (row 572)."
+  },
+  {
+   "id": 699,
+   "notes": "Imported from the old CRM sales call list (row 494)."
+  },
+  {
+   "id": 700,
+   "notes": "Imported from the old CRM sales call list (row 476)."
+  },
+  {
+   "id": 701,
+   "notes": "Imported from the old CRM sales call list (row 553)."
+  },
+  {
+   "id": 702,
+   "notes": "Imported from the old CRM sales call list (row 597)."
+  },
+  {
+   "id": 703,
+   "notes": "Imported from the old CRM sales call list (row 247)."
+  },
+  {
+   "id": 704,
+   "notes": "Imported from the old CRM sales call list (row 554)."
+  },
+  {
+   "id": 705,
+   "notes": "Imported from the old CRM sales call list (row 555). State: Karnataka."
+  },
+  {
+   "id": 706,
+   "notes": "Imported from the old CRM sales call list (row 556)."
+  },
+  {
+   "id": 707,
+   "notes": "Imported from the old CRM sales call list (row 601)."
+  },
+  {
+   "id": 708,
+   "notes": "Imported from the old CRM sales call list (row 557)."
+  },
+  {
+   "id": 709,
+   "notes": "Imported from the old CRM sales call list (row 598)."
+  },
+  {
+   "id": 710,
+   "notes": "Imported from the old CRM sales call list (row 599)."
+  },
+  {
+   "id": 711,
+   "notes": "Imported from the old CRM sales call list (row 605). State: Himachal Pradesh."
+  },
+  {
+   "id": 712,
+   "notes": "Imported from the old CRM sales call list (row 575)."
+  },
+  {
+   "id": 713,
+   "notes": "Imported from the old CRM sales call list (row 602)."
+  },
+  {
+   "id": 714,
+   "notes": "Imported from the old CRM sales call list (row 600)."
+  },
+  {
+   "id": 715,
+   "notes": "Imported from the old CRM sales call list (row 604)."
+  },
+  {
+   "id": 716,
+   "notes": "Imported from the old CRM sales call list (row 603). State: Andra Pradesh."
+  },
+  {
+   "id": 717,
+   "notes": "Imported from the old CRM sales call list (row 576). State: Kerala."
+  },
+  {
+   "id": 718,
+   "notes": "Imported from the old CRM sales call list (row 558)."
+  },
+  {
+   "id": 719,
+   "notes": "Imported from the old CRM sales call list (row 592). State: Andra Pradesh."
+  },
+  {
+   "id": 720,
+   "notes": "Imported from the old CRM sales call list (row 593)."
+  },
+  {
+   "id": 721,
+   "notes": "Imported from the old CRM sales call list (row 595)."
+  },
+  {
+   "id": 722,
+   "notes": "Imported from the old CRM sales call list (row 559)."
+  },
+  {
+   "id": 723,
+   "notes": "Imported from the old CRM sales call list (row 594)."
+  },
+  {
+   "id": 724,
+   "notes": "Imported from the old CRM sales call list (row 560)."
+  },
+  {
+   "id": 725,
+   "notes": "Imported from the old CRM sales call list (row 588). State: Jammu & Kashmir."
+  },
+  {
+   "id": 726,
+   "notes": "Imported from the old CRM sales call list (row 589)."
+  },
+  {
+   "id": 727,
+   "notes": "Imported from the old CRM sales call list (row 590)."
+  },
+  {
+   "id": 728,
+   "notes": "Imported from the old CRM sales call list (row 591)."
+  },
+  {
+   "id": 729,
+   "notes": "Imported from the old CRM sales call list (row 561)."
+  },
+  {
+   "id": 730,
+   "notes": "Imported from the old CRM sales call list (row 562)."
+  },
+  {
+   "id": 731,
+   "notes": "Imported from the old CRM sales call list (row 586). State: Karnataka."
+  },
+  {
+   "id": 732,
+   "notes": "Imported from the old CRM sales call list (row 587)."
+  },
+  {
+   "id": 733,
+   "notes": "Imported from the old CRM sales call list (row 541)."
+  },
+  {
+   "id": 734,
+   "notes": "Imported from the old CRM sales call list (row 542)."
+  },
+  {
+   "id": 735,
+   "notes": "Imported from the old CRM sales call list (row 577). State: Uttar pradesh."
+  },
+  {
+   "id": 736,
+   "notes": "Imported from the old CRM sales call list (row 585)."
+  },
+  {
+   "id": 737,
+   "notes": "Imported from the old CRM sales call list (row 563)."
+  },
+  {
+   "id": 738,
+   "notes": "Imported from the old CRM sales call list (row 564)."
+  },
+  {
+   "id": 739,
+   "notes": "Imported from the old CRM sales call list (row 573)."
+  },
+  {
+   "id": 740,
+   "notes": "Imported from the old CRM sales call list (row 574)."
+  },
+  {
+   "id": 741,
+   "notes": "Imported from the old CRM sales call list (row 578)."
+  },
+  {
+   "id": 742,
+   "notes": "Imported from the old CRM sales call list (row 579)."
+  },
+  {
+   "id": 743,
+   "notes": "Imported from the old CRM sales call list (row 580)."
+  },
+  {
+   "id": 744,
+   "notes": "Imported from the old CRM sales call list (row 583)."
+  },
+  {
+   "id": 745,
+   "notes": "Imported from the old CRM sales call list (row 584)."
+  },
+  {
+   "id": 746,
+   "notes": "Imported from the old CRM sales call list (row 533)."
+  },
+  {
+   "id": 747,
+   "notes": "Imported from the old CRM sales call list (row 543)."
+  },
+  {
+   "id": 748,
+   "notes": "Imported from the old CRM sales call list (row 581)."
+  },
+  {
+   "id": 749,
+   "notes": "Imported from the old CRM sales call list (row 582)."
+  },
+  {
+   "id": 750,
+   "notes": "Imported from the old CRM sales call list (row 540)."
+  },
+  {
+   "id": 751,
+   "notes": "Imported from the old CRM sales call list (row 565)."
+  },
+  {
+   "id": 752,
+   "notes": "Imported from the old CRM sales call list (row 566). State: Karnataka."
+  },
+  {
+   "id": 753,
+   "notes": "Imported from the old CRM sales call list (row 567)."
+  },
+  {
+   "id": 754,
+   "notes": "Imported from the old CRM sales call list (row 569)."
+  },
+  {
+   "id": 755,
+   "notes": "Imported from the old CRM sales call list (row 410). State: Karnataka."
+  },
+  {
+   "id": 756,
+   "notes": "Imported from the old CRM sales call list (row 477)."
+  },
+  {
+   "id": 757,
+   "notes": "Imported from the old CRM sales call list (row 534)."
+  },
+  {
+   "id": 758,
+   "notes": "Imported from the old CRM sales call list (row 546)."
+  },
+  {
+   "id": 759,
+   "notes": "Imported from the old CRM sales call list (row 547)."
+  },
+  {
+   "id": 760,
+   "notes": "Imported from the old CRM sales call list (row 548)."
+  },
+  {
+   "id": 761,
+   "notes": "Imported from the old CRM sales call list (row 505)."
+  },
+  {
+   "id": 762,
+   "notes": "Imported from the old CRM sales call list (row 535)."
+  },
+  {
+   "id": 763,
+   "notes": "Imported from the old CRM sales call list (row 549)."
+  },
+  {
+   "id": 764,
+   "notes": "Imported from the old CRM sales call list (row 536). State: Karnataka."
+  },
+  {
+   "id": 765,
+   "notes": "Imported from the old CRM sales call list (row 537)."
+  },
+  {
+   "id": 766,
+   "notes": "Imported from the old CRM sales call list (row 538). State: Karnataka."
+  },
+  {
+   "id": 767,
+   "notes": "Imported from the old CRM sales call list (row 544)."
+  },
+  {
+   "id": 768,
+   "notes": "Imported from the old CRM sales call list (row 545)."
+  },
+  {
+   "id": 769,
+   "notes": "Imported from the old CRM sales call list (row 550)."
+  },
+  {
+   "id": 770,
+   "notes": "Imported from the old CRM sales call list (row 551)."
+  },
+  {
+   "id": 771,
+   "notes": "Imported from the old CRM sales call list (row 552)."
+  },
+  {
+   "id": 772,
+   "notes": "Imported from the old CRM sales call list (row 568)."
+  },
+  {
+   "id": 773,
+   "notes": "Imported from the old CRM sales call list (row 506)."
+  },
+  {
+   "id": 774,
+   "notes": "Imported from the old CRM sales call list (row 539). State: Karnataka."
+  },
+  {
+   "id": 775,
+   "notes": "Imported from the old CRM sales call list (row 507)."
+  },
+  {
+   "id": 776,
+   "notes": "Imported from the old CRM sales call list (row 520)."
+  },
+  {
+   "id": 777,
+   "notes": "Imported from the old CRM sales call list (row 524)."
+  },
+  {
+   "id": 778,
+   "notes": "Imported from the old CRM sales call list (row 525)."
+  },
+  {
+   "id": 779,
+   "notes": "Imported from the old CRM sales call list (row 526). State: Karnataka."
+  },
+  {
+   "id": 780,
+   "notes": "Imported from the old CRM sales call list (row 527)."
+  },
+  {
+   "id": 781,
+   "notes": "Imported from the old CRM sales call list (row 528)."
+  },
+  {
+   "id": 782,
+   "notes": "Imported from the old CRM sales call list (row 529)."
+  },
+  {
+   "id": 783,
+   "notes": "Imported from the old CRM sales call list (row 530)."
+  },
+  {
+   "id": 784,
+   "notes": "Imported from the old CRM sales call list (row 531)."
+  },
+  {
+   "id": 785,
+   "notes": "Imported from the old CRM sales call list (row 532)."
+  },
+  {
+   "id": 786,
+   "notes": "Imported from the old CRM sales call list (row 441). State: Andaman Nicobar."
+  },
+  {
+   "id": 787,
+   "notes": "Imported from the old CRM sales call list (row 521)."
+  },
+  {
+   "id": 788,
+   "notes": "Imported from the old CRM sales call list (row 522)."
+  },
+  {
+   "id": 789,
+   "notes": "Imported from the old CRM sales call list (row 523)."
+  },
+  {
+   "id": 790,
+   "notes": "Imported from the old CRM sales call list (row 514). State: Karnataka."
+  },
+  {
+   "id": 791,
+   "notes": "Imported from the old CRM sales call list (row 509)."
+  },
+  {
+   "id": 792,
+   "notes": "Imported from the old CRM sales call list (row 515). State: Karnataka."
+  },
+  {
+   "id": 793,
+   "notes": "Imported from the old CRM sales call list (row 519). State: Andra Pradesh."
+  },
+  {
+   "id": 794,
+   "notes": "Imported from the old CRM sales call list (row 512)."
+  },
+  {
+   "id": 795,
+   "notes": "Imported from the old CRM sales call list (row 516). State: Karnataka."
+  },
+  {
+   "id": 796,
+   "notes": "Imported from the old CRM sales call list (row 517)."
+  },
+  {
+   "id": 797,
+   "notes": "Imported from the old CRM sales call list (row 518)."
+  },
+  {
+   "id": 798,
+   "notes": "Imported from the old CRM sales call list (row 510). State: Andra Pradesh."
+  },
+  {
+   "id": 799,
+   "notes": "Imported from the old CRM sales call list (row 511). State: Andra Pradesh."
+  },
+  {
+   "id": 800,
+   "notes": "Imported from the old CRM sales call list (row 440)."
+  },
+  {
+   "id": 801,
+   "notes": "Imported from the old CRM sales call list (row 513)."
+  },
+  {
+   "id": 802,
+   "notes": "Imported from the old CRM sales call list (row 508)."
+  },
+  {
+   "id": 803,
+   "notes": "Imported from the old CRM sales call list (row 495)."
+  },
+  {
+   "id": 804,
+   "notes": "Imported from the old CRM sales call list (row 489)."
+  },
+  {
+   "id": 805,
+   "notes": "Imported from the old CRM sales call list (row 490)."
+  },
+  {
+   "id": 806,
+   "notes": "Imported from the old CRM sales call list (row 496). State: West Bengal."
+  },
+  {
+   "id": 807,
+   "notes": "Imported from the old CRM sales call list (row 502). State: Karnataka."
+  },
+  {
+   "id": 808,
+   "notes": "Imported from the old CRM sales call list (row 503)."
+  },
+  {
+   "id": 809,
+   "notes": "Imported from the old CRM sales call list (row 491)."
+  },
+  {
+   "id": 810,
+   "notes": "Imported from the old CRM sales call list (row 492)."
+  },
+  {
+   "id": 811,
+   "notes": "Imported from the old CRM sales call list (row 500). State: Karnataka."
+  },
+  {
+   "id": 812,
+   "notes": "Imported from the old CRM sales call list (row 501)."
+  },
+  {
+   "id": 813,
+   "notes": "Imported from the old CRM sales call list (row 497). State: Karnataka."
+  },
+  {
+   "id": 814,
+   "notes": "Imported from the old CRM sales call list (row 498)."
+  },
+  {
+   "id": 815,
+   "notes": "Imported from the old CRM sales call list (row 478)."
+  },
+  {
+   "id": 816,
+   "notes": "Imported from the old CRM sales call list (row 435)."
+  },
+  {
+   "id": 817,
+   "notes": "Imported from the old CRM sales call list (row 479)."
+  },
+  {
+   "id": 818,
+   "notes": "Imported from the old CRM sales call list (row 480)."
+  },
+  {
+   "id": 819,
+   "notes": "Imported from the old CRM sales call list (row 481)."
+  },
+  {
+   "id": 820,
+   "notes": "Imported from the old CRM sales call list (row 482)."
+  },
+  {
+   "id": 821,
+   "notes": "Imported from the old CRM sales call list (row 483). State: Uttar pradesh."
+  },
+  {
+   "id": 822,
+   "notes": "Imported from the old CRM sales call list (row 484)."
+  },
+  {
+   "id": 823,
+   "notes": "Imported from the old CRM sales call list (row 485)."
+  },
+  {
+   "id": 824,
+   "notes": "Imported from the old CRM sales call list (row 486)."
+  },
+  {
+   "id": 825,
+   "notes": "Imported from the old CRM sales call list (row 487)."
+  },
+  {
+   "id": 826,
+   "notes": "Imported from the old CRM sales call list (row 488)."
+  },
+  {
+   "id": 827,
+   "notes": "Imported from the old CRM sales call list (row 436)."
+  },
+  {
+   "id": 828,
+   "notes": "Imported from the old CRM sales call list (row 471)."
+  },
+  {
+   "id": 829,
+   "notes": "Imported from the old CRM sales call list (row 467)."
+  },
+  {
+   "id": 830,
+   "notes": "Imported from the old CRM sales call list (row 468)."
+  },
+  {
+   "id": 831,
+   "notes": "Imported from the old CRM sales call list (row 469). State: Madhya Pradesh."
+  },
+  {
+   "id": 832,
+   "notes": "Imported from the old CRM sales call list (row 470)."
+  },
+  {
+   "id": 833,
+   "notes": "Imported from the old CRM sales call list (row 466)."
+  },
+  {
+   "id": 834,
+   "notes": "Imported from the old CRM sales call list (row 461)."
+  },
+  {
+   "id": 835,
+   "notes": "Imported from the old CRM sales call list (row 463). State: Bihar."
+  },
+  {
+   "id": 836,
+   "notes": "Imported from the old CRM sales call list (row 464)."
+  },
+  {
+   "id": 837,
+   "notes": "Imported from the old CRM sales call list (row 465)."
+  },
+  {
+   "id": 838,
+   "notes": "Imported from the old CRM sales call list (row 437)."
+  },
+  {
+   "id": 839,
+   "notes": "Imported from the old CRM sales call list (row 438)."
+  },
+  {
+   "id": 840,
+   "notes": "Imported from the old CRM sales call list (row 439)."
+  },
+  {
+   "id": 841,
+   "notes": "Imported from the old CRM sales call list (row 442)."
+  },
+  {
+   "id": 842,
+   "notes": "Imported from the old CRM sales call list (row 462)."
+  },
+  {
+   "id": 843,
+   "notes": "Imported from the old CRM sales call list (row 443)."
+  },
+  {
+   "id": 844,
+   "notes": "Imported from the old CRM sales call list (row 444)."
+  },
+  {
+   "id": 845,
+   "notes": "Imported from the old CRM sales call list (row 457)."
+  },
+  {
+   "id": 846,
+   "notes": "Imported from the old CRM sales call list (row 458)."
+  },
+  {
+   "id": 847,
+   "notes": "Imported from the old CRM sales call list (row 459)."
+  },
+  {
+   "id": 848,
+   "notes": "Imported from the old CRM sales call list (row 445)."
+  },
+  {
+   "id": 849,
+   "notes": "Imported from the old CRM sales call list (row 454)."
+  },
+  {
+   "id": 850,
+   "notes": "Imported from the old CRM sales call list (row 455). State: Kerala."
+  },
+  {
+   "id": 851,
+   "notes": "Imported from the old CRM sales call list (row 456)."
+  },
+  {
+   "id": 852,
+   "notes": "Imported from the old CRM sales call list (row 446)."
+  },
+  {
+   "id": 853,
+   "notes": "Imported from the old CRM sales call list (row 447)."
+  },
+  {
+   "id": 854,
+   "notes": "Imported from the old CRM sales call list (row 449)."
+  },
+  {
+   "id": 855,
+   "notes": "Imported from the old CRM sales call list (row 448). State: Karnataka."
+  },
+  {
+   "id": 856,
+   "notes": "Imported from the old CRM sales call list (row 450)."
+  },
+  {
+   "id": 857,
+   "notes": "Imported from the old CRM sales call list (row 451). State: Kerala."
+  },
+  {
+   "id": 858,
+   "notes": "Imported from the old CRM sales call list (row 452)."
+  },
+  {
+   "id": 859,
+   "notes": "Imported from the old CRM sales call list (row 453)."
+  },
+  {
+   "id": 860,
+   "notes": "Imported from the old CRM sales call list (row 430)."
+  },
+  {
+   "id": 861,
+   "notes": "Imported from the old CRM sales call list (row 431)."
+  },
+  {
+   "id": 862,
+   "notes": "Imported from the old CRM sales call list (row 433)."
+  },
+  {
+   "id": 863,
+   "notes": "Imported from the old CRM sales call list (row 434)."
+  },
+  {
+   "id": 864,
+   "notes": "Imported from the old CRM sales call list (row 432)."
+  },
+  {
+   "id": 865,
+   "notes": "Imported from the old CRM sales call list (row 427)."
+  },
+  {
+   "id": 866,
+   "notes": "Imported from the old CRM sales call list (row 428)."
+  },
+  {
+   "id": 867,
+   "notes": "Imported from the old CRM sales call list (row 429)."
+  },
+  {
+   "id": 868,
+   "notes": "Imported from the old CRM sales call list (row 425)."
+  },
+  {
+   "id": 869,
+   "notes": "Imported from the old CRM sales call list (row 426)."
+  },
+  {
+   "id": 870,
+   "notes": "Imported from the old CRM sales call list (row 423). State: Bihar."
+  },
+  {
+   "id": 871,
+   "notes": "Imported from the old CRM sales call list (row 424)."
+  },
+  {
+   "id": 872,
+   "notes": "Imported from the old CRM sales call list (row 418)."
+  },
+  {
+   "id": 873,
+   "notes": "Imported from the old CRM sales call list (row 422)."
+  },
+  {
+   "id": 874,
+   "notes": "Imported from the old CRM sales call list (row 419)."
+  },
+  {
+   "id": 875,
+   "notes": "Imported from the old CRM sales call list (row 420)."
+  },
+  {
+   "id": 876,
+   "notes": "Imported from the old CRM sales call list (row 421)."
+  },
+  {
+   "id": 877,
+   "notes": "Imported from the old CRM sales call list (row 415)."
+  },
+  {
+   "id": 878,
+   "notes": "Imported from the old CRM sales call list (row 416)."
+  },
+  {
+   "id": 879,
+   "notes": "Imported from the old CRM sales call list (row 417)."
+  },
+  {
+   "id": 880,
+   "notes": "Imported from the old CRM sales call list (row 407)."
+  },
+  {
+   "id": 881,
+   "notes": "Imported from the old CRM sales call list (row 408)."
+  },
+  {
+   "id": 882,
+   "notes": "Imported from the old CRM sales call list (row 409). State: Bihar."
+  },
+  {
+   "id": 883,
+   "notes": "Imported from the old CRM sales call list (row 411)."
+  },
+  {
+   "id": 884,
+   "notes": "Imported from the old CRM sales call list (row 412)."
+  },
+  {
+   "id": 885,
+   "notes": "Imported from the old CRM sales call list (row 413). State: Kerala."
+  },
+  {
+   "id": 886,
+   "notes": "Imported from the old CRM sales call list (row 414)."
+  },
+  {
+   "id": 887,
+   "notes": "Imported from the old CRM sales call list (row 402)."
+  },
+  {
+   "id": 888,
+   "notes": "Imported from the old CRM sales call list (row 403)."
+  },
+  {
+   "id": 889,
+   "notes": "Imported from the old CRM sales call list (row 404)."
+  },
+  {
+   "id": 890,
+   "notes": "Imported from the old CRM sales call list (row 405)."
+  },
+  {
+   "id": 891,
+   "notes": "Imported from the old CRM sales call list (row 406)."
+  },
+  {
+   "id": 892,
+   "notes": "Imported from the old CRM sales call list (row 400)."
+  },
+  {
+   "id": 893,
+   "notes": "Imported from the old CRM sales call list (row 401)."
+  },
+  {
+   "id": 894,
+   "notes": "Imported from the old CRM sales call list (row 398)."
+  },
+  {
+   "id": 895,
+   "notes": "Imported from the old CRM sales call list (row 399)."
+  },
+  {
+   "id": 896,
+   "notes": "Imported from the old CRM sales call list (row 397). State: Karnataka."
+  },
+  {
+   "id": 897,
+   "notes": "Imported from the old CRM sales call list (row 378)."
+  },
+  {
+   "id": 898,
+   "notes": "Imported from the old CRM sales call list (row 379)."
+  },
+  {
+   "id": 899,
+   "notes": "Imported from the old CRM sales call list (row 391). State: Karnataka."
+  },
+  {
+   "id": 900,
+   "notes": "Imported from the old CRM sales call list (row 392)."
+  },
+  {
+   "id": 901,
+   "notes": "Imported from the old CRM sales call list (row 393)."
+  },
+  {
+   "id": 902,
+   "notes": "Imported from the old CRM sales call list (row 394)."
+  },
+  {
+   "id": 903,
+   "notes": "Imported from the old CRM sales call list (row 395)."
+  },
+  {
+   "id": 904,
+   "notes": "Imported from the old CRM sales call list (row 396). State: Uttar pradesh."
+  },
+  {
+   "id": 905,
+   "notes": "Imported from the old CRM sales call list (row 380)."
+  },
+  {
+   "id": 906,
+   "notes": "Imported from the old CRM sales call list (row 381)."
+  },
+  {
+   "id": 907,
+   "notes": "Imported from the old CRM sales call list (row 382)."
+  },
+  {
+   "id": 908,
+   "notes": "Imported from the old CRM sales call list (row 383)."
+  },
+  {
+   "id": 909,
+   "notes": "Imported from the old CRM sales call list (row 384)."
+  },
+  {
+   "id": 910,
+   "notes": "Imported from the old CRM sales call list (row 385)."
+  },
+  {
+   "id": 911,
+   "notes": "Imported from the old CRM sales call list (row 386)."
+  },
+  {
+   "id": 912,
+   "notes": "Imported from the old CRM sales call list (row 387). State: Karnataka."
+  },
+  {
+   "id": 913,
+   "notes": "Imported from the old CRM sales call list (row 388)."
+  },
+  {
+   "id": 914,
+   "notes": "Imported from the old CRM sales call list (row 389)."
+  },
+  {
+   "id": 915,
+   "notes": "Imported from the old CRM sales call list (row 390)."
+  },
+  {
+   "id": 916,
+   "notes": "Imported from the old CRM sales call list (row 375)."
+  },
+  {
+   "id": 917,
+   "notes": "Imported from the old CRM sales call list (row 376). State: Karnataka."
+  },
+  {
+   "id": 918,
+   "notes": "Imported from the old CRM sales call list (row 377)."
+  },
+  {
+   "id": 919,
+   "notes": "Imported from the old CRM sales call list (row 374)."
+  },
+  {
+   "id": 920,
+   "notes": "Imported from the old CRM sales call list (row 372)."
+  },
+  {
+   "id": 921,
+   "notes": "Imported from the old CRM sales call list (row 373). State: Bihar."
+  },
+  {
+   "id": 922,
+   "notes": "Imported from the old CRM sales call list (row 369)."
+  },
+  {
+   "id": 923,
+   "notes": "Imported from the old CRM sales call list (row 370)."
+  },
+  {
+   "id": 924,
+   "notes": "Imported from the old CRM sales call list (row 371)."
+  },
+  {
+   "id": 925,
+   "notes": "Imported from the old CRM sales call list (row 363)."
+  },
+  {
+   "id": 926,
+   "notes": "Imported from the old CRM sales call list (row 364)."
+  },
+  {
+   "id": 927,
+   "notes": "Imported from the old CRM sales call list (row 365)."
+  },
+  {
+   "id": 928,
+   "notes": "Imported from the old CRM sales call list (row 366)."
+  },
+  {
+   "id": 929,
+   "notes": "Imported from the old CRM sales call list (row 367)."
+  },
+  {
+   "id": 930,
+   "notes": "Imported from the old CRM sales call list (row 368)."
+  },
+  {
+   "id": 931,
+   "notes": "Imported from the old CRM sales call list (row 355)."
+  },
+  {
+   "id": 932,
+   "notes": "Imported from the old CRM sales call list (row 356)."
+  },
+  {
+   "id": 933,
+   "notes": "Imported from the old CRM sales call list (row 357)."
+  },
+  {
+   "id": 934,
+   "notes": "Imported from the old CRM sales call list (row 358)."
+  },
+  {
+   "id": 935,
+   "notes": "Imported from the old CRM sales call list (row 359)."
+  },
+  {
+   "id": 936,
+   "notes": "Imported from the old CRM sales call list (row 360)."
+  },
+  {
+   "id": 937,
+   "notes": "Imported from the old CRM sales call list (row 361)."
+  },
+  {
+   "id": 938,
+   "notes": "Imported from the old CRM sales call list (row 362)."
+  },
+  {
+   "id": 939,
+   "notes": "Imported from the old CRM sales call list (row 354)."
+  },
+  {
+   "id": 940,
+   "notes": "Imported from the old CRM sales call list (row 353). State: Bihar."
+  },
+  {
+   "id": 941,
+   "notes": "Imported from the old CRM sales call list (row 349). State: Bihar."
+  },
+  {
+   "id": 942,
+   "notes": "Imported from the old CRM sales call list (row 350)."
+  },
+  {
+   "id": 943,
+   "notes": "Imported from the old CRM sales call list (row 351)."
+  },
+  {
+   "id": 944,
+   "notes": "Imported from the old CRM sales call list (row 352)."
+  },
+  {
+   "id": 945,
+   "notes": "Imported from the old CRM sales call list (row 348)."
+  },
+  {
+   "id": 946,
+   "notes": "Imported from the old CRM sales call list (row 345)."
+  },
+  {
+   "id": 947,
+   "notes": "Imported from the old CRM sales call list (row 346). State: Bihar."
+  },
+  {
+   "id": 948,
+   "notes": "Imported from the old CRM sales call list (row 347)."
+  },
+  {
+   "id": 949,
+   "notes": "Imported from the old CRM sales call list (row 342)."
+  },
+  {
+   "id": 950,
+   "notes": "Imported from the old CRM sales call list (row 343). State: Bihar."
+  },
+  {
+   "id": 951,
+   "notes": "Imported from the old CRM sales call list (row 344)."
+  },
+  {
+   "id": 952,
+   "notes": "Imported from the old CRM sales call list (row 341)."
+  },
+  {
+   "id": 953,
+   "notes": "Imported from the old CRM sales call list (row 323). State: Bihar."
+  },
+  {
+   "id": 954,
+   "notes": "Imported from the old CRM sales call list (row 339)."
+  },
+  {
+   "id": 955,
+   "notes": "Imported from the old CRM sales call list (row 340)."
+  },
+  {
+   "id": 956,
+   "notes": "Imported from the old CRM sales call list (row 338)."
+  },
+  {
+   "id": 957,
+   "notes": "Imported from the old CRM sales call list (row 335)."
+  },
+  {
+   "id": 958,
+   "notes": "Imported from the old CRM sales call list (row 336)."
+  },
+  {
+   "id": 959,
+   "notes": "Imported from the old CRM sales call list (row 337)."
+  },
+  {
+   "id": 960,
+   "notes": "Imported from the old CRM sales call list (row 334). State: Karnataka."
+  },
+  {
+   "id": 961,
+   "notes": "Imported from the old CRM sales call list (row 331)."
+  },
+  {
+   "id": 962,
+   "notes": "Imported from the old CRM sales call list (row 332)."
+  },
+  {
+   "id": 963,
+   "notes": "Imported from the old CRM sales call list (row 333). State: Manipur."
+  },
+  {
+   "id": 964,
+   "notes": "Imported from the old CRM sales call list (row 330)."
+  },
+  {
+   "id": 965,
+   "notes": "Imported from the old CRM sales call list (row 328)."
+  },
+  {
+   "id": 966,
+   "notes": "Imported from the old CRM sales call list (row 329)."
+  },
+  {
+   "id": 967,
+   "notes": "Imported from the old CRM sales call list (row 324)."
+  },
+  {
+   "id": 968,
+   "notes": "Imported from the old CRM sales call list (row 327)."
+  },
+  {
+   "id": 969,
+   "notes": "Imported from the old CRM sales call list (row 325). State: Karnataka."
+  },
+  {
+   "id": 970,
+   "notes": "Imported from the old CRM sales call list (row 248)."
+  },
+  {
+   "id": 971,
+   "notes": "Imported from the old CRM sales call list (row 326)."
+  },
+  {
+   "id": 972,
+   "notes": "Imported from the old CRM sales call list (row 321)."
+  },
+  {
+   "id": 973,
+   "notes": "Imported from the old CRM sales call list (row 322)."
+  },
+  {
+   "id": 974,
+   "notes": "Imported from the old CRM sales call list (row 319)."
+  },
+  {
+   "id": 975,
+   "notes": "Imported from the old CRM sales call list (row 320). State: Bihar."
+  },
+  {
+   "id": 976,
+   "notes": "Imported from the old CRM sales call list (row 318)."
+  },
+  {
+   "id": 977,
+   "notes": "Imported from the old CRM sales call list (row 316). State: Bihar."
+  },
+  {
+   "id": 978,
+   "notes": "Imported from the old CRM sales call list (row 317)."
+  },
+  {
+   "id": 979,
+   "notes": "Imported from the old CRM sales call list (row 315)."
+  },
+  {
+   "id": 980,
+   "notes": "Imported from the old CRM sales call list (row 314)."
+  },
+  {
+   "id": 981,
+   "notes": "Imported from the old CRM sales call list (row 313)."
+  },
+  {
+   "id": 982,
+   "notes": "Imported from the old CRM sales call list (row 312)."
+  },
+  {
+   "id": 983,
+   "notes": "Imported from the old CRM sales call list (row 311)."
+  },
+  {
+   "id": 984,
+   "notes": "Imported from the old CRM sales call list (row 308)."
+  },
+  {
+   "id": 985,
+   "notes": "Imported from the old CRM sales call list (row 309)."
+  },
+  {
+   "id": 986,
+   "notes": "Imported from the old CRM sales call list (row 310)."
+  },
+  {
+   "id": 987,
+   "notes": "Imported from the old CRM sales call list (row 306)."
+  },
+  {
+   "id": 988,
+   "notes": "Imported from the old CRM sales call list (row 307)."
+  },
+  {
+   "id": 989,
+   "notes": "Imported from the old CRM sales call list (row 303)."
+  },
+  {
+   "id": 990,
+   "notes": "Imported from the old CRM sales call list (row 304)."
+  },
+  {
+   "id": 991,
+   "notes": "Imported from the old CRM sales call list (row 305)."
+  },
+  {
+   "id": 992,
+   "notes": "Imported from the old CRM sales call list (row 302)."
+  },
+  {
+   "id": 993,
+   "notes": "Imported from the old CRM sales call list (row 301)."
+  },
+  {
+   "id": 994,
+   "notes": "Imported from the old CRM sales call list (row 300)."
+  },
+  {
+   "id": 995,
+   "notes": "Imported from the old CRM sales call list (row 299)."
+  },
+  {
+   "id": 996,
+   "notes": "Imported from the old CRM sales call list (row 298)."
+  },
+  {
+   "id": 997,
+   "notes": "Imported from the old CRM sales call list (row 297)."
+  },
+  {
+   "id": 998,
+   "notes": "Imported from the old CRM sales call list (row 296)."
+  },
+  {
+   "id": 999,
+   "notes": "Imported from the old CRM sales call list (row 294)."
+  },
+  {
+   "id": 1000,
+   "notes": "Imported from the old CRM sales call list (row 295)."
+  },
+  {
+   "id": 1001,
+   "notes": "Imported from the old CRM sales call list (row 292)."
+  },
+  {
+   "id": 1002,
+   "notes": "Imported from the old CRM sales call list (row 293)."
+  },
+  {
+   "id": 1003,
+   "notes": "Imported from the old CRM sales call list (row 290)."
+  },
+  {
+   "id": 1004,
+   "notes": "Imported from the old CRM sales call list (row 291)."
+  },
+  {
+   "id": 1005,
+   "notes": "Imported from the old CRM sales call list (row 289)."
+  },
+  {
+   "id": 1006,
+   "notes": "Imported from the old CRM sales call list (row 288)."
+  },
+  {
+   "id": 1007,
+   "notes": "Imported from the old CRM sales call list (row 287)."
+  },
+  {
+   "id": 1008,
+   "notes": "Imported from the old CRM sales call list (row 249)."
+  },
+  {
+   "id": 1009,
+   "notes": "Imported from the old CRM sales call list (row 285)."
+  },
+  {
+   "id": 1010,
+   "notes": "Imported from the old CRM sales call list (row 286)."
+  },
+  {
+   "id": 1011,
+   "notes": "Imported from the old CRM sales call list (row 281)."
+  },
+  {
+   "id": 1012,
+   "notes": "Imported from the old CRM sales call list (row 284)."
+  },
+  {
+   "id": 1013,
+   "notes": "Imported from the old CRM sales call list (row 283)."
+  },
+  {
+   "id": 1014,
+   "notes": "Imported from the old CRM sales call list (row 282)."
+  },
+  {
+   "id": 1015,
+   "notes": "Imported from the old CRM sales call list (row 280)."
+  },
+  {
+   "id": 1016,
+   "notes": "Imported from the old CRM sales call list (row 279)."
+  },
+  {
+   "id": 1017,
+   "notes": "Imported from the old CRM sales call list (row 86)."
+  },
+  {
+   "id": 1018,
+   "notes": "Imported from the old CRM sales call list (row 278). State: Karnataka."
+  },
+  {
+   "id": 1019,
+   "notes": "Imported from the old CRM sales call list (row 277)."
+  },
+  {
+   "id": 1020,
+   "notes": "Imported from the old CRM sales call list (row 269)."
+  },
+  {
+   "id": 1021,
+   "notes": "Imported from the old CRM sales call list (row 270)."
+  },
+  {
+   "id": 1022,
+   "notes": "Imported from the old CRM sales call list (row 271)."
+  },
+  {
+   "id": 1023,
+   "notes": "Imported from the old CRM sales call list (row 272)."
+  },
+  {
+   "id": 1024,
+   "notes": "Imported from the old CRM sales call list (row 273)."
+  },
+  {
+   "id": 1025,
+   "notes": "Imported from the old CRM sales call list (row 274)."
+  },
+  {
+   "id": 1026,
+   "notes": "Imported from the old CRM sales call list (row 275)."
+  },
+  {
+   "id": 1027,
+   "notes": "Imported from the old CRM sales call list (row 276)."
+  },
+  {
+   "id": 1028,
+   "notes": "Imported from the old CRM sales call list (row 268)."
+  },
+  {
+   "id": 1029,
+   "notes": "Imported from the old CRM sales call list (row 266)."
+  },
+  {
+   "id": 1030,
+   "notes": "Imported from the old CRM sales call list (row 267)."
+  },
+  {
+   "id": 1031,
+   "notes": "Imported from the old CRM sales call list (row 265)."
+  },
+  {
+   "id": 1032,
+   "notes": "Imported from the old CRM sales call list (row 264)."
+  },
+  {
+   "id": 1033,
+   "notes": "Imported from the old CRM sales call list (row 263). State: Kerala."
+  },
+  {
+   "id": 1034,
+   "notes": "Imported from the old CRM sales call list (row 241). State: Bihar."
+  },
+  {
+   "id": 1035,
+   "notes": "Imported from the old CRM sales call list (row 262)."
+  },
+  {
+   "id": 1036,
+   "notes": "Imported from the old CRM sales call list (row 261)."
+  },
+  {
+   "id": 1037,
+   "notes": "Imported from the old CRM sales call list (row 260)."
+  },
+  {
+   "id": 1038,
+   "notes": "Imported from the old CRM sales call list (row 259)."
+  },
+  {
+   "id": 1039,
+   "notes": "Imported from the old CRM sales call list (row 257)."
+  },
+  {
+   "id": 1040,
+   "notes": "Imported from the old CRM sales call list (row 258). State: Jharkhand."
+  },
+  {
+   "id": 1041,
+   "notes": "Imported from the old CRM sales call list (row 255)."
+  },
+  {
+   "id": 1042,
+   "notes": "Imported from the old CRM sales call list (row 256)."
+  },
+  {
+   "id": 1043,
+   "notes": "Imported from the old CRM sales call list (row 243)."
+  },
+  {
+   "id": 1044,
+   "notes": "Imported from the old CRM sales call list (row 252)."
+  },
+  {
+   "id": 1045,
+   "notes": "Imported from the old CRM sales call list (row 253)."
+  },
+  {
+   "id": 1046,
+   "notes": "Imported from the old CRM sales call list (row 254)."
+  },
+  {
+   "id": 1047,
+   "notes": "Imported from the old CRM sales call list (row 250)."
+  },
+  {
+   "id": 1048,
+   "notes": "Imported from the old CRM sales call list (row 251)."
+  },
+  {
+   "id": 1049,
+   "notes": "Imported from the old CRM sales call list (row 245)."
+  },
+  {
+   "id": 1050,
+   "notes": "Imported from the old CRM sales call list (row 246)."
+  },
+  {
+   "id": 1051,
+   "notes": "Imported from the old CRM sales call list (row 244)."
+  },
+  {
+   "id": 1052,
+   "notes": "Imported from the old CRM sales call list (row 242)."
+  },
+  {
+   "id": 1053,
+   "notes": "Imported from the old CRM sales call list (row 239)."
+  },
+  {
+   "id": 1054,
+   "notes": "Imported from the old CRM sales call list (row 240)."
+  },
+  {
+   "id": 1055,
+   "notes": "Imported from the old CRM sales call list (row 223)."
+  },
+  {
+   "id": 1056,
+   "notes": "Imported from the old CRM sales call list (row 238)."
+  },
+  {
+   "id": 1057,
+   "notes": "Imported from the old CRM sales call list (row 236)."
+  },
+  {
+   "id": 1058,
+   "notes": "Imported from the old CRM sales call list (row 237)."
+  },
+  {
+   "id": 1059,
+   "notes": "Imported from the old CRM sales call list (row 235)."
+  },
+  {
+   "id": 1060,
+   "notes": "Imported from the old CRM sales call list (row 190)."
+  },
+  {
+   "id": 1061,
+   "notes": "Imported from the old CRM sales call list (row 234)."
+  },
+  {
+   "id": 1062,
+   "notes": "Imported from the old CRM sales call list (row 232)."
+  },
+  {
+   "id": 1063,
+   "notes": "Imported from the old CRM sales call list (row 233)."
+  },
+  {
+   "id": 1064,
+   "notes": "Imported from the old CRM sales call list (row 162)."
+  },
+  {
+   "id": 1065,
+   "notes": "Imported from the old CRM sales call list (row 231)."
+  },
+  {
+   "id": 1066,
+   "notes": "Imported from the old CRM sales call list (row 230)."
+  },
+  {
+   "id": 1067,
+   "notes": "Imported from the old CRM sales call list (row 228)."
+  },
+  {
+   "id": 1068,
+   "notes": "Imported from the old CRM sales call list (row 229)."
+  },
+  {
+   "id": 1069,
+   "notes": "Imported from the old CRM sales call list (row 181)."
+  },
+  {
+   "id": 1070,
+   "notes": "Imported from the old CRM sales call list (row 226). State: Andra Pradesh."
+  },
+  {
+   "id": 1071,
+   "notes": "Imported from the old CRM sales call list (row 227)."
+  },
+  {
+   "id": 1072,
+   "notes": "Imported from the old CRM sales call list (row 224)."
+  },
+  {
+   "id": 1073,
+   "notes": "Imported from the old CRM sales call list (row 225)."
+  },
+  {
+   "id": 1074,
+   "notes": "Imported from the old CRM sales call list (row 220)."
+  },
+  {
+   "id": 1075,
+   "notes": "Imported from the old CRM sales call list (row 222). State: Bihar."
+  },
+  {
+   "id": 1076,
+   "notes": "Imported from the old CRM sales call list (row 147)."
+  },
+  {
+   "id": 1077,
+   "notes": "Imported from the old CRM sales call list (row 221)."
+  },
+  {
+   "id": 1078,
+   "notes": "Imported from the old CRM sales call list (row 218)."
+  },
+  {
+   "id": 1079,
+   "notes": "Imported from the old CRM sales call list (row 219)."
+  },
+  {
+   "id": 1080,
+   "notes": "Imported from the old CRM sales call list (row 216)."
+  },
+  {
+   "id": 1081,
+   "notes": "Imported from the old CRM sales call list (row 217)."
+  },
+  {
+   "id": 1082,
+   "notes": "Imported from the old CRM sales call list (row 214)."
+  },
+  {
+   "id": 1083,
+   "notes": "Imported from the old CRM sales call list (row 215)."
+  },
+  {
+   "id": 1084,
+   "notes": "Imported from the old CRM sales call list (row 212)."
+  },
+  {
+   "id": 1085,
+   "notes": "Imported from the old CRM sales call list (row 213)."
+  },
+  {
+   "id": 1086,
+   "notes": "Imported from the old CRM sales call list (row 211)."
+  },
+  {
+   "id": 1087,
+   "notes": "Imported from the old CRM sales call list (row 210)."
+  },
+  {
+   "id": 1088,
+   "notes": "Imported from the old CRM sales call list (row 209)."
+  },
+  {
+   "id": 1089,
+   "notes": "Imported from the old CRM sales call list (row 207). State: West Bengal."
+  },
+  {
+   "id": 1090,
+   "notes": "Imported from the old CRM sales call list (row 208). State: Madhya Pradesh."
+  },
+  {
+   "id": 1091,
+   "notes": "Imported from the old CRM sales call list (row 204)."
+  },
+  {
+   "id": 1092,
+   "notes": "Imported from the old CRM sales call list (row 205)."
+  },
+  {
+   "id": 1093,
+   "notes": "Imported from the old CRM sales call list (row 206)."
+  },
+  {
+   "id": 1094,
+   "notes": "Imported from the old CRM sales call list (row 201)."
+  },
+  {
+   "id": 1095,
+   "notes": "Imported from the old CRM sales call list (row 202)."
+  },
+  {
+   "id": 1096,
+   "notes": "Imported from the old CRM sales call list (row 203)."
+  },
+  {
+   "id": 1097,
+   "notes": "Imported from the old CRM sales call list (row 194)."
+  },
+  {
+   "id": 1098,
+   "notes": "Imported from the old CRM sales call list (row 200)."
+  },
+  {
+   "id": 1099,
+   "notes": "Imported from the old CRM sales call list (row 198)."
+  },
+  {
+   "id": 1100,
+   "notes": "Imported from the old CRM sales call list (row 199)."
+  },
+  {
+   "id": 1101,
+   "notes": "Imported from the old CRM sales call list (row 197)."
+  },
+  {
+   "id": 1102,
+   "notes": "Imported from the old CRM sales call list (row 196)."
+  },
+  {
+   "id": 1103,
+   "notes": "Imported from the old CRM sales call list (row 193)."
+  },
+  {
+   "id": 1104,
+   "notes": "Imported from the old CRM sales call list (row 195)."
+  },
+  {
+   "id": 1105,
+   "notes": "Imported from the old CRM sales call list (row 192)."
+  },
+  {
+   "id": 1106,
+   "notes": "Imported from the old CRM sales call list (row 191)."
+  },
+  {
+   "id": 1107,
+   "notes": "Imported from the old CRM sales call list (row 188)."
+  },
+  {
+   "id": 1108,
+   "notes": "Imported from the old CRM sales call list (row 189)."
+  },
+  {
+   "id": 1109,
+   "notes": "Imported from the old CRM sales call list (row 184)."
+  },
+  {
+   "id": 1110,
+   "notes": "Imported from the old CRM sales call list (row 185)."
+  },
+  {
+   "id": 1111,
+   "notes": "Imported from the old CRM sales call list (row 186)."
+  },
+  {
+   "id": 1112,
+   "notes": "Imported from the old CRM sales call list (row 187)."
+  },
+  {
+   "id": 1113,
+   "notes": "Imported from the old CRM sales call list (row 183)."
+  },
+  {
+   "id": 1114,
+   "notes": "Imported from the old CRM sales call list (row 182)."
+  },
+  {
+   "id": 1115,
+   "notes": "Imported from the old CRM sales call list (row 179)."
+  },
+  {
+   "id": 1116,
+   "notes": "Imported from the old CRM sales call list (row 180). State: Maharastra."
+  },
+  {
+   "id": 1117,
+   "notes": "Imported from the old CRM sales call list (row 177)."
+  },
+  {
+   "id": 1118,
+   "notes": "Imported from the old CRM sales call list (row 178)."
+  },
+  {
+   "id": 1119,
+   "notes": "Imported from the old CRM sales call list (row 175)."
+  },
+  {
+   "id": 1120,
+   "notes": "Imported from the old CRM sales call list (row 176). State: Karnataka."
+  },
+  {
+   "id": 1121,
+   "notes": "Imported from the old CRM sales call list (row 174)."
+  },
+  {
+   "id": 1122,
+   "notes": "Imported from the old CRM sales call list (row 173)."
+  },
+  {
+   "id": 1123,
+   "notes": "Imported from the old CRM sales call list (row 172)."
+  },
+  {
+   "id": 1124,
+   "notes": "Imported from the old CRM sales call list (row 171)."
+  },
+  {
+   "id": 1125,
+   "notes": "Imported from the old CRM sales call list (row 168)."
+  },
+  {
+   "id": 1126,
+   "notes": "Imported from the old CRM sales call list (row 169)."
+  },
+  {
+   "id": 1127,
+   "notes": "Imported from the old CRM sales call list (row 170)."
+  },
+  {
+   "id": 1128,
+   "notes": "Imported from the old CRM sales call list (row 166)."
+  },
+  {
+   "id": 1129,
+   "notes": "Imported from the old CRM sales call list (row 167)."
+  },
+  {
+   "id": 1130,
+   "notes": "Imported from the old CRM sales call list (row 165)."
+  },
+  {
+   "id": 1131,
+   "notes": "Imported from the old CRM sales call list (row 164)."
+  },
+  {
+   "id": 1132,
+   "notes": "Imported from the old CRM sales call list (row 161)."
+  },
+  {
+   "id": 1133,
+   "notes": "Imported from the old CRM sales call list (row 163)."
+  },
+  {
+   "id": 1134,
+   "notes": "Imported from the old CRM sales call list (row 160)."
+  },
+  {
+   "id": 1135,
+   "notes": "Imported from the old CRM sales call list (row 159)."
+  },
+  {
+   "id": 1136,
+   "notes": "Imported from the old CRM sales call list (row 158)."
+  },
+  {
+   "id": 1137,
+   "notes": "Imported from the old CRM sales call list (row 155). State: Jharkhand."
+  },
+  {
+   "id": 1138,
+   "notes": "Imported from the old CRM sales call list (row 156). State: Karnataka."
+  },
+  {
+   "id": 1139,
+   "notes": "Imported from the old CRM sales call list (row 157)."
+  },
+  {
+   "id": 1140,
+   "notes": "Imported from the old CRM sales call list (row 154)."
+  },
+  {
+   "id": 1141,
+   "notes": "Imported from the old CRM sales call list (row 151)."
+  },
+  {
+   "id": 1142,
+   "notes": "Imported from the old CRM sales call list (row 152)."
+  },
+  {
+   "id": 1143,
+   "notes": "Imported from the old CRM sales call list (row 153). State: Kerala."
+  },
+  {
+   "id": 1144,
+   "notes": "Imported from the old CRM sales call list (row 150)."
+  },
+  {
+   "id": 1145,
+   "notes": "Imported from the old CRM sales call list (row 148). State: Karnataka."
+  },
+  {
+   "id": 1146,
+   "notes": "Imported from the old CRM sales call list (row 149)."
+  },
+  {
+   "id": 1147,
+   "notes": "Imported from the old CRM sales call list (row 106)."
+  },
+  {
+   "id": 1148,
+   "notes": "Imported from the old CRM sales call list (row 146)."
+  },
+  {
+   "id": 1149,
+   "notes": "Imported from the old CRM sales call list (row 145)."
+  },
+  {
+   "id": 1150,
+   "notes": "Imported from the old CRM sales call list (row 139)."
+  },
+  {
+   "id": 1151,
+   "notes": "Imported from the old CRM sales call list (row 144)."
+  },
+  {
+   "id": 1152,
+   "notes": "Imported from the old CRM sales call list (row 141)."
+  },
+  {
+   "id": 1153,
+   "notes": "Imported from the old CRM sales call list (row 142)."
+  },
+  {
+   "id": 1154,
+   "notes": "Imported from the old CRM sales call list (row 143)."
+  },
+  {
+   "id": 1155,
+   "notes": "Imported from the old CRM sales call list (row 140)."
+  },
+  {
+   "id": 1156,
+   "notes": "Imported from the old CRM sales call list (row 137)."
+  },
+  {
+   "id": 1157,
+   "notes": "Imported from the old CRM sales call list (row 107)."
+  },
+  {
+   "id": 1158,
+   "notes": "Imported from the old CRM sales call list (row 138)."
+  },
+  {
+   "id": 1159,
+   "notes": "Imported from the old CRM sales call list (row 136)."
+  },
+  {
+   "id": 1160,
+   "notes": "Imported from the old CRM sales call list (row 135)."
+  },
+  {
+   "id": 1161,
+   "notes": "Imported from the old CRM sales call list (row 134)."
+  },
+  {
+   "id": 1162,
+   "notes": "Imported from the old CRM sales call list (row 133)."
+  },
+  {
+   "id": 1163,
+   "notes": "Imported from the old CRM sales call list (row 132)."
+  },
+  {
+   "id": 1164,
+   "notes": "Imported from the old CRM sales call list (row 131)."
+  },
+  {
+   "id": 1165,
+   "notes": "Imported from the old CRM sales call list (row 129)."
+  },
+  {
+   "id": 1166,
+   "notes": "Imported from the old CRM sales call list (row 130)."
+  },
+  {
+   "id": 1167,
+   "notes": "Imported from the old CRM sales call list (row 128)."
+  },
+  {
+   "id": 1168,
+   "notes": "Imported from the old CRM sales call list (row 108)."
+  },
+  {
+   "id": 1169,
+   "notes": "Imported from the old CRM sales call list (row 109)."
+  },
+  {
+   "id": 1170,
+   "notes": "Imported from the old CRM sales call list (row 110). State: Karnataka."
+  },
+  {
+   "id": 1171,
+   "notes": "Imported from the old CRM sales call list (row 111)."
+  },
+  {
+   "id": 1172,
+   "notes": "Imported from the old CRM sales call list (row 112)."
+  },
+  {
+   "id": 1173,
+   "notes": "Imported from the old CRM sales call list (row 113)."
+  },
+  {
+   "id": 1174,
+   "notes": "Imported from the old CRM sales call list (row 124)."
+  },
+  {
+   "id": 1175,
+   "notes": "Imported from the old CRM sales call list (row 127)."
+  },
+  {
+   "id": 1176,
+   "notes": "Imported from the old CRM sales call list (row 125)."
+  },
+  {
+   "id": 1177,
+   "notes": "Imported from the old CRM sales call list (row 126)."
+  },
+  {
+   "id": 1178,
+   "notes": "Imported from the old CRM sales call list (row 114)."
+  },
+  {
+   "id": 1179,
+   "notes": "Imported from the old CRM sales call list (row 123)."
+  },
+  {
+   "id": 1180,
+   "notes": "Imported from the old CRM sales call list (row 115)."
+  },
+  {
+   "id": 1181,
+   "notes": "Imported from the old CRM sales call list (row 122)."
+  },
+  {
+   "id": 1182,
+   "notes": "Imported from the old CRM sales call list (row 116)."
+  },
+  {
+   "id": 1183,
+   "notes": "Imported from the old CRM sales call list (row 117)."
+  },
+  {
+   "id": 1184,
+   "notes": "Imported from the old CRM sales call list (row 118)."
+  },
+  {
+   "id": 1185,
+   "notes": "Imported from the old CRM sales call list (row 121)."
+  },
+  {
+   "id": 1186,
+   "notes": "Imported from the old CRM sales call list (row 119)."
+  },
+  {
+   "id": 1187,
+   "notes": "Imported from the old CRM sales call list (row 120)."
+  },
+  {
+   "id": 1188,
+   "notes": "Imported from the old CRM sales call list (row 105)."
+  },
+  {
+   "id": 1189,
+   "notes": "Imported from the old CRM sales call list (row 99)."
+  },
+  {
+   "id": 1190,
+   "notes": "Imported from the old CRM sales call list (row 104)."
+  },
+  {
+   "id": 1191,
+   "notes": "Imported from the old CRM sales call list (row 102)."
+  },
+  {
+   "id": 1192,
+   "notes": "Imported from the old CRM sales call list (row 103)."
+  },
+  {
+   "id": 1193,
+   "notes": "Imported from the old CRM sales call list (row 100)."
+  },
+  {
+   "id": 1194,
+   "notes": "Imported from the old CRM sales call list (row 101)."
+  },
+  {
+   "id": 1195,
+   "notes": "Imported from the old CRM sales call list (row 97)."
+  },
+  {
+   "id": 1196,
+   "notes": "Imported from the old CRM sales call list (row 98)."
+  },
+  {
+   "id": 1197,
+   "notes": "Imported from the old CRM sales call list (row 96)."
+  },
+  {
+   "id": 1198,
+   "notes": "Imported from the old CRM sales call list (row 59)."
+  },
+  {
+   "id": 1199,
+   "notes": "Imported from the old CRM sales call list (row 95)."
+  },
+  {
+   "id": 1200,
+   "notes": "Imported from the old CRM sales call list (row 94)."
+  },
+  {
+   "id": 1201,
+   "notes": "Imported from the old CRM sales call list (row 93)."
+  },
+  {
+   "id": 1202,
+   "notes": "Imported from the old CRM sales call list (row 91)."
+  },
+  {
+   "id": 1203,
+   "notes": "Imported from the old CRM sales call list (row 92)."
+  },
+  {
+   "id": 1204,
+   "notes": "Imported from the old CRM sales call list (row 89)."
+  },
+  {
+   "id": 1205,
+   "notes": "Imported from the old CRM sales call list (row 90)."
+  },
+  {
+   "id": 1206,
+   "notes": "Imported from the old CRM sales call list (row 88)."
+  },
+  {
+   "id": 1207,
+   "notes": "Imported from the old CRM sales call list (row 87)."
+  },
+  {
+   "id": 1208,
+   "notes": "Imported from the old CRM sales call list (row 84)."
+  },
+  {
+   "id": 1209,
+   "notes": "Imported from the old CRM sales call list (row 85)."
+  },
+  {
+   "id": 1210,
+   "notes": "Imported from the old CRM sales call list (row 83)."
+  },
+  {
+   "id": 1211,
+   "notes": "Imported from the old CRM sales call list (row 82)."
+  },
+  {
+   "id": 1212,
+   "notes": "Imported from the old CRM sales call list (row 81)."
+  },
+  {
+   "id": 1213,
+   "notes": "Imported from the old CRM sales call list (row 79)."
+  },
+  {
+   "id": 1214,
+   "notes": "Imported from the old CRM sales call list (row 80)."
+  },
+  {
+   "id": 1215,
+   "notes": "Imported from the old CRM sales call list (row 77)."
+  },
+  {
+   "id": 1216,
+   "notes": "Imported from the old CRM sales call list (row 78)."
+  },
+  {
+   "id": 1217,
+   "notes": "Imported from the old CRM sales call list (row 76)."
+  },
+  {
+   "id": 1218,
+   "notes": "Imported from the old CRM sales call list (row 74)."
+  },
+  {
+   "id": 1219,
+   "notes": "Imported from the old CRM sales call list (row 75)."
+  },
+  {
+   "id": 1220,
+   "notes": "Imported from the old CRM sales call list (row 73)."
+  },
+  {
+   "id": 1221,
+   "notes": "Imported from the old CRM sales call list (row 72)."
+  },
+  {
+   "id": 1222,
+   "notes": "Imported from the old CRM sales call list (row 71)."
+  },
+  {
+   "id": 1223,
+   "notes": "Imported from the old CRM sales call list (row 70). State: West Bengal."
+  },
+  {
+   "id": 1224,
+   "notes": "Imported from the old CRM sales call list (row 69)."
+  },
+  {
+   "id": 1225,
+   "notes": "Imported from the old CRM sales call list (row 67)."
+  },
+  {
+   "id": 1226,
+   "notes": "Imported from the old CRM sales call list (row 68)."
+  },
+  {
+   "id": 1227,
+   "notes": "Imported from the old CRM sales call list (row 66)."
+  },
+  {
+   "id": 1228,
+   "notes": "Imported from the old CRM sales call list (row 65)."
+  },
+  {
+   "id": 1229,
+   "notes": "Imported from the old CRM sales call list (row 64)."
+  },
+  {
+   "id": 1230,
+   "notes": "Imported from the old CRM sales call list (row 46)."
+  },
+  {
+   "id": 1231,
+   "notes": "Imported from the old CRM sales call list (row 62)."
+  },
+  {
+   "id": 1232,
+   "notes": "Imported from the old CRM sales call list (row 63)."
+  },
+  {
+   "id": 1233,
+   "notes": "Imported from the old CRM sales call list (row 61)."
+  },
+  {
+   "id": 1234,
+   "notes": "Imported from the old CRM sales call list (row 60)."
+  },
+  {
+   "id": 1235,
+   "notes": "Imported from the old CRM sales call list (row 58)."
+  },
+  {
+   "id": 1236,
+   "notes": "Imported from the old CRM sales call list (row 57)."
+  },
+  {
+   "id": 1237,
+   "notes": "Imported from the old CRM sales call list (row 56)."
+  },
+  {
+   "id": 1238,
+   "notes": "Imported from the old CRM sales call list (row 48)."
+  },
+  {
+   "id": 1239,
+   "notes": "Imported from the old CRM sales call list (row 51)."
+  },
+  {
+   "id": 1240,
+   "notes": "Imported from the old CRM sales call list (row 47)."
+  },
+  {
+   "id": 1241,
+   "notes": "Imported from the old CRM sales call list (row 45)."
+  },
+  {
+   "id": 1242,
+   "notes": "Imported from the old CRM sales call list (row 44)."
+  },
+  {
+   "id": 1243,
+   "notes": "Imported from the old CRM sales call list (row 43)."
+  },
+  {
+   "id": 1244,
+   "notes": "Imported from the old CRM sales call list (row 42)."
+  },
+  {
+   "id": 1245,
+   "notes": "Imported from the old CRM sales call list (row 38)."
+  },
+  {
+   "id": 1246,
+   "notes": "Imported from the old CRM sales call list (row 41)."
+  },
+  {
+   "id": 1247,
+   "notes": "Imported from the old CRM sales call list (row 39)."
+  },
+  {
+   "id": 1248,
+   "notes": "Imported from the old CRM sales call list (row 40)."
+  },
+  {
+   "id": 1249,
+   "notes": "Imported from the old CRM sales call list (row 35)."
+  },
+  {
+   "id": 1250,
+   "notes": "Imported from the old CRM sales call list (row 36)."
+  },
+  {
+   "id": 1251,
+   "notes": "Imported from the old CRM sales call list (row 37)."
+  },
+  {
+   "id": 1252,
+   "notes": "Imported from the old CRM sales call list (row 34)."
+  },
+  {
+   "id": 1253,
+   "notes": "Imported from the old CRM sales call list (row 33)."
+  },
+  {
+   "id": 1254,
+   "notes": "Imported from the old CRM sales call list (row 32)."
+  },
+  {
+   "id": 1255,
+   "notes": "Imported from the old CRM sales call list (row 31)."
+  },
+  {
+   "id": 1256,
+   "notes": "Imported from the old CRM sales call list (row 29)."
+  },
+  {
+   "id": 1257,
+   "notes": "Imported from the old CRM sales call list (row 28)."
+  },
+  {
+   "id": 1258,
+   "notes": "Imported from the old CRM sales call list (row 27)."
+  },
+  {
+   "id": 1259,
+   "notes": "Imported from the old CRM sales call list (row 26)."
+  },
+  {
+   "id": 1260,
+   "notes": "Imported from the old CRM sales call list (row 25)."
+  },
+  {
+   "id": 1261,
+   "notes": "Imported from the old CRM sales call list (row 24)."
+  },
+  {
+   "id": 1262,
+   "notes": "Imported from the old CRM sales call list (row 23)."
+  },
+  {
+   "id": 1263,
+   "notes": "Imported from the old CRM sales call list (row 22)."
+  },
+  {
+   "id": 1264,
+   "notes": "Imported from the old CRM sales call list (row 19)."
+  },
+  {
+   "id": 1265,
+   "notes": "Imported from the old CRM sales call list (row 20)."
+  },
+  {
+   "id": 1266,
+   "notes": "Imported from the old CRM sales call list (row 21)."
+  },
+  {
+   "id": 1267,
+   "notes": "Imported from the old CRM sales call list (row 18)."
+  },
+  {
+   "id": 1268,
+   "notes": "Imported from the old CRM sales call list (row 17)."
+  },
+  {
+   "id": 1269,
+   "notes": "Imported from the old CRM sales call list (row 16)."
+  },
+  {
+   "id": 1270,
+   "notes": "Imported from the old CRM sales call list (row 15)."
+  },
+  {
+   "id": 1271,
+   "notes": "Imported from the old CRM sales call list (row 13)."
+  },
+  {
+   "id": 1272,
+   "notes": "Imported from the old CRM sales call list (row 14)."
+  },
+  {
+   "id": 1273,
+   "notes": "Imported from the old CRM sales call list (row 12)."
+  },
+  {
+   "id": 1274,
+   "notes": "Imported from the old CRM sales call list (row 11). State: Kerala."
+  },
+  {
+   "id": 1275,
+   "notes": "Imported from the old CRM sales call list (row 10)."
+  },
+  {
+   "id": 1276,
+   "notes": "Imported from the old CRM sales call list (row 9)."
+  },
+  {
+   "id": 1277,
+   "notes": "Imported from the old CRM sales call list (row 8)."
+  },
+  {
+   "id": 1278,
+   "notes": "Imported from the old CRM sales call list (row 2)."
+  },
+  {
+   "id": 1279,
+   "notes": "Imported from the old CRM sales call list (row 7)."
+  },
+  {
+   "id": 1280,
+   "notes": "Imported from the old CRM sales call list (row 6)."
+  },
+  {
+   "id": 1281,
+   "notes": "Imported from the old CRM sales call list (row 5)."
+  },
+  {
+   "id": 1282,
+   "notes": "Imported from the old CRM sales call list (row 4). State: Karnataka."
+  },
+  {
+   "id": 1283,
+   "notes": "Imported from the old CRM sales call list (row 3)."
+  },
+  {
+   "id": 1284,
+   "notes": "Imported from the old CRM sales call list (row 1)."
+  }
+ ]
+}
