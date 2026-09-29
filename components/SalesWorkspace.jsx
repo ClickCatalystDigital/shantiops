@@ -3095,6 +3095,7 @@ function EmailTemplateDialog({ template, onClose, router }) {
     subject: template?.subject || '', body: template?.body || '', regards: template?.regards || '',
   });
   const [saving, setSaving] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
   const bodyRef = useRef(null);
   const set = (k) => (v) => setF(prev => ({ ...prev, [k]: v }));
   const insertToken = (t) => {
@@ -3120,9 +3121,9 @@ function EmailTemplateDialog({ template, onClose, router }) {
 
   return (
     <Dialog open onOpenChange={o => !o && onClose()}>
-      <DialogContent className="flex max-h-[92vh] flex-col gap-0 p-0 sm:max-w-5xl">
+      <DialogContent className="flex max-h-[92vh] flex-col gap-0 p-0 sm:max-w-2xl">
         <DialogHeader className="border-b px-6 py-4"><DialogTitle>{isEdit ? 'Edit Email Template' : 'New Email Template'}</DialogTitle></DialogHeader>
-        <div className="grid min-h-0 flex-1 gap-6 overflow-y-auto px-6 py-5 lg:grid-cols-2">
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 py-5">
           <div className="flex flex-col gap-4">
             <FormSection title="Template" cols={2}>
               <Field2 label="Name" required><Input value={f.name} onChange={e => set('name')(e.target.value)} autoFocus /></Field2>
@@ -3139,20 +3140,25 @@ function EmailTemplateDialog({ template, onClose, router }) {
                 Insert:
                 {TEMPLATE_TOKENS.map(t => <Button key={t} type="button" size="xs" variant="outline" onClick={() => insertToken(t)}>{`{{${t}}}`}</Button>)}
               </div>
-              <Field2 label="Body" required><Textarea ref={bodyRef} rows={16} className="font-mono text-xs leading-5" value={f.body} onChange={e => set('body')(e.target.value)} /></Field2>
-              <Field2 label="Signature"><Textarea rows={5} className="font-mono text-xs leading-5" value={f.regards} onChange={e => set('regards')(e.target.value)} /></Field2>
+              <Field2 label="Body" required><Textarea ref={bodyRef} rows={12} className="font-mono text-xs leading-5" value={f.body} onChange={e => set('body')(e.target.value)} /></Field2>
+              <Field2 label="Signature"><Textarea rows={4} className="font-mono text-xs leading-5" value={f.regards} onChange={e => set('regards')(e.target.value)} /></Field2>
             </FormSection>
           </div>
-          <div className="flex min-h-0 flex-col gap-2">
-            <h3 className="border-b pb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Preview (sample values)</h3>
-            <div className="rounded-md border bg-muted/30 p-3">
-              <p className="mb-2 text-xs text-muted-foreground">Subject</p>
-              <p className="mb-3 text-sm font-medium">{renderTemplate(f.subject, SAMPLE_VARS) || '—'}</p>
-              <pre className="max-h-[60vh] overflow-y-auto whitespace-pre-wrap font-sans text-sm leading-6">{preview}</pre>
-            </div>
-          </div>
         </div>
-        <DialogFooter className="m-0 border-t px-6 py-3"><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? 'Saving…' : isEdit ? 'Save' : 'Add Template'}</Button></DialogFooter>
+        <DialogFooter className="m-0 border-t px-6 py-3"><Button variant="outline" onClick={() => setPreviewing(true)}>Preview</Button><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? 'Saving…' : isEdit ? 'Save' : 'Add Template'}</Button></DialogFooter>
+        {previewing && (
+          <Dialog open onOpenChange={o => !o && setPreviewing(false)}>
+            <DialogContent className="flex max-h-[88vh] flex-col gap-0 p-0 sm:max-w-2xl">
+              <DialogHeader className="border-b px-6 py-4"><DialogTitle>Preview</DialogTitle></DialogHeader>
+              <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+                <p className="text-xs text-muted-foreground">Subject</p>
+                <p className="mb-4 text-sm font-medium">{renderTemplate(f.subject, SAMPLE_VARS) || '—'}</p>
+                <pre className="whitespace-pre-wrap font-sans text-sm leading-6">{preview}</pre>
+              </div>
+              <DialogFooter className="m-0 border-t px-6 py-3"><Button onClick={() => setPreviewing(false)}>Close</Button></DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
       </DialogContent>
     </Dialog>
   );
