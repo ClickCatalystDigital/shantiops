@@ -6,6 +6,7 @@ import { audit } from '@/lib/usb';
 import { COMPANY_NAMES } from '@/lib/qc-doc-pdf.js';
 import { isValidSeries } from '@/lib/qc-series';
 import { getProjectDeletePreview, deleteProjectCascade } from '@/lib/project-delete';
+import { recordProjectSpec } from '@/lib/order-spec-server';
 
 // Rename a project's identity (project_no / customer_name) — used e.g. when a demo/seed project
 // is repurposed into a real one instead of creating a duplicate. Gated the same as the rest of
@@ -73,6 +74,9 @@ export async function PATCH(req, { params }) {
   } catch (e) {
     if (String(e).includes('UNIQUE')) return NextResponse.json({ error: `Project ${b.project_no} already exists` }, { status: 409 });
     throw e;
+  }
+  if (b.series !== undefined || b.model_capacity !== undefined || b.model_pressure !== undefined || b.model_design !== undefined || b.sale_order_id !== undefined) {
+    await recordProjectSpec(Number(params.id)); // best-effort; only projects made from an order teach
   }
   if (b.project_no !== undefined || b.customer_name !== undefined || b.description !== undefined || b.company !== undefined
     || b.order_date !== undefined || b.series !== undefined || b.model_capacity !== undefined

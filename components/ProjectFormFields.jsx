@@ -9,7 +9,7 @@ import { COMPANY_NAMES } from '@/lib/company-profiles';
 import CustomerPicker from '@/components/CustomerPicker';
 import SaleOrderPicker from '@/components/SaleOrderPicker';
 import { api } from '@/lib/client';
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -55,6 +55,7 @@ export default function ProjectFormFields({ f, setF, customers = [], saleOrderPi
     : null;
   const showSaleOrder = !!saleOrderPicker;
   const [soNote, setSoNote] = useState('');
+  const applied = useRef({}); // the values last pre-filled from an order, so a different order can replace them but typed values stay
   // Picking an order fills what Sales already recorded: customer (with its id), company, order
   // date, and a description from the order's product lines. Typed values are only replaced when
   // blank (description/date), so picking an order never wipes something the user wrote.
@@ -74,6 +75,20 @@ export default function ProjectFormFields({ f, setF, customers = [], saleOrderPi
         order_date: prev.order_date || so.order_date || '',
         description: prev.description || desc.slice(0, 500),
       }));
+      // Defaults from the order's boiler line and what earlier saved projects taught (best-effort, plain values —
+      // fields typed by hand are left alone).
+      try {
+        const spec = await api(`/api/sale-orders/${id}/project-spec`);
+        setF(prev => {
+          const next = { ...prev };
+          for (const k of ['series', 'model_design', 'model_capacity', 'model_pressure']) {
+            const typed = prev[k] !== '' && prev[k] != null && String(prev[k]) !== String(applied.current[k] ?? '');
+            if (!typed) next[k] = spec[k] == null ? '' : spec[k];
+          }
+          applied.current = { series: spec.series, model_design: spec.model_design, model_capacity: spec.model_capacity, model_pressure: spec.model_pressure };
+          return next;
+        });
+      } catch { /* the form simply stays as it is */ }
       const onOther = row?.linked_project && row.linked_project !== f.project_no ? `Already on ${row.linked_project}. ` : '';
       setSoNote(onOther + (saleOrderPicker !== 'new' ? '' : so.items?.length ? `${so.items.length} order line(s) will be copied into the Scope of Supply.`
         : 'This order has no line items yet — the Scope of Supply starts empty.'));

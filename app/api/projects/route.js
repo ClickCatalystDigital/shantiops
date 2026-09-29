@@ -7,6 +7,7 @@ import { isValidSeries } from '@/lib/qc-series';
 import { audit } from '@/lib/usb';
 import { notifyDepartment, notifyPMs } from '@/lib/notify';
 import { COMPANY_NAMES } from '@/lib/qc-doc-pdf.js';
+import { recordProjectSpec } from '@/lib/order-spec-server';
 
 // In-place Calc Sheets project switcher (CalcWorkspace sidebar) — same list app/calc/page.js's
 // picker uses, just as a client-side fetch instead of a server component prop.
@@ -174,6 +175,7 @@ export async function POST(req) {
     }
 
     await audit('project_created', { actor: user.username, detail: `${project_no} · ${b.customer_name.trim()}` });
+    if (b.sale_order_id) await recordProjectSpec(projectId); // what the Design Head saved teaches the next default (best-effort)
     return NextResponse.json({ id: projectId, project_no, bomTemplates });
   } catch (e) {
     if (String(e).includes('UNIQUE')) {
