@@ -34,10 +34,10 @@ export default async function ProductionTodayPage({ searchParams }) {
   // Sales/Marketing's "Follow-ups" panel: today + 7 days, whatever month/week is on screen.
   const crmDepts = deptsToShow.filter(d => d === 'Sales' || d === 'Marketing');
   const [events, openTasks, heads, upcoming] = await Promise.all([
-    getDepartmentCalendar(deptsToShow, from, to, { salesMember: salesScope(user) }),
+    getDepartmentCalendar(deptsToShow, from, to, { salesMember: salesScope(user), viewer: user.username }),
     getOpenDepartmentTasks(deptsToShow, today),
     getFunctionalHeads(),
-    crmDepts.length ? getDepartmentCalendar(crmDepts, today, shiftWeek(today, 1), { salesMember: salesScope(user) }) : null,
+    getDepartmentCalendar(crmDepts, today, shiftWeek(today, 5), { salesMember: salesScope(user), viewer: user.username }),
   ]);
   // Assignable = operators actually in one of the departments being shown. Picks up new heads automatically.
   const operators = heads.filter(o => o.active && o.departments.some(d => deptsToShow.includes(d)));

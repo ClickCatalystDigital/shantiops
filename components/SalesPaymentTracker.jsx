@@ -7,7 +7,7 @@
 import { salesPeopleOptions } from '@/lib/sales-people.mjs';
 import CustomerPicker from '@/components/CustomerPicker';
 import { defaultCompanyClient, companyShort } from '@/lib/company-filter.mjs';
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardAction, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -15,11 +15,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
-import { currentStage, flagsForStage, STAGE_OPTIONS, billValueOf, matchState } from '@/lib/order-match.mjs';
+import { currentStage, flagsForStage, STAGE_OPTIONS, billValueOf, matchState, normalizeRowSettings, matchOptions, rowColor, DEFAULT_ROW_SETTINGS } from '@/lib/order-match.mjs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
-import { PlusIcon, SearchIcon, ArrowDownIcon, ArrowUpIcon, TrashIcon } from 'lucide-react';
+import { SettingsIcon, PlusIcon, SearchIcon, ArrowDownIcon, ArrowUpIcon, TrashIcon } from 'lucide-react';
 import SearchableSelect from '@/components/SearchableSelect';
 import { api, showToast } from '@/lib/client';
 import { formatMoney } from '@/lib/format';
@@ -54,7 +54,54 @@ const STATUS_STYLE = {
 };
 // Row background: paid in full (green), short by what looks like TDS (yellow), otherwise red.
 // Bill Value is informational only and doesn't affect the colour.
-const ROW_TONE = { match: 'bg-success/10 hover:bg-success/15', tds: 'bg-warning/10 hover:bg-warning/15', mismatch: 'bg-destructive/10 hover:bg-destructive/15' };
+// Row colours come from the user's own settings (cog on the Orders card).
+function RowColorsDialog({ settings, onClose, onSaved }) {
+  const [cfg, setCfg] = useState(settings);
+  const [rates, setRates] = useState(settings.tdsRates.join(', '));
+  const [saving, setSaving] = useState(false);
+  const setState = (k, patch) => setCfg(c => ({ ...c, states: { ...c.states, [k]: { ...c.states[k], ...patch } } }));
+  async function save(next) {
+    setSaving(true);
+    try {
+      const body = next || { ...cfg, tdsRates: rates.split(',').map(x => Number(x.trim())).filter(x => x > 0) };
+      onSaved(await api('/api/settings/pt-row-colors', { method: 'PUT', body }));
+      onClose();
+    } catch (e) { showToast(e.message, 'error'); } finally { setSaving(false); }
+  }
+  return (
+    <Dialog open onOpenChange={o => { if (!o) onClose(); }}>
+      <DialogContent className="sm:max-w-xl">
+        <DialogHeader><DialogTitle>Row colours</DialogTitle></DialogHeader>
+        <p className="text-xs text-muted-foreground">Saved for you only. Each row is coloured by how the money received compares with the order value.</p>
+        <div className="flex flex-col gap-3">
+          {Object.entries(cfg.states).map(([k, s]) => (
+            <div key={k} className="grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-lg border p-2">
+              <input type="checkbox" checked={s.on} onChange={e => setState(k, { on: e.target.checked })} aria-label={`Colour ${s.label}`} />
+              <div>
+                <div className="text-sm font-medium">{s.label}</div>
+                <div className="mt-1 flex items-center gap-2">
+                  <input type="color" value={s.color} onChange={e => setState(k, { color: e.target.value })} className="h-7 w-10 cursor-pointer rounded border" />
+                  <input type="range" min={0} max={100} value={s.opacity} onChange={e => setState(k, { opacity: Number(e.target.value) })} className="flex-1" />
+                  <span className="w-9 text-right text-xs tnum">{s.opacity}%</span>
+                </div>
+              </div>
+              <div className="w-24 rounded border px-2 py-1.5 text-center text-xs" style={{ backgroundColor: s.on ? rowColor({ states: { [k]: s } }, k) : undefined }}>Preview</div>
+            </div>
+          ))}
+          <div className="grid grid-cols-2 gap-3">
+            <div><Label>Rounding allowed (₹)</Label><Input type="number" min={0} value={cfg.tolerance} onChange={e => setCfg(c => ({ ...c, tolerance: e.target.value }))} /></div>
+            <div><Label>TDS % deducted (comma list)</Label><Input value={rates} onChange={e => setRates(e.target.value)} /></div>
+          </div>
+        </div>
+        <DialogFooter className="m-0">
+          <Button variant="ghost" onClick={() => save(normalizeRowSettings(DEFAULT_ROW_SETTINGS))} disabled={saving}>Reset</Button>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={() => save()} disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 // Borderless dropdown that reads like text in a table cell (Sales Person, Payment Mode).
 // Options may be plain strings or { value, label }.
@@ -153,6 +200,9 @@ export function PaymentOrdersTab({ saleOrders, payments, invoices, customers = [
   const [page, setPage] = useState(0);
   const [size, setSize] = useState(SIZES[0]);
   const [adding, setAdding] = useState(false);
+  const [rowCfg, setRowCfg] = useState(() => normalizeRowSettings(null));
+  const [cogOpen, setCogOpen] = useState(false);
+  useEffect(() => { api('/api/settings/pt-row-colors').then(setRowCfg).catch(() => {}); }, []);
   const [remarkFor, setRemarkFor] = useState(null);
   const [statusFilter, setStatusFilter] = useState('all');
   const [deletingId, setDeletingId] = useState(null);
@@ -182,10 +232,10 @@ export function PaymentOrdersTab({ saleOrders, payments, invoices, customers = [
         r.pending = (r.total || 0) - r.received;
         r.stage = currentStage(r);
         r.bill = billValueOf(r, invoices);
-        r.match = r.status === 'cancelled' ? null : matchState({ orderValue: r.total, received: r.received });
+        r.match = r.status === 'cancelled' ? null : matchState({ orderValue: r.total, received: r.received }, matchOptions(rowCfg));
         return r;
       });
-  }, [saleOrders, payments, invoices, local]);
+  }, [saleOrders, payments, invoices, local, rowCfg]);
 
   const rows = useMemo(() => all
     .filter(r => statusFilter === 'all' || r.track_status === statusFilter)
@@ -225,7 +275,7 @@ export function PaymentOrdersTab({ saleOrders, payments, invoices, customers = [
       <CardHeader>
         <CardTitle>Orders</CardTitle>
         <CardDescription>{company || 'All companies'} · {kpiOrders.length} orders</CardDescription>
-        <CardAction><Button size="sm" onClick={() => setAdding(true)}><PlusIcon />Add order</Button></CardAction>
+        <CardAction className="flex gap-2"><Button size="icon-sm" variant="ghost" onClick={() => setCogOpen(true)} aria-label="Row colours" title="Row colours"><SettingsIcon /></Button><Button size="sm" onClick={() => setAdding(true)}><PlusIcon />Add order</Button></CardAction>
       </CardHeader>
       <CardContent>
         <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
@@ -260,7 +310,7 @@ export function PaymentOrdersTab({ saleOrders, payments, invoices, customers = [
             </TableHeader>
             <TableBody>
               {rows.slice(page * size, (page + 1) * size).map(r => (
-                <TableRow key={r.id} className={ROW_TONE[r.match] || ''}>
+                <TableRow key={r.id} style={{ backgroundColor: rowColor(rowCfg, r.match) || undefined }}>
                   <TableCell className="whitespace-nowrap"><EditCell type="date" value={r.orderDate} display={fmtDate(r.orderDate)} onSave={v => save(r, { order_date: v })} /></TableCell>
                   <TableCell className="font-medium">
                     <div className="flex items-center gap-1.5">
@@ -314,6 +364,7 @@ export function PaymentOrdersTab({ saleOrders, payments, invoices, customers = [
         <Pager page={page} setPage={setPage} size={size} setSize={setSize} total={rows.length} />
       </CardContent>
       {adding && <AddOrderSheet customers={customers} people={people} onClose={() => setAdding(false)} />}
+      {cogOpen && <RowColorsDialog settings={rowCfg} onClose={() => setCogOpen(false)} onSaved={setRowCfg} />}
       {remarkFor && <RemarksDialog order={remarkFor} onClose={() => setRemarkFor(null)} onSave={v => { save(remarkFor, { remarks: v }); setRemarkFor(null); }} />}
     </Card>
   );

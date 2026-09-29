@@ -50,6 +50,7 @@ export async function POST(req) {
   // Enquiry's own creation form (SalesWorkspace.jsx's AddEnquiryDialog) sends `organization`
   // instead of `lead_name`/`company_name` — there's no separate contact-name field on that form,
   // so Organization fills both, same as the plain Leads dialog fills lead_name only.
+  if (b.organization) b.organization = String(b.organization).toUpperCase(); // orgs are always stored in caps
   const leadName = String(b.lead_name || b.organization || '').trim();
   if (!leadName) return NextResponse.json({ error: 'Lead name is required' }, { status: 400 });
   const address = String(b.address || '').trim();

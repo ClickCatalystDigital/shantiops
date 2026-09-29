@@ -9,6 +9,7 @@ import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, isDepartmentHead } from '@/lib/auth';
 import { encryptSecret, decryptSecret } from '@/lib/crypto';
 import { audit } from '@/lib/usb';
+import { phonePassword } from '@/lib/portal-invite';
 
 const ALPHABET = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const newPassword = () => Array.from(randomBytes(10), b => ALPHABET[b % ALPHABET.length]).join('');
@@ -29,14 +30,19 @@ export async function POST(req, { params }) {
     await audit('portal_password_revealed', { actor: user.username, detail: `customer #${params.id} (${login.username})` });
     return NextResponse.json({ password });
   }
-  if (action === 'reset') {
-    const password = newPassword();
+  if (action === 'reset' || action === 'reset_phone') {
+    let password = newPassword();
+    if (action === 'reset_phone') {
+      const c = await queryOne('SELECT phone FROM customers WHERE id = ?', [params.id]);
+      password = phonePassword(c || {});
+      if (!password) return NextResponse.json({ error: 'This customer has no usable phone number on file' }, { status: 400 });
+    }
     let enc = null;
     try { enc = encryptSecret(password); } catch (e) { return NextResponse.json({ error: e.message }, { status: 500 }); }
     await execute(
       'UPDATE users SET password = ?, portal_password_enc = ?, password_setup_token = NULL, password_setup_expires = NULL WHERE id = ?',
       [bcrypt.hashSync(password, 10), enc, login.id]);
-    await audit('portal_password_reset', { actor: user.username, detail: `customer #${params.id} (${login.username})` });
+    await audit('portal_password_reset', { actor: user.username, detail: `customer #${params.id} (${login.username})${action === 'reset_phone' ? ' → phone number' : ''}` });
     return NextResponse.json({ password, username: login.username });
   }
   return NextResponse.json({ error: 'Unknown action' }, { status: 400 });

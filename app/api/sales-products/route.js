@@ -55,6 +55,7 @@ export async function POST(req) {
         b.unit || null, b.hsn_code || null, numOrNull(b.gst_pct),
         b.category || null, numOrNull(b.cost_price), numOrNull(b.warranty_days), b.serviceable == null ? null : b.serviceable ? 1 : 0, templateId, user.username]
     );
+    if (numOrNull(b.price) != null || numOrNull(b.cost_price) != null) await execute('INSERT INTO product_price_history (product_id, price, cost_price, changed_by) VALUES (?, ?, ?, ?)', [Number(lastId), numOrNull(b.price), numOrNull(b.cost_price), user.username]);
     await audit('sales_product_created', { actor: user.username, detail: `${productCode} — ${productName}` });
     return NextResponse.json({ id: Number(lastId), product_code: productCode });
   } catch (err) {

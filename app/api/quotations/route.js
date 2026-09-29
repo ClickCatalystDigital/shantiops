@@ -87,7 +87,9 @@ export async function POST(req) {
   // company the quotation was actually for) — reads the same invoice_prefix company_settings
   // already carries for every other document.
   const companyRow = await queryOne('SELECT invoice_prefix, state_code FROM company_settings WHERE company = ?', [company]);
-  const quotationNo = revision ? revision.no : `QTN-${seq}/${companyRow?.invoice_prefix || 'SB'}/${fyStart}-${String((fyStart + 1) % 100).padStart(2, '0')}`;
+  const customNo = !revision && b.quotation_no ? String(b.quotation_no).trim() : '';
+  if (customNo && await queryOne('SELECT 1 FROM quotations WHERE quotation_no = ?', [customNo])) return NextResponse.json({ error: `Offer Number ${customNo} already exists` }, { status: 409 });
+  const quotationNo = revision ? revision.no : customNo || `QTN-${seq}/${companyRow?.invoice_prefix || 'SB'}/${fyStart}-${String((fyStart + 1) % 100).padStart(2, '0')}`;
 
   const t = quotationTotals(items, {
     companyStateCode: companyRow?.state_code || null,

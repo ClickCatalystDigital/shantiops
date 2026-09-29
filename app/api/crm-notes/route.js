@@ -76,9 +76,9 @@ export async function POST(req) {
        lead_id, opportunity_id, customer_id, note_type, content, call_type, duration_seconds,
        visit_date, action_taken, is_value_addition, in_time, out_time, plan_date, plan_time,
        plan_for, plan_of_action, next_plan_date, alert_mode, send_alert_sms, contact_id,
-       product_id, location, feedback_responded, plan_note_type, alert_users, created_by
+       product_id, location, feedback_responded, plan_note_type, alert_users, created_by, value_addition_text
      )
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [b.lead_id || null, b.opportunity_id || null, b.customer_id || null, noteType, content, callType, durationSeconds,
       b.visit_date || null, b.action_taken || null, b.is_value_addition ? 1 : 0, b.in_time || null, b.out_time || null,
       b.plan_date || null, b.plan_time || null, b.plan_for || null, b.plan_of_action || null, b.next_plan_date || null,
@@ -86,7 +86,8 @@ export async function POST(req) {
       b.feedback_responded != null ? (b.feedback_responded ? 1 : 0) : null,
       // Plan 1j — the Action Type of the PLANNED follow-up (call/email/meeting/other).
       NOTE_TYPES.includes(b.plan_note_type) && b.plan_note_type !== 'feedback' ? b.plan_note_type : null,
-      alertUsers.length ? alertUsers.join(',') : null, user.username]
+      alertUsers.length ? alertUsers.join(',') : null, user.username,
+      b.is_value_addition && b.value_addition_text ? String(b.value_addition_text).trim() : null]
   );
   // A note/Diary entry is real activity on the enquiry — bump its updated_at so the first-response
   // SLA check (lib/lead-stage.mjs isSlaBreached: "untouched since creation") sees it.

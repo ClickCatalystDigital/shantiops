@@ -2,7 +2,7 @@
 // referenced from real leads/quotation/sale-order lines, same deactivate-don't-delete convention
 // as branches/sales_stages.
 import { NextResponse } from 'next/server';
-import { execute, queryOne } from '@/lib/db';
+import { execute, queryOne, queryAll } from '@/lib/db';
 import { getFreshSessionUser, isInternal } from '@/lib/auth';
 import { requireCrmAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
@@ -40,8 +40,13 @@ export async function PATCH(req, { params }) {
   fields.push('updated_at = CURRENT_TIMESTAMP');
   args.push(params.id);
 
+  const before = await queryOne('SELECT price, cost_price FROM sales_products WHERE id = ?', [params.id]);
   try {
     await execute(`UPDATE sales_products SET ${fields.join(', ')} WHERE id = ?`, args);
+    const after = await queryOne('SELECT price, cost_price FROM sales_products WHERE id = ?', [params.id]);
+    if (before && after && (before.price !== after.price || before.cost_price !== after.cost_price)) {
+      await execute('INSERT INTO product_price_history (product_id, price, cost_price, changed_by) VALUES (?, ?, ?, ?)', [params.id, after.price, after.cost_price, user.username]);
+    }
     await audit('sales_product_edited', { actor: user.username, detail: `product #${params.id}` });
     return NextResponse.json({ ok: true });
   } catch (err) {

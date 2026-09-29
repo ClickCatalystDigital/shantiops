@@ -207,28 +207,39 @@ export function AddToDiaryDialog({ lead, users, salesProducts, onClose, onSaved,
   const [f, setF] = useState({
     visit_date: todayISO(), note_type: 'call', is_value_addition: false, action_taken: '',
     in_time: '', out_time: '', alert_mode: 'Not Required', plan_date: '', plan_time: '',
-    plan_for: '', plan_of_action: '', plan_note_type: '', send_alert_sms: 'No Alert', contact_id: '', product: '', product_id: null,
+    plan_for: lead.account_manager || '', value_addition_text: '', plan_of_action: '', plan_note_type: '', send_alert_sms: 'No Alert', contact_id: '', product: '', product_id: null,
     location: '', alert_users: [],
   });
   const [contacts, setContacts] = useState([]);
   const [files, setFiles] = useState([]);
   const [saving, setSaving] = useState(false);
+  const [stages, setStages] = useState([]);
+  const [confirming, setConfirming] = useState(false);
+  const [newStage, setNewStage] = useState(lead.sales_call_status || DEFAULT_STAGE);
+  const [more, setMore] = useState(false);
   const set = (k) => (v) => setF(prev => ({ ...prev, [k]: v }));
   const setText = (k) => (e) => setF(prev => ({ ...prev, [k]: e.target.value }));
 
+  useEffect(() => { api('/api/sales-stages').then(r => setStages(r.filter?.(x => x.active !== 0) || [])).catch(() => {}); }, []);
   useEffect(() => {
     if (!lead.converted_customer_id) return;
     api(`/api/contacts?customer_id=${lead.converted_customer_id}`).then(setContacts).catch(() => {});
   }, [lead.converted_customer_id]);
 
-  async function save() {
+  function validate() {
     if (!f.action_taken.trim()) return showToast('Action Taken is required', 'error');
+    if (f.is_value_addition && !f.value_addition_text.trim()) return showToast('Describe the value addition', 'error');
+    if (f.plan_date && !f.plan_for) return showToast('Pick the A/C manager for the follow-up', 'error');
+    setConfirming(true);
+  }
+
+  async function save() {
     setSaving(true);
     try {
       const { id: noteId } = await api('/api/crm-notes', { method: 'POST', body: {
         lead_id: lead.id, content: f.action_taken.trim(), note_type: f.note_type,
         visit_date: f.visit_date, action_taken: f.action_taken.trim(),
-        is_value_addition: f.is_value_addition, in_time: f.in_time || null, out_time: f.out_time || null,
+        is_value_addition: f.is_value_addition, value_addition_text: f.is_value_addition ? f.value_addition_text.trim() : null, in_time: f.in_time || null, out_time: f.out_time || null,
         alert_mode: f.alert_mode, alert_users: f.alert_mode === 'Selected seniors' ? f.alert_users : [], plan_date: f.plan_date || null, plan_time: f.plan_time || null,
         plan_for: f.plan_for || null, plan_of_action: f.plan_of_action || null, plan_note_type: f.plan_note_type || null,
         next_plan_date: f.plan_date || null, send_alert_sms: f.send_alert_sms,
@@ -239,59 +250,76 @@ export function AddToDiaryDialog({ lead, users, salesProducts, onClose, onSaved,
         form.append('file', file);
         await api(`/api/crm-notes/${noteId}/upload`, { method: 'POST', body: form });
       }
-      showToast('Diary entry logged');
+      if (newStage && newStage !== (lead.sales_call_status || DEFAULT_STAGE)) {
+        await api(`/api/leads/${lead.id}`, { method: 'PATCH', body: { sales_call_status: newStage } });
+      }
+      showToast('Follow-up saved');
       router.refresh();
       onSaved?.();
       onClose();
     } catch (err) { showToast(err.message, 'error'); } finally { setSaving(false); }
   }
 
+  const actionTypes = [['call', 'Phone'], ['email', 'Email'], ['meeting', 'Meeting'], ['note', 'Other']];
+  const managerOpts = users.map(u => ({ value: u.username, label: u.display_name || u.username }));
+  const stageOpts = stages.filter(x => !x.is_won || true).map(x => ({ value: x.name, label: x.name }));
   return (
     <Dialog open onOpenChange={o => !o && onClose()}>
-      <DialogContent className="sm:max-w-2xl">
-        <DialogHeader><DialogTitle>Add to Diary — {lead.lead_name}</DialogTitle></DialogHeader>
-        <div className="flex flex-col gap-5 max-h-[70vh] overflow-y-auto pr-1">
-          <div>
-            <div className="mb-2 text-sm font-semibold">Update Sales Call Section</div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="grid gap-1.5"><Label>Date</Label><Input type="date" value={f.visit_date} onChange={setText('visit_date')} /></div>
-              <div className="grid gap-1.5"><RequiredLabel>Action Type</RequiredLabel>
-                <Select value={f.note_type} onValueChange={set('note_type')}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="call">Call</SelectItem>
-                    <SelectItem value="email">Email</SelectItem>
-                    <SelectItem value="meeting">Meeting</SelectItem>
-                    <SelectItem value="note">Other</SelectItem>
-                  </SelectContent>
-                </Select>
+      <DialogContent className="sm:max-w-4xl">
+        <DialogHeader><DialogTitle>Activities &amp; Plan — {lead.lead_name}</DialogTitle></DialogHeader>
+        <div className="grid max-h-[72vh] gap-5 overflow-y-auto pr-1 md:grid-cols-2">
+          <div className="flex flex-col gap-3 rounded-lg border p-4">
+            <div className="text-sm font-semibold">Sales Call</div>
+            <div className="grid gap-1.5"><Label>Date</Label><Input type="date" value={f.visit_date} onChange={setText('visit_date')} /></div>
+            <div className="grid gap-1.5"><RequiredLabel>Action Taken</RequiredLabel><Textarea rows={3} value={f.action_taken} onChange={setText('action_taken')} /></div>
+            <div className="grid gap-1.5"><Label>Action Type</Label>
+              <Select value={f.note_type} onValueChange={set('note_type')}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>{actionTypes.map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-1.5"><Label>Value Addition?</Label>
+              <div className="flex gap-4 text-sm">
+                {[[true, 'Yes'], [false, 'No']].map(([v, l]) => (
+                  <label key={l} className="flex items-center gap-1.5"><input type="radio" name="dv-va" checked={f.is_value_addition === v} onChange={() => set('is_value_addition')(v)} />{l}</label>
+                ))}
               </div>
-              <div className="flex items-center gap-2 sm:col-span-2">
-                <Checkbox id="dv-value-add" checked={f.is_value_addition} onCheckedChange={v => set('is_value_addition')(!!v)} />
-                <Label htmlFor="dv-value-add" className="font-normal">Is Value Addition</Label>
-              </div>
-              <div className="grid gap-1.5 sm:col-span-2"><RequiredLabel>Action Taken</RequiredLabel><Textarea rows={2} value={f.action_taken} onChange={setText('action_taken')} /></div>
+              {f.is_value_addition && <Textarea rows={2} placeholder="What value was added?" value={f.value_addition_text} onChange={setText('value_addition_text')} />}
             </div>
           </div>
-
-          <div>
-            <div className="mb-2 text-sm font-semibold">Employee Work Done on Client Meetings</div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <div className="grid gap-1.5"><Label>In time</Label><Input type="time" value={f.in_time} onChange={setText('in_time')} /></div>
-              <div className="grid gap-1.5"><Label>Out time</Label><Input type="time" value={f.out_time} onChange={setText('out_time')} /></div>
-              <div className="grid gap-1.5"><Label>Alert</Label>
-                <Select value={f.alert_mode} onValueChange={set('alert_mode')}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Not Required">Not Required</SelectItem>
-                    <SelectItem value="All seniors">All seniors</SelectItem>
-                    <SelectItem value="Selected seniors">Selected seniors</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              {f.alert_mode === 'Selected seniors' && (
-                <div className="grid gap-1.5 sm:col-span-3"><Label>Alert these people</Label>
-                  <div className="flex flex-wrap gap-x-4 gap-y-1.5 rounded-md border px-3 py-2">
+          <div className="flex flex-col gap-3 rounded-lg border p-4">
+            <div className="text-sm font-semibold">Diary — next action</div>
+            <div className="grid gap-1.5"><Label>Future Date</Label><Input type="date" value={f.plan_date} onChange={setText('plan_date')} /></div>
+            <div className="grid gap-1.5"><Label>Action Type</Label>
+              <Select value={f.plan_note_type} onValueChange={set('plan_note_type')}>
+                <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
+                <SelectContent>{actionTypes.map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-1.5"><Label>Plan of Action</Label><Textarea rows={3} value={f.plan_of_action} onChange={setText('plan_of_action')} /></div>
+            <div className="grid gap-1.5"><Label>For A/C Manager</Label>
+              <SearchableSelect value={f.plan_for} onChange={set('plan_for')} options={managerOpts} placeholder="Select a person…" />
+            </div>
+          </div>
+          <div className="md:col-span-2">
+            <button type="button" className="text-sm text-muted-foreground underline" onClick={() => setMore(m => !m)}>{more ? 'Hide' : 'Show'} more (times, alerts, files, contact, product)</button>
+            {more && (
+              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div className="grid gap-1.5"><Label>In time</Label><Input type="time" value={f.in_time} onChange={setText('in_time')} /></div>
+                <div className="grid gap-1.5"><Label>Out time</Label><Input type="time" value={f.out_time} onChange={setText('out_time')} /></div>
+                <div className="grid gap-1.5"><Label>Plan time</Label><Input type="time" value={f.plan_time} onChange={setText('plan_time')} /></div>
+                <div className="grid gap-1.5"><Label>Alert</Label>
+                  <Select value={f.alert_mode} onValueChange={set('alert_mode')}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Not Required">Not Required</SelectItem>
+                      <SelectItem value="All seniors">All seniors</SelectItem>
+                      <SelectItem value="Selected seniors">Selected seniors</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {f.alert_mode === 'Selected seniors' && (
+                  <div className="flex flex-wrap gap-x-4 gap-y-1.5 rounded-md border px-3 py-2 sm:col-span-3">
                     {users.map(u => (
                       <label key={u.username} className="flex items-center gap-2 text-sm">
                         <Checkbox checked={f.alert_users.includes(u.username)}
@@ -300,63 +328,41 @@ export function AddToDiaryDialog({ lead, users, salesProducts, onClose, onSaved,
                       </label>
                     ))}
                   </div>
+                )}
+                <div className="grid gap-1.5"><Label>Contact</Label>
+                  {lead.converted_customer_id
+                    ? <Select value={f.contact_id} onValueChange={set('contact_id')}>
+                        <SelectTrigger><SelectValue placeholder="Select a contact…" /></SelectTrigger>
+                        <SelectContent>{contacts.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}</SelectContent>
+                      </Select>
+                    : <p className="pt-2 text-xs text-muted-foreground">Link a customer first to pick a contact.</p>}
                 </div>
-              )}
-              <div className="grid gap-1.5 sm:col-span-3"><Label>Attach files</Label>
-                <Input type="file" multiple onChange={e => setFiles(Array.from(e.target.files || []))} />
-                {files.length > 0 && <p className="text-xs text-muted-foreground">{files.length} file(s) selected — uploaded once this entry is saved.</p>}
+                <div className="grid gap-1.5"><Label>Product</Label>
+                  <ProductSearchField products={salesProducts} value={f.product}
+                    onChange={v => setF(prev => ({ ...prev, product: v, product_id: null }))}
+                    onPick={p => setF(prev => ({ ...prev, product: p.product_name, product_id: p.id }))} />
+                </div>
+                <div className="grid gap-1.5"><Label>Location</Label><Input value={f.location} onChange={setText('location')} /></div>
+                <div className="grid gap-1.5 sm:col-span-3"><Label>Attach files</Label>
+                  <Input type="file" multiple onChange={e => setFiles(Array.from(e.target.files || []))} />
+                </div>
               </div>
-            </div>
-          </div>
-
-          <div>
-            <div className="mb-2 text-sm font-semibold">Diary Section</div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="grid gap-1.5"><Label>Plan date</Label><Input type="date" value={f.plan_date} onChange={setText('plan_date')} /></div>
-              <div className="grid gap-1.5"><Label>Plan time</Label><Input type="time" value={f.plan_time} onChange={setText('plan_time')} /></div>
-              <div className="grid gap-1.5"><Label>Plan of Action for</Label>
-                <SearchableSelect value={f.plan_for} onChange={set('plan_for')} options={users.map(u => ({ value: u.username, label: u.display_name || u.username }))} placeholder="Select a person…" />
-              </div>
-              <div className="grid gap-1.5"><Label>Plan Action Type</Label>
-                <Select value={f.plan_note_type} onValueChange={set('plan_note_type')}>
-                  <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="call">Call</SelectItem>
-                    <SelectItem value="email">Email</SelectItem>
-                    <SelectItem value="meeting">Meeting</SelectItem>
-                    <SelectItem value="note">Other</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-1.5"><Label>Send Alert SMS</Label>
-                <Select value={f.send_alert_sms} onValueChange={set('send_alert_sms')}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="No Alert">No Alert</SelectItem>
-                    <SelectItem value="SMS" disabled>SMS — coming later</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-1.5 sm:col-span-2"><Label>Plan of action</Label><Textarea rows={2} value={f.plan_of_action} onChange={setText('plan_of_action')} /></div>
-              <div className="grid gap-1.5"><Label>Contact</Label>
-                {lead.converted_customer_id
-                  ? <Select value={f.contact_id} onValueChange={set('contact_id')}>
-                      <SelectTrigger><SelectValue placeholder="Select a contact…" /></SelectTrigger>
-                      <SelectContent>{contacts.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}</SelectContent>
-                    </Select>
-                  : <p className="text-xs text-muted-foreground pt-2">Convert this lead to a customer first to pick a contact.</p>}
-              </div>
-              <div className="grid gap-1.5"><Label>Product</Label>
-                <ProductSearchField products={salesProducts} value={f.product}
-                  onChange={v => setF(prev => ({ ...prev, product: v, product_id: null }))}
-                  onPick={p => setF(prev => ({ ...prev, product: p.product_name, product_id: p.id }))} />
-              </div>
-              <div className="grid gap-1.5 sm:col-span-2"><Label>Location</Label><Input value={f.location} onChange={setText('location')} /></div>
-            </div>
+            )}
           </div>
         </div>
-        <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save Diary Entry'}</Button></DialogFooter>
+        <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={validate} disabled={saving}>Update</Button></DialogFooter>
       </DialogContent>
+      {confirming && (
+        <Dialog open onOpenChange={o => !o && setConfirming(false)}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader><DialogTitle>Change sales funnel stage?</DialogTitle></DialogHeader>
+            <p className="text-sm text-muted-foreground">Currently at <b>{lead.sales_call_status || DEFAULT_STAGE}</b>. Keep it or pick a new stage for this account.</p>
+            <SearchableSelect value={newStage} onChange={setNewStage} options={stageOpts} placeholder="Select stage…" />
+            {f.plan_date && f.plan_for && <p className="text-xs text-muted-foreground">{managerOpts.find(o => o.value === f.plan_for)?.label || f.plan_for} will see the follow-up on {f.plan_date} on their calendar.</p>}
+            <DialogFooter><Button variant="outline" onClick={() => setConfirming(false)}>Back</Button><Button onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Confirm'}</Button></DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </Dialog>
   );
 }
@@ -533,11 +539,12 @@ function LeadDetailSheet({ lead, users, customers, salesProducts = [], branches 
 
   return (
     <Sheet open onOpenChange={o => !o && onClose()}>
-      <SheetContent className="w-full sm:max-w-lg">
+      <SheetContent className="w-full data-[side=right]:sm:max-w-5xl">
         <SheetHeader>
           <SheetTitle>{lead.lead_name}</SheetTitle>
         </SheetHeader>
-        <div className="flex flex-col gap-5 overflow-y-auto px-4 pb-4">
+        <div className="grid gap-6 overflow-y-auto px-4 pb-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+          <div className="flex min-w-0 flex-col gap-5">
           {lead.sales_call_closed_at && (
             <div className="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
               Closed on {lead.sales_call_closed_at.slice(0, 10)}{lead.sales_call_closed_by ? ` by ${lead.sales_call_closed_by}` : ''}
@@ -562,7 +569,7 @@ function LeadDetailSheet({ lead, users, customers, salesProducts = [], branches 
             <ContactLinks phone={lead.phone} email={lead.email} />
           </div>
           {extra.length > 0 && (
-            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 rounded-md border p-3 text-sm">
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 rounded-md border p-3 text-sm xl:grid-cols-3">
               {extra.map(([k, label]) => (
                 <div key={k}><span className="text-muted-foreground">{label}: </span>{lead[k]}</div>
               ))}
@@ -585,8 +592,11 @@ function LeadDetailSheet({ lead, users, customers, salesProducts = [], branches 
             </div>
           </div>
 
-          <TasksPanel leadId={lead.id} users={users} />
-          <NotesPanel leadId={lead.id} lead={lead} users={users} salesProducts={salesProducts} router={router} autoOpenDiary={autoOpenDiary} />
+          </div>
+          <div className="flex min-w-0 flex-col gap-5">
+            <TasksPanel leadId={lead.id} users={users} />
+            <NotesPanel leadId={lead.id} lead={lead} users={users} salesProducts={salesProducts} router={router} autoOpenDiary={autoOpenDiary} />
+          </div>
         </div>
         <SheetFooter><Button variant="outline" onClick={onClose}>Close</Button></SheetFooter>
       </SheetContent>
@@ -833,6 +843,7 @@ export function AddEnquiryDialog({ leads = [], users, salesProducts, stages = []
   const similarOrgs = useSimilarCustomers({ name: f.organization, phone: f.phone });
   const [products, setProducts] = useState([blankProductLine()]);
   const [saving, setSaving] = useState(false);
+  const [customSource, setCustomSource] = useState(false);
   const set = (k) => (v) => setF(prev => ({ ...prev, [k]: v }));
   const setText = (k) => (e) => setF(prev => ({ ...prev, [k]: e.target.value }));
   const productsTotal = productLinesTotal(products);
@@ -860,7 +871,7 @@ export function AddEnquiryDialog({ leads = [], users, salesProducts, stages = []
         <DialogHeader className="border-b px-6 py-4"><DialogTitle>New Enquiry</DialogTitle></DialogHeader>
         <div className="flex flex-col gap-6 overflow-y-auto px-6 py-5">
           <FormSection title="Organization">
-            <Field2 label="Organization" required wide><Input value={f.organization} onChange={setText('organization')} autoFocus /><SimilarCustomersHint matches={similarOrgs} /></Field2>
+            <Field2 label="Organization" required wide><Input value={f.organization} onChange={e => set('organization')(e.target.value.toUpperCase())} className="uppercase" autoFocus /><SimilarCustomersHint matches={similarOrgs} /></Field2>
             <Field2 label="Short name"><Input value={f.short_name} onChange={setText('short_name')} /></Field2>
             <Field2 label="Segment"><Input value={f.industry} onChange={setText('industry')} /></Field2>
             <Field2 label="Address" required wide><Textarea rows={2} value={f.address} onChange={setText('address')} /></Field2>
@@ -882,7 +893,11 @@ export function AddEnquiryDialog({ leads = [], users, salesProducts, stages = []
             <Field2 label="Expected value (₹)"><Input type="number" min="0" value={f.expected_value} onChange={setText('expected_value')} placeholder={productsTotal > 0 ? `${productsTotal} (from products)` : ''} /></Field2>
             <Field2 label="Order expected in"><Input value={f.order_expected_in} onChange={setText('order_expected_in')} placeholder="e.g. Q2 2027" /></Field2>
             <Field2 label="Week number"><Input value={f.week_number} onChange={setText('week_number')} /></Field2>
-            <Field2 label="Source"><SearchableSelect value={f.source} onChange={set('source')} options={sourceOpts} displayValue={f.source} onTextChange={set('source')} placeholder="Select or type…" /></Field2>
+            <Field2 label="Source">
+              {customSource
+                ? <div className="flex gap-2"><Input autoFocus value={f.source} onChange={setText('source')} placeholder="New source name" /><Button type="button" size="sm" variant="outline" onClick={() => { setCustomSource(false); set('source')(''); }}>Back</Button></div>
+                : <div className="flex gap-2"><div className="min-w-0 flex-1"><SearchableSelect value={f.source} onChange={set('source')} options={sourceOpts} displayValue={f.source} placeholder="Select…" /></div><Button type="button" size="sm" variant="outline" onClick={() => { setCustomSource(true); set('source')(''); }}>+ Custom</Button></div>}
+            </Field2>
             <Field2 label="Reference"><Input value={f.reference} onChange={setText('reference')} /></Field2>
           </FormSection>
           <FormSection title="Ownership">
@@ -1306,7 +1321,7 @@ function CustomerDetailSheet({ customerId, isSalesHead = false, onClose, onDelet
 
   return (
     <Sheet open onOpenChange={o => !o && onClose()}>
-      <SheetContent className="w-full sm:max-w-3xl">
+      <SheetContent className="w-full data-[side=right]:sm:max-w-5xl">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
             {detail ? detail.name : 'Loading…'}
@@ -1556,6 +1571,7 @@ export function NewQuotationDialog({ customers, opportunityId = null, leadId = n
   const [company, setCompany] = useState(() => initial?.company || defaultCompanyClient());
   const [quotationType, setQuotationType] = useState(initial?.quotation_type || 'Sales');
   const [quotationDate, setQuotationDate] = useState(todayISO());
+  const [offerNo, setOfferNo] = useState('');
   const [validUntil, setValidUntil] = useState(() => { const d = new Date(); d.setDate(d.getDate() + 15); return d.toISOString().slice(0, 10); });
   const [taxPct, setTaxPct] = useState('18');
   const [items, setItems] = useState(() => (initialItems?.length ? initialItems : [blankQuoteLine()]));
@@ -1604,7 +1620,7 @@ export function NewQuotationDialog({ customers, opportunityId = null, leadId = n
         method: 'POST',
         body: {
           customer_id: customerId, opportunity_id: opportunityId, lead_id: leadId, tax_pct: taxPct === '' ? 18 : Number(taxPct), items: cleanItems,
-          company, quotation_type: quotationType, quotation_date: quotationDate, valid_until: validUntil,
+          company, quotation_type: quotationType, quotation_no: offerNo.trim() || undefined, quotation_date: quotationDate, valid_until: validUntil,
           revision_of: revisionOf, terms: initial?.terms || null, notes: initial?.notes || null,
         },
       });
@@ -1637,6 +1653,7 @@ export function NewQuotationDialog({ customers, opportunityId = null, leadId = n
               <Label>Quotation type</Label>
               <SearchableSelect value={quotationType} onChange={setQuotationType} options={QUOTATION_TYPE_SEED.map(t => ({ value: t, label: t }))} displayValue={quotationType} onTextChange={setQuotationType} placeholder="Select or type…" />
             </div>
+            {!revisionOf && <div className="grid gap-1.5"><Label>Offer Number</Label><Input value={offerNo} onChange={e => setOfferNo(e.target.value)} placeholder="Auto (same as Quotation Number)" /></div>}
             <div className="grid gap-1.5"><Label>Quotation date</Label><Input type="date" value={quotationDate} onChange={e => setQuotationDate(e.target.value)} /></div>
             <div className="grid gap-1.5"><Label>Valid until</Label><Input type="date" value={validUntil} onChange={e => setValidUntil(e.target.value)} /></div>
             <div className="grid gap-1.5"><Label>Default GST %</Label><Input type="number" min="0" max="100" value={taxPct} onChange={e => setTaxPct(e.target.value)} /></div>
@@ -1768,12 +1785,13 @@ function QuotationStatusSelect({ q, busy, onChange }) {
   );
 }
 
-function QuotationConvertButtons({ q, busy, onConvert, onInvoice, onRevise, onApprove, onDelete, canApprove }) {
+function QuotationConvertButtons({ q, busy, onEmail, onConvert, onInvoice, onRevise, onApprove, onDelete, canApprove }) {
   return (
     <div className="flex flex-wrap gap-2">
       {q.approval_status === 'pending' && canApprove && <Button size="sm" disabled={busy} onClick={() => onApprove(q)}>Approve discount</Button>}
       {q.status === 'accepted' && <Button size="sm" variant="outline" disabled={busy} onClick={() => onConvert(q)}>Convert to SO</Button>}
       {q.status === 'accepted' && <Button size="sm" variant="outline" disabled={busy} onClick={() => onInvoice(q)}>Convert to Invoice</Button>}
+      {q.status !== 'revised' && <Button size="sm" variant="ghost" disabled={busy} onClick={() => onEmail(q)}>Send email</Button>}
       {!['accepted', 'revised'].includes(q.status) && <Button size="sm" variant="ghost" disabled={busy} onClick={() => onRevise(q)}>Revise</Button>}
       {canApprove && onDelete && !['accepted', 'sent'].includes(q.status) && (
         <Button size="icon-sm" variant="ghost" className="text-destructive" disabled={busy} onClick={() => onDelete(q)}><TrashIcon className="size-3.5" /></Button>
@@ -1819,6 +1837,7 @@ function QuotationsTab({ quotations, customers, salesProducts = [], isSalesHead 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [busyId, setBusyId] = useState(null);
   const [rcmQuotation, setRcmQuotation] = useState(null);
+  const [emailQuotationId, setEmailQuotationId] = useState(null);
   const [isReverseCharge, setIsReverseCharge] = useState(false);
   // Plan 2d — same rule the reminder sweep uses, so the filter matches the notifications.
   const [followupOnly, setFollowupOnly] = useState(false);
@@ -1932,7 +1951,7 @@ function QuotationsTab({ quotations, customers, salesProducts = [], isSalesHead 
                   <TableCell>{q.customer_name}</TableCell>
                   <TableCell className="tnum">{formatMoney(q.total)}</TableCell>
                   <TableCell><QuotationStatusSelect q={q} busy={busyId === q.id} onChange={setStatus} /></TableCell>
-                  <TableCell><QuotationConvertButtons q={q} busy={busyId === q.id} onConvert={convert} onInvoice={q => { setIsReverseCharge(false); setRcmQuotation(q); }} onRevise={revise} onApprove={approve} onDelete={deleteQuotation} canApprove={isSalesHead} /></TableCell>
+                  <TableCell><QuotationConvertButtons q={q} busy={busyId === q.id} onEmail={q => setEmailQuotationId(q.id)} onConvert={convert} onInvoice={q => { setIsReverseCharge(false); setRcmQuotation(q); }} onRevise={revise} onApprove={approve} onDelete={deleteQuotation} canApprove={isSalesHead} /></TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -1962,6 +1981,7 @@ function QuotationsTab({ quotations, customers, salesProducts = [], isSalesHead 
           leadId={revising.q.lead_id} opportunityId={revising.q.opportunity_id}
           onClose={() => setRevising(null)} />
       )}
+      {emailQuotationId && <SendCommercialOfferDialog quotationId={emailQuotationId} router={router} onClose={() => setEmailQuotationId(null)} />}
       {rcmQuotation && (
         <Dialog open onOpenChange={o => !o && setRcmQuotation(null)}>
           <DialogContent className="max-w-md">
@@ -2085,7 +2105,7 @@ function AddInvoiceDialog({ onClose, router }) {
             <Field2 label="Company">
               <Select value={f.company} onValueChange={v => set({ company: v })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent><SelectItem value="Shanti Boilers">Shanti Boilers</SelectItem><SelectItem value="Shanti Techno Fab">Shanti Techno Fab</SelectItem></SelectContent>
+                <SelectContent>{COMPANY_NAMES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
               </Select>
             </Field2>
             <Field2 label="Sale Order (optional)">
@@ -2355,7 +2375,7 @@ function AddSaleOrderDialog({ users = [], branches = [], saleOrders = [], onClos
             <Field2 label="Company">
               <Select value={f.company} onValueChange={v => set({ company: v })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent><SelectItem value="Shanti Boilers">Shanti Boilers</SelectItem><SelectItem value="Shanti Techno Fab">Shanti Techno Fab</SelectItem></SelectContent>
+                <SelectContent>{COMPANY_NAMES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
               </Select>
             </Field2>
             <Field2 label="Customer" required wide>
@@ -2415,8 +2435,7 @@ function SoCompanyCell({ so, router }) {
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value="Shanti Boilers">Shanti Boilers</SelectItem>
-        <SelectItem value="Shanti Techno Fab">Shanti Techno Fab</SelectItem>
+        {COMPANY_NAMES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
       </SelectContent>
     </Select>
   );
@@ -2466,7 +2485,7 @@ function CostingSheet({ so, onClose }) {
 
   return (
     <Sheet open onOpenChange={o => !o && onClose()}>
-      <SheetContent className="w-full sm:max-w-md">
+      <SheetContent className="w-full data-[side=right]:sm:max-w-xl">
         <SheetHeader><SheetTitle>Costing — {so.so_no}</SheetTitle></SheetHeader>
         <div className="flex flex-col gap-3 px-4 pb-4">
           {!costing ? <p className="text-sm text-muted-foreground">Loading…</p> : (
@@ -3042,9 +3061,28 @@ function ProductDialog({ product, onClose, router }) {
             </p>
           )}
         </div>
+        {isEdit && <PriceHistory productId={product.id} />}
         <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? 'Saving…' : isEdit ? 'Save' : 'Add Product'}</Button></DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function PriceHistory({ productId }) {
+  const [rows, setRows] = useState(null);
+  useEffect(() => { api(`/api/sales-products/${productId}/history`).then(setRows).catch(() => setRows([])); }, [productId]);
+  if (!rows?.length) return null;
+  return (
+    <div className="rounded-lg border p-2">
+      <div className="mb-1 text-sm font-semibold">Price history</div>
+      <table className="w-full text-xs">
+        <thead><tr className="text-left text-muted-foreground"><th className="py-0.5">Month</th><th>Price</th><th>Cost</th><th>By</th></tr></thead>
+        <tbody>{rows.map((r, i) => (
+          <tr key={i} className="border-t"><td className="py-0.5">{String(r.changed_at).slice(5, 7)}-{String(r.changed_at).slice(0, 4)}</td>
+            <td className="tnum">{r.price != null ? formatMoney(r.price) : '—'}</td><td className="tnum">{r.cost_price != null ? formatMoney(r.cost_price) : '—'}</td><td>{r.changed_by || ''}</td></tr>
+        ))}</tbody>
+      </table>
+    </div>
   );
 }
 

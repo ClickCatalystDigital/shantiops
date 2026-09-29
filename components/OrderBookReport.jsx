@@ -17,7 +17,7 @@ import { todayISO } from '@/lib/date';
 import { financialYear } from '@/lib/gst-calc.mjs';
 import { orderBook, financialYears, AGING_BUCKETS } from '@/lib/order-book.mjs';
 
-const COMPANY_COLORS = { 'Shanti Boilers': 'var(--color-chart-1)', 'Shanti Techno Fab': 'var(--color-chart-2)' };
+const COMPANY_COLORS = { 'Shanti Boilers': 'var(--color-chart-1)', 'Shanti Techno Fab': 'var(--color-chart-2)', 'Srivaari Agencies': 'var(--color-chart-3)' };
 // chart config keys become CSS variables (--color-<key>), so they must not contain spaces
 const safeKey = c => `co_${c.replace(/[^A-Za-z0-9]/g, '_')}`;
 const monthLabel = ym => new Date(`${ym}-01T00:00:00`).toLocaleDateString('en-IN', { month: 'short', year: '2-digit' });

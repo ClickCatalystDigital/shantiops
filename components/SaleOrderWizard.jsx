@@ -380,7 +380,7 @@ export function SaleOrderDetailsSheet({ saleOrderId, branches, salesProducts = [
 
   return (
     <Sheet open onOpenChange={o => !o && onClose()}>
-      <SheetContent className="w-full sm:max-w-6xl overflow-y-auto">
+      <SheetContent className="w-full data-[side=right]:sm:max-w-6xl overflow-y-auto">
         <SheetHeader><SheetTitle>{so.so_no} — {so.customer_name}</SheetTitle></SheetHeader>
         <div className="flex flex-col gap-4 px-4 pb-4">
           <Card>

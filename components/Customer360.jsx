@@ -41,6 +41,7 @@ const Row = ({ children }) => <div className="flex flex-wrap items-center justif
 
 export default function Customer360({ customerId }) {
   const [d, setD] = useState(null);
+  const [showPast, setShowPast] = useState(false);
   const [comp, setComp] = useState({ competitor: '', product: '', price: '' });
   const load = () => api(`/api/customers/${customerId}/overview`).then(setD).catch(err => showToast(err.message, 'error'));
   useEffect(() => { load(); }, [customerId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -81,10 +82,25 @@ export default function Customer360({ customerId }) {
       </Section>
 
       <Section title="Quotations" count={d.quotations.length} report="quotation_listing" customerId={customerId}>
-        <Rows items={d.quotations} empty="No quotations." render={q => (
-          <Row key={q.id}><a className="text-primary hover:underline" href={`/api/quotations/${q.id}/pdf`} target="_blank" rel="noreferrer">{q.quotation_no}</a><span className="ml-1.5 rounded border px-1 text-[10px] font-medium text-muted-foreground" title={q.company || 'Shanti Boilers'}>{companyShort(q)}</span>
-            <span className="text-xs text-muted-foreground">{q.status}{q.approval_status === 'pending' ? ' · needs approval' : ''} · {formatMoney(q.total)}</span></Row>
-        )} />
+        {(() => {
+          const qRow = q => (
+            <Row key={q.id}><span><a className="text-primary hover:underline" href={`/api/quotations/${q.id}/pdf`} target="_blank" rel="noreferrer">{q.quotation_no}</a><span className="ml-1.5 rounded border px-1 text-[10px] font-medium text-muted-foreground" title={q.company || 'Shanti Boilers'}>{companyShort(q)}</span>
+              {q.quotation_date && <span className="ml-1.5 text-xs text-muted-foreground">{q.quotation_date.slice(5, 7)}-{q.quotation_date.slice(0, 4)}</span>}</span>
+              <span className="text-xs text-muted-foreground">{q.status}{q.approval_status === 'pending' ? ' · needs approval' : ''} · {formatMoney(q.total)}</span></Row>
+          );
+          if (!d.quotations.length) return <p className="text-xs text-muted-foreground">No quotations.</p>;
+          const current = d.quotations.find(q => q.status !== 'revised') || d.quotations[0];
+          return (
+            <div className="flex flex-col gap-1">
+              <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Current</div>
+              {qRow(current)}
+              {d.quotations.length > 1 && (
+                <Button size="sm" variant="outline" className="mt-1 self-start" onClick={() => setShowPast(v => !v)}>{showPast ? 'Hide' : 'Show'} all past quotations ({d.quotations.length - 1})</Button>
+              )}
+              {showPast && d.quotations.filter(q => q.id !== current.id).map(qRow)}
+            </div>
+          );
+        })()}
       </Section>
 
       <Section title="Orders & payments" count={d.orders.length}>

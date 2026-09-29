@@ -152,7 +152,7 @@ function OpportunityDetailSheet({ opportunity, users, customers, lostStages, onC
   return (
     <>
     <Sheet open onOpenChange={o => !o && onClose()}>
-      <SheetContent className="w-full sm:max-w-lg">
+      <SheetContent className="w-full data-[side=right]:sm:max-w-3xl">
         <SheetHeader>
           <SheetTitle>{opportunity.title}</SheetTitle>
         </SheetHeader>

@@ -154,7 +154,7 @@ function PasswordCell({ customer }) {
       const r = await api(`/api/customers/${customer.id}/portal/password`, { method: 'POST', body: { action } });
       if (!r.password) { setPw(null); setNote('Not stored — Reset'); return; }
       setPw(r.password); setNote('');
-      if (action === 'reset') showToast('New password set — give it to the customer');
+      if (action.startsWith('reset')) showToast(action === 'reset_phone' ? 'Password set to the phone number' : 'New password set — give it to the customer');
     } catch (e) { showToast(e.message, 'error'); }
   }
   if (pw) {
@@ -172,7 +172,8 @@ function PasswordCell({ customer }) {
       {customer.has_password
         ? <Button size="xs" variant="outline" onClick={() => call('reveal')}>Reveal</Button>
         : <span className="text-xs text-muted-foreground">{note || 'Not stored'}</span>}
-      <Button size="xs" variant="ghost" onClick={() => window.confirm('Set a new random password? The old one stops working.') && call('reset')}>Reset</Button>
+      <Button size="xs" variant="ghost" disabled={String(customer.phone || '').replace(/\D/g, '').length < 6} title="Use the customer's phone number" onClick={() => window.confirm('Set the password to the customer\'s phone number? The old one stops working.') && call('reset_phone')}>Reset to phone</Button>
+      <Button size="xs" variant="ghost" onClick={() => window.confirm('Set a new random password? The old one stops working.') && call('reset')}>Random</Button>
     </span>
   );
 }

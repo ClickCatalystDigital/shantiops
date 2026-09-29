@@ -5,6 +5,7 @@
 // next to Company — Edit never passes it, since linking a Sale Order after creation (PATCH already
 // supports it) doesn't replay the Scope-of-Supply auto-population POST /api/projects does at
 // creation time, so showing the picker there would imply behavior Edit doesn't actually have.
+import { COMPANY_NAMES } from '@/lib/company-profiles';
 import CustomerPicker from '@/components/CustomerPicker';
 import SaleOrderPicker from '@/components/SaleOrderPicker';
 import { api } from '@/lib/client';
@@ -94,8 +95,7 @@ export default function ProjectFormFields({ f, setF, customers = [], saleOrderPi
           <Select modal={false} value={f.company} onValueChange={c => setF({ ...f, company: c })}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="Shanti Boilers">Shanti Boilers</SelectItem>
-              <SelectItem value="Shanti Techno Fab">Shanti Techno Fab</SelectItem>
+              {COMPANY_NAMES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>

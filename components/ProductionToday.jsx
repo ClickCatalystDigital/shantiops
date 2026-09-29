@@ -138,7 +138,7 @@ export default function ProductionToday({
     for (const f of events.followups || []) add(f.date, { ...f, kind: 'followup' });
     return map;
   }, [events]);
-  const showsCrm = deptsToShow.includes('Sales') || deptsToShow.includes('Marketing');
+  const showsCrm = (deptsToShow.includes('Sales') || deptsToShow.includes('Marketing')) || upcomingFollowups.length > 0 || (events.followups || []).length > 0;
   const upcomingSorted = useMemo(() => [...upcomingFollowups]
     .sort((a, b) => (a.date + (a.plan_time || '')).localeCompare(b.date + (b.plan_time || ''))), [upcomingFollowups]);
 
@@ -333,7 +333,7 @@ export default function ProductionToday({
           <CardHeader><CardTitle>Follow-ups</CardTitle></CardHeader>
           <CardContent className="flex flex-col gap-1">
             {upcomingSorted.length === 0 && (
-              <p className="py-2 text-center text-sm text-muted-foreground">No follow-ups planned for the next 7 days.</p>
+              <p className="py-2 text-center text-sm text-muted-foreground">No follow-ups planned in the next 5 weeks.</p>
             )}
             {upcomingSorted.map(f => (
               <div key={`fu-${f.id}`} className="flex items-center gap-2 rounded-md px-1 py-1.5 hover:bg-muted">
