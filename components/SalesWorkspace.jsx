@@ -2846,22 +2846,45 @@ function TeamTab({ users, departments }) {
     } catch (err) { showToast(err.message, 'error'); } finally { setSaving(null); }
   }
 
+  function toggle(dept, username) {
+    const cur = (drafts[dept] || '').split(',').map(x => x.trim()).filter(Boolean);
+    const next = cur.includes(username) ? cur.filter(x => x !== username) : [...cur, username];
+    setDrafts(prev => ({ ...prev, [dept]: next.join(', ') }));
+  }
+
   return (
     <Card>
-      <CardHeader><CardTitle>Team</CardTitle></CardHeader>
+      <CardHeader>
+        <CardTitle>Team</CardTitle>
+        <CardDescription>Your {CRM_DEPARTMENTS.filter(d => departments.includes(d)).join(' / ')} people. Tick who new enquiries are shared between, in turn; leave everyone unticked to stop auto-assigning.</CardDescription>
+      </CardHeader>
       <CardContent className="flex flex-col gap-5">
-        {CRM_DEPARTMENTS.filter(d => departments.includes(d)).map(dept => (
-          <div key={dept} className="flex flex-col gap-1.5">
-            <Label>{dept} — new leads round-robin to (usernames, comma-separated)</Label>
-            <div className="flex gap-2">
-              <Input value={drafts[dept] ?? ''} onChange={e => setDrafts(prev => ({ ...prev, [dept]: e.target.value }))} placeholder="e.g. jdoe, asmith" />
-              <Button size="sm" variant="outline" onClick={() => save(dept)} disabled={saving === dept}>{saving === dept ? 'Saving…' : 'Save'}</Button>
+        {CRM_DEPARTMENTS.filter(d => departments.includes(d)).map(dept => {
+          const members = users.filter(u => u.departments.includes(dept));
+          const picked = new Set((drafts[dept] || '').split(',').map(x => x.trim()).filter(Boolean));
+          return (
+            <div key={dept} className="flex flex-col gap-2">
+              <div className="flex items-center justify-between gap-2">
+                <Label>{dept} — {members.length} {members.length === 1 ? 'person' : 'people'}</Label>
+                <Button size="sm" variant="outline" onClick={() => save(dept)} disabled={saving === dept}>{saving === dept ? 'Saving…' : 'Save auto-assign'}</Button>
+              </div>
+              <Table>
+                <TableHeader><TableRow><TableHead className="w-24">Auto-assign</TableHead><TableHead>Name</TableHead><TableHead>Username</TableHead><TableHead>Designation</TableHead><TableHead>Role</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {members.length === 0 ? <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground">No one has {dept} access yet.</TableCell></TableRow> : members.map(u => (
+                    <TableRow key={u.id}>
+                      <TableCell><Checkbox checked={picked.has(u.username)} onCheckedChange={() => toggle(dept, u.username)} aria-label={`Auto-assign to ${u.display_name || u.username}`} /></TableCell>
+                      <TableCell className="font-medium">{u.display_name || u.username}</TableCell>
+                      <TableCell className="text-muted-foreground">{u.username}</TableCell>
+                      <TableCell className="text-muted-foreground">{u.designation || '—'}</TableCell>
+                      <TableCell><Badge variant={u.departmentRoles?.[dept] === 'head' ? 'default' : 'outline'}>{u.departmentRoles?.[dept] === 'head' ? 'Head' : 'Member'}</Badge></TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </div>
-            <p className="text-xs text-muted-foreground">
-              {users.filter(u => u.departments.includes(dept)).length} {dept} head{users.filter(u => u.departments.includes(dept)).length === 1 ? '' : 's'} available. Leave blank to stop auto-assigning.
-            </p>
-          </div>
-        ))}
+          );
+        })}
       </CardContent>
     </Card>
   );

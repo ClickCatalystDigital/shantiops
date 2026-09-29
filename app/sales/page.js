@@ -43,7 +43,10 @@ export default async function SalesPage({ searchParams }) {
   if (me) ({ leads, quotations, saleOrders, invoices, creditNotes, salePayments } = scopeSalesLists(me, { leads, quotations, saleOrders, invoices, creditNotes, salePayments }));
   // "Assign to" pool for Tasks/Team — any active head who holds Sales, same filter-after-
   // getFunctionalHeads pattern app/production/page.js already uses for its own assignee dropdown.
-  const crmUsers = heads.filter(h => h.active && h.departments.includes('Sales'));
+  const designations = new Map((await queryAll(
+    'SELECT e.user_id, d.name FROM employees e LEFT JOIN designations d ON d.id = e.designation_id WHERE e.user_id IS NOT NULL'
+  )).map(r => [r.user_id, r.name]));
+  const crmUsers = heads.filter(h => h.active && h.departments.includes('Sales')).map(h => ({ ...h, designation: designations.get(h.id) || null }));
   const savedViews = savedViewRows.map(r => ({ ...r, filters: JSON.parse(r.filters || '{}') }));
 
   return (
