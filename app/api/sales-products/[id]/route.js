@@ -45,6 +45,10 @@ export async function PATCH(req, { params }) {
     await execute(`UPDATE sales_products SET ${fields.join(', ')} WHERE id = ?`, args);
     const after = await queryOne('SELECT price, cost_price FROM sales_products WHERE id = ?', [params.id]);
     if (before && after && (before.price !== after.price || before.cost_price !== after.cost_price)) {
+      // First recorded change: keep the price it had before as the starting entry.
+      if (!(await queryOne('SELECT id FROM product_price_history WHERE product_id = ? LIMIT 1', [params.id]))) {
+        await execute('INSERT INTO product_price_history (product_id, price, cost_price, changed_by) VALUES (?, ?, ?, ?)', [params.id, before.price, before.cost_price, 'initial']);
+      }
       await execute('INSERT INTO product_price_history (product_id, price, cost_price, changed_by) VALUES (?, ?, ?, ?)', [params.id, after.price, after.cost_price, user.username]);
     }
     await audit('sales_product_edited', { actor: user.username, detail: `product #${params.id}` });

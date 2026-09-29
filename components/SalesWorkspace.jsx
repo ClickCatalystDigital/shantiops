@@ -357,7 +357,10 @@ export function AddToDiaryDialog({ lead, users, salesProducts, onClose, onSaved,
           <DialogContent className="sm:max-w-md">
             <DialogHeader><DialogTitle>Change sales funnel stage?</DialogTitle></DialogHeader>
             <p className="text-sm text-muted-foreground">Currently at <b>{lead.sales_call_status || DEFAULT_STAGE}</b>. Keep it or pick a new stage for this account.</p>
-            <SearchableSelect value={newStage} onChange={setNewStage} options={stageOpts} placeholder="Select stage…" />
+            <Select value={newStage} onValueChange={setNewStage}>
+              <SelectTrigger className="w-full"><SelectValue placeholder="Select stage…" /></SelectTrigger>
+              <SelectContent>{stageOpts.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
+            </Select>
             {f.plan_date && f.plan_for && <p className="text-xs text-muted-foreground">{managerOpts.find(o => o.value === f.plan_for)?.label || f.plan_for} will see the follow-up on {f.plan_date} on their calendar.</p>}
             <DialogFooter><Button variant="outline" onClick={() => setConfirming(false)}>Back</Button><Button onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Confirm'}</Button></DialogFooter>
           </DialogContent>
@@ -1626,8 +1629,8 @@ export function NewQuotationDialog({ customers, opportunityId = null, leadId = n
       });
       showToast(`Quotation ${res.quotation_no} ${revisionOf ? 'saved as a revision' : 'created'}`);
       router.refresh();
-      if (onCreated) onCreated(res.id);
-      onClose();
+      // With onCreated the caller takes over (e.g. chains into the email dialog); closing here would cancel that.
+      if (onCreated) onCreated(res.id); else onClose();
     } catch (err) { showToast(err.message, 'error'); } finally { setSaving(false); }
   }
 
@@ -3079,7 +3082,7 @@ function PriceHistory({ productId }) {
         <thead><tr className="text-left text-muted-foreground"><th className="py-0.5">Month</th><th>Price</th><th>Cost</th><th>By</th></tr></thead>
         <tbody>{rows.map((r, i) => (
           <tr key={i} className="border-t"><td className="py-0.5">{String(r.changed_at).slice(5, 7)}-{String(r.changed_at).slice(0, 4)}</td>
-            <td className="tnum">{r.price != null ? formatMoney(r.price) : '—'}</td><td className="tnum">{r.cost_price != null ? formatMoney(r.cost_price) : '—'}</td><td>{r.changed_by || ''}</td></tr>
+            <td className="tnum">{r.price != null ? `₹${Number(r.price).toLocaleString('en-IN')}` : '—'}</td><td className="tnum">{r.cost_price != null ? `₹${Number(r.cost_price).toLocaleString('en-IN')}` : '—'}</td><td>{r.changed_by || ''}</td></tr>
         ))}</tbody>
       </table>
     </div>

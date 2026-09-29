@@ -5,7 +5,9 @@ import { signToken, COOKIE_OPTS, postLoginHome } from '@/lib/auth';
 
 export async function POST(req) {
   const { username, password } = await req.json();
-  const user = await queryOne('SELECT * FROM users WHERE username = ?', [username]);
+  // Exact name first; else ignore case, so a customer typing "Acme" still reaches their login "acme".
+  const user = await queryOne('SELECT * FROM users WHERE username = ?', [username])
+    || await queryOne('SELECT * FROM users WHERE LOWER(username) = LOWER(?)', [String(username || '')]);
   // Async bcrypt keeps a login from blocking the Node event loop while the hash is checked.
   if (!user || !(await bcrypt.compare(password || '', user.password))) {
     return NextResponse.json({ error: 'Invalid username or password' }, { status: 401 });
