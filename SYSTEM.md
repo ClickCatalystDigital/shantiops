@@ -12642,3 +12642,6 @@ When this engagement produces a new reusable decision, contribute it back: add a
 - **Phone**: Enquiries, Order Tracker, Payment Log, Quotations, Sale Orders, Customers, Products, Portal Access show cards below `md`; KPI tiles scroll sideways.
 - **Portal**: phone-number/reset passwords set `users.must_change_password`; the portal redirects to `/change-password` until the customer picks their own. Username matching ignores case.
 - Enquiries of one customer show a badge/“Group by customer”, and the enquiry sheet lists that customer's other enquiries.
+
+## 5dj. Enquiries enriched from the old CRM's projection list (2026-09-30)
+- `scripts/import-sales-call-details.mjs` (dry run writes a plan file + `docs/sales-call-details-review.csv`; `--apply` applies that plan; `--rollback`) with the pure parser `lib/sales-call-details-import.mjs` (selfcheck `node lib/sales-call-details-import-selfcheck.mjs`). Existing enquiries are matched by full name + enquiry date and enriched fill-blank only (`COALESCE(NULLIF(col,''),?)`); missing ones inserted in atomic batches; each Action Taken/Plan Of Action became a lead-linked `crm_notes` row (`import_tag`). Applied: 3,036 enriched, 1,996 added, 2,759 notes, 3,410 customers given a blank email/phone. Details: `docs/sales-call-details-notes.md`. Plan/backup/manifest JSON stay untracked (customer data).

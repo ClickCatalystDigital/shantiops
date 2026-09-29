@@ -135,6 +135,14 @@ is already converted to a customer).
 
 ---
 
+## 6b. Enquiries enriched from sales_call_details1–3.csv (2026-09-30)
+
+Details: [sales-call-details-notes.md](sales-call-details-notes.md).
+
+- [ ] **~1,640 Diary follow-ups are dated in the past** (mostly 2020–2025) and show as overdue on Home and the follow-up reports. Chosen on purpose; to soften, clear `next_plan_date` on notes tagged `import:sales-call-details-2026-09-30`.
+- [ ] **39 rows need a person**: [sales-call-details-review.csv](sales-call-details-review.csv) (several enquiries with the same name and date, one cut-off row, two rows with a second email).
+- [ ] **Old enquiries still open in the pipeline**: earlier imports left old open-stage enquiries open; the 635 old ones added by this import are closed as historical calls. Decide whether to close the older ones the same way.
+
 ## 6a. Diary follow-ups (from the old CRM's Quick Planner export)
 
 Details: [diary-import-notes.md](diary-import-notes.md).
@@ -217,7 +225,7 @@ document).
 | **Diary / follow-up history** | **Done (2026-09-28)** — 1,939 notes + 186 contacts imported from the old CRM's Quick Planner export, linked to customers (not enquiries — see §6a) | — | — |
 | **Contact persons** | 0 (customers have one phone/email only) | Contact list per customer (name, designation, phone, email) | Import into `contacts`, matched to customers by code/name |
 | **Past quotations** | **Done (2026-09-28)** — 2,221 header-only quotations imported from the old CRM's register (2,217 draft, 4 sent), linked to customers. No line items exist in the source, so no product/price data came with them — see §6b | — | — |
-| **Enquiry stage, A/C manager, value** | All 598 at Lead - Cold, unassigned, no value | Export with stage + owner + value (the PDF didn't have them) | Update the imported enquiries by serial number |
+| **Enquiry stage, A/C manager, value** | **Done (2026-09-30)** — sales_call_details export applied: real stage and A/C manager on 5,033 of 5,074 enquiries, see §6b | — | — |
 | **Full product names on enquiries** | Cut off by the PDF | Same export as above (text, not PDF) | Same update |
 | **Branches** | 0 | Branch list | Masters → Branches (by hand) or a small import |
 | **Sales targets** | 0 | Targets per person per month | Masters → Targets |
