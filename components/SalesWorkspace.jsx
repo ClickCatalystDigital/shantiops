@@ -3081,10 +3081,10 @@ function ProductDialog({ product, onClose, router }) {
             <div className="grid gap-1.5"><Label>HSN code</Label><Input value={f.hsn_code} onChange={e => set('hsn_code')(e.target.value)} /></div>
             <div className="grid gap-1.5"><Label>GST %</Label><Input type="number" min="0" value={f.gst_pct} onChange={e => set('gst_pct')(e.target.value)} placeholder="18" /></div>
           </div>
-          <div className="grid grid-cols-3 gap-3">
-            <div className="grid gap-1.5"><Label>Category</Label>
+          <div className="grid grid-cols-3 gap-3 md:col-span-2">
+            <div className="grid min-w-0 gap-1.5"><Label>Category</Label>
               <Select value={f.category || ''} onValueChange={set('category')}>
-                <SelectTrigger className="w-full"><SelectValue placeholder="—" /></SelectTrigger>
+                <SelectTrigger className="w-full min-w-0"><SelectValue placeholder="—" /></SelectTrigger>
                 <SelectContent><SelectItem value="Standard Product">Standard Product</SelectItem><SelectItem value="Premium Product">Premium Product</SelectItem></SelectContent>
               </Select>
             </div>
