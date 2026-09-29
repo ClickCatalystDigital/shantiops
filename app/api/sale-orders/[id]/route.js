@@ -4,7 +4,7 @@ import { hiddenSalesRecord } from '@/lib/sales-visibility';
 import { NextResponse } from 'next/server';
 import { checkSalesPerson } from '@/lib/sales-people';
 import { execute, queryAll, queryOne } from '@/lib/db';
-import { getFreshSessionUser, requireDepartment, canAccessDepartment, isPM } from '@/lib/auth';
+import { getFreshSessionUser, requireDepartment, canAccessDepartment, isPM, isDepartmentHead } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { getSaleOrderDetail } from '@/lib/data';
 import { COMPANY_NAMES } from '@/lib/qc-doc-pdf.js';
@@ -145,5 +145,40 @@ export async function PATCH(req, { params }) {
   if (changed.length) {
     await audit('sale_order_edit', { actor: user.username, detail: `${before.so_no}: ${changed.map(([c, v]) => `${c} ${before[c] ?? '—'} → ${v ?? '—'}`).join('; ')}` });
   }
+  return NextResponse.json({ ok: true });
+}
+
+// Head-only, hard delete — refuses if this order has a real downstream record (a payment logged
+// against it is the one that matters most; most real orders will have at least one, which is
+// correct — this is for a genuinely wrong/duplicate/test order, not an undo button). sale_order_items
+// and sale_order_files cascade on their own.
+export async function DELETE(req, { params }) {
+  const user = await getFreshSessionUser();
+  const hidden = await hiddenSalesRecord(user, 'sale_order', params.id);
+  if (hidden) return hidden;
+  if (!isDepartmentHead(user, 'Sales') && !isDepartmentHead(user, 'Marketing')) {
+    return NextResponse.json({ error: 'Only a Sales or Marketing head can delete an order' }, { status: 403 });
+  }
+  const existing = await queryOne('SELECT id, so_no FROM sale_orders WHERE id = ?', [params.id]);
+  if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
+  const checks = [
+    ['projects', 'sale_order_id', 'project(s)'],
+    ['sales_returns', 'sale_order_id', 'return(s)'],
+    ['work_orders', 'sale_order_id', 'work order(s)'],
+    ['sales_invoices', 'sale_order_id', 'sales invoice(s)'],
+    ['sale_order_payments', 'sale_order_id', 'payment(s)'],
+  ];
+  const blocks = [];
+  for (const [table, col, label] of checks) {
+    const r = await queryOne(`SELECT COUNT(*) n FROM ${table} WHERE ${col} = ?`, [params.id]);
+    if (r.n > 0) blocks.push(`${r.n} ${label}`);
+  }
+  if (blocks.length) {
+    return NextResponse.json({ error: `Can't delete — this order has ${blocks.join(', ')} linked to it` }, { status: 409 });
+  }
+
+  await execute('DELETE FROM sale_orders WHERE id = ?', [params.id]);
+  await audit('sale_order_deleted', { actor: user.username, detail: `#${params.id} ${existing.so_no}` });
   return NextResponse.json({ ok: true });
 }

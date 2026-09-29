@@ -3,6 +3,8 @@
 import { NextResponse } from 'next/server';
 import { execute, queryAll } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
+import { salesScope } from '@/lib/sales-visibility';
+import { leadVisible } from '@/lib/sales-visibility.mjs';
 import { checkSalesPerson } from '@/lib/sales-people';
 import { audit } from '@/lib/usb';
 
@@ -20,10 +22,17 @@ export async function POST(req) {
   if (chk.error) return NextResponse.json({ error: chk.error }, { status: 400 });
   if (!chk.value) return NextResponse.json({ error: 'Pick an A/C Manager to assign' }, { status: 400 });
 
-  // Only touch enquiries the caller can actually see/own — same rule PATCH enforces per-row.
-  const rows = await queryAll(`SELECT id, owner_dept FROM leads WHERE id IN (${ids.map(() => '?').join(',')})`, ids);
-  const allowedIds = rows.filter(r => canAccessDepartment(user, r.owner_dept)).map(r => r.id);
-  if (!allowedIds.length) return NextResponse.json({ error: 'None of the selected enquiries are in a department you can access' }, { status: 403 });
+  // Only touch enquiries the caller can actually see/own — same two-step rule PATCH enforces
+  // per-row (department access, then — for a plain Sales member, not a Head or PM — their own
+  // records only, via the identical leadVisible() predicate hiddenSalesRecord uses).
+  const rows = await queryAll(
+    `SELECT id, owner_dept, account_manager, assigned_to, initiated_by, created_by FROM leads WHERE id IN (${ids.map(() => '?').join(',')})`, ids);
+  const me = salesScope(user);
+  const allowedIds = rows
+    .filter(r => canAccessDepartment(user, r.owner_dept))
+    .filter(r => !me || leadVisible(r, me))
+    .map(r => r.id);
+  if (!allowedIds.length) return NextResponse.json({ error: 'None of the selected enquiries are visible to you' }, { status: 403 });
 
   await execute(
     `UPDATE leads SET account_manager = ?, updated_at = CURRENT_TIMESTAMP WHERE id IN (${allowedIds.map(() => '?').join(',')})`,

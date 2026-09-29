@@ -145,7 +145,7 @@ export function Pager({ page, setPage, size, setSize, total }) {
 const byDate = (dir, get) => (a, b) => (dir === 'desc' ? -1 : 1) * String(get(a)).localeCompare(String(get(b)));
 const matches = (q, parts) => !q.trim() || parts.join(' ').toLowerCase().includes(q.trim().toLowerCase());
 
-export function PaymentOrdersTab({ saleOrders, payments, invoices, customers = [], users = [], company = null }) {
+export function PaymentOrdersTab({ saleOrders, payments, invoices, customers = [], users = [], isSalesHead = false, company = null }) {
   const router = useRouter();
   const [q, setQ] = useState('');
   const [dir, setDir] = useState('desc');
@@ -154,8 +154,20 @@ export function PaymentOrdersTab({ saleOrders, payments, invoices, customers = [
   const [size, setSize] = useState(SIZES[0]);
   const [adding, setAdding] = useState(false);
   const [remarkFor, setRemarkFor] = useState(null);
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [deletingId, setDeletingId] = useState(null);
   // Plan 1i — active Sales users first, then the legacy names already on imported orders.
   const people = useMemo(() => salesPeopleOptions(users, saleOrders.map(o => o.sales_person)), [users, saleOrders]);
+
+  async function deleteOrder(r) {
+    if (!window.confirm(`Delete order ${r.so_no}? This can't be undone.`)) return;
+    setDeletingId(r.id);
+    try {
+      await api(`/api/sale-orders/${r.id}`, { method: 'DELETE' });
+      showToast(`${r.so_no} deleted`);
+      router.refresh();
+    } catch (e) { showToast(e.message, 'error'); } finally { setDeletingId(null); }
+  }
 
   // All non-cancelled orders with derived fields — the KPI cards read this, the table filters it.
   const all = useMemo(() => {
@@ -176,8 +188,9 @@ export function PaymentOrdersTab({ saleOrders, payments, invoices, customers = [
   }, [saleOrders, payments, invoices, local]);
 
   const rows = useMemo(() => all
+    .filter(r => statusFilter === 'all' || r.track_status === statusFilter)
     .filter(r => matches(q, [r.so_no, r.customer_name, r.invoiceNos, r.sales_person, r.track_status, r.remarks || '', r.stage, fmtDate(r.orderDate), r.total, r.bill.value ?? '']))
-    .sort(byDate(dir, r => r.orderDate)), [all, q, dir]);
+    .sort(byDate(dir, r => r.orderDate)), [all, q, dir, statusFilter]);
 
   // KPI columns — each is a stacked pair. Stage-based ones follow Current Stage; the site/dispatch
   // ones count the ticked boxes (a pending issue that's already cleared no longer counts as pending).
@@ -229,12 +242,20 @@ export function PaymentOrdersTab({ saleOrders, payments, invoices, customers = [
             </div>
           ))}
         </div>
-        <Toolbar q={q} setQ={v => { setQ(v); setPage(0); }} dir={dir} setDir={f => { setDir(f); setPage(0); }} dateLabel="Order date" />
+        <Toolbar q={q} setQ={v => { setQ(v); setPage(0); }} dir={dir} setDir={f => { setDir(f); setPage(0); }} dateLabel="Order date">
+          <Select value={statusFilter} onValueChange={v => { setStatusFilter(v); setPage(0); }}>
+            <SelectTrigger className="h-9 w-32"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All statuses</SelectItem>
+              {TRACK_STATUSES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </Toolbar>
         {rows.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No orders match.</p> : (
           <Table>
             <TableHeader>
               <TableRow>
-                {['Order Date', 'Order ID', 'Customer Name', 'Invoice No', 'Sales Person', 'Status', 'Order Value', 'Bill Value', 'Payment Received', 'Payment Pending', 'Current Stage', 'Remarks'].map(h => <TableHead key={h}>{h}</TableHead>)}
+                {['Order Date', 'Order ID', 'Customer Name', 'Invoice No', 'Sales Person', 'Status', 'Order Value', 'Bill Value', 'Payment Received', 'Payment Pending', 'Current Stage', 'Remarks', ''].map(h => <TableHead key={h}>{h}</TableHead>)}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -277,6 +298,13 @@ export function PaymentOrdersTab({ saleOrders, payments, invoices, customers = [
                       className={`block w-full truncate rounded px-1 py-0.5 text-left text-sm hover:bg-muted ${r.remarks ? '' : 'text-muted-foreground'}`}>
                       {r.remarks || 'Add remark'}
                     </button>
+                  </TableCell>
+                  <TableCell>
+                    {isSalesHead && (
+                      <Button size="icon-sm" variant="ghost" className="text-destructive" disabled={deletingId === r.id} onClick={() => deleteOrder(r)}>
+                        <TrashIcon className="size-3.5" />
+                      </Button>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}

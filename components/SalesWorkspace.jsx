@@ -523,7 +523,7 @@ function ExpectedValueField({ lead, router }) {
   );
 }
 
-function LeadDetailSheet({ lead, users, customers, salesProducts = [], branches = [], stages = [], onClose, router }) {
+function LeadDetailSheet({ lead, users, customers, salesProducts = [], branches = [], stages = [], isSalesHead = false, onClose, router }) {
   const extra = ENQUIRY_DETAIL_FIELDS.filter(([k]) => lead[k]);
   // Home calendar's ?diary=now|advanced deep-link (Phase 4) — opens straight into the diary form
   // instead of the plain detail sheet.
@@ -618,7 +618,7 @@ function LeadDetailSheet({ lead, users, customers, salesProducts = [], branches 
               <Button size="sm" variant="outline" onClick={() => setAction('po')}>Create PO</Button>
               <Button size="sm" variant="outline" disabled={closing} onClick={closeSalesCall}>Close Sales Call</Button>
               <Button size="sm" variant="outline" className="text-destructive" onClick={() => setAction('lost')}>Order Lost</Button>
-              {!lead.converted_customer_id && (
+              {isSalesHead && !lead.converted_customer_id && (
                 <Button size="sm" variant="ghost" className="ml-auto text-destructive" disabled={deleting} onClick={deleteLead}>
                   <TrashIcon className="size-3.5" />{deleting ? 'Deleting…' : 'Delete'}
                 </Button>
@@ -1004,7 +1004,7 @@ function LeadBoard({ leads: allLeads, stages, onOpen, onLost, router }) {
 // narrowed to open, not-closed leads still before the "Proposals" stage (lib/lead-stage.mjs
 // isEnquiryStage) — only the creation dialog differs (isEnquiry picks AddEnquiryDialog's fuller
 // form over AddLeadDialog's).
-function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], stages = [], savedViews, router, isEnquiry = false }) {
+function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], stages = [], savedViews, isSalesHead = false, router, isEnquiry = false }) {
   const { convert: convertLeadRow, dialog: convertRowDialog } = useLeadConvert();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [busyId, setBusyId] = useState(null);
@@ -1188,7 +1188,7 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
         : <AddLeadDialog router={router} onClose={() => setDialogOpen(false)} />)}
       {lostLead && <OrderLostDialog lead={lostLead} router={router} onClose={() => setLostLead(null)} />}
       {convertRowDialog}
-      {selected && <LeadDetailSheet lead={leads.find(l => l.id === selected.id) || selected} users={users} customers={customers} salesProducts={salesProducts} branches={branches} stages={stages} router={router} onClose={() => setSelected(null)} />}
+      {selected && <LeadDetailSheet lead={leads.find(l => l.id === selected.id) || selected} users={users} customers={customers} salesProducts={salesProducts} branches={branches} stages={stages} isSalesHead={isSalesHead} router={router} onClose={() => setSelected(null)} />}
     </Card>
   );
 }
@@ -1229,7 +1229,7 @@ function AddCustomerDialog({ onClose, router }) {
   );
 }
 
-function CustomerDetailSheet({ customerId, onClose, router }) {
+function CustomerDetailSheet({ customerId, isSalesHead = false, onClose, onDeleted, router }) {
   const [detail, setDetail] = useState(null);
   const [contactName, setContactName] = useState('');
   const [addrLine1, setAddrLine1] = useState('');
@@ -1259,6 +1259,7 @@ function CustomerDetailSheet({ customerId, onClose, router }) {
       await api(`/api/customers/${customerId}`, { method: 'DELETE' });
       showToast('Customer deleted');
       router.refresh();
+      onDeleted?.();
       onClose();
     } catch (err) { showToast(err.message, 'error'); } finally { setDeleting(false); }
   }
@@ -1313,9 +1314,11 @@ function CustomerDetailSheet({ customerId, onClose, router }) {
               <Button size="sm" variant="outline" disabled={activeBusy} onClick={() => toggleActive(!detail.active)}>
                 {detail.active ? 'Deactivate' : 'Reactivate'}
               </Button>
-              <Button size="sm" variant="ghost" className="text-destructive" disabled={deleting} onClick={deleteCustomer}>
-                <TrashIcon className="size-3.5" />{deleting ? 'Deleting…' : 'Delete'}
-              </Button>
+              {isSalesHead && (
+                <Button size="sm" variant="ghost" className="text-destructive" disabled={deleting} onClick={deleteCustomer}>
+                  <TrashIcon className="size-3.5" />{deleting ? 'Deleting…' : 'Delete'}
+                </Button>
+              )}
             </div>
 
             <Customer360 customerId={detail.id} />
@@ -1398,21 +1401,23 @@ function OldCrmSummary({ detail }) {
   );
 }
 
-function CustomersTab({ router }) {
+function CustomersTab({ isSalesHead = false, router }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedId, setSelectedId] = useState(null);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
   const [size, setSize] = useState(SIZES[0]);
   const [data, setData] = useState({ rows: [], total: 0, loading: true });
-  // Server-side search + paging (9k+ customers since the old-CRM import).
+  const [refreshKey, setRefreshKey] = useState(0);
+  // Server-side search + paging (9k+ customers since the old-CRM import). router.refresh() alone
+  // doesn't re-run this fetch (it's not driven by server props) — a delete bumps refreshKey instead.
   useEffect(() => {
     const t = setTimeout(() => {
       const qs = new URLSearchParams({ paged: '1', q: search.trim(), offset: String(page * size), limit: String(size) });
       api(`/api/customers?${qs}`).then(d => setData({ ...d, loading: false })).catch(err => { showToast(err.message, 'error'); setData(x => ({ ...x, loading: false })); });
     }, 250);
     return () => clearTimeout(t);
-  }, [search, page, size]);
+  }, [search, page, size, refreshKey]);
   return (
     <Card>
       <CardHeader>
@@ -1442,7 +1447,7 @@ function CustomersTab({ router }) {
         <Pager page={page} setPage={setPage} size={size} setSize={setSize} total={data.total} />
       </CardContent>
       {dialogOpen && <AddCustomerDialog router={router} onClose={() => setDialogOpen(false)} />}
-      {selectedId && <CustomerDetailSheet customerId={selectedId} router={router} onClose={() => setSelectedId(null)} />}
+      {selectedId && <CustomerDetailSheet customerId={selectedId} isSalesHead={isSalesHead} router={router} onDeleted={() => setRefreshKey(k => k + 1)} onClose={() => setSelectedId(null)} />}
     </Card>
   );
 }
@@ -1761,7 +1766,7 @@ function QuotationConvertButtons({ q, busy, onConvert, onInvoice, onRevise, onAp
       {q.status === 'accepted' && <Button size="sm" variant="outline" disabled={busy} onClick={() => onConvert(q)}>Convert to SO</Button>}
       {q.status === 'accepted' && <Button size="sm" variant="outline" disabled={busy} onClick={() => onInvoice(q)}>Convert to Invoice</Button>}
       {!['accepted', 'revised'].includes(q.status) && <Button size="sm" variant="ghost" disabled={busy} onClick={() => onRevise(q)}>Revise</Button>}
-      {onDelete && !['accepted', 'sent'].includes(q.status) && (
+      {canApprove && onDelete && !['accepted', 'sent'].includes(q.status) && (
         <Button size="icon-sm" variant="ghost" className="text-destructive" disabled={busy} onClick={() => onDelete(q)}><TrashIcon className="size-3.5" /></Button>
       )}
     </div>
@@ -1885,7 +1890,7 @@ function QuotationsTab({ quotations, customers, salesProducts = [], isSalesHead 
       <CardHeader>
         <CardTitle>Quotations</CardTitle>
         <CardAction className="flex gap-2">
-          <Button size="sm" variant={followupOnly ? 'default' : 'outline'} onClick={() => setFollowupOnly(v => !v)}>
+          <Button size="sm" variant={followupOnly ? 'default' : 'outline'} onClick={() => { setFollowupOnly(v => !v); setPage(0); }}>
             Needs follow-up{followupCount ? ` (${followupCount})` : ''}
           </Button>
           <Button size="sm" onClick={() => setDialogOpen(true)}><PlusIcon />New Quotation</Button>
@@ -3253,9 +3258,9 @@ export default function SalesWorkspace({ saleOrders, leads, customers, quotation
           {/* Keyed by the global company selection: switching company remounts the tab, so its page,
               search and optimistic edits start fresh instead of pointing past the new, shorter list. */}
           <Fragment key={company || 'all'}>
-          {activePanel.key === 'enquiry' && <LeadsTab leads={leads} users={users} customers={customers} salesProducts={salesProducts} branches={branches} savedViews={savedViews} stages={stages} router={router} isEnquiry />}
-          {activePanel.key === 'leads' && <LeadsTab leads={leads} users={users} customers={customers} salesProducts={salesProducts} branches={branches} stages={stages} savedViews={savedViews} router={router} />}
-          {activePanel.key === 'customers' && <CustomersTab customers={customers} router={router} />}
+          {activePanel.key === 'enquiry' && <LeadsTab leads={leads} users={users} customers={customers} salesProducts={salesProducts} branches={branches} savedViews={savedViews} stages={stages} isSalesHead={isSalesHead} router={router} isEnquiry />}
+          {activePanel.key === 'leads' && <LeadsTab leads={leads} users={users} customers={customers} salesProducts={salesProducts} branches={branches} stages={stages} savedViews={savedViews} isSalesHead={isSalesHead} router={router} />}
+          {activePanel.key === 'customers' && <CustomersTab customers={customers} isSalesHead={isSalesHead} router={router} />}
           {activePanel.key === 'quotations' && <QuotationsTab quotations={quotations} customers={customers} salesProducts={salesProducts} isSalesHead={isSalesHead} router={router} />}
           {activePanel.key === 'price_lists' && <PriceListsTab priceLists={priceLists} customers={customers} salesProducts={salesProducts} router={router} />}
           {activePanel.key === 'sale_orders' && <SaleOrdersTab saleOrders={saleOrders} router={router} canEditSoTax={canEditSoTax} />}
@@ -3264,7 +3269,7 @@ export default function SalesWorkspace({ saleOrders, leads, customers, quotation
               initialProject={initialScopeProject} />
           )}
           {activePanel.key === 'invoices' && <InvoicesTab invoices={invoices} creditNotes={creditNotes} router={router} />}
-          {activePanel.key === 'payment_orders' && <PaymentOrdersTab saleOrders={saleOrders} payments={salePayments} invoices={invoices} customers={customers} users={users} company={company} />}
+          {activePanel.key === 'payment_orders' && <PaymentOrdersTab saleOrders={saleOrders} payments={salePayments} invoices={invoices} customers={customers} users={users} isSalesHead={isSalesHead} company={company} />}
           {activePanel.key === 'payment_log' && <PaymentLogTab saleOrders={saleOrders} payments={salePayments} invoices={invoices} company={company} />}
           {activePanel.key === 'returns' && <ReturnsTab returns={returns} saleOrders={saleOrders} inventoryItems={inventoryItems} router={router} />}
           {activePanel.key === 'tasks' && <AllTasksTab users={users} />}
