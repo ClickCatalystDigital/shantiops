@@ -1,5 +1,6 @@
 'use client';
 
+import { actionTypeLabel } from '@/lib/action-types.mjs';
 import { useMemo, useState, useEffect } from 'react';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
@@ -60,7 +61,7 @@ function FollowupTable({ rows, onUpdate }) {
                 <td className="px-2 py-1.5">{r.location || r.lead_location || '—'}</td>
                 <td className="px-2 py-1.5">{contact(r)}</td>
                 <td className="px-2 py-1.5">{r.plan_of_action || '—'}</td>
-                <td className="px-2 py-1.5">{r.plan_note_type || r.note_type || '—'}</td>
+                <td className="px-2 py-1.5">{actionTypeLabel(r.plan_note_type || r.note_type)}</td>
                 <td className="px-2 py-1.5">{r.action_taken || r.content || '—'}</td>
                 <td className="px-2 py-1.5">{actions(r)}</td>
               </tr>
@@ -80,7 +81,7 @@ function FollowupTable({ rows, onUpdate }) {
               <span>{inOut(r)}</span>
               {(r.location || r.lead_location) && <span>{r.location || r.lead_location}</span>}
               {contact(r) !== '—' && <span>{contact(r)}</span>}
-              {(r.plan_note_type || r.note_type) && <span>{r.plan_note_type || r.note_type}</span>}
+              {(r.plan_note_type || r.note_type) && <span>{actionTypeLabel(r.plan_note_type || r.note_type)}</span>}
             </div>
             {r.plan_of_action && <p className="pl-6 text-xs text-muted-foreground">Objective: {r.plan_of_action}</p>}
             {(r.action_taken || r.content) && <p className="pl-6 text-xs text-muted-foreground">Done: {r.action_taken || r.content}</p>}

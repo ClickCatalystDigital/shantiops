@@ -8,13 +8,14 @@ import { notifyUser } from '@/lib/notify';
 import { getFreshSessionUser, isInternal, canAccessDepartment, isDepartmentHead, parseDepartments } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { getCrmNotes } from '@/lib/data';
+import { ACTION_TYPE_VALUES } from '@/lib/action-types.mjs';
 
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 // 'diary' isn't its own note_type — a Diary entry's real Action Type is still call/email/meeting/
 // note (the legacy form's "Action Type*" field), and diary-ness is signaled by which diary fields
 // (below) are actually populated, not by a separate enum value. 'feedback' IS a distinct, real
 // note_type (Phase 5's 3 Feedback reports filter on it directly).
-const NOTE_TYPES = ['call', 'email', 'meeting', 'note', 'feedback'];
+const NOTE_TYPES = [...ACTION_TYPE_VALUES, 'feedback']; // lib/action-types.mjs — call/email/meeting/note + message/offer/intro/status
 // Any of these present means this is a Diary entry (Phase 1) — its own authority (sales.diary.write),
 // distinct from just leaving a plain note.
 const DIARY_FIELDS = ['visit_date', 'action_taken', 'plan_date', 'plan_of_action', 'next_plan_date', 'in_time', 'out_time', 'plan_note_type'];

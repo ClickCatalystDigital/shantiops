@@ -5,6 +5,7 @@
 import { NextResponse } from 'next/server';
 import { timingSafeEqual } from 'node:crypto';
 import { sweepQuotationReminders } from '@/lib/quotation-reminders';
+import { sweepRetentionNotice } from '@/lib/sales-retention';
 import { sweepPaymentReminders } from '@/lib/payment-reminders';
 
 function authorized(req) {
@@ -18,7 +19,8 @@ export async function POST(req) {
   try {
     const quotations = await sweepQuotationReminders();
     const payments = await sweepPaymentReminders();
-    return NextResponse.json({ ok: true, ...quotations, payments });
+    const retention = await sweepRetentionNotice();
+    return NextResponse.json({ ok: true, ...quotations, payments, retention });
   } catch (err) {
     return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
   }

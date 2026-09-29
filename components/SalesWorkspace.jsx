@@ -27,7 +27,7 @@ import {
   CheckSquareIcon, ContactIcon, MessageCircleIcon, MailIcon, TagIcon,
   UndoIcon, IndianRupeeIcon, ReceiptIcon, DownloadIcon, UploadIcon,
   ClipboardListIcon, BanknoteIcon, Building2Icon, PackageIcon, TargetIcon, StarIcon,
-  PencilIcon,
+  PencilIcon, ClockIcon,
 } from 'lucide-react';
 import { api, showToast } from '@/lib/client';
 import { todayISO } from '@/lib/date';
@@ -38,10 +38,12 @@ import { PaymentOrdersTab, PaymentLogTab, Pager, SIZES } from '@/components/Sale
 import { CreatePoFlow, SaleOrderDetailsSheet } from '@/components/SaleOrderWizard';
 import { LOST_REASONS, composeReason } from '@/lib/lost-reasons.mjs';
 import { EmailSetupTab, PortalAccessTab } from '@/components/SalesSetupPanels';
+import SalesRetentionPanel from '@/components/SalesRetentionPanel';
+import { ACTION_TYPES, actionTypeLabel } from '@/lib/action-types.mjs';
 import ProductSearchField from '@/components/ProductSearchField';
 import CustomerPicker from '@/components/CustomerPicker';
 import { defaultCompanyClient } from '@/lib/company-filter.mjs';
-import { salesPeopleOptions } from '@/lib/sales-people.mjs';
+import { salesPeopleOptions, personLabel } from '@/lib/sales-people.mjs';
 import { useLeadConvert, SimilarCustomersHint, useSimilarCustomers } from '@/components/ConvertLeadChoice';
 import { renderTemplate } from '@/lib/email-template.mjs';
 import { customerKey } from '@/lib/customer-match.mjs';
@@ -152,9 +154,9 @@ function NotesPanel({ leadId, lead, opportunityId, customerId, users = [], sales
         {notes.map(n => (
           <div key={n.id} className="rounded border px-2 py-1.5 text-sm">
             <span className="text-muted-foreground">
-              {n.note_type}{n.note_type === 'call' && n.call_type ? ` (${n.call_type}${n.duration_seconds ? `, ${Math.round(n.duration_seconds / 60)}m` : ''})` : ''}:
+              {actionTypeLabel(n.note_type)}{n.note_type === 'call' && n.call_type ? ` (${n.call_type}${n.duration_seconds ? `, ${Math.round(n.duration_seconds / 60)}m` : ''})` : ''}:
             </span> {n.content}
-            <DiarySummaryTooltip note={n} />
+            <DiarySummaryTooltip note={n} users={users} />
           </div>
         ))}
         {notes.length === 0 && <p className="text-sm text-muted-foreground">No activity yet.</p>}
@@ -191,12 +193,12 @@ function NotesPanel({ leadId, lead, opportunityId, customerId, users = [], sales
 
 // Compact follow-up summary — reused wherever the checklist calls for it: NotesPanel (here), the
 // Funnel Report drill-down, and the Home calendar overlay (Phase 4/5).
-export function DiarySummaryTooltip({ note }) {
+export function DiarySummaryTooltip({ note, users = [] }) {
   if (!note.next_plan_date && !note.plan_of_action) return null;
   return (
     <div className="mt-1 rounded bg-muted/40 px-2 py-1 text-xs text-muted-foreground">
       {note.next_plan_date && <span>Next follow-up: {note.next_plan_date}{note.plan_time ? ` ${note.plan_time}` : ''}. </span>}
-      {note.plan_for && <span>For: {note.plan_for}. </span>}
+      {note.plan_for && <span>For: {personLabel(note.plan_for, users)}. </span>}
       {note.plan_of_action && <span>{note.plan_of_action}</span>}
     </div>
   );
@@ -261,7 +263,7 @@ export function AddToDiaryDialog({ lead, users, salesProducts, onClose, onSaved,
     } catch (err) { showToast(err.message, 'error'); } finally { setSaving(false); }
   }
 
-  const actionTypes = [['call', 'Phone'], ['email', 'Email'], ['meeting', 'Meeting'], ['note', 'Other']];
+  const actionTypes = ACTION_TYPES.map(t => [t.value, t.label]);
   const managerOpts = users.map(u => ({ value: u.username, label: u.display_name || u.username }));
   const stageOpts = stages.filter(x => !x.is_won || true).map(x => ({ value: x.name, label: x.name }));
   return (
@@ -443,7 +445,7 @@ const ENQUIRY_DETAIL_FIELDS = [
   ['short_name', 'Short name'], ['district', 'District'], ['sub_location', 'Sub location'],
   ['telephone', 'Telephone'], ['order_expected_in', 'Order expected in'], ['week_number', 'Week number'],
   ['initiated_by', 'Initiated by'], ['district_code', 'District code'],
-  ['pin_code', 'Pin code'],
+  ['pin_code', 'Pin code'], ['product_type', 'Product type'],
 ];
 
 // A/C Manager — real inline edit, not the plain read-only row it used to be (docs/sales-data-health
@@ -595,14 +597,14 @@ function LeadDetailSheet({ lead, allLeads = [], onOpenLead, users, customers, sa
             {lead.source && <span>Source: {lead.source}</span>}
             {lead.territory && <span>State: {lead.territory}</span>}
             {lead.industry && <span>Segment: {lead.industry}</span>}
-            {lead.assigned_to && <span>Team: {lead.assigned_to}</span>}
+            {lead.assigned_to && <span>Team: {personLabel(lead.assigned_to, users)}</span>}
             {lead.enquiry_date && <span>Enquiry date: {lead.enquiry_date}</span>}
             <ContactLinks phone={lead.phone} email={lead.email} />
           </div>
           {extra.length > 0 && (
             <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 rounded-md border p-3 text-sm xl:grid-cols-3">
               {extra.map(([k, label]) => (
-                <div key={k}><span className="text-muted-foreground">{label}: </span>{lead[k]}</div>
+                <div key={k}><span className="text-muted-foreground">{label}: </span>{k === 'initiated_by' ? personLabel(lead[k], users) : lead[k]}</div>
               ))}
             </div>
           )}
@@ -955,8 +957,9 @@ export function AddEnquiryDialog({ leads = [], users, salesProducts, stages = []
 // lives here now, over enquiries instead of opportunities. Same native HTML5 drag pattern as
 // PipelineWorkspace.jsx. Dropping on a won stage points to Create PO (which records the order);
 // dropping on Order Lost opens the reason dialog; every other stage changes directly.
-function LeadBoard({ leads: allLeads, stages, onOpen, onLost, router }) {
+function LeadBoard({ leads: allLeads, stages, users = [], onOpen, onLost, router }) {
   const [busyId, setBusyId] = useState(null);
+  const [shownBy, setShownBy] = useState({}); // cards shown per stage — thousands of enquiries would freeze the page
   const leads = allLeads.filter(l => !isClosedCall(l, stages)); // closed sales calls aren't pipeline
   const ordered = [...stages].sort((a, b) => a.sort_order - b.sort_order);
   const wonNames = new Set(stages.filter(s => s.is_won).map(s => s.name));
@@ -986,7 +989,8 @@ function LeadBoard({ leads: allLeads, stages, onOpen, onLost, router }) {
       </div>
       <div className="flex gap-3 overflow-x-auto pb-2">
         {ordered.map(stage => {
-          const cards = leads.filter(l => stageOf(l) === stage.name);
+          const cards = leads.filter(l => stageOf(l) === stage.name).sort((a, b) => String(b.enquiry_date || '').localeCompare(String(a.enquiry_date || '')));
+          const limit = shownBy[stage.name] || 40;
           const total = cards.reduce((a, l) => a + (l.expected_value || 0), 0);
           return (
             <div key={stage.name}
@@ -1001,7 +1005,7 @@ function LeadBoard({ leads: allLeads, stages, onOpen, onLost, router }) {
                 <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{stage.name}</div>
                 <div className="text-xs text-muted-foreground tnum">{cards.length}{total > 0 ? ` · ${formatMoney(total)}` : ''}</div>
               </div>
-              {cards.map(l => (
+              {cards.slice(0, limit).map(l => (
                 <div key={l.id}
                   draggable={busyId !== l.id}
                   onDragStart={e => e.dataTransfer.setData('text/plain', String(l.id))}
@@ -1014,12 +1018,13 @@ function LeadBoard({ leads: allLeads, stages, onOpen, onLost, router }) {
                   {l.company_name && l.lead_name !== l.company_name && <div className="text-xs text-muted-foreground">{l.lead_name}</div>}
                   {lostNames.has(stage.name) && l.lost_reason && <div className="text-xs text-muted-foreground">Lost: {l.lost_reason}</div>}
                   <div className="mt-1 flex items-center justify-between gap-2">
-                    <span className="truncate text-xs text-muted-foreground">{l.account_manager || l.assigned_to || '—'}</span>
+                    <span className="truncate text-xs text-muted-foreground">{personLabel(l.account_manager || l.assigned_to, users)}</span>
                     {l.expected_value != null && <span className="text-xs font-semibold tnum">{formatMoney(l.expected_value)}</span>}
                   </div>
                   {isSlaBreached(l) && <Badge variant="destructive" className="mt-1">SLA overdue</Badge>}
                 </div>
               ))}
+              {cards.length > limit && <Button size="sm" variant="outline" onClick={() => setShownBy(m => ({ ...m, [stage.name]: limit + 40 }))}>Show more ({cards.length - limit} left)</Button>}
             </div>
           );
         })}
@@ -1046,6 +1051,8 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
   const [viewName, setViewName] = useState('');
   const [unassignedOnly, setUnassignedOnly] = useState(false);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [page, setPage] = useState(0);
+  const [size, setSize] = useState(25);
   const [bulkAssignee, setBulkAssignee] = useState('');
   const [bulkBusy, setBulkBusy] = useState(false);
 
@@ -1071,6 +1078,8 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
     filteredRaw.forEach(l => { const k = enquiryGroupKey(l); if (!order.has(k)) order.set(k, order.size); });
     return [...filteredRaw].sort((a, b) => order.get(enquiryGroupKey(a)) - order.get(enquiryGroupKey(b)));
   }, [filteredRaw, groupBy]);
+  useEffect(() => { setPage(0); }, [filters, unassignedOnly, groupBy]);
+  const shown = filtered.slice(page * size, (page + 1) * size); // 5,000+ enquiries: never render them all
   const teamOpts = users.map(u => ({ value: u.username, label: u.display_name || u.username }));
 
   function toggleSelected(id) {
@@ -1197,10 +1206,10 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
           </div>
         )}
         {view === 'board' ? (
-          <LeadBoard leads={filtered} stages={stages} onOpen={setSelected} onLost={setLostLead} router={router} />
+          <LeadBoard leads={filtered} stages={stages} users={users} onOpen={setSelected} onLost={setLostLead} router={router} />
         ) : filtered.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No leads match.</p> : (<>
           <div className="grid gap-2 md:hidden">
-            {filtered.map(l => (
+            {shown.map(l => (
               <div key={l.id} data-entity-code={`LD-${l.id}`} onClick={() => setSelected(l)} className="cursor-pointer rounded-xl border p-3 active:bg-muted">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 font-semibold">{l.company_name || l.lead_name}{!!l.is_vip && <StarIcon className="ml-1 inline size-3.5 fill-amber-400 text-amber-400" aria-label="VIP" />}</div>
@@ -1225,7 +1234,7 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
               <TableHead>Enquiry</TableHead><TableHead className="hidden lg:table-cell">Source</TableHead><TableHead>Stage</TableHead><TableHead className="text-right">Value</TableHead>
               <TableHead>A/C Manager</TableHead><TableHead className="hidden xl:table-cell">Assigned</TableHead><TableHead /></TableRow></TableHeader>
             <TableBody>
-              {filtered.map(l => (
+              {shown.map(l => (
                 <TableRow key={l.id} data-entity-code={`LD-${l.id}`} className="cursor-pointer" onClick={() => setSelected(l)}>
                   <TableCell onClick={e => e.stopPropagation()}>
                     <Checkbox checked={selectedIds.has(l.id)} onCheckedChange={() => toggleSelected(l.id)} aria-label={`Select ${l.lead_name}`} />
@@ -1260,6 +1269,7 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
               ))}
             </TableBody>
           </Table>
+          <Pager page={page} setPage={setPage} size={size} setSize={setSize} total={filtered.length} />
         </>)}
       </CardContent>
       {dialogOpen && <AddEnquiryDialog leads={leads} users={users} salesProducts={salesProducts} stages={stages} router={router} onClose={() => setDialogOpen(false)} />}
@@ -3497,6 +3507,7 @@ const PANEL_GROUPS = [
         { key: 'targets', label: 'Targets', icon: TargetIcon, description: 'Monthly Sales Targets per branch/manager' },
         { key: 'branches', label: 'Branches', icon: Building2Icon, description: 'Office/location list for Enquiry and Sale Orders' },
         { key: 'email_templates', label: 'Email Templates', icon: MailIcon, description: 'Commercial Offer wording, per company' },
+        { key: 'data_retention', label: 'Data retention', icon: ClockIcon, description: 'How long follow-up history is kept' },
       ],
     },
   ] },
@@ -3587,6 +3598,7 @@ export default function SalesWorkspace({ saleOrders, leads, customers, quotation
           {activePanel.key === 'products' && <ProductsTab salesProducts={salesProducts} router={router} />}
           {activePanel.key === 'targets' && <TargetsTab salesTargets={salesTargets} branches={branches} router={router} />}
           {activePanel.key === 'email_templates' && <EmailTemplatesTab router={router} />}
+          {activePanel.key === 'data_retention' && (isSalesHead ? <SalesRetentionPanel /> : <p className="p-4 text-sm text-muted-foreground">Only the Sales Head can manage data retention.</p>)}
           {activePanel.key === 'funnel_stages' && <FunnelStagesTab stages={stages} canEdit={isSalesHead} router={router} />}
           </Fragment>
     </WorkspaceSidebar>

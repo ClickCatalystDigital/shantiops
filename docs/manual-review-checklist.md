@@ -143,6 +143,14 @@ Details: [sales-call-details-notes.md](sales-call-details-notes.md).
 - [ ] **39 rows need a person**: [sales-call-details-review.csv](sales-call-details-review.csv) (several enquiries with the same name and date, one cut-off row, two rows with a second email).
 - [ ] **Old enquiries still open in the pipeline**: earlier imports left old open-stage enquiries open; the 635 old ones added by this import are closed as historical calls. Decide whether to close the older ones the same way.
 
+## 6c. Data-gap fill (2026-09-30)
+
+Details: [sales-links-notes.md](sales-links-notes.md).
+
+- [ ] **253 rows to check**: [sales-links-review.csv](sales-links-review.csv) (enquiries whose email/phone fits several customers, quotations or orders where several enquiries fit).
+- [ ] **845 enquiries still have no customer.** Create them from the enquiry (Convert to customer, which checks duplicates).
+- [ ] **Closed sales calls**: send the closed-calls export so the 1,218 history-only enquiries get their real stage, manager and closed date.
+
 ## 6a. Diary follow-ups (from the old CRM's Quick Planner export)
 
 Details: [diary-import-notes.md](diary-import-notes.md).

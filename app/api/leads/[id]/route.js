@@ -56,7 +56,7 @@ export async function PATCH(req, { params }) {
     // product_id is not here: products change only through `products` (plan 1e), which keeps
     // lead_products and the mirrored leads.product_id in step.
     ['lost_reason', 'lost_reason'], ['branch_id', 'branch_id'],
-    ['expected_order_date', 'expected_order_date'], ['week_number', 'week_number'],
+    ['expected_order_date', 'expected_order_date'], ['week_number', 'week_number'], ['product_type', 'product_type'],
   ]) {
     if (b[key] !== undefined) { fields.push(`${col} = ?`); args.push(b[key] || null); }
   }

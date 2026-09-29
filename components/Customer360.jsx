@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { TrashIcon } from 'lucide-react';
 import { companyShort } from '@/lib/company-filter.mjs';
+import { actionTypeLabel } from '@/lib/action-types.mjs';
 
 const WARRANTY = {
   active: w => `Warranty to ${formatDate(w.end)} (${w.daysLeft} days left)`,
@@ -157,7 +158,7 @@ export default function Customer360({ customerId }) {
 
       <Section title="Recent Diary" count={d.diary.length} report="customer_follow_up" customerId={customerId}>
         <Rows items={d.diary} empty="No Diary entries." render={n => (
-          <Row key={n.id}><span className="min-w-0 flex-1 truncate">{n.content}</span><span className="text-xs text-muted-foreground">{formatDate(n.visit_date || n.created_at)} · {n.created_by}</span></Row>
+          <Row key={n.id}><span className="min-w-0 flex-1 truncate">{n.note_type && n.note_type !== 'note' && <span className="mr-1.5 rounded border px-1 text-[10px] font-medium text-muted-foreground">{actionTypeLabel(n.note_type)}</span>}{n.content}</span><span className="text-xs text-muted-foreground">{formatDate(n.visit_date || n.created_at)} · {n.created_by}</span></Row>
         )} />
       </Section>
     </div>
