@@ -464,7 +464,7 @@ function AccountManagerField({ lead, users, router }) {
   }
   return (
     <div className="flex items-center gap-2">
-      <Label className="text-sm text-muted-foreground">A/C Manager</Label>
+      <Label className="shrink-0 whitespace-nowrap text-sm text-muted-foreground">A/C Manager</Label>
       <SearchableSelect value={value} onChange={save} options={teamOpts} placeholder="Unassigned" className="w-48" />
     </div>
   );
@@ -486,7 +486,7 @@ function ExpectedValueField({ lead, router }) {
   }
   return (
     <div className="flex items-center gap-2">
-      <Label className="text-sm text-muted-foreground">Expected value (₹)</Label>
+      <Label className="shrink-0 whitespace-nowrap text-sm text-muted-foreground">Expected value (₹)</Label>
       <Input type="number" min="0" className="w-40" value={value} onChange={e => setValue(e.target.value)} onBlur={save} />
     </div>
   );
@@ -507,8 +507,8 @@ function RelatedEnquiries({ lead, allLeads, stages, onOpen }) {
       <p className="mb-1.5 text-xs text-muted-foreground">Check these before adding more — the same enquiry may already be here.</p>
       <div className="flex flex-col gap-1">
         {others.slice(0, 10).map(o => (
-          <button key={o.id} type="button" onClick={() => onOpen(o)} className="flex items-center justify-between gap-2 rounded border bg-background px-2 py-1 text-left text-xs hover:bg-muted">
-            <span className="min-w-0 truncate">{formatDate(o.enquiry_date || o.created_at)} · {o.product || o.lead_name}</span>
+          <button key={o.id} type="button" onClick={() => onOpen(o)} className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 rounded border bg-background px-2 py-1.5 text-left text-xs hover:bg-muted">
+            <span className="min-w-0">{formatDate(o.enquiry_date || o.created_at)} · {o.product || o.lead_name}</span>
             <span className="flex shrink-0 items-center gap-1.5"><StageBadge lead={o} stages={stages} />{o.expected_value ? <span className="tnum text-muted-foreground">{formatMoney(o.expected_value)}</span> : null}</span>
           </button>
         ))}
@@ -1129,7 +1129,7 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
     <Card>
       <CardHeader>
         <CardTitle>Enquiries</CardTitle>
-        <CardAction className="flex items-center gap-2">
+        <CardAction className="col-span-full col-start-1 row-span-1 row-start-2 flex flex-wrap items-center gap-2 justify-self-start sm:col-span-1 sm:col-start-2 sm:row-span-2 sm:row-start-1 sm:justify-self-end">
           <div className="flex rounded-md border p-0.5" role="group" aria-label="View">
             {['list', 'board'].map(v => (
               <Button key={v} size="sm" variant={view === v ? 'secondary' : 'ghost'} className="h-7 capitalize" onClick={() => setView(v)}>{v}</Button>
@@ -1150,10 +1150,10 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
             ))}
           </div>
         )}
-        <div className="flex flex-wrap items-center gap-2">
-          <Input placeholder="Search leads…" value={filters.search} onChange={e => setFilters(f => ({ ...f, search: e.target.value }))} className="w-48" />
+        <div className="grid grid-cols-2 items-center gap-2 sm:flex sm:flex-wrap">
+          <Input placeholder="Search leads…" value={filters.search} onChange={e => setFilters(f => ({ ...f, search: e.target.value }))} className="col-span-2 w-full sm:w-48" />
           <Select value={filters.stage} onValueChange={v => setFilters(f => ({ ...f, stage: v }))}>
-            <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-full sm:w-48"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All stages</SelectItem>
               {stages.map(s => <SelectItem key={s.name} value={s.name}>{s.name}</SelectItem>)}
@@ -1161,7 +1161,7 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
           </Select>
           {sources.length > 0 && (
             <Select value={filters.source} onValueChange={v => setFilters(f => ({ ...f, source: v }))}>
-              <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="w-full sm:w-36"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All sources</SelectItem>
                 {sources.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
@@ -1182,7 +1182,7 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
               {unassignedOnly ? 'Showing unassigned' : `No A/C Manager (${unassignedCount})`}
             </Button>
           )}
-          <div className="ml-auto flex items-center gap-1.5">
+          <div className="col-span-2 ml-auto hidden items-center gap-1.5 sm:flex">
             <Input placeholder="Name this view…" value={viewName} onChange={e => setViewName(e.target.value)} className="w-44" />
             <Button size="sm" variant="outline" onClick={saveView}>Save view</Button>
           </div>
@@ -1198,8 +1198,28 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
         )}
         {view === 'board' ? (
           <LeadBoard leads={filtered} stages={stages} onOpen={setSelected} onLost={setLostLead} router={router} />
-        ) : filtered.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No leads match.</p> : (
-          <Table>
+        ) : filtered.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No leads match.</p> : (<>
+          <div className="grid gap-2 md:hidden">
+            {filtered.map(l => (
+              <div key={l.id} data-entity-code={`LD-${l.id}`} onClick={() => setSelected(l)} className="cursor-pointer rounded-xl border p-3 active:bg-muted">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 font-semibold">{l.company_name || l.lead_name}{!!l.is_vip && <StarIcon className="ml-1 inline size-3.5 fill-amber-400 text-amber-400" aria-label="VIP" />}</div>
+                  <span className="shrink-0 text-sm tnum text-muted-foreground">{l.expected_value ? formatMoney(l.expected_value) : ''}</span>
+                </div>
+                <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                  <StageBadge lead={l} stages={stages} />
+                  {isSlaBreached(l) && <Badge variant="destructive">SLA overdue</Badge>}
+                  {l.sales_call_closed_at && <Badge variant="secondary">Closed</Badge>}
+                  {groupCounts.get(enquiryGroupKey(l)) > 1 && <Badge variant="outline" className="text-[10px]">{groupCounts.get(enquiryGroupKey(l))} enquiries</Badge>}
+                </div>
+                <div className="mt-1.5 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                  <span>{l.account_manager ? l.account_manager : 'Unassigned'}{l.source ? ` · ${l.source}` : ''}</span>
+                  {!l.converted_customer_id && <Button size="xs" variant="outline" disabled={busyId === l.id} onClick={e => { e.stopPropagation(); convert(l); }}>Convert</Button>}
+                </div>
+              </div>
+            ))}
+          </div>
+          <Table className="hidden md:table">
             <TableHeader><TableRow>
               <TableHead className="w-8"><Checkbox checked={selectedIds.size > 0 && selectedIds.size === filtered.length} onCheckedChange={toggleSelectAll} aria-label="Select all" /></TableHead>
               <TableHead>Enquiry</TableHead><TableHead className="hidden lg:table-cell">Source</TableHead><TableHead>Stage</TableHead><TableHead className="text-right">Value</TableHead>
@@ -1240,7 +1260,7 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
               ))}
             </TableBody>
           </Table>
-        )}
+        </>)}
       </CardContent>
       {dialogOpen && <AddEnquiryDialog leads={leads} users={users} salesProducts={salesProducts} stages={stages} router={router} onClose={() => setDialogOpen(false)} />}
       {lostLead && <OrderLostDialog lead={lostLead} router={router} onClose={() => setLostLead(null)} />}
@@ -1499,8 +1519,17 @@ function CustomersTab({ isSalesHead = false, router }) {
       <CardContent>
         <Input className="mb-3 max-w-sm" placeholder="Search name, code, GST, phone, district, A/C manager"
           value={search} onChange={e => { setSearch(e.target.value); setPage(0); }} />
-        {data.rows.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">{data.loading ? 'Loading…' : search ? 'No customers match.' : 'No customers yet.'}</p> : (
-          <Table>
+        {data.rows.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">{data.loading ? 'Loading…' : search ? 'No customers match.' : 'No customers yet.'}</p> : (<>
+          <div className="grid gap-2 md:hidden">
+            {data.rows.map(c => (
+              <div key={c.id} onClick={() => setSelectedId(c.id)} className="cursor-pointer rounded-xl border p-3 active:bg-muted">
+                <div className="font-semibold">{c.name}</div>
+                <div className="mt-0.5 text-xs text-muted-foreground">{[c.city, c.party_code].filter(Boolean).join(' · ') || '—'}</div>
+                <div className="mt-1.5 flex flex-wrap justify-between gap-x-3 text-xs text-muted-foreground"><span>{c.phone || 'No phone'}</span><span>{c.account_manager || 'No A/C manager'}</span></div>
+              </div>
+            ))}
+          </div>
+          <Table className="hidden md:table">
             <TableHeader><TableRow><TableHead>Name</TableHead><TableHead className="hidden md:table-cell">Code</TableHead><TableHead className="hidden md:table-cell">District</TableHead><TableHead className="hidden md:table-cell">A/C Manager</TableHead><TableHead>GST No</TableHead><TableHead>Phone</TableHead></TableRow></TableHeader>
             <TableBody>
               {data.rows.map(c => (
@@ -1515,7 +1544,7 @@ function CustomersTab({ isSalesHead = false, router }) {
               ))}
             </TableBody>
           </Table>
-        )}
+        </>)}
         <Pager page={page} setPage={setPage} size={size} setSize={setSize} total={data.total} />
       </CardContent>
       {dialogOpen && <AddCustomerDialog router={router} onClose={() => setDialogOpen(false)} />}
@@ -2680,8 +2709,23 @@ function SaleOrdersTab({ saleOrders, salePayments = [], branches, salesProducts,
           <label className="flex items-center gap-1.5 text-sm"><Checkbox checked={f.owing} onCheckedChange={v => setFilter({ owing: !!v })} />Payment pending</label>
           <label className="flex items-center gap-1.5 text-sm"><Checkbox checked={f.unlinked} onCheckedChange={v => setFilter({ unlinked: !!v })} />No customer linked</label>
         </div>
-        {saleOrders.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No Sale Orders yet.</p> : (
-          <Table>
+        {saleOrders.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No Sale Orders yet.</p> : (<>
+          <div className="grid gap-2 md:hidden">
+            {shown.slice(page * size, (page + 1) * size).map(so => (
+              <div key={so.id} data-entity-code={`SO-${so.id}`} className="rounded-xl border p-3">
+                <div className="flex items-start justify-between gap-2"><div className="font-semibold">{so.so_no}</div><Badge variant={so.status === 'open' ? 'outline' : 'default'}>{so.status || 'open'}</Badge></div>
+                <div className="mt-0.5 text-sm">{so.customer_name || '—'}{!so.customer_id && <Button size="xs" variant="link" className="ml-1 h-auto p-0 text-xs" onClick={() => setLinkSo(so)}>Link customer</Button>}</div>
+                <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground"><SoCompanyCell so={so} router={router} /><span className="tnum text-sm font-medium text-foreground">{so.total ? formatMoney(so.total) : '—'}</span></div>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  <Button size="sm" variant="outline" onClick={() => setDetailsId(so.id)}><FileTextIcon />Details</Button>
+                  <SaleOrderPdfButton so={so} router={router} />
+                  {so.project_id && <Button size="sm" variant="outline" onClick={() => setCostingSo(so)}><IndianRupeeIcon />Costing</Button>}
+                  {/^SAS/i.test(so.so_no || '') && <Button size="sm" variant="outline" onClick={() => setSasSo(so)}>Request Stores</Button>}
+                </div>
+              </div>
+            ))}
+          </div>
+          <Table className="hidden md:table">
             <TableHeader><TableRow><TableHead>SO No.</TableHead><TableHead>Customer</TableHead><TableHead>Company</TableHead><TableHead>Total</TableHead><TableHead>Status</TableHead><TableHead>Created</TableHead><TableHead /></TableRow></TableHeader>
             <TableBody>
               {shown.slice(page * size, (page + 1) * size).map(so => (
@@ -2702,7 +2746,7 @@ function SaleOrdersTab({ saleOrders, salePayments = [], branches, salesProducts,
               ))}
             </TableBody>
           </Table>
-        )}
+        </>)}
         <Pager page={page} setPage={setPage} size={size} setSize={setSize} total={shown.length} />
       </CardContent>
       {dialogOpen && <AddSaleOrderDialog users={users} branches={branches} saleOrders={saleOrders} router={router} onClose={() => setDialogOpen(false)} />}
@@ -2936,14 +2980,14 @@ function TeamTab({ users, departments }) {
                 <Button size="sm" variant="outline" onClick={() => save(dept)} disabled={saving === dept}>{saving === dept ? 'Saving…' : 'Save auto-assign'}</Button>
               </div>
               <Table>
-                <TableHeader><TableRow><TableHead className="w-24">Auto-assign</TableHead><TableHead>Name</TableHead><TableHead>Username</TableHead><TableHead>Designation</TableHead><TableHead>Role</TableHead></TableRow></TableHeader>
+                <TableHeader><TableRow><TableHead className="w-16 sm:w-24">Auto-assign</TableHead><TableHead>Name</TableHead><TableHead className="hidden sm:table-cell">Username</TableHead><TableHead className="hidden sm:table-cell">Designation</TableHead><TableHead>Role</TableHead></TableRow></TableHeader>
                 <TableBody>
                   {members.length === 0 ? <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground">No one has {dept} access yet.</TableCell></TableRow> : members.map(u => (
                     <TableRow key={u.id}>
                       <TableCell><Checkbox checked={picked.has(u.username)} onCheckedChange={() => toggle(dept, u.username)} aria-label={`Auto-assign to ${u.display_name || u.username}`} /></TableCell>
-                      <TableCell className="font-medium">{u.display_name || u.username}</TableCell>
-                      <TableCell className="text-muted-foreground">{u.username}</TableCell>
-                      <TableCell className="text-muted-foreground">{u.designation || '—'}</TableCell>
+                      <TableCell className="font-medium">{u.display_name || u.username}<span className="block text-xs font-normal text-muted-foreground sm:hidden">{u.designation || u.username}</span></TableCell>
+                      <TableCell className="hidden text-muted-foreground sm:table-cell">{u.username}</TableCell>
+                      <TableCell className="hidden text-muted-foreground sm:table-cell">{u.designation || '—'}</TableCell>
                       <TableCell><Badge variant={u.departmentRoles?.[dept] === 'head' ? 'default' : 'outline'}>{u.departmentRoles?.[dept] === 'head' ? 'Head' : 'Member'}</Badge></TableCell>
                     </TableRow>
                   ))}
@@ -3166,8 +3210,17 @@ function ProductsTab({ salesProducts, router }) {
             </Button>
           )}
         </div>
-        {filtered.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">{salesProducts.length ? 'No products match.' : 'No products yet — add data as it becomes available.'}</p> : (
-          <Table>
+        {filtered.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">{salesProducts.length ? 'No products match.' : 'No products yet — add data as it becomes available.'}</p> : (<>
+          <div className="grid gap-2 md:hidden">
+            {shown.map(p => (
+              <div key={p.id} onClick={() => openProduct(p)} className="cursor-pointer rounded-xl border p-3 active:bg-muted">
+                <div className="flex items-start justify-between gap-2"><div className="min-w-0 font-semibold">{p.product_name}</div><Badge variant={p.active ? 'default' : 'outline'}>{p.active ? 'Active' : 'Inactive'}</Badge></div>
+                <div className="mt-0.5 text-xs text-muted-foreground">{[p.product_code, p.product_type].filter(Boolean).join(' · ') || '—'}</div>
+                <div className="mt-1.5 flex justify-between text-sm"><span className="tnum">{p.price != null ? formatMoney(p.price) : '—'}{p.unit ? ` / ${p.unit}` : ''}</span><span className="text-muted-foreground">{p.gst_pct != null ? `GST ${p.gst_pct}%` : ''}</span></div>
+              </div>
+            ))}
+          </div>
+          <Table className="hidden md:table">
             <TableHeader><TableRow><TableHead>Code</TableHead><TableHead>Name</TableHead><TableHead>Type</TableHead><TableHead>Price</TableHead><TableHead>Unit</TableHead><TableHead>GST %</TableHead><TableHead>Status</TableHead><TableHead /></TableRow></TableHeader>
             <TableBody>
               {shown.map(p => (
@@ -3184,7 +3237,7 @@ function ProductsTab({ salesProducts, router }) {
               ))}
             </TableBody>
           </Table>
-        )}
+        </>)}
       </CardContent>
       <CardContent className="pt-0"><Pager page={page} setPage={setPage} size={size} setSize={setSize} total={filtered.length} /></CardContent>
       {dialogState && <ProductDialog product={dialogState === true ? null : dialogState} router={router} onClose={() => setDialogState(null)} />}
@@ -3290,12 +3343,12 @@ function EmailTemplatesTab({ router }) {
       <CardContent>
         {templates.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No templates yet.</p> : (
           <Table>
-            <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Company</TableHead><TableHead className="hidden md:table-cell">Subject</TableHead><TableHead className="hidden lg:table-cell">Starts with</TableHead><TableHead>Status</TableHead><TableHead /></TableRow></TableHeader>
+            <TableHeader><TableRow><TableHead>Name</TableHead><TableHead className="hidden sm:table-cell">Company</TableHead><TableHead className="hidden md:table-cell">Subject</TableHead><TableHead className="hidden lg:table-cell">Starts with</TableHead><TableHead>Status</TableHead><TableHead /></TableRow></TableHeader>
             <TableBody>
               {templates.map(t => (
                 <TableRow key={t.id} className="cursor-pointer" onClick={() => setDialogState(t)}>
-                  <TableCell className="font-medium">{t.name}</TableCell>
-                  <TableCell className="text-muted-foreground">{t.company}</TableCell>
+                  <TableCell className="font-medium whitespace-normal">{t.name}<span className="block text-xs font-normal text-muted-foreground sm:hidden">{t.company}</span></TableCell>
+                  <TableCell className="hidden text-muted-foreground sm:table-cell">{t.company}</TableCell>
                   <TableCell className="hidden text-muted-foreground md:table-cell">{t.subject || '—'}</TableCell>
                   <TableCell className="hidden max-w-xs truncate text-muted-foreground lg:table-cell">{(t.body || '').replace(/\s+/g, ' ').slice(0, 90)}…</TableCell>
                   <TableCell><Badge variant={t.active ? 'default' : 'outline'}>{t.active ? 'Active' : 'Inactive'}</Badge></TableCell>

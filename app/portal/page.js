@@ -22,6 +22,7 @@ export default async function MyOrders({ searchParams }) {
   // customer sees, read-only, without signing them in (which would sign the head out of the app).
   let viewing = user;
   let viewAs = null;
+  if (isCustomer(user) && user.must_change_password) redirect('/change-password');
   if (!isCustomer(user)) {
     if (searchParams?.as && isDepartmentHead(user, 'Sales')) {
       viewAs = await queryOne("SELECT id, username, display_name, project_ids FROM users WHERE id = ? AND role = 'customer'", [searchParams.as]);

@@ -18,7 +18,7 @@ export async function POST(req) {
   if (!user) return NextResponse.json({ error: 'This link is invalid or has expired' }, { status: 400 });
 
   await execute(
-    'UPDATE users SET password = ?, password_setup_token = NULL, password_setup_expires = NULL WHERE id = ?',
+    'UPDATE users SET password = ?, must_change_password = 0, password_setup_token = NULL, password_setup_expires = NULL WHERE id = ?',
     [bcrypt.hashSync(password, 10), user.id]
   );
   // Customer portal logins keep an encrypted copy so the Sales Head can read it back if it is lost

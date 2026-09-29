@@ -69,7 +69,7 @@ function CardAction({
     <div
       data-slot="card-action"
       className={cn(
-        "col-start-2 row-span-2 row-start-1 self-start justify-self-end",
+        "col-start-2 row-span-2 row-start-1 self-start justify-self-end max-sm:col-span-full max-sm:col-start-1 max-sm:row-span-1 max-sm:row-start-auto max-sm:mt-1 max-sm:flex max-sm:flex-wrap max-sm:gap-2 max-sm:justify-self-start",
         className
       )}
       {...props} />

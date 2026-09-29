@@ -40,7 +40,7 @@ export async function POST(req, { params }) {
     let enc = null;
     try { enc = encryptSecret(password); } catch (e) { return NextResponse.json({ error: e.message }, { status: 500 }); }
     await execute(
-      'UPDATE users SET password = ?, portal_password_enc = ?, password_setup_token = NULL, password_setup_expires = NULL WHERE id = ?',
+      'UPDATE users SET password = ?, portal_password_enc = ?, must_change_password = 1, password_setup_token = NULL, password_setup_expires = NULL WHERE id = ?',
       [bcrypt.hashSync(password, 10), enc, login.id]);
     await audit('portal_password_reset', { actor: user.username, detail: `customer #${params.id} (${login.username})${action === 'reset_phone' ? ' → phone number' : ''}` });
     return NextResponse.json({ password, username: login.username });

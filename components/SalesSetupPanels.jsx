@@ -232,8 +232,32 @@ export function PortalAccessTab() {
             </SelectContent>
           </Select>
         </div>
-        {!rows ? <p className="text-sm text-muted-foreground">Loading…</p> : shown.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No customers match.</p> : (
-          <Table>
+        {!rows ? <p className="text-sm text-muted-foreground">Loading…</p> : shown.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No customers match.</p> : (<>
+          <div className="grid gap-2 md:hidden">
+            {shown.map(r => (
+              <div key={r.id} className="rounded-xl border p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0"><div className="font-semibold">{r.name}</div><div className="text-xs text-muted-foreground">{r.project_count} project(s)</div></div>
+                  <Badge variant={STATUS[r.status][1]}>{STATUS[r.status][0]}</Badge>
+                </div>
+                <div className="mt-1 break-all text-xs">{r.email || <span className="text-destructive">No email</span>}</div>
+                {r.portal_user_id && <div className="mt-1.5 text-xs text-muted-foreground">Username: <span className="text-foreground">{r.username}</span></div>}
+                {r.portal_user_id && <div className="mt-1"><PasswordCell customer={r} /></div>}
+                <div className="mt-1 text-xs text-muted-foreground">Invited: {r.initial_email_sent_at ? formatDate(r.initial_email_sent_at) : '—'} · Last login: {r.last_login ? formatDate(r.last_login) : '—'}</div>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {r.status === 'not_enabled'
+                    ? <Button size="sm" disabled={busyId === r.id} onClick={() => act(r, 'enable')}>Enable</Button>
+                    : <>
+                        <Button asChild size="sm" variant="outline"><a href={`/portal?as=${r.portal_user_id}`} target="_blank" rel="noreferrer">Open portal</a></Button>
+                        <Button size="sm" variant="outline" disabled={busyId === r.id || !r.email} onClick={() => act(r, 'resend')}>Resend invite</Button>
+                        <Button size="sm" variant="outline" disabled={busyId === r.id} onClick={() => act(r, 'link')}>Copy link</Button>
+                        {!!r.portal_enabled && <Button size="sm" variant="ghost" disabled={busyId === r.id} onClick={() => act(r, 'disable')}>Turn off emails</Button>}
+                      </>}
+                </div>
+              </div>
+            ))}
+          </div>
+          <Table className="hidden md:table">
             <TableHeader><TableRow><TableHead>Customer</TableHead><TableHead>Email</TableHead><TableHead>Status</TableHead><TableHead>Username</TableHead><TableHead>Password</TableHead><TableHead>Activity</TableHead><TableHead /></TableRow></TableHeader>
             <TableBody>
               {shown.map(r => (
@@ -261,7 +285,7 @@ export function PortalAccessTab() {
               ))}
             </TableBody>
           </Table>
-        )}
+        </>)}
       </CardContent>
     </Card>
   );

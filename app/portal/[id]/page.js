@@ -14,6 +14,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function Portal({ params }) {
   const user = await getFreshSessionUser();
+  if (isCustomer(user) && user.must_change_password) redirect('/change-password');
   if (isCustomer(user) && !canAccessProject(user, params.id)) redirect(roleHome(user));
 
   const data = await getCustomerView(params.id);

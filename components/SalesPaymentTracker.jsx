@@ -15,7 +15,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
-import { currentStage, flagsForStage, STAGE_OPTIONS, billValueOf, matchState, normalizeRowSettings, matchOptions, rowColor, DEFAULT_ROW_SETTINGS } from '@/lib/order-match.mjs';
+import { Checkbox } from '@/components/ui/checkbox';
+import { currentStage, flagsForStage, STAGE_OPTIONS, billValueOf, normalizeRowSettings, ruleContext, firstRule, ruleColor, DEFAULT_ROW_SETTINGS, RULE_COLUMNS, NUMBER_OPS, TEXT_OPS, MAX_CONDITIONS, MAX_RULES } from '@/lib/order-match.mjs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
@@ -45,21 +46,133 @@ function fmtDate(iso) {
 // Tracker status (sale_orders.track_status) → badge look: a tinted background per status, text in
 // the normal foreground colour (black in light mode, white in dark).
 const STATUS_STYLE = {
-  // dark: twins are needed — SelectTrigger's own dark:bg-input/30 otherwise wins over the plain bg.
-  Pending: 'bg-destructive/15 text-foreground dark:bg-destructive/25 dark:hover:bg-destructive/30',
-  Ready: 'bg-info/15 text-foreground dark:bg-info/25 dark:hover:bg-info/30',
-  WIP: 'bg-warning/20 text-foreground dark:bg-warning/25 dark:hover:bg-warning/30',
-  Dispatched: 'bg-success/15 text-foreground dark:bg-success/25 dark:hover:bg-success/30',
-  Closed: 'bg-muted-foreground/20 text-foreground dark:bg-muted-foreground/30 dark:hover:bg-muted-foreground/35',
+  // Solid (not translucent) so the row colour behind never tints the status; dark: twins because
+  // SelectTrigger's own dark:bg-input/30 otherwise wins over the plain bg.
+  Pending: 'border-red-300 bg-red-200 text-red-950 hover:bg-red-300 dark:border-red-800 dark:bg-red-900 dark:text-red-50 dark:hover:bg-red-800',
+  Ready: 'border-sky-300 bg-sky-200 text-sky-950 hover:bg-sky-300 dark:border-sky-800 dark:bg-sky-900 dark:text-sky-50 dark:hover:bg-sky-800',
+  WIP: 'border-amber-300 bg-amber-200 text-amber-950 hover:bg-amber-300 dark:border-amber-800 dark:bg-amber-900 dark:text-amber-50 dark:hover:bg-amber-800',
+  Dispatched: 'border-emerald-300 bg-emerald-200 text-emerald-950 hover:bg-emerald-300 dark:border-emerald-800 dark:bg-emerald-900 dark:text-emerald-50 dark:hover:bg-emerald-800',
+  Closed: 'border-slate-300 bg-slate-200 text-slate-900 hover:bg-slate-300 dark:border-slate-700 dark:bg-slate-700 dark:text-slate-50 dark:hover:bg-slate-600',
 };
 // Row background: paid in full (green), short by what looks like TDS (yellow), otherwise red.
 // Bill Value is informational only and doesn't affect the colour.
-// Row colours come from the user's own settings (cog on the Orders card).
-function RowColorsDialog({ settings, onClose, onSaved }) {
+// Row colours: rules checked top to bottom, the first match colours the row (cog on the Orders card).
+const colKey = k => RULE_COLUMNS.find(c => c.key === k);
+const blankCondition = () => ({ left: 'received', op: '<', right: { kind: 'column', column: 'order_value' } });
+
+function ConditionRow({ c, onChange, onRemove }) {
+  const col = colKey(c.left), ops = col.type === 'number' ? NUMBER_OPS : TEXT_OPS;
+  const sameType = RULE_COLUMNS.filter(x => x.type === col.type);
+  const textOptions = c.left === 'stage' ? STAGE_OPTIONS : TRACK_STATUSES;
+  return (
+    <div className="grid grid-cols-[1fr_auto] items-center gap-1.5 rounded-md bg-muted/40 p-1.5 sm:grid-cols-[1.4fr_1.2fr_6.5rem_1.2fr_auto]">
+      <Select value={c.left} onValueChange={k => {
+        const nc = colKey(k); onChange(nc.type === col.type ? { ...c, left: k } : { left: k, op: '=', right: { kind: 'value', value: nc.type === 'number' ? 0 : (k === 'stage' ? STAGE_OPTIONS[0] : TRACK_STATUSES[0]) } });
+      }}>
+        <SelectTrigger size="sm"><SelectValue /></SelectTrigger>
+        <SelectContent>{RULE_COLUMNS.map(x => <SelectItem key={x.key} value={x.key}>{x.label}</SelectItem>)}</SelectContent>
+      </Select>
+      <Button size="icon-sm" variant="ghost" className="sm:hidden" onClick={onRemove} aria-label="Remove condition"><TrashIcon className="size-3.5" /></Button>
+      <Select value={c.op} onValueChange={op => onChange({ ...c, op })}>
+        <SelectTrigger size="sm"><SelectValue /></SelectTrigger>
+        <SelectContent>{ops.map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}</SelectContent>
+      </Select>
+      {col.type === 'number' ? (
+        <Select value={c.right.kind} onValueChange={kind => onChange({ ...c, right: kind === 'column' ? { kind, column: sameType.find(x => x.key !== c.left)?.key || 'order_value' } : { kind, value: 0 } })}>
+          <SelectTrigger size="sm"><SelectValue /></SelectTrigger>
+          <SelectContent><SelectItem value="value">number</SelectItem><SelectItem value="column">column</SelectItem></SelectContent>
+        </Select>
+      ) : <span className="hidden sm:block" />}
+      {c.right.kind === 'column' ? (
+        <Select value={c.right.column} onValueChange={column => onChange({ ...c, right: { kind: 'column', column } })}>
+          <SelectTrigger size="sm"><SelectValue /></SelectTrigger>
+          <SelectContent>{sameType.map(x => <SelectItem key={x.key} value={x.key}>{x.label}</SelectItem>)}</SelectContent>
+        </Select>
+      ) : col.type === 'number' ? (
+        <Input type="number" className="h-8" value={c.right.value} onChange={e => onChange({ ...c, right: { kind: 'value', value: e.target.value } })} />
+      ) : (
+        <Select value={String(c.right.value)} onValueChange={value => onChange({ ...c, right: { kind: 'value', value } })}>
+          <SelectTrigger size="sm"><SelectValue /></SelectTrigger>
+          <SelectContent>{textOptions.map(v => <SelectItem key={v} value={v}>{v}</SelectItem>)}</SelectContent>
+        </Select>
+      )}
+      <Button size="icon-sm" variant="ghost" className="hidden sm:inline-flex" onClick={onRemove} aria-label="Remove condition"><TrashIcon className="size-3.5" /></Button>
+    </div>
+  );
+}
+
+// In-page colour picker (swatches + hex). The browser's own colour popup is a separate window whose
+// close click lands outside the dialog and used to close the whole overlay.
+const COLOR_PRESETS = ['#16a34a', '#65a30d', '#eab308', '#d97706', '#ea580c', '#dc2626', '#db2777', '#9333ea', '#2563eb', '#0ea5e9', '#0d9488', '#64748b'];
+function ColorPicker({ value, onChange }) {
+  const [hex, setHex] = useState(value);
+  useEffect(() => setHex(value), [value]);
+  return (
+    <div className="flex flex-wrap items-center gap-1">
+      {COLOR_PRESETS.map(c => (
+        <button key={c} type="button" onClick={() => onChange(c)} aria-label={`Colour ${c}`}
+          className={`size-6 rounded-full border-2 ${value.toLowerCase() === c ? 'border-foreground' : 'border-transparent'}`} style={{ backgroundColor: c }} />
+      ))}
+      <Input className="h-7 w-[5.5rem] font-mono text-xs" value={hex} maxLength={7} aria-label="Hex colour"
+        onChange={e => { const v = e.target.value; setHex(v); if (/^#[0-9a-fA-F]{6}$/.test(v)) onChange(v.toLowerCase()); }} />
+    </div>
+  );
+}
+
+function RuleCard({ rule, index, total, count, onChange, onRemove, onMove }) {
+  const setCond = (i, c) => onChange({ ...rule, conditions: rule.conditions.map((x, j) => j === i ? c : x) });
+  return (
+    <div className={`rounded-lg border p-2.5 ${rule.on ? '' : 'opacity-60'}`}>
+      <div className="flex flex-wrap items-center gap-2">
+        <Checkbox checked={rule.on} onCheckedChange={v => onChange({ ...rule, on: !!v })} aria-label="Rule on" />
+        <Input className="h-8 min-w-0 flex-1 basis-32" value={rule.name} onChange={e => onChange({ ...rule, name: e.target.value })} aria-label="Rule name" />
+        <span className="rounded border px-2 py-1 text-xs" title="Orders this rule colours (rules above it are checked first)" style={{ backgroundColor: ruleColor(rule) || undefined }}>{count} orders</span>
+        <div className="flex">
+          <Button size="icon-sm" variant="ghost" disabled={index === 0} onClick={() => onMove(-1)} aria-label="Move up"><ArrowUpIcon className="size-3.5" /></Button>
+          <Button size="icon-sm" variant="ghost" disabled={index === total - 1} onClick={() => onMove(1)} aria-label="Move down"><ArrowDownIcon className="size-3.5" /></Button>
+          <Button size="icon-sm" variant="ghost" className="text-destructive" onClick={onRemove} aria-label="Delete rule"><TrashIcon className="size-3.5" /></Button>
+        </div>
+      </div>
+      <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
+        <ColorPicker value={rule.color} onChange={color => onChange({ ...rule, color })} />
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <span className="text-xs text-muted-foreground">Opacity</span>
+          <input type="range" min={0} max={100} value={rule.opacity} onChange={e => onChange({ ...rule, opacity: Number(e.target.value) })} className="min-w-0 flex-1" aria-label="Opacity" />
+          <span className="w-9 text-right text-xs tnum">{rule.opacity}%</span>
+        </div>
+      </div>
+      <div className="mt-2 flex flex-col gap-1.5">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">Colour the row when
+          <Select value={rule.match} onValueChange={match => onChange({ ...rule, match })}>
+            <SelectTrigger size="sm" className="w-28"><SelectValue /></SelectTrigger>
+            <SelectContent><SelectItem value="all">all of these</SelectItem><SelectItem value="any">any of these</SelectItem></SelectContent>
+          </Select>
+          are true
+        </div>
+        {rule.conditions.length === 0 && <p className="text-xs text-amber-700">No conditions yet — this rule colours nothing.</p>}
+        {rule.conditions.map((c, i) => <ConditionRow key={i} c={c} onChange={nc => setCond(i, nc)} onRemove={() => onChange({ ...rule, conditions: rule.conditions.filter((_, j) => j !== i) })} />)}
+        {rule.conditions.length < MAX_CONDITIONS
+          ? <Button size="xs" variant="outline" className="self-start" onClick={() => onChange({ ...rule, conditions: [...rule.conditions, blankCondition()] })}><PlusIcon />Add condition ({rule.conditions.length}/{MAX_CONDITIONS})</Button>
+          : <p className="text-xs text-muted-foreground">Most conditions per rule: {MAX_CONDITIONS}.</p>}
+      </div>
+    </div>
+  );
+}
+
+function RowColorsDialog({ settings, rows, onClose, onSaved }) {
   const [cfg, setCfg] = useState(settings);
   const [rates, setRates] = useState(settings.tdsRates.join(', '));
   const [saving, setSaving] = useState(false);
-  const setState = (k, patch) => setCfg(c => ({ ...c, states: { ...c.states, [k]: { ...c.states[k], ...patch } } }));
+  const setRule = (i, r) => setCfg(c => ({ ...c, rules: c.rules.map((x, j) => j === i ? r : x) }));
+  const move = (i, d) => setCfg(c => { const a = [...c.rules]; [a[i], a[i + d]] = [a[i + d], a[i]]; return { ...c, rules: a }; });
+  // How many orders each rule would colour (first match wins), so a rule can be judged before saving.
+  const counts = useMemo(() => {
+    const cur = { ...cfg, tdsRates: rates.split(',').map(x => Number(x.trim())).filter(x => x > 0) };
+    const eff = cur.tdsRates.length ? cur : { ...cur, tdsRates: settings.tdsRates };
+    const m = new Map();
+    for (const r of rows) { const hit = firstRule(eff, ruleContext(r.ctxInput, eff)); if (hit) m.set(hit.id, (m.get(hit.id) || 0) + 1); }
+    return m;
+  }, [cfg, rates, rows, settings.tdsRates]);
   async function save(next) {
     setSaving(true);
     try {
@@ -70,31 +183,26 @@ function RowColorsDialog({ settings, onClose, onSaved }) {
   }
   return (
     <Dialog open onOpenChange={o => { if (!o) onClose(); }}>
-      <DialogContent className="sm:max-w-xl">
-        <DialogHeader><DialogTitle>Row colours</DialogTitle></DialogHeader>
-        <p className="text-xs text-muted-foreground">Saved for you only. Each row is coloured by how the money received compares with the order value.</p>
-        <div className="flex flex-col gap-3">
-          {Object.entries(cfg.states).map(([k, s]) => (
-            <div key={k} className="grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-lg border p-2">
-              <input type="checkbox" checked={s.on} onChange={e => setState(k, { on: e.target.checked })} aria-label={`Colour ${s.label}`} />
-              <div>
-                <div className="text-sm font-medium">{s.label}</div>
-                <div className="mt-1 flex items-center gap-2">
-                  <input type="color" value={s.color} onChange={e => setState(k, { color: e.target.value })} className="h-7 w-10 cursor-pointer rounded border" />
-                  <input type="range" min={0} max={100} value={s.opacity} onChange={e => setState(k, { opacity: Number(e.target.value) })} className="flex-1" />
-                  <span className="w-9 text-right text-xs tnum">{s.opacity}%</span>
-                </div>
-              </div>
-              <div className="w-24 rounded border px-2 py-1.5 text-center text-xs" style={{ backgroundColor: s.on ? rowColor({ states: { [k]: s } }, k) : undefined }}>Preview</div>
-            </div>
+      <DialogContent className="flex max-h-[92vh] flex-col gap-0 p-0 sm:max-w-3xl">
+        <DialogHeader className="border-b px-5 py-4"><DialogTitle>Row colours</DialogTitle>
+          <p className="text-xs text-muted-foreground">Saved for you only. Rules are checked from the top; the first one that fits colours the row.</p>
+        </DialogHeader>
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-5 py-4">
+          {cfg.rules.map((r, i) => (
+            <RuleCard key={r.id + i} rule={r} index={i} total={cfg.rules.length} count={counts.get(r.id) || 0}
+              onChange={nr => setRule(i, nr)} onMove={d => move(i, d)} onRemove={() => setCfg(c => ({ ...c, rules: c.rules.filter((_, j) => j !== i) }))} />
           ))}
-          <div className="grid grid-cols-2 gap-3">
-            <div><Label>Rounding allowed (₹)</Label><Input type="number" min={0} value={cfg.tolerance} onChange={e => setCfg(c => ({ ...c, tolerance: e.target.value }))} /></div>
-            <div><Label>TDS % deducted (comma list)</Label><Input value={rates} onChange={e => setRates(e.target.value)} /></div>
+          {cfg.rules.length < MAX_RULES && (
+            <Button variant="outline" className="self-start" onClick={() => setCfg(c => ({ ...c, rules: [...c.rules, { id: `r${Date.now().toString(36)}`, name: 'New rule', on: true, color: '#2563eb', opacity: 20, match: 'all', conditions: [blankCondition()] }] }))}><PlusIcon />Add rule</Button>
+          )}
+          <div className="grid gap-1.5 sm:max-w-xs">
+            <Label>TDS % customers deduct (comma list)</Label>
+            <Input value={rates} onChange={e => setRates(e.target.value)} />
+            <p className="text-xs text-muted-foreground">Feeds the "Short looks like TDS" column.</p>
           </div>
         </div>
-        <DialogFooter className="m-0">
-          <Button variant="ghost" onClick={() => save(normalizeRowSettings(DEFAULT_ROW_SETTINGS))} disabled={saving}>Reset</Button>
+        <DialogFooter className="m-0 border-t px-5 py-3">
+          <Button variant="ghost" onClick={() => save(normalizeRowSettings(DEFAULT_ROW_SETTINGS))} disabled={saving}>Reset to defaults</Button>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button onClick={() => save()} disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button>
         </DialogFooter>
@@ -232,7 +340,8 @@ export function PaymentOrdersTab({ saleOrders, payments, invoices, customers = [
         r.pending = (r.total || 0) - r.received;
         r.stage = currentStage(r);
         r.bill = billValueOf(r, invoices);
-        r.match = r.status === 'cancelled' ? null : matchState({ orderValue: r.total, received: r.received }, matchOptions(rowCfg));
+        r.ctxInput = { orderValue: r.total, billValue: r.bill.value, received: r.received, status: r.track_status, stage: r.stage, cancelled: r.status === 'cancelled' };
+        r.rule = firstRule(rowCfg, ruleContext(r.ctxInput, rowCfg));
         return r;
       });
   }, [saleOrders, payments, invoices, local, rowCfg]);
@@ -278,9 +387,9 @@ export function PaymentOrdersTab({ saleOrders, payments, invoices, customers = [
         <CardAction className="flex gap-2"><Button size="icon-sm" variant="ghost" onClick={() => setCogOpen(true)} aria-label="Row colours" title="Row colours"><SettingsIcon /></Button><Button size="sm" onClick={() => setAdding(true)}><PlusIcon />Add order</Button></CardAction>
       </CardHeader>
       <CardContent>
-        <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="-mx-1 mb-4 flex snap-x gap-3 overflow-x-auto px-1 pb-1 sm:mx-0 sm:grid sm:grid-cols-3 sm:overflow-visible sm:px-0 sm:pb-0 lg:grid-cols-6">
           {kpis.map((pair, i) => (
-            <div key={i} className="flex flex-col gap-3">
+            <div key={i} className="flex w-36 shrink-0 snap-start flex-col gap-3 sm:w-auto">
               {pair.map(([label, value, warn]) => (
                 <Card key={label} size="sm">
                   <CardContent>
@@ -301,8 +410,38 @@ export function PaymentOrdersTab({ saleOrders, payments, invoices, customers = [
             </SelectContent>
           </Select>
         </Toolbar>
-        {rows.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No orders match.</p> : (
-          <Table>
+        {rows.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No orders match.</p> : (<>
+          <div className="grid gap-2 md:hidden">
+            {rows.slice(page * size, (page + 1) * size).map(r => (
+              <div key={r.id} className="rounded-xl border p-3" style={{ backgroundColor: ruleColor(r.rule) || undefined }}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 font-semibold"><EditCell value={r.so_no} display={r.so_no} onSave={v => save(r, { so_no: v })} />{!company && <CompanyTag row={r} />}</div>
+                    <div className="text-xs text-muted-foreground"><EditCell type="date" value={r.orderDate} display={fmtDate(r.orderDate)} onSave={v => save(r, { order_date: v })} /></div>
+                  </div>
+                  <Select value={r.track_status || 'Pending'} onValueChange={v => save(r, { track_status: v })}>
+                    <SelectTrigger className={`h-8 w-32 gap-1 px-2 text-xs font-medium ${STATUS_STYLE[r.track_status || 'Pending']}`}><SelectValue /></SelectTrigger>
+                    <SelectContent>{Object.keys(STATUS_STYLE).map(v => <SelectItem key={v} value={v}>{v}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div className="mt-1 text-sm"><EditCell value={r.customer_name} display={r.customer_name || '—'} onSave={v => save(r, { customer_name: v })} /></div>
+                <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
+                  <div><div className="text-muted-foreground">Order value</div><div className="tnum font-medium"><EditCell type="number" value={r.total || ''} display={r.total ? exact(r.total) : '—'} disabled={r.item_count > 0} onSave={v => save(r, { total: Number(v) || 0 })} /></div></div>
+                  <div><div className="text-muted-foreground">Received</div><div className="tnum font-medium">{exact(r.received)}</div></div>
+                  <div><div className="text-muted-foreground">Pending</div><div className="tnum font-medium">{exact(r.pending)}</div></div>
+                </div>
+                <div className="mt-2 flex items-center gap-2">
+                  <Select value={r.stage} onValueChange={v => save(r, flagsForStage(v))}>
+                    <SelectTrigger className="h-8 flex-1 gap-1 px-2 text-xs font-medium"><SelectValue /></SelectTrigger>
+                    <SelectContent>{STAGE_OPTIONS.map(v => <SelectItem key={v} value={v}>{v}</SelectItem>)}</SelectContent>
+                  </Select>
+                  {isSalesHead && <Button size="icon-sm" variant="ghost" className="text-destructive" disabled={deletingId === r.id} onClick={() => deleteOrder(r)} aria-label="Delete order"><TrashIcon className="size-3.5" /></Button>}
+                </div>
+                <button type="button" onClick={() => setRemarkFor(r)} className={`mt-1.5 block w-full truncate rounded px-1 py-1 text-left text-xs ${r.remarks ? '' : 'text-muted-foreground'}`}>{r.remarks || 'Add remark'}</button>
+              </div>
+            ))}
+          </div>
+          <Table className="hidden md:table">
             <TableHeader>
               <TableRow>
                 {['Order Date', 'Order ID', 'Customer Name', 'Invoice No', 'Sales Person', 'Status', 'Order Value', 'Bill Value', 'Payment Received', 'Payment Pending', 'Current Stage', 'Remarks', ''].map(h => <TableHead key={h}>{h}</TableHead>)}
@@ -310,7 +449,7 @@ export function PaymentOrdersTab({ saleOrders, payments, invoices, customers = [
             </TableHeader>
             <TableBody>
               {rows.slice(page * size, (page + 1) * size).map(r => (
-                <TableRow key={r.id} style={{ backgroundColor: rowColor(rowCfg, r.match) || undefined }}>
+                <TableRow key={r.id} style={{ backgroundColor: ruleColor(r.rule) || undefined }}>
                   <TableCell className="whitespace-nowrap"><EditCell type="date" value={r.orderDate} display={fmtDate(r.orderDate)} onSave={v => save(r, { order_date: v })} /></TableCell>
                   <TableCell className="font-medium">
                     <div className="flex items-center gap-1.5">
@@ -360,11 +499,12 @@ export function PaymentOrdersTab({ saleOrders, payments, invoices, customers = [
               ))}
             </TableBody>
           </Table>
+        </>
         )}
         <Pager page={page} setPage={setPage} size={size} setSize={setSize} total={rows.length} />
       </CardContent>
       {adding && <AddOrderSheet customers={customers} people={people} onClose={() => setAdding(false)} />}
-      {cogOpen && <RowColorsDialog settings={rowCfg} onClose={() => setCogOpen(false)} onSaved={setRowCfg} />}
+      {cogOpen && <RowColorsDialog settings={rowCfg} rows={all} onClose={() => setCogOpen(false)} onSaved={setRowCfg} />}
       {remarkFor && <RemarksDialog order={remarkFor} onClose={() => setRemarkFor(null)} onSave={v => { save(remarkFor, { remarks: v }); setRemarkFor(null); }} />}
     </Card>
   );
@@ -582,8 +722,25 @@ export function PaymentLogTab({ saleOrders, payments, invoices, company = null }
       </CardHeader>
       <CardContent>
         <Toolbar q={q} setQ={v => { setQ(v); setPage(0); }} dir={dir} setDir={f => { setDir(f); setPage(0); }} dateLabel="Received on" />
-        {rows.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No payments logged.</p> : (
-          <Table>
+        {rows.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No payments logged.</p> : (<>
+          <div className="grid gap-2 md:hidden">
+            {rows.slice(page * size, (page + 1) * size).map(p => (
+              <div key={p.id} className="rounded-xl border p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0"><div className="font-semibold">{p.so_no}{!company && <> <CompanyTag row={p} /></>}</div><div className="truncate text-sm text-muted-foreground">{p.customer_name || '—'}</div></div>
+                  <div className="text-right"><div className="tnum text-base font-semibold"><EditCell type="number" value={p.amount} display={exact(p.amount)} onSave={v => save(p, { amount: Number(v) })} /></div>
+                    <div className="text-xs text-muted-foreground"><EditCell type="date" value={p.received_on || ''} display={fmtDate(p.received_on)} onSave={v => save(p, { received_on: v })} /></div></div>
+                </div>
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                  <InlineSelect value={p.mode} options={MODES} width="w-28" onChange={v => save(p, { mode: v })} />
+                  <span>Invoice: {p.invoice_no || '—'}</span>
+                  <Button size="icon-sm" variant="ghost" className="ml-auto text-muted-foreground hover:text-destructive" aria-label="Delete payment" onClick={() => remove(p)}><TrashIcon className="size-3.5" /></Button>
+                </div>
+                {p.remark && <div className="mt-1 text-xs">{p.remark}</div>}
+              </div>
+            ))}
+          </div>
+          <Table className="hidden md:table">
             <TableHeader>
               <TableRow>
                 {['Order ID', 'Customer Name', 'Order Value', 'Invoice Number', 'Payment Received On', 'Payment Mode', 'Remark', 'Amount Received'].map(h => <TableHead key={h}>{h}</TableHead>)}
@@ -611,7 +768,7 @@ export function PaymentLogTab({ saleOrders, payments, invoices, company = null }
               ))}
             </TableBody>
           </Table>
-        )}
+        </>)}
         <Pager page={page} setPage={setPage} size={size} setSize={setSize} total={rows.length} />
       </CardContent>
       {adding && <AddPaymentSheet saleOrders={saleOrders} payments={payments} invoices={invoices} onClose={() => setAdding(false)} />}
