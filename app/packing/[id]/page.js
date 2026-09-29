@@ -27,5 +27,5 @@ export default async function PackingPage({ params }) {
     redirect(roleHome(user));
   }
 
-  return <PackingDetail list={data.list} items={data.items} readOnly={!canEdit} />;
+  return <PackingDetail list={data.list} items={data.items} checklist={data.checklist} readOnly={!canEdit} />;
 }

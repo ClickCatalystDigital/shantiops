@@ -1,13 +1,13 @@
 // app/api/packing/from-bom/route.js
 
 import { NextResponse } from 'next/server';
-import { execute, queryAll, queryOne, nextNumber } from '@/lib/db';
+import { queryAll, queryOne } from '@/lib/db';
+import { createPackingLists } from '@/lib/packing-generate';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { getProjectBom, getAssemblyRollupMap } from '@/lib/data';
 import { itemRollupQty } from '@/lib/bom-structure.mjs';
 import { audit } from '@/lib/usb';
-import { maybeStartMilestone } from '@/lib/milestone-auto';
 
 // Auto-generate a DRAFT packing list from a project's still-pending BOM lines. Prefills
 // material_description / moc / size_spec / make from each BOM row, and qty when the BOM's free-text
@@ -46,28 +46,11 @@ export async function POST(req) {
     return NextResponse.json({ error: 'Every ready item is already on an existing packing list for this project — open it to add more, or wait for it to be approved.' }, { status: 400 });
   }
 
-  const packing_no = await nextNumber('packing_no', 'PL');
-  const pl = await execute(
-    'INSERT INTO packing_lists (project_id, packing_no, customer_name, created_by) VALUES (?, ?, ?, ?)',
-    [project_id, packing_no, project.customer_name, user?.username || null]
-  );
-  const listId = Number(pl.lastId);
-  try { await maybeStartMilestone(project_id, 'packing', user?.username); } catch { /* best-effort */ }
-
   const rollupById = await getAssemblyRollupMap(project_id);
-  let s = 1;
-  for (const b of newItems) {
-    // "2 Nos" -> 2, scaled by any Local Quantity multiplier on the item's own BOM-tree node (and
-    // every node above it) times the project's own Whole-BOM Unit Count (project.unit_count,
-    // already loaded above — no second query needed); non-numeric ("AS REQD") -> 1, same fallback
-    // as before either multiplier existed.
-    const qty = itemRollupQty(b.qty_text, b.assembly_id, rollupById, project.unit_count, !!b.qty_resolved) ?? 1;
-    await execute(
-      `INSERT INTO packing_items (packing_list_id, bom_item_id, s_no, material_description, moc, size_spec, make, qty, unit)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [listId, b.id, s++, b.material_description, b.moc || null, b.size_spec || null, b.make || null, qty, "No's"]
-    );
-  }
-  await audit('packing_created', { actor: user.username, detail: `${packing_no} · project ${project_id} · ${newItems.length} items` });
-  return NextResponse.json({ id: listId, packing_no, items: newItems.length });
+  // "2 Nos" -> 2, scaled by any Local Quantity multiplier on the item's own BOM-tree node (and every
+  // node above it) times the project's Whole-BOM Unit Count; non-numeric ("AS REQD") -> 1.
+  const lines = newItems.map(b => ({ b, qty: itemRollupQty(b.qty_text, b.assembly_id, rollupById, project.unit_count, !!b.qty_resolved) ?? 1 }));
+  const created = await createPackingLists({ project, treeProjectId: project_id, customerName: project.customer_name, lines, user });
+  await audit('packing_created', { actor: user.username, detail: `${created.map(c => c.packing_no).join(', ')} · project ${project_id} · ${newItems.length} items` });
+  return NextResponse.json({ id: created[0].id, packing_no: created[0].packing_no, lists: created, items: newItems.length });
 }

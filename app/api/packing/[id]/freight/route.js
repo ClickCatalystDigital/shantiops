@@ -21,7 +21,7 @@ export async function POST(req, { params }) {
   if (actionDenied) return actionDenied;
 
   const list = await queryOne(
-    `SELECT pl.id, pl.packing_no, pl.freight_amount, pl.freight_paid_by, p.company
+    `SELECT pl.id, pl.packing_no, pl.freight_amount, pl.freight_paid_by, COALESCE(pl.company, p.company) AS company
        FROM packing_lists pl LEFT JOIN projects p ON p.id = pl.project_id WHERE pl.id = ?`,
     [params.id]
   );

@@ -11920,6 +11920,12 @@ correctly-wired generator (`app/api/sales-products/route.js`) — the 34 blank/j
 (§5db §5, "NA"/"o"/duplicate rows) are a pre-existing small source-data defect, not a broken
 generator. All three backfills dry-run first, `usb_audit`-logged, backed up under `scripts/data/`.
 
+## 5dm. Packing list matches the client's Master/Annexure sheets (2026-09-30)
+- Company comes from the project (Boilers / Techno Fab / Srivaari), stored on `packing_lists.company`; e-way bill, freight and dispatch close-out read it first. One list per project; each line's `section` = its BOM root name (`lib/packing-generate.js`, shared by `from-bom` and `batch-children`), `master_section` says which prints as Master, the rest as "Annexure to Delivery Challan/Packing List". S.No restarts per form. `box_no` is the package label (LOOSE 1 / BOX NO - 2), typed by Dispatch and printed as separator rows.
+- PDF: one landscape page per form (`?form=<name>` for one), checklist rows (`packing_checklist_items`, Prod/QC/Stores ticks) on the master. Pure helpers + selfcheck: `lib/packing-forms.mjs`.
+- Prod. Done tick notifies Dispatch (`packing_ready`). `packing` milestone closes only when no draft list remains.
+- Not built: a "ready to add" panel to extend an existing draft (Generate makes a new list for new ready lines), "ship assembly as one line", per-section company override. Not browser-verified; PDF rendered and checked with a scratch script.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own

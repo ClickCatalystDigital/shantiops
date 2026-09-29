@@ -15,6 +15,16 @@ import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Trash2Icon, FileTextIcon } from 'lucide-react';
 import { EntityCode } from '@/components/EntityRefLink';
+import { groupForms } from '@/lib/packing-forms.mjs';
+
+// Click-to-edit cell: saves on blur/Enter through PATCH /api/packing/[id]/items.
+function EditCell({ value, onSave, disabled, className = '' }) {
+  const [v, setV] = useState(value ?? '');
+  useEffect(() => setV(value ?? ''), [value]);
+  if (disabled) return <span>{value || '—'}</span>;
+  return <Input className={`h-7 min-w-16 px-1.5 text-xs ${className}`} value={v} placeholder="—" onChange={e => setV(e.target.value)}
+    onBlur={() => { if ((v || '') !== (value || '')) onSave(v); }} onKeyDown={e => e.key === 'Enter' && e.currentTarget.blur()} />;
+}
 
 const BLANK = { material_description: '', moc: '', size_spec: '', ibr_no: '', box_no: '', qty: 1, make: '', item_code: '' };
 const STATUSES = ['draft', 'packed', 'dispatched'];
@@ -96,10 +106,14 @@ function DeliveryAckCard({ list, onDone }) {
   );
 }
 
-export default function PackingDetail({ list: initialList, items: initialItems, readOnly = false }) {
+export default function PackingDetail({ list: initialList, items: initialItems, checklist: initialChecklist = [], readOnly = false }) {
+  const [checklist, setChecklist] = useState(initialChecklist);
+  // forms derive from items below; declared after items state
+  const [newCheck, setNewCheck] = useState('');
   const router = useRouter();
   const [list, setList] = useState(initialList);
   const [items, setItems] = useState(initialItems);
+  const forms = groupForms(items, list.master_section);
   const [f, setF] = useState(BLANK);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(initialList);
@@ -128,6 +142,31 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
   }
   async function removeItem(id) {
     try { await api(`/api/packing/${list.id}/items?itemId=${id}`, { method: 'DELETE' }); setItems(xs => xs.filter(x => x.id !== id)); }
+    catch (err) { showToast(err.message, 'error'); }
+  }
+  async function saveItem(id, patch) {
+    try {
+      await api(`/api/packing/${list.id}/items`, { method: 'PATCH', body: { itemId: id, ...patch } });
+      setItems(xs => xs.map(x => x.id === id ? { ...x, ...patch } : x));
+    } catch (err) { showToast(err.message, 'error'); }
+  }
+  async function addCheck() {
+    if (!newCheck.trim()) return;
+    try { const r = await api(`/api/packing/${list.id}/checklist`, { method: 'POST', body: { description: newCheck } });
+      setChecklist(c => [...c, { id: r.id, description: newCheck.trim(), prod_ok: 0, qc_ok: 0, stores_ok: 0 }]); setNewCheck(''); }
+    catch (err) { showToast(err.message, 'error'); }
+  }
+  async function tickCheck(id, k, v) {
+    setChecklist(c => c.map(x => x.id === id ? { ...x, [k]: v ? 1 : 0 } : x));
+    try { await api(`/api/packing/${list.id}/checklist`, { method: 'PATCH', body: { itemId: id, [k]: v } }); }
+    catch (err) { showToast(err.message, 'error'); setChecklist(c => c.map(x => x.id === id ? { ...x, [k]: v ? 0 : 1 } : x)); }
+  }
+  async function removeCheck(id) {
+    try { await api(`/api/packing/${list.id}/checklist?itemId=${id}`, { method: 'DELETE' }); setChecklist(c => c.filter(x => x.id !== id)); }
+    catch (err) { showToast(err.message, 'error'); }
+  }
+  async function setMaster(name) {
+    try { await api(`/api/packing/${list.id}`, { method: 'PATCH', body: { master_section: name } }); setList(l => ({ ...l, master_section: name })); }
     catch (err) { showToast(err.message, 'error'); }
   }
   async function changeStatus(v) {
@@ -228,7 +267,7 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
               <Trash2Icon data-icon="inline-start" />{deleting ? 'Deleting…' : 'Delete draft'}
             </Button>
           )}
-          <Button asChild size="sm"><a href={`/api/packing/${list.id}/pdf`} target="_blank" rel="noreferrer"><FileTextIcon data-icon="inline-start" />Generate PDF</a></Button>
+          <Button asChild size="sm"><a href={`/api/packing/${list.id}/pdf`} target="_blank" rel="noreferrer"><FileTextIcon data-icon="inline-start" />{forms.length > 1 ? 'All forms PDF' : 'Generate PDF'}</a></Button>
           {!readOnly && <Button asChild variant="ghost" size="sm"><Link href="/dispatch">← All</Link></Button>}
         </div>
       </div>
@@ -389,41 +428,81 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
             <Meta label="E-Way Bill Date" value={list.eway_bill_date && formatDate(list.eway_bill_date)} />
           </dl>
 
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>#</TableHead><TableHead>Description</TableHead><TableHead>MOC</TableHead><TableHead>Size / Spec</TableHead>
-                  <TableHead>IBR No</TableHead><TableHead>Item Code</TableHead><TableHead>Box</TableHead><TableHead>Qty</TableHead><TableHead>Make</TableHead>
-                  {!readOnly && <TableHead className="no-print" />}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {items.map(it => (
-                  <TableRow key={it.id}>
-                    <TableCell className="tnum">{it.s_no}</TableCell>
-                    <TableCell className="font-medium">{it.material_description}</TableCell>
-                    <TableCell>{it.moc || '—'}</TableCell>
-                    <TableCell>{it.size_spec || '—'}</TableCell>
-                    <TableCell className="tnum">{it.ibr_no || '—'}</TableCell>
-                    <TableCell className="tnum">{it.item_code || '—'}</TableCell>
-                    <TableCell>{it.box_no || '—'}</TableCell>
-                    <TableCell className="tnum">
-                      {it.qty} {it.unit}
-                      {it.qty_breakdown && <div className="text-xs font-normal text-muted-foreground">{it.qty_breakdown.label}</div>}
-                    </TableCell>
-                    <TableCell>{it.make || '—'}</TableCell>
-                    {!readOnly && (
-                      <TableCell className="no-print">
-                        <Button variant="ghost" size="icon-sm" onClick={() => removeItem(it.id)}><Trash2Icon className="text-danger" /></Button>
-                      </TableCell>
-                    )}
-                  </TableRow>
-                ))}
-                {items.length === 0 && <TableRow><TableCell colSpan={10} className="text-muted-foreground">No items yet.</TableCell></TableRow>}
-              </TableBody>
-            </Table>
-          </div>
+          {forms.map(f => (
+            <div key={f.name} className="mb-6">
+              {forms.length > 1 || f.name !== 'Other' ? (
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <h3 className="text-sm font-semibold">{f.name}</h3>
+                  <Badge variant={f.kind === 'master' ? 'default' : 'secondary'}>{f.kind === 'master' ? 'Master' : 'Annexure'}</Badge>
+                  {!readOnly && f.kind !== 'master' && <Button variant="ghost" size="sm" className="no-print h-6 text-xs" onClick={() => setMaster(f.raw)}>Make master</Button>}
+                  <Button asChild variant="ghost" size="sm" className="no-print h-6 text-xs"><a href={`/api/packing/${list.id}/pdf?form=${encodeURIComponent(f.name)}`} target="_blank" rel="noreferrer"><FileTextIcon data-icon="inline-start" />PDF</a></Button>
+                </div>
+              ) : null}
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>#</TableHead><TableHead>Description</TableHead><TableHead>MOC</TableHead><TableHead>Size / Spec</TableHead>
+                      <TableHead>IBR No</TableHead><TableHead>Item Code</TableHead><TableHead>Package</TableHead><TableHead>Qty</TableHead><TableHead>Make</TableHead>
+                      {!readOnly && <TableHead className="no-print" />}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {f.items.map(it => (
+                      <TableRow key={it.id}>
+                        <TableCell className="tnum">{it.s_no}</TableCell>
+                        <TableCell className="font-medium">{it.material_description}</TableCell>
+                        <TableCell>{it.moc || '—'}</TableCell>
+                        <TableCell>{it.size_spec || '—'}</TableCell>
+                        <TableCell><EditCell value={it.ibr_no} disabled={readOnly} onSave={v => saveItem(it.id, { ibr_no: v })} /></TableCell>
+                        <TableCell><EditCell value={it.item_code} disabled={readOnly} onSave={v => saveItem(it.id, { item_code: v })} /></TableCell>
+                        <TableCell><EditCell value={it.box_no} disabled={readOnly} className="min-w-24" onSave={v => saveItem(it.id, { box_no: v })} /></TableCell>
+                        <TableCell className="tnum">
+                          {it.qty} {it.unit}
+                          {it.qty_breakdown && <div className="text-xs font-normal text-muted-foreground">{it.qty_breakdown.label}</div>}
+                        </TableCell>
+                        <TableCell>{it.make || '—'}</TableCell>
+                        {!readOnly && (
+                          <TableCell className="no-print">
+                            <Button variant="ghost" size="icon-sm" onClick={() => removeItem(it.id)}><Trash2Icon className="text-danger" /></Button>
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          ))}
+          {items.length === 0 && <p className="text-sm text-muted-foreground">No items yet.</p>}
+
+          {(checklist.length > 0 || !readOnly) && (
+            <div className="mb-4">
+              <h3 className="mb-2 text-sm font-semibold">Checklist</h3>
+              <Table>
+                <TableBody>
+                  {checklist.map((c, i) => (
+                    <TableRow key={c.id}>
+                      <TableCell className="tnum w-8">{i + 1}</TableCell>
+                      <TableCell>{c.description}</TableCell>
+                      {[['prod_ok', 'Prod'], ['qc_ok', 'QC'], ['stores_ok', 'Stores']].map(([k, label]) => (
+                        <TableCell key={k} className="w-20">
+                          <label className="flex items-center gap-1 text-xs"><input type="checkbox" checked={!!c[k]} onChange={e => tickCheck(c.id, k, e.target.checked)} />{label}</label>
+                        </TableCell>
+                      ))}
+                      {!readOnly && <TableCell className="no-print w-8"><Button variant="ghost" size="icon-sm" onClick={() => removeCheck(c.id)}><Trash2Icon className="text-danger" /></Button></TableCell>}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              {!readOnly && (
+                <div className="no-print mt-2 flex gap-2">
+                  <Input className="h-8 max-w-sm" placeholder="e.g. Valve to flange (Safety valve)" value={newCheck} onChange={e => setNewCheck(e.target.value)} onKeyDown={e => e.key === 'Enter' && addCheck()} />
+                  <Button size="sm" variant="outline" onClick={addCheck}>Add row</Button>
+                </div>
+              )}
+            </div>
+          )}
 
           <p className="mt-4 text-xs text-muted-foreground">
             <b>Declaration:</b> Dear Sir, kindly check all the above materials as per the packing list, item-wise, and confirm within <b>7 days</b> if there are any discrepancies or missing items.

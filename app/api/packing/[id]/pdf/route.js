@@ -20,7 +20,8 @@ export async function GET(req, { params }) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const pdf = await renderPackingPdf(data.list, data.items);
+  const only = new URL(req.url).searchParams.get('form');
+  const pdf = await renderPackingPdf(data.list, data.items, { checklist: data.checklist, only });
   return new NextResponse(pdf, {
     headers: {
       'Content-Type': 'application/pdf',

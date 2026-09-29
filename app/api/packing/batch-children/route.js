@@ -14,12 +14,12 @@
 // re-running this batch action after Stores routes more lines only adds the NEW lines to each
 // child's own list(s) rather than duplicating what's already there.
 import { NextResponse } from 'next/server';
-import { execute, queryOne, queryAll, nextNumber } from '@/lib/db';
+import { queryOne, queryAll } from '@/lib/db';
+import { createPackingLists } from '@/lib/packing-generate';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { getChildRoutingBoard } from '@/lib/data';
 import { audit } from '@/lib/usb';
-import { maybeStartMilestone } from '@/lib/milestone-auto';
 
 export async function POST(req) {
   const user = await getFreshSessionUser();
@@ -75,22 +75,17 @@ export async function POST(req) {
     const newCells = cells.filter(c => !draftedIds.has(c.bom_item_id) && linesById.has(c.bom_item_id));
     if (!newCells.length) { skipped.push(child.id); continue; }
 
-    const packing_no = await nextNumber('packing_no', 'PL');
-    const pl = await execute(
-      'INSERT INTO packing_lists (project_id, packing_no, customer_name, created_by, bom_release_revision_at_creation) VALUES (?, ?, ?, ?, ?)',
-      [child.id, packing_no, master.customer_name, user?.username || null, master.bom_release_revision ?? null]);
-    const listId = Number(pl.lastId);
-    try { await maybeStartMilestone(child.id, 'packing', user?.username); } catch { /* best-effort */ }
-
-    let s = 1;
-    for (const cell of newCells) {
-      const item = linesById.get(cell.bom_item_id);
-      await execute(
-        `INSERT INTO packing_items (packing_list_id, bom_item_id, s_no, material_description, moc, size_spec, make, qty, unit)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [listId, item.id, s++, item.material_description, item.moc || null, item.size_spec || null, item.make || null, cell.per_unit_required, "No's"]);
-    }
-    created.push({ child_project_id: child.id, packing_list_id: listId, packing_no, items: newCells.length });
+    const bomRows = await queryAll(
+      `SELECT id, assembly_id, material_description, moc, size_spec, make FROM bom_items WHERE id IN (${newCells.map(() => '?').join(',')})`,
+      newCells.map(c => c.bom_item_id));
+    const bomById = new Map(bomRows.map(r => [r.id, r]));
+    const childProject = await queryOne('SELECT id, company FROM projects WHERE id = ?', [child.id]);
+    const lists = await createPackingLists({
+      project: childProject, treeProjectId: masterId, customerName: master.customer_name, user,
+      revision: master.bom_release_revision ?? null,
+      lines: newCells.map(c => ({ b: bomById.get(c.bom_item_id), qty: c.per_unit_required })),
+    });
+    for (const l of lists) created.push({ child_project_id: child.id, packing_list_id: l.id, packing_no: l.packing_no, items: l.items });
   }
 
   await audit('packing_batch_created', {

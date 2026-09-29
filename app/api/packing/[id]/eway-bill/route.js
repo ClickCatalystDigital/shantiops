@@ -33,7 +33,7 @@ export async function POST(req, { params }) {
   const list = await queryOne(
     `SELECT pl.id, pl.packing_no, pl.eway_bill_no, pl.transport_distance_km, pl.transport_mode,
             pl.vehicle_type, pl.vehicle_no, pl.dispatch_through, pl.sales_invoice_id,
-            p.company, p.customer_id
+            COALESCE(pl.company, p.company) AS company, p.customer_id
        FROM packing_lists pl LEFT JOIN projects p ON p.id = pl.project_id WHERE pl.id = ?`,
     [params.id]
   );

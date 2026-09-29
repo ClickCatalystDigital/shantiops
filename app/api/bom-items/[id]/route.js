@@ -3,6 +3,7 @@ import { execute, queryOne, queryAll } from '@/lib/db';
 import { getFreshSessionUser, isPM } from '@/lib/auth';
 import { requireAction, requireEngineeringAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
+import { notifyDepartment } from '@/lib/notify';
 import { editableBomFields, PURCHASE_STATUSES } from '@/lib/bom-fields.mjs';
 import { CATEGORY_LABEL } from '@/lib/section-shapes.js';
 import { releaseReservationsForItem } from '@/lib/procurement';
@@ -166,6 +167,19 @@ export async function PATCH(req, { params }) {
   // (Enquiry/Comparison/Ordered/Transit/Cancelled) still needs the plain milestone resync that used
   // to run unconditionally here — applyReceivedSideEffects already does its own resync internally,
   // so this branch only covers the non-Received case to avoid syncing twice.
+  // Production ticking "Prod. Done" is the hand-off to Dispatch — tell them it's ready to pack.
+  // Best-effort; dedupe per line so un-ticking and re-ticking doesn't spam.
+  if (Number(changed.production_done) === 1 && !item.production_done) {
+    try {
+      const proj = await queryOne('SELECT project_no FROM projects WHERE id = ?', [item.project_id]);
+      await notifyDepartment('Dispatch', {
+        kind: 'packing_ready', project_id: item.project_id,
+        title: `Ready to pack - ${proj?.project_no || 'project'}`,
+        body: `${item.material_description} is done in Production and ready for a packing list.`,
+        dedupe_key: `packing_ready:${item.id}`,
+      }, { except: user.id });
+    } catch { /* best-effort */ }
+  }
   if (item.purchase_status !== 'Received' && changed.purchase_status === 'Received') {
     await applyReceivedSideEffects(item, changed);
   } else if ('purchase_status' in changed) {
