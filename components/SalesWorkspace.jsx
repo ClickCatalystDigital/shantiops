@@ -31,7 +31,7 @@ import {
 } from 'lucide-react';
 import { api, showToast } from '@/lib/client';
 import { todayISO } from '@/lib/date';
-import { formatMoney } from '@/lib/format';
+import { formatMoney, formatDate } from '@/lib/format';
 import Customer360 from '@/components/Customer360';
 import { quotationFollowupReason, REMINDER_LABELS } from '@/lib/quotation-reminders.mjs';
 import { PaymentOrdersTab, PaymentLogTab, Pager, SIZES } from '@/components/SalesPaymentTracker';
@@ -44,6 +44,7 @@ import { defaultCompanyClient } from '@/lib/company-filter.mjs';
 import { salesPeopleOptions } from '@/lib/sales-people.mjs';
 import { useLeadConvert, SimilarCustomersHint, useSimilarCustomers } from '@/components/ConvertLeadChoice';
 import { renderTemplate } from '@/lib/email-template.mjs';
+import { customerKey } from '@/lib/customer-match.mjs';
 import { DEFAULT_STAGE, isClosedCall, isSlaBreached, stageProbability } from '@/lib/lead-stage.mjs';
 import { QTY_UNITS } from '@/lib/qty-units.mjs';
 import { lineAmount, quotationTotals } from '@/lib/sales-lines.mjs';
@@ -491,7 +492,33 @@ function ExpectedValueField({ lead, router }) {
   );
 }
 
-function LeadDetailSheet({ lead, users, customers, salesProducts = [], branches = [], stages = [], isSalesHead = false, onClose, router }) {
+// Enquiries of the same customer share a key: the linked customer if there is one, else the name
+// with Pvt/Ltd/etc. ignored — this is how repeat enquiries (and likely duplicates) are spotted.
+const enquiryGroupKey = l => (l.converted_customer_id ? `c${l.converted_customer_id}` : `n${customerKey(l.company_name || l.lead_name || '')}`);
+
+function RelatedEnquiries({ lead, allLeads, stages, onOpen }) {
+  const key = enquiryGroupKey(lead);
+  const others = allLeads.filter(l => l.id !== lead.id && key !== 'n' && enquiryGroupKey(l) === key)
+    .sort((a, b) => String(b.enquiry_date || b.created_at).localeCompare(String(a.enquiry_date || a.created_at)));
+  if (!others.length) return null;
+  return (
+    <div className="rounded-lg border border-amber-300/60 bg-amber-50/50 p-2.5 dark:bg-amber-950/20">
+      <div className="mb-1 text-sm font-semibold">Other enquiries from this customer ({others.length})</div>
+      <p className="mb-1.5 text-xs text-muted-foreground">Check these before adding more — the same enquiry may already be here.</p>
+      <div className="flex flex-col gap-1">
+        {others.slice(0, 10).map(o => (
+          <button key={o.id} type="button" onClick={() => onOpen(o)} className="flex items-center justify-between gap-2 rounded border bg-background px-2 py-1 text-left text-xs hover:bg-muted">
+            <span className="min-w-0 truncate">{formatDate(o.enquiry_date || o.created_at)} · {o.product || o.lead_name}</span>
+            <span className="flex shrink-0 items-center gap-1.5"><StageBadge lead={o} stages={stages} />{o.expected_value ? <span className="tnum text-muted-foreground">{formatMoney(o.expected_value)}</span> : null}</span>
+          </button>
+        ))}
+        {others.length > 10 && <span className="text-xs text-muted-foreground">+{others.length - 10} more</span>}
+      </div>
+    </div>
+  );
+}
+
+function LeadDetailSheet({ lead, allLeads = [], onOpenLead, users, customers, salesProducts = [], branches = [], stages = [], isSalesHead = false, onClose, router }) {
   const extra = ENQUIRY_DETAIL_FIELDS.filter(([k]) => lead[k]);
   // Home calendar's ?diary=now|advanced deep-link (Phase 4) — opens straight into the diary form
   // instead of the plain detail sheet.
@@ -562,6 +589,7 @@ function LeadDetailSheet({ lead, users, customers, salesProducts = [], branches 
           <ExpectedValueField lead={lead} router={router} />
           <AccountManagerField lead={lead} users={users} router={router} />
           <LeadProductsCard lead={lead} salesProducts={salesProducts} router={router} />
+          <RelatedEnquiries lead={lead} allLeads={allLeads} stages={stages} onOpen={onOpenLead} />
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
             {lead.company_name && <span>Company: {lead.company_name}</span>}
             {lead.source && <span>Source: {lead.source}</span>}
@@ -844,6 +872,8 @@ export function AddEnquiryDialog({ leads = [], users, salesProducts, stages = []
     telephone: '', source: '',
   });
   const similarOrgs = useSimilarCustomers({ name: f.organization, phone: f.phone });
+  const key = customerKey(f.organization);
+  const sameOrgEnquiries = key ? leads.filter(l => customerKey(l.company_name || l.lead_name || '') === key) : [];
   const [products, setProducts] = useState([blankProductLine()]);
   const [saving, setSaving] = useState(false);
   const [customSource, setCustomSource] = useState(false);
@@ -874,7 +904,7 @@ export function AddEnquiryDialog({ leads = [], users, salesProducts, stages = []
         <DialogHeader className="border-b px-6 py-4"><DialogTitle>New Enquiry</DialogTitle></DialogHeader>
         <div className="flex flex-col gap-6 overflow-y-auto px-6 py-5">
           <FormSection title="Organization">
-            <Field2 label="Organization" required wide><Input value={f.organization} onChange={e => set('organization')(e.target.value.toUpperCase())} className="uppercase" autoFocus /><SimilarCustomersHint matches={similarOrgs} /></Field2>
+            <Field2 label="Organization" required wide><Input value={f.organization} onChange={e => set('organization')(e.target.value.toUpperCase())} className="uppercase" autoFocus /><SimilarCustomersHint matches={similarOrgs} />{sameOrgEnquiries.length > 0 && <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">{sameOrgEnquiries.length} enquiry(ies) already exist for this organization ({sameOrgEnquiries.slice(0, 3).map(l => l.sales_call_status || DEFAULT_STAGE).join(', ')}) — open one instead if it is the same.</p>}</Field2>
             <Field2 label="Short name"><Input value={f.short_name} onChange={setText('short_name')} /></Field2>
             <Field2 label="Segment"><Input value={f.industry} onChange={setText('industry')} /></Field2>
             <Field2 label="Address" required wide><Textarea rows={2} value={f.address} onChange={setText('address')} /></Field2>
@@ -1021,13 +1051,26 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
 
   const sources = [...new Set(leads.map(l => l.source).filter(Boolean))];
   const unassignedCount = leads.filter(l => !l.account_manager).length;
-  const filtered = leads.filter(l =>
+  const [groupBy, setGroupBy] = useState(false);
+  const groupCounts = useMemo(() => {
+    const m = new Map();
+    for (const l of leads) { const k = enquiryGroupKey(l); if (k !== 'n') m.set(k, (m.get(k) || 0) + 1); }
+    return m;
+  }, [leads]);
+  const filteredRaw = leads.filter(l =>
     (filters.stage === 'all' || (l.sales_call_status || DEFAULT_STAGE) === filters.stage) &&
     (filters.source === 'all' || l.source === filters.source) &&
     (filters.branch === 'all' || String(l.branch_id) === filters.branch) &&
     (!unassignedOnly || !l.account_manager) &&
     (!filters.search || l.lead_name.toLowerCase().includes(filters.search.toLowerCase()) || (l.company_name || '').toLowerCase().includes(filters.search.toLowerCase()))
   );
+  // "Group by customer": same-customer enquiries sit together, in the order their first one appears.
+  const filtered = useMemo(() => {
+    if (!groupBy) return filteredRaw;
+    const order = new Map();
+    filteredRaw.forEach(l => { const k = enquiryGroupKey(l); if (!order.has(k)) order.set(k, order.size); });
+    return [...filteredRaw].sort((a, b) => order.get(enquiryGroupKey(a)) - order.get(enquiryGroupKey(b)));
+  }, [filteredRaw, groupBy]);
   const teamOpts = users.map(u => ({ value: u.username, label: u.display_name || u.username }));
 
   function toggleSelected(id) {
@@ -1092,6 +1135,7 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
               <Button key={v} size="sm" variant={view === v ? 'secondary' : 'ghost'} className="h-7 capitalize" onClick={() => setView(v)}>{v}</Button>
             ))}
           </div>
+          <Button size="sm" variant={groupBy ? 'secondary' : 'outline'} onClick={() => setGroupBy(g => !g)} title="Keep enquiries of the same customer together">Group by customer</Button>
           <Button size="sm" onClick={() => setDialogOpen(true)}><PlusIcon />New Enquiry</Button>
         </CardAction>
       </CardHeader>
@@ -1158,26 +1202,27 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
           <Table>
             <TableHeader><TableRow>
               <TableHead className="w-8"><Checkbox checked={selectedIds.size > 0 && selectedIds.size === filtered.length} onCheckedChange={toggleSelectAll} aria-label="Select all" /></TableHead>
-              <TableHead>Enquiry</TableHead><TableHead>Source</TableHead><TableHead>Stage</TableHead><TableHead className="text-right">Value</TableHead>
-              <TableHead>A/C Manager</TableHead><TableHead>Assigned</TableHead><TableHead /></TableRow></TableHeader>
+              <TableHead>Enquiry</TableHead><TableHead className="hidden lg:table-cell">Source</TableHead><TableHead>Stage</TableHead><TableHead className="text-right">Value</TableHead>
+              <TableHead>A/C Manager</TableHead><TableHead className="hidden xl:table-cell">Assigned</TableHead><TableHead /></TableRow></TableHeader>
             <TableBody>
               {filtered.map(l => (
                 <TableRow key={l.id} data-entity-code={`LD-${l.id}`} className="cursor-pointer" onClick={() => setSelected(l)}>
                   <TableCell onClick={e => e.stopPropagation()}>
                     <Checkbox checked={selectedIds.has(l.id)} onCheckedChange={() => toggleSelected(l.id)} aria-label={`Select ${l.lead_name}`} />
                   </TableCell>
-                  <TableCell className="font-medium">
-                    <div className="flex items-center gap-1.5">
+                  <TableCell className="min-w-40 max-w-[16rem] whitespace-normal break-words font-medium">
+                    <div className="flex flex-wrap items-center gap-1.5">
                       {l.company_name || l.lead_name}
                       {!!l.is_vip && <StarIcon className="size-3.5 fill-amber-400 text-amber-400" aria-label="VIP" />}
+                      {groupCounts.get(enquiryGroupKey(l)) > 1 && <Badge variant="outline" className="text-[10px]" title="Enquiries from the same customer">{groupCounts.get(enquiryGroupKey(l))} enquiries</Badge>}
                     </div>
                     {l.company_name && l.lead_name && l.lead_name.trim().toLowerCase() !== l.company_name.trim().toLowerCase() && (
                       <div className="text-xs font-normal text-muted-foreground">{l.lead_name}</div>
                     )}
                   </TableCell>
-                  <TableCell className="text-muted-foreground">{l.source || '—'}</TableCell>
+                  <TableCell className="hidden max-w-[8rem] truncate text-muted-foreground lg:table-cell" title={l.source || ''}>{l.source || '—'}</TableCell>
                   <TableCell>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex flex-wrap items-center gap-1.5">
                       <StageBadge lead={l} stages={stages} />
                       {isSlaBreached(l) && <Badge variant="destructive">SLA overdue</Badge>}
                       {l.sales_call_closed_at && <Badge variant="secondary">Closed</Badge>}
@@ -1185,7 +1230,7 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
                   </TableCell>
                   <TableCell className="text-right tnum text-muted-foreground" data-raw={l.expected_value ?? ''}>{l.expected_value ? formatMoney(l.expected_value) : '—'}</TableCell>
                   <TableCell>{l.account_manager ? <span className="text-muted-foreground">{l.account_manager}</span> : <Badge variant="outline">Unassigned</Badge>}</TableCell>
-                  <TableCell className="text-muted-foreground">{l.assigned_to || '—'}</TableCell>
+                  <TableCell className="hidden text-muted-foreground xl:table-cell">{l.assigned_to || '—'}</TableCell>
                   <TableCell onClick={e => e.stopPropagation()}>
                     {!l.converted_customer_id && (
                       <Button size="sm" variant="outline" disabled={busyId === l.id} onClick={() => convert(l)}>Convert</Button>
@@ -1200,7 +1245,7 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
       {dialogOpen && <AddEnquiryDialog leads={leads} users={users} salesProducts={salesProducts} stages={stages} router={router} onClose={() => setDialogOpen(false)} />}
       {lostLead && <OrderLostDialog lead={lostLead} router={router} onClose={() => setLostLead(null)} />}
       {convertRowDialog}
-      {selected && <LeadDetailSheet lead={leads.find(l => l.id === selected.id) || selected} users={users} customers={customers} salesProducts={salesProducts} branches={branches} stages={stages} isSalesHead={isSalesHead} router={router} onClose={() => setSelected(null)} />}
+      {selected && <LeadDetailSheet lead={leads.find(l => l.id === selected.id) || selected} allLeads={leads} onOpenLead={setSelected} users={users} customers={customers} salesProducts={salesProducts} branches={branches} stages={stages} isSalesHead={isSalesHead} router={router} onClose={() => setSelected(null)} />}
     </Card>
   );
 }
@@ -3023,13 +3068,13 @@ function ProductDialog({ product, onClose, router }) {
 
   return (
     <Dialog open onOpenChange={o => !o && onClose()}>
-      <DialogContent>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl">
         <DialogHeader><DialogTitle>{isEdit ? 'Edit Product' : 'New Product'}</DialogTitle></DialogHeader>
-        <div className="flex flex-col gap-3">
+        <div className="grid gap-3 md:grid-cols-2">
           <div className="grid gap-1.5"><Label>Product code (leave blank to auto-generate)</Label><Input value={f.product_code} onChange={e => set('product_code')(e.target.value)} /></div>
           <div className="grid gap-1.5"><RequiredLabel>Product name</RequiredLabel><Input value={f.product_name} onChange={e => set('product_name')(e.target.value)} autoFocus /></div>
           <div className="grid gap-1.5"><Label>Product type</Label><SearchableSelect value={f.product_type} onChange={set('product_type')} options={typeOpts} displayValue={f.product_type} onTextChange={set('product_type')} placeholder="Select or type…" /></div>
-          <div className="grid gap-1.5"><Label>Description</Label><Textarea rows={2} value={f.description} onChange={e => set('description')(e.target.value)} /></div>
+          <div className="grid gap-1.5 md:col-span-2"><Label>Description</Label><Textarea rows={2} value={f.description} onChange={e => set('description')(e.target.value)} /></div>
           <div className="grid gap-1.5"><Label>Price (optional — can add later)</Label><Input type="number" value={f.price} onChange={e => set('price')(e.target.value)} /></div>
           <div className="grid grid-cols-3 gap-3">
             <div className="grid gap-1.5"><Label>Unit</Label><SearchableSelect value={f.unit} onChange={set('unit')} options={QTY_UNITS.map(u => ({ value: u, label: u }))} displayValue={f.unit} onTextChange={set('unit')} placeholder="Nos…" /></div>
@@ -3039,17 +3084,17 @@ function ProductDialog({ product, onClose, router }) {
           <div className="grid grid-cols-3 gap-3">
             <div className="grid gap-1.5"><Label>Category</Label>
               <Select value={f.category || ''} onValueChange={set('category')}>
-                <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
+                <SelectTrigger className="w-full"><SelectValue placeholder="—" /></SelectTrigger>
                 <SelectContent><SelectItem value="Standard Product">Standard Product</SelectItem><SelectItem value="Premium Product">Premium Product</SelectItem></SelectContent>
               </Select>
             </div>
             <div className="grid gap-1.5"><Label>Cost price</Label><Input type="number" min="0" value={f.cost_price} onChange={e => set('cost_price')(e.target.value)} /></div>
             <div className="grid gap-1.5"><Label>Warranty (days)</Label><Input type="number" min="0" value={f.warranty_days} onChange={e => set('warranty_days')(e.target.value)} /></div>
           </div>
-          <label className="flex items-center gap-2 text-sm"><Checkbox checked={!!f.serviceable} onCheckedChange={v => set('serviceable')(v ? 1 : 0)} />Serviceable product</label>
-          <div className="grid gap-1.5"><Label>BOM structure template (optional)</Label>
+          <label className="flex items-center gap-2 text-sm md:col-span-2"><Checkbox checked={!!f.serviceable} onCheckedChange={v => set('serviceable')(v ? 1 : 0)} />Serviceable product</label>
+          <div className="grid gap-1.5 md:col-span-2"><Label>BOM structure template (optional)</Label>
             <Select value={f.bom_structure_template_id || 'none'} onValueChange={v => set('bom_structure_template_id')(v === 'none' ? '' : v)}>
-              <SelectTrigger><SelectValue placeholder="None" /></SelectTrigger>
+              <SelectTrigger className="w-full"><SelectValue placeholder="None" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">None</SelectItem>
                 {templates.map(t => <SelectItem key={t.id} value={String(t.id)}>{t.name}{t.series ? ` · ${t.series}` : ''}{t.root_count > 1 ? ' · complete BOM' : ` · ${t.level}`}</SelectItem>)}
@@ -3058,7 +3103,7 @@ function ProductDialog({ product, onClose, router }) {
             <p className="text-xs text-muted-foreground">A project made from an order with this product starts its BOM tree from this template.</p>
           </div>
           {(product?.legacy_code || Object.keys(attrs).length > 0) && (
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-muted-foreground md:col-span-2">
               Additional details:{product?.legacy_code && product.legacy_code !== product.product_code ? ` also known as code ${product.legacy_code};` : ''}
               {' '}{Object.entries(attrs).map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v === true ? 'Yes' : v === false ? 'No' : v}`).join(' · ')}
             </p>

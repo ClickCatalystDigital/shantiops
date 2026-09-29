@@ -167,8 +167,8 @@ function PasswordCell({ customer }) {
     );
   }
   return (
-    <span className="flex items-center gap-1.5">
-      <span className="tracking-widest text-muted-foreground">••••••••</span>
+    <span className="flex max-w-[16rem] flex-wrap items-center gap-1.5">
+      <span className="tracking-widest text-muted-foreground">••••••</span>
       {customer.has_password
         ? <Button size="xs" variant="outline" onClick={() => call('reveal')}>Reveal</Button>
         : <span className="text-xs text-muted-foreground">{note || 'Not stored'}</span>}
@@ -234,18 +234,20 @@ export function PortalAccessTab() {
         </div>
         {!rows ? <p className="text-sm text-muted-foreground">Loading…</p> : shown.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No customers match.</p> : (
           <Table>
-            <TableHeader><TableRow><TableHead>Customer</TableHead><TableHead>Email</TableHead><TableHead>Status</TableHead><TableHead>Username</TableHead><TableHead>Password</TableHead><TableHead>Invite sent</TableHead><TableHead>Last login</TableHead><TableHead /></TableRow></TableHeader>
+            <TableHeader><TableRow><TableHead>Customer</TableHead><TableHead>Email</TableHead><TableHead>Status</TableHead><TableHead>Username</TableHead><TableHead>Password</TableHead><TableHead>Activity</TableHead><TableHead /></TableRow></TableHeader>
             <TableBody>
               {shown.map(r => (
                 <TableRow key={r.id}>
                   <TableCell className="font-medium">{r.name}<span className="block text-xs text-muted-foreground">{r.project_count} project(s)</span></TableCell>
-                  <TableCell>{r.email || <span className="text-xs text-destructive">No email</span>}</TableCell>
+                  <TableCell className="max-w-[11rem] break-all">{r.email || <span className="text-xs text-destructive">No email</span>}</TableCell>
                   <TableCell><Badge variant={STATUS[r.status][1]}>{STATUS[r.status][0]}</Badge></TableCell>
                   <TableCell className="text-muted-foreground">{r.username || '—'}</TableCell>
                   <TableCell>{r.portal_user_id ? <PasswordCell customer={r} /> : <span className="text-muted-foreground">—</span>}</TableCell>
-                  <TableCell className="text-muted-foreground">{r.initial_email_sent_at ? formatDate(r.initial_email_sent_at) : '—'}</TableCell>
-                  <TableCell className="text-muted-foreground">{r.last_login ? formatDate(r.last_login) : '—'}</TableCell>
-                  <TableCell className="flex justify-end gap-2">
+                  <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
+                    <div>Invited: {r.initial_email_sent_at ? formatDate(r.initial_email_sent_at) : '—'}</div>
+                    <div>Last login: {r.last_login ? formatDate(r.last_login) : '—'}</div>
+                  </TableCell>
+                  <TableCell><div className="flex max-w-[15rem] flex-wrap justify-end gap-1.5">
                     {r.status === 'not_enabled'
                       ? <Button size="sm" disabled={busyId === r.id} onClick={() => act(r, 'enable')}>Enable</Button>
                       : <>
@@ -254,7 +256,7 @@ export function PortalAccessTab() {
                           <Button size="sm" variant="outline" disabled={busyId === r.id} onClick={() => act(r, 'link')}>Copy link</Button>
                           {!!r.portal_enabled && <Button size="sm" variant="ghost" disabled={busyId === r.id} onClick={() => act(r, 'disable')}>Turn off emails</Button>}
                         </>}
-                  </TableCell>
+                  </div></TableCell>
                 </TableRow>
               ))}
             </TableBody>
