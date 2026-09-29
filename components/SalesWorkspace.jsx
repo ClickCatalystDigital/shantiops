@@ -846,7 +846,7 @@ function LeadProductsCard({ lead, salesProducts, router }) {
 // Shared layout for the Sales input overlays: a titled section with a 1/2/3-column responsive grid,
 // and a labelled field that can span the full row. Keeps every "New …" dialog looking the same.
 function FormSection({ title, cols = 3, children }) {
-  const grid = cols === 1 ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3';
+  const grid = cols === 1 ? 'grid-cols-1' : cols === 2 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3';
   return (
     <section className="flex flex-col gap-3">
       <h3 className="border-b pb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</h3>
