@@ -37,7 +37,7 @@ function FollowupTable({ rows, onUpdate }) {
   const actions = r => (
     <div className="flex gap-1.5">
       <Button size="sm" variant="outline" onClick={() => onUpdate(r.lead_id)}>Update Now</Button>
-      <Link href={`/sales?tab=enquiry&highlight=LD-${r.lead_id}&diary=advanced`}>
+      <Link href={`/sales?tab=leads&highlight=LD-${r.lead_id}&diary=advanced`}>
         <Button size="sm" variant="ghost">Advanced</Button>
       </Link>
     </div>

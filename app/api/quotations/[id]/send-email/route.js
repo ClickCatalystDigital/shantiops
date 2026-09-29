@@ -1,8 +1,7 @@
 // app/api/quotations/[id]/send-email/route.js — Phase 3.2's "Send Email" action. Draft
 // composing/template switching/PDF preview all work with zero blockers; this route is the one
 // place that hits the standing lib/mail.js seam (throws a clean "not configured" error until
-// MAIL_PROVIDER/MAIL_FROM are set — the exact same accepted seam the Customer Portal invite
-// already uses). No mailto: fallback — it can't attach the generated PDF, a strictly worse
+// no sender mailbox is set up — see lib/mail.js). No mailto: fallback — it can't attach the generated PDF, a strictly worse
 // substitute.
 import { hiddenSalesRecord } from '@/lib/sales-visibility';
 import { NextResponse } from 'next/server';
@@ -10,6 +9,8 @@ import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment, isPM } from '@/lib/auth';
 import { requireCrmAction } from '@/lib/action-permissions';
 import { sendMail } from '@/lib/mail';
+import { getQuotationDetail } from '@/lib/data';
+import { renderQuotationPdf } from '@/lib/quotation-pdf';
 import { audit } from '@/lib/usb';
 
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
@@ -41,12 +42,25 @@ export async function POST(req, { params }) {
   const to = b.to || quotation.customer_email;
   if (!to) return NextResponse.json({ error: 'No customer email on file' }, { status: 400 });
 
-  await sendMail({ to, subject, text: body });
+  // Attach the quotation PDF (same generator as GET /api/quotations/[id]/pdf).
+  const detail = await getQuotationDetail(params.id);
+  const pdf = await renderQuotationPdf(detail, detail.items);
+  let sent;
+  try {
+    sent = await sendMail({
+      to, subject, text: body, fromUser: user, company: quotation.company || null, kind: 'quotation',
+      attachments: [{ filename: `${quotation.quotation_no.replace(/\//g, '-')}.pdf`, content: pdf }],
+    });
+  } catch (err) {
+    return NextResponse.json({ error: err.message }, { status: 502 });
+  }
+  // Test mode (or no test address): nothing reached the customer, so don't mark the quotation sent.
+  if (!sent.live) return NextResponse.json({ ok: true, live: false, note: 'Email is in test mode — it was not sent to the customer.' });
 
   await execute(
     'UPDATE quotations SET sent_at = CURRENT_TIMESTAMP, email_template_id = ?, status = CASE WHEN status = \'draft\' THEN \'sent\' ELSE status END WHERE id = ?',
     [b.email_template_id || null, params.id]
   );
   await audit('quotation_emailed', { actor: user.username, detail: `${quotation.quotation_no} -> ${to}` });
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, live: true });
 }

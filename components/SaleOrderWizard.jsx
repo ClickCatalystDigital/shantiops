@@ -9,8 +9,8 @@
 // incrementally (PATCH/PUT per section, same click-to-edit idiom SalesPaymentTracker.jsx already
 // established), never only at the end.
 //
-// Deliberately separate from SaleOrderItemsSheet (SalesWorkspace.jsx) — that stays the plain,
-// unmodified items+PDF editor every Sale Order already had; this is the richer wizard surface.
+// SaleOrderDetailsSheet is also what the Sale Orders row's document icon opens (the old plain
+// SaleOrderItemsSheet was removed 2026-09-29).
 import { useState, useEffect } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -475,6 +475,9 @@ export function SaleOrderDetailsSheet({ saleOrderId, branches, salesProducts = [
             <CardHeader><CardTitle className="text-sm">Items On Order</CardTitle></CardHeader>
             <CardContent className="flex flex-col gap-2">
               {prefilled && <p className="text-xs text-muted-foreground">Filled in from the {so.quotation_id ? 'quotation' : 'enquiry'} — check and Save.</p>}
+              {!prefilled && !so.items?.length && Number(so.total) > 0 && (
+                <p className="text-xs text-muted-foreground">No line items recorded for this order (imported). Recorded order value: {formatMoney(so.total)}{so.tax_amount ? ` incl. tax ${formatMoney(so.tax_amount)}` : ''}. Saving line items here will replace that value with their total.</p>
+              )}
               <ItemsTable items={items} products={salesProducts} onChange={updateRow} onRemove={removeRow} />
               <Button size="sm" variant="outline" className="w-fit" onClick={addRow}><PlusIcon />Add line</Button>
               <div className="grid grid-cols-2 gap-3 border-t pt-2 sm:grid-cols-5">

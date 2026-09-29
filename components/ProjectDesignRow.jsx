@@ -52,10 +52,7 @@ export default function ProjectDesignRow({ projectId, scopeOfSupply = [], calcSh
           <CardContent className="flex flex-wrap items-center gap-2">
             {scopeOfSupply.length === 0 ? (
               <div className="flex w-full items-center justify-between gap-3">
-                <p className="text-sm text-muted-foreground">No Scope of Supply yet.</p>
-                <Button asChild size="sm" variant="outline">
-                  <Link href={`/sales?tab=scope_of_supply&project=${projectId}`}>Create Scope of Supply</Link>
-                </Button>
+                <p className="text-sm text-muted-foreground">No Scope of Supply yet — attach it from Edit Project.</p>
               </div>
             ) : (
               scopeOfSupply.map(sos => (

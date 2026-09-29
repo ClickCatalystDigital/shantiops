@@ -61,7 +61,7 @@ import CashFlowStatementCard from '@/components/reports/CashFlowStatementCard';
 import { DispatchRegisterCard, EwayBillRegisterCard, FreightCostSummaryCard, DispatchAgingCard } from '@/components/reports/DispatchReportCards';
 import { TestCertificateRegisterCard, QcInspectionSummaryCard, NcrRegisterCard, CalibrationStatusCard, JobWorkInspectionRegisterCard } from '@/components/reports/QcReportCards';
 import ManagementReportCard from '@/components/executive/ManagementReportCard';
-import { EmployeePerformance360Report, SalesOverviewReport, CompetitorAnalysisReport } from '@/components/SalesInsightReports';
+import { EmployeePerformance360Report, SalesOverviewReport, CompetitorAnalysisReport, LostReasonsReport } from '@/components/SalesInsightReports';
 import OrderBookReport from '@/components/OrderBookReport';
 import ProjectProfitabilityCard from '@/components/executive/ProjectProfitabilityCard';
 import CustomerProfitabilityCard from '@/components/executive/CustomerProfitabilityCard';
@@ -152,6 +152,7 @@ export const SCREEN = {
   'order_book': OrderBookReport,
   'employee_performance_360': EmployeePerformance360Report,
   'competitor_analysis': CompetitorAnalysisReport,
+  'lost_reasons': LostReasonsReport,
   'neglected_sales_call': NeglectedSalesCallReport,
   'customer_follow_up': CustomerFollowUpReport,
   'client_feedback': ClientFeedbackReport,
@@ -181,7 +182,7 @@ const ICON = {
   'agent_performance': UserRoundIcon,
   'lead_funnel': UsersIcon, 'leads_by_source': Share2Icon, 'campaign_performance': MegaphoneIcon,
   'sales_call_prospect_summary': TableIcon, 'sales_call_date_wise': CalendarDaysIcon,
-  'sales_call_location_wise': MapPinIcon, 'sales_call_funnel': SlidersHorizontalIcon, 'sales_overview': LayoutDashboardIcon, 'order_book': WalletIcon, 'employee_performance_360': UserCheckIcon, 'competitor_analysis': SwordsIcon,
+  'sales_call_location_wise': MapPinIcon, 'sales_call_funnel': SlidersHorizontalIcon, 'sales_overview': LayoutDashboardIcon, 'order_book': WalletIcon, 'employee_performance_360': UserCheckIcon, 'competitor_analysis': SwordsIcon, 'lost_reasons': SwordsIcon,
   'neglected_sales_call': AlertCircleIcon, 'customer_follow_up': RepeatIcon,
   'client_feedback': MessageSquareIcon, 'employee_follow_up': UserCheckIcon,
   'quotation_listing': FileTextIcon, 'feedback_not_responded': XCircleIcon,

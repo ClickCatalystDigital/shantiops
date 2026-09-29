@@ -48,11 +48,16 @@ export async function POST(req) {
   const name = String(b.name || '').trim();
   if (!name) return NextResponse.json({ error: 'Name is required' }, { status: 400 });
 
+  // The first two digits of a GSTIN are the state code — it decides CGST+SGST vs IGST on invoices,
+  // so fill it from the GST No when it wasn't given.
+  const gst = String(b.gst_no || '').trim().toUpperCase() || null;
+  const stateCode = b.state_code || (gst && /^\d{2}/.test(gst) ? gst.slice(0, 2) : null);
   const { lastId } = await execute(
-    `INSERT INTO customers (name, gst_no, phone, email, address, city, state, state_code, pin_code)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [name, b.gst_no || null, b.phone || null, b.email || null, b.address || null,
-      b.city || null, b.state || null, b.state_code || null, b.pin_code || null]
+    `INSERT INTO customers (name, gst_no, pan, phone, email, website, address, address2, address3, city, state, state_code, pin_code, account_manager)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [name, gst, String(b.pan || '').trim().toUpperCase() || null, b.phone || null, b.email || null, b.website || null,
+      b.address || null, b.address2 || null, b.address3 || null, b.city || null, b.state || null, stateCode, b.pin_code || null,
+      b.account_manager || null]
   );
   await audit('customer_created', { actor: user.username, detail: name });
   return NextResponse.json({ id: Number(lastId) });

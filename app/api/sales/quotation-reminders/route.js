@@ -5,6 +5,7 @@
 import { NextResponse } from 'next/server';
 import { timingSafeEqual } from 'node:crypto';
 import { sweepQuotationReminders } from '@/lib/quotation-reminders';
+import { sweepPaymentReminders } from '@/lib/payment-reminders';
 
 function authorized(req) {
   const key = Buffer.from(String(req.headers.get('x-sync-key') ?? ''));
@@ -15,7 +16,9 @@ function authorized(req) {
 export async function POST(req) {
   if (!authorized(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   try {
-    return NextResponse.json({ ok: true, ...(await sweepQuotationReminders()) });
+    const quotations = await sweepQuotationReminders();
+    const payments = await sweepPaymentReminders();
+    return NextResponse.json({ ok: true, ...quotations, payments });
   } catch (err) {
     return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
   }

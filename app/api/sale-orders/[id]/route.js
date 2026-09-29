@@ -81,6 +81,12 @@ export async function PATCH(req, { params }) {
     fields.push('order_date = ?'); args.push(b.order_date || null);
   }
   if (b.invoice_ref !== undefined) { fields.push('invoice_ref = ?'); args.push(String(b.invoice_ref).trim() || null); }
+  if (b.customer_id !== undefined) {
+    // Link an order (e.g. an imported one with only a typed name) to a real customer.
+    const cust = await queryOne('SELECT id FROM customers WHERE id = ?', [b.customer_id]);
+    if (!cust) return NextResponse.json({ error: 'Customer not found' }, { status: 400 });
+    fields.push('customer_id = ?'); args.push(cust.id);
+  }
   if (b.sales_person !== undefined) {
     // Plan 1i — a Sales username; keeping the current value or an already-used legacy name is fine.
     const cur = await queryOne('SELECT sales_person_override FROM sale_orders WHERE id = ?', [params.id]);

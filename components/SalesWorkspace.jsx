@@ -4,7 +4,7 @@
 // Sale Orders | Campaigns, same multi-tab-in-one-file precedent as ProcurementWorkspace.jsx.
 // Customer detail (contacts/addresses/notes) opens in a right-side Sheet, same drawer pattern
 // HrWorkspace.jsx's employee detail uses.
-import { Fragment, useState, useEffect, useMemo } from 'react';
+import { Fragment, useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEntityHighlight } from '@/lib/use-entity-highlight';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
@@ -25,8 +25,8 @@ import { COMPANY_NAMES } from '@/lib/company-profiles.js';
 import {
   PlusIcon, TrashIcon, UserPlusIcon, UsersIcon, FileTextIcon, ShoppingCartIcon,
   CheckSquareIcon, ContactIcon, MessageCircleIcon, MailIcon, TagIcon,
-  InboxIcon, UndoIcon, IndianRupeeIcon, ReceiptIcon, DownloadIcon, UploadIcon, FileCheckIcon,
-  WalletIcon, ClipboardListIcon, BanknoteIcon, Building2Icon, PackageIcon, TargetIcon, StarIcon,
+  UndoIcon, IndianRupeeIcon, ReceiptIcon, DownloadIcon, UploadIcon,
+  ClipboardListIcon, BanknoteIcon, Building2Icon, PackageIcon, TargetIcon, StarIcon,
   PencilIcon,
 } from 'lucide-react';
 import { api, showToast } from '@/lib/client';
@@ -34,15 +34,17 @@ import { todayISO } from '@/lib/date';
 import { formatMoney } from '@/lib/format';
 import Customer360 from '@/components/Customer360';
 import { quotationFollowupReason, REMINDER_LABELS } from '@/lib/quotation-reminders.mjs';
-import ScopeOfSupplySection from '@/components/ScopeOfSupplySection';
 import { PaymentOrdersTab, PaymentLogTab, Pager, SIZES } from '@/components/SalesPaymentTracker';
-import { CreatePoFlow } from '@/components/SaleOrderWizard';
+import { CreatePoFlow, SaleOrderDetailsSheet } from '@/components/SaleOrderWizard';
+import { LOST_REASONS, composeReason } from '@/lib/lost-reasons.mjs';
+import { EmailSetupTab, PortalAccessTab } from '@/components/SalesSetupPanels';
 import ProductSearchField from '@/components/ProductSearchField';
 import CustomerPicker from '@/components/CustomerPicker';
 import { defaultCompanyClient } from '@/lib/company-filter.mjs';
+import { salesPeopleOptions } from '@/lib/sales-people.mjs';
 import { useLeadConvert, SimilarCustomersHint, useSimilarCustomers } from '@/components/ConvertLeadChoice';
 import { renderTemplate } from '@/lib/email-template.mjs';
-import { DEFAULT_STAGE, isClosedCall, isEnquiryStage, isSlaBreached, stageProbability } from '@/lib/lead-stage.mjs';
+import { DEFAULT_STAGE, isClosedCall, isSlaBreached, stageProbability } from '@/lib/lead-stage.mjs';
 import { QTY_UNITS } from '@/lib/qty-units.mjs';
 import { lineAmount, quotationTotals } from '@/lib/sales-lines.mjs';
 
@@ -423,51 +425,8 @@ export function TasksPanel({ leadId, opportunityId, customerId, users = [] }) {
 
 // --- Leads --------------------------------------------------------------------------------------
 
-function AddLeadDialog({ onClose, router }) {
-  const [leadName, setLeadName] = useState('');
-  const [companyName, setCompanyName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [source, setSource] = useState('');
-  const [territory, setTerritory] = useState('');
-  const [industry, setIndustry] = useState('');
-  const [saving, setSaving] = useState(false);
-
-  async function save() {
-    if (!leadName.trim()) return showToast('Lead name is required', 'error');
-    setSaving(true);
-    try {
-      await api('/api/leads', { method: 'POST', body: {
-        lead_name: leadName.trim(), company_name: companyName || null, phone: phone || null,
-        source: source || null, territory: territory || null, industry: industry || null,
-      } });
-      showToast('Lead added');
-      router.refresh();
-      onClose();
-    } catch (err) { showToast(err.message, 'error'); } finally { setSaving(false); }
-  }
-
-  return (
-    <Dialog open onOpenChange={o => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>New Lead</DialogTitle></DialogHeader>
-        <div className="flex flex-col gap-3">
-          <div className="grid gap-1.5"><Label>Lead / contact name</Label><Input value={leadName} onChange={e => setLeadName(e.target.value)} autoFocus /></div>
-          <div className="grid gap-1.5"><Label>Company (optional)</Label><Input value={companyName} onChange={e => setCompanyName(e.target.value)} /></div>
-          <div className="grid gap-1.5"><Label>Phone (optional)</Label><Input value={phone} onChange={e => setPhone(e.target.value)} /></div>
-          <div className="grid gap-1.5"><Label>Source (optional)</Label><Input value={source} onChange={e => setSource(e.target.value)} placeholder="Website, referral, event…" /></div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="grid gap-1.5"><Label>Territory (optional)</Label><Input value={territory} onChange={e => setTerritory(e.target.value)} /></div>
-            <div className="grid gap-1.5"><Label>Industry (optional)</Label><Input value={industry} onChange={e => setIndustry(e.target.value)} /></div>
-          </div>
-        </div>
-        <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Add Lead'}</Button></DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 // Enquiry detail fields not already covered by the summary line above — only shown when at least
-// one is actually set, so a plain Lead created through the simpler AddLeadDialog renders nothing
+// one is actually set, so a plain Lead renders nothing
 // extra here.
 const ENQUIRY_DETAIL_FIELDS = [
   ['address', 'Address'], ['website', 'Web address'], ['reference', 'Reference'],
@@ -653,20 +612,22 @@ function LeadDetailSheet({ lead, users, customers, salesProducts = [], branches 
 // which this dialog deliberately never touches, Gap #26).
 function OrderLostDialog({ lead, onClose, router }) {
   const [reason, setReason] = useState('');
+  const [details, setDetails] = useState('');
   const [competitor, setCompetitor] = useState({ competitor: '', product: '', price: '' });
   const [saving, setSaving] = useState(false);
 
   async function save() {
-    if (!reason.trim()) return showToast('A reason is required', 'error');
+    if (!reason) return showToast('Pick a reason', 'error');
+    if (reason === 'Other' && !details.trim()) return showToast('Add a few words for "Other"', 'error');
     if (competitor.price !== '' && !(Number(competitor.price) >= 0)) return showToast('Competitor price must be a number', 'error');
     setSaving(true);
     try {
       await api(`/api/leads/${lead.id}`, { method: 'PATCH', body: {
-        sales_call_status: 'Order Lost', lost_reason: reason.trim(), sales_call_closed_at: new Date().toISOString(),
+        sales_call_status: 'Order Lost', lost_reason: composeReason(reason, details), sales_call_closed_at: new Date().toISOString(),
       } });
       // Plan 4 — who we lost to (optional), for the Competitor Analysis report and Customer 360.
       if (competitor.competitor.trim()) {
-        await api('/api/competitors', { method: 'POST', body: { lead_id: lead.id, ...competitor, lost_to: true, notes: reason.trim() } })
+        await api('/api/competitors', { method: 'POST', body: { lead_id: lead.id, ...competitor, lost_to: true, notes: composeReason(reason, details) } })
           .catch(err => showToast(`Marked lost, but the competitor wasn't saved: ${err.message}`, 'error'));
       }
       showToast('Marked as Order Lost');
@@ -679,7 +640,14 @@ function OrderLostDialog({ lead, onClose, router }) {
     <Dialog open onOpenChange={o => !o && onClose()}>
       <DialogContent>
         <DialogHeader><DialogTitle>Order Lost — {lead.lead_name}</DialogTitle></DialogHeader>
-        <div className="grid gap-1.5"><RequiredLabel>Reason</RequiredLabel><Textarea rows={3} value={reason} onChange={e => setReason(e.target.value)} autoFocus /></div>
+        <div className="grid gap-1.5">
+          <RequiredLabel>Reason</RequiredLabel>
+          <Select value={reason} onValueChange={setReason}>
+            <SelectTrigger><SelectValue placeholder="Pick a reason…" /></SelectTrigger>
+            <SelectContent>{LOST_REASONS.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}</SelectContent>
+          </Select>
+        </div>
+        <div className="grid gap-1.5"><Label>Details {reason === 'Other' ? '' : '(optional)'}</Label><Textarea rows={2} value={details} onChange={e => setDetails(e.target.value)} /></div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div className="grid gap-1.5"><Label>Lost to competitor (optional)</Label><Input value={competitor.competitor} onChange={e => setCompetitor(c => ({ ...c, competitor: e.target.value }))} /></div>
           <div className="grid gap-1.5"><Label>Their product</Label><Input value={competitor.product} onChange={e => setCompetitor(c => ({ ...c, product: e.target.value }))} /></div>
@@ -834,6 +802,26 @@ function LeadProductsCard({ lead, salesProducts, router }) {
   );
 }
 
+// Shared layout for the Sales input overlays: a titled section with a 1/2/3-column responsive grid,
+// and a labelled field that can span the full row. Keeps every "New …" dialog looking the same.
+function FormSection({ title, cols = 3, children }) {
+  const grid = cols === 1 ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3';
+  return (
+    <section className="flex flex-col gap-3">
+      <h3 className="border-b pb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</h3>
+      <div className={`grid gap-x-4 gap-y-3 ${grid}`}>{children}</div>
+    </section>
+  );
+}
+function Field2({ label, required, wide, children }) {
+  return (
+    <div className={`grid content-start gap-1.5 ${wide ? 'sm:col-span-2 lg:col-span-3' : ''}`}>
+      {required ? <RequiredLabel>{label}</RequiredLabel> : <Label>{label}</Label>}
+      {children}
+    </div>
+  );
+}
+
 export function AddEnquiryDialog({ leads = [], users, salesProducts, stages = [], onClose, router }) {
   const [f, setF] = useState({
     enquiry_date: todayISO(), organization: '', address: '', website: '', email: '',
@@ -868,56 +856,48 @@ export function AddEnquiryDialog({ leads = [], users, salesProducts, stages = []
 
   return (
     <Dialog open onOpenChange={o => !o && onClose()}>
-      <DialogContent className="sm:max-w-4xl">
-        <DialogHeader><DialogTitle>New Enquiry</DialogTitle></DialogHeader>
-        <div className="flex flex-col gap-4 max-h-[70vh] overflow-y-auto pr-1">
-          <div className="grid gap-1.5 max-w-56">
-            <Label>Enquiry date</Label>
-            <Input type="date" value={f.enquiry_date} onChange={setText('enquiry_date')} />
-          </div>
-          <div className="grid grid-cols-1 gap-x-6 gap-y-3 md:grid-cols-3">
-            {/* column 1 */}
-            <div className="flex flex-col gap-3">
-              <div className="grid gap-1.5"><RequiredLabel>Organization</RequiredLabel><Input value={f.organization} onChange={setText('organization')} autoFocus />
-                <SimilarCustomersHint matches={similarOrgs} /></div>
-              <div className="grid gap-1.5"><RequiredLabel>Address</RequiredLabel><Textarea rows={2} value={f.address} onChange={setText('address')} /></div>
-              <div className="grid gap-1.5"><Label>Web address</Label><Input value={f.website} onChange={setText('website')} placeholder="https://…" /></div>
-              <div className="grid gap-1.5"><Label>Email id</Label><Input type="email" value={f.email} onChange={setText('email')} /></div>
-              <div className="grid gap-1.5"><Label>Team</Label><SearchableSelect value={f.assigned_to} onChange={set('assigned_to')} options={teamOpts} placeholder="Select a person…" /></div>
-              <div className="grid gap-1.5"><Label>Reference</Label><Input value={f.reference} onChange={setText('reference')} /></div>
-            </div>
-
-            {/* column 2 */}
-            <div className="flex flex-col gap-3">
-              <div className="grid gap-1.5"><Label>Organization short name</Label><Input value={f.short_name} onChange={setText('short_name')} /></div>
-              <div className="grid gap-1.5"><Label>State</Label><SearchableSelect value={f.territory} onChange={set('territory')} options={INDIA_STATES} displayValue={f.territory} onTextChange={set('territory')} placeholder="Select or type…" /></div>
-              <div className="grid gap-1.5"><Label>District</Label><SearchableSelect value={f.district} onChange={set('district')} options={districtOpts} displayValue={f.district} onTextChange={set('district')} placeholder="Select or type…" /></div>
-              <div className="grid gap-1.5"><Label>Sub location</Label><SearchableSelect value={f.sub_location} onChange={set('sub_location')} options={subLocationOpts} displayValue={f.sub_location} onTextChange={set('sub_location')} placeholder="Select or type…" /></div>
-              <div className="grid gap-1.5"><Label>Telephone no</Label><Input value={f.telephone} onChange={setText('telephone')} /></div>
-              <div className="grid gap-1.5"><Label>Order expected in</Label><Input value={f.order_expected_in} onChange={setText('order_expected_in')} placeholder="e.g. Q2 2027" /></div>
-              <div className="grid gap-1.5"><Label>Week number</Label><Input value={f.week_number} onChange={setText('week_number')} /></div>
-              <div className="grid gap-1.5"><Label>Remarks</Label><Textarea rows={2} value={f.notes} onChange={setText('notes')} /></div>
-              <div className="grid gap-1.5"><Label>Segment</Label><Input value={f.industry} onChange={setText('industry')} /></div>
-            </div>
-
-            {/* column 3 */}
-            <div className="flex flex-col gap-3">
-              <div className="grid gap-1.5"><Label>A/C Manager</Label><SearchableSelect value={f.account_manager} onChange={set('account_manager')} options={teamOpts} placeholder="Select a person…" /></div>
-              <div className="grid gap-1.5"><Label>Initiated by</Label><SearchableSelect value={f.initiated_by} onChange={set('initiated_by')} options={teamOpts} placeholder="Select a person…" /></div>
-              <div className="grid gap-1.5"><Label>District code</Label><Input value={f.district_code} onChange={setText('district_code')} /></div>
-              <div className="grid gap-1.5"><Label>Pin code</Label><Input value={f.pin_code} onChange={setText('pin_code')} /></div>
-              <div className="grid gap-1.5"><Label>Expected value (₹)</Label><Input type="number" min="0" value={f.expected_value} onChange={setText('expected_value')} placeholder={productsTotal > 0 ? `${productsTotal} (from products)` : ''} /></div>
-              <div className="grid gap-1.5"><Label>Stage</Label><SearchableSelect value={f.sales_call_status} onChange={set('sales_call_status')} options={stages.filter(s => !s.is_won && !s.is_lost).map(s => ({ value: s.name, label: s.name }))} placeholder="Select…" /></div>
-              <div className="grid gap-1.5"><Label>Mobile number</Label><Input value={f.phone} onChange={setText('phone')} /></div>
-              <div className="grid gap-1.5"><Label>Source</Label><SearchableSelect value={f.source} onChange={set('source')} options={sourceOpts} displayValue={f.source} onTextChange={set('source')} placeholder="Select or type…" /></div>
-            </div>
-          </div>
-          <div className="grid gap-1.5">
-            <Label>Products</Label>
+      <DialogContent className="flex max-h-[92vh] flex-col gap-0 p-0 sm:max-w-3xl">
+        <DialogHeader className="border-b px-6 py-4"><DialogTitle>New Enquiry</DialogTitle></DialogHeader>
+        <div className="flex flex-col gap-6 overflow-y-auto px-6 py-5">
+          <FormSection title="Organization">
+            <Field2 label="Organization" required wide><Input value={f.organization} onChange={setText('organization')} autoFocus /><SimilarCustomersHint matches={similarOrgs} /></Field2>
+            <Field2 label="Short name"><Input value={f.short_name} onChange={setText('short_name')} /></Field2>
+            <Field2 label="Segment"><Input value={f.industry} onChange={setText('industry')} /></Field2>
+            <Field2 label="Address" required wide><Textarea rows={2} value={f.address} onChange={setText('address')} /></Field2>
+            <Field2 label="State"><SearchableSelect value={f.territory} onChange={set('territory')} options={INDIA_STATES} displayValue={f.territory} onTextChange={set('territory')} placeholder="Select or type…" /></Field2>
+            <Field2 label="District"><SearchableSelect value={f.district} onChange={set('district')} options={districtOpts} displayValue={f.district} onTextChange={set('district')} placeholder="Select or type…" /></Field2>
+            <Field2 label="Sub location"><SearchableSelect value={f.sub_location} onChange={set('sub_location')} options={subLocationOpts} displayValue={f.sub_location} onTextChange={set('sub_location')} placeholder="Select or type…" /></Field2>
+            <Field2 label="Pin code"><Input value={f.pin_code} onChange={setText('pin_code')} /></Field2>
+            <Field2 label="District code"><Input value={f.district_code} onChange={setText('district_code')} /></Field2>
+          </FormSection>
+          <FormSection title="Contact">
+            <Field2 label="Mobile number"><Input value={f.phone} onChange={setText('phone')} /></Field2>
+            <Field2 label="Telephone"><Input value={f.telephone} onChange={setText('telephone')} /></Field2>
+            <Field2 label="Email"><Input type="email" value={f.email} onChange={setText('email')} /></Field2>
+            <Field2 label="Website"><Input value={f.website} onChange={setText('website')} placeholder="https://…" /></Field2>
+          </FormSection>
+          <FormSection title="Enquiry">
+            <Field2 label="Enquiry date"><Input type="date" value={f.enquiry_date} onChange={setText('enquiry_date')} /></Field2>
+            <Field2 label="Stage"><SearchableSelect value={f.sales_call_status} onChange={set('sales_call_status')} options={stages.filter(s => !s.is_won && !s.is_lost).map(s => ({ value: s.name, label: s.name }))} placeholder="Select…" /></Field2>
+            <Field2 label="Expected value (₹)"><Input type="number" min="0" value={f.expected_value} onChange={setText('expected_value')} placeholder={productsTotal > 0 ? `${productsTotal} (from products)` : ''} /></Field2>
+            <Field2 label="Order expected in"><Input value={f.order_expected_in} onChange={setText('order_expected_in')} placeholder="e.g. Q2 2027" /></Field2>
+            <Field2 label="Week number"><Input value={f.week_number} onChange={setText('week_number')} /></Field2>
+            <Field2 label="Source"><SearchableSelect value={f.source} onChange={set('source')} options={sourceOpts} displayValue={f.source} onTextChange={set('source')} placeholder="Select or type…" /></Field2>
+            <Field2 label="Reference"><Input value={f.reference} onChange={setText('reference')} /></Field2>
+          </FormSection>
+          <FormSection title="Ownership">
+            <Field2 label="Team"><SearchableSelect value={f.assigned_to} onChange={set('assigned_to')} options={teamOpts} placeholder="Select a person…" /></Field2>
+            <Field2 label="A/C Manager"><SearchableSelect value={f.account_manager} onChange={set('account_manager')} options={teamOpts} placeholder="Select a person…" /></Field2>
+            <Field2 label="Initiated by"><SearchableSelect value={f.initiated_by} onChange={set('initiated_by')} options={teamOpts} placeholder="Select a person…" /></Field2>
+          </FormSection>
+          <FormSection title="Products" cols={1}>
             <ProductLinesEditor products={salesProducts} lines={products} onChange={setProducts} />
-          </div>
+          </FormSection>
+          <FormSection title="Remarks" cols={1}>
+            <Textarea rows={2} value={f.notes} onChange={setText('notes')} />
+          </FormSection>
         </div>
-        <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Create'}</Button></DialogFooter>
+        <DialogFooter className="m-0 border-t px-6 py-3"><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Create enquiry'}</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -1000,11 +980,9 @@ function LeadBoard({ leads: allLeads, stages, onOpen, onLost, router }) {
   );
 }
 
-// STERP "Sales Enquiry" (SYSTEM.md §5e) — the Enquiry nav entry reuses this exact list/table,
-// narrowed to open, not-closed leads still before the "Proposals" stage (lib/lead-stage.mjs
-// isEnquiryStage) — only the creation dialog differs (isEnquiry picks AddEnquiryDialog's fuller
-// form over AddLeadDialog's).
-function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], stages = [], savedViews, isSalesHead = false, router, isEnquiry = false }) {
+// The one Enquiries list (2026-09-29: the separate "New Enquiries" tab, which was this same table
+// narrowed to pre-Proposals stages, is gone — the Stage filter below covers that view).
+function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], stages = [], savedViews, isSalesHead = false, router }) {
   const { convert: convertLeadRow, dialog: convertRowDialog } = useLeadConvert();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [busyId, setBusyId] = useState(null);
@@ -1014,7 +992,7 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
   const highlightCode = searchParams.get('highlight');
   const [selected, setSelected] = useState(() => leads.find(l => `LD-${l.id}` === highlightCode) || null);
   const [filters, setFilters] = useState(LEAD_FILTER_DEFAULT);
-  const [view, setView] = useState(!isEnquiry && searchParams.get('view') === 'board' ? 'board' : 'list');
+  const [view, setView] = useState(searchParams.get('view') === 'board' ? 'board' : 'list');
   const [lostLead, setLostLead] = useState(null);
   const [views, setViews] = useState(savedViews);
   const [viewName, setViewName] = useState('');
@@ -1026,7 +1004,6 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
   const sources = [...new Set(leads.map(l => l.source).filter(Boolean))];
   const unassignedCount = leads.filter(l => !l.account_manager).length;
   const filtered = leads.filter(l =>
-    (!isEnquiry || (!l.sales_call_closed_at && isEnquiryStage(stages, l.sales_call_status))) &&
     (filters.stage === 'all' || (l.sales_call_status || DEFAULT_STAGE) === filters.stage) &&
     (filters.source === 'all' || l.source === filters.source) &&
     (filters.branch === 'all' || String(l.branch_id) === filters.branch) &&
@@ -1063,35 +1040,51 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
   }
 
   async function saveView() {
-    if (!viewName.trim()) return;
+    const name = viewName.trim();
+    if (!name) return showToast('Type a name for the view first', 'error');
+    const current = { ...filters, unassignedOnly };
+    if (JSON.stringify(current) === JSON.stringify({ ...LEAD_FILTER_DEFAULT, unassignedOnly: false })) return showToast('Set a search or filter first — a view remembers the filters you have applied', 'error');
+    if (views.some(v => v.name.toLowerCase() === name.toLowerCase())) return showToast(`You already have a view called "${name}"`, 'error');
     try {
-      const { id } = await api('/api/crm-saved-views', { method: 'POST', body: { entity: 'leads', name: viewName.trim(), filters, pinned: true } });
-      setViews(prev => [{ id, name: viewName.trim(), filters, pinned: 1 }, ...prev]);
+      const { id } = await api('/api/crm-saved-views', { method: 'POST', body: { entity: 'leads', name, filters: current, pinned: true } });
+      setViews(prev => [{ id, name, filters: current, pinned: 1 }, ...prev]);
       setViewName('');
       showToast('View saved');
     } catch (err) { showToast(err.message, 'error'); }
+  }
+  async function deleteView(v) {
+    try {
+      await api(`/api/crm-saved-views/${v.id}`, { method: 'DELETE' });
+      setViews(prev => prev.filter(x => x.id !== v.id));
+    } catch (err) { showToast(err.message, 'error'); }
+  }
+  function applyView(v) {
+    const { unassignedOnly: un, ...rest } = v.filters || {};
+    setFilters({ ...LEAD_FILTER_DEFAULT, ...rest });
+    setUnassignedOnly(!!un);
   }
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{isEnquiry ? 'Enquiry' : 'Leads'}</CardTitle>
+        <CardTitle>Enquiries</CardTitle>
         <CardAction className="flex items-center gap-2">
-          {!isEnquiry && (
-            <div className="flex rounded-md border p-0.5" role="group" aria-label="View">
-              {['list', 'board'].map(v => (
-                <Button key={v} size="sm" variant={view === v ? 'secondary' : 'ghost'} className="h-7 capitalize" onClick={() => setView(v)}>{v}</Button>
-              ))}
-            </div>
-          )}
-          <Button size="sm" onClick={() => setDialogOpen(true)}><PlusIcon />{isEnquiry ? 'New Enquiry' : 'New Lead'}</Button>
+          <div className="flex rounded-md border p-0.5" role="group" aria-label="View">
+            {['list', 'board'].map(v => (
+              <Button key={v} size="sm" variant={view === v ? 'secondary' : 'ghost'} className="h-7 capitalize" onClick={() => setView(v)}>{v}</Button>
+            ))}
+          </div>
+          <Button size="sm" onClick={() => setDialogOpen(true)}><PlusIcon />New Enquiry</Button>
         </CardAction>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         {views.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
             {views.map(v => (
-              <Badge key={v.id} variant="secondary" className="cursor-pointer" onClick={() => setFilters({ ...LEAD_FILTER_DEFAULT, ...v.filters })}>{v.name}</Badge>
+              <Badge key={v.id} variant="secondary" className="cursor-pointer gap-1.5 pr-1" onClick={() => applyView(v)}>
+                {v.name}
+                <button type="button" aria-label={`Delete view ${v.name}`} className="rounded px-1 text-muted-foreground hover:text-destructive" onClick={e => { e.stopPropagation(); deleteView(v); }}>×</button>
+              </Badge>
             ))}
           </div>
         )}
@@ -1101,7 +1094,7 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
             <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All stages</SelectItem>
-              {stages.filter(s => !isEnquiry || isEnquiryStage(stages, s.name)).map(s => <SelectItem key={s.name} value={s.name}>{s.name}</SelectItem>)}
+              {stages.map(s => <SelectItem key={s.name} value={s.name}>{s.name}</SelectItem>)}
             </SelectContent>
           </Select>
           {sources.length > 0 && (
@@ -1128,7 +1121,7 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
             </Button>
           )}
           <div className="ml-auto flex items-center gap-1.5">
-            <Input placeholder="Save current filters as…" value={viewName} onChange={e => setViewName(e.target.value)} className="w-44" />
+            <Input placeholder="Name this view…" value={viewName} onChange={e => setViewName(e.target.value)} className="w-44" />
             <Button size="sm" variant="outline" onClick={saveView}>Save view</Button>
           </div>
         </div>
@@ -1147,7 +1140,7 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
           <Table>
             <TableHeader><TableRow>
               <TableHead className="w-8"><Checkbox checked={selectedIds.size > 0 && selectedIds.size === filtered.length} onCheckedChange={toggleSelectAll} aria-label="Select all" /></TableHead>
-              <TableHead>Name</TableHead><TableHead>Company</TableHead><TableHead>Source</TableHead><TableHead>Stage</TableHead>
+              <TableHead>Enquiry</TableHead><TableHead>Source</TableHead><TableHead>Stage</TableHead><TableHead className="text-right">Value</TableHead>
               <TableHead>A/C Manager</TableHead><TableHead>Assigned</TableHead><TableHead /></TableRow></TableHeader>
             <TableBody>
               {filtered.map(l => (
@@ -1157,11 +1150,13 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
                   </TableCell>
                   <TableCell className="font-medium">
                     <div className="flex items-center gap-1.5">
-                      {l.lead_name}
+                      {l.company_name || l.lead_name}
                       {!!l.is_vip && <StarIcon className="size-3.5 fill-amber-400 text-amber-400" aria-label="VIP" />}
                     </div>
+                    {l.company_name && l.lead_name && l.lead_name.trim().toLowerCase() !== l.company_name.trim().toLowerCase() && (
+                      <div className="text-xs font-normal text-muted-foreground">{l.lead_name}</div>
+                    )}
                   </TableCell>
-                  <TableCell className="text-muted-foreground">{l.company_name || '—'}</TableCell>
                   <TableCell className="text-muted-foreground">{l.source || '—'}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1.5">
@@ -1170,6 +1165,7 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
                       {l.sales_call_closed_at && <Badge variant="secondary">Closed</Badge>}
                     </div>
                   </TableCell>
+                  <TableCell className="text-right tnum text-muted-foreground" data-raw={l.expected_value ?? ''}>{l.expected_value ? formatMoney(l.expected_value) : '—'}</TableCell>
                   <TableCell>{l.account_manager ? <span className="text-muted-foreground">{l.account_manager}</span> : <Badge variant="outline">Unassigned</Badge>}</TableCell>
                   <TableCell className="text-muted-foreground">{l.assigned_to || '—'}</TableCell>
                   <TableCell onClick={e => e.stopPropagation()}>
@@ -1183,9 +1179,7 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
           </Table>
         )}
       </CardContent>
-      {dialogOpen && (isEnquiry
-        ? <AddEnquiryDialog leads={leads} users={users} salesProducts={salesProducts} stages={stages} router={router} onClose={() => setDialogOpen(false)} />
-        : <AddLeadDialog router={router} onClose={() => setDialogOpen(false)} />)}
+      {dialogOpen && <AddEnquiryDialog leads={leads} users={users} salesProducts={salesProducts} stages={stages} router={router} onClose={() => setDialogOpen(false)} />}
       {lostLead && <OrderLostDialog lead={lostLead} router={router} onClose={() => setLostLead(null)} />}
       {convertRowDialog}
       {selected && <LeadDetailSheet lead={leads.find(l => l.id === selected.id) || selected} users={users} customers={customers} salesProducts={salesProducts} branches={branches} stages={stages} isSalesHead={isSalesHead} router={router} onClose={() => setSelected(null)} />}
@@ -1196,17 +1190,18 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
 // --- Customers ------------------------------------------------------------------------------------
 
 function AddCustomerDialog({ onClose, router }) {
-  const [name, setName] = useState('');
-  const [gst, setGst] = useState('');
-  const [phone, setPhone] = useState('');
+  const [f, setF] = useState({ name: '', gst_no: '', pan: '', website: '', phone: '', email: '', address: '', city: '', state: '', pin_code: '' });
   const [saving, setSaving] = useState(false);
-  const similar = useSimilarCustomers({ name, gst_no: gst, phone });
+  const setText = k => e => setF(x => ({ ...x, [k]: e.target.value }));
+  const similar = useSimilarCustomers({ name: f.name, gst_no: f.gst_no, phone: f.phone });
 
   async function save() {
-    if (!name.trim()) return showToast('Name is required', 'error');
+    if (!f.name.trim()) return showToast('Name is required', 'error');
+    if (f.gst_no.trim() && !/^\d{2}[A-Z0-9]{13}$/i.test(f.gst_no.trim())) return showToast('GST No should be 15 characters (starts with the 2-digit state code)', 'error');
     setSaving(true);
     try {
-      await api('/api/customers', { method: 'POST', body: { name: name.trim(), gst_no: gst || null, phone: phone || null } });
+      const body = Object.fromEntries(Object.entries(f).map(([k, v]) => [k, typeof v === 'string' ? v.trim() || null : v]));
+      await api('/api/customers', { method: 'POST', body });
       showToast('Customer added');
       router.refresh();
       onClose();
@@ -1215,15 +1210,27 @@ function AddCustomerDialog({ onClose, router }) {
 
   return (
     <Dialog open onOpenChange={o => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>New Customer</DialogTitle></DialogHeader>
-        <div className="flex flex-col gap-3">
-          <div className="grid gap-1.5"><Label>Name</Label><Input value={name} onChange={e => setName(e.target.value)} autoFocus /></div>
-          <SimilarCustomersHint matches={similar} />
-          <div className="grid gap-1.5"><Label>GST No (optional)</Label><Input value={gst} onChange={e => setGst(e.target.value)} /></div>
-          <div className="grid gap-1.5"><Label>Phone (optional)</Label><Input value={phone} onChange={e => setPhone(e.target.value)} /></div>
+      <DialogContent className="flex max-h-[92vh] flex-col gap-0 p-0 sm:max-w-2xl">
+        <DialogHeader className="border-b px-6 py-4"><DialogTitle>New Customer</DialogTitle></DialogHeader>
+        <div className="flex flex-col gap-6 overflow-y-auto px-6 py-5">
+          <FormSection title="Customer" cols={2}>
+            <Field2 label="Name" required wide><Input value={f.name} onChange={setText('name')} autoFocus /><SimilarCustomersHint matches={similar} /></Field2>
+            <Field2 label="GST No"><Input value={f.gst_no} onChange={setText('gst_no')} placeholder="15 characters — sets the state for GST" /></Field2>
+            <Field2 label="PAN"><Input value={f.pan} onChange={setText('pan')} /></Field2>
+          </FormSection>
+          <FormSection title="Contact" cols={2}>
+            <Field2 label="Phone"><Input value={f.phone} onChange={setText('phone')} /></Field2>
+            <Field2 label="Email"><Input type="email" value={f.email} onChange={setText('email')} /></Field2>
+            <Field2 label="Website" wide><Input value={f.website} onChange={setText('website')} placeholder="https://…" /></Field2>
+          </FormSection>
+          <FormSection title="Address" cols={2}>
+            <Field2 label="Address" wide><Textarea rows={2} value={f.address} onChange={setText('address')} /></Field2>
+            <Field2 label="City"><Input value={f.city} onChange={setText('city')} /></Field2>
+            <Field2 label="State"><SearchableSelect value={f.state} onChange={v => setF(x => ({ ...x, state: v }))} options={INDIA_STATES} displayValue={f.state} onTextChange={v => setF(x => ({ ...x, state: v }))} placeholder="Select or type…" /></Field2>
+            <Field2 label="Pin code"><Input value={f.pin_code} onChange={setText('pin_code')} /></Field2>
+          </FormSection>
         </div>
-        <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Add Customer'}</Button></DialogFooter>
+        <DialogFooter className="m-0 border-t px-6 py-3"><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Add Customer'}</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -1267,8 +1274,10 @@ function CustomerDetailSheet({ customerId, isSalesHead = false, onClose, onDelet
   async function togglePortal(enabled) {
     setPortalBusy(true);
     try {
-      await api(`/api/customers/${customerId}/portal`, { method: 'POST', body: { enabled } });
-      showToast(enabled ? 'Portal login created — credentials email sent' : 'Portal email turned off');
+      const res = await api(`/api/customers/${customerId}/portal`, { method: 'POST', body: { enabled } });
+      if (!enabled) showToast('Portal email turned off');
+      else if (res.mail?.live && res.mail.sent) showToast('Portal login created — setup link emailed');
+      else showToast(`Portal login created. Invite not emailed: ${res.mail?.error || 'email is in test mode'}. Use Setup → Portal Access to copy the setup link.`, 'error');
       load(); router.refresh();
     } catch (err) { showToast(err.message, 'error'); } finally { setPortalBusy(false); }
   }
@@ -1712,8 +1721,8 @@ export function SendCommercialOfferDialog({ quotationId, onClose, router }) {
     if (!subject.trim() || !body.trim()) return showToast('Subject and body are required', 'error');
     setSending(true);
     try {
-      await api(`/api/quotations/${quotationId}/send-email`, { method: 'POST', body: { subject: subject.trim(), body: body.trim(), email_template_id: templateId || null } });
-      showToast('Commercial Offer emailed');
+      const res = await api(`/api/quotations/${quotationId}/send-email`, { method: 'POST', body: { subject: subject.trim(), body: body.trim(), email_template_id: templateId || null } });
+      showToast(res.live === false ? res.note : 'Commercial Offer emailed');
       router.refresh();
       onClose();
     } catch (err) { showToast(err.message, 'error'); } finally { setSending(false); }
@@ -1978,7 +1987,9 @@ function QuotationsTab({ quotations, customers, salesProducts = [], isSalesHead 
 
 const INVOICE_STATUSES = ['draft', 'issued', 'paid', 'cancelled'];
 
-function CreditNoteDialog({ invoice, onClose, router }) {
+function CreditNoteDialog({ invoice: fixedInvoice, invoices = [], onClose, router }) {
+  const [pickedId, setPickedId] = useState('');
+  const invoice = fixedInvoice || invoices.find(i => String(i.id) === pickedId) || null;
   const [reason, setReason] = useState('');
   const [items, setItems] = useState([{ item_description: '', amount: '' }]);
   const [saving, setSaving] = useState(false);
@@ -1989,6 +2000,7 @@ function CreditNoteDialog({ invoice, onClose, router }) {
 
   async function save() {
     const cleanItems = items.filter(it => it.item_description.trim() && it.amount !== '').map(it => ({ ...it, amount: Number(it.amount) }));
+    if (!invoice) return showToast('Pick the invoice this credit note is against', 'error');
     if (!cleanItems.length) return showToast('At least one line item is required', 'error');
     setSaving(true);
     try {
@@ -2002,8 +2014,15 @@ function CreditNoteDialog({ invoice, onClose, router }) {
   return (
     <Dialog open onOpenChange={o => !o && onClose()}>
       <DialogContent className="max-w-lg">
-        <DialogHeader><DialogTitle>Credit Note against {invoice.invoice_no}</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>{invoice ? `Credit Note against ${invoice.invoice_no}` : 'New Credit Note'}</DialogTitle></DialogHeader>
         <div className="flex flex-col gap-3">
+          {!fixedInvoice && (
+            <div className="grid gap-1.5">
+              <RequiredLabel>Against invoice</RequiredLabel>
+              <SearchableSelect value={pickedId} onChange={setPickedId} placeholder="Search invoice number or customer…"
+                options={invoices.filter(i => i.status !== 'cancelled').map(i => ({ value: String(i.id), label: `${i.invoice_no} — ${i.customer_name} (${formatMoney(i.total)})` }))} />
+            </div>
+          )}
           <div className="grid gap-1.5"><Label>Reason</Label><Input value={reason} onChange={e => setReason(e.target.value)} /></div>
           <div className="flex flex-col gap-2">
             <Label>Line items</Label>
@@ -2023,10 +2042,96 @@ function CreditNoteDialog({ invoice, onClose, router }) {
   );
 }
 
+function AddInvoiceDialog({ onClose, router }) {
+  const blank = () => ({ item_description: '', hsn_code: '', qty: '1', uom: '', rate: '', gst_pct: '18' });
+  const [f, setF] = useState({ customer_id: null, customer_name: '', company: defaultCompanyClient(), invoice_date: todayISO(), due_date: '', sale_order_id: '', is_reverse_charge: false, notes: '' });
+  const [items, setItems] = useState([blank()]);
+  const [orderLabel, setOrderLabel] = useState('');
+  const orderLabels = useRef({});
+  const [saving, setSaving] = useState(false);
+  const set = patch => setF(x => ({ ...x, ...patch }));
+  const row = (i, patch) => setItems(rows => rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  const subtotal = items.reduce((a, it) => a + (Number(it.qty) || 0) * (Number(it.rate) || 0), 0);
+  const tax = items.reduce((a, it) => a + (Number(it.qty) || 0) * (Number(it.rate) || 0) * (Number(it.gst_pct) || 0) / 100, 0);
+
+  async function searchOrders(q) {
+    const rows = await api(`/api/sale-orders?search=${encodeURIComponent(q)}`);
+    return rows.map(o => {
+      const label = `${o.so_no}${o.customer_name ? ` — ${o.customer_name}` : ''}`;
+      orderLabels.current[String(o.id)] = label;
+      return { value: String(o.id), label };
+    });
+  }
+  async function save() {
+    if (!f.customer_id) return showToast('Pick a customer from the list', 'error');
+    setSaving(true);
+    try {
+      const res = await api('/api/sales-invoices', { method: 'POST', body: { ...f, sale_order_id: f.sale_order_id || null, due_date: f.due_date || null, items } });
+      showToast(`Invoice ${res.invoice_no} created as draft`);
+      router.refresh();
+      onClose();
+    } catch (err) { showToast(err.message, 'error'); } finally { setSaving(false); }
+  }
+
+  return (
+    <Dialog open onOpenChange={o => !o && onClose()}>
+      <DialogContent className="flex max-h-[92vh] flex-col gap-0 p-0 sm:max-w-3xl">
+        <DialogHeader className="border-b px-6 py-4"><DialogTitle>New Sales Invoice</DialogTitle></DialogHeader>
+        <div className="flex flex-col gap-6 overflow-y-auto px-6 py-5">
+          <FormSection title="Invoice" cols={2}>
+            <Field2 label="Customer" required wide>
+              <CustomerPicker value={f.customer_id} name={f.customer_name} onChange={(id, n) => set({ customer_id: Number(id) || null, customer_name: n || '' })} />
+            </Field2>
+            <Field2 label="Company">
+              <Select value={f.company} onValueChange={v => set({ company: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent><SelectItem value="Shanti Boilers">Shanti Boilers</SelectItem><SelectItem value="Shanti Techno Fab">Shanti Techno Fab</SelectItem></SelectContent>
+              </Select>
+            </Field2>
+            <Field2 label="Sale Order (optional)">
+              <SearchableSelect value={f.sale_order_id ? String(f.sale_order_id) : ''} asyncOptions={searchOrders} displayValue={orderLabel} placeholder="Search order ID or customer…"
+                options={f.sale_order_id ? [{ value: String(f.sale_order_id), label: orderLabel }] : []}
+                onChange={v => { set({ sale_order_id: v }); setOrderLabel(orderLabels.current[v] || ''); }} />
+            </Field2>
+            <Field2 label="Invoice date"><Input type="date" value={f.invoice_date} onChange={e => set({ invoice_date: e.target.value })} /></Field2>
+            <Field2 label="Due date"><Input type="date" value={f.due_date} onChange={e => set({ due_date: e.target.value })} /></Field2>
+          </FormSection>
+          <FormSection title="Line items" cols={1}>
+            <div className="flex flex-col gap-2">
+              {items.map((it, i) => (
+                <div key={i} className="grid grid-cols-2 gap-2 rounded-md border p-2 md:grid-cols-[minmax(0,1fr)_6rem_4rem_5rem_7rem_4.5rem_2rem] md:items-center md:border-0 md:p-0">
+                  <Input className="col-span-2 md:col-span-1" placeholder="Description" value={it.item_description} onChange={e => row(i, { item_description: e.target.value })} />
+                  <Input placeholder="HSN" value={it.hsn_code} onChange={e => row(i, { hsn_code: e.target.value })} />
+                  <Input type="number" min="0" placeholder="Qty" value={it.qty} onChange={e => row(i, { qty: e.target.value })} />
+                  <Input placeholder="Unit" value={it.uom} onChange={e => row(i, { uom: e.target.value })} />
+                  <Input type="number" min="0" placeholder="Rate" value={it.rate} onChange={e => row(i, { rate: e.target.value })} />
+                  <Input type="number" min="0" max="100" placeholder="GST %" value={it.gst_pct} onChange={e => row(i, { gst_pct: e.target.value })} />
+                  <Button type="button" variant="ghost" size="icon" aria-label="Remove line" onClick={() => setItems(rows => rows.length > 1 ? rows.filter((_, j) => j !== i) : rows)}><TrashIcon className="size-4" /></Button>
+                </div>
+              ))}
+              <div className="flex items-center justify-between gap-2">
+                <Button type="button" variant="outline" size="sm" onClick={() => setItems(rows => [...rows, blank()])}><PlusIcon className="size-4" />Add line</Button>
+                <span className="text-sm text-muted-foreground">Subtotal {formatMoney(subtotal)} · GST ~{formatMoney(tax)} (exact CGST/SGST/IGST split is set when saved)</span>
+              </div>
+            </div>
+          </FormSection>
+          <FormSection title="Other" cols={1}>
+            <label className="flex items-center gap-2 text-sm"><Checkbox checked={f.is_reverse_charge} onCheckedChange={v => set({ is_reverse_charge: !!v })} />Reverse charge (customer pays the GST directly)</label>
+            <Field2 label="Notes"><Textarea rows={2} value={f.notes} onChange={e => set({ notes: e.target.value })} /></Field2>
+          </FormSection>
+        </div>
+        <DialogFooter className="m-0 border-t px-6 py-3"><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Create draft invoice'}</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function InvoicesTab({ invoices, creditNotes, router }) {
   useEntityHighlight(useSearchParams().get('highlight'));
   const [busyId, setBusyId] = useState(null);
   const [creditNoteFor, setCreditNoteFor] = useState(null);
+  const [newInvoice, setNewInvoice] = useState(false);
+  const [newCreditNote, setNewCreditNote] = useState(false);
 
   async function setStatus(inv, status) {
     setBusyId(inv.id);
@@ -2039,9 +2144,9 @@ function InvoicesTab({ invoices, creditNotes, router }) {
   return (
     <div className="flex flex-col gap-4">
       <Card>
-        <CardHeader><CardTitle>Sales Invoices</CardTitle></CardHeader>
+        <CardHeader><CardTitle>Sales Invoices</CardTitle><CardAction><Button size="sm" onClick={() => setNewInvoice(true)}><PlusIcon />Add Sales Invoice</Button></CardAction></CardHeader>
         <CardContent>
-          {invoices.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No invoices yet — convert an accepted Quotation from the Quotations tab.</p> : (
+          {invoices.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No invoices yet — add one here, or convert an accepted Quotation from the Quotations tab.</p> : (
             <Table>
               <TableHeader><TableRow><TableHead>Invoice No.</TableHead><TableHead>Customer</TableHead><TableHead>Company</TableHead><TableHead>Total</TableHead><TableHead>Status</TableHead><TableHead /></TableRow></TableHeader>
               <TableBody>
@@ -2071,7 +2176,7 @@ function InvoicesTab({ invoices, creditNotes, router }) {
         </CardContent>
       </Card>
       <Card>
-        <CardHeader><CardTitle>Credit Notes</CardTitle></CardHeader>
+        <CardHeader><CardTitle>Credit Notes</CardTitle><CardAction><Button size="sm" variant="outline" onClick={() => setNewCreditNote(true)} disabled={invoices.length === 0}><PlusIcon />Add Credit Note</Button></CardAction></CardHeader>
         <CardContent>
           {creditNotes.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No credit notes yet.</p> : (
             <div className="flex flex-col divide-y">
@@ -2086,6 +2191,8 @@ function InvoicesTab({ invoices, creditNotes, router }) {
         </CardContent>
       </Card>
       {creditNoteFor && <CreditNoteDialog invoice={creditNoteFor} router={router} onClose={() => setCreditNoteFor(null)} />}
+      {newCreditNote && <CreditNoteDialog invoices={invoices} router={router} onClose={() => setNewCreditNote(false)} />}
+      {newInvoice && <AddInvoiceDialog router={router} onClose={() => setNewInvoice(false)} />}
     </div>
   );
 }
@@ -2213,16 +2320,25 @@ function PriceListsTab({ priceLists, customers, salesProducts = [], router }) {
 
 // --- Sale Orders (existing, extended with status) --------------------------------------------------
 
-function AddSaleOrderDialog({ onClose, router }) {
-  const [customerName, setCustomerName] = useState('');
-  const [description, setDescription] = useState('');
-  const [company, setCompany] = useState('Shanti Boilers');
+function AddSaleOrderDialog({ users = [], branches = [], saleOrders = [], onClose, router }) {
+  const people = useMemo(() => salesPeopleOptions(users, saleOrders.map(o => o.sales_person)), [users, saleOrders]);
+  const [f, setF] = useState({
+    so_no: '', customer_id: null, customer_name: '', company: defaultCompanyClient(), order_date: todayISO(), total: '',
+    track_status: 'Pending', sales_person: '', branch_id: '', description: '', remarks: '',
+  });
   const [saving, setSaving] = useState(false);
+  const set = patch => setF(x => ({ ...x, ...patch }));
+  const setText = k => e => set({ [k]: e.target.value });
 
   async function save() {
+    if (!f.customer_name.trim()) return showToast('Customer is required', 'error');
     setSaving(true);
     try {
-      const res = await api('/api/sale-orders', { method: 'POST', body: { customer_name: customerName.trim() || null, description: description.trim() || null, company } });
+      const res = await api('/api/sale-orders', { method: 'POST', body: {
+        ...f, so_no: f.so_no.trim() || undefined, customer_name: f.customer_name.trim(),
+        total: f.total === '' ? 0 : Number(f.total), branch_id: f.branch_id || null, sales_person: f.sales_person || undefined,
+        description: f.description.trim() || null,
+      } });
       showToast(`Sale Order ${res.so_no} created`);
       router.refresh();
       onClose();
@@ -2231,23 +2347,51 @@ function AddSaleOrderDialog({ onClose, router }) {
 
   return (
     <Dialog open onOpenChange={o => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>New Sale Order</DialogTitle></DialogHeader>
-        <div className="flex flex-col gap-3">
-          <div className="grid gap-1.5"><Label>Customer (optional)</Label><Input value={customerName} onChange={e => setCustomerName(e.target.value)} autoFocus /></div>
-          <div className="grid gap-1.5"><Label>Description (optional)</Label><Input value={description} onChange={e => setDescription(e.target.value)} /></div>
-          <div className="grid gap-1.5">
-            <Label>Company — which entity is contracting this order</Label>
-            <Select value={company} onValueChange={setCompany}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Shanti Boilers">Shanti Boilers</SelectItem>
-                <SelectItem value="Shanti Techno Fab">Shanti Techno Fab</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+      <DialogContent className="flex max-h-[92vh] flex-col gap-0 p-0 sm:max-w-2xl">
+        <DialogHeader className="border-b px-6 py-4"><DialogTitle>New Sale Order</DialogTitle></DialogHeader>
+        <div className="flex flex-col gap-6 overflow-y-auto px-6 py-5">
+          <FormSection title="Order" cols={2}>
+            <Field2 label="Order ID"><Input value={f.so_no} onChange={setText('so_no')} placeholder="Auto (SO-…)" /></Field2>
+            <Field2 label="Company">
+              <Select value={f.company} onValueChange={v => set({ company: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent><SelectItem value="Shanti Boilers">Shanti Boilers</SelectItem><SelectItem value="Shanti Techno Fab">Shanti Techno Fab</SelectItem></SelectContent>
+              </Select>
+            </Field2>
+            <Field2 label="Customer" required wide>
+              <CustomerPicker value={f.customer_id} name={f.customer_name}
+                onChange={(id, n) => set({ customer_id: Number(id) || null, customer_name: n || '' })}
+                onTextChange={t => set({ customer_name: t, customer_id: null })}
+                placeholder="Search customer, or type a new name…" />
+            </Field2>
+            <Field2 label="Order date"><Input type="date" value={f.order_date} onChange={setText('order_date')} /></Field2>
+            <Field2 label="Order value (₹)"><Input type="number" min="0" step="any" value={f.total} onChange={setText('total')} /></Field2>
+            <Field2 label="Status">
+              <Select value={f.track_status} onValueChange={v => set({ track_status: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>{['Pending', 'Ready', 'WIP', 'Dispatched', 'Closed'].map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+              </Select>
+            </Field2>
+            <Field2 label="Sales person">
+              <Select value={f.sales_person || undefined} onValueChange={v => set({ sales_person: v })}>
+                <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
+                <SelectContent>{people.map(p => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}</SelectContent>
+              </Select>
+            </Field2>
+            <Field2 label="Branch">
+              <Select value={f.branch_id ? String(f.branch_id) : undefined} onValueChange={v => set({ branch_id: v })}>
+                <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
+                <SelectContent>{branches.filter(b => b.active !== 0).map(b => <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>)}</SelectContent>
+              </Select>
+            </Field2>
+          </FormSection>
+          <FormSection title="Notes" cols={1}>
+            <Field2 label="Description"><Input value={f.description} onChange={setText('description')} placeholder="What is being supplied" /></Field2>
+            <Field2 label="Remarks"><Textarea rows={2} value={f.remarks} onChange={setText('remarks')} /></Field2>
+          </FormSection>
+          <p className="text-xs text-muted-foreground">Line items, discount, GST and charges are added afterwards from the order's details (document icon).</p>
         </div>
-        <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Add Sale Order'}</Button></DialogFooter>
+        <DialogFooter className="m-0 border-t px-6 py-3"><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Add Sale Order'}</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -2351,142 +2495,98 @@ function CostingSheet({ so, onClose }) {
   );
 }
 
-// Line-item editing + Order Acknowledgement/Scope-of-Supply PDF attachment for an existing Sale
-// Order — the two missing pieces found wiring up a real order (SB-1109-01-50/SO-22) that predates
-// a project it was later linked to. sale_order_items was previously only ever written once, at
-// Quotation->Convert time (POST /api/sale-orders/[id]/items is new, whole-list replace). The PDF
-// attachment mirrors test_certificates.pdf_key/pdf_url exactly (same R2 single-file pattern), per
-// direct instruction.
-function SaleOrderItemsSheet({ so, onClose, onSaved, canEditTax }) {
-  const [detail, setDetail] = useState(null);
-  const [items, setItems] = useState([]);
-  const [taxPct, setTaxPct] = useState(0);
-  const [saving, setSaving] = useState(false);
-  const [pdfBusy, setPdfBusy] = useState(false);
-
-  useEffect(() => {
-    api(`/api/sale-orders/${so.id}`).then(d => {
-      setDetail(d);
-      setItems(d.items.length ? d.items : [{ item_description: '', qty: '', uom: '', rate: '' }]);
-      setTaxPct(d.tax_pct || 0);
-    }).catch(err => showToast(err.message, 'error'));
-  }, [so.id]);
-
-  const subtotal = items.reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.rate) || 0), 0);
-  const taxAmount = Math.round(subtotal * Number(taxPct)) / 100;
-
-  function updateRow(i, patch) { setItems(rows => rows.map((r, idx) => idx === i ? { ...r, ...patch } : r)); }
-  function addRow() { setItems(rows => [...rows, { item_description: '', qty: '', uom: '', rate: '' }]); }
-  function removeRow(i) { setItems(rows => rows.filter((_, idx) => idx !== i)); }
-
-  async function save() {
-    const rows = items.filter(it => String(it.item_description || '').trim());
-    if (!rows.length) return showToast('At least one line item is required', 'error');
-    setSaving(true);
-    try {
-      await api(`/api/sale-orders/${so.id}/items`, { method: 'PUT', body: { items: rows, tax_pct: Number(taxPct) || 0 } });
-      showToast('Line items saved');
-      onSaved();
-    } catch (err) { showToast(err.message, 'error'); } finally { setSaving(false); }
-  }
-
-  async function uploadPdf(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setPdfBusy(true);
-    try {
-      const fd = new FormData(); fd.append('file', file);
-      const res = await fetch(`/api/sale-orders/${so.id}/pdf`, { method: 'POST', body: fd }).then(r => r.json());
-      if (res.error) throw new Error(res.error);
-      setDetail(d => ({ ...d, pdf_key: 'set', pdf_url: res.pdf_url }));
-      showToast('PDF attached');
-    } catch (err) { showToast(err.message, 'error'); } finally { setPdfBusy(false); }
-  }
-
-  async function removePdf() {
-    setPdfBusy(true);
-    try {
-      await api(`/api/sale-orders/${so.id}/pdf`, { method: 'DELETE' });
-      setDetail(d => ({ ...d, pdf_key: null, pdf_url: null }));
-      showToast('PDF removed');
-    } catch (err) { showToast(err.message, 'error'); } finally { setPdfBusy(false); }
-  }
-
-  return (
-    <Sheet open onOpenChange={o => !o && onClose()}>
-      <SheetContent className="w-full sm:max-w-xl">
-        <SheetHeader><SheetTitle>Line items — {so.so_no}</SheetTitle></SheetHeader>
-        {!detail ? <p className="px-4 text-sm text-muted-foreground">Loading…</p> : (
-          <div className="flex flex-col gap-3 px-4 pb-4">
-            <div className="flex flex-col gap-2">
-              {items.map((it, i) => (
-                <div key={i} className="flex items-start gap-1.5">
-                  <Input placeholder="Description" className="flex-1" value={it.item_description || ''}
-                    onChange={e => updateRow(i, { item_description: e.target.value })} />
-                  <Input placeholder="Qty" className="w-16" value={it.qty ?? ''} onChange={e => updateRow(i, { qty: e.target.value })} />
-                  <Input placeholder="UoM" className="w-16" value={it.uom || ''} onChange={e => updateRow(i, { uom: e.target.value })} />
-                  <Input placeholder="Rate" className="w-20" value={it.rate ?? ''} onChange={e => updateRow(i, { rate: e.target.value })} />
-                  <Button size="icon" variant="ghost" onClick={() => removeRow(i)}><TrashIcon className="size-3.5" /></Button>
-                </div>
-              ))}
-              <Button size="sm" variant="outline" className="w-fit" onClick={addRow}><PlusIcon />Add line</Button>
-            </div>
-            <div className="flex items-center gap-2 border-t pt-2">
-              <Label className="text-xs text-muted-foreground">Tax %</Label>
-              {canEditTax ? (
-                <Input className="w-20" value={taxPct} onChange={e => setTaxPct(e.target.value)} />
-              ) : (
-                <span className="tnum text-sm">{taxPct}%</span>
-              )}
-              <div className="ml-auto flex flex-col items-end text-sm">
-                <span className="text-muted-foreground">Subtotal {formatMoney(subtotal)} + tax {formatMoney(taxAmount)}</span>
-                <span className="font-semibold">Total {formatMoney(subtotal + taxAmount)}</span>
-              </div>
-            </div>
-            <Button size="sm" disabled={saving} onClick={save}>{saving ? 'Saving…' : 'Save line items'}</Button>
-
-            <div className="flex flex-col gap-2 border-t pt-3">
-              <Label className="text-xs text-muted-foreground">Order Acknowledgement / Scope of Supply PDF</Label>
-              {detail.pdf_key ? (
-                <div className="flex items-center gap-2">
-                  <Button asChild size="sm" variant="outline">
-                    <a href={`/api/sale-orders/${so.id}/pdf`} target="_blank" rel="noreferrer"><DownloadIcon data-icon="inline-start" />View</a>
-                  </Button>
-                  <Button size="sm" variant="ghost" disabled={pdfBusy} onClick={removePdf}><TrashIcon data-icon="inline-start" />Remove</Button>
-                </div>
-              ) : (
-                <label className="flex w-fit cursor-pointer items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm hover:bg-muted">
-                  <UploadIcon className="size-3.5" />{pdfBusy ? 'Uploading…' : 'Attach PDF'}
-                  <input type="file" accept="application/pdf" className="hidden" disabled={pdfBusy} onChange={uploadPdf} />
-                </label>
-              )}
-            </div>
-          </div>
-        )}
-        <SheetFooter className="flex-row justify-end gap-2">
-          <Button variant="outline" onClick={onClose}>Close</Button>
-        </SheetFooter>
-      </SheetContent>
-    </Sheet>
-  );
-}
-
 // Convert-to-Project used to live here (STORES-SALES-CHANGES.md §2b/§4) but was only reachable by
 // a Design head who also held Sales/Marketing access — /sales itself is gated on those departments,
 // so a Design-only head (the common case) could never reach it despite the button/API both being
 // gated on isDesignHead. Moved to Design's own Projects tab (a standalone ConvertSaleOrderButton
 // at first, 2026-09-18 folded into NewProjectForm's own Sale Order picker instead — same
 // POST /api/projects + sale_order_id call, one dialog instead of two); not duplicated here.
-function SaleOrdersTab({ saleOrders, router, canEditSoTax }) {
+// Row actions: order details (document icon → the same rich sheet Create PO opens: per-line
+// discount/GST, CGST/SGST/IGST, extra charges), attach/view the order's PDF, Costing (once a
+// project exists), and — SAS trade orders only — Request Stores. Non-SAS orders reach Design through
+// the existing sale_order_created / sos_created notifications, not from here.
+function SaleOrderPdfButton({ so, router }) {
+  const [busy, setBusy] = useState(false);
+  async function upload(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setBusy(true);
+    try {
+      const fd = new FormData(); fd.append('file', file);
+      const res = await fetch(`/api/sale-orders/${so.id}/pdf`, { method: 'POST', body: fd }).then(r => r.json());
+      if (res.error) throw new Error(res.error);
+      showToast('PDF attached');
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); } finally { setBusy(false); e.target.value = ''; }
+  }
+  if (so.pdf_key) {
+    return (
+      <Button asChild size="icon-sm" variant="outline" title="View attached PDF" aria-label="View attached PDF">
+        <a href={`/api/sale-orders/${so.id}/pdf`} target="_blank" rel="noreferrer"><DownloadIcon /></a>
+      </Button>
+    );
+  }
+  return (
+    <label title="Attach PDF" aria-label="Attach PDF" className="inline-flex size-8 cursor-pointer items-center justify-center rounded-md border hover:bg-muted">
+      <UploadIcon className="size-4" />
+      <input type="file" accept="application/pdf" className="hidden" disabled={busy} onChange={upload} />
+    </label>
+  );
+}
+
+function LinkCustomerDialog({ so, onClose, router }) {
+  const [cust, setCust] = useState({ id: '', name: '' });
+  const [saving, setSaving] = useState(false);
+  async function save() {
+    if (!cust.id) return showToast('Pick a customer', 'error');
+    setSaving(true);
+    try {
+      await api(`/api/sale-orders/${so.id}`, { method: 'PATCH', body: { customer_id: Number(cust.id) } });
+      showToast('Order linked to customer'); router.refresh(); onClose();
+    } catch (err) { showToast(err.message, 'error'); } finally { setSaving(false); }
+  }
+  return (
+    <Dialog open onOpenChange={o => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Link {so.so_no} to a customer</DialogTitle></DialogHeader>
+        <p className="text-sm text-muted-foreground">This order only has the name “{so.customer_name || '—'}”. Pick the matching customer record.</p>
+        <CustomerPicker value={cust.id} name={cust.name} onChange={(id, name) => setCust({ id, name })} />
+        <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Link customer'}</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function SaleOrdersTab({ saleOrders, salePayments = [], branches, salesProducts, users, stages, router }) {
   useEntityHighlight(useSearchParams().get('highlight'));
   const [dialogOpen, setDialogOpen] = useState(false);
   const [sasSo, setSasSo] = useState(null);
   const [costingSo, setCostingSo] = useState(null);
-  const [itemsSo, setItemsSo] = useState(null);
+  const [detailsId, setDetailsId] = useState(null);
+  const [linkSo, setLinkSo] = useState(null);
   const [q, setQ] = useState('');
   const [page, setPage] = useState(0);
   const [size, setSize] = useState(SIZES[0]);
-  const shown = saleOrders.filter(so => !q.trim() || [so.so_no, so.customer_name, so.company].join(' ').toLowerCase().includes(q.trim().toLowerCase()));
+  const [f, setF] = useState({ status: 'all', track: 'all', person: 'all', from: '', to: '', owing: false, unlinked: false });
+  const setFilter = patch => { setF(x => ({ ...x, ...patch })); setPage(0); };
+  const received = useMemo(() => {
+    const m = new Map();
+    for (const p of salePayments) m.set(p.sale_order_id, (m.get(p.sale_order_id) || 0) + (Number(p.amount) || 0));
+    return m;
+  }, [salePayments]);
+  const people = useMemo(() => [...new Set(saleOrders.map(o => o.sales_person).filter(Boolean))].sort(), [saleOrders]);
+  const shown = saleOrders.filter(so => {
+    if (q.trim() && ![so.so_no, so.customer_name, so.company].join(' ').toLowerCase().includes(q.trim().toLowerCase())) return false;
+    if (f.status !== 'all' && (so.status || 'open') !== f.status) return false;
+    if (f.track !== 'all' && so.track_status !== f.track) return false;
+    if (f.person !== 'all' && so.sales_person !== f.person) return false;
+    const d = String(so.order_date || so.created_at || '').slice(0, 10);
+    if (f.from && (!d || d < f.from)) return false;
+    if (f.to && (!d || d > f.to)) return false;
+    if (f.unlinked && so.customer_id) return false;
+    if (f.owing && !(so.status !== 'cancelled' && (Number(so.total) || 0) - (received.get(so.id) || 0) > 1)) return false;
+    return true;
+  });
   return (
     <Card>
       <CardHeader>
@@ -2494,7 +2594,25 @@ function SaleOrdersTab({ saleOrders, router, canEditSoTax }) {
         <CardAction><Button size="sm" onClick={() => setDialogOpen(true)}><PlusIcon />New Sale Order</Button></CardAction>
       </CardHeader>
       <CardContent>
-        <Input className="mb-3 max-w-sm" placeholder="Search order ID, customer, company…" value={q} onChange={e => { setQ(e.target.value); setPage(0); }} />
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <Input className="w-64" placeholder="Search order ID, customer, company…" value={q} onChange={e => { setQ(e.target.value); setPage(0); }} />
+          <Select value={f.status} onValueChange={v => setFilter({ status: v })}>
+            <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
+            <SelectContent><SelectItem value="all">All statuses</SelectItem><SelectItem value="open">Open</SelectItem><SelectItem value="fulfilled">Fulfilled</SelectItem><SelectItem value="cancelled">Cancelled</SelectItem></SelectContent>
+          </Select>
+          <Select value={f.track} onValueChange={v => setFilter({ track: v })}>
+            <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
+            <SelectContent><SelectItem value="all">All stages</SelectItem>{['Pending', 'Ready', 'WIP', 'Dispatched', 'Closed'].map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+          </Select>
+          <Select value={f.person} onValueChange={v => setFilter({ person: v })}>
+            <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+            <SelectContent><SelectItem value="all">All sales persons</SelectItem>{people.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent>
+          </Select>
+          <Input type="date" className="w-36" value={f.from} onChange={e => setFilter({ from: e.target.value })} aria-label="From date" />
+          <Input type="date" className="w-36" value={f.to} onChange={e => setFilter({ to: e.target.value })} aria-label="To date" />
+          <label className="flex items-center gap-1.5 text-sm"><Checkbox checked={f.owing} onCheckedChange={v => setFilter({ owing: !!v })} />Payment pending</label>
+          <label className="flex items-center gap-1.5 text-sm"><Checkbox checked={f.unlinked} onCheckedChange={v => setFilter({ unlinked: !!v })} />No customer linked</label>
+        </div>
         {saleOrders.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No Sale Orders yet.</p> : (
           <Table>
             <TableHeader><TableRow><TableHead>SO No.</TableHead><TableHead>Customer</TableHead><TableHead>Company</TableHead><TableHead>Total</TableHead><TableHead>Status</TableHead><TableHead>Created</TableHead><TableHead /></TableRow></TableHeader>
@@ -2502,15 +2620,16 @@ function SaleOrdersTab({ saleOrders, router, canEditSoTax }) {
               {shown.slice(page * size, (page + 1) * size).map(so => (
                 <TableRow key={so.id} data-entity-code={`SO-${so.id}`}>
                   <TableCell className="font-medium">{so.so_no}</TableCell>
-                  <TableCell>{so.customer_name || '—'}</TableCell>
+                  <TableCell>{so.customer_name || '—'}{!so.customer_id && <Button size="xs" variant="link" className="ml-1 h-auto p-0 text-xs" onClick={() => setLinkSo(so)}>Link customer</Button>}</TableCell>
                   <TableCell><SoCompanyCell so={so} router={router} /></TableCell>
                   <TableCell className="tnum">{so.total ? formatMoney(so.total) : '—'}</TableCell>
                   <TableCell><Badge variant={so.status === 'open' ? 'outline' : 'default'}>{so.status || 'open'}</Badge></TableCell>
                   <TableCell className="text-muted-foreground">{so.created_at ? new Date(so.created_at).toLocaleDateString() : '—'}</TableCell>
                   <TableCell className="flex justify-end gap-2">
-                    <Button size="sm" variant="outline" onClick={() => setItemsSo(so)}><FileTextIcon />Items & PDF</Button>
+                    <Button size="icon-sm" variant="outline" title="Order details" aria-label="Order details" onClick={() => setDetailsId(so.id)}><FileTextIcon /></Button>
+                    <SaleOrderPdfButton so={so} router={router} />
                     {so.project_id && <Button size="sm" variant="outline" onClick={() => setCostingSo(so)}><IndianRupeeIcon />Costing</Button>}
-                    <Button size="sm" variant="outline" onClick={() => setSasSo(so)}>Request from Stores</Button>
+                    {/^SAS/i.test(so.so_no || '') && <Button size="sm" variant="outline" onClick={() => setSasSo(so)}>Request Stores</Button>}
                   </TableCell>
                 </TableRow>
               ))}
@@ -2519,10 +2638,11 @@ function SaleOrdersTab({ saleOrders, router, canEditSoTax }) {
         )}
         <Pager page={page} setPage={setPage} size={size} setSize={setSize} total={shown.length} />
       </CardContent>
-      {dialogOpen && <AddSaleOrderDialog router={router} onClose={() => setDialogOpen(false)} />}
+      {dialogOpen && <AddSaleOrderDialog users={users} branches={branches} saleOrders={saleOrders} router={router} onClose={() => setDialogOpen(false)} />}
       {sasSo && <RequestFromStoresDialog so={sasSo} router={router} onClose={() => setSasSo(null)} />}
       {costingSo && <CostingSheet so={costingSo} onClose={() => setCostingSo(null)} />}
-      {itemsSo && <SaleOrderItemsSheet so={itemsSo} onClose={() => setItemsSo(null)} onSaved={() => router.refresh()} canEditTax={canEditSoTax} />}
+      {linkSo && <LinkCustomerDialog so={linkSo} router={router} onClose={() => setLinkSo(null)} />}
+      {detailsId && <SaleOrderDetailsSheet saleOrderId={detailsId} branches={branches} salesProducts={salesProducts} users={users} stages={stages} router={router} onClose={() => setDetailsId(null)} />}
     </Card>
   );
 }
@@ -2559,10 +2679,8 @@ function AddReturnDialog({ saleOrders, onClose, router }) {
         <div className="flex flex-col gap-3">
           <div className="grid gap-1.5">
             <Label>Sale Order</Label>
-            <Select value={soId} onValueChange={setSoId}>
-              <SelectTrigger><SelectValue placeholder="Choose Sale Order" /></SelectTrigger>
-              <SelectContent>{saleOrders.map(so => <SelectItem key={so.id} value={String(so.id)}>{so.so_no}{so.customer_name ? ` · ${so.customer_name}` : ''}</SelectItem>)}</SelectContent>
-            </Select>
+            <SearchableSelect value={soId} onChange={setSoId} placeholder="Search order ID or customer…"
+              options={saleOrders.filter(so => so.status !== 'cancelled').map(so => ({ value: String(so.id), label: `${so.so_no}${so.customer_name ? ` · ${so.customer_name}` : ''}` }))} />
           </div>
           <div className="grid gap-1.5"><Label>Item description</Label><Input value={description} onChange={e => setDescription(e.target.value)} autoFocus /></div>
           <div className="grid gap-1.5 sm:w-32"><Label>Quantity</Label><Input type="number" value={qty} onChange={e => setQty(e.target.value)} /></div>
@@ -3154,29 +3272,23 @@ const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 // still exist and can come back by adding the entry here.
 const PANEL_GROUPS = [
   { label: 'Enquiries', items: [
-    { key: 'leads', label: 'All Enquiries', icon: UserPlusIcon, description: 'Every enquiry through the funnel — list or board' },
-    { key: 'enquiry', label: 'New Enquiries', icon: InboxIcon, description: 'Enquiries not yet at Proposals' },
+    { key: 'leads', label: 'Enquiries', icon: UserPlusIcon, description: 'Every enquiry through the funnel — list or board' },
     { key: 'customers', label: 'Customers', icon: UsersIcon, description: 'Accounts, contacts, addresses and Customer 360' },
   ] },
   { label: 'Deals', items: [
     { key: 'quotations', label: 'Quotations', icon: FileTextIcon, description: 'Proposals sent to customers' },
     { key: 'sale_orders', label: 'Sale Orders', icon: ShoppingCartIcon, description: 'Accepted orders' },
-    { key: 'scope_of_supply', label: 'Scope of Supply', icon: FileCheckIcon, description: 'Priced deliverables for a converted project' },
   ] },
   { label: 'Payments', items: [
-    // Nested group, same shape as QcWorkspace's Approvals (Inward / Pre-Dispatch).
-    {
-      key: 'payment_tracker', label: 'Payment Tracker', icon: WalletIcon, group: true,
-      children: [
-        { key: 'payment_orders', label: 'Orders', icon: ClipboardListIcon, description: 'Order stages, value and payment position' },
-        { key: 'payment_log', label: 'Payments', icon: BanknoteIcon, description: 'Log of payments received against orders' },
-      ],
-    },
+    { key: 'payment_orders', label: 'Order Tracker', icon: ClipboardListIcon, description: 'Order stages, value and payment position' },
+    { key: 'payment_log', label: 'Payment Log', icon: BanknoteIcon, description: 'Log of payments received against orders' },
     { key: 'invoices', label: 'Invoices', icon: ReceiptIcon, description: 'Sales Invoices and Credit Notes' },
     { key: 'returns', label: 'Returns', icon: UndoIcon, description: 'Returned material against a Sale Order' },
   ] },
   { label: 'Setup', items: [
     { key: 'team', label: 'Team', icon: ContactIcon, description: 'Auto-assign new leads round-robin' },
+    { key: 'email_setup', label: 'Email', icon: MailIcon, description: 'Sender mailboxes, test/live switch and recent emails' },
+    { key: 'portal_access', label: 'Portal Access', icon: UsersIcon, description: 'Customer portal logins and invites' },
     {
       key: 'masters', label: 'Masters', icon: PackageIcon, group: true,
       children: [
@@ -3233,7 +3345,7 @@ function FunnelStagesTab({ stages, canEdit, router }) {
   );
 }
 
-export default function SalesWorkspace({ saleOrders, leads, customers, quotations, priceLists = [], returns = [], inventoryItems = [], invoices = [], creditNotes = [], departments = ['Sales'], users = [], savedViews = [], initialTab, canEditSoTax = false, projects = [], scopeOfSupply = [], initialScopeProject, salePayments = [], branches = [], salesProducts = [], salesTargets = [], stages = [], isSalesHead = false, company = null }) {
+export default function SalesWorkspace({ saleOrders, leads, customers, quotations, priceLists = [], returns = [], inventoryItems = [], invoices = [], creditNotes = [], departments = ['Sales'], users = [], savedViews = [], initialTab, salePayments = [], branches = [], salesProducts = [], salesTargets = [], stages = [], isSalesHead = false, company = null }) {
   const router = useRouter();
   // Sales-only now — Marketing has its own tab/URL (/market, MarketingWorkspace.jsx). No more
   // per-viewer group filtering; every group in PANEL_GROUPS always renders here.
@@ -3258,21 +3370,18 @@ export default function SalesWorkspace({ saleOrders, leads, customers, quotation
           {/* Keyed by the global company selection: switching company remounts the tab, so its page,
               search and optimistic edits start fresh instead of pointing past the new, shorter list. */}
           <Fragment key={company || 'all'}>
-          {activePanel.key === 'enquiry' && <LeadsTab leads={leads} users={users} customers={customers} salesProducts={salesProducts} branches={branches} savedViews={savedViews} stages={stages} isSalesHead={isSalesHead} router={router} isEnquiry />}
           {activePanel.key === 'leads' && <LeadsTab leads={leads} users={users} customers={customers} salesProducts={salesProducts} branches={branches} stages={stages} savedViews={savedViews} isSalesHead={isSalesHead} router={router} />}
           {activePanel.key === 'customers' && <CustomersTab customers={customers} isSalesHead={isSalesHead} router={router} />}
           {activePanel.key === 'quotations' && <QuotationsTab quotations={quotations} customers={customers} salesProducts={salesProducts} isSalesHead={isSalesHead} router={router} />}
           {activePanel.key === 'price_lists' && <PriceListsTab priceLists={priceLists} customers={customers} salesProducts={salesProducts} router={router} />}
-          {activePanel.key === 'sale_orders' && <SaleOrdersTab saleOrders={saleOrders} router={router} canEditSoTax={canEditSoTax} />}
-          {activePanel.key === 'scope_of_supply' && (
-            <ScopeOfSupplySection projects={projects} scopeOfSupply={scopeOfSupply} canEdit canSeeMoney
-              initialProject={initialScopeProject} />
-          )}
+          {activePanel.key === 'sale_orders' && <SaleOrdersTab saleOrders={saleOrders} salePayments={salePayments} branches={branches} salesProducts={salesProducts} users={users} stages={stages} router={router} />}
           {activePanel.key === 'invoices' && <InvoicesTab invoices={invoices} creditNotes={creditNotes} router={router} />}
           {activePanel.key === 'payment_orders' && <PaymentOrdersTab saleOrders={saleOrders} payments={salePayments} invoices={invoices} customers={customers} users={users} isSalesHead={isSalesHead} company={company} />}
           {activePanel.key === 'payment_log' && <PaymentLogTab saleOrders={saleOrders} payments={salePayments} invoices={invoices} company={company} />}
           {activePanel.key === 'returns' && <ReturnsTab returns={returns} saleOrders={saleOrders} inventoryItems={inventoryItems} router={router} />}
           {activePanel.key === 'tasks' && <AllTasksTab users={users} />}
+          {activePanel.key === 'email_setup' && <EmailSetupTab />}
+          {activePanel.key === 'portal_access' && (isSalesHead ? <PortalAccessTab /> : <p className="p-4 text-sm text-muted-foreground">Only the Sales Head can manage portal access.</p>)}
           {activePanel.key === 'team' && <TeamTab users={users} departments={departments} />}
           {activePanel.key === 'branches' && <BranchesTab branches={branches} router={router} />}
           {activePanel.key === 'products' && <ProductsTab salesProducts={salesProducts} router={router} />}

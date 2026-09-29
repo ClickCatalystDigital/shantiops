@@ -16,6 +16,7 @@ import { funnelRows } from '@/lib/lead-stage.mjs';
 import { quotationFollowupReason } from '@/lib/quotation-reminders.mjs';
 import { employeeMetrics, monthlySeries, weeklyActivity, addMonths, owners } from '@/lib/sales-insights.mjs';
 import { BarList, ReportShell } from '@/components/ReportKit';
+import { reasonCategory } from '@/lib/lost-reasons.mjs';
 
 function Kpis({ items }) {
   return (
@@ -254,6 +255,43 @@ export function CompetitorAnalysisReport({ competitors = [] }) {
                 <TableCell className="tnum" data-raw={r.avgPrice ?? ''}>{r.avgPrice == null ? '—' : formatMoney(r.avgPrice)}</TableCell>
                 <TableCell>{[...r.products].join(', ') || '—'}</TableCell>
                 <TableCell>{[...r.customers].join(', ') || '—'}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </ReportShell>
+  );
+}
+
+// Lost Reasons — enquiries that ended at a lost stage, counted by the reason chosen in Order Lost.
+export function LostReasonsReport({ leads = [], stages = [] }) {
+  const lostNames = useMemo(() => new Set(stages.filter(s => s.is_lost).map(s => s.name)), [stages]);
+  const lost = useMemo(() => leads.filter(l => lostNames.has(l.sales_call_status)), [leads, lostNames]);
+  const rows = useMemo(() => {
+    const m = new Map();
+    for (const l of lost) {
+      const k = reasonCategory(l.lost_reason);
+      const r = m.get(k) || { reason: k, count: 0, value: 0 };
+      r.count++; r.value += Number(l.expected_value) || 0;
+      m.set(k, r);
+    }
+    return [...m.values()].sort((a, b) => b.count - a.count);
+  }, [lost]);
+  const noReason = lost.filter(l => !l.lost_reason).length;
+  return (
+    <ReportShell title="Lost Reasons" description="Why enquiries were lost, from the reason chosen in Order Lost. Enquiries closed before reasons were required show as 'Other (free text)'.">
+      <Kpis items={[['Lost enquiries', lost.length], ['Lost value', formatMoney(lost.reduce((t, l) => t + (Number(l.expected_value) || 0), 0))], ['With no reason', noReason]]} />
+      <Chart title="Lost enquiries, by reason"><BarList items={rows.map(r => ({ label: r.reason, value: r.count }))} /></Chart>
+      <div data-export-title="Lost reasons">
+        <Table>
+          <TableHeader><TableRow>{['Reason', 'Enquiries', 'Expected value'].map(h => <TableHead key={h}>{h}</TableHead>)}</TableRow></TableHeader>
+          <TableBody>
+            {rows.length === 0 ? <TableRow><TableCell colSpan={3} className="text-center text-muted-foreground">No lost enquiries yet.</TableCell></TableRow> : rows.map(r => (
+              <TableRow key={r.reason}>
+                <TableCell className="font-medium">{r.reason}</TableCell>
+                <TableCell className="tnum">{r.count}</TableCell>
+                <TableCell className="tnum" data-raw={r.value}>{formatMoney(r.value)}</TableCell>
               </TableRow>
             ))}
           </TableBody>
