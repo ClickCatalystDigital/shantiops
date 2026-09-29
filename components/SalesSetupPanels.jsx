@@ -145,6 +145,38 @@ export function EmailSetupTab() {
   );
 }
 
+// One-click reveal of the stored password (Sales Head only, audited); Reset makes a new one.
+function PasswordCell({ customer }) {
+  const [pw, setPw] = useState(null);
+  const [note, setNote] = useState('');
+  async function call(action) {
+    try {
+      const r = await api(`/api/customers/${customer.id}/portal/password`, { method: 'POST', body: { action } });
+      if (!r.password) { setPw(null); setNote('Not stored — Reset'); return; }
+      setPw(r.password); setNote('');
+      if (action === 'reset') showToast('New password set — give it to the customer');
+    } catch (e) { showToast(e.message, 'error'); }
+  }
+  if (pw) {
+    return (
+      <span className="flex items-center gap-1.5 font-mono text-xs">
+        {pw}
+        <Button size="xs" variant="ghost" onClick={() => navigator.clipboard?.writeText(pw).then(() => showToast('Copied'))}>Copy</Button>
+        <Button size="xs" variant="ghost" onClick={() => setPw(null)}>Hide</Button>
+      </span>
+    );
+  }
+  return (
+    <span className="flex items-center gap-1.5">
+      <span className="tracking-widest text-muted-foreground">••••••••</span>
+      {customer.has_password
+        ? <Button size="xs" variant="outline" onClick={() => call('reveal')}>Reveal</Button>
+        : <span className="text-xs text-muted-foreground">{note || 'Not stored'}</span>}
+      <Button size="xs" variant="ghost" onClick={() => window.confirm('Set a new random password? The old one stops working.') && call('reset')}>Reset</Button>
+    </span>
+  );
+}
+
 const STATUS = { not_enabled: ['Not enabled', 'outline'], invited: ['Invited', 'secondary'], active: ['Active', 'default'] };
 
 export function PortalAccessTab() {
@@ -201,7 +233,7 @@ export function PortalAccessTab() {
         </div>
         {!rows ? <p className="text-sm text-muted-foreground">Loading…</p> : shown.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No customers match.</p> : (
           <Table>
-            <TableHeader><TableRow><TableHead>Customer</TableHead><TableHead>Email</TableHead><TableHead>Status</TableHead><TableHead>Username</TableHead><TableHead>Invite sent</TableHead><TableHead>Last login</TableHead><TableHead /></TableRow></TableHeader>
+            <TableHeader><TableRow><TableHead>Customer</TableHead><TableHead>Email</TableHead><TableHead>Status</TableHead><TableHead>Username</TableHead><TableHead>Password</TableHead><TableHead>Invite sent</TableHead><TableHead>Last login</TableHead><TableHead /></TableRow></TableHeader>
             <TableBody>
               {shown.map(r => (
                 <TableRow key={r.id}>
@@ -209,12 +241,14 @@ export function PortalAccessTab() {
                   <TableCell>{r.email || <span className="text-xs text-destructive">No email</span>}</TableCell>
                   <TableCell><Badge variant={STATUS[r.status][1]}>{STATUS[r.status][0]}</Badge></TableCell>
                   <TableCell className="text-muted-foreground">{r.username || '—'}</TableCell>
+                  <TableCell>{r.portal_user_id ? <PasswordCell customer={r} /> : <span className="text-muted-foreground">—</span>}</TableCell>
                   <TableCell className="text-muted-foreground">{r.initial_email_sent_at ? formatDate(r.initial_email_sent_at) : '—'}</TableCell>
                   <TableCell className="text-muted-foreground">{r.last_login ? formatDate(r.last_login) : '—'}</TableCell>
                   <TableCell className="flex justify-end gap-2">
                     {r.status === 'not_enabled'
                       ? <Button size="sm" disabled={busyId === r.id} onClick={() => act(r, 'enable')}>Enable</Button>
                       : <>
+                          <Button asChild size="sm" variant="outline"><a href={`/portal?as=${r.portal_user_id}`} target="_blank" rel="noreferrer">Open portal</a></Button>
                           <Button size="sm" variant="outline" disabled={busyId === r.id || !r.email} onClick={() => act(r, 'resend')}>Resend invite</Button>
                           <Button size="sm" variant="outline" disabled={busyId === r.id} onClick={() => act(r, 'link')}>Copy link</Button>
                           {!!r.portal_enabled && <Button size="sm" variant="ghost" disabled={busyId === r.id} onClick={() => act(r, 'disable')}>Turn off emails</Button>}

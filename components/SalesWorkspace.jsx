@@ -7,7 +7,7 @@
 import { Fragment, useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEntityHighlight } from '@/lib/use-entity-highlight';
-import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardAction, CardDescription } from '@/components/ui/card';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -3085,6 +3085,9 @@ function ProductsTab({ salesProducts, router }) {
 
 // --- Email Templates (Phase 3.2) — one per company, feeds Commercial Offer's own picker. ---------
 
+const TEMPLATE_TOKENS = ['customer_name', 'quotation_no', 'total', 'valid_until'];
+const SAMPLE_VARS = { customer_name: 'Demo Foods Pvt Ltd', quotation_no: 'SB/QTN/0001/26-27', total: '₹12,50,000', valid_until: '30 Oct 2026' };
+
 function EmailTemplateDialog({ template, onClose, router }) {
   const isEdit = !!template;
   const [f, setF] = useState({
@@ -3092,7 +3095,15 @@ function EmailTemplateDialog({ template, onClose, router }) {
     subject: template?.subject || '', body: template?.body || '', regards: template?.regards || '',
   });
   const [saving, setSaving] = useState(false);
+  const bodyRef = useRef(null);
   const set = (k) => (v) => setF(prev => ({ ...prev, [k]: v }));
+  const insertToken = (t) => {
+    const el = bodyRef.current;
+    const at = el ? el.selectionStart : f.body.length;
+    const end = el ? el.selectionEnd : at;
+    set('body')(`${f.body.slice(0, at)}{{${t}}}${f.body.slice(end)}`);
+  };
+  const preview = `${renderTemplate(f.body, SAMPLE_VARS)}${f.regards ? `\n\n${renderTemplate(f.regards, SAMPLE_VARS)}` : ''}`;
 
   async function save() {
     if (!f.name.trim()) return showToast('Name is required', 'error');
@@ -3109,21 +3120,39 @@ function EmailTemplateDialog({ template, onClose, router }) {
 
   return (
     <Dialog open onOpenChange={o => !o && onClose()}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader><DialogTitle>{isEdit ? 'Edit Email Template' : 'New Email Template'}</DialogTitle></DialogHeader>
-        <div className="flex flex-col gap-3">
-          <div className="grid gap-1.5"><RequiredLabel>Name</RequiredLabel><Input value={f.name} onChange={e => set('name')(e.target.value)} autoFocus /></div>
-          <div className="grid gap-1.5"><Label>Company</Label>
-            <Select value={f.company} onValueChange={set('company')}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>{COMPANY_NAMES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
-            </Select>
+      <DialogContent className="flex max-h-[92vh] flex-col gap-0 p-0 sm:max-w-5xl">
+        <DialogHeader className="border-b px-6 py-4"><DialogTitle>{isEdit ? 'Edit Email Template' : 'New Email Template'}</DialogTitle></DialogHeader>
+        <div className="grid min-h-0 flex-1 gap-6 overflow-y-auto px-6 py-5 lg:grid-cols-2">
+          <div className="flex flex-col gap-4">
+            <FormSection title="Template" cols={2}>
+              <Field2 label="Name" required><Input value={f.name} onChange={e => set('name')(e.target.value)} autoFocus /></Field2>
+              <Field2 label="Company">
+                <Select value={f.company} onValueChange={set('company')}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>{COMPANY_NAMES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+                </Select>
+              </Field2>
+              <Field2 label="Subject" wide><Input value={f.subject} onChange={e => set('subject')(e.target.value)} /></Field2>
+            </FormSection>
+            <FormSection title="Message" cols={1}>
+              <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                Insert:
+                {TEMPLATE_TOKENS.map(t => <Button key={t} type="button" size="xs" variant="outline" onClick={() => insertToken(t)}>{`{{${t}}}`}</Button>)}
+              </div>
+              <Field2 label="Body" required><Textarea ref={bodyRef} rows={16} className="font-mono text-xs leading-5" value={f.body} onChange={e => set('body')(e.target.value)} /></Field2>
+              <Field2 label="Signature"><Textarea rows={5} className="font-mono text-xs leading-5" value={f.regards} onChange={e => set('regards')(e.target.value)} /></Field2>
+            </FormSection>
           </div>
-          <div className="grid gap-1.5"><Label>Subject (tokens: customer_name, quotation_no, total, valid_until)</Label><Input value={f.subject} onChange={e => set('subject')(e.target.value)} /></div>
-          <div className="grid gap-1.5"><RequiredLabel>Body</RequiredLabel><Textarea rows={6} value={f.body} onChange={e => set('body')(e.target.value)} /></div>
-          <div className="grid gap-1.5"><Label>Regards (signature block)</Label><Textarea rows={2} value={f.regards} onChange={e => set('regards')(e.target.value)} /></div>
+          <div className="flex min-h-0 flex-col gap-2">
+            <h3 className="border-b pb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Preview (sample values)</h3>
+            <div className="rounded-md border bg-muted/30 p-3">
+              <p className="mb-2 text-xs text-muted-foreground">Subject</p>
+              <p className="mb-3 text-sm font-medium">{renderTemplate(f.subject, SAMPLE_VARS) || '—'}</p>
+              <pre className="max-h-[60vh] overflow-y-auto whitespace-pre-wrap font-sans text-sm leading-6">{preview}</pre>
+            </div>
+          </div>
         </div>
-        <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? 'Saving…' : isEdit ? 'Save' : 'Add Template'}</Button></DialogFooter>
+        <DialogFooter className="m-0 border-t px-6 py-3"><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? 'Saving…' : isEdit ? 'Save' : 'Add Template'}</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -3140,17 +3169,20 @@ function EmailTemplatesTab({ router }) {
     <Card>
       <CardHeader>
         <CardTitle>Email Templates</CardTitle>
+        <CardDescription>The wording of the Commercial Offer email, one or more per company. The newest active template for a company is offered first when you send an offer.</CardDescription>
         <CardAction><Button size="sm" onClick={() => setDialogState(true)}><PlusIcon />New Template</Button></CardAction>
       </CardHeader>
       <CardContent>
         {templates.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No templates yet.</p> : (
           <Table>
-            <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Company</TableHead><TableHead>Status</TableHead><TableHead /></TableRow></TableHeader>
+            <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Company</TableHead><TableHead className="hidden md:table-cell">Subject</TableHead><TableHead className="hidden lg:table-cell">Starts with</TableHead><TableHead>Status</TableHead><TableHead /></TableRow></TableHeader>
             <TableBody>
               {templates.map(t => (
                 <TableRow key={t.id} className="cursor-pointer" onClick={() => setDialogState(t)}>
                   <TableCell className="font-medium">{t.name}</TableCell>
                   <TableCell className="text-muted-foreground">{t.company}</TableCell>
+                  <TableCell className="hidden text-muted-foreground md:table-cell">{t.subject || '—'}</TableCell>
+                  <TableCell className="hidden max-w-xs truncate text-muted-foreground lg:table-cell">{(t.body || '').replace(/\s+/g, ' ').slice(0, 90)}…</TableCell>
                   <TableCell><Badge variant={t.active ? 'default' : 'outline'}>{t.active ? 'Active' : 'Inactive'}</Badge></TableCell>
                   <TableCell><Button size="icon" variant="ghost" onClick={e => { e.stopPropagation(); setDialogState(t); }}><PencilIcon className="size-3.5" /></Button></TableCell>
                 </TableRow>

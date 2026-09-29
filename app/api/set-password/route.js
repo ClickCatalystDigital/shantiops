@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { execute, queryOne } from '@/lib/db';
+import { encryptSecret } from '@/lib/crypto';
 import { signToken, COOKIE_OPTS, postLoginHome } from '@/lib/auth';
 
 export async function POST(req) {
@@ -20,6 +21,11 @@ export async function POST(req) {
     'UPDATE users SET password = ?, password_setup_token = NULL, password_setup_expires = NULL WHERE id = ?',
     [bcrypt.hashSync(password, 10), user.id]
   );
+  // Customer portal logins keep an encrypted copy so the Sales Head can read it back if it is lost
+  // (Sales → Setup → Portal Access). Best-effort: never blocks the customer if no key is set.
+  if (user.role === 'customer') {
+    try { await execute('UPDATE users SET portal_password_enc = ? WHERE id = ?', [encryptSecret(password), user.id]); } catch { /* no SECRETS_KEY */ }
+  }
   const fresh = { ...user, password_setup_token: null };
   const res = NextResponse.json({ ok: true, home: postLoginHome(fresh) });
   res.cookies.set(COOKIE_OPTS.name, signToken(fresh), COOKIE_OPTS);

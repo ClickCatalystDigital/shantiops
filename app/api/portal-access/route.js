@@ -10,7 +10,7 @@ export async function GET(req) {
   const q = (new URL(req.url).searchParams.get('q') || '').trim().toLowerCase();
   const rows = await queryAll(
     `SELECT c.id, c.name, c.email, c.portal_enabled, c.portal_user_id, c.initial_email_sent_at,
-            u.username, u.last_login, u.password_setup_token IS NOT NULL AS setup_pending,
+            u.username, u.last_login, u.password_setup_token IS NOT NULL AS setup_pending, u.portal_password_enc IS NOT NULL AS has_password,
             (SELECT COUNT(*) FROM projects p WHERE p.customer_id = c.id) AS project_count
        FROM customers c LEFT JOIN users u ON u.id = c.portal_user_id
       WHERE c.active = 1 AND (c.portal_user_id IS NOT NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.customer_id = c.id))

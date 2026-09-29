@@ -1,7 +1,8 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getCustomerView } from '@/lib/data';
-import { getFreshSessionUser, isCustomer, parseProjectIds, roleHome } from '@/lib/auth';
+import { getFreshSessionUser, isCustomer, isDepartmentHead, parseProjectIds, roleHome } from '@/lib/auth';
+import { queryOne } from '@/lib/db';
 import { formatDate } from '@/lib/format';
 import LogoutButton from '@/components/LogoutButton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -17,9 +18,19 @@ const PAGE_SIZE = 10;
 // null) and paginated once a customer has enough history to need it.
 export default async function MyOrders({ searchParams }) {
   const user = await getFreshSessionUser();
-  if (!isCustomer(user)) redirect(roleHome(user));
+  // "Open portal" from Sales → Setup → Portal Access: the Sales Head / a PM sees exactly what this
+  // customer sees, read-only, without signing them in (which would sign the head out of the app).
+  let viewing = user;
+  let viewAs = null;
+  if (!isCustomer(user)) {
+    if (searchParams?.as && isDepartmentHead(user, 'Sales')) {
+      viewAs = await queryOne("SELECT id, username, display_name, project_ids FROM users WHERE id = ? AND role = 'customer'", [searchParams.as]);
+    }
+    if (!viewAs) redirect(roleHome(user));
+    viewing = viewAs;
+  }
 
-  const ids = parseProjectIds(user.project_ids ?? user.project_id);
+  const ids = parseProjectIds(viewing.project_ids ?? viewing.project_id);
   const all = (await Promise.all(ids.map(id => getCustomerView(id)))).filter(Boolean);
   all.sort((a, b) => b.project.id - a.project.id);
 
@@ -39,6 +50,11 @@ export default async function MyOrders({ searchParams }) {
         </div>
       </header>
 
+      {viewAs && (
+        <div className="border-b bg-amber-100 px-4 py-2 text-center text-sm text-amber-900">
+          Viewing the portal as <strong>{viewAs.display_name || viewAs.username}</strong> — read-only preview, you are still signed in as yourself.
+        </div>
+      )}
       <main className="container flex max-w-3xl flex-col gap-4 py-8">
         <h1 className="text-2xl font-bold tracking-tight">My Orders</h1>
 
