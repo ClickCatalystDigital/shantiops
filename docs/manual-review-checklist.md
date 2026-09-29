@@ -126,9 +126,26 @@ Details: [quotation-import-notes.md](quotation-import-notes.md).
   register which customer each one actually belongs to, then correcting by hand.
 - [ ] **129 rows had no quotation number at all** and 21 were obvious test rows — neither imported
   (same review CSV, `excluded_no_quotation_number`/`excluded_test_junk_customer_name`).
-- [ ] **No products, price, or line items exist for any of the 2,221 imported quotations** — they're
-  real header records (customer, number, date, status) only. If the old CRM (or Tally) has the
-  actual quote line items anywhere, that's a separate, bigger import.
+- Done (2026-09-30): **real products, prices and totals for 2,060 of the 2,221 imported
+  quotations** — extracted directly from the live SalesMantra CRM (2,728 "Open" quotations,
+  7,260 line items, 92.7% linked to a real catalog product) and backfilled by matching on
+  quotation number + date. Full detail: [quotation-line-items-review.csv](quotation-line-items-review.csv).
+  What's still missing:
+  - [ ] **161 of the 2,221 headers still have no line items** — 354 extracted quotation numbers
+    didn't match anything already imported (335 of those are the same customer-match failures as
+    the row above; 19 are quotation numbers that genuinely don't exist anywhere in the database —
+    apparently missed by the original register export) and 67 are genuinely ambiguous (the
+    register itself has 2+ duplicate rows sharing the identical quotation number *and* date, with
+    no way to tell them apart).
+  - [ ] **The 4 quotations at "Sent to Customer" status still show ₹0** — the live extraction only
+    covered the CRM's "Open" list; these 4 were never visited. Small, bounded follow-up if wanted.
+  - [ ] **GST is stored as one net `tax_amount` (total − subtotal), never split into CGST/SGST/
+    IGST** — this app has no reliable state-code history for these old customers, so a real split
+    would be a guess. Several real quotations show GST as a *subtraction* from the subtotal
+    (verified against the live CRM pages, not a scraping bug) rather than an addition — worth
+    asking whoever kept these quotes what that actually represents before trusting the numbers for
+    tax purposes.
+  - [ ] **Reports still show ₹0 quotation activity for almost all of this — see §9.**
 
 ---
 
@@ -154,11 +171,38 @@ Details: [quotation-import-notes.md](quotation-import-notes.md).
 | **Branches** | 0 | Branch list | Masters → Branches (by hand) or a small import |
 | **Sales targets** | 0 | Targets per person per month | Masters → Targets |
 | **Price lists** | 0 | Customer / default prices per product | Sales → Price Lists, or an import |
-| **Sales logins** | 3 Sales users (Sales Head, kalyani, kalyani_sales) | A login for each real salesperson: Amit B, Devansh B, BDM, Sales Desk, Santosh Reddy, … | Settings → User Management. Their old orders/enquiries then show under their name. |
-| **Per salesperson** | 0 targets, 0 branches, no A/C manager on any enquiry, 12 order sales-person names that aren't users | Real logins (above), each enquiry's A/C manager, monthly targets per person, branch per person/enquiry | Settings + Masters → Targets / Branches, and the enquiry export above |
+| **Sales logins** | **Done** — 17 real logins now exist (Sales Head, Marketing Head, Amit B, Devansh Trivedi, Srivaari, Sales Desk / Sales Desk2, Sales1/2, BDM-Hyderabad/Siliguri/AP-TS/NE/Kolkata/UP, plus kalyani/market/kalyani legacy) | Nothing further required to start using the system; add any name still missing from the real team roster | Settings → User Management |
+| **Per salesperson** | 0 targets, 0 branches, no A/C manager on any enquiry (only 2 of 3,079 enquiries have an owner via `sales_person`/`created_by` matching a real login) | Monthly targets per person, branch per person/enquiry, and someone to actually assign each open enquiry to a real login (not just a free-text name) | Masters → Targets / Branches; assign enquiries from the Leads list |
 | **Invoices, receipts, credit notes** | 0 invoices (payments are in the Payment Tracker only) | Decide whether past invoices come from the old CRM/Tally, or start fresh from today | Import or new invoices only |
 | **Enquiry → quotation → order links** | Imported orders and enquiries aren't linked to each other | Old-CRM export that carries the enquiry/quotation number on each order | Update by number |
 | **Product → BOM template** | 0 products linked | Final Structure Templates first | **Deferred**. See below. |
+
+---
+
+## 9. Reports — checked live against the running app (2026-09-30)
+
+Full write-up: [sales-data-health-2026-09-30.md](sales-data-health-2026-09-30.md).
+
+- [x] **Fixed**: 2,481 imported enquiries had `created_by` set to the raw import-tag text instead of
+  blank, so Employee Performance 360 showed a fake "person" named
+  `import:sales-projection-enquiries-2026-09-29` with 63 enquiries under it. Corrected directly
+  (`created_by` cleared to NULL on all 2,481 rows; the separate `import_tag` column — used for
+  rollback — was left untouched). Confirmed live: the fake row is gone, those enquiries now count
+  as Unassigned like every other unowned one.
+- [ ] **Real decision needed**: Employee Performance 360 and Sales Overview both only count
+  quotations whose `status` isn't `'draft'` — and 2,217 of the 2,221 imported quotations are
+  `'draft'` (only 4 are `'sent'`, all pre-2025 and $0 — see §6b). Every KPI on both reports
+  ("Quotations sent", "Quote value", "Quotations sent per month") reads **0** for essentially the
+  entire imported history, even though the real ₹395 crore total is genuinely in the database and
+  **does** show correctly on the plain **Quotation Listing** report and inside each quotation's own
+  detail page/PDF. This isn't a bug — the import deliberately called "Open" status `draft` rather
+  than `sent`, since the source never distinguished "drafted, not sent" from "quoted, awaiting
+  reply." Worth deciding: should a historical "Open" quotation actually count as `sent` for
+  reporting purposes? If yes, a one-line status update (`UPDATE quotations SET status='sent' WHERE
+  import_tag='import:quotation-register-2026-09-28' AND status='draft'`) fixes every report at
+  once — not done here since it changes what "draft" means for 2,217 real records.
+- [x] Confirmed working with real numbers: Order Book & Collections, Sales Call Funnel, Sales
+  Register (correctly empty — 0 invoices exist, see §8), Quotation Listing.
 
 ---
 

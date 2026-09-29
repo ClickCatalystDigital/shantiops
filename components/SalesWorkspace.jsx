@@ -473,9 +473,33 @@ const ENQUIRY_DETAIL_FIELDS = [
   ['address', 'Address'], ['website', 'Web address'], ['reference', 'Reference'],
   ['short_name', 'Short name'], ['district', 'District'], ['sub_location', 'Sub location'],
   ['telephone', 'Telephone'], ['order_expected_in', 'Order expected in'], ['week_number', 'Week number'],
-  ['account_manager', 'A/C Manager'], ['initiated_by', 'Initiated by'], ['district_code', 'District code'],
+  ['initiated_by', 'Initiated by'], ['district_code', 'District code'],
   ['pin_code', 'Pin code'],
 ];
+
+// A/C Manager — real inline edit, not the plain read-only row it used to be (docs/sales-data-health
+// found almost every enquiry has none). Same "pick from real Sales users, save on change" pattern
+// AddEnquiryDialog already uses for the same field at creation time.
+function AccountManagerField({ lead, users, router }) {
+  const [value, setValue] = useState(lead.account_manager || '');
+  useEffect(() => { setValue(lead.account_manager || ''); }, [lead.account_manager]);
+  const teamOpts = users.map(u => ({ value: u.username, label: u.display_name || u.username }));
+  async function save(v) {
+    setValue(v);
+    if ((v || null) === (lead.account_manager || null)) return;
+    try {
+      await api(`/api/leads/${lead.id}`, { method: 'PATCH', body: { account_manager: v || '' } });
+      showToast('A/C Manager saved');
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); setValue(lead.account_manager || ''); }
+  }
+  return (
+    <div className="flex items-center gap-2">
+      <Label className="text-sm text-muted-foreground">A/C Manager</Label>
+      <SearchableSelect value={value} onChange={save} options={teamOpts} placeholder="Unassigned" className="w-48" />
+    </div>
+  );
+}
 
 // The enquiry's own deal value (docs/sales-crm-plan.md 1b) — feeds the Board totals, the funnel
 // report and the Executive pipeline tile. Saved on blur.
@@ -509,7 +533,19 @@ function LeadDetailSheet({ lead, users, customers, salesProducts = [], branches 
   const [offerCustomerId, setOfferCustomerId] = useState(null);
   const [resolving, setResolving] = useState(false);
   const [closing, setClosing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const { convert: convertLead, dialog: convertDialog } = useLeadConvert();
+
+  async function deleteLead() {
+    if (!window.confirm(`Delete this enquiry (${lead.company_name || lead.lead_name})? This can't be undone.`)) return;
+    setDeleting(true);
+    try {
+      await api(`/api/leads/${lead.id}`, { method: 'DELETE' });
+      showToast('Enquiry deleted');
+      router.refresh();
+      onClose();
+    } catch (err) { showToast(err.message, 'error'); } finally { setDeleting(false); }
+  }
 
   // Create Commercial Offer's own customer-resolution prerequisite (Gap #12) — silently run the
   // same Lead -> Customer conversion "Create PO" already runs, before ever opening
@@ -555,6 +591,7 @@ function LeadDetailSheet({ lead, users, customers, salesProducts = [], branches 
             {lead.converted_customer_id && <Badge variant="secondary">Customer linked</Badge>}
           </div>
           <ExpectedValueField lead={lead} router={router} />
+          <AccountManagerField lead={lead} users={users} router={router} />
           <LeadProductsCard lead={lead} salesProducts={salesProducts} router={router} />
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
             {lead.company_name && <span>Company: {lead.company_name}</span>}
@@ -581,6 +618,11 @@ function LeadDetailSheet({ lead, users, customers, salesProducts = [], branches 
               <Button size="sm" variant="outline" onClick={() => setAction('po')}>Create PO</Button>
               <Button size="sm" variant="outline" disabled={closing} onClick={closeSalesCall}>Close Sales Call</Button>
               <Button size="sm" variant="outline" className="text-destructive" onClick={() => setAction('lost')}>Order Lost</Button>
+              {!lead.converted_customer_id && (
+                <Button size="sm" variant="ghost" className="ml-auto text-destructive" disabled={deleting} onClick={deleteLead}>
+                  <TrashIcon className="size-3.5" />{deleting ? 'Deleting…' : 'Delete'}
+                </Button>
+              )}
             </div>
           </div>
 
@@ -976,15 +1018,39 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
   const [lostLead, setLostLead] = useState(null);
   const [views, setViews] = useState(savedViews);
   const [viewName, setViewName] = useState('');
+  const [unassignedOnly, setUnassignedOnly] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [bulkAssignee, setBulkAssignee] = useState('');
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const sources = [...new Set(leads.map(l => l.source).filter(Boolean))];
+  const unassignedCount = leads.filter(l => !l.account_manager).length;
   const filtered = leads.filter(l =>
     (!isEnquiry || (!l.sales_call_closed_at && isEnquiryStage(stages, l.sales_call_status))) &&
     (filters.stage === 'all' || (l.sales_call_status || DEFAULT_STAGE) === filters.stage) &&
     (filters.source === 'all' || l.source === filters.source) &&
     (filters.branch === 'all' || String(l.branch_id) === filters.branch) &&
+    (!unassignedOnly || !l.account_manager) &&
     (!filters.search || l.lead_name.toLowerCase().includes(filters.search.toLowerCase()) || (l.company_name || '').toLowerCase().includes(filters.search.toLowerCase()))
   );
+  const teamOpts = users.map(u => ({ value: u.username, label: u.display_name || u.username }));
+
+  function toggleSelected(id) {
+    setSelectedIds(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
+  }
+  function toggleSelectAll() {
+    setSelectedIds(prev => prev.size === filtered.length ? new Set() : new Set(filtered.map(l => l.id)));
+  }
+  async function bulkAssign() {
+    if (!bulkAssignee || !selectedIds.size) return;
+    setBulkBusy(true);
+    try {
+      const res = await api('/api/leads/bulk-assign-owner', { method: 'POST', body: { ids: [...selectedIds], account_manager: bulkAssignee } });
+      showToast(`Assigned ${res.updated} enquir${res.updated === 1 ? 'y' : 'ies'} to ${bulkAssignee}`);
+      setSelectedIds(new Set()); setBulkAssignee('');
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); } finally { setBulkBusy(false); }
+  }
 
   async function convert(lead) {
     setBusyId(lead.id);
@@ -1056,19 +1122,39 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
               </SelectContent>
             </Select>
           )}
+          {unassignedCount > 0 && (
+            <Button size="sm" variant={unassignedOnly ? 'default' : 'outline'} onClick={() => setUnassignedOnly(v => !v)}>
+              {unassignedOnly ? 'Showing unassigned' : `No A/C Manager (${unassignedCount})`}
+            </Button>
+          )}
           <div className="ml-auto flex items-center gap-1.5">
             <Input placeholder="Save current filters as…" value={viewName} onChange={e => setViewName(e.target.value)} className="w-44" />
             <Button size="sm" variant="outline" onClick={saveView}>Save view</Button>
           </div>
         </div>
+        {view === 'list' && selectedIds.size > 0 && (
+          <div className="flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2">
+            <span className="text-sm font-medium">{selectedIds.size} selected</span>
+            <SearchableSelect value={bulkAssignee} onChange={setBulkAssignee} options={teamOpts}
+              placeholder="Assign A/C Manager…" className="w-52" />
+            <Button size="sm" disabled={!bulkAssignee || bulkBusy} onClick={bulkAssign}>Assign</Button>
+            <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setSelectedIds(new Set())}>Clear</Button>
+          </div>
+        )}
         {view === 'board' ? (
           <LeadBoard leads={filtered} stages={stages} onOpen={setSelected} onLost={setLostLead} router={router} />
         ) : filtered.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No leads match.</p> : (
           <Table>
-            <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Company</TableHead><TableHead>Source</TableHead><TableHead>Stage</TableHead><TableHead>Owner</TableHead><TableHead>Assigned</TableHead><TableHead /></TableRow></TableHeader>
+            <TableHeader><TableRow>
+              <TableHead className="w-8"><Checkbox checked={selectedIds.size > 0 && selectedIds.size === filtered.length} onCheckedChange={toggleSelectAll} aria-label="Select all" /></TableHead>
+              <TableHead>Name</TableHead><TableHead>Company</TableHead><TableHead>Source</TableHead><TableHead>Stage</TableHead>
+              <TableHead>A/C Manager</TableHead><TableHead>Assigned</TableHead><TableHead /></TableRow></TableHeader>
             <TableBody>
               {filtered.map(l => (
                 <TableRow key={l.id} data-entity-code={`LD-${l.id}`} className="cursor-pointer" onClick={() => setSelected(l)}>
+                  <TableCell onClick={e => e.stopPropagation()}>
+                    <Checkbox checked={selectedIds.has(l.id)} onCheckedChange={() => toggleSelected(l.id)} aria-label={`Select ${l.lead_name}`} />
+                  </TableCell>
                   <TableCell className="font-medium">
                     <div className="flex items-center gap-1.5">
                       {l.lead_name}
@@ -1084,7 +1170,7 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
                       {l.sales_call_closed_at && <Badge variant="secondary">Closed</Badge>}
                     </div>
                   </TableCell>
-                  <TableCell className="text-muted-foreground">{l.owner_dept}</TableCell>
+                  <TableCell>{l.account_manager ? <span className="text-muted-foreground">{l.account_manager}</span> : <Badge variant="outline">Unassigned</Badge>}</TableCell>
                   <TableCell className="text-muted-foreground">{l.assigned_to || '—'}</TableCell>
                   <TableCell onClick={e => e.stopPropagation()}>
                     {!l.converted_customer_id && (
@@ -1149,11 +1235,33 @@ function CustomerDetailSheet({ customerId, onClose, router }) {
   const [addrLine1, setAddrLine1] = useState('');
   const [note, setNote] = useState('');
   const [portalBusy, setPortalBusy] = useState(false);
+  const [activeBusy, setActiveBusy] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   function load() {
     api(`/api/customers/${customerId}`).then(setDetail).catch(err => showToast(err.message, 'error'));
   }
   useEffect(load, [customerId]);
+
+  async function toggleActive(active) {
+    setActiveBusy(true);
+    try {
+      await api(`/api/customers/${customerId}`, { method: 'PATCH', body: { active: active ? 1 : 0 } });
+      showToast(active ? 'Customer reactivated' : 'Customer deactivated');
+      load(); router.refresh();
+    } catch (err) { showToast(err.message, 'error'); } finally { setActiveBusy(false); }
+  }
+
+  async function deleteCustomer() {
+    if (!window.confirm(`Delete ${detail.name}? This can't be undone.`)) return;
+    setDeleting(true);
+    try {
+      await api(`/api/customers/${customerId}`, { method: 'DELETE' });
+      showToast('Customer deleted');
+      router.refresh();
+      onClose();
+    } catch (err) { showToast(err.message, 'error'); } finally { setDeleting(false); }
+  }
 
   async function togglePortal(enabled) {
     setPortalBusy(true);
@@ -1189,12 +1297,25 @@ function CustomerDetailSheet({ customerId, onClose, router }) {
   return (
     <Sheet open onOpenChange={o => !o && onClose()}>
       <SheetContent className="w-full sm:max-w-3xl">
-        <SheetHeader><SheetTitle>{detail ? detail.name : 'Loading…'}</SheetTitle></SheetHeader>
+        <SheetHeader>
+          <SheetTitle className="flex items-center gap-2">
+            {detail ? detail.name : 'Loading…'}
+            {detail && !detail.active && <Badge variant="outline">Inactive</Badge>}
+          </SheetTitle>
+        </SheetHeader>
         {detail && (
           <div className="flex flex-col gap-5 overflow-y-auto px-4 pb-4">
             <div className="flex items-center justify-between text-sm text-muted-foreground">
               <span>{detail.gst_no || 'No GST on file'}</span>
               <ContactLinks phone={detail.phone} email={detail.email} />
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button size="sm" variant="outline" disabled={activeBusy} onClick={() => toggleActive(!detail.active)}>
+                {detail.active ? 'Deactivate' : 'Reactivate'}
+              </Button>
+              <Button size="sm" variant="ghost" className="text-destructive" disabled={deleting} onClick={deleteCustomer}>
+                <TrashIcon className="size-3.5" />{deleting ? 'Deleting…' : 'Delete'}
+              </Button>
             </div>
 
             <Customer360 customerId={detail.id} />
@@ -1633,13 +1754,16 @@ function QuotationStatusSelect({ q, busy, onChange }) {
   );
 }
 
-function QuotationConvertButtons({ q, busy, onConvert, onInvoice, onRevise, onApprove, canApprove }) {
+function QuotationConvertButtons({ q, busy, onConvert, onInvoice, onRevise, onApprove, onDelete, canApprove }) {
   return (
     <div className="flex flex-wrap gap-2">
       {q.approval_status === 'pending' && canApprove && <Button size="sm" disabled={busy} onClick={() => onApprove(q)}>Approve discount</Button>}
       {q.status === 'accepted' && <Button size="sm" variant="outline" disabled={busy} onClick={() => onConvert(q)}>Convert to SO</Button>}
       {q.status === 'accepted' && <Button size="sm" variant="outline" disabled={busy} onClick={() => onInvoice(q)}>Convert to Invoice</Button>}
       {!['accepted', 'revised'].includes(q.status) && <Button size="sm" variant="ghost" disabled={busy} onClick={() => onRevise(q)}>Revise</Button>}
+      {onDelete && !['accepted', 'sent'].includes(q.status) && (
+        <Button size="icon-sm" variant="ghost" className="text-destructive" disabled={busy} onClick={() => onDelete(q)}><TrashIcon className="size-3.5" /></Button>
+      )}
     </div>
   );
 }
@@ -1684,13 +1808,34 @@ function QuotationsTab({ quotations, customers, salesProducts = [], isSalesHead 
   const [isReverseCharge, setIsReverseCharge] = useState(false);
   // Plan 2d — same rule the reminder sweep uses, so the filter matches the notifications.
   const [followupOnly, setFollowupOnly] = useState(false);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [page, setPage] = useState(0);
+  const [size, setSize] = useState(SIZES[0]);
   const withReason = useMemo(() => {
     const today = todayISO();
     return quotations.map(q => ({ ...q, followup: quotationFollowupReason(q, today) }));
   }, [quotations]);
   const followupCount = withReason.filter(q => q.followup).length;
-  const shown = followupOnly ? withReason.filter(q => q.followup) : withReason;
+  const statuses = [...new Set(quotations.map(x => x.status).filter(Boolean))];
+  const searchQ = search.trim().toLowerCase();
+  const filtered = withReason.filter(x =>
+    (!followupOnly || x.followup) &&
+    (statusFilter === 'all' || x.status === statusFilter) &&
+    (!searchQ || x.quotation_no?.toLowerCase().includes(searchQ) || x.customer_name?.toLowerCase().includes(searchQ))
+  );
+  const shown = filtered.slice(page * size, (page + 1) * size);
   const [revising, setRevising] = useState(null); // { q, items }
+
+  async function deleteQuotation(quote) {
+    if (!window.confirm(`Delete quotation ${quote.quotation_no}? This can't be undone.`)) return;
+    setBusyId(quote.id);
+    try {
+      await api(`/api/quotations/${quote.id}`, { method: 'DELETE' });
+      showToast(`${quote.quotation_no} deleted`);
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); } finally { setBusyId(null); }
+  }
 
   async function revise(q) {
     setBusyId(q.id);
@@ -1748,7 +1893,19 @@ function QuotationsTab({ quotations, customers, salesProducts = [], isSalesHead 
       </CardHeader>
       <CardContent>
         <div className="mb-3"><DiscountApprovalSetting canEdit={isSalesHead} /></div>
-        {shown.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">{followupOnly ? 'Nothing needs a follow-up.' : 'No quotations yet.'}</p> : (<>
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <Input placeholder="Search quotation no., customer…" value={search} onChange={e => { setSearch(e.target.value); setPage(0); }} className="w-56" />
+          {statuses.length > 0 && (
+            <Select value={statusFilter} onValueChange={v => { setStatusFilter(v); setPage(0); }}>
+              <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All statuses</SelectItem>
+                {statuses.map(s => <SelectItem key={s} value={s} className="capitalize">{s}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
+        {shown.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">{filtered.length === 0 && quotations.length > 0 ? 'No quotations match.' : followupOnly ? 'Nothing needs a follow-up.' : 'No quotations yet.'}</p> : (<>
           <Table className="hidden md:table">
             <TableHeader><TableRow><TableHead>Quotation No.</TableHead><TableHead>Customer</TableHead><TableHead>Total</TableHead><TableHead>Status</TableHead><TableHead /></TableRow></TableHeader>
             <TableBody>
@@ -1761,7 +1918,7 @@ function QuotationsTab({ quotations, customers, salesProducts = [], isSalesHead 
                   <TableCell>{q.customer_name}</TableCell>
                   <TableCell className="tnum">{formatMoney(q.total)}</TableCell>
                   <TableCell><QuotationStatusSelect q={q} busy={busyId === q.id} onChange={setStatus} /></TableCell>
-                  <TableCell><QuotationConvertButtons q={q} busy={busyId === q.id} onConvert={convert} onInvoice={q => { setIsReverseCharge(false); setRcmQuotation(q); }} onRevise={revise} onApprove={approve} canApprove={isSalesHead} /></TableCell>
+                  <TableCell><QuotationConvertButtons q={q} busy={busyId === q.id} onConvert={convert} onInvoice={q => { setIsReverseCharge(false); setRcmQuotation(q); }} onRevise={revise} onApprove={approve} onDelete={deleteQuotation} canApprove={isSalesHead} /></TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -1776,11 +1933,12 @@ function QuotationsTab({ quotations, customers, salesProducts = [], isSalesHead 
                 <div className="text-muted-foreground">{q.customer_name}</div>
                 <QuotationBadges q={q} />
                 <QuotationStatusSelect q={q} busy={busyId === q.id} onChange={setStatus} />
-                <QuotationConvertButtons q={q} busy={busyId === q.id} onConvert={convert} onInvoice={q => { setIsReverseCharge(false); setRcmQuotation(q); }} onRevise={revise} onApprove={approve} canApprove={isSalesHead} />
+                <QuotationConvertButtons q={q} busy={busyId === q.id} onConvert={convert} onInvoice={q => { setIsReverseCharge(false); setRcmQuotation(q); }} onRevise={revise} onApprove={approve} onDelete={deleteQuotation} canApprove={isSalesHead} />
               </div>
             ))}
           </div>
         </>        )}
+        {filtered.length > 0 && <Pager page={page} setPage={setPage} size={size} setSize={setSize} total={filtered.length} />}
       </CardContent>
       {dialogOpen && <NewQuotationDialog customers={customers} salesProducts={salesProducts} router={router} onClose={() => setDialogOpen(false)} />}
       {revising && (
@@ -2747,11 +2905,14 @@ function ProductDialog({ product, onClose, router }) {
 function ProductsTab({ salesProducts, router }) {
   const [dialogState, setDialogState] = useState(null); // null | true (new) | product (edit)
   const [search, setSearch] = useState('');
+  const [missingHsn, setMissingHsn] = useState(false);
   const [page, setPage] = useState(0);
   const [size, setSize] = useState(SIZES[0]);
   const q = search.trim().toLowerCase();
-  const filtered = !q ? salesProducts : salesProducts.filter(p =>
+  const base = missingHsn ? salesProducts.filter(p => !p.hsn_code) : salesProducts;
+  const filtered = !q ? base : base.filter(p =>
     [p.product_code, p.product_name, p.product_type, p.hsn_code, p.category].some(v => v && String(v).toLowerCase().includes(q)));
+  const missingHsnCount = salesProducts.filter(p => !p.hsn_code).length;
   const shown = filtered.slice(page * size, (page + 1) * size);
   // The list leaves out description/attributes; load the full product before editing.
   function openProduct(p) { api(`/api/sales-products/${p.id}`).then(setDialogState).catch(err => showToast(err.message, 'error')); }
@@ -2763,8 +2924,16 @@ function ProductsTab({ salesProducts, router }) {
         <CardAction><Button size="sm" onClick={() => setDialogState(true)}><PlusIcon />New Product</Button></CardAction>
       </CardHeader>
       <CardContent>
-        <Input className="mb-3 max-w-sm" placeholder={`Search ${salesProducts.length} products — code, name, type, HSN`}
-          value={search} onChange={e => { setSearch(e.target.value); setPage(0); }} />
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <Input className="max-w-sm" placeholder={`Search ${salesProducts.length} products — code, name, type, HSN`}
+            value={search} onChange={e => { setSearch(e.target.value); setPage(0); }} />
+          {missingHsnCount > 0 && (
+            <Button size="sm" variant={missingHsn ? 'default' : 'outline'}
+              onClick={() => { setMissingHsn(v => !v); setPage(0); }}>
+              {missingHsn ? 'Showing missing HSN' : `Missing HSN only (${missingHsnCount})`}
+            </Button>
+          )}
+        </div>
         {filtered.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">{salesProducts.length ? 'No products match.' : 'No products yet — add data as it becomes available.'}</p> : (
           <Table>
             <TableHeader><TableRow><TableHead>Code</TableHead><TableHead>Name</TableHead><TableHead>Type</TableHead><TableHead>Price</TableHead><TableHead>Unit</TableHead><TableHead>GST %</TableHead><TableHead>Status</TableHead><TableHead /></TableRow></TableHeader>

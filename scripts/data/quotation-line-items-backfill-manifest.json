@@ -1,0 +1,95 @@
+{
+  "insertedItemIds": [
+    7351,
+    7352,
+    7353,
+    7354,
+    7355,
+    7356,
+    7357,
+    7358,
+    7359,
+    7360,
+    7361,
+    7362
+  ],
+  "touchedQuotations": [
+    {
+      "id": 2839,
+      "prevSubtotal": 0,
+      "prevTaxPct": 0,
+      "prevTaxAmount": 0,
+      "prevTotal": 0
+    },
+    {
+      "id": 3257,
+      "prevSubtotal": 0,
+      "prevTaxPct": 0,
+      "prevTaxAmount": 0,
+      "prevTotal": 0
+    },
+    {
+      "id": 3482,
+      "prevSubtotal": 0,
+      "prevTaxPct": 0,
+      "prevTaxAmount": 0,
+      "prevTotal": 0
+    },
+    {
+      "id": 3992,
+      "prevSubtotal": 0,
+      "prevTaxPct": 18,
+      "prevTaxAmount": 0,
+      "prevTotal": 0
+    },
+    {
+      "id": 4229,
+      "prevSubtotal": 0,
+      "prevTaxPct": 0,
+      "prevTaxAmount": 0,
+      "prevTotal": 0
+    },
+    {
+      "id": 4456,
+      "prevSubtotal": 0,
+      "prevTaxPct": 0,
+      "prevTaxAmount": 0,
+      "prevTotal": 0
+    },
+    {
+      "id": 4596,
+      "prevSubtotal": 0,
+      "prevTaxPct": 0,
+      "prevTaxAmount": 0,
+      "prevTotal": 0
+    },
+    {
+      "id": 4663,
+      "prevSubtotal": 0,
+      "prevTaxPct": 0,
+      "prevTaxAmount": 0,
+      "prevTotal": 0
+    },
+    {
+      "id": 4664,
+      "prevSubtotal": 0,
+      "prevTaxPct": 0,
+      "prevTaxAmount": 0,
+      "prevTotal": 0
+    },
+    {
+      "id": 4665,
+      "prevSubtotal": 0,
+      "prevTaxPct": 0,
+      "prevTaxAmount": 0,
+      "prevTotal": 0
+    },
+    {
+      "id": 4661,
+      "prevSubtotal": 0,
+      "prevTaxPct": 0,
+      "prevTaxAmount": 0,
+      "prevTotal": 0
+    }
+  ]
+}

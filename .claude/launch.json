@@ -260,6 +260,19 @@
       ],
       "port": 3041,
       "autoPort": false
+    },
+    {
+      "name": "shanti-ops-data-audit",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--",
+        "-p",
+        "3042"
+      ],
+      "port": 3042,
+      "autoPort": false
     }
   ]
 }

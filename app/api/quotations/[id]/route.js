@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { blockedByApproval } from '@/lib/quotation-approval.mjs';
 import { hiddenSalesRecord } from '@/lib/sales-visibility';
 import { execute, queryOne } from '@/lib/db';
-import { getFreshSessionUser, canAccessDepartment, isPM } from '@/lib/auth';
+import { getFreshSessionUser, canAccessDepartment, isPM, isDepartmentHead } from '@/lib/auth';
 import { requireCrmAction } from '@/lib/action-permissions';
 import { getQuotationDetail } from '@/lib/data';
 import { audit } from '@/lib/usb';
@@ -50,5 +50,32 @@ export async function PATCH(req, { params }) {
   args.push(params.id);
   await execute(`UPDATE quotations SET ${fields.join(', ')} WHERE id = ?`, args);
   await audit('quotation_updated', { actor: user.username, detail: `#${params.id}${b.status ? `: ${b.status}` : ''}` });
+  return NextResponse.json({ ok: true });
+}
+
+// Head-only, hard delete — refuses if a Sale Order or Sales Invoice was ever raised off this
+// quotation (the two real NO-ACTION links). quotation_items cascade on their own; a revision
+// pointing at this as its parent just loses that link (parent_quotation_id ON DELETE SET NULL).
+export async function DELETE(req, { params }) {
+  const user = await getFreshSessionUser();
+  const hidden = await hiddenSalesRecord(user, 'quotation', params.id);
+  if (hidden) return hidden;
+  if (!isDepartmentHead(user, 'Sales') && !isDepartmentHead(user, 'Marketing')) {
+    return NextResponse.json({ error: 'Only a Sales or Marketing head can delete a quotation' }, { status: 403 });
+  }
+  const existing = await queryOne('SELECT id, quotation_no FROM quotations WHERE id = ?', [params.id]);
+  if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
+  const [so, inv] = await Promise.all([
+    queryOne('SELECT COUNT(*) n FROM sale_orders WHERE quotation_id = ?', [params.id]),
+    queryOne('SELECT COUNT(*) n FROM sales_invoices WHERE quotation_id = ?', [params.id]),
+  ]);
+  if (so.n > 0 || inv.n > 0) {
+    const parts = [so.n > 0 && `${so.n} sale order(s)`, inv.n > 0 && `${inv.n} sales invoice(s)`].filter(Boolean);
+    return NextResponse.json({ error: `Can't delete — ${parts.join(', ')} were raised from this quotation` }, { status: 409 });
+  }
+
+  await execute('DELETE FROM quotations WHERE id = ?', [params.id]);
+  await audit('quotation_deleted', { actor: user.username, detail: `#${params.id} ${existing.quotation_no}` });
   return NextResponse.json({ ok: true });
 }

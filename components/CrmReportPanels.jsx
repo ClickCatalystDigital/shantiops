@@ -12,6 +12,7 @@ import { formatMoney } from '@/lib/format';
 import { BarList, StatRow, ReportShell } from '@/components/ReportKit';
 
 import { SLA_HOURS, isSlaBreached, dealsFromLeads, funnelRows } from '@/lib/lead-stage.mjs';
+import { personKey } from '@/lib/sales-people.mjs';
 function countBy(rows, key) {
   const counts = {};
   for (const r of rows) { const k = r[key] || '—'; counts[k] = (counts[k] || 0) + 1; }
@@ -140,18 +141,25 @@ export function AgentPerformanceReport({ leads, tasks, notes, stages, users }) {
   const firstNoteByLead = {};
   for (const n of notes) if (!firstNoteByLead[n.lead_id]) firstNoteByLead[n.lead_id] = n; // notes arrive pre-sorted by created_at
 
+  // Owner key follows the same A/C manager -> assignee -> creator chain every other CRM report
+  // uses (lib/sales-insights.mjs owners()) — this used to read raw l.assigned_to only, silently
+  // under-counting any lead whose real owner sat in account_manager instead of assigned_to.
+  const leadOwner = l => personKey(l.account_manager || l.assigned_to || l.created_by, users);
+  const oppOwner = o => personKey(o.created_by, users);
+  const taskOwner = t => personKey(t.assigned_to, users);
+
   const agents = [...new Set([
-    ...leads.map(l => l.assigned_to),
-    ...tasks.map(t => t.assigned_to),
-    ...opportunities.map(o => o.created_by),
+    ...leads.map(leadOwner),
+    ...tasks.map(taskOwner),
+    ...opportunities.map(oppOwner),
   ].filter(Boolean))];
 
   const rows = agents.map(agent => {
-    const agentLeads = leads.filter(l => l.assigned_to === agent);
+    const agentLeads = leads.filter(l => leadOwner(l) === agent);
     const converted = agentLeads.filter(l => l.converted_customer_id).length;
-    const agentTasks = tasks.filter(t => t.assigned_to === agent);
+    const agentTasks = tasks.filter(t => taskOwner(t) === agent);
     const tasksDone = agentTasks.filter(t => t.status === 'done').length;
-    const agentOpps = opportunities.filter(o => o.created_by === agent);
+    const agentOpps = opportunities.filter(o => oppOwner(o) === agent);
     const won = agentOpps.filter(o => wonStages.has(o.stage));
     const lost = agentOpps.filter(o => lostStages.has(o.stage));
     const responseHours = agentLeads
