@@ -47,6 +47,19 @@ export default function MaterialShortageCard() {
         {data && (
           <>
             <div>
+              <h4 className="mb-1 text-sm font-medium">Still short after stock, remnants and open POs</h4>
+              <div className="flex flex-col divide-y">
+                {(data.shortfalls || []).map((m, i) => (
+                  <div key={i} className="flex justify-between gap-3 py-1.5 text-sm">
+                    <span className="flex-1 truncate">{m.material} <span className="text-xs text-muted-foreground">{m.projects.join(', ')}</span></span>
+                    <span className="tnum font-medium text-danger">{m.short}</span>
+                  </div>
+                ))}
+                {!(data.shortfalls || []).length && <p className="py-1.5 text-sm text-muted-foreground">Nothing short for projects with open Work Orders.</p>}
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">Open the Planning tab for the full line-by-line plan.</p>
+            </div>
+            <div>
               <h4 className="mb-1 text-sm font-medium">Outstanding Material Demand</h4>
               <div className="flex flex-col divide-y">
                 {data.materialDemand.map((m, i) => (

@@ -7,6 +7,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { sweepQuotationReminders } from '@/lib/quotation-reminders';
 import { sweepRetentionNotice } from '@/lib/sales-retention';
 import { sweepPaymentReminders } from '@/lib/payment-reminders';
+import { sweepPlanAlerts } from '@/lib/plan-alerts';
 
 function authorized(req) {
   const key = Buffer.from(String(req.headers.get('x-sync-key') ?? ''));
@@ -20,7 +21,9 @@ export async function POST(req) {
     const quotations = await sweepQuotationReminders();
     const payments = await sweepPaymentReminders();
     const retention = await sweepRetentionNotice();
-    return NextResponse.json({ ok: true, ...quotations, payments, retention });
+    // Planning: uncovered material for projects starting soon (one daily cron covers every sweep).
+    const plan = await sweepPlanAlerts().catch(() => ({ planAlertsSent: 0, error: true }));
+    return NextResponse.json({ ok: true, ...quotations, payments, retention, plan });
   } catch (err) {
     return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
   }

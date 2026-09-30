@@ -2721,6 +2721,10 @@ function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavi
   const [trackingFilter, setTrackingFilter] = useState('all');
   const [q, setQ] = useState('');
   const [codeMatchId, setCodeMatchId] = useState(null);
+  // Planned demand / available-to-promise come from the Planning coverage engine (same pool math the
+  // Plan tab uses), loaded after first paint so the table never waits on it.
+  const [planItems, setPlanItems] = useState(null);
+  useEffect(() => { api('/api/plan?summary=items').then(d => setPlanItems(d.items)).catch(() => setPlanItems({})); }, []);
   const needle = q.trim().toLowerCase();
   const lowStockCount = inventoryItems.filter(isLowStock).length;
   // Matches description, INV-#### (item_code), and IM-#### (catalog_item_code) directly — all three
@@ -2810,6 +2814,7 @@ function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavi
                   <TableHead>Grade</TableHead>
                   <TableHead>Dimensions</TableHead>
                   <TableHead>Stock</TableHead>
+                  <TableHead>Planned demand</TableHead>
                   <TableHead>Location</TableHead>
                   <TableHead>Minimum</TableHead>
                   <TableHead>Tracking</TableHead>
@@ -2839,6 +2844,20 @@ function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavi
                           {isLowStock(it) && <Badge variant="destructive" className="text-[10px]">Low</Badge>}
                         </span>
                       </div>
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {(() => {
+                        const pl = planItems?.[it.id];
+                        if (!pl || !(pl.planned_demand > 0)) return planItems ? '—' : '…';
+                        const short = pl.planned_demand > pl.available;
+                        return (
+                          <a href={`/planning?tab=plan`} className="hover:underline" title="Open the Material Plan">
+                            Needed <span className="font-medium text-foreground">{Math.round(pl.planned_demand * 100) / 100}</span>
+                            <br />
+                            <span className={short ? 'text-danger' : ''}>{short ? 'Short' : 'Free after plans'} {Math.round(Math.abs(pl.available - pl.planned_demand) * 100) / 100}</span>
+                          </a>
+                        );
+                      })()}
                     </TableCell>
                     <TableCell className="text-muted-foreground">{it.location || '—'}</TableCell>
                     <TableCell className="text-muted-foreground">{it.reorder_point ?? '—'}</TableCell>

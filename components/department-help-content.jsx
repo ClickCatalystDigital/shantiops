@@ -1146,7 +1146,7 @@ export const DEPARTMENT_HELP = {
     intro: [
       'Production plans and records shop-floor execution against the real milestone chain used on the shop floor — Marking/Cutting through Drilling, Shell Welding, Site Marking, the FURA-B/RC/AR and Box-Up welds, Tubes & Stay Rods, Pad Plates, Smoke Box, Refractory, and Painting — plus Hydro Test, which moved here from QC because Production is who actually runs it day to day.',
       'Job Card is now your main tab, and it opens on the board by default because that is what gets touched most during the day. Work Orders, BOM, Forecast, Daily Sheet, and Workers Roster sit underneath it as sub-tabs — the old separate Tasks and Home tabs are gone because they showed the same calendar Home already shows everyone.',
-      'The top nav tab for all of this is now called Shop Floor, not Production — it is execution and tracking of what is being built right now. A separate Planning tab sits next to it (same access, same department) for things that are not day-to-day shop-floor work: a standalone Cut action and a running backlog of scoped-but-not-yet-built ideas.',
+      'The top nav tab for all of this is now called Shop Floor, not Production — it is execution and tracking of what is being built right now. A separate Planning tab sits next to it for look-ahead work: the Material Plan, Schedule, Capacity, and Cut.',
     ],
     introFlow: {
       heading: 'How a Work Order (or a one-off card) becomes a completed milestone',
@@ -1203,12 +1203,15 @@ export const DEPARTMENT_HELP = {
         ],
       }),
       feature('planning', 'Planning', ClipboardListIcon, [
-        'A separate top-level tab, not a Shop Floor sub-tab — same department access, different purpose. Cut lets you cut any piece-tracked stock piece directly, without needing a BOM line to match against first — pick the item, pick an available piece, declare what was used and what you kept as remnant, same weight/scrap math as the BOM-linked Cut.',
-        'Backlog is a running list of things found worth building but not yet scoped — read it before assuming a gap you just noticed is new; it might already be logged with more context than you have in the moment.',
+        'Planning is its own top-level tab (also open to Stores and Procurement heads for the Material Plan). Material Plan answers one question per BOM line: can we cover it? It shows what is needed, what is already received or reserved, what free stock or a matching remnant could cover, what is on order and when it arrives, and what is still short, with the next step as a button.',
+        'Schedule shows every released Work Order as a bar on a date axis with progress, a Delayed flag and a dot for whether its material is covered. Capacity shows each workstation\'s load against its weekly capacity, week by week; click a cell to see which Work Orders fill it, and use Set capacity to enter shifts, hours and working days.',
+        'Cut lets you cut a piece-tracked stock piece that Stores has reserved against a Material Indent. If the piece carries a test certificate you must say which project it is cut for, and you can add a short note on why. Backlog lists things found but not yet built.',
       ], {
         checklist: [
-          'Use Planning\'s Cut for a piece nothing in the current BOM needs yet — a stock item bought ahead of a project, or a grade that does not match anything released right now.',
-          'A cut made here has no project attached by design (as of now) — if the piece carries a real heat number/test certificate, that traceability stays on the piece itself but will not link to a project the way a BOM-linked cut\'s does. Logged as a known gap on Backlog, not silently fine.',
+          'Start the day on Material Plan with the Needs attention filter: anything Late, Needs decision or Sourcing for a project starting soon is marked Due soon.',
+          'Buttons never cross a department: if you cannot reserve stock yourself the button reads Ask Stores and sends Stores a task instead.',
+          'Lines marked BOM not released are waiting for Design to release the BOM and are not counted as shortages yet.',
+          'Check Capacity before releasing a Work Order: a red cell means that workstation is over its weekly capacity.',
         ],
       }),
       feature('milestones', 'Production milestones', RouteIcon, ['Start a milestone when work really begins and close it only when the deliverable is actually complete; closing late asks for a reason so the project history explains the delay.', 'Use Stages under a milestone for repeatable checklist steps instead of inventing a new milestone for every variation.']),

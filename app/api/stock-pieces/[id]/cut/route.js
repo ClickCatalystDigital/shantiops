@@ -5,6 +5,7 @@ import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { cutPiece } from '@/lib/stock-pieces';
 import { audit } from '@/lib/usb';
+import { queryOne } from '@/lib/db';
 
 export async function POST(req, { params }) {
   const user = await getFreshSessionUser();
@@ -17,6 +18,16 @@ export async function POST(req, { params }) {
   if (!Array.isArray(b.used) || !Array.isArray(b.remnants)) {
     return NextResponse.json({ error: 'used and remnants must be arrays' }, { status: 400 });
   }
+  // A certified piece cut with no project and no BOM line silently drops the certificate-to-project
+  // record IBR traceability needs (cutPiece only links when a project is known), so require one.
+  const projectId = b.project_id ? Number(b.project_id) : null;
+  if (!projectId && !b.bom_item_id) {
+    const src = await queryOne('SELECT test_certificate_id FROM stock_pieces WHERE id = ?', [Number(params.id)]);
+    if (src?.test_certificate_id) {
+      return NextResponse.json({ error: 'This piece carries a test certificate. Pick the project it is being cut for.' }, { status: 400 });
+    }
+  }
+  const note = String(b.note || '').trim().slice(0, 300);
   try {
     const result = await cutPiece({
       sourcePieceId: Number(params.id), used: b.used, remnants: b.remnants,
@@ -27,7 +38,7 @@ export async function POST(req, { params }) {
     });
     await audit('stock_piece_cut', {
       actor: user.username,
-      detail: `piece ${params.id}: used ${result.usedWeight} kg · remnant ${result.remnantWeight} kg · scrap ${result.scrapWeight} kg`,
+      detail: `piece ${params.id}: used ${result.usedWeight} kg · remnant ${result.remnantWeight} kg · scrap ${result.scrapWeight} kg${note ? ` · note: ${note}` : ''}`,
     });
     return NextResponse.json(result);
   } catch (e) {

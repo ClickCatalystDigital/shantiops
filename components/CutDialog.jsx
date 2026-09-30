@@ -14,6 +14,7 @@ import { PlusIcon, TrashIcon } from 'lucide-react';
 import DimensionInput from '@/components/DimensionInput';
 import { pieceWeight } from '@/lib/piece-weight';
 import PieceLineage from '@/components/PieceLineage';
+import SearchableSelect from '@/components/SearchableSelect';
 
 function parseNum(v) {
   const n = Number(v);
@@ -102,7 +103,10 @@ function DimRows({ label, kind, rows, setRows, partOptions }) {
 // flow) or `initialSource` (a piece already picked by the caller, no BOM line at all — Planning's
 // standalone Cut tab). Exactly one of the two is ever passed; cutPiece() itself treats
 // project_id/bom_item_id as fully optional, so the standalone path needs no backend changes.
-export default function CutDialog({ bomItem = null, initialSource = null, projectId, onClose, router, onDone }) {
+export default function CutDialog({ bomItem = null, initialSource = null, projectId, projectOptions = null, onClose, router, onDone }) {
+  // Standalone cuts (no BOM line) may name the project they are cut for; required when the piece is certified.
+  const [pickedProject, setPickedProject] = useState('');
+  const [note, setNote] = useState('');
   const namedParts = useMemo(() => {
     if (!bomItem?.named_parts_json) return [];
     try { return JSON.parse(bomItem.named_parts_json).map(p => p.name).filter(Boolean); } catch { return []; }
@@ -164,6 +168,7 @@ export default function CutDialog({ bomItem = null, initialSource = null, projec
 
   async function submit() {
     if (!source) return showToast('Pick a source piece', 'error');
+    if (!bomItem && !projectId && !pickedProject && source.test_certificate_id) return showToast('This piece has a test certificate. Pick the project it is cut for.', 'error');
     setSaving(true);
     try {
       const toDims = (rows, withPart) => rows.filter(r => parseNum(r.length_mm) > 0).map(r => ({
@@ -174,7 +179,8 @@ export default function CutDialog({ bomItem = null, initialSource = null, projec
         method: 'POST',
         body: {
           used: toDims(used, true), remnants: toDims(remnants),
-          ...(projectId ? { project_id: projectId } : {}),
+          ...(projectId || pickedProject ? { project_id: projectId || Number(pickedProject) } : {}),
+          ...(note.trim() ? { note: note.trim() } : {}),
           ...(bomItem ? { bom_item_id: bomItem.id } : {}),
         },
       });
@@ -257,6 +263,18 @@ export default function CutDialog({ bomItem = null, initialSource = null, projec
                 <div className="flex justify-between font-medium"><span>Scrap (auto)</span><span>{overBudget ? '—' : `${scrapWeight} kg`}</span></div>
               </div>
               {overBudget && <p className="text-xs text-danger">Used + remnant exceeds the source piece — reduce a dimension.</p>}
+              {!bomItem && !projectId && projectOptions && (
+                <div className="flex flex-col gap-1.5">
+                  <Label>Project this is cut for{source.test_certificate_id ? ' (required: certified piece)' : ' (optional)'}</Label>
+                  <SearchableSelect value={pickedProject} onChange={setPickedProject} placeholder="Search projects…"
+                    options={[{ value: '', label: 'No project' }, ...projectOptions.map(p => ({ value: String(p.id), label: p.project_no }))]}
+                    displayValue={projectOptions.find(p => String(p.id) === pickedProject)?.project_no} />
+                </div>
+              )}
+              <div className="flex flex-col gap-1.5">
+                <Label>Why was this cut? (optional)</Label>
+                <Input value={note} maxLength={300} onChange={e => setNote(e.target.value)} placeholder="e.g. replacement for rejected part" />
+              </div>
             </>
           )}
         </div>

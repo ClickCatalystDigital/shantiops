@@ -11,7 +11,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectGroup, SelectItem } from '@/components/ui/select';
-import { ClipboardListIcon, ScissorsIcon } from 'lucide-react';
+import { ClipboardListIcon, ScissorsIcon, LayoutListIcon, GaugeIcon, CalendarRangeIcon } from 'lucide-react';
+import PlanTab from '@/components/PlanTab';
+import CapacityTab from '@/components/CapacityTab';
+import ScheduleTab from '@/components/ScheduleTab';
 import CutDialog, { pieceDimsLabel } from '@/components/CutDialog';
 
 const BACKLOG = [
@@ -57,10 +60,11 @@ const BACKLOG = [
   },
   {
     title: 'Standalone Cut should be able to (or have to) link a project — certificate traceability silently drops without one',
-    status: 'Needs scoping',
+    status: 'Shipped 2026-09-30',
     added: '2026-08-27',
     body: [
-      `Found while reviewing the Cut tab above. cutPiece() (lib/stock-pieces.js) only writes a
+      `Resolved — the Cut dialog now has a project picker (required when the piece carries a test certificate, enforced by POST /api/stock-pieces/[id]/cut) and a "why was this cut" note, kept in the audit log.`,
+      `Original write-up: Found while reviewing the Cut tab above. cutPiece() (lib/stock-pieces.js) only writes a
        certificate_projects link "if project_id is given AND the source piece has a
        test_certificate_id" — the standalone Cut tab never asks for a project, so cutting a real
        heat-numbered/certified plate there silently drops the certificate-to-project link a
@@ -84,10 +88,11 @@ const BACKLOG = [
   },
   {
     title: "No confirmation step for a cut's remnant actually reaching Stores",
-    status: 'Needs scoping',
+    status: 'Shipped 2026-09-14',
     added: '2026-08-27',
     body: [
-      `cutPiece() marks a remnant child piece status='available' the instant the cut is submitted —
+      `Resolved — a cut remnant now starts at status pending_receipt and only becomes available once Stores confirms it (confirmPieceReceipt); Stores is notified when one is created.`,
+      `Original write-up: cutPiece() marks a remnant child piece status='available' the instant the cut is submitted —
        there is no physical handoff/receipt step. A remnant created by Production (via the BOM flow
        or the new standalone Cut tab) becomes reservable/issuable in Stores' inventory immediately,
        before anyone at Stores has actually put the physical piece back on a shelf. Contrast with
@@ -206,7 +211,7 @@ function BacklogTab() {
 // WorkersPanel.jsx). No project picker (an unlinked cut, by design — see plan), no BOM line
 // required. Only items that could ever have a cuttable piece are listed (track_pieces=1, same
 // condition StoresWorkspace.jsx's Inventory tab uses to decide whether to show its own Pieces icon).
-function CutStockTab({ inventoryItems }) {
+function CutStockTab({ inventoryItems, projects }) {
   const router = useRouter();
   const pieceItems = inventoryItems.filter(i => i.track_pieces);
   const [itemId, setItemId] = useState('');
@@ -268,25 +273,34 @@ function CutStockTab({ inventoryItems }) {
       )}
 
       {cutting && (
-        <CutDialog initialSource={{ ...cutting, item_description: selectedItem?.description }}
+        <CutDialog projectOptions={projects} initialSource={{ ...cutting, item_description: selectedItem?.description }}
           router={router} onClose={() => setCutting(null)} onDone={() => load(itemId)} />
       )}
     </div>
   );
 }
 
-const NAV_ITEMS = [
-  { key: 'backlog', label: 'Backlog', icon: ClipboardListIcon },
-  { key: 'cut', label: 'Cut', icon: ScissorsIcon },
+const NAV_ITEMS = (isProduction) => [
+  { key: 'plan', label: 'Material Plan', icon: LayoutListIcon, GaugeIcon, CalendarRangeIcon },
+  ...(isProduction ? [
+    { key: 'schedule', label: 'Schedule', icon: CalendarRangeIcon },
+    { key: 'capacity', label: 'Capacity', icon: GaugeIcon },
+    { key: 'cut', label: 'Cut', icon: ScissorsIcon },
+    { key: 'backlog', label: 'Backlog', icon: ClipboardListIcon },
+  ] : []),
 ];
 
-export default function PlanningWorkspace({ inventoryItems }) {
-  const [tab, setTab] = useState('backlog');
+export default function PlanningWorkspace({ inventoryItems, projects = [], isProduction = true, canReserve = false, canProcure = false, fromDept = 'Production', initialTab = 'plan', initialProject = '' }) {
+  const items = NAV_ITEMS(isProduction);
+  const [tab, setTab] = useState(items.some(i => i.key === initialTab) ? initialTab : 'plan');
 
   return (
-    <WorkspaceSidebar title="Planning" icon={ClipboardListIcon} items={NAV_ITEMS} activeKey={tab} onChange={setTab}>
+    <WorkspaceSidebar title="Planning" icon={ClipboardListIcon} items={items} activeKey={tab} onChange={setTab}>
+      {tab === 'plan' && <PlanTab canReserve={canReserve} canProcure={canProcure} fromDept={fromDept} initialProject={initialProject} />}
+      {tab === 'schedule' && <ScheduleTab />}
+      {tab === 'capacity' && <CapacityTab />}
       {tab === 'backlog' && <BacklogTab />}
-      {tab === 'cut' && <CutStockTab inventoryItems={inventoryItems} />}
+      {tab === 'cut' && <CutStockTab inventoryItems={inventoryItems} projects={projects} />}
     </WorkspaceSidebar>
   );
 }
