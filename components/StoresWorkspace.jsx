@@ -1744,6 +1744,11 @@ function IndentsCard({ router }) {
                   <span className="font-semibold">{indent.indent_no}</span>
                   <span className="text-muted-foreground">{indent.project_no || '—'} · raised by {indent.requested_by}</span>
                   <a href={`/api/material-indents/${indent.id}/pdf`} target="_blank" rel="noreferrer" className="text-xs underline">PDF</a>
+                  <button type="button" className="ml-auto text-xs text-muted-foreground underline hover:text-danger" onClick={async () => {
+                    if (!window.confirm(`Delete ${indent.indent_no}?`)) return;
+                    try { await api(`/api/material-indents/${indent.id}`, { method: 'DELETE' }); showToast('Indent deleted'); load(); router.refresh(); }
+                    catch (err) { showToast(err.message, 'error'); }
+                  }}>Delete</button>
                 </div>
                 <div className="flex flex-col divide-y px-3">
                   {indent.items.filter(it => ['open', 'partially_released'].includes(it.status)).map(item => (
@@ -2141,6 +2146,11 @@ function GateInwardReceiptsCard({ gateInwardReceipts, router }) {
                   <TableCell className="flex justify-end gap-1">
                     {g.status === 'open' && (
                       <>
+                        <Button size="sm" variant="ghost" title="Delete gate entry" onClick={async () => {
+                          if (!window.confirm('Delete this gate entry?')) return;
+                          try { await api(`/api/gate-inward-receipts/${g.id}`, { method: 'DELETE' }); showToast('Gate entry deleted'); router.refresh(); }
+                          catch (err) { showToast(err.message, 'error'); }
+                        }}><Trash2Icon className="size-4" /></Button>
                         <Button size="sm" variant="ghost" title="Edit" onClick={() => setEditingGir(g)}>
                           <PencilIcon className="size-4" />
                         </Button>

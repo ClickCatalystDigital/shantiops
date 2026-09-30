@@ -53,3 +53,21 @@ export async function PATCH(req, { params }) {
   await audit('gir_updated', { actor: user.username, detail: `GIR-${gir.gir_no}: ${Object.keys(b).join(',')}` });
   return NextResponse.json({ ok: true });
 }
+
+// Delete a gate entry that was logged by mistake. A closed entry (GRN attached) is a record of a real
+// receipt and stays; a receipt record that points at it keeps it too.
+export async function DELETE(req, { params }) {
+  const user = await getFreshSessionUser();
+  const denied = requireDepartment(user, 'Stores');
+  if (denied) return denied;
+  const actionDenied = await requireAction(user, 'Stores', 'stores.gir.write');
+  if (actionDenied) return actionDenied;
+  const g = await queryOne('SELECT id, status, vehicle_no FROM gate_inward_receipts WHERE id = ?', [params.id]);
+  if (!g) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  if (g.status === 'closed') return NextResponse.json({ error: 'A closed gate entry is a record of a real receipt and is kept.' }, { status: 409 });
+  const linked = await queryOne('SELECT COUNT(*) AS n FROM stock_receipts WHERE gate_inward_receipt_id = ?', [g.id]);
+  if (Number(linked?.n) > 0) return NextResponse.json({ error: 'A receipt is linked to this gate entry, so it is kept.' }, { status: 409 });
+  await execute('DELETE FROM gate_inward_receipts WHERE id = ?', [g.id]);
+  await audit('gate_entry_deleted', { actor: user.username, detail: g.vehicle_no || `GIR ${g.id}` });
+  return NextResponse.json({ ok: true });
+}

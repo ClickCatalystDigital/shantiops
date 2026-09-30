@@ -39,3 +39,24 @@ export async function PATCH(req, { params }) {
   await audit('indent_cancelled', { actor: user.username, detail: `indent #${params.id}` });
   return NextResponse.json({ ok: true });
 }
+
+// Delete an indent outright — only while nothing has been handed over against it (no quantity
+// released, no piece reserved, no issue recorded). Otherwise it stays as a record and can be cancelled.
+export async function DELETE(req, { params }) {
+  const user = await getFreshSessionUser();
+  if (!canAccessDepartment(user, 'Production') && !canAccessDepartment(user, 'Stores')) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+  const used = await queryAll(
+    `SELECT (SELECT COUNT(*) FROM material_indent_items WHERE indent_id = ? AND qty_released > 0)
+          + (SELECT COUNT(*) FROM stock_pieces WHERE indent_item_id IN (SELECT id FROM material_indent_items WHERE indent_id = ?))
+          + (SELECT COUNT(*) FROM material_issues WHERE indent_item_id IN (SELECT id FROM material_indent_items WHERE indent_id = ?)) AS n`,
+    [params.id, params.id, params.id]);
+  if (Number(used[0]?.n) > 0) {
+    return NextResponse.json({ error: 'Material has already been handed over against this indent — cancel it instead of deleting.' }, { status: 409 });
+  }
+  await execute('DELETE FROM material_indent_items WHERE indent_id = ?', [params.id]);
+  await execute('DELETE FROM material_indents WHERE id = ?', [params.id]);
+  await audit('material_indent_deleted', { actor: user.username, detail: `indent ${params.id}` });
+  return NextResponse.json({ ok: true });
+}
