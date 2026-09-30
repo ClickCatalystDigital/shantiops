@@ -1,0 +1,118 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Inventory &amp; Planning — plain guide</title>
+<style>
+body{font:16px/1.55 system-ui,sans-serif;margin:0;padding:16px;max-width:640px;margin:auto;color:#1a1a1a;background:#fff}
+h1{font-size:1.5rem;margin:.2em 0}h2{font-size:1.2rem;margin:1.6em 0 .4em;border-top:2px solid #eee;padding-top:.8em}
+h3{font-size:1rem;margin:1.1em 0 .2em}p,li{margin:.3em 0}ul{padding-left:1.2em}
+.box{background:#f5f7fa;border-radius:10px;padding:10px 12px;margin:.6em 0}
+.bad{background:#fff3f0;border-left:4px solid #d9432b}.ok{background:#f0faf3;border-left:4px solid #2a9d4b}
+.tag{display:inline-block;font-size:.75rem;padding:1px 8px;border-radius:99px;background:#e6ecf5;margin-left:4px}
+small{color:#666}@media(prefers-color-scheme:dark){body{background:#15171a;color:#e8e8e8}.box{background:#22262b}.bad{background:#33201d}.ok{background:#1b2c21}h2{border-color:#333}.tag{background:#2c3440}small{color:#aaa}}
+</style></head><body>
+<h1>Inventory &amp; Planning</h1>
+<small>Plain-language guide · 30 Sep 2026 · written from the real code and the live database</small>
+
+<h2>1. The 30-second picture</h2>
+<p><b>Inventory (Stores page, /stores)</b> = "what material do we physically have, who got it, where did it go".</p>
+<p><b>Planning (/planning)</b> = "for the boilers we are building, do we have enough material — and if not, what should someone do?"</p>
+<p>Planning <i>reads</i> the same data Stores keeps. It mostly does not store anything new. It was built last.</p>
+<div class="box"><b>Real size of data today:</b> only <b>16 stock items</b>, 2 work orders, 7 machines — but <b>2,583 BOM lines</b> across projects. So Inventory is tiny; Planning works on a lot of BOM lines but almost no stock.</div>
+
+<h2>2. Inventory (Stores page)</h2>
+<p>Left menu, in the order Stores works:</p>
+
+<h3>STOCK</h3>
+<p><b>Inventory</b> — the list of stock items. Each has how many on hand, how many reserved, how many <i>available</i>, a minimum level (low-stock warning), average cost.</p>
+<p>An item can be kept in 4 ways (its "tracking"):</p>
+<ul>
+<li><b>Plain number</b> (8 items) — bolts, consumables: just a count.</li>
+<li><b>Pieces</b> (6 items) — plates and sections. Every physical plate gets its own code (PL-0007). When cut, it makes child pieces: used, leftover (remnant), scrap. Each has its own length/width/thickness and weight.</li>
+<li><b>Batches</b> (1) — a lot of bulk material from one delivery (heat number, MTC).</li>
+<li><b>Serials</b> (1) — one row per valve/pump with a serial number.</li>
+</ul>
+<p>Pieces in use today: 3 available, 3 reserved, 2 waiting for Stores to confirm, 10 used, 4 scrap.</p>
+
+<h3>FULFILLMENT</h3>
+<p><b>Material Demand</b> — BOM lines that need material. For each, Stores picks: <i>Reserve from stock</i> or <i>Send to Procurement</i>.</p>
+<p><b>Ready to Issue</b> — stock already reserved; Stores hands it to the shop floor (Issue) or cancels the reservation (Release).</p>
+
+<h3>PRODUCTION</h3>
+<p><b>Material Indents</b> — Production's written request for material; Stores releases it line by line. Can make a PDF.</p>
+<p><b>Issued to WIP</b> — history of what went to the shop floor.</p>
+
+<h3>RECEIVING</h3>
+<p><b>Gate Inward</b> — security log of a vehicle arriving.</p>
+<p><b>Receive a Delivery</b> — record that material arrived against a PO line (quantity, heat no, certificate). QC must approve before it becomes usable stock ("Awaiting QC").</p>
+<p><b>Allocate</b> — after a line is fully received, Stores says: goes to <i>Production</i> or straight to <i>Dispatch</i>. Also lets Stores fix the item's default.</p>
+
+<h3>MULTI-UNIT ORDERS</h3>
+<p><b>Allocation &amp; Routing</b> — for orders split into many units (e.g. 50 boilers). Stores splits one delivery across units, and routes each.</p>
+
+<h2>3. Planning</h2>
+<p>Everyone in Production, Stores, Procurement sees <b>Material Plan</b>. Production also sees Schedule, Capacity, Cut, Backlog.</p>
+
+<h3>Material Plan <span class="tag">main feature</span></h3>
+<p>One row per BOM line. For each it works out:</p>
+<ul>
+<li><b>Need</b> — how much the BOM needs (includes ×units and sub-assembly multipliers).</li>
+<li><b>Secured</b> — received or already reserved.</li>
+<li><b>Free stock</b> — stock not promised to anyone else. One pool per item, handed out to the earliest-needed line first.</li>
+<li><b>Matching leftover</b> — a remnant plate that is big enough (same grade, thickness, size; rotation allowed).</li>
+<li><b>On order</b> — open PO quantity and the delivery date (from delivery lots, else the supplier's quote date).</li>
+<li><b>Short</b> — whatever is still missing.</li>
+</ul>
+<p>Then gives a status: <i>In hand · Covered · Held for QC · On order · Late · Sourcing · Needs decision · BOM not released · Check qty</i>.</p>
+<p>Buttons on a row: <b>Reserve stock</b>, <b>Reserve remnant</b>, <b>Send to Procurement</b> (if you have permission). If you don't, it becomes <b>Ask &lt;dept&gt;</b> which creates a task for them.</p>
+<p>"Need by" date = the project's first Production milestone start.</p>
+
+<h3>Schedule</h3>
+<p>Open Work Orders as bars with progress, a "Delayed" flag, and a dot showing whether their material is OK. Read-only.</p>
+
+<h3>Capacity</h3>
+<p>Week-by-week load per machine. Load = planned minutes of open operations spread over the work order's dates. Capacity = shifts × hours × days you set (default 1 shift, 8h, 6 days). Red = overloaded.</p>
+
+<h3>Cut</h3>
+<p>Cut a stock plate without a BOM line (makes used / remnant / scrap pieces, posts cost). Not really "planning" — it lives here for convenience.</p>
+
+<h3>Backlog</h3>
+<p>A hard-typed list of notes about known gaps. Not data, just text in the code.</p>
+
+<h3>Other bits</h3>
+<ul>
+<li><b>Daily alerts</b> — a daily job notifies Stores/Procurement/QC about lines whose production starts within 14 days and are not covered. <small>0 sent so far.</small></li>
+<li><b>Inventory columns</b> — Stores Inventory shows "Planned demand" and "Free after plans" (fetched from the Plan).</li>
+<li><b>Material Shortage report</b> now uses the same plan numbers.</li>
+</ul>
+
+<h2>4. Honest problems</h2>
+
+<div class="box bad"><b>1. Too heavy.</b> Every time someone opens Stores → Inventory, the app downloads the whole plan: ~3 MB, 2,583 BOM lines, ~15 database queries — just to show two columns. On a phone or slow server this is the slowest thing in the app, and it was the most likely cause of the recent "fetch failed" errors.</div>
+
+<div class="box bad"><b>2. Four ways to do one thing.</b> "Commit material to a line" can be done from Material Demand, Allocate, Allocation &amp; Routing, <i>and</i> Planning → Material Plan. Same action, different screens, slightly different rules. Users will ask "which one do I use?"</div>
+
+<div class="box bad"><b>3. Four stock models for 16 items.</b> Plain, piece, batch, serial each have their own tables, dialogs and rules. That is a lot of machinery for 16 items. Pieces (plates) are the valuable part; batch and serial are barely used (1 item each).</div>
+
+<div class="box bad"><b>4. Schedule and Capacity are nearly empty.</b> Only 2 work orders exist (1 released). They can only be as good as the route cards people fill in, and capacity is a guess: no attendance, no holidays, no maintenance. They look precise but aren't.</div>
+
+<div class="box bad"><b>5. Quantities assume same units.</b> The plan never checks units. "2 Nos" vs "5 Kg" for the same item would be compared as plain numbers. Lines with no catalog link can't match free stock at all (6 of 16 stock items have no catalog link).</div>
+
+<div class="box bad"><b>6. Two shortage calculations.</b> The older Forecast code still exists next to the new Plan. They can disagree.</div>
+
+<div class="box bad"><b>7. Small oddities.</b> Cut and Backlog sit under "Planning" but aren't planning. Backlog is hard-coded text. Planning menu has a stray code slip (extra icon names in the Plan item — harmless). The plan alert job has never been seen running in production.</div>
+
+<div class="box bad"><b>8. Sleep / cold start.</b> On the free host the app sleeps; the first request after sleep is slow, and the plan makes that worse.</div>
+
+<h2>5. What I'd do (simple order)</h2>
+<div class="box ok">
+<ol>
+<li><b>Stop the heavy call.</b> Inventory should ask for a tiny summary (per item totals), not the whole plan. Biggest win, small change.</li>
+<li><b>One place to commit material.</b> Keep Material Demand as the real action screen; make Planning rows link to it instead of duplicating buttons.</li>
+<li><b>Hide what isn't ready.</b> Hide Schedule and Capacity until there are real work orders with routes. Move Cut to Stores/Production and delete Backlog.</li>
+<li><b>Leave batch/serial alone</b> — don't build more on them until real use appears.</li>
+<li><b>Show units</b> in the plan and flag when they differ.</li>
+</ol>
+Say which of these you want and I'll do them one at a time.
+</div>
+
+<p><small>Numbers above were read from the live database today. Sources: components/StoresWorkspace.jsx, PlanningWorkspace.jsx, PlanTab.jsx, lib/plan-coverage.js/.mjs, lib/plan-alerts.js.</small></p>
+</body></html>
