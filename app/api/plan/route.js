@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
 import { getPlan } from '@/lib/plan-coverage';
 import { attachCombinablePlateHints } from '@/lib/remnant-match';
+import { attachStockStages } from '@/lib/stock-stage';
 
 export async function GET(req) {
   const user = await getFreshSessionUser();
@@ -19,5 +20,7 @@ export async function GET(req) {
   if (new URL(req.url).searchParams.get('hints') === '1') {
     await attachCombinablePlateHints(plan.rows.filter(r => r.demand?.owner === 'Stores' && !r.remnant));
   }
+  // Demand tab: "where is it now" label per line (project-scoped requests only — never the whole plan).
+  if (projectIds && new URL(req.url).searchParams.get('stage') === '1') await attachStockStages(plan.rows);
   return NextResponse.json(plan);
 }

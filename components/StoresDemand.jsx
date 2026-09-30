@@ -66,7 +66,7 @@ function ProjectCard({ p, inventoryItems, fromDept }) {
   const reservable = useMemo(() => inventoryItems.filter(i => i.tracking_mode !== 'piece' && i.tracking_mode !== 'serial'), [inventoryItems]);
 
   async function load() {
-    try { setRows((await api(`/api/plan?project_ids=${p.project_id}&hints=1`)).rows); }
+    try { setRows((await api(`/api/plan?project_ids=${p.project_id}&hints=1&stage=1`)).rows); }
     catch (e) { showToast(e.message, 'error'); setRows([]); }
   }
   function toggle() { setOpen(o => !o); if (!rows) load(); }
@@ -152,7 +152,10 @@ function ProjectCard({ p, inventoryItems, fromDept }) {
                         <div>{r.required == null ? '—' : n(r.required)}</div>
                         <div className="text-xs text-muted-foreground">needed{r.ambiguous && <AlertTriangleIcon className="ml-1 inline size-3 text-warning" title="Quantity text has several numbers — check it" />}</div>
                       </div>
-                      <div className="w-32"><StateBadge row={r} /></div>
+                      <div className="w-32">
+                        <StateBadge row={r} />
+                        {r.stage && <Badge variant="outline" className="mt-1 text-[10px] font-normal" title="Where the material is now">{r.stage.label}</Badge>}
+                      </div>
                       <div className="w-44 text-xs text-muted-foreground tnum">
                         <div>In hand/reserved: <b className="text-foreground">{n(r.secured)}</b></div>
                         {(r.free > 0 || r.remnant > 0) && <div>Stock free: <b className="text-foreground">{r.remnant > 0 ? `${r.remnant} piece(s)` : n(r.free)}</b></div>}
