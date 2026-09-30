@@ -15,6 +15,7 @@ import { NextResponse } from 'next/server';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { execute, queryOne } from '@/lib/db';
+import { getClearedReceivedQty } from '@/lib/data';
 import { audit } from '@/lib/usb';
 import { notifyDepartment } from '@/lib/notify';
 
@@ -43,8 +44,10 @@ export async function POST(req, { params }) {
     return NextResponse.json({ error: 'This project has child units — route per unit instead' }, { status: 400 });
   }
 
-  if (item.purchase_status !== 'Received') {
-    return NextResponse.json({ error: 'Not received yet' }, { status: 400 });
+  // Fully received, or at least part of it has arrived and cleared QC — the routing decision is
+  // about where the material goes, so a half-delivered line can already be routed.
+  if (!['Received', 'In-Stock'].includes(item.purchase_status) && (await getClearedReceivedQty(item.id)) <= 0) {
+    return NextResponse.json({ error: 'Nothing received (and cleared by QC) yet' }, { status: 400 });
   }
 
   // Same transition-guard rule as route-to/route.js — read the prior decision before overwriting
@@ -70,7 +73,7 @@ export async function POST(req, { params }) {
     try {
       await notifyDepartment('Production', {
         kind: 'indent_ready', title: 'Material ready to indent',
-        body: `${item.material_description || 'Item'} — routed to Production`,
+        body: `${item.material_description || 'Item'} — routed to Production${['Received', 'In-Stock'].includes(item.purchase_status) ? '' : ' (part of the order has arrived)'}`,
         project_id: item.project_id,
       });
     } catch { /* notification is best-effort */ }

@@ -47,6 +47,11 @@ export default function StockMovementCard() {
               Stock history is recorded from {data.historyStart}. Earlier dates can&apos;t be reported, so this starts there.
             </p>
           )}
+          {data.mismatches > 0 && (
+            <p className="rounded-md border border-danger/40 bg-danger/5 px-3 py-2 text-xs text-danger">
+              {data.mismatches} item(s) have a closing balance that differs from what is on hand now. Please tell the developer — a stock change was not recorded.
+            </p>
+          )}
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead><tr className="border-b text-left text-xs text-muted-foreground">

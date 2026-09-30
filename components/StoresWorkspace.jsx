@@ -2269,6 +2269,8 @@ function ReceiveDeliveryTab({ bomItems, pendingInwardApprovals = [], router }) {
   const [mode, setMode] = useState('search');
   const [query, setQuery] = useState('');
   const [dateFilter, setDateFilter] = useState('all');
+  const [pageSize, setPageSize] = useState(15);
+  const [page, setPage] = useState(1);
   // Was: "All dates" (the select's own default value) permanently read as "nothing chosen yet" —
   // browsing required a search term even though the option's whole point is "no date filter." An
   // explicit engaged flag separates the true untouched landing state from a deliberate pick of any
@@ -2310,7 +2312,9 @@ function ReceiveDeliveryTab({ bomItems, pendingInwardApprovals = [], router }) {
         (it.pr_no || '').toLowerCase().includes(q) ||
         (it.po_ref || '').toLowerCase().includes(q))
     : dateFiltered;
-  const results = matched.slice(0, 50);
+  const pageCount = Math.max(1, Math.ceil(matched.length / pageSize));
+  const curPage = Math.min(page, pageCount);
+  const results = matched.slice((curPage - 1) * pageSize, curPage * pageSize);
   const showPrompt = false;
 
   return (
@@ -2331,9 +2335,9 @@ function ReceiveDeliveryTab({ bomItems, pendingInwardApprovals = [], router }) {
           <CardHeader><CardTitle>Receive a Delivery</CardTitle></CardHeader>
           <CardContent className="flex flex-col gap-3 pt-4">
             <div className="flex gap-2">
-              <Input value={query} onChange={e => setQuery(e.target.value)}
+              <Input value={query} onChange={e => { setQuery(e.target.value); setPage(1); }}
                 placeholder="Search by material, project, PR, or PO number…" autoFocus className="flex-1" />
-              <Select value={dateFilter} onValueChange={setDateFilter}>
+              <Select value={dateFilter} onValueChange={v => { setDateFilter(v); setPage(1); }}>
                 <SelectTrigger className="h-9 w-40 shrink-0 text-xs"><SelectValue placeholder="All dates" /></SelectTrigger>
                 <SelectContent>
                   {DATE_FILTERS.map(f => <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>)}
@@ -2384,6 +2388,21 @@ function ReceiveDeliveryTab({ bomItems, pendingInwardApprovals = [], router }) {
                     </div>
                   );
                 })}
+              </div>
+            )}
+            {matched.length > 0 && (
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3 text-xs text-muted-foreground">
+                <span>{(curPage - 1) * pageSize + 1}–{Math.min(curPage * pageSize, matched.length)} of {matched.length}</span>
+                <div className="flex items-center gap-2">
+                  <span>Show</span>
+                  <Select value={String(pageSize)} onValueChange={v => { setPageSize(Number(v)); setPage(1); }}>
+                    <SelectTrigger className="h-8 w-20 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>{[15, 20, 35, 50, 100].map(n => <SelectItem key={n} value={String(n)}>{n}</SelectItem>)}</SelectContent>
+                  </Select>
+                  <Button size="sm" variant="outline" className="h-8" disabled={curPage <= 1} onClick={() => setPage(curPage - 1)}>Prev</Button>
+                  <span>{curPage} / {pageCount}</span>
+                  <Button size="sm" variant="outline" className="h-8" disabled={curPage >= pageCount} onClick={() => setPage(curPage + 1)}>Next</Button>
+                </div>
               </div>
             )}
           </CardContent>
@@ -2621,7 +2640,7 @@ function AllocateTab({ items: initialItems, router }) {
         <CardHeader>
           <CardTitle>Allocate</CardTitle>
           <p className="text-sm text-muted-foreground">
-            Received material waiting to be routed to Production or Dispatch. "Default" corrects the
+            Received material (fully or partly delivered) waiting to be routed to Production or Dispatch. "Default" corrects the
             catalog's own manufacturing default for future orders — it doesn't change this line.
           </p>
         </CardHeader>
@@ -2656,7 +2675,10 @@ function AllocateTab({ items: initialItems, router }) {
                         <TableCell><Checkbox checked={selected.has(it.id)} onCheckedChange={v => toggleOne(it.id, !!v)} aria-label="Select item" /></TableCell>
                         <TableCell className="max-w-0 truncate">{it.material_description}</TableCell>
                         <TableCell className="truncate text-xs text-muted-foreground">{it.project_no}</TableCell>
-                        <TableCell className="text-xs text-muted-foreground">{it.qty_breakdown?.label || it.qty_text}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {it.qty_breakdown?.label || it.qty_text}
+                          {it.received_qty != null && <span className="block text-[11px] text-warning">{it.received_qty} received so far</span>}
+                        </TableCell>
                         <TableCell className="text-center">
                           <Checkbox checked={row.routing === 'production'} onCheckedChange={v => v && setRouting(it.id, 'production')} aria-label="Route to Production" />
                         </TableCell>
