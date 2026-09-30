@@ -11,6 +11,7 @@ import { audit } from '@/lib/usb';
 import { getAssemblyRollupMap } from '@/lib/data';
 import { itemRollupQty } from '@/lib/bom-structure.mjs';
 import { notifyDepartment } from '@/lib/notify';
+import { routingBlockReason } from '@/lib/stores-undo';
 
 const VALID_ROUTES = new Set(['production', 'dispatch']);
 
@@ -97,4 +98,33 @@ export async function POST(req, { params }) {
   }
 
   return NextResponse.json({ ok: true, routed: children.length, routed_to: routedTo });
+}
+
+// Clear Stores' routing for some units of a split order (body: { child_project_ids }), putting them back
+// to "ready, not routed". All-or-nothing: if any picked unit already has a Production request or packing
+// list built on it, nothing is cleared and the reason names that unit.
+export async function DELETE(req, { params }) {
+  const user = await getFreshSessionUser();
+  const denied = requireDepartment(user, 'Stores');
+  if (denied) return denied;
+  const actionDenied = await requireAction(user, 'Stores', 'stores.bom.route');
+  if (actionDenied) return actionDenied;
+
+  const item = await queryOne('SELECT id, material_description FROM bom_items WHERE id = ?', [params.id]);
+  if (!item) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  const b = await req.json();
+  const ids = Array.isArray(b.child_project_ids) ? [...new Set(b.child_project_ids.map(Number).filter(Boolean))] : [];
+  if (!ids.length) return NextResponse.json({ error: 'Pick at least one unit' }, { status: 400 });
+  const rows = await queryAll(
+    `SELECT r.child_project_id, p.project_no FROM bom_item_child_routing r JOIN projects p ON p.id = r.child_project_id
+      WHERE r.bom_item_id = ? AND r.child_project_id IN (${ids.map(() => '?').join(',')})`, [item.id, ...ids]);
+  for (const r of rows) {
+    const why = await routingBlockReason(item.id, r.child_project_id);
+    if (why) return NextResponse.json({ error: `${r.project_no}: ${why}` }, { status: 409 });
+  }
+  if (!rows.length) return NextResponse.json({ error: 'None of those units is routed' }, { status: 409 });
+  await execute(`DELETE FROM bom_item_child_routing WHERE bom_item_id = ? AND child_project_id IN (${rows.map(() => '?').join(',')})`,
+    [item.id, ...rows.map(r => r.child_project_id)]);
+  await audit('bom_item_unrouted', { actor: user.username, detail: `bom_item ${item.id} (${item.material_description}): routing cleared for ${rows.length} unit(s)` });
+  return NextResponse.json({ ok: true, cleared: rows.length });
 }

@@ -169,6 +169,18 @@ function ProjectCard({ p, inventoryItems, fromDept }) {
                         {canRaise && <Button size="sm" variant="outline" disabled={busy === r.id} onClick={() => raisePr(r)}>Raise PR</Button>}
                         {r.demand.owner === 'Procurement' && <Button size="sm" variant="outline" disabled={busy === r.id} onClick={() => run(r, () => ask(r, 'Procurement', 'sourcing is holding this up'))}>Ask Procurement</Button>}
                         {r.demand.late && <Button size="sm" variant="outline" disabled={busy === r.id} onClick={() => run(r, () => ask(r, 'Procurement', 'delivery is after the need-by date'))}>Ask Procurement</Button>}
+                        {r.source === 'bom' && r.demand.owner === 'Procurement' && r.status === 'sourcing' && !r.pr_item_id && r.purchase_status === 'Enquiry' && !r.incoming && (
+                          <Button size="sm" variant="ghost" disabled={busy === r.id} title="Return this line to Stores review (only while Procurement hasn't started on it)"
+                            onClick={() => run(r, async () => { await api(`/api/bom-items/${r.id}/unprocure`, { method: 'POST' }); showToast('Taken back from Procurement'); })}>Take back</Button>
+                        )}
+                        {r.source === 'stock' && ['Enquiry', 'Comparison'].includes(r.purchase_status) && (
+                          <Button size="sm" variant="ghost" disabled={busy === r.id}
+                            onClick={() => window.confirm('Withdraw this stock request?') && run(r, async () => { await api(`/api/bom-items/${r.id}/withdraw`, { method: 'POST' }); showToast('Request withdrawn'); })}>Withdraw</Button>
+                        )}
+                        {r.source === 'bom' && r.demand.state === 'needs_action' && (
+                          <Button size="sm" variant="ghost" disabled={busy === r.id} title="Project BOM lines belong to Engineering — ask them to cancel it"
+                            onClick={() => run(r, () => ask(r, 'Engineering', 'please cancel this line'))}>Ask Eng. to cancel</Button>
+                        )}
                         {r.demand.owner === 'QC' && <Button size="sm" variant="outline" disabled={busy === r.id} onClick={() => run(r, () => ask(r, 'QC', 'received material is waiting on inward QC'))}>Ask QC</Button>}
                       </div>
                     </div>

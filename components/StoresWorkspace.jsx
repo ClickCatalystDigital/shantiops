@@ -47,6 +47,7 @@ import {
 } from '@/lib/section-shapes';
 import { defaultCategoryFields } from '@/components/BomLineFields';
 import StoresDemand from '@/components/StoresDemand';
+import RoutedItemsCard from '@/components/StoresUndo';
 import { requestLabel, possibleMatches, ReserveDialog, MatchSettingsPopover, SearchBox } from '@/components/StoresShared';
 
 function isLowStock(item) {
@@ -1115,6 +1116,17 @@ function OpenRequestsCard({ openRequests, inventoryItems, router, title = 'Deman
     setBusyId(null);
   }
 
+  async function withdraw(r) {
+    if (!window.confirm(`Withdraw this trade order line? Sales is told.`)) return;
+    setBusyId(r.id);
+    try {
+      await api(`/api/bom-items/${r.id}/withdraw`, { method: 'POST' });
+      showToast('Withdrawn');
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+    setBusyId(null);
+  }
+
   const groups = new Map();
   shown.forEach(r => {
     const key = requestLabel(r);
@@ -1214,6 +1226,9 @@ function OpenRequestsCard({ openRequests, inventoryItems, router, title = 'Deman
                             <Button size="sm" variant="outline" disabled={busyId === r.id} onClick={() => procure(r)}>
                               {busyId === r.id ? 'Sending…' : 'Procure'}
                             </Button>
+                          )}
+                          {r.source === 'sas' && ['Enquiry', 'Comparison'].includes(r.purchase_status || 'Enquiry') && (
+                            <Button size="sm" variant="ghost" disabled={busyId === r.id} onClick={() => withdraw(r)}>Withdraw</Button>
                           )}
                         </div>
                       )}
@@ -1453,8 +1468,10 @@ function ActiveReservationsCard({ activeReservations, inventoryItems, router }) 
 // is waiting on Stores to release. Fetched client-side (this tab has no server-supplied prop, same
 // pattern ProductionBomTab/CutStockTab already use for their own on-mount fetches) rather than
 // threading a new prop through app/stores/page.js for a list that changes constantly anyway.
+const INDENT_STATUS = { open: 'Open', partially_released: 'Partly released', released: 'Released', cancelled: 'Cancelled' };
+
 function IndentItemRow({ indent, item, onDone, selectable, selected, onToggle }) {
-  const [qty, setQty] = useState('');
+  const [qty, setQty] = useState(String(item.qty_requested - item.qty_released));
   const isPiece = item.tracking_mode === 'piece';
   const [pieces, setPieces] = useState(isPiece ? null : false);
   const [pieceId, setPieceId] = useState('');
@@ -1505,8 +1522,19 @@ function IndentItemRow({ indent, item, onDone, selectable, selected, onToggle })
           <span>Released <span className="font-medium text-foreground">{item.qty_released}</span></span>
           <span>Remaining <span className="font-medium text-foreground">{remaining}</span></span>
         </div>
+        {(item.bom_moc || item.bom_size_spec || item.bom_qty_text) && (
+          <div className="text-xs text-muted-foreground">{[item.bom_moc, item.bom_size_spec, item.bom_qty_text].filter(Boolean).join(' · ')}</div>
+        )}
+        {item.inventory_item_id != null && item.tracking_mode !== 'piece' && (() => {
+          const free = Number(item.stock_on_hand || 0) - Number(item.stock_reserved || 0);
+          return (
+            <div className={`text-xs tnum ${free < remaining ? 'text-warning' : 'text-muted-foreground'}`}>
+              In stock: {Number(item.stock_on_hand || 0)} · unreserved {free}{free < remaining && ' — not enough to release all'}
+            </div>
+          );
+        })()}
       </div>
-      <Badge variant="outline">{item.status}</Badge>
+      <Badge variant="outline">{INDENT_STATUS[item.status] || item.status}</Badge>
       {['open', 'partially_released'].includes(item.status) && (
         pieces && Array.isArray(pieces) ? (
           <>
@@ -1540,16 +1568,17 @@ function IndentsCard({ router }) {
   const [selected, setSelected] = useState(new Set());
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(null);
+  const [showHistory, setShowHistory] = useState(false);
 
   async function load() {
-    const rows = await api('/api/material-indents');
-    setIndents(rows.filter(i => ['open', 'partially_released'].includes(i.status)));
+    setIndents(await api('/api/material-indents'));
   }
 
   useEffect(() => { load().catch(err => showToast(err.message, 'error')); }, []);
 
   const needle = q.trim().toLowerCase();
-  const shown = (indents || []).filter(indent => !needle
+  const isLive = i => ['open', 'partially_released'].includes(i.status);
+  const shown = (indents || []).filter(i => showHistory || isLive(i)).filter(indent => !needle
     || indent.indent_no.toLowerCase().includes(needle)
     || (indent.project_no || '').toLowerCase().includes(needle)
     || (indent.requested_by || '').toLowerCase().includes(needle)
@@ -1620,7 +1649,12 @@ function IndentsCard({ router }) {
           <p className="py-6 text-center text-sm text-muted-foreground">No open indents.</p>
         ) : (
           <>
-            <SearchBox value={q} onChange={setQ} placeholder="Search by indent, project, or item…" />
+            <div className="flex flex-wrap items-center gap-3">
+              <SearchBox value={q} onChange={setQ} placeholder="Search by indent, project, or item…" />
+              <label className="mb-3 flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+                <Checkbox checked={showHistory} onCheckedChange={v => setShowHistory(!!v)} /> Show released &amp; cancelled
+              </label>
+            </div>
             {selectableIds.length > 0 && (
               <label className="flex cursor-pointer items-center gap-2 pb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 <Checkbox className="shrink-0" checked={allSelected} onCheckedChange={toggleAllShown} aria-label="Select all shown" />
@@ -1631,18 +1665,31 @@ function IndentsCard({ router }) {
               <p className="py-6 text-center text-sm text-muted-foreground">No indents match.</p>
             ) : shown.map(indent => (
               <div key={indent.id} className="rounded-md border bg-muted/20 py-3">
-                <div className="mb-1 flex items-center gap-2 px-3 text-sm">
+                <div className="mb-1 flex flex-wrap items-center gap-2 px-3 text-sm">
                   <span className="font-semibold">{indent.indent_no}</span>
-                  <span className="text-muted-foreground">{indent.project_no || '—'} · raised by {indent.requested_by}</span>
+                  <Badge variant="outline">{INDENT_STATUS[indent.status] || indent.status}</Badge>
+                  <span className="text-muted-foreground">{indent.project_no || '—'} · raised by {indent.requested_by}{indent.created_at ? ` · ${formatDate(indent.created_at)}` : ''}</span>
                   <a href={`/api/material-indents/${indent.id}/pdf`} target="_blank" rel="noreferrer" className="text-xs underline">PDF</a>
-                  <button type="button" className="ml-auto text-xs text-muted-foreground underline hover:text-danger" onClick={async () => {
-                    if (!window.confirm(`Delete ${indent.indent_no}?`)) return;
-                    try { await api(`/api/material-indents/${indent.id}`, { method: 'DELETE' }); showToast('Indent deleted'); load(); router.refresh(); }
-                    catch (err) { showToast(err.message, 'error'); }
-                  }}>Delete</button>
+                  <span className="ml-auto flex items-center gap-3">
+                    {isLive(indent) && (
+                      <button type="button" className="text-xs text-muted-foreground underline hover:text-danger" onClick={async () => {
+                        if (!window.confirm(`Cancel ${indent.indent_no}? Lines not yet handed over are cancelled; what was already released stays released.`)) return;
+                        try { await api(`/api/material-indents/${indent.id}`, { method: 'PATCH', body: { status: 'cancelled' } }); showToast('Indent cancelled'); load(); router.refresh(); }
+                        catch (err) { showToast(err.message, 'error'); }
+                      }}>Cancel</button>
+                    )}
+                    {!indent.items.some(it => Number(it.qty_released) > 0) && (
+                      <button type="button" className="text-xs text-muted-foreground underline hover:text-danger" onClick={async () => {
+                        if (!window.confirm(`Delete ${indent.indent_no}?`)) return;
+                        try { await api(`/api/material-indents/${indent.id}`, { method: 'DELETE' }); showToast('Indent deleted'); load(); router.refresh(); }
+                        catch (err) { showToast(err.message, 'error'); }
+                      }}>Delete</button>
+                    )}
+                  </span>
                 </div>
+                {indent.notes && <p className="px-3 pb-1 text-xs text-muted-foreground">{indent.notes}</p>}
                 <div className="flex flex-col divide-y px-3">
-                  {indent.items.filter(it => ['open', 'partially_released'].includes(it.status)).map(item => (
+                  {indent.items.filter(it => showHistory || ['open', 'partially_released'].includes(it.status)).map(item => (
                     <IndentItemRow key={item.id} indent={indent} item={item}
                       selectable={item.tracking_mode !== 'piece'}
                       selected={selected.has(item.id)}
@@ -2744,6 +2791,7 @@ export default function StoresWorkspace({
       {tab === 'allocate' && (
         <div className="flex flex-col gap-4">
           <AllocateTab items={unroutedItems} router={router} />
+          <RoutedItemsCard />
           {/* Reserved stock waiting to be handed over — the old "Ready to Issue" tab. Issuing is what
               marks the line In-Stock, so the action stays; it just lives next to the routing now. */}
           {activeReservations.length > 0 && <ActiveReservationsCard activeReservations={activeReservations} inventoryItems={inventoryItems} router={router} />}

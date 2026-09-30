@@ -18,6 +18,7 @@ import { execute, queryOne } from '@/lib/db';
 import { getClearedReceivedQty } from '@/lib/data';
 import { audit } from '@/lib/usb';
 import { notifyDepartment } from '@/lib/notify';
+import { routingBlockReason } from '@/lib/stores-undo';
 
 const VALID_ROUTES = new Set(['production', 'dispatch']);
 
@@ -101,4 +102,26 @@ export async function GET(req, { params }) {
     'SELECT routed_to, decided_by, decided_at FROM bom_item_child_routing WHERE bom_item_id = ? AND child_project_id = ?',
     [item.id, item.project_id]);
   return NextResponse.json({ routing: routing || null });
+}
+
+// Take back Stores' routing decision for this line (it returns to the Allocator queue). Refused once a
+// Production request or packing list has been built on it. The "ready for Production" notification that
+// already went out can't be recalled.
+export async function DELETE(req, { params }) {
+  const user = await getFreshSessionUser();
+  const denied = requireDepartment(user, 'Stores');
+  if (denied) return denied;
+  const actionDenied = await requireAction(user, 'Stores', 'stores.bom.route');
+  if (actionDenied) return actionDenied;
+
+  const item = await queryOne('SELECT id, project_id, material_description FROM bom_items WHERE id = ?', [params.id]);
+  if (!item) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  const row = await queryOne('SELECT routed_to FROM bom_item_child_routing WHERE bom_item_id = ? AND child_project_id = ?', [item.id, item.project_id]);
+  if (!row) return NextResponse.json({ error: 'This line is not routed' }, { status: 409 });
+  const why = await routingBlockReason(item.id, item.project_id);
+  if (why) return NextResponse.json({ error: why }, { status: 409 });
+
+  await execute('DELETE FROM bom_item_child_routing WHERE bom_item_id = ? AND child_project_id = ?', [item.id, item.project_id]);
+  await audit('bom_item_unrouted', { actor: user.username, detail: `bom_item ${item.id} (${item.material_description}): ${row.routed_to} routing undone` });
+  return NextResponse.json({ ok: true });
 }

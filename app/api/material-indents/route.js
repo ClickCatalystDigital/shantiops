@@ -28,7 +28,11 @@ export async function GET(req) {
   if (!indents.length) return NextResponse.json([]);
   const items = await queryAll(
     `SELECT mii.*, b.material_description AS bom_description, i.description AS inventory_description,
-            i.tracking_mode AS tracking_mode
+            i.tracking_mode AS tracking_mode,
+            b.moc AS bom_moc, b.size_spec AS bom_size_spec, b.qty_text AS bom_qty_text,
+            i.on_hand AS stock_on_hand,
+            (SELECT COALESCE(SUM(ir.qty - ir.qty_issued), 0) FROM inventory_reservations ir
+              WHERE ir.inventory_item_id = mii.inventory_item_id AND ir.status = 'active') AS stock_reserved
        FROM material_indent_items mii
        LEFT JOIN bom_items b ON b.id = mii.bom_item_id
        LEFT JOIN inventory_items i ON i.id = mii.inventory_item_id

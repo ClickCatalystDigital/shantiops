@@ -8,6 +8,7 @@ import { getMaterialIndentDetail } from '@/lib/data';
 import { releasePiece } from '@/lib/stock-pieces';
 import { rollupIndentStatus } from '@/lib/indent-status.mjs';
 import { audit } from '@/lib/usb';
+import { requireAction } from '@/lib/action-permissions';
 
 export async function GET(req, { params }) {
   const user = await getFreshSessionUser();
@@ -23,6 +24,11 @@ export async function PATCH(req, { params }) {
   if (b.status !== 'cancelled') return NextResponse.json({ error: 'Only cancellation is supported here' }, { status: 400 });
   if (!canAccessDepartment(user, 'Production') && !canAccessDepartment(user, 'Stores')) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+  // Stores cancelling someone else's indent is a Stores action like releasing it; Production cancels its own.
+  if (!canAccessDepartment(user, 'Production')) {
+    const denied = await requireAction(user, 'Stores', 'stores.indent.release');
+    if (denied) return denied;
   }
 
   const items = await queryAll(

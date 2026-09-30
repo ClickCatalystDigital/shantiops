@@ -7,7 +7,8 @@
 import { NextResponse } from 'next/server';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
-import { queryOne, queryAll, withTransaction } from '@/lib/db';
+import { queryOne, queryAll, execute, withTransaction } from '@/lib/db';
+import { allocationBlockReason } from '@/lib/stores-undo';
 import { audit } from '@/lib/usb';
 import { getAssemblyRollupMap } from '@/lib/data';
 import { itemRollupQty } from '@/lib/bom-structure.mjs';
@@ -132,4 +133,25 @@ export async function POST(req, { params }) {
     detail: `bom_item #${item.id} -> ${child.project_no}: ${qty}`,
   });
   return NextResponse.json({ ok: true, id: insertedId, available_after: availableAfter });
+}
+
+// Take back one allocation row (?allocation_id=). Refused while the unit is already routed or has a
+// test certificate assigned — undo those first. Allocations are bookkeeping only (no stock moves).
+export async function DELETE(req, { params }) {
+  const user = await getFreshSessionUser();
+  const denied = requireDepartment(user, 'Stores');
+  if (denied) return denied;
+  const actionDenied = await requireAction(user, 'Stores', 'stores.bom.allocate');
+  if (actionDenied) return actionDenied;
+
+  const allocationId = Number(new URL(req.url).searchParams.get('allocation_id'));
+  const a = allocationId ? await queryOne(
+    'SELECT id, bom_item_id, child_project_id, qty_allocated FROM bom_item_child_allocations WHERE id = ? AND bom_item_id = ?',
+    [allocationId, params.id]) : null;
+  if (!a) return NextResponse.json({ error: 'Allocation not found' }, { status: 404 });
+  const why = await allocationBlockReason(a.bom_item_id, a.child_project_id);
+  if (why) return NextResponse.json({ error: why }, { status: 409 });
+  await execute('DELETE FROM bom_item_child_allocations WHERE id = ?', [a.id]);
+  await audit('bom_item_unallocated', { actor: user.username, detail: `bom_item ${a.bom_item_id}: ${a.qty_allocated} taken back from unit project ${a.child_project_id}` });
+  return NextResponse.json({ ok: true });
 }
