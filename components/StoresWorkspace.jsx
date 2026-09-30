@@ -2273,7 +2273,6 @@ function ReceiveDeliveryTab({ bomItems, pendingInwardApprovals = [], router }) {
   // browsing required a search term even though the option's whole point is "no date filter." An
   // explicit engaged flag separates the true untouched landing state from a deliberate pick of any
   // option, "All dates" included, so selecting it always shows every open line.
-  const [dateEngaged, setDateEngaged] = useState(false);
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   // A line still in Enquiry/Comparison has no supplier chosen and nothing has actually been
@@ -2302,14 +2301,17 @@ function ReceiveDeliveryTab({ bomItems, pendingInwardApprovals = [], router }) {
     return it.nearest_expected_delivery >= today && it.nearest_expected_delivery <= weekEnd; // week
   };
   const dateFiltered = dateFilter === 'all' ? open : open.filter(matchesDate);
-  const results = q
+  // Always list open lines (newest-needed first is not meaningful here) — there are few, and an empty
+  // "start typing" screen made the tab look broken. A search narrows; only the first 50 are drawn.
+  const matched = q
     ? dateFiltered.filter(it =>
         (it.material_description || '').toLowerCase().includes(q) ||
         (it.project_no || '').toLowerCase().includes(q) ||
         (it.pr_no || '').toLowerCase().includes(q) ||
         (it.po_ref || '').toLowerCase().includes(q))
-    : (dateEngaged ? dateFiltered : []);
-  const showPrompt = !dateEngaged && !q;
+    : dateFiltered;
+  const results = matched.slice(0, 50);
+  const showPrompt = false;
 
   return (
     <div className="flex flex-col gap-3">
@@ -2331,22 +2333,7 @@ function ReceiveDeliveryTab({ bomItems, pendingInwardApprovals = [], router }) {
             <div className="flex gap-2">
               <Input value={query} onChange={e => setQuery(e.target.value)}
                 placeholder="Search by material, project, PR, or PO number…" autoFocus className="flex-1" />
-              {/* The Select's own controlled value stays '' (unset) until dateEngaged — Radix only
-                  fires onValueChange on a genuine value change, so if the control's real value
-                  already equalled 'all' by default, re-picking the visually-preselected "All
-                  dates" option (the realistic first click, since it's the default) would be a
-                  silent no-op and never engage; onClick on the item doesn't reliably help either,
-                  since Radix can close the popover before a native click completes on it —
-                  verified live, both of those still left the bug reachable. Starting genuinely
-                  unset means every first pick, "All dates" included, is a real '' -> value
-                  transition and always fires. The placeholder keeps "All dates" visible as the
-                  displayed default in the meantime. */}
-              <Select value={dateEngaged ? dateFilter : ''} onValueChange={v => {
-                setDateFilter(v);
-                // Custom needs a from/to pick + Apply first; every other option (All dates
-                // included) is a complete choice the moment it's picked.
-                if (v !== 'custom') setDateEngaged(true);
-              }}>
+              <Select value={dateFilter} onValueChange={setDateFilter}>
                 <SelectTrigger className="h-9 w-40 shrink-0 text-xs"><SelectValue placeholder="All dates" /></SelectTrigger>
                 <SelectContent>
                   {DATE_FILTERS.map(f => <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>)}
@@ -2359,7 +2346,6 @@ function ReceiveDeliveryTab({ bomItems, pendingInwardApprovals = [], router }) {
                   <Input type="date" className="h-8 w-36 text-xs" value={fromDate} onChange={e => setFromDate(e.target.value)} /></div>
                 <div className="grid gap-1"><Label className="text-xs">To</Label>
                   <Input type="date" className="h-8 w-36 text-xs" value={toDate} onChange={e => setToDate(e.target.value)} /></div>
-                <Button size="sm" className="h-8" onClick={() => setDateEngaged(true)}>Apply</Button>
               </div>
             )}
             {showPrompt ? (

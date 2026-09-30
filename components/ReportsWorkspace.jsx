@@ -45,6 +45,7 @@ import PurchaseRegisterCard from '@/components/reports/PurchaseRegisterCard';
 import SalesRegisterCard from '@/components/reports/SalesRegisterCard';
 import InventoryAgingCard from '@/components/reports/InventoryAgingCard';
 import StockLedgerCard from '@/components/reports/StockLedgerCard';
+import StockMovementCard from '@/components/reports/StockMovementCard';
 import MaterialConsumptionCard from '@/components/reports/MaterialConsumptionCard';
 import BankReconciliationReportCard from '@/components/reports/BankReconciliationReportCard';
 import WorkOrderRegisterCard from '@/components/reports/WorkOrderRegisterCard';
@@ -100,6 +101,7 @@ export const SCREEN = {
   'sales-register': SalesRegisterCard,
   'inventory-aging': InventoryAgingCard,
   'stock-ledger': StockLedgerCard,
+  'stock-movement': StockMovementCard,
   'material-consumption': MaterialConsumptionCard,
   'bank-reconciliation': BankReconciliationReportCard,
   'work-order-register': WorkOrderRegisterCard,
@@ -176,7 +178,7 @@ const ICON = {
   'vendor-ledger': UsersIcon, 'cash-book': WalletIcon, 'journal-register': BookOpenIcon,
   'tds-register': PercentIcon, 'fixed-asset-register': BoxIcon, 'depreciation-schedule': TrendingDownIcon,
   'cash-flow': WavesIcon, 'bank-reconciliation': LandmarkIcon,
-  'stock-valuation': WarehouseIcon, 'inventory-aging': PackageSearchIcon, 'stock-ledger': ListOrderedIcon,
+  'stock-valuation': WarehouseIcon, 'inventory-aging': PackageSearchIcon, 'stock-ledger': ListOrderedIcon, 'stock-movement': WarehouseIcon,
   'purchase-register': ClipboardListIcon, 'open-po-aging': ClockIcon,
   'sales-register': ReceiptIcon, 'sales_pipeline': FilterIcon,
   'agent_performance': UserRoundIcon,
