@@ -260,6 +260,12 @@ function EnquiryRow({ it, quotes, suppliers, router, rfqSummary, selected, onTog
               Partial stock — {it.reserved_qty} reserved, this line is the shortfall
             </Badge>
           )}
+          {it.stock_available > 0 && !(it.reserved_qty > 0) && (
+            <Badge variant="outline" className="border-info/30 bg-info-surface text-info"
+              title="Stores has unreserved stock of this catalog item. They may reserve some before you source it — check with Stores first.">
+              Stock available: {Math.round(it.stock_available * 100) / 100}
+            </Badge>
+          )}
           {(quotes.length > 0 || rfqSummary) && (
             <Badge variant="outline">
               {quotes.length > 0 ? `${quotes.length} quote${quotes.length !== 1 ? 's' : ''}` : rfqSummary.rfq_no}
@@ -384,6 +390,15 @@ function PrGroupEnquiryRow({ group, quotesByItem, suppliers, rfqSummaryByItem, r
           </div>
           <div className="flex shrink-0 items-center gap-2">
             {group.raised_by_dept && <Badge variant="outline">{group.raised_by_dept}</Badge>}
+            {(() => {
+              const avail = Math.max(0, ...group.constituents.filter(c => !c.excluded).map(c => Number(c.stock_available) || 0));
+              return avail > 0 && (
+                <Badge variant="outline" className="border-info/30 bg-info-surface text-info"
+                  title="Stores has unreserved stock of this catalog item. They may reserve some before you source it — check with Stores first.">
+                  Stock available: {Math.round(avail * 100) / 100}
+                </Badge>
+              );
+            })()}
             {bySupplier.length > 0 && (
               <Badge variant="outline">{bySupplier.length} supplier quote{bySupplier.length !== 1 ? 's' : ''}</Badge>
             )}
@@ -463,6 +478,8 @@ function PrGroupEnquiryRow({ group, quotesByItem, suppliers, rfqSummaryByItem, r
   );
 }
 
+const hasStock = g => (g.constituents.some(c => !c.excluded && Number(c.stock_available) > 0) ? 1 : 0);
+
 function Enquiry({ items, allItems, sourceView, quotesByItem, suppliers, rfqSummaryByItem, router, q, categoryFilter }) {
   const needle = q.trim().toLowerCase();
   const [selectedIds, setSelectedIds] = useState(new Set());
@@ -483,6 +500,8 @@ function Enquiry({ items, allItems, sourceView, quotesByItem, suppliers, rfqSumm
       // Newest-raised PR first — same convention PR History already uses, not the incidental
       // per-project order aggregatePrGroups()'s own Map iteration would otherwise produce.
       .sort((a, b) => new Date(b.pr_created_at) - new Date(a.pr_created_at))
+      // Lines Stores might still cover from stock go last, so they don't get sourced blind.
+      .sort((a, b) => hasStock(a) - hasStock(b))
     : null;
   // PMB Items excludes both PR-raised rows (their own bucket) and custom items (source='custom',
   // which also have no pr_item_id and would otherwise silently fall in here) — Custom Items is the

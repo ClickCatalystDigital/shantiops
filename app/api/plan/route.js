@@ -3,6 +3,7 @@
 import { NextResponse } from 'next/server';
 import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
 import { getPlan } from '@/lib/plan-coverage';
+import { attachCombinablePlateHints } from '@/lib/remnant-match';
 
 export async function GET(req) {
   const user = await getFreshSessionUser();
@@ -14,5 +15,9 @@ export async function GET(req) {
   // Stores' Inventory table only needs the per-item pool figures — compute just those, not the whole plan.
   if (new URL(req.url).searchParams.get('summary') === 'items') return NextResponse.json({ items: (await getPlan({ itemsOnly: true })).items });
   const plan = await getPlan({ projectIds });
+  // Stores' Demand tab: "same material exists but each piece is too small" nudge on unmatched plate lines.
+  if (new URL(req.url).searchParams.get('hints') === '1') {
+    await attachCombinablePlateHints(plan.rows.filter(r => r.demand?.owner === 'Stores' && !r.remnant));
+  }
   return NextResponse.json(plan);
 }
