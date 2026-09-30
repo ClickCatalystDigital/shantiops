@@ -1,4 +1,4 @@
-# Stores "Demand" rebuild — plan for a fresh chat (written 2026-10-01, nothing built yet)
+# Stores "Demand" rebuild — plan (written 2026-10-01). STATUS: steps 1-3, 5-7 built 2026-10-01 (see SYSTEM.md §5do); step 4 (unit guard) still optional/not built.
 
 Goal: replace the old Demand tab in Stores with a project-first view powered by the existing
 Material Plan coverage engine, then retire the old Demand card. **Do not build a second coverage
