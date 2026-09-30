@@ -24,7 +24,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup } from '@/components/ui/select';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { PlusIcon, PencilIcon, PackageCheckIcon, UndoIcon, TruckIcon, PackageIcon, ClipboardListIcon, LayersIcon, LogInIcon, SearchIcon, ChevronRightIcon, BoxesIcon, HashIcon, ArrowRightLeftIcon, Share2Icon, SettingsIcon, PuzzleIcon, HandshakeIcon, FactoryIcon, SplitIcon, NetworkIcon, DoorOpenIcon, ArrowDownToLineIcon } from 'lucide-react';
+import { PlusIcon, PencilIcon, Trash2Icon, PackageCheckIcon, UndoIcon, TruckIcon, PackageIcon, ClipboardListIcon, LayersIcon, LogInIcon, SearchIcon, ChevronRightIcon, BoxesIcon, HashIcon, ArrowRightLeftIcon, Share2Icon, SettingsIcon, PuzzleIcon, HandshakeIcon, FactoryIcon, SplitIcon, NetworkIcon, DoorOpenIcon, ArrowDownToLineIcon } from 'lucide-react';
 import { api, showToast, formatDate } from '@/lib/client';
 import { formatMoney } from '@/lib/format';
 import { derivePurchaseStage } from '@/lib/bom-fields.mjs';
@@ -2887,6 +2887,11 @@ function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavi
                         </>
                       )}
                       <Button size="icon-sm" variant="ghost" onClick={() => setDialogItem(it)}><PencilIcon /></Button>
+                      <Button size="icon-sm" variant="ghost" title="Delete item" onClick={async () => {
+                        if (!window.confirm(`Delete "${it.description}"? This cannot be undone.`)) return;
+                        try { await api(`/api/inventory-items/${it.id}`, { method: 'DELETE' }); showToast('Item deleted'); router.refresh(); }
+                        catch (err) { showToast(err.message, 'error'); }
+                      }}><Trash2Icon /></Button>
                     </TableCell>
                   </TableRow>
                 ))}

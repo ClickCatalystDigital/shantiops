@@ -55,3 +55,39 @@ export async function PATCH(req, { params }) {
   await audit('inventory_item_edit', { actor: user.username, detail: `item ${params.id}: ${Object.keys(b).join(',')}` });
   return NextResponse.json({ ok: true });
 }
+
+// Delete an inventory item — only when nothing depends on it. An item that was ever received,
+// reserved, issued, returned or allocated keeps its history, so it is refused with the reason; a
+// mistaken or unused item (no movement, stock 0) can be removed. Same permission as editing.
+const REFERENCING = [
+  ['bom_items', 'inventory_item_id', 'BOM lines'], ['inventory_reservations', 'inventory_item_id', 'reservations'],
+  ['stock_pieces', 'inventory_item_id', 'stock pieces'], ['inventory_batches', 'inventory_item_id', 'batches'],
+  ['inventory_serials', 'inventory_item_id', 'serial units'], ['material_indent_items', 'inventory_item_id', 'indents'],
+  ['inward_approvals', 'inventory_item_id', 'inward reviews'], ['sales_returns', 'inventory_item_id', 'sales returns'],
+  ['purchase_returns', 'inventory_item_id', 'purchase returns'], ['tc_item_match_approvals', 'inventory_item_id', 'certificate matches'],
+];
+
+export async function DELETE(req, { params }) {
+  const user = await getFreshSessionUser();
+  const denied = requireDepartment(user, 'Stores');
+  if (denied) return denied;
+  const actionDenied = await requireAction(user, 'Stores', 'stores.inventory.write');
+  if (actionDenied) return actionDenied;
+
+  const item = await queryOne('SELECT id, description, on_hand FROM inventory_items WHERE id = ?', [params.id]);
+  if (!item) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  if (Number(item.on_hand) !== 0) {
+    return NextResponse.json({ error: `Stock on hand is ${item.on_hand} — set it to 0 (or issue it) before deleting.` }, { status: 409 });
+  }
+  for (const [table, col, label] of REFERENCING) {
+    const r = await queryOne(`SELECT COUNT(*) AS n FROM ${table} WHERE ${col} = ?`, [item.id]);
+    if (Number(r?.n) > 0) {
+      return NextResponse.json({ error: `Can't delete — it is used by ${r.n} ${label}. Keep it for the history.` }, { status: 409 });
+    }
+  }
+  // Its stock history goes with it (nothing else points at those rows).
+  await execute('DELETE FROM stock_movements WHERE inventory_item_id = ?', [item.id]);
+  await execute('DELETE FROM inventory_items WHERE id = ?', [item.id]);
+  await audit('inventory_item_deleted', { actor: user.username, detail: item.description });
+  return NextResponse.json({ ok: true });
+}

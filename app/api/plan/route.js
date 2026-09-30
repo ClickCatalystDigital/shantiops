@@ -11,8 +11,8 @@ export async function GET(req) {
   }
   const p = new URL(req.url).searchParams.get('project_ids');
   const projectIds = p ? p.split(',').map(Number).filter(Boolean) : null;
+  // Stores' Inventory table only needs the per-item pool figures — compute just those, not the whole plan.
+  if (new URL(req.url).searchParams.get('summary') === 'items') return NextResponse.json({ items: (await getPlan({ itemsOnly: true })).items });
   const plan = await getPlan({ projectIds });
-  // Stores' Inventory table only needs the per-item pool figures, not thousands of rows.
-  if (new URL(req.url).searchParams.get('summary') === 'items') return NextResponse.json({ items: plan.items });
   return NextResponse.json(plan);
 }
