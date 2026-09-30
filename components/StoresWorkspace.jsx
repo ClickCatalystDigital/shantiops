@@ -48,6 +48,7 @@ import {
 import { defaultCategoryFields } from '@/components/BomLineFields';
 import StoresDemand from '@/components/StoresDemand';
 import RoutedItemsCard from '@/components/StoresUndo';
+import StoresSubTabs from '@/components/StoresSubTabs';
 import { requestLabel, possibleMatches, ReserveDialog, MatchSettingsPopover, SearchBox } from '@/components/StoresShared';
 
 function isLowStock(item) {
@@ -1741,6 +1742,7 @@ function IndentsCard({ router }) {
 // queue" refreshes the server-fetched list so a just-finished order's counts aren't stale.
 function AllocationRoutingSection({ splitOrders, router }) {
   const [selected, setSelected] = useState(null); // {id, project_no, customer_name} | null
+  const [view, setView] = useState('allocate');
 
   if (selected) {
     return (
@@ -1753,8 +1755,10 @@ function AllocationRoutingSection({ splitOrders, router }) {
             <p className="text-sm text-muted-foreground">{selected.customer_name}</p>
           </div>
         </div>
-        <AllocationPanel projectId={selected.id} />
-        <ChildRoutingPanel projectId={selected.id} />
+        <StoresSubTabs value={view} onChange={setView} tabs={[
+          { value: 'allocate', label: 'Allocate' }, { value: 'route', label: 'To route' }, { value: 'routed', label: 'Routed' },
+        ]} />
+        {view === 'allocate' ? <AllocationPanel projectId={selected.id} /> : <ChildRoutingPanel projectId={selected.id} view={view} />}
       </div>
     );
   }
@@ -2083,15 +2087,15 @@ const DATE_FILTERS = [
 // warning pill BomTable.jsx's own "Pending QC review" badge already uses, so it reads as the same
 // signal wherever it shows up.
 function AwaitingQcClearanceCard({ pendingInwardApprovals }) {
-  if (!pendingInwardApprovals.length) return null;
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Awaiting QC clearance</CardTitle>
+        <CardTitle>Awaiting QC</CardTitle>
         <p className="text-sm text-muted-foreground">Received, but not yet usable — QC needs to sign off before this can be reserved or routed.</p>
       </CardHeader>
       <CardContent>
-        <div className="flex flex-col divide-y rounded-md border">
+        {pendingInwardApprovals.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">Nothing waiting for QC.</p>}
+        <div className="flex flex-col divide-y rounded-md border empty:hidden">
           {pendingInwardApprovals.map(a => (
             <div key={a.id} className="flex flex-wrap items-center gap-3 px-3 py-2.5 text-sm">
               <span className="shrink-0 rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning">Pending QC review</span>
@@ -2168,18 +2172,12 @@ function ReceiveDeliveryTab({ bomItems, pendingInwardApprovals = [], router }) {
 
   return (
     <div className="flex flex-col gap-3">
-      <AwaitingQcClearanceCard pendingInwardApprovals={pendingInwardApprovals} />
-      <div className="inline-flex w-fit rounded-lg border p-0.5">
-        <button type="button" onClick={() => setMode('search')}
-          className={`rounded-md px-3 py-1 text-sm font-medium transition-colors ${mode === 'search' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
-          Search
-        </button>
-        <button type="button" onClick={() => setMode('bulk')}
-          className={`rounded-md px-3 py-1 text-sm font-medium transition-colors ${mode === 'bulk' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
-          Bulk by project
-        </button>
-      </div>
-      {mode === 'bulk' ? <BomGrnTab bomItems={bomItems} router={router} /> : (
+      <StoresSubTabs value={mode} onChange={setMode} tabs={[
+        { value: 'search', label: 'Search' }, { value: 'bulk', label: 'Bulk by project' },
+        { value: 'qc', label: 'Awaiting QC', count: pendingInwardApprovals.length },
+      ]} />
+      {mode === 'qc' ? <AwaitingQcClearanceCard pendingInwardApprovals={pendingInwardApprovals} />
+        : mode === 'bulk' ? <BomGrnTab bomItems={bomItems} router={router} /> : (
         <Card>
           <CardHeader><CardTitle>Inward</CardTitle></CardHeader>
           <CardContent className="flex flex-col gap-3 pt-4">
@@ -2487,7 +2485,7 @@ function AllocateTab({ items: initialItems, router }) {
       )}
       <Card>
         <CardHeader>
-          <CardTitle>Allocator</CardTitle>
+          <CardTitle>To route</CardTitle>
           <p className="text-sm text-muted-foreground">
             Material that has arrived (fully or partly) or been reserved from stock, waiting to be routed to Production or Dispatch. "Default" corrects the
             catalog's own manufacturing default for future orders — it doesn't change this line.
@@ -2773,11 +2771,12 @@ export default function StoresWorkspace({
   // Old links: 'reservations' (Ready to Issue) now lives inside the Allocator tab.
   const startTab = initialTab === 'reservations' ? 'allocate' : initialTab;
   const [tab, setTab] = useState(navItems.some(i => i.key === startTab) ? startTab : 'inventory');
+  const [allocView, setAllocView] = useState(initialTab === 'reservations' ? 'issue' : 'route');
 
   return (
     <WorkspaceSidebar title="Inventory" icon={PackageIcon} items={navItems} activeKey={tab} onChange={setTab}>
       {tab === 'inventory' && (
-        <InventoryTab inventoryItems={inventoryItems} openRequests={openRequests} activeReservations={activeReservations} onNavigate={setTab} certificates={certificates} projects={projects} />
+        <InventoryTab inventoryItems={inventoryItems} openRequests={openRequests} activeReservations={activeReservations} onNavigate={t => { setTab(t); if (t === 'allocate') setAllocView('issue'); }} certificates={certificates} projects={projects} />
       )}
       {tab === 'requests' && <StoresDemand inventoryItems={inventoryItems} />}
       {tab === 'trade' && (
@@ -2789,12 +2788,17 @@ export default function StoresWorkspace({
       {tab === 'gir' && <GateInwardReceiptsCard gateInwardReceipts={gateInwardReceipts} router={router} />}
       {tab === 'receive' && <ReceiveDeliveryTab bomItems={bomItems} pendingInwardApprovals={pendingInwardApprovals} router={router} />}
       {tab === 'allocate' && (
-        <div className="flex flex-col gap-4">
-          <AllocateTab items={unroutedItems} router={router} />
-          <RoutedItemsCard />
+        <div className="flex flex-col gap-3">
+          <StoresSubTabs value={allocView} onChange={setAllocView} tabs={[
+            { value: 'route', label: 'To route', count: unroutedItems.length },
+            { value: 'routed', label: 'Routed' },
+            { value: 'issue', label: 'Ready to issue', count: activeReservations.length },
+          ]} />
+          {allocView === 'route' && <AllocateTab items={unroutedItems} router={router} />}
+          {allocView === 'routed' && <RoutedItemsCard />}
           {/* Reserved stock waiting to be handed over — the old "Ready to Issue" tab. Issuing is what
-              marks the line In-Stock, so the action stays; it just lives next to the routing now. */}
-          {activeReservations.length > 0 && <ActiveReservationsCard activeReservations={activeReservations} inventoryItems={inventoryItems} router={router} />}
+              marks the line In-Stock, so the action stays. */}
+          {allocView === 'issue' && <ActiveReservationsCard activeReservations={activeReservations} inventoryItems={inventoryItems} router={router} />}
         </div>
       )}
       {tab === 'split-allocation' && <AllocationRoutingSection splitOrders={splitOrders} router={router} />}

@@ -30,14 +30,15 @@ export default function RoutedItemsCard() {
     setBusy(null);
   }
 
-  if (!rows?.length) return null;
+  if (rows === null) return <p className="py-6 text-center text-sm text-muted-foreground">Loading…</p>;
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Routed — can still be changed</CardTitle>
+        <CardTitle>Routed</CardTitle>
         <p className="text-sm text-muted-foreground">Sent to Production or Dispatch, nothing built on it yet. Undo to decide again. A Production notification that already went out can't be recalled.</p>
       </CardHeader>
       <CardContent className="divide-y text-sm">
+        {rows.length === 0 && <p className="py-6 text-center text-muted-foreground">Nothing routed that can still be changed.</p>}
         {rows.map(r => (
           <div key={r.id} className="flex flex-wrap items-center gap-3 py-2">
             <div className="min-w-0 flex-1">

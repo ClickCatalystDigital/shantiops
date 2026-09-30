@@ -169,11 +169,10 @@ export default function AllocationPanel({ projectId }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Material allocation to unit projects</CardTitle>
+        <CardTitle>Allocate</CardTitle>
         <p className="text-sm text-muted-foreground">
-          Received material stays at the master level until optionally allocated to a specific unit —
-          allocating never creates a new procurement requirement, and a receipt never implies a unit
-          is complete.
+          Received material starts at the order level. Hand a quantity to a unit — or tick several units to give each one unit's worth.
+          Click the Allocated number to see who has what and take a quantity back.
         </p>
       </CardHeader>
       <CardContent>
