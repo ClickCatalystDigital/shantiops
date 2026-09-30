@@ -7,7 +7,7 @@
 // department get "Ask <dept>" (existing cross-department task), same as Planning's Material Plan.
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -226,14 +226,14 @@ export default function StoresDemand({ inventoryItems }) {
         <CardHeader>
           <CardTitle>Demand</CardTitle>
           <p className="text-sm text-muted-foreground">What each project needs from Stores — covered, on order, or waiting for someone to act. Only released BOM lines are listed.</p>
-          <CardAction><MatchSettingsPopover router={router} /></CardAction>
         </CardHeader>
-        <CardContent className="flex flex-wrap items-center gap-3">
-          <SearchBox value={q} onChange={setQ} placeholder="Search project or customer…" />
+        <CardContent className="flex flex-wrap items-center gap-2">
+          <SearchBox className="min-w-[16rem] flex-1" value={q} onChange={setQ} placeholder="Search project or customer…" />
           <Select value={within} onValueChange={setWithin}>
-            <SelectTrigger className="mb-3 w-44"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="h-9 w-44"><SelectValue /></SelectTrigger>
             <SelectContent>{WINDOWS.map(w => <SelectItem key={w.value} value={w.value}>{w.label}</SelectItem>)}</SelectContent>
           </Select>
+          <MatchSettingsPopover router={router} />
         </CardContent>
       </Card>
 

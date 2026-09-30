@@ -10,8 +10,10 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { SearchIcon, SettingsIcon } from 'lucide-react';
 import { api, showToast } from '@/lib/client';
+import { cn } from '@/lib/utils';
 import { normalizeWords, materialMismatchReason } from '@/lib/match-utils';
 
 export function requestLabel(item) {
@@ -161,27 +163,49 @@ export function PlateThicknessToleranceField() {
   );
 }
 
+// The single cog for Demand, in three small tabs: what this screen does, how new requirements are
+// reserved (Automatic vs Stores Review), and how strictly stock is matched.
 export function MatchSettingsPopover({ router }) {
+  const [tab, setTab] = useState('about');
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant="outline" size="icon-sm" title="Match settings">
+        <Button variant="outline" size="icon" className="h-9 w-9 shrink-0" title="Demand settings" aria-label="Demand settings">
           <SettingsIcon className="size-4" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="flex w-80 flex-col gap-4">
-        <div className="flex flex-col gap-1">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">How auto-match works</p>
-          <ul className="list-disc space-y-1 pl-4 text-xs text-muted-foreground">
-            <li><span className="font-medium text-foreground">Scalar items</span> (nuts, bolts, bought parts): matched by exact catalog identity only — no fuzzy guessing.</li>
-            <li><span className="font-medium text-foreground">Plate</span>: exact material grade + thickness within the tolerance below, and the stock piece must be big enough on its own (L×W, rotation allowed).</li>
-            <li><span className="font-medium text-foreground">Angle / beam / channel / pipe</span>: matched by exact profile designation (e.g. "ISA 50x50x5") + sufficient length. No tolerance setting — the profile is a fixed catalog spec, not a measured dimension, so there's nothing to loosen.</li>
-          </ul>
-        </div>
-        <ReservationModeToggle router={router} />
-        <div className="flex flex-col gap-3 border-t pt-3">
-          <PlateThicknessToleranceField />
-        </div>
+      <PopoverContent align="end" className="flex w-[26rem] max-w-[92vw] flex-col gap-3 p-4">
+        <Tabs value={tab} onValueChange={setTab} className="gap-3">
+          <TabsList className="grid h-9 w-full grid-cols-3">
+            <TabsTrigger value="about">About</TabsTrigger>
+            <TabsTrigger value="mode">Reserve mode</TabsTrigger>
+            <TabsTrigger value="matching">Matching</TabsTrigger>
+          </TabsList>
+          <TabsContent value="about" className="flex flex-col gap-2 text-sm">
+            <p className="font-medium">What this screen is</p>
+            <p className="text-muted-foreground">
+              Every project that is about to start, and what it still needs from Stores. Each line is <span className="font-medium text-foreground">Covered</span> (stock or
+              delivery is sorted), <span className="font-medium text-foreground">On order</span> (a purchase order is coming) or <span className="font-medium text-foreground">Needs action</span> with the
+              department that has to move.
+            </p>
+            <ul className="list-disc space-y-1 pl-4 text-xs text-muted-foreground">
+              <li><span className="font-medium text-foreground">Reserve</span> sets stock aside for the line. It leaves Stores later, when Production's indent is released or the packing list is dispatched.</li>
+              <li><span className="font-medium text-foreground">Raise PR</span> asks Procurement to buy what stock can't cover.</li>
+              <li><span className="font-medium text-foreground">Ask</span> sends a task to the department that owns the next step.</li>
+            </ul>
+          </TabsContent>
+          <TabsContent value="mode" className="text-sm">
+            <ReservationModeToggle router={router} />
+          </TabsContent>
+          <TabsContent value="matching" className="flex flex-col gap-3 text-sm">
+            <ul className="list-disc space-y-1 pl-4 text-xs text-muted-foreground">
+              <li><span className="font-medium text-foreground">Bought items</span> (nuts, bolts, fittings): matched by exact catalog item only — no guessing.</li>
+              <li><span className="font-medium text-foreground">Plate</span>: same grade, thickness within the tolerance below, and one piece big enough on its own (rotation allowed).</li>
+              <li><span className="font-medium text-foreground">Angle / beam / channel / pipe</span>: same profile (e.g. ISA 50x50x5) and enough length. Nothing to loosen.</li>
+            </ul>
+            <div className="border-t pt-3"><PlateThicknessToleranceField /></div>
+          </TabsContent>
+        </Tabs>
       </PopoverContent>
     </Popover>
   );
@@ -229,13 +253,14 @@ export function ReservationModeToggle({ router }) {
   );
 }
 
-export function SearchBox({ value, onChange, placeholder }) {
+// className replaces the default wrapper (room under it, capped width); pass "flex-1 min-w-0" to make it
+// share a toolbar row and take the free horizontal space.
+export function SearchBox({ value, onChange, placeholder, className }) {
   return (
-    <div className="relative mb-3 max-w-sm">
+    <div className={cn('relative', className ?? 'mb-3 max-w-sm')}>
       <SearchIcon className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
       <Input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
-        className="h-10 rounded-full border-transparent bg-muted/50 pl-10 shadow-none transition-colors focus-visible:border-input focus-visible:bg-background" />
+        className="h-9 rounded-full border-transparent bg-muted/50 pl-10 shadow-none transition-colors focus-visible:border-input focus-visible:bg-background" />
     </div>
   );
 }
-

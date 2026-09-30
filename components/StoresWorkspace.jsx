@@ -24,7 +24,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup } from '@/components/ui/select';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { PlusIcon, PencilIcon, Trash2Icon, PackageCheckIcon, UndoIcon, TruckIcon, PackageIcon, ClipboardListIcon, LayersIcon, LogInIcon, SearchIcon, ChevronRightIcon, BoxesIcon, HashIcon, ArrowRightLeftIcon, Share2Icon, SettingsIcon, PuzzleIcon, HandshakeIcon, FactoryIcon, SplitIcon, NetworkIcon, DoorOpenIcon, ArrowDownToLineIcon } from 'lucide-react';
+import { PlusIcon, PencilIcon, Trash2Icon, PackageCheckIcon, UndoIcon, TruckIcon, PackageIcon, ClipboardListIcon, LayersIcon, LogInIcon, SearchIcon, ChevronRightIcon, BoxesIcon, HashIcon, ArrowRightLeftIcon, Share2Icon, SettingsIcon, PuzzleIcon, HandshakeIcon, FactoryIcon, SplitIcon, NetworkIcon, DoorOpenIcon, ArrowDownToLineIcon, Columns3Icon } from 'lucide-react';
 import { api, showToast, formatDate } from '@/lib/client';
 import { formatMoney } from '@/lib/format';
 import { derivePurchaseStage } from '@/lib/bom-fields.mjs';
@@ -114,7 +114,6 @@ function TodaySummary({ inventoryItems, openRequests, activeReservations, onNavi
     // just a tab jump — previously it navigated to Inventory (already the default tab) and did
     // nothing else, so clicking it never actually narrowed anything.
     { tab: 'inventory', dot: 'bg-danger', value: lowStock, label: 'low stock', onClick: onShowLowStock },
-    { tab: 'allocate', dot: 'bg-success', value: activeReservations.length, label: 'ready to issue' },
   ];
   return (
     <div className="flex flex-wrap gap-2">
@@ -1385,7 +1384,7 @@ function MaterialIssuesCard({ projects }) {
 // Grouped by project, same pattern as Material Demand above — "Ready to Issue" instead of "Active
 // reservations" (jargon that didn't say what to do here; every one of these rows is committed
 // stock waiting on a single click to actually hand it over).
-function ActiveReservationsCard({ activeReservations, inventoryItems, router }) {
+function ActiveReservationsCard({ activeReservations, inventoryItems, router, title = 'Reserved', blurb = 'Stock already committed to a request.', canIssue = false, emptyText = 'Nothing reserved.' }) {
   const [busyId, setBusyId] = useState(null);
   const invById = useMemo(() => new Map(inventoryItems.map(it => [it.id, it])), [inventoryItems]);
 
@@ -1393,7 +1392,7 @@ function ActiveReservationsCard({ activeReservations, inventoryItems, router }) 
     setBusyId(id);
     try {
       await api(`/api/inventory-reservations/${id}/${action}`, { method: 'POST' });
-      showToast(action === 'issue' ? 'Issued — item marked In-Stock' : 'Reservation unreserved');
+      showToast(action === 'issue' ? 'Handed over — item marked In-Stock' : 'Reservation unreserved');
       router.refresh();
     } catch (err) {
       showToast(err.message, 'error');
@@ -1412,13 +1411,13 @@ function ActiveReservationsCard({ activeReservations, inventoryItems, router }) 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Ready to Issue</CardTitle>
-        <p className="text-sm text-muted-foreground">Stock already committed — issuing hands it over and closes the line.</p>
+        <CardTitle>{title}</CardTitle>
+        <p className="text-sm text-muted-foreground">{blurb}</p>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {activeReservations.length === 0 ? (
           <p className="py-6 text-center text-sm text-muted-foreground">
-            Nothing committed yet — reserving stock against a request in Material Demand puts it here, ready to hand over.
+            {emptyText}
           </p>
         ) : (
           [...groups.entries()].map(([label, rows]) => (
@@ -1446,9 +1445,11 @@ function ActiveReservationsCard({ activeReservations, inventoryItems, router }) 
                         </span>
                       </div>
                       <div className="flex shrink-0 gap-1">
-                        <Button size="sm" disabled={busyId === r.id} onClick={() => act(r.id, 'issue')}>
-                          <PackageCheckIcon />Issue
-                        </Button>
+                        {canIssue && (
+                          <Button size="sm" disabled={busyId === r.id} onClick={() => act(r.id, 'issue')}>
+                            <PackageCheckIcon />Hand over
+                          </Button>
+                        )}
                         <Button size="sm" variant="outline" disabled={busyId === r.id} onClick={() => act(r.id, 'release')}>
                           <UndoIcon />Unreserve
                         </Button>
@@ -2558,6 +2559,35 @@ function AllocateTab({ items: initialItems, router }) {
 // Shared "premium/minimal" search treatment — pill-shaped, muted fill, inline icon — distinct from
 // Procurement's plain top-bar `<Input>` since this sits inside a card, not a page-level search row.
 
+// Optional Inventory columns the user can show or hide (description is always shown). Defaults keep the
+// table readable; the choice is remembered in this browser only.
+const INVENTORY_COLUMNS = [
+  { key: 'grade', label: 'Grade', on: true },
+  { key: 'dims', label: 'Dimensions', on: true },
+  { key: 'stock', label: 'Stock (on-hand / reserved / available)', on: true },
+  { key: 'tracking', label: 'Tracking', on: true },
+  { key: 'planned', label: 'Planned demand', on: false },
+  { key: 'location', label: 'Location', on: false },
+  { key: 'minimum', label: 'Minimum', on: false },
+  { key: 'cost', label: 'Avg. cost', on: false },
+];
+function useInventoryColumns() {
+  const defaults = Object.fromEntries(INVENTORY_COLUMNS.map(c => [c.key, c.on]));
+  const [cols, setCols] = useState(defaults);
+  useEffect(() => {
+    try { const saved = JSON.parse(localStorage.getItem('stores.inventory.columns') || 'null'); if (saved) setCols({ ...defaults, ...saved }); } catch { /* no storage */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  function toggle(key) {
+    setCols(prev => {
+      const next = { ...prev, [key]: !prev[key] };
+      try { localStorage.setItem('stores.inventory.columns', JSON.stringify(next)); } catch { /* no storage */ }
+      return next;
+    });
+  }
+  return [cols, toggle];
+}
+
 function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavigate, certificates, projects }) {
   const router = useRouter();
   const [dialogItem, setDialogItem] = useState(undefined); // undefined = closed, null = add, {} = edit
@@ -2568,11 +2598,13 @@ function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavi
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [trackingFilter, setTrackingFilter] = useState('all');
   const [q, setQ] = useState('');
+  const [cols, toggleCol] = useInventoryColumns();
   const [codeMatchId, setCodeMatchId] = useState(null);
   // Planned demand / available-to-promise come from the Planning coverage engine (same pool math the
   // Plan tab uses), loaded after first paint so the table never waits on it.
   const [planItems, setPlanItems] = useState(null);
-  useEffect(() => { api('/api/plan?summary=items').then(d => setPlanItems(d.items)).catch(() => setPlanItems({})); }, []);
+  // The plan is heavy, so it is only worked out while the Planned demand column is on.
+  useEffect(() => { if (!cols.planned || planItems) return; api('/api/plan?summary=items').then(d => setPlanItems(d.items)).catch(() => setPlanItems({})); }, [cols.planned]); // eslint-disable-line react-hooks/exhaustive-deps
   const needle = q.trim().toLowerCase();
   const lowStockCount = inventoryItems.filter(isLowStock).length;
   // Matches description, INV-#### (item_code), and IM-#### (catalog_item_code) directly — all three
@@ -2609,40 +2641,55 @@ function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavi
         onNavigate={onNavigate} onShowLowStock={() => setLowOnly(true)} />
       <Card>
         <CardHeader>
-          <CardTitle>
-            Inventory
-            {lowStockCount > 0 && <Badge variant="destructive" className="ml-2">{lowStockCount} low stock</Badge>}
-          </CardTitle>
-          <CardAction className="flex items-center gap-2">
-            {lowStockCount > 0 && (
-              <Button size="sm" variant={lowOnly ? 'secondary' : 'outline'} onClick={() => setLowOnly(v => !v)}>
-                {lowOnly ? 'Showing below minimum' : 'Below minimum only'}
-              </Button>
-            )}
-            <Button size="sm" onClick={() => setDialogItem(null)}><PlusIcon />New item</Button>
-          </CardAction>
+          <CardTitle>Inventory</CardTitle>
         </CardHeader>
         <CardContent>
-          {inventoryItems.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2 pb-2">
-              <SearchBox value={q} onChange={setQ} placeholder="Search by description, item code, or a PL-/LN-/SR-/IM- code…" />
-              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                <SelectTrigger className="h-8 w-40 text-xs"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All categories</SelectItem>
-                  <SelectItem value="">Not dimensional</SelectItem>
-                  {DIMENSIONAL_CATEGORIES.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <Select value={trackingFilter} onValueChange={setTrackingFilter}>
-                <SelectTrigger className="h-8 w-36 text-xs"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All tracking</SelectItem>
-                  {trackingOptions.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
+          {/* One toolbar row: search takes the free width, everything else sits beside it at one height. */}
+          <div className="flex flex-wrap items-center gap-2 pb-3">
+            {inventoryItems.length > 0 && (
+              <SearchBox className="min-w-[16rem] flex-1" value={q} onChange={setQ} placeholder="Search by description, item code, or a PL-/LN-/SR-/IM- code…" />
+            )}
+            {inventoryItems.length > 0 && (
+              <>
+                <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                  <SelectTrigger className="h-9 w-40 text-sm"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All categories</SelectItem>
+                    <SelectItem value="">Not dimensional</SelectItem>
+                    {DIMENSIONAL_CATEGORIES.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <Select value={trackingFilter} onValueChange={setTrackingFilter}>
+                  <SelectTrigger className="h-9 w-36 text-sm"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All tracking</SelectItem>
+                    {trackingOptions.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                {lowStockCount > 0 && (
+                  <Button className="h-9" variant={lowOnly ? 'secondary' : 'outline'} onClick={() => setLowOnly(v => !v)}>
+                    {lowOnly ? 'Showing below minimum' : 'Below minimum only'}
+                  </Button>
+                )}
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button className="h-9" variant="outline"><Columns3Icon />Columns</Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="end" className="w-64">
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Show columns</p>
+                    <div className="flex flex-col gap-2">
+                      {INVENTORY_COLUMNS.map(c => (
+                        <label key={c.key} className="flex items-center gap-2 text-sm">
+                          <Checkbox checked={!!cols[c.key]} onCheckedChange={() => toggleCol(c.key)} /> {c.label}
+                        </label>
+                      ))}
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              </>
+            )}
+            <Button className="h-9" onClick={() => setDialogItem(null)}><PlusIcon />New item</Button>
+          </div>
           {filtered.length === 0 && codeMatchId && (
             <p className="pb-2 text-xs text-muted-foreground">
               No direct match — showing the stock line that owns piece/serial/catalog code "{q.trim()}".
@@ -2659,14 +2706,14 @@ function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavi
               <TableHeader>
                 <TableRow>
                   <TableHead>Description</TableHead>
-                  <TableHead>Grade</TableHead>
-                  <TableHead>Dimensions</TableHead>
-                  <TableHead>Stock</TableHead>
-                  <TableHead>Planned demand</TableHead>
-                  <TableHead>Location</TableHead>
-                  <TableHead>Minimum</TableHead>
-                  <TableHead>Tracking</TableHead>
-                  <TableHead>Avg. Cost</TableHead>
+                  {cols.grade && <TableHead>Grade</TableHead>}
+                  {cols.dims && <TableHead>Dimensions</TableHead>}
+                  {cols.stock && <TableHead>Stock</TableHead>}
+                  {cols.planned && <TableHead>Planned demand</TableHead>}
+                  {cols.location && <TableHead>Location</TableHead>}
+                  {cols.minimum && <TableHead>Minimum</TableHead>}
+                  {cols.tracking && <TableHead>Tracking</TableHead>}
+                  {cols.cost && <TableHead>Avg. cost</TableHead>}
                   <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
@@ -2678,9 +2725,9 @@ function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavi
                       {it.description}
                       {it.catalog_item_code && <div className="text-xs font-normal text-muted-foreground">{it.catalog_item_code}</div>}
                     </TableCell>
-                    <TableCell className="text-muted-foreground">{it.moc || '—'}</TableCell>
-                    <TableCell className="text-muted-foreground">{inventoryDimensions(it)}</TableCell>
-                    <TableCell>
+                    {cols.grade && <TableCell className="text-muted-foreground">{it.moc || '—'}</TableCell>}
+                    {cols.dims && <TableCell className="text-muted-foreground">{inventoryDimensions(it)}</TableCell>}
+                    {cols.stock && <TableCell>
                       {/* On-hand/Reserved/Available as one visible hierarchy — was two bare numbers
                           side by side, leaving Reserved (the actual gap between them) to be
                           mentally subtracted every time. */}
@@ -2692,8 +2739,8 @@ function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavi
                           {isLowStock(it) && <Badge variant="destructive" className="text-[10px]">Low</Badge>}
                         </span>
                       </div>
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
+                    </TableCell>}
+                    {cols.planned && <TableCell className="text-xs text-muted-foreground">
                       {(() => {
                         const pl = planItems?.[it.id];
                         if (!pl || !(pl.planned_demand > 0)) return planItems ? '—' : '…';
@@ -2706,13 +2753,13 @@ function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavi
                           </a>
                         );
                       })()}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">{it.location || '—'}</TableCell>
-                    <TableCell className="text-muted-foreground">{it.reorder_point ?? '—'}</TableCell>
-                    <TableCell className="text-muted-foreground">{it.tracking_mode || 'scalar'}</TableCell>
-                    <TableCell className="text-muted-foreground">{it.avg_cost ? formatMoney(it.avg_cost) : '—'}</TableCell>
+                    </TableCell>}
+                    {cols.location && <TableCell className="text-muted-foreground">{it.location || '—'}</TableCell>}
+                    {cols.minimum && <TableCell className="text-muted-foreground">{it.reorder_point ?? '—'}</TableCell>}
+                    {cols.tracking && <TableCell className="text-muted-foreground">{it.tracking_mode || 'scalar'}</TableCell>}
+                    {cols.cost && <TableCell className="text-muted-foreground">{it.avg_cost ? formatMoney(it.avg_cost) : '—'}</TableCell>}
                     <TableCell className="flex justify-end gap-1">
-                      {(DIMENSIONAL_CATEGORIES.some(c => c.value === it.category) || it.track_pieces) && (
+                      {(DIMENSIONAL_CATEGORIES.some(c => c.value === it.category) || !!it.track_pieces) && (
                         <Button size="icon-sm" variant="ghost" title="Pieces" onClick={() => setPiecesFor(it)}><LayersIcon /></Button>
                       )}
                       {/* Batch/Serial receiving (S2/S3, gap-closure round 2026-08-26) — hidden once a
@@ -2772,17 +2819,26 @@ export default function StoresWorkspace({
   // Old links: 'reservations' (Ready to Issue) now lives inside the Allocator tab.
   const startTab = initialTab === 'reservations' ? 'allocate' : initialTab;
   const [tab, setTab] = useState(navItems.some(i => i.key === startTab) ? startTab : 'inventory');
-  const [allocView, setAllocView] = useState(initialTab === 'reservations' ? 'issue' : 'route');
+  const [allocView, setAllocView] = useState(initialTab === 'reservations' ? 'routed' : 'route');
+  // Reservations on real project lines leave Stores by themselves (indent release / dispatch); those on
+  // the stock/trade sentinel project have no such path, so Trade Orders offers the hand-over.
+  const projectReservations = activeReservations.filter(r => !r.project_is_system);
+  const tradeReservations = activeReservations.filter(r => r.project_is_system);
 
   return (
     <WorkspaceSidebar title="Inventory" icon={PackageIcon} items={navItems} activeKey={tab} onChange={setTab}>
       {tab === 'inventory' && (
-        <InventoryTab inventoryItems={inventoryItems} openRequests={openRequests} activeReservations={activeReservations} onNavigate={t => { setTab(t); if (t === 'allocate') setAllocView('issue'); }} certificates={certificates} projects={projects} />
+        <InventoryTab inventoryItems={inventoryItems} openRequests={openRequests} activeReservations={activeReservations} onNavigate={setTab} certificates={certificates} projects={projects} />
       )}
       {tab === 'requests' && <StoresDemand inventoryItems={inventoryItems} />}
       {tab === 'trade' && (
         <OpenRequestsCard openRequests={tradeRequests} inventoryItems={inventoryItems} router={router}
           title="Trade Orders" blurb="Material Sales has asked for against a sale order — fill it from stock or send it to Procurement." />
+      )}
+      {tab === 'trade' && tradeReservations.length > 0 && (
+        <ActiveReservationsCard activeReservations={tradeReservations} inventoryItems={inventoryItems} router={router} canIssue
+          title="Reserved — hand over"
+          blurb="Stock set aside for a trade order. There is no indent or packing list for these, so handing it over here is what takes it out of stock and closes the line." />
       )}
       {tab === 'indents' && <IndentsCard router={router} />}
       {tab === 'issued' && <MaterialIssuesCard projects={projects} />}
@@ -2793,13 +2849,20 @@ export default function StoresWorkspace({
           <StoresSubTabs value={allocView} onChange={setAllocView} tabs={[
             { value: 'route', label: 'To route', count: unroutedItems.length },
             { value: 'routed', label: 'Routed' },
-            { value: 'issue', label: 'Ready to issue', count: activeReservations.length },
           ]} />
           {allocView === 'route' && <AllocateTab items={unroutedItems} router={router} />}
-          {allocView === 'routed' && <RoutedItemsCard />}
-          {/* Reserved stock waiting to be handed over — the old "Ready to Issue" tab. Issuing is what
-              marks the line In-Stock, so the action stays. */}
-          {allocView === 'issue' && <ActiveReservationsCard activeReservations={activeReservations} inventoryItems={inventoryItems} router={router} />}
+          {allocView === 'routed' && (
+            <>
+              <RoutedItemsCard />
+              {/* Stock already reserved for a project line leaves Stores by itself: Production's indent
+                  release or the Dispatch packing list issues it. Nothing to click here. */}
+              {projectReservations.length > 0 && (
+                <ActiveReservationsCard activeReservations={projectReservations} inventoryItems={inventoryItems} router={router}
+                  title="Reserved — leaves Stores by itself"
+                  blurb="Stock committed to a project line. It is handed over when Production's indent is released, or when the packing list is dispatched — no action needed. Unreserve frees it again." />
+              )}
+            </>
+          )}
         </div>
       )}
       {tab === 'split-allocation' && <AllocationRoutingSection splitOrders={splitOrders} router={router} />}
