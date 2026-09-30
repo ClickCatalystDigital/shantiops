@@ -195,6 +195,7 @@ function ItemFormDialog({ item, onClose, router }) {
   const [onHand, setOnHand] = useState(item?.on_hand ?? 0);
   const [location, setLocation] = useState(item?.location || '');
   const [reorderPoint, setReorderPoint] = useState(item?.reorder_point ?? '');
+  const [avgCost, setAvgCost] = useState(item?.avg_cost ? item.avg_cost : '');
   const [itemCode, setItemCode] = useState(item?.item_code || '');
   const [itemId, setItemId] = useState(item?.item_id || null);
   const [category, setCategory] = useState(item?.category || '');
@@ -257,6 +258,7 @@ function ItemFormDialog({ item, onClose, router }) {
       const body = {
         description: description.trim(), spec: finalSpec, on_hand: onHand,
         location: location.trim() || null, reorder_point: reorderPoint === '' ? null : reorderPoint,
+        avg_cost: avgCost === '' ? 0 : avgCost,
         item_code: itemCode.trim() || null, item_id: itemId,
         category: category || null, moc: moc.trim() || null,
         // The structured dims themselves — `spec` above is just their flattened display string.
@@ -353,6 +355,10 @@ function ItemFormDialog({ item, onClose, router }) {
           <div className="grid gap-1.5">
             <Label>Minimum stock level (optional)</Label>
             <Input type="number" min="0" step="any" value={reorderPoint} onChange={e => setReorderPoint(e.target.value)} />
+          </div>
+          <div className="grid gap-1.5">
+            <Label>Cost per unit, ₹ (optional)</Label>
+            <Input type="number" min="0" step="any" value={avgCost} onChange={e => setAvgCost(e.target.value)} placeholder="Used for stock value" />
           </div>
           <div className="col-span-2 grid gap-1.5">
             <Label>Location (optional)</Label>
@@ -2068,7 +2074,7 @@ function GateInwardReceiptsCard({ gateInwardReceipts, router }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Gate Pass</CardTitle>
+        <CardTitle>Gate Entry</CardTitle>
         <CardAction><Button size="sm" onClick={() => setAdding(true)}><PlusIcon />New GIR</Button></CardAction>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
@@ -2181,7 +2187,7 @@ function GateInwardReceiptsCard({ gateInwardReceipts, router }) {
 const NAV_ITEMS = (counts) => [
   { key: 'divider-receiving', divider: true, label: 'Receiving' },
   { key: 'receive', label: 'Inward', icon: ArrowDownToLineIcon, badge: counts.pendingInward || null },
-  { key: 'gir', label: 'Gate Pass', icon: DoorOpenIcon },
+  { key: 'gir', label: 'Gate Entry', icon: DoorOpenIcon },
   { key: 'divider-fulfillment', divider: true, label: 'Fulfillment' },
   { key: 'requests', label: 'Demand', icon: ClipboardListIcon, badge: counts.requests || null },
   { key: 'trade', label: 'Trade Orders', icon: HandshakeIcon, badge: counts.trade || null },

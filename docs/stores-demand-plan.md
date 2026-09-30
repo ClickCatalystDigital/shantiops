@@ -169,3 +169,17 @@ release_bom gates (`getSourcingItems`), so a PR raised from Demand shows in Enqu
   AND QC inward release (`lib/bom-receiving.js` releaseScalarFromInwardHold) both add stock.
 - Inventory value shows 0.00 (avg_cost unset) in the stock report.
 - Planning tab issues documented in `docs/inventory-planning-guide.html` are intentionally untouched.
+
+### Update 2026-10-01 (after this plan was written)
+- Fixed: reserved stock routed to Dispatch stays reserved and counts as packable (`getReservedBomItemIds`
+  in `lib/data.js`, used by the three readyForPacking predicates); when the packing list is first
+  marked Dispatched, `app/api/packing/[id]/route.js` issues the active reservations (on_hand drops,
+  line becomes In-Stock — visible in the stock report). Verified end to end with a disposable project.
+- Fixed: vendor-bill approval no longer adds quantity to `on_hand` for scalar/batch items (stock is
+  credited at receipt/QC release); it only updates `avg_cost`.
+- Added: "Cost per unit (₹)" on the Inventory item form (`avg_cost`), so stock value is non-zero.
+- Renamed Stores tab "Gate Pass" → "Gate Entry". Help (/help Stores) has new entries for the sidebar
+  and the stock report.
+- Inventory tab + plan: `/api/plan?summary=items` runs the FULL plan on the SERVER each time Inventory
+  opens (~3 MB read from Turso, ~15 queries); the browser only receives the small per-item summary.
+  Still worth scoping when the plan is reworked.

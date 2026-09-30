@@ -3,6 +3,7 @@ import { execute, queryOne, queryAll } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
+import { issueReservation } from '@/lib/procurement';
 import { syncPackingMilestone } from '@/lib/milestone-auto';
 import { postDispatchConsumption } from '@/lib/stock-pieces';
 
@@ -99,6 +100,14 @@ export async function PATCH(req, { params }) {
       [params.id]
     );
     for (const row of bomItemIds) {
+      // Stock reserved for this line stays in Stores until it actually leaves the gate — issue it now
+      // (on_hand drops, the line becomes In-Stock). Best-effort per reservation: a failure must not
+      // block the dispatch itself, it just leaves the reservation visible under Allocator.
+      const reserved = await queryAll(
+        "SELECT id FROM inventory_reservations WHERE bom_item_id = ? AND status = 'active' AND qty > qty_issued", [row.bom_item_id]);
+      for (const r of reserved) {
+        try { await issueReservation(r.id, { username: user.username }); } catch { /* left for Stores to issue by hand */ }
+      }
       // Final Phase 0-7 audit gap-fix — a whole piece-tracked item shipped without ever being cut
       // (routed straight to Dispatch, §5bi) used to close out here with zero accounting entry.
       // Select the affected pieces (their own unit_cost) BEFORE the status flip, so

@@ -1040,6 +1040,25 @@ export const DEPARTMENT_HELP = {
     ],
     features: [
       architectureFeature('Stores', STORES_DIAGRAM),
+      feature('sidebar', 'The Inventory sidebar, top to bottom', LayersIcon, [
+        'Receiving — Inward: record what physically arrived against a PO line (a partial delivery is fine; the quantity arrived so far is shown). Anything QC has not cleared shows as "Awaiting QC clearance" and cannot be routed or used yet. Gate Entry: the security log of each vehicle that came in (this was called Gate Inward; Dispatch\'s own "Gate Passes" are for material going OUT).',
+        'Fulfillment — Demand: project material still needing a decision (this is what was called Open Requests / Material Demand). Trade Orders: material Sales asked for against a sale order. Indents: Production\'s written requests for material — release them line by line.',
+        'Orders — Allocator: anything that has arrived (fully or partly) or been reserved from stock lands here so you can decide Production or Dispatch; tick one, then Apply Allocations. Reserved stock stays reserved until it is issued; under the Allocator you also see the reserved stock waiting to be handed over (Issue) or released (Unreserve). When a packing list containing reserved material is marked Dispatched, that stock is issued automatically. Macro Allocator: for orders split into many units — spread a delivery across the units and route each.',
+        'Production — On Floor: the record of material issued to the shop floor.',
+        'Inventory (bottom of the sidebar): the stock list itself. Set a Cost per unit (₹) on each item so the stock value in reports is not zero.',
+      ], {
+        checklist: [
+          'Start the day at Inward (new arrivals and QC holds), then Allocator (what needs a Production/Dispatch decision), then Demand.',
+          'Receive what actually arrived even if it is only part of the order; do not wait for the full quantity.',
+          'Do not leave lines sitting in the Allocator — Dispatch and Production cannot pack or indent them until you route them.',
+        ],
+        watchOut: 'Old links and notes that say Open Requests, Ready to Issue, Gate Inward or Issued to WIP now mean Demand, the Allocator, Gate Entry and On Floor.',
+      }),
+      feature('stockreport', 'Stock Movement & Project Consumption report', ClipboardCheckIcon, [
+        'Reports → Stock Movement & Project Consumption shows, for any date range, each item\'s opening stock, what was added, what was removed and the closing stock, with its value, and below that what each project consumed. Download it as PDF or Excel.',
+        'The history is recorded automatically from 30 Sep 2026; earlier dates cannot be reported and the report says so. If a closing balance ever differs from what is on hand now, the report shows a red warning instead of a wrong number.',
+        'Value uses each item\'s Cost per unit, so enter it on the Inventory item (Edit) — otherwise value shows 0.00.',
+      ]),
       feature('inventory', 'Inventory', BoxesIcon, ['Inventory shows on-hand quantity and the quantity reserved for active project requirements. Available stock is the usable balance after reservations.', 'Keep item names and units consistent so the same stock is not entered twice under slightly different names.', 'Set a minimum stock level per item (New item / edit) to get a "Low" flag once available stock drops to or below it. Click the low-stock count — on the card title or the "low stock" chip above it — to filter the table down to just those items; toggle it off the same way.', 'Every item shows its own code (auto-generated if you do not set one) — use it and the search box above the table to find an item fast once the list grows past a screenful.', 'New item now captures dimensions and material the same way a BOM line does — pick a Category to get real Length/Width/Thickness (or size) fields instead of typing a spec string by hand, and Material/grade is a searchable list instead of free text.']),
       feature('reserve', 'Reservations', ClipboardCheckIcon, ['Reserve stock against a BOM requirement when material is committed to a project. A reservation reduces available stock without pretending the material has already been issued.', 'Release a reservation when the requirement is cancelled or fulfilled another way — this fully frees the quantity back to available; there is no separate "reassign to a different project" action, releasing and reserving again is how you move committed stock to a different requirement.', 'A green "✓" badge under a request\'s description is a real match — both sides were picked from the item catalog (search when raising the request, or search in the New Item dialog) and share the same underlying item. A muted "≈" badge is the older, weaker signal: plain keyword overlap, not automated, when no catalog link exists on one or both sides. Trust the ✓; still eyeball the ≈ before reserving.', 'Reserving does not change the BOM line\'s purchase status by itself — only Issue does. Procurement sees a "Reserved from stock" badge on the line the moment you reserve, so they know not to duplicate the sourcing work, but the line still technically shows as open until you actually Issue it.', 'Reservations work identically whichever kind of demand you\'re reserving against — a normal project BOM line, a Stock request, or a SAS trade request all draw from the same available pool, no special cases.']),
       feature('review', 'Allocation Mode (Automatic / Stores Review)', ClipboardCheckIcon, [
@@ -1122,7 +1141,7 @@ export const DEPARTMENT_HELP = {
         'Create request turns a suggestion into a real Build stock request through the same flow Inventory\'s own stock-request path already uses — it lands in Open Requests as an ordinary Enquiry line, same as if you\'d raised it by hand.',
         'Nothing is created automatically. A suggestion stays a suggestion — visible, editable, ignorable — until you click Create request; and once you do, that item drops off this list until it needs reordering again.',
       ]),
-      feature('gir', 'Gate Inward Receipts (GIR)', LogInIcon, [
+      feature('gir', 'Gate Entry (Gate Inward Receipts, GIR)', LogInIcon, [
         'Log every vehicle that enters the gate with material: vehicle number, supplier, driver, a material reference (PO/DC/BOM), and the two security checks (seal intact, documents verified) plus any remarks.',
         'A GIR is the gate-entry record, not the GRN — it exists independently of whether the material has been formally received yet. Attach the GRN reference and close the GIR once receipt is confirmed.',
         'This is a standalone security-desk log, not part of the reserve/available inventory model — creating a GIR never touches on-hand stock by itself.',
