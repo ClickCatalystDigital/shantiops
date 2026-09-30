@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 
 // Bundle allocation — pick N children in one action, one qty auto-split 1-per-child off the line's
 // own per-unit requirement (server-computed, never hand-typed — a real order can have 50+ units, so
@@ -122,6 +123,38 @@ function AllocateRow({ line, children, onDone }) {
   );
 }
 
+// What has been handed to which unit, with a way to take one back (refused once the unit is routed or
+// has a test certificate — the server says which).
+function AllocatedUndo({ line, onDone }) {
+  const [rows, setRows] = useState(null);
+  async function load() {
+    try { setRows((await fetch(`/api/bom-items/${line.id}/allocate`).then(r => r.json())).allocations || []); } catch { setRows([]); }
+  }
+  async function undo(a) {
+    const res = await fetch(`/api/bom-items/${line.id}/allocate?allocation_id=${a.id}`, { method: 'DELETE' }).then(r => r.json().then(j => ({ ok: r.ok, ...j })));
+    if (!res.ok) return showToast(res.error || 'Could not undo', 'error');
+    showToast('Allocation taken back');
+    await load(); onDone?.();
+  }
+  return (
+    <Popover onOpenChange={o => o && load()}>
+      <PopoverTrigger asChild><button type="button" className="underline decoration-dotted">{line.allocated}</button></PopoverTrigger>
+      <PopoverContent align="start" className="w-72 text-xs">
+        {rows === null ? 'Loading…' : rows.length === 0 ? 'Nothing allocated.' : (
+          <div className="flex max-h-60 flex-col gap-1 overflow-y-auto">
+            {rows.map(a => (
+              <div key={a.id} className="flex items-center justify-between gap-2">
+                <span>{a.project_no} · {a.qty_allocated}</span>
+                <button type="button" className="text-muted-foreground underline hover:text-danger" onClick={() => undo(a)}>Undo</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export default function AllocationPanel({ projectId }) {
   const [data, setData] = useState(null);
 
@@ -165,7 +198,7 @@ export default function AllocationPanel({ projectId }) {
                   <TableRow key={l.id}>
                     <TableCell className="max-w-xs truncate">{l.material_description}</TableCell>
                     <TableCell>{l.received}</TableCell>
-                    <TableCell>{l.allocated}</TableCell>
+                    <TableCell>{l.allocated > 0 ? <AllocatedUndo line={l} onDone={reload} /> : 0}</TableCell>
                     <TableCell className="font-medium">{l.available}</TableCell>
                     <TableCell><AllocateRow line={l} children={children} onDone={reload} /></TableCell>
                   </TableRow>

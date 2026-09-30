@@ -13,6 +13,14 @@ import { audit } from '@/lib/usb';
 import { getAssemblyRollupMap } from '@/lib/data';
 import { itemRollupQty } from '@/lib/bom-structure.mjs';
 
+// What can be handed to units: the larger of (a) everything received against the line and (b) stock
+// reserved to it from inventory (issued or still active). Larger-of, not a sum: a receipt that is
+// auto-reserved at arrival shows up in both and must not count twice. Lets a split-order line covered
+// purely from stock be allocated and routed like a bought one.
+const AVAILABLE_BASIS_SQL = `SELECT MAX(
+    COALESCE((SELECT SUM(qty_received) FROM bom_item_receipts WHERE bom_item_id = ?), 0),
+    COALESCE((SELECT SUM(qty) FROM inventory_reservations WHERE bom_item_id = ? AND status IN ('active','issued')), 0)) AS total`;
+
 export async function GET(req, { params }) {
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Stores');
@@ -69,7 +77,7 @@ export async function POST(req, { params }) {
     try {
       availableAfter = await withTransaction(async tx => {
         const [receivedRow, allocatedRow] = await Promise.all([
-          tx.execute({ sql: 'SELECT COALESCE(SUM(qty_received), 0) AS total FROM bom_item_receipts WHERE bom_item_id = ?', args: [item.id] }),
+          tx.execute({ sql: AVAILABLE_BASIS_SQL, args: [item.id, item.id] }),
           tx.execute({ sql: 'SELECT COALESCE(SUM(qty_allocated), 0) AS total FROM bom_item_child_allocations WHERE bom_item_id = ?', args: [item.id] }),
         ]);
         const available = Number(receivedRow.rows[0]?.total || 0) - Number(allocatedRow.rows[0]?.total || 0);
@@ -112,7 +120,7 @@ export async function POST(req, { params }) {
   try {
     ({ insertedId, availableAfter } = await withTransaction(async tx => {
       const [receivedRow, allocatedRow] = await Promise.all([
-        tx.execute({ sql: 'SELECT COALESCE(SUM(qty_received), 0) AS total FROM bom_item_receipts WHERE bom_item_id = ?', args: [item.id] }),
+        tx.execute({ sql: AVAILABLE_BASIS_SQL, args: [item.id, item.id] }),
         tx.execute({ sql: 'SELECT COALESCE(SUM(qty_allocated), 0) AS total FROM bom_item_child_allocations WHERE bom_item_id = ?', args: [item.id] }),
       ]);
       const available = Number(receivedRow.rows[0]?.total || 0) - Number(allocatedRow.rows[0]?.total || 0);

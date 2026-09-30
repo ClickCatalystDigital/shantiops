@@ -57,6 +57,11 @@ export async function POST(req, { params }) {
       { error: `Not fully allocated yet: ${notReady.map(c => c.project_no).join(', ')}` }, { status: 400 });
   }
 
+  // Material QC hasn't cleared isn't real stock yet — the routing board already shows such cells as not
+  // ready (getChildRoutingBoard), so the server must refuse them too.
+  const pendingInward = await queryOne("SELECT 1 AS x FROM inward_approvals WHERE bom_item_id = ? AND status = 'pending' LIMIT 1", [item.id]);
+  if (pendingInward) return NextResponse.json({ error: 'Part of this delivery is still waiting for QC clearance' }, { status: 400 });
+
   // Read the prior routing decision for each child before overwriting it — Material Indent's
   // "material ready to indent" notification below must fire only on a genuine transition INTO
   // 'production', not on every re-click of an already-production-routed cell (idempotent) or on a

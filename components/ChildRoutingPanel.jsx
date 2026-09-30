@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 function LineRow({ line, cells, childrenById, onDone }) {
   const [open, setOpen] = useState(false);
@@ -41,6 +42,22 @@ function LineRow({ line, cells, childrenById, onDone }) {
       }).then(r => r.json().then(j => ({ ok: r.ok, ...j })));
       if (!res.ok) throw new Error(res.error || 'Failed to route');
       showToast(`Routed ${res.routed} unit(s) to ${routedTo}`);
+      setSelected(new Set());
+      onDone?.();
+    } catch (err) { showToast(err.message, 'error'); }
+    setBusy(false);
+  }
+
+  async function undoRouting() {
+    if (!selected.size) return showToast('Pick at least one routed unit', 'error');
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/bom-items/${line.id}/route-to`, {
+        method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ child_project_ids: [...selected] }),
+      }).then(r => r.json().then(j => ({ ok: r.ok, ...j })));
+      if (!res.ok) throw new Error(res.error || 'Failed to undo');
+      showToast(`Routing cleared for ${res.cleared} unit(s)`);
       setSelected(new Set());
       onDone?.();
     } catch (err) { showToast(err.message, 'error'); }
@@ -90,9 +107,102 @@ function LineRow({ line, cells, childrenById, onDone }) {
             <Button size="sm" variant="outline" className="h-7 text-xs" disabled={busy || !selected.size} onClick={() => route('dispatch')}>
               → Dispatch
             </Button>
+            <Button size="sm" variant="ghost" className="h-7 text-xs" disabled={busy || !selected.size}
+              title="Clear the Production/Dispatch choice for the ticked units (only if nothing was built on it)" onClick={undoRouting}>
+              Undo routing
+            </Button>
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// Same shape as the Allocator tab for ordinary projects: one row per line, Production / Dispatch (mutually
+// exclusive, pre-filled from the line's own requires_manufacturing), an optional catalog "Default" correction
+// and ONE Apply. A row applies to every unit of that line that is ready and not yet routed.
+function AwaitingTable({ rows, childrenById, onDone }) {
+  const [selected, setSelected] = useState(() => new Set());
+  const [state, setState] = useState({});
+  const [busy, setBusy] = useState(false);
+  const get = r => state[r.line.id] || {
+    routing: r.line.requires_manufacturing ? 'production' : 'dispatch',
+    def: !!r.line.default_requires_manufacturing,
+  };
+  const patch = (id, p) => setState(s => ({ ...s, [id]: { ...get(rows.find(r => r.line.id === id)), ...p } }));
+  const allSelected = rows.length > 0 && rows.every(r => selected.has(r.line.id));
+
+  async function apply() {
+    const picked = rows.filter(r => selected.has(r.line.id));
+    if (!picked.length) return showToast('Select at least one line', 'error');
+    setBusy(true);
+    let ok = 0, failed = 0;
+    for (const r of picked) {
+      const st = get(r);
+      const ids = r.cells.filter(c => c.ready && !c.routed_to).map(c => c.child_project_id);
+      try {
+        const res = await fetch(`/api/bom-items/${r.line.id}/route-to`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ child_project_ids: ids, routed_to: st.routing }),
+        }).then(x => x.json().then(j => ({ ok: x.ok, ...j })));
+        if (!res.ok) throw new Error(res.error || 'Failed');
+        ok++;
+      } catch { failed++; continue; }
+      if (r.line.item_id && st.def !== !!r.line.default_requires_manufacturing) {
+        try {
+          await fetch(`/api/item-master/${r.line.item_id}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ default_requires_manufacturing: st.def }),
+          });
+        } catch { /* routing is what matters; the catalog default can be corrected again */ }
+      }
+    }
+    setBusy(false);
+    setSelected(new Set());
+    showToast(`${ok} line(s) routed${failed ? ` · ${failed} failed` : ''}`, failed ? 'warning' : undefined);
+    onDone?.();
+  }
+
+  if (!rows.length) return null;
+  return (
+    <div className="mb-4 flex flex-col gap-2">
+      <div className="flex flex-wrap items-center gap-2 border-b bg-muted/40 px-1 py-2">
+        <span className="text-sm font-medium">{selected.size} selected</span>
+        <Button size="sm" className="h-7" disabled={busy || !selected.size} onClick={apply}>{busy ? 'Applying…' : 'Apply Allocations'}</Button>
+        <span className="text-xs text-muted-foreground">Applies to every unit of a line that is ready and not yet routed.</span>
+      </div>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-8"><Checkbox checked={allSelected} onCheckedChange={v => setSelected(new Set(v ? rows.map(r => r.line.id) : []))} aria-label="Select all" /></TableHead>
+            <TableHead>Material</TableHead>
+            <TableHead className="w-28">Units</TableHead>
+            <TableHead className="w-24 text-center">Production</TableHead>
+            <TableHead className="w-24 text-center">Dispatch</TableHead>
+            <TableHead className="w-24 text-center text-muted-foreground" title="Corrects the catalog item's own default for FUTURE orders — no effect on this line">Default</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map(r => {
+            const st = get(r), n = r.cells.filter(c => c.ready && !c.routed_to).length;
+            return (
+              <TableRow key={r.line.id}>
+                <TableCell><Checkbox checked={selected.has(r.line.id)} onCheckedChange={v => setSelected(s => { const x = new Set(s); v ? x.add(r.line.id) : x.delete(r.line.id); return x; })} /></TableCell>
+                <TableCell className="max-w-0 truncate">{r.line.material_description}
+                  <span className="block truncate text-[11px] text-muted-foreground">{[r.line.moc, r.line.size_spec].filter(Boolean).join(' · ')}</span></TableCell>
+                <TableCell className="text-xs text-muted-foreground tnum">{n} unit{n === 1 ? '' : 's'}</TableCell>
+                <TableCell className="text-center"><Checkbox checked={st.routing === 'production'} onCheckedChange={v => v && patch(r.line.id, { routing: 'production' })} aria-label="Production" /></TableCell>
+                <TableCell className="text-center"><Checkbox checked={st.routing === 'dispatch'} onCheckedChange={v => v && patch(r.line.id, { routing: 'dispatch' })} aria-label="Dispatch" /></TableCell>
+                <TableCell className="text-center">
+                  {r.line.item_id
+                    ? <Checkbox className="opacity-70" checked={st.def} onCheckedChange={v => patch(r.line.id, { def: !!v })} aria-label="Catalog manufacturing default" />
+                    : <span className="text-xs text-muted-foreground">—</span>}
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
     </div>
   );
 }
@@ -114,10 +224,13 @@ export default function ChildRoutingPanel({ projectId }) {
     cellsByLine.get(c.bom_item_id).push(c);
   });
 
-  const rows = data.lines
+  const allRows = data.lines
     .map(line => ({ line, cells: cellsByLine.get(line.id) || [] }))
-    .filter(r => r.cells.length > 0)
-    .filter(r => showAll || r.cells.some(c => c.ready && !c.routed_to));
+    .filter(r => r.cells.length > 0);
+  const awaiting = allRows.filter(r => r.cells.some(c => c.ready && !c.routed_to));
+  // The per-unit strips below are the exception path (route some units differently, or undo); they list
+  // routed lines too, which is what "Show all" reveals.
+  const rows = allRows.filter(r => showAll || r.cells.some(c => c.routed_to));
 
   return (
     <Card>
@@ -128,12 +241,16 @@ export default function ChildRoutingPanel({ projectId }) {
         </Button>
       </CardHeader>
       <CardContent>
+        <AwaitingTable rows={awaiting} childrenById={childrenById} onDone={reload} />
         {rows.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            Nothing awaiting a routing decision — allocate material to a unit first.
+            {awaiting.length ? '' : 'Nothing awaiting a routing decision — allocate material to a unit first.'}
           </p>
         ) : (
-          rows.map(r => <LineRow key={r.line.id} line={r.line} cells={r.cells} childrenById={childrenById} onDone={reload} />)
+          <>
+            <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Per unit — route some units differently, or undo</p>
+            {rows.map(r => <LineRow key={r.line.id} line={r.line} cells={r.cells} childrenById={childrenById} onDone={reload} />)}
+          </>
         )}
       </CardContent>
     </Card>
