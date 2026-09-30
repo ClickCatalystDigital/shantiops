@@ -54,16 +54,14 @@ export default function MaterialIndentWorklist() {
     if (!lines.length) return;
     setBusy(true);
     try {
-      // The specific child unit(s) this material is for has no column on material_indent_items
-      // today (a known, documented limitation — see the plan's §9) — folded into notes as the
-      // pragmatic, schema-respecting way to not silently drop context Stores/Production still need.
+      // Each line now carries its unit (child_project_id); the notes text stays as a readable summary.
       const units = [...new Set(lines.map(r => r.unit_project_no).filter(Boolean))];
       const created = await api('/api/material-indents', {
         method: 'POST',
         body: {
           project_id: projectId,
           notes: units.length ? `For unit(s): ${units.join(', ')}` : undefined,
-          items: lines.map(r => ({ bom_item_id: r.bom_item_id, qty_requested: remainingQty(r) })),
+          items: lines.map(r => ({ bom_item_id: r.bom_item_id, qty_requested: remainingQty(r), child_project_id: r.unit_project_id || undefined })),
         },
       });
       showToast(`Material Indent ${created.indent_no} raised — ${lines.length} item(s)`);

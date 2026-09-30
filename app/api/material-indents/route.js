@@ -31,6 +31,7 @@ export async function GET(req) {
             i.tracking_mode AS tracking_mode,
             b.moc AS bom_moc, b.size_spec AS bom_size_spec, b.qty_text AS bom_qty_text,
             i.on_hand AS stock_on_hand,
+            (SELECT project_no FROM projects WHERE id = mii.child_project_id) AS unit_project_no,
             (SELECT COALESCE(SUM(ir.qty - ir.qty_issued), 0) FROM inventory_reservations ir
               WHERE ir.inventory_item_id = mii.inventory_item_id AND ir.status = 'active') AS stock_reserved
        FROM material_indent_items mii
@@ -87,6 +88,22 @@ export async function POST(req) {
           error: `${bomItem.material_description || `Item #${line.bom_item_id}`} is not routed to Production yet — Stores must route it before it can be indented`,
         }, { status: 400 });
       }
+      // A split order's line is indented per unit: the unit must be a child of the line's project and
+      // routed to Production for THAT unit (the Production list always sends it).
+      const isSplitMaster = await queryOne('SELECT 1 AS x FROM projects WHERE master_project_id = (SELECT project_id FROM bom_items WHERE id = ?) LIMIT 1', [line.bom_item_id]);
+      if (isSplitMaster) {
+        if (!line.child_project_id) {
+          return NextResponse.json({ error: `${bomItem.material_description}: pick the unit this is for` }, { status: 400 });
+        }
+        const unitRouted = await queryOne(
+          `SELECT 1 AS x FROM bom_item_child_routing r JOIN projects c ON c.id = r.child_project_id
+            WHERE r.bom_item_id = ? AND r.child_project_id = ? AND r.routed_to = 'production'
+              AND c.master_project_id = (SELECT project_id FROM bom_items WHERE id = ?)`,
+          [line.bom_item_id, Number(line.child_project_id), line.bom_item_id]);
+        if (!unitRouted) {
+          return NextResponse.json({ error: `${bomItem.material_description} is not routed to Production for that unit` }, { status: 400 });
+        }
+      }
     }
   }
 
@@ -113,9 +130,10 @@ export async function POST(req) {
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       await tx.execute({
-        sql: `INSERT INTO material_indent_items (indent_id, inventory_item_id, bom_item_id, qty_requested)
-              VALUES (?, ?, ?, ?)`,
-        args: [id, resolvedInventoryIds[i], line.bom_item_id ? Number(line.bom_item_id) : null, Number(line.qty_requested)],
+        sql: `INSERT INTO material_indent_items (indent_id, inventory_item_id, bom_item_id, qty_requested, child_project_id)
+              VALUES (?, ?, ?, ?, ?)`,
+        args: [id, resolvedInventoryIds[i], line.bom_item_id ? Number(line.bom_item_id) : null, Number(line.qty_requested),
+          line.child_project_id ? Number(line.child_project_id) : null],
       });
     }
     return id;

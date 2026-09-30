@@ -1518,6 +1518,7 @@ function IndentItemRow({ indent, item, onDone, selectable, selected, onToggle })
       )}
       <div className="min-w-0 flex-1">
         <span className="font-medium">{item.bom_description || item.inventory_description || `Item #${item.inventory_item_id}`}</span>
+        {item.unit_project_no && <Badge variant="outline" className="ml-2 text-[10px]">Unit {item.unit_project_no}</Badge>}
         <div className="flex flex-wrap gap-x-3 text-xs text-muted-foreground tnum">
           <span>Required <span className="font-medium text-foreground">{item.qty_requested}</span></span>
           <span>Released <span className="font-medium text-foreground">{item.qty_released}</span></span>
