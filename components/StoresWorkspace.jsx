@@ -24,7 +24,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup } from '@/components/ui/select';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { PlusIcon, PencilIcon, PackageCheckIcon, UndoIcon, TruckIcon, PackageIcon, ClipboardListIcon, LayersIcon, LogInIcon, SearchIcon, ChevronRightIcon, BoxesIcon, HashIcon, ArrowRightLeftIcon, Share2Icon, SettingsIcon, PuzzleIcon } from 'lucide-react';
+import { PlusIcon, PencilIcon, PackageCheckIcon, UndoIcon, TruckIcon, PackageIcon, ClipboardListIcon, LayersIcon, LogInIcon, SearchIcon, ChevronRightIcon, BoxesIcon, HashIcon, ArrowRightLeftIcon, Share2Icon, SettingsIcon, PuzzleIcon, HandshakeIcon, FactoryIcon, SplitIcon, NetworkIcon, DoorOpenIcon, ArrowDownToLineIcon } from 'lucide-react';
 import { api, showToast, formatDate } from '@/lib/client';
 import { formatMoney } from '@/lib/format';
 import { derivePurchaseStage } from '@/lib/bom-fields.mjs';
@@ -112,15 +112,16 @@ function leadingQty(qtyText) {
 // no longer reaches a section that isn't mounted on the current tab.
 function TodaySummary({ inventoryItems, openRequests, activeReservations, onNavigate, onShowLowStock }) {
   const lowStock = inventoryItems.filter(isLowStock).length;
-  const withMatch = openRequests.filter(r => possibleMatches(r, inventoryItems).length > 0).length;
+  const demand = openRequests.filter(r => r.source !== 'sas');
+  const withMatch = demand.filter(r => possibleMatches(r, inventoryItems).length > 0).length;
   const chips = [
-    { tab: 'requests', dot: 'bg-warning', value: openRequests.length, label: 'open request' + (openRequests.length === 1 ? '' : 's') },
+    { tab: 'requests', dot: 'bg-warning', value: demand.length, label: 'open request' + (demand.length === 1 ? '' : 's') },
     { tab: 'requests', dot: 'bg-info', value: withMatch, label: 'with a possible match' },
     // Below-minimum chip doubles as the Inventory table's filter switch (onShowLowStock), not
     // just a tab jump — previously it navigated to Inventory (already the default tab) and did
     // nothing else, so clicking it never actually narrowed anything.
     { tab: 'inventory', dot: 'bg-danger', value: lowStock, label: 'low stock', onClick: onShowLowStock },
-    { tab: 'reservations', dot: 'bg-success', value: activeReservations.length, label: 'ready to issue' },
+    { tab: 'allocate', dot: 'bg-success', value: activeReservations.length, label: 'ready to issue' },
   ];
   return (
     <div className="flex flex-wrap gap-2">
@@ -1196,7 +1197,7 @@ function reservationProgress(r) {
   return { required, reserved, outstanding: Math.max(0, required - reserved) };
 }
 
-function OpenRequestsCard({ openRequests, inventoryItems, router }) {
+function OpenRequestsCard({ openRequests, inventoryItems, router, title = 'Demand', blurb = "What's currently needed, and whether it can be filled from stock or needs a decision." }) {
   const [reserveFor, setReserveFor] = useState(null);
   const [reserveQty, setReserveQty] = useState(null);
   const [busyId, setBusyId] = useState(null);
@@ -1227,8 +1228,8 @@ function OpenRequestsCard({ openRequests, inventoryItems, router }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Material Demand</CardTitle>
-        <p className="text-sm text-muted-foreground">What's currently needed, and whether it can be filled from stock or needs a decision.</p>
+        <CardTitle>{title}</CardTitle>
+        <p className="text-sm text-muted-foreground">{blurb}</p>
         <CardAction><MatchSettingsPopover router={router} /></CardAction>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
@@ -1386,7 +1387,7 @@ function MaterialIssuesCard({ projects }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Issued to WIP</CardTitle>
+        <CardTitle>On Floor</CardTitle>
         <p className="text-sm text-muted-foreground">What's left Stores for the shop floor, most recent first.</p>
         <CardAction>
           <Button size="sm" variant={logging ? 'outline' : 'default'} onClick={() => setLogging(l => !l)}>
@@ -1703,7 +1704,7 @@ function IndentsCard({ router }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Material Indents</CardTitle>
+        <CardTitle>Indents</CardTitle>
         <p className="text-sm text-muted-foreground">What Production has requested — release a line to hand the material over.</p>
       </CardHeader>
       {selected.size > 0 && (
@@ -1911,7 +1912,7 @@ function AllocationRoutingSection({ splitOrders, router }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Split-Order Allocation</CardTitle>
+        <CardTitle>Macro Allocator</CardTitle>
         <p className="text-sm text-muted-foreground">Multi-unit orders — which physical unit gets which material, and whether it goes to Production or Dispatch.</p>
       </CardHeader>
       <CardContent>
@@ -2067,7 +2068,7 @@ function GateInwardReceiptsCard({ gateInwardReceipts, router }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Gate Inward Receipts</CardTitle>
+        <CardTitle>Gate Pass</CardTitle>
         <CardAction><Button size="sm" onClick={() => setAdding(true)}><PlusIcon />New GIR</Button></CardAction>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
@@ -2178,29 +2179,22 @@ function GateInwardReceiptsCard({ gateInwardReceipts, router }) {
 // (WorkspaceSidebar's divider.label), matching the spec's exact STOCK / FULFILLMENT / PRODUCTION /
 // RECEIVING section order.
 const NAV_ITEMS = (counts) => [
-  { key: 'divider-stock', divider: true, label: 'Stock' },
-  { key: 'inventory', label: 'Inventory', icon: PackageIcon, badge: counts.lowStock || null },
-  { key: 'divider-fulfillment', divider: true, label: 'Fulfillment' },
-  { key: 'requests', label: 'Material Demand', icon: ClipboardListIcon, badge: counts.requests || null },
-  // Renamed from "Active Reservations" — the card underneath has always said "Ready to Issue," a
-  // nav/screen naming mismatch fixed here rather than by changing the card's own already-correct,
-  // action-oriented title.
-  { key: 'reservations', label: 'Ready to Issue', icon: PackageCheckIcon, badge: counts.reservations || null },
-  { key: 'divider-production', divider: true, label: 'Production' },
-  { key: 'indents', label: 'Material Indents', icon: BoxesIcon },
-  { key: 'issued', label: 'Issued to WIP', icon: TruckIcon },
   { key: 'divider-receiving', divider: true, label: 'Receiving' },
-  { key: 'gir', label: 'Gate Inward', icon: LogInIcon },
-  { key: 'receive', label: 'Receive a Delivery', icon: SearchIcon, badge: counts.pendingInward || null },
-  // Routing decoupled from receiving (gentle-snuggling-wozniak.md §5/§8) — a fully-received,
-  // routing-eligible line lands here instead of asking for Production/Dispatch at receive time.
-  { key: 'allocate', label: 'Allocate', icon: ArrowRightLeftIcon, badge: counts.allocate || null },
-  // Multi-unit split orders (master + N child projects) are a genuinely different workflow from
-  // everything above — was previously stacked under "Allocation & Reservations", reading as the
-  // same thing as plain Reserve→Issue. Its own labeled section so it's only ever reached when a
-  // real split order actually needs it.
-  { key: 'divider-multi', divider: true, label: 'Multi-Unit Orders' },
-  { key: 'split-allocation', label: 'Allocation & Routing', icon: Share2Icon, badge: counts.splitOrders || null },
+  { key: 'receive', label: 'Inward', icon: ArrowDownToLineIcon, badge: counts.pendingInward || null },
+  { key: 'gir', label: 'Gate Pass', icon: DoorOpenIcon },
+  { key: 'divider-fulfillment', divider: true, label: 'Fulfillment' },
+  { key: 'requests', label: 'Demand', icon: ClipboardListIcon, badge: counts.requests || null },
+  { key: 'trade', label: 'Trade Orders', icon: HandshakeIcon, badge: counts.trade || null },
+  // Production's written requests for material — Stores fulfils them, so they live with Fulfillment.
+  { key: 'indents', label: 'Indents', icon: BoxesIcon },
+  { key: 'divider-orders', divider: true, label: 'Orders' },
+  // A line that has arrived, or been reserved from stock, lands here for its Production/Dispatch decision.
+  { key: 'allocate', label: 'Allocator', icon: SplitIcon, badge: counts.allocate || null },
+  // Split orders (one order, many units) — allocate a delivery across the units and route each.
+  { key: 'split-allocation', label: 'Macro Allocator', icon: NetworkIcon, badge: counts.splitOrders || null },
+  { key: 'divider-production', divider: true, label: 'Production' },
+  { key: 'issued', label: 'On Floor', icon: FactoryIcon },
+  { key: 'inventory', label: 'Inventory', icon: PackageIcon, badge: counts.lowStock || null, pinBottom: true },
 ];
 
 // Stores' own "close this project's BOM" action — mirrors ProcurementWorkspace.jsx's Status tab
@@ -2332,7 +2326,7 @@ function ReceiveDeliveryTab({ bomItems, pendingInwardApprovals = [], router }) {
       </div>
       {mode === 'bulk' ? <BomGrnTab bomItems={bomItems} router={router} /> : (
         <Card>
-          <CardHeader><CardTitle>Receive a Delivery</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Inward</CardTitle></CardHeader>
           <CardContent className="flex flex-col gap-3 pt-4">
             <div className="flex gap-2">
               <Input value={query} onChange={e => { setQuery(e.target.value); setPage(1); }}
@@ -2638,9 +2632,9 @@ function AllocateTab({ items: initialItems, router }) {
       )}
       <Card>
         <CardHeader>
-          <CardTitle>Allocate</CardTitle>
+          <CardTitle>Allocator</CardTitle>
           <p className="text-sm text-muted-foreground">
-            Received material (fully or partly delivered) waiting to be routed to Production or Dispatch. "Default" corrects the
+            Material that has arrived (fully or partly) or been reserved from stock, waiting to be routed to Production or Dispatch. "Default" corrects the
             catalog's own manufacturing default for future orders — it doesn't change this line.
           </p>
         </CardHeader>
@@ -2678,6 +2672,7 @@ function AllocateTab({ items: initialItems, router }) {
                         <TableCell className="text-xs text-muted-foreground">
                           {it.qty_breakdown?.label || it.qty_text}
                           {it.received_qty != null && <span className="block text-[11px] text-warning">{it.received_qty} received so far</span>}
+                          {it.reserved_from_stock && <span className="block text-[11px] text-success">{it.reserved_from_stock}</span>}
                         </TableCell>
                         <TableCell className="text-center">
                           <Checkbox checked={row.routing === 'production'} onCheckedChange={v => v && setRouting(it.id, 'production')} aria-label="Route to Production" />
@@ -2911,17 +2906,22 @@ export default function StoresWorkspace({
   initialTab,
 }) {
   const router = useRouter();
+  // Trade requests Sales pushes (source 'sas') get their own tab; everything else stays in Demand.
+  const demandRequests = openRequests.filter(r => r.source !== 'sas');
+  const tradeRequests = openRequests.filter(r => r.source === 'sas');
   const navItems = NAV_ITEMS({
     lowStock: inventoryItems.filter(isLowStock).length,
-    requests: openRequests.length,
-    reservations: activeReservations.length,
+    requests: demandRequests.length,
+    trade: tradeRequests.length,
     splitOrders: splitOrders.length,
     pendingInward: pendingInwardApprovals.length,
     allocate: unroutedItems.length,
   });
   // Deep-link tab selection (Part B) — same server-prop pattern QcWorkspace.jsx already proved
   // out; `?tab=gir` were dead query strings before this (nothing read them).
-  const [tab, setTab] = useState(navItems.some(i => i.key === initialTab) ? initialTab : 'inventory');
+  // Old links: 'reservations' (Ready to Issue) now lives inside the Allocator tab.
+  const startTab = initialTab === 'reservations' ? 'allocate' : initialTab;
+  const [tab, setTab] = useState(navItems.some(i => i.key === startTab) ? startTab : 'inventory');
 
   return (
     <WorkspaceSidebar title="Inventory" icon={PackageIcon} items={navItems} activeKey={tab} onChange={setTab}>
@@ -2929,16 +2929,24 @@ export default function StoresWorkspace({
         <InventoryTab inventoryItems={inventoryItems} openRequests={openRequests} activeReservations={activeReservations} onNavigate={setTab} certificates={certificates} projects={projects} />
       )}
       {tab === 'requests' && (
-        <OpenRequestsCard openRequests={openRequests} inventoryItems={inventoryItems} router={router} />
+        <OpenRequestsCard openRequests={demandRequests} inventoryItems={inventoryItems} router={router} />
+      )}
+      {tab === 'trade' && (
+        <OpenRequestsCard openRequests={tradeRequests} inventoryItems={inventoryItems} router={router}
+          title="Trade Orders" blurb="Material Sales has asked for against a sale order — fill it from stock or send it to Procurement." />
       )}
       {tab === 'indents' && <IndentsCard router={router} />}
-      {tab === 'reservations' && (
-        <ActiveReservationsCard activeReservations={activeReservations} inventoryItems={inventoryItems} router={router} />
-      )}
       {tab === 'issued' && <MaterialIssuesCard projects={projects} />}
       {tab === 'gir' && <GateInwardReceiptsCard gateInwardReceipts={gateInwardReceipts} router={router} />}
       {tab === 'receive' && <ReceiveDeliveryTab bomItems={bomItems} pendingInwardApprovals={pendingInwardApprovals} router={router} />}
-      {tab === 'allocate' && <AllocateTab items={unroutedItems} router={router} />}
+      {tab === 'allocate' && (
+        <div className="flex flex-col gap-4">
+          <AllocateTab items={unroutedItems} router={router} />
+          {/* Reserved stock waiting to be handed over — the old "Ready to Issue" tab. Issuing is what
+              marks the line In-Stock, so the action stays; it just lives next to the routing now. */}
+          {activeReservations.length > 0 && <ActiveReservationsCard activeReservations={activeReservations} inventoryItems={inventoryItems} router={router} />}
+        </div>
+      )}
       {tab === 'split-allocation' && <AllocationRoutingSection splitOrders={splitOrders} router={router} />}
     </WorkspaceSidebar>
   );

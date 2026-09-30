@@ -172,7 +172,7 @@ export default function WorkspaceSidebar({ title, icon: TitleIcon = LayoutPanelT
             <SidebarGroup>
               <SidebarGroupContent>
                 <SidebarMenu>
-                  {items.map(item => {
+                  {items.filter(i => !i.pinBottom).map(item => {
                     if (item.divider) return (
                       <SidebarMenuItem key={item.key}>
                         {item.label && (
@@ -201,6 +201,28 @@ export default function WorkspaceSidebar({ title, icon: TitleIcon = LayoutPanelT
                         </SidebarMenuSub>
                       </SidebarMenuItem>
                     );
+                    return (
+                      <SidebarMenuItem key={item.key}>
+                        <SidebarMenuButton isActive={activeKey === item.key} tooltip={item.label} onClick={() => onChange(item.key)}>
+                          <Icon />
+                          <span>{item.label}</span>
+                          {item.badge != null && <span className="ml-auto text-xs text-muted-foreground">{item.badge}</span>}
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    );
+                  })}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          )}
+          {/* Items flagged pinBottom sit at the foot of the sidebar, apart from the workflow list. */}
+          {!groups && items.some(i => i.pinBottom) && (
+            <SidebarGroup className="mt-auto">
+              <SidebarGroupContent>
+                <SidebarSeparator className="mb-1" />
+                <SidebarMenu>
+                  {items.filter(i => i.pinBottom).map(item => {
+                    const Icon = item.icon || LayoutPanelTopIcon;
                     return (
                       <SidebarMenuItem key={item.key}>
                         <SidebarMenuButton isActive={activeKey === item.key} tooltip={item.label} onClick={() => onChange(item.key)}>

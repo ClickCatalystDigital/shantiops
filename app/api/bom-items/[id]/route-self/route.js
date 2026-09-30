@@ -47,7 +47,13 @@ export async function POST(req, { params }) {
   // Fully received, or at least part of it has arrived and cleared QC — the routing decision is
   // about where the material goes, so a half-delivered line can already be routed.
   if (!['Received', 'In-Stock'].includes(item.purchase_status) && (await getClearedReceivedQty(item.id)) <= 0) {
-    return NextResponse.json({ error: 'Nothing received (and cleared by QC) yet' }, { status: 400 });
+    // Stock reserved for the line counts too — it has the material, it only needs a destination.
+    const reserved = await queryOne(
+      `SELECT (SELECT COUNT(*) FROM inventory_reservations WHERE bom_item_id = ? AND status = 'active')
+            + (SELECT COUNT(*) FROM stock_pieces WHERE bom_item_id = ? AND status = 'reserved') AS n`, [item.id, item.id]);
+    if (!(Number(reserved?.n) > 0)) {
+      return NextResponse.json({ error: 'Nothing received (and cleared by QC) or reserved yet' }, { status: 400 });
+    }
   }
 
   // Same transition-guard rule as route-to/route.js — read the prior decision before overwriting
