@@ -477,6 +477,46 @@ function ApplyBomTemplateDialog({ projectId, onClose, router, onApplied }) {
   );
 }
 
+// Trade Request (Installation only) — not a PR: files a row into Sales' Trade Requests tab.
+function TradeRequestDialog({ projects, onClose }) {
+  const [f, setF] = useState({ material_description: '', moc: '', size_spec: '', qty_text: '', project_id: '', sale_order_no: '', notes: '' });
+  const [saving, setSaving] = useState(false);
+  const set = k => e => setF(x => ({ ...x, [k]: e.target.value }));
+  async function save() {
+    if (!f.material_description.trim()) return showToast('Description is required', 'error');
+    if (!f.qty_text.trim()) return showToast('Quantity is required', 'error');
+    setSaving(true);
+    try {
+      const res = await api('/api/trade-requests', { method: 'POST', body: { ...f, project_id: f.project_id || undefined } });
+      showToast(`${res.tr_no} sent to Sales`);
+      onClose();
+    } catch (err) { showToast(err.message, 'error'); } finally { setSaving(false); }
+  }
+  return (
+    <Dialog open onOpenChange={o => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Trade Request</DialogTitle></DialogHeader>
+        <div className="flex flex-col gap-3">
+          <div className="grid gap-1.5"><Label>Description</Label><Input value={f.material_description} onChange={set('material_description')} autoFocus /></div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-1.5"><Label>MOC</Label><Input value={f.moc} onChange={set('moc')} /></div>
+            <div className="grid gap-1.5"><Label>Size / spec</Label><Input value={f.size_spec} onChange={set('size_spec')} /></div>
+            <div className="grid gap-1.5"><Label>Quantity</Label><Input value={f.qty_text} onChange={set('qty_text')} placeholder="e.g. 4 Nos" /></div>
+            <div className="grid gap-1.5"><Label>Sale Order no. (optional)</Label><Input value={f.sale_order_no} onChange={set('sale_order_no')} /></div>
+          </div>
+          <div className="grid gap-1.5">
+            <Label>Project (optional)</Label>
+            <SearchableSelect value={f.project_id} onChange={v => setF(x => ({ ...x, project_id: v }))} placeholder="Search project…"
+              options={projects.map(p => ({ value: String(p.id), label: `${p.project_no}${p.name ? ` · ${p.name}` : ''}` }))} />
+          </div>
+          <div className="grid gap-1.5"><Label>Notes (optional)</Label><Input value={f.notes} onChange={set('notes')} /></div>
+        </div>
+        <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? 'Sending…' : 'Send to Sales'}</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // Exported so components/EngineeringWorkspace.jsx can render this same tab from a second entry
 // point (its own sidebar) without nesting a second full WorkspaceSidebar shell — PrWorkspace's own
 // usage below is unchanged either way.
@@ -486,6 +526,7 @@ export function RaisePrTab({ departments, projects, inventoryItems = [], prTempl
   const [lines, setLines] = useState([emptyLine()]);
   const [busy, setBusy] = useState(false);
   const [pickingTemplate, setPickingTemplate] = useState(false);
+  const [tradeOpen, setTradeOpen] = useState(false);
   const showSourcePicker = dept === 'Stores';
 
   // Templates tab's "Use in Raise PR" hands its items down through the parent (PrWorkspace) as
@@ -601,10 +642,14 @@ export function RaisePrTab({ departments, projects, inventoryItems = [], prTempl
         <Button size="sm" variant="outline" className="w-fit" onClick={addLine}>
           <PlusIcon data-icon="inline-start" />Add another item
         </Button>
-        <Button disabled={busy} onClick={submit} className="w-fit">
-          {busy ? 'Raising…' : 'Raise PR'}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button disabled={busy} onClick={submit} className="w-fit">
+            {busy ? 'Raising…' : 'Raise PR'}
+          </Button>
+          {dept === 'Installation' && <Button variant="outline" className="w-fit" onClick={() => setTradeOpen(true)}>Trade Request</Button>}
+        </div>
       </CardContent>
+      {tradeOpen && <TradeRequestDialog projects={projects} onClose={() => setTradeOpen(false)} />}
       {pickingTemplate && (
         <PrTemplatePicker onClose={() => setPickingTemplate(false)}
           onPick={items => setLines(ls => mergeTemplateItemsIntoLines(ls, items))} />
@@ -967,21 +1012,24 @@ function ReorderSuggestionsCard({ reorderSuggestions }) {
   );
 }
 
-export default function PrWorkspace({ departments, projects, inventoryItems = [], reorderSuggestions = [], initialTab }) {
+export default function PrWorkspace({ departments, projects, inventoryItems = [], reorderSuggestions = [], initialTab, mode }) {
   // Purchase Requests is the default landing tab (a deliberate UX change from the old default,
   // "Templates" — see SYSTEM.md's Phase 1 plan for why). Release BOM was briefly dropped from this
   // sidebar on the theory that the BOM workspace's own Release button (Engineering tab) made it
   // redundant here — reinstated after that read as "where did it go" rather than a cleaner nav, per
   // direct feedback. Both buttons fire the exact same POST route, so nothing was ever duplicated at
   // the data layer, only the entry point.
-  const [tab, setTab] = useState(['raise', 'history', 'templates', 'release', 'reorder'].includes(initialTab) ? initialTab : 'raise');
+  const [tab, setTab] = useState((mode === 'installation' ? ['raise', 'history'] : ['raise', 'history', 'templates', 'release', 'reorder']).includes(initialTab) ? initialTab : 'raise');
   const [prTemplatePrefill, setPrTemplatePrefill] = useState(null);
   // Release BOM only shows for a viewer who can actually release (canRelease() in
   // app/api/projects/[id]/release-bom/route.js requires Design or Engineering) — a Stores-only head
   // used to see the tab, click it, and get stuck on a permanent "Loading…" screen once the status
   // check 403'd. Same conditional-visibility shape showBomTemplatesHere already uses below.
   const canReleaseBom = departments.some(d => ['Design', 'Engineering'].includes(d));
-  const navItems = [
+  const navItems = mode === 'installation' ? [
+    { key: 'raise', label: 'Purchase Requests', icon: ClipboardListIcon },
+    { key: 'history', label: 'PR History', icon: HistoryIcon },
+  ] : [
     { key: 'raise', label: 'Purchase Requests', icon: ClipboardListIcon },
     { key: 'history', label: 'PR History', icon: HistoryIcon },
     ...(canReleaseBom ? [{ key: 'release', label: 'Release BOM', icon: CheckIcon }] : []),

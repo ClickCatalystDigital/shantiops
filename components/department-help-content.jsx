@@ -9,7 +9,7 @@ import {
   UserRoundIcon, UserCheckIcon, Clock3Icon, IndianRupeeIcon, ReceiptIcon, ShieldCheckIcon,
   ListChecksIcon, MessageSquareIcon, WrenchIcon, BellIcon, TagIcon, InboxIcon, UndoIcon,
   ScissorsIcon, ClipboardIcon, AlertTriangleIcon, LogInIcon, FileOutputIcon,
-  HeadsetIcon, FileSignatureIcon, LayersIcon, Repeat2Icon, FileEditIcon, Undo2Icon,
+  HeadsetIcon, FileSignatureIcon, CalendarCheckIcon, CameraIcon, LayersIcon, Repeat2Icon, FileEditIcon, Undo2Icon,
   LandmarkIcon, PercentIcon, BookIcon, LockIcon, LayoutTemplateIcon, SlidersHorizontalIcon,
 } from 'lucide-react';
 
@@ -1518,29 +1518,30 @@ export const DEPARTMENT_HELP = {
     title: 'Installation', icon: MapPinIcon,
     intro: [
       'Installation tracks the work that happens at the customer site after manufacturing and dispatch. The project record should show what is planned, what the site team completed, and what is still waiting on the customer or another department.',
-      'Use Operations for your open site work, Projects for the order record, Tasks for site-specific follow-ups, and the Installation tab (Service Calls, Service Contracts, Reports) for post-handover customer service.',
+      'Use Operations for your open site work, Projects for the order record, Tasks for site-specific follow-ups, and the Installation tab (Visits, Documentation) for site visits and commissioning / service reports.',
     ],
     features: [
       feature('milestones', 'Site milestones', RouteIcon, ['Start and close installation, commissioning, and site milestones with actual dates. Use planned dates to make the expected visit visible early.', 'If a date moves, record the reason so the customer-facing progress story remains honest.']),
       feature('tasks', 'Site tasks', ListChecksIcon, ['Use tasks for access arrangements, foundation readiness, customer documents, travel, tools, and punch-list items.', 'Assign each task to a person or receiving department and include the project in the task.']),
       feature('handoff', 'Handoffs', MessageSquareIcon, ['Use cross-department tasks when Installation needs Dispatch, QC, Production, or Management to act. Close the task only after the receiving action is confirmed.', 'Keep customer commitments in the project record, not only in a private message.', 'Marking Commissioning & Handover complete is different from every other milestone close: there is no next department in the chain for it to hand off to, so it notifies Sales and every PM-tier account directly instead — the project is now fully done, not just past Installation.']),
       feature('progress', 'Customer progress', FolderKanbanIcon, ['The customer portal reads project progress from milestones. Accurate actual dates and delay reasons improve the customer view without extra reporting work.']),
-      feature('service-calls', 'Service Calls', HeadsetIcon, [
-        'Log a customer complaint or service call against the project (its "covered equipment"), with priority and an optional SLA target in hours.',
-        'Manage a call to move it through Open → Assigned → In Progress → Resolved → Closed, assign a technician, and record diagnosis, resolution, and closure evidence.',
-        'Visit history is a separate log on the call — add one row per site visit (technician, date, notes) independent of the call\'s own status.',
+      feature('visits', 'Visits', CalendarCheckIcon, [
+        'Pick a project to see its site visits. Every project starts with four planned visits: foundation marking, customer needs / issue solving, pre-commissioning, and commissioning. Rename them, add more, or delete any.',
+        'Each visit has a description, a date, a time, who from the team went, and a planned / done status. The header shows how many visits are done and how many remain of the planned number, which you can change per project.',
+        'With no project selected you see every project with its planned, done and remaining visits — click one to open it.',
       ]),
-      feature('service-contracts', 'Service Contracts', FileSignatureIcon, [
-        'Create a contract against a project — customer, coverage window, visit frequency, and entitlement (what\'s actually covered).',
-        'Renew a contract to create a new contract row linked to the old one, which moves to Renewed; the old record is never overwritten. Cancel is available on an active contract.',
-        'A contract within 30 days of its end date is flagged "Expiring soon" on the list.',
+      feature('documentation', 'Documentation', FileTextIcon, [
+        'Pick a project and a call type. Commissioning opens the full commissioning report; Breakdown, ASC and Other open the Field Service Report.',
+        'Customer, site address, contact, model, capacity, pressures, maker\'s number and boiler type fill in from the project, Sales and QC records — check them and edit anything that differs on site.',
+        'Checklist tables come with every standard row pre-listed; enter the observed value and OK / NG, remove rows that don\'t apply, or add your own. Sign on screen with a finger, then download the PDF.',
+        'Earlier customer remarks for the same project (from any report) are shown at the top of a new report so you can see the history of interactions.',
       ]),
-      feature('service-reports', 'Reports', BarChart3Icon, [
-        'Read-only reports covering installation milestones and delays, commissioning completion, service call aging and SLA compliance, technician performance, and contract renewals.',
-        'Every number is computed live off the same Service Calls, Service Contracts, and milestone data — there is nothing to enter separately.',
+      feature('progress-photos', 'Progress Photos', CameraIcon, [
+        'On a phone, tap the round camera button, take the photo, and a details sheet opens straight away: pick the project (it remembers your last one), a stage chip (Foundation, Erection, Piping, Electrical, Pre-commissioning, Commissioning, Issue / defect, Other), optionally the visit, and add remarks. The date, time and your name are stamped automatically.',
+        'Photos are shrunk on the phone before upload, so they save quickly on site mobile data. Open a photo to change its stage, visit or remarks, or delete it. On a computer use Upload to add photos from a folder.',
       ]),
       milestoneTrackerFeature([
-        ['Site Installation', 'Explicit action', 'Click "Mark complete" on the project\'s Installation tab — nothing else in the app logs a site visit, so there\'s no data signal to auto-detect this from.'],
+        ['Site Installation', 'Explicit action', 'Click "Mark complete" on the project\'s Installation panel — visits and reports are records, they don\'t complete a milestone by themselves.'],
         ['Commissioning & Handover', 'Explicit action', 'Same "Mark complete" action, once site installation is done.'],
       ]),
     ],
@@ -1550,8 +1551,8 @@ export const DEPARTMENT_HELP = {
       { title: 'Manage a blocker', body: 'Record the delay reason and raise the task to the right department. Do not close the milestone while the blocker is unresolved.' },
       { title: 'Complete commissioning', body: 'Enter actual end date, close the milestone, and ensure any punch-list task is either completed or clearly assigned.' },
       { title: 'Confirm the customer view', body: 'Check that the project progress and estimated dates now tell the same story as the site record.' },
-      { title: 'Handle a post-handover complaint', body: 'Log a Service Call against the project, set priority and an SLA target, then Manage it through assignment, diagnosis, and resolution as work happens.' },
-      { title: 'Track a maintenance contract', body: 'Create a Service Contract against the project with its coverage window and entitlement; renew it before it expires rather than letting it lapse.' },
+      { title: 'Log a site visit', body: 'Open Installation → Visits, pick the project, edit the visit that took place (date, time, who went) and mark it Done. Add a visit if an extra one was needed.' },
+      { title: 'Write a report', body: 'Open Installation → Documentation, pick the project and call type, fill the form, sign, and save. Use the PDF button to share it.' },
     ],
   },
   Sales: {

@@ -28,10 +28,12 @@ export async function POST(req, { params }) {
     [item.id, item.id]);
   if (Number(used?.n) > 0) return NextResponse.json({ error: 'A purchase order or receipt already exists for this line' }, { status: 409 });
 
-  await execute("UPDATE bom_items SET purchase_status = 'Cancelled' WHERE id = ?", [item.id]);
+  // Side effects first, the status flip last: if one of them fails the line is still open and the
+  // withdraw can simply be retried, instead of a Cancelled line that still holds stock or a PO row.
   await removeItemFromDraftPO(item.id);
   await releaseReservationsForItem(item.id);
   await maybeCloseRfqsForItem(item.id);
+  await execute("UPDATE bom_items SET purchase_status = 'Cancelled' WHERE id = ?", [item.id]);
   await audit('bom_item_withdrawn', { actor: user.username, detail: `${item.source} line ${item.id} (${item.material_description}) withdrawn by Stores` });
   if (item.source === 'sas') {
     try {

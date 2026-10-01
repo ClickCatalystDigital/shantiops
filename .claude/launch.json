@@ -273,6 +273,32 @@
       ],
       "port": 3042,
       "autoPort": false
+    },
+    {
+      "name": "shanti-ops-planning",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--",
+        "-p",
+        "3050"
+      ],
+      "port": 3050,
+      "autoPort": false
+    },
+    {
+      "name": "shanti-ops-stores-verify",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--",
+        "-p",
+        "3061"
+      ],
+      "port": 3061,
+      "autoPort": false
     }
   ]
 }

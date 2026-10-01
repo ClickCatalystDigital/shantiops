@@ -12,7 +12,7 @@ import { getSelectedCompany } from '@/lib/company-filter-server';
 import { filterByCompany } from '@/lib/company-filter.mjs';
 import { salesScope } from '@/lib/sales-visibility';
 import { scopeSalesLists } from '@/lib/sales-visibility.mjs';
-import { getSaleOrders, getLeads, getCustomers, getQuotations, getFunctionalHeads, getPriceLists, getSalesReturns, getInventoryItems, getSalesInvoices, getSalesCreditNotes, getSalePayments, getBranches, getSalesProducts, getSalesTargets, getSalesStages } from '@/lib/data';
+import { getSaleOrders, getLeads, getCustomers, getQuotations, getFunctionalHeads, getPriceLists, getSalesReturns, getTradeRequests, getInventoryItems, getSalesInvoices, getSalesCreditNotes, getSalePayments, getBranches, getSalesProducts, getSalesTargets, getSalesStages } from '@/lib/data';
 import { queryAll } from '@/lib/db';
 import SalesWorkspace from '@/components/SalesWorkspace';
 
@@ -24,14 +24,14 @@ export default async function SalesPage({ searchParams }) {
 
   const sp = await searchParams;
 
-  let [saleOrders, leads, customers, quotations, priceLists, returns, inventoryItems, invoices, creditNotes, heads, savedViewRows, salePayments, branches, salesProducts, salesTargets, stages] = await Promise.all([
+  let [saleOrders, leads, customers, quotations, priceLists, returns, inventoryItems, invoices, creditNotes, heads, savedViewRows, salePayments, branches, salesProducts, salesTargets, stages, tradeRequests] = await Promise.all([
     getSaleOrders(), getLeads(), [], getQuotations(), // customers: searched via API (CustomerPicker), not preloaded
     getPriceLists(), getSalesReturns(), getInventoryItems(),
     getSalesInvoices(), getSalesCreditNotes(),
     getFunctionalHeads(),
     queryAll('SELECT * FROM crm_saved_views WHERE user = ? AND entity = ? ORDER BY pinned DESC, created_at DESC', [user.username, 'leads']),
     getSalePayments(),
-    getBranches(), getSalesProducts(), getSalesTargets(), getSalesStages(),
+    getBranches(), getSalesProducts(), getSalesTargets(), getSalesStages(), getTradeRequests(),
   ]);
   // Global company selector (top bar): narrows the company-owned lists; customers/products are shared.
   const company = getSelectedCompany();
@@ -50,6 +50,6 @@ export default async function SalesPage({ searchParams }) {
   const savedViews = savedViewRows.map(r => ({ ...r, filters: JSON.parse(r.filters || '{}') }));
 
   return (
-    <SalesWorkspace saleOrders={saleOrders} leads={leads} customers={customers} quotations={quotations} priceLists={priceLists} returns={returns} inventoryItems={inventoryItems} invoices={invoices} creditNotes={creditNotes} departments={['Sales']} users={crmUsers} savedViews={savedViews} initialTab={sp?.tab} salePayments={salePayments} branches={branches} salesProducts={salesProducts} salesTargets={salesTargets} stages={stages} isSalesHead={isDepartmentHead(user, 'Sales')} company={company} />
+    <SalesWorkspace saleOrders={saleOrders} leads={leads} customers={customers} quotations={quotations} priceLists={priceLists} returns={returns} tradeRequests={tradeRequests} inventoryItems={inventoryItems} invoices={invoices} creditNotes={creditNotes} departments={['Sales']} users={crmUsers} savedViews={savedViews} initialTab={sp?.tab} salePayments={salePayments} branches={branches} salesProducts={salesProducts} salesTargets={salesTargets} stages={stages} isSalesHead={isDepartmentHead(user, 'Sales')} company={company} />
   );
 }

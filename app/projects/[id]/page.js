@@ -18,7 +18,7 @@ import Link from 'next/link';
 import {
   getProjectDetail, getProjectBom, getProjectPackingLists, getProjectDesignSummary, getScopeOfSupply,
   getDepartmentState, getQcProjectSummary, getJobCards, getMaterialIndentsByProject,
-  getProjectInventoryItems, attachDeliveryLotDates, getBomAssembliesFlat, getCustomers,
+  getProjectInventoryItems, attachDeliveryLotDates, getBomAssembliesFlat, getCustomers, getInstallationProjectSummary,
 } from '@/lib/data';
 import { BOM_FIELD_OWNERS } from '@/lib/bom-fields.mjs';
 import { getFreshSessionUser, isCustomer, isPM, isHead, headDepartments, canAccessDepartment, isDepartmentHead, roleHome } from '@/lib/auth';
@@ -123,6 +123,7 @@ export default async function ProjectDetail({ params }) {
   const showDispatch = packingLists.length > 0;
 
   const canMarkInstallation = await canPerformAction(user, 'Installation', 'installation.milestone.complete');
+  const installationSummary = canAccessDepartment(user, 'Installation') ? await getInstallationProjectSummary(project.id) : null;
 
   return (
     <main className="container flex flex-col gap-6 py-8">
@@ -155,15 +156,16 @@ export default async function ProjectDetail({ params }) {
       <ProjectDesignRow projectId={project.id} scopeOfSupply={canSeeMoney ? sosTitleOnly : []} canSeeMoney={canSeeMoney}
         calcSheets={designSummary?.calcSheets} drawings={designSummary?.drawings} />
 
-      {canAccessDepartment(user, 'Installation') && (milestones.some(m => m.department === 'Installation')) && (
-        <InstallationMilestoneActions projectId={project.id} milestones={milestones.filter(m => m.department === 'Installation')} canMark={canMarkInstallation} />
-      )}
-
       {showProcurement && <ProcurementQueue bom={bom} />}
       {showStores && <StoresSummaryCard projectId={project.id} inventoryCount={inventoryItems.length} deliveryLotsCount={deliveryLotsCount} />}
       {showProduction && <ProductionSummaryCard jobCards={jobCards} materialIndents={materialIndents} />}
       {showQc && <QcProjectSummary projectId={project.id} summary={qcSummary} canManage={canAccessDepartment(user, 'QC')} />}
       {showDispatch && <DispatchSummaryCard projectId={project.id} packingLists={packingLists} />}
+
+      {/* Installation sits below every other department card, just above the Bill of Materials. */}
+      {canAccessDepartment(user, 'Installation') && (milestones.some(m => m.department === 'Installation')) && (
+        <InstallationMilestoneActions projectId={project.id} milestones={milestones.filter(m => m.department === 'Installation')} canMark={canMarkInstallation} summary={installationSummary} />
+      )}
 
       <CommonBomCard projectId={project.id} bom={bom} pendingIds={pending.map(p => p.id)}
         editableFields={bomEditableFields} department={bomTableDepartment} canCancel={canCancelBom}

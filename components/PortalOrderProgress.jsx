@@ -163,7 +163,7 @@ function PhaseRow({ ph, index, expandable, expanded, onToggle }) {
   );
 }
 
-export default function PortalOrderProgress({ phases, drawings, qcCertificates = [], packingLists = [], pct }) {
+export default function PortalOrderProgress({ phases, drawings, qcCertificates = [], packingLists = [], installationVisits = [], installationReports = [], pct }) {
   const [items, setItems] = useState(drawings);
   // One open section at a time, tracked by phase key — 'design' keeps its old default-collapsed
   // behavior, just generalized to any phase that has documents to show.
@@ -181,6 +181,8 @@ export default function PortalOrderProgress({ phases, drawings, qcCertificates =
     design: items.length,
     testing: qcCertificates.length,
     packing: packingLists.length,
+    installation: installationVisits.length,
+    commissioning: installationReports.length,
   };
 
   return (
@@ -222,6 +224,25 @@ export default function PortalOrderProgress({ phases, drawings, qcCertificates =
                       <DocumentRow key={pl.id}
                         name={`Packing List — ${pl.packingNo}${pl.unitProjectNo ? ` (${pl.unitProjectNo}${pl.dispatchedAt ? `, ${formatDate(pl.dispatchedAt)}` : ''})` : ''}`}
                         href={`/api/packing/${pl.id}/pdf`} />
+                    ))}
+                  </li>
+                )}
+                {ph.key === 'installation' && expanded && (
+                  <li className="flex flex-col gap-2 border-b py-3 pl-10">
+                    {installationVisits.map(v => (
+                      <div key={v.id} className="flex items-center justify-between gap-3 rounded-lg border p-3">
+                        <span className="text-sm font-medium">{v.description}{v.unitProjectNo ? ` (${v.unitProjectNo})` : ''}</span>
+                        <span className="shrink-0 text-xs text-muted-foreground">{v.date ? formatDate(v.date) : ''}</span>
+                      </div>
+                    ))}
+                  </li>
+                )}
+                {ph.key === 'commissioning' && expanded && (
+                  <li className="flex flex-col gap-3 border-b py-3 pl-10">
+                    {installationReports.map(r => (
+                      <DocumentRow key={r.id}
+                        name={`Commissioning Report — ${r.reportNo}${r.unitProjectNo ? ` (${r.unitProjectNo})` : ''}${r.date ? ` · ${formatDate(r.date)}` : ''}`}
+                        href={`/api/installation-reports/${r.id}/pdf`} />
                     ))}
                   </li>
                 )}

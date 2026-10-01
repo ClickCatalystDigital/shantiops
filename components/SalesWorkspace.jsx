@@ -2887,6 +2887,53 @@ function ReturnsTab({ returns, saleOrders, inventoryItems, router }) {
   );
 }
 
+// --- Trade Requests (raised by Installation, worked here) ------------------------------------------
+
+const TR_STATUSES = ['open', 'accepted', 'rejected', 'closed'];
+const TR_TONE = { open: 'outline', accepted: 'default', rejected: 'destructive', closed: 'secondary' };
+
+function TradeRequestsTab({ tradeRequests, router }) {
+  const [busyId, setBusyId] = useState(null);
+  async function setStatus(id, status) {
+    setBusyId(id);
+    try { await api(`/api/trade-requests/${id}`, { method: 'PATCH', body: { status } }); router.refresh(); }
+    catch (err) { showToast(err.message, 'error'); }
+    setBusyId(null);
+  }
+  return (
+    <Card>
+      <CardHeader><CardTitle>Trade Requests</CardTitle></CardHeader>
+      <CardContent>
+        {tradeRequests.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No trade requests yet. Installation raises them from its Requests tab.</p> : (
+          <Table>
+            <TableHeader><TableRow><TableHead>No.</TableHead><TableHead>Date</TableHead><TableHead>Raised by</TableHead><TableHead>Item</TableHead><TableHead>MOC</TableHead><TableHead>Size / spec</TableHead><TableHead>Qty</TableHead><TableHead>Project</TableHead><TableHead>Sale Order</TableHead><TableHead>Notes</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
+            <TableBody>{tradeRequests.map(t => (
+              <TableRow key={t.id}>
+                <TableCell className="font-medium">{t.tr_no}</TableCell>
+                <TableCell>{formatDate(t.created_at)}</TableCell>
+                <TableCell>{t.raised_by}<div className="text-xs text-muted-foreground">{t.raised_by_dept}</div></TableCell>
+                <TableCell>{t.material_description}</TableCell>
+                <TableCell>{t.moc || '—'}</TableCell>
+                <TableCell>{t.size_spec || '—'}</TableCell>
+                <TableCell className="tnum">{t.qty_text}</TableCell>
+                <TableCell>{t.project_no || '—'}</TableCell>
+                <TableCell>{t.sale_order_no || '—'}</TableCell>
+                <TableCell className="max-w-48 whitespace-normal text-xs text-muted-foreground">{t.notes || '—'}</TableCell>
+                <TableCell>
+                  <Select value={t.status} onValueChange={v => setStatus(t.id, v)} disabled={busyId === t.id}>
+                    <SelectTrigger className="h-7 w-28"><SelectValue /></SelectTrigger>
+                    <SelectContent>{TR_STATUSES.map(st => <SelectItem key={st} value={st}><Badge variant={TR_TONE[st]}>{st}</Badge></SelectItem>)}</SelectContent>
+                  </Select>
+                </TableCell>
+              </TableRow>
+            ))}</TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // Campaigns/AddCampaignDialog moved to components/MarketingWorkspace.jsx (2026-09-24) — Marketing
 // has its own tab/URL now (/market), split from Sales.
 
@@ -3483,6 +3530,7 @@ const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 const PANEL_GROUPS = [
   { label: 'Enquiries', items: [
     { key: 'leads', label: 'Enquiries', icon: UserPlusIcon, description: 'Every enquiry through the funnel — list or board' },
+    { key: 'trade_requests', label: 'Trade Requests', icon: ClipboardListIcon, description: 'Material requests raised by Installation' },
     { key: 'customers', label: 'Customers', icon: UsersIcon, description: 'Accounts, contacts, addresses and Customer 360' },
   ] },
   { label: 'Deals', items: [
@@ -3556,7 +3604,7 @@ function FunnelStagesTab({ stages, canEdit, router }) {
   );
 }
 
-export default function SalesWorkspace({ saleOrders, leads, customers, quotations, priceLists = [], returns = [], inventoryItems = [], invoices = [], creditNotes = [], departments = ['Sales'], users = [], savedViews = [], initialTab, salePayments = [], branches = [], salesProducts = [], salesTargets = [], stages = [], isSalesHead = false, company = null }) {
+export default function SalesWorkspace({ saleOrders, leads, customers, quotations, priceLists = [], returns = [], tradeRequests = [], inventoryItems = [], invoices = [], creditNotes = [], departments = ['Sales'], users = [], savedViews = [], initialTab, salePayments = [], branches = [], salesProducts = [], salesTargets = [], stages = [], isSalesHead = false, company = null }) {
   const router = useRouter();
   // Sales-only now — Marketing has its own tab/URL (/market, MarketingWorkspace.jsx). No more
   // per-viewer group filtering; every group in PANEL_GROUPS always renders here.
@@ -3589,6 +3637,7 @@ export default function SalesWorkspace({ saleOrders, leads, customers, quotation
           {activePanel.key === 'invoices' && <InvoicesTab invoices={invoices} creditNotes={creditNotes} router={router} />}
           {activePanel.key === 'payment_orders' && <PaymentOrdersTab saleOrders={saleOrders} payments={salePayments} invoices={invoices} customers={customers} users={users} isSalesHead={isSalesHead} company={company} />}
           {activePanel.key === 'payment_log' && <PaymentLogTab saleOrders={saleOrders} payments={salePayments} invoices={invoices} company={company} />}
+          {activePanel.key === 'trade_requests' && <TradeRequestsTab tradeRequests={tradeRequests} router={router} />}
           {activePanel.key === 'returns' && <ReturnsTab returns={returns} saleOrders={saleOrders} inventoryItems={inventoryItems} router={router} />}
           {activePanel.key === 'tasks' && <AllTasksTab users={users} />}
           {activePanel.key === 'email_setup' && <EmailSetupTab />}

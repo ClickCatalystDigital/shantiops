@@ -19,7 +19,7 @@ export default async function Portal({ params }) {
 
   const data = await getCustomerView(params.id);
   if (!data) notFound();
-  const { project, phases, estDispatch, packingLists, drawings, invoices, qcCertificates, isSplitOrder, unitCount } = data;
+  const { project, phases, estDispatch, packingLists, drawings, invoices, qcCertificates, isSplitOrder, unitCount, installationVisits, installationReports } = data;
   const doneCount = phases.filter(p => p.status === 'done').length;
   const pct = Math.round((doneCount / phases.length) * 100);
 
@@ -46,7 +46,7 @@ export default async function Portal({ params }) {
           </p>
         </div>
 
-        <PortalOrderProgress phases={phases} drawings={drawings} qcCertificates={qcCertificates} packingLists={packingLists} pct={pct} />
+        <PortalOrderProgress phases={phases} drawings={drawings} qcCertificates={qcCertificates} packingLists={packingLists} installationVisits={installationVisits} installationReports={installationReports} pct={pct} />
 
         <Card>
           <CardHeader>

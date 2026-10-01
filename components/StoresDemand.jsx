@@ -57,7 +57,7 @@ function Counts({ s }) {
   );
 }
 
-function ProjectCard({ p, inventoryItems, fromDept }) {
+function ProjectCard({ p, inventoryItems, fromDept, onChanged }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [rows, setRows] = useState(null);
@@ -85,7 +85,7 @@ function ProjectCard({ p, inventoryItems, fromDept }) {
   }
   async function run(r, fn) {
     setBusy(r.id);
-    try { await fn(); await load(); router.refresh(); } catch (e) { showToast(e.message, 'error'); }
+    try { await fn(); await load(); onChanged?.(); router.refresh(); } catch (e) { showToast(e.message, 'error'); }
     setBusy(null);
   }
   const reserveRemnant = r => run(r, async () => {
@@ -192,7 +192,7 @@ function ProjectCard({ p, inventoryItems, fromDept }) {
       )}
       {reserveFor && (
         <ReserveDialog request={reserveFor} inventoryItems={reservable} matches={possibleMatches(reserveFor, reservable)}
-          router={{ refresh: () => { load(); router.refresh(); } }}
+          router={{ refresh: () => { load(); onChanged?.(); router.refresh(); } }}
           defaultQty={reserveFor.free > 0 ? Math.min(reserveFor.free, Math.max(0, reserveFor.required - reserveFor.secured)) : undefined}
           onClose={() => setReserveFor(null)} />
       )}
@@ -207,13 +207,13 @@ export default function StoresDemand({ inventoryItems }) {
   const [data, setData] = useState(null);
   const [showNoDate, setShowNoDate] = useState(false);
 
-  useEffect(() => {
-    let live = true;
-    setData(null);
-    api(`/api/plan/projects?within=${within}`).then(d => live && setData(d))
-      .catch(e => { showToast(e.message, 'error'); live && setData({ projects: [] }); });
-    return () => { live = false; };
-  }, [within]);
+  // silent = refresh the card totals after an action without blanking the list.
+  function fetchSummaries(silent) {
+    if (!silent) setData(null);
+    return api(`/api/plan/projects?within=${within}`).then(d => setData(d))
+      .catch(e => { showToast(e.message, 'error'); setData(prev => prev || { projects: [] }); });
+  }
+  useEffect(() => { fetchSummaries(false); }, [within]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const dated = (data?.projects || []).filter(p => p.group === 'window');
   const undated = (data?.projects || []).filter(p => p.group === 'nodate');
@@ -241,14 +241,14 @@ export default function StoresDemand({ inventoryItems }) {
         : dated.length === 0 && undated.length === 0 ? <p className="py-8 text-center text-sm text-muted-foreground">No projects start in this window.</p>
         : (
           <>
-            {dated.filter(match).map(p => <ProjectCard key={p.project_id} p={p} inventoryItems={inventoryItems} fromDept="Stores" />)}
+            {dated.filter(match).map(p => <ProjectCard key={p.project_id} p={p} inventoryItems={inventoryItems} fromDept="Stores" onChanged={() => fetchSummaries(true)} />)}
             {undated.length > 0 && (
               <>
                 <button type="button" className="flex items-center gap-2 self-start text-sm text-muted-foreground underline" onClick={() => setShowNoDate(v => !v)}>
                   {showNoDate ? <ChevronDownIcon className="size-4" /> : <ChevronRightIcon className="size-4" />}
                   No start date ({undated.length})
                 </button>
-                {showNoDate && undated.filter(match).map(p => <ProjectCard key={p.project_id} p={p} inventoryItems={inventoryItems} fromDept="Stores" />)}
+                {showNoDate && undated.filter(match).map(p => <ProjectCard key={p.project_id} p={p} inventoryItems={inventoryItems} fromDept="Stores" onChanged={() => fetchSummaries(true)} />)}
               </>
             )}
           </>

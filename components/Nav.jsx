@@ -95,6 +95,8 @@ export default function Nav({ user, reportDepartments = [] }) {
   addDeptTab(['QC'], '/qc', 'QC', FlaskConicalIcon);
   addDeptTab(['Dispatch'], '/dispatch', 'Dispatch', PackageIcon);
   addDeptTab(['Installation'], '/installation', 'Installation', MapPinIcon);
+  // PR + Trade Request surface for Installation; PMs already have the /pr "Requests" tab, so label it apart.
+  addDeptTab(['Installation'], '/installation-requests', isDeptPM ? 'Install Requests' : 'Requests', InboxIcon);
   addDeptTab(['Accounts'], '/accounts', 'Accounts', LandmarkIcon);
   addDeptTab(['HR'], '/hr', 'HR', UsersIcon);
   // Catalog-driven (lib/reports/catalog.js via reportDepartments, computed server-side in

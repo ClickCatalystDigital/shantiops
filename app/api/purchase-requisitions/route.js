@@ -15,7 +15,7 @@
 // decision — Sales pushes the request, Stores only ever receives and fulfills it.
 import { NextResponse } from 'next/server';
 import { execute, queryOne, nextCounterValue } from '@/lib/db';
-import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
+import { getFreshSessionUser, canAccessDepartment, headDepartments, isPM } from '@/lib/auth';
 import { audit } from '@/lib/usb';
 import { notifyDepartment } from '@/lib/notify';
 import { getAllocationMode, autoReserveFromStock, notifyProcurementIfShortfall } from '@/lib/procurement';
@@ -25,16 +25,17 @@ import { CATEGORY_LABEL } from '@/lib/section-shapes.js';
 import { getPurchaseRequisitions } from '@/lib/data';
 import { learnCategoryIfConfirmed } from '@/lib/category-learning';
 
-const PR_DEPARTMENTS = ['Engineering', 'Design', 'Stores', 'Sales'];
+const PR_DEPARTMENTS = ['Engineering', 'Design', 'Stores', 'Sales', 'Installation'];
 
 // PR History — read-only, gated to whoever can reach the Requests/Engineering tabs that show it
 // (canAccessDepartment already returns true for a PM regardless of department, lib/auth.js:196-200).
 export async function GET() {
   const user = await getFreshSessionUser();
-  if (!['Engineering', 'Design', 'Stores'].some(d => canAccessDepartment(user, d))) {
+  if (!['Engineering', 'Design', 'Stores', 'Installation'].some(d => canAccessDepartment(user, d))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
-  return NextResponse.json(await getPurchaseRequisitions());
+  // History is per department: a head sees only PRs raised by the departments they hold (PMs see all).
+  return NextResponse.json(await getPurchaseRequisitions(isPM(user) ? {} : { depts: headDepartments(user) }));
 }
 const SAS_RAISERS = new Set(['Sales']);
 // CALC-CHANGES2.md §F — category tag, 'bom'-source lines only (stock/sas are inventory/trade

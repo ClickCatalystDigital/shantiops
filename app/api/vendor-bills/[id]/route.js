@@ -89,13 +89,12 @@ export async function PATCH(req, { params }) {
         // delivery actually created instead — see costUncostedPieces()'s own self-correcting design.
         await costUncostedPieces(it.inventory_item_id, it.qty, it.rate);
       } else {
-        // Cost only. The quantity was already added to stock when the delivery was received (QC
-        // release / stock receipt), so adding it again here counted the same delivery twice. The
-        // received quantity is already inside on_hand, so blend the rate against what was there before it.
-        const newAvgCost = weightedAverageCost({
-          existingQty: Math.max(0, (Number(it.on_hand) || 0) - it.qty), existingAvgCost: it.avg_cost, receivedQty: it.qty, receivedUnitCost: it.rate,
-        });
-        await execute('UPDATE inventory_items SET avg_cost = ? WHERE id = ?', [newAvgCost, it.inventory_item_id]);
+        // The quantity AND the cost were set when the delivery was received (QC release / stock receipt,
+        // cost from the PO price), so the bill only fills a cost that is still missing — it never
+        // adds quantity again or re-blends a cost that already exists.
+        if (!(Number(it.avg_cost) > 0) && Number(it.rate) > 0) {
+          await execute('UPDATE inventory_items SET avg_cost = ? WHERE id = ?', [it.rate, it.inventory_item_id]);
+        }
       }
     }
   }

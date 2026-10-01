@@ -23,8 +23,9 @@ import {
 } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup } from '@/components/ui/select';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { PlusIcon, PencilIcon, Trash2Icon, PackageCheckIcon, UndoIcon, TruckIcon, PackageIcon, ClipboardListIcon, LayersIcon, LogInIcon, SearchIcon, ChevronRightIcon, BoxesIcon, HashIcon, ArrowRightLeftIcon, Share2Icon, SettingsIcon, PuzzleIcon, HandshakeIcon, FactoryIcon, SplitIcon, NetworkIcon, DoorOpenIcon, ArrowDownToLineIcon, Columns3Icon } from 'lucide-react';
+import { PlusIcon, PencilIcon, Trash2Icon, PackageCheckIcon, UndoIcon, TruckIcon, PackageIcon, ClipboardListIcon, LayersIcon, ChevronRightIcon, BoxesIcon, HashIcon, PuzzleIcon, HandshakeIcon, FactoryIcon, SplitIcon, NetworkIcon, DoorOpenIcon, ArrowDownToLineIcon, Columns3Icon, ChevronDownIcon, ChevronsUpDownIcon, ChevronsDownUpIcon, BanIcon, FileTextIcon } from 'lucide-react';
 import { api, showToast, formatDate } from '@/lib/client';
 import { formatMoney } from '@/lib/format';
 import { derivePurchaseStage } from '@/lib/bom-fields.mjs';
@@ -39,7 +40,7 @@ import { pieceDimsLabel } from '@/components/CutDialog';
 import { pieceKindLabel, groupPiecesByRoot } from '@/components/PieceLineage';
 import ReceiptPicker from '@/components/ReceiptPicker';
 import ReceiveBomItemDialog from '@/components/ReceiveBomItemDialog';
-import { normalizeWords, materialMismatchReason } from '@/lib/match-utils';
+import { normalizeWords } from '@/lib/match-utils';
 import { pieceWeight } from '@/lib/piece-weight';
 import { todayISO, toISODate } from '@/lib/date';
 import {
@@ -105,26 +106,19 @@ const PIECE_STATUS = {
 // the page (no new query, no new schema). Each chip switches to the sidebar tab it counts — the
 // workspace moved to WorkspaceSidebar's tabbed sections, so an anchor-jump to an on-page div id
 // no longer reaches a section that isn't mounted on the current tab.
-function TodaySummary({ inventoryItems, openRequests, activeReservations, onNavigate, onShowLowStock }) {
+// The one at-a-glance signal Inventory still needs: items at or below their minimum. Clicking it filters
+// the table below (the request/ready-to-issue chips went away with the Demand and Allocator rework).
+function TodaySummary({ inventoryItems, onShowLowStock }) {
   const lowStock = inventoryItems.filter(isLowStock).length;
-  // The old "open requests / with a possible match" chips counted every open BOM line (incl. unreleased
-  // BOMs); the Demand tab now lists released lines per project, so those chips would disagree with it.
-  const chips = [
-    // Below-minimum chip doubles as the Inventory table's filter switch (onShowLowStock), not
-    // just a tab jump — previously it navigated to Inventory (already the default tab) and did
-    // nothing else, so clicking it never actually narrowed anything.
-    { tab: 'inventory', dot: 'bg-danger', value: lowStock, label: 'low stock', onClick: onShowLowStock },
-  ];
+  if (!lowStock) return null;
   return (
     <div className="flex flex-wrap gap-2">
-      {chips.map(c => (
-        <button key={c.label} type="button" onClick={() => { onNavigate(c.tab); c.onClick?.(); }}
-          className="flex items-center gap-2 rounded-full border bg-card px-3 py-1.5 text-sm shadow-sm transition-colors hover:bg-muted/50">
-          <span className={`size-2 rounded-full ${c.dot}`} />
-          <span className="font-semibold tnum">{c.value}</span>
-          <span className="text-muted-foreground">{c.label}</span>
-        </button>
-      ))}
+      <button type="button" onClick={onShowLowStock}
+        className="flex items-center gap-2 rounded-full border bg-card px-3 py-1.5 text-sm shadow-sm transition-colors hover:bg-muted/50">
+        <span className="size-2 rounded-full bg-danger" />
+        <span className="font-semibold tnum">{lowStock}</span>
+        <span className="text-muted-foreground">low stock</span>
+      </button>
     </div>
   );
 }
@@ -1471,6 +1465,25 @@ function ActiveReservationsCard({ activeReservations, inventoryItems, router, ti
 // pattern ProductionBomTab/CutStockTab already use for their own on-mount fetches) rather than
 // threading a new prop through app/stores/page.js for a list that changes constantly anyway.
 const INDENT_STATUS = { open: 'Open', partially_released: 'Partly released', released: 'Released', cancelled: 'Cancelled' };
+const INDENT_TONE = {
+  open: 'bg-info/10 text-info ring-info/20', partially_released: 'bg-warning/10 text-warning ring-warning/20',
+  released: 'bg-success/10 text-success ring-success/20', cancelled: 'bg-muted text-muted-foreground ring-border',
+};
+
+// A small icon button with a hover label — the Stores idiom for row actions.
+function IconAction({ label, onClick, href, danger, children, disabled }) {
+  const cls = danger ? 'hover:text-danger' : '';
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        {href
+          ? <Button asChild size="icon-sm" variant="ghost" className={cls}><a href={href} target="_blank" rel="noreferrer" aria-label={label}>{children}</a></Button>
+          : <Button size="icon-sm" variant="ghost" className={cls} aria-label={label} disabled={disabled} onClick={e => { e.stopPropagation(); onClick?.(e); }}>{children}</Button>}
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  );
+}
 
 function IndentItemRow({ indent, item, onDone, selectable, selected, onToggle }) {
   const [qty, setQty] = useState(String(item.qty_requested - item.qty_released));
@@ -1537,7 +1550,7 @@ function IndentItemRow({ indent, item, onDone, selectable, selected, onToggle })
           );
         })()}
       </div>
-      <Badge variant="outline">{INDENT_STATUS[item.status] || item.status}</Badge>
+      <span className={`inline-flex shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset ${INDENT_TONE[item.status] || INDENT_TONE.open}`}>{INDENT_STATUS[item.status] || item.status}</span>
       {['open', 'partially_released'].includes(item.status) && (
         pieces && Array.isArray(pieces) ? (
           <>
@@ -1572,12 +1585,22 @@ function IndentsCard({ router }) {
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(null);
   const [showHistory, setShowHistory] = useState(false);
+  // Which indent cards are folded shut. First load: with more than a few indents they start folded so
+  // the list reads as a summary; the user's own folding is kept across reloads after that.
+  const [collapsed, setCollapsed] = useState(new Set());
+  const [seeded, setSeeded] = useState(false);
 
   async function load() {
-    setIndents(await api('/api/material-indents'));
+    const rows = await api('/api/material-indents');
+    setIndents(rows);
+    if (!seeded) {
+      setSeeded(true);
+      const live = rows.filter(i => ['open', 'partially_released'].includes(i.status));
+      if (live.length > 3) setCollapsed(new Set(live.map(i => i.id)));
+    }
   }
 
-  useEffect(() => { load().catch(err => showToast(err.message, 'error')); }, []);
+  useEffect(() => { load().catch(err => showToast(err.message, 'error')); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const needle = q.trim().toLowerCase();
   const isLive = i => ['open', 'partially_released'].includes(i.status);
@@ -1657,6 +1680,10 @@ function IndentsCard({ router }) {
               <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
                 <Checkbox checked={showHistory} onCheckedChange={v => setShowHistory(!!v)} /> Show released &amp; cancelled
               </label>
+              <IconAction label={shown.length > 0 && shown.every(i => collapsed.has(i.id)) ? 'Expand all' : 'Collapse all'}
+                onClick={() => setCollapsed(shown.length > 0 && shown.every(i => collapsed.has(i.id)) ? new Set() : new Set(shown.map(i => i.id)))}>
+                {shown.length > 0 && shown.every(i => collapsed.has(i.id)) ? <ChevronsUpDownIcon /> : <ChevronsDownUpIcon />}
+              </IconAction>
             </div>
             {selectableIds.length > 0 && (
               <label className="flex cursor-pointer items-center gap-2 pb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -1666,42 +1693,72 @@ function IndentsCard({ router }) {
             )}
             {shown.length === 0 ? (
               <p className="py-6 text-center text-sm text-muted-foreground">No indents match.</p>
-            ) : shown.map(indent => (
-              <div key={indent.id} className="rounded-md border bg-muted/20 py-3">
-                <div className="mb-1 flex flex-wrap items-center gap-2 px-3 text-sm">
-                  <span className="font-semibold">{indent.indent_no}</span>
-                  <Badge variant="outline">{INDENT_STATUS[indent.status] || indent.status}</Badge>
-                  <span className="text-muted-foreground">{indent.project_no || '—'} · raised by {indent.requested_by}{indent.created_at ? ` · ${formatDate(indent.created_at)}` : ''}</span>
-                  <a href={`/api/material-indents/${indent.id}/pdf`} target="_blank" rel="noreferrer" className="text-xs underline">PDF</a>
-                  <span className="ml-auto flex items-center gap-3">
-                    {isLive(indent) && (
-                      <button type="button" className="text-xs text-muted-foreground underline hover:text-danger" onClick={async () => {
-                        if (!window.confirm(`Cancel ${indent.indent_no}? Lines not yet handed over are cancelled; what was already released stays released.`)) return;
-                        try { await api(`/api/material-indents/${indent.id}`, { method: 'PATCH', body: { status: 'cancelled' } }); showToast('Indent cancelled'); load(); router.refresh(); }
-                        catch (err) { showToast(err.message, 'error'); }
-                      }}>Cancel</button>
+            ) : shown.map(indent => {
+              const folded = collapsed.has(indent.id);
+              const lines = indent.items.filter(it => it.status !== 'cancelled');
+              const doneLines = lines.filter(it => it.status === 'released').length;
+              const releasable = indent.items.filter(it => ['open', 'partially_released'].includes(it.status) && it.tracking_mode !== 'piece').map(it => it.id);
+              const allIn = releasable.length > 0 && releasable.every(id => selected.has(id));
+              const someIn = releasable.some(id => selected.has(id));
+              const toggleFold = () => setCollapsed(prev => { const n = new Set(prev); n.has(indent.id) ? n.delete(indent.id) : n.add(indent.id); return n; });
+              return (
+                <div key={indent.id} className={`rounded-lg border bg-card shadow-xs ${folded ? '' : 'pb-1'}`}>
+                  <div className="flex cursor-pointer flex-wrap items-center gap-2 px-3 py-2.5 text-sm" onClick={toggleFold}>
+                    <ChevronDownIcon className={`size-4 shrink-0 text-muted-foreground transition-transform ${folded ? '-rotate-90' : ''}`} />
+                    {releasable.length > 0 && (
+                      <span onClick={e => e.stopPropagation()}>
+                        <Checkbox checked={allIn ? true : someIn ? 'indeterminate' : false} aria-label="Select this indent's releasable lines"
+                          onCheckedChange={v => setSelected(prev => { const n = new Set(prev); releasable.forEach(id => (v ? n.add(id) : n.delete(id))); return n; })} />
+                      </span>
                     )}
-                    {!indent.items.some(it => Number(it.qty_released) > 0) && (
-                      <button type="button" className="text-xs text-muted-foreground underline hover:text-danger" onClick={async () => {
-                        if (!window.confirm(`Delete ${indent.indent_no}?`)) return;
-                        try { await api(`/api/material-indents/${indent.id}`, { method: 'DELETE' }); showToast('Indent deleted'); load(); router.refresh(); }
-                        catch (err) { showToast(err.message, 'error'); }
-                      }}>Delete</button>
+                    <span className="font-semibold">{indent.indent_no}</span>
+                    <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset ${INDENT_TONE[indent.status] || INDENT_TONE.open}`}>
+                      {INDENT_STATUS[indent.status] || indent.status}
+                    </span>
+                    <span className="text-muted-foreground">
+                      {indent.project_no || '—'} · {indent.requested_by}{indent.created_at ? ` · ${formatDate(indent.created_at)}` : ''}
+                    </span>
+                    {lines.length > 0 && (
+                      <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground tabular-nums" title={`${doneLines} of ${lines.length} lines released`}>
+                        <span className="h-1.5 w-16 shrink-0 overflow-hidden rounded-full bg-muted"><span className="block h-full bg-primary" style={{ width: `${(doneLines / lines.length) * 100}%` }} /></span>
+                        {doneLines}/{lines.length}
+                      </span>
                     )}
-                  </span>
+                    <span className="ml-auto flex items-center" onClick={e => e.stopPropagation()}>
+                      <IconAction label="Download PDF" href={`/api/material-indents/${indent.id}/pdf`}><FileTextIcon /></IconAction>
+                      {isLive(indent) && (
+                        <IconAction label="Cancel indent" danger onClick={async () => {
+                          if (!window.confirm(`Cancel ${indent.indent_no}? Lines not yet handed over are cancelled; what was already released stays released.`)) return;
+                          try { await api(`/api/material-indents/${indent.id}`, { method: 'PATCH', body: { status: 'cancelled' } }); showToast('Indent cancelled'); load(); router.refresh(); }
+                          catch (err) { showToast(err.message, 'error'); }
+                        }}><BanIcon /></IconAction>
+                      )}
+                      {!indent.items.some(it => Number(it.qty_released) > 0) && (
+                        <IconAction label="Delete indent" danger onClick={async () => {
+                          if (!window.confirm(`Delete ${indent.indent_no}?`)) return;
+                          try { await api(`/api/material-indents/${indent.id}`, { method: 'DELETE' }); showToast('Indent deleted'); load(); router.refresh(); }
+                          catch (err) { showToast(err.message, 'error'); }
+                        }}><Trash2Icon /></IconAction>
+                      )}
+                    </span>
+                  </div>
+                  {!folded && (
+                    <>
+                      {indent.notes && <p className="px-4 pb-1 text-xs text-muted-foreground">{indent.notes}</p>}
+                      <div className="flex flex-col divide-y border-t px-3">
+                        {indent.items.filter(it => showHistory || ['open', 'partially_released'].includes(it.status)).map(item => (
+                          <IndentItemRow key={item.id} indent={indent} item={item}
+                            selectable={item.tracking_mode !== 'piece'}
+                            selected={selected.has(item.id)}
+                            onToggle={toggleOne}
+                            onDone={() => { load(); router.refresh(); }} />
+                        ))}
+                      </div>
+                    </>
+                  )}
                 </div>
-                {indent.notes && <p className="px-3 pb-1 text-xs text-muted-foreground">{indent.notes}</p>}
-                <div className="flex flex-col divide-y px-3">
-                  {indent.items.filter(it => showHistory || ['open', 'partially_released'].includes(it.status)).map(item => (
-                    <IndentItemRow key={item.id} indent={indent} item={item}
-                      selectable={item.tracking_mode !== 'piece'}
-                      selected={selected.has(item.id)}
-                      onToggle={toggleOne}
-                      onDone={() => { load(); router.refresh(); }} />
-                  ))}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </>
         )}
       </CardContent>
@@ -2588,7 +2645,7 @@ function useInventoryColumns() {
   return [cols, toggle];
 }
 
-function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavigate, certificates, projects }) {
+function InventoryTab({ inventoryItems, openRequests, certificates, projects }) {
   const router = useRouter();
   const [dialogItem, setDialogItem] = useState(undefined); // undefined = closed, null = add, {} = edit
   const [piecesFor, setPiecesFor] = useState(null);
@@ -2637,8 +2694,7 @@ function InventoryTab({ inventoryItems, openRequests, activeReservations, onNavi
 
   return (
     <div className="flex flex-col gap-6">
-      <TodaySummary inventoryItems={inventoryItems} openRequests={openRequests} activeReservations={activeReservations}
-        onNavigate={onNavigate} onShowLowStock={() => setLowOnly(true)} />
+      <TodaySummary inventoryItems={inventoryItems} onShowLowStock={() => setLowOnly(true)} />
       <Card>
         <CardHeader>
           <CardTitle>Inventory</CardTitle>
@@ -2804,11 +2860,9 @@ export default function StoresWorkspace({
 }) {
   const router = useRouter();
   // Trade requests Sales pushes (source 'sas') get their own tab; everything else stays in Demand.
-  const demandRequests = openRequests.filter(r => r.source !== 'sas');
   const tradeRequests = openRequests.filter(r => r.source === 'sas');
   const navItems = NAV_ITEMS({
     lowStock: inventoryItems.filter(isLowStock).length,
-    requests: demandRequests.length,
     trade: tradeRequests.length,
     splitOrders: splitOrders.length,
     pendingInward: pendingInwardApprovals.length,
@@ -2828,7 +2882,7 @@ export default function StoresWorkspace({
   return (
     <WorkspaceSidebar title="Inventory" icon={PackageIcon} items={navItems} activeKey={tab} onChange={setTab}>
       {tab === 'inventory' && (
-        <InventoryTab inventoryItems={inventoryItems} openRequests={openRequests} activeReservations={activeReservations} onNavigate={setTab} certificates={certificates} projects={projects} />
+        <InventoryTab inventoryItems={inventoryItems} openRequests={openRequests} certificates={certificates} projects={projects} />
       )}
       {tab === 'requests' && <StoresDemand inventoryItems={inventoryItems} />}
       {tab === 'trade' && (

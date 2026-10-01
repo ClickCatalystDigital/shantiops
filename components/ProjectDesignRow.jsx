@@ -103,7 +103,19 @@ export default function ProjectDesignRow({ projectId, scopeOfSupply = [], calcSh
               });
               return (
                 <div key={d.id} data-entity-code={d.dgNo} className="flex items-center justify-between gap-3 px-4 py-2.5">
-                  <span className="text-sm font-medium">{d.dgNo && <span className="text-muted-foreground">{d.dgNo} · </span>}{d.name}</span>
+                  <div className="flex min-w-0 flex-col gap-0.5">
+                    <span className="text-sm font-medium">{d.dgNo && <span className="text-muted-foreground">{d.dgNo} · </span>}{d.name}</span>
+                    {/* Every uploaded file is a real download (proxied from storage, access-checked by the route). */}
+                    {d.files?.length > 0 && (
+                      <span className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
+                        {d.files.map(f => (
+                          <a key={f.id} href={`/api/calc-drawings/${d.id}/files/${f.id}`} download className="inline-flex items-center gap-1 text-primary hover:underline">
+                            <DownloadIcon className="size-3" />{f.fileName}
+                          </a>
+                        ))}
+                      </span>
+                    )}
+                  </div>
                   <div className="flex items-center gap-4">
                     <ApprovalDot state={approval.internal === 'approved' ? 'approved' : 'not-approved'} />
                     <ApprovalDot state={approval.customer} />

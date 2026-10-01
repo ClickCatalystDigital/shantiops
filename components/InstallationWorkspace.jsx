@@ -17,17 +17,22 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
-  PlusIcon, HeadsetIcon, FileSignatureIcon, BarChart3Icon, MapPinIcon,
+  PlusIcon, HeadsetIcon, FileSignatureIcon, BarChart3Icon, MapPinIcon, CalendarCheckIcon, FileTextIcon, CameraIcon,
 } from 'lucide-react';
 import { api, showToast } from '@/lib/client';
 import { formatDate } from '@/lib/format';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 import { BarList, StatRow, ReportShell } from '@/components/ReportKit';
+import InstallationVisits from '@/components/InstallationVisits';
+import InstallationDocs from '@/components/InstallationDocs';
+import InstallationPhotos from '@/components/InstallationPhotos';
 
+// ponytail: Service Calls / Service Contracts / Reports are hidden for now (redesign in progress) — their
+// components below are kept, unrendered, so they can come back by adding the entries here again.
 const ITEMS = [
-  { key: 'service_calls', label: 'Service Calls', icon: HeadsetIcon },
-  { key: 'contracts', label: 'Service Contracts', icon: FileSignatureIcon },
-  { key: 'reports', label: 'Reports', icon: BarChart3Icon },
+  { key: 'visits', label: 'Visits', icon: CalendarCheckIcon },
+  { key: 'docs', label: 'Documentation', icon: FileTextIcon },
+  { key: 'photos', label: 'Progress Photos', icon: CameraIcon },
 ];
 
 const PRIORITY_CLS = {
@@ -545,15 +550,14 @@ function ReportsPanel({ serviceCalls, serviceContracts, installationMilestones }
 
 // ---------- Workspace shell ----------
 
-export default function InstallationWorkspace({ projects = [], serviceCalls = [], serviceContracts = [], installationMilestones = [], initialTab }) {
-  const router = useRouter();
-  const [tab, setTab] = useState(ITEMS.some(i => i.key === initialTab) ? initialTab : 'service_calls');
+export default function InstallationWorkspace({ projects = [], team = [], initialTab }) {
+  const [tab, setTab] = useState(ITEMS.some(i => i.key === initialTab) ? initialTab : 'visits');
 
   return (
     <WorkspaceSidebar title="Installation" icon={MapPinIcon} items={ITEMS} activeKey={tab} onChange={setTab}>
-      {tab === 'service_calls' && <ServiceCallsCard serviceCalls={serviceCalls} projects={projects} router={router} />}
-      {tab === 'contracts' && <ServiceContractsCard serviceContracts={serviceContracts} projects={projects} router={router} />}
-      {tab === 'reports' && <ReportsPanel serviceCalls={serviceCalls} serviceContracts={serviceContracts} installationMilestones={installationMilestones} />}
+      {tab === 'visits' && <InstallationVisits projects={projects} team={team} />}
+      {tab === 'docs' && <InstallationDocs projects={projects} />}
+      {tab === 'photos' && <InstallationPhotos projects={projects} team={team} />}
     </WorkspaceSidebar>
   );
 }
