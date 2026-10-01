@@ -86,7 +86,7 @@ export default function Nav({ user, reportDepartments = [] }) {
   // it still keys to 'Engineering' specifically, so a future split only touches this one line.
   addDeptTab(['Design', 'Engineering'], '/engineering', 'Engineering', NetworkIcon);
   addDeptTab(['Procurement'], '/procurement', 'Procurement', ShoppingCartIcon);
-  addDeptTab(['Stores'], '/stores', 'Inventory', WarehouseIcon);
+  addDeptTab(['Stores'], '/stores', 'Stores', WarehouseIcon);
   addDeptTab(['Production'], '/production/shop', 'Shop Floor', HardHatIcon);
   // Deferred backlog / planning-notes page for Production-side work that needs real scoping before
   // it's built (starting with the stock-piece Cut UI gap found 2026-08-26) — same department gate

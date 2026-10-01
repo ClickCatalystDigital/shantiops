@@ -2880,7 +2880,7 @@ export default function StoresWorkspace({
   const tradeReservations = activeReservations.filter(r => r.project_is_system);
 
   return (
-    <WorkspaceSidebar title="Inventory" icon={PackageIcon} items={navItems} activeKey={tab} onChange={setTab}>
+    <WorkspaceSidebar title="Stores" icon={PackageIcon} items={navItems} activeKey={tab} onChange={setTab}>
       {tab === 'inventory' && (
         <InventoryTab inventoryItems={inventoryItems} openRequests={openRequests} certificates={certificates} projects={projects} />
       )}
