@@ -1229,7 +1229,7 @@ export const DEPARTMENT_HELP = {
         ],
       }),
       feature('planning', 'Planning', ClipboardListIcon, [
-        'Planning is its own top-level tab (also open to Procurement heads for the Material Plan; Stores sees the same plan in its Demand tab). Material Plan answers one question per BOM line: can we cover it? It shows what is needed, what is already received or reserved, what free stock or a matching remnant could cover, what is on order and when it arrives, and what is still short, with the next step as a button.',
+        'Planning is its own top-level tab, for Production. Stores sees the same material plan in its Demand tab. Material Plan answers one question per BOM line: can we cover it? It shows what is needed, what is already received or reserved, what free stock or a matching remnant could cover, what is on order and when it arrives, and what is still short, with the next step as a button.',
         'Schedule shows every released Work Order as a bar on a date axis with progress, a Delayed flag and a dot for whether its material is covered. Capacity shows each workstation\'s load against its weekly capacity, week by week; click a cell to see which Work Orders fill it, and use Set capacity to enter shifts, hours and working days.',
         'Cut lets you cut a piece-tracked stock piece that Stores has reserved against a Material Indent. If the piece carries a test certificate you must say which project it is cut for, and you can add a short note on why. Backlog lists things found but not yet built.',
       ], {

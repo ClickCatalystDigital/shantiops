@@ -91,7 +91,7 @@ export default function Nav({ user, reportDepartments = [] }) {
   // Deferred backlog / planning-notes page for Production-side work that needs real scoping before
   // it's built (starting with the stock-piece Cut UI gap found 2026-08-26) — same department gate
   // as Shop Floor, deliberately separate from it since it's write-once notes, not a live workspace.
-  addDeptTab(['Production', 'Procurement'], '/planning', 'Planning', ClipboardListIcon);
+  addDeptTab(['Production'], '/planning', 'Planning', ClipboardListIcon);
   addDeptTab(['QC'], '/qc', 'QC', FlaskConicalIcon);
   addDeptTab(['Dispatch'], '/dispatch', 'Dispatch', PackageIcon);
   addDeptTab(['Installation'], '/installation', 'Installation', MapPinIcon);
