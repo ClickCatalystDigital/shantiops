@@ -1,6 +1,6 @@
 // Service expense requests — list (mine / approvals / accounts) and create.
 import { NextResponse } from 'next/server';
-import { execute, nextNumber, withTransaction } from '@/lib/db';
+import { execute, nextCounterValue, withTransaction } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment, isPM } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
@@ -38,7 +38,8 @@ export async function POST(req) {
   if (n.error) return NextResponse.json({ error: n.error }, { status: 400 });
 
   const advanceIds = kind === 'travel' ? [...new Set((b.advance_ids || []).map(Number).filter(Boolean))] : [];
-  const reqNo = await nextNumber(kind === 'cash' ? 'service_cash_no' : 'service_travel_no', kind === 'cash' ? 'CR' : 'TA');
+  // One running id for both forms: EXP-00001, EXP-00002 … (older CR-/TA- ids stay as they are).
+  const reqNo = `EXP-${String(await nextCounterValue('service_expense_no', 0)).padStart(5, '0')}`;
   let id;
   try {
     id = await withTransaction(async tx => {

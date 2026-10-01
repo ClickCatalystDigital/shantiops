@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
-import { execute, queryOne } from '@/lib/db';
+import { execute, queryOne, nextCounterValue } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
-import { signatureError } from '@/lib/installation-report-template.mjs';
+import { signatureError, finalizeDoc } from '@/lib/installation-report-template.mjs';
 import { notifyProjectCustomers } from '@/lib/notify';
 import { audit } from '@/lib/usb';
 
@@ -35,7 +35,11 @@ export async function PATCH(req, { params }) {
   if (b.action) {
     if (b.action === 'finalize') {
       if (row.finalized_at) return NextResponse.json({ error: 'Already finalized' }, { status: 409 });
-      await execute('UPDATE installation_reports SET finalized_at = CURRENT_TIMESTAMP, finalized_by = ? WHERE id = ?', [user.username, id]);
+      // Commissioning: SB-COM-nnn on first finalize, Rev goes up each time a reopened report is finalized again.
+      const needsNo = row.call_type === 'Commissioning' && !row.doc_no;
+      const doc = finalizeDoc(row, needsNo ? await nextCounterValue('commissioning_doc_no', 0) : 0);
+      await execute('UPDATE installation_reports SET finalized_at = CURRENT_TIMESTAMP, finalized_by = ?, doc_no = COALESCE(?, doc_no), revision = COALESCE(?, revision) WHERE id = ?',
+        [user.username, doc.doc_no ?? null, doc.revision ?? null, id]);
     } else if (b.action === 'reopen') {
       // Reopening also withdraws it from the customer — an editable report must not stay published.
       await execute('UPDATE installation_reports SET finalized_at = NULL, finalized_by = NULL, customer_visible = 0, customer_visible_at = NULL WHERE id = ?', [id]);

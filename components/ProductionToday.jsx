@@ -94,7 +94,7 @@ function FollowupTable({ rows, onUpdate }) {
 }
 
 export default function ProductionToday({
-  view, month, date, year, today, deptFilter, deptsToShow, events, openTasks, operators, salesUsers = [], upcomingFollowups = [], upcomingVisits = [],
+  view, month, date, year, today, deptFilter, deptsToShow, events, openTasks, operators, salesUsers = [], upcomingFollowups = [], upcomingVisits = [], viewer = '', defaultVisitScope = 'mine',
 }) {
   const router = useRouter();
   const [dayOpen, setDayOpen] = useState(null);
@@ -143,8 +143,11 @@ export default function ProductionToday({
   const showsCrm = (deptsToShow.includes('Sales') || deptsToShow.includes('Marketing')) || upcomingFollowups.length > 0 || (events.followups || []).length > 0;
   // Service (Installation) site visits: own pill + a Visits card above Tasks.
   const showsVisits = deptsToShow.includes('Installation') || upcomingVisits.length > 0 || (events.visits || []).length > 0;
+  const [visitScope, setVisitScope] = useState(defaultVisitScope); // 'mine' | 'all'
+  const isMine = v => (v.visited_by || '').split(',').map(x => x.trim()).includes(viewer);
   const upcomingVisitsSorted = useMemo(() => [...upcomingVisits]
-    .sort((a, b) => (a.date + (a.visit_time || '')).localeCompare(b.date + (b.visit_time || ''))), [upcomingVisits]);
+    .filter(v => visitScope === 'all' || isMine(v))
+    .sort((a, b) => (a.date + (a.visit_time || '')).localeCompare(b.date + (b.visit_time || ''))), [upcomingVisits, visitScope, viewer]);
   const upcomingSorted = useMemo(() => [...upcomingFollowups]
     .sort((a, b) => (a.date + (a.plan_time || '')).localeCompare(b.date + (b.plan_time || ''))), [upcomingFollowups]);
 
@@ -363,10 +366,20 @@ export default function ProductionToday({
       {/* Service: dated site visits (Installation → Visits), next 5 weeks, above Tasks. */}
       {showsVisits && (
         <Card>
-          <CardHeader><CardTitle>Visits</CardTitle></CardHeader>
+          <CardHeader>
+            <CardTitle>Visits</CardTitle>
+            <CardAction>
+              <div className="flex rounded-md border p-0.5">
+                {[['mine', 'Mine'], ['all', 'All']].map(([k, label]) => (
+                  <button key={k} type="button" onClick={() => setVisitScope(k)}
+                    className={cn('rounded px-2.5 py-0.5 text-xs font-medium', visitScope === k ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground')}>{label}</button>
+                ))}
+              </div>
+            </CardAction>
+          </CardHeader>
           <CardContent className="flex flex-col gap-1">
             {upcomingVisitsSorted.length === 0 && (
-              <p className="py-2 text-center text-sm text-muted-foreground">No visits scheduled in the next 5 weeks.</p>
+              <p className="py-2 text-center text-sm text-muted-foreground">{visitScope === 'mine' ? 'None of your visits in the next 5 weeks.' : 'No visits scheduled in the next 5 weeks.'}</p>
             )}
             {upcomingVisitsSorted.map(v => (
               <Link key={`vs-${v.id}`} href="/installation" className="flex items-center gap-2 rounded-md px-1 py-1.5 hover:bg-muted">

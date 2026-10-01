@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { getFreshSessionUser, isHead, isManager, headDepartments, roleHome } from '@/lib/auth';
+import { getFreshSessionUser, isHead, isManager, isPM, headDepartments, roleHome } from '@/lib/auth';
 import { DEPARTMENTS } from '@/lib/milestones';
 import {
   getDepartmentCalendar, getOpenDepartmentTasks, getFunctionalHeads,
@@ -55,6 +55,8 @@ export default async function ProductionTodayPage({ searchParams }) {
         events={events}
         upcomingFollowups={upcoming?.followups || []}
         upcomingVisits={upcoming?.visits || []}
+        viewer={user.username}
+        defaultVisitScope={isPM(user) ? 'all' : 'mine'}
         openTasks={openTasks}
         operators={operators}
         salesUsers={heads.filter(h => h.active && h.departments.includes('Sales')).map(h => ({ username: h.username, display_name: h.display_name }))}

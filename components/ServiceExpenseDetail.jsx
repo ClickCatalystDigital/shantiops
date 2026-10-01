@@ -2,8 +2,9 @@
 
 // Read-only view of one Service expense request (cash or travel) + the Manager → Executive →
 // Accounts progress strip. Shared by the Service page, Approvals and Accounts.
-import { CheckIcon, XIcon, CircleDotIcon } from 'lucide-react';
+import { CheckIcon, XIcon, CircleDotIcon, DownloadIcon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { formatDate } from '@/lib/format';
 import { STATUS_LABEL, amountInWords, sumRows, tourSummary } from '@/lib/service-expense.mjs';
@@ -89,7 +90,10 @@ export default function RequestView({ r }) {
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div><div className="text-lg font-semibold">{r.req_no}</div><div className="text-xs text-muted-foreground">{r.kind === 'cash' ? 'Cash requisition for sundry expenses' : 'Travelling expenses bill'} · {formatDate(r.form_date)}</div></div>
-        <StatusBadge status={r.status} />
+        <div className="flex items-center gap-2">
+          <Button asChild size="sm" variant="outline"><a href={`/api/service-expenses/${r.id}/pdf`} target="_blank" rel="noreferrer"><DownloadIcon data-icon="inline-start" />PDF</a></Button>
+          <StatusBadge status={r.status} />
+        </div>
       </div>
       <Stepper r={r} />
       {r.status === 'rejected' && <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm"><b>Rejected by {r.rejected_stage}:</b> {r.rejected_note}</div>}

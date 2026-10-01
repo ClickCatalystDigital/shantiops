@@ -25,7 +25,7 @@ export function RequestList({ rows, onOpen, empty = 'Nothing here yet.', showWho
     <div className="divide-y rounded-lg border">
       {rows.map(r => (
         <button key={r.id} type="button" onClick={() => onOpen(r)} className="flex w-full items-center gap-4 px-4 py-3 text-left transition-colors hover:bg-muted/40">
-          <div className="w-20 shrink-0"><div className="font-medium">{r.req_no}</div><div className="text-xs text-muted-foreground">{formatDate(r.form_date)}</div></div>
+          <div className="w-24 shrink-0"><div className="font-medium">{r.req_no}</div><div className="text-xs text-muted-foreground">{formatDate(r.form_date)}</div></div>
           <div className="min-w-0 flex-1">
             <div className="truncate text-sm">{showWho && <b className="mr-2">{r.requester_name}</b>}{r.customers.map(c => c.name).join(', ')}</div>
             <div className="truncate text-xs text-muted-foreground">{r.kind === 'cash' ? 'Cash' : 'Travel'} · {r.purpose}</div>

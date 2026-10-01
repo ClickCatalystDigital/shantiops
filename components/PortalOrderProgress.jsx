@@ -283,7 +283,7 @@ export default function PortalOrderProgress({ phases, drawings, qcCertificates =
                     {/* Every report the Service team finalized and shared: Commissioning, Breakdown, ASC, Other. */}
                     {installationReports.map(r => (
                       <DocumentRow key={r.id}
-                        name={`${r.callType === 'Commissioning' ? 'Commissioning Report' : `${r.callType} Report`} — ${r.reportNo}${r.unitProjectNo ? ` (${r.unitProjectNo})` : ''}`}
+                        name={`${r.callType === 'Commissioning' ? 'Commissioning Report' : `${r.callType} Report`} — ${r.docNo ? `${r.docNo} · Rev ${String(r.revision ?? 0).padStart(2, '0')}` : r.reportNo}${r.unitProjectNo ? ` (${r.unitProjectNo})` : ''}`}
                         meta={[r.date && `Report date ${formatDate(r.date)}`, r.sharedAt && `Shared ${stamp(r.sharedAt)}`].filter(Boolean).join(' · ')}
                         href={`/api/installation-reports/${r.id}/pdf`} />
                     ))}

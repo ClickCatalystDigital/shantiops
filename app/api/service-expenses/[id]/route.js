@@ -4,7 +4,7 @@ import { execute } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment, isPM } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
-import { getRequest, notifyRole, notifyRequester } from '@/lib/service-expenses';
+import { getRequest, canView, notifyRole, notifyRequester } from '@/lib/service-expenses';
 import { notifyDepartment } from '@/lib/notify';
 
 export async function GET(_req, { params }) {
@@ -12,9 +12,7 @@ export async function GET(_req, { params }) {
   if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const r = await getRequest(Number(params.id));
   if (!r) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  const mine = r.requested_by === user.username;
-  const acct = canAccessDepartment(user, 'Accounts') && ['with_accounts', 'settled'].includes(r.status);
-  if (!mine && !isPM(user) && !acct) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  if (!canView(user, r)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   return NextResponse.json(r);
 }
 

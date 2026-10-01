@@ -29,6 +29,7 @@ import BomTable from './BomTable';
 import DimensionInput from './DimensionInput';
 import SearchableSelect from './SearchableSelect';
 import QtyInput from './QtyInput';
+import SaleOrderPicker from './SaleOrderPicker';
 import CategoryFieldsBlock, { OTHER_MOC, MOC_OPTIONS } from './CategoryFieldsBlock';
 import { BOM_FIELD_OWNERS, DIMENSIONAL_CATEGORIES, PURCHASE_STATUSES, STATUS_TONE, DEFAULT_PURCHASE_STATUS } from '@/lib/bom-fields.mjs';
 import { CATEGORY_LABEL, categoryDisplaySpec, categoryWeightKg } from '@/lib/section-shapes';
@@ -84,7 +85,9 @@ function emptyLine() {
 
 const SOURCE_LABEL = { bom: 'Project material', stock: 'Build stock' };
 
-function LineCard({ line, index, projects, inventoryItems, showSourcePicker, onChange, onRemove, removable }) {
+function LineCard({ line, index, projects, inventoryItems, showSourcePicker, onChange, onRemove, removable, tradeMode = false }) {
+  // Trade Request mode: same item fields, but no project split / category / traceability — just a quantity.
+  const src = tradeMode ? 'trade' : line.source;
   // A ref mirror of the latest `line`, read only by the async drawing fetch below — without it,
   // the fetch's post-await update would close over the `line` from the render that kicked it off
   // and silently roll back any edit (e.g. the project pick itself) made to the same line while the
@@ -98,7 +101,10 @@ function LineCard({ line, index, projects, inventoryItems, showSourcePicker, onC
   // a catalog pick or a template can seed one before this ever renders.
   const [mocCustomOpen, setMocCustomOpen] = useState(() => !!line.moc && !MOC_OPTIONS.some(o => o.value === line.moc));
 
-  const showSizeSpecInput = !(line.category && DIMENSIONAL_CATEGORIES.includes(line.category));
+  const dimensional = !!(line.category && DIMENSIONAL_CATEGORIES.includes(line.category));
+  // A catalog pick already carries its spec (Item Master detail), so no second place to type it;
+  // the free-text box is only for an item that is not in the catalog.
+  const showSizeSpecInput = !dimensional && !line.item_id;
 
   function setLine(patch) { onChange({ ...line, ...patch }); }
   function setProject(pkey, patch) {
@@ -157,13 +163,24 @@ function LineCard({ line, index, projects, inventoryItems, showSourcePicker, onC
         </div>
         {showSizeSpecInput && (
           <div className="flex flex-col gap-1.5">
-            <Label>Size / spec (optional)</Label>
+            <Label>Describe the item (not in catalog)</Label>
             <Input value={line.size_spec} onChange={e => setLine({ size_spec: e.target.value })} />
           </div>
         )}
       </div>
 
-      {showSourcePicker && (
+      {!dimensional && line.item_id && line.size_spec && (
+        <p className="text-xs text-muted-foreground">Spec from catalog: {line.size_spec}</p>
+      )}
+
+      {src === 'trade' && (
+        <div className="flex flex-col gap-1.5">
+          <Label>Quantity<span className="text-danger"> *</span></Label>
+          <QtyInput value={line.projects[0]?.qty_text || ''} onChange={v => setProject(line.projects[0].key, { qty_text: v })} />
+        </div>
+      )}
+
+      {showSourcePicker && !tradeMode && (
         <div className="flex flex-col gap-1.5">
           <Label>Kind</Label>
           <Select value={line.source} onValueChange={v => setLine({ source: v })}>
@@ -175,7 +192,7 @@ function LineCard({ line, index, projects, inventoryItems, showSourcePicker, onC
         </div>
       )}
 
-      {line.source === 'bom' && (
+      {(src === 'bom' || src === 'trade') && (
         <div className="flex flex-col gap-1.5">
           <Label>Category (optional)</Label>
           <SearchableSelect className="w-56" value={line.category || ''} options={CATEGORY_OPTIONS}
@@ -193,7 +210,7 @@ function LineCard({ line, index, projects, inventoryItems, showSourcePicker, onC
         </div>
       )}
 
-      {line.source === 'bom' && line.category && (
+      {(src === 'bom' || src === 'trade') && line.category && (
         // Dimensional: what's being *bought* — Thickness (plate) / Diameter+Size+kg-per-m (tube/
         // rolled) / the one shape dimension (round/square/octagonal/flat) — the fields shared by
         // every project on this PR line, since they determine which raw stock gets purchased. Never
@@ -204,11 +221,11 @@ function LineCard({ line, index, projects, inventoryItems, showSourcePicker, onC
         // thickness/diameter it's buying. standard/other (item-master-ref + qty) has no per-project
         // varying field at all, so it renders its normal full block, unaffected.
         <CategoryFieldsBlock category={line.category} fields={line.categoryFields}
-          mode={DIMENSIONAL_CATEGORIES.includes(line.category) ? 'shapeOnly' : 'full'}
+          mode={DIMENSIONAL_CATEGORIES.includes(line.category) && !tradeMode ? 'shapeOnly' : 'full'}
           onChange={categoryFields => setLine({ categoryFields })} />
       )}
 
-      {line.source === 'bom' && (
+      {(src === 'bom' || src === 'trade') && (
         // Traceability requirements — a per-line, per-project judgment (Engineering's call, per
         // BOM_FIELD_OWNERS), never a catalog-level constant. Pre-checked from the catalog pick or
         // category default above, but always editable here regardless of where the line came from.
@@ -225,7 +242,7 @@ function LineCard({ line, index, projects, inventoryItems, showSourcePicker, onC
         </div>
       )}
 
-      {line.source === 'bom' && (
+      {src === 'bom' && (
         // Feature C — distinct from the traceability block above: whether this line ever needs
         // Production's own fabrication step at all (a bought-out item, e.g., doesn't). Deliberately
         // no category-based default — no confident signal exists for it, unlike the four flags
@@ -237,11 +254,11 @@ function LineCard({ line, index, projects, inventoryItems, showSourcePicker, onC
         </label>
       )}
 
-      {line.source === 'bom' && line.category && (
+      {src === 'bom' && line.category && (
         <NamedPartsEditor parts={line.namedParts || []} onChange={namedParts => setLine({ namedParts })} />
       )}
 
-      {line.source === 'bom' && (() => {
+      {src === 'bom' && (() => {
         const isDim = line.category && DIMENSIONAL_CATEGORIES.includes(line.category);
         const isPlate = line.category === 'plate';
         // Live totals — exactly what Procurement's PR-group view sums server-side once this is
@@ -320,7 +337,7 @@ function LineCard({ line, index, projects, inventoryItems, showSourcePicker, onC
         );
       })()}
 
-      {line.source === 'stock' && (
+      {src === 'stock' && (
         <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col gap-1.5">
             <Label>Inventory item</Label>
@@ -478,45 +495,6 @@ function ApplyBomTemplateDialog({ projectId, onClose, router, onApplied }) {
 }
 
 // Trade Request (Installation only) — not a PR: files a row into Sales' Trade Requests tab.
-function TradeRequestDialog({ projects, onClose }) {
-  const [f, setF] = useState({ material_description: '', moc: '', size_spec: '', qty_text: '', project_id: '', sale_order_no: '', notes: '' });
-  const [saving, setSaving] = useState(false);
-  const set = k => e => setF(x => ({ ...x, [k]: e.target.value }));
-  async function save() {
-    if (!f.material_description.trim()) return showToast('Description is required', 'error');
-    if (!f.qty_text.trim()) return showToast('Quantity is required', 'error');
-    setSaving(true);
-    try {
-      const res = await api('/api/trade-requests', { method: 'POST', body: { ...f, project_id: f.project_id || undefined } });
-      showToast(`${res.tr_no} sent to Sales`);
-      onClose();
-    } catch (err) { showToast(err.message, 'error'); } finally { setSaving(false); }
-  }
-  return (
-    <Dialog open onOpenChange={o => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>Trade Request</DialogTitle></DialogHeader>
-        <div className="flex flex-col gap-3">
-          <div className="grid gap-1.5"><Label>Description</Label><Input value={f.material_description} onChange={set('material_description')} autoFocus /></div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="grid gap-1.5"><Label>MOC</Label><Input value={f.moc} onChange={set('moc')} /></div>
-            <div className="grid gap-1.5"><Label>Size / spec</Label><Input value={f.size_spec} onChange={set('size_spec')} /></div>
-            <div className="grid gap-1.5"><Label>Quantity</Label><Input value={f.qty_text} onChange={set('qty_text')} placeholder="e.g. 4 Nos" /></div>
-            <div className="grid gap-1.5"><Label>Sale Order no. (optional)</Label><Input value={f.sale_order_no} onChange={set('sale_order_no')} /></div>
-          </div>
-          <div className="grid gap-1.5">
-            <Label>Project (optional)</Label>
-            <SearchableSelect value={f.project_id} onChange={v => setF(x => ({ ...x, project_id: v }))} placeholder="Search project…"
-              options={projects.map(p => ({ value: String(p.id), label: `${p.project_no}${p.name ? ` · ${p.name}` : ''}` }))} />
-          </div>
-          <div className="grid gap-1.5"><Label>Notes (optional)</Label><Input value={f.notes} onChange={set('notes')} /></div>
-        </div>
-        <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? 'Sending…' : 'Send to Sales'}</Button></DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 // Exported so components/EngineeringWorkspace.jsx can render this same tab from a second entry
 // point (its own sidebar) without nesting a second full WorkspaceSidebar shell — PrWorkspace's own
 // usage below is unchanged either way.
@@ -526,7 +504,13 @@ export function RaisePrTab({ departments, projects, inventoryItems = [], prTempl
   const [lines, setLines] = useState([emptyLine()]);
   const [busy, setBusy] = useState(false);
   const [pickingTemplate, setPickingTemplate] = useState(false);
-  const [tradeOpen, setTradeOpen] = useState(false);
+  // Installation can send a Trade Request (to Sales, not a PR) from this same form.
+  const canTrade = dept === 'Installation';
+  const [tradeMode, setTradeMode] = useState(false);
+  const [tradeSO, setTradeSO] = useState({ id: '', label: '', so_no: '', customer_name: '' });
+  const [tradeProject, setTradeProject] = useState('');
+  const [tradeNotes, setTradeNotes] = useState('');
+  const trade = canTrade && tradeMode;
   const showSourcePicker = dept === 'Stores';
 
   // Templates tab's "Use in Raise PR" hands its items down through the parent (PrWorkspace) as
@@ -545,7 +529,46 @@ export function RaisePrTab({ departments, projects, inventoryItems = [], prTempl
   function addLine() { setLines(ls => [...ls, emptyLine()]); }
   function removeLine(key) { setLines(ls => ls.filter(l => l.key !== key)); }
 
+  async function submitTrade() {
+    for (const l of lines) {
+      if (!l.material_description.trim()) return showToast('Every line needs a description', 'error');
+      if (!l.projects[0]?.qty_text?.trim()) return showToast('Every line needs a quantity', 'error');
+      if (l.category) {
+        if (!l.moc.trim()) return showToast(`${CATEGORY_LABEL[l.category]} needs an MOC`, 'error');
+        const err = validateCategoryFields(l.category, l.categoryFields);
+        if (err) return showToast(`${CATEGORY_LABEL[l.category]} ${err}`, 'error');
+      }
+    }
+    setBusy(true);
+    const sent = [];
+    try {
+      for (const l of lines) {
+        const res = await api('/api/trade-requests', { method: 'POST', body: {
+          material_description: l.material_description, item_id: l.item_id || undefined, moc: l.moc || undefined,
+          size_spec: (l.category ? categoryDisplaySpec(l.category, l.categoryFields) : '') || l.size_spec || undefined,
+          qty_text: l.projects[0].qty_text, project_id: tradeProject || undefined,
+          // Optional detail kept for Stores/Sales to pick up later (category, dimensions, traceability).
+          meta: l.category ? {
+            category: l.category, category_fields: finalizeCategoryFields(l.category, l.categoryFields),
+            requires_heat_no: !!l.requires_heat_no, requires_mtc: !!l.requires_mtc,
+            requires_supplier_batch: !!l.requires_supplier_batch, requires_serial_no: !!l.requires_serial_no,
+          } : undefined, sale_order_no: tradeSO.so_no || undefined,
+          notes: [tradeSO.customer_name && `Customer: ${tradeSO.customer_name}`, tradeNotes].filter(Boolean).join(' · ') || undefined,
+        } });
+        sent.push(res.tr_no);
+      }
+      showToast(`${sent.join(', ')} sent to Sales`);
+      setLines([emptyLine()]); setTradeSO({ id: '', label: '', so_no: '', customer_name: '' }); setTradeProject(''); setTradeNotes('');
+    } catch (err) {
+      // Lines already sent stay sent; keep only the ones that did not go through.
+      if (sent.length) setLines(ls => ls.slice(sent.length));
+      showToast(`${sent.length ? `${sent.join(', ')} sent; ` : ''}${err.message}`, 'error');
+    }
+    setBusy(false);
+  }
+
   async function submit() {
+    if (trade) return submitTrade();
     if (!dept) return showToast('Pick a department', 'error');
     for (const l of lines) {
       if (!l.material_description.trim()) return showToast('Every line needs a description', 'error');
@@ -621,10 +644,37 @@ export function RaisePrTab({ departments, projects, inventoryItems = [], prTempl
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Raise a purchase requisition</CardTitle>
-        <CardAction><Button size="sm" variant="outline" onClick={() => setPickingTemplate(true)}><LayoutTemplateIcon data-icon="inline-start" />Use template</Button></CardAction>
+        <CardTitle>{trade ? 'Send a trade request to Sales' : 'Raise a purchase requisition'}</CardTitle>
+        {!trade && <CardAction><Button size="sm" variant="outline" onClick={() => setPickingTemplate(true)}><LayoutTemplateIcon data-icon="inline-start" />Use template</Button></CardAction>}
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
+        {canTrade && (
+          <div className="flex w-fit rounded-md border p-0.5">
+            {[[false, 'Purchase Request'], [true, 'Trade Request']].map(([v, label]) => (
+              <button key={label} type="button" onClick={() => setTradeMode(v)}
+                className={`rounded px-3 py-1 text-sm font-medium ${tradeMode === v ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}>{label}</button>
+            ))}
+          </div>
+        )}
+        {trade && (
+          <div className="grid gap-3 rounded-md border p-3 sm:grid-cols-2">
+            <div className="flex flex-col gap-1.5 sm:col-span-2">
+              <Label>Sale order (optional)</Label>
+              <SaleOrderPicker value={tradeSO.id} label={tradeSO.label}
+                onChange={(id, so) => setTradeSO(id ? { id, label: `${so.so_no} · ${so.customer_name || ''}`, so_no: so.so_no, customer_name: so.customer_name || '' } : { id: '', label: '', so_no: '', customer_name: '' })} />
+              {tradeSO.customer_name && <p className="text-xs text-muted-foreground">Customer: {tradeSO.customer_name}</p>}
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>Project (optional)</Label>
+              <SearchableSelect value={tradeProject} onChange={setTradeProject} placeholder="Search project…"
+                options={projects.map(p => ({ value: String(p.id), label: `${p.project_no}${p.name ? ` · ${p.name}` : ''}` }))} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>Notes (optional)</Label>
+              <Input value={tradeNotes} onChange={e => setTradeNotes(e.target.value)} />
+            </div>
+          </div>
+        )}
         {departments.length > 1 && (
           <div className="flex flex-col gap-1.5">
             <Label>Raising as</Label>
@@ -636,7 +686,7 @@ export function RaisePrTab({ departments, projects, inventoryItems = [], prTempl
         )}
         {lines.map((l, i) => (
           <LineCard key={l.key} index={i + 1} line={l} projects={projects} inventoryItems={inventoryItems}
-            showSourcePicker={showSourcePicker} onChange={next => updateLine(l.key, next)}
+            showSourcePicker={showSourcePicker} tradeMode={trade} onChange={next => updateLine(l.key, next)}
             onRemove={() => removeLine(l.key)} removable={lines.length > 1} />
         ))}
         <Button size="sm" variant="outline" className="w-fit" onClick={addLine}>
@@ -644,12 +694,10 @@ export function RaisePrTab({ departments, projects, inventoryItems = [], prTempl
         </Button>
         <div className="flex flex-wrap gap-2">
           <Button disabled={busy} onClick={submit} className="w-fit">
-            {busy ? 'Raising…' : 'Raise PR'}
+            {busy ? (trade ? 'Sending…' : 'Raising…') : (trade ? 'Send to Sales' : 'Raise PR')}
           </Button>
-          {dept === 'Installation' && <Button variant="outline" className="w-fit" onClick={() => setTradeOpen(true)}>Trade Request</Button>}
         </div>
       </CardContent>
-      {tradeOpen && <TradeRequestDialog projects={projects} onClose={() => setTradeOpen(false)} />}
       {pickingTemplate && (
         <PrTemplatePicker onClose={() => setPickingTemplate(false)}
           onPick={items => setLines(ls => mergeTemplateItemsIntoLines(ls, items))} />

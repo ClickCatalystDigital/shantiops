@@ -8,7 +8,7 @@ import { PlusIcon, PencilIcon, TrashIcon, DownloadIcon, XIcon } from 'lucide-rea
 import { api, showToast } from '@/lib/client';
 import { formatDate } from '@/lib/format';
 import { todayISO } from '@/lib/date';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -20,7 +20,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import SearchableSelect from '@/components/SearchableSelect';
 import SignaturePad from '@/components/SignaturePad';
 import { projectOptions } from '@/components/InstallationVisits';
-import { CALL_TYPES, sectionsFor, emptyData } from '@/lib/installation-report-template.mjs';
+import { CALL_TYPES, sectionsFor, emptyData, docLabel } from '@/lib/installation-report-template.mjs';
 
 function FieldInput({ field, value, onChange }) {
   const common = { value: value ?? '', onChange: e => onChange(e.target.value) };
@@ -153,7 +153,7 @@ function ReportSheet({ init, onClose, onSaved }) {
       <SheetContent className="w-full data-[side=right]:sm:max-w-5xl">
         <SheetHeader>
           <SheetTitle>{init.call_type === 'Commissioning' ? 'Commissioning report' : `Field service report — ${init.call_type}`}</SheetTitle>
-          <p className="text-xs text-muted-foreground">{init.project_label}{init.report_no ? ` · ${init.report_no}` : ''}</p>
+          <p className="text-xs text-muted-foreground">{init.project_label}{docLabel(init) ? ` · ${docLabel(init)}` : init.report_no ? ` · ${init.report_no}` : ''}</p>
         </SheetHeader>
         <fieldset disabled={fin} className={`min-w-0 flex flex-1 flex-col gap-6 overflow-y-auto px-4 pb-4 ${fin ? '[&_canvas]:pointer-events-none' : ''}`}>
           {fin && <div className="rounded-lg border bg-muted/40 px-3 py-2 text-sm">Finalized — read-only. Reopen to make changes.</div>}
@@ -194,7 +194,7 @@ function ReportSheet({ init, onClose, onSaved }) {
                 className={`relative h-5 w-9 rounded-full transition-colors ${shared ? 'bg-primary' : 'bg-muted-foreground/30'}`}>
                 <span className={`absolute left-0.5 top-0.5 size-4 rounded-full bg-white transition-transform ${shared ? 'translate-x-4' : ''}`} />
               </button>
-              Show to customer
+              Show to customer{init.project_visible ? ' (on for the whole project)' : ''}
             </label>
           )}
           <Button variant="outline" onClick={onClose}>Close</Button>
@@ -214,12 +214,24 @@ export default function InstallationDocs({ projects }) {
   const [reports, setReports] = useState(null);
   const [editing, setEditing] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [projectVisible, setProjectVisible] = useState(false);
   const label = (id) => projectOptions(projects).find(o => o.value === String(id))?.label || '';
 
   const load = useCallback(async () => {
     try { setReports(await api(`/api/installation-reports${projectId ? `?project_id=${projectId}` : ''}`)); } catch (err) { showToast(err.message, 'error'); }
   }, [projectId]);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    setProjectVisible(false);
+    if (projectId) api(`/api/installation-reports/project-visibility?project_id=${projectId}`).then(r => setProjectVisible(r.visible)).catch(() => {});
+  }, [projectId]);
+  async function toggleProjectVisible() {
+    const next = !projectVisible;
+    try {
+      await api('/api/installation-reports/project-visibility', { method: 'PATCH', body: { project_id: Number(projectId), visible: next } });
+      setProjectVisible(next); showToast(next ? 'Customer can view all finalized reports of this project' : 'Project-wide sharing turned off'); load();
+    } catch (err) { showToast(err.message, 'error'); }
+  }
 
   async function startNew() {
     if (!projectId || !callType) return showToast('Pick a project and a call type', 'error');
@@ -237,7 +249,7 @@ export default function InstallationDocs({ projects }) {
       const base = emptyData(full.call_type);
       const tables = { ...base.tables };
       for (const [k, rows] of Object.entries(full.data.tables || {})) if (rows.length) tables[k] = rows;
-      setEditing({ id: r.id, report_no: r.report_no, project_id: r.project_id, call_type: full.call_type, finalized_at: full.finalized_at, customer_visible: full.customer_visible, report_date: full.report_date, project_label: label(r.project_id) || r.project_no,
+      setEditing({ id: r.id, report_no: r.report_no, doc_no: full.doc_no, revision: full.revision, project_visible: !!r.project_visible, project_id: r.project_id, call_type: full.call_type, finalized_at: full.finalized_at, customer_visible: full.customer_visible, report_date: full.report_date, project_label: label(r.project_id) || r.project_no,
         data: { fields: { ...base.fields, ...(full.data.fields || {}) }, tables } });
     } catch (err) {
       // A list can go stale (someone deleted the report) — reload it instead of leaving a dead row.
@@ -269,7 +281,20 @@ export default function InstallationDocs({ projects }) {
         <Button onClick={startNew} disabled={busy}><PlusIcon data-icon="inline-start" />New report</Button>
       </div>
     <Card>
-      <CardHeader><CardTitle>Documentation</CardTitle></CardHeader>
+      <CardHeader>
+        <CardTitle>Documentation</CardTitle>
+        {projectId && (
+          <CardAction>
+            <label className="flex cursor-pointer items-center gap-2 text-sm">
+              <button type="button" role="switch" aria-checked={projectVisible} onClick={toggleProjectVisible}
+                className={`relative h-5 w-9 rounded-full transition-colors ${projectVisible ? 'bg-primary' : 'bg-muted-foreground/30'}`}>
+                <span className={`absolute left-0.5 top-0.5 size-4 rounded-full bg-white transition-transform ${projectVisible ? 'translate-x-4' : ''}`} />
+              </button>
+              Customer can view all finalized reports
+            </label>
+          </CardAction>
+        )}
+      </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {reports === null ? <p className="py-6 text-center text-sm text-muted-foreground">Loading…</p>
           : reports.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No reports yet{projectId ? ' for this project' : ''}.</p> : (
@@ -279,9 +304,9 @@ export default function InstallationDocs({ projects }) {
                 <TableHeader><TableRow><TableHead>No.</TableHead><TableHead>Project</TableHead><TableHead>Call type</TableHead><TableHead>Date</TableHead><TableHead>By</TableHead><TableHead className="w-32" /></TableRow></TableHeader>
                 <TableBody>{reports.map(r => (
                   <TableRow key={r.id}>
-                    <TableCell className="font-medium">{r.report_no}</TableCell>
+                    <TableCell className="font-medium">{docLabel(r) || r.report_no}{docLabel(r) && <div className="text-xs font-normal text-muted-foreground">{r.report_no}</div>}</TableCell>
                     <TableCell>{r.project_no}<div className="text-xs text-muted-foreground">{r.customer_name}</div></TableCell>
-                    <TableCell><Badge variant="outline">{r.call_type}</Badge>{r.finalized_at && <Badge className="ml-1" variant="secondary">{r.customer_visible ? 'Shared' : 'Final'}</Badge>}</TableCell>
+                    <TableCell><Badge variant="outline">{r.call_type}</Badge>{r.finalized_at && <Badge className="ml-1" variant="secondary">{r.customer_visible || r.project_visible ? 'Shared' : 'Final'}</Badge>}</TableCell>
                     <TableCell>{r.report_date ? formatDate(r.report_date) : '—'}</TableCell>
                     <TableCell>{r.created_by}</TableCell>
                     <TableCell>{acts(r)}</TableCell>
@@ -293,7 +318,7 @@ export default function InstallationDocs({ projects }) {
               {reports.map(r => (
                 <div key={r.id} className="rounded-xl border p-3">
                   <div className="flex items-start justify-between gap-2">
-                    <div className="font-medium">{r.report_no}</div><div><Badge variant="outline">{r.call_type}</Badge>{r.finalized_at && <Badge className="ml-1" variant="secondary">{r.customer_visible ? 'Shared' : 'Final'}</Badge>}</div>
+                    <div className="font-medium">{docLabel(r) || r.report_no}</div><div><Badge variant="outline">{r.call_type}</Badge>{r.finalized_at && <Badge className="ml-1" variant="secondary">{r.customer_visible || r.project_visible ? 'Shared' : 'Final'}</Badge>}</div>
                   </div>
                   <div className="mt-1 text-xs text-muted-foreground">{r.project_no} · {r.customer_name} · {r.report_date ? formatDate(r.report_date) : '—'}</div>
                   <div className="mt-1">{acts(r)}</div>

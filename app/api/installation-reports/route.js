@@ -11,7 +11,7 @@ export async function GET(req) {
   if (!user || !canAccessDepartment(user, 'Installation')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const pid = new URL(req.url).searchParams.get('project_id');
   return NextResponse.json(await queryAll(
-    `SELECT r.id, r.report_no, r.project_id, r.call_type, r.report_date, r.created_by, r.updated_at, r.finalized_at, r.customer_visible, p.project_no, p.customer_name
+    `SELECT r.id, r.report_no, r.project_id, r.call_type, r.report_date, r.created_by, r.updated_at, r.finalized_at, r.customer_visible, r.doc_no, r.revision, p.service_reports_customer_visible AS project_visible, p.project_no, p.customer_name
        FROM installation_reports r JOIN projects p ON p.id = r.project_id
       ${pid ? 'WHERE r.project_id = ?' : ''} ORDER BY r.id DESC`, pid ? [pid] : []));
 }
