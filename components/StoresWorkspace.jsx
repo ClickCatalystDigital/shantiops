@@ -1142,7 +1142,7 @@ function OpenRequestsCard({ openRequests, inventoryItems, router, title = 'Deman
         <CardAction><MatchSettingsPopover router={router} /></CardAction>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        {openRequests.length > 0 && <SearchBox value={q} onChange={setQ} placeholder="Search by description or project…" />}
+        {openRequests.length > 0 && <SearchBox className="w-full" value={q} onChange={setQ} placeholder="Search by description or project…" />}
         {openRequests.length === 0 ? (
           <p className="py-6 text-center text-sm text-muted-foreground">Nothing open.</p>
         ) : shown.length === 0 ? (
@@ -1337,7 +1337,7 @@ function MaterialIssuesCard({ projects }) {
         )}
         {recent !== null && recent.length > 0 && (
           <div className="flex flex-wrap items-end gap-2">
-            <SearchBox value={q} onChange={setQ} placeholder="Search by material or project…" />
+            <SearchBox className="min-w-[16rem] flex-1" value={q} onChange={setQ} placeholder="Search by material or project…" />
             <div className="grid gap-1"><Label className="text-xs">From</Label>
               <Input type="date" className="h-8 w-36 text-xs" value={fromDate} onChange={e => setFromDate(e.target.value)} /></div>
             <div className="grid gap-1"><Label className="text-xs">To</Label>
@@ -1652,9 +1652,9 @@ function IndentsCard({ router }) {
           <p className="py-6 text-center text-sm text-muted-foreground">No open indents.</p>
         ) : (
           <>
-            <div className="flex flex-wrap items-center gap-3">
-              <SearchBox value={q} onChange={setQ} placeholder="Search by indent, project, or item…" />
-              <label className="mb-3 flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+            <div className="flex flex-wrap items-center gap-3 pb-1">
+              <SearchBox className="min-w-[16rem] flex-1" value={q} onChange={setQ} placeholder="Search by indent, project, or item…" />
+              <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
                 <Checkbox checked={showHistory} onCheckedChange={v => setShowHistory(!!v)} /> Show released &amp; cancelled
               </label>
             </div>
@@ -1929,7 +1929,7 @@ function GateInwardReceiptsCard({ gateInwardReceipts, router }) {
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         {gateInwardReceipts.length > 0 && (
-          <SearchBox value={q} onChange={setQ} placeholder="Search by GIR #, vehicle, supplier, driver, or material ref…" />
+          <SearchBox className="w-full" value={q} onChange={setQ} placeholder="Search by GIR #, vehicle, supplier, driver, or material ref…" />
         )}
         {gateInwardReceipts.length === 0 ? (
           <p className="py-6 text-center text-sm text-muted-foreground">No gate entries logged yet.</p>
