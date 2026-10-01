@@ -11998,16 +11998,9 @@ generator. All three backfills dry-run first, `usb_audit`-logged, backed up unde
     `notifyUser()` (`lib/notify.js`; the pre-existing `drawing_shared` sweep, §5f, is one caller).
     That function now also emails a customer with `portal_enabled=1`, best-effort — a real
     in-app notification always lands regardless of whether email sends.
-  - **`lib/mail.js` is a deliberate seam, not a fake implementation.** The user has an existing
-    provider but hadn't decided the sending identity (which address customer mail comes from) when
-    this was built — per instruction ("no workarounds"), `sendMail()` throws a clear, actionable
-    error until `MAIL_PROVIDER`/`MAIL_FROM` are set, rather than silently pretending an email went
-    out. **Live-verified this actually happens**: toggling a real customer's portal switch on
-    created the login and returned `502` with the exact "email isn't configured" message — the
-    login was NOT left silently claiming success, and the test toggle was fully reverted (login
-    deleted, `portal_enabled` cleared) afterward. To wire up the real provider once the sending
-    identity is decided: implement the dispatch branch in `lib/mail.js` and set the two env vars —
-    no other file changes.
+  - **Superseded 2026-10-01, see §5dp** — `lib/mail.js` is no longer an unwired seam: it sends
+    through Zoho SMTP from a mailbox saved in Sales → Setup → Email, with a Test/Live switch.
+    (`MAIL_PROVIDER`/`MAIL_FROM` env vars are not used.)
 
 ## 7. Operations-platform data model
 
@@ -12106,10 +12099,7 @@ built, not deferred** (this line was stale): `AccountsWorkspace.jsx`'s `AuditLog
 `GET /api/audit-log` (§5z) already renders `usb_audit` globally, search over 218+ action kinds,
 gated to Accounts + PMs — no longer listed here. File/photo
 uploads (the PMB blob in §5a is the only stored file — there is still no general document store),
-barcode/QR validation at dispatch, WhatsApp notifications, real email delivery (§5ak/§6 — the
-Customer Portal's per-customer login/email plumbing, `lib/mail.js`'s provider seam, and the
-notification-email hook are all built and live-verified; the one missing piece is a decided sending
-identity, blocked on the user), and the §5a "deliberately not
+barcode/QR validation at dispatch, WhatsApp notifications, real email delivery (built — §5dp; it waits on a Zoho mailbox + app password per company from the client)
 built" list (drawings/IBR document management, BOM release workflow, Excel export, in-app BOM
 authoring, supplier analytics). Installation and Design still just get their milestone list; QC now
 has its own test-record module (§5b); Procurement/Stores/Production have the Master BOM.
@@ -12706,3 +12696,50 @@ Built from the former `docs/stores-demand-plan.md` (deleted 2026-10-01 once buil
 - **Sub-tabs (2026-10-01, `components/StoresSubTabs.jsx`, shadcn Tabs)**: Inward = Search / Bulk by project / Awaiting QC (count); Allocator = To route / Routed / Ready to issue; Macro Allocator (inside an order) = Allocate / To route / Routed. Macro "To route" is one table like the Allocator's (Production or Dispatch, Default, one Apply = every ready unit of the line); the pencil picks only some units. "Routed" replaces the old per-unit strips (whose "10 -> Production" badge simply meant 10 units already routed to Production); its pencil takes routing back for chosen units. Partial *quantity* routing exists only per unit (quantity per unit is fixed); the non-split Allocator routes a whole line.
 - **Per-unit indents (2026-10-01)**: `material_indent_items.child_project_id` (nullable; backfilled once where certain: indent raised under a unit project, or notes name exactly one unit). Production's worklist counts "already indented" per (line, unit), so indenting unit 1 no longer makes unit 2 read "Fully indented"; `POST /api/material-indents` requires the unit for split-order lines and checks it is routed to Production for that unit; undoing a routing is blocked only by an indent for that unit (`lib/stores-undo.js`). Stores' Indents card shows a "Unit SB-…" badge.
 - **Batch-tracked lines released through an indent** (`lib/material-issues.js`) now hand over the line's own reserved batches (same as Stores' Issue) instead of drawing fresh FIFO on top; the release must cover the whole reserved quantity, and the line becomes In-Stock. Verified with disposable data (stock went 10 -> 5 exactly once). Serial lines still have no reservation route.
+
+## 5dp. Outgoing email — how it works and what the client must supply (2026-10-01)
+
+Checked on request, including whether the Zoho Mail REST API ("Send an email",
+zoho.com/mail/help/api/post-send-an-email.html) is needed. **It is not.** The app sends through
+**Zoho SMTP with an app password** (`nodemailer`, `lib/mail.js`). That needs only a mailbox and a
+password, no OAuth. The REST API would need much more from the client: a registered OAuth client in
+the Zoho API Console, a refresh token per mailbox, the Zoho account ID and data-centre domain, and
+token refresh in our code. It gives nothing this app uses. Revisit only if Zoho disables SMTP on
+the client's plan.
+
+- **Sender choice** (`pickAccount`): the sending user's own saved mailbox ("My email") is used
+  first. Otherwise the company's shared mailbox is used (the order's or project's company; blank =
+  Shanti Boilers). If neither exists, `MailNotConfigured` names exactly what is missing.
+- **Storage**: `mail_accounts` (scope company|user, email, smtp_host default `smtp.zoho.in`, port
+  465, `secret_enc`). The password is encrypted with `lib/crypto.js` and needs `SECRETS_KEY` (or
+  `EWAY_BILL_CREDENTIALS_KEY`) set on the server. Saving it is never audited and never returned.
+  Company mailboxes can be set only by the Sales Head or a PM.
+- **Safety switch**: `app_settings.mail_mode` is `test` by default. In test mode, mail goes to
+  `mail_test_to` with "[TEST]" in the subject, or is only logged when no test address is set.
+  `live` sends to real customers. Every attempt (sent, redirected or failed) is written to
+  `mail_log`, and the last 30 entries show in Setup → Email. "Send test email" sends to the mailbox
+  itself.
+- **What sends email**:
+  - a quotation emailed from Sales (`/api/quotations/[id]/send-email`);
+  - Customer Portal invites and resends (`lib/portal-invite.js`), which never contain a password;
+  - status-update notifications to portal-enabled customers (`notifyUser` → `kind
+    'status_update'`, best effort).
+
+  Quotation and payment reminders are in-app notifications to Sales staff only; they never email
+  customers.
+- **State of the live database on 2026-10-01**: no mailbox has been saved, mode is `test`, and no
+  test address is set. So today nothing is emailed, and a send shows "No sender mailbox for …".
+- **Needed from the client** (also in `docs/client-needs.md`). For each of Shanti Boilers and Shanti
+  Techno Fab:
+  - the sending address (e.g. `sales@…`);
+  - two-step verification turned on for it;
+  - a Zoho app password named "Shanti Ops";
+  - SMTP access allowed for the mailbox (an admin setting on some plans);
+  - which region the account is on: `smtp.zoho.in` or `.com`.
+
+  Optional: per-salesperson mailboxes, and the plan's daily send limit. **Our side**: set
+  `SECRETS_KEY` on the live server, enter the mailbox in Setup → Email, Send test email, then switch
+  to Live.
+- Only about 300 customers have an email address. For everyone else, portal links go out with
+  **Copy link** (WhatsApp).
+
