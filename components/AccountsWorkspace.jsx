@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import ServiceExpenseInbox from '@/components/ServiceExpenseInbox';
 import { LandmarkIcon, Building2Icon, PlusIcon, PercentIcon, ReceiptIcon, BookIcon, FileTextIcon, CheckIcon, XIcon, LockIcon, HistoryIcon, BoxIcon, RefreshCwIcon, IdCardIcon } from 'lucide-react';
 import { api, showToast } from '@/lib/client';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
@@ -1603,11 +1604,12 @@ function GstReturnsTab({ companies }) {
   );
 }
 
-export default function AccountsWorkspace({ companies, gstRates = [], tdsRates = [], nested = false, initialTab }) {
+export default function AccountsWorkspace({ companies, gstRates = [], tdsRates = [], nested = false, initialTab, user }) {
   const router = useRouter();
   const navItems = [
     { key: 'settings', label: 'Company Settings', icon: LandmarkIcon },
     { key: 'company-entities', label: 'Company Entities', icon: IdCardIcon },
+    { key: 'service-expenses', label: 'Service Expenses', icon: ReceiptIcon },
     { key: 'rates', label: 'GST & TDS Rates', icon: PercentIcon },
     { key: 'ledger', label: 'General Ledger', icon: BookIcon },
     { key: 'fixed-assets', label: 'Fixed Assets', icon: BoxIcon },
@@ -1622,6 +1624,7 @@ export default function AccountsWorkspace({ companies, gstRates = [], tdsRates =
     <WorkspaceSidebar title="Accounts" icon={LandmarkIcon} items={navItems} activeKey={tab} onChange={setTab} nested={nested}>
       {tab === 'settings' && <SettingsTab companies={companies} router={router} />}
       {tab === 'company-entities' && <CompanyEntitiesTab companies={companies} router={router} />}
+      {tab === 'service-expenses' && user && <ServiceExpenseInbox mode="accounts" user={user} />}
       {tab === 'rates' && <RatesTab gstRates={gstRates} tdsRates={tdsRates} router={router} />}
       {tab === 'ledger' && <LedgerTab companies={companies} />}
       {tab === 'fixed-assets' && <FixedAssetsTab companies={companies} />}

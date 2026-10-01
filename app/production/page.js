@@ -37,7 +37,7 @@ export default async function ProductionTodayPage({ searchParams }) {
     getDepartmentCalendar(deptsToShow, from, to, { salesMember: salesScope(user), viewer: user.username }),
     getOpenDepartmentTasks(deptsToShow, today),
     getFunctionalHeads(),
-    getDepartmentCalendar(crmDepts, today, shiftWeek(today, 5), { salesMember: salesScope(user), viewer: user.username }),
+    getDepartmentCalendar([...crmDepts, ...deptsToShow.filter(d => d === 'Installation')], today, shiftWeek(today, 5), { salesMember: salesScope(user), viewer: user.username }),
   ]);
   // Assignable = operators actually in one of the departments being shown. Picks up new heads automatically.
   const operators = heads.filter(o => o.active && o.departments.some(d => deptsToShow.includes(d)));
@@ -54,6 +54,7 @@ export default async function ProductionTodayPage({ searchParams }) {
         deptsToShow={deptsToShow}
         events={events}
         upcomingFollowups={upcoming?.followups || []}
+        upcomingVisits={upcoming?.visits || []}
         openTasks={openTasks}
         operators={operators}
         salesUsers={heads.filter(h => h.active && h.departments.includes('Sales')).map(h => ({ username: h.username, display_name: h.display_name }))}

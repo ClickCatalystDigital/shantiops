@@ -8,7 +8,7 @@ import {
   LayoutDashboardIcon, FolderKanbanIcon, PackageIcon, ShieldCheckIcon, InfoIcon,
   CalendarDaysIcon, HardHatIcon, ShoppingCartIcon, InboxIcon, FlaskConicalIcon,
   TagIcon, WarehouseIcon, TrendingUpIcon, UsersIcon, CalculatorIcon, MapPinIcon, NetworkIcon, MegaphoneIcon,
-  LandmarkIcon, ClipboardListIcon, PencilRulerIcon,
+  LandmarkIcon, ClipboardListIcon, PencilRulerIcon, ReceiptIcon,
 } from 'lucide-react';
 import { DEPARTMENTS } from '@/lib/milestones';
 import { departmentsFor } from '@/lib/manager-scope.mjs';
@@ -94,7 +94,9 @@ export default function Nav({ user, reportDepartments = [] }) {
   addDeptTab(['Production'], '/planning', 'Planning', ClipboardListIcon);
   addDeptTab(['QC'], '/qc', 'QC', FlaskConicalIcon);
   addDeptTab(['Dispatch'], '/dispatch', 'Dispatch', PackageIcon);
-  addDeptTab(['Installation'], '/installation', 'Installation', MapPinIcon);
+  // Display label only — the department key stays 'Installation' everywhere (permissions, milestones).
+  addDeptTab(['Installation'], '/installation', 'Service', MapPinIcon);
+  addDeptTab(['Installation'], '/service-expenses', 'Expenses', ReceiptIcon);
   // PR + Trade Request surface for Installation; PMs already have the /pr "Requests" tab, so label it apart.
   addDeptTab(['Installation'], '/installation-requests', isDeptPM ? 'Install Requests' : 'Requests', InboxIcon);
   addDeptTab(['Accounts'], '/accounts', 'Accounts', LandmarkIcon);

@@ -132,7 +132,7 @@ export const HEAD_GUIDES = {
     ],
   },
   Installation: {
-    title: 'Installation — site milestones',
+    title: 'Service — site milestones',
     icon: MapPinIcon,
     steps: [{ title: 'Start / Close your stages', body: 'Site Installation and Commissioning follow the same Start/Close flow.' }],
   },

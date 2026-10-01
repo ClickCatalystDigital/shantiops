@@ -118,10 +118,10 @@ export default function InstallationFlow({ counts }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Installation</CardTitle>
+        <CardTitle>Service</CardTitle>
         <CardAction>
           <Button asChild size="sm" variant="outline">
-            <Link href="/installation">Open Installation workspace →</Link>
+            <Link href="/installation">Open Service workspace →</Link>
           </Button>
         </CardAction>
       </CardHeader>

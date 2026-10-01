@@ -554,7 +554,7 @@ export default function InstallationWorkspace({ projects = [], team = [], initia
   const [tab, setTab] = useState(ITEMS.some(i => i.key === initialTab) ? initialTab : 'visits');
 
   return (
-    <WorkspaceSidebar title="Installation" icon={MapPinIcon} items={ITEMS} activeKey={tab} onChange={setTab}>
+    <WorkspaceSidebar title="Service" icon={MapPinIcon} items={ITEMS} activeKey={tab} onChange={setTab}>
       {tab === 'visits' && <InstallationVisits projects={projects} team={team} />}
       {tab === 'docs' && <InstallationDocs projects={projects} />}
       {tab === 'photos' && <InstallationPhotos projects={projects} team={team} />}

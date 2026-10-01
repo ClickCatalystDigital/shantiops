@@ -146,7 +146,7 @@ function ReportSheet({ init, onClose, onSaved }) {
     } catch (err) { showToast(err.message, 'error'); }
     setSaving(false);
   }
-  const canShare = fin && init.call_type === 'Commissioning';
+  const canShare = fin;
 
   return (
     <Sheet open onOpenChange={o => !o && onClose()}>

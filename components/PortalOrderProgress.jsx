@@ -104,12 +104,12 @@ function DrawingRow({ drawing, onChanged }) {
 // A plain document — QC certificate, packing list — with nothing for the customer to act on,
 // unlike a drawing (no approve/comment). One consistent row style: icon, name, a Download button
 // that forces a save instead of an in-browser preview.
-function DocumentRow({ name, href }) {
+function DocumentRow({ name, href, meta }) {
   return (
     <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
       <div className="flex min-w-0 items-center gap-2">
         <FileTextIcon className="size-4 shrink-0 text-muted-foreground" />
-        <span className="truncate text-sm font-medium">{name}</span>
+        <div className="min-w-0"><div className="truncate text-sm font-medium">{name}</div>{meta && <div className="truncate text-xs text-muted-foreground">{meta}</div>}</div>
       </div>
       <Button asChild variant="outline" size="sm" className="shrink-0">
         <a href={href} download><DownloadIcon className="size-3.5" data-icon="inline-start" />Download</a>
@@ -163,7 +163,55 @@ function PhaseRow({ ph, index, expandable, expanded, onToggle }) {
   );
 }
 
-export default function PortalOrderProgress({ phases, drawings, qcCertificates = [], packingLists = [], installationVisits = [], installationReports = [], pct }) {
+// "02 Oct 2026, 3:45 PM" — DB timestamps are UTC (no zone suffix), shown in IST.
+const stamp = s => (s ? new Date(String(s).replace(' ', 'T') + 'Z').toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '');
+
+const VisitRow = ({ v }) => (
+  <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
+    <span className="flex min-w-0 items-center gap-2 text-sm font-medium"><CheckIcon className="size-4 shrink-0 text-success" /><span className="truncate">{v.description}</span></span>
+    <span className="shrink-0 text-xs text-muted-foreground">{v.date ? formatDate(v.date) : ''}{v.time ? ` · ${v.time}` : ''}</span>
+  </div>
+);
+const VisitBar = ({ done, total, remaining, title }) => (
+  <div className="rounded-lg border p-3">
+    <div className="flex items-baseline justify-between gap-2">
+      <span className="text-sm font-medium">{title}{done} of {total} visits done</span>
+      <span className="text-xs text-muted-foreground">{remaining} remaining</span>
+    </div>
+    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary" style={{ width: `${total ? Math.round((done / total) * 100) : 0}%` }} /></div>
+  </div>
+);
+
+// Visits done vs remaining. One boiler: a bar + its done visits. Split order: one block per unit
+// (each unit has its own visits) — counts are never added across units.
+function VisitsPanel({ summary, units, visits }) {
+  if (summary) {
+    return (
+      <>
+        <VisitBar {...summary} title="" />
+        {visits.length === 0 && <p className="text-xs text-muted-foreground">No visit has been completed yet.</p>}
+        {visits.map(v => <VisitRow key={v.id} v={v} />)}
+      </>
+    );
+  }
+  return units.map(u => {
+    const mine = visits.filter(v => v.unitProjectNo === u.projectNo);
+    return (
+      <details key={u.projectNo} className="group rounded-lg border">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-3">
+          <span className="text-sm font-medium">{u.projectNo}</span>
+          <span className="text-xs text-muted-foreground">{u.done} of {u.total} visits done · {u.remaining} remaining</span>
+        </summary>
+        <div className="flex flex-col gap-2 border-t p-3">
+          <div className="h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary" style={{ width: `${u.total ? Math.round((u.done / u.total) * 100) : 0}%` }} /></div>
+          {mine.length === 0 ? <p className="text-xs text-muted-foreground">No visit completed yet.</p> : mine.map(v => <VisitRow key={v.id} v={v} />)}
+        </div>
+      </details>
+    );
+  });
+}
+
+export default function PortalOrderProgress({ phases, drawings, qcCertificates = [], packingLists = [], installationVisits = [], installationSummary = null, installationUnits = [], installationReports = [], pct }) {
   const [items, setItems] = useState(drawings);
   // One open section at a time, tracked by phase key — 'design' keeps its old default-collapsed
   // behavior, just generalized to any phase that has documents to show.
@@ -181,7 +229,7 @@ export default function PortalOrderProgress({ phases, drawings, qcCertificates =
     design: items.length,
     testing: qcCertificates.length,
     packing: packingLists.length,
-    installation: installationVisits.length,
+    installation: installationSummary ? installationSummary.total : installationUnits.length,
     commissioning: installationReports.length,
   };
 
@@ -228,20 +276,15 @@ export default function PortalOrderProgress({ phases, drawings, qcCertificates =
                   </li>
                 )}
                 {ph.key === 'installation' && expanded && (
-                  <li className="flex flex-col gap-2 border-b py-3 pl-10">
-                    {installationVisits.map(v => (
-                      <div key={v.id} className="flex items-center justify-between gap-3 rounded-lg border p-3">
-                        <span className="text-sm font-medium">{v.description}{v.unitProjectNo ? ` (${v.unitProjectNo})` : ''}</span>
-                        <span className="shrink-0 text-xs text-muted-foreground">{v.date ? formatDate(v.date) : ''}</span>
-                      </div>
-                    ))}
-                  </li>
+                  <li className="flex flex-col gap-2 border-b py-3 pl-10"><VisitsPanel summary={installationSummary} units={installationUnits} visits={installationVisits} /></li>
                 )}
                 {ph.key === 'commissioning' && expanded && (
                   <li className="flex flex-col gap-3 border-b py-3 pl-10">
+                    {/* Every report the Service team finalized and shared: Commissioning, Breakdown, ASC, Other. */}
                     {installationReports.map(r => (
                       <DocumentRow key={r.id}
-                        name={`Commissioning Report — ${r.reportNo}${r.unitProjectNo ? ` (${r.unitProjectNo})` : ''}${r.date ? ` · ${formatDate(r.date)}` : ''}`}
+                        name={`${r.callType === 'Commissioning' ? 'Commissioning Report' : `${r.callType} Report`} — ${r.reportNo}${r.unitProjectNo ? ` (${r.unitProjectNo})` : ''}`}
+                        meta={[r.date && `Report date ${formatDate(r.date)}`, r.sharedAt && `Shared ${stamp(r.sharedAt)}`].filter(Boolean).join(' · ')}
                         href={`/api/installation-reports/${r.id}/pdf`} />
                     ))}
                   </li>

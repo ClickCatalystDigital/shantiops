@@ -2,10 +2,11 @@
 
 import { useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
-import { MonitorSmartphoneIcon, Globe2Icon, UsersIcon, MailIcon, ShieldCheckIcon } from 'lucide-react';
+import { MonitorSmartphoneIcon, Globe2Icon, UsersIcon, MailIcon, ShieldCheckIcon, ReceiptIcon } from 'lucide-react';
 import DevicesPanel from '@/components/DevicesPanel';
 import BrowserPanel from '@/components/BrowserPanel';
 import PeoplePanel from '@/components/PeoplePanel';
+import ServiceExpenseInbox from '@/components/ServiceExpenseInbox';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 
 function ComingSoon({ text }) {
@@ -18,6 +19,7 @@ export default function ApprovalsWorkspace({ user, data, browser, employees, peo
     { key: 'devices', label: 'Devices', icon: MonitorSmartphoneIcon },
     { key: 'browser', label: 'Browser', icon: Globe2Icon },
     ...(canManagePeople ? [{ key: 'people', label: 'People', icon: UsersIcon }] : []),
+    ...(canManagePeople ? [{ key: 'service-expenses', label: 'Service Expenses', icon: ReceiptIcon }] : []),
     { key: 'mail', label: 'Mail', icon: MailIcon },
   ];
 
@@ -26,6 +28,7 @@ export default function ApprovalsWorkspace({ user, data, browser, employees, peo
       {tab === 'devices' && <DevicesPanel user={user} initial={data} employees={employees} />}
       {tab === 'browser' && <BrowserPanel user={user} initial={browser} />}
       {tab === 'people' && canManagePeople && <PeoplePanel user={user} initial={people} />}
+      {tab === 'service-expenses' && canManagePeople && <ServiceExpenseInbox mode="approvals" user={user} />}
       {tab === 'mail' && <ComingSoon text="Zoho mail attachment approvals — coming soon. External emails with attachments will need manager sign-off here." />}
     </WorkspaceSidebar>
   );

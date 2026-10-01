@@ -23,7 +23,7 @@ export async function GET(req, { params }) {
 }
 
 // Body is either { data, report_date } (edit — only while not finalized) or { action } where action is
-// finalize | reopen | share | unshare. Only a finalized Commissioning report can be shared with the customer.
+// finalize | reopen | share | unshare. Only a finalized report can be shared with the customer (any call type).
 export async function PATCH(req, { params }) {
   const { user, res } = await load(true);
   if (res) return res;
@@ -41,11 +41,10 @@ export async function PATCH(req, { params }) {
       await execute('UPDATE installation_reports SET finalized_at = NULL, finalized_by = NULL, customer_visible = 0, customer_visible_at = NULL WHERE id = ?', [id]);
     } else if (b.action === 'share') {
       if (!row.finalized_at) return NextResponse.json({ error: 'Finalize the report before sharing it' }, { status: 409 });
-      if (row.call_type !== 'Commissioning') return NextResponse.json({ error: 'Only Commissioning reports can be shared with the customer' }, { status: 400 });
       if (!row.customer_visible) {
         await execute('UPDATE installation_reports SET customer_visible = 1, customer_visible_at = CURRENT_TIMESTAMP WHERE id = ?', [id]);
         // Best effort; only on the real 0 -> 1 flip.
-        try { await notifyProjectCustomers(row.project_id, { kind: 'installation_report_shared', title: 'Commissioning report available', body: `Your commissioning report ${row.report_no} is ready to download.`, dedupe_key: `installation_report_shared:${id}` }); } catch { /* non-fatal */ }
+        try { await notifyProjectCustomers(row.project_id, { kind: 'installation_report_shared', title: `${row.call_type} report available`, body: `Your ${row.call_type.toLowerCase()} report ${row.report_no} is ready to download.`, dedupe_key: `installation_report_shared:${id}` }); } catch { /* non-fatal */ }
       }
     } else if (b.action === 'unshare') {
       await execute('UPDATE installation_reports SET customer_visible = 0, customer_visible_at = NULL WHERE id = ?', [id]);

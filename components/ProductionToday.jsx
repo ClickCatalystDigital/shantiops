@@ -20,7 +20,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectGroup, SelectItem,
 } from '@/components/ui/select';
-import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, FolderKanbanIcon, UsersRoundIcon } from 'lucide-react';
+import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, FolderKanbanIcon, UsersRoundIcon, MapPinIcon } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 
 // The view + its cursor live in the URL (?view=&month=/date=/year=), not in state — this repo
@@ -94,7 +94,7 @@ function FollowupTable({ rows, onUpdate }) {
 }
 
 export default function ProductionToday({
-  view, month, date, year, today, deptFilter, deptsToShow, events, openTasks, operators, salesUsers = [], upcomingFollowups = [],
+  view, month, date, year, today, deptFilter, deptsToShow, events, openTasks, operators, salesUsers = [], upcomingFollowups = [], upcomingVisits = [],
 }) {
   const router = useRouter();
   const [dayOpen, setDayOpen] = useState(null);
@@ -137,9 +137,14 @@ export default function ProductionToday({
     for (const t of events.tasks) add(t.date, { ...t, kind: 'task' });
     for (const m of events.milestones) add(m.date, { ...m, kind: 'milestone' });
     for (const f of events.followups || []) add(f.date, { ...f, kind: 'followup' });
+    for (const v of events.visits || []) add(v.date, { ...v, kind: 'visit' });
     return map;
   }, [events]);
   const showsCrm = (deptsToShow.includes('Sales') || deptsToShow.includes('Marketing')) || upcomingFollowups.length > 0 || (events.followups || []).length > 0;
+  // Service (Installation) site visits: own pill + a Visits card above Tasks.
+  const showsVisits = deptsToShow.includes('Installation') || upcomingVisits.length > 0 || (events.visits || []).length > 0;
+  const upcomingVisitsSorted = useMemo(() => [...upcomingVisits]
+    .sort((a, b) => (a.date + (a.visit_time || '')).localeCompare(b.date + (b.visit_time || ''))), [upcomingVisits]);
   const upcomingSorted = useMemo(() => [...upcomingFollowups]
     .sort((a, b) => (a.date + (a.plan_time || '')).localeCompare(b.date + (b.plan_time || ''))), [upcomingFollowups]);
 
@@ -147,6 +152,7 @@ export default function ProductionToday({
   function pillText(it) {
     const prefix = combined && it.department ? `[${it.department}] ` : '';
     if (it.kind === 'milestone') return `${prefix}${it.project_no} · ${it.title}`;
+    if (it.kind === 'visit') return `${it.project_no} · ${it.description}${it.visit_time ? ` · ${it.visit_time}` : ''}`;
     if (it.kind === 'followup') return `${prefix}${it.company_name || it.lead_name}${it.plan_time ? ` · ${it.plan_time}` : ''}`;
     return `${prefix}${it.title}`;
   }
@@ -302,7 +308,8 @@ export default function ProductionToday({
                         ? (isWeek ? 'border-muted-foreground/40 text-muted-foreground line-through' : 'bg-muted text-muted-foreground line-through')
                         : (isWeek ? 'border-primary text-foreground' : 'bg-primary/15 text-primary')),
                       it.kind === 'milestone' && (isWeek ? 'border-amber-500 text-foreground' : 'bg-amber-500/15 text-amber-700 dark:text-amber-400'),
-                      it.kind === 'followup' && (isWeek ? 'border-sky-500 text-foreground' : 'bg-sky-500/15 text-sky-700 dark:text-sky-400'))}>
+                      it.kind === 'followup' && (isWeek ? 'border-sky-500 text-foreground' : 'bg-sky-500/15 text-sky-700 dark:text-sky-400'),
+                      it.kind === 'visit' && (isWeek ? 'border-emerald-500 text-foreground' : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400'))}>
                       {pillText(it)}
                     </span>
                   ))}
@@ -315,6 +322,7 @@ export default function ProductionToday({
           </div>
           <div className="mt-2 flex flex-wrap gap-3 text-xs text-muted-foreground">
             {showsCrm && <span className="flex items-center gap-1"><span className="size-2 rounded-full bg-sky-500" />Follow-ups</span>}
+            {showsVisits && <span className="flex items-center gap-1"><span className="size-2 rounded-full bg-emerald-500" />Service visits</span>}
             <span className="flex items-center gap-1"><span className="size-2 rounded-full bg-primary" />Tasks</span>
             {/* Sales/Marketing own no milestones — only show the key when a department that does is in view. */}
             {deptsToShow.some(d => !['Sales', 'Marketing'].includes(d)) && (
@@ -347,6 +355,31 @@ export default function ProductionToday({
                 </span>
                 <Button size="sm" variant="outline" className="shrink-0" onClick={() => openDiary(f.lead_id)}>Update</Button>
               </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Service: dated site visits (Installation → Visits), next 5 weeks, above Tasks. */}
+      {showsVisits && (
+        <Card>
+          <CardHeader><CardTitle>Visits</CardTitle></CardHeader>
+          <CardContent className="flex flex-col gap-1">
+            {upcomingVisitsSorted.length === 0 && (
+              <p className="py-2 text-center text-sm text-muted-foreground">No visits scheduled in the next 5 weeks.</p>
+            )}
+            {upcomingVisitsSorted.map(v => (
+              <Link key={`vs-${v.id}`} href="/installation" className="flex items-center gap-2 rounded-md px-1 py-1.5 hover:bg-muted">
+                <MapPinIcon className="size-4 shrink-0 text-emerald-600" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm">{v.description}</p>
+                  <p className="truncate text-xs text-muted-foreground">{v.project_no}{v.customer_name ? ` · ${v.customer_name}` : ''}</p>
+                </div>
+                <span className={cn('shrink-0 text-xs tnum', v.date === today ? 'font-medium text-foreground' : 'text-muted-foreground')}>
+                  {v.date === today ? 'today' : formatDate(v.date)}{v.visit_time ? ` · ${v.visit_time}` : ''}
+                </span>
+                {v.status === 'done' && <Badge variant="secondary" className="shrink-0">Done</Badge>}
+              </Link>
             ))}
           </CardContent>
         </Card>
@@ -431,6 +464,13 @@ export default function ProductionToday({
                       {it.title}
                     </span>
                     {it.assigned_to && <Badge variant="secondary" className="shrink-0">{it.assigned_to}</Badge>}
+                  </>
+                )}
+                {it.kind === 'visit' && (
+                  <>
+                    <MapPinIcon className="size-4 shrink-0 text-emerald-600" />
+                    <span className="min-w-0 flex-1 truncate">{it.description}{it.visit_time ? ` · ${it.visit_time}` : ''}</span>
+                    <Link href="/installation" className="shrink-0 text-xs text-primary hover:underline">{it.project_no}</Link>
                   </>
                 )}
                 {it.kind === 'milestone' && (

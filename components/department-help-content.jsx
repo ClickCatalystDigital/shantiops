@@ -1526,10 +1526,10 @@ export const DEPARTMENT_HELP = {
     ],
   },
   Installation: {
-    title: 'Installation', icon: MapPinIcon,
+    title: 'Service', icon: MapPinIcon,
     intro: [
-      'Installation tracks the work that happens at the customer site after manufacturing and dispatch. The project record should show what is planned, what the site team completed, and what is still waiting on the customer or another department.',
-      'Use Operations for your open site work, Projects for the order record, Tasks for site-specific follow-ups, and the Installation tab (Visits, Documentation) for site visits and commissioning / service reports.',
+      'Service (the Installation department) tracks the work that happens at the customer site after manufacturing and dispatch. The project record should show what is planned, what the site team completed, and what is still waiting on the customer or another department.',
+      'Use Operations for your open site work, Projects for the order record, Tasks for site-specific follow-ups, and the Service tab (Visits, Documentation) for site visits and commissioning / service reports. The Expenses tab holds your Cash Requests and Travel Allowance claims — they go to your Manager, then the Executive, then Accounts.',
     ],
     features: [
       feature('milestones', 'Site milestones', RouteIcon, ['Start and close installation, commissioning, and site milestones with actual dates. Use planned dates to make the expected visit visible early.', 'If a date moves, record the reason so the customer-facing progress story remains honest.']),
@@ -1562,8 +1562,8 @@ export const DEPARTMENT_HELP = {
       { title: 'Manage a blocker', body: 'Record the delay reason and raise the task to the right department. Do not close the milestone while the blocker is unresolved.' },
       { title: 'Complete commissioning', body: 'Enter actual end date, close the milestone, and ensure any punch-list task is either completed or clearly assigned.' },
       { title: 'Confirm the customer view', body: 'Check that the project progress and estimated dates now tell the same story as the site record.' },
-      { title: 'Log a site visit', body: 'Open Installation → Visits, pick the project, edit the visit that took place (date, time, who went) and mark it Done. Add a visit if an extra one was needed.' },
-      { title: 'Write a report', body: 'Open Installation → Documentation, pick the project and call type, fill the form, sign, and save. Use the PDF button to share it.' },
+      { title: 'Log a site visit', body: 'Open Service → Visits, pick the project, edit the visit that took place (date, time, who went) and mark it Done. Add a visit if an extra one was needed.' },
+      { title: 'Write a report', body: 'Open Service → Documentation, pick the project and call type, fill the form, sign, and save. Use the PDF button to share it.' },
     ],
   },
   Sales: {

@@ -8,10 +8,10 @@ import { queryAll } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
 
 // The PR line composer (Group 5 Bundle A) is shared by Engineering/Design/Stores — same three
-// departments as the /pr nav tab. Sales added for the quotation/price-list item pickers — reading
+// departments as the /pr nav tab (Installation too since its own Requests tab reuses the composer). Sales added for the quotation/price-list item pickers — reading
 // the catalog to price against it is a different concern from owning it, so this stays a read
 // gate, not a write one.
-const CATALOG_SEARCH_DEPARTMENTS = ['Engineering', 'Design', 'Stores', 'Sales'];
+const CATALOG_SEARCH_DEPARTMENTS = ['Engineering', 'Design', 'Stores', 'Sales', 'Installation'];
 
 export async function GET(req) {
   const user = await getFreshSessionUser();
