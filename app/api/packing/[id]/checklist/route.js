@@ -1,6 +1,7 @@
 // Valve-to-flange style checklist on a packing list: free rows with Prod/QC/Stores tick boxes.
 import { NextResponse } from 'next/server';
 import { execute, queryAll } from '@/lib/db';
+import { deriveChecklist } from '@/lib/packing-layout.mjs';
 import { getFreshSessionUser, requireDepartment, canAccessDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 
@@ -12,7 +13,15 @@ export async function POST(req, { params }) {
   if (denied) return denied;
   const actionDenied = await requireAction(user, 'Dispatch', 'dispatch.packing.edit');
   if (actionDenied) return actionDenied;
-  const { description } = await req.json();
+  const body = await req.json();
+  // "Fill from valves": one valve-to-flange row per valve on the list, skipping rows already there.
+  if (body.derive) {
+    const items = await queryAll("SELECT id, material_description, parent_item_id FROM packing_items WHERE packing_list_id = ?", [params.id]);
+    const have = await queryAll('SELECT description FROM packing_checklist_items WHERE packing_list_id = ?', [params.id]);
+    for (const d of deriveChecklist(items, have)) await execute('INSERT INTO packing_checklist_items (packing_list_id, description) VALUES (?, ?)', [params.id, d]);
+    return NextResponse.json({ checklist: await queryAll('SELECT * FROM packing_checklist_items WHERE packing_list_id = ? ORDER BY id', [params.id]) });
+  }
+  const { description } = body;
   if (!description?.trim()) return NextResponse.json({ error: 'Description is required' }, { status: 400 });
   const r = await execute('INSERT INTO packing_checklist_items (packing_list_id, description) VALUES (?, ?)', [params.id, description.trim()]);
   return NextResponse.json({ id: Number(r.lastId) });

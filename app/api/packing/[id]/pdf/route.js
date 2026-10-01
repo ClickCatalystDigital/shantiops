@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { getPackingDetail } from '@/lib/data';
 import { getFreshSessionUser, isCustomer, canAccessDepartment, canAccessProject } from '@/lib/auth';
 import { renderPackingPdf } from '@/lib/packing-pdf';
+import { queryOne } from '@/lib/db';
+import { modelCodeOf } from '@/lib/packing-forms.mjs';
 
 export const runtime = 'nodejs';
 
@@ -20,6 +22,11 @@ export async function GET(req, { params }) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
+  if (data.list.layout === 'combined') {
+    const p = await queryOne('SELECT * FROM projects WHERE id = ?', [data.list.project_id]);
+    const m = p?.master_project_id ? await queryOne('SELECT * FROM projects WHERE id = ?', [p.master_project_id]) : null;
+    if (p) data.list.model_code = modelCodeOf(p, m);
+  }
   const only = new URL(req.url).searchParams.get('form');
   const pdf = await renderPackingPdf(data.list, data.items, { checklist: data.checklist, only });
   return new NextResponse(pdf, {

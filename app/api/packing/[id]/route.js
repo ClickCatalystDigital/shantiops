@@ -96,7 +96,7 @@ export async function PATCH(req, { params }) {
   // controllable stock."
   if (isFirstDispatch) {
     const bomItemIds = await queryAll(
-      'SELECT DISTINCT bom_item_id FROM packing_items WHERE packing_list_id = ? AND bom_item_id IS NOT NULL',
+      'SELECT DISTINCT bom_item_id FROM packing_bom_links WHERE packing_list_id = ? AND bom_item_id IS NOT NULL',
       [params.id]
     );
     for (const row of bomItemIds) {

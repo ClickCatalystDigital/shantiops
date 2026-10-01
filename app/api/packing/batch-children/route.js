@@ -68,7 +68,7 @@ export async function POST(req) {
     // Same exclusion idiom as POST /api/packing/from-bom, scoped to this one child instead of the
     // whole project — lets the batch be re-run safely as more lines get routed to Dispatch.
     const alreadyDrafted = await queryAll(
-      `SELECT DISTINCT pi.bom_item_id FROM packing_items pi
+      `SELECT DISTINCT pi.bom_item_id FROM packing_bom_links pi
          JOIN packing_lists pl ON pl.id = pi.packing_list_id
         WHERE pl.project_id = ? AND pi.bom_item_id IS NOT NULL`, [child.id]);
     const draftedIds = new Set(alreadyDrafted.map(r => r.bom_item_id));
@@ -84,6 +84,7 @@ export async function POST(req) {
       project: childProject, treeProjectId: masterId, customerName: master.customer_name, user,
       revision: master.bom_release_revision ?? null,
       lines: newCells.map(c => ({ b: bomById.get(c.bom_item_id), qty: c.per_unit_required })),
+      layout: b.layout === 'sections' ? 'sections' : 'combined',
     });
     for (const l of lists) created.push({ child_project_id: child.id, packing_list_id: l.id, packing_no: l.packing_no, items: l.items });
   }

@@ -16,6 +16,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Trash2Icon, FileTextIcon } from 'lucide-react';
 import { EntityCode } from '@/components/EntityRefLink';
 import { groupForms } from '@/lib/packing-forms.mjs';
+import PackingCombined from '@/components/PackingCombined';
 
 // Click-to-edit cell: saves on blur/Enter through PATCH /api/packing/[id]/items.
 function EditCell({ value, onSave, disabled, className = '' }) {
@@ -141,7 +142,7 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
     } catch (err) { showToast(err.message, 'error'); }
   }
   async function removeItem(id) {
-    try { await api(`/api/packing/${list.id}/items?itemId=${id}`, { method: 'DELETE' }); setItems(xs => xs.filter(x => x.id !== id)); }
+    try { const r = await api(`/api/packing/${list.id}/items?itemId=${id}`, { method: 'DELETE' }); setItems(xs => r.items || xs.filter(x => x.id !== id)); }
     catch (err) { showToast(err.message, 'error'); }
   }
   async function saveItem(id, patch) {
@@ -428,7 +429,9 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
             <Meta label="E-Way Bill Date" value={list.eway_bill_date && formatDate(list.eway_bill_date)} />
           </dl>
 
-          {forms.map(f => (
+          {list.layout === 'combined' ? (
+            <PackingCombined list={list} items={items} setItems={setItems} saveItem={saveItem} removeItem={removeItem} readOnly={readOnly} />
+          ) : forms.map(f => (
             <div key={f.name} className="mb-6">
               {forms.length > 1 || f.name !== 'Other' ? (
                 <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -499,6 +502,7 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
                 <div className="no-print mt-2 flex gap-2">
                   <Input className="h-8 max-w-sm" placeholder="e.g. Valve to flange (Safety valve)" value={newCheck} onChange={e => setNewCheck(e.target.value)} onKeyDown={e => e.key === 'Enter' && addCheck()} />
                   <Button size="sm" variant="outline" onClick={addCheck}>Add row</Button>
+                  <Button size="sm" variant="outline" onClick={async () => { try { const r = await api(`/api/packing/${list.id}/checklist`, { method: 'POST', body: { derive: true } }); setChecklist(r.checklist); } catch (e) { showToast(e.message, 'error'); } }}>Fill from valves</Button>
                 </div>
               )}
             </div>

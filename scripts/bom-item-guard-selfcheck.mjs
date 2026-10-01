@@ -17,7 +17,7 @@ import assert from 'node:assert/strict';
 import { createClient } from '@libsql/client';
 
 const GUARDED_TABLES = [
-  'packing_items', 'inventory_reservations', 'material_indent_items', 'qc_records',
+  'packing_items', 'packing_item_bom_items', 'inventory_reservations', 'material_indent_items', 'qc_records',
   'supplier_quotes', 'po_items', 'qc_document_parts', 'rfq_items', 'qc_mountings',
   'material_issues', 'work_order_materials', 'bom_change_notes', 'job_work_inspections',
   'vendor_bill_items', 'ncr_records', 'bom_item_receipts', 'bom_item_child_allocations',

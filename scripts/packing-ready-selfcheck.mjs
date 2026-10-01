@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import { isReadyForPacking as r } from '../lib/packing-forms.mjs';
+const bought = { requires_manufacturing: 0, purchase_status: 'Received' };
+const made = { requires_manufacturing: 1, production_done: 1, purchase_status: 'Enquiry' };
+assert.equal(r(bought, { routedTo: 'dispatch' }), true);
+assert.equal(r(bought, { routedTo: null }), false, 'unrouted bom line is not packable');
+assert.equal(r(bought, { routedTo: null, routingEligible: false }), true, 'stock/split master skips routing');
+assert.equal(r({ ...bought, purchase_status: 'Enquiry' }, { routedTo: 'dispatch' }), false);
+assert.equal(r({ ...bought, purchase_status: 'Enquiry' }, { reserved: true, routedTo: 'dispatch' }), true);
+assert.equal(r(bought, { routedTo: 'dispatch', pendingInward: true }), false, 'QC hold blocks');
+assert.equal(r(made, { routedTo: 'production' }), true);
+assert.equal(r({ ...made, production_done: 0 }, { routedTo: 'production' }), false);
+assert.equal(r(made, { routedTo: 'dispatch' }), true);
+console.log('packing-ready selfcheck ok');

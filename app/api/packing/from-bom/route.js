@@ -20,7 +20,7 @@ export async function POST(req) {
   const actionDenied = await requireAction(user, 'Dispatch', 'dispatch.packing.generate');
   if (actionDenied) return actionDenied;
 
-  const { project_id } = await req.json();
+  const { project_id, layout } = await req.json();
   if (!project_id) return NextResponse.json({ error: 'project_id is required' }, { status: 400 });
 
   const project = await queryOne('SELECT * FROM projects WHERE id = ?', [project_id]);
@@ -36,7 +36,7 @@ export async function POST(req) {
   // draft is still open silently duplicates every one of its lines onto a second list. Excluded here
   // — at the point of creating a NEW list — regardless of the existing list's status.
   const alreadyDrafted = await queryAll(
-    `SELECT DISTINCT pi.bom_item_id FROM packing_items pi
+    `SELECT DISTINCT pi.bom_item_id FROM packing_bom_links pi
        JOIN packing_lists pl ON pl.id = pi.packing_list_id
       WHERE pl.project_id = ? AND pi.bom_item_id IS NOT NULL`, [project_id]
   );
@@ -50,7 +50,7 @@ export async function POST(req) {
   // "2 Nos" -> 2, scaled by any Local Quantity multiplier on the item's own BOM-tree node (and every
   // node above it) times the project's Whole-BOM Unit Count; non-numeric ("AS REQD") -> 1.
   const lines = newItems.map(b => ({ b, qty: itemRollupQty(b.qty_text, b.assembly_id, rollupById, project.unit_count, !!b.qty_resolved) ?? 1 }));
-  const created = await createPackingLists({ project, treeProjectId: project_id, customerName: project.customer_name, lines, user });
+  const created = await createPackingLists({ project, treeProjectId: project_id, customerName: project.customer_name, lines, user, layout: layout === 'sections' ? 'sections' : 'combined' });
   await audit('packing_created', { actor: user.username, detail: `${created.map(c => c.packing_no).join(', ')} · project ${project_id} · ${newItems.length} items` });
   return NextResponse.json({ id: created[0].id, packing_no: created[0].packing_no, lists: created, items: newItems.length });
 }
