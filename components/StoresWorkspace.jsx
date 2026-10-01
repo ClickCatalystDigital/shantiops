@@ -2802,7 +2802,7 @@ function InventoryTab({ inventoryItems, openRequests, certificates, projects }) 
                         if (!pl || !(pl.planned_demand > 0)) return planItems ? '—' : '…';
                         const short = pl.planned_demand > pl.available;
                         return (
-                          <a href={`/planning?tab=plan`} className="hover:underline" title="Open the Material Plan">
+                          <a href="/stores?tab=requests" className="hover:underline" title="Open Demand">
                             Needed <span className="font-medium text-foreground">{Math.round(pl.planned_demand * 100) / 100}</span>
                             <br />
                             <span className={short ? 'text-danger' : ''}>{short ? 'Short' : 'Free after plans'} {Math.round(Math.abs(pl.available - pl.planned_demand) * 100) / 100}</span>
