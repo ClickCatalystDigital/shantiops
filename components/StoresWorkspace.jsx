@@ -50,6 +50,7 @@ import { defaultCategoryFields } from '@/components/BomLineFields';
 import StoresDemand from '@/components/StoresDemand';
 import RoutedItemsCard from '@/components/StoresUndo';
 import StoresSubTabs from '@/components/StoresSubTabs';
+import { RemnantsQueue } from '@/components/RemnantsPanel';
 import { requestLabel, possibleMatches, ReserveDialog, MatchSettingsPopover, SearchBox } from '@/components/StoresShared';
 
 function isLowStock(item) {
@@ -2179,6 +2180,9 @@ function ReceiveDeliveryTab({ bomItems, pendingInwardApprovals = [], router }) {
   // reproduces (both are one line at a time). Two modes on the same Receiving destination instead
   // of a separate "BOM" nav tab — no functionality lost, no ERP-technical label in the sidebar.
   const [mode, setMode] = useState('search');
+  // Count for the Remnants sub-tab badge, known before the tab is opened (RemnantsQueue keeps it fresh).
+  const [remnantCount, setRemnantCount] = useState(0);
+  useEffect(() => { api('/api/stock-pieces?status=pending_receipt').then(r => setRemnantCount(r.length)).catch(() => {}); }, []);
   const [query, setQuery] = useState('');
   const [dateFilter, setDateFilter] = useState('all');
   const [pageSize, setPageSize] = useState(15);
@@ -2234,8 +2238,10 @@ function ReceiveDeliveryTab({ bomItems, pendingInwardApprovals = [], router }) {
       <StoresSubTabs value={mode} onChange={setMode} tabs={[
         { value: 'search', label: 'Search' }, { value: 'bulk', label: 'Bulk by project' },
         { value: 'qc', label: 'Awaiting QC', count: pendingInwardApprovals.length },
+        { value: 'remnants', label: 'Remnants', count: remnantCount },
       ]} />
-      {mode === 'qc' ? <AwaitingQcClearanceCard pendingInwardApprovals={pendingInwardApprovals} />
+      {mode === 'remnants' ? <RemnantsQueue onCount={setRemnantCount} />
+        : mode === 'qc' ? <AwaitingQcClearanceCard pendingInwardApprovals={pendingInwardApprovals} />
         : mode === 'bulk' ? <BomGrnTab bomItems={bomItems} router={router} /> : (
         <Card>
           <CardHeader><CardTitle>Inward</CardTitle></CardHeader>

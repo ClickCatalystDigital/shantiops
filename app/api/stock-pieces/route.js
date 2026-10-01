@@ -13,10 +13,15 @@ export async function GET(req) {
   const params = new URL(req.url).searchParams;
   const inventoryItemId = params.get('inventory_item_id');
   const bomItemId = params.get('bom_item_id');
-  if (!inventoryItemId && !bomItemId) {
-    return NextResponse.json({ error: 'inventory_item_id or bom_item_id is required' }, { status: 400 });
+  const status = params.get('status');
+  if (status && !['reserved', 'pending_receipt'].includes(status)) {
+    return NextResponse.json({ error: 'status must be reserved or pending_receipt' }, { status: 400 });
+  }
+  if (!inventoryItemId && !bomItemId && !status) {
+    return NextResponse.json({ error: 'inventory_item_id, bom_item_id or status is required' }, { status: 400 });
   }
   return NextResponse.json(await listPieces({
+    status: !inventoryItemId && !bomItemId ? status : undefined,
     inventoryItemId: inventoryItemId ? Number(inventoryItemId) : null,
     bomItemId: bomItemId ? Number(bomItemId) : null,
   }));

@@ -12771,3 +12771,9 @@ Modelled on the client's DISPATCH ON sheet. New lists (`packing_lists.layout='co
 - **PDF:** portrait A4, header box, model code line, sections, packing label on each group's first row, valve checklist, sign-off. Verified by rendering.
 - **Demo:** `scripts/seed-demo-packing.mjs` (project `ZZ-DEMO-PACK`; `--cleanup` removes it).
 - Not done: unit label assumed `SB-1109-1`; Excel export; split-order batch path only passes the layout flag (not click-tested).
+
+## 5dq. Remnants — cost shares, Production + Stores screens, Scrap it (2026-10-02)
+- **Cost fix** (`cutPiece`, `lib/stock-pieces.js`): each used/remnant/scrap child carries its weight share of the source's `unit_cost` (shares add back to the source). Before, every child copied the full cost, so a later cut or dispatch of a remnant charged the whole plate again. The cut posts source cost minus remnant shares (scrap absorbed into the job). No existing priced children existed, so no backfill.
+- **Production → Remnants** (below Material Indent, `components/RemnantsPanel.jsx`): "To cut" = every `reserved` piece (BOM-line pieces open the Cut dialog with the PMB size pre-filled), "Returned, waiting for Stores" = `pending_receipt` remnants with **Scrap it**.
+- **Stores → Inward → Remnants**: queue with count badge; Confirm (one or bulk) calls `confirmPieceReceipt`, which now also clears `owner_project_id` so a confirmed remnant is common stock. **Scrap it** (`POST /api/stock-pieces/[id]/scrap`, Production or Stores) only works on `pending_receipt`; its cost share is written off to the owning project when known (common-stock source: cost stays in Inventory).
+- `GET /api/stock-pieces?status=reserved|pending_receipt` lists across items. Planning's Cut tab is now redundant with "To cut" (left in place). Not browser-tested at commit time; no undo for a wrong cut by design.

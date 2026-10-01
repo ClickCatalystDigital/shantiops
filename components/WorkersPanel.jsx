@@ -18,7 +18,8 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectGroup, SelectItem,
 } from '@/components/ui/select';
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table';
-import { PlusIcon, HouseIcon, ClipboardListIcon, UsersIcon, HardHatIcon, PackageCheckIcon, ClipboardCheckIcon } from 'lucide-react';
+import { PlusIcon, HouseIcon, ClipboardListIcon, UsersIcon, HardHatIcon, PackageCheckIcon, ClipboardCheckIcon, ScissorsIcon } from 'lucide-react';
+import { RemnantsProduction } from '@/components/RemnantsPanel';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 import JobSheetBoard from '@/components/JobSheetBoard';
 import QuickAddInline from '@/components/QuickAddInline';
@@ -32,7 +33,7 @@ import MaterialIndentWorklist from '@/components/MaterialIndentWorklist';
 // BOM/Forecast/Daily Sheet/Workers Roster all live here too now, so the workspace name needs to
 // cover the whole thing; Job Card stays exactly as it was, just as the default sub-tab, same
 // "workspace name ≠ default sub-tab" shape every other department tab already has.
-const WORKSPACE_TABS = ['jobcards', 'indent', 'sheet', 'approvals'];
+const WORKSPACE_TABS = ['jobcards', 'indent', 'remnants', 'sheet', 'approvals'];
 
 export default function WorkersPanel({ date, sheet, workers, projects, trades, jobCards, operations, workstations, preDispatchApprovals = [], canDecideProduction = false }) {
   // Operations' Production pipeline glance (ProductionFlow.jsx) links a stage straight into a
@@ -50,6 +51,7 @@ export default function WorkersPanel({ date, sheet, workers, projects, trades, j
     // ready to indent (plan §9). Separate from "BOM"'s own per-project single-line raise form,
     // which stays exactly as it was.
     { key: 'indent', label: 'Material Indent', icon: PackageCheckIcon },
+    { key: 'remnants', label: 'Remnants', icon: ScissorsIcon },
     { key: 'sheet', label: 'Workers', icon: UsersIcon },
     // Inward + Pre-Dispatch QC/Production Approval Workflow — Production's own department-local
     // slice (the retired top-level /material-review page). Only Pre-Dispatch, never Inward — that
@@ -63,6 +65,7 @@ export default function WorkersPanel({ date, sheet, workers, projects, trades, j
         <JobSheetBoard workers={workers} projects={projects} canProduction canQc={false} />
       )}
       {tab === 'indent' && <MaterialIndentWorklist />}
+      {tab === 'remnants' && <RemnantsProduction />}
       {tab === 'sheet' && <DailySheetWorkspace date={date} sheet={sheet} projects={projects} workers={workers} trades={trades} />}
       {tab === 'approvals' && (
         <PreDispatchApprovalsPanel rows={preDispatchApprovals} canDecideQc={false} canDecideProduction={canDecideProduction} />
