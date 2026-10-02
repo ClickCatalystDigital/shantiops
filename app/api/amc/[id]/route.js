@@ -1,12 +1,12 @@
 // app/api/amc/[id]/route.js — AMC contract actions for Sales (SYSTEM.md §5dr). PATCH body `action`:
 //   (none)        edit fields   | renew  new contract from this one | cancel
-//   add_cost      {cost_date, description, amount} | delete_cost {cost_id} | schedule_pm {visit_date, visited_by?} → a planned visit on the Home calendar
+//   add_cost      {cost_date, description, amount} | delete_cost {cost_id} | add_receipt {receipt_date, amount, received_by?, note?} | delete_receipt {receipt_id} | schedule_pm {visit_date, visited_by?} → a planned visit on the Home calendar
 import { NextResponse } from 'next/server';
 import { execute, queryOne, nextCounterValue } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
 import { audit } from '@/lib/usb';
 
-const FIELDS = ['customer_name', 'start_date', 'end_date', 'visit_frequency', 'entitlement', 'contract_value', 'received_value'];
+const FIELDS = ['customer_name', 'start_date', 'end_date', 'visit_frequency', 'entitlement', 'contract_value', 'received_value', 'service_engineer'];
 const num = v => (v === '' || v == null ? null : Number(v));
 
 export async function PATCH(req, { params }) {
@@ -29,6 +29,23 @@ export async function PATCH(req, { params }) {
     await audit('service_contract_cost_deleted', { actor: user.username, detail: `${tag}: cost ${b.cost_id}` });
     return NextResponse.json({ ok: true });
   }
+  if (b.action === 'add_receipt') {
+    const amount = Number(b.amount);
+    if (!(amount > 0) || !/^\d{4}-\d{2}-\d{2}$/.test(b.receipt_date || '')) return NextResponse.json({ error: 'A date and an amount above zero are required' }, { status: 400 });
+    await execute('INSERT INTO service_contract_receipts (contract_id, receipt_date, amount, received_by, note, created_by) VALUES (?, ?, ?, ?, ?, ?)',
+      [c.id, b.receipt_date, amount, String(b.received_by || c.service_engineer || '').trim().slice(0, 80) || null, String(b.note || '').slice(0, 200) || null, user.username]);
+    await execute('UPDATE service_contracts SET received_value = COALESCE(received_value, 0) + ? WHERE id = ?', [amount, c.id]); // the running total follows the log
+    await audit('service_contract_receipt_added', { actor: user.username, detail: `${tag}: ${amount}` });
+    return NextResponse.json({ ok: true });
+  }
+  if (b.action === 'delete_receipt') {
+    const r = await queryOne('SELECT id, amount FROM service_contract_receipts WHERE id = ? AND contract_id = ?', [b.receipt_id, c.id]);
+    if (!r) return NextResponse.json({ error: 'Receipt not found' }, { status: 404 });
+    await execute('DELETE FROM service_contract_receipts WHERE id = ?', [r.id]);
+    await execute('UPDATE service_contracts SET received_value = MAX(0, COALESCE(received_value, 0) - ?) WHERE id = ?', [r.amount, c.id]);
+    await audit('service_contract_receipt_deleted', { actor: user.username, detail: `${tag}: receipt ${r.id}` });
+    return NextResponse.json({ ok: true });
+  }
   if (b.action === 'schedule_pm') {
     if (!c.project_id) return NextResponse.json({ error: 'Link this contract to a project to schedule visits' }, { status: 400 });
     if (!/^\d{4}-\d{2}-\d{2}$/.test(b.visit_date || '')) return NextResponse.json({ error: 'Visit date is required' }, { status: 400 });
@@ -43,9 +60,9 @@ export async function PATCH(req, { params }) {
     if (!b.start_date || !b.end_date || b.end_date < b.start_date) return NextResponse.json({ error: 'New start and end dates are required' }, { status: 400 });
     const no = await nextCounterValue('service_contract_no');
     const { lastId } = await execute(
-      `INSERT INTO service_contracts (contract_no, project_id, customer_id, customer_name, start_date, end_date, visit_frequency, entitlement, contract_value, received_value, renewed_from_id, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
-      [no, c.project_id, c.customer_id, c.customer_name, b.start_date, b.end_date, c.visit_frequency, c.entitlement, num(b.contract_value) ?? c.contract_value, c.id, user.username]);
+      `INSERT INTO service_contracts (contract_no, project_id, customer_id, customer_name, start_date, end_date, visit_frequency, entitlement, contract_value, received_value, renewed_from_id, created_by, service_engineer)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
+      [no, c.project_id, c.customer_id, c.customer_name, b.start_date, b.end_date, c.visit_frequency, c.entitlement, num(b.contract_value) ?? c.contract_value, c.id, user.username, c.service_engineer]);
     await execute("UPDATE service_contracts SET status = 'renewed' WHERE id = ?", [c.id]);
     await audit('service_contract_renewed', { actor: user.username, detail: `${tag} -> SVC-${no}` });
     return NextResponse.json({ id: Number(lastId), contract_no: no });

@@ -25,7 +25,7 @@ const FREQ = ['Monthly', 'Quarterly', 'Half-yearly', 'Yearly'];
 function ContractDialog({ renewing, onClose, onSaved }) {
   const [f, setF] = useState(renewing
     ? { customer_name: renewing.customer, start_date: renewing.end_date || todayISO(), end_date: '', contract_value: renewing.contract_value ?? '' }
-    : { customer_id: '', customer_name: '', project_id: '', start_date: todayISO(), end_date: '', visit_frequency: 'Quarterly', entitlement: '', contract_value: '', received_value: '' });
+    : { customer_id: '', customer_name: '', project_id: '', start_date: todayISO(), end_date: '', visit_frequency: 'Quarterly', entitlement: '', contract_value: '', received_value: '', service_engineer: '' });
   const [projects, setProjects] = useState([]);
   const [saving, setSaving] = useState(false);
   useEffect(() => { if (!renewing) api('/api/projects').then(r => setProjects(r.projects || [])).catch(() => {}); }, [renewing]);
@@ -64,6 +64,7 @@ function ContractDialog({ renewing, onClose, onSaved }) {
                 <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                 <SelectContent><SelectItem value="_none">No schedule</SelectItem>{FREQ.map(x => <SelectItem key={x} value={x}>{x}</SelectItem>)}</SelectContent>
               </Select></div>
+            <div className="col-span-2 grid gap-1.5"><Label>Service engineer (looks after this AMC)</Label><Input value={f.service_engineer} onChange={e => set('service_engineer', e.target.value)} placeholder="Name" /></div>
             <div className="col-span-2 grid gap-1.5"><Label>What is covered</Label><Textarea value={f.entitlement} onChange={e => set('entitlement', e.target.value)} placeholder="Visits included, parts, response time…" /></div>
           </>}
         </div>
@@ -98,16 +99,37 @@ function ContractDetail({ c, reload, onClose }) {
   const [renewing, setRenewing] = useState(false);
   const [cost, setCost] = useState({ cost_date: todayISO(), description: '', amount: '' });
   const [rec, setRec] = useState(c.received_value ?? '');
-  useEffect(() => { setRec(c.received_value ?? ''); }, [c.id, c.received_value]);
+  const [engineer, setEngineer] = useState(c.service_engineer || '');
+  const [receipt, setReceipt] = useState({ receipt_date: todayISO(), amount: '', received_by: '', note: '' });
+  useEffect(() => { setRec(c.received_value ?? ''); setEngineer(c.service_engineer || ''); }, [c.id, c.received_value, c.service_engineer]);
+  const logged = (c.receipts || []).reduce((t, r) => t + r.amount, 0);
+  const undated = Math.max(0, (Number(c.received_value) || 0) - logged);
   const act = async (body, msg) => { try { await api(`/api/amc/${c.id}`, { method: 'PATCH', body }); if (msg) showToast(msg); reload(); return true; } catch (e) { showToast(e.message, 'error'); return false; } };
   return (
     <Card>
       <CardHeader><CardTitle>SVC-{c.contract_no} · {c.customer}</CardTitle><CardAction><Button size="sm" variant="ghost" onClick={onClose}>Close</Button></CardAction></CardHeader>
       <CardContent className="grid gap-6 md:grid-cols-2">
         <div className="flex flex-col gap-2">
-          <div className="text-sm font-medium">Value received</div>
+          <div className="text-sm font-medium">Value received (total)</div>
           <div className="flex items-center gap-2"><Input className="h-8 w-40" type="number" min="0" value={rec} onChange={e => setRec(e.target.value)} />
             <Button size="sm" variant="outline" onClick={() => act({ received_value: rec }, 'Saved')}>Save</Button></div>
+          <div className="flex items-center gap-2 pt-1"><span className="shrink-0 text-sm font-medium">Service engineer</span>
+            <Input className="h-8 w-44" value={engineer} onChange={e => setEngineer(e.target.value)} placeholder="Name" />
+            <Button size="sm" variant="outline" disabled={engineer === (c.service_engineer || '')} onClick={() => act({ service_engineer: engineer }, 'Saved')}>Save</Button></div>
+          <div className="pt-2 text-sm font-medium">Receipts</div>
+          {(c.receipts || []).length === 0 && <p className="text-xs text-muted-foreground">No dated receipts yet.</p>}
+          {(c.receipts || []).map(r => (
+            <div key={r.id} className="flex items-center gap-2 text-sm"><span className="w-24 shrink-0 text-muted-foreground">{formatDate(r.receipt_date)}</span>
+              <span className="min-w-0 flex-1 truncate">{[r.received_by, r.note].filter(Boolean).join(' · ') || '—'}</span><span className="tnum">{formatMoney(r.amount)}</span>
+              <Button size="icon" variant="ghost" className="size-7" aria-label="Delete receipt" onClick={() => confirm('Remove this receipt? The received total goes down by the same amount.') && act({ action: 'delete_receipt', receipt_id: r.id })}><Trash2Icon /></Button></div>
+          ))}
+          {undated > 0 && <p className="text-xs text-muted-foreground">{formatMoney(undated)} of the received total has no date recorded (entered before receipts were logged).</p>}
+          <div className="flex flex-wrap items-center gap-2">
+            <Input type="date" className="h-8 w-36" value={receipt.receipt_date} onChange={e => setReceipt({ ...receipt, receipt_date: e.target.value })} />
+            <Input className="h-8 w-28" type="number" min="0" placeholder="Amount" value={receipt.amount} onChange={e => setReceipt({ ...receipt, amount: e.target.value })} />
+            <Input className="h-8 w-32" placeholder={engineer || 'Received by'} value={receipt.received_by} onChange={e => setReceipt({ ...receipt, received_by: e.target.value })} />
+            <Button size="sm" onClick={async () => { if (await act({ action: 'add_receipt', ...receipt }, 'Receipt added')) setReceipt({ ...receipt, amount: '', received_by: '', note: '' }); }}>Add receipt</Button>
+          </div>
           {c.entitlement && <p className="text-xs text-muted-foreground">Covers: {c.entitlement}</p>}
           {c.visit_frequency && <p className="text-xs text-muted-foreground">Preventive maintenance: {c.visit_frequency}</p>}
           <div className="flex flex-wrap items-center gap-2 pt-1">

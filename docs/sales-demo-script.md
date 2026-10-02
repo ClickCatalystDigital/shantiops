@@ -42,13 +42,13 @@ Sales → **Enquiries → Weekly Planner**. Each day shows the follow-ups planne
 Sales → **Customers** → open a customer → **Add-on & cross-sell opportunities** → **Create enquiry** (warranty ended / ending) or **Offer an AMC**. The enquiry opens pre-filled, tagged *Existing Customer* and linked to the customer.
 
 ## 11. AMC and preventive maintenance
-Sales → **Deals → AMC**. Open a contract: days committed / left, value, received, cost and profit. Add a cost entry; the profit updates. **Preventive maintenance due** lists the next visit per contract and per item under warranty; **Schedule visit** puts it on the Home calendar.
+Sales → **Deals → AMC**. Open a contract: days committed / left, value, received, cost and profit. Add a cost entry; the profit updates. Log each payment under **Receipts** (date, amount, who took it) and pick the **Service engineer**; the three AMC reports (Due, Received, Service Engineer wise) read these. **Preventive maintenance due** lists the next visit per contract and per item under warranty; **Schedule visit** puts it on the Home calendar.
 
 ## 12. Library
 Sales → **Setup → Library** → upload a mailer / presentation / price list → everyone in Sales can download it.
 
 ## 13. Reports
-Reports → **Sales**: reports are grouped by what you want to know — **Overview**, **Sales Order / AMC Order** (Sales Order vs Collection, Dispatch Sales Order Report, Sales Register, AMC Profitability), **Funnel & Enquiries**, **Order Analysis** (by employee, source, reference, branch), **Sales Calls & Follow-up**, **Quotations & Pricing**, **Team Performance**, **Customers & Feedback**. The company dropdown at the top right narrows orders, quotations, invoices and payments; enquiry and follow-up reports are shared by both companies. Most reports download as CSV / Excel.
+Reports → **Sales**: reports are grouped by what you want to know — **Overview**, **Sales Order / AMC Order** (Sales Order vs Collection, Dispatch Sales Order Report, Customer Wise Monthly AMC Due / Received, Service Engineer wise AMC Received, Sales Register, AMC Profitability), **Funnel & Enquiries**, **Order Analysis** (by employee, source, reference, branch), **Sales Calls & Follow-up**, **Quotations & Pricing**, **Team Performance**, **Customers & Feedback**. The company dropdown at the top right narrows orders, quotations, invoices and payments; enquiry and follow-up reports are shared by both companies. Most reports download as CSV / Excel.
 
 Demo AMC contracts were added with `node --env-file=.env.local scripts/seed-demo-mis.mjs --apply`; remove them with `--rollback`.
 

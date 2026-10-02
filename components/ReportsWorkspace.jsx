@@ -68,7 +68,7 @@ import { DispatchSalesOrderReport } from '@/components/OrderManagementReports';
 import {
   SourceWiseOrderReport, ReferenceWiseOrderReport, BranchWiseOrderReport, EmployeeWiseOrderReport, WinLossReport, FunnelAgeingReport,
   OrderTimeCycleReport, LeadGenerationReport, CallLogReport, LastContactReport, DailyWorkReport, EmployeeMovementReport,
-  SellingVsCostReport, NewCustomersReport, EmployeeUsageReport, AmcProfitabilityReport,
+  SellingVsCostReport, NewCustomersReport, EmployeeUsageReport, AmcProfitabilityReport, AmcDueReport, AmcReceivedReport, AmcEngineerReport,
 } from '@/components/MisReports';
 import ProjectProfitabilityCard from '@/components/executive/ProjectProfitabilityCard';
 import CustomerProfitabilityCard from '@/components/executive/CustomerProfitabilityCard';
@@ -95,7 +95,7 @@ const SUBGROUP_ICON = {
   'Sales Calls & Follow-up': PhoneIcon, 'Quotations & Pricing': FileTextIcon, 'Team Performance': UserCheckIcon, 'Customers & Feedback': MessageSquareIcon,
 };
 // Order of reports inside a section (anything not listed keeps its catalog order, after these).
-const KEY_ORDER = ['sales_overview', 'sales_pipeline', 'sales_call_funnel', 'order_book', 'dispatch_sales_order', 'sales-register', 'amc_profitability',
+const KEY_ORDER = ['sales_overview', 'sales_pipeline', 'sales_call_funnel', 'order_book', 'dispatch_sales_order', 'amc_due', 'amc_received', 'amc_engineer', 'sales-register', 'amc_profitability',
   'funnel_ageing', 'lead_generation', 'order_time_cycle', 'win_loss', 'lost_reasons', 'competitor_analysis', 'employee_wise_order', 'order_by_source', 'order_by_reference', 'order_by_branch',
   'sales_call_prospect_summary', 'sales_call_date_wise', 'sales_call_location_wise', 'call_log', 'last_contact', 'neglected_sales_call', 'customer_follow_up', 'sales_call_customize',
   'quotation_listing', 'selling_vs_cost', 'employee_performance_360', 'agent_performance', 'daily_work', 'employee_movement', 'employee_follow_up', 'employee_expense', 'employee_usage',
@@ -179,6 +179,7 @@ export const SCREEN = {
   'sales_overview': SalesOverviewReport,
   'order_book': OrderBookReport,
   'dispatch_sales_order': DispatchSalesOrderReport,
+  'amc_due': AmcDueReport, 'amc_received': AmcReceivedReport, 'amc_engineer': AmcEngineerReport,
   'employee_performance_360': EmployeePerformance360Report,
   // MIS pack (SYSTEM.md §5dr)
   'employee_wise_order': EmployeeWiseOrderReport, 'order_by_source': SourceWiseOrderReport, 'order_by_reference': ReferenceWiseOrderReport,
@@ -217,7 +218,7 @@ const ICON = {
   'agent_performance': UserRoundIcon,
   'lead_funnel': UsersIcon, 'leads_by_source': Share2Icon, 'campaign_performance': MegaphoneIcon,
   'sales_call_prospect_summary': TableIcon, 'sales_call_date_wise': CalendarDaysIcon,
-  'sales_call_location_wise': MapPinIcon, 'sales_call_funnel': SlidersHorizontalIcon, 'sales_overview': LayoutDashboardIcon, 'order_book': WalletIcon, 'dispatch_sales_order': PackageCheckIcon, 'employee_performance_360': UserCheckIcon, 'competitor_analysis': SwordsIcon, 'lost_reasons': SwordsIcon,
+  'sales_call_location_wise': MapPinIcon, 'sales_call_funnel': SlidersHorizontalIcon, 'sales_overview': LayoutDashboardIcon, 'order_book': WalletIcon, 'dispatch_sales_order': PackageCheckIcon, 'amc_due': CalendarClockIcon, 'amc_received': WalletIcon, 'amc_engineer': UserCheckIcon, 'employee_performance_360': UserCheckIcon, 'competitor_analysis': SwordsIcon, 'lost_reasons': SwordsIcon,
   'neglected_sales_call': AlertCircleIcon, 'customer_follow_up': RepeatIcon,
   'client_feedback': MessageSquareIcon, 'employee_follow_up': UserCheckIcon,
   'quotation_listing': FileTextIcon, 'feedback_not_responded': XCircleIcon,

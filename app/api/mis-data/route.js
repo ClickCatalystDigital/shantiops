@@ -67,5 +67,20 @@ export async function GET(req) {
       ORDER BY c.end_date DESC LIMIT 500`, company ? [COMPANY_NAMES[0], company] : []);
     return NextResponse.json(rows);
   }
+  if (what === 'amc_money') {
+    // Contracts + dated receipts for the three AMC money reports (lib/amc-reports.mjs does the sums). Follows the top-bar company.
+    const company = getSelectedCompanyFor(user);
+    const where = company ? 'WHERE COALESCE(p.company, ?) = ?' : '';
+    const args = company ? [COMPANY_NAMES[0], company] : [];
+    const contracts = await queryAll(`
+      SELECT c.id, c.contract_no, COALESCE(NULLIF(c.customer_name,''), cu.name) AS customer, c.status, c.start_date, c.end_date,
+        c.contract_value, c.received_value, c.service_engineer
+      FROM service_contracts c LEFT JOIN projects p ON p.id = c.project_id LEFT JOIN customers cu ON cu.id = c.customer_id
+      ${where} ORDER BY c.end_date DESC LIMIT 2000`, args);
+    const ids = contracts.map(c => c.id);
+    const receipts = ids.length ? await queryAll(
+      `SELECT contract_id, receipt_date, amount, received_by FROM service_contract_receipts WHERE contract_id IN (${ids.map(() => '?').join(',')})`, ids) : [];
+    return NextResponse.json({ contracts: contracts.map(c => ({ ...c })), receipts: receipts.map(r => ({ ...r })) });
+  }
   return NextResponse.json({ error: 'Unknown report data' }, { status: 400 });
 }

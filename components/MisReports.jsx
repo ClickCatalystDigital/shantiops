@@ -14,6 +14,7 @@ import { todayISO } from '@/lib/date';
 import { personLabel } from '@/lib/sales-people.mjs';
 import { BarList, ReportShell } from '@/components/ReportKit';
 import { Kpis, Chart } from '@/components/SalesInsightReports';
+import { amcDue, amcReceived, amcByEngineer } from '@/lib/amc-reports.mjs';
 import { ordersBy, winLoss, leadGeneration, callLog, dailyWork, lastContact, funnelAgeing, orderTimeCycle } from '@/lib/mis.mjs';
 
 const addDays = (iso, n) => { const d = new Date(`${iso}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
@@ -279,6 +280,66 @@ export function AmcProfitabilityReport() {
       <Kpis items={[['Contracts', rows.length], ['Contract value', formatMoney(t.v)], ['Received', formatMoney(t.rec)], ['Cost', formatMoney(t.c)], ['Profit so far', formatMoney(t.rec - t.c)]]} />
       <Grid title="AMC profitability" heads={['Contract', 'Customer', 'Status', 'Start', 'End', 'Value', 'Received', 'Cost', 'Profit']}
         rows={rows.map(r => [r.contract_no, r.customer_name || '—', r.status, formatDate(r.start_date), formatDate(r.end_date), money(r.contract_value), money(r.received_value), money(r.cost), money((r.received_value || 0) - (r.cost || 0))])} />
+    </ReportShell>
+  );
+}
+
+// ── AMC money reports (2026-10-02): Customer Wise Monthly AMC Due / Received, Service Engineer wise AMC Received ──
+// One data call (/api/mis-data?what=amc_money); sums in lib/amc-reports.mjs. Months are YYYY-MM.
+function useAmcMonths(defFrom, defTo) {
+  const s = useMisData('amc_money');
+  const [from, setFrom] = useState(defFrom), [to, setTo] = useState(defTo);
+  const controls = (
+    <div className="flex flex-wrap items-end gap-2">
+      <div className="grid gap-1"><Label className="text-xs">From month</Label><Input type="month" className="h-8 w-40" value={from} onChange={e => setFrom(e.target.value)} /></div>
+      <div className="grid gap-1"><Label className="text-xs">To month</Label><Input type="month" className="h-8 w-40" value={to} onChange={e => setTo(e.target.value)} /></div>
+    </div>
+  );
+  const data = s.rows && !Array.isArray(s.rows) ? s.rows : { contracts: [], receipts: [] };
+  return { s, from, to, controls, data };
+}
+const monthAhead = n => { const d = new Date(); d.setMonth(d.getMonth() + n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; };
+const monthLabel = m => (m ? formatDate(`${m}-01`).replace(/^\d+\s/, '') : '—');
+
+export function AmcDueReport() {
+  const { s, from, to, controls, data } = useAmcMonths(monthAhead(0), monthAhead(11));
+  const r = useMemo(() => amcDue(data.contracts, { from, to }), [data, from, to]);
+  return (
+    <ReportShell title="Customer Wise Monthly AMC Due Report" action={controls}
+      description="AMC contracts that end in the months chosen — what each is worth, what has been received, and the balance still to collect. Follows the company selector at the top.">
+      <Loading s={s} />
+      <Kpis items={[['Contracts due', r.rows.length], ['Contract value', formatMoney(r.totals.value)], ['Received', formatMoney(r.totals.received)], ['To collect', formatMoney(r.totals.balance)]]} />
+      <Grid title="AMC due" heads={['Month', 'Customer', 'Contract', 'Ends', 'Status', 'Value', 'Received', 'Balance']}
+        rows={r.rows.map(x => [monthLabel(x.month), x.customer, x.contract_no, formatDate(x.end_date), x.status, money(x.value), money(x.received), money(x.balance)])} />
+    </ReportShell>
+  );
+}
+
+export function AmcReceivedReport() {
+  const { s, from, to, controls, data } = useAmcMonths(monthAhead(-11), monthAhead(0));
+  const r = useMemo(() => amcReceived(data.contracts, data.receipts, { from, to }), [data, from, to]);
+  return (
+    <ReportShell title="Customer Wise Monthly AMC Received Report" action={controls}
+      description="Money received against AMC contracts, by month and customer, from the dated receipts logged on each contract. Follows the company selector at the top.">
+      <Loading s={s} />
+      <Kpis items={[['Received in period', formatMoney(r.total)], ['Receipts', r.rows.reduce((t, x) => t + x.receipts, 0)]]} />
+      <Grid title="AMC received" heads={['Month', 'Customer', 'Receipts', 'Amount']}
+        rows={r.rows.map(x => [monthLabel(x.month), x.customer, x.receipts, money(x.amount)])} />
+      {r.undated > 0 && <p className="mt-2 text-xs text-muted-foreground">{formatMoney(r.undated)} was received on older contracts before dated receipts were logged — it has no month, so it is not in the table. Log receipts on the AMC tab to include new money.</p>}
+    </ReportShell>
+  );
+}
+
+export function AmcEngineerReport() {
+  const { s, from, to, controls, data } = useAmcMonths(monthAhead(-11), monthAhead(0));
+  const r = useMemo(() => amcByEngineer(data.contracts, data.receipts, { from, to }), [data, from, to]);
+  return (
+    <ReportShell title="Service Engineer wise AMC Received Performance Report" action={controls}
+      description="For each service engineer: money collected in the months chosen (by who took the receipt, else the contract's engineer), and the active contracts they look after with the balance outstanding.">
+      <Loading s={s} />
+      <Kpis items={[['Collected in period', formatMoney(r.total)], ['Engineers', r.rows.length]]} />
+      <Grid title="AMC by service engineer" heads={['Service engineer', 'Receipts', 'Collected', 'Active contracts', 'Contract value', 'Received to date', 'Outstanding']}
+        rows={r.rows.map(x => [x.engineer, x.receipts, money(x.collected), x.contracts, money(x.value), money(x.received), money(x.balance)])} />
     </ReportShell>
   );
 }
