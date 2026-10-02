@@ -13,6 +13,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectGroup, SelectI
 import { PlusIcon, TrashIcon } from 'lucide-react';
 import DimensionInput from '@/components/DimensionInput';
 import { pieceWeight } from '@/lib/piece-weight';
+import { validateCut } from '@/lib/cut-validate.mjs';
 import PieceLineage from '@/components/PieceLineage';
 import SearchableSelect from '@/components/SearchableSelect';
 
@@ -40,7 +41,7 @@ function pieceTraceLabel(p) {
 // with every other weight preview in the app (Production's Cut dialog, the PR/BOM composer,
 // Stores' Add piece dialog) instead of a second hand-maintained copy of the formula.
 function previewWeight(source, row) {
-  return pieceWeight({ kind: source.kind, ...row, density: source.density, kg_per_m: source.kg_per_m });
+  return pieceWeight({ kind: source.kind, ...row, ...(source.kind === 'plate' ? { thickness_mm: source.thickness_mm } : {}), density: source.density, kg_per_m: source.kg_per_m });
 }
 
 // The BOM line's own required dims (category_fields_json — CALC-CHANGES2.md §F) prefill the first
@@ -51,7 +52,7 @@ function requiredDimsFromBomItem(b) {
   try {
     const f = JSON.parse(b.category_fields_json);
     return b.category === 'plate'
-      ? { length_mm: f.length || '', width_mm: f.width || '', thickness_mm: f.thickness || '' }
+      ? { length_mm: f.length || '', width_mm: f.width || '' }
       : { length_mm: f.length || '' };
   } catch { return {}; }
 }
@@ -61,7 +62,7 @@ function requiredDimsFromBomItem(b) {
 // operator can say which physical piece fulfills which named part right where they're already
 // declaring dimensions. Optional and per-row: not every used piece needs one, and a line with no
 // breakdown at all just doesn't get the column.
-function DimRows({ label, kind, rows, setRows, partOptions }) {
+function DimRows({ label, kind, rows, setRows, partOptions, lockedThickness }) {
   function update(idx, field, value) {
     setRows(rows.map((r, i) => (i === idx ? { ...r, [field]: value } : r)));
   }
@@ -78,7 +79,9 @@ function DimRows({ label, kind, rows, setRows, partOptions }) {
           {kind === 'plate' && (
             <>
               <DimensionInput placeholder="Width" className="w-40 shrink-0" valueMm={r.width_mm ?? ''} onChangeMm={v => update(idx, 'width_mm', v)} />
-              <DimensionInput placeholder="Thickness" className="w-44 shrink-0" valueMm={r.thickness_mm ?? ''} onChangeMm={v => update(idx, 'thickness_mm', v)} />
+              {lockedThickness
+                ? <Input disabled className="w-44 shrink-0" value={`${lockedThickness} mm (from source)`} />
+                : <DimensionInput placeholder="Thickness" className="w-44 shrink-0" valueMm={r.thickness_mm ?? ''} onChangeMm={v => update(idx, 'thickness_mm', v)} />}
             </>
           )}
           {partOptions?.length > 0 && (
@@ -164,7 +167,15 @@ export default function CutDialog({ bomItem = null, initialSource = null, projec
   const usedWeight = source ? used.reduce((s, r) => s + previewWeight(source, r), 0) : 0;
   const remnantWeight = source ? remnants.reduce((s, r) => s + previewWeight(source, r), 0) : 0;
   const scrapWeight = source ? Math.max(0, round2(source.weight_kg - usedWeight - remnantWeight)) : 0;
-  const overBudget = !!source && (usedWeight + remnantWeight) > source.weight_kg + 0.01;
+  // Same validator the server runs (lib/cut-validate.mjs): plate fit/overlap, linear lengths.
+  const cutErrors = useMemo(() => {
+    if (!source) return [];
+    const rows = rs => rs.filter(r => parseNum(r.length_mm) > 0 || parseNum(r.width_mm) > 0).map(r => ({
+      length_mm: parseNum(r.length_mm), width_mm: parseNum(r.width_mm), thickness_mm: source.kind === 'plate' ? source.thickness_mm : 0 }));
+    const u = rows(used), m = rows(remnants);
+    return u.length || m.length ? validateCut(source, u, m).errors : [];
+  }, [source, used, remnants]);
+  const overBudget = cutErrors.length > 0;
 
   async function submit() {
     if (!source) return showToast('Pick a source piece', 'error');
@@ -172,7 +183,7 @@ export default function CutDialog({ bomItem = null, initialSource = null, projec
     setSaving(true);
     try {
       const toDims = (rows, withPart) => rows.filter(r => parseNum(r.length_mm) > 0).map(r => ({
-        length_mm: parseNum(r.length_mm), width_mm: parseNum(r.width_mm), thickness_mm: parseNum(r.thickness_mm),
+        length_mm: parseNum(r.length_mm), width_mm: parseNum(r.width_mm), thickness_mm: source.kind === 'plate' ? source.thickness_mm : parseNum(r.thickness_mm),
         ...(withPart && r.part_name ? { part_name: r.part_name } : {}),
       }));
       const res = await api(`/api/stock-pieces/${sourcePieceId}/cut`, {
@@ -254,15 +265,15 @@ export default function CutDialog({ bomItem = null, initialSource = null, projec
 
           {source && (
             <>
-              <DimRows label={bomItem ? 'Used (→ this project)' : 'Used'} kind={source.kind} rows={used} setRows={setUsed} partOptions={namedParts} />
-              <DimRows label="Kept as remnant (→ stock)" kind={source.kind} rows={remnants} setRows={setRemnants} />
+              <DimRows label={bomItem ? 'Used (→ this project)' : 'Used'} kind={source.kind} rows={used} setRows={setUsed} partOptions={namedParts} lockedThickness={source.kind === 'plate' ? source.thickness_mm : null} />
+              <DimRows label="Kept as remnant (→ stock)" kind={source.kind} rows={remnants} setRows={setRemnants} lockedThickness={source.kind === 'plate' ? source.thickness_mm : null} />
               <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm tnum">
                 <div className="flex justify-between"><span className="text-muted-foreground">Source</span><span>{source.weight_kg} kg</span></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">Used</span><span>{round2(usedWeight)} kg</span></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">Remnant</span><span>{round2(remnantWeight)} kg</span></div>
                 <div className="flex justify-between font-medium"><span>Scrap (auto)</span><span>{overBudget ? '—' : `${scrapWeight} kg`}</span></div>
               </div>
-              {overBudget && <p className="text-xs text-danger">Used + remnant exceeds the source piece — reduce a dimension.</p>}
+              {cutErrors.map(e => <p key={e} className="text-xs text-danger">{e}</p>)}
               {!bomItem && !projectId && projectOptions && (
                 <div className="flex flex-col gap-1.5">
                   <Label>Project this is cut for{source.test_certificate_id ? ' (required: certified piece)' : ' (optional)'}</Label>

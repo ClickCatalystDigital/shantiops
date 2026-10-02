@@ -54,10 +54,11 @@ console.log('pieceWeight: ok');
 // flat against the ROOT's own code, never compounding onto whichever immediate parent was cut, and
 // a known heat number rides directly in the code string.
 function sanitizeHeatForCode(heatNo) { return String(heatNo || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10); }
-function rootCode(kind, id, heatNo) {
-  const base = `${kind === 'plate' ? 'PL' : 'LN'}-${String(id).padStart(4, '0')}`;
+// n = running count within prefix+heat (lib/stock-pieces.js takes it from a counter).
+function rootCode(kind, id, heatNo, n = 1) {
+  const prefix = kind === 'plate' ? 'PL' : 'LN';
   const h = sanitizeHeatForCode(heatNo);
-  return h ? `${base}-H${h}` : base;
+  return h ? `${prefix}-${h}-${String(n).padStart(3, '0')}` : `${prefix}-${String(id).padStart(4, '0')}`;
 }
 async function nextSeq(rootId, letter) {
   const r = await run(
@@ -209,9 +210,12 @@ console.log('cutPiece invalid-input guard: ok (A0.2)');
 {
   assert.strictEqual(rootCode('plate', 7, null), 'PL-0007', 'no heat -> bare root code, unchanged from before this fix');
   assert.strictEqual(rootCode('linear', 7, ''), 'LN-0007', 'blank heat -> no H segment');
-  assert.strictEqual(rootCode('plate', 42, '62A/5678'), 'PL-0042-H62A5678', 'heat is sanitized (slash stripped) and embedded');
-  assert.strictEqual(rootCode('plate', 42, 'sail heat 001'), 'PL-0042-HSAILHEAT00', 'lowercase uppercased, spaces stripped, capped at 10 chars');
-  assert.strictEqual(rootCode('plate', 42, '///'), 'PL-0042', 'a heat number that sanitizes to nothing falls back to the bare code, never a dangling "-H"');
+  assert.strictEqual(rootCode('plate', 42, '62A/5678'), 'PL-62A5678-001', 'heat is sanitized (slash stripped) and embedded');
+  assert.strictEqual(rootCode('plate', 42, 'sail heat 001'), 'PL-SAILHEAT00-001', 'lowercase uppercased, spaces stripped, capped at 10 chars');
+  assert.strictEqual(rootCode('plate', 42, '62A/5678', 2), 'PL-62A5678-002', 'second plate of the same heat counts up');
+  assert.strictEqual(rootCode('plate', 43, 'H67890'), 'PL-H67890-001', 'a different heat restarts at 001');
+  assert.strictEqual(rootCode('linear', 44, 'H12345'), 'LN-H12345-001', 'linear stock uses the LN prefix');
+  assert.strictEqual(rootCode('plate', 42, '///'), 'PL-0042', 'a heat number that sanitizes to nothing falls back to the bare code');
 }
 console.log('rootCode/sanitizeHeatForCode: ok');
 
@@ -226,8 +230,8 @@ console.log('rootCode/sanitizeHeatForCode: ok');
   const first = await cutPiece({ sourcePieceId: 200, used: [{ length_mm: 1000, width_mm: 2000, thickness_mm: 10 }], remnants: [{ length_mm: 500, width_mm: 2000, thickness_mm: 10 }] });
   const usedChild = await one('SELECT code, heat_no FROM stock_pieces WHERE id = ?', [first.childIds.used[0]]);
   const remnantChild = await one('SELECT id, code, status, heat_no FROM stock_pieces WHERE id = ?', [first.childIds.remnants[0]]);
-  assert.strictEqual(usedChild.code, 'PL-0200-H62A5678-U1', 'first used child carries the root heat + flat U1 (verifies both fixes together)');
-  assert.strictEqual(remnantChild.code, 'PL-0200-H62A5678-R1', 'first remnant child is flat R1, and inherits the heat number');
+  assert.strictEqual(usedChild.code, 'PL-62A5678-001-U1', 'first used child carries the root heat + flat U1 (verifies both fixes together)');
+  assert.strictEqual(remnantChild.code, 'PL-62A5678-001-R1', 'first remnant child is flat R1, and inherits the heat number');
   assert.strictEqual(remnantChild.heat_no, '62A5678', 'heat number inherited from the root, not re-entered');
 
   // Cut that remnant again — the actual regression this whole fix exists for.
@@ -235,8 +239,8 @@ console.log('rootCode/sanitizeHeatForCode: ok');
   const second = await cutPiece({ sourcePieceId: remnantChild.id, used: [{ length_mm: 300, width_mm: 2000, thickness_mm: 10 }], remnants: [{ length_mm: 150, width_mm: 2000, thickness_mm: 10 }] });
   const usedChild2 = await one('SELECT code FROM stock_pieces WHERE id = ?', [second.childIds.used[0]]);
   const remnantChild2 = await one('SELECT code FROM stock_pieces WHERE id = ?', [second.childIds.remnants[0]]);
-  assert.strictEqual(usedChild2.code, 'PL-0200-H62A5678-U2', 'second-generation used child continues the ROOT\'s U sequence (U2), not PL-0200-R1-U1');
-  assert.strictEqual(remnantChild2.code, 'PL-0200-H62A5678-R2', 'second-generation remnant is flat R2, not the old compounding PL-0200-R1-R1');
+  assert.strictEqual(usedChild2.code, 'PL-62A5678-001-U2', 'second-generation used child continues the ROOT\'s U sequence (U2), not PL-0200-R1-U1');
+  assert.strictEqual(remnantChild2.code, 'PL-62A5678-001-R2', 'second-generation remnant is flat R2, not the old compounding PL-0200-R1-R1');
 }
 console.log('lineage-code flattening: ok (a re-cut remnant numbers flat against the root, heat number rides in every descendant\'s code)');
 

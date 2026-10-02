@@ -132,7 +132,7 @@ const STORES_BACKLOG = [
        inside cutPiece()'s own transaction, not the shared nextCounterValue() helper, so a rolled-back
        cut can never leave a permanent gap). Cutting PL-0042-R1 a second time now correctly produces
        PL-0042-U2/PL-0042-R2, not the old compounding PL-0042-R1-U1/-R1.`,
-      `Same round: heat number now rides directly in the code (PL-0042-H62A5678, sanitized to A-Z0-9
+      `Same round: heat number now rides directly in the code (now PL-62A5678-001 — heat first, then a running number per heat; was PL-0042-H62A5678; sanitized to A-Z0-9
        and capped at 10 chars) whenever one was captured at receipt — a direct request, so the heat
        is readable off the physical tag without a separate lookup. Verified in
        scripts/remnant-cutting-selfcheck.mjs (a real cut-then-recut-the-remnant scenario, asserting
