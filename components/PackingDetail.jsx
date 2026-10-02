@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Trash2Icon, FileTextIcon, CheckCircle2Icon, CircleAlertIcon, SearchIcon } from 'lucide-react';
+import { Trash2Icon, FileTextIcon, CheckCircle2Icon, CircleAlertIcon, SearchIcon, ChevronDownIcon } from 'lucide-react';
 import { COMPANY_NAMES } from '@/lib/company-profiles';
 import { EntityCode } from '@/components/EntityRefLink';
 import { groupForms } from '@/lib/packing-forms.mjs';
@@ -130,21 +130,26 @@ function EwayChecklistCard({ list, setList, invoices, onGenerate, generating }) 
     } catch (err) { showToast(err.message, 'error'); }
   }
   const [dist, setDist] = useState(list.transport_distance_km ?? '');
+  const [open, setOpen] = useState(false);
   const hereOk = (checks || []).filter(c => c.where === 'here').every(c => c.ok);
   const blocker = (checks || []).find(c => !c.ok);
+  const okCount = (checks || []).filter(c => c.ok).length;
 
   return (
     <Card className="no-print">
-      <CardContent className="flex flex-col gap-4 py-4">
+      <CardContent className="flex flex-col gap-4 py-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-sm font-medium">E-Way Bill</p>
-            <p className="text-xs text-muted-foreground">Not generated yet. NIC needs everything below.</p>
-          </div>
-          <Button size="sm" disabled={generating || !checks || !!blocker} onClick={onGenerate}>{generating ? 'Generating…' : 'Generate E-Way Bill'}</Button>
+          <button type="button" onClick={() => setOpen(v => !v)} className="flex items-center gap-2 text-left">
+            <ChevronDownIcon className={`size-4 text-muted-foreground transition-transform ${open ? '' : '-rotate-90'}`} />
+            <span>
+              <span className="block text-sm font-medium">E-way bill</span>
+              <span className="block text-xs text-muted-foreground">{checks === null ? 'Checking…' : blocker ? `Not generated · ${okCount} of ${checks.length} requirements ready` : 'Ready to generate'}</span>
+            </span>
+          </button>
+          <Button size="sm" variant={blocker ? 'outline' : 'default'} disabled={generating || !checks || !!blocker} onClick={onGenerate}>{generating ? 'Generating…' : 'Generate'}</Button>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {open && <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs">Distance (km)</Label>
             <Input type="number" min="1" max="4000" value={dist} onChange={e => setDist(e.target.value)}
@@ -174,9 +179,9 @@ function EwayChecklistCard({ list, setList, invoices, onGenerate, generating }) 
               </SelectContent>
             </Select>
           </div>
-        </div>
+        </div>}
 
-        <ul className="flex flex-col gap-1.5 text-sm">
+        {open && <ul className="flex flex-col gap-1.5 text-sm">
           {checks === null && <li className="text-xs text-muted-foreground">Checking…</li>}
           {(checks || []).map(c => (
             <li key={c.key} className="flex items-start gap-2">
@@ -187,8 +192,8 @@ function EwayChecklistCard({ list, setList, invoices, onGenerate, generating }) 
               </span>
             </li>
           ))}
-        </ul>
-        {checks && hereOk && blocker && <p className="text-xs text-muted-foreground">Everything on this list is ready. The remaining item above needs Accounts or your technical team.</p>}
+        </ul>}
+        {open && checks && hereOk && blocker && <p className="text-xs text-muted-foreground">Everything on this list is ready. The remaining item above needs Accounts or your technical team.</p>}
       </CardContent>
     </Card>
   );
@@ -293,6 +298,7 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
   const [cancelRemark, setCancelRemark] = useState('');
   const [deleting, setDeleting] = useState(false);
   const [addFromOpen, setAddFromOpen] = useState(false);
+  const [manualOpen, setManualOpen] = useState(false);
 
   useEffect(() => {
     if (!list.project_id) return;
@@ -406,7 +412,7 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
   const ewayBillCancellable = list.eway_bill_date && (Date.now() - new Date(list.eway_bill_date).getTime()) <= 24 * 60 * 60 * 1000;
 
   const Meta = ({ label, value }) => (
-    <div><dt className="text-xs text-muted-foreground">{label}</dt><dd className="text-sm font-medium">{value || '—'}</dd></div>
+    <div><dt className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</dt><dd className="text-sm font-medium">{value || <span className="text-muted-foreground/40">—</span>}</dd></div>
   );
 
   const linkedInvoice = invoices.find(i => i.id === list.sales_invoice_id);
@@ -580,7 +586,7 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
             <div className="mt-1.5 text-sm font-bold">MASTER PACKING LIST</div>
           </div>
 
-          <dl className="mb-4 grid grid-cols-2 gap-x-6 gap-y-2">
+          <dl className="mb-6 grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 lg:grid-cols-4">
             <Meta label="Buyer" value={list.customer_name} />
             <Meta label="Packing No" value={list.packing_no} />
             <Meta label="Address" value={list.customer_address} />
@@ -691,30 +697,33 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
 
       {!readOnly && (
         <Card className="no-print">
-          <CardContent className="py-5">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <span className="font-semibold">Add Item</span>
-              <Button type="button" variant="outline" size="sm" onClick={() => setAddFromOpen(true)}>Add from project BOM / catalogue</Button>
+          <CardContent className="flex flex-col gap-4 py-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-semibold">Add items</p>
+                <p className="text-xs text-muted-foreground">Pull a pending BOM line or a catalogue item, or type a line by hand.</p>
+              </div>
+              <div className="flex gap-2">
+                <Button type="button" size="sm" onClick={() => setAddFromOpen(true)}>From project BOM / catalogue</Button>
+                <Button type="button" size="sm" variant="outline" onClick={() => setManualOpen(v => !v)}>{manualOpen ? 'Hide manual line' : 'Type a line'}</Button>
+              </div>
             </div>
-            <form onSubmit={addItem} className="flex flex-col gap-3">
-              <div className="flex flex-col gap-1.5">
-                <Label>Description *</Label>
-                <Input required value={f.material_description} onChange={e => setF({ ...f, material_description: e.target.value })} placeholder="Safety Valve" />
-              </div>
-              <div className="grid gap-3 sm:grid-cols-3">
-                <div className="flex flex-col gap-1.5"><Label>MOC</Label><Input value={f.moc} onChange={e => setF({ ...f, moc: e.target.value })} /></div>
-                <div className="flex flex-col gap-1.5"><Label>Size / Spec</Label><Input value={f.size_spec} onChange={e => setF({ ...f, size_spec: e.target.value })} /></div>
-                <div className="flex flex-col gap-1.5"><Label>IBR No</Label><Input value={f.ibr_no} onChange={e => setF({ ...f, ibr_no: e.target.value })} /></div>
-                <div className="flex flex-col gap-1.5"><Label>Box No</Label><Input value={f.box_no} onChange={e => setF({ ...f, box_no: e.target.value })} placeholder="SB-LOOSE 3" /></div>
-                <div className="flex flex-col gap-1.5"><Label>Qty</Label><Input type="number" min="0" step="any" value={f.qty} onChange={e => setF({ ...f, qty: e.target.value })} /></div>
-                <div className="flex flex-col gap-1.5"><Label>Item Code</Label><Input value={f.item_code} onChange={e => setF({ ...f, item_code: e.target.value })} /></div>
-              </div>
-              <div className="flex flex-col gap-1.5"><Label>Make</Label><Input value={f.make} onChange={e => setF({ ...f, make: e.target.value })} /></div>
-              <div><Button type="submit">+ Add Item</Button></div>
-            </form>
+            {manualOpen && (
+              <form onSubmit={addItem} className="grid gap-3 border-t pt-4 sm:grid-cols-6">
+                <div className="flex flex-col gap-1.5 sm:col-span-3"><Label className="text-xs">Description *</Label><Input required value={f.material_description} onChange={e => setF({ ...f, material_description: e.target.value })} placeholder="Safety valve" /></div>
+                <div className="flex flex-col gap-1.5 sm:col-span-2"><Label className="text-xs">Size / spec</Label><Input value={f.size_spec} onChange={e => setF({ ...f, size_spec: e.target.value })} /></div>
+                <div className="flex flex-col gap-1.5"><Label className="text-xs">Qty</Label><Input type="number" min="0" step="any" value={f.qty} onChange={e => setF({ ...f, qty: e.target.value })} /></div>
+                <div className="flex flex-col gap-1.5 sm:col-span-2"><Label className="text-xs">MOC</Label><Input value={f.moc} onChange={e => setF({ ...f, moc: e.target.value })} /></div>
+                <div className="flex flex-col gap-1.5 sm:col-span-2"><Label className="text-xs">Make</Label><Input value={f.make} onChange={e => setF({ ...f, make: e.target.value })} /></div>
+                <div className="flex flex-col gap-1.5"><Label className="text-xs">IBR no</Label><Input value={f.ibr_no} onChange={e => setF({ ...f, ibr_no: e.target.value })} /></div>
+                <div className="flex flex-col gap-1.5"><Label className="text-xs">Item code</Label><Input value={f.item_code} onChange={e => setF({ ...f, item_code: e.target.value })} /></div>
+                <div className="flex items-end sm:col-span-6"><Button type="submit" size="sm">Add line</Button></div>
+              </form>
+            )}
           </CardContent>
         </Card>
       )}
+
       {!readOnly && (
         <AddFromDialog open={addFromOpen} onOpenChange={setAddFromOpen} list={list}
           onAdded={r => { if (r.items) setItems(r.items); else window.location.reload(); /* older per-form lists don't return the lines */ }} />
