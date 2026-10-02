@@ -687,7 +687,7 @@ function LeadDetailSheet({ lead, allLeads = [], onOpenLead, users, customers, sa
           )}
 
           {/* Row 3 — tabs */}
-          <EnquiryTabs lead={lead} users={users} salesProducts={salesProducts} sourceOptions={sourceOptions} router={router}
+          <EnquiryTabs key={lead.id} lead={lead} users={users} salesProducts={salesProducts} sourceOptions={sourceOptions} router={router}
             ensureCustomer={ensureCustomer} activitiesSlot={activitiesSlot} />
         </div>
         <SheetFooter><Button variant="outline" onClick={onClose}>Close</Button></SheetFooter>
