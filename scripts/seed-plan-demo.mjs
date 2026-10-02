@@ -9,26 +9,36 @@ const iso = n => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
 const P = 'ZZ-PLAN-TEST';
 
 async function cleanup() {
+  // One atomic batch: if anything still references the demo project (e.g. RFQ or PR lines added while
+  // testing), nothing is deleted and the error says so — never a half-deleted demo.
   const p = await one('SELECT id FROM projects WHERE project_no = ?', [P]);
+  const st = [];
   if (p) {
     const ids = (await run('SELECT id FROM bom_items WHERE project_id = ?', [p.id])).rows.map(r => r.id);
     const inIds = ids.length ? ids.join(',') : '0';
-    await run(`DELETE FROM inventory_reservations WHERE bom_item_id IN (${inIds})`);
-    await run(`DELETE FROM po_delivery_lot_items WHERE po_item_id IN (SELECT id FROM po_items WHERE bom_item_id IN (${inIds}))`);
-    await run(`DELETE FROM po_items WHERE bom_item_id IN (${inIds})`);
-    await run(`DELETE FROM notifications WHERE project_id = ?`, [p.id]);
-    await run(`DELETE FROM tasks WHERE project_id = ?`, [p.id]);
-    await run(`DELETE FROM work_order_operations WHERE work_order_id IN (SELECT id FROM work_orders WHERE project_id = ?)`, [p.id]);
-    await run(`DELETE FROM work_orders WHERE project_id = ?`, [p.id]);
-    await run(`DELETE FROM bom_items WHERE project_id = ?`, [p.id]);
-    await run(`DELETE FROM milestones WHERE project_id = ?`, [p.id]);
-    await run(`DELETE FROM projects WHERE id = ?`, [p.id]);
+    st.push(
+      `DELETE FROM inventory_reservations WHERE bom_item_id IN (${inIds})`,
+      `DELETE FROM po_delivery_lot_items WHERE po_item_id IN (SELECT id FROM po_items WHERE bom_item_id IN (${inIds}))`,
+      `DELETE FROM po_items WHERE bom_item_id IN (${inIds})`,
+      { sql: 'DELETE FROM notifications WHERE project_id = ?', args: [p.id] },
+      { sql: 'DELETE FROM tasks WHERE project_id = ?', args: [p.id] },
+      { sql: 'DELETE FROM work_order_operations WHERE work_order_id IN (SELECT id FROM work_orders WHERE project_id = ?)', args: [p.id] },
+      { sql: 'DELETE FROM work_orders WHERE project_id = ?', args: [p.id] },
+      { sql: 'DELETE FROM bom_items WHERE project_id = ?', args: [p.id] },
+      { sql: 'DELETE FROM milestones WHERE project_id = ?', args: [p.id] },
+      { sql: 'DELETE FROM projects WHERE id = ?', args: [p.id] });
   }
-  await run(`DELETE FROM po_delivery_lots WHERE po_id IN (SELECT id FROM purchase_orders WHERE po_no LIKE 'ZZ-PLAN%')`);
-  await run(`DELETE FROM purchase_orders WHERE po_no LIKE 'ZZ-PLAN%'`);
-  await run(`DELETE FROM suppliers WHERE name = 'ZZ PLAN SUPPLIER'`);
-  await run(`DELETE FROM inventory_items WHERE description = 'ZZ PLAN TEST BOLT'`);
-  await run(`DELETE FROM items WHERE item_name = 'ZZ PLAN TEST BOLT'`);
+  st.push(
+    "DELETE FROM po_delivery_lots WHERE po_id IN (SELECT id FROM purchase_orders WHERE po_no LIKE 'ZZ-PLAN%')",
+    "DELETE FROM purchase_orders WHERE po_no LIKE 'ZZ-PLAN%'",
+    "DELETE FROM suppliers WHERE name = 'ZZ PLAN SUPPLIER'",
+    "DELETE FROM inventory_items WHERE description = 'ZZ PLAN TEST BOLT'",
+    "DELETE FROM items WHERE item_name = 'ZZ PLAN TEST BOLT'");
+  try { await db.batch(st, 'write'); }
+  catch (e) {
+    console.error(`Cleanup refused, nothing deleted: ${e.message}. Something else (an RFQ, PR split or service visit added while testing) still points at ${P}; remove it first.`);
+    process.exit(1);
+  }
   console.log('cleaned');
 }
 
