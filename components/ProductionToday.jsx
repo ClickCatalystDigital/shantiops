@@ -30,9 +30,30 @@ import { Label } from '@/components/ui/label';
 const AddToDiaryDialog = dynamic(() => import('./SalesWorkspace').then(m => m.AddToDiaryDialog), { ssr: false });
 const AddEnquiryDialog = dynamic(() => import('./SalesWorkspace').then(m => m.AddEnquiryDialog), { ssr: false });
 
-// Sales CRM plan 2b — the day's Diary follow-ups as a table (cards below md).
-function FollowupTable({ rows, onUpdate }) {
-  if (!rows.length) return null;
+// Small "1–8 of 23  Previous  Next" bar for the follow-up lists (hidden when everything fits one page).
+function PageBar({ page, setPage, size, total }) {
+  if (total <= size) return null;
+  const pages = Math.ceil(total / size);
+  return (
+    <div className="mt-2 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+      <span>{page * size + 1}–{Math.min(total, (page + 1) * size)} of {total}</span>
+      <div className="flex gap-1.5">
+        <Button size="xs" variant="outline" disabled={page === 0} onClick={() => setPage(page - 1)}>Previous</Button>
+        <Button size="xs" variant="outline" disabled={page >= pages - 1} onClick={() => setPage(page + 1)}>Next</Button>
+      </div>
+    </div>
+  );
+}
+const FOLLOWUP_CARD_PAGE = 8;
+const FOLLOWUP_TABLE_PAGE = 10;
+
+// Sales CRM plan 2b — the day's Diary follow-ups as a table (cards below md), paginated.
+function FollowupTable({ rows: allRows, onUpdate }) {
+  const [page, setPage] = useState(0);
+  useEffect(() => { setPage(0); }, [allRows.length]);
+  if (!allRows.length) return null;
+  const rows = allRows.slice(page * FOLLOWUP_TABLE_PAGE, (page + 1) * FOLLOWUP_TABLE_PAGE);
+  const offset = page * FOLLOWUP_TABLE_PAGE;
   const inOut = r => [r.in_time, r.out_time].filter(Boolean).join(' – ') || '—';
   const contact = r => [r.contact_name, r.contact_phone].filter(Boolean).join(' · ') || '—';
   const actions = r => (
@@ -54,7 +75,7 @@ function FollowupTable({ rows, onUpdate }) {
           <tbody>
             {rows.map((r, i) => (
               <tr key={r.id ?? i} className="border-t align-top">
-                <td className="px-2 py-1.5 tnum">{i + 1}</td>
+                <td className="px-2 py-1.5 tnum">{offset + i + 1}</td>
                 <td className="px-2 py-1.5 whitespace-nowrap">{formatDate(r.date)}{r.plan_time ? ` ${r.plan_time}` : ''}</td>
                 <td className="px-2 py-1.5 whitespace-nowrap">{inOut(r)}</td>
                 <td className="px-2 py-1.5 font-medium">{r.company_name || r.lead_name}</td>
@@ -89,6 +110,7 @@ function FollowupTable({ rows, onUpdate }) {
           </div>
         ))}
       </div>
+      <PageBar page={page} setPage={setPage} size={FOLLOWUP_TABLE_PAGE} total={allRows.length} />
     </>
   );
 }
@@ -148,8 +170,11 @@ export default function ProductionToday({
   const upcomingVisitsSorted = useMemo(() => [...upcomingVisits]
     .filter(v => visitScope === 'all' || isMine(v))
     .sort((a, b) => (a.date + (a.visit_time || '')).localeCompare(b.date + (b.visit_time || ''))), [upcomingVisits, visitScope, viewer]);
+  const [fuPage, setFuPage] = useState(0);
   const upcomingSorted = useMemo(() => [...upcomingFollowups]
     .sort((a, b) => (a.date + (a.plan_time || '')).localeCompare(b.date + (b.plan_time || ''))), [upcomingFollowups]);
+  useEffect(() => { setFuPage(0); }, [upcomingFollowups.length]);
+  const fuRows = upcomingSorted.slice(fuPage * FOLLOWUP_CARD_PAGE, (fuPage + 1) * FOLLOWUP_CARD_PAGE);
 
   // A combined multi-department view needs each pill to say which department it's from.
   function pillText(it) {
@@ -347,7 +372,7 @@ export default function ProductionToday({
             {upcomingSorted.length === 0 && (
               <p className="py-2 text-center text-sm text-muted-foreground">No follow-ups planned in the next 5 weeks.</p>
             )}
-            {upcomingSorted.map(f => (
+            {fuRows.map(f => (
               <div key={`fu-${f.id}`} className="flex items-center gap-2 rounded-md px-1 py-1.5 hover:bg-muted">
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm">{f.company_name || f.lead_name}</p>
@@ -359,6 +384,7 @@ export default function ProductionToday({
                 <Button size="sm" variant="outline" className="shrink-0" onClick={() => openDiary(f.lead_id)}>Update</Button>
               </div>
             ))}
+            <PageBar page={fuPage} setPage={setFuPage} size={FOLLOWUP_CARD_PAGE} total={upcomingSorted.length} />
           </CardContent>
         </Card>
       )}
