@@ -11,7 +11,7 @@ import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
 // departments as the /pr nav tab (Installation too since its own Requests tab reuses the composer). Sales added for the quotation/price-list item pickers — reading
 // the catalog to price against it is a different concern from owning it, so this stays a read
 // gate, not a write one.
-const CATALOG_SEARCH_DEPARTMENTS = ['Engineering', 'Design', 'Stores', 'Sales', 'Installation'];
+const CATALOG_SEARCH_DEPARTMENTS = ['Engineering', 'Design', 'Stores', 'Sales', 'Installation', 'Dispatch'];
 
 export async function GET(req) {
   const user = await getFreshSessionUser();

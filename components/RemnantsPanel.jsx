@@ -11,11 +11,12 @@ import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, showToast } from '@/lib/client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScissorsIcon, CheckIcon, Trash2Icon, Undo2Icon } from 'lucide-react';
 import CutDialog, { pieceDimsLabel } from '@/components/CutDialog';
+import StoresSubTabs from '@/components/StoresSubTabs';
+import ProjectMultiFilter from '@/components/ProjectMultiFilter';
 
 function ageLabel(createdAt) {
   if (!createdAt) return '';
@@ -66,12 +67,20 @@ async function scrap(p, reload) {
   catch (e) { showToast(e.message, 'error'); }
 }
 
-export function RemnantsProduction() {
+export function RemnantsProduction({ projects = [] }) {
   const router = useRouter();
   const [toCut, reloadCut] = usePieces('reserved');
   const [returned, reloadReturned] = usePieces('pending_receipt');
   const [cutting, setCutting] = useState(null);
+  const [sub, setSub] = useState('cut');
+  const [picked, setPicked] = useState(new Set());
   const reloadAll = () => Promise.all([reloadCut(), reloadReturned()]);
+
+  // A piece belongs to the project it is reserved for, else the indent's project, else its owner.
+  const projectOf = p => p.project_id || p.indent_project_id || p.owner_project_id || null;
+  const keep = list => (list && picked.size ? list.filter(p => picked.has(projectOf(p))) : list);
+  const cutRows = keep(toCut), returnedRows = keep(returned);
+  const options = projects.map(pr => ({ id: pr.id, label: pr.project_no, sub: pr.customer_name }));
 
   const dialogProps = p => p.bom_item_id
     ? { bomItem: { id: p.bom_item_id, material_description: p.bom_description, category: p.bom_category,
@@ -80,41 +89,53 @@ export function RemnantsProduction() {
 
   return (
     <div className="flex flex-col gap-4">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2"><ScissorsIcon className="size-4" />To cut {toCut?.length > 0 && <Badge variant="secondary">{toCut.length}</Badge>}</CardTitle>
-          <CardDescription>Pieces Stores has reserved for a job. Click Cut — the size from the PMB is filled in; you only enter the remnant you keep.</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col divide-y">
-          {toCut === null ? <p className="py-8 text-center text-sm text-muted-foreground">Loading…</p>
-            : toCut.length === 0 ? <Empty icon={ScissorsIcon}>Nothing waiting to be cut.</Empty>
-            : toCut.map(p => (
-              <div key={p.id} className="flex flex-wrap items-center gap-4 py-3">
-                <PieceInfo p={p} extra={p.project_no ? `${p.project_no} · ${p.bom_description || ''}` : p.indent_no ? `Indent ${p.indent_no}` : ''} />
-                <Dims p={p} />
-                <Button size="sm" onClick={() => setCutting(p)}><ScissorsIcon />Cut</Button>
-              </div>
-            ))}
-        </CardContent>
-      </Card>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <StoresSubTabs value={sub} onChange={setSub} tabs={[
+          { value: 'cut', label: 'Cut', count: cutRows?.length || 0 },
+          { value: 'returns', label: 'Returns to Stores', count: returnedRows?.length || 0 },
+        ]} />
+        <ProjectMultiFilter options={options} value={picked} onChange={setPicked} />
+      </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Undo2Icon className="size-4" />Returned, waiting for Stores {returned?.length > 0 && <Badge variant="secondary">{returned.length}</Badge>}</CardTitle>
-          <CardDescription>Remnants you carried back. Stores confirms them into stock. If one is unusable, Scrap it.</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col divide-y">
-          {returned === null ? <p className="py-8 text-center text-sm text-muted-foreground">Loading…</p>
-            : returned.length === 0 ? <Empty icon={CheckIcon}>Nothing waiting for Stores.</Empty>
-            : returned.map(p => (
-              <div key={p.id} className="flex flex-wrap items-center gap-4 py-3">
-                <PieceInfo p={p} extra={`cut from ${p.parent_code || '—'} · ${ageLabel(p.created_at)}`} />
-                <Dims p={p} />
-                <Button size="sm" variant="outline" onClick={() => scrap(p, reloadAll)}><Trash2Icon />Scrap it</Button>
-              </div>
-            ))}
-        </CardContent>
-      </Card>
+      {sub === 'cut' && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><ScissorsIcon className="size-4" />To cut</CardTitle>
+            <CardDescription>Pieces Stores has reserved for a job. Click Cut — the size from the PMB is filled in; you only enter the remnant you keep.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col divide-y">
+            {cutRows === null ? <p className="py-8 text-center text-sm text-muted-foreground">Loading…</p>
+              : cutRows.length === 0 ? <Empty icon={ScissorsIcon}>{picked.size ? 'Nothing to cut for these projects.' : 'Nothing waiting to be cut.'}</Empty>
+              : cutRows.map(p => (
+                <div key={p.id} className="flex flex-wrap items-center gap-4 py-3">
+                  <PieceInfo p={p} extra={p.project_no ? `${p.project_no} · ${p.bom_description || ''}` : p.indent_no ? `Indent ${p.indent_no}` : ''} />
+                  <Dims p={p} />
+                  <Button size="sm" onClick={() => setCutting(p)}><ScissorsIcon />Cut</Button>
+                </div>
+              ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {sub === 'returns' && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><Undo2Icon className="size-4" />Returns to Stores</CardTitle>
+            <CardDescription>Remnants you carried back. Stores confirms them into stock. If one is unusable, Scrap it.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col divide-y">
+            {returnedRows === null ? <p className="py-8 text-center text-sm text-muted-foreground">Loading…</p>
+              : returnedRows.length === 0 ? <Empty icon={CheckIcon}>{picked.size ? 'Nothing waiting for these projects.' : 'Nothing waiting for Stores.'}</Empty>
+              : returnedRows.map(p => (
+                <div key={p.id} className="flex flex-wrap items-center gap-4 py-3">
+                  <PieceInfo p={p} extra={`cut from ${p.parent_code || '—'} · ${ageLabel(p.created_at)}`} />
+                  <Dims p={p} />
+                  <Button size="sm" variant="outline" onClick={() => scrap(p, reloadAll)}><Trash2Icon />Scrap it</Button>
+                </div>
+              ))}
+          </CardContent>
+        </Card>
+      )}
 
       {cutting && <CutDialog {...dialogProps(cutting)} router={router} onClose={() => setCutting(null)} onDone={reloadAll} />}
     </div>

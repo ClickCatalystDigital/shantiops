@@ -7,6 +7,7 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { api, showToast } from '@/lib/client';
 import { fmt } from './TrialBalanceCard';
+import ReportInfo from '@/components/ReportInfo';
 
 export default function StockValuationCard() {
   const [data, setData] = useState(null);
@@ -16,7 +17,7 @@ export default function StockValuationCard() {
   if (!data) return null;
   return (
     <Card>
-      <CardHeader><CardTitle>Stock Valuation</CardTitle></CardHeader>
+      <CardHeader><CardTitle>Stock Valuation<ReportInfo report="stock-valuation" /></CardTitle></CardHeader>
       <CardContent className="flex flex-col gap-1">
         {data.items.map(i => (
           <div key={i.id} className="flex justify-between gap-2 py-1.5 text-sm">

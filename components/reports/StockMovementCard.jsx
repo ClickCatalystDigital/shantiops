@@ -10,6 +10,7 @@ import { DownloadIcon, FileSpreadsheetIcon } from 'lucide-react';
 import { api, showToast } from '@/lib/client';
 import { currentFyBounds } from '@/lib/date';
 import { fmt } from './TrialBalanceCard';
+import ReportInfo from '@/components/ReportInfo';
 
 export default function StockMovementCard() {
   const fy = currentFyBounds();
@@ -26,7 +27,7 @@ export default function StockMovementCard() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Stock Movement &amp; Project Consumption</CardTitle>
+        <CardTitle>Stock Movement &amp; Project Consumption<ReportInfo report="stock-movement" /></CardTitle>
         <CardAction className="flex gap-2">
           <Button asChild size="sm" variant="outline">
             <a href={`/api/reports/stock-movement/export?format=pdf&${qs}`} target="_blank" rel="noreferrer"><DownloadIcon data-icon="inline-start" />PDF</a>

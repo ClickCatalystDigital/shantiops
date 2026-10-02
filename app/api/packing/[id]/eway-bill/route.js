@@ -15,13 +15,25 @@
 // packing list specifically — packing_items has no link to sales_invoice_items. Flagged in Gap 5
 // below rather than silently sending an inaccurate itemList for that case.
 import { NextResponse } from 'next/server';
-import { execute, queryOne, queryAll } from '@/lib/db';
+import { execute } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { generateEwayBill, loadCredentials } from '@/lib/eway-bill';
+import { loadEwayContext } from '@/lib/eway-context';
+import { firstProblem } from '@/lib/eway-readiness.mjs';
 
 const TRANS_MODE_CODES = { road: '1', rail: '2', air: '3', ship: '4' };
 const VEHICLE_TYPE_CODES = { regular: 'R', odc: 'O' };
+
+// Checklist for the Generate card: what is ready, what is missing and who fixes it. Read-only.
+export async function GET(req, { params }) {
+  const user = await getFreshSessionUser();
+  const denied = requireDepartment(user, 'Dispatch');
+  if (denied) return denied;
+  const ctx = await loadEwayContext(params.id);
+  if (!ctx) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  return NextResponse.json({ checks: ctx.checks });
+}
 
 export async function POST(req, { params }) {
   const user = await getFreshSessionUser();
@@ -30,78 +42,15 @@ export async function POST(req, { params }) {
   const actionDenied = await requireAction(user, 'Dispatch', 'dispatch.packing.eway_bill.generate');
   if (actionDenied) return actionDenied;
 
-  const list = await queryOne(
-    `SELECT pl.id, pl.packing_no, pl.eway_bill_no, pl.transport_distance_km, pl.transport_mode,
-            pl.vehicle_type, pl.vehicle_no, pl.dispatch_through, pl.sales_invoice_id,
-            COALESCE(pl.company, p.company) AS company, p.customer_id
-       FROM packing_lists pl LEFT JOIN projects p ON p.id = pl.project_id WHERE pl.id = ?`,
-    [params.id]
-  );
-  if (!list) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  const ctx = await loadEwayContext(params.id);
+  if (!ctx) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  const { list, customer, company, invoice, invoiceItems } = ctx;
   if (list.eway_bill_no) {
     return NextResponse.json({ error: 'An e-way bill is already set on this packing list. Cancel it first (within 24 hours of generation) if this needs correcting.' }, { status: 409 });
   }
-  if (!list.company) return NextResponse.json({ error: 'This packing list has no project/company linked — cannot generate.' }, { status: 400 });
-
-  // Gap 1/3 — distance and transport mode/vehicle type are hard NIC requirements with no natural
-  // default this app can invent; the UI pre-fills mode/vehicle-type but distance always needs a
-  // real Dispatch entry.
-  if (!list.transport_distance_km) {
-    return NextResponse.json({ error: 'Enter the transport distance in km before generating an e-way bill.' }, { status: 400 });
-  }
-  if (list.transport_distance_km > 4000) {
-    return NextResponse.json({ error: 'Transport distance cannot exceed 4000 km (NIC’s own limit).' }, { status: 400 });
-  }
-  if (!list.transport_mode || !list.vehicle_type) {
-    return NextResponse.json({ error: 'Set the transport mode and vehicle type before generating an e-way bill.' }, { status: 400 });
-  }
-
-  // Gap 4 — NIC needs structured GSTIN/state/pincode/address, not the free-text customer_name this
-  // app displays elsewhere. Fail closed rather than sending an incomplete toGstin/toPincode.
-  // Error messages name plain field labels, never raw column names — an accounts/dispatch head
-  // reads these, not a developer.
-  if (!list.customer_id) {
-    return NextResponse.json({ error: 'This project has no linked customer record — link a real customer to this project before generating an e-way bill.' }, { status: 400 });
-  }
-  const customer = await queryOne('SELECT name, gst_no, state_code, pin_code, address, address2, city FROM customers WHERE id = ?', [list.customer_id]);
-  const CUSTOMER_FIELD_LABELS = { gst_no: 'GSTIN', state_code: 'State', pin_code: 'Pincode', address: 'Address' };
-  const missingCustomerFields = Object.keys(CUSTOMER_FIELD_LABELS).filter(f => !customer?.[f]);
-  if (missingCustomerFields.length) {
-    return NextResponse.json({ error: `The customer's record is missing: ${missingCustomerFields.map(f => CUSTOMER_FIELD_LABELS[f]).join(', ')} — fill these in on the customer record before generating an e-way bill.` }, { status: 400 });
-  }
-
-  // Company (fromGstin/fromPincode/etc.) — same fail-closed pattern.
-  const company = await queryOne('SELECT legal_name, gstin, state_code, registered_address, place, pincode FROM company_settings WHERE company = ?', [list.company]);
-  const COMPANY_FIELD_LABELS = { gstin: 'GSTIN', state_code: 'State', registered_address: 'Registered address', place: 'Place', pincode: 'Pincode' };
-  const missingCompanyFields = Object.keys(COMPANY_FIELD_LABELS).filter(f => !company?.[f]);
-  if (missingCompanyFields.length) {
-    return NextResponse.json({ error: `${list.company}'s own record is missing: ${missingCompanyFields.map(f => COMPANY_FIELD_LABELS[f]).join(', ')} — fill these in under Accounts → Company Settings before generating.` }, { status: 400 });
-  }
-
-  // Gap 5 (new, found wiring the real payload) — NIC's docNo/docDate/totInvValue must come from a
-  // real tax invoice; this packing list needs one linked and issued. Also the source of itemList
-  // (see file header) — a real, priced invoice line, not a fabricated split of packing_items.
-  if (!list.sales_invoice_id) {
-    return NextResponse.json({ error: 'Link a Sales Invoice to this packing list before generating an e-way bill (NIC requires the invoice number/date/value).' }, { status: 400 });
-  }
-  const invoice = await queryOne('SELECT invoice_no, invoice_date, subtotal, cgst_amount, sgst_amount, igst_amount, total, status FROM sales_invoices WHERE id = ?', [list.sales_invoice_id]);
-  if (!invoice || !['issued', 'paid'].includes(invoice.status)) {
-    return NextResponse.json({ error: 'The linked Sales Invoice must be issued before generating an e-way bill.' }, { status: 400 });
-  }
-  const invoiceItems = await queryAll('SELECT item_description, hsn_code, qty, uom, amount, gst_rate_pct FROM sales_invoice_items WHERE sales_invoice_id = ?', [list.sales_invoice_id]);
-  if (!invoiceItems.length) {
-    return NextResponse.json({ error: 'The linked Sales Invoice has no line items.' }, { status: 400 });
-  }
-
-  // Gap 2 — every shipped line needs a real HSN code. Checked here against the *invoice's* items
-  // (the actual itemList source, per the file header) — a blank hsn_code on any invoice line means
-  // NIC will reject with error 216 anyway, so fail closed with a specific message first.
-  const missingHsn = invoiceItems.filter(li => !li.hsn_code);
-  if (missingHsn.length) {
-    return NextResponse.json({
-      error: `${missingHsn.length} invoice line(s) are missing an HSN code — add HSN codes on the Sales Invoice before generating: ${missingHsn.map(li => li.item_description).join(', ')}`,
-    }, { status: 400 });
-  }
+  // Fails closed on every prerequisite BEFORE calling NIC (see header) — same checklist the card shows.
+  const problem = firstProblem(ctx.checks);
+  if (problem) return NextResponse.json({ error: `${problem.label}: ${problem.fix}` }, { status: 400 });
 
   const credentials = await loadCredentials(list.company);
 

@@ -7,6 +7,7 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { api, showToast } from '@/lib/client';
 import { fmt } from './TrialBalanceCard';
+import ReportInfo from '@/components/ReportInfo';
 
 const BUCKETS = ['Current', '1-30', '31-60', '61-90', '90+'];
 
@@ -18,7 +19,7 @@ export default function InventoryAgingCard() {
   if (!data) return null;
   return (
     <Card>
-      <CardHeader><CardTitle>Inventory Aging</CardTitle></CardHeader>
+      <CardHeader><CardTitle>Inventory Aging<ReportInfo report="inventory-aging" /></CardTitle></CardHeader>
       <CardContent className="flex flex-col gap-3">
         <div className="flex flex-wrap gap-3 text-sm">
           {BUCKETS.map(b => (

@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { DownloadIcon, FileSpreadsheetIcon } from 'lucide-react';
 import { api, showToast } from '@/lib/client';
+import ReportInfo from '@/components/ReportInfo';
 
 export default function StockLedgerCard() {
   const [items, setItems] = useState([]);
@@ -35,7 +36,7 @@ export default function StockLedgerCard() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Stock Ledger</CardTitle>
+        <CardTitle>Stock Ledger<ReportInfo report="stock-ledger" /></CardTitle>
         {item && (
           <CardAction className="flex gap-2">
             <Button asChild size="sm" variant="outline">

@@ -28,6 +28,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { PlusIcon, PencilIcon, Trash2Icon, PackageCheckIcon, UndoIcon, TruckIcon, PackageIcon, ClipboardListIcon, LayersIcon, ChevronRightIcon, BoxesIcon, HashIcon, PuzzleIcon, HandshakeIcon, FactoryIcon, SplitIcon, NetworkIcon, DoorOpenIcon, ArrowDownToLineIcon, Columns3Icon, ChevronDownIcon, ChevronsUpDownIcon, ChevronsDownUpIcon, BanIcon, FileTextIcon } from 'lucide-react';
 import { api, showToast, formatDate } from '@/lib/client';
 import { formatMoney } from '@/lib/format';
+import StockMovementCard from '@/components/reports/StockMovementCard';
 import { derivePurchaseStage } from '@/lib/bom-fields.mjs';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 import CertPicker from '@/components/CertPicker';
@@ -2113,6 +2114,9 @@ const NAV_ITEMS = (counts) => [
   { key: 'split-allocation', label: 'Macro Allocator', icon: NetworkIcon, badge: counts.splitOrders || null },
   { key: 'divider-production', divider: true, label: 'Production' },
   { key: 'issued', label: 'On Floor', icon: FactoryIcon },
+  { key: 'divider-reports', divider: true, label: 'Reports' },
+  // Opening / added / removed / closing per item for any dates — the same report as Reports > Stock Movement.
+  { key: 'statement', label: 'Stock Statement', icon: FileTextIcon },
   { key: 'inventory', label: 'Inventory', icon: PackageIcon, badge: counts.lowStock || null, pinBottom: true },
 ];
 
@@ -2891,6 +2895,7 @@ export default function StoresWorkspace({
         <InventoryTab inventoryItems={inventoryItems} openRequests={openRequests} certificates={certificates} projects={projects} />
       )}
       {tab === 'requests' && <StoresDemand inventoryItems={inventoryItems} />}
+      {tab === 'statement' && <StockMovementCard />}
       {tab === 'trade' && (
         <OpenRequestsCard openRequests={tradeRequests} inventoryItems={inventoryItems} router={router}
           title="Trade Orders" blurb="Material Sales has asked for against a sale order — fill it from stock or send it to Procurement." />

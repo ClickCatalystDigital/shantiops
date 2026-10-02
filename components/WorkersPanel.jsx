@@ -46,13 +46,16 @@ export default function WorkersPanel({ date, sheet, workers, projects, trades, j
   // execution sub-tab) — Forecast/Daily Sheet/Workers Roster stay separate operational tools, not
   // folded into the Work Order/Job Card workflow (2026-08-19 UX refinement).
   const navItems = [
+    { key: 'divider-floor', divider: true, label: 'Shop Floor' },
     { key: 'jobcards', label: 'Job Card', icon: HardHatIcon },
+    { key: 'divider-resources', divider: true, label: 'Resources' },
     // Material Indent bridge — the cross-project worklist of material Stores has routed here,
     // ready to indent (plan §9). Separate from "BOM"'s own per-project single-line raise form,
     // which stays exactly as it was.
     { key: 'indent', label: 'Material Indent', icon: PackageCheckIcon },
     { key: 'remnants', label: 'Remnants', icon: ScissorsIcon },
     { key: 'sheet', label: 'Workers', icon: UsersIcon },
+    { key: 'divider-signoff', divider: true, label: 'Sign-off' },
     // Inward + Pre-Dispatch QC/Production Approval Workflow — Production's own department-local
     // slice (the retired top-level /material-review page). Only Pre-Dispatch, never Inward — that
     // half is QC-only. No shared cross-department page, per direct instruction.
@@ -65,7 +68,7 @@ export default function WorkersPanel({ date, sheet, workers, projects, trades, j
         <JobSheetBoard workers={workers} projects={projects} canProduction canQc={false} />
       )}
       {tab === 'indent' && <MaterialIndentWorklist />}
-      {tab === 'remnants' && <RemnantsProduction />}
+      {tab === 'remnants' && <RemnantsProduction projects={projects} />}
       {tab === 'sheet' && <DailySheetWorkspace date={date} sheet={sheet} projects={projects} workers={workers} trades={trades} />}
       {tab === 'approvals' && (
         <PreDispatchApprovalsPanel rows={preDispatchApprovals} canDecideQc={false} canDecideProduction={canDecideProduction} />

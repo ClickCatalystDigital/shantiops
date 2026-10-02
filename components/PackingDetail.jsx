@@ -13,7 +13,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Trash2Icon, FileTextIcon } from 'lucide-react';
+import { Trash2Icon, FileTextIcon, CheckCircle2Icon, CircleAlertIcon, SearchIcon } from 'lucide-react';
+import { COMPANY_NAMES } from '@/lib/company-profiles';
 import { EntityCode } from '@/components/EntityRefLink';
 import { groupForms } from '@/lib/packing-forms.mjs';
 import PackingCombined from '@/components/PackingCombined';
@@ -107,6 +108,171 @@ function DeliveryAckCard({ list, onDone }) {
   );
 }
 
+// Only issued/paid invoices can back an e-way bill. A draft that is already linked stays listed so it
+// can be seen (and replaced), rather than silently vanishing from the picker.
+function usableInvoices(invoices, linkedId) {
+  return invoices.filter(i => ['issued', 'paid'].includes(i.status) || i.id === linkedId);
+}
+
+// The e-way bill card: a live tick-list of what NIC needs, with the things Dispatch can fix on this
+// list editable right here (they save immediately). Server-side the same list refuses generation, so
+// the card and the button can never disagree (GET/POST /api/packing/[id]/eway-bill).
+function EwayChecklistCard({ list, setList, invoices, onGenerate, generating }) {
+  const [checks, setChecks] = useState(null);
+  const reload = () => api(`/api/packing/${list.id}/eway-bill`).then(r => setChecks(r.checks)).catch(() => setChecks([]));
+  useEffect(() => { reload(); }, [list.id]);
+
+  async function save(patch) {
+    try {
+      await api(`/api/packing/${list.id}`, { method: 'PATCH', body: patch });
+      setList(l => ({ ...l, ...patch }));
+      await reload();
+    } catch (err) { showToast(err.message, 'error'); }
+  }
+  const [dist, setDist] = useState(list.transport_distance_km ?? '');
+  const hereOk = (checks || []).filter(c => c.where === 'here').every(c => c.ok);
+  const blocker = (checks || []).find(c => !c.ok);
+
+  return (
+    <Card className="no-print">
+      <CardContent className="flex flex-col gap-4 py-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-medium">E-Way Bill</p>
+            <p className="text-xs text-muted-foreground">Not generated yet. NIC needs everything below.</p>
+          </div>
+          <Button size="sm" disabled={generating || !checks || !!blocker} onClick={onGenerate}>{generating ? 'Generating…' : 'Generate E-Way Bill'}</Button>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs">Distance (km)</Label>
+            <Input type="number" min="1" max="4000" value={dist} onChange={e => setDist(e.target.value)}
+              onBlur={() => { if (String(dist) !== String(list.transport_distance_km ?? '')) save({ transport_distance_km: dist || '' }); }} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs">Transport mode</Label>
+            <Select value={list.transport_mode || ''} onValueChange={v => save({ transport_mode: v })}>
+              <SelectTrigger><SelectValue placeholder="Choose" /></SelectTrigger>
+              <SelectContent>{TRANSPORT_MODES.map(([v, label]) => <SelectItem key={v} value={v}>{label}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs">Vehicle type</Label>
+            <Select value={list.vehicle_type || ''} onValueChange={v => save({ vehicle_type: v })}>
+              <SelectTrigger><SelectValue placeholder="Choose" /></SelectTrigger>
+              <SelectContent>{VEHICLE_TYPES.map(([v, label]) => <SelectItem key={v} value={v}>{label}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs">Sales invoice</Label>
+            <Select value={list.sales_invoice_id ? String(list.sales_invoice_id) : ''} onValueChange={v => save({ sales_invoice_id: Number(v) })}>
+              <SelectTrigger><SelectValue placeholder="Choose" /></SelectTrigger>
+              <SelectContent>
+                {usableInvoices(invoices, list.sales_invoice_id).map(i => <SelectItem key={i.id} value={String(i.id)}>{i.invoice_no}{['issued', 'paid'].includes(i.status) ? '' : ' (draft)'}</SelectItem>)}
+                {!usableInvoices(invoices, list.sales_invoice_id).length && <SelectItem value="none" disabled>No issued invoices for this project</SelectItem>}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <ul className="flex flex-col gap-1.5 text-sm">
+          {checks === null && <li className="text-xs text-muted-foreground">Checking…</li>}
+          {(checks || []).map(c => (
+            <li key={c.key} className="flex items-start gap-2">
+              {c.ok ? <CheckCircle2Icon className="mt-0.5 size-4 shrink-0 text-success" /> : <CircleAlertIcon className="mt-0.5 size-4 shrink-0 text-warning" />}
+              <span>
+                <span className={c.ok ? 'text-muted-foreground' : 'font-medium'}>{c.label}</span>
+                {!c.ok && <span className="block text-xs text-muted-foreground">{c.fix}{c.where === 'admin' ? ' (not something Dispatch can fix here)' : ''}</span>}
+              </span>
+            </li>
+          ))}
+        </ul>
+        {checks && hereOk && blocker && <p className="text-xs text-muted-foreground">Everything on this list is ready. The remaining item above needs Accounts or your technical team.</p>}
+      </CardContent>
+    </Card>
+  );
+}
+
+// Add a line to this list from somewhere other than typing: a still-pending BOM line of this
+// project (even one that hasn't arrived yet) or an Item Master catalogue item.
+function AddFromDialog({ open, onOpenChange, list, onAdded }) {
+  const [tab, setTab] = useState('bom');
+  const [pending, setPending] = useState(null);
+  const [q, setQ] = useState('');
+  const [hits, setHits] = useState([]);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!open || pending) return;
+    api(`/api/packing/${list.id}/pending`).then(setPending).catch(err => { showToast(err.message, 'error'); setPending([]); });
+  }, [open]);
+  useEffect(() => {
+    if (tab !== 'catalogue' || q.trim().length < 2) { setHits([]); return; }
+    const t = setTimeout(() => api(`/api/items?search=${encodeURIComponent(q.trim())}`).then(setHits).catch(() => setHits([])), 250);
+    return () => clearTimeout(t);
+  }, [q, tab]);
+
+  async function add(body, done) {
+    setBusy(true);
+    try { const r = await api(`/api/packing/${list.id}/items`, { method: 'POST', body }); onAdded(r, body); done?.(); }
+    catch (err) { showToast(err.message, 'error'); }
+    setBusy(false);
+  }
+  const needle = q.trim().toLowerCase();
+  const bomRows = (pending || []).filter(it => !needle || `${it.material_description} ${it.size_spec || ''}`.toLowerCase().includes(needle));
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-2xl">
+        <DialogHeader><DialogTitle>Add item to {list.packing_no}</DialogTitle></DialogHeader>
+        <div className="inline-flex w-fit rounded-full border bg-muted/50 p-0.5 text-sm">
+          {[['bom', 'Project BOM (pending)'], ['catalogue', 'Item catalogue']].map(([k, label]) => (
+            <button key={k} type="button" onClick={() => { setTab(k); setQ(''); }}
+              className={`rounded-full px-3 py-1 transition-colors ${tab === k ? 'bg-card font-medium shadow-sm' : 'text-muted-foreground'}`}>{label}</button>
+          ))}
+        </div>
+        <div className="relative">
+          <SearchIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input value={q} onChange={e => setQ(e.target.value)} className="pl-9" placeholder={tab === 'bom' ? 'Filter pending lines…' : 'Search the Item Master (2+ letters)…'} />
+        </div>
+        <div className="max-h-80 overflow-y-auto rounded-md border">
+          {tab === 'bom' && (pending === null ? <p className="p-4 text-sm text-muted-foreground">Loading…</p>
+            : !list.project_id ? <p className="p-4 text-sm text-muted-foreground">This list has no project, so it has no BOM lines. Use the catalogue.</p>
+            : bomRows.length === 0 ? <p className="p-4 text-sm text-muted-foreground">No pending lines for this project.</p>
+            : bomRows.map(it => (
+              <div key={it.id} className="flex items-center gap-3 border-b px-3 py-2 text-sm last:border-b-0">
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-medium">{it.material_description}</div>
+                  <div className="text-xs text-muted-foreground">{[it.qty_text, it.size_spec].filter(Boolean).join(' · ') || '—'}</div>
+                </div>
+                {it.readyForPacking
+                  ? <Badge variant="outline" className="border-success/30 bg-success-surface text-success">Ready</Badge>
+                  : <Badge variant="outline" className="text-muted-foreground">Not received yet</Badge>}
+                <Button size="sm" disabled={busy} onClick={() => {
+                  if (!it.readyForPacking && !confirm('This item has not been received/produced yet. Add it anyway?')) return;
+                  add({ bom_item_id: it.id, material_description: it.material_description }, () => setPending(p => p.filter(x => x.id !== it.id)));
+                }}>Add</Button>
+              </div>
+            )))}
+          {tab === 'catalogue' && (q.trim().length < 2 ? <p className="p-4 text-sm text-muted-foreground">Type at least 2 letters.</p>
+            : hits.length === 0 ? <p className="p-4 text-sm text-muted-foreground">No catalogue item matches.</p>
+            : hits.map(h => (
+              <div key={h.id} className="flex items-center gap-3 border-b px-3 py-2 text-sm last:border-b-0">
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-medium">{h.item_name}</div>
+                  <div className="text-xs text-muted-foreground">{[h.item_code, h.default_moc, h.uom].filter(Boolean).join(' · ')}</div>
+                </div>
+                <Button size="sm" disabled={busy} onClick={() => add({ material_description: h.item_name, moc: h.default_moc || '', item_code: h.item_code || '', unit: h.uom || undefined, qty: 1 })}>Add</Button>
+              </div>
+            )))}
+        </div>
+        <DialogFooter><Button variant="ghost" onClick={() => onOpenChange(false)}>Done</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function PackingDetail({ list: initialList, items: initialItems, checklist: initialChecklist = [], readOnly = false }) {
   const [checklist, setChecklist] = useState(initialChecklist);
   // forms derive from items below; declared after items state
@@ -126,6 +292,7 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
   const [cancelReasonCode, setCancelReasonCode] = useState('');
   const [cancelRemark, setCancelRemark] = useState('');
   const [deleting, setDeleting] = useState(false);
+  const [addFromOpen, setAddFromOpen] = useState(false);
 
   useEffect(() => {
     if (!list.project_id) return;
@@ -136,8 +303,9 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
     e.preventDefault();
     if (!f.material_description.trim()) return;
     try {
-      const { id } = await api(`/api/packing/${list.id}/items`, { method: 'POST', body: f });
-      setItems(xs => [...xs, { ...f, id, s_no: xs.length + 1, qty: Number(f.qty) || 1, unit: "No's" }]);
+      const r = await api(`/api/packing/${list.id}/items`, { method: 'POST', body: f });
+      // A combined list is renumbered/grouped by the server, so take its returned lines as they are.
+      setItems(xs => r.items || [...xs, { ...f, id: r.id, s_no: xs.length + 1, qty: Number(f.qty) || 1, unit: "No's" }]);
       setF(BLANK);
     } catch (err) { showToast(err.message, 'error'); }
   }
@@ -181,8 +349,9 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
     const body = {
       freight_paid_by: draft.freight_paid_by || '', sales_invoice_id: draft.sales_invoice_id || '',
       transport_distance_km: draft.transport_distance_km || '',
-      transport_mode: draft.transport_mode || 'road', vehicle_type: draft.vehicle_type || 'regular',
+      transport_mode: draft.transport_mode || '', vehicle_type: draft.vehicle_type || '',
     };
+    if (draft.company) body.company = draft.company;
     HEADER_FIELDS.forEach(([k]) => { body[k] = draft[k] || ''; });
     // Once posted, freight_amount is read-only (disabled input above) — leave it out of the body
     // entirely rather than resending the unchanged figure, which would otherwise trip the server's
@@ -192,11 +361,11 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
     catch (err) { showToast(err.message, 'error'); }
   }
   async function deleteList() {
-    if (!confirm(`Delete draft ${list.packing_no}? This removes all ${items.length} item${items.length === 1 ? '' : 's'} from it — the underlying BOM lines stay pending and can be pulled into a new draft later.`)) return;
+    if (!confirm(`Delete ${list.status === 'packed' ? 'ready list' : 'draft'} ${list.packing_no}? This removes all ${items.length} item${items.length === 1 ? '' : 's'} from it${list.status === 'packed' ? ' and any pre-dispatch review on it' : ''} — the underlying BOM lines go back to Pending and can be put on a new list.`)) return;
     setDeleting(true);
     try {
       await api(`/api/packing/${list.id}`, { method: 'DELETE' });
-      showToast('Draft deleted');
+      showToast('Packing list deleted');
       router.push('/dispatch');
     } catch (err) { showToast(err.message, 'error'); setDeleting(false); }
   }
@@ -263,9 +432,9 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
             </Select>
           )}
           {!readOnly && <Button variant="outline" size="sm" onClick={() => { setDraft(list); setEditing(v => !v); }}>{editing ? 'Close' : 'Edit details'}</Button>}
-          {!readOnly && list.status === 'draft' && (
+          {!readOnly && ['draft', 'packed'].includes(list.status) && (
             <Button variant="outline" size="sm" className="text-danger hover:text-danger" disabled={deleting} onClick={deleteList}>
-              <Trash2Icon data-icon="inline-start" />{deleting ? 'Deleting…' : 'Delete draft'}
+              <Trash2Icon data-icon="inline-start" />{deleting ? 'Deleting…' : 'Delete list'}
             </Button>
           )}
           <Button asChild size="sm"><a href={`/api/packing/${list.id}/pdf`} target="_blank" rel="noreferrer"><FileTextIcon data-icon="inline-start" />{forms.length > 1 ? 'All forms PDF' : 'Generate PDF'}</a></Button>
@@ -289,9 +458,16 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
                   <Select value={draft.sales_invoice_id ? String(draft.sales_invoice_id) : ''} onValueChange={v => setDraft({ ...draft, sales_invoice_id: Number(v) })}>
                     <SelectTrigger><SelectValue placeholder="Not linked" /></SelectTrigger>
                     <SelectContent>
-                      {invoices.map(i => <SelectItem key={i.id} value={String(i.id)}>{i.invoice_no} · {i.total}</SelectItem>)}
-                      {!invoices.length && <SelectItem value="none" disabled>No invoices for this project</SelectItem>}
+                      {usableInvoices(invoices, draft.sales_invoice_id).map(i => <SelectItem key={i.id} value={String(i.id)}>{i.invoice_no} · {i.total}{['issued', 'paid'].includes(i.status) ? '' : ' (draft)'}</SelectItem>)}
+                      {!usableInvoices(invoices, draft.sales_invoice_id).length && <SelectItem value="none" disabled>No issued invoices for this project</SelectItem>}
                     </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label>Company</Label>
+                  <Select value={draft.company || ''} onValueChange={v => setDraft({ ...draft, company: v })}>
+                    <SelectTrigger><SelectValue placeholder="Choose" /></SelectTrigger>
+                    <SelectContent>{COMPANY_NAMES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
                 <div className="flex flex-col gap-1.5">
@@ -347,15 +523,7 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
       )}
 
       {!readOnly && !list.eway_bill_no && (
-        <Card className="no-print">
-          <CardContent className="flex items-center justify-between py-4">
-            <div>
-              <p className="text-sm font-medium">E-Way Bill</p>
-              <p className="text-xs text-muted-foreground">Not yet generated. Needs direct-NIC credentials configured for this project's company under Accounts → Company Entities.</p>
-            </div>
-            <Button size="sm" disabled={generatingEwayBill} onClick={generateEwayBill}>{generatingEwayBill ? 'Generating…' : 'Generate E-Way Bill'}</Button>
-          </CardContent>
-        </Card>
+        <EwayChecklistCard list={list} setList={setList} invoices={invoices} onGenerate={generateEwayBill} generating={generatingEwayBill} />
       )}
 
       {list.eway_bill_no && (
@@ -524,7 +692,10 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
       {!readOnly && (
         <Card className="no-print">
           <CardContent className="py-5">
-            <div className="mb-3 font-semibold">Add Item</div>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <span className="font-semibold">Add Item</span>
+              <Button type="button" variant="outline" size="sm" onClick={() => setAddFromOpen(true)}>Add from project BOM / catalogue</Button>
+            </div>
             <form onSubmit={addItem} className="flex flex-col gap-3">
               <div className="flex flex-col gap-1.5">
                 <Label>Description *</Label>
@@ -543,6 +714,10 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
             </form>
           </CardContent>
         </Card>
+      )}
+      {!readOnly && (
+        <AddFromDialog open={addFromOpen} onOpenChange={setAddFromOpen} list={list}
+          onAdded={r => { if (r.items) setItems(r.items); else window.location.reload(); /* older per-form lists don't return the lines */ }} />
       )}
     </main>
   );

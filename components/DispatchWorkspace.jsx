@@ -10,7 +10,7 @@
 // Terminology, kept strictly separate throughout this file: the packing-list lifecycle is always
 // Draft -> Ready -> Dispatched (a list's own status). BOM-item eligibility is always Ready to Pack /
 // Waiting (whether a line qualifies to be pulled into a list). Never mixed.
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { api, showToast, formatDate, formatMoney } from '@/lib/client';
@@ -23,6 +23,10 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Badge } from './ui/badge';
+import { Checkbox } from './ui/checkbox';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import SearchableSelect from './SearchableSelect';
+import { COMPANY_NAMES } from '@/lib/company-profiles';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from './ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import {
@@ -98,6 +102,69 @@ function SearchBox({ value, onChange, placeholder }) {
   );
 }
 
+// A blank packing list: pick the company, optionally a project (fills the customer), then add lines
+// on the list itself (pending BOM lines or catalogue items). Without a project it has no BOM lines to
+// add and no customer record, so an e-way bill can't be generated from it.
+function NewPackingListDialog({ open, onOpenChange }) {
+  const router = useRouter();
+  const [projects, setProjects] = useState([]);
+  const [projectId, setProjectId] = useState('');
+  const [company, setCompany] = useState('Shanti Boilers');
+  const [customer, setCustomer] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!open || projects.length) return;
+    api('/api/packing').then(r => setProjects(r.projects || [])).catch(() => {});
+  }, [open]);
+
+  function pickProject(v) {
+    setProjectId(v);
+    const p = projects.find(x => String(x.id) === String(v));
+    if (p) { setCustomer(p.customer_name || ''); if (p.company) setCompany(p.company); }
+  }
+  async function create() {
+    if (!customer.trim()) return showToast('Enter the customer name', 'error');
+    setBusy(true);
+    try {
+      const r = await api('/api/packing', { method: 'POST', body: { project_id: projectId || null, customer_name: customer.trim(), company } });
+      showToast(`Packing list ${r.packing_no} created`);
+      router.push(`/packing/${r.id}`);
+    } catch (err) { showToast(err.message, 'error'); setBusy(false); }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader><DialogTitle>New packing list</DialogTitle></DialogHeader>
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <Label>Company</Label>
+            <Select value={company} onValueChange={setCompany}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>{COMPANY_NAMES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label>Project <span className="font-normal text-muted-foreground">(optional)</span></Label>
+            <SearchableSelect value={projectId} onChange={pickProject} placeholder="Search a project or leave empty…"
+              options={[{ value: '', label: 'No project' }, ...projects.map(p => ({ value: String(p.id), label: `${p.project_no} · ${p.customer_name || ''}` }))]} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label>Customer *</Label>
+            <Input value={customer} onChange={e => setCustomer(e.target.value)} placeholder="Customer name" />
+          </div>
+          {!projectId && <p className="text-xs text-muted-foreground">With no project there are no BOM lines to pull in and no e-way bill; add catalogue items or type lines on the list.</p>}
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button disabled={busy} onClick={create}>{busy ? 'Creating…' : 'Create list'}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ---- Tab 1: Packing Lists (default) ----
 
 function PackingListsTab({ lists, flowCounts, pendingReadyCount, awaitingAckCount, missingEwayCount, onNavigate }) {
@@ -107,6 +174,7 @@ function PackingListsTab({ lists, flowCounts, pendingReadyCount, awaitingAckCoun
   // just matched against project_no/customer_name instead of packing_no. getPackingLists() already
   // joins project_no per list — no new query.
   const [projectQ, setProjectQ] = useState('');
+  const [newOpen, setNewOpen] = useState(false);
 
   function toggleStatus(key) {
     setFocusedStatus(cur => (cur === key ? null : key));
@@ -136,6 +204,7 @@ function PackingListsTab({ lists, flowCounts, pendingReadyCount, awaitingAckCoun
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <SearchBox value={projectQ} onChange={setProjectQ} placeholder="Search by project no. or customer…" />
+        <Button size="sm" onClick={() => setNewOpen(true)}><PlusIcon className="size-3.5" /> New packing list</Button>
         {singleMatch && (
           <Button asChild variant="outline" size="sm">
             <a href={`/api/projects/${singleMatch.project_id}/pending-pdf`} target="_blank" rel="noreferrer">
@@ -153,6 +222,7 @@ function PackingListsTab({ lists, flowCounts, pendingReadyCount, awaitingAckCoun
         )}
         <DispatchBoard lists={projectFiltered} statusFilter={focusedStatus} />
       </div>
+      <NewPackingListDialog open={newOpen} onOpenChange={setNewOpen} />
     </div>
   );
 }
@@ -163,6 +233,8 @@ function PendingItemsTab({ items }) {
   const router = useRouter();
   const [q, setQ] = useState('');
   const [busyProject, setBusyProject] = useState(null);
+  const [picked, setPicked] = useState(new Set());
+  const [company, setCompany] = useState('project'); // 'project' = each project's own company
 
   const needle = q.trim().toLowerCase();
   const filtered = items.filter(it => !needle
@@ -181,36 +253,57 @@ function PendingItemsTab({ items }) {
     return [...map.values()];
   }, [filtered]);
 
-  async function generate(projectId) {
-    setBusyProject(projectId);
+  // No ticks = every ready line of the project (the old one-click behaviour). With ticks = exactly
+  // those lines, including ones that haven't arrived yet (asked about first).
+  async function generate(group) {
+    const ids = group.items.filter(it => picked.has(it.id)).map(it => it.id);
+    const notReady = group.items.filter(it => picked.has(it.id) && !it.readyForPacking).length;
+    if (notReady && !confirm(`${notReady} picked item(s) haven't been received/produced yet. Put them on the list anyway?`)) return;
+    setBusyProject(group.project_id);
     try {
-      const { items: n } = await api('/api/packing/from-bom', { method: 'POST', body: { project_id: projectId } });
-      showToast(`Draft packing list created (${n} item${n === 1 ? '' : 's'})`);
+      const { items: n, packing_no } = await api('/api/packing/from-bom', { method: 'POST', body: {
+        project_id: group.project_id, bom_item_ids: ids.length ? ids : undefined, allow_not_ready: notReady > 0 || undefined,
+        company: company === 'project' ? undefined : company } });
+      showToast(`Draft ${packing_no} created (${n} item${n === 1 ? '' : 's'})`);
+      setPicked(new Set());
       router.refresh();
     } catch (err) { showToast(err.message, 'error'); }
     setBusyProject(null);
   }
+  const toggle = id => setPicked(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
 
   return (
     <div className="flex flex-col gap-4">
-      {items.length > 0 && <SearchBox value={q} onChange={setQ} placeholder="Search by description or project…" />}
+      {items.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <SearchBox value={q} onChange={setQ} placeholder="Search by description or project…" />
+          <Select value={company} onValueChange={setCompany}>
+            <SelectTrigger className="h-10 w-56 rounded-full"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="project">New lists: project's company</SelectItem>
+              {COMPANY_NAMES.map(c => <SelectItem key={c} value={c}>New lists: {c}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
       {items.length === 0 ? (
         <p className="py-6 text-center text-sm text-muted-foreground">Nothing pending — every BOM line is either packed or not yet ready.</p>
       ) : byProject.length === 0 ? (
         <p className="py-6 text-center text-sm text-muted-foreground">No items match your search.</p>
       ) : byProject.map(group => {
         const readyCount = group.items.filter(it => it.readyForPacking).length;
+        const pickedCount = group.items.filter(it => picked.has(it.id)).length;
         return (
           <Card key={group.project_id}>
             <CardHeader>
               <CardTitle className="text-sm">{group.project_no} · {group.customer_name}</CardTitle>
-              {readyCount > 0 && (
+              {(readyCount > 0 || pickedCount > 0) && (
                 <CardAction>
                   {/* Disabled while ANY project's generate is in flight, not just this one — a
                       single busyProject value can only track one id at a time, so leaving other
                       projects' buttons live would let a second click race the first request. */}
-                  <Button size="sm" disabled={!!busyProject} onClick={() => generate(group.project_id)}>
-                    {busyProject === group.project_id ? 'Generating…' : 'Generate Draft Packing List'}
+                  <Button size="sm" disabled={!!busyProject} onClick={() => generate(group)}>
+                    {busyProject === group.project_id ? 'Generating…' : pickedCount ? `Create list from selected (${pickedCount})` : 'Generate Draft Packing List'}
                   </Button>
                 </CardAction>
               )}
@@ -218,6 +311,7 @@ function PendingItemsTab({ items }) {
             <CardContent className="flex flex-col divide-y pt-0">
               {group.items.map(it => (
                 <div key={it.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
+                  <Checkbox checked={picked.has(it.id)} onCheckedChange={() => toggle(it.id)} aria-label={`Pick ${it.material_description}`} />
                   <div className="min-w-0 flex-1">
                     <div className="truncate font-medium">{it.material_description}</div>
                     <div className="text-xs text-muted-foreground">

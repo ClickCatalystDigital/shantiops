@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
-import { execute, queryOne, queryAll } from '@/lib/db';
+import { execute, queryOne, queryAll, withTransaction } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
+import { COMPANY_NAMES } from '@/lib/company-profiles';
 import { issueReservation } from '@/lib/procurement';
 import { syncPackingMilestone } from '@/lib/milestone-auto';
 import { postDispatchConsumption } from '@/lib/stock-pieces';
@@ -27,6 +28,9 @@ export async function PATCH(req, { params }) {
   }
   if (b.transport_mode && !TRANSPORT_MODES.includes(b.transport_mode)) {
     return NextResponse.json({ error: `Unknown transport_mode: ${b.transport_mode}` }, { status: 400 });
+  }
+  if (b.company && !COMPANY_NAMES.includes(b.company)) {
+    return NextResponse.json({ error: `Unknown company: ${b.company}` }, { status: 400 });
   }
   if (b.vehicle_type && !VEHICLE_TYPES.includes(b.vehicle_type)) {
     return NextResponse.json({ error: `Unknown vehicle_type: ${b.vehicle_type}` }, { status: 400 });
@@ -149,11 +153,10 @@ export async function PATCH(req, { params }) {
   return NextResponse.json({ ok: true });
 }
 
-// Discard a whole draft — the gap the per-line DELETE on /items never covered: removing every item
-// one at a time still leaves an empty list behind, never actually removes it. Draft-only, same
-// "correct/discard before it's real, never after" boundary as everywhere else in this app (a
-// packed/dispatched list is a real committed action, corrected forward, not deleted). Reuses the
-// per-item route's own `dispatch.packing.edit` action — same authority level, not a new key.
+// Delete a list that hasn't shipped (draft or ready/packed). A dispatched list is a real, committed
+// record (stock consumed, order marked dispatched) and stays locked. Its lines go back to Pending
+// automatically — Pending is just "BOM lines not on any list". Reuses the per-item route's own
+// `dispatch.packing.edit` action: same authority level, not a new key.
 export async function DELETE(req, { params }) {
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Dispatch');
@@ -161,10 +164,10 @@ export async function DELETE(req, { params }) {
   const actionDenied = await requireAction(user, 'Dispatch', 'dispatch.packing.edit');
   if (actionDenied) return actionDenied;
 
-  const pl = await queryOne('SELECT status, packing_no FROM packing_lists WHERE id = ?', [params.id]);
+  const pl = await queryOne('SELECT status, packing_no, project_id, eway_bill_no FROM packing_lists WHERE id = ?', [params.id]);
   if (!pl) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  if (pl.status !== 'draft') {
-    return NextResponse.json({ error: 'Only a draft list can be deleted — a packed/dispatched list is a real record.' }, { status: 409 });
+  if (!['draft', 'packed'].includes(pl.status)) {
+    return NextResponse.json({ error: 'A dispatched list is a real record and can no longer be deleted.' }, { status: 409 });
   }
   const posted = await queryOne(
     "SELECT 1 FROM journal_entries WHERE source_type = 'dispatch_freight' AND source_id = ?", [params.id]
@@ -172,24 +175,18 @@ export async function DELETE(req, { params }) {
   if (posted) {
     return NextResponse.json({ error: 'Freight for this list is already posted to the ledger — reverse it in Accounts first.' }, { status: 409 });
   }
-  // Inward QC/Production Approval Workflow — a list can only be re-edited back to 'draft' by a
-  // plain status PATCH (no state-machine restriction stops packed/dispatched -> draft), so a list
-  // that was once submitted for pre-dispatch review can still reach here. pre_dispatch_approvals'
-  // own FK into packing_lists is NO ACTION (real, enforced — Turso does enforce FKs on this
-  // connection, confirmed live), so an unguarded delete here would throw a raw SQLITE_CONSTRAINT
-  // error AFTER packing_items had already been deleted below, leaving a corrupted item-less list
-  // behind. Blocked here instead, same clean-message pattern as the freight guard above it — and
-  // the review history is never deletable anyway, matching every other decision-history table in
-  // this app.
-  const reviewed = await queryOne('SELECT 1 FROM pre_dispatch_approvals WHERE packing_list_id = ?', [params.id]);
-  if (reviewed) {
-    return NextResponse.json({ error: 'This list has a pre-dispatch review on record and can no longer be deleted.' }, { status: 409 });
+  if (pl.eway_bill_no) {
+    return NextResponse.json({ error: 'An e-way bill exists for this list — cancel it first.' }, { status: 409 });
   }
 
-  // Turso enforces FKs on this connection — packing_items' ON DELETE CASCADE would fire on its own,
-  // but its rows are removed explicitly here anyway for a clean, ordered delete.
-  await execute('DELETE FROM packing_items WHERE packing_list_id = ?', [params.id]);
-  await execute('DELETE FROM packing_lists WHERE id = ?', [params.id]);
-  await audit('packing_deleted', { actor: user.username, detail: `list ${params.id} (${pl.packing_no})` });
+  // Any pre-dispatch review rows (Turso enforces the FK) go with the list; resubmission_of_id points
+  // at an earlier row of the same list, so it is cleared before the rows are removed.
+  await withTransaction(async tx => {
+    await tx.execute({ sql: 'UPDATE pre_dispatch_approvals SET resubmission_of_id = NULL WHERE packing_list_id = ?', args: [params.id] });
+    await tx.execute({ sql: 'DELETE FROM pre_dispatch_approvals WHERE packing_list_id = ?', args: [params.id] });
+    await tx.execute({ sql: 'DELETE FROM packing_items WHERE packing_list_id = ?', args: [params.id] });
+    await tx.execute({ sql: 'DELETE FROM packing_lists WHERE id = ?', args: [params.id] });
+  });
+  await audit('packing_deleted', { actor: user.username, detail: `list ${params.id} (${pl.packing_no}) · was ${pl.status}` });
   return NextResponse.json({ ok: true });
 }
