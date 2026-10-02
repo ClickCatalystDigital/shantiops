@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shanti Ops - what we need from you</title>
+<style>
+  :root { --bg:#fff; --fg:#1d2433; --muted:#5b6475; --line:#dfe3ea; --card:#f6f8fb; --accent:#1f5fbf; --warn:#fff6e0; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#14181f; --fg:#e8ebf1; --muted:#9aa3b2; --line:#2a3140; --card:#1b212b; --accent:#7aa7ee; --warn:#2b2412; } }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+  main { max-width:760px; margin:0 auto; padding:32px 16px 64px; }
+  h1 { font-size:26px; margin:0 0 6px; }
+  h2 { font-size:19px; margin:36px 0 8px; padding-top:8px; border-top:1px solid var(--line); }
+  p { margin:8px 0; }
+  .muted { color:var(--muted); }
+  .why { background:var(--card); border-radius:8px; padding:10px 14px; margin:10px 0; }
+  .note { background:var(--warn); border-radius:8px; padding:10px 14px; margin:10px 0; }
+  ol, ul { padding-left:22px; margin:8px 0; }
+  li { margin:5px 0; }
+  .todo { list-style:none; padding:0; }
+  .todo li { display:flex; gap:10px; align-items:flex-start; padding:8px 0; border-bottom:1px solid var(--line); }
+  .todo input { margin-top:5px; width:17px; height:17px; flex:none; }
+  table { width:100%; border-collapse:collapse; margin:10px 0; font-size:15px; }
+  th, td { text-align:left; padding:7px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--muted); font-weight:600; }
+  code { background:var(--card); padding:1px 5px; border-radius:4px; font-size:14px; }
+  a { color:var(--accent); }
+  @media print { .todo input { appearance:auto; } body { font-size:13px; } }
+</style>
+</head>
+<body>
+<main>
+
+<h1>What we need from you</h1>
+<p class="muted">Shanti Ops - setup checklist for the client. Everything else is built and working. The items below are the ones only you can do (accounts, passwords, official registrations). Tick them off as you go and send us what each step asks for.</p>
+
+<div class="why">
+  <strong>Already working, nothing needed from you:</strong> quotations, orders, packing lists, QC and Production approvals before dispatch, freight posting, invoices, GST / TDS / PF / ESI / income-tax / professional-tax rates (kept up to date for you automatically, every night).
+</div>
+
+<h2>1. Government e-way bill (needed before the app can create e-way bills)</h2>
+<p class="why">Why: an e-way bill is created on the government's own system, so each company needs its own login to it. We cannot register for you.</p>
+<p><strong>Do this once for each company:</strong> Shanti Boilers and Shanti Techno Fab (and Srivaari Agencies if it will ship goods).</p>
+<ol>
+  <li>Check with your CA that the company is allowed API access. The government allows it for roughly 1,000 e-way bills a day or 10,000 a month per GSTIN. If you are below that, tell us - we will find another route.</li>
+  <li>Sign in to the e-way bill portal (<a href="https://ewaybillgst.gov.in">ewaybillgst.gov.in</a>) with the company's GST login.</li>
+  <li>Go to <strong>Registration &rarr; For API</strong> and apply. Ask for <strong>test (sandbox) access first</strong>, so no real e-way bill is created while we test.</li>
+  <li>When approved, the portal gives you four values: <strong>Client ID, Client Secret, API user name, API password</strong>.</li>
+  <li>Give them to your Accounts head. They enter them in the app under <strong>Accounts &rarr; Company Entities &rarr; E-Way Bill credentials</strong>, then press <strong>Test Connection</strong>. Do not send these by email or chat.</li>
+  <li>Tell us when this is done. We then switch the app to the government's server and run a test bill.</li>
+</ol>
+<ul class="todo">
+  <li><input type="checkbox"><span>Shanti Boilers - API access applied for / received</span></li>
+  <li><input type="checkbox"><span>Shanti Techno Fab - API access applied for / received</span></li>
+  <li><input type="checkbox"><span>Credentials entered in the app by the Accounts head, Test Connection shows success</span></li>
+</ul>
+
+<h2>2. Company details (Accounts &rarr; Company Settings)</h2>
+<p class="why">Why: the e-way bill and invoices print these. The app shows exactly which one is missing.</p>
+<table>
+  <tr><th>Company</th><th>Still needed</th></tr>
+  <tr><td>Shanti Boilers</td><td>Place and Pincode</td></tr>
+  <tr><td>Shanti Techno Fab</td><td>Place and Pincode</td></tr>
+  <tr><td>Srivaari Agencies</td><td>GSTIN, PAN, registered address, Place, Pincode, invoice prefix (for example <code>SRV</code>)</td></tr>
+</table>
+<ul class="todo">
+  <li><input type="checkbox"><span>Place and Pincode entered for each company</span></li>
+  <li><input type="checkbox"><span>Srivaari Agencies details sent to us or entered</span></li>
+</ul>
+
+<h2>3. Invoice numbers</h2>
+<p class="why">Why: GST invoice numbers must run in one unbroken series. The app must carry on from where your old system stopped.</p>
+<ul class="todo">
+  <li><input type="checkbox"><span>Tell us the <strong>last invoice number issued</strong> for each company in this financial year (2026-27), for example <code>SB/36/2026-27</code>. We set the app to continue from the next one.</span></li>
+  <li><input type="checkbox"><span>Confirm who raises invoices. Today invoices are raised from <strong>Sales</strong> (from an accepted quotation, or entered directly). Accounts then marks them paid and records receipts. If Accounts should raise invoices as well, tell us.</span></li>
+</ul>
+
+<h2>4. Customer and product details</h2>
+<p class="why">Why: an e-way bill needs the customer's GSTIN, state, pincode and address, and every invoice line needs an HSN code. Only customers and products you actually ship or bill need this - not all of them.</p>
+<ul class="todo">
+  <li><input type="checkbox"><span><strong>Customers you will ship to:</strong> GSTIN, state, pincode and full address. Add them in Sales &rarr; Customers (the app lists what is missing when you try to create an e-way bill).</span></li>
+  <li><input type="checkbox"><span><strong>HSN code and GST % for each product you sell</strong> (about 950 products have none yet). Send us a sheet with product name, HSN, GST % and we load it, or fill it in Sales &rarr; Masters &rarr; Products.</span></li>
+</ul>
+
+<h2>5. Email (so quotations and portal invitations go out under your name)</h2>
+<p class="why">Why: until a mailbox is connected, the app does not send any customer email. Nothing goes out by mistake meanwhile.</p>
+<p><strong>For each company:</strong></p>
+<ol>
+  <li>A sending mailbox in Zoho Mail, for example <code>sales@your-company</code>.</li>
+  <li>Turn on two-step verification for that mailbox.</li>
+  <li>Create an app password: Zoho Accounts &rarr; Security &rarr; App Passwords, named "Shanti Ops".</li>
+  <li>Make sure SMTP is allowed for the mailbox (Zoho Mail &rarr; Settings &rarr; Mail Accounts &rarr; SMTP; on some plans an administrator must allow it).</li>
+  <li>Tell us whether the Zoho account is on the <strong>India</strong> or <strong>.com</strong> server.</li>
+</ol>
+<p>Then the Sales head enters the mailbox and app password under <strong>Settings &rarr; Sales &rarr; Email</strong>, presses <strong>Send test email</strong>, and switches from Test to Live once it works.</p>
+<div class="note">Only about 300 of your 9,500 customers have an email address. For everyone else, portal links are shared with the <strong>Copy link</strong> button (for example over WhatsApp).</div>
+<ul class="todo">
+  <li><input type="checkbox"><span>Shanti Boilers mailbox + app password ready</span></li>
+  <li><input type="checkbox"><span>Shanti Techno Fab mailbox + app password ready</span></li>
+  <li><input type="checkbox"><span>Optional: salespeople who should send from their own mailbox</span></li>
+</ul>
+
+<h2>6. Questions for your CA</h2>
+<ul class="todo">
+  <li><input type="checkbox"><span>Is either company above the turnover limit for <strong>e-invoicing</strong> (currently Rs. 5 crore)? If yes, tell us - it is a separate government step and changes how invoices are issued.</span></li>
+  <li><input type="checkbox"><span>Is the company's e-way bill API access allowed (see step 1)?</span></li>
+  <li><input type="checkbox"><span>Is freight paid to transporters taxed under reverse charge for you? Today freight is booked as a plain expense with no GST on it.</span></li>
+</ul>
+
+<h2>What happens after you send these</h2>
+<ol>
+  <li>We switch on the connection to the government's test server and create a test e-way bill from a test shipment.</li>
+  <li>We switch to the live server only after you confirm the test looked right.</li>
+</ol>
+<p class="muted">Questions: reply to the person who sent you this file.</p>
+
+</main>
+</body>
+</html>
