@@ -18,6 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import SearchableSelect from '@/components/SearchableSelect';
+import { CustomerViewButton } from '@/components/InstallationVisits';
 import SignaturePad from '@/components/SignaturePad';
 import { projectOptions } from '@/components/InstallationVisits';
 import { CALL_TYPES, sectionsFor, emptyData, docLabel } from '@/lib/installation-report-template.mjs';
@@ -284,7 +285,8 @@ export default function InstallationDocs({ projects }) {
       <CardHeader>
         <CardTitle>Documentation</CardTitle>
         {projectId && (
-          <CardAction>
+          <CardAction className="flex flex-wrap items-center gap-3">
+            <CustomerViewButton projects={projects} projectId={projectId} />
             <label className="flex cursor-pointer items-center gap-2 text-sm">
               <button type="button" role="switch" aria-checked={projectVisible} onClick={toggleProjectVisible}
                 className={`relative h-5 w-9 rounded-full transition-colors ${projectVisible ? 'bg-primary' : 'bg-muted-foreground/30'}`}>

@@ -4,7 +4,7 @@
 // four default visits are seeded server-side the first time a project is opened. Table on desktop,
 // cards on phones. Edit happens in a minimal Sheet.
 import { useEffect, useState, useCallback } from 'react';
-import { PlusIcon, PencilIcon, TrashIcon, UsersIcon } from 'lucide-react';
+import { PlusIcon, PencilIcon, TrashIcon, UsersIcon, EyeIcon } from 'lucide-react';
 import { api, showToast } from '@/lib/client';
 import { formatDate } from '@/lib/format';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
@@ -19,6 +19,18 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import SearchableSelect from '@/components/SearchableSelect';
 
 export const projectOptions = (projects) => projects.map(p => ({ value: String(p.id), label: `${p.project_no}${p.customer_name ? ` · ${p.customer_name}` : ''}` }));
+
+// "See it as the customer does" — opens the read-only portal view. A split unit opens its master,
+// which is the page the customer actually has.
+export function CustomerViewButton({ projects, projectId }) {
+  const p = projects.find(x => String(x.id) === String(projectId));
+  if (!p) return null;
+  return (
+    <Button asChild variant="outline" size="sm">
+      <a href={`/portal/${p.master_project_id ?? p.id}`} target="_blank" rel="noreferrer"><EyeIcon data-icon="inline-start" />View as customer</a>
+    </Button>
+  );
+}
 
 function TeamPicker({ team, value, onChange }) {
   const set = new Set((value || '').split(',').filter(Boolean));
@@ -169,7 +181,10 @@ export default function InstallationVisits({ projects, team }) {
       <Card>
       <CardHeader>
         <CardTitle>Visits</CardTitle>
-        <CardAction><Button size="sm" onClick={() => setEditing({})}><PlusIcon data-icon="inline-start" />Add visit</Button></CardAction>
+        <CardAction className="flex items-center gap-2">
+          <CustomerViewButton projects={projects} projectId={projectId} />
+          <Button size="sm" onClick={() => setEditing({})}><PlusIcon data-icon="inline-start" />Add visit</Button>
+        </CardAction>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center gap-2 text-sm">

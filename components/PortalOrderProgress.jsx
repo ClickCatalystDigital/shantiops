@@ -9,12 +9,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
+import PortalDrawingUploads from '@/components/PortalDrawingUploads';
 import { cn } from '@/lib/utils';
 import { CheckIcon, LoaderIcon, ClockIcon, ChevronDownIcon, DownloadIcon, FileTextIcon } from 'lucide-react';
 
 const STATUS_LABEL = { under_review: 'Ready for your review', approved: 'Approved', as_built: 'As built' };
 
-function DrawingRow({ drawing, onChanged }) {
+function DrawingRow({ drawing, onChanged, readOnly }) {
   const [comments, setComments] = useState(null); // null = not yet loaded
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
@@ -70,7 +71,7 @@ function DrawingRow({ drawing, onChanged }) {
         </div>
       )}
 
-      <div className="flex flex-col gap-2">
+      {!readOnly && <div className="flex flex-col gap-2">
         {comments === null ? (
           <button type="button" className="w-fit text-xs text-muted-foreground hover:underline" onClick={loadComments}>
             View comments
@@ -96,7 +97,7 @@ function DrawingRow({ drawing, onChanged }) {
             </div>
           </>
         )}
-      </div>
+      </div>}
     </div>
   );
 }
@@ -211,7 +212,7 @@ function VisitsPanel({ summary, units, visits }) {
   });
 }
 
-export default function PortalOrderProgress({ phases, drawings, qcCertificates = [], packingLists = [], installationVisits = [], installationSummary = null, installationUnits = [], installationReports = [], pct }) {
+export default function PortalOrderProgress({ readOnly = false, projectId, customerDrawings = [], phases, drawings, qcCertificates = [], packingLists = [], installationVisits = [], installationSummary = null, installationUnits = [], installationReports = [], pct }) {
   const [items, setItems] = useState(drawings);
   // One open section at a time, tracked by phase key — 'design' keeps its old default-collapsed
   // behavior, just generalized to any phase that has documents to show.
@@ -226,7 +227,8 @@ export default function PortalOrderProgress({ phases, drawings, qcCertificates =
   // issued at booking, mid-project, or at dispatch), so it deliberately isn't here; see the
   // separate Billing card on the portal page instead of a fabricated mapping.
   const phaseDocs = {
-    design: items.length,
+    // Design stays open even with no drawings yet — the customer can send their own from here.
+    design: items.length + (readOnly ? customerDrawings.length : 1),
     testing: qcCertificates.length,
     packing: packingLists.length,
     installation: installationSummary ? installationSummary.total : installationUnits.length,
@@ -251,7 +253,8 @@ export default function PortalOrderProgress({ phases, drawings, qcCertificates =
                   expanded={expanded} onToggle={() => setOpenPhase(v => v === ph.key ? null : ph.key)} />
                 {ph.key === 'design' && expanded && (
                   <li className="flex flex-col gap-3 border-b py-3 pl-10">
-                    {items.map(d => <DrawingRow key={d.id} drawing={d} onChanged={() => refreshOne(d.id)} />)}
+                    {items.map(d => <DrawingRow key={d.id} drawing={d} readOnly={readOnly} onChanged={() => refreshOne(d.id)} />)}
+                    <PortalDrawingUploads projectId={projectId} initial={customerDrawings} readOnly={readOnly} />
                   </li>
                 )}
                 {ph.key === 'testing' && expanded && (

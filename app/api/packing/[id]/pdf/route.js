@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getPackingDetail } from '@/lib/data';
-import { getFreshSessionUser, isCustomer, canAccessDepartment, canAccessProject } from '@/lib/auth';
+import { getFreshSessionUser, isCustomer, isInternal, canAccessDepartment, canAccessProject } from '@/lib/auth';
 import { renderPackingPdf } from '@/lib/packing-pdf';
 import { queryOne } from '@/lib/db';
 import { modelCodeOf } from '@/lib/packing-forms.mjs';
@@ -19,7 +19,8 @@ export async function GET(req, { params }) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
   } else if (!canAccessDepartment(user, 'Dispatch')) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    // Any other team can open it once it is past draft (the portal preview) — what the customer sees.
+    if (!isInternal(user) || data.list.status === 'draft') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
   if (data.list.layout === 'combined') {

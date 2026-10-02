@@ -19,7 +19,7 @@ export default async function Portal({ params }) {
 
   const data = await getCustomerView(params.id);
   if (!data) notFound();
-  const { project, phases, estDispatch, packingLists, drawings, invoices, qcCertificates, isSplitOrder, unitCount, installationVisits, installationSummary, installationUnits, installationReports } = data;
+  const { project, customerDrawings, phases, estDispatch, packingLists, drawings, invoices, qcCertificates, isSplitOrder, unitCount, installationVisits, installationSummary, installationUnits, installationReports } = data;
   const doneCount = phases.filter(p => p.status === 'done').length;
   const pct = Math.round((doneCount / phases.length) * 100);
 
@@ -36,6 +36,11 @@ export default async function Portal({ params }) {
         </div>
       </header>
 
+      {!isCustomer(user) && (
+        <div className="border-b bg-amber-100 px-4 py-2 text-center text-sm text-amber-900">
+          Preview — this is what the customer sees. Read-only.
+        </div>
+      )}
       <main className="container flex max-w-3xl flex-col gap-6 py-8">
         <div>
           {isCustomer(user) && <Link href="/portal" className="text-sm text-muted-foreground hover:underline">← My Orders</Link>}
@@ -46,7 +51,7 @@ export default async function Portal({ params }) {
           </p>
         </div>
 
-        <PortalOrderProgress phases={phases} drawings={drawings} qcCertificates={qcCertificates} packingLists={packingLists} installationVisits={installationVisits} installationSummary={installationSummary} installationUnits={installationUnits} installationReports={installationReports} pct={pct} />
+        <PortalOrderProgress readOnly={!isCustomer(user)} projectId={project.id} customerDrawings={customerDrawings} phases={phases} drawings={drawings} qcCertificates={qcCertificates} packingLists={packingLists} installationVisits={installationVisits} installationSummary={installationSummary} installationUnits={installationUnits} installationReports={installationReports} pct={pct} />
 
         <Card>
           <CardHeader>

@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import SearchableSelect from '@/components/SearchableSelect';
 import { DrawingsPanel } from '@/components/CalcWorkspace';
+import CustomerDrawingUploads from '@/components/CustomerDrawingUploads';
 
 export default function DrawingsWorkspace({ projects, designTeam, user }) {
   const [projectId, setProjectId] = useState('');
@@ -64,7 +65,8 @@ export default function DrawingsWorkspace({ projects, designTeam, user }) {
       ) : !drawings ? (
         <div className="px-6 pb-6"><Skeleton className="h-40 w-full rounded-md" /></div>
       ) : (
-        <div className="px-6 pb-6">
+        <div className="flex flex-col gap-4 px-6 pb-6">
+          <CustomerDrawingUploads projectId={projectId} canDelete={['admin', 'manager', 'executive'].includes(user.role) || user.department_roles?.Design === 'head'} />
           <DrawingsPanel drawings={drawings} projectId={Number(projectId)} router={router} user={user} designTeam={designTeam} />
         </div>
       )}

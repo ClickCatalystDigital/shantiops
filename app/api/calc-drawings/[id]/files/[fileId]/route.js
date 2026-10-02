@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getFreshSessionUser, hasActiveDesignResponsibility, isCustomer, canAccessProject } from '@/lib/auth';
+import { getFreshSessionUser, hasActiveDesignResponsibility, isCustomer, isInternal, canAccessProject } from '@/lib/auth';
 import { requireCalcAccess, requireCalcReadAccess, isAssignedDesigner } from '@/lib/calc';
 import { queryOne, execute } from '@/lib/db';
 import { getObjectBuffer, deleteObject } from '@/lib/r2';
@@ -22,7 +22,9 @@ export async function GET(req, { params }) {
     // Boiler Details sheet's inline preview (Form II/III), same read-only widening already applied
     // to GET /api/calc-drawings' own list. QC gains no write access here — DELETE below is untouched.
     const denied = requireCalcReadAccess(user);
-    if (denied) return denied;
+    // Other teams: only drawings already shared with the customer (the portal preview).
+    const sharedWithCustomer = drawing.customer_visible && ['under_review', 'approved', 'as_built'].includes(drawing.status);
+    if (denied && !(isInternal(user) && sharedWithCustomer)) return denied;
   }
 
   const file = await queryOne('SELECT file_key, file_name FROM calc_drawing_files WHERE id = ? AND drawing_id = ?', [params.fileId, params.id]);

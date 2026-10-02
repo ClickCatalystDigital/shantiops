@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getQcDocumentDetail } from '@/lib/data';
 import { queryOne } from '@/lib/db';
-import { getFreshSessionUser, requireDepartment, isCustomer, canAccessProject } from '@/lib/auth';
+import { getFreshSessionUser, requireDepartment, isCustomer, isInternal, canAccessProject } from '@/lib/auth';
 import { renderQcFolderPdf } from '@/lib/qc-folder-pdf';
 import { checkpointSummaryFromDetail } from '@/lib/qc-checkpoints.mjs';
 
@@ -24,7 +24,8 @@ export async function GET(req, { params }) {
     }
   } else {
     const denied = requireDepartment(user, 'QC');
-    if (denied) return denied;
+    // Other teams: only a document already shared with the customer (the portal preview).
+    if (denied && !(isInternal(user) && detail.document.customer_visible)) return denied;
   }
 
   // Every checkpoint that actually applies to this document's model, not just Form IV A's parts
