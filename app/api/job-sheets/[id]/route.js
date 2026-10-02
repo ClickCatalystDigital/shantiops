@@ -16,7 +16,7 @@ export async function GET(_req, { params }) {
   return d ? NextResponse.json(d) : NextResponse.json({ error: 'Not found' }, { status: 404 });
 }
 
-const TEXT = ['job_number', 'ibr_bvi', 'drg_nos', 'boiler_plate_nos', 'notes'];
+const TEXT = ['job_number', 'ibr_bvi', 'drg_nos', 'boiler_plate_nos', 'notes', 'owner_name'];
 
 // Header edits + the two sheet-level signatures (Production I/C, QC).
 export async function PATCH(req, { params }) {

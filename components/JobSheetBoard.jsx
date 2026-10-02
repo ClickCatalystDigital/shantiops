@@ -9,7 +9,7 @@ import { useSearchParams } from 'next/navigation';
 import { api, showToast } from '@/lib/client';
 import { formatDate } from '@/lib/format';
 import { todayISO } from '@/lib/date';
-import { stageState } from '@/lib/job-sheet-stages.mjs';
+import { stageState, JOB_SHEET_TYPES, isDispatchStage } from '@/lib/job-sheet-stages.mjs';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -84,7 +84,9 @@ function SheetTile({ s, onOpen }) {
       className={`flex flex-col gap-2 rounded-xl border p-4 text-left shadow-sm transition-colors hover:border-primary/50 ${s.waiting_on_qc ? 'border-warning/40 bg-warning-surface/40' : 'bg-card'}`}>
       <div className="flex items-center justify-between gap-2">
         <span className="font-semibold">{s.job_number || s.jc_no}</span>
-        <span className="text-xs text-muted-foreground">{s.jc_no}</span>
+        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          {s.card_type === 'aph' && <Badge variant="outline" className="px-1.5 py-0 text-[10px]">APH</Badge>}{s.jc_no}
+        </span>
       </div>
       <p className="truncate text-xs text-muted-foreground">{s.project_no || 'No project'}{s.project_name ? ` · ${s.project_name}` : ''}</p>
       <div className="h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} /></div>
@@ -100,13 +102,14 @@ function SheetTile({ s, onOpen }) {
 }
 
 function NewSheetDialog({ projects, onClose, onCreated }) {
-  const [f, setF] = useState({ job_number: '', project_id: '', drawing_approved_on: '' });
+  const [f, setF] = useState({ card_type: 'boiler', job_number: '', project_id: '', drawing_approved_on: '', owner_name: '' });
   const [busy, setBusy] = useState(false);
+  const type = JOB_SHEET_TYPES[f.card_type];
   async function submit(e) {
     e.preventDefault(); setBusy(true);
     try {
       const r = await api('/api/job-sheets', { method: 'POST', body: f });
-      showToast('Job card created with 33 stages'); onCreated(r.id);
+      showToast(`${type.label} created with ${r.stages} stages`); onCreated(r.id);
     } catch (err) { showToast(err.message, 'error'); setBusy(false); }
   }
   return (
@@ -114,6 +117,17 @@ function NewSheetDialog({ projects, onClose, onCreated }) {
       <DialogContent className="sm:max-w-md">
         <DialogHeader><DialogTitle>New Job Card</DialogTitle></DialogHeader>
         <form onSubmit={submit} className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1.5"><Label>Which card?</Label>
+            <div className="grid grid-cols-2 gap-2">
+              {Object.entries(JOB_SHEET_TYPES).map(([k, t]) => (
+                <button key={k} type="button" onClick={() => setF({ ...f, card_type: k })}
+                  className={`rounded-lg border p-3 text-left text-sm transition-colors ${f.card_type === k ? 'border-primary bg-primary/5' : 'hover:bg-muted/50'}`}>
+                  <span className="block font-medium">{t.label}</span>
+                  <span className="text-xs text-muted-foreground">{t.stages.length} production stages</span>
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="flex flex-col gap-1"><Label>Job number</Label>
             <Input value={f.job_number} onChange={e => setF({ ...f, job_number: e.target.value })} required autoFocus /></div>
           <div className="flex flex-col gap-1"><Label>Project</Label>
@@ -121,7 +135,11 @@ function NewSheetDialog({ projects, onClose, onCreated }) {
               options={projects.map(p => ({ value: String(p.id), label: `${p.project_no} · ${p.customer_name || ''}` }))} /></div>
           <div className="flex flex-col gap-1"><Label>Drawing approved on</Label>
             <Input type="date" value={f.drawing_approved_on} onChange={e => setF({ ...f, drawing_approved_on: e.target.value })} /></div>
-          <p className="text-xs text-muted-foreground">All 33 production stages are added automatically.</p>
+          {f.card_type === 'aph' && (
+            <div className="flex flex-col gap-1"><Label>Owner name (fitter)</Label>
+              <Input value={f.owner_name} onChange={e => setF({ ...f, owner_name: e.target.value })} /></div>
+          )}
+          <p className="text-xs text-muted-foreground">All {type.stages.length} production stages are added automatically. A project can have more than one card, for example a boiler card and an APH card.</p>
           <DialogFooter><Button type="submit" disabled={busy}>Create</Button></DialogFooter>
         </form>
       </DialogContent>
@@ -146,6 +164,11 @@ function SheetDetail({ id, workers, canProduction, canQc, onClose, onDeleted }) 
   async function stage(row, body) {
     try { await api(`/api/job-sheets/${id}/stages/${row.id}`, { method: 'PATCH', body }); await refresh(); }
     catch (err) { showToast(err.message, 'error'); }
+  }
+  // Starting the Dispatch stage also tells Dispatch (server-side) that this job's items can be packed.
+  async function startStage(row) {
+    await stage(row, { action: 'start' });
+    if (isDispatchStage(row.name)) showToast('Dispatch has been told this job is ready to pack');
   }
   async function patch(body) {
     try { await api(`/api/job-sheets/${id}`, { method: 'PATCH', body }); await refresh(); }
@@ -210,16 +233,20 @@ function SheetDetail({ id, workers, canProduction, canQc, onClose, onDeleted }) 
           <>
             <div className="border-b px-4 py-2">
               <button type="button" onClick={() => setShowHeader(v => !v)} className="flex w-full items-center gap-2 text-left text-xs text-muted-foreground">
-                <span>Drawing approved: {d.drawing_approved_on ? formatDate(d.drawing_approved_on) : '—'} · IBR/BVI: {d.ibr_bvi || '—'} · Start: {d.start_date ? formatDate(d.start_date) : '—'} · End: {d.end_date ? formatDate(d.end_date) : '—'}</span>
+                <span>{d.card_type === 'aph' ? 'APH' : 'Boiler'} · Drawing approved: {d.drawing_approved_on ? formatDate(d.drawing_approved_on) : '—'} · {d.card_type === 'aph' ? `Owner: ${d.owner_name || '—'}` : `IBR/BVI: ${d.ibr_bvi || '—'}`} · Start: {d.start_date ? formatDate(d.start_date) : '—'} · End: {d.end_date ? formatDate(d.end_date) : '—'}</span>
                 <ChevronDownIcon className={`ml-auto size-4 transition-transform ${showHeader ? 'rotate-180' : ''}`} />
               </button>
               {showHeader && (
                 <div className="mt-2 grid gap-2 sm:grid-cols-4">
                   <HeaderField label="Job number" value={d.job_number} disabled={!canProduction} onSave={v => patch({ job_number: v })} />
                   <HeaderField label="Drawing approved on" type="date" value={d.drawing_approved_on} disabled={!canProduction} onSave={v => patch({ drawing_approved_on: v })} />
-                  <HeaderField label="IBR/BVI" value={d.ibr_bvi} disabled={!canProduction} onSave={v => patch({ ibr_bvi: v })} />
-                  <HeaderField label="Drg. nos." value={d.drg_nos} disabled={!canProduction} onSave={v => patch({ drg_nos: v })} />
-                  <HeaderField label="Boiler plate nos." value={d.boiler_plate_nos} disabled={!canProduction} onSave={v => patch({ boiler_plate_nos: v })} />
+                  {d.card_type === 'aph' ? (
+                    <HeaderField label="Owner name (fitter)" value={d.owner_name} disabled={!canProduction} onSave={v => patch({ owner_name: v })} />
+                  ) : (<>
+                    <HeaderField label="IBR/BVI" value={d.ibr_bvi} disabled={!canProduction} onSave={v => patch({ ibr_bvi: v })} />
+                    <HeaderField label="Drg. nos." value={d.drg_nos} disabled={!canProduction} onSave={v => patch({ drg_nos: v })} />
+                    <HeaderField label="Boiler plate nos." value={d.boiler_plate_nos} disabled={!canProduction} onSave={v => patch({ boiler_plate_nos: v })} />
+                  </>)}
                 </div>
               )}
             </div>
@@ -270,7 +297,7 @@ function SheetDetail({ id, workers, canProduction, canQc, onClose, onDeleted }) 
                         <td className="px-2 py-1"><RemarkCell value={r.remarks} disabled={!canProduction} onSave={v => stage(r, { action: 'edit', remarks: v })} /></td>
                         <td className="px-2 py-1">
                           <div className="flex items-center gap-1">
-                            {st === 'pending' && canProduction && <Button size="xs" onClick={() => stage(r, { action: 'start' })}><PlayIcon /> Start</Button>}
+                            {st === 'pending' && canProduction && <Button size="xs" title={isDispatchStage(r.name) ? 'Tells Dispatch this job is ready to pack' : 'Stamps today as the start date'} onClick={() => startStage(r)}><PlayIcon /> Start</Button>}
                             {st === 'in_progress' && canProduction && <Button size="xs" onClick={() => stage(r, { action: 'finish' })}><CheckIcon /> Finish</Button>}
                             {st === 'done' && (canQc
                               ? <Button size="xs" variant="outline" onClick={() => setQcRow(r)}><ShieldCheckIcon /> QC sign</Button>
@@ -384,21 +411,31 @@ function QcDialog({ row, projectId, onClose, onDone }) {
   );
 }
 
-// Paper-style printout in a new window (same columns as the client's form).
+// Paper-style printout in a new window (same layout as the client's paper cards).
 function printSheet(d) {
   const esc = s => String(s ?? '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
   const f = v => (v ? formatDate(v) : '');
-  const rows = d.stages.map(r => `<tr><td>${r.sort_order}</td><td>${esc(r.name)}</td><td>${esc(r.fitter_name)}</td><td>${f(r.start_date)}</td><td>${f(r.end_date)}</td><td>${esc(r.production_sign_by)}</td><td>${f(r.inspection_date)}</td><td>${esc(r.test_certificate_no)}</td><td>${esc(r.qc_sign_by)}</td><td>${esc(r.remarks)}</td></tr>`).join('');
+  const aph = d.card_type === 'aph';
+  const rows = aph
+    ? d.stages.map(r => `<tr><td>${r.sort_order}</td><td>${esc(r.name)}</td><td>${esc(r.fitter_name)}</td><td>${esc(r.production_sign_by)}</td><td>${esc(r.qc_sign_by)}</td><td>${esc(r.remarks)}</td></tr>`).join('')
+    : d.stages.map(r => `<tr><td>${r.sort_order}</td><td>${esc(r.name)}</td><td>${esc(r.fitter_name)}</td><td>${f(r.start_date)}</td><td>${f(r.end_date)}</td><td>${esc(r.production_sign_by)}</td><td>${f(r.inspection_date)}</td><td>${esc(r.test_certificate_no)}</td><td>${esc(r.qc_sign_by)}</td><td>${esc(r.remarks)}</td></tr>`).join('');
+  const head = aph
+    ? `<table class="h"><tr><td colspan="6">JOB NUMBER : ${esc(d.job_number)}</td></tr>
+       <tr><td colspan="6">DRAWING APPROVED ON : ${f(d.drawing_approved_on)}</td></tr>
+       <tr><td colspan="3">START DATE : ${f(d.start_date)}</td><td colspan="3">OWNER NAME (FITTER) : ${esc(d.owner_name)}</td></tr>
+       <tr><td colspan="6">END DATE : ${f(d.end_date)}</td></tr></table>
+       <table><tr><th>S.NO.</th><th>PRODUCTION STAGES</th><th>FITTER/WELDER</th><th>PRODUCTION</th><th>QC</th><th>REMARKS</th></tr>${rows}</table>`
+    : `<table class="h"><tr><td colspan="2">JOB NUMBER : ${esc(d.job_number)}</td><td colspan="2">DRAWING APPROVED ON : ${f(d.drawing_approved_on)}</td><td colspan="2">IBR/BVI : ${esc(d.ibr_bvi)}</td></tr>
+       <tr><td colspan="2">START DATE : ${f(d.start_date)}</td><td colspan="4">DRG.NOS. : ${esc(d.drg_nos)}</td></tr>
+       <tr><td colspan="2">END DATE : ${f(d.end_date)}</td><td colspan="4">BOILER PLATE NOS. : ${esc(d.boiler_plate_nos)}</td></tr></table>
+       <table><tr><th>S.NO.</th><th>PRODUCTION STAGES</th><th>FITTER/WELDER</th><th>START DATE</th><th>END DATE</th><th>PRODUCTION SIGN</th><th>INSPECTION DATE</th><th>TEST CERTIFICATE NUMBER</th><th>QC SIGN</th><th>REMARKS</th></tr>${rows}</table>`;
   const w = window.open('', '_blank');
   if (!w) return;
   w.document.write(`<html><head><title>${esc(d.jc_no)}</title><style>
     body{font:11px Arial,sans-serif;margin:16px}h1{text-align:center;font-size:16px;margin:0 0 6px}
     table{border-collapse:collapse;width:100%}td,th{border:1px solid #000;padding:3px 4px;text-align:left}th{font-size:10px}
-    .h td{font-weight:bold;font-size:12px}</style></head><body><h1>JOB CARD</h1>
-    <table class="h"><tr><td colspan="2">JOB NUMBER : ${esc(d.job_number)}</td><td colspan="2">DRAWING APPROVED ON : ${f(d.drawing_approved_on)}</td><td colspan="2">IBR/BVI : ${esc(d.ibr_bvi)}</td></tr>
-    <tr><td colspan="2">START DATE : ${f(d.start_date)}</td><td colspan="4">DRG.NOS. : ${esc(d.drg_nos)}</td></tr>
-    <tr><td colspan="2">END DATE : ${f(d.end_date)}</td><td colspan="4">BOILER PLATE NOS. : ${esc(d.boiler_plate_nos)}</td></tr></table>
-    <table><tr><th>S.NO.</th><th>PRODUCTION STAGES</th><th>FITTER/WELDER</th><th>START DATE</th><th>END DATE</th><th>PRODUCTION SIGN</th><th>INSPECTION DATE</th><th>TEST CERTIFICATE NUMBER</th><th>QC SIGN</th><th>REMARKS</th></tr>${rows}</table>
+    .h td{font-weight:bold;font-size:12px}</style></head><body><h1>${aph ? 'JOB CARD APH' : 'JOB CARD'}</h1>
+    ${head}
     <p><b>NOTES :</b> ${esc(d.notes)}</p><p><b>PRODUCTION I/C SIGNATURE:</b> ${esc(d.production_sign_by)} &nbsp;&nbsp;&nbsp; <b>QC SIGNATURE:</b> ${esc(d.qc_sign_by)}</p>
     <script>window.onload=()=>window.print()</script></body></html>`);
   w.document.close();

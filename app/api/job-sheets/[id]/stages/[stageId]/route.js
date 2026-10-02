@@ -13,6 +13,7 @@ import { isISODate, recomputeSheetDates } from '@/lib/job-sheets';
 import { audit } from '@/lib/usb';
 import { notifyDepartment } from '@/lib/notify';
 import { syncProductionFromJobSheets } from '@/lib/milestone-auto';
+import { isDispatchStage } from '@/lib/job-sheet-stages.mjs';
 
 const bad = (m, status = 400) => NextResponse.json({ error: m }, { status });
 
@@ -104,6 +105,17 @@ export async function PATCH(req, { params }) {
   } else return bad('Unknown action');
 
   await recomputeSheetDates(sheetId);
+  // The Dispatch stage is where the finished job moves to the packing list: tell Dispatch the moment
+  // it is started (or finished directly), once per job card.
+  if ((b.action === 'start' || b.action === 'finish') && isDispatchStage(row.name)) {
+    try {
+      const js = await queryOne('SELECT jc_no, job_number, project_id FROM job_sheets WHERE id = ?', [sheetId]);
+      await notifyDepartment('Dispatch', { kind: 'jobsheet_dispatch', project_id: js.project_id,
+        title: `Job card ${js.job_number || js.jc_no} is at Dispatch — pack its items`,
+        body: 'Open Dispatch > Pending Items to put this project\'s finished items on a packing list.',
+        dedupe_key: `jobsheet_dispatch:${sheetId}` });
+    } catch { /* best-effort */ }
+  }
   if (b.action === 'finish') {
     // One QC alert per job per day (not one per stage).
     try {

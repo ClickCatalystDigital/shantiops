@@ -31,13 +31,17 @@ export async function POST(req, { params }) {
   // A BOM line of this list's project, picked from "waiting" lines: link it (so it leaves Pending)
   // and take its description/spec/qty from the BOM instead of what was typed.
   if (b.bom_item_id) {
-    if (!pl.project_id) return NextResponse.json({ error: 'This list has no project, so it has no BOM lines to add' }, { status: 400 });
-    const bi = await queryOne('SELECT * FROM bom_items WHERE id = ? AND project_id = ?', [b.bom_item_id, pl.project_id]);
-    if (!bi) return NextResponse.json({ error: 'That item is not on this project\'s BOM' }, { status: 404 });
+    // A list with a project takes that project's BOM lines; a project-less list takes trade (SAS)
+    // lines, which live on the hidden non-project project.
+    const bi = pl.project_id
+      ? await queryOne('SELECT * FROM bom_items WHERE id = ? AND project_id = ?', [b.bom_item_id, pl.project_id])
+      : await queryOne(`SELECT b.* FROM bom_items b JOIN projects p ON p.id = b.project_id
+                         WHERE b.id = ? AND p.is_system = 1 AND b.source = 'sas'`, [b.bom_item_id]);
+    if (!bi) return NextResponse.json({ error: pl.project_id ? 'That item is not on this project\'s BOM' : 'A list with no project can only take trade items' }, { status: 404 });
     const onList = await queryOne('SELECT 1 AS x FROM packing_bom_links WHERE bom_item_id = ?', [bi.id]);
     if (onList) return NextResponse.json({ error: 'That item is already on a packing list' }, { status: 409 });
-    const proj = await queryOne('SELECT unit_count FROM projects WHERE id = ?', [pl.project_id]);
-    const rollups = await getAssemblyRollupMap(pl.project_id);
+    const proj = await queryOne('SELECT unit_count FROM projects WHERE id = ?', [bi.project_id]);
+    const rollups = await getAssemblyRollupMap(bi.project_id);
     b.material_description = bi.material_description;
     b.moc = bi.moc; b.size_spec = bi.size_spec; b.make = bi.make;
     b.qty = itemRollupQty(bi.qty_text, bi.assembly_id, rollups, proj?.unit_count, !!bi.qty_resolved) ?? 1;

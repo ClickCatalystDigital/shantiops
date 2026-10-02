@@ -92,9 +92,9 @@ function StatPill({ dot, value, label, onClick }) {
 }
 
 // Same pill-shaped search input every workspace uses (StoresWorkspace.jsx's SearchBox).
-function SearchBox({ value, onChange, placeholder }) {
+function SearchBox({ value, onChange, placeholder, className = 'max-w-sm' }) {
   return (
-    <div className="relative max-w-sm">
+    <div className={`relative ${className}`}>
       <SearchIcon className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
       <Input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
         className="h-10 rounded-full border-transparent bg-muted/50 pl-10 shadow-none transition-colors focus-visible:border-input focus-visible:bg-background" />
@@ -232,25 +232,47 @@ function PackingListsTab({ lists, flowCounts, pendingReadyCount, awaitingAckCoun
 function PendingItemsTab({ items }) {
   const router = useRouter();
   const [q, setQ] = useState('');
-  const [busyProject, setBusyProject] = useState(null);
+  const [scope, setScope] = useState('all'); // 'all' | 'trade' | a project id
+  const [busyKey, setBusyKey] = useState(null);
   const [picked, setPicked] = useState(new Set());
-  const [company, setCompany] = useState('project'); // 'project' = each project's own company
+  const [companyFor, setCompanyFor] = useState({}); // group key -> chosen company ('' = the project's own)
+
+  // Project cards are per project; trade (sale-order) lines are one card per sale order.
+  const keyOf = it => (it.is_trade ? `trade:${it.sale_order_no || '—'}` : String(it.project_id));
+  const projectOptions = useMemo(() => {
+    const seen = new Map();
+    items.forEach(it => { if (!it.is_trade && !seen.has(it.project_id)) seen.set(it.project_id, `${it.project_no} · ${it.customer_name || ''}`); });
+    const hasTrade = items.some(it => it.is_trade);
+    return [
+      { value: 'all', label: 'All projects' },
+      ...(hasTrade ? [{ value: 'trade', label: 'Trade (all trade items)' }] : []),
+      ...[...seen.entries()].map(([id, label]) => ({ value: String(id), label })),
+    ];
+  }, [items]);
 
   const needle = q.trim().toLowerCase();
-  const filtered = items.filter(it => !needle
-    || it.material_description.toLowerCase().includes(needle)
-    || it.project_no.toLowerCase().includes(needle)
-    || it.customer_name.toLowerCase().includes(needle));
+  const filtered = items.filter(it => {
+    if (scope === 'trade' ? !it.is_trade : scope !== 'all' && (it.is_trade || String(it.project_id) !== scope)) return false;
+    return !needle
+      || it.material_description.toLowerCase().includes(needle)
+      || (it.project_no || '').toLowerCase().includes(needle)
+      || (it.customer_name || '').toLowerCase().includes(needle)
+      || (it.sale_order_no || '').toLowerCase().includes(needle);
+  });
 
-  const byProject = useMemo(() => {
+  const groups = useMemo(() => {
     const map = new Map();
     filtered.forEach(it => {
-      if (!map.has(it.project_id)) {
-        map.set(it.project_id, { project_id: it.project_id, project_no: it.project_no, customer_name: it.customer_name, items: [] });
-      }
-      map.get(it.project_id).items.push(it);
+      const k = keyOf(it);
+      if (!map.has(k)) map.set(k, {
+        key: k, project_id: it.project_id, is_trade: it.is_trade, job_at_dispatch: it.job_at_dispatch,
+        title: it.is_trade ? `Trade · ${it.sale_order_no || 'no sale order'}` : it.project_no,
+        sub: it.is_trade ? (it.trade_customer || '') : it.customer_name,
+        customer: it.is_trade ? it.trade_customer : it.customer_name, items: [] });
+      map.get(k).items.push(it);
     });
-    return [...map.values()];
+    // Projects whose job card has reached Dispatch come first: Production has said "pack this".
+    return [...map.values()].sort((a, b) => Number(!!b.job_at_dispatch) - Number(!!a.job_at_dispatch));
   }, [filtered]);
 
   // No ticks = every ready line of the project (the old one-click behaviour). With ticks = exactly
@@ -259,16 +281,27 @@ function PendingItemsTab({ items }) {
     const ids = group.items.filter(it => picked.has(it.id)).map(it => it.id);
     const notReady = group.items.filter(it => picked.has(it.id) && !it.readyForPacking).length;
     if (notReady && !confirm(`${notReady} picked item(s) haven't been received/produced yet. Put them on the list anyway?`)) return;
-    setBusyProject(group.project_id);
+    const company = companyFor[group.key] || undefined;
+    setBusyKey(group.key);
     try {
-      const { items: n, packing_no } = await api('/api/packing/from-bom', { method: 'POST', body: {
-        project_id: group.project_id, bom_item_ids: ids.length ? ids : undefined, allow_not_ready: notReady > 0 || undefined,
-        company: company === 'project' ? undefined : company } });
-      showToast(`Draft ${packing_no} created (${n} item${n === 1 ? '' : 's'})`);
+      let msg;
+      if (group.is_trade) {
+        // Trade lines have no project: make a blank list for the sale order's customer, then add the lines.
+        const chosen = ids.length ? ids : group.items.filter(it => it.readyForPacking).map(it => it.id);
+        if (!chosen.length) throw new Error('Tick the trade lines to pack first');
+        const list = await api('/api/packing', { method: 'POST', body: { customer_name: group.customer || group.title, company } });
+        for (const id of chosen) await api(`/api/packing/${list.id}/items`, { method: 'POST', body: { bom_item_id: id } });
+        msg = `Draft ${list.packing_no} created (${chosen.length} item${chosen.length === 1 ? '' : 's'})`;
+      } else {
+        const { items: n, packing_no } = await api('/api/packing/from-bom', { method: 'POST', body: {
+          project_id: group.project_id, bom_item_ids: ids.length ? ids : undefined, allow_not_ready: notReady > 0 || undefined, company } });
+        msg = `Draft ${packing_no} created (${n} item${n === 1 ? '' : 's'})`;
+      }
+      showToast(msg);
       setPicked(new Set());
       router.refresh();
     } catch (err) { showToast(err.message, 'error'); }
-    setBusyProject(null);
+    setBusyKey(null);
   }
   const toggle = id => setPicked(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
 
@@ -276,34 +309,38 @@ function PendingItemsTab({ items }) {
     <div className="flex flex-col gap-4">
       {items.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
-          <SearchBox value={q} onChange={setQ} placeholder="Search by description or project…" />
-          <Select value={company} onValueChange={setCompany}>
-            <SelectTrigger className="h-10 w-56 rounded-full"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="project">New lists: project's company</SelectItem>
-              {COMPANY_NAMES.map(c => <SelectItem key={c} value={c}>New lists: {c}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <SearchBox value={q} onChange={setQ} placeholder="Search by description, project or sale order…" className="min-w-52 flex-1 max-w-none" />
+          <div className="w-full sm:w-72"><SearchableSelect value={scope} onChange={setScope} options={projectOptions} placeholder="All projects" /></div>
         </div>
       )}
       {items.length === 0 ? (
         <p className="py-6 text-center text-sm text-muted-foreground">Nothing pending — every BOM line is either packed or not yet ready.</p>
-      ) : byProject.length === 0 ? (
+      ) : groups.length === 0 ? (
         <p className="py-6 text-center text-sm text-muted-foreground">No items match your search.</p>
-      ) : byProject.map(group => {
+      ) : groups.map(group => {
         const readyCount = group.items.filter(it => it.readyForPacking).length;
         const pickedCount = group.items.filter(it => picked.has(it.id)).length;
+        const showAction = readyCount > 0 || pickedCount > 0;
         return (
-          <Card key={group.project_id}>
+          <Card key={group.key}>
             <CardHeader>
-              <CardTitle className="text-sm">{group.project_no} · {group.customer_name}</CardTitle>
-              {(readyCount > 0 || pickedCount > 0) && (
-                <CardAction>
-                  {/* Disabled while ANY project's generate is in flight, not just this one — a
-                      single busyProject value can only track one id at a time, so leaving other
-                      projects' buttons live would let a second click race the first request. */}
-                  <Button size="sm" disabled={!!busyProject} onClick={() => generate(group)}>
-                    {busyProject === group.project_id ? 'Generating…' : pickedCount ? `Create list from selected (${pickedCount})` : 'Generate Draft Packing List'}
+              <CardTitle className="flex flex-wrap items-center gap-2 text-sm">
+                <span>{group.title}{group.sub ? ` · ${group.sub}` : ''}</span>
+                {group.job_at_dispatch && <Badge variant="outline" className="border-success/30 bg-success-surface text-success">Job card at Dispatch</Badge>}
+              </CardTitle>
+              {showAction && (
+                <CardAction className="flex flex-wrap items-center gap-2">
+                  {/* The company only matters once a list is being made, so it sits with the button. */}
+                  <Select value={companyFor[group.key] || 'own'} onValueChange={v => setCompanyFor(c => ({ ...c, [group.key]: v === 'own' ? '' : v }))}>
+                    <SelectTrigger className="h-8 w-56"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="own">{group.is_trade ? 'Company: Shanti Boilers' : "Company: project's own"}</SelectItem>
+                      {COMPANY_NAMES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  {/* Disabled while ANY card's generate is in flight — one request at a time. */}
+                  <Button size="sm" disabled={!!busyKey} onClick={() => generate(group)}>
+                    {busyKey === group.key ? 'Generating…' : pickedCount ? `Create list from selected (${pickedCount})` : 'Generate Draft Packing List'}
                   </Button>
                 </CardAction>
               )}
@@ -730,16 +767,20 @@ export default function DispatchWorkspace({ lists, pendingItems, flowCounts, app
   const overdueGatePassesCount = gatePasses.filter(g => g.is_overdue).length;
 
   const navItems = [
+    { key: 'divider-packing', divider: true, label: 'Packing' },
     { key: 'board', label: 'Packing Lists', icon: PackageCheckIcon },
     { key: 'pending', label: 'Pending Items', icon: ClipboardListIcon, badge: pendingReadyCount || null },
+    { key: 'divider-after', divider: true, label: 'After dispatch' },
     { key: 'deliveries', label: 'Deliveries', icon: TruckIcon, badge: awaitingAckCount || null },
     { key: 'documents', label: 'Documents', icon: FileTextIcon, badge: missingEwayCount || null },
+    { key: 'divider-gate', divider: true, label: 'Gate' },
     // Stores IA redesign — Gate Passes moved here from Stores (a returnable/non-returnable material
     // pass is a real Dispatch-owned gate activity, not an inventory concern).
     { key: 'gatepasses', label: 'Gate Passes', icon: FileOutputIcon, badge: overdueGatePassesCount || null },
     // Inward + Pre-Dispatch QC/Production Approval Workflow — Dispatch's own Submit/Resubmit +
     // status tab (the retired top-level /material-review page's Dispatch-facing read-only view,
     // plus the Submit/Resubmit action that used to live inline on PackingDetail.jsx).
+    { key: 'divider-signoff', divider: true, label: 'Sign-off' },
     { key: 'approvals', label: 'Approvals', icon: ClipboardCheckIcon, badge: approvalActionCount || null },
   ];
 
