@@ -175,22 +175,6 @@ function PackingListsTab({ lists, flowCounts, pendingReadyCount, awaitingAckCoun
   // joins project_no per list — no new query.
   const [projectQ, setProjectQ] = useState('');
   const [newOpen, setNewOpen] = useState(false);
-  const [converting, setConverting] = useState(false);
-  const router = useRouter();
-  const oldLayout = lists.filter(l => l.layout !== 'combined' && l.status !== 'dispatched');
-  async function convertAll() {
-    if (!confirm(`Rebuild ${oldLayout.length} list${oldLayout.length === 1 ? '' : 's'} in the new layout? Lines are regrouped and numbered again; list numbers and details stay.`)) return;
-    setConverting(true);
-    let ok = 0; const failed = [];
-    for (const l of oldLayout) {
-      try { await api(`/api/packing/${l.id}/convert-layout`, { method: 'POST' }); ok++; }
-      catch (err) { failed.push(`${l.packing_no}: ${err.message}`); }
-    }
-    showToast(`${ok} list${ok === 1 ? '' : 's'} converted`);
-    failed.forEach(m => showToast(m, 'error'));
-    setConverting(false);
-    router.refresh();
-  }
 
   function toggleStatus(key) {
     setFocusedStatus(cur => (cur === key ? null : key));
@@ -229,12 +213,6 @@ function PackingListsTab({ lists, flowCounts, pendingReadyCount, awaitingAckCoun
           </Button>
         )}
       </div>
-      {oldLayout.length > 0 && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-warning/40 bg-warning-surface/40 px-4 py-3 text-sm">
-          <span>{oldLayout.length} draft/ready list{oldLayout.length === 1 ? ' still uses' : 's still use'} the old layout (no loose / package / mounted rows, older PDF).</span>
-          <Button size="sm" disabled={converting} onClick={convertAll}>{converting ? 'Converting…' : `Convert ${oldLayout.length === 1 ? 'it' : 'all'} to the new layout`}</Button>
-        </div>
-      )}
       <div className="border-t pt-4">
         {focusedStatus && (
           <button type="button" onClick={() => setFocusedStatus(null)}
