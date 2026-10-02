@@ -129,7 +129,7 @@ export default function PackingCombined({ list, items, setItems, saveItem, remov
   return (
     <div className="flex flex-col gap-4">
       {!locked && (
-        <div className="no-print sticky top-0 z-10 flex min-h-11 flex-wrap items-center gap-2 rounded-xl border bg-card/95 px-3 py-2 text-xs shadow-sm backdrop-blur">
+        <div className="no-print sticky top-14 z-10 flex min-h-11 flex-wrap items-center gap-2 rounded-xl border bg-card/95 px-3 py-2 text-xs shadow-sm backdrop-blur">
           {ids.length === 0 ? (
             <span className="text-muted-foreground">{lineCount} lines in {groups.length} group{groups.length === 1 ? '' : 's'}. Tick lines to move, group or remove them, or drag a line onto a group. Click any value to edit it.</span>
           ) : (<>
@@ -151,11 +151,11 @@ export default function PackingCombined({ list, items, setItems, saveItem, remov
       )}
 
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[720px] border-separate border-spacing-0 text-sm">
+        <table className="w-full min-w-[860px] border-separate border-spacing-0 text-sm">
           <thead>
             <tr className="text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-              <th className="no-print w-9 pb-2" /><th className="w-10 pb-2 pr-2">No</th><th className="pb-2 pr-3">Description</th><th className="w-44 pb-2 pr-3">MOC</th>
-              <th className="w-48 pb-2 pr-3">Size / spec</th><th className="w-28 pb-2 pr-3">IBR no</th><th className="w-24 pb-2 pr-3 text-right">Qty</th><th className="w-32 pb-2">Make</th>
+              <th className="no-print w-9 pb-2" /><th className="w-10 pb-2 pr-2">No</th><th className="min-w-[15rem] pb-2 pr-3">Description</th><th className="w-28 pb-2 pr-3">MOC</th>
+              <th className="w-36 pb-2 pr-3">Size / spec</th><th className="w-24 pb-2 pr-3">IBR no</th><th className="w-24 pb-2 pr-3 text-right">Qty</th><th className="w-28 pb-2">Make</th>
               {!locked && <th className="no-print w-20 pb-2" />}
             </tr>
           </thead>
@@ -189,7 +189,7 @@ export default function PackingCombined({ list, items, setItems, saveItem, remov
               <span className="no-print ml-auto flex items-center gap-1 opacity-50 transition-opacity group-hover/g:opacity-100">
                 <Button variant="ghost" size="icon-sm" className="h-6 w-6" title="Rename label" onClick={() => rename(g)}><PencilIcon className="size-3" /></Button>
                 <Select onValueChange={t => act({ action: 'edit_group', group_label: g.label, pack_type: t })}>
-                  <SelectTrigger className="h-6 w-24 border-0 bg-transparent px-2 text-[11px] shadow-none"><SelectValue placeholder="Change type" /></SelectTrigger>
+                  <SelectTrigger className="h-6 w-32 border-0 bg-transparent px-2 text-[11px] shadow-none"><SelectValue placeholder="Change type" /></SelectTrigger>
                   <SelectContent>{PACK_TYPES.map(t => <SelectItem key={t} value={t}>{PACK_TYPE_LABEL[t]}</SelectItem>)}</SelectContent>
                 </Select>
               </span>
