@@ -49,12 +49,15 @@ function SupplierDraftCard({ supplier, rfqNo, items, onMarkSent }) {
   const digits = waDigits(supplier.phone);
 
   return (
-    <div className="flex flex-col gap-2 rounded-md border p-3 text-sm">
+    <div className="flex flex-col gap-3 rounded-lg border p-4 text-sm">
       <div className="flex items-center justify-between">
         <span className="font-medium">{supplier.supplier_name}</span>
         <span className="text-xs text-muted-foreground">{supplier.phone || 'no phone'} · {supplier.email || 'no email'}</span>
       </div>
-      <pre className="max-h-32 overflow-y-auto whitespace-pre-wrap rounded bg-muted/40 p-2 text-xs text-muted-foreground">{message}</pre>
+      <details className="group rounded-md bg-muted/30 text-xs text-muted-foreground">
+        <summary className="cursor-pointer select-none px-3 py-1.5 hover:text-foreground">Message preview</summary>
+        <pre className="max-h-48 overflow-y-auto whitespace-pre-wrap px-3 pb-3">{message}</pre>
+      </details>
       <div className="flex flex-wrap gap-2">
         <Button size="sm" variant="outline" disabled={!digits} asChild={!!digits}
           onClick={!digits ? undefined : () => onMarkSent(supplier.supplier_id)}>
@@ -115,32 +118,45 @@ export default function CreateRfqDialog({ items, suppliers, router, onClose, onC
 
   return (
     <Dialog open onOpenChange={o => { if (!o) (step === 'preview' ? onCreated() : onClose()); }}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl">
+      <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-4xl">
         {step === 'suppliers' && (
           <>
             <DialogHeader>
               <DialogTitle>Create RFQ — {items.length} item{items.length !== 1 ? 's' : ''}</DialogTitle>
             </DialogHeader>
-            <div className="flex flex-col gap-3">
-              <ul className="max-h-24 overflow-y-auto rounded-md border p-2 text-xs text-muted-foreground">
-                {items.map(it => <li key={it.id}>{it.material_description} · {it.project_no}</li>)}
-              </ul>
-              <Input value={supplierSearch} onChange={e => setSupplierSearch(e.target.value)} placeholder="Search suppliers…" />
-              <div className="max-h-64 overflow-y-auto rounded-md border">
-                {shownSuppliers.slice(0, 200).map(s => (
-                  <label key={s.id} className="flex cursor-pointer items-center gap-2 border-b px-3 py-1.5 text-sm last:border-b-0 hover:bg-muted/40">
-                    <input type="checkbox" className="size-4" checked={selectedSupplierIds.has(s.id)} onChange={() => toggleSupplier(s.id)} />
-                    <span className="min-w-0 flex-1 truncate">{s.name}</span>
-                    <span className="shrink-0 text-xs text-muted-foreground">{s.city || ''}</span>
-                  </label>
-                ))}
-                {shownSuppliers.length === 0 && <p className="p-3 text-center text-xs text-muted-foreground">No suppliers match.</p>}
+            <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]">
+              <div className="flex flex-col gap-2">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Items</p>
+                <ul className="max-h-80 divide-y overflow-y-auto rounded-lg border bg-muted/20 text-sm">
+                  {items.map(it => (
+                    <li key={it.id} className="flex items-start justify-between gap-2 px-3 py-2">
+                      <span className="min-w-0">{it.material_description}</span>
+                      <span className="shrink-0 rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground">{it.project_no}</span>
+                    </li>
+                  ))}
+                </ul>
               </div>
-              <p className="text-xs text-muted-foreground">{selectedSupplierIds.size} selected</p>
+              <div className="flex flex-col gap-2">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Suppliers</p>
+                <Input value={supplierSearch} onChange={e => setSupplierSearch(e.target.value)} placeholder="Search suppliers…" />
+                <div className="max-h-72 overflow-y-auto rounded-lg border">
+                  {shownSuppliers.slice(0, 200).map(s => (
+                    <label key={s.id} className="flex cursor-pointer items-center gap-3 border-b px-3 py-2 text-sm last:border-b-0 hover:bg-muted/40">
+                      <input type="checkbox" className="size-4" checked={selectedSupplierIds.has(s.id)} onChange={() => toggleSupplier(s.id)} />
+                      <span className="min-w-0 flex-1 truncate">{s.name}</span>
+                      <span className="shrink-0 text-xs text-muted-foreground">{s.city || ''}</span>
+                    </label>
+                  ))}
+                  {shownSuppliers.length === 0 && <p className="p-3 text-center text-xs text-muted-foreground">No suppliers match.</p>}
+                </div>
+              </div>
             </div>
-            <DialogFooter>
+            <DialogFooter className="items-center sm:justify-between">
+              <span className="text-xs text-muted-foreground">{selectedSupplierIds.size} supplier{selectedSupplierIds.size === 1 ? '' : 's'} selected</span>
+              <div className="flex gap-2">
               <Button variant="outline" onClick={onClose}>Cancel</Button>
               <Button disabled={busy} onClick={create}>{busy ? 'Creating…' : 'Create RFQ'}</Button>
+              </div>
             </DialogFooter>
           </>
         )}
@@ -149,7 +165,7 @@ export default function CreateRfqDialog({ items, suppliers, router, onClose, onC
             <DialogHeader>
               <DialogTitle>{rfq.rfq_no} — review & send</DialogTitle>
             </DialogHeader>
-            <div className="flex flex-col gap-3">
+            <div className="grid gap-3 md:grid-cols-2">
               {rfq.suppliers.map(s => (
                 <SupplierDraftCard key={s.id} supplier={s} rfqNo={rfq.rfq_no} items={rfq.items} onMarkSent={markSent} />
               ))}

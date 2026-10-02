@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import PortalDrawingUploads from '@/components/PortalDrawingUploads';
+import { todayISO } from '@/lib/date';
 import { cn } from '@/lib/utils';
 import { CheckIcon, LoaderIcon, ClockIcon, ChevronDownIcon, DownloadIcon, FileTextIcon } from 'lucide-react';
 
@@ -57,7 +58,7 @@ function DrawingRow({ drawing, onChanged, readOnly }) {
           {drawing.description && <p className="text-xs text-muted-foreground">{drawing.description}</p>}
         </div>
         <Badge variant={approved ? 'default' : 'outline'}>
-          {approved ? `Approved ${formatDate(drawing.customerApprovedAt)}` : STATUS_LABEL[drawing.status] || drawing.status}
+          {approved ? `Approved ${formatDate(drawing.customerApprovedAt)}` : (drawing.status === 'approved' || drawing.status === 'as_built') ? STATUS_LABEL.under_review : STATUS_LABEL[drawing.status] || drawing.status}
         </Badge>
       </div>
 
@@ -91,7 +92,7 @@ function DrawingRow({ drawing, onChanged, readOnly }) {
             </div>
             <div className="flex items-center justify-between gap-2">
               <Button size="sm" variant="outline" disabled={busy || !draft.trim()} onClick={postComment}>Comment</Button>
-              {drawing.status === 'under_review' && !approved && (
+              {['under_review', 'approved', 'as_built'].includes(drawing.status) && !approved && (
                 <Button size="sm" disabled={busy} onClick={approve}>Approve drawing</Button>
               )}
             </div>
@@ -220,7 +221,7 @@ export default function PortalOrderProgress({ readOnly = false, projectId, custo
 
   async function refreshOne(id) {
     // Re-fetching the full list is overkill for one field flip — flag it locally instead.
-    setItems(prev => prev.map(d => d.id === id ? { ...d, customerApprovedAt: new Date().toISOString() } : d));
+    setItems(prev => prev.map(d => d.id === id ? { ...d, customerApprovedAt: todayISO() } : d));
   }
 
   // Real, honest phase links only — a Sales Invoice has no phase in the data model (it can be

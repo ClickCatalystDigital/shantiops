@@ -1,6 +1,7 @@
 // scripts/seed-plan-demo.mjs — Planning demo data: project ZZ-PLAN-TEST (BOM lines covering every Material Plan status, a PO with a late delivery lot, an overloaded Work Order). Re-runnable; "cleanup" removes it.
 // node --env-file=.env.local scripts/seed-plan-demo.mjs [setup|cleanup]
 import { createClient } from '@libsql/client';
+import { MILESTONE_TEMPLATE } from '../lib/milestones.js';
 const db = createClient({ url: process.env.TURSO_URL, authToken: process.env.TURSO_AUTH_TOKEN, intMode: 'number' });
 const run = (sql, args = []) => db.execute({ sql, args });
 const one = async (sql, args = []) => (await run(sql, args)).rows[0] || null;
@@ -39,8 +40,15 @@ async function setup() {
   const invId = Number(inv.lastInsertRowid);
   const pr = await run(`INSERT INTO projects (project_no, customer_name, description, status, company) VALUES (?, 'ZZ Plan Customer', 'plan test', 'active', 'Shanti Boilers')`, [P]);
   const pid = Number(pr.lastInsertRowid);
-  await run(`INSERT INTO milestones (project_id, milestone_key, milestone_label, sort_order, department, status, actual_end) VALUES (?, 'release_bom','Release BOM',1,'Design','done',?)`, [pid, iso(-1)]);
-  await run(`INSERT INTO milestones (project_id, milestone_key, milestone_label, sort_order, department, planned_start, planned_end) VALUES (?, 'marking_cutting','Marking',2,'Production',?,?)`, [pid, iso(5), iso(9)]);
+  // Full milestone set like a real project (so the tracker/Overall/Currently With read normally);
+  // release_bom is done and marking_cutting carries the dates the Material Plan uses as need-by.
+  for (const [i, m] of MILESTONE_TEMPLATE.entries()) {
+    const done = m.key === 'release_bom', mark = m.key === 'marking_cutting';
+    await run(
+      `INSERT INTO milestones (project_id, milestone_key, milestone_label, sort_order, department, status, actual_end, planned_start, planned_end)
+       VALUES (?,?,?,?,?,?,?,?,?)`,
+      [pid, m.key, m.label, i, m.department, done ? 'done' : 'pending', done ? iso(-1) : null, mark ? iso(5) : null, mark ? iso(9) : null]);
+  }
   const bom = async (desc, qty, o = {}) => Number((await run(
     `INSERT INTO bom_items (project_id, material_description, qty_text, source, purchase_status, pending_review, item_id)
      VALUES (?,?,?, 'bom', ?, ?, ?)`, [pid, desc, qty, o.status || 'Enquiry', o.pending || 0, o.item || null])).lastInsertRowid);

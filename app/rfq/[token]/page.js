@@ -29,7 +29,7 @@ export default async function RfqPortalPage({ params }) {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-6 p-6">
+    <main className="mx-auto flex min-h-screen max-w-4xl flex-col gap-6 px-4 py-8 sm:px-8">
       <div>
         <h1 className="text-lg font-semibold">Request for Quotation — {rs.rfq_no}</h1>
         <p className="text-sm text-muted-foreground">Shanti Boilers · for {rs.supplier_name}</p>

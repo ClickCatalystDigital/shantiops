@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { DEPARTMENTS } from '@/lib/milestones';
 import { departmentsFor } from '@/lib/manager-scope.mjs';
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import {
@@ -143,6 +144,15 @@ export default function Nav({ user, reportDepartments = [] }) {
     ...deptTabs,
   ];
 
+  // Desktop nav density: admin sees every tab as an icon (tooltip = name) so 24 tabs fit; a manager
+  // keeps only the management tabs on the bar and reaches each department workspace from the cog >
+  // Departments menu; everyone else is unchanged. The mobile bottom bar still uses the full LINKS.
+  const isAdminUser = user?.role === 'admin';
+  const isManagerUser = user?.role === 'manager';
+  const MGMT_HREFS = new Set(['/', '/ops', '/projects', '/executive', '/approvals', '/reports']);
+  const desktopLinks = isManagerUser ? LINKS.filter(l => MGMT_HREFS.has(l.href.split('?')[0])) : LINKS;
+  const managerDeptLinks = isManagerUser ? LINKS.filter(l => !MGMT_HREFS.has(l.href.split('?')[0])) : [];
+
   // Query-qualified workspace tabs (currently Dispatch) activate only on their own route/filter.
   const isActive = l => {
     const [base, query] = l.href.split('?');
@@ -194,7 +204,18 @@ export default function Nav({ user, reportDepartments = [] }) {
 
           {/* Desktop tabs */}
           <nav className="ml-2 hidden items-center gap-1 md:flex">
-            {LINKS.map(l => (
+            {desktopLinks.map(l => isAdminUser ? (
+              <Tooltip key={l.href}>
+                <TooltipTrigger asChild>
+                  <Link href={l.href} aria-label={l.label}
+                    className={cn('rounded-md p-2 transition-colors',
+                      isActive(l) ? 'bg-secondary text-secondary-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground')}>
+                    <l.icon className="size-[18px]" />
+                  </Link>
+                </TooltipTrigger>
+                <TooltipContent>{l.label}</TooltipContent>
+              </Tooltip>
+            ) : (
               <Link key={l.href} href={l.href}
                 className={cn('rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
                   isActive(l) ? 'bg-secondary text-secondary-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground')}>
@@ -231,7 +252,11 @@ export default function Nav({ user, reportDepartments = [] }) {
                   <DropdownMenuSub>
                     <DropdownMenuSubTrigger><LayoutGridIcon data-icon="inline-start" />Departments</DropdownMenuSubTrigger>
                     <DropdownMenuSubContent>
-                      {accessibleDepts.map(d => (
+                      {isManagerUser ? managerDeptLinks.map(l => (
+                        <DropdownMenuItem key={l.href} onClick={() => router.push(l.href)}>
+                          <l.icon data-icon="inline-start" />{l.label}
+                        </DropdownMenuItem>
+                      )) : accessibleDepts.map(d => (
                         <DropdownMenuItem key={d} onClick={() => router.push(`/ops?dept=${d}`)}>
                           {d === 'Dispatch' && <PackageIcon data-icon="inline-start" />}{d}
                         </DropdownMenuItem>

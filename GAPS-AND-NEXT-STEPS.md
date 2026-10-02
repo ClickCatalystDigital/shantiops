@@ -7,7 +7,7 @@ below was independently verified against the live code (file:line), not just rea
 
 - Stores sidebar workspace (Inventory / Open Requests / Active Reservations / Material Issued).
 - Projects list + project-detail page: department pill + active-milestone label + progress, shared
-  via `lib/data.js`'s `activeDepartmentStatus()` and `components/DepartmentStatus.jsx`.
+  via `lib/data.js`'s `getBatchDepartmentStates()` (list) / `getDepartmentState()` (detail) — rules in `lib/department-state.mjs` — and `components/DepartmentStatus.jsx`.
 - Cross-department BOM visibility gates: Procurement only sees a line once Design's `release_bom`
   milestone is done; Production/Stores only see items with `purchase_status IN ('Received',
   'In-Stock')`; Dispatch can only pack items Production has flagged `production_done`.

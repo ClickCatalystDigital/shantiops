@@ -63,13 +63,15 @@ export default function RfqPortalForm({ token, rfq, alreadyResponded }) {
   return (
     <div className="flex flex-col gap-4">
       {rfq.items.map(it => (
-        <div key={it.rfq_item_id} className="flex flex-col gap-3 rounded-md border p-3">
-          <p className="text-sm font-medium">{it.material_description}</p>
-          <p className="text-xs text-muted-foreground">
-            {it.moc || '—'} · {it.size_spec || '—'} · Qty {it.qty_text || '—'}
-            {it.qty_breakdown && ` (${it.qty_breakdown.label})`}
-          </p>
-          <div className="grid grid-cols-2 gap-3">
+        <div key={it.rfq_item_id} className="flex flex-col gap-4 rounded-xl border bg-card p-4 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <p className="text-sm font-semibold">{it.material_description}</p>
+            <p className="text-xs text-muted-foreground">
+              {[it.moc, it.size_spec].filter(Boolean).join(' · ') || '—'} · Qty {it.qty_text || '—'}
+              {it.qty_breakdown && ` (${it.qty_breakdown.label})`}
+            </p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div className="flex flex-col gap-1.5">
               <Label>Unit price</Label>
               <Input type="number" min="0" step="0.01" value={lines[it.rfq_item_id].unit_price}
@@ -81,15 +83,15 @@ export default function RfqPortalForm({ token, rfq, alreadyResponded }) {
                 options={UOM_PRESETS} displayValue={lines[it.rfq_item_id].uom}
                 onTextChange={v => setLine(it.rfq_item_id, { uom: v })} placeholder="Nos, Kg, Mtr…" />
             </div>
-          </div>
-          <PaymentTermsField value={lines[it.rfq_item_id].payment_terms} advancePct={lines[it.rfq_item_id].advance_pct}
-            pdcDays={lines[it.rfq_item_id].pdc_days}
-            onChange={v => setLine(it.rfq_item_id, { payment_terms: v })} onAdvancePctChange={v => setLine(it.rfq_item_id, { advance_pct: v })}
-            onPdcDaysChange={v => setLine(it.rfq_item_id, { pdc_days: v })} />
-          <div className="flex flex-col gap-1.5">
-            <Label>Expected delivery</Label>
-            <Input type="date" value={lines[it.rfq_item_id].expected_delivery_date}
-              onChange={e => setLine(it.rfq_item_id, { expected_delivery_date: e.target.value })} />
+            <PaymentTermsField value={lines[it.rfq_item_id].payment_terms} advancePct={lines[it.rfq_item_id].advance_pct}
+              pdcDays={lines[it.rfq_item_id].pdc_days}
+              onChange={v => setLine(it.rfq_item_id, { payment_terms: v })} onAdvancePctChange={v => setLine(it.rfq_item_id, { advance_pct: v })}
+              onPdcDaysChange={v => setLine(it.rfq_item_id, { pdc_days: v })} />
+            <div className="flex flex-col gap-1.5">
+              <Label>Expected delivery</Label>
+              <Input type="date" value={lines[it.rfq_item_id].expected_delivery_date}
+                onChange={e => setLine(it.rfq_item_id, { expected_delivery_date: e.target.value })} />
+            </div>
           </div>
           <div className="flex flex-col gap-1.5">
             <Label>Remarks</Label>
@@ -97,7 +99,9 @@ export default function RfqPortalForm({ token, rfq, alreadyResponded }) {
           </div>
         </div>
       ))}
-      <Button disabled={busy} onClick={submit}>{busy ? 'Submitting…' : 'Submit quote'}</Button>
+      <div className="sticky bottom-0 -mx-4 border-t bg-background/90 px-4 py-3 backdrop-blur sm:-mx-8 sm:px-8">
+        <Button className="w-full sm:w-auto" disabled={busy} onClick={submit}>{busy ? 'Submitting…' : 'Submit quote'}</Button>
+      </div>
     </div>
   );
 }

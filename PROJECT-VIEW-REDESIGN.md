@@ -36,7 +36,7 @@ Same order for everyone (customers are redirected away before this renders):
 2. **3-column row**: `ProjectHeader` (identity/status) · `TodayBand` ("Open Actions" — this
    project's own overdue/blocked/due-soon milestones, scoped to a head's own department, unfiltered
    for a PM) · a "Currently With" card (`DepartmentPills` + `DepartmentProgress`, computed via
-   `activeDepartmentStatus` — **not** a BOM rollup; this replaced an old "Design chip or BOM
+   `getDepartmentState` (`lib/data.js`; the list uses the batched twin `getBatchDepartmentStates`) — **not** a BOM rollup; this replaced an old "Design chip or BOM
    rollup" guess, per the code's own comment).
 3. **`ChildUnitBomCard`** — only when `project.master_project_id` is set (this page IS a split
    child). Read-only, department-agnostic, client-fetched from `/api/projects/[id]/child-bom`.

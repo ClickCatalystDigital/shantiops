@@ -2191,9 +2191,10 @@ module depends on.
   and Manual/Auto toggle live on the Inventory (default) tab; the chips now switch tabs instead of
   anchor-jumping to a div id that isn't mounted on other tabs.
 - **Projects list and project-detail page both show "who has it, doing what."**
-  `lib/data.js`'s `activeDepartmentStatus(ms)` (shared by `getProjectsWithStatus()` and the
-  project-detail page, scoped to that one project's milestones) returns `departmentProgress`:
-  `{department, done, total, activeMilestones}` per department currently holding the ball —
+  `lib/data.js`'s `getBatchDepartmentStates()` (Projects list) and `getDepartmentState()` (project page),
+  both built on the pure rules in `lib/department-state.mjs` (renamed from the older
+  `activeDepartmentStatus`; see `docs/e2e-demo-findings.md`), return `departmentProgress`:
+  `{department, trigger, fraction}` per department currently holding the ball —
   `activeMilestones` is the specific in-progress (or next-up) milestone label(s), so a pill reads
   "Production · Welding (FURA-B / RC / AR)", not just "Production". Shared render components
   `components/DepartmentStatus.jsx` (`DepartmentPills`/`DepartmentProgress`) back both the Projects

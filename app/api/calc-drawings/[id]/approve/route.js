@@ -15,8 +15,8 @@ export async function POST(req, { params }) {
   const drawing = await queryOne('SELECT * FROM calc_drawings WHERE id = ?', [params.id]);
   if (!drawing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   if (!drawing.customer_visible || !canAccessProject(user, drawing.project_id)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  if (drawing.status !== 'under_review') {
-    return NextResponse.json({ error: 'Only a drawing under review can be approved' }, { status: 409 });
+  if (!['under_review', 'approved', 'as_built'].includes(drawing.status)) {
+    return NextResponse.json({ error: 'Only a drawing that has been submitted for review can be approved' }, { status: 409 });
   }
   if (drawing.customer_approved_at) {
     return NextResponse.json({ error: 'Already approved' }, { status: 409 });

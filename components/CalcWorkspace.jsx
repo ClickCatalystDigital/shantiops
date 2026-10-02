@@ -2216,7 +2216,15 @@ function HeadApprovalControl({ drawing, save, busy }) {
       </Button>
     );
   }
-  return <p className="text-xs text-muted-foreground">Not submitted for review yet.</p>;
+  // Head/PM can submit too (so one login can run the whole flow); same rule as a Designer: needs a file.
+  return (
+    <div className="flex items-center gap-2">
+      <Button size="sm" disabled={busy || !drawing.files.length} onClick={() => save({ status: 'under_review' })}>
+        <Send className="size-3.5" data-icon="inline-start" />Submit for review
+      </Button>
+      <p className="text-xs text-muted-foreground">{drawing.files.length ? 'Not submitted for review yet.' : 'Upload a file to submit.'}</p>
+    </div>
+  );
 }
 
 // The assigned Designer's own toggle — Submit (needs at least one file, server-enforced too) while

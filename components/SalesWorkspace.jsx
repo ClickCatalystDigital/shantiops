@@ -1871,7 +1871,7 @@ export function SendCommercialOfferDialog({ quotationId, onClose, router }) {
 
   return (
     <Dialog open onOpenChange={o => !o && onClose()}>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader><DialogTitle>Send Commercial Offer — {quotation.quotation_no}</DialogTitle></DialogHeader>
         <div className="flex flex-col gap-3">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
