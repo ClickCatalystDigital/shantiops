@@ -21,6 +21,14 @@ export default function DispatchBoard({ lists, statusFilter = null }) {
   const byStatus = { draft: [], packed: [], dispatched: [] };
   lists.forEach(l => { (byStatus[l.status] || byStatus.draft).push(l); });
   const columns = statusFilter ? COLUMNS.filter(c => c.key === statusFilter) : COLUMNS;
+  // "List 2 of 3" per project, oldest first (same rule as the packing detail page).
+  const seq = new Map();
+  const byProject = new Map();
+  [...lists].sort((a, b) => a.id - b.id).forEach(l => {
+    if (!l.project_id) return;
+    const n = (byProject.get(l.project_id) || 0) + 1;
+    byProject.set(l.project_id, n); seq.set(l.id, n);
+  });
 
   return (
     <div className={`grid gap-4 ${statusFilter ? 'grid-cols-1' : 'md:grid-cols-3'}`}>
@@ -35,7 +43,10 @@ export default function DispatchBoard({ lists, statusFilter = null }) {
               <Card className="transition-colors group-hover:border-primary/40 group-hover:bg-accent/40">
                 <CardContent className="flex flex-col gap-1 py-3">
                   <div className="flex items-center justify-between">
-                    <span className="font-semibold tnum">{l.packing_no}</span>
+                    <span className="font-semibold tnum">
+                      {l.packing_no}
+                      {byProject.get(l.project_id) > 1 && <span className="ml-1.5 text-xs font-normal text-muted-foreground">List {seq.get(l.id)} of {byProject.get(l.project_id)}</span>}
+                    </span>
                     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${col.tone}`}>{col.label}</span>
                   </div>
                   {/* project_no shown alongside customer_name so two shipments for the same

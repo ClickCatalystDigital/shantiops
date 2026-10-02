@@ -421,7 +421,10 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
     <main className="container flex flex-col gap-6 py-8">
       <div className="flex flex-wrap items-start justify-between gap-3 no-print">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight tnum">{list.packing_no}</h1>
+          <h1 className="text-2xl font-bold tracking-tight tnum">
+            {list.packing_no}
+            {list.projectListCount > 1 && <span className="ml-2 align-middle text-sm font-medium text-muted-foreground">List {list.projectListNo} of {list.projectListCount}{list.project_no ? ` for ${list.project_no}` : ''}</span>}
+          </h1>
           <p className="text-sm text-muted-foreground">{list.customer_name}{list.invoice_no ? ` · Invoice ${list.invoice_no}` : ''}</p>
           {list.bom_release_revision_at_creation != null && (
             <p className="text-xs text-muted-foreground">

@@ -229,13 +229,18 @@ function PackingListsTab({ lists, flowCounts, pendingReadyCount, awaitingAckCoun
 
 // ---- Tab 2: Pending Items ----
 
-function PendingItemsTab({ items }) {
+function PendingItemsTab({ items, lists = [] }) {
   const router = useRouter();
   const [q, setQ] = useState('');
   const [scope, setScope] = useState('all'); // 'all' | 'trade' | a project id
   const [busyKey, setBusyKey] = useState(null);
   const [picked, setPicked] = useState(new Set());
   const [companyFor, setCompanyFor] = useState({}); // group key -> chosen company ('' = the project's own)
+  // The project's open draft (newest), so Generate can add to it instead of starting a second list.
+  const openDraft = new Map();
+  for (const l of lists) {
+    if (l.project_id && l.status === 'draft' && l.layout === 'combined' && !(openDraft.get(l.project_id)?.id > l.id)) openDraft.set(l.project_id, l);
+  }
 
   // Project cards are per project; trade (sale-order) lines are one card per sale order.
   const keyOf = it => (it.is_trade ? `trade:${it.sale_order_no || '—'}` : String(it.project_id));
@@ -277,7 +282,7 @@ function PendingItemsTab({ items }) {
 
   // No ticks = every ready line of the project (the old one-click behaviour). With ticks = exactly
   // those lines, including ones that haven't arrived yet (asked about first).
-  async function generate(group) {
+  async function generate(group, mode) {
     const ids = group.items.filter(it => picked.has(it.id)).map(it => it.id);
     const notReady = group.items.filter(it => picked.has(it.id) && !it.readyForPacking).length;
     if (notReady && !confirm(`${notReady} picked item(s) haven't been received/produced yet. Put them on the list anyway?`)) return;
@@ -293,9 +298,9 @@ function PendingItemsTab({ items }) {
         for (const id of chosen) await api(`/api/packing/${list.id}/items`, { method: 'POST', body: { bom_item_id: id } });
         msg = `Draft ${list.packing_no} created (${chosen.length} item${chosen.length === 1 ? '' : 's'})`;
       } else {
-        const { items: n, packing_no } = await api('/api/packing/from-bom', { method: 'POST', body: {
-          project_id: group.project_id, bom_item_ids: ids.length ? ids : undefined, allow_not_ready: notReady > 0 || undefined, company } });
-        msg = `Draft ${packing_no} created (${n} item${n === 1 ? '' : 's'})`;
+        const { items: n, packing_no, added } = await api('/api/packing/from-bom', { method: 'POST', body: {
+          project_id: group.project_id, bom_item_ids: ids.length ? ids : undefined, allow_not_ready: notReady > 0 || undefined, company, mode } });
+        msg = added ? `${n} item${n === 1 ? '' : 's'} added to draft ${packing_no}` : `Draft ${packing_no} created (${n} item${n === 1 ? '' : 's'})`;
       }
       showToast(msg);
       setPicked(new Set());
@@ -339,9 +344,17 @@ function PendingItemsTab({ items }) {
                     </SelectContent>
                   </Select>
                   {/* Disabled while ANY card's generate is in flight — one request at a time. */}
-                  <Button size="sm" disabled={!!busyKey} onClick={() => generate(group)}>
-                    {busyKey === group.key ? 'Generating…' : pickedCount ? `Create list from selected (${pickedCount})` : 'Generate Draft Packing List'}
-                  </Button>
+                  {!group.is_trade && openDraft.get(group.project_id) ? (<>
+                    <Button size="sm" disabled={!!busyKey} onClick={() => generate(group)}>
+                      {busyKey === group.key ? 'Adding…' : `Add ${pickedCount ? `selected (${pickedCount})` : 'ready items'} to ${openDraft.get(group.project_id).packing_no}`}
+                    </Button>
+                    <Button size="sm" variant="outline" disabled={!!busyKey} onClick={() => generate(group, 'new')}
+                      title="Start a separate list, e.g. for an urgent part shipment">New separate list</Button>
+                  </>) : (
+                    <Button size="sm" disabled={!!busyKey} onClick={() => generate(group)}>
+                      {busyKey === group.key ? 'Generating…' : pickedCount ? `Create list from selected (${pickedCount})` : 'Generate Draft Packing List'}
+                    </Button>
+                  )}
                 </CardAction>
               )}
             </CardHeader>
@@ -801,7 +814,7 @@ export default function DispatchWorkspace({ lists, pendingItems, flowCounts, app
         <PackingListsTab lists={lists} flowCounts={flowCounts} pendingReadyCount={pendingReadyCount}
           awaitingAckCount={awaitingAckCount} missingEwayCount={missingEwayCount} onNavigate={onPillNavigate} />
       )}
-      {tab === 'pending' && <PendingItemsTab items={pendingItems} />}
+      {tab === 'pending' && <PendingItemsTab items={pendingItems} lists={lists} />}
       {tab === 'deliveries' && <DeliveriesTab lists={lists} />}
       {tab === 'documents' && <DocumentsTab lists={lists} initialMissingEway={docsPrefilter} />}
       {tab === 'gatepasses' && <GatePassesCard gatePasses={gatePasses} />}

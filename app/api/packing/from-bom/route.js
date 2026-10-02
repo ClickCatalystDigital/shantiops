@@ -2,7 +2,7 @@
 
 import { NextResponse } from 'next/server';
 import { queryAll, queryOne } from '@/lib/db';
-import { createPackingLists } from '@/lib/packing-generate';
+import { createPackingLists, appendLinesToList } from '@/lib/packing-generate';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { getProjectBom, getAssemblyRollupMap } from '@/lib/data';
@@ -21,7 +21,7 @@ export async function POST(req) {
   const actionDenied = await requireAction(user, 'Dispatch', 'dispatch.packing.generate');
   if (actionDenied) return actionDenied;
 
-  const { project_id, layout, bom_item_ids, company, allow_not_ready } = await req.json();
+  const { project_id, layout, bom_item_ids, company, allow_not_ready, mode } = await req.json();
   if (!project_id) return NextResponse.json({ error: 'project_id is required' }, { status: 400 });
 
   const project = await queryOne('SELECT * FROM projects WHERE id = ?', [project_id]);
@@ -64,6 +64,20 @@ export async function POST(req) {
   // "2 Nos" -> 2, scaled by any Local Quantity multiplier on the item's own BOM-tree node (and every
   // node above it) times the project's Whole-BOM Unit Count; non-numeric ("AS REQD") -> 1.
   const lines = newItems.map(b => ({ b, qty: itemRollupQty(b.qty_text, b.assembly_id, rollupById, project.unit_count, !!b.qty_resolved) ?? 1 }));
+  // Default: add to the project's open draft (one shipment, one paper). mode 'new' starts a separate
+  // list on purpose (urgent partial dispatch). Only a true draft is ever added to — a list that is
+  // packed, under review or dispatched is never changed. A company pick that differs from the draft's
+  // company also starts a new list.
+  if (mode !== 'new' && layout !== 'sections') {
+    const draft = await queryOne(
+      `SELECT id, company FROM packing_lists WHERE project_id = ? AND status = 'draft' AND layout = 'combined'
+        AND (? IS NULL OR company = ?) ORDER BY id DESC LIMIT 1`, [project_id, company || null, company || null]);
+    if (draft) {
+      const added = await appendLinesToList(draft.id, { project, treeProjectId: project_id, lines });
+      await audit('packing_lines_added', { actor: user.username, detail: `${added.packing_no} · project ${project_id} · ${newItems.length} items` });
+      return NextResponse.json({ id: added.id, packing_no: added.packing_no, added: true, lists: [added], items: newItems.length });
+    }
+  }
   const created = await createPackingLists({ project, treeProjectId: project_id, customerName: project.customer_name, lines, user, layout: layout === 'sections' ? 'sections' : 'combined', company: company || null });
   await audit('packing_created', { actor: user.username, detail: `${created.map(c => c.packing_no).join(', ')} · project ${project_id} · ${newItems.length} items` });
   return NextResponse.json({ id: created[0].id, packing_no: created[0].packing_no, lists: created, items: newItems.length });
