@@ -100,8 +100,24 @@
   <li><input type="checkbox"><span>Shanti Techno Fab mailbox + app password ready</span></li>
   <li><input type="checkbox"><span>Optional: salespeople who should send from their own mailbox</span></li>
 </ul>
+<p><strong>Procurement mailbox (for RFQs to suppliers).</strong> Procurement sends RFQs from its own address, separate from Sales, for example <code>purchase@your-company</code>. Same steps as above (two-step verification, app password, SMTP allowed). The Procurement head enters it under <strong>Settings &rarr; Procurement &middot; Email</strong>. Until it is set up, RFQs still go out by WhatsApp or the Copy link button.</p>
+<p class="why">Not on Zoho? Any mail provider that allows SMTP sending with an app password works, for example Gmail / Google Workspace (<code>smtp.gmail.com</code>, port 465) or your hosting company's mail. Microsoft 365 / Outlook usually has SMTP sending switched off per mailbox; your IT administrator has to switch it on.</p>
+<ul class="todo">
+  <li><input type="checkbox"><span>Shanti Boilers procurement mailbox + app password ready</span></li>
+  <li><input type="checkbox"><span>Shanti Techno Fab procurement mailbox + app password ready</span></li>
+</ul>
 
-<h2>6. Questions for your CA</h2>
+<h2>6. WhatsApp (later — only if you want the app to send WhatsApp messages itself)</h2>
+<p class="why">Today WhatsApp works from your own phone: the app opens WhatsApp with the message ready. Automatic sending needs the official WhatsApp Business service from Meta, which you pay per message.</p>
+<ol>
+  <li>A Meta Business account, verified with your company documents.</li>
+  <li>A phone number that is <strong>not</strong> already used on the WhatsApp app (a new SIM or a landline).</li>
+  <li>A payment card on the Meta account. Roughly &#8377;0.12&ndash;0.15 per business update message (RFQ, order status) in India; promotional messages cost more.</li>
+  <li>Message templates (RFQ, order update) approved by Meta &mdash; we draft them for you.</li>
+</ol>
+<p>Then you paste the access token and phone number ID into Settings, the same way as the email password. We recommend Meta's own service directly (no middle company fee). If you prefer a company with a dashboard and phone support, AiSensy, Interakt or Gupshup work too, for a monthly fee on top of the message cost.</p>
+
+<h2>7. Questions for your CA</h2>
 <ul class="todo">
   <li><input type="checkbox"><span>Is either company above the turnover limit for <strong>e-invoicing</strong> (currently Rs. 5 crore)? If yes, tell us - it is a separate government step and changes how invoices are issued.</span></li>
   <li><input type="checkbox"><span>Is the company's e-way bill API access allowed (see step 1)?</span></li>

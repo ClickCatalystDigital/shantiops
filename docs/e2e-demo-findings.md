@@ -15,7 +15,7 @@ Status key: [ ] open, [x] fixed in this pass.
 - [x] **Milestone tracker order is wrong.** Fixed: template reordered + existing projects migrated by `scripts/reorder-design-milestones.mjs` (373 updates, backup in scripts/data). Currently Design, Dsn Appr, BOM/PR, Drawings. Should read Design -> Drawings (submitted/internal approval) -> Dsn Appr (customer approves) -> BOM/PR (released).
 - [x] **Send-offer email dialog taller than the viewport with no inner scroll** (buttons unreachable at ~1000px height). Fixed: `max-h-[90vh] overflow-y-auto` + wider (SalesWorkspace.jsx).
 - [x] **RFQ send/receive overlays** Redesigned (wider two-pane dialog, collapsible message preview; supplier form field grid + sticky submit). Not yet clicked through for the Create-RFQ dialog. need a premium, minimal, wider layout (user request).
-- [ ] **Admin top nav is ~2,000px wide** (21 tabs); overflows any screen narrower than that.
+- [x] **Admin top nav is ~2,000px wide** (21 tabs). Fixed: admin sees icons with tooltips; manager keeps the management tabs and reaches departments from cog > Departments.
 - [x] **Customer State not copied from enquiry on convert** (enquiry State is stored as `leads.territory`; convert ignored it) -> GST split risk. Fixed in `lib/crm.js` (copies to `customers.state`). `state_code` still not derived (only from GSTIN) - open.
 - [ ] **"Similar customer" banner shifts the New Enquiry form layout** while typing (clicks land on wrong fields).
 - [ ] **Expected value typed on an enquiry overrides product lines total** (shows 15L while products total 25.3L). Confirm intended.
@@ -37,7 +37,7 @@ Status key: [ ] open, [x] fixed in this pass.
 
 - [ ] **Remnant demo needs dimensions on BOM lines**: template lines have none, so no auto-match; I added dims by API. Fix via catalog-linked templates.
 - [ ] **Reserved bought-outs stay "Enquiry" until Stores clicks Issue**; then packing needs them marked ready. Easy to miss in the video: Reserve -> Issue.
-- [ ] **"Generate packing list" creates a second list instead of extending the existing draft** (PL-1063 deleted by me, items added to PL-1062). Add a "add ready items to this list" action.
+- [x] **"Generate packing list" creates a second list instead of extending the existing draft**. Fixed: Generate adds to the project's open draft; "New separate list" starts another on purpose; lists show "List N of M" (PDF: "List N for <project>").
 - [ ] **Packing "Completed" on portal while 154 template lines are still un-procured** (milestone ignores un-procured lines). Demo BOM should be small.
 - [ ] Prod. Done had to be ticked by API for production-routed lines; confirm Production UI shows it clearly.
 - [ ] Only one pending item (9099 Water Level Gauge) left un-procured for the Pending-list demo; verify it shows in Dispatch > Pending Items.
@@ -51,6 +51,10 @@ Snapshots: Overall 2/25 -> 3 -> 4 -> 16 (production) -> 17 (hydro+QC) -> 18 (pac
 Stores receive/allocate (receipts done via API for 6 lines), production job cards + remnant cuts, remnant return to Stores, packing list, pending list, approvals, dispatch, service visit 2.
 
 ## Status column / Currently With (investigated 2026-10-03)
-- The row quoted ("5 of 6 items still in procurement", tracker with only Release BOM -> Marking) is the seed project **ZZ-PLAN-TEST** (scripts/seed-plan-demo.mjs inserts two hand-made milestones). SB-1060 has all 25. No tracker bug.
+- The row quoted ("5 of 6 items still in procurement", tracker with only Release BOM -> Marking) is the seed project **ZZ-PLAN-TEST** (scripts/seed-plan-demo.mjs inserted two hand-made milestones; fixed to loop the full template — re-run cleanup + setup to rebuild). SB-1060 has all 25. No tracker bug.
 - Fixed: list (`getBatchDepartmentStates`) now uses the same inputs as the detail card (`getDepartmentState`): Production falls back to work orders/job cards, QC counts pending inward + held cards, and **Service** shows "N of M visits done" from the first done visit until the last (`serviceVisitsEntry`). Verified on SB-1060: list and detail match.
 - Open: Dispatch still only appears once a packing list exists (no "items ready to pack" pill yet); Sales/Accounts intentionally not shown; fix seed-plan-demo.mjs to call createProjectMilestones; stale `activeDepartmentStatus()` mentions in SYSTEM.md / PROJECT-VIEW-REDESIGN.md / GAPS-AND-NEXT-STEPS.md.
+
+## 2026-10-03 follow-ups
+- RFQ email now sends from the app through each company's **Procurement mailbox** (Settings > Procurement · Email), separate from Sales. Test mode logs only.
+- WhatsApp: plan only (docs/client-setup.html §6) — Meta WhatsApp Cloud API directly, client pastes token + phone number ID.

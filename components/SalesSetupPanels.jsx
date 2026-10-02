@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { api, showToast } from '@/lib/client';
 import { formatDate } from '@/lib/format';
 
-function MailboxForm({ scope, company, account, title, hint, onSaved }) {
+function MailboxForm({ scope, company, account, title, hint, onSaved, purpose = 'sales' }) {
   const [email, setEmail] = useState(account?.email || '');
   const [host, setHost] = useState(account?.smtp_host || 'smtp.zoho.in');
   const [port, setPort] = useState(String(account?.smtp_port || 465));
@@ -24,7 +24,7 @@ function MailboxForm({ scope, company, account, title, hint, onSaved }) {
   async function save() {
     setBusy('save');
     try {
-      await api('/api/mail-accounts', { method: 'PUT', body: { scope, company, email, smtp_host: host, smtp_port: Number(port), password } });
+      await api('/api/mail-accounts', { method: 'PUT', body: { scope, company, purpose, email, smtp_host: host, smtp_port: Number(port), password } });
       setPassword('');
       showToast('Mailbox saved');
       onSaved();
@@ -33,7 +33,7 @@ function MailboxForm({ scope, company, account, title, hint, onSaved }) {
   async function test() {
     setBusy('test');
     try {
-      const r = await api('/api/mail-accounts/test', { method: 'POST', body: { scope, company } });
+      const r = await api('/api/mail-accounts/test', { method: 'POST', body: { scope, company, purpose } });
       showToast(`Test email sent to ${r.sentTo}`);
       onSaved();
     } catch (e) { showToast(e.message, 'error'); onSaved(); } finally { setBusy(null); }
@@ -52,8 +52,8 @@ function MailboxForm({ scope, company, account, title, hint, onSaved }) {
           : <Badge variant="outline">Not set up</Badge>}
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
-        <div className="grid gap-1.5"><Label>Email address</Label><Input value={email} onChange={e => setEmail(e.target.value)} placeholder="sales@company.com" /></div>
-        <div className="grid gap-1.5"><Label>Zoho app password</Label><Input type="password" autoComplete="new-password" value={password} onChange={e => setPassword(e.target.value)} placeholder={account ? 'Leave blank to keep the saved one' : 'Generated in Zoho → Security → App Passwords'} /></div>
+        <div className="grid gap-1.5"><Label>Email address</Label><Input value={email} onChange={e => setEmail(e.target.value)} placeholder={purpose === 'procurement' ? 'purchase@company.com' : 'sales@company.com'} /></div>
+        <div className="grid gap-1.5"><Label>App password</Label><Input type="password" autoComplete="new-password" value={password} onChange={e => setPassword(e.target.value)} placeholder={account ? 'Leave blank to keep the saved one' : 'From your mail provider\'s security settings'} /></div>
         <div className="grid gap-1.5"><Label>SMTP server</Label><Input value={host} onChange={e => setHost(e.target.value)} /></div>
         <div className="grid gap-1.5"><Label>Port</Label><Input value={port} onChange={e => setPort(e.target.value)} /></div>
       </div>
@@ -66,10 +66,13 @@ function MailboxForm({ scope, company, account, title, hint, onSaved }) {
   );
 }
 
-export function EmailSetupTab() {
+// purpose: 'sales' (quotations, portal, status mail) or 'procurement' (RFQs to suppliers) — each has
+// its own company mailboxes. The test/live switch is shared; only the Sales Head / PM changes it.
+export function EmailSetupTab({ purpose = 'sales' }) {
   const [data, setData] = useState(null);
   const [testTo, setTestTo] = useState('');
-  function load() { api('/api/mail-accounts').then(d => { setData(d); setTestTo(d.mode?.testTo || ''); }).catch(e => showToast(e.message, 'error')); }
+  const isProc = purpose === 'procurement';
+  function load() { api(`/api/mail-accounts?purpose=${purpose}`).then(d => { setData(d); setTestTo(d.mode?.testTo || ''); }).catch(e => showToast(e.message, 'error')); }
   useEffect(load, []);
   if (!data) return <p className="p-4 text-sm text-muted-foreground">Loading…</p>;
 
@@ -83,9 +86,15 @@ export function EmailSetupTab() {
 
   return (
     <div className="flex flex-col gap-4">
+      {data.isAdmin && !data.canChangeMode && (
+        <p className="text-sm text-muted-foreground">
+          Email is in <Badge variant={data.mode.mode === 'live' ? 'destructive' : 'outline'}>{data.mode.mode === 'live' ? 'LIVE' : 'TEST'}</Badge> mode
+          {data.mode.mode === 'live' ? '.' : ' — nothing reaches a supplier yet.'} The Sales Head or a PM switches this for the whole app.
+        </p>
+      )}
       {data.isAdmin && (
         <>
-          <Card>
+          {data.canChangeMode && <Card>
             <CardHeader>
               <CardTitle>Test / Live switch</CardTitle>
               <CardDescription>In test mode nothing reaches a real customer: mail goes to the test address below, or is only logged if it is blank.</CardDescription>
@@ -98,15 +107,18 @@ export function EmailSetupTab() {
                 <Button size="sm" variant="destructive" onClick={() => window.confirm('Go live? Quotations, portal invites and status updates will be emailed to real customers.') && setMode('live')}>Go live</Button>
               )}
             </CardContent>
-          </Card>
+          </Card>}
           <Card>
             <CardHeader>
-              <CardTitle>Company mailboxes</CardTitle>
-              <CardDescription>The address customer and system emails are sent from, one per company. Zoho needs two-step verification on the mailbox before it can create an app password.</CardDescription>
+              <CardTitle>{isProc ? 'Procurement mailboxes' : 'Company mailboxes'}</CardTitle>
+              <CardDescription>
+                {isProc ? 'The address RFQs to suppliers are sent from, one per company.' : 'The address customer and system emails are sent from, one per company.'}
+                {' '}Any provider that allows SMTP sending works (Zoho, Gmail / Google Workspace, most hosting mail); the mailbox usually needs two-step verification before it can create an app password.
+              </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
               {data.companies.map(c => (
-                <MailboxForm key={c.company} scope="company" company={c.company} account={c.account} title={c.legal_name || c.company} onSaved={load} />
+                <MailboxForm key={c.company} scope="company" purpose={purpose} company={c.company} account={c.account} title={c.legal_name || c.company} onSaved={load} />
               ))}
             </CardContent>
           </Card>
@@ -115,7 +127,7 @@ export function EmailSetupTab() {
       <Card>
         <CardHeader>
           <CardTitle>My email</CardTitle>
-          <CardDescription>Optional. If you save your own mailbox, quotations you send go out from your address; otherwise the company mailbox is used.</CardDescription>
+          <CardDescription>{isProc ? 'Optional. If you save your own mailbox, RFQs you send go out from your address; otherwise the procurement mailbox is used.' : 'Optional. If you save your own mailbox, quotations you send go out from your address; otherwise the company mailbox is used.'}</CardDescription>
         </CardHeader>
         <CardContent><MailboxForm scope="user" account={data.mine} title="My mailbox" onSaved={load} /></CardContent>
       </Card>

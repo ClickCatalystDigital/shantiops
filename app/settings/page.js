@@ -15,6 +15,7 @@ import UserManagement from '@/components/UserManagement';
 import TotpSetup from '@/components/TotpSetup';
 import DesignAccessPanel from '@/components/DesignAccessPanel';
 import SalesSettings from '@/components/SalesSettings';
+import { EmailSetupTab } from '@/components/SalesSetupPanels';
 import PageHeader from '@/components/PageHeader';
 import { Separator } from '@/components/ui/separator';
 
@@ -28,6 +29,8 @@ export default async function Settings() {
   const designTeam = isDesignHead(user) ? await getDesignTeamMembers() : null;
   // Sales Head (and PMs, who are head of every department): team, email and data retention.
   const salesHead = isDepartmentHead(user, 'Sales');
+  // Procurement Head (and PMs): the mailboxes RFQs to suppliers are sent from.
+  const procurementHead = isDepartmentHead(user, 'Procurement');
   const salesUsers = salesHead
     ? (await getFunctionalHeads()).filter(h => h.active && h.departments.includes('Sales'))
     : [];
@@ -85,6 +88,13 @@ export default async function Settings() {
           <Separator />
           <h2 className="text-lg font-semibold">Sales</h2>
           <SalesSettings users={salesUsers} meUsername={user.username} />
+        </>
+      )}
+      {procurementHead && (
+        <>
+          <Separator />
+          <h2 className="text-lg font-semibold">Procurement · Email</h2>
+          <EmailSetupTab purpose="procurement" />
         </>
       )}
     </main>

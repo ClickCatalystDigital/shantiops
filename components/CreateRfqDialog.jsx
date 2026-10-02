@@ -3,12 +3,14 @@
 // V2-CHANGES.md Phase 5.1 — Create RFQ, from Enquiry's bulk selection: confirm items -> pick
 // suppliers (searchable multi-select over the real 445-row Group 3 import) -> in-system draft
 // preview (D13: recipients + composed message + item list + each supplier's portal link) ->
-// WhatsApp wa.me click-send + an Email button showing the same draft (D13/D19 — no auto-send).
+// WhatsApp wa.me click-send, or Email sent from the app through the company's Procurement mailbox
+// (Settings → Procurement · Email; test mode keeps it from reaching the supplier).
 import { useState } from 'react';
 import { api, showToast } from '@/lib/client';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from './ui/dialog';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
+import { Textarea } from './ui/textarea';
 import { Badge } from './ui/badge';
 
 // India-only assumption (this business), same as the enroll-code precedent elsewhere in the app —
@@ -20,14 +22,14 @@ function waDigits(phone) {
   return digits.length === 10 ? `91${digits}` : digits;
 }
 
-function composeMessage({ rfqNo, supplierName, items, portalUrl }) {
+function composeMessage({ rfqNo, supplierName, items, portalUrl, company = 'Shanti Boilers' }) {
   // Gap #2 (2026-09-04) — items already carry qty_breakdown (getSourcingItems(), §5be); this
   // composer just never read it, so a supplier quoting a multiplied line saw the raw per-unit
   // figure ("Qty 2 Mtrs") with no sense of the real total order size.
   const itemLines = items.map((it, i) =>
     `${i + 1}. ${it.material_description} — Qty ${it.qty_text || '—'}${it.qty_breakdown ? ` (${it.qty_breakdown.label})` : ''}`
   ).join('\n');
-  return `RFQ ${rfqNo} — Shanti Boilers
+  return `RFQ ${rfqNo} — ${company}
 
 Dear ${supplierName},
 
@@ -40,13 +42,26 @@ ${itemLines}
 The link is valid for 14 days. Kindly include unit price, payment terms, and expected delivery.
 
 Regards,
-Procurement — Shanti Boilers`;
+Procurement — ${company}`;
 }
 
-function SupplierDraftCard({ supplier, rfqNo, items, onMarkSent }) {
+function SupplierDraftCard({ supplier, rfqId, rfqNo, company, items, onMarkSent, onEmailed }) {
   const portalUrl = `${window.location.origin}/rfq/${supplier.token}`;
-  const message = composeMessage({ rfqNo, supplierName: supplier.supplier_name, items, portalUrl });
+  const message = composeMessage({ rfqNo, supplierName: supplier.supplier_name, items, portalUrl, company });
   const digits = waDigits(supplier.phone);
+  const [compose, setCompose] = useState(null); // { to, subject, body } while the email form is open
+  const [sending, setSending] = useState(false);
+
+  async function sendEmail() {
+    setSending(true);
+    try {
+      const r = await api(`/api/rfqs/${rfqId}/send-email`, { method: 'POST', body: { supplier_id: supplier.supplier_id, ...compose } });
+      if (r.live) { showToast(`Emailed ${compose.to}`); onEmailed(supplier.supplier_id); }
+      else showToast(r.note);
+      setCompose(null);
+    } catch (err) { showToast(err.message, 'error'); }
+    setSending(false);
+  }
 
   return (
     <div className="flex flex-col gap-3 rounded-lg border p-4 text-sm">
@@ -65,17 +80,26 @@ function SupplierDraftCard({ supplier, rfqNo, items, onMarkSent }) {
             <a href={`https://wa.me/${digits}?text=${encodeURIComponent(message)}`} target="_blank" rel="noreferrer">WhatsApp</a>
           ) : 'WhatsApp (no phone)'}
         </Button>
-        <Button size="sm" variant="outline" disabled={!supplier.email} asChild={!!supplier.email}
-          onClick={!supplier.email ? undefined : () => onMarkSent(supplier.supplier_id)}>
-          {supplier.email ? (
-            <a href={`mailto:${supplier.email}?subject=${encodeURIComponent(`RFQ ${rfqNo} — Shanti Boilers`)}&body=${encodeURIComponent(message)}`}>Email</a>
-          ) : 'Email (no address)'}
+        <Button size="sm" variant="outline" disabled={!!compose}
+          onClick={() => setCompose({ to: supplier.email || '', subject: `RFQ ${rfqNo} — ${company}`, body: message })}>
+          Email
         </Button>
         <Button size="sm" variant="ghost" onClick={() => { navigator.clipboard.writeText(portalUrl); showToast('Link copied'); }}>
           Copy link
         </Button>
         {supplier.sent_at && <Badge variant="outline" className="ml-auto text-muted-foreground">Sent</Badge>}
       </div>
+      {compose && (
+        <div className="flex flex-col gap-2 rounded-md border bg-muted/20 p-3">
+          <Input value={compose.to} onChange={e => setCompose(c => ({ ...c, to: e.target.value }))} placeholder="Supplier email" />
+          <Input value={compose.subject} onChange={e => setCompose(c => ({ ...c, subject: e.target.value }))} />
+          <Textarea rows={8} value={compose.body} onChange={e => setCompose(c => ({ ...c, body: e.target.value }))} />
+          <div className="flex justify-end gap-2">
+            <Button size="sm" variant="ghost" onClick={() => setCompose(null)} disabled={sending}>Cancel</Button>
+            <Button size="sm" onClick={sendEmail} disabled={sending || !compose.to.trim()}>{sending ? 'Sending…' : 'Send email'}</Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -167,7 +191,8 @@ export default function CreateRfqDialog({ items, suppliers, router, onClose, onC
             </DialogHeader>
             <div className="grid gap-3 md:grid-cols-2">
               {rfq.suppliers.map(s => (
-                <SupplierDraftCard key={s.id} supplier={s} rfqNo={rfq.rfq_no} items={rfq.items} onMarkSent={markSent} />
+                <SupplierDraftCard key={s.id} supplier={s} rfqId={rfq.id} rfqNo={rfq.rfq_no} company={rfq.company} items={rfq.items} onMarkSent={markSent}
+                  onEmailed={id => setRfq(r => ({ ...r, suppliers: r.suppliers.map(x => x.supplier_id === id ? { ...x, sent_at: new Date().toISOString() } : x) }))} />
               ))}
             </div>
             <DialogFooter>
