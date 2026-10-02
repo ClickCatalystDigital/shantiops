@@ -26,10 +26,11 @@ export async function POST(req) {
   if (!b.customer_id) return NextResponse.json({ error: 'customer_id is required' }, { status: 400 });
 
   const { lastId } = await execute(
-    `INSERT INTO addresses (customer_id, address_type, line1, line2, line3, city, state, state_code, country, pin_code, is_primary)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [b.customer_id, b.address_type || 'Billing', b.line1 || null, b.line2 || null, b.line3 || null,
-      b.city || null, b.state || null, b.state_code || null, b.country || 'India', b.pin_code || null, b.is_primary ? 1 : 0]
+    `INSERT INTO addresses (customer_id, address_type, line1, line2, line3, city, state, state_code, country, pin_code, is_primary, district, sub_location, gst_no)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [b.customer_id, b.address_type || 'Office', b.line1 || null, b.line2 || null, b.line3 || null,
+      b.city || null, b.state || null, b.state_code || null, b.country || 'India', b.pin_code || null, b.is_primary ? 1 : 0,
+      b.district || null, b.sub_location || null, b.gst_no ? String(b.gst_no).trim().toUpperCase() : null]
   );
   return NextResponse.json({ id: Number(lastId) });
 }

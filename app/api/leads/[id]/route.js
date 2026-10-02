@@ -52,6 +52,7 @@ export async function PATCH(req, { params }) {
     ['email', 'email'], ['source', 'source'], ['notes', 'notes'], ['campaign_id', 'campaign_id'],
     ['territory', 'territory'], ['industry', 'industry'], ['next_contact_date', 'next_contact_date'],
     ['assigned_to', 'assigned_to'],
+    ['address', 'address'], ['website', 'website'], ['reference', 'reference'],
     // Phase 2.1/3.1 — the PO wizard's Step 1, and Close Sales Call/Order Lost.
     // product_id is not here: products change only through `products` (plan 1e), which keeps
     // lead_products and the mirrored leads.product_id in step.

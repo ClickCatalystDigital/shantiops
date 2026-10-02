@@ -51,6 +51,7 @@ import { renderTemplate } from '@/lib/email-template.mjs';
 import { customerKey } from '@/lib/customer-match.mjs';
 import { DEFAULT_STAGE, isClosedCall, isSlaBreached, stageProbability } from '@/lib/lead-stage.mjs';
 import { QTY_UNITS } from '@/lib/qty-units.mjs';
+import { EnquiryTabs, CustomerTabs, CustomerHeaderForm } from '@/components/EnquiryTabs';
 import { lineAmount, quotationTotals } from '@/lib/sales-lines.mjs';
 
 // First-response SLA (24h, untouched since creation) lives in lib/lead-stage.mjs with the rest of
@@ -213,7 +214,7 @@ export function AddToDiaryDialog({ lead, users, salesProducts, onClose, onSaved,
     visit_date: todayISO(), note_type: 'call', is_value_addition: false, action_taken: '',
     in_time: '', out_time: '', alert_mode: 'Not Required', plan_date: '', plan_time: '',
     plan_for: lead.account_manager || '', value_addition_text: '', plan_of_action: '', plan_note_type: '', send_alert_sms: 'No Alert', contact_id: '', product: '', product_id: null,
-    location: '', alert_users: [],
+    location: '', alert_users: [], is_urgent: false,
   });
   const [contacts, setContacts] = useState([]);
   const [files, setFiles] = useState([]);
@@ -246,7 +247,7 @@ export function AddToDiaryDialog({ lead, users, salesProducts, onClose, onSaved,
         visit_date: f.visit_date, action_taken: f.action_taken.trim(),
         is_value_addition: f.is_value_addition, value_addition_text: f.is_value_addition ? f.value_addition_text.trim() : null, in_time: f.in_time || null, out_time: f.out_time || null,
         alert_mode: f.alert_mode, alert_users: f.alert_mode === 'Selected seniors' ? f.alert_users : [], plan_date: f.plan_date || null, plan_time: f.plan_time || null,
-        plan_for: f.plan_for || null, plan_of_action: f.plan_of_action || null, plan_note_type: f.plan_note_type || null,
+        plan_for: f.plan_for || null, is_urgent: !!f.is_urgent, plan_of_action: f.plan_of_action || null, plan_note_type: f.plan_note_type || null,
         next_plan_date: f.plan_date || null, send_alert_sms: f.send_alert_sms,
         contact_id: f.contact_id || null, product_id: f.product_id || null, location: f.location || null,
       } });
@@ -302,6 +303,7 @@ export function AddToDiaryDialog({ lead, users, salesProducts, onClose, onSaved,
               </Select>
             </div>
             <div className="grid gap-1.5"><Label>Plan of Action</Label><Textarea rows={3} value={f.plan_of_action} onChange={setText('plan_of_action')} /></div>
+            <label className="flex items-center gap-2 text-sm"><Checkbox checked={!!f.is_urgent} onCheckedChange={v => setF(prev => ({ ...prev, is_urgent: !!v }))} />Mark this follow-up as urgent</label>
             <div className="grid gap-1.5"><Label>For A/C Manager</Label>
               <SearchableSelect value={f.plan_for} onChange={set('plan_for')} options={managerOpts} placeholder="Select a person…" />
             </div>
@@ -522,8 +524,27 @@ function RelatedEnquiries({ lead, allLeads, stages, onOpen }) {
   );
 }
 
+// One labelled, inline-editable detail on the enquiry (saved on blur). Org name stays read-only.
+function InlineField({ label, value, field, lead, router, type = 'text' }) {
+  const [v, setV] = useState(value || '');
+  useEffect(() => { setV(value || ''); }, [value]);
+  async function save() {
+    if ((v || '') === (value || '')) return;
+    try {
+      await api(`/api/leads/${lead.id}`, { method: 'PATCH', body: { [field]: v } });
+      showToast(`${label} saved`); router.refresh();
+    } catch (err) { showToast(err.message, 'error'); setV(value || ''); }
+  }
+  return (
+    <div className="grid gap-1">
+      <Label className="text-xs text-muted-foreground">{label}</Label>
+      <Input type={type} value={v} onChange={e => setV(e.target.value)} onBlur={save} className="h-8" />
+    </div>
+  );
+}
+
 function LeadDetailSheet({ lead, allLeads = [], onOpenLead, users, customers, salesProducts = [], branches = [], stages = [], isSalesHead = false, onClose, router }) {
-  const extra = ENQUIRY_DETAIL_FIELDS.filter(([k]) => lead[k]);
+  const extra = ENQUIRY_DETAIL_FIELDS.filter(([k]) => lead[k] && !['address', 'website', 'reference', 'initiated_by'].includes(k));
   // Home calendar's ?diary=now|advanced deep-link (Phase 4) — opens straight into the diary form
   // instead of the plain detail sheet.
   const autoOpenDiary = ['now', 'advanced'].includes(useSearchParams().get('diary'));
@@ -533,7 +554,10 @@ function LeadDetailSheet({ lead, allLeads = [], onOpenLead, users, customers, sa
   const [resolving, setResolving] = useState(false);
   const [closing, setClosing] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [diaryOpen, setDiaryOpen] = useState(false);
   const { convert: convertLead, dialog: convertDialog } = useLeadConvert();
+  const sourceOptions = useMemo(() => distinctOptions(allLeads, 'source', SOURCE_SEED), [allLeads]);
+  const primaryProduct = (lead.products || []).find(p => p.is_primary) || (lead.products || [])[0];
 
   async function deleteLead() {
     if (!window.confirm(`Delete this enquiry (${lead.company_name || lead.lead_name})? This can't be undone.`)) return;
@@ -561,7 +585,16 @@ function LeadDetailSheet({ lead, allLeads = [], onOpenLead, users, customers, sa
     } catch (err) { showToast(err.message, 'error'); } finally { setResolving(false); }
   }
 
+  // The tabs that live on the customer call this to link the enquiry first (duplicate-aware).
+  async function ensureCustomer() {
+    if (lead.converted_customer_id) return lead.converted_customer_id;
+    const id = await convertLead(lead);
+    if (id) router.refresh();
+    return id;
+  }
+
   async function closeSalesCall() {
+    if (!window.confirm('Close this sales call? It stops follow-up reminders; the funnel stage stays as it is.')) return;
     setClosing(true);
     try {
       await api(`/api/leads/${lead.id}/close-sales-call`, { method: 'POST', body: {} });
@@ -571,71 +604,97 @@ function LeadDetailSheet({ lead, allLeads = [], onOpenLead, users, customers, sa
     } catch (err) { showToast(err.message, 'error'); } finally { setClosing(false); }
   }
 
+  const activitiesSlot = (
+    <div className="flex flex-col items-start gap-3 rounded-lg border border-dashed p-4">
+      <p className="text-sm text-muted-foreground">
+        Same form as the Home calendar: the <span className="font-medium text-foreground">Sales Call</span> section (what happened, action type, value addition)
+        and the <span className="font-medium text-foreground">Diary</span> section (next action, date, who it is for, alerts).
+      </p>
+      <Button size="sm" onClick={() => setDiaryOpen(true)}><PlusIcon className="size-3.5" />Add activity &amp; plan</Button>
+    </div>
+  );
+
   return (
     <Sheet open onOpenChange={o => !o && onClose()}>
-      <SheetContent className="w-full data-[side=right]:sm:max-w-5xl">
-        <SheetHeader>
-          <SheetTitle>{lead.lead_name}</SheetTitle>
+      <SheetContent className="w-full data-[side=right]:sm:max-w-6xl">
+        <SheetHeader className="border-b pb-3">
+          <div className="flex flex-wrap items-center gap-2 pr-8">
+            <SheetTitle className="text-xl">{lead.company_name || lead.lead_name}</SheetTitle>
+            <StageBadge lead={lead} stages={stages} />
+            {lead.is_vip ? <Badge variant="outline" className="border-amber-400 text-amber-600"><StarIcon className="size-3" />VIP</Badge> : null}
+            {lead.converted_customer_id && <Badge variant="secondary">Customer linked</Badge>}
+          </div>
         </SheetHeader>
-        <div className="grid gap-6 overflow-y-auto px-4 pb-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
-          <div className="flex min-w-0 flex-col gap-5">
+        <div className="flex flex-col gap-5 overflow-y-auto px-4 pb-4">
           {lead.sales_call_closed_at && (
             <div className="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
               Closed on {lead.sales_call_closed_at.slice(0, 10)}{lead.sales_call_closed_by ? ` by ${lead.sales_call_closed_by}` : ''}
               {lead.lost_reason && <> — {lead.lost_reason}</>}
             </div>
           )}
-          <div className="flex flex-wrap items-center gap-2">
-            <Label className="text-sm text-muted-foreground">Stage</Label>
-            <StageSelect lead={lead} stages={stages} router={router} />
-            {lead.converted_customer_id && <Badge variant="secondary">Customer linked</Badge>}
+
+          {/* Row 1 — who, ownership, and what's open */}
+          <div className="grid gap-4 lg:grid-cols-3">
+            <Card size="sm">
+              <CardHeader><CardTitle className="text-sm">Organization</CardTitle></CardHeader>
+              <CardContent className="flex flex-col gap-2.5">
+                <div className="text-sm font-medium">{lead.company_name || lead.lead_name}</div>
+                <InlineField label="Address" field="address" value={lead.address} lead={lead} router={router} />
+                <InlineField label="Web address" field="website" value={lead.website} lead={lead} router={router} />
+                <InlineField label="Email id" field="email" type="email" value={lead.email} lead={lead} router={router} />
+                <InlineField label="Mobile number" field="phone" value={lead.phone} lead={lead} router={router} />
+              </CardContent>
+            </Card>
+            <Card size="sm">
+              <CardHeader><CardTitle className="text-sm">Ownership &amp; status</CardTitle></CardHeader>
+              <CardContent className="flex flex-col gap-3">
+                <AccountManagerField lead={lead} users={users} router={router} />
+                <div className="flex items-center gap-2 text-sm"><span className="shrink-0 text-muted-foreground">Initiated by</span><span className="font-medium">{personLabel(lead.initiated_by, users) || '—'}</span></div>
+                <div className="flex items-center gap-2"><Label className="shrink-0 text-sm text-muted-foreground">Status</Label><StageSelect lead={lead} stages={stages} router={router} /></div>
+                <div className="flex items-center gap-2 text-sm"><span className="shrink-0 text-muted-foreground">Product</span><span className="font-medium">{primaryProduct?.description || lead.product || '—'}</span></div>
+                <ExpectedValueField lead={lead} router={router} />
+              </CardContent>
+            </Card>
+            <div className="flex min-w-0 flex-col gap-4">
+              <TasksPanel leadId={lead.id} users={users} />
+              <div className="max-h-72 overflow-y-auto rounded-lg border p-3">
+                <NotesPanel leadId={lead.id} lead={lead} users={users} salesProducts={salesProducts} router={router} autoOpenDiary={autoOpenDiary} />
+              </div>
+            </div>
           </div>
-          <ExpectedValueField lead={lead} router={router} />
-          <AccountManagerField lead={lead} users={users} router={router} />
-          <LeadProductsCard lead={lead} salesProducts={salesProducts} router={router} />
+
           <RelatedEnquiries lead={lead} allLeads={allLeads} stages={stages} onOpen={onOpenLead} />
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
-            {lead.company_name && <span>Company: {lead.company_name}</span>}
-            {lead.source && <span>Source: {lead.source}</span>}
-            {lead.territory && <span>State: {lead.territory}</span>}
-            {lead.industry && <span>Segment: {lead.industry}</span>}
-            {lead.assigned_to && <span>Team: {personLabel(lead.assigned_to, users)}</span>}
-            {lead.enquiry_date && <span>Enquiry date: {lead.enquiry_date}</span>}
-            <ContactLinks phone={lead.phone} email={lead.email} />
+
+          {/* Row 2 — actions */}
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/30 p-2.5">
+            <Button size="sm" disabled={resolving} onClick={startCommercialOffer}><FileTextIcon className="size-3.5" />{resolving ? 'Preparing…' : 'Create Commercial Offer'}</Button>
+            <Button size="sm" variant="outline" onClick={() => setAction('po')}><ShoppingCartIcon className="size-3.5" />Create PO</Button>
+            <Button size="sm" variant="outline" onClick={() => setDiaryOpen(true)}><PlusIcon className="size-3.5" />Add to Diary</Button>
+            <Button size="sm" variant="outline" disabled={closing || !!lead.sales_call_closed_at} onClick={closeSalesCall}>
+              <CheckSquareIcon className="size-3.5" />{lead.sales_call_closed_at ? 'Sales Call closed' : 'Close Sales Call'}
+            </Button>
+            <Button size="sm" variant="outline" className="text-destructive" onClick={() => setAction('lost')}><UndoIcon className="size-3.5" />Order Lost</Button>
+            {isSalesHead && !lead.converted_customer_id && (
+              <Button size="sm" variant="ghost" className="ml-auto text-destructive" disabled={deleting} onClick={deleteLead}>
+                <TrashIcon className="size-3.5" />{deleting ? 'Deleting…' : 'Delete'}
+              </Button>
+            )}
           </div>
+          {lead.notes && <p className="text-sm"><span className="text-muted-foreground">Remarks: </span>{lead.notes}</p>}
           {extra.length > 0 && (
-            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 rounded-md border p-3 text-sm xl:grid-cols-3">
-              {extra.map(([k, label]) => (
-                <div key={k}><span className="text-muted-foreground">{label}: </span>{k === 'initiated_by' ? personLabel(lead[k], users) : lead[k]}</div>
-              ))}
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+              {extra.map(([k, label]) => <span key={k}>{label}: <span className="text-foreground">{lead[k]}</span></span>)}
             </div>
           )}
-          {lead.notes && <p className="text-sm"><span className="text-muted-foreground">Remarks: </span>{lead.notes}</p>}
 
-          <div>
-            <div className="mb-2 text-sm font-semibold">Actions</div>
-            <div className="flex flex-wrap gap-2">
-              <Button size="sm" variant="outline" disabled={resolving} onClick={startCommercialOffer}>{resolving ? 'Preparing…' : 'Create Commercial Offer'}</Button>
-              <Button size="sm" variant="outline" onClick={() => setAction('po')}>Create PO</Button>
-              <Button size="sm" variant="outline" disabled={closing} onClick={closeSalesCall}>Close Sales Call</Button>
-              <Button size="sm" variant="outline" className="text-destructive" onClick={() => setAction('lost')}>Order Lost</Button>
-              {isSalesHead && !lead.converted_customer_id && (
-                <Button size="sm" variant="ghost" className="ml-auto text-destructive" disabled={deleting} onClick={deleteLead}>
-                  <TrashIcon className="size-3.5" />{deleting ? 'Deleting…' : 'Delete'}
-                </Button>
-              )}
-            </div>
-          </div>
-
-          </div>
-          <div className="flex min-w-0 flex-col gap-5">
-            <TasksPanel leadId={lead.id} users={users} />
-            <NotesPanel leadId={lead.id} lead={lead} users={users} salesProducts={salesProducts} router={router} autoOpenDiary={autoOpenDiary} />
-          </div>
+          {/* Row 3 — tabs */}
+          <EnquiryTabs lead={lead} users={users} salesProducts={salesProducts} sourceOptions={sourceOptions} router={router}
+            ensureCustomer={ensureCustomer} activitiesSlot={activitiesSlot} />
         </div>
         <SheetFooter><Button variant="outline" onClick={onClose}>Close</Button></SheetFooter>
       </SheetContent>
 
+      {diaryOpen && <AddToDiaryDialog lead={lead} users={users} salesProducts={salesProducts} router={router} onClose={() => setDiaryOpen(false)} onSaved={() => router.refresh()} />}
       {action === 'offer' && !newQuotationId && (
         <NewQuotationDialog customers={customers} initialCustomerId={offerCustomerId || ''} leadId={lead.id} router={router}
           salesProducts={salesProducts} initialItems={quoteLinesFromLead(lead, salesProducts)}
@@ -683,7 +742,7 @@ function OrderLostDialog({ lead, onClose, router }) {
 
   return (
     <Dialog open onOpenChange={o => !o && onClose()}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader><DialogTitle>Order Lost — {lead.lead_name}</DialogTitle></DialogHeader>
         <div className="grid gap-1.5">
           <RequiredLabel>Reason</RequiredLabel>
@@ -1340,8 +1399,6 @@ function AddCustomerDialog({ onClose, router }) {
 
 function CustomerDetailSheet({ customerId, isSalesHead = false, onClose, onDeleted, router }) {
   const [detail, setDetail] = useState(null);
-  const [contactName, setContactName] = useState('');
-  const [addrLine1, setAddrLine1] = useState('');
   const [note, setNote] = useState('');
   const [portalBusy, setPortalBusy] = useState(false);
   const [activeBusy, setActiveBusy] = useState(false);
@@ -1384,20 +1441,6 @@ function CustomerDetailSheet({ customerId, isSalesHead = false, onClose, onDelet
     } catch (err) { showToast(err.message, 'error'); } finally { setPortalBusy(false); }
   }
 
-  async function addContact() {
-    if (!contactName.trim()) return;
-    try {
-      await api('/api/contacts', { method: 'POST', body: { customer_id: customerId, name: contactName.trim() } });
-      setContactName(''); load(); router.refresh();
-    } catch (err) { showToast(err.message, 'error'); }
-  }
-  async function addAddress() {
-    if (!addrLine1.trim()) return;
-    try {
-      await api('/api/addresses', { method: 'POST', body: { customer_id: customerId, line1: addrLine1.trim() } });
-      setAddrLine1(''); load(); router.refresh();
-    } catch (err) { showToast(err.message, 'error'); }
-  }
   async function addNote() {
     if (!note.trim()) return;
     try {
@@ -1408,9 +1451,9 @@ function CustomerDetailSheet({ customerId, isSalesHead = false, onClose, onDelet
 
   return (
     <Sheet open onOpenChange={o => !o && onClose()}>
-      <SheetContent className="w-full data-[side=right]:sm:max-w-5xl">
-        <SheetHeader>
-          <SheetTitle className="flex items-center gap-2">
+      <SheetContent className="w-full data-[side=right]:sm:max-w-6xl">
+        <SheetHeader className="border-b pb-3">
+          <SheetTitle className="flex items-center gap-2 text-xl">
             {detail ? detail.name : 'Loading…'}
             {detail && !detail.active && <Badge variant="outline">Inactive</Badge>}
           </SheetTitle>
@@ -1432,53 +1475,35 @@ function CustomerDetailSheet({ customerId, isSalesHead = false, onClose, onDelet
               )}
             </div>
 
-            <Customer360 customerId={detail.id} />
+            <CustomerHeaderForm detail={detail} onSaved={() => { load(); router.refresh(); }} />
 
-            <OldCrmSummary detail={detail} />
-
-            <div>
-              <div className="mb-2 text-sm font-semibold">Customer Portal</div>
-              <div className="flex items-center gap-2">
-                <Checkbox id={`portal-${detail.id}`} checked={!!detail.portal_enabled} disabled={portalBusy}
-                  onCheckedChange={(v) => togglePortal(!!v)} />
-                <Label htmlFor={`portal-${detail.id}`} className="font-normal text-xs">
-                  {detail.portal_enabled
-                    ? `Portal email on${detail.initial_email_sent_at ? ` — invited ${detail.initial_email_sent_at.slice(0, 10)}` : ''}`
-                    : detail.portal_user_id
-                      ? 'Portal login exists — email off'
-                      : 'Not on the portal yet — enabling creates a login and emails setup instructions'}
-                </Label>
-              </div>
-            </div>
-
-            <div>
-              <div className="mb-2 text-sm font-semibold">Contacts</div>
-              <div className="flex flex-col gap-1.5">
-                {detail.contacts.map(c => (
-                  <div key={c.id} className="flex items-center justify-between rounded border px-2 py-1.5 text-sm">
-                    <span>{c.name}{c.phone ? ` · ${c.phone}` : ''}</span>
-                    <ContactLinks phone={c.phone} email={c.email} />
+            <CustomerTabs customerId={detail.id}
+              overview={<div className="flex flex-col gap-5"><Customer360 customerId={detail.id} /><OldCrmSummary detail={detail} /></div>}
+              notes={(
+                <div className="flex flex-col gap-5">
+                  <div>
+                    <div className="mb-2 text-sm font-semibold">Customer Portal</div>
+                    <div className="flex items-center gap-2">
+                      <Checkbox id={`portal-${detail.id}`} checked={!!detail.portal_enabled} disabled={portalBusy}
+                        onCheckedChange={(v) => togglePortal(!!v)} />
+                      <Label htmlFor={`portal-${detail.id}`} className="font-normal text-xs">
+                        {detail.portal_enabled
+                          ? `Portal email on${detail.initial_email_sent_at ? ` — invited ${detail.initial_email_sent_at.slice(0, 10)}` : ''}`
+                          : detail.portal_user_id
+                            ? 'Portal login exists — email off'
+                            : 'Not on the portal yet — enabling creates a login and emails setup instructions'}
+                      </Label>
+                    </div>
                   </div>
-                ))}
-              </div>
-              <div className="mt-2 flex gap-2"><Input placeholder="Contact name" value={contactName} onChange={e => setContactName(e.target.value)} /><Button size="sm" onClick={addContact}><PlusIcon /></Button></div>
-            </div>
-
-            <div>
-              <div className="mb-2 text-sm font-semibold">Addresses</div>
-              <div className="flex flex-col gap-1.5">
-                {detail.addresses.map(a => <div key={a.id} className="rounded border px-2 py-1.5 text-sm">{a.address_type}: {a.line1}</div>)}
-              </div>
-              <div className="mt-2 flex gap-2"><Input placeholder="Address line" value={addrLine1} onChange={e => setAddrLine1(e.target.value)} /><Button size="sm" onClick={addAddress}><PlusIcon /></Button></div>
-            </div>
-
-            <div>
-              <div className="mb-2 text-sm font-semibold">Notes</div>
-              <div className="flex flex-col gap-1.5">
-                {detail.notes.map(n => <div key={n.id} className="rounded border px-2 py-1.5 text-sm"><span className="text-muted-foreground">{n.note_type}:</span> {n.content}</div>)}
-              </div>
-              <div className="mt-2 flex gap-2"><Input placeholder="Add a note" value={note} onChange={e => setNote(e.target.value)} /><Button size="sm" onClick={addNote}><PlusIcon /></Button></div>
-            </div>
+                  <div>
+                    <div className="mb-2 text-sm font-semibold">Notes</div>
+                    <div className="flex flex-col gap-1.5">
+                      {detail.notes.map(n => <div key={n.id} className="rounded border px-2 py-1.5 text-sm"><span className="text-muted-foreground">{n.note_type}:</span> {n.content}</div>)}
+                    </div>
+                    <div className="mt-2 flex gap-2"><Input placeholder="Add a note" value={note} onChange={e => setNote(e.target.value)} /><Button size="sm" onClick={addNote}><PlusIcon /></Button></div>
+                  </div>
+                </div>
+              )} />
           </div>
         )}
         <SheetFooter><Button variant="outline" onClick={onClose}>Close</Button></SheetFooter>
@@ -1657,7 +1682,7 @@ export function quoteLinesFromLead(lead, salesProducts = []) {
   const byId = new Map(salesProducts.map(p => [p.id, p]));
   return (lead?.products || []).map(p => ({
     ...blankQuoteLine(),
-    item_description: p.description, qty: p.qty ?? 1, uom: p.unit || 'Nos', rate: p.rate ?? 0,
+    item_description: p.description, qty: p.qty ?? 1, uom: p.unit || 'Nos', rate: p.rate ?? '', // blank, not 0, so a missing rate is visible
     gst_pct: p.gst_pct ?? '', product_id: p.product_id || null, hsn_code: byId.get(p.product_id)?.hsn_code || '',
   }));
 }
@@ -1807,9 +1832,10 @@ export function SendCommercialOfferDialog({ quotationId, onClose, router }) {
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [sending, setSending] = useState(false);
+  const [to, setTo] = useState('');
 
   useEffect(() => {
-    api(`/api/quotations/${quotationId}`).then(setQuotation).catch(err => showToast(err.message, 'error'));
+    api(`/api/quotations/${quotationId}`).then(q => { setQuotation(q); setTo(q.customer_email || ''); }).catch(err => { showToast(err.message, 'error'); onClose(); });
   }, [quotationId]);
 
   useEffect(() => {
@@ -1832,9 +1858,10 @@ export function SendCommercialOfferDialog({ quotationId, onClose, router }) {
 
   async function send() {
     if (!subject.trim() || !body.trim()) return showToast('Subject and body are required', 'error');
+    if (!/^\S+@\S+\.\S+$/.test(to.trim())) return showToast('Enter the customer\'s email address in "To"', 'error');
     setSending(true);
     try {
-      const res = await api(`/api/quotations/${quotationId}/send-email`, { method: 'POST', body: { subject: subject.trim(), body: body.trim(), email_template_id: templateId || null } });
+      const res = await api(`/api/quotations/${quotationId}/send-email`, { method: 'POST', body: { to: to.trim(), subject: subject.trim(), body: body.trim(), email_template_id: templateId || null } });
       showToast(res.live === false ? res.note : 'Commercial Offer emailed');
       router.refresh();
       onClose();
@@ -1859,6 +1886,7 @@ export function SendCommercialOfferDialog({ quotationId, onClose, router }) {
               </div>
             )}
           </div>
+          <div className="grid gap-1.5"><Label>To</Label><Input type="email" placeholder="customer@example.com" value={to} onChange={e => setTo(e.target.value)} /></div>
           <div className="grid gap-1.5"><Label>Subject</Label><Input value={subject} onChange={e => setSubject(e.target.value)} /></div>
           <div className="grid gap-1.5"><Label>Body</Label><Textarea rows={8} value={body} onChange={e => setBody(e.target.value)} /></div>
           <a href={`/api/quotations/${quotationId}/pdf`} target="_blank" rel="noopener noreferrer" className="text-xs text-info hover:underline">Preview Commercial Offer PDF ↗</a>
@@ -2903,21 +2931,50 @@ const TR_TONE = { open: 'outline', accepted: 'default', rejected: 'destructive',
 
 function TradeRequestsTab({ tradeRequests, router }) {
   const [busyId, setBusyId] = useState(null);
+  const [picked, setPicked] = useState([]);
+  const [accepting, setAccepting] = useState(false);
+  const [customerId, setCustomerId] = useState('');
+  const [needCustomer, setNeedCustomer] = useState(false);
   async function setStatus(id, status) {
     setBusyId(id);
     try { await api(`/api/trade-requests/${id}`, { method: 'PATCH', body: { status } }); router.refresh(); }
     catch (err) { showToast(err.message, 'error'); }
     setBusyId(null);
   }
+  const openIds = tradeRequests.filter(t => t.status === 'open').map(t => t.id);
+  const toggle = id => setPicked(p => (p.includes(id) ? p.filter(x => x !== id) : [...p, id]));
+  async function accept() {
+    setAccepting(true);
+    try {
+      const res = await api('/api/trade-requests/accept', { method: 'POST', body: { ids: picked, customer_id: customerId || undefined } });
+      showToast(`Created ${res.so_no} — price it in Sale Orders, then use Request Stores`);
+      setPicked([]); setNeedCustomer(false); setCustomerId(''); router.refresh();
+    } catch (err) {
+      if (/Pick the customer/.test(err.message)) setNeedCustomer(true);
+      showToast(err.message, 'error');
+    } finally { setAccepting(false); }
+  }
   return (
     <Card>
-      <CardHeader><CardTitle>Trade Requests</CardTitle></CardHeader>
+      <CardHeader>
+        <CardTitle>Trade Requests</CardTitle>
+        <CardDescription>Tick open requests and accept them as one SAS order. Rates are added afterwards in Sale Orders.</CardDescription>
+        {picked.length > 0 && <CardAction><Button size="sm" onClick={accept} disabled={accepting}>{accepting ? 'Creating…' : `Accept ${picked.length} as SAS order`}</Button></CardAction>}
+      </CardHeader>
       <CardContent>
+        {needCustomer && (
+          <div className="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-amber-300/60 bg-amber-50/50 p-2.5 text-sm dark:bg-amber-950/20">
+            <span>These requests name no known sale order — pick the customer:</span>
+            <div className="w-64"><CustomerPicker value={customerId} onChange={setCustomerId} /></div>
+            <Button size="sm" onClick={accept} disabled={!customerId || accepting}>Create SAS order</Button>
+          </div>
+        )}
         {tradeRequests.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No trade requests yet. Installation raises them from its Requests tab.</p> : (
           <Table>
-            <TableHeader><TableRow><TableHead>No.</TableHead><TableHead>Date</TableHead><TableHead>Raised by</TableHead><TableHead>Item</TableHead><TableHead>MOC</TableHead><TableHead>Size / spec</TableHead><TableHead>Qty</TableHead><TableHead>Project</TableHead><TableHead>Sale Order</TableHead><TableHead>Notes</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
+            <TableHeader><TableRow><TableHead className="w-8"><Checkbox aria-label="Select all open" checked={openIds.length > 0 && picked.length === openIds.length} onCheckedChange={v => setPicked(v ? openIds : [])} /></TableHead><TableHead>No.</TableHead><TableHead>Date</TableHead><TableHead>Raised by</TableHead><TableHead>Item</TableHead><TableHead>MOC</TableHead><TableHead>Size / spec</TableHead><TableHead>Qty</TableHead><TableHead>Project</TableHead><TableHead>Sale Order</TableHead><TableHead>Notes</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
             <TableBody>{tradeRequests.map(t => (
               <TableRow key={t.id}>
+                <TableCell>{t.status === 'open' ? <Checkbox aria-label={`Select ${t.tr_no}`} checked={picked.includes(t.id)} onCheckedChange={() => toggle(t.id)} /> : null}</TableCell>
                 <TableCell className="font-medium">{t.tr_no}</TableCell>
                 <TableCell>{formatDate(t.created_at)}</TableCell>
                 <TableCell>{t.raised_by}<div className="text-xs text-muted-foreground">{t.raised_by_dept}</div></TableCell>
@@ -2929,10 +2986,14 @@ function TradeRequestsTab({ tradeRequests, router }) {
                 <TableCell>{t.sale_order_no || '—'}</TableCell>
                 <TableCell className="max-w-48 whitespace-normal text-xs text-muted-foreground">{t.notes || '—'}</TableCell>
                 <TableCell>
-                  <Select value={t.status} onValueChange={v => setStatus(t.id, v)} disabled={busyId === t.id}>
-                    <SelectTrigger className="h-7 w-28"><SelectValue /></SelectTrigger>
-                    <SelectContent>{TR_STATUSES.map(st => <SelectItem key={st} value={st}><Badge variant={TR_TONE[st]}>{st}</Badge></SelectItem>)}</SelectContent>
-                  </Select>
+                  {t.status === 'accepted' && t.sas_so_no
+                    ? <div className="flex flex-col gap-0.5"><Badge variant="default">accepted</Badge><span className="text-xs font-medium">{t.sas_so_no}</span></div>
+                    : (
+                      <Select value={t.status} onValueChange={v => setStatus(t.id, v)} disabled={busyId === t.id}>
+                        <SelectTrigger className="h-7 w-28"><SelectValue /></SelectTrigger>
+                        <SelectContent>{TR_STATUSES.map(st => <SelectItem key={st} value={st}><Badge variant={TR_TONE[st]}>{st}</Badge></SelectItem>)}</SelectContent>
+                      </Select>
+                    )}
                 </TableCell>
               </TableRow>
             ))}</TableBody>

@@ -21,7 +21,8 @@ export async function POST(req, { params }) {
   }
   const lead = await queryOne('SELECT * FROM leads WHERE id = ?', [params.id]);
   if (!lead) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  if (lead.converted_customer_id) return NextResponse.json({ error: 'Already linked to a customer' }, { status: 409 });
+  // Already linked is not a failure for the caller — hand back the customer so a retry carries on.
+  if (lead.converted_customer_id) return NextResponse.json({ customer_id: lead.converted_customer_id, already_linked: true });
   const actionDenied = await requireAction(user, lead.owner_dept, 'crm.lead.convert');
   if (actionDenied) return actionDenied;
 
@@ -38,7 +39,7 @@ export async function POST(req, { params }) {
   // (customer_id) or confirm a new one (create_new: true). An exact-name match links as before.
   const companyName = lead.company_name || lead.lead_name;
   if (!b.customer_id && !b.create_new) {
-    const exact = await queryOne('SELECT id FROM customers WHERE name = ?', [companyName]);
+    const exact = await queryOne('SELECT id FROM customers WHERE name = ? COLLATE NOCASE AND active = 1', [companyName]);
     if (!exact) {
       const customers = await queryAll('SELECT id, name, gst_no, phone FROM customers WHERE active = 1');
       const duplicates = similarCustomers({ name: companyName, phone: lead.phone || lead.telephone }, customers);

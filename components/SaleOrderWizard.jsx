@@ -99,7 +99,7 @@ export function CreatePoStep1Dialog({ lead, branches, stages = [], onClose, onCr
     <>
     {convertDialog}
     <Dialog open onOpenChange={o => !o && onClose()}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader><DialogTitle>Create PO — {lead.lead_name}</DialogTitle></DialogHeader>
         <p className="text-xs text-muted-foreground">
           You have chosen to create a Purchase Order (PO) against the Sales Call. You can update the date of

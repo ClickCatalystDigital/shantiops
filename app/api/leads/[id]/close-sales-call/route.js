@@ -16,6 +16,8 @@ export async function POST(req, { params }) {
   if (!lead) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   if (!canAccessDepartment(user, lead.owner_dept)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
+  if (lead.sales_call_closed_at) return NextResponse.json({ error: 'This sales call is already closed' }, { status: 400 });
+
   await execute(
     "UPDATE leads SET sales_call_closed_at = CURRENT_TIMESTAMP, sales_call_closed_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
     [user.username, params.id]

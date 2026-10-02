@@ -7,7 +7,7 @@
 import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { api } from '@/lib/client';
+import { api, showToast } from '@/lib/client';
 
 export function useLeadConvert() {
   const [pending, setPending] = useState(null); // { lead, duplicates, resolve, reject }
@@ -29,7 +29,7 @@ export function useLeadConvert() {
   async function choose(body) {
     const p = pending;
     setPending(null);
-    if (!body) return p.resolve(null);
+    if (!body) { showToast('Cancelled — the enquiry was not linked to a customer', 'warning'); return p.resolve(null); }
     try { p.resolve(await post(p.lead, body)); } catch (err) { p.reject(err); }
   }
 

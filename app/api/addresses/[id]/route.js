@@ -18,8 +18,8 @@ export async function PATCH(req, { params }) {
   const b = await req.json();
   const fields = [];
   const args = [];
-  for (const key of ['address_type', 'line1', 'line2', 'line3', 'city', 'state', 'state_code', 'country', 'pin_code', 'is_primary', 'active']) {
-    if (b[key] !== undefined) { fields.push(`${key} = ?`); args.push(b[key]); }
+  for (const key of ['address_type', 'line1', 'line2', 'line3', 'city', 'state', 'state_code', 'country', 'pin_code', 'is_primary', 'active', 'district', 'sub_location', 'gst_no']) {
+    if (b[key] !== undefined) { fields.push(`${key} = ?`); args.push(b[key] === '' ? null : (key === 'gst_no' ? String(b[key]).trim().toUpperCase() : b[key])); }
   }
   if (!fields.length) return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
   args.push(params.id);

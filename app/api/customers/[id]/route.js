@@ -29,8 +29,12 @@ export async function PATCH(req, { params }) {
   const b = await req.json();
   const fields = [];
   const args = [];
-  for (const key of ['name', 'gst_no', 'phone', 'email', 'address', 'city', 'state', 'state_code', 'pin_code', 'active']) {
-    if (b[key] !== undefined) { fields.push(`${key} = ?`); args.push(b[key]); }
+  for (const key of ['name', 'gst_no', 'pan', 'website', 'phone', 'email', 'address', 'city', 'state', 'state_code', 'pin_code', 'active',
+    'service_tax_no', 'vat_no', 'registration_no', 'ecc_no', 'nature_of_business', 'product_line', 'sells_via', 'turnover_band']) {
+    if (b[key] === undefined) continue;
+    const v = b[key] === '' ? null : b[key];
+    if (key === 'name' && !String(v || '').trim()) return NextResponse.json({ error: 'Name is required' }, { status: 400 });
+    fields.push(`${key} = ?`); args.push(['gst_no', 'pan'].includes(key) && v ? String(v).trim().toUpperCase() : v);
   }
   if (!fields.length) return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
   args.push(params.id);
