@@ -40,7 +40,6 @@ import { PaymentOrdersTab, PaymentLogTab, Pager, SIZES } from '@/components/Sale
 import { CreatePoFlow, SaleOrderDetailsSheet } from '@/components/SaleOrderWizard';
 import { LOST_REASONS, composeReason } from '@/lib/lost-reasons.mjs';
 import { EmailSetupTab, PortalAccessTab } from '@/components/SalesSetupPanels';
-import SalesRetentionPanel from '@/components/SalesRetentionPanel';
 import { ACTION_TYPES, actionTypeLabel } from '@/lib/action-types.mjs';
 import ProductSearchField from '@/components/ProductSearchField';
 import CustomerPicker from '@/components/CustomerPicker';
@@ -3058,76 +3057,6 @@ function AllTasksTab({ users }) {
   );
 }
 
-// --- Team (Assignment Rule config — round-robin usernames per department, dept-scoped edit) ----
-
-function TeamTab({ users, departments }) {
-  const [rules, setRules] = useState({});
-  const [drafts, setDrafts] = useState({});
-  const [saving, setSaving] = useState(null);
-
-  function load() {
-    api('/api/assignment-rules').then(rows => {
-      const byDept = Object.fromEntries(rows.map(r => [r.owner_dept, r]));
-      setRules(byDept);
-      setDrafts(Object.fromEntries(CRM_DEPARTMENTS.map(d => [d, (byDept[d]?.usernames || []).join(', ')])));
-    }).catch(() => {});
-  }
-  useEffect(load, []);
-
-  async function save(dept) {
-    setSaving(dept);
-    try {
-      const usernames = drafts[dept].split(',').map(s => s.trim()).filter(Boolean);
-      await api('/api/assignment-rules', { method: 'PUT', body: { owner_dept: dept, usernames } });
-      showToast('Assignment rule saved');
-      load();
-    } catch (err) { showToast(err.message, 'error'); } finally { setSaving(null); }
-  }
-
-  function toggle(dept, username) {
-    const cur = (drafts[dept] || '').split(',').map(x => x.trim()).filter(Boolean);
-    const next = cur.includes(username) ? cur.filter(x => x !== username) : [...cur, username];
-    setDrafts(prev => ({ ...prev, [dept]: next.join(', ') }));
-  }
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Team</CardTitle>
-        <CardDescription>Your {CRM_DEPARTMENTS.filter(d => departments.includes(d)).join(' / ')} people. Tick who new enquiries are shared between, in turn; leave everyone unticked to stop auto-assigning.</CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-5">
-        {CRM_DEPARTMENTS.filter(d => departments.includes(d)).map(dept => {
-          const members = users.filter(u => u.departments.includes(dept));
-          const picked = new Set((drafts[dept] || '').split(',').map(x => x.trim()).filter(Boolean));
-          return (
-            <div key={dept} className="flex flex-col gap-2">
-              <div className="flex items-center justify-between gap-2">
-                <Label>{dept} — {members.length} {members.length === 1 ? 'person' : 'people'}</Label>
-                <Button size="sm" variant="outline" onClick={() => save(dept)} disabled={saving === dept}>{saving === dept ? 'Saving…' : 'Save auto-assign'}</Button>
-              </div>
-              <Table>
-                <TableHeader><TableRow><TableHead className="w-16 sm:w-24">Auto-assign</TableHead><TableHead>Name</TableHead><TableHead className="hidden sm:table-cell">Username</TableHead><TableHead className="hidden sm:table-cell">Designation</TableHead><TableHead>Role</TableHead></TableRow></TableHeader>
-                <TableBody>
-                  {members.length === 0 ? <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground">No one has {dept} access yet.</TableCell></TableRow> : members.map(u => (
-                    <TableRow key={u.id}>
-                      <TableCell><Checkbox checked={picked.has(u.username)} onCheckedChange={() => toggle(dept, u.username)} aria-label={`Auto-assign to ${u.display_name || u.username}`} /></TableCell>
-                      <TableCell className="font-medium">{u.display_name || u.username}<span className="block text-xs font-normal text-muted-foreground sm:hidden">{u.designation || u.username}</span></TableCell>
-                      <TableCell className="hidden text-muted-foreground sm:table-cell">{u.username}</TableCell>
-                      <TableCell className="hidden text-muted-foreground sm:table-cell">{u.designation || '—'}</TableCell>
-                      <TableCell><Badge variant={u.departmentRoles?.[dept] === 'head' ? 'default' : 'outline'}>{u.departmentRoles?.[dept] === 'head' ? 'Head' : 'Member'}</Badge></TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          );
-        })}
-      </CardContent>
-    </Card>
-  );
-}
-
 // --- Branches (Phase 0a) — Sales/CRM-scoped only, no delete (deactivate-don't-delete, same as
 // sales_stages), rename/toggle via inline click-to-edit cells. ------------------------------------
 
@@ -3617,8 +3546,6 @@ const PANEL_GROUPS = [
   ] },
   { label: 'Setup', items: [
     { key: 'library', label: 'Library', icon: LibraryIcon, description: 'Mailers, presentations and price lists for the whole team' },
-    { key: 'team', label: 'Team', icon: ContactIcon, description: 'Auto-assign new leads round-robin' },
-    { key: 'email_setup', label: 'Email', icon: MailIcon, description: 'Sender mailboxes, test/live switch and recent emails' },
     { key: 'portal_access', label: 'Portal Access', icon: UsersIcon, description: 'Customer portal logins and invites' },
     {
       key: 'masters', label: 'Masters', icon: PackageIcon, group: true,
@@ -3628,11 +3555,13 @@ const PANEL_GROUPS = [
         { key: 'targets', label: 'Targets', icon: TargetIcon, description: 'Monthly Sales Targets per branch/manager' },
         { key: 'branches', label: 'Branches', icon: Building2Icon, description: 'Office/location list for Enquiry and Sale Orders' },
         { key: 'email_templates', label: 'Email Templates', icon: MailIcon, description: 'Commercial Offer wording, per company' },
-        { key: 'data_retention', label: 'Data retention', icon: ClockIcon, description: 'How long follow-up history is kept' },
       ],
     },
   ] },
 ];
+
+// Email: the Sales Head manages mailboxes (company + their own) on the /settings page; every other member keeps "My Email" here.
+const MEMBER_EMAIL_ITEM = { key: 'email_setup', label: 'My Email', icon: MailIcon, description: 'Your own sender mailbox' };
 
 // Sales CRM plan 3d — win probability per funnel stage (feeds the Funnel report's weighted value).
 function FunnelStagesTab({ stages, canEdit, router }) {
@@ -3677,11 +3606,12 @@ function FunnelStagesTab({ stages, canEdit, router }) {
   );
 }
 
-export default function SalesWorkspace({ saleOrders, leads, customers, quotations, priceLists = [], returns = [], tradeRequests = [], inventoryItems = [], invoices = [], creditNotes = [], departments = ['Sales'], users = [], savedViews = [], initialTab, salePayments = [], branches = [], salesProducts = [], salesTargets = [], stages = [], isSalesHead = false, company = null }) {
+export default function SalesWorkspace({ saleOrders, leads, customers, quotations, priceLists = [], returns = [], tradeRequests = [], inventoryItems = [], invoices = [], creditNotes = [], departments = ['Sales'], users = [], savedViews = [], initialTab, salePayments = [], branches = [], salesProducts = [], salesTargets = [], stages = [], isSalesHead = false, company = null, }) {
   const router = useRouter();
   // Sales-only now — Marketing has its own tab/URL (/market, MarketingWorkspace.jsx). No more
   // per-viewer group filtering; every group in PANEL_GROUPS always renders here.
-  const groups = PANEL_GROUPS;
+  const groups = isSalesHead ? PANEL_GROUPS
+    : PANEL_GROUPS.map(g => (g.label === 'Setup' ? { ...g, items: [g.items[0], MEMBER_EMAIL_ITEM, ...g.items.slice(1)] } : g));
   // Deep-link tab selection (Part B) — same server-prop pattern as QcWorkspace.jsx.
   const flat = groups.flatMap(g => g.items.flatMap(p => (p.group ? p.children : [p])));
   const [panel, setPanel] = useState(flat.some(p => p.key === initialTab) ? initialTab : 'leads');
@@ -3717,14 +3647,12 @@ export default function SalesWorkspace({ saleOrders, leads, customers, quotation
           {activePanel.key === 'amc' && <AmcTab />}
           {activePanel.key === 'library' && <LibraryTab isSalesHead={isSalesHead} />}
           {activePanel.key === 'email_setup' && <EmailSetupTab />}
-          {activePanel.key === 'portal_access' && (isSalesHead ? <PortalAccessTab /> : <p className="p-4 text-sm text-muted-foreground">Only the Sales Head can manage portal access.</p>)}
-          {activePanel.key === 'team' && <TeamTab users={users} departments={departments} />}
+          {activePanel.key === 'portal_access' && <PortalAccessTab />}
           {activePanel.key === 'branches' && <BranchesTab branches={branches} router={router} />}
           {activePanel.key === 'products' && <ProductsTab salesProducts={salesProducts} router={router} />}
           {activePanel.key === 'targets' && <TargetsTab salesTargets={salesTargets} branches={branches} router={router} />}
           {activePanel.key === 'email_templates' && <EmailTemplatesTab router={router} />}
-          {activePanel.key === 'data_retention' && (isSalesHead ? <SalesRetentionPanel /> : <p className="p-4 text-sm text-muted-foreground">Only the Sales Head can manage data retention.</p>)}
-          {activePanel.key === 'funnel_stages' && <FunnelStagesTab stages={stages} canEdit={isSalesHead} router={router} />}
+                    {activePanel.key === 'funnel_stages' && <FunnelStagesTab stages={stages} canEdit={isSalesHead} router={router} />}
           </Fragment>
     </WorkspaceSidebar>
   );

@@ -1,4 +1,4 @@
-// POST { action: 'reveal' | 'reset' } — Sales Head / PM only. A portal customer's password is kept as
+// POST { action: 'reveal' | 'reset' } — Any Sales member (or PM). A portal customer's password is kept as
 // an encrypted copy (lib/crypto.js) so it can be read back when they lose it. Every reveal/reset is
 // audited. 'reset' sets a new random password and shows it once; 'reveal' returns null when no copy
 // exists (customer set it before this feature, or SECRETS_KEY was not set) — use reset then.
@@ -6,7 +6,7 @@ import { NextResponse } from 'next/server';
 import { randomBytes } from 'crypto';
 import bcrypt from 'bcryptjs';
 import { execute, queryOne } from '@/lib/db';
-import { getFreshSessionUser, isDepartmentHead } from '@/lib/auth';
+import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
 import { encryptSecret, decryptSecret } from '@/lib/crypto';
 import { audit } from '@/lib/usb';
 import { phonePassword } from '@/lib/portal-invite';
@@ -16,7 +16,7 @@ const newPassword = () => Array.from(randomBytes(10), b => ALPHABET[b % ALPHABET
 
 export async function POST(req, { params }) {
   const user = await getFreshSessionUser();
-  if (!user || !isDepartmentHead(user, 'Sales')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  if (!user || !canAccessDepartment(user, 'Sales')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const { action } = await req.json();
   const login = await queryOne(
     `SELECT u.id, u.username, u.portal_password_enc FROM customers c JOIN users u ON u.id = c.portal_user_id

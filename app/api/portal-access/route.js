@@ -2,11 +2,11 @@
 // existing login. Sales Head / PM only. Status: not_enabled | invited (setup link not used yet) | active.
 import { NextResponse } from 'next/server';
 import { queryAll } from '@/lib/db';
-import { getFreshSessionUser, isDepartmentHead } from '@/lib/auth';
+import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
 
 export async function GET(req) {
   const user = await getFreshSessionUser();
-  if (!user || !isDepartmentHead(user, 'Sales')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  if (!user || !canAccessDepartment(user, 'Sales')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const q = (new URL(req.url).searchParams.get('q') || '').trim().toLowerCase();
   const rows = await queryAll(
     `SELECT c.id, c.name, c.email, c.phone, c.portal_enabled, c.portal_user_id, c.initial_email_sent_at,

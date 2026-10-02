@@ -54,3 +54,9 @@ Demo AMC contracts were added with `node --env-file=.env.local scripts/seed-demo
 
 ## Clean up
 An enquiry that already has a customer/order can't be deleted from the screen. Delete demo quotations with the bin icon and tell me the enquiry/order/invoice numbers so I remove them from the database.
+
+## 14. Team and Settings (Sales Head)
+Cog icon (top bar) → **Settings** → **Sales** section: **Team** → **Add member** (pick an HR person in Sales, set username + password), change **Member/Head**, **Reset password** (shown once), **Switch off**. **Email** (company mailboxes, test/live) and **Data retention** are the other tabs. Members see only "My Email" under Sales → Setup; **Portal Access** stays in Setup for everyone in Sales.
+
+## 15. Trade Requests
+Sales → **Enquiries → Trade Requests** → tick open requests → **Accept as SAS order** (pick the customer if asked). The new SAS order appears in Sale Orders; price it, then **Request Stores**.

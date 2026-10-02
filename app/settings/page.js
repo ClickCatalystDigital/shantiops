@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { getFreshSessionUser, isCustomer, isPM, isAdmin, isDesignHead, roleHome } from '@/lib/auth';
+import { getFreshSessionUser, isCustomer, isPM, isAdmin, isDesignHead, isDepartmentHead, roleHome } from '@/lib/auth';
 import { getFunctionalHeads, getDesignTeamMembers, getAvailableSystemEmployees } from '@/lib/data';
 import { queryOne, queryAll } from '@/lib/db';
 import { ACTION_CATALOG } from '@/lib/action-permissions';
@@ -14,6 +14,7 @@ import DependencyChainPanel from '@/components/DependencyChainPanel';
 import UserManagement from '@/components/UserManagement';
 import TotpSetup from '@/components/TotpSetup';
 import DesignAccessPanel from '@/components/DesignAccessPanel';
+import SalesSettings from '@/components/SalesSettings';
 import PageHeader from '@/components/PageHeader';
 import { Separator } from '@/components/ui/separator';
 
@@ -25,6 +26,11 @@ export default async function Settings() {
 
   const heads = isPM(user) ? await getFunctionalHeads() : null;
   const designTeam = isDesignHead(user) ? await getDesignTeamMembers() : null;
+  // Sales Head (and PMs, who are head of every department): team, email and data retention.
+  const salesHead = isDepartmentHead(user, 'Sales');
+  const salesUsers = salesHead
+    ? (await getFunctionalHeads()).filter(h => h.active && h.departments.includes('Sales'))
+    : [];
   const availableEmployees = isPM(user) ? await getAvailableSystemEmployees() : [];
   const totpConfigured = isPM(user)
     ? !!(await queryOne('SELECT totp_secret FROM users WHERE id = ?', [user.id]))?.totp_secret
@@ -51,7 +57,7 @@ export default async function Settings() {
 
   return (
     <main className="container flex flex-col gap-6 py-8">
-      <PageHeader title="Settings" description={`Account settings${isPM(user) ? ' and access management' : ''}`} />
+      <PageHeader title="Settings" description={`Account settings${isPM(user) ? ' and access management' : salesHead ? ' and Sales settings' : ''}`} />
 
       <div className="grid items-start gap-6 lg:grid-cols-2">
         <ProfileForm user={user} />
@@ -74,6 +80,13 @@ export default async function Settings() {
         </>
       )}
       {isDesignHead(user) && !isPM(user) && <DesignAccessPanel members={designTeam} />}
+      {salesHead && (
+        <>
+          <Separator />
+          <h2 className="text-lg font-semibold">Sales</h2>
+          <SalesSettings users={salesUsers} meUsername={user.username} />
+        </>
+      )}
     </main>
   );
 }
