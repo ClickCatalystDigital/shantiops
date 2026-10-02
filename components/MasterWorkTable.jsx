@@ -111,7 +111,7 @@ export default function MasterWorkTable({ work, columns, emptyMessage = 'Nothing
   return (
     <div className="flex flex-col gap-3">
       <Input value={search} onChange={e => onSearchChange(e.target.value)}
-        placeholder="Search project or customer…" className="h-8 w-64" />
+        placeholder="Search project or customer…" className="h-8 w-full" />
 
       {shown.length === 0 ? (
         <p className="py-6 text-center text-sm text-muted-foreground">No projects match.</p>

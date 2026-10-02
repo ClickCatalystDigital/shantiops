@@ -54,9 +54,8 @@ export default function JobSheetBoard({ workers = [], projects = [], canProducti
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-2">
-        <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search job no. / project…" className="w-56" />
-        <div className="w-64"><SearchableSelect value={projectFilter} onChange={setProjectFilter} options={projectOptions} placeholder="All projects" /></div>
-        <div className="flex-1" />
+        <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search job no. / project…" className="min-w-52 flex-1" />
+        <div className="w-full sm:w-64"><SearchableSelect value={projectFilter} onChange={setProjectFilter} options={projectOptions} placeholder="All projects" /></div>
         {canProduction && <Button onClick={() => setCreating(true)}><PlusIcon /> New Job Card</Button>}
       </div>
 

@@ -119,7 +119,7 @@ function WhereUsedTab({ projectIds = [] }) {
       <CardHeader><CardTitle>Where-Used List</CardTitle></CardHeader>
       <CardContent className="flex flex-col gap-3">
         <form onSubmit={e => { e.preventDefault(); runSearch(q); }} className="flex gap-2">
-          <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Search a part description…" className="max-w-sm" />
+          <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Search a part description…" className="flex-1" />
           <Button type="submit" disabled={loading}>{loading ? 'Searching…' : 'Search'}</Button>
         </form>
         {rows && (rows.length === 0 ? (

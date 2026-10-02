@@ -338,7 +338,7 @@ export default function ItemMasterPanel() {
         <CardAction><Button size="sm" onClick={() => setFormId(null)}><PlusIcon /> Add Item</Button></CardAction>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
-        <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Search item name, code, category, HSN…" className="max-w-sm" />
+        <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Search item name, code, category, HSN…" className="w-full" />
 
         {!data ? <p className="text-sm text-muted-foreground">Loading…</p> : (
           <>

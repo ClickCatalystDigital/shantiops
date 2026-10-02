@@ -92,7 +92,7 @@ function StatPill({ dot, value, label, onClick }) {
 }
 
 // Same pill-shaped search input every workspace uses (StoresWorkspace.jsx's SearchBox).
-function SearchBox({ value, onChange, placeholder, className = 'max-w-sm' }) {
+function SearchBox({ value, onChange, placeholder, className = 'w-full' }) {
   return (
     <div className={`relative ${className}`}>
       <SearchIcon className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -175,6 +175,22 @@ function PackingListsTab({ lists, flowCounts, pendingReadyCount, awaitingAckCoun
   // joins project_no per list — no new query.
   const [projectQ, setProjectQ] = useState('');
   const [newOpen, setNewOpen] = useState(false);
+  const [converting, setConverting] = useState(false);
+  const router = useRouter();
+  const oldLayout = lists.filter(l => l.layout !== 'combined' && l.status !== 'dispatched');
+  async function convertAll() {
+    if (!confirm(`Rebuild ${oldLayout.length} list${oldLayout.length === 1 ? '' : 's'} in the new layout? Lines are regrouped and numbered again; list numbers and details stay.`)) return;
+    setConverting(true);
+    let ok = 0; const failed = [];
+    for (const l of oldLayout) {
+      try { await api(`/api/packing/${l.id}/convert-layout`, { method: 'POST' }); ok++; }
+      catch (err) { failed.push(`${l.packing_no}: ${err.message}`); }
+    }
+    showToast(`${ok} list${ok === 1 ? '' : 's'} converted`);
+    failed.forEach(m => showToast(m, 'error'));
+    setConverting(false);
+    router.refresh();
+  }
 
   function toggleStatus(key) {
     setFocusedStatus(cur => (cur === key ? null : key));
@@ -203,7 +219,7 @@ function PackingListsTab({ lists, flowCounts, pendingReadyCount, awaitingAckCoun
         <StatPill dot="bg-danger" value={missingEwayCount} label="Missing E-Way Bills" onClick={() => onNavigate('documents', { missingEway: true })} />
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <SearchBox value={projectQ} onChange={setProjectQ} placeholder="Search by project no. or customer…" />
+        <SearchBox value={projectQ} onChange={setProjectQ} placeholder="Search by project no. or customer…" className="min-w-52 flex-1" />
         <Button size="sm" onClick={() => setNewOpen(true)}><PlusIcon className="size-3.5" /> New packing list</Button>
         {singleMatch && (
           <Button asChild variant="outline" size="sm">
@@ -213,6 +229,12 @@ function PackingListsTab({ lists, flowCounts, pendingReadyCount, awaitingAckCoun
           </Button>
         )}
       </div>
+      {oldLayout.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-warning/40 bg-warning-surface/40 px-4 py-3 text-sm">
+          <span>{oldLayout.length} draft/ready list{oldLayout.length === 1 ? ' still uses' : 's still use'} the old layout (no loose / package / mounted rows, older PDF).</span>
+          <Button size="sm" disabled={converting} onClick={convertAll}>{converting ? 'Converting…' : `Convert ${oldLayout.length === 1 ? 'it' : 'all'} to the new layout`}</Button>
+        </div>
+      )}
       <div className="border-t pt-4">
         {focusedStatus && (
           <button type="button" onClick={() => setFocusedStatus(null)}
@@ -309,7 +331,7 @@ function PendingItemsTab({ items }) {
     <div className="flex flex-col gap-4">
       {items.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
-          <SearchBox value={q} onChange={setQ} placeholder="Search by description, project or sale order…" className="min-w-52 flex-1 max-w-none" />
+          <SearchBox value={q} onChange={setQ} placeholder="Search by description, project or sale order…" className="min-w-52 flex-1" />
           <div className="w-full sm:w-72"><SearchableSelect value={scope} onChange={setScope} options={projectOptions} placeholder="All projects" /></div>
         </div>
       )}

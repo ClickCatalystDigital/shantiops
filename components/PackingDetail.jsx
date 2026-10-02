@@ -293,6 +293,7 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
   const [cancelRemark, setCancelRemark] = useState('');
   const [deleting, setDeleting] = useState(false);
   const [addFromOpen, setAddFromOpen] = useState(false);
+  const [converting, setConverting] = useState(false);
 
   useEffect(() => {
     if (!list.project_id) return;
@@ -359,6 +360,12 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
     if (list.freightPosted) delete body.freight_amount;
     try { await api(`/api/packing/${list.id}`, { method: 'PATCH', body }); setList(l => ({ ...l, ...body })); setEditing(false); showToast('Details saved'); }
     catch (err) { showToast(err.message, 'error'); }
+  }
+  async function convertLayout() {
+    if (!confirm('Rebuild this list in the new layout? The lines are regrouped (loose / package / mounted) and numbered again.')) return;
+    setConverting(true);
+    try { await api(`/api/packing/${list.id}/convert-layout`, { method: 'POST' }); showToast('Converted to the new layout'); window.location.reload(); }
+    catch (err) { showToast(err.message, 'error'); setConverting(false); }
   }
   async function deleteList() {
     if (!confirm(`Delete ${list.status === 'packed' ? 'ready list' : 'draft'} ${list.packing_no}? This removes all ${items.length} item${items.length === 1 ? '' : 's'} from it${list.status === 'packed' ? ' and any pre-dispatch review on it' : ''} — the underlying BOM lines go back to Pending and can be put on a new list.`)) return;
@@ -518,6 +525,18 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
               <p className="text-xs text-muted-foreground">{list.freightPosted ? 'Posted to the ledger.' : 'Not yet posted to the ledger.'}</p>
             </div>
             {!list.freightPosted && <Button size="sm" disabled={postingFreight} onClick={postFreight}>{postingFreight ? 'Posting…' : 'Post Freight Expense'}</Button>}
+          </CardContent>
+        </Card>
+      )}
+
+      {!readOnly && list.layout !== 'combined' && list.status !== 'dispatched' && (
+        <Card className="no-print border-warning/40">
+          <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
+            <div>
+              <p className="text-sm font-medium">This list uses the old layout</p>
+              <p className="text-xs text-muted-foreground">One table per BOM section, no loose / package / mounted rows. Convert it to the current layout (packing groups, assemblies, new PDF). The list number and all details stay; IBR numbers and item codes carry over.</p>
+            </div>
+            <Button size="sm" disabled={converting} onClick={convertLayout}>{converting ? 'Converting…' : 'Convert to new layout'}</Button>
           </CardContent>
         </Card>
       )}

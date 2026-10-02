@@ -2050,7 +2050,7 @@ function QuotationsTab({ quotations, customers, salesProducts = [], isSalesHead 
       <CardContent>
         <div className="mb-3"><DiscountApprovalSetting canEdit={isSalesHead} /></div>
         <div className="mb-3 flex flex-wrap items-center gap-2">
-          <Input placeholder="Search quotation no., customer…" value={search} onChange={e => { setSearch(e.target.value); setPage(0); }} className="w-56" />
+          <Input placeholder="Search quotation no., customer…" value={search} onChange={e => { setSearch(e.target.value); setPage(0); }} className="min-w-52 flex-1" />
           {statuses.length > 0 && (
             <Select value={statusFilter} onValueChange={v => { setStatusFilter(v); setPage(0); }}>
               <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
@@ -2737,7 +2737,7 @@ function SaleOrdersTab({ saleOrders, salePayments = [], branches, salesProducts,
       </CardHeader>
       <CardContent>
         <div className="mb-3 flex flex-wrap items-center gap-2">
-          <Input className="w-64" placeholder="Search order ID, customer, company…" value={q} onChange={e => { setQ(e.target.value); setPage(0); }} />
+          <Input className="min-w-52 flex-1" placeholder="Search order ID, customer, company…" value={q} onChange={e => { setQ(e.target.value); setPage(0); }} />
           <Select value={f.status} onValueChange={v => setFilter({ status: v })}>
             <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
             <SelectContent><SelectItem value="all">All statuses</SelectItem><SelectItem value="open">Open</SelectItem><SelectItem value="fulfilled">Fulfilled</SelectItem><SelectItem value="cancelled">Cancelled</SelectItem></SelectContent>

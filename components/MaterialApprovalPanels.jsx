@@ -353,7 +353,7 @@ export function JobSheetApprovalsPanel({ rows }) {
   const days = d => Math.max(0, Math.round((Date.now() - new Date(d).getTime()) / 864e5));
   return (
     <div className="flex flex-col gap-3">
-      <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Search job / project / stage…" className="w-72" />
+      <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Search job / project / stage…" className="w-full" />
       <Card><CardContent className="p-0">
         {shown.length === 0 ? <p className="py-10 text-center text-sm text-muted-foreground">No job card stages waiting for QC.</p> : (
           <Table>
