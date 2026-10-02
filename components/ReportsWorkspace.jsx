@@ -64,6 +64,11 @@ import { TestCertificateRegisterCard, QcInspectionSummaryCard, NcrRegisterCard, 
 import ManagementReportCard from '@/components/executive/ManagementReportCard';
 import { EmployeePerformance360Report, SalesOverviewReport, CompetitorAnalysisReport, LostReasonsReport } from '@/components/SalesInsightReports';
 import OrderBookReport from '@/components/OrderBookReport';
+import {
+  SourceWiseOrderReport, ReferenceWiseOrderReport, BranchWiseOrderReport, EmployeeWiseOrderReport, WinLossReport, FunnelAgeingReport,
+  OrderTimeCycleReport, LeadGenerationReport, CallLogReport, LastContactReport, DailyWorkReport, EmployeeMovementReport,
+  SellingVsCostReport, NewCustomersReport, EmployeeUsageReport, AmcProfitabilityReport,
+} from '@/components/MisReports';
 import ProjectProfitabilityCard from '@/components/executive/ProjectProfitabilityCard';
 import CustomerProfitabilityCard from '@/components/executive/CustomerProfitabilityCard';
 import ProcurementSpendCard from '@/components/executive/ProcurementSpendCard';
@@ -153,6 +158,12 @@ export const SCREEN = {
   'sales_overview': SalesOverviewReport,
   'order_book': OrderBookReport,
   'employee_performance_360': EmployeePerformance360Report,
+  // MIS pack (SYSTEM.md §5dr)
+  'employee_wise_order': EmployeeWiseOrderReport, 'order_by_source': SourceWiseOrderReport, 'order_by_reference': ReferenceWiseOrderReport,
+  'order_by_branch': BranchWiseOrderReport, 'win_loss': WinLossReport, 'funnel_ageing': FunnelAgeingReport, 'order_time_cycle': OrderTimeCycleReport,
+  'lead_generation': LeadGenerationReport, 'call_log': CallLogReport, 'last_contact': LastContactReport, 'daily_work': DailyWorkReport,
+  'employee_movement': EmployeeMovementReport, 'new_customers': NewCustomersReport, 'selling_vs_cost': SellingVsCostReport,
+  'employee_usage': EmployeeUsageReport, 'amc_profitability': AmcProfitabilityReport,
   'competitor_analysis': CompetitorAnalysisReport,
   'lost_reasons': LostReasonsReport,
   'neglected_sales_call': NeglectedSalesCallReport,
@@ -190,6 +201,10 @@ const ICON = {
   'quotation_listing': FileTextIcon, 'feedback_not_responded': XCircleIcon,
   'feedback_response': CheckCircleIcon, 'employee_expense': CreditCardIcon,
   'sales_call_customize': Settings2Icon,
+  'employee_wise_order': UserCheckIcon, 'order_by_source': Share2Icon, 'order_by_reference': UsersIcon, 'order_by_branch': MapPinIcon,
+  'win_loss': SwordsIcon, 'funnel_ageing': HourglassIcon, 'order_time_cycle': ClockIcon, 'lead_generation': FilterIcon, 'call_log': MessageSquareIcon,
+  'last_contact': RepeatIcon, 'daily_work': CalendarDaysIcon, 'employee_movement': MapPinIcon, 'new_customers': UsersIcon,
+  'selling_vs_cost': ScaleIcon, 'employee_usage': ActivityIcon, 'amc_profitability': WalletIcon,
   'dispatch-register': TruckIcon, 'eway-bill-register': ScrollTextIcon, 'freight-cost-summary': BanknoteIcon,
   'dispatch-aging': HourglassIcon, 'test-certificate-register': FlaskConicalIcon,
   'qc-inspection-summary': ClipboardCheckIcon, 'ncr-register': ShieldAlertIcon,
@@ -219,9 +234,21 @@ export default function ReportsWorkspace({ department, reports, groups, companie
   const Screen = active ? SCREEN[active.key] : null;
   const showCompanySwitcher = !active?.hasOwnControls && active?.needsCompany !== false;
 
+  // A report may carry `subgroup` (e.g. Sales 'MIS'); same-subgroup reports fold into one nested sidebar item.
+  // Reports with no subgroup stay flat, so every other department renders exactly as before.
+  const toItems = list => {
+    const out = []; const at = {};
+    for (const r of list) {
+      const item = { key: r.key, label: r.title, icon: ICON[r.key] || BarChart3Icon };
+      if (!r.subgroup) { out.push(item); continue; }
+      if (!(r.subgroup in at)) { at[r.subgroup] = out.length; out.push({ key: `grp-${r.subgroup}`, label: r.subgroup, icon: r.subgroup === 'MIS' ? LayoutDashboardIcon : BarChart3Icon, group: true, children: [] }); }
+      out[at[r.subgroup]].children.push(item);
+    }
+    return out;
+  };
   const sidebarProps = groups
-    ? { groups: groups.map(g => ({ label: g.department, items: g.reports.map(r => ({ key: r.key, label: r.title, icon: ICON[r.key] || BarChart3Icon })) })) }
-    : { items: reports.map(r => ({ key: r.key, label: r.title, icon: ICON[r.key] || BarChart3Icon })) };
+    ? { groups: groups.map(g => ({ label: g.department, items: toItems(g.reports) })) }
+    : { items: toItems(reports) };
 
   return (
     <WorkspaceSidebar title={groups ? (title || 'All Reports') : `${department} Reports`} icon={BarChart3Icon} {...sidebarProps} activeKey={key} onChange={setKey}

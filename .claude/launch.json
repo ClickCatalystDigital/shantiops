@@ -299,6 +299,19 @@
       ],
       "port": 3061,
       "autoPort": false
+    },
+    {
+      "name": "shanti-ops-service-expenses",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--",
+        "-p",
+        "3070"
+      ],
+      "port": 3070,
+      "autoPort": false
     }
   ]
 }

@@ -6,6 +6,7 @@ import { audit } from '@/lib/usb';
 import { issueReservation } from '@/lib/procurement';
 import { syncPackingMilestone } from '@/lib/milestone-auto';
 import { postDispatchConsumption } from '@/lib/stock-pieces';
+import { notifyUser, notifyDepartmentHeads } from '@/lib/notify';
 
 const EDITABLE = ['customer_name', 'customer_address', 'invoice_no', 'invoice_date', 'package_type',
   'dc_no', 'dc_date', 'vehicle_no', 'dispatch_through', 'contact_person', 'status',
@@ -128,6 +129,21 @@ export async function PATCH(req, { params }) {
     await audit('packing_status_change', { actor: user.username, detail: `list ${params.id} -> ${b.status}` });
     if (b.status === 'packed' || b.status === 'dispatched') {
       if (pl.project_id) await syncPackingMilestone(pl.project_id, user.username);
+    }
+    // Order management (SYSTEM.md §5dr): the first dispatch marks the Sale Order Dispatched on the Order Tracker
+    // (never downgrading a Closed/Cancelled one) and tells the sales owner. Best effort — the dispatch itself is already saved.
+    if (isFirstDispatch && pl.project_id) {
+      try {
+        const so = await queryOne(
+          `SELECT so.id, so.so_no, so.customer_name, so.track_status, so.status, COALESCE(so.sales_person_override, so.created_by) AS owner
+             FROM sale_orders so JOIN projects p ON p.sale_order_id = so.id WHERE p.id = ?`, [pl.project_id]);
+        if (so && so.status !== 'cancelled') {
+          if (!['Closed', 'Dispatched'].includes(so.track_status)) await execute("UPDATE sale_orders SET track_status = 'Dispatched', stage_dispatched = 1 WHERE id = ?", [so.id]);
+          const note = { kind: 'order_dispatched', title: `Order ${so.so_no} dispatched${so.customer_name ? ` — ${so.customer_name}` : ''}`, body: `Packing list ${pl.packing_no || params.id} was dispatched.`, dedupe_key: `dispatch:${params.id}` };
+          const owner = so.owner ? await queryOne('SELECT id FROM users WHERE active = 1 AND username = ?', [so.owner]) : null;
+          if (owner) await notifyUser(owner.id, note); else await notifyDepartmentHeads('Sales', note);
+        }
+      } catch (err) { console.error('order dispatch update', err); }
     }
   }
   return NextResponse.json({ ok: true });

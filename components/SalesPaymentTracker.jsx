@@ -424,6 +424,7 @@ export function PaymentOrdersTab({ saleOrders, payments, invoices, customers = [
                     <SelectContent>{Object.keys(STATUS_STYLE).map(v => <SelectItem key={v} value={v}>{v}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
+                {r.packing_status && <div className="text-[10px] text-muted-foreground">Packing: {r.packing_status}</div>}
                 <div className="mt-1 text-sm"><EditCell value={r.customer_name} display={r.customer_name || '—'} onSave={v => save(r, { customer_name: v })} /></div>
                 <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
                   <div><div className="text-muted-foreground">Order value</div><div className="tnum font-medium"><EditCell type="number" value={r.total || ''} display={r.total ? exact(r.total) : '—'} disabled={r.item_count > 0} onSave={v => save(r, { total: Number(v) || 0 })} /></div></div>
@@ -465,6 +466,7 @@ export function PaymentOrdersTab({ saleOrders, payments, invoices, customers = [
                       <SelectTrigger className={`h-7 w-28 gap-1 px-2 text-xs font-medium ${STATUS_STYLE[r.track_status || 'Pending']}`}><SelectValue /></SelectTrigger>
                       <SelectContent>{Object.keys(STATUS_STYLE).map(v => <SelectItem key={v} value={v}>{v}</SelectItem>)}</SelectContent>
                     </Select>
+                    {r.packing_status && <span className="mt-0.5 block text-[10px] text-muted-foreground" title="Latest packing list for this order">Packing: {r.packing_status}</span>}
                   </TableCell>
                   <TableCell className="tnum">
                     <EditCell type="number" value={r.total || ''} display={r.total ? exact(r.total) : '—'} disabled={r.item_count > 0}

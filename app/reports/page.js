@@ -121,7 +121,7 @@ export default async function ReportsPage({ searchParams }) {
       ...myReportDepts.map((dept) => ({
         department: dept,
         reports: reportsForDepartment(dept).map((r) => ({
-          key: r.key, title: r.title,
+          key: r.key, title: r.title, subgroup: r.subgroup || null,
           needsCompany: r.needsCompany !== false,
           hasOwnPdfControl: !!r.hasOwnPdfControl,
           hasOwnControls: !!r.hasOwnControls,
@@ -144,7 +144,7 @@ export default async function ReportsPage({ searchParams }) {
   if (!canAccessDepartment(user, department)) redirect(roleHome(user));
 
   const reports = reportsForDepartment(department).map((r) => ({
-    key: r.key, title: r.title,
+    key: r.key, title: r.title, subgroup: r.subgroup || null,
     needsCompany: r.needsCompany !== false,
     hasOwnPdfControl: !!r.hasOwnPdfControl,
     hasOwnControls: !!r.hasOwnControls,

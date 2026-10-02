@@ -114,6 +114,13 @@ export async function POST(req) {
   if (productLines?.length) {
     await writeLeadProducts(id, productLines, { setExpectedValue: !(Number(b.expected_value) > 0) });
   }
+  // Add-on / cross-sell and AMC enquiries (SYSTEM.md §5dr): linked to an existing customer, tagged by type.
+  const enquiryType = b.enquiry_type === 'amc' ? 'amc' : 'sales';
+  const linkedCustomer = b.converted_customer_id ? await queryOne('SELECT id FROM customers WHERE id = ?', [b.converted_customer_id]) : null;
+  if (enquiryType !== 'sales' || b.product_type || linkedCustomer) {
+    await execute('UPDATE leads SET enquiry_type = ?, product_type = COALESCE(?, product_type), converted_customer_id = COALESCE(?, converted_customer_id) WHERE id = ?',
+      [enquiryType, b.product_type || null, linkedCustomer?.id || null, id]);
+  }
   await audit('lead_created', { actor: user.username, detail: leadName });
   return NextResponse.json({ id });
 }

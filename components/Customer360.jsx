@@ -5,6 +5,8 @@
 // base (with warranty) and competitors, from GET /api/customers/[id]/overview. "Open in Reports"
 // links open a Sales report pre-filtered to this customer (?customer=).
 import { useEffect, useState } from 'react';
+import dynamic from 'next/dynamic';
+import { useRouter } from 'next/navigation';
 import { api, showToast } from '@/lib/client';
 import { formatMoney, formatDate } from '@/lib/format';
 import { Badge } from '@/components/ui/badge';
@@ -13,6 +15,8 @@ import { Input } from '@/components/ui/input';
 import { TrashIcon } from 'lucide-react';
 import { companyShort } from '@/lib/company-filter.mjs';
 import { actionTypeLabel } from '@/lib/action-types.mjs';
+// Dynamic (not static) import: SalesWorkspace already imports this file, so a static one would be a cycle.
+const AddEnquiryDialog = dynamic(() => import('./SalesWorkspace').then(m => m.AddEnquiryDialog), { ssr: false });
 
 const WARRANTY = {
   active: w => `Warranty to ${formatDate(w.end)} (${w.daysLeft} days left)`,
@@ -44,8 +48,21 @@ export default function Customer360({ customerId }) {
   const [d, setD] = useState(null);
   const [showPast, setShowPast] = useState(false);
   const [comp, setComp] = useState({ competitor: '', product: '', price: '' });
+  const router = useRouter();
+  const [enq, setEnq] = useState(null); // { initial, refs } while the add-on enquiry dialog is open
   const load = () => api(`/api/customers/${customerId}/overview`).then(setD).catch(err => showToast(err.message, 'error'));
   useEffect(() => { load(); }, [customerId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Add-on / cross-sell: an enquiry pre-filled from this customer, tagged 'Existing Customer' and linked to them.
+  async function startEnquiry(extra = {}) {
+    try {
+      const [users, salesProducts, stages] = await Promise.all([api('/api/sales-users'), api('/api/sales-products'), api('/api/sales-stages')]);
+      const c = d.customer || {};
+      setEnq({ refs: { users, salesProducts, stages }, initial: {
+        organization: String(c.name || '').toUpperCase(), address: c.address || '', phone: c.phone || '', email: c.email || '',
+        source: 'Existing Customer', converted_customer_id: customerId, ...extra } });
+    } catch (err) { showToast(err.message, 'error'); }
+  }
 
   async function addCompetitor() {
     if (!comp.competitor.trim()) return;
@@ -74,6 +91,27 @@ export default function Customer360({ customerId }) {
           <div key={l} className="rounded-lg border p-2"><div className="text-xs text-muted-foreground">{l}</div><div className="text-sm font-semibold tnum">{v}</div></div>
         ))}
       </div>
+
+      {(() => {
+        const ops = d.installedBase.filter(it => it.warranty.status === 'expired' || (it.warranty.status === 'active' && it.warranty.daysLeft <= 90));
+        const hasAmc = d.serviceContracts.some(c => c.status === 'active');
+        return (
+          <Section title="Add-on & cross-sell opportunities" count={ops.length + (d.installedBase.length && !hasAmc ? 1 : 0)}>
+            <div className="flex flex-col gap-1.5">
+              {ops.map(it => (
+                <Row key={it.id}><span>{it.item_description}<span className="ml-1 text-xs text-muted-foreground">{it.warranty.status === 'expired' ? 'warranty ended' : `warranty ends in ${it.warranty.daysLeft} days`}</span></span>
+                  <Button size="sm" variant="outline" onClick={() => startEnquiry({ product: it.item_description, notes: `Warranty follow-up on ${it.item_description}${it.so_no ? ` (${it.so_no})` : ''}` })}>Create enquiry</Button></Row>
+              ))}
+              {d.installedBase.length > 0 && !hasAmc && (
+                <Row><span>No active AMC for the equipment this customer bought</span>
+                  <Button size="sm" variant="outline" onClick={() => startEnquiry({ enquiry_type: 'amc', notes: 'AMC offer for installed equipment' })}>Offer an AMC</Button></Row>
+              )}
+              {ops.length === 0 && (d.installedBase.length === 0 || hasAmc) && <p className="text-sm text-muted-foreground">Nothing expiring in the next 90 days.</p>}
+              <div><Button size="sm" onClick={() => startEnquiry()}>New add-on enquiry</Button></div>
+            </div>
+          </Section>
+        );
+      })()}
 
       <Section title="Enquiries" count={d.enquiries.length} report="sales_call_funnel" customerId={customerId}>
         <Rows items={d.enquiries} empty="No enquiries linked to this customer." render={l => (
@@ -161,6 +199,7 @@ export default function Customer360({ customerId }) {
           <Row key={n.id}><span className="min-w-0 flex-1 truncate">{n.note_type && n.note_type !== 'note' && <span className="mr-1.5 rounded border px-1 text-[10px] font-medium text-muted-foreground">{actionTypeLabel(n.note_type)}</span>}{n.content}</span><span className="text-xs text-muted-foreground">{formatDate(n.visit_date || n.created_at)} · {n.created_by}</span></Row>
         )} />
       </Section>
+      {enq && <AddEnquiryDialog users={enq.refs.users} salesProducts={enq.refs.salesProducts} stages={enq.refs.stages} initial={enq.initial} router={router} onClose={() => { setEnq(null); load(); }} />}
     </div>
   );
 }

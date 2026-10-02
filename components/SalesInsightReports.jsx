@@ -18,7 +18,7 @@ import { employeeMetrics, monthlySeries, weeklyActivity, addMonths, owners } fro
 import { BarList, ReportShell } from '@/components/ReportKit';
 import { reasonCategory } from '@/lib/lost-reasons.mjs';
 
-function Kpis({ items }) {
+export function Kpis({ items }) {
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
       {items.map(([label, value, hint]) => (
@@ -31,7 +31,7 @@ function Kpis({ items }) {
   );
 }
 
-function Chart({ title, children }) {
+export function Chart({ title, children }) {
   return (
     <div className="rounded-lg border p-3">
       <div className="mb-2 text-sm font-medium">{title}</div>

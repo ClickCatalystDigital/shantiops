@@ -29,5 +29,22 @@ Sales → **Setup → Portal Access** → find the customer → **Enable** → *
 ## 8. Lost deal (optional)
 On another enquiry click **Order Lost** → pick a reason → Sales → Reports → **Lost Reasons**.
 
+## 9. Plan the week (Weekly Planner)
+Sales → **Enquiries → Weekly Planner**. Each day shows the follow-ups planned in the Diary; change a date to move one, and (Sales Head) pick another person to hand it over — they get a bell notification. The red box lists follow-ups that are overdue with nothing logged since.
+
+## 10. Sell more to existing customers
+Sales → **Customers** → open a customer → **Add-on & cross-sell opportunities** → **Create enquiry** (warranty ended / ending) or **Offer an AMC**. The enquiry opens pre-filled, tagged *Existing Customer* and linked to the customer.
+
+## 11. AMC and preventive maintenance
+Sales → **Deals → AMC**. Open a contract: days committed / left, value, received, cost and profit. Add a cost entry; the profit updates. **Preventive maintenance due** lists the next visit per contract and per item under warranty; **Schedule visit** puts it on the Home calendar.
+
+## 12. Library
+Sales → **Setup → Library** → upload a mailer / presentation / price list → everyone in Sales can download it.
+
+## 13. MIS reports
+Reports → **Sales** → **MIS** group (Employee Wise / Source Wise / Branch Wise Order, Win-Loss, Funnel Ageing, Order Time Cycle, Lead Generation, Call Log, Last Contact, Employee Daily Work, Employee Movement, New Customer Added, Selling vs Cost Price, Employee Usage, AMC Profitability). Every report downloads as CSV / Excel. The other Sales reports sit under **More Sales reports**.
+
+Demo AMC contracts were added with `node --env-file=.env.local scripts/seed-demo-mis.mjs --apply`; remove them with `--rollback`.
+
 ## Clean up
 Delete demo enquiries from the enquiry sheet (**Delete**), demo quotations with the bin icon, and tell me the order/invoice numbers so I remove them from the database.

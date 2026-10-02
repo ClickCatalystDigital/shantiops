@@ -27,8 +27,10 @@ import {
   CheckSquareIcon, ContactIcon, MessageCircleIcon, MailIcon, TagIcon,
   UndoIcon, IndianRupeeIcon, ReceiptIcon, DownloadIcon, UploadIcon,
   ClipboardListIcon, BanknoteIcon, Building2Icon, PackageIcon, TargetIcon, StarIcon,
-  PencilIcon, ClockIcon,
+  PencilIcon, ClockIcon, CalendarRangeIcon, WrenchIcon, LibraryIcon,
 } from 'lucide-react';
+import { WeeklyPlannerTab, LibraryTab } from '@/components/SalesExtras';
+import { AmcTab } from '@/components/SalesAmc';
 import { api, showToast } from '@/lib/client';
 import { todayISO } from '@/lib/date';
 import { formatMoney, formatDate } from '@/lib/format';
@@ -865,18 +867,19 @@ function Field2({ label, required, wide, children }) {
   );
 }
 
-export function AddEnquiryDialog({ leads = [], users, salesProducts, stages = [], onClose, router }) {
+export function AddEnquiryDialog({ leads = [], users, salesProducts, stages = [], onClose, router, initial = null }) {
   const [f, setF] = useState({
     enquiry_date: todayISO(), organization: '', address: '', website: '', email: '',
     assigned_to: '', reference: '', short_name: '', territory: '', district: '', sub_location: '',
     phone: '', order_expected_in: '', week_number: '', notes: '', industry: '',
     account_manager: '', initiated_by: '', district_code: '', pin_code: '', sales_call_status: DEFAULT_STAGE, expected_value: '',
-    telephone: '', source: '',
+    telephone: '', source: '', enquiry_type: 'sales',
+    ...(initial ? Object.fromEntries(Object.entries(initial).filter(([k]) => k !== 'product')) : {}),
   });
   const similarOrgs = useSimilarCustomers({ name: f.organization, phone: f.phone });
   const key = customerKey(f.organization);
   const sameOrgEnquiries = key ? leads.filter(l => customerKey(l.company_name || l.lead_name || '') === key) : [];
-  const [products, setProducts] = useState([blankProductLine()]);
+  const [products, setProducts] = useState([initial?.product ? { ...blankProductLine(), description: initial.product } : blankProductLine()]);
   const [saving, setSaving] = useState(false);
   const [customSource, setCustomSource] = useState(false);
   const set = (k) => (v) => setF(prev => ({ ...prev, [k]: v }));
@@ -909,6 +912,7 @@ export function AddEnquiryDialog({ leads = [], users, salesProducts, stages = []
             <Field2 label="Organization" required wide><Input value={f.organization} onChange={e => set('organization')(e.target.value.toUpperCase())} className="uppercase" autoFocus /><SimilarCustomersHint matches={similarOrgs} />{sameOrgEnquiries.length > 0 && <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">{sameOrgEnquiries.length} enquiry(ies) already exist for this organization ({sameOrgEnquiries.slice(0, 3).map(l => l.sales_call_status || DEFAULT_STAGE).join(', ')}) — open one instead if it is the same.</p>}</Field2>
             <Field2 label="Short name"><Input value={f.short_name} onChange={setText('short_name')} /></Field2>
             <Field2 label="Segment"><Input value={f.industry} onChange={setText('industry')} /></Field2>
+            <Field2 label="Enquiry type"><label className="flex h-9 items-center gap-2 text-sm"><Checkbox checked={f.enquiry_type === 'amc'} onCheckedChange={v => set('enquiry_type')(v ? 'amc' : 'sales')} />AMC / service enquiry</label></Field2>
             <Field2 label="Address" required wide><Textarea rows={2} value={f.address} onChange={setText('address')} /></Field2>
             <Field2 label="State"><SearchableSelect value={f.territory} onChange={set('territory')} options={INDIA_STATES} displayValue={f.territory} onTextChange={set('territory')} placeholder="Select or type…" /></Field2>
             <Field2 label="District"><SearchableSelect value={f.district} onChange={set('district')} options={districtOpts} displayValue={f.district} onTextChange={set('district')} placeholder="Select or type…" /></Field2>
@@ -1050,6 +1054,7 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
   const [views, setViews] = useState(savedViews);
   const [viewName, setViewName] = useState('');
   const [unassignedOnly, setUnassignedOnly] = useState(false);
+  const [amcOnly, setAmcOnly] = useState(false); // AMC / service enquiries (enquiry_type = 'amc')
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [page, setPage] = useState(0);
   const [size, setSize] = useState(25);
@@ -1069,6 +1074,7 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
     (filters.source === 'all' || l.source === filters.source) &&
     (filters.branch === 'all' || String(l.branch_id) === filters.branch) &&
     (!unassignedOnly || !l.account_manager) &&
+    (!amcOnly || l.enquiry_type === 'amc') &&
     (!filters.search || l.lead_name.toLowerCase().includes(filters.search.toLowerCase()) || (l.company_name || '').toLowerCase().includes(filters.search.toLowerCase()))
   );
   // "Group by customer": same-customer enquiries sit together, in the order their first one appears.
@@ -1078,7 +1084,7 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
     filteredRaw.forEach(l => { const k = enquiryGroupKey(l); if (!order.has(k)) order.set(k, order.size); });
     return [...filteredRaw].sort((a, b) => order.get(enquiryGroupKey(a)) - order.get(enquiryGroupKey(b)));
   }, [filteredRaw, groupBy]);
-  useEffect(() => { setPage(0); }, [filters, unassignedOnly, groupBy]);
+  useEffect(() => { setPage(0); }, [filters, unassignedOnly, groupBy, amcOnly]);
   const shown = filtered.slice(page * size, (page + 1) * size); // 5,000+ enquiries: never render them all
   const teamOpts = users.map(u => ({ value: u.username, label: u.display_name || u.username }));
 
@@ -1190,6 +1196,9 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
             <Button size="sm" variant={unassignedOnly ? 'default' : 'outline'} onClick={() => setUnassignedOnly(v => !v)}>
               {unassignedOnly ? 'Showing unassigned' : `No A/C Manager (${unassignedCount})`}
             </Button>
+          )}
+          {leads.some(l => l.enquiry_type === 'amc') && (
+            <Button size="sm" variant={amcOnly ? 'default' : 'outline'} onClick={() => setAmcOnly(v => !v)}>AMC enquiries ({leads.filter(l => l.enquiry_type === 'amc').length})</Button>
           )}
           <div className="col-span-2 ml-auto hidden items-center gap-1.5 sm:flex">
             <Input placeholder="Name this view…" value={viewName} onChange={e => setViewName(e.target.value)} className="w-44" />
@@ -3530,12 +3539,14 @@ const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 const PANEL_GROUPS = [
   { label: 'Enquiries', items: [
     { key: 'leads', label: 'Enquiries', icon: UserPlusIcon, description: 'Every enquiry through the funnel — list or board' },
+    { key: 'planner', label: 'Weekly Planner', icon: CalendarRangeIcon, description: 'Plan the week\'s follow-ups — move them between days and people' },
     { key: 'trade_requests', label: 'Trade Requests', icon: ClipboardListIcon, description: 'Material requests raised by Installation' },
     { key: 'customers', label: 'Customers', icon: UsersIcon, description: 'Accounts, contacts, addresses and Customer 360' },
   ] },
   { label: 'Deals', items: [
     { key: 'quotations', label: 'Quotations', icon: FileTextIcon, description: 'Proposals sent to customers' },
     { key: 'sale_orders', label: 'Sale Orders', icon: ShoppingCartIcon, description: 'Accepted orders' },
+    { key: 'amc', label: 'AMC', icon: WrenchIcon, description: 'Annual maintenance contracts, value, profit and preventive-maintenance due' },
   ] },
   { label: 'Payments', items: [
     { key: 'payment_orders', label: 'Order Tracker', icon: ClipboardListIcon, description: 'Order stages, value and payment position' },
@@ -3544,6 +3555,7 @@ const PANEL_GROUPS = [
     { key: 'returns', label: 'Returns', icon: UndoIcon, description: 'Returned material against a Sale Order' },
   ] },
   { label: 'Setup', items: [
+    { key: 'library', label: 'Library', icon: LibraryIcon, description: 'Mailers, presentations and price lists for the whole team' },
     { key: 'team', label: 'Team', icon: ContactIcon, description: 'Auto-assign new leads round-robin' },
     { key: 'email_setup', label: 'Email', icon: MailIcon, description: 'Sender mailboxes, test/live switch and recent emails' },
     { key: 'portal_access', label: 'Portal Access', icon: UsersIcon, description: 'Customer portal logins and invites' },
@@ -3640,6 +3652,9 @@ export default function SalesWorkspace({ saleOrders, leads, customers, quotation
           {activePanel.key === 'trade_requests' && <TradeRequestsTab tradeRequests={tradeRequests} router={router} />}
           {activePanel.key === 'returns' && <ReturnsTab returns={returns} saleOrders={saleOrders} inventoryItems={inventoryItems} router={router} />}
           {activePanel.key === 'tasks' && <AllTasksTab users={users} />}
+          {activePanel.key === 'planner' && <WeeklyPlannerTab users={users} isSalesHead={isSalesHead} />}
+          {activePanel.key === 'amc' && <AmcTab />}
+          {activePanel.key === 'library' && <LibraryTab isSalesHead={isSalesHead} />}
           {activePanel.key === 'email_setup' && <EmailSetupTab />}
           {activePanel.key === 'portal_access' && (isSalesHead ? <PortalAccessTab /> : <p className="p-4 text-sm text-muted-foreground">Only the Sales Head can manage portal access.</p>)}
           {activePanel.key === 'team' && <TeamTab users={users} departments={departments} />}
