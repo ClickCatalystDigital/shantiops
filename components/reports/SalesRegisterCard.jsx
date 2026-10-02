@@ -6,11 +6,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { api, showToast } from '@/lib/client';
 import { fmt } from './TrialBalanceCard';
 
-export default function SalesRegisterCard({ company }) {
+export default function SalesRegisterCard() {
   const [data, setData] = useState(null);
   useEffect(() => {
-    api(`/api/reports/sales-register?company=${encodeURIComponent(company)}`).then(setData).catch(err => showToast(err.message, 'error'));
-  }, [company]);
+    // Which company is decided by the top-bar selector (read on the server).
+    api('/api/reports/sales-register').then(setData).catch(err => showToast(err.message, 'error'));
+  }, []);
   if (!data) return null;
   return (
     <Card>

@@ -47,8 +47,8 @@ Sales → **Deals → AMC**. Open a contract: days committed / left, value, rece
 ## 12. Library
 Sales → **Setup → Library** → upload a mailer / presentation / price list → everyone in Sales can download it.
 
-## 13. MIS reports
-Reports → **Sales** → **MIS** group (Employee Wise / Source Wise / Branch Wise Order, Win-Loss, Funnel Ageing, Order Time Cycle, Lead Generation, Call Log, Last Contact, Employee Daily Work, Employee Movement, New Customer Added, Selling vs Cost Price, Employee Usage, AMC Profitability). Every report downloads as CSV / Excel. The other Sales reports sit under **More Sales reports**.
+## 13. Reports
+Reports → **Sales**: reports are grouped by what you want to know — **Overview**, **Sales Order / AMC Order** (Sales Order vs Collection, Dispatch Sales Order Report, Sales Register, AMC Profitability), **Funnel & Enquiries**, **Order Analysis** (by employee, source, reference, branch), **Sales Calls & Follow-up**, **Quotations & Pricing**, **Team Performance**, **Customers & Feedback**. The company dropdown at the top right narrows orders, quotations, invoices and payments; enquiry and follow-up reports are shared by both companies. Most reports download as CSV / Excel.
 
 Demo AMC contracts were added with `node --env-file=.env.local scripts/seed-demo-mis.mjs --apply`; remove them with `--rollback`.
 

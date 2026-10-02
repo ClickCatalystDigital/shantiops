@@ -3,8 +3,8 @@
 import { NextResponse } from 'next/server';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { getSalesRegisterLines } from '@/lib/data';
-import { COMPANY_NAMES } from '@/lib/qc-doc-pdf.js';
 import { scopeRows } from '@/lib/sales-visibility';
+import { getSelectedCompanyFor } from '@/lib/company-filter-server';
 
 // `user` (optional) scopes the register to a Sales member's own invoices (plan 2a); the JSON route
 // and the PDF/Excel export both pass it.
@@ -24,7 +24,8 @@ export async function GET(req) {
   const denied = requireDepartment(user, 'Sales');
   if (denied) return denied;
   const { searchParams } = new URL(req.url);
-  const company = COMPANY_NAMES.includes(searchParams.get('company')) ? searchParams.get('company') : COMPANY_NAMES[0];
+  // Follows the company picked in the top bar (null = All companies); the report has no company buttons of its own.
+  const company = getSelectedCompanyFor(user);
   const from = searchParams.get('from') || undefined;
   const to = searchParams.get('to') || undefined;
   return NextResponse.json(await computeSalesRegister(company, { from, to, user }));

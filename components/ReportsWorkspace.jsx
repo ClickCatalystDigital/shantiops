@@ -10,7 +10,7 @@
 // imported here — it pulls in server-only DB code via each report's compute() route module — so the
 // server page (app/reports/page.js) passes down only serializable {key, title} metadata, and this
 // file owns the client-safe screen-component mapping.
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 import {
@@ -25,7 +25,7 @@ import {
   CalendarClockIcon, PackageCheckIcon,
   TableIcon, CalendarDaysIcon, MapPinIcon, SlidersHorizontalIcon, AlertCircleIcon, RepeatIcon,
   MessageSquareIcon, UserCheckIcon, FileTextIcon, XCircleIcon, CheckCircleIcon, CreditCardIcon,
-  Settings2Icon,
+  Settings2Icon, PhoneIcon,
   LayoutDashboardIcon,
   SwordsIcon,
 } from 'lucide-react';
@@ -64,6 +64,7 @@ import { TestCertificateRegisterCard, QcInspectionSummaryCard, NcrRegisterCard, 
 import ManagementReportCard from '@/components/executive/ManagementReportCard';
 import { EmployeePerformance360Report, SalesOverviewReport, CompetitorAnalysisReport, LostReasonsReport } from '@/components/SalesInsightReports';
 import OrderBookReport from '@/components/OrderBookReport';
+import { DispatchSalesOrderReport } from '@/components/OrderManagementReports';
 import {
   SourceWiseOrderReport, ReferenceWiseOrderReport, BranchWiseOrderReport, EmployeeWiseOrderReport, WinLossReport, FunnelAgeingReport,
   OrderTimeCycleReport, LeadGenerationReport, CallLogReport, LastContactReport, DailyWorkReport, EmployeeMovementReport,
@@ -84,6 +85,26 @@ import {
   EmployeeExpenseReport, SalesCallCustomizeReport,
 } from '@/components/SalesCallReportPanels';
 import { useCompanyDefault } from '@/lib/use-company-default';
+import { selectedCompanyClient } from '@/lib/company-filter.mjs';
+
+// Sales report sections, in the order they show in the sidebar (a department's reports that carry a
+// `subgroup` fold into one nested item each).
+const SUBGROUP_ORDER = ['Overview', 'Sales Order / AMC Order', 'Funnel & Enquiries', 'Order Analysis', 'Sales Calls & Follow-up', 'Quotations & Pricing', 'Team Performance', 'Customers & Feedback'];
+const SUBGROUP_ICON = {
+  'Overview': LayoutDashboardIcon, 'Sales Order / AMC Order': WalletIcon, 'Funnel & Enquiries': FilterIcon, 'Order Analysis': PieChartIcon,
+  'Sales Calls & Follow-up': PhoneIcon, 'Quotations & Pricing': FileTextIcon, 'Team Performance': UserCheckIcon, 'Customers & Feedback': MessageSquareIcon,
+};
+// Order of reports inside a section (anything not listed keeps its catalog order, after these).
+const KEY_ORDER = ['sales_overview', 'sales_pipeline', 'sales_call_funnel', 'order_book', 'dispatch_sales_order', 'sales-register', 'amc_profitability',
+  'funnel_ageing', 'lead_generation', 'order_time_cycle', 'win_loss', 'lost_reasons', 'competitor_analysis', 'employee_wise_order', 'order_by_source', 'order_by_reference', 'order_by_branch',
+  'sales_call_prospect_summary', 'sales_call_date_wise', 'sales_call_location_wise', 'call_log', 'last_contact', 'neglected_sales_call', 'customer_follow_up', 'sales_call_customize',
+  'quotation_listing', 'selling_vs_cost', 'employee_performance_360', 'agent_performance', 'daily_work', 'employee_movement', 'employee_follow_up', 'employee_expense', 'employee_usage',
+  'new_customers', 'client_feedback', 'feedback_not_responded', 'feedback_response'];
+// Sales reports built from enquiries, the Diary or people — shared by every company, so the top-bar
+// company selector cannot narrow them (orders, quotations, invoices and payments are narrowed).
+const SHARED_ACROSS_COMPANIES = new Set(['new_customers', 'employee_usage', 'call_log', 'last_contact', 'daily_work', 'employee_movement', 'lead_generation',
+  'funnel_ageing', 'sales_call_prospect_summary', 'sales_call_date_wise', 'sales_call_location_wise', 'sales_call_funnel', 'neglected_sales_call', 'customer_follow_up',
+  'client_feedback', 'feedback_not_responded', 'feedback_response', 'employee_follow_up', 'employee_expense', 'sales_call_customize', 'sales_pipeline', 'lost_reasons', 'competitor_analysis']);
 
 // Exported so app/reports/page.js's consolidated admin/manager view (all departments' reports in
 // one sidebar, see the `groups` prop below) can reuse the exact same key→component mapping instead
@@ -157,6 +178,7 @@ export const SCREEN = {
   'sales_call_funnel': SalesCallFunnelReport,
   'sales_overview': SalesOverviewReport,
   'order_book': OrderBookReport,
+  'dispatch_sales_order': DispatchSalesOrderReport,
   'employee_performance_360': EmployeePerformance360Report,
   // MIS pack (SYSTEM.md §5dr)
   'employee_wise_order': EmployeeWiseOrderReport, 'order_by_source': SourceWiseOrderReport, 'order_by_reference': ReferenceWiseOrderReport,
@@ -195,7 +217,7 @@ const ICON = {
   'agent_performance': UserRoundIcon,
   'lead_funnel': UsersIcon, 'leads_by_source': Share2Icon, 'campaign_performance': MegaphoneIcon,
   'sales_call_prospect_summary': TableIcon, 'sales_call_date_wise': CalendarDaysIcon,
-  'sales_call_location_wise': MapPinIcon, 'sales_call_funnel': SlidersHorizontalIcon, 'sales_overview': LayoutDashboardIcon, 'order_book': WalletIcon, 'employee_performance_360': UserCheckIcon, 'competitor_analysis': SwordsIcon, 'lost_reasons': SwordsIcon,
+  'sales_call_location_wise': MapPinIcon, 'sales_call_funnel': SlidersHorizontalIcon, 'sales_overview': LayoutDashboardIcon, 'order_book': WalletIcon, 'dispatch_sales_order': PackageCheckIcon, 'employee_performance_360': UserCheckIcon, 'competitor_analysis': SwordsIcon, 'lost_reasons': SwordsIcon,
   'neglected_sales_call': AlertCircleIcon, 'customer_follow_up': RepeatIcon,
   'client_feedback': MessageSquareIcon, 'employee_follow_up': UserCheckIcon,
   'quotation_listing': FileTextIcon, 'feedback_not_responded': XCircleIcon,
@@ -233,15 +255,21 @@ export default function ReportsWorkspace({ department, reports, groups, companie
   const active = allReports.find(r => r.key === key) || allReports[0];
   const Screen = active ? SCREEN[active.key] : null;
   const showCompanySwitcher = !active?.hasOwnControls && active?.needsCompany !== false;
+  const [pickedCompany, setPickedCompany] = useState(null);
+  useEffect(() => { setPickedCompany(selectedCompanyClient()); }, []);
 
   // A report may carry `subgroup` (e.g. Sales 'MIS'); same-subgroup reports fold into one nested sidebar item.
   // Reports with no subgroup stay flat, so every other department renders exactly as before.
   const toItems = list => {
     const out = []; const at = {};
+    // Keep each Sales section together and in a fixed order; lists with no sections keep their order.
+    const rank = r => (r.subgroup ? (SUBGROUP_ORDER.indexOf(r.subgroup) + 1 || 99) : 0);
+    const pos = r => { const i = KEY_ORDER.indexOf(r.key); return i < 0 ? 999 : i; };
+    list = list.some(r => r.subgroup) ? [...list].sort((a, b) => rank(a) - rank(b) || pos(a) - pos(b)) : list;
     for (const r of list) {
       const item = { key: r.key, label: r.title, icon: ICON[r.key] || BarChart3Icon };
       if (!r.subgroup) { out.push(item); continue; }
-      if (!(r.subgroup in at)) { at[r.subgroup] = out.length; out.push({ key: `grp-${r.subgroup}`, label: r.subgroup, icon: r.subgroup === 'MIS' ? LayoutDashboardIcon : BarChart3Icon, group: true, children: [] }); }
+      if (!(r.subgroup in at)) { at[r.subgroup] = out.length; out.push({ key: `grp-${r.subgroup}`, label: r.subgroup, icon: SUBGROUP_ICON[r.subgroup] || BarChart3Icon, group: true, children: [] }); }
       out[at[r.subgroup]].children.push(item);
     }
     return out;
@@ -291,6 +319,11 @@ export default function ReportsWorkspace({ department, reports, groups, companie
               </div>
             )}
           </div>
+        )}
+        {pickedCompany && SHARED_ACROSS_COMPANIES.has(active?.key) && (
+          <p className="rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">
+            Enquiries, calls and follow-ups are shared by all companies, so this report shows everyone's — it is not narrowed to {pickedCompany}.
+          </p>
         )}
         {Screen ? (active?.hasOwnControls ? <Screen companies={companies} {...crmData} /> : <Screen company={company} />) : <p className="text-sm text-muted-foreground">No report selected.</p>}
       </div>

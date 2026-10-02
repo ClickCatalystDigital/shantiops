@@ -9,6 +9,7 @@ import { getReport } from '@/lib/reports/catalog';
 import { renderCatalogPdf } from '@/lib/reports/render';
 import { toWorkbook, toCsv } from '@/lib/reports/excel';
 import { currentFyBounds } from '@/lib/date';
+import { getSelectedCompanyFor } from '@/lib/company-filter-server';
 
 export const runtime = 'nodejs';
 
@@ -30,7 +31,10 @@ export async function GET(req, { params }) {
   const format = searchParams.get('format') || 'pdf';
   if (!['pdf', 'xlsx', 'csv'].includes(format)) return NextResponse.json({ error: 'format must be pdf, xlsx or csv' }, { status: 400 });
 
-  const company = COMPANY_NAMES.includes(searchParams.get('company')) ? searchParams.get('company') : COMPANY_NAMES[0];
+  // followsGlobalCompany reports (Sales) use the company picked in the top bar (null = All) and have no buttons of their own.
+  const company = report.followsGlobalCompany
+    ? getSelectedCompanyFor(user)
+    : (COMPANY_NAMES.includes(searchParams.get('company')) ? searchParams.get('company') : COMPANY_NAMES[0]);
   let from = searchParams.get('from') || undefined;
   let to = searchParams.get('to') || undefined;
   if (report.heavy && !from && !to) ({ from, to } = currentFyBounds());
@@ -52,9 +56,11 @@ export async function GET(req, { params }) {
   }
   const table = report.toTable(result);
   const totals = report.totals ? report.totals(result) : [];
-  const subtitle = report.subtitle
+  const baseSubtitle = report.subtitle
     ? report.subtitle(result, { from, to, asOf, period })
     : (from && to ? `${from} to ${to}` : undefined);
+  // The PDF letterhead falls back to the first company; say so when the selector is on "All companies".
+  const subtitle = report.followsGlobalCompany && !company ? [baseSubtitle, 'All companies'].filter(Boolean).join(' · ') : baseSubtitle;
 
   if (format === 'csv') {
     return new NextResponse('\ufeff' + toCsv({ table }), {

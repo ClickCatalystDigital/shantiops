@@ -4,6 +4,8 @@
 import { NextResponse } from 'next/server';
 import { queryAll } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment, isDepartmentHead } from '@/lib/auth';
+import { getSelectedCompanyFor } from '@/lib/company-filter-server';
+import { COMPANY_NAMES } from '@/lib/company-profiles.js';
 
 export async function GET(req) {
   const user = await getFreshSessionUser();
@@ -15,14 +17,19 @@ export async function GET(req) {
   if (what === 'prices') {
     if (!head) return NextResponse.json({ error: 'Only the Sales Head can see cost prices' }, { status: 403 });
     // List price + cost per product, with the average rate actually quoted and actually sold (cancelled orders left out).
+    // With a company picked in the top bar, "quoted" and "sold" count only that company's quotations and orders.
+    const company = getSelectedCompanyFor(user);
+    const qc = company ? ' AND COALESCE(q.company, ?) = ?' : '';
+    const sc = company ? ' AND COALESCE(so.company, ?) = ?' : '';
+    const qa = company ? [COMPANY_NAMES[0], company] : [];
     const rows = await queryAll(`
       SELECT p.id, p.product_code, p.product_name, p.price, p.cost_price,
-        (SELECT AVG(qi.rate) FROM quotation_items qi JOIN quotations q ON q.id = qi.quotation_id WHERE qi.product_id = p.id AND q.status != 'draft') AS quoted_rate,
-        (SELECT COUNT(*) FROM quotation_items qi JOIN quotations q ON q.id = qi.quotation_id WHERE qi.product_id = p.id AND q.status != 'draft') AS quoted_lines,
-        (SELECT SUM(si.qty * si.rate * (1 - COALESCE(si.discount_pct,0)/100.0)) / NULLIF(SUM(si.qty),0) FROM sale_order_items si JOIN sale_orders so ON so.id = si.sale_order_id WHERE si.product_id = p.id AND COALESCE(so.status,'') != 'cancelled') AS sold_rate,
-        (SELECT SUM(si.qty) FROM sale_order_items si JOIN sale_orders so ON so.id = si.sale_order_id WHERE si.product_id = p.id AND COALESCE(so.status,'') != 'cancelled') AS sold_qty
+        (SELECT AVG(qi.rate) FROM quotation_items qi JOIN quotations q ON q.id = qi.quotation_id WHERE qi.product_id = p.id AND q.status != 'draft'${qc}) AS quoted_rate,
+        (SELECT COUNT(*) FROM quotation_items qi JOIN quotations q ON q.id = qi.quotation_id WHERE qi.product_id = p.id AND q.status != 'draft'${qc}) AS quoted_lines,
+        (SELECT SUM(si.qty * si.rate * (1 - COALESCE(si.discount_pct,0)/100.0)) / NULLIF(SUM(si.qty),0) FROM sale_order_items si JOIN sale_orders so ON so.id = si.sale_order_id WHERE si.product_id = p.id AND COALESCE(so.status,'') != 'cancelled'${sc}) AS sold_rate,
+        (SELECT SUM(si.qty) FROM sale_order_items si JOIN sale_orders so ON so.id = si.sale_order_id WHERE si.product_id = p.id AND COALESCE(so.status,'') != 'cancelled'${sc}) AS sold_qty
       FROM sales_products p WHERE p.active = 1
-      ORDER BY (sold_qty IS NULL), sold_qty DESC, p.product_name LIMIT 1500`);
+      ORDER BY (sold_qty IS NULL), sold_qty DESC, p.product_name LIMIT 1500`, [...qa, ...qa, ...qa, ...qa]);
     return NextResponse.json(rows);
   }
 
@@ -50,10 +57,14 @@ export async function GET(req) {
   }
   if (what === 'amc') {
     if (!head) return NextResponse.json({ error: 'Only the Sales Head can see AMC profitability' }, { status: 403 });
+    // A contract belongs to its project's company (default company when it has no project). Follows the top-bar selector.
+    const company = getSelectedCompanyFor(user);
     const rows = await queryAll(`
       SELECT c.id, c.contract_no, c.customer_name, c.status, c.start_date, c.end_date, c.contract_value, c.received_value,
         (SELECT COALESCE(SUM(amount),0) FROM service_contract_costs WHERE contract_id = c.id) AS cost
-      FROM service_contracts c ORDER BY c.end_date DESC LIMIT 500`);
+      FROM service_contracts c LEFT JOIN projects p ON p.id = c.project_id
+      ${company ? 'WHERE COALESCE(p.company, ?) = ?' : ''}
+      ORDER BY c.end_date DESC LIMIT 500`, company ? [COMPANY_NAMES[0], company] : []);
     return NextResponse.json(rows);
   }
   return NextResponse.json({ error: 'Unknown report data' }, { status: 400 });
