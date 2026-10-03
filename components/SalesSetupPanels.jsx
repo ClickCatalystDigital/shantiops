@@ -129,7 +129,7 @@ export function EmailSetupTab({ purpose = 'sales' }) {
           <CardTitle>My email</CardTitle>
           <CardDescription>{isProc ? 'Optional. If you save your own mailbox, RFQs you send go out from your address; otherwise the procurement mailbox is used.' : 'Optional. If you save your own mailbox, quotations you send go out from your address; otherwise the company mailbox is used.'}</CardDescription>
         </CardHeader>
-        <CardContent><MailboxForm scope="user" account={data.mine} title="My mailbox" onSaved={load} /></CardContent>
+        <CardContent><MailboxForm scope="user" purpose={purpose} account={data.mine} title="My mailbox" onSaved={load} /></CardContent>
       </Card>
       {data.isAdmin && (
         <Card>
