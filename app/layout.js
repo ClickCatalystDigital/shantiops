@@ -33,8 +33,14 @@ export default async function RootLayout({ children }) {
           {/* Extra bottom padding on mobile so content clears the fixed bottom tab bar (internal only). */}
           <div className={isInternal(user) ? 'pb-20 md:pb-0' : ''}>
             {needsDeviceSetup ? <DeviceSetupGate machine={machine} /> : children}
-            <footer className="py-5 text-center text-[11px] text-muted-foreground/70 print:hidden">
-              Shanti Ops · an <a href="https://ahromlabs.com" target="_blank" rel="noreferrer" className="underline-offset-2 hover:text-foreground hover:underline">ahromlabs.com</a> product
+            <footer className="mt-8 border-t bg-muted/50 print:hidden">
+              <div className="container flex flex-col items-center gap-1 py-3 text-xs text-muted-foreground sm:flex-row sm:justify-between">
+                <span>© {new Date().getFullYear()} Ahrom Labs. All rights reserved.</span>
+                <span>
+                  <span className="font-medium text-foreground">SB Ops</span> — an{' '}
+                  <a href="https://ahromlabs.com" target="_blank" rel="noreferrer" className="font-medium text-foreground underline-offset-2 hover:underline">ahromlabs.com</a> product
+                </span>
+              </div>
             </footer>
           </div>
         </TooltipProvider>
