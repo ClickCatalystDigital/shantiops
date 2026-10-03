@@ -143,6 +143,8 @@ function PhaseRow({ ph, index, expandable, expanded, onToggle }) {
   // Multi-unit split — a real per-unit count only present on an aggregate (split-order) phase;
   // undefined for every ordinary single-project order, which renders exactly as before this line.
   if (ph.unitProgress) statusText += ` (${ph.unitProgress.done} of ${ph.unitProgress.total} units)`;
+  // Single order: real counts from the job card stages / QC documents while the stage is under way.
+  if (ph.progress && ph.status === 'in_progress') statusText += ` (${ph.progress.done} of ${ph.progress.total} ${ph.progress.noun})`;
 
   if (!expandable) {
     return (
@@ -231,7 +233,7 @@ export default function PortalOrderProgress({ readOnly = false, projectId, custo
   const phaseDocs = {
     // Design stays open even with no drawings yet — the customer can send their own from here.
     design: items.length + (readOnly ? customerDrawings.length : 1),
-    testing: qcCertificates.length,
+    documentation: qcCertificates.length,
     packing: packingLists.length,
     installation: installationSummary ? installationSummary.total : installationUnits.length,
     commissioning: installationReports.length,
@@ -259,7 +261,7 @@ export default function PortalOrderProgress({ readOnly = false, projectId, custo
                     <PortalDrawingUploads projectId={projectId} initial={customerDrawings} readOnly={readOnly} />
                   </li>
                 )}
-                {ph.key === 'testing' && expanded && (
+                {ph.key === 'documentation' && expanded && (
                   <li className="flex flex-col gap-3 border-b py-3 pl-10">
                     {qcCertificates.map(doc => (
                       <DocumentRow key={doc.id}
