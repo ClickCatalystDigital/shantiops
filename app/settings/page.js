@@ -93,7 +93,12 @@ export default async function Settings() {
           <Separator />
           <h2 className="text-lg font-semibold">Sales</h2>
           <SalesSettings users={salesUsers} meUsername={user.username} />
-          {/* Also under Marketing → Lead sources; here for a Sales Head without Marketing access. */}
+        </>
+      )}
+      {!salesHead && isDepartmentHead(user, 'Marketing') && (
+        <>
+          <Separator />
+          <h2 className="text-lg font-semibold">Marketing · Lead sources</h2>
           <LeadSourcesPanel />
         </>
       )}

@@ -1,6 +1,6 @@
 'use client';
 
-// Marketing → Lead sources. One card per source (IndiaMART, TradeIndia, JustDial, Website), per company.
+// Settings → Lead sources (a tab for the Sales Head, its own section for a Marketing Head). One card per source (IndiaMART, TradeIndia, JustDial, Website), per company.
 // Pull sources take credentials (stored encrypted, never shown again); push sources get a secret
 // address to hand to the provider. Leads land straight in Sales → Enquiries (lib/lead-ingest.js).
 import { useEffect, useState } from 'react';
@@ -54,6 +54,9 @@ function SourceCard({ source, company, acc, reload }) {
 
       {showForm && (
         <div className="flex flex-col gap-2">
+          {source.steps && (
+            <ol className="flex list-decimal flex-col gap-0.5 pl-4 text-xs text-muted-foreground">{source.steps.map(t => <li key={t}>{t}</li>)}</ol>
+          )}
           {source.fields.map(f => (
             <div key={f.key} className="grid gap-1">
               <Label className="text-xs">{f.label}</Label>

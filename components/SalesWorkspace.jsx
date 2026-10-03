@@ -40,6 +40,7 @@ import { PaymentOrdersTab, PaymentLogTab, Pager, SIZES } from '@/components/Sale
 import { CreatePoFlow, SaleOrderDetailsSheet } from '@/components/SaleOrderWizard';
 import { LOST_REASONS, composeReason } from '@/lib/lost-reasons.mjs';
 import { EmailSetupTab, PortalAccessTab } from '@/components/SalesSetupPanels';
+import WhatsAppInbox from '@/components/WhatsAppInbox';
 import { ACTION_TYPES, actionTypeLabel } from '@/lib/action-types.mjs';
 import ProductSearchField from '@/components/ProductSearchField';
 import CustomerPicker from '@/components/CustomerPicker';
@@ -3530,6 +3531,7 @@ const PANEL_GROUPS = [
   { label: 'Enquiries', items: [
     { key: 'leads', label: 'Enquiries', icon: UserPlusIcon, description: 'Every enquiry through the funnel — list or board' },
     { key: 'planner', label: 'Weekly Planner', icon: CalendarRangeIcon, description: 'Plan the week\'s follow-ups — move them between days and people' },
+    { key: 'whatsapp', label: 'WhatsApp', icon: MessageCircleIcon, description: 'Customer conversations on the business number' },
     { key: 'trade_requests', label: 'Trade Requests', icon: ClipboardListIcon, description: 'Material requests raised by Installation' },
     { key: 'customers', label: 'Customers', icon: UsersIcon, description: 'Accounts, contacts, addresses and Customer 360' },
   ] },
@@ -3644,6 +3646,7 @@ export default function SalesWorkspace({ saleOrders, leads, customers, quotation
           {activePanel.key === 'returns' && <ReturnsTab returns={returns} saleOrders={saleOrders} inventoryItems={inventoryItems} router={router} />}
           {activePanel.key === 'tasks' && <AllTasksTab users={users} />}
           {activePanel.key === 'planner' && <WeeklyPlannerTab users={users} isSalesHead={isSalesHead} />}
+          {activePanel.key === 'whatsapp' && <WhatsAppInbox isSalesHead={isSalesHead} />}
           {activePanel.key === 'amc' && <AmcTab />}
           {activePanel.key === 'library' && <LibraryTab isSalesHead={isSalesHead} />}
           {activePanel.key === 'email_setup' && <EmailSetupTab />}

@@ -1,7 +1,8 @@
 'use client';
 
 // components/SalesSettings.jsx — the Sales Head's section of the /settings page: Team (members + auto-assign),
-// Email (company mailboxes, test/live switch, their own mailbox) and Data retention.
+// Email (company mailboxes, test/live switch, their own mailbox), WhatsApp, Lead sources (IndiaMART etc.) and Data retention.
+// Every outside connection is set up here and nowhere else.
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,11 +11,13 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ContactIcon, MailIcon, ClockIcon } from 'lucide-react';
+import { ContactIcon, MailIcon, ClockIcon, MessageCircleIcon, MagnetIcon } from 'lucide-react';
 import { api, showToast } from '@/lib/client';
 import SalesTeamManager from '@/components/SalesTeamManager';
 import SalesRetentionPanel from '@/components/SalesRetentionPanel';
 import { EmailSetupTab } from '@/components/SalesSetupPanels';
+import WhatsAppSetup from '@/components/WhatsAppSetup';
+import LeadSourcesPanel from '@/components/LeadSourcesPanel';
 
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 
@@ -91,9 +94,11 @@ function AutoAssignCard({ users, departments }) {
 export default function SalesSettings({ users, meUsername }) {
   return (
     <Tabs defaultValue="team" className="min-w-0">
-      <TabsList variant="line" className="w-max">
+      <TabsList variant="line" className="w-max max-w-full overflow-x-auto">
         <TabsTrigger value="team" className="gap-1.5"><ContactIcon className="size-3.5" />Team</TabsTrigger>
         <TabsTrigger value="email" className="gap-1.5"><MailIcon className="size-3.5" />Email</TabsTrigger>
+        <TabsTrigger value="whatsapp" className="gap-1.5"><MessageCircleIcon className="size-3.5" />WhatsApp</TabsTrigger>
+        <TabsTrigger value="leads" className="gap-1.5"><MagnetIcon className="size-3.5" />Lead sources</TabsTrigger>
         <TabsTrigger value="retention" className="gap-1.5"><ClockIcon className="size-3.5" />Data retention</TabsTrigger>
       </TabsList>
       <TabsContent value="team" className="flex flex-col gap-4 pt-2">
@@ -101,6 +106,8 @@ export default function SalesSettings({ users, meUsername }) {
         <AutoAssignCard users={users} departments={['Sales']} />
       </TabsContent>
       <TabsContent value="email" className="pt-2"><EmailSetupTab /></TabsContent>
+      <TabsContent value="whatsapp" className="pt-2"><WhatsAppSetup /></TabsContent>
+      <TabsContent value="leads" className="pt-2"><LeadSourcesPanel /></TabsContent>
       <TabsContent value="retention" className="pt-2"><SalesRetentionPanel /></TabsContent>
     </Tabs>
   );
