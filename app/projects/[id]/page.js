@@ -118,7 +118,8 @@ export default async function ProjectDetail({ params }) {
   const showProcurement = bom.length > 0;
   const showStores = bom.some(b => ['Transit', 'Received', 'In-Stock'].includes(b.purchase_status));
   const showProduction = jobCards.length > 0 || materialIndents.length > 0;
-  const showQc = qcSummary.docs_total > 0 || qcSummary.ncrs_total > 0;
+  // QC always sees it ("None filed yet" + Manage documents) so there is a way in before the first document exists.
+  const showQc = qcSummary.docs_total > 0 || qcSummary.ncrs_total > 0 || canAccessDepartment(user, 'QC');
   // Always there once packing lists can exist — a split master keeps them on its units instead.
   const showDispatch = packingLists.length > 0 || !hasChildren;
 
