@@ -19,9 +19,10 @@ export default async function Portal({ params }) {
 
   const data = await getCustomerView(params.id);
   if (!data) notFound();
-  const { project, customerDrawings, phases, estDispatch, packingLists, drawings, invoices, qcCertificates, isSplitOrder, unitCount, installationVisits, installationSummary, installationUnits, installationReports } = data;
-  const doneCount = phases.filter(p => p.status === 'done').length;
-  const pct = Math.round((doneCount / phases.length) * 100);
+  const { project, customerDrawings, phases, estDispatch, packingLists, drawings, invoices, qcCertificates, pendingCount, isSplitOrder, unitCount, installationVisits, installationSummary, installationUnits, installationReports } = data;
+  // "Pending Items" is a side list for a partial shipment, not a step toward completion.
+  const steps = phases.filter(p => p.key !== 'pending');
+  const pct = Math.round((steps.filter(p => p.status === 'done').length / steps.length) * 100);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-muted/40 to-background">
@@ -51,7 +52,7 @@ export default async function Portal({ params }) {
           </p>
         </div>
 
-        <PortalOrderProgress readOnly={!isCustomer(user)} projectId={project.id} customerDrawings={customerDrawings} phases={phases} drawings={drawings} qcCertificates={qcCertificates} packingLists={packingLists} installationVisits={installationVisits} installationSummary={installationSummary} installationUnits={installationUnits} installationReports={installationReports} pct={pct} />
+        <PortalOrderProgress readOnly={!isCustomer(user)} projectId={project.id} customerDrawings={customerDrawings} phases={phases} drawings={drawings} qcCertificates={qcCertificates} pendingCount={pendingCount} packingLists={packingLists} installationVisits={installationVisits} installationSummary={installationSummary} installationUnits={installationUnits} installationReports={installationReports} pct={pct} />
 
         <Card>
           <CardHeader>

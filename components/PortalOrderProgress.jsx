@@ -216,7 +216,7 @@ function VisitsPanel({ summary, units, visits }) {
   });
 }
 
-export default function PortalOrderProgress({ readOnly = false, projectId, customerDrawings = [], phases, drawings, qcCertificates = [], packingLists = [], installationVisits = [], installationSummary = null, installationUnits = [], installationReports = [], pct }) {
+export default function PortalOrderProgress({ readOnly = false, projectId, customerDrawings = [], phases, drawings, qcCertificates = [], pendingCount = 0, packingLists = [], installationVisits = [], installationSummary = null, installationUnits = [], installationReports = [], pct }) {
   const [items, setItems] = useState(drawings);
   // One open section at a time, tracked by phase key — 'design' keeps its old default-collapsed
   // behavior, just generalized to any phase that has documents to show.
@@ -235,6 +235,7 @@ export default function PortalOrderProgress({ readOnly = false, projectId, custo
     design: items.length + (readOnly ? customerDrawings.length : 1),
     documentation: qcCertificates.length,
     packing: packingLists.length,
+    pending: pendingCount,
     installation: installationSummary ? installationSummary.total : installationUnits.length,
     commissioning: installationReports.length,
   };
@@ -269,6 +270,12 @@ export default function PortalOrderProgress({ readOnly = false, projectId, custo
                         meta={[doc.doc_id, doc.unitProjectNo].filter(Boolean).join(' · ')}
                         href={`/api/qc-documents/${doc.id}/pdf`} />
                     ))}
+                  </li>
+                )}
+                {ph.key === 'pending' && expanded && (
+                  <li className="flex flex-col gap-3 border-b py-3 pl-10">
+                    <DocumentRow name="Items pending dispatch" meta={`${pendingCount} item${pendingCount === 1 ? '' : 's'} still to be sent`}
+                      href={`/api/projects/${projectId}/pending-to-send/pdf`} />
                   </li>
                 )}
                 {ph.key === 'packing' && expanded && (
