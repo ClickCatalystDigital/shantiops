@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { getFreshSessionUser, isCustomer, isPM, isAdmin, isDesignHead, isDepartmentHead, roleHome } from '@/lib/auth';
+import { getFreshSessionUser, isCustomer, isPM, isAdmin, isDesignHead, isDepartmentHead, canAccessDepartment, roleHome } from '@/lib/auth';
 import { getFunctionalHeads, getDesignTeamMembers, getAvailableSystemEmployees } from '@/lib/data';
 import { queryOne, queryAll } from '@/lib/db';
 import { ACTION_CATALOG } from '@/lib/action-permissions';
@@ -29,8 +29,10 @@ export default async function Settings() {
   const designTeam = isDesignHead(user) ? await getDesignTeamMembers() : null;
   // Sales Head (and PMs, who are head of every department): team, email and data retention.
   const salesHead = isDepartmentHead(user, 'Sales');
-  // Procurement Head (and PMs): the mailboxes RFQs to suppliers are sent from.
-  const procurementHead = isDepartmentHead(user, 'Procurement');
+  // Procurement: the Head (and PMs) set the company mailboxes RFQs go out from; every member can save
+  // their own mailbox ("My email"), which the RFQ email uses first. The panel itself hides the
+  // company mailboxes from non-Heads.
+  const procurementEmail = canAccessDepartment(user, 'Procurement');
   const salesUsers = salesHead
     ? (await getFunctionalHeads()).filter(h => h.active && h.departments.includes('Sales'))
     : [];
@@ -90,7 +92,7 @@ export default async function Settings() {
           <SalesSettings users={salesUsers} meUsername={user.username} />
         </>
       )}
-      {procurementHead && (
+      {procurementEmail && (
         <>
           <Separator />
           <h2 className="text-lg font-semibold">Procurement · Email</h2>
