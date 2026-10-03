@@ -2,7 +2,7 @@
 
 // Read-only view of one Service expense request (cash or travel) + the Manager → Executive →
 // Accounts progress strip. Shared by the Service page, Approvals and Accounts.
-import { CheckIcon, XIcon, CircleDotIcon, DownloadIcon } from 'lucide-react';
+import { CheckIcon, XIcon, CircleDotIcon, DownloadIcon, PaperclipIcon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -67,7 +67,7 @@ function MiniTable({ title, cols, rows }) {
   );
 }
 
-export function SummaryTable({ summary }) {
+export function SummaryTable({ summary, advanceCell }) {
   return (
     <div className="rounded-lg border">
       <div className="border-b bg-muted/30 px-3 py-1.5 text-sm font-medium">Tour Summary</div>
@@ -75,10 +75,29 @@ export function SummaryTable({ summary }) {
         <TableBody>
           {summary.lines.map(([l, a], i) => <TableRow key={l}><TableCell className="w-8 text-muted-foreground">{i + 1}</TableCell><TableCell>{l}</TableCell><TableCell className="text-right tabular-nums">{inr(a)}</TableCell></TableRow>)}
           <TableRow className="font-medium"><TableCell /><TableCell className="text-right">Total</TableCell><TableCell className="text-right tabular-nums">{inr(summary.total)}</TableCell></TableRow>
-          <TableRow><TableCell /><TableCell className="text-right">Advance taken</TableCell><TableCell className="text-right tabular-nums">{inr(summary.advance)}</TableCell></TableRow>
+          <TableRow><TableCell /><TableCell className="text-right">Advance taken</TableCell><TableCell className="text-right tabular-nums">{advanceCell ?? inr(summary.advance)}</TableCell></TableRow>
           <TableRow className="bg-muted/20 font-semibold"><TableCell /><TableCell className="text-right">Balance {summary.balance < 0 ? '(payable to company)' : '(payable to employee)'}</TableCell><TableCell className="text-right tabular-nums">{inr(Math.abs(summary.balance))}</TableCell></TableRow>
         </TableBody>
       </Table>
+    </div>
+  );
+}
+
+const SECTIONS = { travel: 'Travel details', lodging: 'Lodging', boarding: 'Boarding / journey allowance', conveyance: 'Conveyance', other: 'Other expenses' };
+
+// Receipts attached to the claim; the PDF button includes them as extra pages.
+function Receipts({ r }) {
+  const list = Object.entries(r.data.attachments || {}).flatMap(([sec, items]) => items.map(a => ({ ...a, sec })));
+  if (!list.length) return null;
+  return (
+    <div className="rounded-lg border p-3">
+      <div className="mb-2 flex items-center gap-1.5 text-sm font-medium"><PaperclipIcon className="size-3.5" />Receipts <span className="text-xs font-normal text-muted-foreground">(added to the PDF as extra pages)</span></div>
+      <div className="flex flex-wrap gap-1.5">
+        {list.map(a => (
+          <a key={a.key} href={`/api/service-expenses/${r.id}/attachment?key=${encodeURIComponent(a.key)}`} target="_blank" rel="noreferrer">
+            <Badge variant="secondary" className="max-w-60 gap-1"><span className="text-muted-foreground">{SECTIONS[a.sec]}:</span><span className="truncate">{a.name}</span></Badge>
+          </a>))}
+      </div>
     </div>
   );
 }
@@ -105,7 +124,14 @@ export default function RequestView({ r }) {
           <Field label="Authorized by">{authorizedBy}</Field>
           <div className="sm:col-span-2"><Field label="Purpose">{d.purpose}</Field></div>
           <div className="sm:col-span-2 flex flex-wrap items-center gap-1.5"><span className="text-xs text-muted-foreground">Customers</span>{r.customers.map(c => <Badge key={c.name} variant="secondary">{c.name}{c.type === 'other' ? ' (other)' : ''}</Badge>)}</div>
-          {r.used_by && <div className="sm:col-span-2 text-xs text-muted-foreground">Taken as advance on a travel claim.</div>}
+          <div className="sm:col-span-2 rounded-lg bg-muted/40 p-3 text-sm">
+            <div className="mb-1 text-xs text-muted-foreground">How much of this is still available as advance</div>
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 tabular-nums">
+              <span>{inr(r.amount)}</span>
+              {(r.applied || []).map(a => <span key={a.travel_id} className="text-muted-foreground">− {inr(a.amount)} <span className="text-xs">({a.req_no})</span></span>)}
+              <span>= <b>{inr(r.remaining ?? r.amount)}</b> left</span>
+            </div>
+          </div>
         </div>
       ) : (
         <>
@@ -123,6 +149,7 @@ export default function RequestView({ r }) {
           <MiniTable title="3. Boarding / journey allowance" rows={d.boarding} cols={[['date', 'Date'], ['place', 'Place'], ['amount', 'Amount']]} />
           <MiniTable title="4. Conveyance" rows={d.conveyance} cols={[['date', 'Date'], ['from', 'From'], ['to', 'To'], ['mode', 'Mode'], ['km', 'Km'], ['amount', 'Amount']]} />
           <MiniTable title="5. Other expenses" rows={d.other} cols={[['date', 'Date'], ['type', 'Type'], ['particulars', 'Particulars'], ['amount', 'Amount']]} />
+          <Receipts r={r} />
           {r.advances?.length > 0 && <div className="text-xs text-muted-foreground">Advance from {r.advances.map(a => `${a.req_no} (${inr(a.amount)})`).join(', ')}</div>}
           <SummaryTable summary={tourSummary(d, r.advance_taken)} />
         </>

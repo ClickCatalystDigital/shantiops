@@ -15,21 +15,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
 import SearchableSelect from '@/components/SearchableSelect';
 import { projectOptions } from '@/components/InstallationVisits';
+import { compressImage as compress } from '@/lib/image-compress';
 import { PHOTO_STAGES } from '@/lib/installation-photo-stages.mjs';
 
 const LAST_KEY = 'installation_last_project';
 const lastProject = () => { try { return localStorage.getItem(LAST_KEY) || ''; } catch { return ''; } };
-
-// Resize to max 1600px and re-encode as JPEG — phone photos are 3-8 MB, site sign is poor.
-async function compress(file) {
-  const bmp = await createImageBitmap(file);
-  const scale = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
-  const c = document.createElement('canvas');
-  c.width = Math.round(bmp.width * scale); c.height = Math.round(bmp.height * scale);
-  c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
-  const blob = await new Promise(res => c.toBlob(res, 'image/jpeg', 0.82));
-  return new File([blob], `photo-${Date.now()}.jpg`, { type: 'image/jpeg' });
-}
 
 function StageChips({ value, onChange }) {
   return (
@@ -202,7 +192,10 @@ export default function InstallationPhotos({ projects, team = [] }) {
         </CardContent>
       </Card>
       {/* Phone: floating camera button, above the bottom tab bar. */}
-      <Button size="icon" className="fixed bottom-20 right-4 z-30 size-14 rounded-full shadow-lg md:hidden" onClick={() => camRef.current.click()} aria-label="Take photo"><CameraIcon className="size-6" /></Button>
+      <div className="fixed bottom-20 right-4 z-30 flex items-center gap-3 md:hidden">
+        <Button size="icon" variant="secondary" className="size-12 rounded-full border shadow-lg" onClick={() => galRef.current.click()} aria-label="Choose from gallery"><ImagePlusIcon className="size-5" /></Button>
+        <Button size="icon" className="size-14 rounded-full shadow-lg" onClick={() => camRef.current.click()} aria-label="Take photo"><CameraIcon className="size-6" /></Button>
+      </div>
       {capture && <CaptureSheet file={capture.file} takenAt={capture.takenAt} projects={projects} defaultProject={projectId || lastProject()}
         onClose={() => setCapture(null)} onSaved={(pid) => { setCapture(null); if (projectId && projectId !== pid) setProjectId(pid); else load(); }} />}
       {viewing && <ViewSheet photo={viewing} onClose={() => setViewing(null)} onChanged={() => { setViewing(null); load(); }} />}

@@ -61,8 +61,7 @@ export async function PATCH(req, { params }) {
   const args = rejecting ? [step.who, note, by, note, id, step.from] : [step.to, by, note, id, step.from];
   const res = await execute(sql, args);
   if (!res.changes) return NextResponse.json({ error: 'Request was just updated by someone else' }, { status: 409 });
-  // A rejected travel claim frees the cash requests it had claimed as advance.
-  if (rejecting) await execute('UPDATE service_expense_requests SET used_by = NULL WHERE used_by = ?', [id]);
+  // A rejected travel claim gives the cash it had taken as advance back (remaining only counts non-rejected claims).
   await audit(`service_expense_${b.action}`, { actor: user.username, detail: `${r.req_no}${note ? `: ${note}` : ''}` });
   try {
     if (rejecting) await notifyRequester(r, { kind: 'service_expense', title: `${r.req_no} rejected by ${by}`, body: note, dedupe_key: `svcexp:${id}:rej` });

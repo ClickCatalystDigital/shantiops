@@ -34,6 +34,7 @@ import CategoryFieldsBlock, { OTHER_MOC, MOC_OPTIONS } from './CategoryFieldsBlo
 import { BOM_FIELD_OWNERS, DIMENSIONAL_CATEGORIES, PURCHASE_STATUSES, STATUS_TONE, DEFAULT_PURCHASE_STATUS } from '@/lib/bom-fields.mjs';
 import { CATEGORY_LABEL, categoryDisplaySpec, categoryWeightKg } from '@/lib/section-shapes';
 import BomTemplateManager from './BomTemplateManager';
+import StoresSubTabs from './StoresSubTabs';
 import {
   NamedPartsEditor, ItemSearchField, CATEGORY_OPTIONS, defaultCategoryFields, finalizeCategoryFields,
   defaultTraceabilityFromCategory, TRACEABILITY_FLAG_LABELS, validateCategoryFields,
@@ -808,6 +809,96 @@ export function PrHistoryTab() {
   );
 }
 
+// TR History — Trade Requests this user raised (Installation sees only their own; the route decides).
+// Same shape as PrHistoryTab: search + status filter + one row per request.
+const TR_STATUSES = ['open', 'accepted', 'rejected', 'closed'];
+const TR_TONE = { open: 'outline', accepted: 'default', rejected: 'destructive', closed: 'secondary' };
+
+export function TrHistoryTab() {
+  const [rows, setRows] = useState(null);
+  const [q, setQ] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  useEffect(() => { api('/api/trade-requests').then(setRows).catch(err => showToast(err.message, 'error')); }, []);
+
+  const needle = q.trim().toLowerCase();
+  const shown = (rows || []).filter(t => (statusFilter === 'all' || t.status === statusFilter)
+    && (!needle || [t.tr_no, t.material_description, t.moc, t.size_spec, t.project_no, t.sale_order_no, t.sas_so_no].some(v => String(v || '').toLowerCase().includes(needle))));
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>TR History</CardTitle>
+        <CardAction className="flex items-center gap-2">
+          <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Search TR, item, project…" className="w-56" />
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All statuses</SelectItem>
+              {TR_STATUSES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </CardAction>
+      </CardHeader>
+      <CardContent>
+        {!rows ? (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : rows.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No trade requests raised yet.</p>
+        ) : shown.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No trade requests match.</p>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Date</TableHead>
+                <TableHead>TR</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead>MOC</TableHead>
+                <TableHead>Project / Sale order</TableHead>
+                <TableHead>Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {shown.map(t => (
+                <TableRow key={t.id}>
+                  <TableCell className="whitespace-nowrap text-muted-foreground">{formatDate(t.created_at)}</TableCell>
+                  <TableCell>{t.tr_no}</TableCell>
+                  <TableCell className="whitespace-normal">
+                    <div className="font-medium">{t.material_description}</div>
+                    <div className="text-xs text-muted-foreground">{t.qty_text}{t.size_spec ? ` · ${t.size_spec}` : ''}</div>
+                    {t.notes && <div className="text-xs text-muted-foreground">{t.notes}</div>}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">{t.moc || '—'}</TableCell>
+                  <TableCell className="text-xs">
+                    <span className="font-medium">{t.project_no || '—'}</span>{t.sale_order_no ? <span className="text-muted-foreground"> · {t.sale_order_no}</span> : null}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex flex-col items-start gap-0.5">
+                      <Badge variant={TR_TONE[t.status] || 'outline'}>{t.status}</Badge>
+                      {t.status === 'accepted' && t.sas_so_no && <span className="text-xs font-medium">{t.sas_so_no}</span>}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// History = PR and TR as sub tabs (Installation's Requests page).
+export function HistoryTab() {
+  const [kind, setKind] = useState('pr');
+  return (
+    <div className="flex flex-col gap-4">
+      <StoresSubTabs value={kind} onChange={setKind} tabs={[{ value: 'pr', label: 'PR' }, { value: 'tr', label: 'TR' }]} />
+      {kind === 'pr' ? <PrHistoryTab /> : <TrHistoryTab />}
+    </div>
+  );
+}
+
 // Release BOM = a deliberate, whole-project action ("everything's ready together"), not something
 // inferred from the first item landing on the BOM — a project's BOM usually gets built up
 // piecemeal over days (app/api/projects/[id]/release-bom's own comment explains why). This tab is
@@ -1076,7 +1167,7 @@ export default function PrWorkspace({ departments, projects, inventoryItems = []
   const canReleaseBom = departments.some(d => ['Design', 'Engineering'].includes(d));
   const navItems = mode === 'installation' ? [
     { key: 'raise', label: 'Purchase Requests', icon: ClipboardListIcon },
-    { key: 'history', label: 'PR History', icon: HistoryIcon },
+    { key: 'history', label: 'History', icon: HistoryIcon },
   ] : [
     { key: 'raise', label: 'Purchase Requests', icon: ClipboardListIcon },
     { key: 'history', label: 'PR History', icon: HistoryIcon },
@@ -1101,7 +1192,7 @@ export default function PrWorkspace({ departments, projects, inventoryItems = []
         <RaisePrTab departments={departments} projects={projects} inventoryItems={inventoryItems}
           prTemplatePrefill={prTemplatePrefill} onPrefillConsumed={() => setPrTemplatePrefill(null)} />
       )}
-      {tab === 'history' && <PrHistoryTab />}
+      {tab === 'history' && (mode === 'installation' ? <HistoryTab /> : <PrHistoryTab />)}
       {tab === 'release' && <ReleaseBomTab projects={projects} departments={departments} />}
       {tab === 'templates' && (
         <div className="flex flex-col gap-4">

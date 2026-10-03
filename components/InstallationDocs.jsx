@@ -13,7 +13,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -21,11 +20,14 @@ import SearchableSelect from '@/components/SearchableSelect';
 import { CustomerViewButton } from '@/components/InstallationVisits';
 import SignaturePad from '@/components/SignaturePad';
 import { projectOptions } from '@/components/InstallationVisits';
-import { CALL_TYPES, sectionsFor, emptyData, docLabel } from '@/lib/installation-report-template.mjs';
+import AutoTextarea from '@/components/AutoTextarea';
+import { CALL_TYPES, sectionsFor, emptyData, docLabel, computedValue } from '@/lib/installation-report-template.mjs';
 
-function FieldInput({ field, value, onChange }) {
+function FieldInput({ field, value, onChange, all }) {
   const common = { value: value ?? '', onChange: e => onChange(e.target.value) };
-  if (field.type === 'textarea') return <Textarea rows={2} {...common} />;
+  if (field.type === 'computed') return <div className="flex h-8 items-center rounded-lg border border-dashed bg-muted/40 px-2.5 text-sm tabular-nums">{computedValue(field.key, all) || <span className="text-muted-foreground">From the dates above</span>}</div>;
+  if (field.type === 'textarea') return <AutoTextarea className="min-h-16" rows={2} {...common} />;
+  if (field.type === 'text') return <AutoTextarea {...common} />;
   if (field.type === 'signature') return <SignaturePad value={value} onChange={onChange} />;
   if (field.type === 'select') {
     return (
@@ -53,7 +55,8 @@ function StatusToggle({ value, onChange }) {
 
 function Cell({ col, row, onChange }) {
   if (col.kind === 'status') return <StatusToggle value={row[col.key]} onChange={v => onChange(col.key, v)} />;
-  return <Input className="h-8 min-w-24" type={col.kind === 'date' ? 'date' : 'text'} value={row[col.key] ?? ''} onChange={e => onChange(col.key, e.target.value)} />;
+  if (col.kind === 'date') return <Input className="h-8 min-w-24" type="date" value={row[col.key] ?? ''} onChange={e => onChange(col.key, e.target.value)} />;
+  return <AutoTextarea className="min-w-24" value={row[col.key] ?? ''} onChange={e => onChange(col.key, e.target.value)} />;
 }
 
 function RowsSection({ section, rows, onChange }) {
@@ -91,7 +94,7 @@ function RowsSection({ section, rows, onChange }) {
             </div>
             <div className="mt-2 grid grid-cols-2 gap-2">
               {edit.map(c => (
-                <div key={c.key} className={c.kind === 'status' ? 'col-span-2' : 'grid gap-1'}>
+                <div key={c.key} className={c.kind === 'status' ? 'col-span-2' : c.kind === 'date' ? 'grid gap-1' : 'col-span-2 grid gap-1'}>
                   <Label className="text-xs text-muted-foreground">{c.label}</Label>
                   <Cell col={c} row={r} onChange={(k, v) => setCell(i, k, v)} />
                 </div>
@@ -180,7 +183,7 @@ function ReportSheet({ init, onClose, onSaved }) {
                   {sec.fields.map(fl => (
                     <div key={fl.key} className={`grid gap-1.5 ${fl.type === 'textarea' || fl.type === 'signature' ? 'sm:col-span-2' : ''}`}>
                       <Label className="text-xs text-muted-foreground">{fl.label}</Label>
-                      <FieldInput field={fl} value={data.fields[fl.key]} onChange={v => setField(fl.key, v)} />
+                      <FieldInput field={fl} value={data.fields[fl.key]} all={data.fields} onChange={v => setField(fl.key, v)} />
                     </div>
                   ))}
                 </div>

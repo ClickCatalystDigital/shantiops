@@ -1,5 +1,5 @@
 // Installation's own Requests tab — the same PR workspace /pr uses, trimmed to Purchase Requests +
-// PR History, plus a Trade Request button (routes to Sales, not a PR).
+// History (PR + TR sub tabs), plus a Trade Request button (routes to Sales, not a PR).
 import { redirect } from 'next/navigation';
 import { getFreshSessionUser, canAccessDepartment, roleHome } from '@/lib/auth';
 import { getActiveProjectsList } from '@/lib/data';
