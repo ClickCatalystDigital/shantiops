@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import PortalDrawingUploads from '@/components/PortalDrawingUploads';
 import { todayISO } from '@/lib/date';
 import { cn } from '@/lib/utils';
+import { seriesLabel } from '@/lib/qc-extra-series.mjs';
 import { CheckIcon, LoaderIcon, ClockIcon, ChevronDownIcon, DownloadIcon, FileTextIcon } from 'lucide-react';
 
 const STATUS_LABEL = { under_review: 'Ready for your review', approved: 'Approved', as_built: 'As built' };
@@ -262,7 +263,8 @@ export default function PortalOrderProgress({ readOnly = false, projectId, custo
                   <li className="flex flex-col gap-3 border-b py-3 pl-10">
                     {qcCertificates.map(doc => (
                       <DocumentRow key={doc.id}
-                        name={`QC Certificate — ${doc.doc_id}${doc.unitProjectNo ? ` (${doc.unitProjectNo})` : ''}`}
+                        name={`${seriesLabel(doc.series)} — QC Documentation`}
+                        meta={[doc.doc_id, doc.unitProjectNo].filter(Boolean).join(' · ')}
                         href={`/api/qc-documents/${doc.id}/pdf`} />
                     ))}
                   </li>
