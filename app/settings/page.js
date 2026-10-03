@@ -69,7 +69,7 @@ export default async function Settings() {
         <ProfileForm user={user} />
         <ChangePasswordForm />
       </div>
-      <AlertSettings user={{ id: user.id, username: user.username, display_name: user.display_name }} />
+      <AlertSettings />
 
       {isPM(user) && (
         <>

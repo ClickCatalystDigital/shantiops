@@ -28,6 +28,48 @@ export function Avatar({ userId, name, version, size = 40, className }) {
   return <span style={style} className={cn('inline-flex shrink-0 items-center justify-center rounded-full bg-primary/10 font-semibold text-primary ring-1 ring-primary/15', className)}>{initials}</span>;
 }
 
+// The Profile card's photo: shows the photo (or initials) with a camera button to change it.
+export function ProfilePhoto({ user }) {
+  const router = useRouter();
+  const [v, setV] = useState(user.avatar_key || null);
+  const [busy, setBusy] = useState(false);
+  const fileRef = useRef(null);
+  async function upload(file) {
+    if (!file) return;
+    setBusy(true);
+    try {
+      const fd = new FormData(); fd.append('file', file);
+      const res = await fetch('/api/account/avatar', { method: 'POST', body: fd });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error || 'Upload failed');
+      setV(String(Date.now())); showToast('Photo updated'); router.refresh();
+    } catch (e) { showToast(e.message, 'error'); }
+    setBusy(false);
+    if (fileRef.current) fileRef.current.value = '';
+  }
+  async function remove() {
+    try { await api('/api/account/avatar', { method: 'DELETE' }); setV(null); router.refresh(); } catch (e) { showToast(e.message, 'error'); }
+  }
+  return (
+    <div className="flex items-center gap-4">
+      <div className="relative">
+        <Avatar userId={user.id} name={user.display_name || user.username} version={v} size={56} />
+        <button type="button" onClick={() => fileRef.current?.click()} disabled={busy} aria-label="Change photo"
+          className="absolute -bottom-1 -right-1 inline-flex size-6 items-center justify-center rounded-full border bg-background text-muted-foreground shadow-sm hover:text-foreground">
+          <CameraIcon className="size-3.5" />
+        </button>
+        <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={e => upload(e.target.files?.[0])} />
+      </div>
+      <div className="min-w-0">
+        <p className="font-medium">{user.display_name || user.username}</p>
+        <p className="text-xs text-muted-foreground">@{user.username}</p>
+        {v ? <button type="button" onClick={remove} className="text-xs text-muted-foreground underline-offset-2 hover:underline">Remove photo</button>
+          : <button type="button" onClick={() => fileRef.current?.click()} disabled={busy} className="text-xs text-primary underline-offset-2 hover:underline">{busy ? 'Uploading…' : 'Add a photo'}</button>}
+      </div>
+    </div>
+  );
+}
+
 function BellSwitch({ on, onChange, label }) {
   return (
     <button type="button" role="switch" aria-checked={on} aria-label={label} onClick={() => onChange(!on)}
@@ -52,18 +94,14 @@ function Segmented({ value, onChange, disabled, label }) {
   );
 }
 
-export default function AlertSettings({ user }) {
-  const router = useRouter();
+export default function AlertSettings() {
   const [data, setData] = useState(null);
   const [email, setEmail] = useState('');
-  const [avatarV, setAvatarV] = useState(null);
-  const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(new Set(['General'])); // sections shown expanded
-  const fileRef = useRef(null);
   const toggle = key => setOpen(o => { const n = new Set(o); n.has(key) ? n.delete(key) : n.add(key); return n; });
 
   useEffect(() => {
-    api('/api/account/alerts').then(d => { setData(d); setEmail(d.notify_email); setAvatarV(d.has_avatar ? '1' : null); })
+    api('/api/account/alerts').then(d => { setData(d); setEmail(d.notify_email); })
       .catch(e => showToast(e.message, 'error'));
   }, []);
   if (!data) return <Card><CardContent className="py-6 text-sm text-muted-foreground">Loading alerts…</CardContent></Card>;
@@ -81,53 +119,22 @@ export default function AlertSettings({ user }) {
     try { await api('/api/account/alerts', { method: 'PUT', body: { notify_email: email } }); setData(d => ({ ...d, notify_email: email })); showToast(email ? 'Alert email saved' : 'Alert email removed'); }
     catch (e) { showToast(e.message, 'error'); }
   }
-  async function upload(file) {
-    if (!file) return;
-    setBusy(true);
-    try {
-      const fd = new FormData(); fd.append('file', file);
-      const res = await fetch('/api/account/avatar', { method: 'POST', body: fd });
-      const j = await res.json();
-      if (!res.ok) throw new Error(j.error || 'Upload failed');
-      setAvatarV(String(Date.now())); showToast('Photo updated'); router.refresh();
-    } catch (e) { showToast(e.message, 'error'); }
-    setBusy(false);
-  }
-  async function removePhoto() {
-    try { await api('/api/account/avatar', { method: 'DELETE' }); setAvatarV(null); router.refresh(); } catch (e) { showToast(e.message, 'error'); }
-  }
-
   const noEmail = !data.notify_email;
   const groups = [...data.groups, { key: OTHER_KIND, label: 'Everything else', alerts: [{ kind: OTHER_KIND, label: 'Other alerts', hint: 'Anything not listed above.' }] }];
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Photo & alerts</CardTitle>
+        <CardTitle>Alerts</CardTitle>
         <CardDescription>Choose which alerts reach your bell and which also come by email — right away, or once a day as a morning summary.</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-6">
-        <div className="flex flex-wrap items-center gap-4 rounded-lg border bg-muted/20 p-4">
-          <div className="relative">
-            <Avatar userId={user.id} name={user.display_name || user.username} version={avatarV} size={56} />
-            <button type="button" onClick={() => fileRef.current?.click()} disabled={busy} aria-label="Change photo"
-              className="absolute -bottom-1 -right-1 inline-flex size-6 items-center justify-center rounded-full border bg-background text-muted-foreground shadow-sm hover:text-foreground">
-              <CameraIcon className="size-3.5" />
-            </button>
-            <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={e => upload(e.target.files?.[0])} />
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="flex min-w-0 flex-1 flex-col gap-1.5 sm:max-w-sm">
+            <label className="text-xs font-medium text-muted-foreground" htmlFor="alert-email">Send my alert emails to</label>
+            <Input id="alert-email" className="h-8" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@company.com" />
           </div>
-          <div className="min-w-0 flex-1">
-            <p className="font-medium">{user.display_name || user.username}</p>
-            <p className="text-xs text-muted-foreground">@{user.username}{avatarV ? '' : ' · add a photo so colleagues recognise you'}</p>
-            {avatarV && <button type="button" onClick={removePhoto} className="mt-0.5 text-xs text-muted-foreground underline-offset-2 hover:underline">Remove photo</button>}
-          </div>
-          <div className="flex w-full flex-col gap-1.5 sm:w-auto">
-            <label className="text-xs font-medium text-muted-foreground" htmlFor="alert-email">Alert email</label>
-            <div className="flex gap-2">
-              <Input id="alert-email" className="h-8 w-full sm:w-64" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@company.com" />
-              <Button size="sm" variant="outline" onClick={saveEmail} disabled={email === data.notify_email}>Save</Button>
-            </div>
-          </div>
+          <Button size="sm" variant="outline" onClick={saveEmail} disabled={email === data.notify_email}>Save</Button>
         </div>
 
         {(noEmail || !data.email_ready) && (

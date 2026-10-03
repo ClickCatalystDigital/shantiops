@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { ProfilePhoto } from '@/components/AlertSettings';
 
 export default function ProfileForm({ user }) {
   const router = useRouter();
@@ -27,7 +28,8 @@ export default function ProfileForm({ user }) {
   return (
     <Card>
       <CardHeader><CardTitle>Profile</CardTitle></CardHeader>
-      <CardContent>
+      <CardContent className="flex flex-col gap-4">
+        <ProfilePhoto user={user} />
         <form onSubmit={submit} className="flex flex-col gap-4">
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5"><Label>Display Name</Label>
