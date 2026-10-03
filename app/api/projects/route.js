@@ -59,10 +59,10 @@ export async function POST(req) {
     // required exactly as before, so the 6 pre-existing free-text-only projects are unaffected.
     const { projectId, sosTitle, itemCount } = await withTransaction(async tx => {
       const r = await tx.execute({
-        sql: `INSERT INTO projects (project_no, customer_name, description, order_date, owner, customer_id, sale_order_id, series, company, model_capacity, model_pressure, model_design)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        sql: `INSERT INTO projects (project_no, customer_name, description, order_date, owner, customer_id, sale_order_id, series, company, model_capacity, model_pressure, model_design, is_sib)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         args: [project_no, b.customer_name.trim(), b.description || null, b.order_date || null, user?.username || null,
-          b.customer_id || null, b.sale_order_id || null, series, company, modelCapacity, modelPressure, modelDesign],
+          b.customer_id || null, b.sale_order_id || null, series, company, modelCapacity, modelPressure, modelDesign, b.is_sib ? 1 : 0],
       });
       const id = Number(r.lastInsertRowid);
       // Project, milestones, and the initial Scope of Supply are one business operation. If any
@@ -70,7 +70,7 @@ export async function POST(req) {
       const todayStr = new Date().toISOString().slice(0, 10);
       const start = b.order_date && b.order_date > todayStr ? new Date(b.order_date) : new Date();
       const startDaysAgo = Math.round((Date.now() - start.getTime()) / 864e5);
-      await createProjectMilestones(tx, id, startDaysAgo, false);
+      await createProjectMilestones(tx, id, startDaysAgo, false, true);
 
       // Scope of Supply: a real document header (client/PO/terms — the Order Acknowledgement
       // shape) plus one priced line item per Sale Order line (the actual sold deliverables —

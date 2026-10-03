@@ -33,7 +33,7 @@ const COMPANIES = [
 
 // Series/model is resolved server-side from the project's own `projects.series` (app/api/qc-documents
 // POST) — no picker here, this sheet just needs to suggest a doc_id abbreviation that matches it.
-function NewDocumentSheet({ open, onOpenChange, projectId, projectSeries, router }) {
+function NewDocumentSheet({ open, onOpenChange, projectId, projectSeries, extra = false, router }) {
   const [form, setForm] = useState(EMPTY);
   const [docIdTouched, setDocIdTouched] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -82,7 +82,7 @@ function NewDocumentSheet({ open, onOpenChange, projectId, projectSeries, router
     if (missing) return showToast(`${missing.label} is required`, 'error');
     setBusy(true);
     try {
-      const res = await api('/api/qc-documents', { method: 'POST', body: { project_id: projectId, ...form } });
+      const res = await api('/api/qc-documents', { method: 'POST', body: { project_id: projectId, ...form, ...(extra ? { series: projectSeries } : {}) } });
       showToast(res.partsSeeded
         ? `Document created — ${res.partsSeeded} Form IV A part${res.partsSeeded === 1 ? '' : 's'} auto-populated from the project's BOM`
         : 'Document created — add parts from the document page');
@@ -135,9 +135,13 @@ function NewDocumentSheet({ open, onOpenChange, projectId, projectSeries, router
 // each doc's own `d.project_id` so this also works as the /qc workspace's cross-project Docs list —
 // pass projectId=null there to keep New disabled until a project is picked. `showProject` labels the
 // owning project per row (only useful in the cross-project list).
-export default function StatutoryDocsPanel({ projectId = null, projectSeries = null, documents = [], canEdit = false, showProject = false }) {
+export default function StatutoryDocsPanel({ projectId = null, projectSeries = null, extraSeries = [], documents = [], canEdit = false, showProject = false }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  // null = the project's main set; otherwise one of the ticked extras (HEADERS/PRS/FAB/FCB).
+  const [extraOpen, setExtraOpen] = useState(null);
+  // Ticked extras with no document of that series on this project yet.
+  const pending = projectId ? extraSeries.filter(s => !documents.some(d => d.series === s && d.project_id === projectId)) : [];
 
   async function remove(d) {
     if (!window.confirm(`Delete "${d.doc_id}"? This removes the document and all its certificate links — can't be undone.`)) return;
@@ -162,7 +166,20 @@ export default function StatutoryDocsPanel({ projectId = null, projectSeries = n
         )}
       </CardHeader>
       <CardContent className="flex flex-col divide-y">
-        {documents.length === 0 && (
+        {canEdit && pending.map(s => (
+          <div key={s} className="flex items-center gap-2 py-2.5 text-sm">
+            <div className="flex flex-col">
+              <span className="font-medium">{s} documentation</span>
+              <span className="text-xs text-muted-foreground">
+                {[...modelConfig(s).forms.map(f => FORM_LABELS[f] || f), 'BOI'].join(' + ')} · not started
+              </span>
+            </div>
+            <Button size="sm" variant="outline" className="ml-auto" onClick={() => setExtraOpen(s)}>
+              <PlusIcon data-icon="inline-start" />Create
+            </Button>
+          </div>
+        ))}
+        {documents.length === 0 && pending.length === 0 && (
           <p className="text-sm text-muted-foreground">No statutory documents filed yet.</p>
         )}
         {documents.map(d => (
@@ -187,6 +204,7 @@ export default function StatutoryDocsPanel({ projectId = null, projectSeries = n
         ))}
       </CardContent>
       {canEdit && projectId && <NewDocumentSheet open={open} onOpenChange={setOpen} projectId={projectId} projectSeries={projectSeries} router={router} />}
+      {canEdit && projectId && <NewDocumentSheet key={extraOpen} open={!!extraOpen} onOpenChange={v => !v && setExtraOpen(null)} projectId={projectId} projectSeries={extraOpen || projectSeries} extra router={router} />}
     </Card>
   );
 }

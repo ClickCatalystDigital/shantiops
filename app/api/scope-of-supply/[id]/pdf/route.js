@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { queryOne } from '@/lib/db';
-import { getFreshSessionUser, isInternal } from '@/lib/auth';
+import { getFreshSessionUser, isInternal, isPM, canAccessDepartment } from '@/lib/auth';
 import { getScopeOfSupply } from '@/lib/data';
 import { renderSosPdf } from '@/lib/sos-pdf';
 
@@ -16,7 +16,9 @@ export async function GET(req, { params }) {
   const sos = docs.find(d => d.id === Number(params.id));
   if (!sos) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  const pdf = await renderSosPdf(sos);
+  // Pricing is Sales' business: everyone else gets the technical copy without Rate/Amount/terms.
+  const prices = isPM(user) || canAccessDepartment(user, 'Sales') || canAccessDepartment(user, 'Marketing');
+  const pdf = await renderSosPdf(sos, { prices });
   return new NextResponse(pdf, {
     headers: {
       'Content-Type': 'application/pdf',

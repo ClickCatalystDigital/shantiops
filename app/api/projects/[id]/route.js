@@ -36,6 +36,7 @@ export async function PATCH(req, { params }) {
   if (b.model_pressure !== undefined) {
     fields.push('model_pressure = ?'); args.push(b.model_pressure === '' || b.model_pressure == null ? null : Number(b.model_pressure));
   }
+  if (b.is_sib !== undefined) { fields.push('is_sib = ?'); args.push(b.is_sib ? 1 : 0); }
   if (b.model_design !== undefined) { fields.push('model_design = ?'); args.push(b.model_design || null); }
   if (b.company !== undefined) {
     if (!COMPANY_NAMES.includes(b.company)) return NextResponse.json({ error: 'Invalid company' }, { status: 400 });

@@ -17,7 +17,7 @@ export default function NewProjectForm({ customers = [] }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [f, setF] = useState({
-    series: '', model_capacity: '', model_pressure: '', model_design: '',
+    series: '', is_sib: false, model_capacity: '', model_pressure: '', model_design: '',
     project_no: '', customer_name: '', customer_id: '', description: '', order_date: '',
     company: 'Shanti Boilers', sale_order_id: '',
   });

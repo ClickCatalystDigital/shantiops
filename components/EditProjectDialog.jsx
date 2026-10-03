@@ -19,7 +19,7 @@ export default function EditProjectDialog({ project, customers = [], scopeOfSupp
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [f, setF] = useState({
-    series: project.series || '', model_capacity: project.model_capacity ?? '',
+    series: project.series || '', is_sib: !!project.is_sib, model_capacity: project.model_capacity ?? '',
     model_pressure: project.model_pressure ?? '', model_design: project.model_design || '',
     project_no: project.project_no || '', customer_name: project.customer_name || '',
     customer_id: project.customer_id ? String(project.customer_id) : '',

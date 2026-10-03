@@ -6,6 +6,7 @@ import { audit } from '@/lib/usb';
 import { COMPANY_NAMES } from '@/lib/qc-doc-pdf.js';
 import { syncQcPartsFromBom } from '@/lib/qc-bom-sync';
 import { CORE_FIELDS } from '@/lib/qc-document-fields';
+import { EXTRA_DOC_SERIES } from '@/lib/qc-extra-series.mjs';
 
 const HEADER_FIELDS = CORE_FIELDS.map(f => f.key);
 
@@ -24,7 +25,7 @@ export async function POST(req) {
 
   const b = await req.json();
   if (!b.project_id) return NextResponse.json({ error: 'project_id is required' }, { status: 400 });
-  const project = await queryOne('SELECT id, company, series, master_project_id FROM projects WHERE id = ?', [b.project_id]);
+  const project = await queryOne('SELECT id, company, series, is_sib, master_project_id FROM projects WHERE id = ?', [b.project_id]);
   if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
   // A multi-unit split child never has its own bom_items rows (the whole BOM lives only on the
   // master, §5k/MULTI-UNIT-SPLIT-DESIGN.md) — sync against the master's BOM instead, same pattern
@@ -36,7 +37,9 @@ export async function POST(req) {
   // Real bug, fixed 2026-08-24: this used to hardcode 'SF' regardless of the project's actual model,
   // so lib/qc-folder-pdf.js's series-driven form-set selection never got the real series to read.
   // SF stays the fallback for legacy/unset projects — not a behavior change for existing users.
-  const series = project.series || 'SF';
+  // An "extra documentation" request (HEADERS/PRS/FAB/FCB filed next to the main set) names its own
+  // series; otherwise a SIB project files the SIB set and everything else follows the project's model.
+  const series = EXTRA_DOC_SERIES.includes(b.series) ? b.series : project.is_sib ? 'SIB' : (project.series || 'SF');
 
   // Only the true identity fields are hard-required to create the row — every other CORE_FIELD
   // (design/hydro/working pressure, dimensions, etc.) can be left blank and filled in later, per a

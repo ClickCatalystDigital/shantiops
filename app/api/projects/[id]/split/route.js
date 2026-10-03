@@ -73,10 +73,10 @@ async function createChildUnits(tx, master, startUnitNo, count, totalUnitCount, 
   for (let i = startUnitNo; i < startUnitNo + count; i++) {
     const childProjectNo = `${baseProjectNo}-${String(i).padStart(padWidth, '0')}`;
     const r = await tx.execute({
-      sql: `INSERT INTO projects (project_no, customer_name, description, order_date, owner, customer_id, sale_order_id, series, company, master_project_id, unit_no)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      sql: `INSERT INTO projects (project_no, customer_name, description, order_date, owner, customer_id, sale_order_id, series, is_sib, company, master_project_id, unit_no)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       args: [childProjectNo, master.customer_name, master.description, master.order_date, user?.username || null,
-        master.customer_id, master.sale_order_id, master.series, master.company, master.id, i],
+        master.customer_id, master.sale_order_id, master.series, master.is_sib ? 1 : 0, master.company, master.id, i],
     });
     const childId = Number(r.lastInsertRowid);
     await createProjectMilestones(tx, childId, startDaysAgo, false);

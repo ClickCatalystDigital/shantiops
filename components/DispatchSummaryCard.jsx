@@ -13,8 +13,11 @@ const STATUS_CLASS = {
   packed: 'border-info/30 bg-info-surface text-info',
   dispatched: 'border-success/30 bg-success-surface text-success',
 };
+// "packed" is what Dispatch calls Ready — packed and waiting for the pre-dispatch sign-off.
+const STATUS_LABEL = { draft: 'Draft', packed: 'Ready', dispatched: 'Dispatched' };
 
-export default function DispatchSummaryCard({ projectId, packingLists = [] }) {
+// A draft's PDF is Dispatch's own working copy; everyone else can download a list once it is past draft.
+export default function DispatchSummaryCard({ projectId, packingLists = [], canOpenDrafts = false }) {
   const dispatched = packingLists.filter(l => l.status === 'dispatched').length;
   return (
     <Card>
@@ -33,13 +36,18 @@ export default function DispatchSummaryCard({ projectId, packingLists = [] }) {
           <p className="px-4 py-2 text-xs text-muted-foreground">{dispatched} of {packingLists.length} dispatched</p>
         )}
         {packingLists.map(l => (
-          <Link key={l.id} href={`/packing/${l.id}`} className="flex items-center justify-between gap-3 px-4 py-2.5 transition-colors hover:bg-muted/40">
-            <span className="text-sm font-medium">{l.packing_no}</span>
+          <div key={l.id} className="flex items-center justify-between gap-3 px-4 py-2.5 transition-colors hover:bg-muted/40">
+            <Link href={`/packing/${l.id}`} className="text-sm font-medium hover:underline">{l.packing_no}</Link>
             <div className="flex items-center gap-2">
               <span className="text-xs text-muted-foreground">{l.item_count} item(s)</span>
-              <Badge className={STATUS_CLASS[l.status]} variant="outline">{l.status}</Badge>
+              <Badge className={STATUS_CLASS[l.status]} variant="outline">{STATUS_LABEL[l.status] || l.status}</Badge>
+              {(l.status !== 'draft' || canOpenDrafts) && (
+                <Button asChild size="icon-sm" variant="ghost" aria-label={`Download ${l.packing_no} PDF`} title="Download PDF">
+                  <a href={`/api/packing/${l.id}/pdf`} target="_blank" rel="noreferrer"><DownloadIcon className="size-3.5" /></a>
+                </Button>
+              )}
             </div>
-          </Link>
+          </div>
         ))}
       </CardContent>
     </Card>

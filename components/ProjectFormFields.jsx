@@ -12,6 +12,7 @@ import { api } from '@/lib/client';
 import { useState, useRef } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import SearchableSelect from '@/components/SearchableSelect';
 import { QC_SERIES } from '@/lib/qc-series';
@@ -50,8 +51,9 @@ export default function ProjectFormFields({ f, setF, customers = [], saleOrderPi
   // (lib/qc-models.js) — PRS/HEADERS are a different equipment noun, so no preview is shown for
   // them yet rather than showing a misleading literal "BOILER-" label.
   const cfg = f.series ? modelConfig(f.series) : null;
+  // Empty parts are left out (no stray dashes); SIB sits between BOILER and the category when ticked.
   const preview = cfg?.noun === 'Boiler'
-    ? `BOILER-${f.series}-${f.model_design || '—'}-${f.model_capacity || '—'}-${f.model_pressure || '—'}`
+    ? ['BOILER', f.is_sib && 'SIB', f.series, f.model_design, f.model_capacity, f.model_pressure].filter(Boolean).join('-')
     : null;
   const showSaleOrder = !!saleOrderPicker;
   const [soNote, setSoNote] = useState('');
@@ -67,25 +69,31 @@ export default function ProjectFormFields({ f, setF, customers = [], saleOrderPi
       const so = await api(`/api/sale-orders/${id}`);
       const lines = so.items?.length ? so.items : (so.prefill_items || []);
       const desc = lines.map(l => [l.qty ? `${l.qty}${l.uom ? ' ' + l.uom : ''} ×` : null, l.item_description].filter(Boolean).join(' ')).filter(Boolean).join('; ');
+      const prevPno = applied.current.project_no; // what an earlier pick filled in (so a different order can replace it)
+      applied.current = { ...applied.current, project_no: so.so_no };
       setF(prev => ({
         ...prev,
         customer_name: so.customer_name || prev.customer_name,
         customer_id: so.customer_id ? String(so.customer_id) : prev.customer_id,
         company: so.company || prev.company,
+        // The order number is the project number (SB-1108, STF-IBR-063 …) — fill it unless one was typed.
+        project_no: so.so_no && (!prev.project_no || prev.project_no === prevPno) ? so.so_no : prev.project_no,
         order_date: prev.order_date || so.order_date || '',
         description: prev.description || desc.slice(0, 500),
       }));
       // Defaults from the order's boiler line and what earlier saved projects taught (best-effort, plain values —
       // fields typed by hand are left alone).
       try {
-        const spec = await api(`/api/sale-orders/${id}/project-spec`);
+        let spec = await api(`/api/sale-orders/${id}/project-spec`);
         setF(prev => {
           const next = { ...prev };
+          // A "BOILER-SIB-…" product ticks the SIB box; it has no category of its own.
+          if (spec.series === 'SIB') { next.is_sib = true; spec = { ...spec, series: null }; }
           for (const k of ['series', 'model_design', 'model_capacity', 'model_pressure']) {
             const typed = prev[k] !== '' && prev[k] != null && String(prev[k]) !== String(applied.current[k] ?? '');
             if (!typed) next[k] = spec[k] == null ? '' : spec[k];
           }
-          applied.current = { series: spec.series, model_design: spec.model_design, model_capacity: spec.model_capacity, model_pressure: spec.model_pressure };
+          applied.current = { ...applied.current, series: spec.series, model_design: spec.model_design, model_capacity: spec.model_capacity, model_pressure: spec.model_pressure };
           return next;
         });
       } catch { /* the form simply stays as it is */ }
@@ -123,6 +131,10 @@ export default function ProjectFormFields({ f, setF, customers = [], saleOrderPi
             <SelectTrigger><SelectValue placeholder="Equipment model" /></SelectTrigger>
             <SelectContent>{QC_SERIES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
           </Select>
+          <label className="flex w-fit cursor-pointer items-center gap-1.5 text-xs text-primary">
+            <Checkbox checked={!!f.is_sib} onCheckedChange={v => setF({ ...f, is_sib: v === true })} className="size-3.5" />
+            SIB
+          </label>
         </div>
         <ModelDesignField value={f.model_design} onChange={v => setF({ ...f, model_design: v })} />
       </div>

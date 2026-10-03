@@ -3,7 +3,7 @@
 import { redirect } from 'next/navigation';
 import { getFreshSessionUser, canAccessDepartment, isDepartmentHead, roleHome } from '@/lib/auth';
 import { canPerformAction } from '@/lib/action-permissions';
-import { getTestCertificates, getAllQcDocuments, getActiveProjectsList, getCalibrationItems, getReceivedProjectIds, getReleasedBomProjectIds, getAllocatedChildProjectIds, getNcrs, getQcHoldPoints, getPendingInwardApprovals, getPendingPreDispatchApprovals, getPendingJobSheetStages, getQcRecords, getJobWorkInspections, getWorkOrders, getBomAssembliesFlat, getMilestoneIdByKey } from '@/lib/data';
+import { getTestCertificates, getAllQcDocuments, getActiveProjectsList, getCalibrationItems, getReceivedProjectIds, getReleasedBomProjectIds, getAllocatedChildProjectIds, getNcrs, getQcHoldPoints, getPendingInwardApprovals, getPendingPreDispatchApprovals, getPendingJobSheetStages, getQcRecords, getJobWorkInspections, getWorkOrders, getBomAssembliesFlat, getMilestoneIdByKey, getExtraDocSeriesByProject } from '@/lib/data';
 import QcWorkspace from '@/components/QcWorkspace';
 
 export const dynamic = 'force-dynamic';
@@ -66,6 +66,8 @@ export default async function QcPage({ searchParams }) {
     .filter(p => mastersWithChildren.has(p.id))
     .map(p => ({ id: p.id, project_no: p.project_no, customer_name: p.customer_name, unit_count: p.unit_count }));
 
+  const extraDocs = await getExtraDocSeriesByProject(projects);
+
   // Test Records tab (Project View redesign, Wave 1) — the one genuine gap /qc had: qc_records/
   // job_work_inspections have never had any editor off the project page. Fetched only for the
   // currently-selected project (URL-synced by QcWorkspace's picker, same ?project= deep-link this
@@ -83,7 +85,7 @@ export default async function QcPage({ searchParams }) {
     : [[], [], [], [], null];
 
   return <QcWorkspace projects={projects} certificates={certificates} documents={documents}
-    calibrationItems={calibrationItems} ncrs={ncrs} holdPoints={holdPoints} splitOrders={splitOrders}
+    calibrationItems={calibrationItems} ncrs={ncrs} holdPoints={holdPoints} splitOrders={splitOrders} extraDocs={extraDocs}
     canDisposition={canDisposition} canVerify={canVerify} canClose={canClose}
     inwardApprovals={inwardApprovals} preDispatchApprovals={preDispatchApprovals}
     canDecideInward={isDepartmentHead(user, 'QC')} canDecideQcPreDispatch={isDepartmentHead(user, 'QC')}

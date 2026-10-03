@@ -46,12 +46,12 @@ export async function POST(req) {
   // filled in later, same relaxation as the single-document creation route and for the same reason:
   // the real engineering data for a real boiler often isn't known yet at creation time.
 
-  const master = await queryOne('SELECT id, company, series, bom_release_revision FROM projects WHERE id = ?', [masterId]);
+  const master = await queryOne('SELECT id, company, series, is_sib, bom_release_revision FROM projects WHERE id = ?', [masterId]);
   if (!master) return NextResponse.json({ error: 'Master project not found' }, { status: 404 });
 
   const placeholders = childIds.map(() => '?').join(',');
   const children = await queryAll(
-    `SELECT id, unit_no, series FROM projects WHERE id IN (${placeholders}) AND master_project_id = ? ORDER BY unit_no`,
+    `SELECT id, unit_no, series, is_sib FROM projects WHERE id IN (${placeholders}) AND master_project_id = ? ORDER BY unit_no`,
     [...childIds, masterId]);
   if (children.length !== childIds.length) {
     return NextResponse.json({ error: 'One or more selected units are not children of this master project' }, { status: 400 });
@@ -65,7 +65,7 @@ export async function POST(req) {
     for (const child of children) {
       const suffix = String(child.unit_no ?? '').padStart(padWidth, '0');
       const values = { ...b, company, makers_no: `${makersNoPrefix}-${suffix}`, doc_id: `${docIdPrefix}-${suffix}` };
-      const series = child.series || master.series || 'SF';
+      const series = child.is_sib || master.is_sib ? 'SIB' : (child.series || master.series || 'SF');
       const res = await tx.execute({
         sql: `INSERT INTO qc_documents (project_id, series, ${HEADER_FIELDS.join(', ')}, created_by, bom_release_revision_at_creation)
               VALUES (?, ?, ${HEADER_FIELDS.map(() => '?').join(', ')}, ?, ?)`,

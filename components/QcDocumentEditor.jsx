@@ -30,6 +30,7 @@ import { suggestCertificates, suggestBomItem } from '@/lib/tc-match';
 import { normalizeMaterial } from '@/lib/match-utils';
 import { QC_HEADER_FIELDS } from '@/lib/qc-document-fields';
 import { modelConfig } from '@/lib/qc-models';
+import { docSeries } from '@/lib/qc-extra-series.mjs';
 import { STANDARD_MOC } from '@/lib/section-shapes';
 import { classificationSource } from '@/lib/bom-fields.mjs';
 import SearchableSelect from './SearchableSelect';
@@ -1205,7 +1206,7 @@ export default function QcDocumentEditor({ project, document, parts, certificate
   const incomplete = parts.length === 0 || unlinked.length > 0;
   const ivaParts = parts.filter(p => !p.iiia_group_id);
   const ivaUnlinked = unlinked.filter(p => !p.iiia_group_id);
-  const showIiia = modelConfig(project.series).forms.includes('IIIA');
+  const showIiia = modelConfig(docSeries(document, project)).forms.includes('IIIA');
   async function setCustomerVisible(v) {
     setVisBusy(true);
     try {

@@ -28,6 +28,7 @@ import TodayBand from '@/components/TodayBand';
 import PortfolioDelayTimeline from '@/components/PortfolioDelayTimeline';
 import DepartmentStateCard from '@/components/DepartmentStateCard';
 import ProjectDesignRow from '@/components/ProjectDesignRow';
+import ScopeOfSupplyCard from '@/components/ScopeOfSupplyCard';
 import ProcurementQueue from '@/components/ProcurementQueue';
 import StoresSummaryCard from '@/components/StoresSummaryCard';
 import ProductionSummaryCard from '@/components/ProductionSummaryCard';
@@ -84,12 +85,10 @@ export default async function ProjectDetail({ params }) {
   // everything. Gates the whole download-link card in ProjectDesignRow, since every link there
   // points at the fully priced PDF.
   const canSeeMoney = pm || canAccessDepartment(user, 'Sales') || canAccessDepartment(user, 'Marketing');
-  // Neither of these two client components ever renders a price/line-item field — hiding the UI
-  // isn't enough on its own (the raw scopeOfSupply rows, unit_price/amount/tax_pct included, would
-  // still ship to the browser as React props otherwise); project down to exactly what each one
-  // reads before it ever reaches a 'use client' component.
+  // ProjectHeader is a client component and never needs a price: project down to the attached file
+  // before it reaches it. ScopeOfSupplyCard is a server component that only renders money for
+  // viewers who see it, so it gets the full rows.
   const sosFileOnly = scopeOfSupply.map(s => ({ id: s.id, pdf_key: s.pdf_key, pdf_url: s.pdf_url }));
-  const sosTitleOnly = scopeOfSupply.map(s => ({ id: s.id, title: s.title }));
   const head = isHead(user);
   const myDepts = headDepartments(user);
   const attentionMilestones = head ? milestones.filter(m => myDepts.includes(m.department)) : milestones;
@@ -120,7 +119,8 @@ export default async function ProjectDetail({ params }) {
   const showStores = bom.some(b => ['Transit', 'Received', 'In-Stock'].includes(b.purchase_status));
   const showProduction = jobCards.length > 0 || materialIndents.length > 0;
   const showQc = qcSummary.certs_total > 0 || qcSummary.docs_total > 0 || qcSummary.ncrs_total > 0;
-  const showDispatch = packingLists.length > 0;
+  // Always there once packing lists can exist — a split master keeps them on its units instead.
+  const showDispatch = packingLists.length > 0 || !hasChildren;
 
   const canMarkInstallation = await canPerformAction(user, 'Installation', 'installation.milestone.complete');
   const installationSummary = canAccessDepartment(user, 'Installation') ? await getInstallationProjectSummary(project.id) : null;
@@ -153,14 +153,15 @@ export default async function ProjectDetail({ params }) {
       {hasChildren && canAccessDepartment(user, 'Dispatch') && <DispatchBatchPackingPanel projectId={project.id} />}
 
       {/* Lower rows — accumulate, never swap. */}
-      <ProjectDesignRow projectId={project.id} scopeOfSupply={canSeeMoney ? sosTitleOnly : []} canSeeMoney={canSeeMoney}
+      {!project.master_project_id && <ScopeOfSupplyCard scopeOfSupply={scopeOfSupply} canSeeMoney={canSeeMoney} />}
+      <ProjectDesignRow projectId={project.id}
         calcSheets={designSummary?.calcSheets} drawings={designSummary?.drawings} />
 
       {showProcurement && <ProcurementQueue bom={bom} />}
       {showStores && <StoresSummaryCard projectId={project.id} inventoryCount={inventoryItems.length} deliveryLotsCount={deliveryLotsCount} />}
       {showProduction && <ProductionSummaryCard jobCards={jobCards} materialIndents={materialIndents} />}
       {showQc && <QcProjectSummary projectId={project.id} summary={qcSummary} canManage={canAccessDepartment(user, 'QC')} />}
-      {showDispatch && <DispatchSummaryCard projectId={project.id} packingLists={packingLists} />}
+      {showDispatch && <DispatchSummaryCard projectId={project.id} packingLists={packingLists} canOpenDrafts={canAccessDepartment(user, 'Dispatch')} />}
 
       {/* Installation sits below every other department card, just above the Bill of Materials. */}
       {canAccessDepartment(user, 'Installation') && (milestones.some(m => m.department === 'Installation')) && (

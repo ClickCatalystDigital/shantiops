@@ -16,6 +16,10 @@ import JobSheetBoard from './JobSheetBoard';
 import QcPanel from './QcPanel';
 import JobWorkPanel from './JobWorkPanel';
 import SearchableSelect from './SearchableSelect';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { EXTRA_DOC_SERIES } from '@/lib/qc-extra-series.mjs';
 import { InwardApprovalsPanel, PreDispatchApprovalsPanel, JobSheetApprovalsPanel } from './MaterialApprovalPanels';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { QC_SERIES } from '@/lib/qc-series';
@@ -57,9 +61,32 @@ const FLAT_TAB_KEYS = ITEMS.flatMap(i => (i.group ? i.children : i)).map(i => i.
 
 const SERIES_OPTIONS = [{ value: null, label: 'All models' }, ...QC_SERIES.map(s => ({ value: s, label: s }))];
 
+// Extra documentation filed next to the main set. Ticks start from what the project's BOM points at.
+function ExtraDocsPicker({ value, onChange, disabled }) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button variant="outline" disabled={disabled} className="w-40 justify-between font-normal"
+          title={disabled ? 'Pick a project first' : 'Extra documentation for this project'}>
+          <span className="truncate">{value.length ? value.join(', ') : 'Extra docs'}</span>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-44 p-1">
+        {EXTRA_DOC_SERIES.map(s => (
+          <label key={s} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted/60">
+            <Checkbox checked={value.includes(s)}
+              onCheckedChange={() => onChange(value.includes(s) ? value.filter(x => x !== s) : [...value, s])} />
+            {s}
+          </label>
+        ))}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 const certProjectIds = c => (c.project_ids ? String(c.project_ids).split(',').map(Number) : []);
 
-export default function QcWorkspace({ projects = [], certificates = [], documents = [], calibrationItems = [], ncrs = [], holdPoints = [], splitOrders = [], canDisposition = false, canVerify = false, canClose = false, inwardApprovals = [], jobSheetStages = [], preDispatchApprovals = [], canDecideInward = false, canDecideQcPreDispatch = false, testRecords = [], jobWorkInspections = [], workOrders = [], bomAssemblies = [], hydroMilestoneId = null, canEditQc = false, canEditProductionQc = false, initialTab, initialProject }) {
+export default function QcWorkspace({ projects = [], certificates = [], documents = [], calibrationItems = [], ncrs = [], holdPoints = [], splitOrders = [], extraDocs = {}, canDisposition = false, canVerify = false, canClose = false, inwardApprovals = [], jobSheetStages = [], preDispatchApprovals = [], canDecideInward = false, canDecideQcPreDispatch = false, testRecords = [], jobWorkInspections = [], workOrders = [], bomAssemblies = [], hydroMilestoneId = null, canEditQc = false, canEditProductionQc = false, initialTab, initialProject }) {
   const [tab, setTab] = useState(FLAT_TAB_KEYS.includes(initialTab) ? initialTab : 'tc-bank');
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -73,6 +100,7 @@ export default function QcWorkspace({ projects = [], certificates = [], document
   const initProject = initialProject && projects.some(p => String(p.id) === String(initialProject)) ? Number(initialProject) : null;
   const [series, setSeries] = useState(initProject ? (projects.find(p => p.id === initProject)?.series || null) : null);
   const [projectId, setProjectId] = useState(initProject);
+  const [extras, setExtras] = useState(initProject ? extraDocs[initProject] || [] : []);
 
   // Newest order first (created_at DESC), optionally narrowed to the selected series.
   const projectsSorted = useMemo(
@@ -88,6 +116,7 @@ export default function QcWorkspace({ projects = [], certificates = [], document
   }
   function pickProject(id) {
     setProjectId(id);
+    setExtras(id != null ? extraDocs[id] || [] : []);
     if (id != null) setSeries(projects.find(p => p.id === id)?.series || null); // auto-select series
     // URL-sync (same pattern ProcurementWorkspace.jsx's project filter already uses) — needed for
     // real reasons here, not just deep-link survival: the Test Records tab's data is fetched
@@ -118,6 +147,7 @@ export default function QcWorkspace({ projects = [], certificates = [], document
     <div className="flex flex-wrap items-center gap-2">
       <SearchableSelect options={SERIES_OPTIONS} value={series} onChange={pickSeries}
         placeholder="Search models…" className="w-40" />
+      <ExtraDocsPicker value={extras} onChange={setExtras} disabled={projectId == null} />
       <SearchableSelect
         options={[{ value: null, label: 'All projects' }, ...projectsForSeries.map(p => ({
           value: p.id, label: p.customer_name ? `${p.project_no} — ${p.customer_name}` : p.project_no,
@@ -186,7 +216,8 @@ export default function QcWorkspace({ projects = [], certificates = [], document
         )
       ) : tab === 'docs' ? (
         <StatutoryDocsPanel projectId={projectId} documents={shownDocs} canEdit showProject
-          projectSeries={projects.find(p => p.id === projectId)?.series} />
+          projectSeries={(p => (p?.is_sib ? 'SIB' : p?.series))(projects.find(p => p.id === projectId))}
+          extraSeries={extras} />
       ) : tab === 'ncr' ? (
         <NcrPanel ncrs={shownNcrs} canDisposition={canDisposition} canVerify={canVerify} canClose={canClose} />
       ) : tab === 'holds' ? (
