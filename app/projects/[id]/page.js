@@ -118,7 +118,7 @@ export default async function ProjectDetail({ params }) {
   const showProcurement = bom.length > 0;
   const showStores = bom.some(b => ['Transit', 'Received', 'In-Stock'].includes(b.purchase_status));
   const showProduction = jobCards.length > 0 || materialIndents.length > 0;
-  const showQc = qcSummary.certs_total > 0 || qcSummary.docs_total > 0 || qcSummary.ncrs_total > 0;
+  const showQc = qcSummary.docs_total > 0 || qcSummary.ncrs_total > 0;
   // Always there once packing lists can exist — a split master keeps them on its units instead.
   const showDispatch = packingLists.length > 0 || !hasChildren;
 
