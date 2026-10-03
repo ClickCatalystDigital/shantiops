@@ -7,6 +7,7 @@ import { MILESTONE_TEMPLATE } from '@/lib/milestones';
 import { MILESTONE_AUTOMATION_CATALOG } from '@/lib/milestone-auto';
 import ChangePasswordForm from '@/components/ChangePasswordForm';
 import ProfileForm from '@/components/ProfileForm';
+import AlertSettings from '@/components/AlertSettings';
 import AccessMatrix from '@/components/AccessMatrix';
 import ActionPermissionsPanel from '@/components/ActionPermissionsPanel';
 import MilestoneAutomationPanel from '@/components/MilestoneAutomationPanel';
@@ -68,6 +69,7 @@ export default async function Settings() {
         <ProfileForm user={user} />
         <ChangePasswordForm />
       </div>
+      <AlertSettings user={{ id: user.id, username: user.username, display_name: user.display_name }} />
 
       {isPM(user) && (
         <>

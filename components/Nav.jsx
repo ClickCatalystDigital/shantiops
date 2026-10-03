@@ -21,6 +21,7 @@ import {
   DropdownMenuLabel,
 } from '@/components/ui/dropdown-menu';
 import NotificationBell from './NotificationBell';
+import { Avatar } from './AlertSettings';
 import CompanySelector from './CompanySelector';
 import { canUseCompanySelector } from '@/lib/company-filter.mjs';
 
@@ -237,9 +238,12 @@ export default function Nav({ user, reportDepartments = [] }) {
               <DropdownMenuContent align="end" className="w-52">
                 {user?.display_name && (
                   <>
-                    <DropdownMenuLabel className="font-normal">
-                      <div className="text-sm font-medium">{user.display_name}</div>
-                      <div className="text-xs text-muted-foreground">@{user.username}</div>
+                    <DropdownMenuLabel className="flex items-center gap-2.5 font-normal">
+                      <Avatar userId={user.id} name={user.display_name || user.username} version={user.avatar_key} size={32} />
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-medium">{user.display_name}</div>
+                        <div className="text-xs text-muted-foreground">@{user.username}</div>
+                      </div>
                     </DropdownMenuLabel>
                     <DropdownMenuSeparator />
                   </>

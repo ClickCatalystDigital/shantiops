@@ -33,6 +33,9 @@ export default async function RootLayout({ children }) {
           {/* Extra bottom padding on mobile so content clears the fixed bottom tab bar (internal only). */}
           <div className={isInternal(user) ? 'pb-20 md:pb-0' : ''}>
             {needsDeviceSetup ? <DeviceSetupGate machine={machine} /> : children}
+            <footer className="py-5 text-center text-[11px] text-muted-foreground/70 print:hidden">
+              Shanti Ops · an <a href="https://ahromlabs.com" target="_blank" rel="noreferrer" className="underline-offset-2 hover:text-foreground hover:underline">ahromlabs.com</a> product
+            </footer>
           </div>
         </TooltipProvider>
         <Toaster position="top-center" richColors />
