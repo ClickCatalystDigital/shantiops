@@ -8,6 +8,7 @@ import PortalOrderProgress from '@/components/PortalOrderProgress';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import PortalNotificationBell from '@/components/PortalNotificationBell';
+import PortalInfoButton from '@/components/PortalInfoButton';
 import { FileTextIcon, DownloadIcon } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
@@ -30,6 +31,7 @@ export default async function Portal({ params }) {
         <div className="container flex h-14 items-center justify-between">
           <div className="text-base font-bold tracking-tight">SHANTI<span className="text-primary">BOILERS</span></div>
           <div className="flex items-center gap-2">
+            <PortalInfoButton phases={phases} isSplitOrder={isSplitOrder} unitCount={unitCount} />
             {isCustomer(user) && <PortalNotificationBell />}
             <Button asChild variant="ghost" size="sm"><Link href="/help">Help</Link></Button>
             <LogoutButton />
