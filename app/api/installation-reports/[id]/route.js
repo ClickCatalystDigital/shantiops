@@ -5,6 +5,7 @@ import { requireAction } from '@/lib/action-permissions';
 import { signatureError, finalizeDoc } from '@/lib/installation-report-template.mjs';
 import { notifyProjectCustomers } from '@/lib/notify';
 import { audit } from '@/lib/usb';
+import { syncCommissioningMilestone } from '@/lib/milestone-auto';
 
 async function load(write) {
   const user = await getFreshSessionUser();
@@ -40,6 +41,8 @@ export async function PATCH(req, { params }) {
       const doc = finalizeDoc(row, needsNo ? await nextCounterValue('commissioning_doc_no', 0) : 0);
       await execute('UPDATE installation_reports SET finalized_at = CURRENT_TIMESTAMP, finalized_by = ?, doc_no = COALESCE(?, doc_no), revision = COALESCE(?, revision) WHERE id = ?',
         [user.username, doc.doc_no ?? null, doc.revision ?? null, id]);
+      // A finalized Commissioning report is the real sign-off: it completes the Commissioning milestone.
+      if (row.call_type === 'Commissioning') try { await syncCommissioningMilestone(row.project_id, user.username); } catch { /* best-effort */ }
     } else if (b.action === 'reopen') {
       // Reopening also withdraws it from the customer — an editable report must not stay published.
       await execute('UPDATE installation_reports SET finalized_at = NULL, finalized_by = NULL, customer_visible = 0, customer_visible_at = NULL WHERE id = ?', [id]);

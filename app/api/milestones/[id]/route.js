@@ -6,7 +6,7 @@ import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { todayISO } from '@/lib/date';
 import { fireHandoff } from '@/lib/notify';
-import { notifyMilestoneExtra } from '@/lib/milestone-auto';
+import { notifyMilestoneExtra, startNextMilestone } from '@/lib/milestone-auto';
 
 // Whitelisted columns — never interpolate a client-supplied column name into SQL.
 const EDITABLE = ['assignee', 'department', 'planned_start', 'planned_end', 'actual_start', 'actual_end',
@@ -88,6 +88,7 @@ export async function PATCH(req, { params }) {
     if (!wasDone && (after?.actual_end || after?.status === 'done')) {
       await fireHandoff(params.id, user.username);
       await notifyMilestoneExtra(m.project_id, m.milestone_key);
+      await startNextMilestone(m.project_id, m.milestone_key, user.username);
     }
   } catch (e) {
     await audit('handoff_failed', { actor: user.username, detail: `milestone ${params.id}: ${e}` });

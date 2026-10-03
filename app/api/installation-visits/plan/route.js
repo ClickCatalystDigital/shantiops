@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { execute } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
+import { syncServiceMilestones } from '@/lib/milestone-auto';
 
 export async function PATCH(req) {
   const user = await getFreshSessionUser();
@@ -13,5 +14,6 @@ export async function PATCH(req) {
   const n = Math.floor(Number(b.planned_visits));
   if (!b.project_id || !(n >= 0 && n <= 50)) return NextResponse.json({ error: 'Planned visits must be 0-50' }, { status: 400 });
   await execute('UPDATE projects SET installation_planned_visits = ? WHERE id = ?', [n, b.project_id]);
+  try { await syncServiceMilestones(Number(b.project_id), user.username); } catch { /* best-effort */ }
   return NextResponse.json({ ok: true });
 }

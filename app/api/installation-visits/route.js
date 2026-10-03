@@ -5,6 +5,7 @@ import { execute, queryAll, queryOne } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
+import { syncServiceMilestones } from '@/lib/milestone-auto';
 
 const DEFAULT_VISITS = [
   'Foundation marking (as per site conditions)',
@@ -59,5 +60,6 @@ export async function POST(req) {
     [b.project_id, n, description, b.visit_date || null, b.visit_time || null, b.visited_by || null, b.status === 'done' ? 'done' : 'planned', user.username]
   );
   await audit('installation_visit_added', { actor: user.username, detail: `project ${b.project_id}: ${description}` });
+  try { await syncServiceMilestones(Number(b.project_id), user.username); } catch { /* best-effort */ }
   return NextResponse.json({ id: Number(lastId) });
 }

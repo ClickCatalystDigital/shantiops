@@ -3,6 +3,7 @@ import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
+import { syncServiceMilestones } from '@/lib/milestone-auto';
 
 async function guard() {
   const user = await getFreshSessionUser();
@@ -26,6 +27,7 @@ export async function PATCH(req, { params }) {
     [description, pick('visit_date'), pick('visit_time'), pick('visited_by'), b.status === 'done' ? 'done' : b.status === 'planned' ? 'planned' : row.status, id]
   );
   await audit('installation_visit_edit', { actor: user.username, detail: `visit ${id}` });
+  try { await syncServiceMilestones(row.project_id, user.username); } catch { /* best-effort */ }
   return NextResponse.json({ ok: true });
 }
 
@@ -33,7 +35,9 @@ export async function DELETE(req, { params }) {
   const { user, res } = await guard();
   if (res) return res;
   const { id } = await params;
+  const row = await queryOne('SELECT project_id FROM installation_visits WHERE id = ?', [id]);
   await execute('DELETE FROM installation_visits WHERE id = ?', [id]);
   await audit('installation_visit_deleted', { actor: user.username, detail: `visit ${id}` });
+  if (row) try { await syncServiceMilestones(row.project_id, user.username); } catch { /* best-effort */ }
   return NextResponse.json({ ok: true });
 }

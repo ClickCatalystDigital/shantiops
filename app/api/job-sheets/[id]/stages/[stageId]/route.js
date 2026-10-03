@@ -12,7 +12,7 @@ import { todayISO } from '@/lib/date';
 import { isISODate, recomputeSheetDates } from '@/lib/job-sheets';
 import { audit } from '@/lib/usb';
 import { notifyDepartment } from '@/lib/notify';
-import { syncProductionFromJobSheets } from '@/lib/milestone-auto';
+import { syncProductionFromJobSheets, maybeStartProductionForProject } from '@/lib/milestone-auto';
 import { isDispatchStage } from '@/lib/job-sheet-stages.mjs';
 
 const bad = (m, status = 400) => NextResponse.json({ error: m }, { status });
@@ -105,6 +105,14 @@ export async function PATCH(req, { params }) {
   } else return bad('Unknown action');
 
   await recomputeSheetDates(sheetId);
+  // The first stage started (or finished directly) is when shop-floor work really begins: start the
+  // Production milestone (Marking/Cutting) — a no-op if it's already started or done.
+  if (b.action === 'start' || b.action === 'finish') {
+    try {
+      const js = await queryOne('SELECT project_id FROM job_sheets WHERE id = ?', [sheetId]);
+      if (js?.project_id) await maybeStartProductionForProject(js.project_id, user.username);
+    } catch { /* best-effort */ }
+  }
   // The Dispatch stage is where the finished job moves to the packing list: tell Dispatch the moment
   // it is started (or finished directly), once per job card.
   if ((b.action === 'start' || b.action === 'finish') && isDispatchStage(row.name)) {

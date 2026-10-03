@@ -84,6 +84,7 @@ export default function ProjectsListTable({ projects }) {
                     </div>
                     <div className="text-sm">{p.customer_name}</div>
                     <div className="text-xs text-muted-foreground">{p.description || '—'}</div>
+                    <DepartmentPills departmentProgress={p.departmentProgress} />
                   </CardContent>
                 </Card>
               </button>
@@ -125,10 +126,16 @@ export default function ProjectsListTable({ projects }) {
                       <TableCell>{p.customer_name}</TableCell>
                       <TableCell className="text-muted-foreground">{p.description || '—'}</TableCell>
                       <TableCell className="tnum">{p.order_date || '—'}</TableCell>
-                      <TableCell colSpan={2}>
+                      {/* The master carries the shared BOM, purchasing and receiving — show its own
+                          departments, plus how many units are done. */}
+                      <TableCell className="tnum"><DepartmentProgress departmentProgress={p.departmentProgress} /></TableCell>
+                      <TableCell>
                         <Badge variant="outline">{p.childSummary.done} of {p.childSummary.total} units done</Badge>
                       </TableCell>
-                      <TableCell><StatusBadge status={p.roll} /></TableCell>
+                      <TableCell>
+                        <StatusBadge status={p.roll} />
+                        <div className="mt-1"><DepartmentPills departmentProgress={p.departmentProgress} /></div>
+                      </TableCell>
                     </TableRow>
                   ) : (
                     <ProjectRow key={p.id} p={p} />
