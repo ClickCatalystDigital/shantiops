@@ -1,7 +1,7 @@
 // app/api/gst-filings/route.js — ACCOUNTING-IMPLEMENTATION-PLAN.md Phase 5, GST compliance
 // sub-step. Record-keeping only ("we filed GSTR-1 for Shanti Boilers, 2026-07, on the portal") —
 // no enforcement, no period lock (Phase 5's own non-goal). Lets GSTR-1A be understood as "the
-// current GSTR-1 report, re-run and amended on the portal after this date" without Shanti Ops
+// current GSTR-1 report, re-run and amended on the portal after this date" without SB Ops
 // having to model a separate amendment document.
 import { NextResponse } from 'next/server';
 import { execute } from '@/lib/db';

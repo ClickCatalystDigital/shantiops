@@ -11,7 +11,21 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Loader2Icon, UserPlusIcon } from 'lucide-react';
+import { Loader2Icon, UserPlusIcon, FileCheck2Icon, LayersIcon, QrCodeIcon, LandmarkIcon, BellIcon, UsersIcon, RecycleIcon, GaugeIcon, MessageCircleIcon, ShieldCheckIcon } from 'lucide-react';
+
+// Left panel of the sign-in page: only things the product does today.
+const FEATURES = [
+  [FileCheck2Icon, 'IBR folder in one click', 'Form II, III, III A and IV A built from the certificates already linked to each part.'],
+  [LayersIcon, 'Excel PMB to a structured BOM', 'Upload the workbook; the tree, categories and catalog links are filled in for review.'],
+  [RecycleIcon, 'Plate-to-part traceability', 'Heat numbers follow every cut, and usable remnants return to stock for the next order.'],
+  [QrCodeIcon, 'Customer portal and nameplate QR', 'Customers follow their order, download documents and see service visits.'],
+  [LandmarkIcon, 'Accounts built in', 'GST, TDS, ledger, bank reconciliation and financial statements for each company.'],
+  [BellIcon, 'Alerts that reach the right person', 'Each person chooses bell or email per alert; the owner gets a morning brief.'],
+  [MessageCircleIcon, 'WhatsApp for quotations and RFQs', 'Send offers to customers and enquiries to suppliers on WhatsApp in one click.'],
+  [GaugeIcon, 'Owner view', 'On-track status, cash outstanding and approvals waiting on one page.'],
+  [ShieldCheckIcon, 'Device and data security', 'USB drives, phones and websites stay locked on office PCs until a manager approves.'],
+  [UsersIcon, 'CRM to cash', 'Leads from IndiaMART, TradeIndia, JustDial and your website become enquiries, quotations, orders and payments.'],
+];
 import { DEPARTMENTS } from '@/lib/milestones';
 
 export default function Login() {
@@ -26,7 +40,9 @@ export default function Login() {
     setError('');
     try {
       const { home } = await api('/api/login', { method: 'POST', body: form });
-      router.push(home || '/');
+      // ?next= is set by middleware.js; only same-site paths are followed (no open redirect).
+      const next = new URLSearchParams(window.location.search).get('next');
+      router.push(next && /^\/(?![\/\\])/.test(next) ? next : home || '/');
       router.refresh();
     } catch (err) {
       setError(err.message);
@@ -35,20 +51,33 @@ export default function Login() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-muted/40 to-background p-4">
-      <Card className="w-full max-w-sm shadow-lg">
+    <div className="grid min-h-screen lg:grid-cols-[1.1fr_1fr]">
+      <aside className="hidden flex-col justify-between border-r bg-muted/40 p-12 lg:flex">
+        <p><span className="rounded-full border px-2.5 py-1 text-xs font-medium text-muted-foreground">ERP 360</span></p>
+        <div className="max-w-xl">
+          <h1 className="text-4xl font-semibold leading-tight tracking-tight">One system, from enquiry to commissioning.</h1>
+          <p className="mt-4 text-sm text-muted-foreground">CRM, Design, Procurement, Stores, Production, QC, Dispatch, Service, Accounts and HR on one set of records.</p>
+          <ul className="mt-8 grid grid-cols-2 gap-x-8 gap-y-5">
+            {FEATURES.map(([Icon, title, text, tag]) => (
+              <li key={title} className="flex gap-3">
+                <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                <div>
+                  <p className="text-sm font-medium">{title}{tag && <span className="ml-2 rounded-full border px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">{tag}</span>}</p>
+                  <p className="text-sm text-muted-foreground">{text}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <p className="text-xs text-muted-foreground">An ahromlabs.com product</p>
+      </aside>
+      <div className="flex items-center justify-center bg-background p-4">
+      <Card className="w-full max-w-sm border-0 shadow-none lg:border lg:shadow-sm">
         <CardHeader className="items-center text-center">
           <div className="flex items-center justify-center gap-2">
-            <img
-              src="/logo.svg"
-              alt=""
-              aria-hidden
-              className="size-9 md:size-10"
-              onError={(e) => {
-                e.currentTarget.style.display = "none";
-              }}
-            />
 
+            {/* Logo hidden until the new SB Ops mark exists; drop `hidden` to show it (animation: .logo in globals.css). */}
+            <img src="/logo.svg" alt="" aria-hidden className="logo hidden size-9 md:size-10" onError={(e) => { e.currentTarget.style.display = "none"; }} />
             <h1 className="text-2xl font-bold tracking-tight">
               <span className="text-muted-foreground">SB</span><span className="text-primary">OPS</span>
             </h1>
@@ -77,6 +106,7 @@ export default function Login() {
         </CardContent>
         <RequestAccess />
       </Card>
+      </div>
     </div>
   );
 }

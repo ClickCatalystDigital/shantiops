@@ -31,7 +31,7 @@ import {
 } from 'lucide-react';
 import { WeeklyPlannerTab, LibraryTab } from '@/components/SalesExtras';
 import { AmcTab } from '@/components/SalesAmc';
-import { api, showToast } from '@/lib/client';
+import { api, showToast, sendWhatsApp } from '@/lib/client';
 import { todayISO } from '@/lib/date';
 import { formatMoney, formatDate } from '@/lib/format';
 import Customer360 from '@/components/Customer360';
@@ -1909,13 +1909,24 @@ function QuotationStatusSelect({ q, busy, onChange }) {
   );
 }
 
-function QuotationConvertButtons({ q, busy, onEmail, onConvert, onInvoice, onRevise, onApprove, onDelete, canApprove }) {
+// WhatsApp click-send for a quotation (same wa.me approach as the RFQ dialog): opens WhatsApp with
+// the message typed and the customer's number filled in. The PDF is not attached — wa.me can't.
+const waDigits = phone => { const d = String(phone || '').split(/[,/;]/)[0].replace(/\D/g, ''); return d.length === 10 ? `91${d}` : d.length >= 11 ? d : ''; };
+const quotationWaText = q => `Dear ${q.customer_name},\n\nOur quotation ${q.quotation_no} for Rs ${Math.round(Number(q.total) || 0).toLocaleString('en-IN')} is ready. We are sending the PDF separately. Please reply here for any clarification.\n\nThank you.`;
+
+function QuotationConvertButtons({ q, busy, onEmail, onSent, onConvert, onInvoice, onRevise, onApprove, onDelete, canApprove }) {
   return (
     <div className="flex flex-wrap gap-2">
       {q.approval_status === 'pending' && canApprove && <Button size="sm" disabled={busy} onClick={() => onApprove(q)}>Approve discount</Button>}
       {q.status === 'accepted' && <Button size="sm" variant="outline" disabled={busy} onClick={() => onConvert(q)}>Convert to SO</Button>}
       {q.status === 'accepted' && <Button size="sm" variant="outline" disabled={busy} onClick={() => onInvoice(q)}>Convert to Invoice</Button>}
       {q.status !== 'revised' && <Button size="sm" variant="ghost" disabled={busy} onClick={() => onEmail(q)}>Send email</Button>}
+      {q.status !== 'revised' && waDigits(q.customer_phone) && (
+        <Button size="sm" variant="ghost" disabled={busy}
+          onClick={() => sendWhatsApp(`/api/quotations/${q.id}/send-whatsapp`, {}, `https://wa.me/${waDigits(q.customer_phone)}?text=${encodeURIComponent(quotationWaText(q))}`).then(ok => ok && onSent?.())}>
+          WhatsApp
+        </Button>
+      )}
       {!['accepted', 'revised'].includes(q.status) && <Button size="sm" variant="ghost" disabled={busy} onClick={() => onRevise(q)}>Revise</Button>}
       {canApprove && onDelete && !['accepted', 'sent'].includes(q.status) && (
         <Button size="icon-sm" variant="ghost" className="text-destructive" disabled={busy} onClick={() => onDelete(q)}><TrashIcon className="size-3.5" /></Button>
@@ -2075,7 +2086,7 @@ function QuotationsTab({ quotations, customers, salesProducts = [], isSalesHead 
                   <TableCell>{q.customer_name}</TableCell>
                   <TableCell className="tnum">{formatMoney(q.total)}</TableCell>
                   <TableCell><QuotationStatusSelect q={q} busy={busyId === q.id} onChange={setStatus} /></TableCell>
-                  <TableCell><QuotationConvertButtons q={q} busy={busyId === q.id} onEmail={q => setEmailQuotationId(q.id)} onConvert={convert} onInvoice={q => { setIsReverseCharge(false); setRcmQuotation(q); }} onRevise={revise} onApprove={approve} onDelete={deleteQuotation} canApprove={isSalesHead} /></TableCell>
+                  <TableCell><QuotationConvertButtons q={q} busy={busyId === q.id} onEmail={q => setEmailQuotationId(q.id)} onSent={() => router.refresh()} onConvert={convert} onInvoice={q => { setIsReverseCharge(false); setRcmQuotation(q); }} onRevise={revise} onApprove={approve} onDelete={deleteQuotation} canApprove={isSalesHead} /></TableCell>
                 </TableRow>
               ))}
             </TableBody>

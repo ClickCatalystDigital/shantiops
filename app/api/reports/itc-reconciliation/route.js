@@ -1,7 +1,7 @@
 // app/api/reports/itc-reconciliation/route.js — ACCOUNTING-IMPLEMENTATION-PLAN.md Phase 5, GST
 // compliance sub-step. Derived, read-only: matches this period's uploaded/manual GSTR-2B lines
 // (app/api/gstr2b) against this period's own Vendor Bills via lib/gst-return.mjs's
-// itcReconciliation(). Shanti Ops' Vendor Bill ledger stays the accounting source of truth —
+// itcReconciliation(). SB Ops' Vendor Bill ledger stays the accounting source of truth —
 // GSTR-2B/IMS is the external input being reconciled against, not the other way round.
 import { NextResponse } from 'next/server';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';

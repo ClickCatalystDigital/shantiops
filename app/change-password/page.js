@@ -31,7 +31,7 @@ export default function ChangePasswordPage() {
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-muted/40 to-background p-4">
       <Card className="w-full max-w-sm shadow-lg">
         <CardHeader className="items-center text-center">
-          <div className="text-base font-bold tracking-tight">SHANTI<span className="text-primary">BOILERS</span></div>
+          <div className="text-base font-bold tracking-tight"><span className="text-muted-foreground">SB</span><span className="text-primary">OPS</span></div>
           <p className="text-sm text-muted-foreground">Choose your own password to continue</p>
         </CardHeader>
         <CardContent>

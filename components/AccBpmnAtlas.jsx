@@ -178,7 +178,7 @@ const WORKFLOWS = [
     id: 'w14', open: true, name: 'GSTR-1 / IFF (Outward)',
     strip: [['accounts', 'Reads Sales Invoice lines live'], ['accounts', 'B2B + HSN summary computed'], ['accounts', 'Mark filed (a marker only)']],
     ledger: 'None — pure report.',
-    ends: 'A gst_filings marker row. The actual filing happens on the government portal, by a human, outside Shanti Ops.',
+    ends: 'A gst_filings marker row. The actual filing happens on the government portal, by a human, outside SB Ops.',
     gaps: [],
   },
   {
@@ -201,11 +201,11 @@ const WORKFLOWS = [
     id: 'w17', name: 'Statutory Rate Sync (Cross-System)',
     strip: [
       ['external', 'Human drafts a rate change (Hub)'], ['external', 'Approved (Hub)'], ['external', 'Cloudflare Cron fires daily'],
-      ['accounts', 'Idempotent sync into Shanti Ops'], ['external', 'Heartbeat + dead-man’s-switch ping'],
+      ['accounts', 'Idempotent sync into SB Ops'], ['external', 'Heartbeat + dead-man’s-switch ping'],
     ],
     documents: ['gst_rates', 'vendor_tds_rates', 'income_tax_slabs', 'professional_tax_slabs'],
     gaps: [
-      { tag: 'Draw as a second pool', text: 'This is the one workflow that genuinely crosses an organisation boundary — the Statutory Rates Hub is a separate system. Model it as its own BPMN pool, connected to Shanti Ops’ pool by a message flow, not as another lane.' },
+      { tag: 'Draw as a second pool', text: 'This is the one workflow that genuinely crosses an organisation boundary — the Statutory Rates Hub is a separate system. Model it as its own BPMN pool, connected to SB Ops’ pool by a message flow, not as another lane.' },
       { tag: 'Gap', text: 'The Hub’s own retraction model doesn’t push a correction to a tenant that already pulled a since-retracted rate.' },
     ],
   },
@@ -364,7 +364,7 @@ export default function AccBpmnAtlas() {
 
         <main className={styles.main}>
           <header className={styles.pageHeader}>
-            <div className={styles.eyebrow}>Shanti Ops · Accounts Audit</div>
+            <div className={styles.eyebrow}>SB Ops · Accounts Audit</div>
             <h1>Every accounting workflow, traced end to end.</h1>
             <p className={styles.dek}>
               Twenty workflows the Accounts module actually runs today — where each one starts, which
@@ -450,7 +450,7 @@ export default function AccBpmnAtlas() {
               <div className={styles.guideNum}>1</div>
               <div>
                 <h4>Pick your pools and lanes before drawing a single arrow</h4>
-                <p>One pool = “Shanti Ops.” Inside it, one lane per department that actually
+                <p>One pool = “SB Ops.” Inside it, one lane per department that actually
                   <em> does</em> something in the workflow you’re drawing — pull the exact set
                   straight from each workflow card’s Departments line above. Order lanes with the
                   operational departments on top (Sales, Procurement, Stores, Production, Dispatch)
@@ -610,7 +610,7 @@ export default function AccBpmnAtlas() {
           </section>
 
           <footer className={styles.endNote}>
-            Traced against the live Shanti Ops codebase and its own build history (SYSTEM.md). Every
+            Traced against the live SB Ops codebase and its own build history (SYSTEM.md). Every
             route path named above is real and current as of this audit.
           </footer>
         </main>

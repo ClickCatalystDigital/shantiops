@@ -12,7 +12,7 @@ import {
 export const CRM_INTRO = {
   title: 'Introduction to Sales',
   body: [
-    `This is Shanti Ops' own CRM — built to match the record-keeping depth of ERPNext CRM and the
+    `This is SB Ops' own CRM — built to match the record-keeping depth of ERPNext CRM and the
      day-to-day tools (tasks, call logs, saved views, auto-assignment) of Frappe CRM, the product
      ERPNext itself now points people to.`,
     `Sales and Marketing share one funnel, not two. A Lead can come from either department, moves

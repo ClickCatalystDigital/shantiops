@@ -81,7 +81,7 @@ function SettingsTab({ companies, router }) {
 // GST refresh flow that can never silently overwrite a manual correction — the diff/confirm dialog
 // below is the enforcement point (lib/company-entity.mjs's diffCompanyEntity(), same two-phase
 // shape as Bank Reconciliation's Import Statement). PF/ESI/PT applicability stays computed here in
-// Shanti Ops (lib/company-entity.mjs's computeApplicability()), never fetched, never delegated to
+// SB Ops (lib/company-entity.mjs's computeApplicability()), never fetched, never delegated to
 // statutory-rates-hub — company-specific facts belong with the company entity, not the national
 // rate registry. --------------------------------------------------------------------------------
 

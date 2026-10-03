@@ -187,17 +187,8 @@ export default function Nav({ user, reportDepartments = [] }) {
       <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container flex h-14 items-center gap-4">
           <Link href="/" className="flex items-center gap-2 text-base font-bold tracking-tight">
-            {/* Interim logo from public/logo.svg (static). Will be replaced by an inlined <Logo/>
-                component so only the inner ring/center rotates. Hides gracefully until the file exists. */}
-            <img
-              src="/logo.svg"
-              alt=""
-              aria-hidden
-              className="logo size-7 shrink-0 md:size-8"
-              onError={(e) => {
-                e.currentTarget.style.display = "none";
-              }}
-            />
+            {/* Logo hidden until the new SB Ops mark exists; drop `hidden` to show it (animation: .logo in globals.css). */}
+            <img src="/logo.svg" alt="" aria-hidden className="logo hidden size-7 shrink-0 md:size-8" onError={(e) => { e.currentTarget.style.display = "none"; }} />
             <h1 className="text-xl font-bold tracking-tight">
               <span className="text-muted-foreground">SB</span><span className="text-primary">OPS</span>
             </h1>

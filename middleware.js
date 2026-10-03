@@ -32,6 +32,8 @@ export function middleware(req) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
     const loginUrl = new URL('/login', req.url);
+    // Come back here after signing in (e.g. a scanned nameplate QR that opens /portal/<id>).
+    if (pathname !== '/') loginUrl.searchParams.set('next', pathname);
     return NextResponse.redirect(loginUrl);
   }
 

@@ -16,7 +16,7 @@ export async function POST(req) {
   if (!b.code) {
     const secret = authenticator.generateSecret();
     await execute('UPDATE users SET totp_pending_secret = ? WHERE id = ?', [secret, user.id]);
-    const otpauth = authenticator.keyuri(user.username, 'Shanti Ops', secret);
+    const otpauth = authenticator.keyuri(user.username, 'SB Ops', secret);
     const qr = await QRCode.toDataURL(otpauth);
     return NextResponse.json({ otpauth, qr });
   }

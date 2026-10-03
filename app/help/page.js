@@ -36,7 +36,7 @@ export default async function HelpPage() {
       <div className="min-h-screen bg-gradient-to-b from-muted/40 to-background">
         <header className="border-b bg-background/80 backdrop-blur">
           <div className="container flex h-14 items-center justify-between">
-            <div className="text-base font-bold tracking-tight">SHANTI<span className="text-primary">BOILERS</span></div>
+            <div className="text-base font-bold tracking-tight"><span className="text-muted-foreground">SB</span><span className="text-primary">OPS</span></div>
             <LogoutButton />
           </div>
         </header>

@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { Card, CardHeader, CardTitle, CardAction, CardContent } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { DownloadIcon, ArrowRightIcon } from 'lucide-react';
+import { DownloadIcon, ArrowRightIcon, QrCodeIcon } from 'lucide-react';
 
 const STATUS_CLASS = {
   draft: 'border-warning/30 bg-warning-surface text-warning',
@@ -26,6 +26,9 @@ export default function DispatchSummaryCard({ projectId, packingLists = [], canO
         <CardAction className="flex items-center gap-2">
           <Button asChild size="sm" variant="outline">
             <a href={`/api/projects/${projectId}/packing-lists/xlsx`}><DownloadIcon data-icon="inline-start" />Excel</a>
+          </Button>
+          <Button asChild size="sm" variant="outline" title="QR sticker for the nameplate — opens this order's customer portal page">
+            <a href={`/api/projects/${projectId}/nameplate-sticker`} target="_blank" rel="noreferrer"><QrCodeIcon data-icon="inline-start" />QR sticker</a>
           </Button>
           <Button asChild size="sm" variant="outline"><Link href="/dispatch">Open Dispatch workspace <ArrowRightIcon className="size-3.5" /></Link></Button>
         </CardAction>

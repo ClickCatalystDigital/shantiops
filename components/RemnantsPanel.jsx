@@ -75,6 +75,8 @@ export function RemnantsProduction({ projects = [] }) {
   const [sub, setSub] = useState('cut');
   const [picked, setPicked] = useState(new Set());
   const reloadAll = () => Promise.all([reloadCut(), reloadReturned()]);
+  const [steel, setSteel] = useState(null);
+  useEffect(() => { api('/api/stock-pieces/savings').then(setSteel).catch(() => {}); }, []);
 
   // A piece belongs to the project it is reserved for, else the indent's project, else its owner.
   const projectOf = p => p.project_id || p.indent_project_id || p.owner_project_id || null;
@@ -89,6 +91,12 @@ export function RemnantsProduction({ projects = [] }) {
 
   return (
     <div className="flex flex-col gap-4">
+      {steel?.pieces > 0 && (
+        <p className="text-sm text-muted-foreground">
+          Steel reused from remnants so far: <span className="font-medium text-foreground">{steel.kg.toLocaleString('en-IN')} kg</span> across {steel.pieces} piece{steel.pieces === 1 ? '' : 's'}
+          {steel.rupees > 0 && <> · <span className="font-medium text-foreground">₹{Math.round(steel.rupees).toLocaleString('en-IN')}</span> not bought again</>}
+        </p>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <StoresSubTabs value={sub} onChange={setSub} tabs={[
           { value: 'cut', label: 'Cut', count: cutRows?.length || 0 },

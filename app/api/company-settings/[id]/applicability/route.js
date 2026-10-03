@@ -1,5 +1,5 @@
 // app/api/company-settings/[id]/applicability/route.js — Company Entities. PF/ESI/Professional Tax
-// applicability, computed in Shanti Ops (lib/company-entity.mjs's computeApplicability()) from data
+// applicability, computed in SB Ops (lib/company-entity.mjs's computeApplicability()) from data
 // already here (employee headcount, professional_tax_slabs) — never fetched, never delegated to
 // statutory-rates-hub. Read-only; overrides/registration numbers are written via the existing
 // PATCH /api/company-settings.

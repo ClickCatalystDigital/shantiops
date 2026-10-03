@@ -8,7 +8,7 @@ import { getMyMachine } from '@/lib/data';
 import { REPORT_DEPARTMENTS } from '@/lib/reports/catalog';
 
 export const metadata = {
-  title: `${process.env.BRAND_PREFIX || 'SB'} Ops — Shanti Boilers`,
+  title: `${process.env.BRAND_PREFIX || 'SB'} Ops`,
   description: 'Project SLA tracking & dispatch',
 };
 

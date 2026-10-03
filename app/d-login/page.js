@@ -133,7 +133,7 @@ function LoginContent() {
                 src="/logo.svg"
                 alt=""
                 aria-hidden
-                className="size-9 md:size-10"
+                className="logo hidden size-9 md:size-10"
                 onError={(e) => {
                   e.currentTarget.style.display = "none";
                 }}

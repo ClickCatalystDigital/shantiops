@@ -19,7 +19,7 @@ export async function POST(req) {
   }
   if (!acc) return NextResponse.json({ error: 'Save the mailbox first' }, { status: 400 });
   try {
-    await transportFor(acc).sendMail({ from: acc.email, to: acc.email, subject: 'Shanti Ops — mailbox test', text: 'This mailbox is set up correctly for sending from Shanti Ops.' });
+    await transportFor(acc).sendMail({ from: acc.email, to: acc.email, subject: 'SB Ops — mailbox test', text: 'This mailbox is set up correctly for sending from SB Ops.' });
     await execute('UPDATE mail_accounts SET last_test_at = CURRENT_TIMESTAMP, last_test_ok = 1, last_test_error = NULL WHERE id = ?', [acc.id]);
     return NextResponse.json({ ok: true, sentTo: acc.email });
   } catch (err) {

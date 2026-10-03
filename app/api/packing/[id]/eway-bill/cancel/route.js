@@ -2,7 +2,7 @@
 // entirely during a UI/UX verification pass (lib/eway-bill.js's cancelEwayBill() existed but had
 // no route or UI ever calling it) — a real e-way bill, once generated, had no safe way to correct a
 // mistake short of the packing-detail route's own "edit the field directly" suggestion, which risks
-// desyncing Shanti Ops' record from NIC's real one. This is the safe path instead.
+// desyncing SB Ops' record from NIC's real one. This is the safe path instead.
 //
 // 24-hour cancellation window and generator-only restriction are NIC's own rules
 // (docs.ewaybillgst.gov.in, confirmed live) — checked here first for a fast, clear failure before

@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { getExecutiveSummary, getProjectsWithStatus, getDependencyHealthSummary, getExecutiveBusiness } from '@/lib/data';
+import { getExecutiveSummary, getProjectsWithStatus, getDependencyHealthSummary, getExecutiveBusiness, getRemnantSavings } from '@/lib/data';
 import { getFreshSessionUser, isManager, roleHome } from '@/lib/auth';
 import { todayISO } from '@/lib/date';
 import StatusBadge from '@/components/StatusBadge';
@@ -69,11 +69,12 @@ export default async function Executive() {
   if (!isManager(user)) redirect(roleHome(user));
 
   const company = getSelectedCompany();
-  const [{ kpi, delayedBy, topRisks, forecast }, allProjects, dependencyHealth, biz] = await Promise.all([
+  const [{ kpi, delayedBy, topRisks, forecast }, allProjects, dependencyHealth, biz, steel] = await Promise.all([
     getExecutiveSummary(company),
     getProjectsWithStatus(),
     getDependencyHealthSummary(company),
     getExecutiveBusiness(company),
+    getRemnantSavings(),
   ]);
   // One entry per commercial order: a split master's units never show as N+1 rows.
   const projects = filterByCompany(allProjects.filter(p => !p.master_project_id), company);
@@ -173,6 +174,13 @@ export default async function Executive() {
             <CardAction><span className="text-xs text-muted-foreground">{new Date(`${month}-01`).toLocaleString('en-IN', { month: 'long', year: 'numeric' })}</span></CardAction>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
+            {steel.pieces > 0 && (
+              <p className="rounded-md bg-success/10 px-3 py-2 text-sm text-success">
+                Steel reused from remnants: <span className="font-semibold tnum">{steel.kg.toLocaleString('en-IN')} kg</span>
+                {steel.rupees > 0 && <> · <span className="font-semibold tnum">{formatMoney(steel.rupees)}</span> not bought again</>}
+                <span className="text-xs opacity-80"> ({steel.pieces} piece{steel.pieces === 1 ? '' : 's'}, all companies, to date)</span>
+              </p>
+            )}
             <div>
               <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Dispatches due</p>
               {dueThisMonth.length === 0 ? <p className="py-2 text-sm text-muted-foreground">None scheduled this month.</p> : (

@@ -1684,7 +1684,7 @@ export const DEPARTMENT_HELP = {
   Accounts: {
     title: 'Accounts', icon: LandmarkIcon,
     intro: [
-      'Accounts owns the full books for both legal entities (Shanti Boilers & Pressure Vessels (P) Ltd and Shanti Techno Fab) — chart of accounts, journal entries, GST compliance, and the derived Trial Balance/P&L/Balance Sheet. Shanti Ops is the system of record here, not a document trail feeding an external accounting package; Tally, if ever connected, would be an optional sync target reading from this ledger, not the other way round.',
+      'Accounts owns the full books for both legal entities (Shanti Boilers & Pressure Vessels (P) Ltd and Shanti Techno Fab) — chart of accounts, journal entries, GST compliance, and the derived Trial Balance/P&L/Balance Sheet. SB Ops is the system of record here, not a document trail feeding an external accounting package; Tally, if ever connected, would be an optional sync target reading from this ledger, not the other way round.',
       'Most of the ledger fills itself in: issuing a Sales Invoice, approving a Vendor Bill, raising a Credit/Debit Note, or marking a Salary Slip paid each post their own journal entry automatically. Your day-to-day work is mostly settlement (receipts/payments), GST compliance (returns and reconciliation), and the exceptions nothing else already covers (Manual Journal Entry, bank reconciliation).',
       'Operations has a glance view now (the same kind of pipeline diagram Procurement, Sales, Design, and Stores already have) — but Accounts isn\'t one pipeline, so it shows three independent spines instead: Purchase → Pay (Bill Draft → Approved → Paid, with Debit notes off to the side), Order → Cash (Invoice Draft → Issued → Paid, with Credit notes off to the side), and Period Close (JE Draft → Posted → Reconciled, with GST returns filed off to the side). All three read live off the ledger; there is nothing to enter here.',
     ],
@@ -1723,7 +1723,7 @@ export const DEPARTMENT_HELP = {
           'Upload the period’s real GSTR-2B download rather than defaulting to manual entry for everything; use manual lines only for the exceptions the upload missed.',
           'Action every IMS line (accept or reject) instead of leaving it Pending, then check GSTR-3B’s net payable against the ITC reconciliation behind it before treating the number as final.',
         ],
-        watchOut: 'GSTR-2B is evidence to reconcile against, not a replacement purchase register — Shanti Ops’ own Vendor Bills stay the real accounting record even after a GSTR-2B line is matched and accepted.',
+        watchOut: 'GSTR-2B is evidence to reconcile against, not a replacement purchase register — SB Ops’ own Vendor Bills stay the real accounting record even after a GSTR-2B line is matched and accepted.',
       }),
       feature('bank-rec', 'Bank Reconciliation', GitCompareIcon, ['Every posting against the Bank & Cash account — salary payouts, receipts, payments, any manual entry that touched it — shows here for you to tick off against the real bank statement, one line at a time.'], {
         outcome: 'The reconciled balance genuinely matches what has cleared on the real bank statement, and the unreconciled list is a true, current exception queue — not a guess.',

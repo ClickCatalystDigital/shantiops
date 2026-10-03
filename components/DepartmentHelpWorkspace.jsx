@@ -29,7 +29,7 @@ function GuideBody({ item }) {
       )}
       {item.body && (
         <section>
-          <h2 className="text-base font-semibold">{item.bodyHeading || 'How it works in Shanti Ops'}</h2>
+          <h2 className="text-base font-semibold">{item.bodyHeading || 'How it works in SB Ops'}</h2>
           <div className="mt-2 flex flex-col gap-3">
             {item.body.map((paragraph, i) => (
               <p key={`p-${i}`} className="text-sm leading-7 text-muted-foreground">{paragraph}</p>
@@ -400,16 +400,16 @@ export default function DepartmentHelpWorkspace({ departments = [] }) {
                 <section className="rounded-xl border bg-primary/[0.04] p-5">
                   <h2 className="text-lg font-semibold">Welcome to {guide.title}</h2>
                   <p className="mt-2 text-sm leading-7 text-muted-foreground">
-                    This guide explains how your department fits into Shanti Ops, what each workspace is for,
+                    This guide explains how your department fits into SB Ops, what each workspace is for,
                     and how to leave work ready for the next person.
                   </p>
                 </section>
                 <GuideBody item={{ body: guide.intro }} />
                 {guide.introFlow && <IntroFlow flow={guide.introFlow} />}
                 <section>
-                  <h2 className="text-base font-semibold">How Shanti Ops is organised</h2>
+                  <h2 className="text-base font-semibold">How SB Ops is organised</h2>
                   <p className="mt-2 text-sm leading-7 text-muted-foreground">
-                    Shanti Ops connects one order across departments. Home helps you start the day, Operations
+                    SB Ops connects one order across departments. Home helps you start the day, Operations
                     shows cross-project work, Projects holds the complete order record, and your department
                     workspace contains the detailed controls for {guide.title}.
                   </p>

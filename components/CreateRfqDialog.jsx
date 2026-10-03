@@ -6,7 +6,7 @@
 // WhatsApp wa.me click-send, or Email sent from the app through the company's Procurement mailbox
 // (Settings → Procurement · Email; test mode keeps it from reaching the supplier).
 import { useState } from 'react';
-import { api, showToast } from '@/lib/client';
+import { api, showToast, sendWhatsApp } from '@/lib/client';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from './ui/dialog';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -74,11 +74,10 @@ function SupplierDraftCard({ supplier, rfqId, rfqNo, company, items, onMarkSent,
         <pre className="max-h-48 overflow-y-auto whitespace-pre-wrap px-3 pb-3">{message}</pre>
       </details>
       <div className="flex flex-wrap gap-2">
-        <Button size="sm" variant="outline" disabled={!digits} asChild={!!digits}
-          onClick={!digits ? undefined : () => onMarkSent(supplier.supplier_id)}>
-          {digits ? (
-            <a href={`https://wa.me/${digits}?text=${encodeURIComponent(message)}`} target="_blank" rel="noreferrer">WhatsApp</a>
-          ) : 'WhatsApp (no phone)'}
+        <Button size="sm" variant="outline" disabled={!digits}
+          onClick={() => sendWhatsApp(`/api/rfqs/${rfqId}/send-whatsapp`, { supplier_id: supplier.supplier_id, text: message, link: portalUrl },
+            `https://wa.me/${digits}?text=${encodeURIComponent(message)}`).then(() => onMarkSent(supplier.supplier_id))}>
+          {digits ? 'WhatsApp' : 'WhatsApp (no phone)'}
         </Button>
         <Button size="sm" variant="outline" disabled={!!compose}
           onClick={() => setCompose({ to: supplier.email || '', subject: `RFQ ${rfqNo} — ${company}`, body: message })}>
