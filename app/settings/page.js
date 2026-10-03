@@ -17,6 +17,7 @@ import TotpSetup from '@/components/TotpSetup';
 import DesignAccessPanel from '@/components/DesignAccessPanel';
 import SalesSettings from '@/components/SalesSettings';
 import { EmailSetupTab } from '@/components/SalesSetupPanels';
+import LeadSourcesPanel from '@/components/LeadSourcesPanel';
 import PageHeader from '@/components/PageHeader';
 import { Separator } from '@/components/ui/separator';
 
@@ -92,6 +93,8 @@ export default async function Settings() {
           <Separator />
           <h2 className="text-lg font-semibold">Sales</h2>
           <SalesSettings users={salesUsers} meUsername={user.username} />
+          {/* Also under Marketing → Lead sources; here for a Sales Head without Marketing access. */}
+          <LeadSourcesPanel />
         </>
       )}
       {procurementEmail && (

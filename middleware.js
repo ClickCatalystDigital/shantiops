@@ -15,6 +15,7 @@ export function middleware(req) {
     pathname === '/api/statutory-rates/sync' || // cron-triggered; handler checks x-sync-key itself
     pathname === '/api/sales/quotation-reminders' || // cron-triggered (plan 2d); handler checks x-sync-key itself
     pathname.startsWith('/rfq/') ||      // supplier portal page (V2-CHANGES.md Phase 5.1, D12) — token is the auth, no login
+    pathname.startsWith('/api/lead-hooks/') || // JustDial / website lead push — the secret token in the path is the auth
     pathname.startsWith('/api/rfq/') ||  // ...and its API — singular, distinct segment from the authenticated /api/rfqs
     pathname.startsWith("/_next") ||
     pathname === "/favicon.ico" ||

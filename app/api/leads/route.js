@@ -8,24 +8,11 @@ import { getFreshSessionUser, isInternal, canAccessDepartment } from '@/lib/auth
 import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { DEFAULT_STAGE, leadStateForStage } from '@/lib/lead-stage.mjs';
-import { resolveProductLines, writeLeadProducts } from '@/lib/crm';
+import { resolveProductLines, writeLeadProducts, nextAssignee } from '@/lib/crm';
 
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 function canAccessCrm(user) {
   return CRM_DEPARTMENTS.some(d => canAccessDepartment(user, d));
-}
-
-// Assignment Rule (Frappe CRM parity) — round-robin the department's configured username list.
-// Advances next_index every call, wrapping via modulo; returns null (unassigned) if no rule or
-// an empty list exists, same "leave it visibly unowned" choice as the POST handler below.
-async function nextAssignee(ownerDept) {
-  const rule = await queryOne('SELECT * FROM crm_assignment_rules WHERE owner_dept = ?', [ownerDept]);
-  if (!rule) return null;
-  const usernames = JSON.parse(rule.usernames || '[]');
-  if (!usernames.length) return null;
-  const index = rule.next_index % usernames.length;
-  await execute('UPDATE crm_assignment_rules SET next_index = ? WHERE id = ?', [(index + 1) % usernames.length, rule.id]);
-  return usernames[index];
 }
 
 export async function GET(req) {

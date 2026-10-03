@@ -3,10 +3,11 @@
 // WorkspaceSidebar's search/collapse/groups. Marketing-only gate, deliberately not
 // Sales-or-Marketing — Sales lives at its own /sales route now.
 import { redirect } from 'next/navigation';
-import { getFreshSessionUser, canAccessDepartment, roleHome } from '@/lib/auth';
+import { getFreshSessionUser, canAccessDepartment, isDepartmentHead, roleHome } from '@/lib/auth';
 import { getCampaigns } from '@/lib/data';
 import PageHeader from '@/components/PageHeader';
 import MarketingWorkspace from '@/components/MarketingWorkspace';
+import LeadSourcesPanel from '@/components/LeadSourcesPanel';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,7 +19,9 @@ export default async function MarketPage() {
 
   return (
     <main className="container flex flex-col gap-6 py-8">
-      <PageHeader title="Marketing" description="Campaigns" />
+      <PageHeader title="Marketing" description="Lead sources and campaigns" />
+      {/* Connecting a lead source is a Head's job (same gate as the API). */}
+      {(isDepartmentHead(user, 'Marketing') || isDepartmentHead(user, 'Sales')) && <LeadSourcesPanel />}
       <MarketingWorkspace campaigns={campaigns} />
     </main>
   );
