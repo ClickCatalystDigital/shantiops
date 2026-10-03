@@ -15,7 +15,7 @@ const STYLES = {
   gray: TONE_CLASS.neutral,
 };
 
-const DOT = {
+export const STATUS_DOT = {
   done: 'bg-success', overdue: 'bg-danger', blocked: 'bg-blocked',
   due_now: 'bg-warning', due_soon: 'bg-warning', in_progress: 'bg-info',
   not_started: 'bg-muted-foreground', gray: 'bg-muted-foreground',
@@ -29,7 +29,7 @@ export default function StatusBadge({ m, status, className }) {
       STYLES[s.code] || STYLES.gray,
       className
     )}>
-      <span className={cn('size-1.5 rounded-full', DOT[s.code] || DOT.gray)} />
+      <span className={cn('size-1.5 rounded-full', STATUS_DOT[s.code] || STATUS_DOT.gray)} />
       {s.label}
     </span>
   );

@@ -147,7 +147,7 @@ export default function Nav({ user, reportDepartments = [] }) {
 
   // Desktop nav density: admin sees every tab as an icon (tooltip = name) so 24 tabs fit; a manager
   // keeps only the management tabs on the bar and reaches each department workspace from the cog >
-  // Departments menu; everyone else is unchanged. The mobile bottom bar still uses the full LINKS.
+  // Departments menu; everyone else is unchanged. The mobile bottom bar uses the same list.
   const isAdminUser = user?.role === 'admin';
   const isManagerUser = user?.role === 'manager';
   const MGMT_HREFS = new Set(['/', '/ops', '/projects', '/executive', '/approvals', '/reports']);
@@ -279,13 +279,17 @@ export default function Nav({ user, reportDepartments = [] }) {
 
       {/* Mobile bottom tab bar — app-like */}
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 backdrop-blur md:hidden">
-        <div className="mx-auto flex max-w-md items-stretch justify-around px-1 pb-[env(safe-area-inset-bottom)]">
-          {LINKS.map(l => {
+        {/* Same tabs as the desktop bar (a manager's 6). More than 6 (admin): scroll sideways at a
+            readable width instead of squeezing every tab into the screen. */}
+        <div className={cn('mx-auto flex items-stretch px-1 pb-[env(safe-area-inset-bottom)]',
+          desktopLinks.length > 6 ? 'overflow-x-auto' : 'max-w-md justify-around')}>
+          {desktopLinks.map(l => {
             const Icon = l.icon;
             const active = isActive(l);
             return (
               <Link key={l.href} href={l.href}
-                className={cn('flex min-w-0 flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium transition-colors',
+                className={cn('flex flex-col items-center gap-0.5 py-2 text-[10px] font-medium transition-colors',
+                  desktopLinks.length > 6 ? 'w-16 shrink-0' : 'min-w-0 flex-1',
                   active ? 'text-primary' : 'text-muted-foreground')}>
                 <Icon className={cn('size-5', active && 'fill-primary/10')} />
                 <span className="truncate">{l.label}</span>

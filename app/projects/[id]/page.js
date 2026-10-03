@@ -139,7 +139,7 @@ export default async function ProjectDetail({ params }) {
       <PortfolioDelayTimeline projects={[{ ...project, milestones }]} />
 
       {/* Row 2 — always 3 fixed columns. */}
-      <div className="grid items-start gap-6 lg:grid-cols-3">
+      <div className="grid items-stretch gap-6 lg:grid-cols-3">
         <ProjectHeader project={project} health={health} blocker={blocker} milestones={milestones}
           canEdit={canEditProject} canDelete={canDeleteProject} customers={editCustomers} scopeOfSupply={sosFileOnly} />
         <TodayBand milestones={attentionMilestones} />
