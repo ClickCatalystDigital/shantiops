@@ -8,7 +8,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useEntityHighlight } from '@/lib/use-entity-highlight';
 import LogoCropDialog from '@/components/LogoCropDialog';
 import Link from 'next/link';
-import { ArrowRightIcon } from 'lucide-react';
+import { ArrowRightIcon, PencilIcon } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,6 +25,7 @@ import ProfitLossCard from '@/components/reports/ProfitLossCard';
 import BalanceSheetCard from '@/components/reports/BalanceSheetCard';
 
 const FIELDS = [
+  ['legal_name', 'Legal name'],
   ['gstin', 'GSTIN'], ['pan', 'PAN'], ['state', 'State'], ['state_code', 'State code'],
   ['invoice_prefix', 'Invoice series prefix'], ['registered_address', 'Registered address'],
   // Real-NIC-API payload requires a discrete Place/Pincode distinct from the free-text address
@@ -32,50 +33,48 @@ const FIELDS = [
   ['place', 'Place (for E-Way Bill)'], ['pincode', 'Pincode (for E-Way Bill)'],
 ];
 
-function CompanyCard({ company, router }) {
-  const [values, setValues] = useState(company);
+// Hand-edit the registration fields (the GST refresh fills most of them; this is for corrections and
+// for a company with no GSTIN yet). Only the fields actually changed are sent, so an untouched field
+// keeps its "fetched" tag and a changed one is marked manual.
+function EditRegistrationDialog({ entity, onSaved }) {
+  const [open, setOpen] = useState(false);
+  const [values, setValues] = useState(entity);
   const [saving, setSaving] = useState(false);
-  const set = (k, v) => setValues({ ...values, [k]: v });
-  const isPlaceholder = !values.gstin && !values.pan;
+  useEffect(() => { if (open) setValues(entity); }, [open, entity]);
+  const changed = FIELDS.filter(([k]) => (values[k] ?? '') !== (entity[k] ?? ''));
 
   async function save() {
     setSaving(true);
     try {
-      await api('/api/company-settings', { method: 'PATCH', body: values });
-      showToast('Company settings updated');
-      router.refresh();
+      const body = { id: entity.id, ...Object.fromEntries(changed.map(([k]) => [k, values[k]])) };
+      // state and state code are saved as a pair
+      if ('state' in body || 'state_code' in body) { body.state = values.state ?? ''; body.state_code = values.state_code ?? ''; }
+      await api('/api/company-settings', { method: 'PATCH', body });
+      showToast('Company details updated'); setOpen(false); onSaved();
     } catch (err) { showToast(err.message, 'error'); } finally { setSaving(false); }
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2"><Building2Icon className="size-4" />{values.legal_name}</CardTitle>
-        <CardAction><Button size="sm" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button></CardAction>
-      </CardHeader>
-      <CardContent className="grid gap-3 sm:grid-cols-2">
-        {isPlaceholder && (
-          <p className="col-span-full rounded-md border border-warning/20 bg-warning/10 px-3 py-2 text-xs text-warning">
-            GSTIN/PAN/address not confirmed yet — placeholder row. Fill these in before this entity's
-            documents are used for real filing.
-          </p>
-        )}
-        {FIELDS.map(([key, label]) => (
-          <div key={key} className="grid gap-1.5">
-            <Label>{label}</Label>
-            <Input value={values[key] ?? ''} onChange={e => set(key, e.target.value)} />
+    <>
+      <Button size="sm" variant="outline" onClick={() => setOpen(true)}><PencilIcon className="size-3.5" />Edit</Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader><DialogTitle>Edit company details</DialogTitle></DialogHeader>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {FIELDS.map(([key, label]) => (
+              <div key={key} className={`grid gap-1.5 ${key === 'legal_name' || key === 'registered_address' ? 'sm:col-span-2' : ''}`}>
+                <Label>{label}</Label>
+                <Input value={values[key] ?? ''} onChange={e => setValues({ ...values, [key]: e.target.value })} />
+              </div>
+            ))}
           </div>
-        ))}
-      </CardContent>
-    </Card>
-  );
-}
-
-function SettingsTab({ companies, router }) {
-  return (
-    <div className="flex flex-col gap-4">
-      {companies.map(c => <CompanyCard key={c.id} company={c} router={router} />)}
-    </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button disabled={saving || !changed.length} onClick={save}>{saving ? 'Saving…' : 'Save'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -175,10 +174,15 @@ function GstDetailCard({ entity, onApplied }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2"><IdCardIcon className="size-4" />GST Registration</CardTitle>
-        <CardAction><GstinRefreshDialog entity={entity} onApplied={onApplied} /></CardAction>
+        <CardTitle className="flex items-center gap-2"><IdCardIcon className="size-4" />Registration</CardTitle>
+        <CardAction className="flex gap-2"><EditRegistrationDialog entity={entity} onSaved={onApplied} /><GstinRefreshDialog entity={entity} onApplied={onApplied} /></CardAction>
       </CardHeader>
       <CardContent className="grid gap-3 sm:grid-cols-2">
+        {!entity.gstin && !entity.pan && (
+          <p className="col-span-full rounded-md border border-warning/20 bg-warning/10 px-3 py-2 text-xs text-warning">
+            GSTIN and PAN are not filled in yet. Add them with Edit before this company's documents are used for filing.
+          </p>
+        )}
         {[
           ['GSTIN', entity.gstin, entity.gstin_source, entity.gstin_updated_at],
           ['Legal Name', entity.legal_name, entity.legal_name_source, entity.legal_name_updated_at],
@@ -189,11 +193,15 @@ function GstDetailCard({ entity, onApplied }) {
           ['Taxpayer Type', entity.gst_taxpayer_type, entity.gst_taxpayer_type_source, entity.gst_taxpayer_type_updated_at],
           ['Registration Date', entity.gst_registration_date, entity.gst_registration_date_source, entity.gst_registration_date_updated_at],
           ['Constitution', entity.gst_constitution, entity.gst_constitution_source, entity.gst_constitution_updated_at],
+          ['Registered Address', entity.registered_address],
+          ['State Code', entity.state_code],
+          ['Invoice Series Prefix', entity.invoice_prefix],
+          ['Place / Pincode (E-Way Bill)', [entity.place, entity.pincode].filter(Boolean).join(' - ')],
         ].map(([label, value, source, updatedAt]) => (
           <div key={label} className="grid gap-1">
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted-foreground">{label}</span>
-              <ProvenanceTag source={source} updatedAt={updatedAt} />
+              {source !== undefined && <ProvenanceTag source={source} updatedAt={updatedAt} />}
             </div>
             <span className="text-sm">{value || '—'}</span>
           </div>
@@ -1660,7 +1668,6 @@ function GstReturnsTab({ companies }) {
 export default function AccountsWorkspace({ companies, companyCount = companies.length, maxCompanies = 3, gstRates = [], tdsRates = [], nested = false, initialTab, user }) {
   const router = useRouter();
   const navItems = [
-    { key: 'settings', label: 'Company Settings', icon: LandmarkIcon },
     { key: 'company-entities', label: 'Company Entities', icon: IdCardIcon },
     { key: 'service-expenses', label: 'Service Expenses', icon: ReceiptIcon },
     { key: 'rates', label: 'GST & TDS Rates', icon: PercentIcon },
@@ -1671,11 +1678,10 @@ export default function AccountsWorkspace({ companies, companyCount = companies.
     { key: 'audit-log', label: 'Audit Log', icon: HistoryIcon },
   ];
   // Deep-link tab selection (Part B) — same server-prop pattern as QcWorkspace.jsx.
-  const [tab, setTab] = useState(navItems.some(i => i.key === initialTab) ? initialTab : 'settings');
+  const [tab, setTab] = useState(navItems.some(i => i.key === initialTab) ? initialTab : 'company-entities');
 
   return (
     <WorkspaceSidebar title="Accounts" icon={LandmarkIcon} items={navItems} activeKey={tab} onChange={setTab} nested={nested}>
-      {tab === 'settings' && <SettingsTab companies={companies} router={router} />}
       {tab === 'company-entities' && <CompanyEntitiesTab companies={companies} router={router} maxCompanies={maxCompanies} companyCount={companyCount} />}
       {tab === 'service-expenses' && user && <ServiceExpenseInbox mode="accounts" user={user} />}
       {tab === 'rates' && <RatesTab gstRates={gstRates} tdsRates={tdsRates} router={router} />}

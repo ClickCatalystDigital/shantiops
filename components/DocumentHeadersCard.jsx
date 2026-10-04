@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { LayoutTemplateIcon, MinusIcon, PlusIcon, RotateCcwIcon } from 'lucide-react';
 import { api, showToast } from '@/lib/client';
-import { DOCS, DOC_FONTS, LOGO_POSITIONS, docHeader, parseDocHeaders, cleanDocHeaders } from '@/lib/doc-headers.mjs';
+import { DOCS, DOC_FONTS, LOGO_POSITIONS, FOOTER_PARTS, docHeader, footerLines, parseDocHeaders, cleanDocHeaders } from '@/lib/doc-headers.mjs';
 import { logoBox } from '@/lib/logo-box.mjs';
 
 const GROUPS = [...new Set(DOCS.map(d => d.group))];
@@ -51,7 +51,8 @@ function PagePreview({ entity, def, cfg }) {
         <div className="mt-3 flex flex-1 flex-col gap-1.5">
           {[100, 92, 96, 70].map((w, i) => <div key={i} className="h-1.5 rounded bg-black/[0.07]" style={{ width: `${w}%` }} />)}
         </div>
-        {cfg.footer && <div className="mt-3 text-center text-[6.5px] text-[#555]">{cfg.footer}</div>}
+        {footerLines(cfg, { address: entity.registered_address, phone: entity.phone, email: entity.contact_emails, website: entity.website, gstin: entity.gstin })
+          .map((l, i) => <div key={i} className={`text-center text-[6.5px] leading-tight text-[#555] ${i ? '' : 'mt-3'}`}>{l}</div>)}
         <div className="mt-1 border-t border-black/15 pt-1 text-center text-[6px] text-[#888]">Page 1 of 1</div>
       </div>
     </div>
@@ -78,17 +79,18 @@ export default function DocumentHeadersCard({ entity, onSaved }) {
       showToast('Document headers saved'); onSaved();
     } catch (err) { showToast(err.message, 'error'); } finally { setSaving(false); }
   }
-  function applyToAll() {
-    const { logo, font, footer } = cfg; // size stays per document: titles differ in size by design
-    setAll(a => Object.fromEntries(DOCS.map(d => [d.key, { ...a[d.key], logo, font, footer }])));
-    showToast('Logo position, font and footer copied to every document. Save to keep.');
-  }
+  const togglePart = k => setAll(a => {
+    const cur = a[key]?.footerParts || [];
+    return { ...a, [key]: { ...a[key], footerParts: cur.includes(k) ? cur.filter(p => p !== k) : [...cur, k] } };
+  });
+  const blank = { address: !entity.registered_address, phone: !entity.phone, email: !entity.contact_emails, website: !entity.website, gstin: !entity.gstin };
+  const customised = k => Object.keys(cleanDocHeaders({ [k]: all[k] })).length > 0;
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2"><LayoutTemplateIcon className="size-4" />Document headers</CardTitle>
-        <CardDescription>Where the logo sits, how the title looks and what the footer says, for each document.</CardDescription>
+        <CardDescription>Where the logo sits, how the title looks and what the footer shows. Set per document.</CardDescription>
         <CardAction><Button size="sm" onClick={save} disabled={saving || !dirty}>{saving ? 'Saving…' : 'Save'}</Button></CardAction>
       </CardHeader>
       <CardContent className="grid gap-6 lg:grid-cols-[18rem_1fr]">
@@ -101,11 +103,12 @@ export default function DocumentHeadersCard({ entity, onSaved }) {
                 {GROUPS.map(g => (
                   <SelectGroup key={g}>
                     <SelectLabel>{g}</SelectLabel>
-                    {DOCS.filter(d => d.group === g).map(d => <SelectItem key={d.key} value={d.key}>{d.label}</SelectItem>)}
+                    {DOCS.filter(d => d.group === g).map(d => <SelectItem key={d.key} value={d.key}>{d.label}{customised(d.key) ? ' •' : ''}</SelectItem>)}
                   </SelectGroup>
                 ))}
               </SelectContent>
             </Select>
+            <p className="text-xs text-muted-foreground">Each document keeps its own design. A dot marks the ones you have changed.</p>
           </div>
           <div className="grid gap-1.5">
             <Label>Logo</Label>
@@ -125,12 +128,23 @@ export default function DocumentHeadersCard({ entity, onSaved }) {
             </div>
           </div>
           <div className="grid gap-1.5">
-            <Label>Footer line</Label>
-            <Input value={all[key]?.footer ?? ''} maxLength={200} placeholder="Optional, printed at the bottom of every page" onChange={e => set({ footer: e.target.value })} />
+            <Label>Footer</Label>
+            <div className="flex flex-wrap gap-1.5">
+              {FOOTER_PARTS.map(([k, label]) => {
+                const on = cfg.footerParts.includes(k);
+                return (
+                  <button key={k} type="button" onClick={() => togglePart(k)} title={blank[k] ? 'Not filled in for this company yet (Document details, below)' : undefined}
+                    className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${on ? 'border-primary bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'} ${blank[k] ? 'border-dashed' : ''}`}>
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+            <Input value={all[key]?.footer ?? ''} maxLength={200} placeholder="Extra line, optional" onChange={e => set({ footer: e.target.value })} />
+            <p className="text-xs text-muted-foreground">Printed at the bottom of every page. The details come from Document details below.</p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" size="sm" variant="outline" onClick={applyToAll}>Apply to all documents</Button>
-            <Button type="button" size="sm" variant="ghost" disabled={!changed} onClick={() => setAll(({ [key]: _drop, ...rest }) => rest)}><RotateCcwIcon className="size-3.5" />Reset</Button>
+          <div>
+            <Button type="button" size="sm" variant="ghost" className="-ml-2" disabled={!changed} onClick={() => setAll(({ [key]: _drop, ...rest }) => rest)}><RotateCcwIcon className="size-3.5" />Reset this document</Button>
           </div>
         </div>
         <div className="flex min-w-0 flex-col gap-2">
