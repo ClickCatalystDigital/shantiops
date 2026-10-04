@@ -37,6 +37,7 @@ import { projectLabel } from '@/lib/project-label';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 import SupplierAnalysis from '@/components/SupplierAnalysis';
 import PoDeliveryLotsWorkspace from '@/components/PoDeliveryLotsWorkspace';
+import InboundLink from '@/components/InboundLink';
 import TraceabilityBadges from '@/components/TraceabilityBadges';
 import { SearchIcon, GitCompareIcon, FileTextIcon, ListChecksIcon, Building2Icon, ShoppingCartIcon, BarChart3Icon, LayoutDashboardIcon, Undo2Icon, PlusIcon, ReceiptIcon, TrashIcon, DownloadIcon, CalendarClockIcon, AlertTriangleIcon } from 'lucide-react';
 import AddCustomItemDialog from './AddCustomItemDialog';
@@ -1124,6 +1125,9 @@ function PODrawer({ po, suppliers, router, onClose, onIssue, onUnissue, onCancel
                 PO is issued rather than gated on a per-line receipt status, which lives on the
                 linked bom_items, not the PO itself. */}
             {po.status === 'issued' && (
+              <InboundLink poId={po.id} size="default" />
+            )}
+            {po.status === 'issued' && (
               <Button variant="outline" disabled={busy} onClick={() => setRecordingBill(true)}>Record Bill</Button>
             )}
             {po.status !== 'cancelled' && (
@@ -1387,8 +1391,9 @@ function PurchaseOrders({ orders, q, view, suppliers, tdsRates = [] }) {
           </p>
         )}
         {shown.map(po => (
-          <button key={po.id} data-entity-code={`PO-${po.id}`} onClick={() => setViewingId(po.id)}
-            className="flex flex-wrap items-center gap-3 py-2.5 text-left text-sm transition-colors hover:bg-muted/40 -mx-2 px-2 rounded">
+          <div key={po.id} data-entity-code={`PO-${po.id}`} className="flex items-center gap-2 -mx-2 rounded px-2 transition-colors hover:bg-muted/40">
+          <button onClick={() => setViewingId(po.id)}
+            className="flex min-w-0 flex-1 flex-wrap items-center gap-3 py-2.5 text-left text-sm">
             <span className="flex-1 truncate">
               <span className="font-medium">{po.po_no}</span>
               <span className="text-muted-foreground"> · {po.supplier_name}</span>
@@ -1402,6 +1407,8 @@ function PurchaseOrders({ orders, q, view, suppliers, tdsRates = [] }) {
             <span className="w-32 shrink-0 text-xs text-muted-foreground">{po.item_count} item{po.item_count !== 1 ? 's' : ''} · {formatMoney(po.subtotal)}</span>
             <span className="w-20 shrink-0 text-right text-xs text-muted-foreground">{formatDate(po.created_at)}</span>
           </button>
+          {po.status === 'issued' && <InboundLink poId={po.id} className="h-7 shrink-0 text-xs" />}
+          </div>
         ))}
       </CardContent>
       {viewing && (

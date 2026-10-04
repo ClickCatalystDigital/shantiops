@@ -18,6 +18,8 @@ import { COMPANY_NAMES } from '@/lib/company-profiles';
 import { EntityCode } from '@/components/EntityRefLink';
 import { groupForms } from '@/lib/packing-forms.mjs';
 import PackingCombined from '@/components/PackingCombined';
+import CarrierDialog from '@/components/CarrierDialog';
+import { carrierSummary, carrierDocLabel } from '@/lib/carrier.mjs';
 
 // Click-to-edit cell: saves on blur/Enter through PATCH /api/packing/[id]/items.
 function EditCell({ value, onSave, disabled, className = '' }) {
@@ -299,6 +301,7 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
   const [deleting, setDeleting] = useState(false);
   const [addFromOpen, setAddFromOpen] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
+  const [carrierOpen, setCarrierOpen] = useState(false);
 
   useEffect(() => {
     if (!list.project_id) return;
@@ -575,6 +578,30 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {(!readOnly || carrierSummary(list)) && list.status !== 'draft' && (
+        <Card className="no-print">
+          <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
+            <div className="min-w-0">
+              <div className="text-sm font-medium">Carrier &amp; tracking</div>
+              <div className="text-xs text-muted-foreground">
+                {carrierSummary(list, formatDate) || 'No carrier details yet'}
+                {list.tracking_url && <> · <a href={list.tracking_url} target="_blank" rel="noreferrer noopener" className="underline underline-offset-2">Open tracking</a></>}
+              </div>
+            </div>
+            {!readOnly && <Button size="sm" variant="outline" onClick={() => setCarrierOpen(true)}>{carrierSummary(list) ? 'Edit' : `Add ${carrierDocLabel(list.transport_mode).replace(' no.', '')} / tracking`}</Button>}
+          </CardContent>
+        </Card>
+      )}
+      {!readOnly && (
+        <CarrierDialog open={carrierOpen} onOpenChange={setCarrierOpen} title={`Carrier & tracking · ${list.packing_no}`} initial={list}
+          onSave={async v => {
+            const body = Object.fromEntries(['transport_mode', 'dispatch_through', 'vehicle_no', 'carrier_doc_no', 'carrier_doc_date', 'container_no', 'tracking_url', 'expected_delivery_date'].map(k => [k, v[k] ?? '']));
+            await api(`/api/packing/${list.id}`, { method: 'PATCH', body });
+            setList(l => ({ ...l, ...Object.fromEntries(Object.entries(body).map(([k, x]) => [k, x === '' ? null : x])) }));
+            showToast('Saved');
+          }} />
+      )}
 
       {!readOnly && list.status === 'dispatched' && (
         <DeliveryAckCard list={list} onDone={updated => setList(l => ({ ...l, ...updated }))} />

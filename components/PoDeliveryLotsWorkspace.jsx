@@ -20,6 +20,7 @@
 // Only ISSUED purchase orders are offered here — a draft PO's lines aren't a real commitment yet,
 // so there's nothing meaningful to schedule delivery against until the supplier actually has the
 // order. The API enforces this too (not just the picker), so a stale/direct request can't bypass it.
+import InboundLink from '@/components/InboundLink';
 import { useState, useEffect, useMemo } from 'react';
 import { api, showToast, formatDate } from '@/lib/client';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardAction } from '@/components/ui/card';
@@ -158,7 +159,10 @@ export default function PoDeliveryLotsWorkspace({ purchaseOrders }) {
           </Card>
 
           <Card>
-            <CardHeader><CardTitle>Lots</CardTitle></CardHeader>
+            <CardHeader>
+              <CardTitle>Lots</CardTitle>
+              <CardAction><InboundLink poId={poId} /></CardAction>
+            </CardHeader>
             <CardContent className="flex flex-col gap-3">
               {!detail.lots.length && <p className="text-sm text-muted-foreground">No delivery lots scheduled yet.</p>}
               {detail.lots.map(lot => (
@@ -172,6 +176,7 @@ export default function PoDeliveryLotsWorkspace({ purchaseOrders }) {
                       {lot.notes && <span className="text-muted-foreground"> — {lot.notes}</span>}
                     </div>
                     <div className="flex shrink-0 gap-2">
+                      <InboundLink poId={poId} />
                       <Button size="sm" variant="outline" onClick={() => openEdit(lot)}>Edit</Button>
                       <Button size="sm" variant="outline" className="text-destructive" onClick={() => deleteLot(lot.id)}>Delete</Button>
                     </div>

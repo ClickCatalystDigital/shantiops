@@ -65,6 +65,11 @@ export async function PATCH(req, { params }) {
         await advancePurchaseStatus(it.bom_item_id, 'Ordered');
       }
     }
+    // The supplier's RFQ link now also carries this order (copy + delivery details): keep it alive for months.
+    await execute(
+      `UPDATE rfq_suppliers SET token_expires = ? WHERE supplier_id = ? AND token_expires IS NOT NULL AND token_expires < ?
+          AND rfq_id IN (SELECT ri.rfq_id FROM rfq_items ri JOIN po_items pi ON pi.bom_item_id = ri.bom_item_id WHERE pi.po_id = ?)`,
+      [Date.now() + 180 * 86400000, po.supplier_id, Date.now() + 180 * 86400000, po.id]);
     await audit('po_issued', { actor: user.username, detail: po.po_no });
     return NextResponse.json({ ok: true });
   }
@@ -75,6 +80,8 @@ export async function PATCH(req, { params }) {
     // Transit — the PO/po_ref still exists, just not sent). Distinct from the permanent `cancel`
     // below, which the PO tab keeps as a separate action for actually killing a PO.
     if (po.status !== 'issued') return NextResponse.json({ error: 'Only an issued PO can be un-issued' }, { status: 400 });
+    const sent = await queryOne('SELECT COUNT(*) AS n FROM po_dispatches WHERE po_id = ?', [po.id]);
+    if (Number(sent.n) > 0) return NextResponse.json({ error: 'The supplier has already recorded a dispatch against this PO, so it can no longer be taken back to draft.' }, { status: 409 });
     await execute("UPDATE purchase_orders SET status = 'draft', issued_at = NULL WHERE id = ?", [po.id]);
     const items = await queryAll('SELECT bom_item_id FROM po_items WHERE po_id = ?', [po.id]);
     for (const it of items) {

@@ -24,6 +24,7 @@ export async function POST(req, { params }) {
   if (rs.token_expires && rs.token_expires < Date.now()) {
     return NextResponse.json({ error: 'This link has expired' }, { status: 410 });
   }
+  if (rs.is_po_link) return NextResponse.json({ error: 'This link is for a purchase order, not a quotation' }, { status: 400 });
   if (rs.responded_at) return NextResponse.json({ error: 'A quote has already been submitted for this RFQ' }, { status: 409 });
 
   const b = await req.json();

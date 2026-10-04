@@ -8,6 +8,8 @@
 // one request (reduces `available`, on_hand untouched) so no other request — bom, stock, or sas —
 // can be promised the same units; Issue is the actual hand-out moment (on_hand decrements, the
 // request's bom_item goes terminal In-Stock). Release undoes an unissued Reserve.
+import InboundLink from '@/components/InboundLink';
+import { carrierSummary } from '@/lib/carrier.mjs';
 import { useState, useEffect, useMemo, Fragment } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEntityHighlight } from '@/lib/use-entity-highlight';
@@ -2292,6 +2294,13 @@ function ReceiveDeliveryTab({ bomItems, pendingInwardApprovals = [], router }) {
                         {procParts.length > 0 && (
                           <p className="truncate text-[11px] text-muted-foreground">{procParts.join(' · ')}</p>
                         )}
+                        {it.supplier_dispatch && (
+                          <p className="truncate text-[11px] text-info">
+                            On the way: dispatched {formatDate(it.supplier_dispatch.dispatched_on)}
+                            {carrierSummary(it.supplier_dispatch, formatDate) ? ` · ${carrierSummary(it.supplier_dispatch, formatDate)}` : ''}
+                            {it.supplier_dispatch.tracking_url && <> · <a href={it.supplier_dispatch.tracking_url} target="_blank" rel="noreferrer noopener" className="underline underline-offset-2">Track</a></>}
+                          </p>
+                        )}
                       </div>
                       <span className="w-40 shrink-0 truncate text-xs text-muted-foreground">{it.project_no}</span>
                       <span className="w-24 shrink-0 truncate text-xs text-muted-foreground">{derivePurchaseStage(it)}</span>
@@ -2301,6 +2310,7 @@ function ReceiveDeliveryTab({ bomItems, pendingInwardApprovals = [], router }) {
                           : '—'}
                       </span>
                       <ReceiveBomItemDialog item={it} onDone={() => setQuery('')} />
+                      <InboundLink poId={it.inbound_po_id} className="h-7 text-xs" />
                     </div>
                   );
                 })}

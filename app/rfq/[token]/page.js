@@ -4,6 +4,7 @@
 // is in middleware.js's PUBLIC_PATHS and a supplier never has a session cookie.
 import { getRfqByToken } from '@/lib/data';
 import RfqPortalForm from '@/components/RfqPortalForm';
+import SupplierOrders from '@/components/SupplierOrders';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,10 +32,15 @@ export default async function RfqPortalPage({ params }) {
   return (
     <main className="mx-auto flex min-h-screen max-w-4xl flex-col gap-6 px-4 py-8 sm:px-8">
       <div>
-        <h1 className="text-lg font-semibold">Request for Quotation — {rs.rfq_no}</h1>
+        <h1 className="text-lg font-semibold">{rs.is_po_link ? `Purchase order — ${rs.po_no}` : `Request for Quotation — ${rs.rfq_no}`}</h1>
         <p className="text-sm text-muted-foreground">SB Ops · for {rs.supplier_name}</p>
       </div>
-      <RfqPortalForm token={params.token} rfq={rs} alreadyResponded={!!rs.responded_at} />
+      <SupplierOrders token={params.token} orders={rs.orders} />
+      {rs.is_po_link && !rs.orders.length && (
+        <p className="rounded-md border bg-muted/30 p-6 text-center text-sm text-muted-foreground">This order isn't available any more. Please contact Procurement.</p>
+      )}
+      {/* Once they have quoted and hold an order, the order section above is all they need. */}
+      {!rs.is_po_link && !(rs.responded_at && rs.orders.length) && <RfqPortalForm token={params.token} rfq={rs} alreadyResponded={!!rs.responded_at} />}
     </main>
   );
 }

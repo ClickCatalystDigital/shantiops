@@ -9,11 +9,13 @@ import { syncPackingMilestone } from '@/lib/milestone-auto';
 import { postDispatchConsumption } from '@/lib/stock-pieces';
 import { notifyUser, notifyDepartmentHeads } from '@/lib/notify';
 import { dissolveSmallShipments } from '@/lib/shipments';
+import { cleanTrackingUrl } from '@/lib/carrier.mjs';
 
 const EDITABLE = ['customer_name', 'customer_address', 'invoice_no', 'invoice_date', 'package_type',
   'dc_no', 'dc_date', 'vehicle_no', 'dispatch_through', 'contact_person', 'status',
   'sales_invoice_id', 'freight_amount', 'freight_paid_by', 'eway_bill_no', 'eway_bill_date',
-  'transport_distance_km', 'transport_mode', 'vehicle_type', 'company', 'master_section'];
+  'transport_distance_km', 'transport_mode', 'vehicle_type', 'company', 'master_section',
+  'carrier_doc_no', 'carrier_doc_date', 'container_no', 'tracking_url', 'expected_delivery_date'];
 // Same idiom as bom-items PATCH's PURCHASE_STATUSES check / qc-records' pass|fail|pending check.
 const PACKING_STATUSES = ['draft', 'packed', 'dispatched'];
 const TRANSPORT_MODES = ['road', 'rail', 'air', 'ship'];
@@ -35,6 +37,11 @@ export async function PATCH(req, { params }) {
   }
   if (b.vehicle_type && !VEHICLE_TYPES.includes(b.vehicle_type)) {
     return NextResponse.json({ error: `Unknown vehicle_type: ${b.vehicle_type}` }, { status: 400 });
+  }
+  if ('tracking_url' in b) {
+    const t = cleanTrackingUrl(b.tracking_url);
+    if (t.error) return NextResponse.json({ error: t.error }, { status: 400 });
+    b.tracking_url = t.value;
   }
   if ('status' in b) {
     const actionDenied = await requireAction(user, 'Dispatch', 'dispatch.packing.status');

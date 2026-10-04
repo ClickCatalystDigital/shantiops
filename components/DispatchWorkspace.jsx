@@ -19,6 +19,8 @@ import WorkspaceSidebar from './WorkspaceSidebar';
 import DispatchBoard from './DispatchBoard';
 import ShipmentDialog from './ShipmentDialog';
 import ShipmentsTab from './ShipmentsTab';
+import CarrierDialog from './CarrierDialog';
+import { carrierSummary } from '@/lib/carrier.mjs';
 import { DispatchApprovalsPanel } from './MaterialApprovalPanels';
 import { Card, CardHeader, CardTitle, CardAction, CardContent } from './ui/card';
 import { Button } from './ui/button';
@@ -392,6 +394,8 @@ function PendingItemsTab({ items, lists = [] }) {
 function DeliveriesTab({ lists }) {
   const [q, setQ] = useState('');
   const [showAll, setShowAll] = useState(false);
+  const [carrierFor, setCarrierFor] = useState(null); // the list whose carrier details are being edited
+  const router = useRouter();
 
   const dispatched = lists.filter(l => l.status === 'dispatched');
   const needle = q.trim().toLowerCase();
@@ -424,16 +428,16 @@ function DeliveriesTab({ lists }) {
       ) : (
         <div className="flex flex-col divide-y">
           {sorted.map(l => (
-            <Link key={l.id} href={`/packing/${l.id}`}
-              className="flex flex-col gap-1.5 py-3 transition-colors hover:bg-muted/40 sm:flex-row sm:items-start sm:justify-between">
+            <div key={l.id} className="flex flex-col gap-1.5 py-3 transition-colors hover:bg-muted/40 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0">
-                <div className="flex flex-wrap items-baseline gap-x-2">
+                <Link href={`/packing/${l.id}`} className="flex flex-wrap items-baseline gap-x-2">
                   <span className="font-medium">{l.packing_no}</span>
                   {/* Project context — a project can have several packing lists (each an
                       independent shipment/lot); showing project_no here is what makes that
                       relationship visible without a separate "Lot" entity. */}
                   {l.project_no && <span className="text-xs text-muted-foreground">{l.project_no}</span>}
-                </div>
+                  {l.shipment_no && <span className="text-xs text-muted-foreground">· shipment {l.shipment_no}</span>}
+                </Link>
                 <div className="text-xs text-muted-foreground">
                   {l.customer_name} · Dispatched {formatDate(l.dispatched_at || l.created_at)}
                 </div>
@@ -441,12 +445,26 @@ function DeliveriesTab({ lists }) {
                   <FreightInfo amount={l.freight_amount} paidBy={l.freight_paid_by} />
                   <DocsStatus list={l} />
                 </div>
+                <div className="mt-0.5 flex flex-wrap items-center gap-x-3 text-xs text-muted-foreground">
+                  <span>{carrierSummary(l, formatDate) || 'No carrier details yet'}</span>
+                  {l.tracking_url && <a href={l.tracking_url} target="_blank" rel="noreferrer noopener" className="underline underline-offset-2">Open tracking</a>}
+                </div>
               </div>
-              <AckBadge status={l.delivery_ack_status} />
-            </Link>
+              <div className="flex shrink-0 items-center gap-2">
+                <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setCarrierFor(l)}>Carrier details</Button>
+                <AckBadge status={l.delivery_ack_status} />
+              </div>
+            </div>
           ))}
         </div>
       )}
+      <CarrierDialog open={!!carrierFor} onOpenChange={o => { if (!o) setCarrierFor(null); }} title={carrierFor ? `Carrier details · ${carrierFor.packing_no}` : ''}
+        initial={carrierFor || {}}
+        onSave={async v => {
+          await api(`/api/packing/${carrierFor.id}`, { method: 'PATCH', body: Object.fromEntries(['transport_mode', 'dispatch_through', 'vehicle_no', 'carrier_doc_no', 'carrier_doc_date', 'container_no', 'tracking_url', 'expected_delivery_date'].map(k => [k, v[k] ?? ''])) });
+          showToast('Saved');
+          router.refresh();
+        }} />
     </div>
   );
 }

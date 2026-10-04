@@ -5,6 +5,7 @@ import { requireAction } from '@/lib/action-permissions';
 import { execute, queryAll, queryOne } from '@/lib/db';
 import { audit } from '@/lib/usb';
 import { checkCombinable } from '@/lib/shipments.mjs';
+import { cleanTrackingUrl, TRANSPORT_MODES } from '@/lib/carrier.mjs';
 
 const LIST_COLS = 'id, packing_no, customer_name, customer_address, status, shipment_id, company';
 
@@ -17,6 +18,14 @@ export async function PATCH(req, { params }) {
   const sh = await queryOne("SELECT * FROM shipments WHERE id = ? AND status = 'open'", [params.id]);
   if (!sh) return NextResponse.json({ error: 'Shipment not found' }, { status: 404 });
   const b = await req.json();
+  // Once every list has left, the shipment's make-up is a historic record: no add / take out / split.
+  // Carrier and tracking details stay editable (an LR number often arrives after the truck has left).
+  // A list that has already left stays in the shipment while others are still to go.
+  const memberStatus = (await queryAll('SELECT status FROM packing_lists WHERE shipment_id = ?', [sh.id])).map(r => r.status);
+  const structural = ['add', 'remove', 'split'].includes(b.action);
+  if (structural && memberStatus.length && memberStatus.every(x => x === 'dispatched')) {
+    return NextResponse.json({ error: `${sh.shipment_no} is fully dispatched. Its lists can't be changed any more.` }, { status: 409 });
+  }
   const text = v => (typeof v === 'string' && v.trim() ? v.trim() : null);
 
   if (b.action === 'add') {
@@ -35,6 +44,7 @@ export async function PATCH(req, { params }) {
   if (b.action === 'remove') {
     const l = await queryOne('SELECT id, packing_no, status FROM packing_lists WHERE id = ? AND shipment_id = ?', [b.list_id, sh.id]);
     if (!l) return NextResponse.json({ error: 'That list is not in this shipment' }, { status: 404 });
+    if (l.status === 'dispatched') return NextResponse.json({ error: `${l.packing_no} has already been dispatched with this shipment and can't be taken out.` }, { status: 409 });
     await execute('UPDATE packing_lists SET shipment_id = NULL WHERE id = ?', [l.id]);
     const left = await queryOne('SELECT COUNT(*) AS n FROM packing_lists WHERE shipment_id = ?', [sh.id]);
     if (Number(left.n) < 2) { // a shipment of one list is just a list: dissolve it
@@ -46,13 +56,22 @@ export async function PATCH(req, { params }) {
   }
 
   if (b.action === 'transport') {
-    const vehicle = text(b.vehicle_no), through = text(b.dispatch_through);
-    await execute('UPDATE shipments SET vehicle_no = ?, dispatch_through = ? WHERE id = ?', [vehicle, through, sh.id]);
+    const t = cleanTrackingUrl(b.tracking_url);
+    if (t.error) return NextResponse.json({ error: t.error }, { status: 400 });
+    const mode = TRANSPORT_MODES.some(([v]) => v === b.transport_mode) ? b.transport_mode : null;
+    const v = {
+      vehicle_no: text(b.vehicle_no), dispatch_through: text(b.dispatch_through), carrier_doc_no: text(b.carrier_doc_no),
+      carrier_doc_date: text(b.carrier_doc_date), container_no: text(b.container_no), tracking_url: t.value,
+      expected_delivery_date: text(b.expected_delivery_date),
+    };
+    const cols = Object.keys(v);
+    await execute(`UPDATE shipments SET ${cols.map(c => `${c} = ?`).join(', ')} WHERE id = ?`, [...cols.map(c => v[c]), sh.id]);
     if (b.apply) {
-      // Every list that has not left yet gets the same vehicle (a dispatched list is a finished record).
-      await execute("UPDATE packing_lists SET vehicle_no = ?, dispatch_through = ? WHERE shipment_id = ? AND status != 'dispatched'", [vehicle, through, sh.id]);
+      // Carrier details are business records: every list in the shipment gets them, dispatched or not.
+      const sets = [...cols.map(c => `${c} = ?`), ...(mode ? ['transport_mode = ?'] : [])];
+      await execute(`UPDATE packing_lists SET ${sets.join(', ')} WHERE shipment_id = ?`, [...cols.map(c => v[c]), ...(mode ? [mode] : []), sh.id]);
     }
-    await audit('shipment_transport', { actor: user.username, detail: `${sh.shipment_no} · ${vehicle || '-'}${b.apply ? ' (applied to all lists)' : ''}` });
+    await audit('shipment_transport', { actor: user.username, detail: `${sh.shipment_no} · ${v.vehicle_no || '-'} · ${v.carrier_doc_no || '-'}${b.apply ? ' (applied to all lists)' : ''}` });
     return NextResponse.json({ ok: true });
   }
 
@@ -67,6 +86,7 @@ export async function PATCH(req, { params }) {
   }
 
   if (b.action === 'split') {
+    if (memberStatus.includes('dispatched')) return NextResponse.json({ error: 'Some lists have already been dispatched with this shipment, so it can no longer be split up.' }, { status: 409 });
     await execute('UPDATE packing_lists SET shipment_id = NULL WHERE shipment_id = ?', [sh.id]);
     await execute("UPDATE shipments SET status = 'split', split_at = CURRENT_TIMESTAMP WHERE id = ?", [sh.id]);
     await audit('shipment_split', { actor: user.username, detail: sh.shipment_no });
