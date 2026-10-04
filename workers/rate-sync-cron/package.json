@@ -1,5 +1,5 @@
 {
-  "name": "shanti-ops-rate-sync-cron",
+  "name": "sb-ops-rate-sync-cron",
   "private": true,
   "scripts": {
     "dev": "wrangler dev",

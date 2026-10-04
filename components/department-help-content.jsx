@@ -1717,6 +1717,20 @@ export const DEPARTMENT_HELP = {
     ],
     features: [
       feature('settings', 'Company Settings', Building2Icon, ['One row per legal entity — GSTIN, PAN, registered address, state code, and invoice series prefix. Every document number (invoice, credit note, receipt…) and every GST split (CGST+SGST vs IGST) is computed from this record, so keep it accurate before relying on anything downstream.']),
+      feature('company-documents', 'Company details and logo on documents', FileTextIcon, [
+        'Company Entities → pick a company → Documents. This is the one place for what prints on every document of that company: name, address, phone, contact details, short code and logo. Save, and the next PDF anyone opens uses it.',
+        'Logo: Upload logo accepts any image (PNG, JPG, WebP, SVG). The app saves it as a PNG up to 1200 px. It appears where a logo is printed today (the purchase order letterhead and the QC folder header) inside a fixed space, so the layout does not move. Other documents stay text only.',
+        'A company with no logo prints the plain name and address header. Remove takes a logo off again.',
+        'Short code is the letters in numbers such as quotation numbers and the SB / STF tags. Maker\'s number prefix decides which company a QC folder is filed under.',
+      ], {
+        outcome: 'Every document of the company shows the same, current name, address, contacts and logo.',
+        checklist: [
+          'Use a logo with a transparent background, at least 400 px on its shorter side.',
+          'After saving, open one purchase order PDF and one quotation PDF to check the header.',
+          'Leave "Name on QC forms" and "Address on QC forms" blank unless the statutory forms must show a different wording.',
+        ],
+        watchOut: 'A change here affects every document printed afterwards, including reprints of old ones. Documents already downloaded or sent are not changed.',
+      }),
       feature('rates', 'GST & TDS Rates', PercentIcon, ['HSN → GST rate and TDS section → rate/threshold masters, effective-dated like Payroll’s own statutory rates. A rate with no row here falls back to whatever flat percentage the originating document typed by hand — add the real rate before trusting an automatic split.']),
       feature('ledger', 'Chart of Accounts & General Ledger', LayersIcon, ['Each company’s chart is seeded with the accounts every auto-posting trigger needs (AR, AP, GST Input/Output, Raw Material Inventory, Salary Expense, and the rest) — add an account only when a real new use needs one, not speculatively.', 'Trial Balance, Profit & Loss, and Balance Sheet are read-only rollups off the ledger, not separate records — if they look wrong, the fix is always in what posted to the ledger, never in the report itself.']),
       feature('journal', 'Manual Journal Entry', FileEditIcon, [
