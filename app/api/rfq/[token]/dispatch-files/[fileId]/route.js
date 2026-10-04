@@ -6,6 +6,7 @@ import { queryOne, execute } from '@/lib/db';
 import { getObjectBuffer, deleteObject } from '@/lib/r2';
 import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
 import { audit } from '@/lib/usb';
+import { isDispatchLocked, DISPATCH_LOCKED } from '@/lib/po-dispatch';
 
 export const runtime = 'nodejs';
 
@@ -29,6 +30,7 @@ export async function GET(_req, { params }) {
 export async function DELETE(_req, { params }) {
   const { rs, f, order, res } = await load(params.token, Number(params.fileId));
   if (res) return res;
+  if (await isDispatchLocked(order.id, f.dispatch_id)) return NextResponse.json({ error: DISPATCH_LOCKED }, { status: 409 });
   await execute('DELETE FROM po_dispatch_files WHERE id = ?', [f.id]);
   try { await deleteObject(f.r2_key); } catch { /* the row is gone; an orphaned object is harmless */ }
   const user = await getFreshSessionUser();

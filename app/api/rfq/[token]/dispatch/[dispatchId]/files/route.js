@@ -6,6 +6,7 @@ import { queryOne, execute } from '@/lib/db';
 import { putObject } from '@/lib/r2';
 import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
 import { audit } from '@/lib/usb';
+import { isDispatchLocked, DISPATCH_LOCKED } from '@/lib/po-dispatch';
 import { DISPATCH_FILE_TYPES, DISPATCH_FILE_MAX, DISPATCH_FILE_BYTES } from '@/lib/po-dispatch.mjs';
 
 export const runtime = 'nodejs';
@@ -17,6 +18,8 @@ export async function POST(req, { params }) {
   const dispatchId = Number(params.dispatchId);
   const order = rs.orders.find(o => o.dispatches.some(d => d.id === dispatchId));
   if (!order) return NextResponse.json({ error: 'Dispatch not found' }, { status: 404 });
+
+  if (await isDispatchLocked(order.id, dispatchId)) return NextResponse.json({ error: DISPATCH_LOCKED }, { status: 409 });
 
   const file = (await req.formData()).get('file');
   if (!file || typeof file.arrayBuffer !== 'function') return NextResponse.json({ error: 'No file provided' }, { status: 400 });

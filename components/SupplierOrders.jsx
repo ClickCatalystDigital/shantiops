@@ -79,15 +79,17 @@ function Order({ token, order }) {
               <span className="text-xs text-muted-foreground">{d.items.map(i => `${i.qty} × ${i.description}`).join(', ')}</span>
               <span className="text-xs text-muted-foreground">{carrierSummary(d, formatDate)}</span>
               {d.tracking_url && <a href={d.tracking_url} target="_blank" rel="noreferrer noopener" className="text-xs underline underline-offset-2">Tracking</a>}
-              <Button variant="ghost" size="sm" className="ml-auto h-7 text-xs" onClick={() => setForm(d)}>Edit</Button>
+              {d.locked
+                ? <span className="ml-auto text-xs text-muted-foreground">Received by Stores, locked</span>
+                : <Button variant="ghost" size="sm" className="ml-auto h-7 text-xs" onClick={() => setForm(d)}>Edit</Button>}
               <div className="flex w-full flex-wrap items-center gap-2 pb-1 text-xs">
                 {d.files.map(f => (
                   <span key={f.id} className="inline-flex items-center gap-1 rounded-full border bg-card px-2 py-0.5">
                     <a href={`/api/rfq/${token}/dispatch-files/${f.id}`} target="_blank" rel="noreferrer" className="max-w-40 truncate underline-offset-2 hover:underline">{f.filename}</a>
-                    <button type="button" aria-label={`Remove ${f.filename}`} onClick={() => removeFile(f)} className="text-muted-foreground hover:text-danger"><XIcon className="size-3" /></button>
+                    {!d.locked && <button type="button" aria-label={`Remove ${f.filename}`} onClick={() => removeFile(f)} className="text-muted-foreground hover:text-danger"><XIcon className="size-3" /></button>}
                   </span>
                 ))}
-                {d.files.length < DISPATCH_FILE_MAX && (
+                {!d.locked && d.files.length < DISPATCH_FILE_MAX && (
                   <label className="inline-flex cursor-pointer items-center gap-1 rounded-full border border-dashed px-2 py-0.5 text-muted-foreground hover:bg-muted">
                     <PaperclipIcon className="size-3" />{uploading === d.id ? 'Uploading…' : `Add photo or file (${d.files.length}/${DISPATCH_FILE_MAX})`}
                     <input type="file" accept="image/jpeg,image/png,application/pdf" className="hidden" disabled={uploading !== null}
