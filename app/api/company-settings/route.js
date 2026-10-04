@@ -2,7 +2,8 @@
 // Phase 0; Company Entities, 2026-08-22). Same shape as app/api/statutory-rates/route.js, keyed by
 // row id instead of singleton.
 import { NextResponse } from 'next/server';
-import { execute, withTransaction, seedChartOfAccountsForCompany } from '@/lib/db';
+import { execute, withTransaction, seedChartOfAccountsForCompany, refreshCompanies } from '@/lib/db';
+import { PROFILE_COLUMNS } from '@/lib/customer-seed';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { getCompanySettings } from '@/lib/data';
@@ -49,6 +50,7 @@ export async function POST(req) {
     throw e;
   }
 
+  await refreshCompanies();
   await audit('company_created', { actor: user.username, detail: company });
   return NextResponse.json({ ok: true, id }, { status: 201 });
 }
@@ -58,7 +60,7 @@ export async function POST(req) {
 // (lib/company-entity.mjs's diffCompanyEntity() treats a 'manual' source as a conflict, never
 // auto-applied). `state`/`state_code` share one `state_source` — they never diverge independently.
 const TRACKED = ['legal_name', 'gstin', 'pan', 'trade_name', 'gst_status', 'gst_taxpayer_type', 'gst_registration_date', 'gst_constitution'];
-const PLAIN = ['registered_address', 'invoice_prefix', 'place', 'pincode'];
+const PLAIN = ['registered_address', 'invoice_prefix', 'place', 'pincode', ...PROFILE_COLUMNS];
 // PF/ESI/PT: no source tracking (always manual — no fetch path exists for these), just a timestamp.
 const APPLICABILITY = [
   ['pf_applicable_override', 'pf_updated_at'], ['pf_establishment_code', 'pf_updated_at'],
@@ -98,5 +100,6 @@ export async function PATCH(req) {
   if (!fields.length) return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
   args.push(b.id);
   await execute(`UPDATE company_settings SET ${fields.join(', ')} WHERE id = ?`, args);
+  await refreshCompanies();
   return NextResponse.json({ ok: true });
 }

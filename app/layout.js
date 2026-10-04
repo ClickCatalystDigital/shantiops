@@ -6,6 +6,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { getFreshSessionUser, isInternal, needsDeviceEnrollment, isDemoUser, hasSafePass } from '@/lib/auth';
 import { getMyMachine } from '@/lib/data';
 import { REPORT_DEPARTMENTS } from '@/lib/reports/catalog';
+import { clientCompanies } from '@/lib/company-profiles';
 
 export const metadata = {
   title: `${process.env.BRAND_PREFIX || 'SB'} Ops`,
@@ -14,6 +15,12 @@ export const metadata = {
 
 // Set the theme before first paint so there's no light→dark flash.
 const themeInit = `(function(){try{var t=localStorage.getItem('theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}})();`;
+
+function companiesInit() {
+  const list = clientCompanies();
+  const json = JSON.stringify({ names: list.map(c => c.company), profiles: Object.fromEntries(list.map(c => [c.company, c])) }).replace(/</g, '\\u003c');
+  return `globalThis.__sbCompanies=${json};`;
+}
 
 export default async function RootLayout({ children }) {
   const user = await getFreshSessionUser();
@@ -26,7 +33,11 @@ export default async function RootLayout({ children }) {
 
   return (
     <html lang="en" suppressHydrationWarning>
-      <head><script dangerouslySetInnerHTML={{ __html: themeInit }} /></head>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInit }} />
+        {/* The company list for client components (lib/company-profiles.js reads this global). Staff only. */}
+        {isInternal(user) && <script dangerouslySetInnerHTML={{ __html: companiesInit() }} />}
+      </head>
       <body className="min-h-screen bg-background text-foreground">
         <TooltipProvider delayDuration={200}>
           {isInternal(user) && !needsDeviceSetup && <Nav user={user} reportDepartments={REPORT_DEPARTMENTS} />}

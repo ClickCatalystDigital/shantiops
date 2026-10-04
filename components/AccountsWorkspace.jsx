@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import ServiceExpenseInbox from '@/components/ServiceExpenseInbox';
 import { LandmarkIcon, Building2Icon, PlusIcon, PercentIcon, ReceiptIcon, BookIcon, FileTextIcon, CheckIcon, XIcon, LockIcon, HistoryIcon, BoxIcon, RefreshCwIcon, IdCardIcon } from 'lucide-react';
 import { api, showToast } from '@/lib/client';
+import { toLogoPng } from '@/lib/image-compress';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 import TrialBalanceCard, { AccountRow, fmt } from '@/components/reports/TrialBalanceCard';
 import ProfitLossCard from '@/components/reports/ProfitLossCard';
@@ -421,6 +422,90 @@ function NewCompanyDialog({ onCreated }) {
   );
 }
 
+// What documents print for this company: one place, read by every PDF header (lib/company-profiles.js).
+const DOC_FIELDS = [
+  ['print_name', 'Name on documents', 'Blank = legal name in capitals'],
+  ['registered_address', 'Address on documents'],
+  ['phone', 'Phone on documents'], ['stores_email', 'Stores email (packing list)'],
+  ['contact_mobile', 'Mobile'], ['contact_landline', 'Landline'], ['contact_whatsapp', 'WhatsApp'],
+  ['contact_emails', 'Emails (comma separated)'], ['website', 'Website'],
+  ['tagline', 'Tagline (PO letterhead)'], ['motto', 'Motto (PO letterhead)'], ['wordmark_tm', 'TM mark beside the name', '1 = show'],
+  ['invoice_prefix', 'Short code (numbers, tags)'], ['maker_prefix', "Maker's number prefix"],
+  ['qc_doc_prefix', 'QC document prefix'], ['qc_ref_prefix', 'QC letter reference prefix'],
+  ['qc_name', 'Name on QC forms', 'Blank = legal name'], ['qc_address', 'Address on QC forms', 'Blank = address above'],
+];
+
+function DocumentsCard({ entity, onSaved }) {
+  const [values, setValues] = useState(entity);
+  const [saving, setSaving] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [logoV, setLogoV] = useState(0);
+  const fileRef = useRef(null);
+  useEffect(() => { setValues(entity); }, [entity]);
+
+  async function save() {
+    setSaving(true);
+    try {
+      await api('/api/company-settings', { method: 'PATCH', body: { id: entity.id, ...Object.fromEntries(DOC_FIELDS.map(([k]) => [k, values[k] ?? null])) } });
+      showToast('Document details saved'); onSaved();
+    } catch (err) { showToast(err.message, 'error'); } finally { setSaving(false); }
+  }
+  async function pickLogo(e) {
+    const f = e.target.files?.[0]; e.target.value = '';
+    if (!f) return;
+    setBusy(true);
+    try {
+      const { file, width, height } = await toLogoPng(f);
+      const body = new FormData(); body.append('file', file);
+      await api(`/api/company-settings/${entity.id}/logo`, { method: 'POST', body });
+      showToast(Math.min(width, height) < 200 ? 'Logo saved. It is small and may look soft in print; a larger file is better.' : 'Logo saved', Math.min(width, height) < 200 ? 'warning' : 'success');
+      setLogoV(v => v + 1); onSaved();
+    } catch (err) { showToast(err.message, 'error'); } finally { setBusy(false); }
+  }
+  async function removeLogo() {
+    setBusy(true);
+    try { await api(`/api/company-settings/${entity.id}/logo`, { method: 'DELETE' }); showToast('Logo removed'); onSaved(); }
+    catch (err) { showToast(err.message, 'error'); } finally { setBusy(false); }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2"><FileTextIcon className="size-4" />Documents</CardTitle>
+        <CardAction><Button size="sm" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button></CardAction>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex h-20 w-36 items-center justify-center rounded-md border bg-muted/40 p-2">
+            {entity.logo_key
+              ? <img key={`${entity.logo_key}-${logoV}`} src={`/api/company-settings/${entity.id}/logo?v=${encodeURIComponent(entity.logo_key)}`} alt="Logo" className="max-h-full max-w-full object-contain" />
+              : <span className="text-xs text-muted-foreground">No logo</span>}
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" disabled={busy} onClick={() => fileRef.current?.click()}>{busy ? 'Working…' : entity.logo_key ? 'Replace logo' : 'Upload logo'}</Button>
+              {entity.logo_key && <Button size="sm" variant="ghost" disabled={busy} onClick={removeLogo}>Remove</Button>}
+            </div>
+            <p className="max-w-md text-xs text-muted-foreground">
+              Any image works (PNG, JPG, WebP, SVG). It is saved as a PNG up to 1200 px and fitted inside the logo space on the
+              purchase order and QC folder, so the layout stays the same. Best: transparent background, at least 400 px.
+            </p>
+            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={pickLogo} />
+          </div>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {DOC_FIELDS.map(([key, label, hint]) => (
+            <div key={key} className="grid gap-1.5">
+              <Label>{label}</Label>
+              <Input value={values[key] ?? ''} placeholder={hint || ''} onChange={e => setValues({ ...values, [key]: e.target.value })} />
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function CompanyEntitiesTab({ companies, router }) {
   const [companyId, setCompanyId] = useState(companies[0]?.id);
   const entity = companies.find(c => c.id === companyId) || companies[0];
@@ -440,6 +525,7 @@ function CompanyEntitiesTab({ companies, router }) {
         <NewCompanyDialog onCreated={(id) => { setCompanyId(id); refresh(); }} />
       </div>
       <GstDetailCard entity={entity} onApplied={refresh} />
+      <DocumentsCard entity={entity} onSaved={() => { refresh(); }} />
       <ApplicabilityCard entity={entity} refreshKey={refreshKey} />
       <EwayBillCredentialsCard entity={entity} />
     </div>

@@ -14,7 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Trash2Icon, FileTextIcon, CheckCircle2Icon, CircleAlertIcon, SearchIcon, ChevronDownIcon } from 'lucide-react';
-import { COMPANY_NAMES } from '@/lib/company-profiles';
+import { COMPANY_NAMES, companyProfile } from '@/lib/company-profiles';
 import { EntityCode } from '@/components/EntityRefLink';
 import { groupForms } from '@/lib/packing-forms.mjs';
 import PackingCombined from '@/components/PackingCombined';
@@ -611,8 +611,8 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
       <Card>
         <CardContent className="py-6">
           <div className="mb-4 text-center">
-            <div className="text-lg font-extrabold tracking-tight">SHANTI BOILERS &amp; PRESSURE VESSELS PVT LTD</div>
-            <div className="text-xs text-muted-foreground">P-10-10, I.D.A, Nacharam, Hyderabad - 500 056 · Stores@shantiboilers.com</div>
+            <div className="text-lg font-extrabold tracking-tight">{companyProfile(list.company).name}</div>
+            <div className="text-xs text-muted-foreground">{[companyProfile(list.company).address, companyProfile(list.company).storesEmail].filter(Boolean).join(' · ')}</div>
             <div className="mt-1.5 text-sm font-bold">MASTER PACKING LIST</div>
           </div>
 

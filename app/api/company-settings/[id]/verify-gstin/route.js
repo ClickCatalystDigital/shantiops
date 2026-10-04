@@ -11,7 +11,7 @@
 // built and tenant-authed there — with the same STATUTORY_RATES_HUB_API_KEY already used for rate
 // sync (lib/rate-sync.js). No hub changes needed or made.
 import { NextResponse } from 'next/server';
-import { execute, queryOne } from '@/lib/db';
+import { execute, queryOne, refreshCompanies } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
@@ -88,6 +88,7 @@ export async function POST(req, { params }) {
   if (sets.length) {
     args.push(params.id);
     await execute(`UPDATE company_settings SET ${sets.join(', ')} WHERE id = ?`, args);
+    await refreshCompanies();
   }
   await audit('company_entity_gst_refreshed', { actor: user.username, detail: `${current.company}: ${[...selected].join(', ') || '(extra fields only)'}` });
   return NextResponse.json({ ok: true, applied: [...selected] });

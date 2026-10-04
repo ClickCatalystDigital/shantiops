@@ -12,7 +12,7 @@ export async function GET(req, { params }) {
   const user = await getFreshSessionUser();
   if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-  const project = await queryOne('SELECT project_no, customer_name FROM projects WHERE id = ?', [params.id]);
+  const project = await queryOne('SELECT project_no, customer_name, company FROM projects WHERE id = ?', [params.id]);
   if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
 
   const [assemblies, { bom }] = await Promise.all([
