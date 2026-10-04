@@ -7,7 +7,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEntityHighlight } from '@/lib/use-entity-highlight';
 import LogoCropDialog from '@/components/LogoCropDialog';
-import DocumentHeadersCard from '@/components/DocumentHeadersCard';
+import Link from 'next/link';
+import { ArrowRightIcon } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -424,33 +425,10 @@ function NewCompanyDialog({ onCreated }) {
   );
 }
 
-// What documents print for this company: one place, read by every PDF header (lib/company-profiles.js).
-const DOC_FIELDS = [
-  ['print_name', 'Name on documents', 'Blank = legal name in capitals'],
-  ['registered_address', 'Address on documents'],
-  ['phone', 'Phone on documents'], ['stores_email', 'Stores email (packing list)'],
-  ['contact_mobile', 'Mobile'], ['contact_landline', 'Landline'], ['contact_whatsapp', 'WhatsApp'],
-  ['contact_emails', 'Emails (comma separated)'], ['website', 'Website'],
-  ['invoice_prefix', 'Short code (numbers, tags)'], ['maker_prefix', "Maker's number prefix"],
-  ['qc_doc_prefix', 'QC document prefix'], ['qc_ref_prefix', 'QC letter reference prefix'],
-  ['qc_name', 'Name on QC forms', 'Blank = legal name'], ['qc_address', 'Address on QC forms', 'Blank = address above'],
-];
-
 function DocumentsCard({ entity, onSaved }) {
-  const [values, setValues] = useState(entity);
-  const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState(false);
   const [logoV, setLogoV] = useState(0);
   const fileRef = useRef(null);
-  useEffect(() => { setValues(entity); }, [entity]);
-
-  async function save() {
-    setSaving(true);
-    try {
-      await api('/api/company-settings', { method: 'PATCH', body: { id: entity.id, ...Object.fromEntries(DOC_FIELDS.map(([k]) => [k, values[k] ?? null])) } });
-      showToast('Document details saved'); onSaved();
-    } catch (err) { showToast(err.message, 'error'); } finally { setSaving(false); }
-  }
   const [cropFile, setCropFile] = useState(null);
   function pickLogo(e) {
     const f = e.target.files?.[0]; e.target.value = '';
@@ -483,8 +461,8 @@ function DocumentsCard({ entity, onSaved }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2"><FileTextIcon className="size-4" />Documents</CardTitle>
-        <CardAction><Button size="sm" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button></CardAction>
+        <CardTitle className="flex items-center gap-2"><FileTextIcon className="size-4" />Logo and documents</CardTitle>
+        <CardAction><Button size="sm" variant="outline" asChild><Link href="/accounts/documents">Document details and design<ArrowRightIcon className="size-3.5" /></Link></Button></CardAction>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center gap-4">
@@ -507,42 +485,29 @@ function DocumentsCard({ entity, onSaved }) {
             {cropFile && <LogoCropDialog file={cropFile} name={entity.company} busy={busy} onCancel={() => setCropFile(null)} onSave={saveLogo} />}
           </div>
         </div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          {DOC_FIELDS.map(([key, label, hint]) => (
-            <div key={key} className="grid gap-1.5">
-              <Label>{label}</Label>
-              <Input value={values[key] ?? ''} placeholder={hint || ''} onChange={e => setValues({ ...values, [key]: e.target.value })} />
-            </div>
-          ))}
-        </div>
       </CardContent>
     </Card>
   );
 }
 
-function CompanyEntitiesTab({ companies, router, maxCompanies = 3 }) {
-  const [companyId, setCompanyId] = useState(companies[0]?.id);
-  const entity = companies.find(c => c.id === companyId) || companies[0];
+function CompanyEntitiesTab({ companies, router, maxCompanies = 3, companyCount = 0 }) {
+  const entity = companies[0];
   const [refreshKey, setRefreshKey] = useState(0);
   const refresh = () => { router.refresh(); setRefreshKey(k => k + 1); };
   if (!entity) return null;
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap gap-2">
-          {companies.map(c => (
-            <Button key={c.id} size="sm" variant={companyId === c.id ? 'default' : 'outline'} onClick={() => setCompanyId(c.id)}>
-              {c.legal_name}
-            </Button>
-          ))}
+        <div>
+          <h2 className="text-base font-semibold">{entity.legal_name}</h2>
+          {companies.length > 1 && <p className="text-xs text-muted-foreground">Choose a company in the top bar to switch.</p>}
         </div>
-        {companies.length < maxCompanies
-          ? <NewCompanyDialog onCreated={(id) => { setCompanyId(id); refresh(); window.location.reload(); }} />
-          : <span className="text-xs text-muted-foreground">{companies.length} of {maxCompanies} companies used</span>}
+        {companyCount < maxCompanies
+          ? <NewCompanyDialog onCreated={() => { window.location.reload(); }} />
+          : <span className="text-xs text-muted-foreground">{companyCount} of {maxCompanies} companies used</span>}
       </div>
       <GstDetailCard entity={entity} onApplied={refresh} />
-      <DocumentsCard entity={entity} onSaved={() => { refresh(); }} />
-      <DocumentHeadersCard entity={entity} onSaved={refresh} />
+      <DocumentsCard entity={entity} onSaved={refresh} />
       <ApplicabilityCard entity={entity} refreshKey={refreshKey} />
       <EwayBillCredentialsCard entity={entity} />
     </div>
@@ -954,17 +919,18 @@ function PeriodLockCard({ company }) {
   );
 }
 
+// Which company a tab is showing. The top-bar company selector decides; with "All companies" the
+// first company is shown and this line says how to switch.
+function CompanyNote({ companies }) {
+  if (companies.length < 2) return null;
+  return <p className="text-xs text-muted-foreground">Showing <span className="font-medium text-foreground">{companies[0].legal_name}</span>. Choose a company in the top bar to switch.</p>;
+}
+
 function LedgerTab({ companies }) {
-  const [company, setCompany] = useState(companies[0]?.company);
+  const company = companies[0]?.company;
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex gap-2">
-        {companies.map(c => (
-          <Button key={c.company} size="sm" variant={company === c.company ? 'default' : 'outline'} onClick={() => setCompany(c.company)}>
-            {c.legal_name}
-          </Button>
-        ))}
-      </div>
+      <CompanyNote companies={companies} />
       {company && (
         <>
           <ChartOfAccountsCard company={company} />
@@ -1132,16 +1098,10 @@ function DepreciationRunCard({ company }) {
 }
 
 function FixedAssetsTab({ companies }) {
-  const [company, setCompany] = useState(companies[0]?.company);
+  const company = companies[0]?.company;
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex gap-2">
-        {companies.map(c => (
-          <Button key={c.company} size="sm" variant={company === c.company ? 'default' : 'outline'} onClick={() => setCompany(c.company)}>
-            {c.legal_name}
-          </Button>
-        ))}
-      </div>
+      <CompanyNote companies={companies} />
       {company && (
         <>
           <FixedAssetsCard company={company} />
@@ -1355,7 +1315,7 @@ function QuickJeRow({ company, row, accounts, onDone }) {
 }
 
 function BankReconciliationTab({ companies }) {
-  const [company, setCompany] = useState(companies[0]?.company);
+  const company = companies[0]?.company;
   const [data, setData] = useState(null);
   const [accounts, setAccounts] = useState([]);
   const load = useCallback(() => {
@@ -1373,13 +1333,7 @@ function BankReconciliationTab({ companies }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex gap-2">
-        {companies.map(c => (
-          <Button key={c.company} size="sm" variant={company === c.company ? 'default' : 'outline'} onClick={() => setCompany(c.company)}>
-            {c.legal_name}
-          </Button>
-        ))}
-      </div>
+      <CompanyNote companies={companies} />
       <ImportStatementCard company={company} accounts={accounts} onDone={load} />
       <Card>
         <CardHeader><CardTitle>Bank & Cash reconciliation</CardTitle></CardHeader>
@@ -1683,17 +1637,13 @@ function Gstr3bCard({ company, period }) {
 }
 
 function GstReturnsTab({ companies }) {
-  const [company, setCompany] = useState(companies[0]?.company);
+  const company = companies[0]?.company;
   const [period, setPeriod] = useState(currentPeriod());
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-2">
-        {companies.map(c => (
-          <Button key={c.company} size="sm" variant={company === c.company ? 'default' : 'outline'} onClick={() => setCompany(c.company)}>
-            {c.legal_name}
-          </Button>
-        ))}
+      <div className="flex flex-wrap items-center gap-3">
         <Input type="month" value={period} onChange={e => setPeriod(e.target.value)} className="w-40" />
+        <CompanyNote companies={companies} />
       </div>
       {company && period && (
         <>
@@ -1707,7 +1657,7 @@ function GstReturnsTab({ companies }) {
   );
 }
 
-export default function AccountsWorkspace({ companies, maxCompanies = 3, gstRates = [], tdsRates = [], nested = false, initialTab, user }) {
+export default function AccountsWorkspace({ companies, companyCount = companies.length, maxCompanies = 3, gstRates = [], tdsRates = [], nested = false, initialTab, user }) {
   const router = useRouter();
   const navItems = [
     { key: 'settings', label: 'Company Settings', icon: LandmarkIcon },
@@ -1726,7 +1676,7 @@ export default function AccountsWorkspace({ companies, maxCompanies = 3, gstRate
   return (
     <WorkspaceSidebar title="Accounts" icon={LandmarkIcon} items={navItems} activeKey={tab} onChange={setTab} nested={nested}>
       {tab === 'settings' && <SettingsTab companies={companies} router={router} />}
-      {tab === 'company-entities' && <CompanyEntitiesTab companies={companies} router={router} maxCompanies={maxCompanies} />}
+      {tab === 'company-entities' && <CompanyEntitiesTab companies={companies} router={router} maxCompanies={maxCompanies} companyCount={companyCount} />}
       {tab === 'service-expenses' && user && <ServiceExpenseInbox mode="accounts" user={user} />}
       {tab === 'rates' && <RatesTab gstRates={gstRates} tdsRates={tdsRates} router={router} />}
       {tab === 'ledger' && <LedgerTab companies={companies} />}

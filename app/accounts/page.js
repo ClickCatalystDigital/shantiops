@@ -23,7 +23,7 @@ export default async function AccountsPage({ searchParams }) {
   const sp = await searchParams;
   return (
     <main className="min-h-[calc(100svh-3.5rem)]">
-      <AccountsWorkspace companies={companies} maxCompanies={maxCompanies()} gstRates={gstRates} tdsRates={tdsRates} initialTab={sp?.tab} user={{ username: user.username, display_name: user.display_name, role: user.role }} />
+      <AccountsWorkspace companies={companies} companyCount={allCompanies.length} maxCompanies={maxCompanies()} gstRates={gstRates} tdsRates={tdsRates} initialTab={sp?.tab} user={{ username: user.username, display_name: user.display_name, role: user.role }} />
     </main>
   );
 }
