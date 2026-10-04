@@ -506,7 +506,7 @@ function DocumentsCard({ entity, onSaved }) {
   );
 }
 
-function CompanyEntitiesTab({ companies, router }) {
+function CompanyEntitiesTab({ companies, router, maxCompanies = 3 }) {
   const [companyId, setCompanyId] = useState(companies[0]?.id);
   const entity = companies.find(c => c.id === companyId) || companies[0];
   const [refreshKey, setRefreshKey] = useState(0);
@@ -522,7 +522,9 @@ function CompanyEntitiesTab({ companies, router }) {
             </Button>
           ))}
         </div>
-        <NewCompanyDialog onCreated={(id) => { setCompanyId(id); refresh(); }} />
+        {companies.length < maxCompanies
+          ? <NewCompanyDialog onCreated={(id) => { setCompanyId(id); refresh(); window.location.reload(); }} />
+          : <span className="text-xs text-muted-foreground">{companies.length} of {maxCompanies} companies used</span>}
       </div>
       <GstDetailCard entity={entity} onApplied={refresh} />
       <DocumentsCard entity={entity} onSaved={() => { refresh(); }} />
@@ -1690,7 +1692,7 @@ function GstReturnsTab({ companies }) {
   );
 }
 
-export default function AccountsWorkspace({ companies, gstRates = [], tdsRates = [], nested = false, initialTab, user }) {
+export default function AccountsWorkspace({ companies, maxCompanies = 3, gstRates = [], tdsRates = [], nested = false, initialTab, user }) {
   const router = useRouter();
   const navItems = [
     { key: 'settings', label: 'Company Settings', icon: LandmarkIcon },
@@ -1709,7 +1711,7 @@ export default function AccountsWorkspace({ companies, gstRates = [], tdsRates =
   return (
     <WorkspaceSidebar title="Accounts" icon={LandmarkIcon} items={navItems} activeKey={tab} onChange={setTab} nested={nested}>
       {tab === 'settings' && <SettingsTab companies={companies} router={router} />}
-      {tab === 'company-entities' && <CompanyEntitiesTab companies={companies} router={router} />}
+      {tab === 'company-entities' && <CompanyEntitiesTab companies={companies} router={router} maxCompanies={maxCompanies} />}
       {tab === 'service-expenses' && user && <ServiceExpenseInbox mode="accounts" user={user} />}
       {tab === 'rates' && <RatesTab gstRates={gstRates} tdsRates={tdsRates} router={router} />}
       {tab === 'ledger' && <LedgerTab companies={companies} />}

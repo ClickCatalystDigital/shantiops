@@ -6,6 +6,7 @@ import { getCompanySettings, getGstRates, getVendorTdsRates } from '@/lib/data';
 import AccountsWorkspace from '@/components/AccountsWorkspace';
 import { getSelectedCompany } from '@/lib/company-filter-server';
 import { narrowCompanies } from '@/lib/company-filter.mjs';
+import { maxCompanies } from '@/lib/customer-seed';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,7 +23,7 @@ export default async function AccountsPage({ searchParams }) {
   const sp = await searchParams;
   return (
     <main className="min-h-[calc(100svh-3.5rem)]">
-      <AccountsWorkspace companies={companies} gstRates={gstRates} tdsRates={tdsRates} initialTab={sp?.tab} user={{ username: user.username, display_name: user.display_name, role: user.role }} />
+      <AccountsWorkspace companies={companies} maxCompanies={maxCompanies()} gstRates={gstRates} tdsRates={tdsRates} initialTab={sp?.tab} user={{ username: user.username, display_name: user.display_name, role: user.role }} />
     </main>
   );
 }

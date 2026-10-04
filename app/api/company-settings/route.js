@@ -2,8 +2,8 @@
 // Phase 0; Company Entities, 2026-08-22). Same shape as app/api/statutory-rates/route.js, keyed by
 // row id instead of singleton.
 import { NextResponse } from 'next/server';
-import { execute, withTransaction, seedChartOfAccountsForCompany, refreshCompanies } from '@/lib/db';
-import { PROFILE_COLUMNS } from '@/lib/customer-seed';
+import { execute, queryOne, withTransaction, seedChartOfAccountsForCompany, refreshCompanies } from '@/lib/db';
+import { PROFILE_COLUMNS, maxCompanies } from '@/lib/customer-seed';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { getCompanySettings } from '@/lib/data';
@@ -30,6 +30,9 @@ export async function POST(req) {
   const company = String(b.company || '').trim();
   const legalName = String(b.legal_name || '').trim();
   if (!company || !legalName) return NextResponse.json({ error: 'company and legal_name are required' }, { status: 400 });
+  // Plan limit for this deployment (MAX_COMPANIES env, set by the vendor; default 3).
+  const { n } = await queryOne('SELECT COUNT(*) AS n FROM company_settings');
+  if (n >= maxCompanies()) return NextResponse.json({ error: `This plan allows ${maxCompanies()} companies. Contact support to add more.` }, { status: 403 });
 
   let id;
   try {
