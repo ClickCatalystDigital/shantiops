@@ -8,6 +8,7 @@ import { audit } from '@/lib/usb';
 import { notifyDepartment, notifyPMs } from '@/lib/notify';
 import { COMPANY_NAMES } from '@/lib/qc-doc-pdf.js';
 import { recordProjectSpec } from '@/lib/order-spec-server';
+import { defaultPrefix } from '@/lib/company-profiles';
 
 // In-place Calc Sheets project switcher (CalcWorkspace sidebar) — same list app/calc/page.js's
 // picker uses, just as a client-side fetch instead of a server component prop.
@@ -40,7 +41,7 @@ export async function POST(req) {
   const modelCapacity = b.model_capacity === '' || b.model_capacity == null ? null : Number(b.model_capacity);
   const modelPressure = b.model_pressure === '' || b.model_pressure == null ? null : Number(b.model_pressure);
   const modelDesign = b.model_design || null;
-  const project_no = b.project_no?.trim() || (await nextNumber('project_no', 'SB'));
+  const project_no = b.project_no?.trim() || (await nextNumber('project_no', defaultPrefix()));
   // Which legal entity — decided at the Sale Order (the commercial commitment), not here, when one
   // exists: copy it onto the project. Only a project created without going through Sales falls
   // back to a manual company field on this form.

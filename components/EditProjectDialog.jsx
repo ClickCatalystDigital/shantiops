@@ -14,6 +14,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose,
 } from '@/components/ui/dialog';
 import ProjectFormFields from '@/components/ProjectFormFields';
+import { defaultCompany } from '@/lib/company-profiles';
 
 export default function EditProjectDialog({ project, customers = [], scopeOfSupply = [] }) {
   const router = useRouter();
@@ -24,7 +25,7 @@ export default function EditProjectDialog({ project, customers = [], scopeOfSupp
     project_no: project.project_no || '', customer_name: project.customer_name || '',
     customer_id: project.customer_id ? String(project.customer_id) : '',
     description: project.description || '', order_date: project.order_date || '',
-    company: project.company || 'Shanti Boilers',
+    company: project.company || defaultCompany(),
     sale_order_id: project.sale_order_id ? String(project.sale_order_id) : '',
     sale_order_label: project.sale_order_no || (project.sale_order_id ? `Order #${project.sale_order_id}` : ''),
   });

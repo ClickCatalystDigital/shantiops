@@ -6,6 +6,7 @@ import { queryOne, queryAll } from '@/lib/db';
 import { getFreshSessionUser, isInternal } from '@/lib/auth';
 import { appUrl } from '@/lib/app-url';
 import { renderNameplateStickerPdf } from '@/lib/nameplate-sticker-pdf';
+import { defaultCompany } from '@/lib/company-profiles';
 
 export const runtime = 'nodejs';
 
@@ -23,7 +24,7 @@ export async function GET(req, { params }) {
   const path = `/portal/${portalId}`;
   const url = appUrl(path) || `${new URL(req.url).origin}${path}`;
   const stickers = (units.length ? units : [project]).map(p => ({
-    company: p.company || project.company || 'Shanti Boilers', project_no: p.project_no,
+    company: p.company || project.company || defaultCompany(), project_no: p.project_no,
     customer_name: p.customer_name || project.customer_name, model: modelOf(p) || modelOf(project), url,
   }));
   const pdf = await renderNameplateStickerPdf(stickers);

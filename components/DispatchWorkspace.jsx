@@ -30,7 +30,7 @@ import { Badge } from './ui/badge';
 import { Checkbox } from './ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import SearchableSelect from './SearchableSelect';
-import { COMPANY_NAMES } from '@/lib/company-profiles';
+import { COMPANY_NAMES, defaultCompany } from '@/lib/company-profiles';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from './ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import {
@@ -113,7 +113,7 @@ function NewPackingListDialog({ open, onOpenChange }) {
   const router = useRouter();
   const [projects, setProjects] = useState([]);
   const [projectId, setProjectId] = useState('');
-  const [company, setCompany] = useState('Shanti Boilers');
+  const [company, setCompany] = useState(defaultCompany());
   const [customer, setCustomer] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -346,7 +346,7 @@ function PendingItemsTab({ items, lists = [] }) {
                   <Select value={companyFor[group.key] || 'own'} onValueChange={v => setCompanyFor(c => ({ ...c, [group.key]: v === 'own' ? '' : v }))}>
                     <SelectTrigger className="h-8 w-56"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="own">{group.is_trade ? 'Company: Shanti Boilers' : "Company: project's own"}</SelectItem>
+                      <SelectItem value="own">{group.is_trade ? `Company: ${defaultCompany()}` : "Company: project's own"}</SelectItem>
                       {COMPANY_NAMES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                     </SelectContent>
                   </Select>

@@ -25,6 +25,7 @@ import SearchableSelect from '@/components/SearchableSelect';
 import { api, showToast } from '@/lib/client';
 import { formatMoney } from '@/lib/format';
 import { todayISO } from '@/lib/date';
+import { defaultCompany } from '@/lib/company-profiles';
 
 // Left → right in the UI. Current Stage = the first UNticked step (what's still to do next);
 // 'Completed' once every box is ticked.
@@ -274,7 +275,7 @@ function Toolbar({ q, setQ, dir, setDir, dateLabel, children }) {
 export const SIZES = [10, 25, 50];
 // Small SB / STF tag so rows of the two companies can be told apart under "All companies".
 function CompanyTag({ row }) {
-  return <span className="rounded border px-1 text-[10px] font-medium text-muted-foreground" title={row.company || 'Shanti Boilers'}>{companyShort(row)}</span>;
+  return <span className="rounded border px-1 text-[10px] font-medium text-muted-foreground" title={row.company || defaultCompany()}>{companyShort(row)}</span>;
 }
 
 export function Pager({ page, setPage, size, setSize, total }) {

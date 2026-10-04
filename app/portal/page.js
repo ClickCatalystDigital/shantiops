@@ -7,6 +7,7 @@ import { formatDate } from '@/lib/format';
 import LogoutButton from '@/components/LogoutButton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { defaultCompany } from '@/lib/company-profiles';
 
 export const dynamic = 'force-dynamic';
 
@@ -61,7 +62,7 @@ export default async function MyOrders({ searchParams }) {
 
         {orders.length === 0 && (
           <Card><CardContent className="py-8 text-center text-sm text-muted-foreground">
-            No orders yet — contact your Shanti Boilers project manager.
+            No orders yet — contact your {defaultCompany()} project manager.
           </CardContent></Card>
         )}
 

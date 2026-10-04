@@ -12,10 +12,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { COMPANY_NAMES } from '@/lib/company-profiles';
 
-// Hardcoded rather than importing lib/qc-doc-pdf.js's COMPANY_NAMES client-side — that module also
-// pulls in @react-pdf/renderer (server-only), same two real entities either way.
-const COMPANY_NAMES = ['Shanti Boilers', 'Shanti Techno Fab'];
 
 const FIELDS = [
   ['year_of_make', 'Year of Make'], ['design_pressure', 'Design Pressure (Kg/cm²)'],

@@ -16,25 +16,22 @@ import { PlusIcon, ChevronRightIcon, Trash2Icon } from 'lucide-react';
 import { docIdAbbr, modelConfig, FORM_LABELS } from '@/lib/qc-models.js';
 import QcHeaderField from './QcHeaderField';
 import { CORE_FIELDS } from '@/lib/qc-document-fields';
+import { COMPANY_NAMES, companyProfile, defaultCompany } from '@/lib/company-profiles';
 
 const EMPTY = Object.fromEntries(CORE_FIELDS.map(f => [f.key, '']));
-EMPTY.company = 'Shanti Boilers';
+
 // Fields rendered with their own custom handling below (doc_id derivation, company prefix lookup)
 // rather than the shared QcHeaderField — everything else in CORE_FIELDS renders off the shared list.
 const CUSTOM_KEYS = new Set(['company', 'makers_no', 'doc_id']);
 
-// V2-CHANGES.md Group 2 — the two companies this build knows about, and each one's doc-ID prefix
-// (client-confirmed 2026-08-04: STF- for Shanti Techno Fab, same "-SF-" suffix as Shanti Boilers'
-// SBH- since both are SF-series Form IV A documents).
-const COMPANIES = [
-  { value: 'Shanti Boilers', prefix: 'SBH' },
-  { value: 'Shanti Techno Fab', prefix: 'STF' },
-];
+// Each company and its doc-ID prefix (Accounts → Company Entities → Documents → QC document prefix).
+const companyList = () => COMPANY_NAMES.map(c => ({ value: c, prefix: companyProfile(c).qc.docPrefix }));
 
 // Series/model is resolved server-side from the project's own `projects.series` (app/api/qc-documents
 // POST) — no picker here, this sheet just needs to suggest a doc_id abbreviation that matches it.
 function NewDocumentSheet({ open, onOpenChange, projectId, projectSeries, extra = false, router }) {
-  const [form, setForm] = useState(EMPTY);
+  const COMPANIES = companyList();
+  const [form, setForm] = useState({ ...EMPTY, company: defaultCompany() });
   const [docIdTouched, setDocIdTouched] = useState(false);
   const [busy, setBusy] = useState(false);
   // The internal series value doesn't always match the real filed abbreviation (HEADERS -> "SH") —
@@ -87,7 +84,7 @@ function NewDocumentSheet({ open, onOpenChange, projectId, projectSeries, extra 
         ? `Document created — ${res.partsSeeded} Form IV A part${res.partsSeeded === 1 ? '' : 's'} auto-populated from the project's BOM`
         : 'Document created — add parts from the document page');
       onOpenChange(false);
-      setForm(EMPTY);
+      setForm({ ...EMPTY, company: defaultCompany() });
       setDocIdTouched(false);
       router.push(`/projects/${projectId}/qc/${res.id}`);
     } catch (err) { showToast(err.message, 'error'); }

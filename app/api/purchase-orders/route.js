@@ -13,6 +13,7 @@ import { requireAction } from '@/lib/action-permissions';
 import { getPurchaseOrders, getAssemblyRollupMap, getProjectUnitCounts } from '@/lib/data';
 import { itemRollupQty } from '@/lib/bom-structure.mjs';
 import { audit } from '@/lib/usb';
+import { defaultPrefix } from '@/lib/company-profiles';
 
 // GET is also Stores-readable (gap-closure round, 2026-08-26) — ReceiptPicker.jsx needs to let
 // Stores optionally reference "which PO did this delivery arrive against" when creating a
@@ -60,7 +61,7 @@ export async function POST(req) {
   const now = new Date();
   const fyStart = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1; // FY = Apr-Mar
   const seq = await nextCounterValue('po_no', 578);
-  const poNo = `${seq}/SB/${fyStart}-${String((fyStart + 1) % 100).padStart(2, '0')}`;
+  const poNo = `${seq}/${defaultPrefix()}/${fyStart}-${String((fyStart + 1) % 100).padStart(2, '0')}`;
 
   const { lastId } = await execute(
     `INSERT INTO purchase_orders

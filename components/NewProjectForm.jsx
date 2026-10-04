@@ -9,6 +9,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose,
 } from '@/components/ui/dialog';
 import ProjectFormFields from '@/components/ProjectFormFields';
+import { defaultCompany } from '@/lib/company-profiles';
 
 // V3_CHANGES.md §12 Phase 2f — customer picker wires the new nullable projects.customer_id.
 // customer_name stays required/free-text exactly as before (backward-compat with the 6
@@ -19,7 +20,7 @@ export default function NewProjectForm({ customers = [] }) {
   const [f, setF] = useState({
     series: '', is_sib: false, model_capacity: '', model_pressure: '', model_design: '',
     project_no: '', customer_name: '', customer_id: '', description: '', order_date: '',
-    company: 'Shanti Boilers', sale_order_id: '',
+    company: defaultCompany(), sale_order_id: '',
   });
   const [busy, setBusy] = useState(false);
 

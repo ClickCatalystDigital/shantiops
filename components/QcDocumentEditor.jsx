@@ -34,11 +34,12 @@ import { docSeries } from '@/lib/qc-extra-series.mjs';
 import { STANDARD_MOC } from '@/lib/section-shapes';
 import { classificationSource } from '@/lib/bom-fields.mjs';
 import SearchableSelect from './SearchableSelect';
+import { COMPANY_NAMES } from '@/lib/company-profiles';
 
 // V2-CHANGES.md Group 2 — same two companies as StatutoryDocsPanel.jsx's NewDocumentSheet; this
 // sheet only needs the plain names (doc-ID prefix derivation is a creation-time concern, not an
 // edit-time one — changing a document's company later doesn't retroactively rewrite its doc_id).
-const COMPANIES = ['Shanti Boilers', 'Shanti Techno Fab'];
+const COMPANIES = COMPANY_NAMES;
 
 function sizeText(p) {
   return [p.size_t, p.size_w, p.size_l].filter(Boolean).join(' × ') || '—';

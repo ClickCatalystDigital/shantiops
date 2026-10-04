@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { TriangleAlertIcon, CheckCircle2Icon, ArrowUpRightIcon, HourglassIcon } from 'lucide-react';
 import EditProjectDialog from './EditProjectDialog';
 import DeleteProjectDialog from './DeleteProjectDialog';
+import { defaultCompany } from '@/lib/company-profiles';
 
 // Identity + "why delayed" only — progress/current-phase/next-milestone/est-dispatch live in the
 // Milestone Tracker (PortfolioDelayTimeline) above. `canEdit`/`customers`/`scopeOfSupply` back the
@@ -39,7 +40,7 @@ export default function ProjectHeader({ project, health, blocker, milestones = [
 
         <dl className="grid grid-cols-2 gap-x-4 gap-y-3 border-y py-3">
           <Fact label="PM">{project.owner || '—'}</Fact>
-          <Fact label="Entity">{project.company || 'Shanti Boilers'}</Fact>
+          <Fact label="Entity">{project.company || defaultCompany()}</Fact>
           <Fact label="Value">{project.order_value ? formatMoney(project.order_value) : '—'}</Fact>
           <Fact label="Updated">{formatDate(project.updated_at)}</Fact>
         </dl>

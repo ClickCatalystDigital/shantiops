@@ -21,7 +21,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/com
 import { Textarea } from '@/components/ui/textarea';
 import SearchableSelect from '@/components/SearchableSelect';
 import { PRODUCT_TYPES } from '@/lib/sales-product-types';
-import { COMPANY_NAMES } from '@/lib/company-profiles.js';
+import { COMPANY_NAMES, defaultCompany } from '@/lib/company-profiles.js';
 import {
   PlusIcon, TrashIcon, UserPlusIcon, UsersIcon, FileTextIcon, ShoppingCartIcon,
   CheckSquareIcon, ContactIcon, MessageCircleIcon, MailIcon, TagIcon,
@@ -2565,7 +2565,7 @@ function SoCompanyCell({ so, router }) {
     setSaving(false);
   }
   return (
-    <Select value={so.company || 'Shanti Boilers'} onValueChange={change} disabled={saving}>
+    <Select value={so.company || defaultCompany()} onValueChange={change} disabled={saving}>
       <SelectTrigger className="h-7 w-40 border-transparent bg-transparent text-muted-foreground hover:border-input">
         <SelectValue />
       </SelectTrigger>

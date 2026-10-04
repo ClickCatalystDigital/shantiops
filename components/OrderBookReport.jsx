@@ -16,8 +16,10 @@ import { formatMoney } from '@/lib/format';
 import { todayISO } from '@/lib/date';
 import { financialYear } from '@/lib/gst-calc.mjs';
 import { orderBook, financialYears, AGING_BUCKETS } from '@/lib/order-book.mjs';
+import { COMPANY_NAMES } from '@/lib/company-profiles';
 
-const COMPANY_COLORS = { 'Shanti Boilers': 'var(--color-chart-1)', 'Shanti Techno Fab': 'var(--color-chart-2)', 'Srivaari Agencies': 'var(--color-chart-3)' };
+// Chart colour by the company's position in the list (first company = chart-1, …).
+const companyColor = (name) => { const i = COMPANY_NAMES.indexOf(name); return `var(--color-chart-${i >= 0 ? (i % 5) + 1 : 3})`; };
 // chart config keys become CSS variables (--color-<key>), so they must not contain spaces
 const safeKey = c => `co_${c.replace(/[^A-Za-z0-9]/g, '_')}`;
 const monthLabel = ym => new Date(`${ym}-01T00:00:00`).toLocaleDateString('en-IN', { month: 'short', year: '2-digit' });
@@ -67,7 +69,7 @@ export default function OrderBookReport({ saleOrders = [], salePayments = [] }) 
   const b = useMemo(() => orderBook({ saleOrders, payments: salePayments, fy, today }), [saleOrders, salePayments, fy, today]);
   const companies = [...new Set(b.monthly.flatMap(m => Object.keys(m.booked)))].sort();
   const chartData = b.monthly.map(m => ({ month: monthLabel(m.month), ...Object.fromEntries(Object.entries(m.booked).map(([c, v]) => [safeKey(c), v])), collected: m.collected }));
-  const config = Object.fromEntries([...companies.map(c => [safeKey(c), { label: c, color: COMPANY_COLORS[c] || 'var(--color-chart-3)' }]),
+  const config = Object.fromEntries([...companies.map(c => [safeKey(c), { label: c, color: companyColor(c) }]),
     ['collected', { label: 'Collected', color: 'var(--color-success)' }]]);
   const k = b.kpis;
   const groups = { customer: ['By customer', 'Customer', b.byCustomer], person: ['By sales person', 'Sales person', b.bySalesPerson],

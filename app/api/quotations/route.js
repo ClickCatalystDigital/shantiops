@@ -12,7 +12,7 @@ import { getFreshSessionUser, canAccessDepartment, isPM } from '@/lib/auth';
 import { requireCrmAction } from '@/lib/action-permissions';
 import { getQuotations } from '@/lib/data';
 import { audit } from '@/lib/usb';
-import { COMPANY_NAMES } from '@/lib/company-profiles.js';
+import { COMPANY_NAMES, defaultPrefix } from '@/lib/company-profiles.js';
 import { setLeadStage } from '@/lib/crm';
 import { quotationTotals } from '@/lib/sales-lines.mjs';
 
@@ -89,7 +89,7 @@ export async function POST(req) {
   const companyRow = await queryOne('SELECT invoice_prefix, state_code FROM company_settings WHERE company = ?', [company]);
   const customNo = !revision && b.quotation_no ? String(b.quotation_no).trim() : '';
   if (customNo && await queryOne('SELECT 1 FROM quotations WHERE quotation_no = ?', [customNo])) return NextResponse.json({ error: `Offer Number ${customNo} already exists` }, { status: 409 });
-  const quotationNo = revision ? revision.no : customNo || `QTN-${seq}/${companyRow?.invoice_prefix || 'SB'}/${fyStart}-${String((fyStart + 1) % 100).padStart(2, '0')}`;
+  const quotationNo = revision ? revision.no : customNo || `QTN-${seq}/${companyRow?.invoice_prefix || defaultPrefix()}/${fyStart}-${String((fyStart + 1) % 100).padStart(2, '0')}`;
 
   const t = quotationTotals(items, {
     companyStateCode: companyRow?.state_code || null,

@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input';
 import { TrashIcon } from 'lucide-react';
 import { companyShort } from '@/lib/company-filter.mjs';
 import { actionTypeLabel } from '@/lib/action-types.mjs';
+import { defaultCompany } from '@/lib/company-profiles';
 // Dynamic (not static) import: SalesWorkspace already imports this file, so a static one would be a cycle.
 const AddEnquiryDialog = dynamic(() => import('./SalesWorkspace').then(m => m.AddEnquiryDialog), { ssr: false });
 
@@ -123,7 +124,7 @@ export default function Customer360({ customerId }) {
       <Section title="Quotations" count={d.quotations.length} report="quotation_listing" customerId={customerId}>
         {(() => {
           const qRow = q => (
-            <Row key={q.id}><span><a className="text-primary hover:underline" href={`/api/quotations/${q.id}/pdf`} target="_blank" rel="noreferrer">{q.quotation_no}</a><span className="ml-1.5 rounded border px-1 text-[10px] font-medium text-muted-foreground" title={q.company || 'Shanti Boilers'}>{companyShort(q)}</span>
+            <Row key={q.id}><span><a className="text-primary hover:underline" href={`/api/quotations/${q.id}/pdf`} target="_blank" rel="noreferrer">{q.quotation_no}</a><span className="ml-1.5 rounded border px-1 text-[10px] font-medium text-muted-foreground" title={q.company || defaultCompany()}>{companyShort(q)}</span>
               {q.quotation_date && <span className="ml-1.5 text-xs text-muted-foreground">{q.quotation_date.slice(5, 7)}-{q.quotation_date.slice(0, 4)}</span>}</span>
               <span className="text-xs text-muted-foreground">{q.status}{q.approval_status === 'pending' ? ' · needs approval' : ''} · {formatMoney(q.total)}</span></Row>
           );
@@ -144,14 +145,14 @@ export default function Customer360({ customerId }) {
 
       <Section title="Orders & payments" count={d.orders.length}>
         <Rows items={d.orders} empty="No orders." render={o => (
-          <Row key={o.id}><span>{o.so_no}<span className="ml-1.5 rounded border px-1 text-[10px] font-medium text-muted-foreground" title={o.company || 'Shanti Boilers'}>{companyShort(o)}</span>{o.order_date ? ` · ${formatDate(o.order_date)}` : ''}</span>
+          <Row key={o.id}><span>{o.so_no}<span className="ml-1.5 rounded border px-1 text-[10px] font-medium text-muted-foreground" title={o.company || defaultCompany()}>{companyShort(o)}</span>{o.order_date ? ` · ${formatDate(o.order_date)}` : ''}</span>
             <span className="text-xs text-muted-foreground tnum">{formatMoney(o.total)} · received {formatMoney(o.received) || '₹0'}{o.status === 'cancelled' ? ' · cancelled' : ''}</span></Row>
         )} />
       </Section>
 
       <Section title="Invoices" count={d.invoices.length}>
         <Rows items={d.invoices} empty="No invoices." render={i => (
-          <Row key={i.id}><a className="text-primary hover:underline" href={`/api/sales-invoices/${i.id}/pdf`} target="_blank" rel="noreferrer">{i.invoice_no}</a><span className="ml-1.5 rounded border px-1 text-[10px] font-medium text-muted-foreground" title={i.company || 'Shanti Boilers'}>{companyShort(i)}</span>
+          <Row key={i.id}><a className="text-primary hover:underline" href={`/api/sales-invoices/${i.id}/pdf`} target="_blank" rel="noreferrer">{i.invoice_no}</a><span className="ml-1.5 rounded border px-1 text-[10px] font-medium text-muted-foreground" title={i.company || defaultCompany()}>{companyShort(i)}</span>
             <span className="text-xs text-muted-foreground tnum">{i.status} · {formatMoney(i.total)} · received {formatMoney(i.received) || '₹0'}</span></Row>
         )} />
       </Section>

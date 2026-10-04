@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import PortalNotificationBell from '@/components/PortalNotificationBell';
 import PortalInfoButton from '@/components/PortalInfoButton';
 import { FileTextIcon, DownloadIcon } from 'lucide-react';
+import { defaultCompany } from '@/lib/company-profiles';
 
 export const dynamic = 'force-dynamic';
 
@@ -79,7 +80,7 @@ export default async function Portal({ params }) {
           </CardContent>
         </Card>
 
-        <p className="text-center text-xs text-muted-foreground">For any queries, contact your Shanti Boilers project manager.</p>
+        <p className="text-center text-xs text-muted-foreground">For any queries, contact your {defaultCompany()} project manager.</p>
       </main>
     </div>
   );

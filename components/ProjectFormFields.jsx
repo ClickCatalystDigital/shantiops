@@ -164,7 +164,7 @@ export default function ProjectFormFields({ f, setF, customers = [], saleOrderPi
         <div className="flex flex-col gap-1.5">
           <Label>Project No <span className="text-muted-foreground">(blank = auto)</span></Label>
           <Input value={f.project_no} onChange={e => setF({ ...f, project_no: e.target.value })}
-            placeholder="STF-IBR-045-CF-400-15" />
+            placeholder="Order or job number" />
         </div>
       </div>
 

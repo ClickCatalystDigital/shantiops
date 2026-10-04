@@ -3,6 +3,7 @@
 import { NextResponse } from 'next/server';
 import { queryOne } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
+import { defaultCompany } from '@/lib/company-profiles';
 
 const s = (v) => (v == null ? '' : String(v));
 const join = (...p) => p.filter(Boolean).join(', ');
@@ -48,6 +49,6 @@ export async function GET(req) {
     design_pressure: design, working_pressure: working != null ? String(working) : '',
     // Field service report keys
     client: name, address, phone, email, person_contacted: person,
-    unit_sno: serial || p.project_no, make: p.company || 'Shanti Boilers',
+    unit_sno: serial || p.project_no, make: p.company || defaultCompany(),
   });
 }

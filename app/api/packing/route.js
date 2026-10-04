@@ -3,7 +3,7 @@ import { execute, nextNumber, queryAll, queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
-import { COMPANY_NAMES } from '@/lib/company-profiles';
+import { COMPANY_NAMES, defaultCompany } from '@/lib/company-profiles';
 import { maybeStartMilestone } from '@/lib/milestone-auto';
 
 export async function POST(req) {
@@ -22,7 +22,7 @@ export async function POST(req) {
   // Company: the one picked, else the project's, else Shanti Boilers (same default the generator uses).
   const project = b.project_id ? await queryOne('SELECT company FROM projects WHERE id = ?', [b.project_id]) : null;
   if (b.project_id && !project) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
-  const company = b.company || project?.company || 'Shanti Boilers';
+  const company = b.company || project?.company || defaultCompany();
   const packing_no = await nextNumber('packing_no', 'PL');
   const r = await execute(
     `INSERT INTO packing_lists

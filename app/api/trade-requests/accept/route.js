@@ -10,6 +10,7 @@ import { splitQtyUnit } from '@/lib/qty-units.mjs';
 import { todayISO } from '@/lib/date';
 import { audit } from '@/lib/usb';
 import { notifyUser } from '@/lib/notify';
+import { defaultCompany } from '@/lib/company-profiles';
 
 export async function POST(req) {
   const user = await getFreshSessionUser();
@@ -52,7 +53,7 @@ export async function POST(req) {
     const ins = await tx.execute({
       sql: `INSERT INTO sale_orders (so_no, customer_name, customer_id, description, company, created_by, total, order_date, track_status, status, create_as)
             VALUES (?, ?, ?, ?, ?, ?, 0, ?, 'Pending', 'open', 'PO')`,
-      args: [soNo, customer.name, customer.id, description, company || 'Shanti Boilers', user.username, todayISO()],
+      args: [soNo, customer.name, customer.id, description, company || defaultCompany(), user.username, todayISO()],
     });
     const orderId = Number(ins.lastInsertRowid);
     let sort = 0;

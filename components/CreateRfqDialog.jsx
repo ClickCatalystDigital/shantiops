@@ -12,6 +12,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Textarea } from './ui/textarea';
 import { Badge } from './ui/badge';
+import { defaultCompany } from '@/lib/company-profiles';
 
 // India-only assumption (this business), same as the enroll-code precedent elsewhere in the app —
 // a 10-digit local number gets the country code prefixed; anything else (already has one, or a
@@ -22,7 +23,7 @@ function waDigits(phone) {
   return digits.length === 10 ? `91${digits}` : digits;
 }
 
-function composeMessage({ rfqNo, supplierName, items, portalUrl, company = 'Shanti Boilers' }) {
+function composeMessage({ rfqNo, supplierName, items, portalUrl, company = defaultCompany() }) {
   // Gap #2 (2026-09-04) — items already carry qty_breakdown (getSourcingItems(), §5be); this
   // composer just never read it, so a supplier quoting a multiplied line saw the raw per-unit
   // figure ("Qty 2 Mtrs") with no sense of the real total order size.
