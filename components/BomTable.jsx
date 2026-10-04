@@ -462,7 +462,7 @@ const FIELD_LABELS = {
   purchase_status: 'Status', pr_ref: 'PR No. & Date', po_ref: 'PO No. & Date',
   grn_ref: 'GRN No. & Date', grn_qty_text: 'GRN Qty', pending_qty_text: 'Pending Qty',
   bqtc_ref: 'BQ-TC', issued_ref: 'Issued', received_ref: 'Received',
-  production_done: 'Prod. Done', remarks: 'Remarks', assembly_id: 'Assembly',
+  production_done: 'Handed over', remarks: 'Remarks', assembly_id: 'Assembly',
   received_heat_no: 'Heat No. (received)', received_mtc_no: 'MTC/Cert No. (received)',
   received_supplier_batch_no: 'Supplier Batch (received)', received_serial_no: 'Serial No. (received)',
 };
@@ -511,7 +511,6 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
     scrollerRef.current?.scrollBy({ left: dir * 220, behavior: 'smooth' });
   }
 
-  const canToggleProductionDone = editableFields.includes('production_done');
   // Canonical Stores Receiving (Feature A) — Stores' own department view gets the Receive action in
   // the grn_ref column instead of a free-text field (removed from BOM_FIELD_OWNERS.Stores entirely,
   // so dialogFields below naturally no longer offers it). "Enforcement lives in the route" (see this
@@ -602,16 +601,6 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
       if (lastGroup) rendered.push({ divider: 'group', label: lastGroup, key: `g-${section}-${lastGroup}-${b.id}` });
     }
     rendered.push(b);
-  }
-
-  // Production's own signal that a line is fabricated — Dispatch can only pull it onto a packing
-  // list once this is set (getProjectBom's readyForPacking).
-  async function toggleProductionDone(item, checked) {
-    try {
-      await api(`/api/bom-items/${item.id}`, { method: 'PATCH', body: { production_done: checked ? 1 : 0 } });
-      router.refresh();
-      onSaved?.();
-    } catch (err) { showToast(err.message, 'error'); }
   }
 
   async function saveDialog(e) {
@@ -955,10 +944,11 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
                       <span className="text-xs italic text-muted-foreground" title="No fabrication needed — packable as soon as it's Received.">
                         Direct to packing
                       </span>
-                    ) : canToggleProductionDone ? (
-                      <input type="checkbox" checked={!!r.production_done} aria-label="Production done"
-                        onChange={e => toggleProductionDone(r, e.target.checked)} />
-                    ) : (r.production_done ? 'Done' : '—')}
+                    ) : (
+                      <span title="Production hands finished items to Dispatch from Shop Floor > Dispatch.">
+                        {r.production_done ? 'Done' : '—'}
+                      </span>
+                    )}
                   </TableCell>
                 )}
               </TableRow>

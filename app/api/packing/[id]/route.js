@@ -8,6 +8,7 @@ import { issueReservation } from '@/lib/procurement';
 import { syncPackingMilestone } from '@/lib/milestone-auto';
 import { postDispatchConsumption } from '@/lib/stock-pieces';
 import { notifyUser, notifyDepartmentHeads } from '@/lib/notify';
+import { dissolveSmallShipments } from '@/lib/shipments';
 
 const EDITABLE = ['customer_name', 'customer_address', 'invoice_no', 'invoice_date', 'package_type',
   'dc_no', 'dc_date', 'vehicle_no', 'dispatch_through', 'contact_person', 'status',
@@ -187,6 +188,7 @@ export async function DELETE(req, { params }) {
     await tx.execute({ sql: 'DELETE FROM packing_items WHERE packing_list_id = ?', args: [params.id] });
     await tx.execute({ sql: 'DELETE FROM packing_lists WHERE id = ?', args: [params.id] });
   });
+  try { await dissolveSmallShipments(); } catch { /* housekeeping only */ }
   await audit('packing_deleted', { actor: user.username, detail: `list ${params.id} (${pl.packing_no}) · was ${pl.status}` });
   return NextResponse.json({ ok: true });
 }

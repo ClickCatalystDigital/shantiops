@@ -303,7 +303,7 @@ export function DispatchApprovalsPanel({ rows = [] }) {
               <TableHead>Status</TableHead><TableHead /></TableRow></TableHeader>
             <TableBody>
               {rows.map(r => {
-                const status = r.approval_status;
+                const status = r.approval_status === 'withdrawn' ? null : r.approval_status; // pulled back to draft = not submitted
                 const badge = status && APPROVAL_BADGE[status];
                 const canSubmit = !status || status === 'rejected';
                 return (

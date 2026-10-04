@@ -17,6 +17,8 @@ import { api, showToast, formatDate, formatMoney } from '@/lib/client';
 import { useEntityHighlight } from '@/lib/use-entity-highlight';
 import WorkspaceSidebar from './WorkspaceSidebar';
 import DispatchBoard from './DispatchBoard';
+import ShipmentDialog from './ShipmentDialog';
+import ShipmentsTab from './ShipmentsTab';
 import { DispatchApprovalsPanel } from './MaterialApprovalPanels';
 import { Card, CardHeader, CardTitle, CardAction, CardContent } from './ui/card';
 import { Button } from './ui/button';
@@ -32,7 +34,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import {
   PackageIcon, PackageCheckIcon, ClipboardListIcon, TruckIcon, FileTextIcon,
   SearchIcon, XIcon, ClipboardCheckIcon, FileOutputIcon, PlusIcon, CheckIcon,
-  DownloadIcon, PencilIcon,
+  DownloadIcon, PencilIcon, LayersIcon,
 } from 'lucide-react';
 
 const STAGE_LABEL = { draft: 'Draft', packed: 'Ready', dispatched: 'Dispatched' };
@@ -175,6 +177,7 @@ function PackingListsTab({ lists, flowCounts, pendingReadyCount, awaitingAckCoun
   // joins project_no per list — no new query.
   const [projectQ, setProjectQ] = useState('');
   const [newOpen, setNewOpen] = useState(false);
+  const [combineOpen, setCombineOpen] = useState(false);
 
   function toggleStatus(key) {
     setFocusedStatus(cur => (cur === key ? null : key));
@@ -205,6 +208,7 @@ function PackingListsTab({ lists, flowCounts, pendingReadyCount, awaitingAckCoun
       <div className="flex flex-wrap items-center gap-2">
         <SearchBox value={projectQ} onChange={setProjectQ} placeholder="Search by project no. or customer…" className="min-w-52 flex-1" />
         <Button size="sm" onClick={() => setNewOpen(true)}><PlusIcon className="size-3.5" /> New packing list</Button>
+        <Button size="sm" variant="outline" onClick={() => setCombineOpen(true)}><LayersIcon className="size-3.5" /> Combine lists</Button>
         {singleMatch && (
           <Button asChild variant="outline" size="sm">
             <a href={`/api/projects/${singleMatch.project_id}/pending-pdf`} target="_blank" rel="noreferrer">
@@ -223,6 +227,7 @@ function PackingListsTab({ lists, flowCounts, pendingReadyCount, awaitingAckCoun
         <DispatchBoard lists={projectFiltered} statusFilter={focusedStatus} />
       </div>
       <NewPackingListDialog open={newOpen} onOpenChange={setNewOpen} />
+      <ShipmentDialog open={combineOpen} onOpenChange={setCombineOpen} lists={lists} />
     </div>
   );
 }
@@ -764,7 +769,7 @@ function GatePassesCard({ gatePasses }) {
 
 // ---- Shell ----
 
-export default function DispatchWorkspace({ lists, pendingItems, flowCounts, approvalQueue = [], gatePasses = [], initialTab }) {
+export default function DispatchWorkspace({ lists, pendingItems, flowCounts, approvalQueue = [], gatePasses = [], shipments = [], initialTab }) {
   const [tab, setTab] = useState(['board', 'pending', 'deliveries', 'documents', 'approvals', 'gatepasses'].includes(initialTab) ? initialTab : 'board');
   // A one-shot seed for Documents' "Missing E-Way Bill" chip when arrived at via the Packing Lists
   // pill — DocumentsTab remounts fresh on every tab switch (conditionally rendered below), so this
@@ -783,6 +788,7 @@ export default function DispatchWorkspace({ lists, pendingItems, flowCounts, app
     { key: 'divider-packing', divider: true, label: 'Packing' },
     { key: 'board', label: 'Packing Lists', icon: PackageCheckIcon },
     { key: 'pending', label: 'Pending Items', icon: ClipboardListIcon, badge: pendingReadyCount || null },
+    { key: 'shipments', label: 'Shipments', icon: LayersIcon, badge: shipments.filter(sh => sh.lists.some(l => l.status !== 'dispatched')).length || null },
     { key: 'divider-after', divider: true, label: 'After dispatch' },
     { key: 'deliveries', label: 'Deliveries', icon: TruckIcon, badge: awaitingAckCount || null },
     { key: 'documents', label: 'Documents', icon: FileTextIcon, badge: missingEwayCount || null },
@@ -815,6 +821,7 @@ export default function DispatchWorkspace({ lists, pendingItems, flowCounts, app
           awaitingAckCount={awaitingAckCount} missingEwayCount={missingEwayCount} onNavigate={onPillNavigate} />
       )}
       {tab === 'pending' && <PendingItemsTab items={pendingItems} lists={lists} />}
+      {tab === 'shipments' && <ShipmentsTab shipments={shipments} lists={lists} />}
       {tab === 'deliveries' && <DeliveriesTab lists={lists} />}
       {tab === 'documents' && <DocumentsTab lists={lists} initialMissingEway={docsPrefilter} />}
       {tab === 'gatepasses' && <GatePassesCard gatePasses={gatePasses} />}

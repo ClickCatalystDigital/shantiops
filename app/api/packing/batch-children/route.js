@@ -49,7 +49,9 @@ export async function POST(req) {
   const linesById = new Map(board.lines.map(l => [l.id, l]));
   const dispatchCellsByChild = new Map();
   for (const c of board.cells) {
-    if (!c.ready || c.routed_to !== 'dispatch') continue;
+    // Straight to Dispatch, or made in Production and handed over (Shop Floor > Dispatch).
+    const toDispatch = c.routed_to === 'dispatch' || (c.routed_to === 'production' && c.handed_over >= c.per_unit_required);
+    if (!c.ready || !toDispatch) continue;
     if (!dispatchCellsByChild.has(c.child_project_id)) dispatchCellsByChild.set(c.child_project_id, []);
     dispatchCellsByChild.get(c.child_project_id).push(c);
   }

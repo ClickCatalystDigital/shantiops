@@ -22,6 +22,7 @@ const GUARDED_TABLES = [
   'material_issues', 'work_order_materials', 'bom_change_notes', 'job_work_inspections',
   'vendor_bill_items', 'ncr_records', 'bom_item_receipts', 'bom_item_child_allocations',
   'bom_item_child_routing', 'bom_item_child_certificates', 'inward_approvals', 'delivery_followups',
+  'production_handovers',
 ];
 
 const db = createClient({ url: process.env.TURSO_URL, authToken: process.env.TURSO_AUTH_TOKEN });

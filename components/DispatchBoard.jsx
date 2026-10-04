@@ -54,6 +54,7 @@ export default function DispatchBoard({ lists, statusFilter = null }) {
                       identity, without needing a separate "Lot" concept — the project_id FK
                       already carried this relationship, it just wasn't surfaced anywhere. */}
                   <div className="text-sm">{l.project_no ? `${l.project_no} · ` : ''}{l.customer_name}</div>
+                  {l.shipment_no && <div className="w-fit rounded-full border px-2 py-0.5 text-[10px] font-medium text-muted-foreground">In shipment {l.shipment_no}</div>}
                   <div className="text-xs text-muted-foreground">
                     {l.invoice_no || 'No invoice'} · {l.item_count} item{l.item_count !== 1 ? 's' : ''}
                   </div>

@@ -18,13 +18,14 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectGroup, SelectItem,
 } from '@/components/ui/select';
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table';
-import { PlusIcon, HouseIcon, ClipboardListIcon, UsersIcon, HardHatIcon, PackageCheckIcon, ClipboardCheckIcon, ScissorsIcon } from 'lucide-react';
+import { PlusIcon, HouseIcon, ClipboardListIcon, UsersIcon, HardHatIcon, PackageCheckIcon, ClipboardCheckIcon, ScissorsIcon, TruckIcon } from 'lucide-react';
 import { RemnantsProduction } from '@/components/RemnantsPanel';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 import JobSheetBoard from '@/components/JobSheetBoard';
 import QuickAddInline from '@/components/QuickAddInline';
 import { PreDispatchApprovalsPanel } from '@/components/MaterialApprovalPanels';
 import MaterialIndentWorklist from '@/components/MaterialIndentWorklist';
+import ProductionDispatch from '@/components/ProductionDispatch';
 
 // Renamed from "Workers" to "Job Card" (PRODUCTION-MODULE-DESIGN.md §3.1 nav decision) — job cards
 // get touched far more often per day than the roster/attendance sub-tabs, so work planning is the
@@ -33,7 +34,7 @@ import MaterialIndentWorklist from '@/components/MaterialIndentWorklist';
 // BOM/Forecast/Daily Sheet/Workers Roster all live here too now, so the workspace name needs to
 // cover the whole thing; Job Card stays exactly as it was, just as the default sub-tab, same
 // "workspace name ≠ default sub-tab" shape every other department tab already has.
-const WORKSPACE_TABS = ['jobcards', 'indent', 'remnants', 'sheet', 'approvals'];
+const WORKSPACE_TABS = ['jobcards', 'dispatch', 'indent', 'remnants', 'sheet', 'approvals'];
 
 export default function WorkersPanel({ date, sheet, workers, projects, trades, jobCards, operations, workstations, preDispatchApprovals = [], canDecideProduction = false }) {
   // Operations' Production pipeline glance (ProductionFlow.jsx) links a stage straight into a
@@ -48,6 +49,8 @@ export default function WorkersPanel({ date, sheet, workers, projects, trades, j
   const navItems = [
     { key: 'divider-floor', divider: true, label: 'Shop Floor' },
     { key: 'jobcards', label: 'Job Card', icon: HardHatIcon },
+    // Finished work goes to Dispatch from here — never ticked on the project's BOM table.
+    { key: 'dispatch', label: 'Dispatch', icon: TruckIcon },
     { key: 'divider-resources', divider: true, label: 'Resources' },
     // Material Indent bridge — the cross-project worklist of material Stores has routed here,
     // ready to indent (plan §9). Separate from "BOM"'s own per-project single-line raise form,
@@ -67,6 +70,7 @@ export default function WorkersPanel({ date, sheet, workers, projects, trades, j
       {tab === 'jobcards' && (
         <JobSheetBoard workers={workers} projects={projects} canProduction canQc={false} />
       )}
+      {tab === 'dispatch' && <ProductionDispatch />}
       {tab === 'indent' && <MaterialIndentWorklist />}
       {tab === 'remnants' && <RemnantsProduction projects={projects} />}
       {tab === 'sheet' && <DailySheetWorkspace date={date} sheet={sheet} projects={projects} workers={workers} trades={trades} />}
