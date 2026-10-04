@@ -39,8 +39,8 @@ export default async function RfqPortalPage({ params }) {
       {rs.is_po_link && !rs.orders.length && (
         <p className="rounded-md border bg-muted/30 p-6 text-center text-sm text-muted-foreground">This order isn't available any more. Please contact Procurement.</p>
       )}
-      {/* Once they have quoted and hold an order, the order section above is all they need. */}
-      {!rs.is_po_link && !(rs.responded_at && rs.orders.length) && <RfqPortalForm token={params.token} rfq={rs} alreadyResponded={!!rs.responded_at} />}
+      {/* Quoting is over once an order exists (chosen, PO issued): the order section above is all they need. */}
+      {!rs.is_po_link && !rs.orders.length && <RfqPortalForm token={params.token} rfq={rs} alreadyResponded={!!rs.responded_at} />}
     </main>
   );
 }

@@ -22,7 +22,7 @@ a reader who finds the old `V3_CHANGES.md` §12 text elsewhere knows it's stale.
 reversal.
 
 Everything in this file reflects the **current, working build**, updated as work lands — most
-recently 2026-09-04 (§5bf, a same-day pair: a live-reported prod crash on the QC tab — one
+recently 2026-10-04 (§5eg–§5ei, a Production→Dispatch→Supplier round: Shop Floor > Dispatch hand-over replacing the project-view "Prod. Done" tick, auto placement on packing lists, Shipments, carrier/tracking records, and the supplier's PO/dispatch page with Inbound buttons for Procurement and Stores); before that, 2026-09-04 (§5bf, a same-day pair: a live-reported prod crash on the QC tab — one
 `SearchableSelect` sentinel-value bug taking down all five QC sub-tabs, root-caused and shipped
 first, ahead of everything else, per direct instruction — then a full repo-wide quantity-display
 gap audit finding and fixing 7 real screens §5be's own rollup never reached, from the single
@@ -2211,6 +2211,7 @@ module depends on.
   only pull a line into a new packing list once Production explicitly marks it done — new
   `bom_items.production_done` column, owned by Production (`BOM_FIELD_OWNERS`), toggled inline in
   `BomTable.jsx`'s new "Prod. Done" column; `getProjectBom()`'s `readyForPacking` (a new field,
+  *(Superseded 2026-10-04, see §5eg: `production_done` is now derived from Shop Floor > Dispatch hand-overs; the "Prod. Done" tick was removed.)*
   kept separate from the existing `pending` — which still feeds the generic cross-department
   "Pending" badge and shouldn't change meaning on old rows) is what `/api/packing/from-bom` and
   the pending-dispatch PDF actually pull from now.
@@ -2531,6 +2532,7 @@ dependency engine — some pre-date it, one (`marking_cutting`) is now also mode
   computes, not a milestone at all.
 - **Packing eligibility depends on per-BOM-item `production_done`**, not the `painting` milestone.
   `lib/data.js`, `getProjectBom()`: `readyForPacking = pending.filter(b => b.production_done)`.
+  *(Superseded 2026-10-04, see §5eg: `production_done` is now derived from Shop Floor > Dispatch hand-overs; the "Prod. Done" tick was removed.)*
   The current `depends_on_key` chain has `packing` pointing at `painting` (its template
   predecessor) — a different, coarser signal than the real per-item gate.
 - **Procurement milestone progression uses `derivePurchaseStage` / weakest-link logic.**
@@ -9140,6 +9142,8 @@ QC-clearance code was touched this round.
 
 ## 5bx. PO Delivery Lots — Procurement's own per-PO expected-delivery scheduling (2026-09-12)
 
+*(2026-10-04 addendum, §5ei: each issued PO also has one supplier link; the Inbound button on Delivery Lots and PO rows opens it, and Stores' Inward shows the supplier's recorded dispatch.)*
+
 Procurement had no way to record *when* different parts of an issued PO are expected to arrive.
 Today the only "expected delivery" data anywhere is `supplier_quotes.expected_delivery_date` — one
 date per bom_item, set once when the supplier quoted — with no way to say "30 of these 100 arrive
@@ -9795,6 +9799,8 @@ residue by direct query. `npm run lint` clean (858 files).
 
 ## 5cf. Inward + Pre-Dispatch QC/Production Approval Workflow (2026-09-13)
 
+*(2026-10-04 addendum, §5eg: a handover can pre-fill the Production approval slot ("Approved when handed over"); pre-dispatch status gained `withdrawn` — a list pulled back to draft is treated as not submitted and can be resubmitted.)*
+
 A real, mandatory two-stage gate on the physical material lifecycle, replacing "material arrives →
 immediately usable" and "packing list packed → one click dispatches" with an explicit QC (and, for
 dispatch, Production) sign-off. Two purpose-built tables, not one polymorphic one — same
@@ -10057,6 +10063,7 @@ one, or vice versa). Not a re-test of what each phase already verified in isolat
    `!pendingInwardIds.has(b.id)` onto the existing `baseReady` check — applied to **both** the
    bought-out and the `requires_manufacturing` branch (not just bought-out): `production_done` is a
    manual Production toggle (`BomTable.jsx`'s "Prod. Done" column), not strictly tied to any specific
+  *(Superseded 2026-10-04, see §5eg: `production_done` is now derived from Shop Floor > Dispatch hand-overs; the "Prod. Done" tick was removed.)*
    piece ever having been cut, so it carries the identical risk of being checked prematurely on held
    material by human error. Same fallback discipline every other Phase 5 gate already used — a `NULL`/
    no-pending-review row (every existing line, and any future line QC has already cleared) falls
@@ -10847,6 +10854,7 @@ dispatched (PL-1039), A+C on the original draft (PL-1040), D on its own new draf
 four items accounted for. Production's own project-page BOM panel correctly showed item D's status as
 "Pending" (not yet on an *approved* packing list — PL-1042 is still draft), matching the documented
 reconciliation rule exactly, and its Prod. Done checkbox rendered correctly (checked, only shown for
+  *(Superseded 2026-10-04, see §5eg: `production_done` is now derived from Shop Floor > Dispatch hand-overs; the "Prod. Done" tick was removed.)*
 manufacturing-required lines — items A/C correctly show "Direct to packing" text instead).
 
 **F-06 (Route-to resetting when a new receipt is created inside the same Receive dialog) — ruled
@@ -10977,6 +10985,7 @@ line (`self_routed_to = NULL`) as equivalent to "routed to dispatch" — safe on
 mandatory at receive time. Fixed identically at all 3 sites: a routing-eligible line (`source='bom'`,
 no split-order children) now requires an *explicit* `self_routed_to='dispatch'` or (`='production'`
 AND `production_done`) to be ready; every other population (stock/sas, split-master items) is
+  *(Superseded 2026-10-04, see §5eg: `production_done` is now derived from Shop Floor > Dispatch hand-overs; the "Prod. Done" tick was removed.)*
 completely unaffected.
 
 **New Allocate tab** (Stores' Receiving sidebar group, right after "Receive a Delivery") — the
@@ -11925,6 +11934,7 @@ generator. All three backfills dry-run first, `usb_audit`-logged, backed up unde
 - Company comes from the project (Boilers / Techno Fab / Srivaari), stored on `packing_lists.company`; e-way bill, freight and dispatch close-out read it first. One list per project; each line's `section` = its BOM root name (`lib/packing-generate.js`, shared by `from-bom` and `batch-children`), `master_section` says which prints as Master, the rest as "Annexure to Delivery Challan/Packing List". S.No restarts per form. `box_no` is the package label (LOOSE 1 / BOX NO - 2), typed by Dispatch and printed as separator rows.
 - PDF: one landscape page per form (`?form=<name>` for one), checklist rows (`packing_checklist_items`, Prod/QC/Stores ticks) on the master. Pure helpers + selfcheck: `lib/packing-forms.mjs`.
 - Prod. Done tick notifies Dispatch (`packing_ready`). `packing` milestone closes only when no draft list remains.
+  *(Superseded 2026-10-04, see §5eg: `production_done` is now derived from Shop Floor > Dispatch hand-overs; the "Prod. Done" tick was removed.)*
 - Not built: a "ready to add" panel to extend an existing draft (Generate makes a new list for new ready lines), "ship assembly as one line", per-section company override. Not browser-verified; PDF rendered and checked with a scratch script.
 
 ## 5dn. Planning workspace: Material Plan, Schedule, Capacity, Alerts (2026-09-30)
@@ -12071,6 +12081,8 @@ qc_document_parts.test_certificate_id                 (§5bj — auto-populated 
 lib/milestones.js MASTER_LEVEL_MILESTONE_KEYS         (§5bj — the 9 Design/Procurement keys a split child can never close itself; excluded from getProjectsWithStatus()/getProjectDetail()'s rollup-only inputs, never from the real milestones array a page renders)
 project_spec_memory                                    (§5dl — what a Design Head saved (series/design/capacity/pressure) on a project made from a Sale Order, keyed to the order's main product; one row per project per field, uses = count of live projects, no FK)
 purchase_orders ──< po_delivery_lots ──< po_delivery_lot_items ──< po_delivery_lot_item_children  (§5bx — Procurement's own per-PO expected-delivery scheduling; distinct from and unrelated to bom_item_expected_children, which stays Stores' own reference-only unit-routing tag)
+packing_lists carrier columns  (§5ei — carrier_doc_no/date, container_no, tracking_url, expected_delivery_date, transport_mode on both packing_lists and shipments; plain records, no live tracking)
+production_handovers / shipments / po_dispatches ──< po_dispatch_items,po_dispatch_files; po_supplier_links  (§5eg–§5ei, 2026-10-04 — production_handovers: one row per Shop Floor hand-over (bom_item, qty, unit, production_approved/by/at); shipments: optional grouping of packing lists (packing_lists.shipment_id, SHP-####, carrier + consolidated e-way bill columns); po_dispatches (+items, +files): the supplier's recorded dispatch against an issued PO, entered on the public /rfq/[token] page; po_supplier_links: per-PO token used when there was no RFQ)
 ```
 
 `bom_items` carries the spreadsheet-mirror columns — `section` (sheet), `group_label` (assembly
@@ -12929,7 +12941,7 @@ Three questions: are we on track, what needs me, is the money moving. `app/execu
 - **Also:** a shipment whose lists have all left moves under "Dispatched"; deleting a list or a whole project dissolves any shipment left with fewer than two lists (`dissolveSmallShipments`, `lib/shipments.js`). The transporter's **consolidated e-way bill number** (12 digits) can be recorded on the shipment (capture only, no NIC link). The handover alert to Dispatch says when a packed list was pulled back to draft.
 - **Not built:** a shipment-level invoice or generated e-way bill (each list keeps its own); live tracking of where the goods are (NIC's e-way bill system holds validity and the transporter's Part-B vehicle updates, not a live location).
 
-## 5ei. Carrier / tracking details as business records, and the supplier's delivery details on their link (2026-10-05)
+## 5ei. Carrier / tracking details as business records, and the supplier's delivery details on their link (2026-10-04)
 - **Customer deliveries:** a packing list (and a shipment, applied to every list in it) carries the carrier record: mode of transport, transporter (`dispatch_through`), vehicle, **LR / RR / BL / AWB number** (named by the mode, `lib/carrier.mjs`), its date, container no., tracking link and expected delivery (`carrier_doc_no`, `carrier_doc_date`, `container_no`, `tracking_url`, `expected_delivery_date`). Shown and editable in Dispatch > **Deliveries** ("Carrier details" per row, "Open tracking" link), on the packing list page (Carrier & tracking card) and on the shipment card. Editable at any time, including after dispatch; a shipment's structure (add / take out / split) is what locks once everything has left. Tracking links must be http(s) (anchor safety). Nothing is fetched from a tracking service yet: when ULIP or another source is available, these records are what it will read (the vehicle number is the key for road).
 - **Supplier link (RFQ page):** once the supplier is chosen and the PO is issued, the same private link (`/rfq/<token>`) shows **Your orders**: the PO copy (PDF through the token, `/api/rfq/[token]/po/[poId]/pdf`) and a form to record each dispatch: lines and quantities on the truck (partial allowed, never above what is left), carrier record, tracking link, expected arrival, their invoice and e-way bill numbers. Tables `po_dispatches` / `po_dispatch_items`; Procurement and Stores staff use this same page to enter or correct a dispatch for a supplier who phoned it in (an entry made while signed in as Procurement is recorded under their own name, otherwise `supplier:<id>`). A link only ever shows issued POs of that supplier that came out of that RFQ; issuing the PO extends the link's expiry to 180 days.
 - **Effects of a supplier dispatch:** the dispatched BOM lines move Ordered -> Transit (forward-only), Stores and Procurement are alerted (`supplier_dispatch`), and Stores' Inward search shows "On the way: dispatched … · LR … · transporter · Track" on the line. A PO with a recorded dispatch can't be taken back to draft. Delete Project removes the dispatches of a deleted PO line.

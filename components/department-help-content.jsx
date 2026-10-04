@@ -966,6 +966,11 @@ export const DEPARTMENT_HELP = {
       feature('supplier', 'Supplier selection', Building2Icon, ['Select the supplier only after checking price, validity, terms, and technical fit. The selected quote becomes the basis for the draft PO.', 'If the requirement changes, update the BOM or request and leave a note rather than silently changing the supplier decision.']),
       feature('po', 'Purchase Orders', FileTextIcon, ['Review draft PO lines, issue the PO when the commercial details are correct, and generate the PDF for the supplier.', 'A PO issue moves the item into the next operational stage. Treat unissue/void actions as controlled corrections, not casual edits.']),
       feature('status', 'Status and delivery', TruckIcon, ['Use the status view to follow Enquiry, Comparison, Ordered, Transit, Received, Cancelled, and In-Stock. The summary also considers quote and supplier signals when the editable status cell is behind.', 'Keep PR/PO references readable because Stores and Production use them downstream.']),
+      feature('inbound', 'Inbound (supplier link)', TruckIcon, [
+        'Every issued PO has one supplier link — the same link the supplier got with the RFQ if there was one, otherwise a link made for the PO. Use the Inbound button on a PO row, on the PO drawer, or on Delivery Lots to open it.',
+        'On that page the supplier (or you, on their behalf) downloads the PO and records the dispatch: lines and quantities, LR / vehicle / tracking details, invoice and e-way bill numbers, and up to 3 photos or PDFs. Recording a dispatch moves those lines to Transit and notifies Stores and Procurement.',
+        'Quotes: if there was no RFQ you enter quotes yourself under Sourcing; the supplier page shows the quote form only before a PO exists.',
+      ]),
       feature('purchaseReturns', 'Purchase Returns', Undo2Icon, ['Use the Returns tab to raise a return against an issued PO — wrong spec, damage, over-supply — and track it through inspection to a stock action and debit note.']),
       feature('requests', 'New-item requests', ClipboardListIcon, ['Requests land directly in the Enquiry flow. Accept the requirement by sourcing it, not by creating a second manual record.', 'Ask the requesting team for missing technical information through a task so the request remains traceable.']),
       {
@@ -1141,6 +1146,9 @@ export const DEPARTMENT_HELP = {
         'Create request turns a suggestion into a real Build stock request through the same flow Inventory\'s own stock-request path already uses — it lands in Demand as an ordinary Enquiry line, same as if you\'d raised it by hand.',
         'Nothing is created automatically. A suggestion stays a suggestion — visible, editable, ignorable — until you click Create request; and once you do, that item drops off this list until it needs reordering again.',
       ]),
+      feature('inbound', 'Inbound (what the supplier says is on the way)', TruckIcon, [
+        'On Inward, a line whose supplier has recorded a dispatch shows it (vehicle / LR / tracking / date). The Inbound button next to Receive opens the supplier page for that PO so you can see the dispatch details and photos before the truck arrives.',
+      ]),
       feature('gir', 'Gate Entry (Gate Inward Receipts, GIR)', LogInIcon, [
         'Log every vehicle that enters the gate with material: vehicle number, supplier, driver, a material reference (PO/DC/BOM), and the two security checks (seal intact, documents verified) plus any remarks.',
         'A GIR is the gate-entry record, not the GRN — it exists independently of whether the material has been formally received yet. Attach the GRN reference and close the GIR once receipt is confirmed.',
@@ -1250,6 +1258,13 @@ export const DEPARTMENT_HELP = {
           'Check the status (open, partly released, released, cancelled) before chasing Stores.',
         ],
       }),
+      feature('dispatchHandover', 'Dispatch (hand over finished subsystems)', TruckIcon, [
+        'Shop Floor → Dispatch is where finished work leaves Production. The project BOM no longer has a "Prod. Done" tick — whether something is done is now worked out from what you hand over here.',
+        'To hand over lists one row per finished subsystem (a first-level BOM group, or an item that stands alone), grouped by project. Search or filter by project, and use Collapse all to tidy the page. Enter the quantity finished and hand over.',
+        'The overlay asks two short questions. If the project already has a packing list that is packed, under review or dispatched, it asks whether the next handover starts a fresh draft or goes onto that same list (the list is then pulled back to draft). It always asks whether Production approves the dispatch now — if you say "Not yet", you can still approve it later from Approvals.',
+        'Handed-over items are placed on the project\'s open packing list automatically (a draft is created if there is none) and Dispatch is notified. Handed over lists what you sent and lets you undo a handover while its packing list is still a draft or ready.',
+        'For a split order, hand over per unit; each unit\'s items go to that unit\'s own packing list.',
+      ]),
       feature('milestones', 'Production milestones', RouteIcon, ['Start a milestone when work really begins and close it only when the deliverable is actually complete; closing late asks for a reason so the project history explains the delay.', 'Use Stages under a milestone for repeatable checklist steps instead of inventing a new milestone for every variation.']),
       feature('tests', 'Hydro Test', FlaskConicalIcon, ['Hydro Test now belongs to Production end to end — you own the milestone and the test record itself (result, reference number, inspector, tested-on date), which you did not before.', 'Every other test type — radiography/NDE, material test certificates, freeform — stays QC’s; this tab only ever shows and creates Hydro Test records.']),
       milestoneTrackerFeature([
@@ -1501,6 +1516,18 @@ export const DEPARTMENT_HELP = {
       feature('packing', 'Packing details', BoxesIcon, ['Add box number, quantity, unit, MOC, size/spec, item code, ibr number, make, and scanned quantity as applicable.', 'Scanned quantity is a physical check; it should not silently exceed the BOM quantity without an explanation.']),
       feature('pdf', 'Packing PDFs', FileTextIcon, ['Generate the customer-facing PDF when the list is Ready. Use the pending-list PDF when you need a list of lines still waiting to be packed.', 'Check customer name, address, invoice/DC details, vehicle, and dispatch method before issuing the document.']),
       feature('reconcile', 'BOM reconciliation', ClipboardCheckIcon, ['A packing item keeps a link to its BOM line. Use that link to explain what was carried, what remains pending, and why a partial list was created.']),
+      feature('handover', 'Handed over from Production', PackageCheckIcon, [
+        'When Production hands over a finished subsystem it appears on the project\'s open packing list by itself (a draft is created if none exists) and you get a notification. Check the list, add anything missing, then move it on as usual.',
+        'If Production hands over more after the list was packed or sent for review, you are asked nothing — Production chooses a fresh draft or adding to the same list; adding pulls the list back to draft and the review starts again.',
+      ]),
+      feature('shipments', 'Shipments (combine packing lists)', TruckIcon, [
+        'A packing list is the delivery record for one project. Use Combine lists only when two or more projects go to the same address in one vehicle: the lists keep their own PL numbers, approvals, invoices and e-way bills, and gain a shared SHP number.',
+        'Split a shipment to undo it. Structure changes lock once every list in it is dispatched; carrier details stay editable. The shipment PDF is a cover page plus each list.',
+      ]),
+      feature('carrier', 'Carrier and tracking details', RouteIcon, [
+        'On a packing list or a shipment, record how it travels: mode (road/rail/sea/air), the LR / RR / BL / AWB number and date, vehicle or container number, tracking link and expected delivery date. These are plain business records shown on the Deliveries tab and the packing list.',
+        'There is no live tracking yet; the stored details are what a tracking feed would read later.',
+      ]),
       feature('gatepass', 'Gate Passes', FileOutputIcon, [
         'Raise a Returnable or Non-returnable gate pass before material or tooling leaves the gate — party/destination, responsible person, purpose, and an item list. A returnable pass also takes an expected return date; a non-returnable one does not.',
         'Approve, then Issue — a pass only leaves draft once someone with approval authority signs off. Cancel is available before issue.',
