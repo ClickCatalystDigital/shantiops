@@ -11,6 +11,7 @@ import { createClient } from '@libsql/client';
 const GUARDED_TABLES = [
   'qc_document_parts', 'bom_items', 'qc_mountings', 'stock_pieces', 'job_cards',
   'inventory_batches', 'inventory_serials', 'bom_item_receipts', 'bom_item_child_certificates',
+  'job_sheet_stages',
 ];
 // Excluded on purpose — the one CASCADE case, a pure association table with no data of its own
 // worth blocking a delete over (see lib/test-certificate-guard.js's own header comment).
