@@ -7,6 +7,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEntityHighlight } from '@/lib/use-entity-highlight';
 import LogoCropDialog from '@/components/LogoCropDialog';
+import DocumentHeadersCard from '@/components/DocumentHeadersCard';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -541,6 +542,7 @@ function CompanyEntitiesTab({ companies, router, maxCompanies = 3 }) {
       </div>
       <GstDetailCard entity={entity} onApplied={refresh} />
       <DocumentsCard entity={entity} onSaved={() => { refresh(); }} />
+      <DocumentHeadersCard entity={entity} onSaved={refresh} />
       <ApplicabilityCard entity={entity} refreshKey={refreshKey} />
       <EwayBillCredentialsCard entity={entity} />
     </div>

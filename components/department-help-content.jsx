@@ -1721,6 +1721,7 @@ export const DEPARTMENT_HELP = {
         'Company Entities → pick a company → Documents. This is the one place for what prints on every document of that company: name, address, phone, contact details, short code and logo. Save, and the next PDF anyone opens uses it.',
         'Logo: Upload logo accepts any image (PNG, JPG, WebP, SVG). A crop box opens first: drag it or its corners to keep only the part you want, check the purchase order header preview below it, then Save logo. Crop re-opens the saved logo for another trim.',
         'A wide logo that already contains the company name is printed alone at the top of the purchase order. A square mark gets the company name beside it. The QC folder header shows the logo beside the company name.',
+        'Document headers (the card below Documents): pick a document from the dropdown, then choose where the logo sits (none, left, centre, right), the title font and size, and a footer line printed on every page. The preview shows the result. Apply to all documents copies the logo position, font and footer to every document. QC statutory forms, the nameplate sticker and stock tags keep their fixed layout.',
         'A company with no logo prints the plain name and address header. Remove takes a logo off again.',
         'Short code is the letters in numbers such as quotation numbers and the SB / STF tags. Maker\'s number prefix decides which company a QC folder is filed under.',
       ], {

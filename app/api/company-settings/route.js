@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne, withTransaction, seedChartOfAccountsForCompany, refreshCompanies } from '@/lib/db';
 import { PROFILE_COLUMNS, maxCompanies } from '@/lib/customer-seed';
+import { cleanDocHeaders } from '@/lib/doc-headers.mjs';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { getCompanySettings } from '@/lib/data';
@@ -86,6 +87,7 @@ export async function PATCH(req) {
   for (const key of PLAIN) {
     if (b[key] !== undefined) { fields.push(`${key} = ?`); args.push(b[key]); }
   }
+  if (b.doc_headers !== undefined) { fields.push('doc_headers_json = ?'); args.push(JSON.stringify(cleanDocHeaders(b.doc_headers))); }
   for (const key of TRACKED) {
     if (b[key] !== undefined) { fields.push(`${key} = ?`, `${key}_source = ?`, `${key}_updated_at = ?`); args.push(b[key], 'manual', now); }
   }
