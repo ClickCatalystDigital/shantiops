@@ -6,6 +6,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEntityHighlight } from '@/lib/use-entity-highlight';
+import LogoCropDialog from '@/components/LogoCropDialog';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -429,7 +430,6 @@ const DOC_FIELDS = [
   ['phone', 'Phone on documents'], ['stores_email', 'Stores email (packing list)'],
   ['contact_mobile', 'Mobile'], ['contact_landline', 'Landline'], ['contact_whatsapp', 'WhatsApp'],
   ['contact_emails', 'Emails (comma separated)'], ['website', 'Website'],
-  ['tagline', 'Tagline (PO letterhead)'], ['motto', 'Motto (PO letterhead)'], ['wordmark_tm', 'TM mark beside the name', '1 = show'],
   ['invoice_prefix', 'Short code (numbers, tags)'], ['maker_prefix', "Maker's number prefix"],
   ['qc_doc_prefix', 'QC document prefix'], ['qc_ref_prefix', 'QC letter reference prefix'],
   ['qc_name', 'Name on QC forms', 'Blank = legal name'], ['qc_address', 'Address on QC forms', 'Blank = address above'],
@@ -450,16 +450,27 @@ function DocumentsCard({ entity, onSaved }) {
       showToast('Document details saved'); onSaved();
     } catch (err) { showToast(err.message, 'error'); } finally { setSaving(false); }
   }
-  async function pickLogo(e) {
+  const [cropFile, setCropFile] = useState(null);
+  function pickLogo(e) {
     const f = e.target.files?.[0]; e.target.value = '';
-    if (!f) return;
+    if (f) setCropFile(f);
+  }
+  async function cropCurrent() {
     setBusy(true);
     try {
-      const { file, width, height } = await toLogoPng(f);
+      const res = await fetch(`/api/company-settings/${entity.id}/logo?v=${encodeURIComponent(entity.logo_key)}`);
+      if (!res.ok) throw new Error('Could not load the current logo');
+      setCropFile(new File([await res.blob()], 'logo.png', { type: 'image/png' }));
+    } catch (err) { showToast(err.message, 'error'); } finally { setBusy(false); }
+  }
+  async function saveLogo(crop) {
+    setBusy(true);
+    try {
+      const { file, width, height } = await toLogoPng(cropFile, crop);
       const body = new FormData(); body.append('file', file);
       await api(`/api/company-settings/${entity.id}/logo`, { method: 'POST', body });
       showToast(Math.min(width, height) < 200 ? 'Logo saved. It is small and may look soft in print; a larger file is better.' : 'Logo saved', Math.min(width, height) < 200 ? 'warning' : 'success');
-      setLogoV(v => v + 1); onSaved();
+      setCropFile(null); setLogoV(v => v + 1); onSaved();
     } catch (err) { showToast(err.message, 'error'); } finally { setBusy(false); }
   }
   async function removeLogo() {
@@ -484,13 +495,15 @@ function DocumentsCard({ entity, onSaved }) {
           <div className="flex flex-col gap-1.5">
             <div className="flex gap-2">
               <Button size="sm" variant="outline" disabled={busy} onClick={() => fileRef.current?.click()}>{busy ? 'Working…' : entity.logo_key ? 'Replace logo' : 'Upload logo'}</Button>
+              {entity.logo_key && <Button size="sm" variant="outline" disabled={busy} onClick={cropCurrent}>Crop</Button>}
               {entity.logo_key && <Button size="sm" variant="ghost" disabled={busy} onClick={removeLogo}>Remove</Button>}
             </div>
             <p className="max-w-md text-xs text-muted-foreground">
-              Any image works (PNG, JPG, WebP, SVG). It is saved as a PNG up to 1200 px and fitted inside the logo space on the
-              purchase order and QC folder, so the layout stays the same. Best: transparent background, at least 400 px.
+              Any image works (PNG, JPG, WebP, SVG). You can crop it before saving. A wide logo that already has the company
+              name is printed alone at the top of the purchase order; a square mark gets the name beside it.
             </p>
             <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={pickLogo} />
+            {cropFile && <LogoCropDialog file={cropFile} name={entity.company} busy={busy} onCancel={() => setCropFile(null)} onSave={saveLogo} />}
           </div>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">

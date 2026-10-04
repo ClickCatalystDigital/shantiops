@@ -1719,7 +1719,8 @@ export const DEPARTMENT_HELP = {
       feature('settings', 'Company Settings', Building2Icon, ['One row per legal entity — GSTIN, PAN, registered address, state code, and invoice series prefix. Every document number (invoice, credit note, receipt…) and every GST split (CGST+SGST vs IGST) is computed from this record, so keep it accurate before relying on anything downstream.']),
       feature('company-documents', 'Company details and logo on documents', FileTextIcon, [
         'Company Entities → pick a company → Documents. This is the one place for what prints on every document of that company: name, address, phone, contact details, short code and logo. Save, and the next PDF anyone opens uses it.',
-        'Logo: Upload logo accepts any image (PNG, JPG, WebP, SVG). The app saves it as a PNG up to 1200 px. It appears where a logo is printed today (the purchase order letterhead and the QC folder header) inside a fixed space, so the layout does not move. Other documents stay text only.',
+        'Logo: Upload logo accepts any image (PNG, JPG, WebP, SVG). A crop box opens first: drag it or its corners to keep only the part you want, check the purchase order header preview below it, then Save logo. Crop re-opens the saved logo for another trim.',
+        'A wide logo that already contains the company name is printed alone at the top of the purchase order. A square mark gets the company name beside it. The QC folder header shows the logo beside the company name.',
         'A company with no logo prints the plain name and address header. Remove takes a logo off again.',
         'Short code is the letters in numbers such as quotation numbers and the SB / STF tags. Maker\'s number prefix decides which company a QC folder is filed under.',
       ], {
