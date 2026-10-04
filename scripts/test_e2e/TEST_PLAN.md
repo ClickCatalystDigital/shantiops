@@ -109,7 +109,7 @@ Test artifacts cleaned up afterward via `reset()`.
 
 ## ✅ Phase 4 — Production / WIP (`phase4_production_wip.py`)
 
-**Status: COMPLETE, all 15 checks passing.**
+**Status: updated 2026-10-04 for the Shop Floor > Dispatch handover (the manual `production_done` tick was removed). Not re-run since the port — run it against the dev server before relying on it.**
 
 Two items, both raised/procured/received/QC-approved/routed to Production the same self-contained
 way earlier phases already prove works:
@@ -119,21 +119,20 @@ way earlier phases already prove works:
   Material Indent raised **with a `job_card_id`** correctly links the resulting `material_issues`
   row back to the Job Card that drew the material — a real, already-working linkage Phase 3 never
   exercised (it never touched Job Cards). Time logged → card marked `progress` → `done` → its
-  milestone auto-completes. Production then **manually** flips `production_done` — confirmed this
-  is a deliberate design choice, not a gap (a finished Job Card doesn't auto-imply 100% of the
-  physical work is done; there's an explicit code comment saying so). Item then correctly reads as
-  ready for packing.
+  milestone auto-completes. Production then **hands the item over** (`POST /api/production/handovers`, approval = yes). The old
+  manual `production_done` tick no longer exists (PATCH is refused with 403); the flag is derived
+  from handovers. The handover also puts the item on the project's draft packing list by itself.
 - **Item HOLD** — the QC hold-point branch, which genuinely does need a real Work Order:
   `requires_qc_hold` can only ever be set by `generate-job-cards` off a route step's own
   `quality_checkpoint` — a plain Job Card has no field for it at all. Built a real Work Order → one
   route step naming a checkpoint → released → generated its Job Card (confirmed `requires_qc_hold=1`
   on it) → confirmed marking it `done` is **blocked** (400, "Held for QC") → QC releases the hold →
-  now completes → milestone auto-completes → same manual `production_done` confirmation → ready.
+  now completes → milestone auto-completes → handed over the same way.
 
-**Closes the loop on "does it reach the packing list" — no new module needed.** Once both items were
-marked ready, called `POST /api/packing/from-bom` — the exact same action Dispatch's own "Generate
-Draft Packing List" button uses, already proven end-to-end (through to a real dispatch) by Phase T.
-Both items correctly landed on the generated draft list.
+**Does it reach the packing list?** The handover itself places both items on the project's draft
+packing list (no Generate click); the phase checks `production_done` was derived, the handover
+carries Production's approval, and each item is on a draft list. Dispatch's own Generate button is
+still proven end-to-end by Phase T.
 
 **One real bug found — in the test's own `reset()`, not the app.** A Work-Order-generated Job Card
 never gets a `notes` value at all (confirmed by reading `generate-job-cards/route.js`'s INSERT

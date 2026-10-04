@@ -13,11 +13,10 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import ProjectMultiFilter from '@/components/ProjectMultiFilter';
 import StoresSubTabs from '@/components/StoresSubTabs';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import HandoverDialog, { buildSubsystems } from '@/components/HandoverDialog';
 import { ChevronDownIcon, ChevronRightIcon, SearchIcon, TruckIcon, UndoIcon, AlertTriangleIcon } from 'lucide-react';
 
 const unitOf = qtyText => String(qtyText || '').replace(/^\s*[\d.]+\s*/, '').trim();
-const subKey = l => `${l.indent_project_id}:${l.unit_project_id || 0}:${l.group_id || 0}`;
 
 export default function ProductionDispatch() {
   const [data, setData] = useState(null);
@@ -26,9 +25,8 @@ export default function ProductionDispatch() {
   const [projFilter, setProjFilter] = useState(new Set());
   const [picked, setPicked] = useState(new Set()); // subsystem keys
   const [note, setNote] = useState('');
-  const [busy, setBusy] = useState(false);
   const [openSub, setOpenSub] = useState(new Set());
-  const [ask, setAsk] = useState(null); // { items, groups, choices: {key: 'new'|listId}, approve: null|true|false }
+  const [handing, setHanding] = useState(false); // the hand-over overlay is open
   const [closedProj, setClosedProj] = useState(new Set()); // projects folded shut
 
   const load = () => api('/api/production/handovers').then(d => { setData(d); setPicked(new Set()); }).catch(e => showToast(e.message, 'error'));
@@ -47,22 +45,7 @@ export default function ProductionDispatch() {
   }, [data]);
 
   // Subsystems still to hand over: lines with something left (or an unclear quantity), grouped.
-  const subsystems = useMemo(() => {
-    const g = new Map();
-    (data?.lines || []).forEach(l => {
-      if (l.required_qty && l.remaining <= 0) return;
-      const k = subKey(l);
-      if (!g.has(k)) g.set(k, { key: k, project_id: l.indent_project_id, project_no: l.indent_project_no, customer: l.customer_name,
-        unit: l.unit_project_no, group_id: l.group_id, name: l.group_name, lines: [] });
-      g.get(k).lines.push(l);
-    });
-    return [...g.values()].map(s => ({
-      ...s,
-      ready: s.lines.filter(l => l.required_qty && l.remaining > 0),
-      unclear: s.lines.filter(l => !l.required_qty).length,
-      waiting: s.unit ? 0 : (data?.waiting?.[`${s.project_id}:${s.group_id || 0}`] || 0),
-    }));
-  }, [data]);
+  const subsystems = useMemo(() => buildSubsystems(data), [data]);
   const visible = subsystems.filter(s => inProj(s.project_id) && match(s.name, s.project_no, s.customer, s.unit, ...s.lines.map(l => l.material_description)));
   const byProject = useMemo(() => {
     const m = new Map();
@@ -84,40 +67,6 @@ export default function ProductionDispatch() {
   }
   const pickedSubs = subsystems.filter(s => picked.has(s.key) && s.ready.length);
   const readyCount = subsystems.filter(s => s.ready.length).length;
-
-  // Step 1: ask the server what will happen to each project's packing list, then ask Production only
-  // what matters — whether to pull a packed list back to draft, and (always) whether it approves.
-  async function handOver() {
-    const items = pickedSubs.flatMap(s => s.ready.map(l => ({
-      bom_item_id: l.bom_item_id, child_project_id: l.unit_project_id || undefined, qty: l.remaining,
-    })));
-    setBusy(true);
-    try {
-      const { groups } = await api('/api/production/handovers/preview', { method: 'POST', body: { items } });
-      const choices = {};
-      groups.forEach(g => { if (g.reopenable) choices[g.key] = 'new'; });
-      setAsk({ items, groups, choices, approve: null });
-    } catch (err) { showToast(err.message, 'error'); }
-    setBusy(false);
-  }
-
-  // Step 2: the answers are in — hand over.
-  async function confirmHandOver() {
-    setBusy(true);
-    try {
-      const list_choices = {};
-      Object.entries(ask.choices).forEach(([k, v]) => { if (v !== 'new') list_choices[k] = v; });
-      const r = await api('/api/production/handovers', { method: 'POST', body: { items: ask.items, note: note || undefined, approve: ask.approve, list_choices } });
-      const lists = [...new Set((r.packing || []).filter(p => p.packing_no).map(p => p.packing_no))];
-      const failed = (r.packing || []).filter(p => p.error);
-      showToast(`${pickedSubs.length} subsystem${pickedSubs.length === 1 ? '' : 's'} handed over to Dispatch${lists.length ? ` — on packing list ${lists.length > 3 ? `${lists.slice(0, 3).join(', ')} +${lists.length - 3} more` : lists.join(', ')}` : ''}`);
-      if (failed.length) showToast(`Handed over, but a packing list could not be updated (${failed[0].error}). Dispatch can add the items from Pending Items.`, 'error');
-      setAsk(null);
-      setNote('');
-      await load();
-    } catch (err) { showToast(err.message, 'error'); }
-    setBusy(false);
-  }
 
   // Handed over: one entry per subsystem handed over together (records made in one go share a second).
   const history = useMemo(() => {
@@ -233,59 +182,17 @@ export default function ProductionDispatch() {
         </div>
       )}
 
-      <Dialog open={!!ask} onOpenChange={o => { if (!o && !busy) setAsk(null); }}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Hand over to Dispatch</DialogTitle>
-            <DialogDescription>
-              {pickedSubs.length} subsystem{pickedSubs.length === 1 ? '' : 's'} ({ask?.items.length} item{ask?.items.length === 1 ? '' : 's'}).
-            </DialogDescription>
-          </DialogHeader>
-          {ask && (
-            <div className="flex max-h-[60vh] flex-col gap-4 overflow-y-auto">
-              {ask.groups.filter(g => g.reopenable || g.blocked).map(g => (
-                <fieldset key={g.key} className="flex flex-col gap-2 rounded-lg border p-3 text-sm">
-                  <legend className="px-1 text-xs font-medium text-muted-foreground">{g.project_no}{g.unit ? ` · Unit ${g.unit}` : ''}</legend>
-                  {g.reopenable ? (<>
-                    <p>
-                      Packing list <span className="font-medium">{g.reopenable.packing_no}</span> is already packed
-                      {g.reopenable.review ? ' and in review' : ''}. Where should these {g.items} item{g.items === 1 ? '' : 's'} go?
-                    </p>
-                    <label className="flex items-start gap-2"><input type="radio" className="mt-1" checked={ask.choices[g.key] === 'new'}
-                      onChange={() => setAsk(a => ({ ...a, choices: { ...a.choices, [g.key]: 'new' } }))} />
-                      <span>Start a new draft list</span></label>
-                    <label className="flex items-start gap-2"><input type="radio" className="mt-1" checked={ask.choices[g.key] === g.reopenable.id}
-                      onChange={() => setAsk(a => ({ ...a, choices: { ...a.choices, [g.key]: g.reopenable.id } }))} />
-                      <span>Add to {g.reopenable.packing_no}<span className="block text-xs text-muted-foreground">
-                        It goes back to draft{g.reopenable.review ? ', its review is withdrawn and it has to be submitted again' : ''}.</span></span></label>
-                  </>) : (
-                    <p>{g.blocked.packing_no} is already packed and can't be reopened ({g.blocked.reason}). These items start a new draft list.</p>
-                  )}
-                </fieldset>
-              ))}
-              <fieldset className="flex flex-col gap-2 rounded-lg border p-3 text-sm">
-                <legend className="px-1 text-xs font-medium text-muted-foreground">Production approval</legend>
-                <p>Do you approve these items for dispatch?</p>
-                <label className="flex items-start gap-2"><input type="radio" className="mt-1" name="ho-approve" checked={ask.approve === true}
-                  onChange={() => setAsk(a => ({ ...a, approve: true }))} /><span>Yes, approved</span></label>
-                <label className="flex items-start gap-2"><input type="radio" className="mt-1" name="ho-approve" checked={ask.approve === false}
-                  onChange={() => setAsk(a => ({ ...a, approve: false }))} /><span>Not yet<span className="block text-xs text-muted-foreground">You can approve later from Approvals.</span></span></label>
-              </fieldset>
-            </div>
-          )}
-          <DialogFooter className="m-0">
-            <Button variant="outline" disabled={busy} onClick={() => setAsk(null)}>Cancel</Button>
-            <Button disabled={busy || ask?.approve === null} onClick={confirmHandOver}>{busy ? 'Handing over…' : 'Hand over'}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {handing && (
+        <HandoverDialog subsystems={pickedSubs} initialNote={note} onClose={() => setHanding(false)}
+          onDone={() => { setHanding(false); setNote(''); load(); }} />
+      )}
 
       {sub === 'todo' && pickedSubs.length > 0 && (
         <div className="sticky bottom-3 z-10 flex flex-wrap items-center gap-3 rounded-xl border bg-card px-4 py-2.5 shadow-lg">
           <span className="text-sm"><span className="font-semibold tnum">{pickedSubs.length}</span> subsystem{pickedSubs.length === 1 ? '' : 's'}</span>
           <Input value={note} onChange={e => setNote(e.target.value)} placeholder="Note for Dispatch (optional)" className="h-8 min-w-40 flex-1" />
           <Button variant="ghost" size="sm" onClick={() => setPicked(new Set())}>Clear</Button>
-          <Button size="sm" disabled={busy} onClick={handOver}>{busy ? 'Checking…' : 'Hand over to Dispatch'}</Button>
+          <Button size="sm" onClick={() => setHanding(true)}>Hand over to Dispatch</Button>
         </div>
       )}
     </div>

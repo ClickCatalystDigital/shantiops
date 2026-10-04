@@ -20,6 +20,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { PlusIcon, PrinterIcon, CheckIcon, PlayIcon, ShieldCheckIcon, Trash2Icon, RotateCcwIcon, ChevronDownIcon } from 'lucide-react';
 import SearchableSelect from '@/components/SearchableSelect';
 import CertPicker from '@/components/CertPicker';
+import HandoverDialog, { buildSubsystems } from '@/components/HandoverDialog';
 import FloatingPdfPanel from '@/components/FloatingPdfPanel';
 import PdfInlinePreview from '@/components/PdfInlinePreview';
 
@@ -151,6 +152,7 @@ function SheetDetail({ id, workers, canProduction, canQc, onClose, onDeleted }) 
   const [filter, setFilter] = useState('all');
   const [showHeader, setShowHeader] = useState(false);
   const [qcRow, setQcRow] = useState(null);
+  const [handover, setHandover] = useState(null); // subsystems offered for hand-over
   const curRef = useRef(null);
   const [scanVer, setScanVer] = useState(0);
 
@@ -161,8 +163,29 @@ function SheetDetail({ id, workers, canProduction, canQc, onClose, onDeleted }) 
   useEffect(() => { if (d && curRef.current) curRef.current.scrollIntoView({ block: 'center' }); }, [d?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function stage(row, body) {
-    try { await api(`/api/job-sheets/${id}/stages/${row.id}`, { method: 'PATCH', body }); await refresh(); }
-    catch (err) { showToast(err.message, 'error'); }
+    try {
+      await api(`/api/job-sheets/${id}/stages/${row.id}`, { method: 'PATCH', body });
+      await refresh();
+    } catch (err) { showToast(err.message, 'error'); return; }
+    // Filling the DISPATCH stage (start, finish, or a date typed in) is the moment the finished job
+    // goes to Dispatch: offer the same hand-over Shop Floor > Dispatch makes, pre-filled for this project.
+    const filled = body.action === 'start' || body.action === 'finish'
+      || (body.action === 'edit' && ((body.start_date && !row.start_date) || (body.end_date && !row.end_date)));
+    if (canProduction && isDispatchStage(row.name) && filled) openHandover(body.action !== 'finish');
+  }
+  // Everything routed to Production for this job's project (or, on a split order, this unit) that is
+  // still to hand over — all subsystems, ticked; the overlay lets Production untick one.
+  async function openHandover(sayIfEmpty) {
+    try {
+      const data = await api('/api/production/handovers');
+      const pid = d?.project_id;
+      const mine = buildSubsystems({
+        ...data,
+        lines: data.lines.filter(l => l.unit_project_id ? l.unit_project_id === pid : l.indent_project_id === pid),
+      }).filter(s => s.ready.length);
+      if (mine.length) setHandover(mine);
+      else if (sayIfEmpty) showToast('Nothing from this project is waiting to be handed over (material not routed to Production yet)');
+    } catch (err) { showToast(err.message, 'error'); }
   }
   // Starting the Dispatch stage also tells Dispatch (server-side) that this job's items can be packed.
   async function startStage(row) {
@@ -330,6 +353,7 @@ function SheetDetail({ id, workers, canProduction, canQc, onClose, onDeleted }) 
             </div>
           </>
         )}
+        {handover && <HandoverDialog subsystems={handover} selectable onClose={() => setHandover(null)} onDone={() => setHandover(null)} />}
         {qcRow && d && <QcDialog row={qcRow} projectId={d.project_id} onClose={() => setQcRow(null)}
           onDone={() => { setQcRow(null); refresh(); }} />}
       </SheetContent>

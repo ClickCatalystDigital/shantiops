@@ -9,11 +9,9 @@ Two items, deliberately testing both branches TEST_PLAN.md calls for:
     Production milestone -- NO Work Order needed for this (a Work Order is a separate, optional
     production-control layer above Job Cards, not the same thing as a Project; a plain Job Card
     only needs a milestone). Time is logged, the card is marked done (which auto-completes the
-    milestone, lib/milestone-auto.js), and Production then manually flips `production_done` --
-    this field is a deliberate, documented manual toggle (see lib/data.js's own comment: "stays
-    exactly Production-owned, unchanged"), NOT something a finished Job Card auto-sets. That's by
-    design, not a gap: a Job Card being done doesn't always mean 100% of the physical work behind a
-    BOM line is finished.
+    milestone, lib/milestone-auto.js), and Production then hands the finished item to Dispatch from
+    Shop Floor > Dispatch (POST /api/production/handovers). The old manual "Prod. Done" tick no
+    longer exists (PATCH production_done is refused, 403); the flag is now DERIVED from handovers.
   - Item HOLD (item_id 14): the QC hold-point branch. `requires_qc_hold` can ONLY ever be set to 1
     on a Job Card generated from a real Work Order's route step that names a quality_checkpoint
     (app/api/work-orders/[id]/generate-job-cards/route.js) -- a plain, directly-created Job Card has
@@ -27,12 +25,9 @@ Material Indent WITH a job_card_id set correctly flows through to the resulting 
 row's own job_card_id at release time (app/api/material-indents/[id]/items/[itemId]/release,
 lib/material-issues.js's issueMaterial) -- Phase 3 never used this since it never touched Job Cards.
 
-Finally, once both items are marked production_done, this phase calls the SAME mechanism Dispatch's
-own "Generate Draft Packing List" button uses (POST /api/packing/from-bom) and confirms both items
-land on the generated draft list -- no new module needed, this is the existing readiness-to-packing
-pull mechanism Phase T already proved works end-to-end through to a real dispatch. Full packing-list
-generation/format is still Phase 5's job (blocked on the reference Excel format) -- this only proves
-the pull itself picks the items up correctly once they're ready.
+Finally, both items are handed over to Dispatch (mandatory Production approval answered "yes") and
+the phase confirms production_done was derived, the handover was recorded as approved, and both
+items were placed automatically on the project's draft packing list -- nobody pressed Generate.
 
 Run standalone:  python3 scripts/test_e2e/phase4_production_wip.py
 """
@@ -66,15 +61,18 @@ def reset():
     # Found live: this is exactly the recurring trap TEST_PLAN.md's own notes already warn about.
     job_card_id_sql = f"SELECT id FROM job_cards WHERE notes = '{TAG}' OR work_order_id IN ({work_order_id_sql})"
 
-    # Packing lists this phase may have generated (from-bom, §the packing check below) --
+    # Packing lists this phase may have generated (auto-placed by the handover) --
     # pre_dispatch_approvals has NO ACTION on packing_list_id, so it must go first; packing_items
     # itself cascades from packing_lists (real PRAGMA foreign_key_list check).
+    # (packing_bom_links = the view that answers "which BOM lines does a list carry": the anchor
+    # column plus the assembly link table; packing_items/links cascade from packing_lists.)
     turso_execute("DELETE FROM pre_dispatch_approvals WHERE packing_list_id IN "
-                   "(SELECT DISTINCT pi.packing_list_id FROM packing_items pi "
-                  f"  WHERE pi.bom_item_id IN ({bom_id_sql}))")
+                   "(SELECT DISTINCT packing_list_id FROM packing_bom_links "
+                  f"  WHERE bom_item_id IN ({bom_id_sql}))")
     turso_execute("DELETE FROM packing_lists WHERE id IN "
-                   "(SELECT DISTINCT pi.packing_list_id FROM packing_items pi "
-                  f"  WHERE pi.bom_item_id IN ({bom_id_sql}))")
+                   "(SELECT DISTINCT packing_list_id FROM packing_bom_links "
+                  f"  WHERE bom_item_id IN ({bom_id_sql}))")
+    turso_execute(f"DELETE FROM production_handovers WHERE bom_item_id IN ({bom_id_sql})")
 
     # Job Card children, then Job Cards themselves, then Work Order children, then Work Orders --
     # real PRAGMA foreign_key_list order: job_card_time_logs/job_card_consumables/material_issues
@@ -197,9 +195,11 @@ def get_milestone(milestone_id):
     return row[0] if row else None
 
 
-def set_production_done(session, bom_id, value=True):
-    return must_ok(api(session, "PATCH", f"/api/bom-items/{bom_id}", json={"production_done": value}),
-                    "set_production_done")
+def hand_over(session, bom_id, qty):
+    """Shop Floor > Dispatch handover of one finished item. `approve` is mandatory (Production says
+    whether it approves the items for dispatch); True here so the pre-dispatch slot is pre-filled."""
+    return must_ok(api(session, "POST", "/api/production/handovers",
+                        json={"items": [{"bom_item_id": bom_id, "qty": qty}], "approve": True}), "hand_over")
 
 
 def run(do_reset=True):
@@ -256,14 +256,14 @@ def run(do_reset=True):
     check("Item NOHOLD: its milestone auto-completed once its only Job Card was done",
           milestone1 and milestone1["status"] == "done" and milestone1["actual_end"], f"milestone={milestone1}")
 
-    print("Item NOHOLD: Production manually confirms the work is done (production_done is a real, deliberate manual toggle)...")
-    set_production_done(session, bom_nohold, True)
-    bom1_after = get_bom_item(session, bom_nohold)
-    check("Item NOHOLD: production_done is now set", bool(bom1_after and bom1_after.get("production_done")),
-          f"production_done={bom1_after and bom1_after.get('production_done')}")
-    ready1 = bool(bom1_after) and bom1_after.get("self_routed_to") == "production" and bool(bom1_after.get("production_done"))
-    check("Item NOHOLD: now reads as ready for packing (self_routed_to='production' + production_done)",
-          ready1, f"self_routed_to={bom1_after and bom1_after.get('self_routed_to')}, production_done={bom1_after and bom1_after.get('production_done')}")
+    print("Item NOHOLD: the old manual tick is gone -- confirm the server refuses it...")
+    r = api(session, "PATCH", f"/api/bom-items/{bom_nohold}", json={"production_done": True})
+    check("Item NOHOLD: PATCH production_done is refused (it is derived from handovers now)",
+          r.status_code == 403, f"status={r.status_code}, body={r.text[:200]}")
+
+    print("Item NOHOLD: Production hands the finished item over to Dispatch...")
+    ho1 = hand_over(session, bom_nohold, ITEM_NOHOLD["qty"])
+    check("Item NOHOLD: handover recorded", ho1.get("count") == 1, f"response={ho1}")
 
     # ---------------------------------------------------------------------------------------
     # Item HOLD -- the QC hold-point branch. This is the ONE part of Phase 4 that genuinely
@@ -310,23 +310,26 @@ def run(do_reset=True):
     check("Item HOLD: its milestone auto-completed too", milestone2 and milestone2["status"] == "done" and milestone2["actual_end"],
           f"milestone={milestone2}")
 
-    set_production_done(session, bom_hold, True)
-    bom2_after = get_bom_item(session, bom_hold)
-    ready2 = bool(bom2_after) and bom2_after.get("self_routed_to") == "production" and bool(bom2_after.get("production_done"))
-    check("Item HOLD: now reads as ready for packing too", ready2,
-          f"self_routed_to={bom2_after and bom2_after.get('self_routed_to')}, production_done={bom2_after and bom2_after.get('production_done')}")
+    print("Item HOLD: Production hands it over too...")
+    ho2 = hand_over(session, bom_hold, ITEM_HOLD["qty"])
+    check("Item HOLD: handover recorded", ho2.get("count") == 1, f"response={ho2}")
 
     # ---------------------------------------------------------------------------------------
-    # The packing-list check -- no new module, reuses the exact mechanism Dispatch's own
-    # "Generate Draft Packing List" button calls, already proven end-to-end in Phase T.
+    # What a handover causes: production_done derived, approval stamped, items placed on the
+    # project's draft packing list automatically (no Generate click).
     # ---------------------------------------------------------------------------------------
-    print("Both items are now ready -- generating a draft packing list from BOM (Dispatch's own existing action)...")
-    pl = must_ok(api(session, "POST", "/api/packing/from-bom", json={"project_id": PROJECT_ID}), "packing_from_bom")
-    list_id = pl["id"]
-    packed_bom_ids = {r["bom_item_id"] for r in turso_query(
-        "SELECT bom_item_id FROM packing_items WHERE packing_list_id = ?", [list_id])}
-    check("Both finished items landed on the generated draft packing list",
-          {bom_nohold, bom_hold} <= packed_bom_ids, f"packed_bom_ids={packed_bom_ids}, expected to include {{{bom_nohold}, {bom_hold}}}")
+    for label, bom_id in (("NOHOLD", bom_nohold), ("HOLD", bom_hold)):
+        b = get_bom_item(session, bom_id)
+        check(f"Item {label}: production_done was derived from the handover", bool(b and b.get("production_done")),
+              f"production_done={b and b.get('production_done')}")
+        h = turso_query("SELECT production_approved, approved_by FROM production_handovers WHERE bom_item_id = ?", [bom_id])
+        check(f"Item {label}: handover carries Production's approval",
+              bool(h) and int(h[0]["production_approved"]) == 1 and bool(h[0]["approved_by"]), f"handover={h}")
+        on_list = turso_query(
+            "SELECT pl.id, pl.status FROM packing_bom_links l JOIN packing_lists pl ON pl.id = l.packing_list_id "
+            "WHERE l.bom_item_id = ?", [bom_id])
+        check(f"Item {label}: placed on a draft packing list automatically",
+              bool(on_list) and on_list[0]["status"] == "draft", f"lists={on_list}")
 
     print("\n".join(report))
     print("\n" + ("ALL PASSED" if passed else "SOME FAILED"))
