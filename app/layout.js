@@ -54,7 +54,7 @@ export default async function RootLayout({ children }) {
             </footer>
           </div>
         </TooltipProvider>
-        {isAdmin(user) && !needsDeviceSetup && <AssistantWidget />}
+        {isInternal(user) && !needsDeviceSetup && <AssistantWidget showRoute={isAdmin(user)} />}
         <Toaster position="top-center" richColors />
       </body>
     </html>

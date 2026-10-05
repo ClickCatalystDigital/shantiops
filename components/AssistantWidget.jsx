@@ -1,7 +1,7 @@
 'use client';
 
-// The help assistant: a button at the bottom right that opens a chat panel. Rendered for admin only
-// (app/layout.js) while it is being tested. The conversation lives in this component's state, so it
+// The help assistant: a button at the bottom right that opens a chat panel, for every staff login
+// (app/layout.js; not customers). Admin also sees how each answer was routed. The conversation lives in this component's state, so it
 // lasts until the page is reloaded and is never stored.
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
@@ -9,7 +9,7 @@ import { usePathname } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { MessageCircleQuestionIcon, XIcon, SendIcon, RotateCcwIcon } from 'lucide-react';
 
-export default function AssistantWidget() {
+export default function AssistantWidget({ showRoute = false }) {
   const path = usePathname();
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState([]); // { role, content, sources?, error? }
@@ -60,7 +60,7 @@ export default function AssistantWidget() {
       <div className="flex items-center justify-between border-b px-4 py-3">
         <div>
           <p className="text-sm font-semibold">Help assistant</p>
-          <p className="text-[11px] text-muted-foreground">Answers from the help guide. Admin test.</p>
+          <p className="text-[11px] text-muted-foreground">Ask how to do something in the app.</p>
         </div>
         <div className="flex gap-1">
           <Button size="icon" variant="ghost" className="size-8" aria-label="Clear conversation" disabled={busy || !messages.length} onClick={() => setMessages([])}><RotateCcwIcon className="size-4" /></Button>
@@ -78,7 +78,7 @@ export default function AssistantWidget() {
                 {m.content.replace(/\*\*/g, '') || (busy && i === messages.length - 1 ? 'Thinking…' : '')}
               </div>
               {m.link && <a href={m.link} target="_blank" rel="noreferrer" className="mt-1 inline-block text-xs font-medium text-primary underline underline-offset-2">{m.linkLabel || m.link}</a>}
-              {m.route && <p className="mt-1 text-[10px] text-muted-foreground/80">{m.route}</p>}
+              {showRoute && m.route && <p className="mt-1 text-[10px] text-muted-foreground/80">{m.route}</p>}
               {!!m.sources?.length && (
                 <div className="mt-1 flex flex-wrap gap-1.5">
                   {m.sources.map(s => <Link key={s.href} href={s.href} className="rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground hover:text-foreground">{s.label}</Link>)}

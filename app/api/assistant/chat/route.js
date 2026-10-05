@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getFreshSessionUser, isAdmin, isPM, headDepartments } from '@/lib/auth';
+import { getFreshSessionUser, isAdmin, isInternal, isPM, headDepartments } from '@/lib/auth';
 import { queryOne } from '@/lib/db';
 import { getAssistantSettings, getAssistantKey, allHelpSections, jevDecide, openRouterError, canManageAssistant, OPENROUTER } from '@/lib/assistant';
 import { pickSections, deptOfPath, kindQuestion, sectionQuestion, asIsQuestion, toolQuestion, ranked, guideAnswer, CANNED } from '@/lib/assistant-help.mjs';
@@ -59,21 +59,35 @@ async function decide(key, messages, path, tools, all) {
   return { kind, sections, trace, sure: (s[0]?.p || 0) >= 0.75 && (Number(a.as_is?.noul) || 0) >= 0.6 };
 }
 
+// At most 40 questions an hour per person, so one login can't run up the AI bill.
+// ponytail: counted in this server's memory; it resets on restart and is per instance. Move the
+// count to the database if the app ever runs on more than one server.
+const asked = (globalThis.__assistantAsked ??= new Map());
+function allow(userId) {
+  const now = Date.now(), recent = (asked.get(userId) || []).filter(t => now - t < 3600_000);
+  if (recent.length >= 40) { asked.set(userId, recent); return false; }
+  recent.push(now); asked.set(userId, recent); return true;
+}
+
 const sourcesOf = picked => picked.filter(s => s.key !== 'intro' && s.key !== 'how-to').slice(0, 3)
   .map(s => ({ label: `${s.dept}: ${s.label}`, href: s.href || `/help?dept=${encodeURIComponent(s.dept)}&page=${encodeURIComponent(s.key)}` }));
-const headers = (picked, trace, link) => ({
+const headers = (picked, trace, link, showRoute) => ({
   'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store',
-  'x-sources': encodeURIComponent(JSON.stringify(link ? [{ label: 'Open the screen', href: link }] : sourcesOf(picked))), 'x-route': encodeURIComponent(trace.join(' · ')),
+  'x-sources': encodeURIComponent(JSON.stringify(link ? [{ label: 'Open the screen', href: link }] : sourcesOf(picked))), ...(showRoute ? { 'x-route': encodeURIComponent(trace.join(' · ')) } : null),
 });
 
 // POST { messages: [{ role: 'user'|'assistant', content }], path } -> the answer as a plain text stream.
 // Help text and the question leave the app; business data only when live-data access is switched on
-// (Settings → Assistant, with a recorded approval). Admin-only while under test.
+// (Settings → Assistant, with a recorded approval). Any staff login; each person is answered only
+// about their own departments.
 // { dry: true } returns the decisions without writing an answer.
 export async function POST(req) {
   const user = await getFreshSessionUser();
-  if (!isAdmin(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const b = await req.json();
+  // Test options (decide-only runs, the section list, asking as someone else) are for admin.
+  if ((b.dry || b.list || b.as) && !isAdmin(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  if (!b.dry && !b.list && !allow(user.id)) return NextResponse.json({ error: 'You have asked a lot of questions in the last hour. Try again in a little while.' }, { status: 429 });
   // { list: true } = the guide's sections, for the test script. No model is called.
   if (b.list) return NextResponse.json({ sections: allHelpSections().map(s => ({ dept: s.dept, key: s.key, label: s.label })) });
   const messages = (Array.isArray(b.messages) ? b.messages : [])
@@ -84,7 +98,7 @@ export async function POST(req) {
 
   let key;
   try { key = await getAssistantKey(); } catch { key = null; }
-  if (!key) return NextResponse.json({ error: 'No OpenRouter key yet. Add one in Settings → Assistant.' }, { status: 400 });
+  if (!key) return NextResponse.json({ error: canManageAssistant(user) ? 'No OpenRouter key yet. Add one in Settings → Assistant.' : 'The assistant is not set up yet. Contact Accounts.' }, { status: 400 });
   const { model, mode, dataAccess } = await getAssistantSettings();
 
   // Whose question is it. Normally the signed-in user; in a dry run admin may test as someone else
@@ -131,7 +145,7 @@ export async function POST(req) {
     : null;
   trace.push(noModel ? 'answered without a writing model' : `written by ${model}`);
   if (b.dry) return NextResponse.json({ kind, tool: tool?.key || null, sections: picked.map(s => `${s.dept} > ${s.label}`), trace, answer: noModel, data });
-  if (noModel) return new Response(noModel, { headers: headers(picked, trace, data?.link) });
+  if (noModel) return new Response(noModel, { headers: headers(picked, trace, data?.link, isAdmin(user)) });
 
   const context = picked.map(s => `### ${s.dept} > ${s.label}\n${s.text}`).join('\n\n');
   const system = data
@@ -168,5 +182,5 @@ export async function POST(req) {
       }
     },
   }));
-  return new Response(stream, { headers: headers(picked, trace, data?.link) });
+  return new Response(stream, { headers: headers(picked, trace, data?.link, isAdmin(user)) });
 }

@@ -97,7 +97,7 @@ export default function AssistantSettings() {
     <Card>
       <CardHeader>
         <CardTitle>Help assistant</CardTitle>
-        <CardDescription>A chat button at the bottom right that answers from the help guide. Only admin sees the button for now; the Accounts Head manages the key and the AI credit here.</CardDescription>
+        <CardDescription>A chat button at the bottom right that answers from the help guide. Every staff login has it; each person is answered only about their own departments. Admin and the Accounts Head manage the key and the AI credit here.</CardDescription>
         <CardAction><Button size="sm" onClick={save} disabled={saving || (!key && model === settings.model && mode === settings.mode)}>{saving ? 'Saving…' : 'Save'}</Button></CardAction>
       </CardHeader>
       <CardContent className="grid gap-5 lg:grid-cols-2">
