@@ -47,9 +47,11 @@ export default async function SalesPage({ searchParams }) {
     'SELECT e.user_id, d.name FROM employees e LEFT JOIN designations d ON d.id = e.designation_id WHERE e.user_id IS NOT NULL'
   )).map(r => [r.user_id, r.name]));
   const crmUsers = heads.filter(h => h.active && h.departments.includes('Sales')).map(h => ({ ...h, designation: designations.get(h.id) || null }));
+  // Any saved account = a number has been connected (a paused one keeps its inbox history).
+  const whatsappConnected = (await queryAll('SELECT 1 FROM whatsapp_accounts LIMIT 1')).length > 0;
   const savedViews = savedViewRows.map(r => ({ ...r, filters: JSON.parse(r.filters || '{}') }));
 
   return (
-    <SalesWorkspace saleOrders={saleOrders} leads={leads} customers={customers} quotations={quotations} priceLists={priceLists} returns={returns} tradeRequests={tradeRequests} inventoryItems={inventoryItems} invoices={invoices} creditNotes={creditNotes} departments={['Sales']} users={crmUsers} savedViews={savedViews} initialTab={sp?.tab} salePayments={salePayments} branches={branches} salesProducts={salesProducts} salesTargets={salesTargets} stages={stages} isSalesHead={isDepartmentHead(user, 'Sales')} company={company} />
+    <SalesWorkspace saleOrders={saleOrders} leads={leads} customers={customers} quotations={quotations} priceLists={priceLists} returns={returns} tradeRequests={tradeRequests} inventoryItems={inventoryItems} invoices={invoices} creditNotes={creditNotes} departments={['Sales']} users={crmUsers} savedViews={savedViews} initialTab={sp?.tab} salePayments={salePayments} branches={branches} salesProducts={salesProducts} salesTargets={salesTargets} stages={stages} isSalesHead={isDepartmentHead(user, 'Sales')} company={company} whatsappConnected={whatsappConnected} />
   );
 }

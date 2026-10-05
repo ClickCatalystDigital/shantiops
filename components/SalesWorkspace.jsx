@@ -3619,12 +3619,14 @@ function FunnelStagesTab({ stages, canEdit, router }) {
   );
 }
 
-export default function SalesWorkspace({ saleOrders, leads, customers, quotations, priceLists = [], returns = [], tradeRequests = [], inventoryItems = [], invoices = [], creditNotes = [], departments = ['Sales'], users = [], savedViews = [], initialTab, salePayments = [], branches = [], salesProducts = [], salesTargets = [], stages = [], isSalesHead = false, company = null, }) {
+export default function SalesWorkspace({ saleOrders, leads, customers, quotations, priceLists = [], returns = [], tradeRequests = [], inventoryItems = [], invoices = [], creditNotes = [], departments = ['Sales'], users = [], savedViews = [], initialTab, salePayments = [], branches = [], salesProducts = [], salesTargets = [], stages = [], isSalesHead = false, company = null, whatsappConnected = false, }) {
   const router = useRouter();
   // Sales-only now — Marketing has its own tab/URL (/market, MarketingWorkspace.jsx). No more
   // per-viewer group filtering; every group in PANEL_GROUPS always renders here.
-  const groups = isSalesHead ? PANEL_GROUPS
-    : PANEL_GROUPS.map(g => (g.label === 'Setup' ? { ...g, items: [g.items[0], MEMBER_EMAIL_ITEM, ...g.items.slice(1)] } : g));
+  // The WhatsApp inbox only shows once a business number has been connected (Settings → Sales → WhatsApp).
+  const base = whatsappConnected ? PANEL_GROUPS : PANEL_GROUPS.map(g => ({ ...g, items: g.items.filter(p => p.key !== 'whatsapp') }));
+  const groups = isSalesHead ? base
+    : base.map(g => (g.label === 'Setup' ? { ...g, items: [g.items[0], MEMBER_EMAIL_ITEM, ...g.items.slice(1)] } : g));
   // Deep-link tab selection (Part B) — same server-prop pattern as QcWorkspace.jsx.
   const flat = groups.flatMap(g => g.items.flatMap(p => (p.group ? p.children : [p])));
   const [panel, setPanel] = useState(flat.some(p => p.key === initialTab) ? initialTab : 'leads');
