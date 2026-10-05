@@ -19,14 +19,6 @@ export default function AssistantWidget() {
   const [left, setLeft] = useState(null); // questions left today, once known
   const endRef = useRef(null);
   useEffect(() => { endRef.current?.scrollIntoView({ block: 'end' }); }, [messages, open]);
-  // Other parts of the app (the Home card) can open the chat, optionally with a question:
-  // window.dispatchEvent(new CustomEvent('ops-ai:ask', { detail: 'question' })).
-  const sendRef = useRef(null);
-  useEffect(() => {
-    const onAsk = e => { setOpen(true); if (e.detail) sendRef.current?.(e.detail); };
-    window.addEventListener('ops-ai:ask', onAsk);
-    return () => window.removeEventListener('ops-ai:ask', onAsk);
-  }, []);
   // On a phone the panel covers the screen: stop the page behind it from scrolling.
   useEffect(() => {
     if (!open || !window.matchMedia('(max-width: 767px)').matches) return;
@@ -63,8 +55,6 @@ export default function AssistantWidget() {
       patch({ content: err.message, error: true, link: err.link, linkLabel: err.linkLabel });
     } finally { setBusy(false); }
   }
-
-  sendRef.current = send;
 
   if (!open) {
     return (
