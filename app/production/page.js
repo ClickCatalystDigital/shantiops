@@ -6,6 +6,7 @@ import {
 } from '@/lib/data';
 import { todayISO, todayMonth, monthGridBounds, weekBounds, yearBounds, shiftWeek } from '@/lib/date';
 import ProductionToday from '@/components/ProductionToday';
+import AssistantHomeCard from '@/components/AssistantHomeCard';
 import { salesScope } from '@/lib/sales-visibility';
 
 export const dynamic = 'force-dynamic';
@@ -44,6 +45,7 @@ export default async function ProductionTodayPage({ searchParams }) {
 
   return (
     <main className="container flex flex-col gap-6 py-8">
+      <AssistantHomeCard />
       <ProductionToday
         view={view}
         month={month}

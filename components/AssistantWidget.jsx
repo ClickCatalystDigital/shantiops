@@ -1,7 +1,7 @@
 'use client';
 
-// The help assistant: a button at the bottom right that opens a chat panel, for every staff login
-// (app/layout.js; not customers). Admin also sees how each answer was routed. The conversation lives in this component's state, so it
+// OPS AI, the help assistant: a button at the bottom right that opens a chat panel, for every staff
+// login (app/layout.js; not customers). The conversation lives in this component's state, so it
 // lasts until the page is reloaded and is never stored.
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
@@ -10,14 +10,23 @@ import { Button } from '@/components/ui/button';
 import { linkify } from '@/lib/assistant-help.mjs';
 import { MessageCircleQuestionIcon, XIcon, SendIcon, RotateCcwIcon } from 'lucide-react';
 
-export default function AssistantWidget({ showRoute = false }) {
+export default function AssistantWidget() {
   const path = usePathname();
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState([]); // { role, content, sources?, error? }
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
+  const [left, setLeft] = useState(null); // questions left today, once known
   const endRef = useRef(null);
   useEffect(() => { endRef.current?.scrollIntoView({ block: 'end' }); }, [messages, open]);
+  // Other parts of the app (the Home card) can open the chat, optionally with a question:
+  // window.dispatchEvent(new CustomEvent('ops-ai:ask', { detail: 'question' })).
+  const sendRef = useRef(null);
+  useEffect(() => {
+    const onAsk = e => { setOpen(true); if (e.detail) sendRef.current?.(e.detail); };
+    window.addEventListener('ops-ai:ask', onAsk);
+    return () => window.removeEventListener('ops-ai:ask', onAsk);
+  }, []);
   // On a phone the panel covers the screen: stop the page behind it from scrolling.
   useEffect(() => {
     if (!open || !window.matchMedia('(max-width: 767px)').matches) return;
@@ -41,7 +50,7 @@ export default function AssistantWidget({ showRoute = false }) {
       }
       let sources = [];
       try { sources = JSON.parse(decodeURIComponent(res.headers.get('x-sources') || '%5B%5D')); } catch { /* no sources */ }
-      const route = decodeURIComponent(res.headers.get('x-route') || '');
+      if (res.headers.get('x-left') !== null) setLeft(Number(res.headers.get('x-left')));
       const reader = res.body.getReader(), decoder = new TextDecoder();
       for (;;) {
         const { done, value } = await reader.read();
@@ -49,15 +58,17 @@ export default function AssistantWidget({ showRoute = false }) {
         const chunk = decoder.decode(value, { stream: true });
         patch(m => ({ content: m.content + chunk }));
       }
-      patch(m => ({ sources, route, content: m.content.trim() || 'No answer came back. Try again or pick another model in Settings.' }));
+      patch(m => ({ sources, content: m.content.trim() || 'No answer came back. Try again or pick another model in Settings.' }));
     } catch (err) {
       patch({ content: err.message, error: true, link: err.link, linkLabel: err.linkLabel });
     } finally { setBusy(false); }
   }
 
+  sendRef.current = send;
+
   if (!open) {
     return (
-      <Button onClick={() => setOpen(true)} size="icon" aria-label="Open help assistant"
+      <Button onClick={() => setOpen(true)} size="icon" aria-label="Open OPS AI"
         className="fixed bottom-24 right-4 z-40 size-12 rounded-full shadow-lg md:bottom-6 md:right-6 print:hidden">
         <MessageCircleQuestionIcon className="size-5" />
       </Button>
@@ -67,8 +78,8 @@ export default function AssistantWidget({ showRoute = false }) {
     <div className="fixed inset-x-0 top-0 z-50 flex h-dvh flex-col bg-background md:inset-x-auto md:top-auto md:bottom-6 md:right-6 md:h-[min(36rem,calc(100vh-3rem))] md:w-[24rem] md:rounded-xl md:border md:shadow-2xl print:hidden">
       <div className="flex items-center justify-between border-b px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
         <div>
-          <p className="text-sm font-semibold">Help assistant</p>
-          <p className="text-[11px] text-muted-foreground">Ask how to do something in the app.</p>
+          <p className="text-sm font-semibold">OPS AI</p>
+          {left !== null && <p className="text-[11px] text-muted-foreground">{left} question{left === 1 ? '' : 's'} left today</p>}
         </div>
         <div className="flex gap-1">
           <Button size="icon" variant="ghost" className="size-10 md:size-8" aria-label="Clear conversation" disabled={busy || !messages.length} onClick={() => setMessages([])}><RotateCcwIcon className="size-4" /></Button>
@@ -97,7 +108,6 @@ export default function AssistantWidget({ showRoute = false }) {
                     : part.text)}
               </div>
               {m.link && <a href={m.link} target="_blank" rel="noreferrer" className="mt-1 inline-block text-xs font-medium text-primary underline underline-offset-2">{m.linkLabel || m.link}</a>}
-              {showRoute && m.route && <p className="mt-1 text-[10px] text-muted-foreground/80">{m.route}</p>}
               {!!m.sources?.length && (
                 <div className="mt-1 flex flex-wrap gap-1.5">
                   {m.sources.map(s => <Link key={s.href} href={s.href} className="rounded-full border px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground md:px-2 md:py-0.5 md:text-[11px]" onClick={() => { if (window.matchMedia('(max-width: 767px)').matches) setOpen(false); }}>{s.label}</Link>)}

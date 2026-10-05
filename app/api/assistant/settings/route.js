@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getFreshSessionUser, isAdmin } from '@/lib/auth';
-import { getAssistantSettings, saveAssistantSettings, getAssistantKey, getBalance, canManageAssistant, getDataAccess, setDataAccess, CREDITS_URL } from '@/lib/assistant';
+import { getAssistantSettings, saveAssistantSettings, getAssistantKey, getBalance, canManageAssistant, getDataAccess, setDataAccess, getLimits, saveLimits, LIMIT_KEYS, CREDITS_URL } from '@/lib/assistant';
 import { audit } from '@/lib/usb';
 
 export const dynamic = 'force-dynamic';
@@ -10,13 +10,13 @@ async function withBalance() {
   const s = await getAssistantSettings();
   let balance = null;
   if (s.hasKey) { try { balance = await getBalance(await getAssistantKey()); } catch { /* key unreadable */ } }
-  return { ...s, balance, creditsUrl: CREDITS_URL };
+  return { ...s, balance, creditsUrl: CREDITS_URL, limits: await getLimits(), limitKeys: LIMIT_KEYS };
 }
 
 export async function GET() {
   const user = await getFreshSessionUser();
   if (!canManageAssistant(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  return NextResponse.json(await withBalance());
+  return NextResponse.json({ ...(await withBalance()), isAdmin: isAdmin(user) });
 }
 
 // { model?, key? } — key '' removes it. The key is never returned and never audited.
@@ -24,6 +24,13 @@ export async function PUT(req) {
   const user = await getFreshSessionUser();
   if (!canManageAssistant(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const b = await req.json();
+  // { limits: { default, Sales, ..., Management } } — daily questions per person. Admin only.
+  if (b.limits !== undefined) {
+    if (!isAdmin(user)) return NextResponse.json({ error: 'Only admin can change the daily limits' }, { status: 403 });
+    await saveLimits(b.limits);
+    await audit('assistant_limits', { actor: user.username, detail: JSON.stringify(b.limits) });
+    return NextResponse.json({ ...(await withBalance()), isAdmin: true });
+  }
   // { dataAccess: { on, approver_name, approver_role, confirmed } } — admin only.
   if (b.dataAccess !== undefined) {
     if (!isAdmin(user)) return NextResponse.json({ error: 'Only admin can change live-data access' }, { status: 403 });

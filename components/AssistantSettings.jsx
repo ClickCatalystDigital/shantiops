@@ -13,6 +13,40 @@ import { api, showToast } from '@/lib/client';
 
 const price = v => (v === null ? 'varies' : v === 0 ? 'free' : `$${v < 1 ? v.toFixed(3) : v.toFixed(2)}`);
 
+// Daily questions per person, by department. Blank = the default. Admin only.
+function Limits({ settings, onChange }) {
+  const [values, setValues] = useState(settings.limits);
+  const [busy, setBusy] = useState(false);
+  const dirty = JSON.stringify(values) !== JSON.stringify(settings.limits);
+  async function save() {
+    setBusy(true);
+    try { const s = await api('/api/assistant/settings', { method: 'PUT', body: { limits: values } }); onChange(s); setValues(s.limits); showToast('Daily limits saved'); }
+    catch (err) { showToast(err.message, 'error'); } finally { setBusy(false); }
+  }
+  const field = (k, label, placeholder) => (
+    <div key={k} className="grid gap-1">
+      <Label className="text-xs text-muted-foreground">{label}</Label>
+      <Input type="number" min="0" max="1000" inputMode="numeric" className="h-8" value={values[k] ?? ''} placeholder={placeholder}
+        onChange={e => setValues(({ [k]: _drop, ...rest }) => (e.target.value === '' ? rest : { ...rest, [k]: Number(e.target.value) }))} />
+    </div>
+  );
+  return (
+    <div className="grid gap-2 lg:col-span-2">
+      <div className="flex items-center justify-between gap-2">
+        <Label>Questions per person per day</Label>
+        <Button size="sm" variant="outline" disabled={busy || !dirty} onClick={save}>{busy ? 'Saving…' : 'Save limits'}</Button>
+      </div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
+        {field('default', 'Default', '5')}
+        {settings.limitKeys.map(k => field(k, k === 'Installation' ? 'Service' : k, String(values.default ?? 5)))}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        A blank department uses the default. A person in several departments gets the highest of theirs. Management covers managers and executives. Admin is not limited. The count resets each day.
+      </p>
+    </div>
+  );
+}
+
 // Live-data answers: off until the customer's approval is recorded (name, role, who recorded it, when).
 function DataAccess({ settings, onChange }) {
   const d = settings.dataAccess || { on: false };
@@ -96,7 +130,7 @@ export default function AssistantSettings() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Help assistant</CardTitle>
+        <CardTitle>OPS AI</CardTitle>
         <CardDescription>A chat button at the bottom right that answers from the help guide. Every staff login has it; each person is answered only about their own departments. Admin and the Accounts Head manage the key and the AI credit here.</CardDescription>
         <CardAction><Button size="sm" onClick={save} disabled={saving || (!key && model === settings.model && mode === settings.mode)}>{saving ? 'Saving…' : 'Save'}</Button></CardAction>
       </CardHeader>
@@ -148,6 +182,7 @@ export default function AssistantSettings() {
             Greetings, unrelated and live-data questions get a fixed reply with no writing model.
           </p>
         </div>
+        {settings.isAdmin && <Limits settings={settings} onChange={setSettings} />}
         <DataAccess settings={settings} onChange={setSettings} />
       </CardContent>
     </Card>

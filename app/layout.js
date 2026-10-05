@@ -4,7 +4,7 @@ import AssistantWidget from '@/components/AssistantWidget';
 import DeviceSetupGate from '@/components/DeviceSetupGate';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { getFreshSessionUser, isInternal, isAdmin, needsDeviceEnrollment, isDemoUser, hasSafePass } from '@/lib/auth';
+import { getFreshSessionUser, isInternal, needsDeviceEnrollment, isDemoUser, hasSafePass } from '@/lib/auth';
 import { getMyMachine } from '@/lib/data';
 import { REPORT_DEPARTMENTS } from '@/lib/reports/catalog';
 import { clientCompanies } from '@/lib/company-profiles';
@@ -54,7 +54,7 @@ export default async function RootLayout({ children }) {
             </footer>
           </div>
         </TooltipProvider>
-        {isInternal(user) && !needsDeviceSetup && <AssistantWidget showRoute={isAdmin(user)} />}
+        {isInternal(user) && !needsDeviceSetup && <AssistantWidget />}
         <Toaster position="top-center" richColors />
       </body>
     </html>
