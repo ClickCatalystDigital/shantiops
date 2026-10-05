@@ -41,7 +41,7 @@ import PoDeliveryLotsWorkspace from '@/components/PoDeliveryLotsWorkspace';
 import InboundLink from '@/components/InboundLink';
 import Link from 'next/link';
 import TraceabilityBadges from '@/components/TraceabilityBadges';
-import { SearchIcon, GitCompareIcon, FileTextIcon, ListChecksIcon, Building2Icon, ShoppingCartIcon, BarChart3Icon, LayoutDashboardIcon, Undo2Icon, PlusIcon, ReceiptIcon, TrashIcon, DownloadIcon, CalendarClockIcon, AlertTriangleIcon, ScrollTextIcon, PencilIcon } from 'lucide-react';
+import { SearchIcon, GitCompareIcon, FileTextIcon, ListChecksIcon, Building2Icon, ShoppingCartIcon, BarChart3Icon, LayoutDashboardIcon, Undo2Icon, PlusIcon, ReceiptIcon, TrashIcon, DownloadIcon, CalendarClockIcon, AlertTriangleIcon, ScrollTextIcon, PencilIcon, HourglassIcon } from 'lucide-react';
 import AddCustomItemDialog from './AddCustomItemDialog';
 import OverdueDeliveryList from './OverdueDeliveryList';
 
@@ -252,7 +252,7 @@ function EnquiryRow({ it, quotes, suppliers, router, rfqSummary, selected, onTog
   const [dialogOpen, setDialogOpen] = useState(false);
 
   return (
-    <div className="border-b last:border-b-0">
+    <div className="border-b last:border-b-0" data-entity-code={`BM-${it.id}`}>
       <div className="flex w-full items-center gap-3 py-2.5 text-left text-sm">
         <input type="checkbox" className="size-4 shrink-0" checked={selected} onChange={onToggle} onClick={e => e.stopPropagation()} />
         <button className="flex min-w-0 flex-1 items-center gap-3 text-left" onClick={() => setExpanded(v => !v)}>
@@ -366,7 +366,9 @@ function PrGroupHeaderInfo({ group }) {
       <p className="truncate text-xs text-muted-foreground">
         {group.pr_no && `${group.pr_no} · ${formatDate(group.pr_created_at)} · `}
         {group.kind === 'item' && `${CATEGORY_LABEL[groupCategory(group)]} · `}
-        {new Set(group.constituents.map(projectLabel)).size} project{new Set(group.constituents.map(projectLabel)).size !== 1 ? 's' : ''}
+        {group.constituents.every(c => c.project_is_system)
+          ? 'No project'
+          : `${new Set(group.constituents.map(projectLabel)).size} project${new Set(group.constituents.map(projectLabel)).size !== 1 ? 's' : ''}`}
       </p>
     </>
   );
@@ -385,7 +387,7 @@ function PrGroupEnquiryRow({ group, quotesByItem, suppliers, rfqSummaryByItem, r
   const bySupplier = groupedSupplierQuotes(group.sourcing_bom_item_ids, quotesByItem);
 
   return (
-    <div className="border-b last:border-b-0">
+    <div className="border-b last:border-b-0" data-entity-codes={group.constituents.map(c => `BM-${c.id}`).join(' ')}>
       <div className="flex w-full items-center gap-3 py-2.5 text-left text-sm">
         <input type="checkbox" className="size-4 shrink-0" checked={selected} onChange={onToggle} onClick={e => e.stopPropagation()} />
         <button className="flex min-w-0 flex-1 items-center gap-3 text-left" onClick={() => setExpanded(v => !v)}>
@@ -604,7 +606,8 @@ function Enquiry({ items, allItems, sourceView, quotesByItem, suppliers, rfqSumm
 
 // ---------- Selection ----------
 
-function SelectionRow({ it, quotes, router }) {
+// compact = rendered inside a group header that already shows the item and Undo (a single-line group).
+function SelectionRow({ it, quotes, router, compact = false }) {
   const [busy, setBusy] = useState(false);
   const lowestPrice = quotes.length ? Math.min(...quotes.map(q => q.unit_price)) : null;
   const fastest = quotes.filter(q => q.expected_delivery_date).length
@@ -629,17 +632,19 @@ function SelectionRow({ it, quotes, router }) {
   }
 
   return (
-    <div className="flex flex-col gap-2 border-b py-3 last:border-b-0">
-      <div className="flex items-center justify-between">
-        <div className="min-w-0">
-          <p className="font-medium">{it.material_description} <CategoryBadge it={it} /></p>
-          <ItemContext it={it} />
-          <TraceabilityBadges item={it} className="mt-1 flex flex-wrap gap-1" />
+    <div className={compact ? 'flex flex-col gap-1.5' : 'flex flex-col gap-2 border-b py-3 last:border-b-0'} data-entity-code={`BM-${it.id}`}>
+      {!compact && (
+        <div className="flex items-center justify-between">
+          <div className="min-w-0">
+            <p className="font-medium">{it.material_description} <CategoryBadge it={it} /></p>
+            <ItemContext it={it} />
+            <TraceabilityBadges item={it} className="mt-1 flex flex-wrap gap-1" />
+          </div>
+          {it.selected_quote_id && (
+            <Button size="sm" variant="outline" disabled={busy} onClick={undo}>Undo selection</Button>
+          )}
         </div>
-        {it.selected_quote_id && (
-          <Button size="sm" variant="outline" disabled={busy} onClick={undo}>Undo selection</Button>
-        )}
-      </div>
+      )}
       <div className="flex flex-col gap-1.5">
         {quotes.map(q => (
           <div key={q.id}
@@ -679,6 +684,8 @@ function PrGroupSelectionRow({ group, quotesByItem, router }) {
   const [expanded, setExpanded] = useState(false);
   const [busySupplier, setBusySupplier] = useState(null);
   const bySupplier = groupedSupplierQuotes(group.sourcing_bom_item_ids, quotesByItem);
+  const live = group.constituents.filter(c => !c.excluded);
+  const single = live.length === 1 && group.constituents.length === 1 ? live[0] : null;
   const awardedSuppliers = new Set(
     group.constituents.filter(c => !c.excluded && c.selected_quote_id).map(c => c.selected_supplier_name)
   );
@@ -711,7 +718,7 @@ function PrGroupSelectionRow({ group, quotesByItem, router }) {
   }
 
   return (
-    <div className="flex flex-col gap-2 border-b py-3 last:border-b-0">
+    <div className="flex flex-col gap-2 border-b py-3 last:border-b-0" data-entity-codes={group.constituents.map(c => `BM-${c.id}`).join(' ')}>
       <div className="flex items-center justify-between gap-2">
         <button className="min-w-0 flex-1 text-left" onClick={() => setExpanded(v => !v)}>
           <p className="font-medium">{group.material_description}</p>
@@ -734,6 +741,11 @@ function PrGroupSelectionRow({ group, quotesByItem, router }) {
           {group.spec_drift && group.kind !== 'item' && <Badge variant="outline" className="text-warning">Spec drift across projects</Badge>}
         </div>
       )}
+      {single ? (
+        // One line only (always the case for a PR line with no project): show its quotes directly —
+        // no "quoted 1 of 1 line" summary and no second copy of the item underneath.
+        <SelectionRow it={single} quotes={quotesByItem[single.id] || []} router={router} compact />
+      ) : (<>
       <div className="flex flex-col gap-1.5">
         {bySupplier.map(s => (
           <div key={s.supplier_id} className="flex flex-wrap items-center gap-2 rounded-md border px-3 py-1.5 text-sm">
@@ -752,7 +764,8 @@ function PrGroupSelectionRow({ group, quotesByItem, router }) {
       <button type="button" className="w-fit text-xs text-primary hover:underline" onClick={() => setExpanded(v => !v)}>
         {expanded ? 'Hide' : 'Show'} {group.kind === 'item' ? 'lines' : 'projects'} individually
       </button>
-      {expanded && (
+      </>)}
+      {expanded && !single && (
         <div className="flex flex-col gap-1 rounded-md border bg-muted/30 p-2">
           {group.constituents.map(c => (
             <div key={c.id} className="rounded-md border bg-background px-1">
@@ -771,7 +784,22 @@ function PrGroupSelectionRow({ group, quotesByItem, router }) {
   );
 }
 
-function Selection({ items, allItems, sourceView, quotesByItem, router, q, categoryFilter }) {
+// Nothing to compare yet: say so plainly and point to where quotes come from.
+function SelectionEmpty({ filtered, onGoEnquiry }) {
+  if (filtered) return <p className="py-6 text-center text-sm text-muted-foreground">No quotes match your search.</p>;
+  return (
+    <div className="flex flex-col items-center gap-2 px-4 py-12 text-center">
+      <span className="flex size-10 items-center justify-center rounded-full bg-primary/10 text-primary"><HourglassIcon className="size-5" /></span>
+      <p className="font-medium">Waiting on supplier quotes</p>
+      <p className="max-w-sm text-sm text-muted-foreground">
+        As soon as a supplier replies to your RFQ, or you log a quote in Enquiry, it lands here ready to compare side by side.
+      </p>
+      {onGoEnquiry && <Button size="sm" variant="outline" className="mt-1" onClick={onGoEnquiry}>Go to Enquiry</Button>}
+    </div>
+  );
+}
+
+function Selection({ items, allItems, sourceView, quotesByItem, router, q, categoryFilter, onGoEnquiry }) {
   const needle = q.trim().toLowerCase();
   if (sourceView === 'pr') {
     const groups = aggregatePrGroups(allItems)
@@ -785,7 +813,7 @@ function Selection({ items, allItems, sourceView, quotesByItem, router, q, categ
     return (
       <Card>
         <CardContent className="flex flex-col pt-4">
-          {groups.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">Nothing ready to compare yet — log a quote in Enquiry first.</p>}
+          {groups.length === 0 && <SelectionEmpty filtered={!!needle} onGoEnquiry={onGoEnquiry} />}
           {groups.map(g => <PrGroupSelectionRow key={g.pr_item_id} group={g} quotesByItem={quotesByItem} router={router} />)}
         </CardContent>
       </Card>
@@ -797,7 +825,7 @@ function Selection({ items, allItems, sourceView, quotesByItem, router, q, categ
     return (
       <Card>
         <CardContent className="flex flex-col pt-4">
-          {shownCustom.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">Nothing ready to compare yet — log a quote in Enquiry first.</p>}
+          {shownCustom.length === 0 && <SelectionEmpty filtered={!!needle} onGoEnquiry={onGoEnquiry} />}
           {shownCustom.map(it => <SelectionRow key={it.id} it={it} quotes={quotesByItem[it.id] || []} router={router} />)}
         </CardContent>
       </Card>
@@ -815,7 +843,7 @@ function Selection({ items, allItems, sourceView, quotesByItem, router, q, categ
     <Card>
       <CardContent className="flex flex-col pt-4">
         {itemGroups.map(g => <PrGroupSelectionRow key={`item-${g.group_key}`} group={g} quotesByItem={quotesByItem} router={router} />)}
-        {shown.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">Nothing ready to compare yet — log a quote in Sourcing first.</p>}
+        {shown.length === 0 && <SelectionEmpty filtered={!!needle} onGoEnquiry={onGoEnquiry} />}
         {singles.map(it => <SelectionRow key={it.id} it={it} quotes={quotesByItem[it.id] || []} router={router} />)}
       </CardContent>
     </Card>
@@ -1682,6 +1710,7 @@ function Suppliers({ suppliers, quotes, q: search }) {
   const router = useRouter();
   const [expanded, setExpanded] = useState(null);
   const [editing, setEditing] = useState(null);
+  const [adding, setAdding] = useState(false);
   const [form, setForm] = useState({ name: '', gst_no: '', contact_person: '', phone: '', email: '' });
   const [busy, setBusy] = useState(false);
   const needle = search.trim().toLowerCase();
@@ -1705,6 +1734,7 @@ function Suppliers({ suppliers, quotes, q: search }) {
       await api('/api/suppliers', { method: 'POST', body: form });
       showToast('Supplier added');
       setForm({ name: '', gst_no: '', contact_person: '', phone: '', email: '' });
+      setAdding(false);
       router.refresh();
     } catch (err) { showToast(err.message, 'error'); }
     setBusy(false);
@@ -1713,8 +1743,16 @@ function Suppliers({ suppliers, quotes, q: search }) {
   return (
     <div className="flex flex-col gap-4">
       <Card>
-        <CardContent className="flex flex-col divide-y pt-4">
-          {suppliers.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">No suppliers yet — add one below.</p>}
+        <CardHeader>
+          <CardTitle className="text-base">Suppliers <span className="font-normal text-muted-foreground">({suppliers.length})</span></CardTitle>
+          {/* Bulk import from the client's STERP master file (full replace on confirm) + one-off add. */}
+          <CardAction className="flex items-center gap-2">
+            <MasterImport type="suppliers" label="Suppliers" />
+            <Button size="sm" onClick={() => setAdding(true)}><PlusIcon />Add supplier</Button>
+          </CardAction>
+        </CardHeader>
+        <CardContent className="flex flex-col divide-y">
+          {suppliers.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">No suppliers yet — use Add supplier.</p>}
           {suppliers.length > 0 && shownSuppliers.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">No suppliers match.</p>}
           {shownSuppliers.map(s => {
             const history = quotes.filter(q => q.supplier_id === s.id);
@@ -1754,24 +1792,22 @@ function Suppliers({ suppliers, quotes, q: search }) {
       </Card>
       {editingSupplier && <SupplierEditDialog supplier={editingSupplier} onClose={() => setEditing(null)} />}
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Add supplier</CardTitle>
-          {/* V2-CHANGES.md Group 3 — bulk vendor import from the client's real STERP master file,
-              full-replace on confirm. Manual add below stays for one-off additions/corrections. */}
-          <CardAction><MasterImport type="suppliers" label="Suppliers" /></CardAction>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={add} className="grid grid-cols-2 gap-3">
-            <Input placeholder="Name" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+      <Dialog open={adding} onOpenChange={setAdding}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader><DialogTitle>Add supplier</DialogTitle></DialogHeader>
+          <form id="add-supplier" onSubmit={add} className="grid gap-3 sm:grid-cols-2">
+            <Input placeholder="Name" className="sm:col-span-2" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
             <Input placeholder="GST No" value={form.gst_no} onChange={e => setForm(f => ({ ...f, gst_no: e.target.value }))} />
             <Input placeholder="Contact person" value={form.contact_person} onChange={e => setForm(f => ({ ...f, contact_person: e.target.value }))} />
             <Input placeholder="Phone" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} />
-            <Input placeholder="Email" className="col-span-2" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
-            <Button type="submit" disabled={busy || !form.name.trim()} className="col-span-2">Add supplier</Button>
+            <Input placeholder="Email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
           </form>
-        </CardContent>
-      </Card>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAdding(false)}>Cancel</Button>
+            <Button type="submit" form="add-supplier" disabled={busy || !form.name.trim()}>{busy ? 'Adding…' : 'Add supplier'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -2007,6 +2043,19 @@ export default function ProcurementWorkspace({ sourcingItems, suppliers, purchas
   const flatKeys = navItems.flatMap(i => i.group ? i.children : i).map(i => i.key);
   const [tab, setTab] = useState(flatKeys.includes(initialTab) ? initialTab : 'enquiry');
 
+  // Links from alerts (lib/procurement-links.mjs): ?view=pmb|pr|custom, ?q=<search, e.g. PR-74>,
+  // ?project=<project_no>, ?highlight=BM-<id>. Applied on load and again whenever the address changes,
+  // so clicking an alert while already on /procurement still lands on the right tab, view and row.
+  const linkView = searchParams.get('view'), linkQ = searchParams.get('q'), linkProject = searchParams.get('project');
+  // One effect per value, so changing the project picker (which rewrites ?project=) doesn't reset a
+  // search the user has typed or the view they switched to.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (flatKeys.includes(initialTab)) setTab(initialTab); }, [initialTab]);
+  useEffect(() => { if (['pmb', 'pr', 'custom'].includes(linkView)) setSourceView(linkView); }, [linkView]);
+  useEffect(() => { if (linkQ != null) setSearch(linkQ); }, [linkQ]);
+  useEffect(() => { setProjectFilter(linkProject || 'all'); }, [linkProject]);
+  useEntityHighlight(['enquiry', 'selection'].includes(tab) ? searchParams.get('highlight') : null);
+
   return (
     <WorkspaceSidebar title="Procurement" icon={ShoppingCartIcon} items={navItems} activeKey={tab} onChange={setTab}>
       {/* One shared search row, same position under the tab bar regardless of which tab is active,
@@ -2086,7 +2135,7 @@ export default function ProcurementWorkspace({ sourcingItems, suppliers, purchas
       </div>
       )}
       {tab === 'enquiry' && <Enquiry items={projectItems} allItems={activeItems} sourceView={sourceView} quotesByItem={quotesByItem} suppliers={suppliers} rfqSummaryByItem={rfqSummaryByItem} router={router} q={search} categoryFilter={categoryFilter} />}
-      {tab === 'selection' && <Selection items={projectItems} allItems={activeItems} sourceView={sourceView} quotesByItem={quotesByItem} router={router} q={search} categoryFilter={categoryFilter} />}
+      {tab === 'selection' && <Selection items={projectItems} allItems={activeItems} sourceView={sourceView} quotesByItem={quotesByItem} router={router} q={search} categoryFilter={categoryFilter} onGoEnquiry={() => setTab('enquiry')} />}
       {tab === 'orders' && <PurchaseOrders orders={purchaseOrders} q={search} view={poView} suppliers={suppliers} tdsRates={tdsRates} />}
       {tab === 'orders-lots' && <PoDeliveryLotsWorkspace purchaseOrders={purchaseOrders} />}
       {tab === 'overdues' && <OverdueDeliveryList items={overdueDeliveries} q={search} />}

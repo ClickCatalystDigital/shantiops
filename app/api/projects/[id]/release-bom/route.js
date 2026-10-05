@@ -9,7 +9,9 @@ import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
 import { getBomStructure, getProjectBom } from '@/lib/data';
 import { markMilestoneDone } from '@/lib/milestone-auto';
 import { matchProjectBom } from '@/lib/remnant-match';
-import { getAllocationMode, matchProjectPlainStock, notifyProcurementIfShortfall } from '@/lib/procurement';
+import { getAllocationMode, matchProjectPlainStock } from '@/lib/procurement';
+import { notifyDepartment } from '@/lib/notify';
+import { enquiryForProject } from '@/lib/procurement-links.mjs';
 import { learnCategoryIfConfirmed } from '@/lib/category-learning';
 import { audit } from '@/lib/usb';
 
@@ -137,17 +139,21 @@ export async function POST(req, { params }) {
   let plainMatched = [];
   try { plainMatched = await matchProjectPlainStock(params.id, user.username); } catch (err) { /* best-effort */ }
 
-  // Task §17's "Procurement receives a new shortage" — one notification per line that's actually
-  // visible to Procurement post-match (pending_review=0), covering all three AUTO outcomes: a
-  // partial-match shortfall, a fully-unmatched line, or (via the function's own dedupe_key) simply
-  // a no-op repeat on a line already notified by an earlier release/edit.
+  // One alert for the whole release (not one per line): how many lines are now waiting in Procurement's
+  // Enquiry after stock matching (pending_review=0 — in manual mode Stores reviews them first, so
+  // nothing is sent here and Stores' Procure click alerts instead). Opens Enquiry on this project.
   try {
-    const openLines = await queryAll(
-      `SELECT id FROM bom_items WHERE project_id = ? AND source = 'bom' AND pending_review = 0
-         AND COALESCE(purchase_status, 'Enquiry') NOT IN ('Received','Cancelled','In-Stock')`,
-      [params.id]
-    );
-    for (const line of openLines) await notifyProcurementIfShortfall(line.id);
+    const { n } = await queryOne(
+      `SELECT COUNT(*) AS n FROM bom_items WHERE project_id = ? AND source = 'bom' AND pending_review = 0
+         AND COALESCE(purchase_status, 'Enquiry') = 'Enquiry'`, [params.id]);
+    if (n) {
+      const p = await queryOne('SELECT project_no FROM projects WHERE id = ?', [params.id]);
+      await notifyDepartment('Procurement', {
+        kind: 'request', title: `${p.project_no} BOM released — ${n} line${n !== 1 ? 's' : ''} waiting in Enquiry`,
+        body: 'Ask suppliers for quotes from Procurement → Enquiry.', project_id: Number(params.id),
+        link: enquiryForProject(p.project_no), dedupe_key: `bom_release_enquiry:${params.id}:${revision}`,
+      });
+    }
   } catch (err) { /* best-effort */ }
 
   // Release only happens once every source='bom' line is categorized (the gate above) — a good

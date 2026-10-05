@@ -10,6 +10,8 @@ import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { notifyDepartment } from '@/lib/notify';
+import { enquiryForProject } from '@/lib/procurement-links.mjs';
+import { todayISO } from '@/lib/date';
 
 export async function POST(req, { params }) {
   const user = await getFreshSessionUser();
@@ -18,7 +20,9 @@ export async function POST(req, { params }) {
   const actionDenied = await requireAction(user, 'Stores', 'stores.procure');
   if (actionDenied) return actionDenied;
 
-  const item = await queryOne('SELECT id, material_description, pending_review FROM bom_items WHERE id = ?', [params.id]);
+  const item = await queryOne(
+    `SELECT b.id, b.material_description, b.pending_review, b.project_id, p.project_no, p.is_system
+       FROM bom_items b JOIN projects p ON p.id = b.project_id WHERE b.id = ?`, [params.id]);
   if (!item) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   if (!item.pending_review) return NextResponse.json({ error: 'Already visible to Procurement' }, { status: 409 });
 
@@ -30,9 +34,13 @@ export async function POST(req, { params }) {
   // purchase-requisitions flow — this is the one deliberate moment worth notifying them about: a
   // human just decided "this genuinely needs sourcing," not the system defaulting it there.
   try {
+    // Stores sends lines one click at a time: one alert per project per day, not one per line.
+    const where = item.is_system ? 'stock / trade' : item.project_no;
     await notifyDepartment('Procurement', {
-      kind: 'request', title: 'New Enquiry item from Stores', body: item.material_description,
-      dedupe_key: `bom_procured:${item.id}`,
+      kind: 'request', title: `New Enquiry items from Stores — ${where}`,
+      body: `Starting with ${item.material_description}. Open Enquiry to see every line sent today.`,
+      project_id: item.is_system ? null : item.project_id, link: enquiryForProject(item.is_system ? null : item.project_no),
+      dedupe_key: `procure:${item.project_id}:${todayISO()}`,
     });
   } catch (err) { /* notification is best-effort */ }
   return NextResponse.json({ ok: true });

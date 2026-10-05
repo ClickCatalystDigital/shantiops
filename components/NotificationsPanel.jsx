@@ -5,6 +5,7 @@
 // branching, so a future notification kind needs no UI change here.
 import { useState } from 'react';
 import Link from 'next/link';
+import { alertHref } from '@/lib/notification-catalog.mjs';
 import { api, formatDate } from '@/lib/client';
 import { cn } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
@@ -46,8 +47,8 @@ export default function NotificationsPanel({ initial }) {
               {!n.read_at && <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-primary" aria-hidden="true" />}
             </>
           );
-          return n.project_id ? (
-            <Link key={n.id} href={`/projects/${n.project_id}`} onClick={() => !n.read_at && markRead(n.id)} className={rowClass}>
+          return (n.link || n.project_id) ? (
+            <Link key={n.id} href={alertHref(n)} onClick={() => !n.read_at && markRead(n.id)} className={rowClass}>
               {row}
             </Link>
           ) : (

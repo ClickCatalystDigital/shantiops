@@ -5,6 +5,7 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { notifyUser, notifyDepartment } from '@/lib/notify';
+import { selectionForItem } from '@/lib/procurement-links.mjs';
 import { getRfqByToken } from '@/lib/data';
 import { advancePurchaseStatus } from '@/lib/procurement';
 import { audit } from '@/lib/usb';
@@ -59,6 +60,13 @@ export async function POST(req, { params }) {
       body: `${ids.length} of ${rs.items.length} item${rs.items.length !== 1 ? 's' : ''} priced. Compare in Procurement → Selection.`,
       dedupe_key: `rfq_quote:${rs.id}:${ids[0]}`, // a resend + second reply alerts again
     };
+    // Open Selection at the first quoted line (PR Items / Custom / PMB, whichever shows it).
+    const first = await queryOne(
+      `SELECT b.id, b.pr_item_id, b.source, p.project_no, p.is_system AS project_is_system, pr.pr_no
+         FROM bom_items b JOIN projects p ON p.id = b.project_id
+         LEFT JOIN pr_items pi ON pi.id = b.pr_item_id LEFT JOIN purchase_requisitions pr ON pr.id = pi.pr_id
+        WHERE b.id = ?`, [itemById[Number(priced[0].rfq_item_id)].bom_item_id]);
+    if (first) note.link = selectionForItem(first);
     const creator = await queryOne(
       `SELECT u.id FROM rfqs r JOIN users u ON u.username = r.created_by AND u.active = 1 WHERE r.id = ?`, [rs.rfq_id]);
     if (creator) await notifyUser(creator.id, note); else await notifyDepartment('Procurement', note);

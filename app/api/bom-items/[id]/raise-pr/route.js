@@ -9,6 +9,7 @@ import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { notifyDepartment } from '@/lib/notify';
+import { enquiryForPr } from '@/lib/procurement-links.mjs';
 import { isClosedStatus } from '@/lib/bom-fields.mjs';
 
 export async function POST(req, { params }) {
@@ -52,8 +53,8 @@ export async function POST(req, { params }) {
   await audit('bom_item_raise_pr', { actor: user.username, detail: `bom_item ${item.id} (${item.material_description}) -> ${prNo}` });
   try {
     await notifyDepartment('Procurement', {
-      kind: 'request', title: `${prNo} raised by Stores`, body: item.material_description,
-      dedupe_key: `bom_procured:${item.id}`,
+      kind: 'pr_waiting', title: `${prNo} raised by Stores`, body: item.material_description,
+      project_id: item.project_id, link: enquiryForPr(prNo), dedupe_key: `bom_procured:${item.id}`,
     });
   } catch { /* notification is best-effort */ }
   return NextResponse.json({ ok: true, pr_no: prNo });

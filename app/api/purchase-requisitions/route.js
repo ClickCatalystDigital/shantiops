@@ -18,7 +18,8 @@ import { execute, queryOne, nextCounterValue } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment, headDepartments, isPM } from '@/lib/auth';
 import { audit } from '@/lib/usb';
 import { notifyDepartment } from '@/lib/notify';
-import { getAllocationMode, autoReserveFromStock, notifyProcurementIfShortfall } from '@/lib/procurement';
+import { getAllocationMode, autoReserveFromStock } from '@/lib/procurement';
+import { enquiryForPr } from '@/lib/procurement-links.mjs';
 import { matchAndReserve } from '@/lib/remnant-match';
 import { DIMENSIONAL_CATEGORIES } from '@/lib/bom-fields.mjs';
 import { CATEGORY_LABEL } from '@/lib/section-shapes.js';
@@ -184,7 +185,7 @@ export async function POST(req) {
         const item = await queryOne('SELECT * FROM bom_items WHERE id = ?', [Number(bomItemId)]);
         const dimResult = await matchAndReserve(item, user.username);
         if (dimResult.matched === 0) await autoReserveFromStock(item, user.username);
-        await notifyProcurementIfShortfall(Number(bomItemId));
+        // Procurement hears about the whole PR once (pr_waiting, below), not once per line.
       }
     } else {
       for (const p of line.projects) {
@@ -224,7 +225,6 @@ export async function POST(req) {
           const item = await queryOne('SELECT * FROM bom_items WHERE id = ?', [Number(bomItemId)]);
           const dimResult = await matchAndReserve(item, user.username);
           if (dimResult.matched === 0) await autoReserveFromStock(item, user.username);
-          await notifyProcurementIfShortfall(Number(bomItemId));
         }
       }
     }
@@ -252,7 +252,7 @@ export async function POST(req) {
             AND pending_review = 0 AND purchase_status = 'Enquiry'`, bomItemIds);
       if (n) await notifyDepartment('Procurement', {
         kind: 'pr_waiting', title: `${prNo} waiting in Enquiry`,
-        body: `${n} line${n !== 1 ? 's' : ''} from ${raisedByDept} to source.`, dedupe_key: `pr_waiting:${prNo}`,
+        body: `${n} line${n !== 1 ? 's' : ''} from ${raisedByDept} to source.`, link: enquiryForPr(prNo), dedupe_key: `pr_waiting:${prNo}`,
       });
     } catch (err) { /* notification is best-effort */ }
   }

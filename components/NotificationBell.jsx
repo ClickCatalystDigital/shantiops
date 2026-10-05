@@ -7,6 +7,7 @@
 // no user prop needed here.
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { alertHref } from '@/lib/notification-catalog.mjs';
 import { BellIcon, BellOffIcon } from 'lucide-react';
 import { api, formatDate } from '@/lib/client';
 import { cn } from '@/lib/utils';
@@ -80,7 +81,7 @@ export default function NotificationBell() {
             <p className="px-3 py-6 text-center text-sm text-muted-foreground">Nothing yet.</p>
           )}
           {data.items.map(n => (
-            <Link key={n.id} href={n.project_id ? `/projects/${n.project_id}` : '/notifications'}
+            <Link key={n.id} href={alertHref(n)}
               onClick={() => !n.read_at && markRead(n.id)}
               className={cn('flex items-start gap-2.5 px-3 py-2.5 text-left hover:bg-muted', !n.read_at && 'bg-accent/40')}>
               <div className="min-w-0 flex-1">
