@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getFreshSessionUser, isAdmin } from '@/lib/auth';
 import { getAssistantSettings, getAssistantKey, allHelpSections, jevDecide, openRouterError, canManageAssistant, OPENROUTER } from '@/lib/assistant';
-import { pickSections, deptOfPath, triageQuestions, deptSummaries, sectionQuestion, ranked, guideAnswer, CANNED } from '@/lib/assistant-help.mjs';
+import { pickSections, deptOfPath, kindQuestion, sectionQuestion, ranked, guideAnswer, CANNED } from '@/lib/assistant-help.mjs';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,33 +12,30 @@ Answer only from the HELP SECTIONS below. They are the app's own guide.
 - Plain text only, no markdown symbols.
 - You cannot see the company's data (orders, stock, payments). If asked for it, say so and point to the screen that shows it.`;
 
-// Decide what the question is and which guide section answers it, using Jev (two small calls).
-// Returns { kind, sections, trace }. Throws if Jev can't be reached; the caller then falls back.
+// Decide what the question is and which guide section answers it: a word-match shortlist, then one
+// Jev call. Returns { kind, sections, trace, sure }. Throws if Jev can't be reached; the caller falls back.
 async function decide(key, messages, path) {
   const all = allHelpSections();
   const users = messages.filter(m => m.role === 'user');
+  const question = users.slice(-2).map(m => m.content).join(' ');
+  const pageDept = deptOfPath(path);
+  let pool = pickSections(all, question, { pageDept, limit: 24 });
+  if (pool.length < 6) pool = [...pool, ...all.filter(s => s.dept === pageDept && !pool.some(p => p.dept === s.dept && p.key === s.key))].slice(0, 40);
   const state = {
     latest_question: users.at(-1).content,
     previous_question: users.at(-2)?.content || null, // so "and how do I undo it?" keeps its subject
     screen_the_user_is_on: path,
   };
-  const t = await jevDecide(key, state, triageQuestions(deptSummaries(all)));
-  const kind = ranked(t.kind)[0]?.key || 'howto';
-  const trace = [`kind: ${kind} (${Math.round((ranked(t.kind)[0]?.p || 0) * 100)}%)`];
-  if (kind !== 'howto') return { kind, sections: [], trace };
+  const a = await jevDecide(key, state, { ...kindQuestion, ...(pool.length ? sectionQuestion(pool) : null) });
+  const kind = ranked(a.kind)[0]?.key || 'howto';
+  const trace = [`kind: ${kind} (${Math.round((ranked(a.kind)[0]?.p || 0) * 100)}%)`];
+  if (kind !== 'howto' || !pool.length) return { kind, sections: [], trace };
 
-  // Department: Jev's pick, plus the runner-up when it is not sure.
-  const depts = ranked(t.department);
-  const chosen = depts.filter((d, i) => i === 0 || (depts[0].p < 0.7 && i === 1 && d.p > 0.15)).map(d => d.key);
-  trace.push(`department: ${chosen.join(' / ')} (${Math.round((depts[0]?.p || 0) * 100)}%)`);
-  const pool = all.filter(s => chosen.includes(s.dept));
-  if (!pool.length) return { kind, sections: [], trace };
-
-  const s = ranked((await jevDecide(key, state, sectionQuestion(pool))).section);
+  const s = ranked(a.section);
   // One section when Jev is sure; up to three when it is not.
   const top = s.filter((x, i) => i === 0 || (s[0].p < 0.75 && i < 3 && x.p > 0.1));
-  const sections = top.map(x => pool[Number(x.key.slice(1))]).filter(Boolean).map(x => ({ ...x, text: x.text.slice(0, 3500) }));
-  trace.push(`section: ${sections.map(x => x.label).join(' / ')} (${Math.round((s[0]?.p || 0) * 100)}%)`);
+  const sections = top.map(x => pool[Number(x.key.slice(1))]).filter(Boolean);
+  trace.push(`section: ${sections.map(x => `${x.dept} > ${x.label}`).join(' / ')} (${Math.round((s[0]?.p || 0) * 100)}%)`);
   return { kind, sections, trace, sure: (s[0]?.p || 0) >= 0.75 };
 }
 

@@ -75,7 +75,7 @@ export default function AssistantWidget() {
           {messages.map((m, i) => (
             <div key={i} className={m.role === 'user' ? 'self-end' : 'self-start'} style={{ maxWidth: '90%' }}>
               <div className={`whitespace-pre-wrap rounded-2xl px-3 py-2 text-sm ${m.role === 'user' ? 'bg-primary text-primary-foreground' : m.error ? 'bg-destructive/10 text-destructive' : 'bg-muted'}`}>
-                {m.content || (busy && i === messages.length - 1 ? 'Thinking…' : '')}
+                {m.content.replace(/\*\*/g, '') || (busy && i === messages.length - 1 ? 'Thinking…' : '')}
               </div>
               {m.link && <a href={m.link} target="_blank" rel="noreferrer" className="mt-1 inline-block text-xs font-medium text-primary underline underline-offset-2">{m.linkLabel || m.link}</a>}
               {m.route && <p className="mt-1 text-[10px] text-muted-foreground/80">{m.route}</p>}
