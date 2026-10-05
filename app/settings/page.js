@@ -16,6 +16,7 @@ import UserManagement from '@/components/UserManagement';
 import TotpSetup from '@/components/TotpSetup';
 import DesignAccessPanel from '@/components/DesignAccessPanel';
 import SalesSettings from '@/components/SalesSettings';
+import AssistantSettings from '@/components/AssistantSettings';
 import { EmailSetupTab } from '@/components/SalesSetupPanels';
 import LeadSourcesPanel from '@/components/LeadSourcesPanel';
 import PageHeader from '@/components/PageHeader';
@@ -85,6 +86,13 @@ export default async function Settings() {
           <Separator />
           <h2 className="text-lg font-semibold">USB Device Approval</h2>
           <TotpSetup configured={totpConfigured} />
+        </>
+      )}
+      {isAdmin(user) && (
+        <>
+          <Separator />
+          <h2 className="text-lg font-semibold">Assistant</h2>
+          <AssistantSettings />
         </>
       )}
       {isDesignHead(user) && !isPM(user) && <DesignAccessPanel members={designTeam} />}

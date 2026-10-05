@@ -1,0 +1,94 @@
+'use client';
+
+// The help assistant: a button at the bottom right that opens a chat panel. Rendered for admin only
+// (app/layout.js) while it is being tested. The conversation lives in this component's state, so it
+// lasts until the page is reloaded and is never stored.
+import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { Button } from '@/components/ui/button';
+import { MessageCircleQuestionIcon, XIcon, SendIcon, RotateCcwIcon } from 'lucide-react';
+
+export default function AssistantWidget() {
+  const path = usePathname();
+  const [open, setOpen] = useState(false);
+  const [messages, setMessages] = useState([]); // { role, content, sources?, error? }
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const endRef = useRef(null);
+  useEffect(() => { endRef.current?.scrollIntoView({ block: 'end' }); }, [messages, open]);
+
+  async function send() {
+    const q = text.trim();
+    if (!q || busy) return;
+    const history = [...messages.filter(m => !m.error), { role: 'user', content: q }];
+    setMessages([...history, { role: 'assistant', content: '' }]);
+    setText(''); setBusy(true);
+    const patch = p => setMessages(ms => ms.map((m, i) => (i === ms.length - 1 ? { ...m, ...(typeof p === 'function' ? p(m) : p) } : m)));
+    try {
+      const res = await fetch('/api/assistant/chat', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ messages: history.map(({ role, content }) => ({ role, content })), path }) });
+      if (!res.ok) throw new Error((await res.json().catch(() => null))?.error || `Request failed (${res.status})`);
+      let sources = [];
+      try { sources = JSON.parse(decodeURIComponent(res.headers.get('x-sources') || '%5B%5D')); } catch { /* no sources */ }
+      const reader = res.body.getReader(), decoder = new TextDecoder();
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        patch(m => ({ content: m.content + chunk }));
+      }
+      patch(m => ({ sources, content: m.content.trim() || 'No answer came back. Try again or pick another model in Settings.' }));
+    } catch (err) {
+      patch({ content: err.message, error: true });
+    } finally { setBusy(false); }
+  }
+
+  if (!open) {
+    return (
+      <Button onClick={() => setOpen(true)} size="icon" aria-label="Open help assistant"
+        className="fixed bottom-24 right-4 z-40 size-12 rounded-full shadow-lg md:bottom-6 md:right-6 print:hidden">
+        <MessageCircleQuestionIcon className="size-5" />
+      </Button>
+    );
+  }
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col bg-background md:inset-auto md:bottom-6 md:right-6 md:h-[min(36rem,calc(100vh-3rem))] md:w-[24rem] md:rounded-xl md:border md:shadow-2xl print:hidden">
+      <div className="flex items-center justify-between border-b px-4 py-3">
+        <div>
+          <p className="text-sm font-semibold">Help assistant</p>
+          <p className="text-[11px] text-muted-foreground">Answers from the help guide. Admin test.</p>
+        </div>
+        <div className="flex gap-1">
+          <Button size="icon" variant="ghost" className="size-8" aria-label="Clear conversation" disabled={busy || !messages.length} onClick={() => setMessages([])}><RotateCcwIcon className="size-4" /></Button>
+          <Button size="icon" variant="ghost" className="size-8" aria-label="Close" onClick={() => setOpen(false)}><XIcon className="size-4" /></Button>
+        </div>
+      </div>
+      <div className="flex-1 overflow-y-auto px-4 py-3">
+        {!messages.length && (
+          <p className="mt-6 text-center text-sm text-muted-foreground">Ask how to do something in the app, for example "How do I raise a purchase request?"</p>
+        )}
+        <div className="flex flex-col gap-3">
+          {messages.map((m, i) => (
+            <div key={i} className={m.role === 'user' ? 'self-end' : 'self-start'} style={{ maxWidth: '90%' }}>
+              <div className={`whitespace-pre-wrap rounded-2xl px-3 py-2 text-sm ${m.role === 'user' ? 'bg-primary text-primary-foreground' : m.error ? 'bg-destructive/10 text-destructive' : 'bg-muted'}`}>
+                {m.content || (busy && i === messages.length - 1 ? 'Thinking…' : '')}
+              </div>
+              {!!m.sources?.length && (
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  {m.sources.map(s => <Link key={s.href} href={s.href} className="rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground hover:text-foreground">{s.label}</Link>)}
+                </div>
+              )}
+            </div>
+          ))}
+          <div ref={endRef} />
+        </div>
+      </div>
+      <form className="flex items-end gap-2 border-t p-3" onSubmit={e => { e.preventDefault(); send(); }}>
+        <textarea value={text} onChange={e => setText(e.target.value)} rows={1} maxLength={2000} placeholder="Ask a question"
+          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
+          className="max-h-32 min-h-9 flex-1 resize-none rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring" />
+        <Button type="submit" size="icon" disabled={busy || !text.trim()} aria-label="Send"><SendIcon className="size-4" /></Button>
+      </form>
+    </div>
+  );
+}
