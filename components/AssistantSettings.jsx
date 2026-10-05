@@ -56,6 +56,12 @@ export default function AssistantSettings() {
             {settings.hasKey && <Button size="sm" variant="ghost" disabled={saving} onClick={removeKey}>Remove</Button>}
           </div>
           <p className="text-xs text-muted-foreground">Stored encrypted and never shown again. Create one at openrouter.ai → Keys.</p>
+          {settings.hasKey && (
+            <p className={`text-xs ${settings.balance !== null && settings.balance <= 0.05 ? 'font-medium text-destructive' : 'text-muted-foreground'}`}>
+              {settings.balance === null ? 'Balance could not be read.' : `Balance: $${settings.balance.toFixed(2)}${settings.balance <= 0.05 ? '. Too low to answer.' : ''}`}{' '}
+              <a href={settings.creditsUrl} target="_blank" rel="noreferrer" className="underline underline-offset-2">Add credit</a>
+            </p>
+          )}
         </div>
         <div className="grid content-start gap-1.5">
           <Label>Writing model</Label>

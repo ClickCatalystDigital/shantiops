@@ -27,7 +27,10 @@ export default function AssistantWidget() {
     const patch = p => setMessages(ms => ms.map((m, i) => (i === ms.length - 1 ? { ...m, ...(typeof p === 'function' ? p(m) : p) } : m)));
     try {
       const res = await fetch('/api/assistant/chat', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ messages: history.map(({ role, content }) => ({ role, content })), path }) });
-      if (!res.ok) throw new Error((await res.json().catch(() => null))?.error || `Request failed (${res.status})`);
+      if (!res.ok) {
+        const e = await res.json().catch(() => null);
+        throw Object.assign(new Error(e?.error || `Request failed (${res.status})`), { link: e?.link, linkLabel: e?.linkLabel });
+      }
       let sources = [];
       try { sources = JSON.parse(decodeURIComponent(res.headers.get('x-sources') || '%5B%5D')); } catch { /* no sources */ }
       const route = decodeURIComponent(res.headers.get('x-route') || '');
@@ -40,7 +43,7 @@ export default function AssistantWidget() {
       }
       patch(m => ({ sources, route, content: m.content.trim() || 'No answer came back. Try again or pick another model in Settings.' }));
     } catch (err) {
-      patch({ content: err.message, error: true });
+      patch({ content: err.message, error: true, link: err.link, linkLabel: err.linkLabel });
     } finally { setBusy(false); }
   }
 
@@ -74,6 +77,7 @@ export default function AssistantWidget() {
               <div className={`whitespace-pre-wrap rounded-2xl px-3 py-2 text-sm ${m.role === 'user' ? 'bg-primary text-primary-foreground' : m.error ? 'bg-destructive/10 text-destructive' : 'bg-muted'}`}>
                 {m.content || (busy && i === messages.length - 1 ? 'Thinking…' : '')}
               </div>
+              {m.link && <a href={m.link} target="_blank" rel="noreferrer" className="mt-1 inline-block text-xs font-medium text-primary underline underline-offset-2">{m.linkLabel || m.link}</a>}
               {m.route && <p className="mt-1 text-[10px] text-muted-foreground/80">{m.route}</p>}
               {!!m.sources?.length && (
                 <div className="mt-1 flex flex-wrap gap-1.5">
