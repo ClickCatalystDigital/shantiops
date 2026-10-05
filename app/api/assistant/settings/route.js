@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { getFreshSessionUser } from '@/lib/auth';
-import { getAssistantSettings, saveAssistantSettings, getAssistantKey, getBalance, canManageAssistant, CREDITS_URL } from '@/lib/assistant';
+import { getFreshSessionUser, isAdmin } from '@/lib/auth';
+import { getAssistantSettings, saveAssistantSettings, getAssistantKey, getBalance, canManageAssistant, getDataAccess, setDataAccess, CREDITS_URL } from '@/lib/assistant';
 import { audit } from '@/lib/usb';
 
 export const dynamic = 'force-dynamic';
@@ -24,6 +24,23 @@ export async function PUT(req) {
   const user = await getFreshSessionUser();
   if (!canManageAssistant(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const b = await req.json();
+  // { dataAccess: { on, approver_name, approver_role, confirmed } } — admin only.
+  if (b.dataAccess !== undefined) {
+    if (!isAdmin(user)) return NextResponse.json({ error: 'Only admin can change live-data access' }, { status: 403 });
+    const d = b.dataAccess || {};
+    if (d.on) {
+      const name = String(d.approver_name || '').trim();
+      if (!name || !d.confirmed) return NextResponse.json({ error: "Enter the name of the customer's person who approved, and tick the confirmation." }, { status: 400 });
+      const record = { on: true, approver_name: name.slice(0, 120), approver_role: String(d.approver_role || '').trim().slice(0, 120), recorded_by: user.username, at: new Date().toISOString(), terms: 'https://openrouter.ai/terms', privacy: 'https://openrouter.ai/privacy' };
+      await setDataAccess(record);
+      await audit('assistant_data_access_on', { actor: user.username, detail: JSON.stringify(record) });
+    } else {
+      const prev = await getDataAccess();
+      await setDataAccess({ on: false, turned_off_by: user.username, turned_off_at: new Date().toISOString(), last_approval: prev.on ? prev : prev.last_approval || null });
+      await audit('assistant_data_access_off', { actor: user.username, detail: null });
+    }
+    return NextResponse.json(await withBalance());
+  }
   try {
     await saveAssistantSettings({ model: b.model, key: b.key, mode: b.mode });
   } catch (err) {

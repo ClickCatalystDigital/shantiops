@@ -7,10 +7,61 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import SearchableSelect from '@/components/SearchableSelect';
 import { api, showToast } from '@/lib/client';
 
 const price = v => (v === null ? 'varies' : v === 0 ? 'free' : `$${v < 1 ? v.toFixed(3) : v.toFixed(2)}`);
+
+// Live-data answers: off until the customer's approval is recorded (name, role, who recorded it, when).
+function DataAccess({ settings, onChange }) {
+  const d = settings.dataAccess || { on: false };
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState('');
+  const [role, setRole] = useState('');
+  const [confirmed, setConfirmed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  async function put(dataAccess) {
+    setBusy(true);
+    try { onChange(await api('/api/assistant/settings', { method: 'PUT', body: { dataAccess } })); setOpen(false); setName(''); setRole(''); setConfirmed(false); showToast(dataAccess.on ? 'Live-data answers switched on' : 'Live-data answers switched off'); }
+    catch (err) { showToast(err.message, 'error'); } finally { setBusy(false); }
+  }
+  return (
+    <div className="flex flex-wrap items-start gap-3 rounded-lg border bg-muted/30 p-3 lg:col-span-2">
+      <Badge variant={d.on ? 'default' : 'outline'}>{d.on ? 'On' : 'Off'}</Badge>
+      <div className="min-w-0 flex-1 text-xs text-muted-foreground">
+        <p className="font-medium text-foreground">Answers about live data (orders, stock, payments)</p>
+        {d.on
+          ? <p>Approved by {d.approver_name}{d.approver_role ? `, ${d.approver_role}` : ''}. Recorded by {d.recorded_by} on {new Date(d.at).toLocaleString('en-IN')}. For these questions the rows looked up are sent to OpenRouter to be worded. Each person only gets look-ups their department may see.</p>
+          : <p>Off. The assistant sends only help text and the question to OpenRouter, never company data. Switching this on sends the rows needed for an answer, so it needs the customer's approval of OpenRouter's terms, recorded here.</p>}
+      </div>
+      {d.on
+        ? <Button size="sm" variant="outline" disabled={busy} onClick={() => put({ on: false })}>Switch off</Button>
+        : <Button size="sm" variant="outline" onClick={() => setOpen(true)}>Record approval and switch on</Button>}
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader><DialogTitle>Record the customer's approval</DialogTitle></DialogHeader>
+          <div className="grid gap-3 text-sm">
+            <p className="text-muted-foreground">
+              With this on, a question such as "how much does a customer owe" sends the matching order, stock or payment rows to OpenRouter and the model it routes to.
+              The customer should read <a className="underline" href="https://openrouter.ai/terms" target="_blank" rel="noreferrer">OpenRouter's terms</a> and <a className="underline" href="https://openrouter.ai/privacy" target="_blank" rel="noreferrer">privacy policy</a> first.
+            </p>
+            <div className="grid gap-1.5"><Label>Approved by (person at the customer)</Label><Input value={name} onChange={e => setName(e.target.value)} placeholder="Full name" /></div>
+            <div className="grid gap-1.5"><Label>Their role</Label><Input value={role} onChange={e => setRole(e.target.value)} placeholder="e.g. Director" /></div>
+            <label className="flex items-start gap-2 text-xs">
+              <input type="checkbox" className="mt-0.5" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} />
+              <span>This person has read OpenRouter's terms and privacy policy and agrees that company data may be sent to OpenRouter to answer questions. This is saved with my username and the time, and written to the audit log.</span>
+            </label>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button disabled={busy || !name.trim() || !confirmed} onClick={() => put({ on: true, approver_name: name, approver_role: role, confirmed })}>Switch on</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
 
 export default function AssistantSettings() {
   const [settings, setSettings] = useState(null);
@@ -97,13 +148,7 @@ export default function AssistantSettings() {
             Greetings, unrelated and live-data questions get a fixed reply with no writing model.
           </p>
         </div>
-        <div className="flex items-start gap-3 rounded-lg border bg-muted/30 p-3 lg:col-span-2">
-          <Badge variant="outline">Off</Badge>
-          <div className="text-xs text-muted-foreground">
-            <p className="font-medium text-foreground">Answers about live data (orders, stock, payments)</p>
-            <p>Not available yet. The assistant sends only help text and the question to OpenRouter, never company data. Turning this on will need the customer's recorded approval of OpenRouter's terms.</p>
-          </div>
-        </div>
+        <DataAccess settings={settings} onChange={setSettings} />
       </CardContent>
     </Card>
   );
