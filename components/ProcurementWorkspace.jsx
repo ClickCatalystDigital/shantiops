@@ -34,6 +34,7 @@ import { UOM_PRESETS } from '@/lib/uom';
 import { PURCHASE_STATUSES as BOM_STATUSES, CLOSED_STATUSES, OPEN_STATUSES, STATUS_TONE, DEFAULT_PURCHASE_STATUS } from '@/lib/bom-fields.mjs';
 import { aggregatePrGroups, procurementCategory } from '@/lib/bom-structure.mjs';
 import { projectLabel } from '@/lib/project-label';
+import { COMPANY_NAMES } from '@/lib/company-profiles';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 import SupplierAnalysis from '@/components/SupplierAnalysis';
 import PoDeliveryLotsWorkspace from '@/components/PoDeliveryLotsWorkspace';
@@ -1101,12 +1102,33 @@ function EditPoLinesDialog({ po, suppliers, onClose, onPoGone, router }) {
 function PODrawer({ po, suppliers, router, onClose, onIssue, onUnissue, onCancel, busy, tdsRates = [] }) {
   const [editing, setEditing] = useState(false);
   const [recordingBill, setRecordingBill] = useState(false);
+  // Company: from the lines' project when they have one; otherwise picked here (draft only).
+  const [co, setCo] = useState(null); // { company, company_from_project }
+  const [pdfV, setPdfV] = useState(0);
+  useEffect(() => {
+    api(`/api/purchase-orders/${po.id}`).then(d => setCo({ company: d.po.company, fromProject: !!d.po.company_from_project })).catch(() => {});
+  }, [po.id]);
+  async function changeCompany(c) {
+    try {
+      const d = await api(`/api/purchase-orders/${po.id}`, { method: 'PATCH', body: { action: 'set_company', company: c } });
+      setCo({ company: d.po.company, fromProject: !!d.po.company_from_project }); setPdfV(v => v + 1); router.refresh();
+      showToast(`PO now under ${c}`);
+    } catch (err) { showToast(err.message, 'error'); }
+  }
+  const companyPicker = co && !co.fromProject && COMPANY_NAMES.length > 1 && (
+    po.status === 'draft' ? (
+      <Select value={co.company} onValueChange={changeCompany} disabled={busy}>
+        <SelectTrigger className="h-9 w-52" title="No project on these lines — choose the company"><SelectValue /></SelectTrigger>
+        <SelectContent>{COMPANY_NAMES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+      </Select>
+    ) : <span className="self-center text-xs text-muted-foreground">{co.company}</span>
+  );
   return (
     <>
       <PdfPreview
         open
         onOpenChange={o => !o && onClose()}
-        url={`/api/purchase-orders/${po.id}/pdf`}
+        url={`/api/purchase-orders/${po.id}/pdf${pdfV ? `?v=${pdfV}` : ''}`}
         title={po.po_no}
         description={
           <>
@@ -1118,6 +1140,7 @@ function PODrawer({ po, suppliers, router, onClose, onIssue, onUnissue, onCancel
         filename={`${po.po_no.replace(/\//g, '-')}.pdf`}
         actions={
           <>
+            {companyPicker}
             {/* Group 5 Bundle A (5.3) — draft-only, per D11: an issued PO is locked, Cancel Issue
                 gets you back to draft first. */}
             {po.status === 'draft' && (

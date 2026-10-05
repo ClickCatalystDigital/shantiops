@@ -9,6 +9,7 @@ import { execute, queryAll, queryOne, withTransaction } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { getPurchaseOrderDetail } from '@/lib/data';
+import { COMPANY_NAMES } from '@/lib/company-profiles';
 import { audit } from '@/lib/usb';
 import { advancePurchaseStatus, selectQuoteForItem } from '@/lib/procurement';
 
@@ -24,6 +25,7 @@ const PO_ACTION_KEYS = {
   // project IDs a delivery is for), never touching qty/rate/amount or anything that flows into the
   // PO document itself. Same "edit PO lines" authority tier as the two above — no new permission.
   edit_lots: 'procurement.po.edit_lines',
+  set_company: 'procurement.po.edit_lines',
 };
 
 export async function GET(req, { params }) {
@@ -48,6 +50,16 @@ export async function PATCH(req, { params }) {
   if (actionKey) {
     const actionDenied = await requireAction(user, 'Procurement', actionKey);
     if (actionDenied) return actionDenied;
+  }
+
+  // Whose PO this is when none of its lines has a real project (letterhead, terms page, vendor bill).
+  // Draft only — an issued PO has already gone to the supplier. A project's own company always wins.
+  if (b.action === 'set_company') {
+    if (po.status !== 'draft') return NextResponse.json({ error: 'Only a draft PO can change company — Cancel Issue first' }, { status: 409 });
+    if (!COMPANY_NAMES.includes(b.company)) return NextResponse.json({ error: 'Unknown company' }, { status: 400 });
+    await execute('UPDATE purchase_orders SET company = ? WHERE id = ?', [b.company, po.id]);
+    await audit('po_company_set', { actor: user.username, detail: `${po.po_no}: ${b.company}` });
+    return NextResponse.json(await getPurchaseOrderDetail(po.id));
   }
 
   if (b.action === 'issue') {
