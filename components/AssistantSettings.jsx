@@ -20,8 +20,9 @@ export default function AssistantSettings() {
   const [mode, setMode] = useState('llm');
   const [saving, setSaving] = useState(false);
 
+  const load = () => api('/api/assistant/settings').then(s => { setSettings(s); setModel(s.model); setMode(s.mode); }).catch(err => showToast(err.message, 'error'));
   useEffect(() => {
-    api('/api/assistant/settings').then(s => { setSettings(s); setModel(s.model); setMode(s.mode); }).catch(err => showToast(err.message, 'error'));
+    load();
     api('/api/assistant/models').then(r => setModels(r.models)).catch(err => showToast(err.message, 'error'));
   }, []);
   const options = useMemo(() => models.map(m => ({ value: m.id, label: `${m.name} · in ${price(m.in)} / out ${price(m.out)} per million · ${m.id}` })), [models]);
@@ -57,10 +58,20 @@ export default function AssistantSettings() {
           </div>
           <p className="text-xs text-muted-foreground">Stored encrypted and never shown again. Create one at openrouter.ai → Keys.</p>
           {settings.hasKey && (
-            <p className={`text-xs ${settings.balance !== null && settings.balance <= 0.05 ? 'font-medium text-destructive' : 'text-muted-foreground'}`}>
-              {settings.balance === null ? 'Balance could not be read.' : `Balance: $${settings.balance.toFixed(2)}${settings.balance <= 0.05 ? '. Too low to answer.' : ''}`}{' '}
-              <a href={settings.creditsUrl} target="_blank" rel="noreferrer" className="underline underline-offset-2">Add credit</a>
-            </p>
+            <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border bg-muted/30 px-3 py-2 text-xs">
+              {settings.balance ? (
+                <>
+                  <span className={settings.balance.left <= 0.05 ? 'font-semibold text-destructive' : 'font-semibold'}>
+                    ${settings.balance.left.toFixed(2)} left{settings.balance.left <= 0.05 ? ' (too low to answer)' : ''}
+                  </span>
+                  <span className="text-muted-foreground">${settings.balance.used.toFixed(2)} used of ${settings.balance.bought.toFixed(2)} bought</span>
+                </>
+              ) : <span className="text-muted-foreground">Credit could not be read. Check the key.</span>}
+              <span className="ml-auto flex gap-3">
+                <button type="button" className="underline underline-offset-2" onClick={load}>Refresh</button>
+                <a href={settings.creditsUrl} target="_blank" rel="noreferrer" className="underline underline-offset-2">Add credit</a>
+              </span>
+            </div>
           )}
         </div>
         <div className="grid content-start gap-1.5">
