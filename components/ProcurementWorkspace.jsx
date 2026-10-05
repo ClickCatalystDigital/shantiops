@@ -419,7 +419,7 @@ function PrGroupEnquiryRow({ group, quotesByItem, suppliers, rfqSummaryByItem, r
       {expanded && (
         <div className="flex flex-col gap-3 bg-muted/30 px-3 py-3 text-sm">
           <div className="flex flex-col gap-1.5">
-            <p className="text-xs font-medium text-muted-foreground">Project requirements</p>
+            <p className="text-xs font-medium text-muted-foreground">{group.kind === 'item' ? 'BOM lines using this item' : 'Project requirements'}</p>
             {group.constituents.map(c => (
               <div key={c.id} className="flex flex-col gap-1.5 rounded-md border bg-background px-3 py-2">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -428,12 +428,12 @@ function PrGroupEnquiryRow({ group, quotesByItem, suppliers, rfqSummaryByItem, r
                         size_spec. A plate/tube split can genuinely differ per project (e.g. 2000 x
                         1000 x 10 mm here vs 1500 x 800 x 12 mm on another project's own line), and
                         this is the one place that has to show the real per-constituent numbers. */}
-                    {c.project_no} · {c.moc || '—'} · {c.size_spec || '—'} · {c.qty_text || '—'}
+                    {c.project_no}{c.section ? ` · ${c.section}` : ''} · {c.moc || '—'} · {c.size_spec || '—'} · {c.qty_text || '—'}
                     {c.excluded && <span className="ml-2 text-success">already reserved from stock — not counted</span>}
                   </span>
                   {group.sourcing_bom_item_ids.includes(c.id) && (
                     <button type="button" className="shrink-0 text-xs text-primary hover:underline" onClick={() => setSingleDialogItem(c)}>
-                      + Add quote for just this project
+                      + Add quote for just this line
                     </button>
                   )}
                 </div>
@@ -452,11 +452,14 @@ function PrGroupEnquiryRow({ group, quotesByItem, suppliers, rfqSummaryByItem, r
                     this group's own "select for RFQ" checkbox above — has to stay visible and
                     manageable here too, same badge + resend/cancel list EnquiryRow renders. */}
                 {rfqSummaryByItem?.[c.id] && (
+                  // One RFQ usually covers every line of the group: show its supplier list once, under the first line.
                   <>
                     <Badge variant="outline" className="w-fit">
                       {rfqSummaryByItem[c.id].rfq_no} · {rfqSummaryByItem[c.id].responded}/{rfqSummaryByItem[c.id].invited} responded
                     </Badge>
-                    <RfqSuppliersList rfqId={rfqSummaryByItem[c.id].rfq_id} router={router} suppliers={suppliers} />
+                    {group.constituents.find(x => rfqSummaryByItem?.[x.id]?.rfq_id === rfqSummaryByItem[c.id].rfq_id)?.id === c.id && (
+                      <RfqSuppliersList rfqId={rfqSummaryByItem[c.id].rfq_id} router={router} suppliers={suppliers} />
+                    )}
                   </>
                 )}
               </div>
@@ -475,7 +478,9 @@ function PrGroupEnquiryRow({ group, quotesByItem, suppliers, rfqSummaryByItem, r
               ))}
             </div>
           )}
-          <Button size="sm" variant="outline" className="w-fit" onClick={() => setDialogOpen(true)}>+ Add quote (whole PR line)</Button>
+          <Button size="sm" variant="outline" className="w-fit" onClick={() => setDialogOpen(true)}>
+            {group.kind === 'item' ? `+ Add quote (all ${group.sourcing_bom_item_ids.length} lines)` : '+ Add quote (whole PR line)'}
+          </Button>
         </div>
       )}
       {dialogOpen && (
@@ -745,7 +750,7 @@ function PrGroupSelectionRow({ group, quotesByItem, router }) {
         ))}
       </div>
       <button type="button" className="w-fit text-xs text-primary hover:underline" onClick={() => setExpanded(v => !v)}>
-        {expanded ? 'Hide' : 'Show'} projects individually
+        {expanded ? 'Hide' : 'Show'} {group.kind === 'item' ? 'lines' : 'projects'} individually
       </button>
       {expanded && (
         <div className="flex flex-col gap-1 rounded-md border bg-muted/30 p-2">
