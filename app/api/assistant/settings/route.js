@@ -17,10 +17,10 @@ export async function PUT(req) {
   if (!isAdmin(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const b = await req.json();
   try {
-    await saveAssistantSettings({ model: b.model, key: b.key });
+    await saveAssistantSettings({ model: b.model, key: b.key, mode: b.mode });
   } catch (err) {
     return NextResponse.json({ error: `Could not save: ${err.message}` }, { status: 400 });
   }
-  await audit('assistant_settings', { actor: user.username, detail: JSON.stringify({ model: b.model, key_changed: b.key !== undefined }) });
+  await audit('assistant_settings', { actor: user.username, detail: JSON.stringify({ model: b.model, mode: b.mode, key_changed: b.key !== undefined }) });
   return NextResponse.json(await getAssistantSettings());
 }

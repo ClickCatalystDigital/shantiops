@@ -17,10 +17,11 @@ export default function AssistantSettings() {
   const [models, setModels] = useState([]);
   const [model, setModel] = useState('');
   const [key, setKey] = useState('');
+  const [mode, setMode] = useState('llm');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    api('/api/assistant/settings').then(s => { setSettings(s); setModel(s.model); }).catch(err => showToast(err.message, 'error'));
+    api('/api/assistant/settings').then(s => { setSettings(s); setModel(s.model); setMode(s.mode); }).catch(err => showToast(err.message, 'error'));
     api('/api/assistant/models').then(r => setModels(r.models)).catch(err => showToast(err.message, 'error'));
   }, []);
   const options = useMemo(() => models.map(m => ({ value: m.id, label: `${m.name} · in ${price(m.in)} / out ${price(m.out)} per million · ${m.id}` })), [models]);
@@ -29,7 +30,7 @@ export default function AssistantSettings() {
   async function save() {
     setSaving(true);
     try {
-      const s = await api('/api/assistant/settings', { method: 'PUT', body: { model, ...(key ? { key } : {}) } });
+      const s = await api('/api/assistant/settings', { method: 'PUT', body: { model, mode, ...(key ? { key } : {}) } });
       setSettings(s); setKey(''); showToast('Assistant settings saved');
     } catch (err) { showToast(err.message, 'error'); } finally { setSaving(false); }
   }
@@ -45,7 +46,7 @@ export default function AssistantSettings() {
       <CardHeader>
         <CardTitle>Help assistant</CardTitle>
         <CardDescription>A chat button at the bottom right that answers from the help guide. Only admin sees it for now.</CardDescription>
-        <CardAction><Button size="sm" onClick={save} disabled={saving || (!key && model === settings.model)}>{saving ? 'Saving…' : 'Save'}</Button></CardAction>
+        <CardAction><Button size="sm" onClick={save} disabled={saving || (!key && model === settings.model && mode === settings.mode)}>{saving ? 'Saving…' : 'Save'}</Button></CardAction>
       </CardHeader>
       <CardContent className="grid gap-5 lg:grid-cols-2">
         <div className="grid content-start gap-1.5">
@@ -57,10 +58,26 @@ export default function AssistantSettings() {
           <p className="text-xs text-muted-foreground">Stored encrypted and never shown again. Create one at openrouter.ai → Keys.</p>
         </div>
         <div className="grid content-start gap-1.5">
-          <Label>Model</Label>
+          <Label>Writing model</Label>
           <SearchableSelect value={model} onChange={setModel} options={options} displayValue={picked ? picked.name : model} placeholder="Search models…" />
           <p className="text-xs text-muted-foreground">
             {picked ? `${picked.id} · input ${price(picked.in)}, output ${price(picked.out)} per million tokens · reads up to ${Number(picked.context).toLocaleString('en-IN')} tokens` : model}
+          </p>
+        </div>
+        <div className="grid gap-2 lg:col-span-2">
+          <Label>How answers are produced</Label>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {[['llm', 'Decide, then write', 'The decision model finds the right guide section; the writing model words a short answer from it.'],
+              ['guide', 'Decide, then show the guide', 'When the decision model is sure, the guide section is shown as it is. The writing model is used only when it is not sure. Cheapest.']].map(([v, title, text]) => (
+              <button key={v} type="button" onClick={() => setMode(v)} className={`rounded-lg border p-3 text-left transition-colors ${mode === v ? 'border-primary bg-primary/5' : 'hover:bg-muted/50'}`}>
+                <p className="text-sm font-medium">{title}</p>
+                <p className="text-xs text-muted-foreground">{text}</p>
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Decision model: {settings.jevModel} (fixed). It sorts each question (how-to, live data, greeting, unrelated), then picks the department and the section.
+            Greetings, unrelated and live-data questions get a fixed reply with no writing model.
           </p>
         </div>
         <div className="flex items-start gap-3 rounded-lg border bg-muted/30 p-3 lg:col-span-2">

@@ -30,6 +30,7 @@ export default function AssistantWidget() {
       if (!res.ok) throw new Error((await res.json().catch(() => null))?.error || `Request failed (${res.status})`);
       let sources = [];
       try { sources = JSON.parse(decodeURIComponent(res.headers.get('x-sources') || '%5B%5D')); } catch { /* no sources */ }
+      const route = decodeURIComponent(res.headers.get('x-route') || '');
       const reader = res.body.getReader(), decoder = new TextDecoder();
       for (;;) {
         const { done, value } = await reader.read();
@@ -37,7 +38,7 @@ export default function AssistantWidget() {
         const chunk = decoder.decode(value, { stream: true });
         patch(m => ({ content: m.content + chunk }));
       }
-      patch(m => ({ sources, content: m.content.trim() || 'No answer came back. Try again or pick another model in Settings.' }));
+      patch(m => ({ sources, route, content: m.content.trim() || 'No answer came back. Try again or pick another model in Settings.' }));
     } catch (err) {
       patch({ content: err.message, error: true });
     } finally { setBusy(false); }
@@ -73,6 +74,7 @@ export default function AssistantWidget() {
               <div className={`whitespace-pre-wrap rounded-2xl px-3 py-2 text-sm ${m.role === 'user' ? 'bg-primary text-primary-foreground' : m.error ? 'bg-destructive/10 text-destructive' : 'bg-muted'}`}>
                 {m.content || (busy && i === messages.length - 1 ? 'Thinking…' : '')}
               </div>
+              {m.route && <p className="mt-1 text-[10px] text-muted-foreground/80">{m.route}</p>}
               {!!m.sources?.length && (
                 <div className="mt-1 flex flex-wrap gap-1.5">
                   {m.sources.map(s => <Link key={s.href} href={s.href} className="rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground hover:text-foreground">{s.label}</Link>)}
