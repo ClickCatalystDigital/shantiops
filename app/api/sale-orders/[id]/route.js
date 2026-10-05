@@ -81,7 +81,10 @@ export async function PATCH(req, { params }) {
     fields.push('order_date = ?'); args.push(b.order_date || null);
   }
   if (b.invoice_ref !== undefined) { fields.push('invoice_ref = ?'); args.push(String(b.invoice_ref).trim() || null); }
-  if (b.customer_id !== undefined) {
+  if (b.customer_id === null) {
+    // The name was typed by hand (no matching customer picked) — drop the old link so name and link agree.
+    fields.push('customer_id = NULL');
+  } else if (b.customer_id !== undefined) {
     // Link an order (e.g. an imported one with only a typed name) to a real customer.
     const cust = await queryOne('SELECT id FROM customers WHERE id = ?', [b.customer_id]);
     if (!cust) return NextResponse.json({ error: 'Customer not found' }, { status: 400 });

@@ -31,6 +31,7 @@ import { lineAmount } from '@/lib/sales-lines.mjs';
 import { computeSaleOrderTotals } from '@/lib/sale-order-calc.mjs';
 import ProductSearchField from '@/components/ProductSearchField';
 import SearchableSelect from '@/components/SearchableSelect';
+import CustomerPicker from '@/components/CustomerPicker';
 import { useLeadConvert } from '@/components/ConvertLeadChoice';
 import { defaultCompanyClient } from '@/lib/company-filter.mjs';
 
@@ -304,10 +305,12 @@ export function SaleOrderDetailsSheet({ saleOrderId, branches, salesProducts = [
   const [prefilled, setPrefilled] = useState(false);
   const [discountMode, setDiscountMode] = useState('pct'); // 'pct' | 'amount'
   const [saving, setSaving] = useState(null);
+  const [custTouched, setCustTouched] = useState(false); // only send customer_id when the Customer box was used
 
   function load() {
     api(`/api/sale-orders/${saleOrderId}`).then(d => {
       setSo(d);
+      setCustTouched(false);
       const codeOf = id => salesProducts.find(p => p.id === id)?.product_code || '';
       const src = d.items.length ? d.items : d.prefill_items || [];
       setPrefilled(!d.items.length && src.length > 0);
@@ -426,7 +429,12 @@ export function SaleOrderDetailsSheet({ saleOrderId, branches, salesProducts = [
           <Card>
             <CardHeader><CardTitle className="text-sm">Customer Details</CardTitle></CardHeader>
             <CardContent className="grid grid-cols-2 gap-3">
-              <Field label="Customer"><Input value={so.customer_name || ''} onChange={e => set('customer_name')(e.target.value)} /></Field>
+              <Field label="Customer">
+                <CustomerPicker value={so.customer_id} name={so.customer_name || ''}
+                  onChange={(id, n) => { setCustTouched(true); setSo(p => ({ ...p, customer_id: Number(id) || null, customer_name: n || '' })); }}
+                  onTextChange={t => { setCustTouched(true); setSo(p => ({ ...p, customer_id: null, customer_name: t })); }}
+                  placeholder="Search customer, or type a name…" />
+              </Field>
               <Field label="Address Type">
                 <Select value={so.address_type || 'Default'} onValueChange={set('address_type')}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
@@ -451,7 +459,7 @@ export function SaleOrderDetailsSheet({ saleOrderId, branches, salesProducts = [
                 <SearchableSelect value={so.sales_person_override || ''} onChange={set('sales_person_override')} options={managerOpts} placeholder="Select a person…" />
               </Field>
               <Button size="sm" className="col-span-2 w-fit" disabled={saving === 'fields'} onClick={() => saveField({
-                customer_name: so.customer_name, address_type: so.address_type, order_address: so.order_address,
+                customer_name: so.customer_name, ...(custTouched ? { customer_id: so.customer_id } : {}), address_type: so.address_type, order_address: so.order_address,
                 contact_person: so.contact_person, contact_mobile: so.contact_mobile, order_stage: so.order_stage,
                 sales_person: so.sales_person_override,
               })}>{saving === 'fields' ? 'Saving…' : 'Save Customer Details'}</Button>
