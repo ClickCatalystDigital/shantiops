@@ -11962,6 +11962,11 @@ Gap review against salesmantra.com's CRM (headline modules only — their page h
 - **Library** — `sales_library_files`, `app/api/sales-library`, Sales → Setup → Library (R2 storage; delete by uploader or Sales Head).
 - Demo data: `scripts/seed-demo-mis.mjs` (3 AMC contracts tagged `demo:mis`; `--rollback` removes them and restores the contract counter).
 
+## 5em. PR: project optional, and PR items editable from PR History (2026-10-05)
+- **Project optional** on every split of a Raise PR line (Project dropdown has "No project"; qty still required). A no-project split is a `bom_items` row on the sentinel project with `source='custom'` (shown "General", the same idiom as Procurement's custom-item add), no `pr_item_projects` row; in Auto allocation mode it matches common (unowned) stock only, same as `sas` lines (also for splits added via Edit). It appears in Procurement's Enquiry like any PR line.
+- **Edit** (pencil on each PR History row, also in Engineering's embedded copy): reuses the Raise form's `LineCard` in a dialog. `PUT /api/pr-items/[id]` updates the PR line (description, MOC, category/dimensions, traceability flags) and its splits (change/clear project, qty, per-split dimensions, add or remove a split). Head of the raising department (or PM) only; Build-stock and trade lines are not editable here.
+- **Still refused** (would corrupt records): removing a split that has a quote/PO/receipt/reservation etc. (same `lib/bom-item-guard.js` list as BOM delete); moving a split to another project once it is closed or has stock/receipt/allocation records (quotes, RFQs and PO lines may move — `po_items.project_id` follows). Changing a split's project clears its BOM tree node (`assembly_id`). An issued PO keeps its own description/qty snapshot.
+
 ## 6. Customer Portal (read-only, external)
 
 - **My Orders** (`/portal`) is the landing page for every customer — one card per project they own

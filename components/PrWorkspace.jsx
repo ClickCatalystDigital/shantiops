@@ -23,7 +23,7 @@ import { Badge } from './ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup } from './ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from './ui/dialog';
-import { TrashIcon, PlusIcon, ClipboardListIcon, LayoutTemplateIcon, CheckIcon, DownloadIcon, UndoIcon, HistoryIcon, AlertTriangleIcon } from 'lucide-react';
+import { TrashIcon, PencilIcon, PlusIcon, ClipboardListIcon, LayoutTemplateIcon, CheckIcon, DownloadIcon, UndoIcon, HistoryIcon, AlertTriangleIcon } from 'lucide-react';
 import WorkspaceSidebar from './WorkspaceSidebar';
 import BomTable from './BomTable';
 import DimensionInput from './DimensionInput';
@@ -34,6 +34,7 @@ import CategoryFieldsBlock, { OTHER_MOC, MOC_OPTIONS } from './CategoryFieldsBlo
 import { BOM_FIELD_OWNERS, DIMENSIONAL_CATEGORIES, PURCHASE_STATUSES, STATUS_TONE, DEFAULT_PURCHASE_STATUS } from '@/lib/bom-fields.mjs';
 import { CATEGORY_LABEL, categoryDisplaySpec, categoryWeightKg } from '@/lib/section-shapes';
 import BomTemplateManager from './BomTemplateManager';
+import { projectLabel } from '@/lib/project-label';
 import StoresSubTabs from './StoresSubTabs';
 import {
   NamedPartsEditor, ItemSearchField, CATEGORY_OPTIONS, defaultCategoryFields, finalizeCategoryFields,
@@ -275,13 +276,14 @@ function LineCard({ line, index, projects, inventoryItems, showSourcePicker, onC
           : 0;
         return (
           <div className="flex flex-col gap-1.5">
-            <Label>Projects &amp; quantity<span className="text-danger"> *</span></Label>
+            <Label>Projects &amp; quantity <span className="font-normal text-muted-foreground">(project optional)</span></Label>
             {line.projects.map(p => (
               <div key={p.key} className="flex flex-col gap-1.5">
                 <div className="flex items-center gap-2">
-                  <Select value={p.project_id} onValueChange={v => onProjectChange(p.key, v)}>
-                    <SelectTrigger className="w-48" aria-invalid={!p.project_id}><SelectValue placeholder="Project…" /></SelectTrigger>
+                  <Select value={p.project_id} onValueChange={v => onProjectChange(p.key, v === '__none__' ? '' : v)}>
+                    <SelectTrigger className="w-48"><SelectValue placeholder="No project" /></SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="__none__">No project</SelectItem>
                       {projects.map(pr => <SelectItem key={pr.id} value={String(pr.id)}>{pr.project_no}</SelectItem>)}
                     </SelectContent>
                   </Select>
@@ -495,6 +497,42 @@ function ApplyBomTemplateDialog({ projectId, onClose, router, onApplied }) {
   );
 }
 
+// Shared by Raise PR and PR History's Edit — one definition of "is this project-material line
+// complete" and "what does the server get". A project is optional on every split; qty never is.
+function validateBomLine(l) {
+  if (!l.material_description.trim()) return 'Every line needs a description';
+  if (l.projects.some(p => !p.qty_text.trim())) return 'Every split needs a quantity';
+  if (l.category) {
+    if (!l.moc.trim()) return `${CATEGORY_LABEL[l.category]} needs an MOC — that's what remnant matching checks against`;
+    const forms = DIMENSIONAL_CATEGORIES.includes(l.category) ? l.projects.map(p => mergedProjectFields(l, p)) : [l.categoryFields];
+    for (const f of forms) {
+      const err = validateCategoryFields(l.category, f);
+      if (err) return `${CATEGORY_LABEL[l.category]} ${err}`;
+    }
+  }
+  return null;
+}
+function bomLineBody(l) {
+  const isDim = l.category && DIMENSIONAL_CATEGORIES.includes(l.category);
+  return {
+    // category_fields here is the line's own shape spec (Thickness/Diameter/Size/kg-per-m) — what
+    // pr_items records as the material being bought. For a dimensional category it never has
+    // Length/Width; every split sends its own merged (shape + its own Length/Width), which is what
+    // lands on that split's bom_items row.
+    category: l.category || undefined, category_fields: l.category ? finalizeCategoryFields(l.category, l.categoryFields) : undefined,
+    named_parts: l.category && l.namedParts?.length ? l.namedParts : undefined,
+    projects: l.projects.map(p => {
+      const merged = isDim ? mergedProjectFields(l, p) : null;
+      return {
+        bom_item_id: p.bom_item_id || undefined,
+        project_id: p.project_id ? Number(p.project_id) : null, qty_text: p.qty_text, drawing_id: p.drawing_id ? Number(p.drawing_id) : undefined,
+        category_fields: merged ? finalizeCategoryFields(l.category, merged) : undefined,
+        size_spec: merged ? (categoryDisplaySpec(l.category, merged) || undefined) : undefined,
+      };
+    }),
+  };
+}
+
 // Trade Request (Installation only) — not a PR: files a row into Sales' Trade Requests tab.
 // Exported so components/EngineeringWorkspace.jsx can render this same tab from a second entry
 // point (its own sidebar) without nesting a second full WorkspaceSidebar shell — PrWorkspace's own
@@ -574,26 +612,12 @@ export function RaisePrTab({ departments, projects, inventoryItems = [], prTempl
     for (const l of lines) {
       if (!l.material_description.trim()) return showToast('Every line needs a description', 'error');
       const source = showSourcePicker ? l.source : 'bom';
-      if (source === 'bom' && l.projects.some(p => !p.project_id || !p.qty_text.trim())) {
-        return showToast('Every project split needs a project and a quantity', 'error');
+      if (source === 'bom') {
+        const err = validateBomLine(l);
+        if (err) return showToast(err, 'error');
       }
       if (source === 'stock' && (!l.inventory_item_id || !l.qty || Number(l.qty) <= 0)) {
         return showToast('Pick an inventory item and a quantity to build', 'error');
-      }
-      if (source === 'bom' && l.category) {
-        if (!l.moc.trim()) return showToast(`${CATEGORY_LABEL[l.category]} needs an MOC — that's what remnant matching checks against`, 'error');
-        if (!DIMENSIONAL_CATEGORIES.includes(l.category)) {
-          const err = validateCategoryFields(l.category, l.categoryFields);
-          if (err) return showToast(`${CATEGORY_LABEL[l.category]} ${err}`, 'error');
-        } else {
-          // Each project's own merged fields (line's shape spec + that project's own Length/Width)
-          // must be complete — the identical check a non-dimensional line runs once, run once per
-          // project here since a project's Length/Width lives only on that project now, not the line.
-          for (const p of l.projects) {
-            const err = validateCategoryFields(l.category, mergedProjectFields(l, p));
-            if (err) return showToast(`${CATEGORY_LABEL[l.category]} ${err}`, 'error');
-          }
-        }
       }
     }
     setBusy(true);
@@ -614,24 +638,7 @@ export function RaisePrTab({ departments, projects, inventoryItems = [], prTempl
               requires_manufacturing: source === 'bom' ? !!l.requires_manufacturing : undefined,
             };
             if (source === 'stock') return { ...base, inventory_item_id: Number(l.inventory_item_id), qty: Number(l.qty) };
-            const isDim = l.category && DIMENSIONAL_CATEGORIES.includes(l.category);
-            return {
-              // category_fields here is the line's own shape spec (Thickness/Diameter/Size/kg-per-m)
-              // — what pr_items records as the material being bought. For a dimensional category it
-              // deliberately never has Length/Width; every project below always sends its own merged
-              // (shape + its own Length/Width), which is what actually lands on that project's
-              // materialized bom_items row.
-              ...base, category: l.category || undefined, category_fields: l.category ? finalizeCategoryFields(l.category, l.categoryFields) : undefined,
-              named_parts: l.category && l.namedParts?.length ? l.namedParts : undefined,
-              projects: l.projects.map(p => {
-                const merged = isDim ? mergedProjectFields(l, p) : null;
-                return {
-                  project_id: Number(p.project_id), qty_text: p.qty_text, drawing_id: p.drawing_id ? Number(p.drawing_id) : undefined,
-                  category_fields: merged ? finalizeCategoryFields(l.category, merged) : undefined,
-                  size_spec: merged ? (categoryDisplaySpec(l.category, merged) || undefined) : undefined,
-                };
-              }),
-            };
+            return { ...base, ...bomLineBody(l) };
           }),
         },
       });
@@ -707,15 +714,75 @@ export function RaisePrTab({ departments, projects, inventoryItems = [], prTempl
   );
 }
 
-// A stock/sas-source line's bom_items.project_id points at the sentinel system project, not a real
-// one — "Stock"/"SO #..." reads better than the sentinel's literal placeholder project_no. Same
-// small helper EngineeringWorkspace.jsx and ProcurementWorkspace.jsx already each keep their own
-// copy of; not worth extracting for a third one-off use.
-function prHistoryProjectLabel(l) {
-  if (!l.project_is_system) return l.project_no;
-  if (l.source === 'sas') return `SO #${l.sale_order_no || '—'}`;
-  if (l.source === 'stock') return 'Stock';
-  return l.project_no;
+function parseJson(v) { try { return v ? JSON.parse(v) : null; } catch { return null; } }
+
+// A PR item from PR History -> the same line shape the Raise form edits, so Edit can reuse LineCard.
+// Each existing split keeps its bom_item_id; a split with no project sits on the sentinel project
+// (project_is_system), which the form shows as "No project".
+function lineFromPrItem(it) {
+  const category = it.category || '';
+  const first = it.lines[0] || {};
+  const categoryFields = parseJson(it.category_fields_json) || parseJson(first.category_fields_json) || defaultCategoryFields(category);
+  return {
+    key: nextKey++, source: 'bom', material_description: it.material_description || '', moc: it.moc || '',
+    size_spec: it.size_spec || '', uomHint: '', inventory_item_id: '', qty: '',
+    category, categoryFields, namedParts: parseJson(it.named_parts_json) || [],
+    item_id: first.item_id || null,
+    requires_heat_no: !!first.requires_heat_no, requires_mtc: !!first.requires_mtc,
+    requires_supplier_batch: !!first.requires_supplier_batch, requires_serial_no: !!first.requires_serial_no,
+    requires_manufacturing: first.requires_manufacturing !== 0,
+    projects: it.lines.map(l => {
+      const f = parseJson(l.category_fields_json) || {};
+      return {
+        key: nextKey++, bom_item_id: l.bom_item_id, project_id: l.project_is_system ? '' : String(l.project_id),
+        qty_text: l.qty_text || '', drawing_id: l.drawing_id ? String(l.drawing_id) : '', drawingOptions: null,
+        length: f.length ?? '', width: f.width ?? '',
+      };
+    }),
+  };
+}
+
+function EditPrItemDialog({ item, prNo, onClose, onSaved }) {
+  const [line, setLine] = useState(() => lineFromPrItem(item));
+  const [projects, setProjects] = useState([]);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { api('/api/projects').then(r => setProjects(r.projects)).catch(err => showToast(err.message, 'error')); }, []);
+
+  async function save() {
+    const err = validateBomLine(line);
+    if (err) return showToast(err, 'error');
+    setBusy(true);
+    try {
+      await api(`/api/pr-items/${item.pr_item_id}`, { method: 'PUT', body: {
+        material_description: line.material_description, moc: line.moc || undefined, size_spec: line.size_spec || undefined,
+        item_id: line.item_id || undefined,
+        requires_heat_no: line.requires_heat_no, requires_mtc: line.requires_mtc,
+        requires_supplier_batch: line.requires_supplier_batch, requires_serial_no: line.requires_serial_no,
+        requires_manufacturing: !!line.requires_manufacturing,
+        ...bomLineBody(line),
+      } });
+      showToast(`${prNo} updated`);
+      onSaved();
+    } catch (e) { showToast(e.message, 'error'); }
+    setBusy(false);
+  }
+
+  return (
+    <Dialog open onOpenChange={o => !o && onClose()}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+        <DialogHeader><DialogTitle>Edit {prNo}</DialogTitle></DialogHeader>
+        <LineCard line={line} index={1} projects={projects} inventoryItems={[]} showSourcePicker={false}
+          onChange={setLine} onRemove={() => {}} removable={false} />
+        <p className="text-xs text-muted-foreground">
+          Changes apply to the BOM lines and Procurement's view. A purchase order already issued keeps its own description and quantity.
+        </p>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save changes'}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 // PR History — read-only record of every PR ever raised, no props needed (self-fetches). Exported
@@ -725,10 +792,10 @@ export function PrHistoryTab() {
   const [prs, setPrs] = useState(null);
   const [q, setQ] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [editing, setEditing] = useState(null);
 
-  useEffect(() => {
-    api('/api/purchase-requisitions').then(setPrs).catch(err => showToast(err.message, 'error'));
-  }, []);
+  function load() { return api('/api/purchase-requisitions').then(setPrs).catch(err => showToast(err.message, 'error')); }
+  useEffect(() => { load(); }, []);
 
   const rows = (prs || []).flatMap(pr => pr.items.map(it => ({
     ...it, pr_no: pr.pr_no, created_at: pr.created_at,
@@ -739,7 +806,7 @@ export function PrHistoryTab() {
     if (statusFilter !== 'all' && !r.lines.some(l => (l.purchase_status || DEFAULT_PURCHASE_STATUS) === statusFilter)) return false;
     if (!needle) return true;
     return [r.pr_no, r.material_description, r.moc,
-      ...r.lines.flatMap(l => [prHistoryProjectLabel(l), l.customer_name])]
+      ...r.lines.flatMap(l => [projectLabel(l), l.customer_name])]
       .some(v => String(v || '').toLowerCase().includes(needle));
   });
 
@@ -774,6 +841,7 @@ export function PrHistoryTab() {
                 <TableHead>Description</TableHead>
                 <TableHead>MOC</TableHead>
                 <TableHead>Projects</TableHead>
+                <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -789,7 +857,7 @@ export function PrHistoryTab() {
                         <span className="text-xs text-muted-foreground">—</span>
                       ) : r.lines.map(l => (
                         <div key={l.bom_item_id} className="flex flex-wrap items-center gap-2 text-xs">
-                          <span className="font-medium">{prHistoryProjectLabel(l)}{l.customer_name ? ` · ${l.customer_name}` : ''}</span>
+                          <span className="font-medium">{projectLabel(l)}{l.customer_name ? ` · ${l.customer_name}` : ''}</span>
                           <span className="text-muted-foreground">{l.qty_text || '—'}</span>
                           <span className="text-muted-foreground">{l.size_spec || '—'}</span>
                           <span className={`shrink-0 rounded-full px-2 py-0.5 font-medium ring-1 ring-inset ${STATUS_TONE[l.purchase_status] || STATUS_TONE[DEFAULT_PURCHASE_STATUS]}`}>
@@ -799,12 +867,23 @@ export function PrHistoryTab() {
                       ))}
                     </div>
                   </TableCell>
+                  <TableCell>
+                    {r.lines.length > 0 && !r.lines.some(l => l.source === 'stock' || l.source === 'sas') && (
+                      <Button size="icon-sm" variant="ghost" title="Edit this PR item" onClick={() => setEditing(r)}>
+                        <PencilIcon className="size-4" />
+                      </Button>
+                    )}
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         )}
       </CardContent>
+      {editing && (
+        <EditPrItemDialog key={editing.pr_item_id} item={editing} prNo={editing.pr_no}
+          onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load(); }} />
+      )}
     </Card>
   );
 }
