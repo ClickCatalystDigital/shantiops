@@ -43,6 +43,7 @@ import { pieceDimsLabel } from '@/components/CutDialog';
 import { pieceKindLabel, groupPiecesByRoot } from '@/components/PieceLineage';
 import ReceiptPicker from '@/components/ReceiptPicker';
 import ReceiveBomItemDialog from '@/components/ReceiveBomItemDialog';
+import { projectLabel } from '@/lib/project-label';
 import { normalizeWords } from '@/lib/match-utils';
 import { pieceWeight } from '@/lib/piece-weight';
 import { todayISO, toISODate } from '@/lib/date';
@@ -2302,7 +2303,7 @@ function ReceiveDeliveryTab({ bomItems, pendingInwardApprovals = [], router }) {
                           </p>
                         )}
                       </div>
-                      <span className="w-40 shrink-0 truncate text-xs text-muted-foreground">{it.project_no}</span>
+                      <span className="w-40 shrink-0 truncate text-xs text-muted-foreground">{projectLabel(it)}</span>
                       <span className="w-24 shrink-0 truncate text-xs text-muted-foreground">{derivePurchaseStage(it)}</span>
                       <span className="w-36 shrink-0 truncate text-xs text-muted-foreground" title={title}>
                         {it.nearest_expected_delivery

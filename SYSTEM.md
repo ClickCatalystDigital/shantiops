@@ -13028,3 +13028,12 @@ New alert kinds, all in Settings → Alerts → Procurement (`lib/notification-c
 - **ProcurementWorkspace** reads `view` / `q` / `project` / `highlight` on every navigation (bell click while already on Procurement works); rows carry `data-entity-code` / `data-entity-codes` for `useEntityHighlight`.
 - **Selection**: a one-line PR group (always true for a no-project line) shows the header once and the quotes straight under it (`SelectionRow compact`); "No project" instead of "1 project". Empty Selection shows "Waiting on supplier quotes" with a Go to Enquiry button. Roster: "+ Add supplier" top right opens a dialog; the bottom add card is gone.
 - Verified: real RFQ quote -> link, page load and soft navigation land highlighted; empty state; add supplier. Not live-tested: the release and PR alerts themselves (count + link code only).
+
+## 5er. Receiving a project-less line (2026-10-05)
+- A PR line raised with no project (sentinel project, `source='custom'`, shown "General") can be received like any other. `ReceiveBomItemDialog` shows a notice ("can't be allocated yet — assign to a project?") with two options: **Yes — assign to a project** (searchable project dropdown) or **No — store it in inventory** (default; also what bulk receive and any caller that sends nothing gets).
+- `POST /api/bom-items/[id]/receive` takes `assign_project_id` (only honoured for a project-less line, project must be real): the line becomes `source='bom'` on that project (`assembly_id` cleared, `po_items.project_id` and `pr_item_projects` updated, same edit as PR History) in the receipt's own transaction, and the quantity requirement is computed for that project.
+- Left project-less, the stock goes to the common pool: pieces get `owner_project_id` NULL and are not reserved on QC approval; scalar stock is credited to `inventory_items.on_hand` on approval (found by catalog link, else exact description — a row is created if none) and not reserved. Before this, scalar custom lines were never credited and piece lines were owned by the sentinel project.
+- Limit: a dimensional project-less line with no catalog link still creates no stock (pieces need an Item Master link).
+- Inward row in Stores now shows "General" instead of "—NON-PROJECT—".
+- Verified live with disposable lines: inventory path (hold stashed, on_hand 5 after approval, no reservation), assign path (line moved to the project), unknown project 404; dialog and dropdown checked in the browser. Test rows removed.
+

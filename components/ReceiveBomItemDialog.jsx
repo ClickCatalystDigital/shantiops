@@ -25,6 +25,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import ReceiptPicker from '@/components/ReceiptPicker';
 import CertPicker from '@/components/CertPicker';
+import SearchableSelect from '@/components/SearchableSelect';
+import { cn } from '@/lib/utils';
+import { InfoIcon, PackageIcon, FolderKanbanIcon, CheckCircle2Icon } from 'lucide-react';
 
 const RECEIVED_FIELD_LABELS = {
   received_heat_no: 'Heat number', received_mtc_no: 'MTC / certificate number',
@@ -65,6 +68,17 @@ export default function ReceiveBomItemDialog({ item, onDone }) {
   const [status, setStatus] = useState(null);
   const [selectedSiblings, setSelectedSiblings] = useState({}); // bom_item_id -> { qty }
   const [lotLabel, setLotLabel] = useState('');
+
+  // A project-less PR line (sentinel project, 'General') can't be allocated to anything. Stores
+  // chooses: stay in inventory (default — receiving never blocks) or assign to a real project now.
+  const noProject = !!item.project_is_system && item.source === 'custom';
+  const [destination, setDestination] = useState('inventory'); // 'inventory' | 'project'
+  const [projects, setProjects] = useState([]);
+  const [assignProjectId, setAssignProjectId] = useState(null);
+  useEffect(() => {
+    if (!open || !noProject || projects.length) return;
+    api('/api/projects').then(r => setProjects(r.projects || [])).catch(() => {});
+  }, [open, noProject]);
 
   const requiredReceivedKeys = Object.entries(REQUIRES_TO_RECEIVED)
     .filter(([flag]) => item[flag])
@@ -136,6 +150,7 @@ export default function ReceiveBomItemDialog({ item, onDone }) {
     if (!receiptId) return showToast('Choose or create a receipt', 'error');
     if (item.requires_mtc && !testCertificateId) return showToast('Pick or add a test certificate first', 'error');
     if (lots.length > 1 && !lotLabel) return showToast('Pick which lot this delivery is', 'error');
+    if (noProject && destination === 'project' && !assignProjectId) return showToast('Search and pick the project, or choose to store it in inventory', 'error');
     for (const sid of Object.keys(selectedSiblings)) {
       const s = selectedSiblings[sid];
       if (!(Number(s.qty) > 0)) return showToast('Enter a valid quantity for every selected sibling item', 'error');
@@ -151,6 +166,7 @@ export default function ReceiveBomItemDialog({ item, onDone }) {
           qty_text: qtyText, receipt: { existing_receipt_id: receiptId },
           test_certificate_id: testCertificateId,
           lot_label: lotLabel || undefined,
+          assign_project_id: noProject && destination === 'project' ? assignProjectId : undefined,
           splits: Object.entries(selectedSiblings).map(([bomItemId, s]) => ({
             bom_item_id: Number(bomItemId), qty: Number(s.qty),
           })),
@@ -158,7 +174,7 @@ export default function ReceiveBomItemDialog({ item, onDone }) {
         },
       });
       showToast(res.fully_received
-        ? 'Marked Received — held pending QC inward review'
+        ? `Marked Received — held pending QC inward review${noProject ? (destination === 'project' ? ' · assigned to the project' : ' · will be stored in inventory') : ''}`
         : `Partial receipt recorded — ${res.received_so_far}${res.required_qty ? ` of ${res.required_qty}` : ''} received so far, held pending QC review`);
       setOpen(false);
       router.refresh();
@@ -184,6 +200,45 @@ export default function ReceiveBomItemDialog({ item, onDone }) {
               <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
                 {[item.make && `Make: ${item.make}`, item.selected_supplier_name && `Supplier: ${item.selected_supplier_name}`, item.po_ref && `PO: ${item.po_ref}`]
                   .filter(Boolean).join(' · ')}
+              </div>
+            )}
+            {noProject && (
+              <div className="rounded-lg border border-amber-300/60 bg-amber-50/60 dark:border-amber-500/30 dark:bg-amber-500/5">
+                <div className="flex items-start gap-2.5 px-3.5 py-3">
+                  <InfoIcon className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                  <div>
+                    <p className="text-sm font-semibold">No project on this item</p>
+                    <p className="text-xs text-muted-foreground">
+                      It was raised without a project, so this delivery can't be allocated yet.
+                      Do you want to assign it to a project?
+                    </p>
+                  </div>
+                </div>
+                <div className="grid gap-2 rounded-b-lg border-t border-amber-300/40 bg-background/60 p-3 dark:border-amber-500/20">
+                  {[
+                    { key: 'project', icon: FolderKanbanIcon, title: 'Yes — assign to a project', hint: 'The line becomes a normal line of that project.' },
+                    { key: 'inventory', icon: PackageIcon, title: 'No — store it in inventory', hint: 'Added to common stock, available to any project.' },
+                  ].map(o => (
+                    <button type="button" key={o.key} onClick={() => setDestination(o.key)}
+                      className={cn('flex items-center gap-3 rounded-md border px-3 py-2 text-left transition-colors',
+                        destination === o.key ? 'border-primary bg-primary/5 ring-1 ring-primary/30' : 'hover:bg-muted/50')}>
+                      <o.icon className="size-4 shrink-0 text-muted-foreground" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-medium">{o.title}</span>
+                        <span className="block text-xs text-muted-foreground">{o.hint}</span>
+                      </span>
+                      {destination === o.key && <CheckCircle2Icon className="size-4 shrink-0 text-primary" />}
+                    </button>
+                  ))}
+                  {destination === 'project' && (
+                    <div className="flex flex-col gap-1 pt-1">
+                      <Label>Project *</Label>
+                      <SearchableSelect value={assignProjectId} onChange={setAssignProjectId}
+                        placeholder="Search by project number or customer…"
+                        options={projects.map(p => ({ value: p.id, label: [p.project_no, p.customer_name].filter(Boolean).join(' — ') }))} />
+                    </div>
+                  )}
+                </div>
               </div>
             )}
             {/* A fresh "New receipt" pick here writes invoice_no through the same POST /api/stock-receipts

@@ -196,6 +196,21 @@ export async function POST(req, { params }) {
     }
   }
 
+  // Project-less line (sentinel project, source='custom', shown "General"): Stores either assigns it
+  // to a real project now (assign_project_id — the line becomes an ordinary project line and the
+  // normal flow applies) or stores it in inventory (the default, also what a caller that sends
+  // nothing gets, so bulk receive keeps working): it stays project-less and the stock lands in the
+  // common pool (lib/bom-receiving.js). Validated before anything is written.
+  const noProject = item.source === 'custom'
+    && !!(await queryOne('SELECT 1 FROM projects WHERE id = ? AND is_system = 1', [item.project_id]));
+  const assignProjectId = noProject && b.assign_project_id ? Number(b.assign_project_id) : null;
+  if (assignProjectId && !(await queryOne('SELECT 1 FROM projects WHERE id = ? AND is_system = 0', [assignProjectId]))) {
+    return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+  }
+
+  // From here on the line behaves as a line of the project it was just given.
+  if (assignProjectId) targets[0].item = { ...item, project_id: assignProjectId, source: 'bom', assembly_id: null };
+
   // Requirement/received-so-far per target, and — for any target whose own project has no child
   // units (self-routing applies, Phase 2) — a required routing confirmation. A master-project item
   // routes per-child later via allocate/route-to instead, so it's exempt here.
@@ -253,6 +268,14 @@ export async function POST(req, { params }) {
             receiptInput.grn_ref.trim(), receiptInput.invoice_no.trim(), user.username],
         });
         receiptId = Number(ins.lastInsertRowid);
+      }
+      if (assignProjectId) {
+        // Same edit PR History makes when a split is given a project (app/api/pr-items/[id]).
+        await tx.execute({ sql: "UPDATE bom_items SET project_id = ?, source = 'bom', assembly_id = NULL WHERE id = ?", args: [assignProjectId, item.id] });
+        await tx.execute({ sql: 'UPDATE po_items SET project_id = ? WHERE bom_item_id = ?', args: [assignProjectId, item.id] });
+        if (item.pr_item_id && !(await tx.execute({ sql: 'SELECT 1 FROM pr_item_projects WHERE pr_item_id = ? AND project_id = ?', args: [item.pr_item_id, assignProjectId] })).rows.length) {
+          await tx.execute({ sql: 'INSERT INTO pr_item_projects (pr_item_id, project_id, qty_text) VALUES (?, ?, ?)', args: [item.pr_item_id, assignProjectId, item.qty_text] });
+        }
       }
       const out = [];
       for (const t of targets) {
