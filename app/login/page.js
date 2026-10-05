@@ -4,7 +4,6 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { api } from '@/lib/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -29,7 +28,6 @@ const FEATURES = [
 import { DEPARTMENTS } from '@/lib/milestones';
 
 export default function Login() {
-  const router = useRouter();
   const [form, setForm] = useState({ username: '', password: '' });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -42,8 +40,9 @@ export default function Login() {
       const { home } = await api('/api/login', { method: 'POST', body: form });
       // ?next= is set by middleware.js; only same-site paths are followed (no open redirect).
       const next = new URLSearchParams(window.location.search).get('next');
-      router.push(next && /^\/(?![\/\\])/.test(next) ? next : home || '/');
-      router.refresh();
+      // Full page load, not router.push: the staff-only company list (app/layout.js head script) only
+      // runs on a real load, so a soft navigation left the company dropdown with just "All companies".
+      window.location.assign(next && /^\/(?![\/\\])/.test(next) ? next : home || '/');
     } catch (err) {
       setError(err.message);
       setBusy(false);

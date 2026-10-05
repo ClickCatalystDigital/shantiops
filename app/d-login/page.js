@@ -4,7 +4,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { api } from '@/lib/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -96,7 +95,6 @@ function DemoGate({ children }) {
 }
 
 function LoginContent() {
-  const router = useRouter();
   const [form, setForm] = useState({ username: '', password: '' });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -108,8 +106,7 @@ function LoginContent() {
     setError('');
     try {
       const { home } = await api('/api/login', { method: 'POST', body: form });
-      router.push(home || '/');
-      router.refresh();
+      window.location.assign(home || '/'); // full load — see app/login/page.js
     } catch (err) {
       setError(err.message);
       setBusy(false);
