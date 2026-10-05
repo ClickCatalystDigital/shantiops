@@ -38,8 +38,9 @@ import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 import SupplierAnalysis from '@/components/SupplierAnalysis';
 import PoDeliveryLotsWorkspace from '@/components/PoDeliveryLotsWorkspace';
 import InboundLink from '@/components/InboundLink';
+import Link from 'next/link';
 import TraceabilityBadges from '@/components/TraceabilityBadges';
-import { SearchIcon, GitCompareIcon, FileTextIcon, ListChecksIcon, Building2Icon, ShoppingCartIcon, BarChart3Icon, LayoutDashboardIcon, Undo2Icon, PlusIcon, ReceiptIcon, TrashIcon, DownloadIcon, CalendarClockIcon, AlertTriangleIcon } from 'lucide-react';
+import { SearchIcon, GitCompareIcon, FileTextIcon, ListChecksIcon, Building2Icon, ShoppingCartIcon, BarChart3Icon, LayoutDashboardIcon, Undo2Icon, PlusIcon, ReceiptIcon, TrashIcon, DownloadIcon, CalendarClockIcon, AlertTriangleIcon, ScrollTextIcon, PencilIcon } from 'lucide-react';
 import AddCustomItemDialog from './AddCustomItemDialog';
 import OverdueDeliveryList from './OverdueDeliveryList';
 
@@ -175,8 +176,9 @@ function AddQuoteDialog({ item, itemIds, label, suppliers, router, onClose }) {
 
 // RFQ suppliers for one item's expanded row (Phase 5.1) — lazy-fetched only once expanded, since
 // the summary count alone (rfqSummary) is enough for the collapsed row.
-function RfqSuppliersList({ rfqId, router }) {
+function RfqSuppliersList({ rfqId, router, suppliers = [] }) {
   const [detail, setDetail] = useState(null);
+  const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(null);
 
   useEffect(() => {
@@ -211,8 +213,11 @@ function RfqSuppliersList({ rfqId, router }) {
           {detail.rfq_no} — invited suppliers{cancelled ? ' (cancelled)' : ''}
         </p>
         {!cancelled && (
-          <button type="button" className="text-xs text-destructive hover:underline" disabled={busy === 'cancel'}
-            onClick={cancelRfq}>Cancel RFQ</button>
+          <span className="flex items-center gap-3">
+            <button type="button" className="text-xs text-primary hover:underline" onClick={() => setEditing(true)}>Edit / send</button>
+            <button type="button" className="text-xs text-destructive hover:underline" disabled={busy === 'cancel'}
+              onClick={cancelRfq}>Cancel RFQ</button>
+          </span>
         )}
       </div>
       {detail.suppliers.map(s => (
@@ -233,6 +238,10 @@ function RfqSuppliersList({ rfqId, router }) {
           </span>
         </div>
       ))}
+      {editing && (
+        <CreateRfqDialog existingRfq={detail} suppliers={suppliers} router={router} onClose={() => setEditing(false)}
+          onCreated={() => { setEditing(false); api(`/api/rfqs/${rfqId}`).then(setDetail).catch(() => {}); router.refresh(); }} />
+      )}
     </div>
   );
 }
@@ -289,7 +298,7 @@ function EnquiryRow({ it, quotes, suppliers, router, rfqSummary, selected, onTog
             </div>
           ))}
           <Button size="sm" variant="outline" className="w-fit" onClick={() => setDialogOpen(true)}>+ Add quote</Button>
-          {rfqSummary && <RfqSuppliersList rfqId={rfqSummary.rfq_id} router={router} />}
+          {rfqSummary && <RfqSuppliersList rfqId={rfqSummary.rfq_id} router={router} suppliers={suppliers} />}
         </div>
       )}
       {dialogOpen && (
@@ -446,7 +455,7 @@ function PrGroupEnquiryRow({ group, quotesByItem, suppliers, rfqSummaryByItem, r
                     <Badge variant="outline" className="w-fit">
                       {rfqSummaryByItem[c.id].rfq_no} · {rfqSummaryByItem[c.id].responded}/{rfqSummaryByItem[c.id].invited} responded
                     </Badge>
-                    <RfqSuppliersList rfqId={rfqSummaryByItem[c.id].rfq_id} router={router} />
+                    <RfqSuppliersList rfqId={rfqSummaryByItem[c.id].rfq_id} router={router} suppliers={suppliers} />
                   </>
                 )}
               </div>
@@ -517,7 +526,7 @@ function Enquiry({ items, allItems, sourceView, quotesByItem, suppliers, rfqSumm
   const groupedIds = new Set(itemGroups.flatMap(g => g.constituents.map(c => c.id)));
   const singlePmb = shownPmb ? shownPmb.filter(it => !groupedIds.has(it.id)) : null;
   const shownCustom = isCustom
-    ? items.filter(it => it.source === 'custom' && !it.selected_quote_id && !OUT_OF_PIPELINE.includes(it.purchase_status))
+    ? items.filter(it => it.source === 'custom' && !it.pr_item_id && !it.selected_quote_id && !OUT_OF_PIPELINE.includes(it.purchase_status))
       .filter(it => !needle || it.material_description.toLowerCase().includes(needle))
     : null;
 
@@ -777,7 +786,7 @@ function Selection({ items, allItems, sourceView, quotesByItem, router, q, categ
     );
   }
   if (sourceView === 'custom') {
-    const shownCustom = items.filter(it => it.source === 'custom' && selectionEligible(it, quotesByItem))
+    const shownCustom = items.filter(it => it.source === 'custom' && !it.pr_item_id && selectionEligible(it, quotesByItem))
       .filter(it => !needle || it.material_description.toLowerCase().includes(needle));
     return (
       <Card>
@@ -1602,15 +1611,12 @@ function State({ items, router, q, statusFilter }) {
 
 const SUPPLIER_FIELDS = [
   ['name', 'Name'], ['gst_no', 'GST No'], ['contact_person', 'Contact person'],
-  ['phone', 'Phone'], ['email', 'Email'],
+  ['phone', 'Phone'], ['email', 'Email'], ['address', 'Address'], ['default_payment_terms', 'Default payment terms'],
 ];
 
-function SupplierEditForm({ supplier, onDone }) {
+function SupplierEditDialog({ supplier, onClose }) {
   const router = useRouter();
-  const [form, setForm] = useState({
-    name: supplier.name || '', gst_no: supplier.gst_no || '', contact_person: supplier.contact_person || '',
-    phone: supplier.phone || '', email: supplier.email || '',
-  });
+  const [form, setForm] = useState(Object.fromEntries(SUPPLIER_FIELDS.map(([k]) => [k, supplier[k] || ''])));
   const [busy, setBusy] = useState(false);
 
   async function save() {
@@ -1618,32 +1624,29 @@ function SupplierEditForm({ supplier, onDone }) {
     setBusy(true);
     try {
       await api(`/api/suppliers/${supplier.id}`, { method: 'PATCH', body: form });
-      showToast('Supplier updated'); router.refresh(); onDone();
-    } catch (err) { showToast(err.message, 'error'); }
-    setBusy(false);
-  }
-  async function deactivate() {
-    if (!window.confirm(`Deactivate ${supplier.name}? They'll drop off this list.`)) return;
-    setBusy(true);
-    try {
-      await api(`/api/suppliers/${supplier.id}`, { method: 'PATCH', body: { active: false } });
-      showToast('Supplier deactivated'); router.refresh(); onDone();
+      showToast('Supplier updated'); router.refresh(); onClose();
     } catch (err) { showToast(err.message, 'error'); }
     setBusy(false);
   }
 
   return (
-    <div className="grid grid-cols-2 gap-2">
-      {SUPPLIER_FIELDS.map(([key, label]) => (
-        <Input key={key} placeholder={label} value={form[key]} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
-          className={key === 'email' ? 'col-span-2 h-8 text-xs' : 'h-8 text-xs'} />
-      ))}
-      <div className="col-span-2 flex gap-2">
-        <Button size="sm" disabled={busy} onClick={save}>Save</Button>
-        <Button size="sm" variant="outline" disabled={busy} onClick={onDone}>Cancel</Button>
-        <Button size="sm" variant="outline" disabled={busy} className="ml-auto text-destructive" onClick={deactivate}>Deactivate</Button>
-      </div>
-    </div>
+    <Dialog open onOpenChange={o => { if (!o) onClose(); }}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader><DialogTitle>Edit supplier</DialogTitle></DialogHeader>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {SUPPLIER_FIELDS.map(([key, label]) => (
+            <div key={key} className={`grid gap-1.5 ${['name', 'address', 'email'].includes(key) ? 'sm:col-span-2' : ''}`}>
+              <Label>{label}</Label>
+              <Input value={form[key]} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))} />
+            </div>
+          ))}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" disabled={busy} onClick={onClose}>Cancel</Button>
+          <Button disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save'}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -1654,7 +1657,17 @@ function Suppliers({ suppliers, quotes, q: search }) {
   const [form, setForm] = useState({ name: '', gst_no: '', contact_person: '', phone: '', email: '' });
   const [busy, setBusy] = useState(false);
   const needle = search.trim().toLowerCase();
-  const shownSuppliers = suppliers.filter(s => !needle || s.name.toLowerCase().includes(needle));
+  const shownSuppliers = suppliers.filter(s => !needle || [s.name, s.gst_no, s.contact_person, s.phone].some(v => String(v || '').toLowerCase().includes(needle)));
+  const editingSupplier = suppliers.find(s => s.id === editing);
+
+  async function remove(s) {
+    if (!window.confirm(`Delete ${s.name}? If they have quotes, RFQs or orders they are kept for history and just removed from this list.`)) return;
+    try {
+      const r = await api(`/api/suppliers/${s.id}`, { method: 'DELETE' });
+      showToast(r.deleted ? 'Supplier deleted' : 'Supplier has history, so it was removed from the list instead');
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+  }
 
   async function add(e) {
     e.preventDefault();
@@ -1679,19 +1692,21 @@ function Suppliers({ suppliers, quotes, q: search }) {
             const history = quotes.filter(q => q.supplier_id === s.id);
             return (
               <div key={s.id} className="py-2">
-                <button className="flex w-full items-center justify-between text-left text-sm" onClick={() => setExpanded(expanded === s.id ? null : s.id)}>
-                  <span className="font-medium">{s.name}</span>
-                  <span className="text-xs text-muted-foreground">{history.length} quote{history.length !== 1 ? 's' : ''}</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  <button className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left text-sm" onClick={() => setExpanded(expanded === s.id ? null : s.id)}>
+                    <span className="min-w-0 truncate font-medium">{s.name}</span>
+                    <span className="shrink-0 text-xs text-muted-foreground">{history.length} quote{history.length !== 1 ? 's' : ''}</span>
+                  </button>
+                  <Button size="icon" variant="ghost" className="size-7" title="Edit" onClick={() => setEditing(s.id)}><PencilIcon className="size-3.5" /></Button>
+                  <Button size="icon" variant="ghost" className="size-7 text-destructive" title="Delete" onClick={() => remove(s)}><TrashIcon className="size-3.5" /></Button>
+                </div>
                 {expanded === s.id && (
                   <div className="mt-2 flex flex-col gap-1.5 bg-muted/30 p-2 text-xs">
-                    {editing === s.id ? (
-                      <SupplierEditForm supplier={s} onDone={() => setEditing(null)} />
-                    ) : (
+                    {(
                       <>
-                        <div className="flex items-center justify-between">
-                          <span>{s.contact_person && `${s.contact_person} · `}{s.phone}{s.email ? ` · ${s.email}` : ''}{s.gst_no ? ` · GST ${s.gst_no}` : ''}</span>
-                          <button type="button" className="shrink-0 text-primary hover:underline" onClick={() => setEditing(s.id)}>Edit</button>
+                        <div>
+                          {s.contact_person && `${s.contact_person} · `}{s.phone}{s.email ? ` · ${s.email}` : ''}{s.gst_no ? ` · GST ${s.gst_no}` : ''}
+                          {s.address && <div className="text-muted-foreground">{s.address}</div>}
                         </div>
                         {history.length === 0 && <p className="text-muted-foreground">No quotes logged yet.</p>}
                         {history.map(q => (
@@ -1709,6 +1724,7 @@ function Suppliers({ suppliers, quotes, q: search }) {
           })}
         </CardContent>
       </Card>
+      {editingSupplier && <SupplierEditDialog supplier={editingSupplier} onClose={() => setEditing(null)} />}
 
       <Card>
         <CardHeader>
@@ -2017,7 +2033,12 @@ export default function ProcurementWorkspace({ sourcingItems, suppliers, purchas
           </Select>
         )}
         {tab === 'orders' && (
-          <div className="ml-auto flex gap-1 rounded-md border p-0.5">
+          <Button size="sm" variant="outline" className="ml-auto h-8 text-xs" asChild>
+            <Link href="/procurement/terms"><ScrollTextIcon />Terms &amp; Conditions</Link>
+          </Button>
+        )}
+        {tab === 'orders' && (
+          <div className="flex gap-1 rounded-md border p-0.5">
             <Button size="sm" variant={poView === 'active' ? 'secondary' : 'ghost'} className="h-7 px-2.5 text-xs"
               onClick={() => setPoView('active')}>Active ({activeOrderCount})</Button>
             <Button size="sm" variant={poView === 'fulfilled' ? 'secondary' : 'ghost'} className="h-7 px-2.5 text-xs"

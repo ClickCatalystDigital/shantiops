@@ -8,6 +8,7 @@ import { execute, queryAll, nextCounterValue } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { getRfqDetail } from '@/lib/data';
+import { COMPANY_NAMES } from '@/lib/company-profiles';
 import { audit } from '@/lib/usb';
 
 const TOKEN_TTL_MS = 14 * 24 * 60 * 60 * 1000; // D12
@@ -24,14 +25,16 @@ export async function POST(req) {
   const supplierIds = Array.isArray(b.supplier_ids) ? b.supplier_ids.map(Number).filter(Boolean) : [];
   if (!bomItemIds.length) return NextResponse.json({ error: 'Select at least one item' }, { status: 400 });
   if (!supplierIds.length) return NextResponse.json({ error: 'Pick at least one supplier' }, { status: 400 });
+  // Only used when none of the items has a real project (a project's own company always wins, getRfqDetail).
+  const company = COMPANY_NAMES.includes(b.company) ? b.company : null;
 
   // No client precedent for RFQ numbering (unlike po_no's real NNN/SB/YYYY-YY continuation) — a
   // plain incrementing id is enough.
   const seq = await nextCounterValue('rfq_no', 0);
   const rfqNo = `RFQ-${seq}`;
   const { lastId } = await execute(
-    'INSERT INTO rfqs (rfq_no, status, created_by) VALUES (?, ?, ?)',
-    [rfqNo, 'draft', user.username]
+    'INSERT INTO rfqs (rfq_no, status, created_by, company) VALUES (?, ?, ?, ?)',
+    [rfqNo, 'draft', user.username, company]
   );
   const rfqId = Number(lastId);
 

@@ -12,7 +12,8 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Textarea } from './ui/textarea';
 import { Badge } from './ui/badge';
-import { defaultCompany } from '@/lib/company-profiles';
+import { COMPANY_NAMES, defaultCompany } from '@/lib/company-profiles';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 
 // India-only assumption (this business), same as the enroll-code precedent elsewhere in the app —
 // a 10-digit local number gets the country code prefixed; anything else (already has one, or a
@@ -46,7 +47,7 @@ Regards,
 Procurement — ${company}`;
 }
 
-function SupplierDraftCard({ supplier, rfqId, rfqNo, company, items, onMarkSent, onEmailed }) {
+function SupplierDraftCard({ supplier, rfqId, rfqNo, company, items, onMarkSent, onEmailed, onRemove }) {
   const portalUrl = `${window.location.origin}/rfq/${supplier.token}`;
   const message = composeMessage({ rfqNo, supplierName: supplier.supplier_name, items, portalUrl, company });
   const digits = waDigits(supplier.phone);
@@ -68,7 +69,12 @@ function SupplierDraftCard({ supplier, rfqId, rfqNo, company, items, onMarkSent,
     <div className="flex flex-col gap-3 rounded-lg border p-4 text-sm">
       <div className="flex items-center justify-between">
         <span className="font-medium">{supplier.supplier_name}</span>
-        <span className="text-xs text-muted-foreground">{supplier.phone || 'no phone'} · {supplier.email || 'no email'}</span>
+        <span className="flex items-center gap-2 text-xs text-muted-foreground">
+          {supplier.phone || 'no phone'} · {supplier.email || 'no email'}
+          {supplier.responded_at
+            ? <Badge variant="outline" className="text-success">Quoted</Badge>
+            : onRemove && <button type="button" className="text-destructive hover:underline" onClick={() => onRemove(supplier.supplier_id)}>Remove</button>}
+        </span>
       </div>
       <details className="group rounded-md bg-muted/30 text-xs text-muted-foreground">
         <summary className="cursor-pointer select-none px-3 py-1.5 hover:text-foreground">Message preview</summary>
@@ -104,15 +110,52 @@ function SupplierDraftCard({ supplier, rfqId, rfqNo, company, items, onMarkSent,
   );
 }
 
-export default function CreateRfqDialog({ items, suppliers, router, onClose, onCreated }) {
-  const [step, setStep] = useState('suppliers'); // suppliers -> preview
+// `existingRfq` (full GET /api/rfqs/[id] detail) opens an already-created RFQ for editing: send links
+// again, add suppliers, remove a supplier who hasn't quoted, remove an item.
+export default function CreateRfqDialog({ items, suppliers, router, onClose, onCreated, existingRfq }) {
+  const [step, setStep] = useState(existingRfq ? 'preview' : 'suppliers'); // suppliers -> preview
   const [supplierSearch, setSupplierSearch] = useState('');
   const [selectedSupplierIds, setSelectedSupplierIds] = useState(new Set());
   const [busy, setBusy] = useState(false);
-  const [rfq, setRfq] = useState(null);
+  const [rfq, setRfq] = useState(existingRfq || null);
+  const adding = !!rfq; // suppliers step reached from an existing RFQ = add suppliers to it
+  const listItems = rfq ? rfq.items.map(it => ({ ...it, id: it.bom_item_id })) : items;
+  // No item has a real project: whose RFQ this is (letterhead, mailbox, message) is picked here.
+  // With a project, that project's company is used and this isn't shown.
+  const noProject = rfq ? !rfq.has_project : items.every(it => it.project_is_system);
+  const [company, setCompany] = useState(defaultCompany());
+  const companyPicker = (value, onChange) => noProject && COMPANY_NAMES.length > 1 && (
+    <div className="flex items-center gap-2 text-sm">
+      <span className="text-muted-foreground">Company (no project selected)</span>
+      <Select value={value} onValueChange={onChange} disabled={busy}>
+        <SelectTrigger className="h-8 w-56"><SelectValue /></SelectTrigger>
+        <SelectContent>{COMPANY_NAMES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+      </Select>
+    </div>
+  );
 
   const needle = supplierSearch.trim().toLowerCase();
-  const shownSuppliers = suppliers.filter(s => !needle || s.name.toLowerCase().includes(needle));
+  const invited = new Set((rfq?.suppliers || []).map(s => s.supplier_id));
+  const shownSuppliers = suppliers.filter(s => !invited.has(s.id) && (!needle || s.name.toLowerCase().includes(needle)));
+
+  async function edit(body, msg) {
+    setBusy(true);
+    try { setRfq(await api(`/api/rfqs/${rfq.id}`, { method: 'PATCH', body })); if (msg) showToast(msg); return true; }
+    catch (err) { showToast(err.message, 'error'); return false; }
+    finally { setBusy(false); }
+  }
+  async function addSuppliers() {
+    if (!selectedSupplierIds.size) return showToast('Pick at least one supplier', 'error');
+    if (await edit({ action: 'add_suppliers', supplier_ids: [...selectedSupplierIds] }, 'Suppliers added')) {
+      setSelectedSupplierIds(new Set()); setStep('preview');
+    }
+  }
+  function removeSupplier(id) {
+    if (confirm('Remove this supplier from the RFQ? Their link will stop working.')) edit({ action: 'remove_supplier', supplier_id: id }, 'Supplier removed');
+  }
+  function removeItem(id) {
+    if (confirm('Remove this item from the RFQ? Quotes already received for it are kept.')) edit({ action: 'remove_item', bom_item_id: id }, 'Item removed');
+  }
 
   function toggleSupplier(id) {
     setSelectedSupplierIds(s => { const next = new Set(s); next.has(id) ? next.delete(id) : next.add(id); return next; });
@@ -124,7 +167,7 @@ export default function CreateRfqDialog({ items, suppliers, router, onClose, onC
     try {
       const detail = await api('/api/rfqs', {
         method: 'POST',
-        body: { bom_item_ids: items.map(it => it.id), supplier_ids: [...selectedSupplierIds] },
+        body: { bom_item_ids: items.map(it => it.id), supplier_ids: [...selectedSupplierIds], company: noProject ? company : undefined },
       });
       setRfq(detail);
       setStep('preview');
@@ -141,18 +184,18 @@ export default function CreateRfqDialog({ items, suppliers, router, onClose, onC
   }
 
   return (
-    <Dialog open onOpenChange={o => { if (!o) (step === 'preview' ? onCreated() : onClose()); }}>
+    <Dialog open onOpenChange={o => { if (!o) (rfq ? onCreated() : onClose()); }}>
       <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-4xl">
         {step === 'suppliers' && (
           <>
             <DialogHeader>
-              <DialogTitle>Create RFQ — {items.length} item{items.length !== 1 ? 's' : ''}</DialogTitle>
+              <DialogTitle>{adding ? `${rfq.rfq_no} — add suppliers` : `Create RFQ — ${items.length} item${items.length !== 1 ? 's' : ''}`}</DialogTitle>
             </DialogHeader>
             <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]">
               <div className="flex flex-col gap-2">
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Items</p>
                 <ul className="max-h-80 divide-y overflow-y-auto rounded-lg border bg-muted/20 text-sm">
-                  {items.map(it => (
+                  {listItems.map(it => (
                     <li key={it.id} className="flex items-start justify-between gap-2 px-3 py-2">
                       <span className="min-w-0">{it.material_description}</span>
                       <span className="shrink-0 rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground">{it.project_no}</span>
@@ -175,11 +218,14 @@ export default function CreateRfqDialog({ items, suppliers, router, onClose, onC
                 </div>
               </div>
             </div>
+            {!adding && companyPicker(company, setCompany)}
             <DialogFooter className="items-center sm:justify-between">
               <span className="text-xs text-muted-foreground">{selectedSupplierIds.size} supplier{selectedSupplierIds.size === 1 ? '' : 's'} selected</span>
               <div className="flex gap-2">
-              <Button variant="outline" onClick={onClose}>Cancel</Button>
-              <Button disabled={busy} onClick={create}>{busy ? 'Creating…' : 'Create RFQ'}</Button>
+              <Button variant="outline" onClick={adding ? () => setStep('preview') : onClose}>{adding ? 'Back' : 'Cancel'}</Button>
+              {adding
+                ? <Button disabled={busy} onClick={addSuppliers}>{busy ? 'Adding…' : 'Add suppliers'}</Button>
+                : <Button disabled={busy} onClick={create}>{busy ? 'Creating…' : 'Create RFQ'}</Button>}
               </div>
             </DialogFooter>
           </>
@@ -189,13 +235,26 @@ export default function CreateRfqDialog({ items, suppliers, router, onClose, onC
             <DialogHeader>
               <DialogTitle>{rfq.rfq_no} — review & send</DialogTitle>
             </DialogHeader>
+            {companyPicker(rfq.company, c => edit({ action: 'set_company', company: c }, 'Company changed'))}
+            <ul className="divide-y rounded-lg border bg-muted/20 text-sm">
+              {rfq.items.map(it => (
+                <li key={it.bom_item_id} className="flex items-center justify-between gap-2 px-3 py-1.5">
+                  <span className="min-w-0">{it.material_description}{it.qty_text ? ` — ${it.qty_text}` : ''}</span>
+                  {rfq.items.length > 1 && (
+                    <button type="button" disabled={busy} className="shrink-0 text-xs text-destructive hover:underline" onClick={() => removeItem(it.bom_item_id)}>Remove</button>
+                  )}
+                </li>
+              ))}
+            </ul>
             <div className="grid gap-3 md:grid-cols-2">
               {rfq.suppliers.map(s => (
                 <SupplierDraftCard key={s.id} supplier={s} rfqId={rfq.id} rfqNo={rfq.rfq_no} company={rfq.company} items={rfq.items} onMarkSent={markSent}
+                  onRemove={rfq.suppliers.length > 1 ? removeSupplier : null}
                   onEmailed={id => setRfq(r => ({ ...r, suppliers: r.suppliers.map(x => x.supplier_id === id ? { ...x, sent_at: new Date().toISOString() } : x) }))} />
               ))}
             </div>
-            <DialogFooter>
+            <DialogFooter className="items-center sm:justify-between">
+              <Button variant="outline" disabled={busy} onClick={() => setStep('suppliers')}>+ Add suppliers</Button>
               <Button onClick={onCreated}>Done</Button>
             </DialogFooter>
           </>

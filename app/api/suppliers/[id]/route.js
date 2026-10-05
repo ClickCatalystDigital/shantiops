@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { execute, queryOne } from '@/lib/db';
+import { execute, queryOne, queryAll } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
@@ -39,4 +39,30 @@ export async function PATCH(req, { params }) {
   }
   await audit('supplier_edit', { actor: user.username, detail: `supplier ${params.id}: ${Object.keys(b).join(',')}` });
   return NextResponse.json({ ok: true });
+}
+
+// Delete a supplier. Never used anywhere (no quote, RFQ, PO, bill…) = removed for good. Used = kept
+// for history and deactivated instead (it leaves the roster and every picker). The tables that point
+// at suppliers are read from the live schema, so a new one is covered without touching this file.
+export async function DELETE(req, { params }) {
+  const user = await getFreshSessionUser();
+  const denied = requireDepartment(user, 'Procurement') || await requireAction(user, 'Procurement', 'procurement.supplier.deactivate');
+  if (denied) return denied;
+  const supplier = await queryOne('SELECT * FROM suppliers WHERE id = ?', [params.id]);
+  if (!supplier) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
+  const refs = await queryAll(
+    `SELECT m.name AS tbl, f."from" AS col FROM sqlite_master m JOIN pragma_foreign_key_list(m.name) f
+      WHERE m.type = 'table' AND f."table" = 'suppliers'`);
+  let used = false;
+  for (const r of refs) {
+    if (await queryOne(`SELECT 1 FROM "${r.tbl}" WHERE "${r.col}" = ? LIMIT 1`, [supplier.id])) { used = true; break; }
+  }
+  if (!used) {
+    try { await execute('DELETE FROM suppliers WHERE id = ?', [supplier.id]); }
+    catch (e) { if (!String(e.message).includes('FOREIGN KEY')) throw e; used = true; } // raced with a new reference
+  }
+  if (used) await execute('UPDATE suppliers SET active = 0 WHERE id = ?', [supplier.id]);
+  await audit(used ? 'supplier_deactivated' : 'supplier_deleted', { actor: user.username, detail: `supplier ${supplier.id}: ${supplier.name}` });
+  return NextResponse.json({ ok: true, deleted: !used });
 }

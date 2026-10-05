@@ -5,6 +5,7 @@ import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { getRfqDetail } from '@/lib/data';
+import { COMPANY_NAMES } from '@/lib/company-profiles';
 import { audit } from '@/lib/usb';
 
 const TOKEN_TTL_MS = 14 * 24 * 60 * 60 * 1000;
@@ -46,6 +47,46 @@ export async function PATCH(req, { params }) {
     // entirely instead of rejecting (caught live: the token stayed usable after "cancelling" it).
     await execute('UPDATE rfq_suppliers SET token_expires = 1 WHERE rfq_id = ? AND responded_at IS NULL', [params.id]);
     await audit('rfq_cancelled', { actor: user.username, detail: `rfq ${params.id}` });
+    return NextResponse.json(await getRfqDetail(params.id));
+  }
+
+  // Editing after creation: add suppliers, drop a supplier who hasn't quoted, drop an item. A cancelled
+  // RFQ can't be edited. Quotes already submitted are never touched (they live in supplier_quotes).
+  if (['add_suppliers', 'remove_supplier', 'remove_item', 'set_company'].includes(b.action)) {
+    const rfq = await queryOne('SELECT * FROM rfqs WHERE id = ?', [params.id]);
+    if (!rfq) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    if (rfq.status === 'closed') return NextResponse.json({ error: 'This RFQ is cancelled' }, { status: 400 });
+    if (b.action === 'set_company') {
+      if (!COMPANY_NAMES.includes(b.company)) return NextResponse.json({ error: 'Unknown company' }, { status: 400 });
+      await execute('UPDATE rfqs SET company = ? WHERE id = ?', [b.company, params.id]);
+      await audit('rfq_edited', { actor: user.username, detail: `rfq ${params.id}: company ${b.company}` });
+    } else if (b.action === 'add_suppliers') {
+      const ids = (Array.isArray(b.supplier_ids) ? b.supplier_ids : []).map(Number).filter(Boolean);
+      if (!ids.length) return NextResponse.json({ error: 'Pick at least one supplier' }, { status: 400 });
+      let added = 0;
+      for (const sid of ids) {
+        if (await queryOne('SELECT 1 FROM rfq_suppliers WHERE rfq_id = ? AND supplier_id = ?', [params.id, sid])) continue;
+        if (!await queryOne('SELECT 1 FROM suppliers WHERE id = ?', [sid])) continue;
+        await execute('INSERT INTO rfq_suppliers (rfq_id, supplier_id, token, token_expires) VALUES (?, ?, ?, ?)',
+          [params.id, sid, crypto.randomBytes(24).toString('hex'), Date.now() + TOKEN_TTL_MS]);
+        added++;
+      }
+      await audit('rfq_edited', { actor: user.username, detail: `rfq ${params.id}: +${added} supplier(s)` });
+    } else if (b.action === 'remove_supplier') {
+      const row = await queryOne('SELECT * FROM rfq_suppliers WHERE rfq_id = ? AND supplier_id = ?', [params.id, b.supplier_id]);
+      if (!row) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+      if (row.responded_at) return NextResponse.json({ error: 'This supplier has already quoted' }, { status: 409 });
+      const { n } = await queryOne('SELECT COUNT(*) AS n FROM rfq_suppliers WHERE rfq_id = ?', [params.id]);
+      if (n <= 1) return NextResponse.json({ error: 'An RFQ needs at least one supplier — cancel it instead' }, { status: 400 });
+      await execute('DELETE FROM rfq_suppliers WHERE id = ?', [row.id]);
+      await audit('rfq_edited', { actor: user.username, detail: `rfq ${params.id}: removed supplier ${b.supplier_id}` });
+    } else {
+      const { n } = await queryOne('SELECT COUNT(*) AS n FROM rfq_items WHERE rfq_id = ?', [params.id]);
+      if (n <= 1) return NextResponse.json({ error: 'An RFQ needs at least one item — cancel it instead' }, { status: 400 });
+      const r = await execute('DELETE FROM rfq_items WHERE rfq_id = ? AND bom_item_id = ?', [params.id, Number(b.bom_item_id)]);
+      if (!r.changes) return NextResponse.json({ error: 'Item not on this RFQ' }, { status: 404 });
+      await audit('rfq_edited', { actor: user.username, detail: `rfq ${params.id}: removed item ${b.bom_item_id}` });
+    }
     return NextResponse.json(await getRfqDetail(params.id));
   }
 
