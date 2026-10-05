@@ -244,5 +244,17 @@ export async function POST(req) {
       });
     } catch (err) { /* notification is best-effort */ }
   }
+  // Lines that went straight into Procurement's Enquiry (not held for Stores review): tell Procurement.
+  if (bomItemIds.length) {
+    try {
+      const { n } = await queryOne(
+        `SELECT COUNT(*) AS n FROM bom_items WHERE id IN (${bomItemIds.map(() => '?').join(',')})
+            AND pending_review = 0 AND purchase_status = 'Enquiry'`, bomItemIds);
+      if (n) await notifyDepartment('Procurement', {
+        kind: 'pr_waiting', title: `${prNo} waiting in Enquiry`,
+        body: `${n} line${n !== 1 ? 's' : ''} from ${raisedByDept} to source.`, dedupe_key: `pr_waiting:${prNo}`,
+      });
+    } catch (err) { /* notification is best-effort */ }
+  }
   return NextResponse.json({ pr_no: prNo, bom_item_ids: bomItemIds });
 }

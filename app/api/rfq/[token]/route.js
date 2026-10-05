@@ -3,7 +3,8 @@
 // POST /api/register. The token itself is the auth; every write re-validates it (and its expiry)
 // server-side, never trusting that the page loaded before expiry.
 import { NextResponse } from 'next/server';
-import { execute } from '@/lib/db';
+import { execute, queryOne } from '@/lib/db';
+import { notifyUser, notifyDepartment } from '@/lib/notify';
 import { getRfqByToken } from '@/lib/data';
 import { advancePurchaseStatus } from '@/lib/procurement';
 import { audit } from '@/lib/usb';
@@ -50,5 +51,17 @@ export async function POST(req, { params }) {
 
   await execute('UPDATE rfq_suppliers SET responded_at = CURRENT_TIMESTAMP WHERE id = ?', [rs.id]);
   await audit('rfq_quote_submitted', { actor: `supplier:${rs.supplier_id}`, detail: `rfq ${rs.rfq_id}: ${ids.length} item(s)` });
+  // Tell whoever created the RFQ; if that login is gone, the whole Procurement team.
+  try {
+    const note = {
+      kind: 'rfq_quote_received',
+      title: `Quote received: ${rs.supplier_name} on ${rs.rfq_no}`,
+      body: `${ids.length} of ${rs.items.length} item${rs.items.length !== 1 ? 's' : ''} priced. Compare in Procurement → Selection.`,
+      dedupe_key: `rfq_quote:${rs.id}:${ids[0]}`, // a resend + second reply alerts again
+    };
+    const creator = await queryOne(
+      `SELECT u.id FROM rfqs r JOIN users u ON u.username = r.created_by AND u.active = 1 WHERE r.id = ?`, [rs.rfq_id]);
+    if (creator) await notifyUser(creator.id, note); else await notifyDepartment('Procurement', note);
+  } catch { /* notification is best-effort */ }
   return NextResponse.json({ ok: true, ids });
 }

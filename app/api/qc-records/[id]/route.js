@@ -64,7 +64,7 @@ export async function PATCH(req, { params }) {
       const pno = proj?.project_no || '';
       const dept = record.bom_item_id ? 'Procurement' : 'Production';
       await notifyDepartment(dept, {
-        kind: 'qc_fail', title: `QC FAILED: ${testType} — ${pno}`,
+        kind: dept === 'Procurement' ? 'material_rejected' : 'qc_fail', title: `QC FAILED: ${testType} — ${pno}`,
         body: record.bom_item_id ? 'Incoming inspection failed — material needs replacement.'
                                  : 'Inspection failed — raise an NCR.',
         dedupe_key: `qc_fail:${record.id}`,

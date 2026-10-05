@@ -57,6 +57,13 @@ export async function POST(req, { params }) {
       title: b.decision === 'approved' ? 'Material approved — now usable stock' : 'Material rejected on inward review',
       body: reason, project_id: approval.project_id, dedupe_key: `inward_approval_decided:${approval.id}`,
     });
+    // Rejected material has to be replaced or returned to the supplier: Procurement needs to know too.
+    if (b.decision !== 'approved') {
+      await notifyDepartment('Procurement', {
+        kind: 'material_rejected', title: 'Material rejected on inward review', body: reason,
+        project_id: approval.project_id, dedupe_key: `material_rejected:inward:${approval.id}`,
+      });
+    }
   } catch (err) { /* notification is best-effort */ }
 
   return NextResponse.json({ ok: true, status: b.decision });
