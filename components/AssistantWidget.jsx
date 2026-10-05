@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Button } from '@/components/ui/button';
+import { linkify } from '@/lib/assistant-help.mjs';
 import { MessageCircleQuestionIcon, XIcon, SendIcon, RotateCcwIcon } from 'lucide-react';
 
 export default function AssistantWidget({ showRoute = false }) {
@@ -89,7 +90,11 @@ export default function AssistantWidget({ showRoute = false }) {
           {messages.map((m, i) => (
             <div key={i} className={m.role === 'user' ? 'self-end' : 'self-start'} style={{ maxWidth: '90%' }}>
               <div className={`whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2.5 text-[15px] leading-relaxed md:px-3 md:py-2 md:text-sm ${m.role === 'user' ? 'bg-primary text-primary-foreground' : m.error ? 'bg-destructive/10 text-destructive' : 'bg-muted'}`}>
-                {m.content.replace(/\*\*/g, '') || (busy && i === messages.length - 1 ? 'Thinking…' : '')}
+                {m.role === 'user' ? m.content
+                  : !m.content ? (busy && i === messages.length - 1 ? 'Thinking…' : '')
+                  : linkify(m.content.replace(/\*\*/g, '')).map((part, j) => part.href
+                    ? <Link key={j} href={part.href} className="font-medium text-primary underline underline-offset-2" onClick={() => { if (window.matchMedia('(max-width: 767px)').matches) setOpen(false); }}>{part.text}</Link>
+                    : part.text)}
               </div>
               {m.link && <a href={m.link} target="_blank" rel="noreferrer" className="mt-1 inline-block text-xs font-medium text-primary underline underline-offset-2">{m.linkLabel || m.link}</a>}
               {showRoute && m.route && <p className="mt-1 text-[10px] text-muted-foreground/80">{m.route}</p>}

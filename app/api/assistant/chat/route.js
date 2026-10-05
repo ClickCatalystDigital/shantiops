@@ -2,17 +2,18 @@ import { NextResponse } from 'next/server';
 import { getFreshSessionUser, isAdmin, isInternal, isPM, headDepartments } from '@/lib/auth';
 import { queryOne } from '@/lib/db';
 import { getAssistantSettings, getAssistantKey, allHelpSections, jevDecide, openRouterError, canManageAssistant, OPENROUTER } from '@/lib/assistant';
-import { pickSections, deptOfPath, kindQuestion, sectionQuestion, asIsQuestion, toolQuestion, ranked, guideAnswer, CANNED } from '@/lib/assistant-help.mjs';
+import { pickSections, deptOfPath, kindQuestion, sectionQuestion, asIsQuestion, toolQuestion, ranked, guideAnswer, CANNED, screenList } from '@/lib/assistant-help.mjs';
 import { toolsFor } from '@/lib/assistant-data';
 
 export const dynamic = 'force-dynamic';
 
-const SYSTEM = `You are the help assistant inside SB Ops, a manufacturing operations app.
-Answer only from the HELP SECTIONS below. They are the app's own guide.
-- If the sections do not cover the question, say you could not find it in the guide and name the closest section. Never invent screens, buttons or steps.
-- Be short. Use numbered steps for "how do I" questions. Use the exact tab and button names from the guide.
-- Plain text only, no markdown symbols. Never write a web address or path such as /settings; name the tab or menu instead.
-- You cannot see the company's data (orders, stock, payments). If asked for it, say so and point to the screen that shows it.`;
+const SYSTEM = `You are the help assistant inside SB Ops, a manufacturing operations app. Answer from the HELP SECTIONS below; they are the app's own guide.
+How to answer:
+1. Start with "Open " followed by the path of the tab where the work is done, copied exactly from SCREENS AND TABS (for example: Open /stores/gir). The app shows the path as a link with the tab's name. Prefer a tab's path over its screen's; if no tab clearly fits, use the screen's path. Never write a path that is not in that list.
+2. Then give the steps or explanation from the section, in short numbered steps. A section written as a description is still the answer: turn what it says into steps. Use the guide's exact tab and button names.
+3. Only if the sections say nothing useful about the question, say so in one line and name the closest section. Never invent screens, buttons or steps.
+Plain text only, no markdown symbols. Keep it short.
+You cannot see the company's data (orders, stock, payments). If asked for it, say so and point to the screen that shows it.`;
 
 const DATA_SYSTEM = `You are the assistant inside SB Ops, a manufacturing operations app. Answer the question from the DATA below, which was just read from the company's own records.
 - Use only the DATA. Copy numbers and names exactly; never estimate, add up beyond what is shown, or fill gaps.
@@ -150,7 +151,7 @@ export async function POST(req) {
   const context = picked.map(s => `### ${s.dept} > ${s.label}\n${s.text}`).join('\n\n');
   const system = data
     ? `${DATA_SYSTEM}\n\nLOOK-UP: ${tool.label}\n${data.note ? `NOTE: ${data.note}\n` : ''}DATA (JSON rows)\n${JSON.stringify(data.rows).slice(0, 6000)}`
-    : `${SYSTEM}\n\nThe user is on the screen: ${path}\n\nHELP SECTIONS\n${context}`;
+    : `${SYSTEM}\n\nSCREENS AND TABS\n${screenList([...new Set(picked.map(s => s.dept))])}\n\nThe user is on the screen: ${path}\n\nHELP SECTIONS\n${context}`;
   let res;
   try {
     res = await fetch(`${OPENROUTER}/chat/completions`, {

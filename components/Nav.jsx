@@ -1,4 +1,5 @@
 'use client';
+import { tabBase } from '@/lib/workspace-routes';
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -158,7 +159,8 @@ export default function Nav({ user, reportDepartments = [] }) {
   const isActive = l => {
     const [base, query] = l.href.split('?');
     const requiredDept = query ? new URLSearchParams(query).get('dept') : null;
-    return pathname === base && (requiredDept ? activeDept === requiredDept : !activeDept);
+    // A workspace tab has its own address (/stores/inventory); it still belongs to /stores.
+    return (tabBase(pathname) || pathname) === base && (requiredDept ? activeDept === requiredDept : !activeDept);
   };
 
   useEffect(() => {

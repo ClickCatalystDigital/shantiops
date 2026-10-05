@@ -5,7 +5,7 @@
 //   BASE=http://localhost:3000 ADMIN_USER=admin ADMIN_PASS=... node scripts/assistant-eval.mjs
 const BASE = process.env.BASE || 'http://localhost:3015';
 const QUICK = process.argv.includes('--quick');
-const DEPT_PATH = { Sales: '/sales', Marketing: '/market', Procurement: '/procurement', Stores: '/stores', Production: '/production/workers', QC: '/qc', Dispatch: '/dispatch', Installation: '/installation', HR: '/hr', Accounts: '/accounts', Engineering: '/engineering', Design: '/calc' };
+const DEPT_PATH = { Sales: '/sales', Marketing: '/market', Procurement: '/procurement', Stores: '/stores', Production: '/production/shop', QC: '/qc', Dispatch: '/dispatch', Installation: '/installation', HR: '/hr', Accounts: '/accounts', Engineering: '/engineering', Design: '/calc' };
 
 // [question, screen, expected kind, expectation]
 //   howto: words, one of which must be in the chosen section's name ([] = any section)
@@ -15,15 +15,15 @@ const HAND = [
   ['How do I raise a purchase request?', '/pr', 'howto', ['purchase request']],
   ['How do I crop the company logo?', '/accounts', 'howto', ['logo']],
   ['Where do I close a gate inward receipt?', '/stores', 'howto', ['gate']],
-  ['how to cut a plate and send the remnant back', '/production/workers', 'howto', ['remnant', 'cut']],
+  ['how to cut a plate and send the remnant back', '/production/shop', 'howto', ['remnant', 'cut']],
   ['How do I send a quotation to the customer by email?', '/sales', 'howto', ['quotation', 'email']],
   ['customer did not get the portal password, what do I do', '/sales', 'howto', ['portal']],
   ['How do I submit a packing list for approval before dispatch?', '/dispatch', 'howto', ['approval']],
   ['where do I record a payment received against an invoice', '/accounts', 'howto', ['settlement', 'ledger', 'invoice', 'payment']],
   ['How do I add a new company?', '/accounts', 'howto', ['company']],
   ['how can I change the footer on the purchase order', '/accounts', 'howto', ['logo', 'document', 'company']],
-  ['How do I create a job card?', '/production/workers', 'howto', ['job card', 'how to']],
-  ['how do I hand over finished items to dispatch', '/production/workers', 'howto', ['dispatch', 'hand']],
+  ['How do I create a job card?', '/production/shop', 'howto', ['job card', 'how to']],
+  ['how do I hand over finished items to dispatch', '/production/shop', 'howto', ['dispatch', 'hand']],
   ['How do I issue a purchase order?', '/procurement', 'howto', ['purchase order']],
   ['how to compare supplier quotes and pick one', '/procurement', 'howto', ['selection', 'comparison', 'quote', 'enquiry']],
   ['Where do I see which deliveries are late?', '/procurement', 'howto', ['overdue', 'delivery', 'inbound']],
@@ -86,7 +86,7 @@ const HAND = [
   ['How much MS angle do we have in stock?', '/stores', 'data', 'stock_on_hand'],
   ['do we have any BQ plate 12 mm', '/stores', 'data', 'stock_on_hand'],
   ['stock of gaskets', '/stores', 'data', 'stock_on_hand'],
-  ['how many safety valves are on hand', '/production/workers', 'data', 'stock_on_hand'],
+  ['how many safety valves are on hand', '/production/shop', 'data', 'stock_on_hand'],
   ['Which items are below minimum stock?', '/stores', 'data', 'low_stock'],
   ['what do we need to reorder', '/stores', 'data', 'low_stock'],
   ['What approvals are waiting?', '/qc', 'data', 'pending_approvals'],

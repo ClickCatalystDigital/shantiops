@@ -13,6 +13,8 @@
 // way (2026-08-11) after generalizing the original 3001-only sniff to cover a second dedicated
 // port (3002): the old check also only ever worked by accident in whichever process order made its
 // `argv.includes('3001')` true, not reliably — this replaces it outright.
+const { TAB_BASES } = require('./lib/workspace-routes');
+
 const devPort = process.env.PORT && process.env.PORT !== '3000' ? process.env.PORT : null;
 
 /** @type {import('next').NextConfig} */
@@ -21,4 +23,9 @@ module.exports = {
   ...(devPort ? { distDir: `.next-${devPort}` } : {}),
   // @react-pdf/renderer must run as a real Node module (fontkit/native deps), not be bundled.
   experimental: { serverComponentsExternalPackages: ['@react-pdf/renderer'] },
+  // /stores/inventory is served by the /stores page with tab=inventory. Real sub-pages such as
+  // /accounts/documents win, because these rewrites only apply when no page matches.
+  async rewrites() {
+    return TAB_BASES.map(base => ({ source: `${base}/:tab`, destination: `${base}?tab=:tab` }));
+  },
 };

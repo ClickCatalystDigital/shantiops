@@ -1,6 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { usePathname } from 'next/navigation';
+import { tabBase, tabSlug } from '@/lib/workspace-routes';
 import {
   SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarGroup, SidebarGroupLabel,
   SidebarGroupContent, SidebarMenu, SidebarMenuItem, SidebarMenuButton,
@@ -31,6 +33,28 @@ export default function WorkspaceSidebar({ title, icon: TitleIcon = LayoutPanelT
     ? groups.flatMap(g => flattenGroupItems(g.items))
     : items.filter(item => !item.divider).flatMap(item => item.group ? item.children : item);
   const activeItem = flatItems.find(item => item.key === activeKey) || flatItems[0];
+
+  // Each tab has its own address: /stores/inventory. On load, open the tab the address names; when
+  // the tab changes, put its name in the address (so a reload, a bookmark or a link from the help
+  // assistant lands on the same tab). Only for the workspaces in lib/workspace-routes.js, and not for
+  // a sidebar nested inside another one.
+  const pathname = usePathname();
+  const base = nested ? null : tabBase(pathname);
+  useEffect(() => {
+    if (!base) return;
+    const named = location.pathname.slice(base.length + 1) || new URLSearchParams(location.search).get('tab');
+    const item = named && flatItems.find(i => tabSlug(i.key) === tabSlug(named));
+    if (item && item.key !== activeKey) onChange(item.key);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [base]);
+  useEffect(() => {
+    if (!base || !activeItem) return;
+    const url = new URL(location.href);
+    const want = `${base}/${tabSlug(activeItem.key)}`;
+    if (url.pathname === want && !url.searchParams.has('tab')) return;
+    url.pathname = want; url.searchParams.delete('tab');
+    history.replaceState(history.state, '', url);
+  }, [base, activeItem?.key]);
   // Accordion, one department open at a time — a `groups` sidebar with many sections (e.g. Reports'
   // 9 departments, 44 items total) used to render every group fully expanded, so "navigate" meant
   // scroll past everything else. Default open = whichever group holds the active item, so switching
