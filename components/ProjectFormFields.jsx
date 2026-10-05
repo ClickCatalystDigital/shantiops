@@ -57,17 +57,19 @@ export default function ProjectFormFields({ f, setF, customers = [], saleOrderPi
     : null;
   const showSaleOrder = !!saleOrderPicker;
   const [soNote, setSoNote] = useState('');
+  const [soDocs, setSoDocs] = useState(null); // { id, lines, hasFile } — what the picked order gives the Scope of Supply
   const applied = useRef({}); // the values last pre-filled from an order, so a different order can replace them but typed values stay
   // Picking an order fills what Sales already recorded: customer (with its id), company, order
   // date, and a description from the order's product lines. Typed values are only replaced when
   // blank (description/date), so picking an order never wipes something the user wrote.
   async function pickOrder(id, row) {
-    if (!id) { setF(prev => ({ ...prev, sale_order_id: '', sale_order_label: '' })); setSoNote(''); return; }
+    if (!id) { setF(prev => ({ ...prev, sale_order_id: '', sale_order_label: '', skip_so_file: false })); setSoNote(''); setSoDocs(null); return; }
     const label = row ? [row.so_no, row.customer_name].filter(Boolean).join(' · ') : f.sale_order_label;
-    setF(prev => ({ ...prev, sale_order_id: id, sale_order_label: label }));
+    setF(prev => ({ ...prev, sale_order_id: id, sale_order_label: label, skip_so_file: false }));
     try {
       const so = await api(`/api/sale-orders/${id}`);
       const lines = so.items?.length ? so.items : (so.prefill_items || []);
+      setSoDocs({ id, lines: so.items?.length || 0, hasFile: !!so.pdf_key });
       const desc = lines.map(l => [l.qty ? `${l.qty}${l.uom ? ' ' + l.uom : ''} ×` : null, l.item_description].filter(Boolean).join(' ')).filter(Boolean).join('; ');
       const prevPno = applied.current.project_no; // what an earlier pick filled in (so a different order can replace it)
       applied.current = { ...applied.current, project_no: so.so_no };
@@ -100,7 +102,7 @@ export default function ProjectFormFields({ f, setF, customers = [], saleOrderPi
       const onOther = row?.linked_project && row.linked_project !== f.project_no ? `Already on ${row.linked_project}. ` : '';
       setSoNote(onOther + (saleOrderPicker !== 'new' ? '' : so.items?.length ? `${so.items.length} order line(s) will be copied into the Scope of Supply.`
         : 'This order has no line items yet — the Scope of Supply starts empty.'));
-    } catch (e) { setSoNote(''); }
+    } catch (e) { setSoNote(''); setSoDocs(null); }
   }
 
   return (
@@ -111,6 +113,19 @@ export default function ProjectFormFields({ f, setF, customers = [], saleOrderPi
             <Label>Sale Order</Label>
             <SaleOrderPicker value={f.sale_order_id} label={f.sale_order_label || ''} onChange={pickOrder} />
             {soNote && <p className="text-xs text-muted-foreground">{soNote}</p>}
+            {saleOrderPicker === 'new' && soDocs && (soDocs.lines > 0 || soDocs.hasFile) && (
+              <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
+                {soDocs.lines > 0 && <a href={`/api/sale-orders/${soDocs.id}/sos-preview`} target="_blank" rel="noreferrer" className="text-primary hover:underline">Scope of Supply PDF (generated)</a>}
+                {soDocs.hasFile && (
+                  <span className="flex items-center gap-1.5">
+                    <a href={`/api/sale-orders/${soDocs.id}/pdf`} target="_blank" rel="noreferrer" className={f.skip_so_file ? 'text-muted-foreground line-through' : 'text-primary hover:underline'}>Order Acknowledgement attached by Sales</a>
+                    <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => setF(prev => ({ ...prev, skip_so_file: !prev.skip_so_file }))}>
+                      {f.skip_so_file ? 'Attach it' : '✕ Don’t attach'}
+                    </button>
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         )}
         <div className="flex flex-col gap-1.5">

@@ -154,7 +154,7 @@ export default async function ProjectDetail({ params }) {
       {hasChildren && canAccessDepartment(user, 'Dispatch') && <DispatchBatchPackingPanel projectId={project.id} />}
 
       {/* Lower rows — accumulate, never swap. */}
-      {!project.master_project_id && <ScopeOfSupplyCard scopeOfSupply={scopeOfSupply} canSeeMoney={canSeeMoney} />}
+      {!project.master_project_id && <ScopeOfSupplyCard scopeOfSupply={scopeOfSupply} canSeeMoney={canSeeMoney} canOpenFile={pm || canAccessDepartment(user, 'Design') || canAccessDepartment(user, 'Engineering')} />}
       <ProjectDesignRow projectId={project.id}
         calcSheets={designSummary?.calcSheets} drawings={designSummary?.drawings} />
 

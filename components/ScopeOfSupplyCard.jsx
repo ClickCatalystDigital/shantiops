@@ -4,7 +4,7 @@
 // PDF route applies the same rule.
 import { Card, CardHeader, CardTitle, CardAction, CardContent } from './ui/card';
 import { Button } from './ui/button';
-import { DownloadIcon } from 'lucide-react';
+import { DownloadIcon, FileTextIcon } from 'lucide-react';
 import { sosLine } from '@/lib/sos-format.mjs';
 import { formatDate, formatMoney } from '@/lib/format';
 
@@ -17,15 +17,22 @@ function Fact({ label, value }) {
   );
 }
 
-function SosBlock({ sos, canSeeMoney }) {
+function SosBlock({ sos, canSeeMoney, canOpenFile }) {
   const c = sos.customer || {};
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-3">
         <span className="text-sm font-semibold">{sos.title}</span>
-        <Button asChild size="sm" variant="outline">
-          <a href={`/api/scope-of-supply/${sos.id}/pdf`} target="_blank" rel="noreferrer"><DownloadIcon data-icon="inline-start" />PDF</a>
-        </Button>
+        <div className="flex gap-2">
+          {canOpenFile && sos.pdf_key && (
+            <Button asChild size="sm" variant="outline">
+              <a href={`/api/scope-of-supply/${sos.id}/file`} target="_blank" rel="noreferrer"><FileTextIcon data-icon="inline-start" />Original file</a>
+            </Button>
+          )}
+          <Button asChild size="sm" variant="outline">
+            <a href={`/api/scope-of-supply/${sos.id}/pdf`} target="_blank" rel="noreferrer"><DownloadIcon data-icon="inline-start" />Generated PDF</a>
+          </Button>
+        </div>
       </div>
       <div className="grid gap-4 rounded-lg border bg-muted/30 p-4 sm:grid-cols-2 lg:grid-cols-4">
         <Fact label="Client" value={c.name || sos.customer_name} />
@@ -85,14 +92,14 @@ function SosBlock({ sos, canSeeMoney }) {
   );
 }
 
-export default function ScopeOfSupplyCard({ scopeOfSupply = [], canSeeMoney = false }) {
+export default function ScopeOfSupplyCard({ scopeOfSupply = [], canSeeMoney = false, canOpenFile = false }) {
   return (
     <Card>
       <CardHeader><CardTitle>Scope of Supply</CardTitle></CardHeader>
       <CardContent className="flex flex-col gap-6">
         {scopeOfSupply.length === 0
           ? <p className="text-sm text-muted-foreground">No Scope of Supply yet — attach it from Edit Project.</p>
-          : scopeOfSupply.map(sos => <SosBlock key={sos.id} sos={sos} canSeeMoney={canSeeMoney} />)}
+          : scopeOfSupply.map(sos => <SosBlock key={sos.id} sos={sos} canSeeMoney={canSeeMoney} canOpenFile={canOpenFile} />)}
       </CardContent>
     </Card>
   );

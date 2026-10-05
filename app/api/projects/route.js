@@ -9,6 +9,7 @@ import { notifyDepartment, notifyPMs } from '@/lib/notify';
 import { COMPANY_NAMES } from '@/lib/qc-doc-pdf.js';
 import { recordProjectSpec } from '@/lib/order-spec-server';
 import { defaultPrefix } from '@/lib/company-profiles';
+import { putObject, getObjectBuffer } from '@/lib/r2';
 
 // In-place Calc Sheets project switcher (CalcWorkspace sidebar) — same list app/calc/page.js's
 // picker uses, just as a client-side fetch instead of a server component prop.
@@ -58,7 +59,7 @@ export async function POST(req) {
     // customer_id/sale_order_id — V3_CHANGES.md §12 Phase 2f, the Lead→Customer→Quotation→Sale
     // Order→Project chain's final link. Both additive/nullable; customer_name stays NOT NULL and
     // required exactly as before, so the 6 pre-existing free-text-only projects are unaffected.
-    const { projectId, sosTitle, itemCount } = await withTransaction(async tx => {
+    const { projectId, sosTitle, itemCount, sosId } = await withTransaction(async tx => {
       const r = await tx.execute({
         sql: `INSERT INTO projects (project_no, customer_name, description, order_date, owner, customer_id, sale_order_id, series, company, model_capacity, model_pressure, model_design, is_sib)
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -80,6 +81,7 @@ export async function POST(req) {
       // educated starting point, still editable on the document itself afterward.
       let sosTitle = null;
       let itemCount = 0;
+      let headerId = null;
       if (b.sale_order_id) {
         const so = await tx.execute({ sql: 'SELECT so_no, tax_pct, quotation_id FROM sale_orders WHERE id = ?', args: [b.sale_order_id] });
         const soRow = so.rows[0];
@@ -95,7 +97,7 @@ export async function POST(req) {
                 VALUES (?, ?, ?, ?, ?)`,
           args: [id, sosTitle, paymentTerms, soRow?.tax_pct || 18, user?.username || null],
         });
-        const headerId = Number(header.lastInsertRowid);
+        headerId = Number(header.lastInsertRowid);
         const items = await tx.execute({
           sql: 'SELECT item_description, qty, uom, rate, amount, sort_order, id, hsn_code, item_tax_pct FROM sale_order_items WHERE sale_order_id = ? ORDER BY sort_order, id',
           args: [b.sale_order_id],
@@ -111,7 +113,7 @@ export async function POST(req) {
         }
         itemCount = items.rows.length;
       }
-      return { projectId: id, sosTitle, itemCount };
+      return { projectId: id, sosTitle, itemCount, sosId: headerId };
     });
 
     // Notifications and audit are intentionally outside the transaction: they are best-effort
@@ -175,9 +177,26 @@ export async function POST(req) {
       } catch (err) { bomTemplates.push({ error: 'BOM templates could not be applied — build the tree from Engineering → BOMs.' }); }
     }
 
+    // The Order Acknowledgement Sales attached to the Sale Order comes along as the SoS's own file,
+    // so Design sees it without asking. A copy, not a shared key: removing or replacing it on the SoS
+    // must never delete the Sale Order's own file. Best-effort — a missing/unreadable object just
+    // leaves the SoS without a file (Design can still attach one).
+    if (sosId && !b.skip_so_file) {
+      try {
+        const so = await queryOne('SELECT pdf_key FROM sale_orders WHERE id = ?', [b.sale_order_id]);
+        if (so?.pdf_key) {
+          const ext = so.pdf_key.includes('.') ? so.pdf_key.slice(so.pdf_key.lastIndexOf('.')) : '.pdf';
+          const key = `scope-of-supply/${sosId}${ext}`;
+          const contentType = ext.toLowerCase() === '.pdf' ? 'application/pdf' : 'application/octet-stream';
+          const url = await putObject(key, await getObjectBuffer(so.pdf_key), contentType);
+          await execute('UPDATE scope_of_supply SET pdf_key = ?, pdf_url = ?, pdf_content_type = ? WHERE id = ?', [key, url, contentType, sosId]);
+        }
+      } catch (err) { /* best-effort */ }
+    }
+
     await audit('project_created', { actor: user.username, detail: `${project_no} · ${b.customer_name.trim()}` });
     if (b.sale_order_id) await recordProjectSpec(projectId); // what the Design Head saved teaches the next default (best-effort)
-    return NextResponse.json({ id: projectId, project_no, bomTemplates });
+    return NextResponse.json({ id: projectId, project_no, bomTemplates, sosId });
   } catch (e) {
     if (String(e).includes('UNIQUE')) {
       return NextResponse.json({ error: `Project ${project_no} already exists` }, { status: 409 });
