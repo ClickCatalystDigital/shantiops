@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getFreshSessionUser, isAdmin } from '@/lib/auth';
-import { getAssistantSettings, getAssistantKey, allHelpSections, jevDecide, openRouterError, OPENROUTER } from '@/lib/assistant';
+import { getAssistantSettings, getAssistantKey, allHelpSections, jevDecide, openRouterError, canManageAssistant, OPENROUTER } from '@/lib/assistant';
 import { pickSections, deptOfPath, triageQuestions, deptSummaries, sectionQuestion, ranked, guideAnswer, CANNED } from '@/lib/assistant-help.mjs';
 
 export const dynamic = 'force-dynamic';
@@ -102,7 +102,7 @@ export async function POST(req) {
   }
   if (!res.ok || !res.body) {
     const detail = await res.json().catch(() => null);
-    return NextResponse.json(openRouterError(res.status, detail), { status: 502 });
+    return NextResponse.json(openRouterError(res.status, detail, canManageAssistant(user)), { status: 502 });
   }
 
   // OpenRouter streams "data: {json}" lines; pass on only the text.

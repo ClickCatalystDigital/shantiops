@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { getFreshSessionUser, isAdmin } from '@/lib/auth';
-import { OPENROUTER } from '@/lib/assistant';
+import { getFreshSessionUser } from '@/lib/auth';
+import { OPENROUTER, canManageAssistant } from '@/lib/assistant';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,7 +9,7 @@ let cache = { at: 0, models: [] };
 
 export async function GET() {
   const user = await getFreshSessionUser();
-  if (!isAdmin(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  if (!canManageAssistant(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   if (Date.now() - cache.at > 3600_000) {
     try {
       const res = await fetch(`${OPENROUTER}/models`);

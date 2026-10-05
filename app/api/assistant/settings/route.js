@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { getFreshSessionUser, isAdmin } from '@/lib/auth';
-import { getAssistantSettings, saveAssistantSettings, getAssistantKey, getBalance, CREDITS_URL } from '@/lib/assistant';
+import { getFreshSessionUser } from '@/lib/auth';
+import { getAssistantSettings, saveAssistantSettings, getAssistantKey, getBalance, canManageAssistant, CREDITS_URL } from '@/lib/assistant';
 import { audit } from '@/lib/usb';
 
 export const dynamic = 'force-dynamic';
@@ -15,14 +15,14 @@ async function withBalance() {
 
 export async function GET() {
   const user = await getFreshSessionUser();
-  if (!isAdmin(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  if (!canManageAssistant(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   return NextResponse.json(await withBalance());
 }
 
 // { model?, key? } — key '' removes it. The key is never returned and never audited.
 export async function PUT(req) {
   const user = await getFreshSessionUser();
-  if (!isAdmin(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  if (!canManageAssistant(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const b = await req.json();
   try {
     await saveAssistantSettings({ model: b.model, key: b.key, mode: b.mode });
