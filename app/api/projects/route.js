@@ -46,6 +46,10 @@ export async function POST(req) {
   // Which legal entity — decided at the Sale Order (the commercial commitment), not here, when one
   // exists: copy it onto the project. Only a project created without going through Sales falls
   // back to a manual company field on this form.
+  // The DB UNIQUE index is case/space-sensitive, so "sb-1040" would slip past it — check normalized.
+  if (await queryOne('SELECT id FROM projects WHERE LOWER(TRIM(project_no)) = LOWER(?)', [project_no])) {
+    return NextResponse.json({ error: `Project ${project_no} already exists` }, { status: 409 });
+  }
   let company = COMPANY_NAMES[0];
   if (b.sale_order_id) {
     const so = await queryOne('SELECT company, customer_id FROM sale_orders WHERE id = ?', [b.sale_order_id]);

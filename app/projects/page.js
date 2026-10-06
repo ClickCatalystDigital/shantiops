@@ -26,11 +26,9 @@ export default async function Projects() {
 
   return (
     <main className="container flex flex-col gap-6 py-8">
-      <PageHeader title="Projects" description="Every customer order, design → commissioning">
-        {canCreate && <NewProjectForm customers={customers} />}
-      </PageHeader>
+      <PageHeader title="Projects" description="Every customer order, design → commissioning" />
 
-      <ProjectsListTable projects={grouped} />
+      <ProjectsListTable projects={grouped} action={canCreate && <NewProjectForm customers={customers} />} />
     </main>
   );
 }

@@ -20,6 +20,10 @@ export async function PATCH(req, { params }) {
   const b = await req.json();
   const fields = [];
   const args = [];
+  if (b.project_no !== undefined) {
+    const dup = await queryOne('SELECT id FROM projects WHERE LOWER(TRIM(project_no)) = LOWER(?) AND id != ?', [String(b.project_no).trim(), params.id]);
+    if (dup) return NextResponse.json({ error: `Project ${String(b.project_no).trim()} already exists` }, { status: 409 });
+  }
   if (b.project_no !== undefined) { fields.push('project_no = ?'); args.push(String(b.project_no).trim()); }
   if (b.customer_name !== undefined) { fields.push('customer_name = ?'); args.push(String(b.customer_name).trim()); }
   if (b.description !== undefined) { fields.push('description = ?'); args.push(b.description || null); }
