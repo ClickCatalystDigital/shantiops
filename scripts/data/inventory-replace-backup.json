@@ -1,0 +1,4543 @@
+{
+ "at": "2026-10-06T02:07:32.247Z",
+ "counter": 1053,
+ "tables": {
+  "inventory_batch_allocations": [],
+  "inventory_reservations": [
+   {
+    "id": 40,
+    "inventory_item_id": 69,
+    "bom_item_id": 4507,
+    "qty": 5,
+    "status": "active",
+    "created_by": "admin",
+    "created_at": "2026-09-17 11:32:49",
+    "released_at": null,
+    "issued_at": null,
+    "qty_issued": 0,
+    "source": "auto"
+   },
+   {
+    "id": 41,
+    "inventory_item_id": 70,
+    "bom_item_id": 4508,
+    "qty": 3,
+    "status": "active",
+    "created_by": "admin",
+    "created_at": "2026-09-17 11:32:50",
+    "released_at": null,
+    "issued_at": null,
+    "qty_issued": 0,
+    "source": "auto"
+   },
+   {
+    "id": 42,
+    "inventory_item_id": 75,
+    "bom_item_id": 4515,
+    "qty": 6,
+    "status": "issued",
+    "created_by": "system",
+    "created_at": "2026-09-17 11:57:44",
+    "released_at": null,
+    "issued_at": "2026-09-30 15:40:54",
+    "qty_issued": 6,
+    "source": "manual"
+   },
+   {
+    "id": 43,
+    "inventory_item_id": 75,
+    "bom_item_id": 4515,
+    "qty": 4,
+    "status": "issued",
+    "created_by": "system",
+    "created_at": "2026-09-17 12:01:00",
+    "released_at": null,
+    "issued_at": "2026-09-30 15:40:26",
+    "qty_issued": 4,
+    "source": "manual"
+   },
+   {
+    "id": 44,
+    "inventory_item_id": 76,
+    "bom_item_id": 4516,
+    "qty": 5,
+    "status": "issued",
+    "created_by": "system",
+    "created_at": "2026-09-17 12:11:30",
+    "released_at": null,
+    "issued_at": "2026-09-22 12:56:30",
+    "qty_issued": 5,
+    "source": "manual"
+   },
+   {
+    "id": 56,
+    "inventory_item_id": 11,
+    "bom_item_id": 5436,
+    "qty": 22,
+    "status": "issued",
+    "created_by": "stores_head",
+    "created_at": "2026-09-19 07:36:20",
+    "released_at": null,
+    "issued_at": "2026-09-19 07:38:07",
+    "qty_issued": 22,
+    "source": "manual"
+   },
+   {
+    "id": 67,
+    "inventory_item_id": 107,
+    "bom_item_id": 9090,
+    "qty": 1,
+    "status": "issued",
+    "created_by": "admin",
+    "created_at": "2026-10-02 22:16:13",
+    "released_at": null,
+    "issued_at": "2026-10-02 22:21:30",
+    "qty_issued": 1,
+    "source": "manual"
+   },
+   {
+    "id": 68,
+    "inventory_item_id": 108,
+    "bom_item_id": 9091,
+    "qty": 1,
+    "status": "issued",
+    "created_by": "admin",
+    "created_at": "2026-10-02 22:16:14",
+    "released_at": null,
+    "issued_at": "2026-10-02 22:21:31",
+    "qty_issued": 1,
+    "source": "manual"
+   }
+  ],
+  "stock_pieces": [
+   {
+    "id": 42,
+    "inventory_item_id": 12,
+    "code": "PL-0042",
+    "kind": "plate",
+    "length_mm": 2500,
+    "width_mm": 1250,
+    "thickness_mm": 10,
+    "kg_per_m": null,
+    "density": 7850,
+    "weight_kg": 245.31,
+    "status": "consumed",
+    "source": "purchase",
+    "parent_id": null,
+    "project_id": null,
+    "bom_item_id": null,
+    "job_card_id": null,
+    "cut_by": "production_head",
+    "cut_at": "2026-08-25 21:34:51",
+    "created_at": "2026-08-25 20:39:05",
+    "heat_no": null,
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": null,
+    "root_id": null
+   },
+   {
+    "id": 43,
+    "inventory_item_id": 12,
+    "code": "PL-0042-U1",
+    "kind": "plate",
+    "length_mm": 2000,
+    "width_mm": 1000,
+    "thickness_mm": 10,
+    "kg_per_m": null,
+    "density": 7850,
+    "weight_kg": 157,
+    "status": "consumed",
+    "source": "remnant",
+    "parent_id": 42,
+    "project_id": null,
+    "bom_item_id": null,
+    "job_card_id": null,
+    "cut_by": "production_head",
+    "cut_at": "2026-08-25 21:34:51",
+    "created_at": "2026-08-25 21:34:51",
+    "heat_no": null,
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": null,
+    "root_id": null
+   },
+   {
+    "id": 44,
+    "inventory_item_id": 12,
+    "code": "PL-0042-S1",
+    "kind": "plate",
+    "length_mm": null,
+    "width_mm": null,
+    "thickness_mm": null,
+    "kg_per_m": null,
+    "density": null,
+    "weight_kg": 88.31,
+    "status": "scrap",
+    "source": "remnant",
+    "parent_id": 42,
+    "project_id": null,
+    "bom_item_id": null,
+    "job_card_id": null,
+    "cut_by": null,
+    "cut_at": null,
+    "created_at": "2026-08-25 21:34:51",
+    "heat_no": null,
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": null,
+    "root_id": null
+   },
+   {
+    "id": 45,
+    "inventory_item_id": 12,
+    "code": "PL-0045",
+    "kind": "plate",
+    "length_mm": 1500,
+    "width_mm": 800,
+    "thickness_mm": 10,
+    "kg_per_m": null,
+    "density": 7850,
+    "weight_kg": 94.2,
+    "status": "consumed",
+    "source": "purchase",
+    "parent_id": null,
+    "project_id": null,
+    "bom_item_id": null,
+    "job_card_id": null,
+    "cut_by": "production_head",
+    "cut_at": "2026-08-26 08:28:45",
+    "created_at": "2026-08-25 22:08:51",
+    "heat_no": null,
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": null,
+    "root_id": null
+   },
+   {
+    "id": 46,
+    "inventory_item_id": 12,
+    "code": "PL-0045-U1",
+    "kind": "plate",
+    "length_mm": 800,
+    "width_mm": 800,
+    "thickness_mm": 10,
+    "kg_per_m": null,
+    "density": 7850,
+    "weight_kg": 50.24,
+    "status": "consumed",
+    "source": "remnant",
+    "parent_id": 45,
+    "project_id": null,
+    "bom_item_id": null,
+    "job_card_id": null,
+    "cut_by": "production_head",
+    "cut_at": "2026-08-26 08:28:45",
+    "created_at": "2026-08-26 08:28:45",
+    "heat_no": null,
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": null,
+    "root_id": null
+   },
+   {
+    "id": 47,
+    "inventory_item_id": 12,
+    "code": "PL-0045-R1",
+    "kind": "plate",
+    "length_mm": 700,
+    "width_mm": 800,
+    "thickness_mm": 10,
+    "kg_per_m": null,
+    "density": 7850,
+    "weight_kg": 43.96,
+    "status": "available",
+    "source": "remnant",
+    "parent_id": 45,
+    "project_id": null,
+    "bom_item_id": null,
+    "job_card_id": null,
+    "cut_by": null,
+    "cut_at": null,
+    "created_at": "2026-08-26 08:28:45",
+    "heat_no": null,
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": null,
+    "root_id": null
+   },
+   {
+    "id": 48,
+    "inventory_item_id": 12,
+    "code": "PL-0048",
+    "kind": "plate",
+    "length_mm": 1000,
+    "width_mm": 500,
+    "thickness_mm": 10,
+    "kg_per_m": null,
+    "density": 7850,
+    "weight_kg": 39.25,
+    "status": "consumed",
+    "source": "purchase",
+    "parent_id": null,
+    "project_id": 50,
+    "bom_item_id": 1569,
+    "job_card_id": null,
+    "cut_by": "admin",
+    "cut_at": "2026-09-03 00:13:39",
+    "created_at": "2026-09-03 00:10:48",
+    "heat_no": null,
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": null,
+    "root_id": null
+   },
+   {
+    "id": 49,
+    "inventory_item_id": 12,
+    "code": "PL-0048-U1",
+    "kind": "plate",
+    "length_mm": 400,
+    "width_mm": 500,
+    "thickness_mm": 10,
+    "kg_per_m": null,
+    "density": 7850,
+    "weight_kg": 15.7,
+    "status": "consumed",
+    "source": "remnant",
+    "parent_id": 48,
+    "project_id": 50,
+    "bom_item_id": 1569,
+    "job_card_id": null,
+    "cut_by": "admin",
+    "cut_at": "2026-09-03 00:13:39",
+    "created_at": "2026-09-03 00:13:39",
+    "heat_no": null,
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": null,
+    "root_id": null
+   },
+   {
+    "id": 50,
+    "inventory_item_id": 12,
+    "code": "PL-0048-R1",
+    "kind": "plate",
+    "length_mm": 500,
+    "width_mm": 500,
+    "thickness_mm": 10,
+    "kg_per_m": null,
+    "density": 7850,
+    "weight_kg": 19.63,
+    "status": "scrap",
+    "source": "remnant",
+    "parent_id": 48,
+    "project_id": null,
+    "bom_item_id": null,
+    "job_card_id": null,
+    "cut_by": null,
+    "cut_at": null,
+    "created_at": "2026-09-03 00:13:39",
+    "heat_no": null,
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": null,
+    "root_id": null
+   },
+   {
+    "id": 51,
+    "inventory_item_id": 12,
+    "code": "PL-0048-S1",
+    "kind": "plate",
+    "length_mm": null,
+    "width_mm": null,
+    "thickness_mm": null,
+    "kg_per_m": null,
+    "density": null,
+    "weight_kg": 3.92,
+    "status": "scrap",
+    "source": "remnant",
+    "parent_id": 48,
+    "project_id": null,
+    "bom_item_id": null,
+    "job_card_id": null,
+    "cut_by": null,
+    "cut_at": null,
+    "created_at": "2026-09-03 00:13:39",
+    "heat_no": null,
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": null,
+    "root_id": null
+   },
+   {
+    "id": 73,
+    "inventory_item_id": 44,
+    "code": "PL-0073-H62A5678",
+    "kind": "plate",
+    "length_mm": 2000,
+    "width_mm": 1000,
+    "thickness_mm": 12,
+    "kg_per_m": null,
+    "density": 7850,
+    "weight_kg": 188.4,
+    "status": "consumed",
+    "source": "purchase",
+    "parent_id": null,
+    "project_id": 246,
+    "bom_item_id": null,
+    "job_card_id": null,
+    "cut_by": "stores_head",
+    "cut_at": "2026-09-14 14:57:17",
+    "created_at": "2026-09-14 14:57:17",
+    "heat_no": "62A5678",
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": null,
+    "root_id": 73
+   },
+   {
+    "id": 74,
+    "inventory_item_id": 44,
+    "code": "PL-0073-H62A5678-U1",
+    "kind": "plate",
+    "length_mm": 800,
+    "width_mm": 1000,
+    "thickness_mm": 12,
+    "kg_per_m": null,
+    "density": 7850,
+    "weight_kg": 75.36,
+    "status": "consumed",
+    "source": "remnant",
+    "parent_id": 73,
+    "project_id": 246,
+    "bom_item_id": null,
+    "job_card_id": null,
+    "cut_by": "stores_head",
+    "cut_at": "2026-09-14 14:57:17",
+    "created_at": "2026-09-14 14:57:17",
+    "heat_no": "62A5678",
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": null,
+    "root_id": 73
+   },
+   {
+    "id": 75,
+    "inventory_item_id": 44,
+    "code": "PL-0073-H62A5678-R1",
+    "kind": "plate",
+    "length_mm": 1000,
+    "width_mm": 1000,
+    "thickness_mm": 12,
+    "kg_per_m": null,
+    "density": 7850,
+    "weight_kg": 94.2,
+    "status": "consumed",
+    "source": "remnant",
+    "parent_id": 73,
+    "project_id": null,
+    "bom_item_id": null,
+    "job_card_id": null,
+    "cut_by": "stores_head",
+    "cut_at": "2026-09-14 14:57:18",
+    "created_at": "2026-09-14 14:57:17",
+    "heat_no": "62A5678",
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": null,
+    "root_id": 73
+   },
+   {
+    "id": 76,
+    "inventory_item_id": 44,
+    "code": "PL-0073-H62A5678-S1",
+    "kind": "plate",
+    "length_mm": null,
+    "width_mm": null,
+    "thickness_mm": null,
+    "kg_per_m": null,
+    "density": null,
+    "weight_kg": 18.84,
+    "status": "scrap",
+    "source": "remnant",
+    "parent_id": 73,
+    "project_id": null,
+    "bom_item_id": null,
+    "job_card_id": null,
+    "cut_by": null,
+    "cut_at": null,
+    "created_at": "2026-09-14 14:57:18",
+    "heat_no": "62A5678",
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": null,
+    "root_id": 73
+   },
+   {
+    "id": 77,
+    "inventory_item_id": 44,
+    "code": "PL-0073-H62A5678-U2",
+    "kind": "plate",
+    "length_mm": 400,
+    "width_mm": 1000,
+    "thickness_mm": 12,
+    "kg_per_m": null,
+    "density": 7850,
+    "weight_kg": 37.68,
+    "status": "consumed",
+    "source": "remnant",
+    "parent_id": 75,
+    "project_id": 246,
+    "bom_item_id": null,
+    "job_card_id": null,
+    "cut_by": "stores_head",
+    "cut_at": "2026-09-14 14:57:18",
+    "created_at": "2026-09-14 14:57:18",
+    "heat_no": "62A5678",
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": null,
+    "root_id": 73
+   },
+   {
+    "id": 78,
+    "inventory_item_id": 44,
+    "code": "PL-0073-H62A5678-R2",
+    "kind": "plate",
+    "length_mm": 500,
+    "width_mm": 1000,
+    "thickness_mm": 12,
+    "kg_per_m": null,
+    "density": 7850,
+    "weight_kg": 47.1,
+    "status": "pending_receipt",
+    "source": "remnant",
+    "parent_id": 75,
+    "project_id": null,
+    "bom_item_id": null,
+    "job_card_id": null,
+    "cut_by": null,
+    "cut_at": null,
+    "created_at": "2026-09-14 14:57:18",
+    "heat_no": "62A5678",
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": null,
+    "root_id": 73
+   },
+   {
+    "id": 79,
+    "inventory_item_id": 44,
+    "code": "PL-0073-H62A5678-S2",
+    "kind": "plate",
+    "length_mm": null,
+    "width_mm": null,
+    "thickness_mm": null,
+    "kg_per_m": null,
+    "density": null,
+    "weight_kg": 9.42,
+    "status": "scrap",
+    "source": "remnant",
+    "parent_id": 75,
+    "project_id": null,
+    "bom_item_id": null,
+    "job_card_id": null,
+    "cut_by": null,
+    "cut_at": null,
+    "created_at": "2026-09-14 14:57:19",
+    "heat_no": "62A5678",
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": null,
+    "root_id": 73
+   },
+   {
+    "id": 92,
+    "inventory_item_id": 71,
+    "code": "PL-0092",
+    "kind": "plate",
+    "length_mm": 2000,
+    "width_mm": 1000,
+    "thickness_mm": 10,
+    "kg_per_m": null,
+    "density": 7850,
+    "weight_kg": 157,
+    "status": "reserved",
+    "source": "purchase",
+    "parent_id": null,
+    "project_id": 242,
+    "bom_item_id": 4511,
+    "job_card_id": null,
+    "cut_by": null,
+    "cut_at": null,
+    "created_at": "2026-09-17 11:29:45",
+    "heat_no": null,
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": null,
+    "root_id": 92
+   },
+   {
+    "id": 93,
+    "inventory_item_id": 72,
+    "code": "PL-0093",
+    "kind": "plate",
+    "length_mm": 1200,
+    "width_mm": 600,
+    "thickness_mm": 10,
+    "kg_per_m": null,
+    "density": 7850,
+    "weight_kg": 56.52,
+    "status": "consumed",
+    "source": "purchase",
+    "parent_id": null,
+    "project_id": 242,
+    "bom_item_id": 4512,
+    "job_card_id": null,
+    "cut_by": "production_head",
+    "cut_at": "2026-10-02 05:59:00",
+    "created_at": "2026-09-17 11:29:47",
+    "heat_no": null,
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": 1000,
+    "root_id": 93
+   },
+   {
+    "id": 94,
+    "inventory_item_id": 73,
+    "code": "PL-0094",
+    "kind": "plate",
+    "length_mm": 1000,
+    "width_mm": 1000,
+    "thickness_mm": 12,
+    "kg_per_m": null,
+    "density": 7850,
+    "weight_kg": 94.2,
+    "status": "reserved",
+    "source": "purchase",
+    "parent_id": null,
+    "project_id": 242,
+    "bom_item_id": 4513,
+    "job_card_id": null,
+    "cut_by": null,
+    "cut_at": null,
+    "created_at": "2026-09-17 11:34:29",
+    "heat_no": null,
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": null,
+    "root_id": 94
+   },
+   {
+    "id": 95,
+    "inventory_item_id": 74,
+    "code": "PL-0095",
+    "kind": "plate",
+    "length_mm": 500,
+    "width_mm": 500,
+    "thickness_mm": 14,
+    "kg_per_m": null,
+    "density": 7850,
+    "weight_kg": 27.48,
+    "status": "available",
+    "source": "purchase",
+    "parent_id": null,
+    "project_id": null,
+    "bom_item_id": null,
+    "job_card_id": null,
+    "cut_by": null,
+    "cut_at": null,
+    "created_at": "2026-09-17 11:42:41",
+    "heat_no": null,
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": null,
+    "root_id": 95
+   },
+   {
+    "id": 96,
+    "inventory_item_id": 10,
+    "code": null,
+    "kind": "plate",
+    "length_mm": null,
+    "width_mm": null,
+    "thickness_mm": null,
+    "kg_per_m": null,
+    "density": null,
+    "weight_kg": 10,
+    "status": "available",
+    "source": "purchase",
+    "parent_id": null,
+    "project_id": null,
+    "bom_item_id": 6791,
+    "job_card_id": null,
+    "cut_by": null,
+    "cut_at": null,
+    "created_at": "2026-09-22 07:00:51",
+    "heat_no": null,
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": null,
+    "root_id": null
+   },
+   {
+    "id": 98,
+    "inventory_item_id": 72,
+    "code": "PL-0093-U1",
+    "kind": "plate",
+    "length_mm": 600,
+    "width_mm": 600,
+    "thickness_mm": 10,
+    "kg_per_m": null,
+    "density": 7850,
+    "weight_kg": 28.26,
+    "status": "consumed",
+    "source": "remnant",
+    "parent_id": 93,
+    "project_id": 242,
+    "bom_item_id": 4512,
+    "job_card_id": null,
+    "cut_by": "production_head",
+    "cut_at": "2026-10-02 05:59:00",
+    "created_at": "2026-10-02 05:59:00",
+    "heat_no": null,
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": 500,
+    "root_id": 93
+   },
+   {
+    "id": 99,
+    "inventory_item_id": 72,
+    "code": "PL-0093-R1",
+    "kind": "plate",
+    "length_mm": 500,
+    "width_mm": 600,
+    "thickness_mm": 10,
+    "kg_per_m": null,
+    "density": 7850,
+    "weight_kg": 23.55,
+    "status": "available",
+    "source": "remnant",
+    "parent_id": 93,
+    "project_id": null,
+    "bom_item_id": null,
+    "job_card_id": null,
+    "cut_by": null,
+    "cut_at": null,
+    "created_at": "2026-10-02 05:59:00",
+    "heat_no": null,
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": 416.67,
+    "root_id": 93
+   },
+   {
+    "id": 100,
+    "inventory_item_id": 72,
+    "code": "PL-0093-S1",
+    "kind": "plate",
+    "length_mm": null,
+    "width_mm": null,
+    "thickness_mm": null,
+    "kg_per_m": null,
+    "density": null,
+    "weight_kg": 4.71,
+    "status": "scrap",
+    "source": "remnant",
+    "parent_id": 93,
+    "project_id": null,
+    "bom_item_id": null,
+    "job_card_id": null,
+    "cut_by": null,
+    "cut_at": null,
+    "created_at": "2026-10-02 05:59:00",
+    "heat_no": null,
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": 83.33,
+    "root_id": 93
+   },
+   {
+    "id": 113,
+    "inventory_item_id": 98,
+    "code": "PL-DEMOH101-001",
+    "kind": "plate",
+    "length_mm": 1000,
+    "width_mm": 1000,
+    "thickness_mm": 10,
+    "kg_per_m": null,
+    "density": 7850,
+    "weight_kg": 78.5,
+    "status": "consumed",
+    "source": "purchase",
+    "parent_id": null,
+    "project_id": 312,
+    "bom_item_id": 9139,
+    "job_card_id": null,
+    "cut_by": "admin",
+    "cut_at": "2026-10-02 22:18:03",
+    "created_at": "2026-10-02 22:14:17",
+    "heat_no": "DEMO-H101",
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": null,
+    "root_id": 113
+   },
+   {
+    "id": 114,
+    "inventory_item_id": 99,
+    "code": "PL-DEMOH102-001",
+    "kind": "plate",
+    "length_mm": 1200,
+    "width_mm": 800,
+    "thickness_mm": 12,
+    "kg_per_m": null,
+    "density": 7850,
+    "weight_kg": 90.43,
+    "status": "reserved",
+    "source": "purchase",
+    "parent_id": null,
+    "project_id": 249,
+    "bom_item_id": 9428,
+    "job_card_id": null,
+    "cut_by": null,
+    "cut_at": null,
+    "created_at": "2026-10-02 22:14:18",
+    "heat_no": "DEMO-H102",
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": null,
+    "root_id": 114
+   },
+   {
+    "id": 115,
+    "inventory_item_id": 100,
+    "code": "PL-DEMOH103-001",
+    "kind": "plate",
+    "length_mm": 1500,
+    "width_mm": 1000,
+    "thickness_mm": 8,
+    "kg_per_m": null,
+    "density": 7850,
+    "weight_kg": 94.2,
+    "status": "reserved",
+    "source": "purchase",
+    "parent_id": null,
+    "project_id": 249,
+    "bom_item_id": 5022,
+    "job_card_id": null,
+    "cut_by": null,
+    "cut_at": null,
+    "created_at": "2026-10-02 22:14:19",
+    "heat_no": "DEMO-H103",
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": null,
+    "root_id": 115
+   },
+   {
+    "id": 116,
+    "inventory_item_id": 101,
+    "code": "PL-DEMOH104-001",
+    "kind": "plate",
+    "length_mm": 1000,
+    "width_mm": 600,
+    "thickness_mm": 6,
+    "kg_per_m": null,
+    "density": 7850,
+    "weight_kg": 28.26,
+    "status": "reserved",
+    "source": "purchase",
+    "parent_id": null,
+    "project_id": 249,
+    "bom_item_id": 9430,
+    "job_card_id": null,
+    "cut_by": null,
+    "cut_at": null,
+    "created_at": "2026-10-02 22:14:20",
+    "heat_no": "DEMO-H104",
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": null,
+    "root_id": 116
+   },
+   {
+    "id": 117,
+    "inventory_item_id": 102,
+    "code": "LN-DEMOH105-001",
+    "kind": "linear",
+    "length_mm": 3000,
+    "width_mm": null,
+    "thickness_mm": null,
+    "kg_per_m": 3.77,
+    "density": null,
+    "weight_kg": 11.31,
+    "status": "consumed",
+    "source": "purchase",
+    "parent_id": null,
+    "project_id": 312,
+    "bom_item_id": 9220,
+    "job_card_id": null,
+    "cut_by": "admin",
+    "cut_at": "2026-10-02 22:18:04",
+    "created_at": "2026-10-02 22:14:21",
+    "heat_no": "DEMO-H105",
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": null,
+    "root_id": 117
+   },
+   {
+    "id": 118,
+    "inventory_item_id": 103,
+    "code": "LN-DEMOH106-001",
+    "kind": "linear",
+    "length_mm": 2500,
+    "width_mm": null,
+    "thickness_mm": null,
+    "kg_per_m": 9.56,
+    "density": null,
+    "weight_kg": 23.9,
+    "status": "consumed",
+    "source": "purchase",
+    "parent_id": null,
+    "project_id": 312,
+    "bom_item_id": 9219,
+    "job_card_id": null,
+    "cut_by": "admin",
+    "cut_at": "2026-10-02 22:18:05",
+    "created_at": "2026-10-02 22:14:22",
+    "heat_no": "DEMO-H106",
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": null,
+    "root_id": 118
+   },
+   {
+    "id": 119,
+    "inventory_item_id": 104,
+    "code": "LN-DEMOH107-001",
+    "kind": "linear",
+    "length_mm": 6000,
+    "width_mm": null,
+    "thickness_mm": null,
+    "kg_per_m": 8.64,
+    "density": null,
+    "weight_kg": 51.84,
+    "status": "consumed",
+    "source": "purchase",
+    "parent_id": null,
+    "project_id": 312,
+    "bom_item_id": 9086,
+    "job_card_id": null,
+    "cut_by": "admin",
+    "cut_at": "2026-10-02 22:18:06",
+    "created_at": "2026-10-02 22:15:42",
+    "heat_no": "DEMO-H107",
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": null,
+    "root_id": 119
+   },
+   {
+    "id": 120,
+    "inventory_item_id": 105,
+    "code": "LN-DEMOH108-001",
+    "kind": "linear",
+    "length_mm": 3000,
+    "width_mm": null,
+    "thickness_mm": null,
+    "kg_per_m": 3.14,
+    "density": null,
+    "weight_kg": 9.42,
+    "status": "consumed",
+    "source": "purchase",
+    "parent_id": null,
+    "project_id": 312,
+    "bom_item_id": 9081,
+    "job_card_id": null,
+    "cut_by": "admin",
+    "cut_at": "2026-10-02 22:18:07",
+    "created_at": "2026-10-02 22:15:43",
+    "heat_no": "DEMO-H108",
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": null,
+    "root_id": 120
+   },
+   {
+    "id": 121,
+    "inventory_item_id": 106,
+    "code": "LN-DEMOH109-001",
+    "kind": "linear",
+    "length_mm": 2000,
+    "width_mm": null,
+    "thickness_mm": null,
+    "kg_per_m": 15.4,
+    "density": null,
+    "weight_kg": 30.8,
+    "status": "consumed",
+    "source": "purchase",
+    "parent_id": null,
+    "project_id": 312,
+    "bom_item_id": 9198,
+    "job_card_id": null,
+    "cut_by": "admin",
+    "cut_at": "2026-10-02 22:18:08",
+    "created_at": "2026-10-02 22:15:44",
+    "heat_no": "DEMO-H109",
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": null,
+    "root_id": 121
+   },
+   {
+    "id": 122,
+    "inventory_item_id": 98,
+    "code": "PL-DEMOH101-001-U1",
+    "kind": "plate",
+    "length_mm": 500,
+    "width_mm": 500,
+    "thickness_mm": 10,
+    "kg_per_m": null,
+    "density": 7850,
+    "weight_kg": 19.63,
+    "status": "consumed",
+    "source": "remnant",
+    "parent_id": 113,
+    "project_id": 312,
+    "bom_item_id": 9139,
+    "job_card_id": null,
+    "cut_by": "admin",
+    "cut_at": "2026-10-02 22:18:03",
+    "created_at": "2026-10-02 22:18:03",
+    "heat_no": "DEMO-H101",
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": null,
+    "root_id": 113
+   },
+   {
+    "id": 123,
+    "inventory_item_id": 98,
+    "code": "PL-DEMOH101-001-R1",
+    "kind": "plate",
+    "length_mm": 500,
+    "width_mm": 400,
+    "thickness_mm": 10,
+    "kg_per_m": null,
+    "density": 7850,
+    "weight_kg": 15.7,
+    "status": "reserved",
+    "source": "remnant",
+    "parent_id": 113,
+    "project_id": 249,
+    "bom_item_id": 9429,
+    "job_card_id": null,
+    "cut_by": null,
+    "cut_at": null,
+    "created_at": "2026-10-02 22:18:03",
+    "heat_no": "DEMO-H101",
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": null,
+    "root_id": 113
+   },
+   {
+    "id": 124,
+    "inventory_item_id": 98,
+    "code": "PL-DEMOH101-001-S1",
+    "kind": "plate",
+    "length_mm": null,
+    "width_mm": null,
+    "thickness_mm": null,
+    "kg_per_m": null,
+    "density": null,
+    "weight_kg": 43.18,
+    "status": "scrap",
+    "source": "remnant",
+    "parent_id": 113,
+    "project_id": null,
+    "bom_item_id": null,
+    "job_card_id": null,
+    "cut_by": null,
+    "cut_at": null,
+    "created_at": "2026-10-02 22:18:03",
+    "heat_no": "DEMO-H101",
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": null,
+    "root_id": 113
+   },
+   {
+    "id": 125,
+    "inventory_item_id": 102,
+    "code": "LN-DEMOH105-001-U1",
+    "kind": "linear",
+    "length_mm": 1350,
+    "width_mm": null,
+    "thickness_mm": null,
+    "kg_per_m": 3.77,
+    "density": null,
+    "weight_kg": 5.09,
+    "status": "consumed",
+    "source": "remnant",
+    "parent_id": 117,
+    "project_id": 312,
+    "bom_item_id": 9220,
+    "job_card_id": null,
+    "cut_by": "admin",
+    "cut_at": "2026-10-02 22:18:04",
+    "created_at": "2026-10-02 22:18:04",
+    "heat_no": "DEMO-H105",
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": null,
+    "root_id": 117
+   },
+   {
+    "id": 126,
+    "inventory_item_id": 102,
+    "code": "LN-DEMOH105-001-R1",
+    "kind": "linear",
+    "length_mm": 1200,
+    "width_mm": null,
+    "thickness_mm": null,
+    "kg_per_m": 3.77,
+    "density": null,
+    "weight_kg": 4.52,
+    "status": "available",
+    "source": "remnant",
+    "parent_id": 117,
+    "project_id": null,
+    "bom_item_id": null,
+    "job_card_id": null,
+    "cut_by": null,
+    "cut_at": null,
+    "created_at": "2026-10-02 22:18:04",
+    "heat_no": "DEMO-H105",
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": null,
+    "root_id": 117
+   },
+   {
+    "id": 127,
+    "inventory_item_id": 102,
+    "code": "LN-DEMOH105-001-S1",
+    "kind": "linear",
+    "length_mm": null,
+    "width_mm": null,
+    "thickness_mm": null,
+    "kg_per_m": null,
+    "density": null,
+    "weight_kg": 1.7,
+    "status": "scrap",
+    "source": "remnant",
+    "parent_id": 117,
+    "project_id": null,
+    "bom_item_id": null,
+    "job_card_id": null,
+    "cut_by": null,
+    "cut_at": null,
+    "created_at": "2026-10-02 22:18:04",
+    "heat_no": "DEMO-H105",
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": null,
+    "root_id": 117
+   },
+   {
+    "id": 128,
+    "inventory_item_id": 103,
+    "code": "LN-DEMOH106-001-U1",
+    "kind": "linear",
+    "length_mm": 1130,
+    "width_mm": null,
+    "thickness_mm": null,
+    "kg_per_m": 9.56,
+    "density": null,
+    "weight_kg": 10.8,
+    "status": "consumed",
+    "source": "remnant",
+    "parent_id": 118,
+    "project_id": 312,
+    "bom_item_id": 9219,
+    "job_card_id": null,
+    "cut_by": "admin",
+    "cut_at": "2026-10-02 22:18:05",
+    "created_at": "2026-10-02 22:18:05",
+    "heat_no": "DEMO-H106",
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": null,
+    "root_id": 118
+   },
+   {
+    "id": 129,
+    "inventory_item_id": 103,
+    "code": "LN-DEMOH106-001-R1",
+    "kind": "linear",
+    "length_mm": 1000,
+    "width_mm": null,
+    "thickness_mm": null,
+    "kg_per_m": 9.56,
+    "density": null,
+    "weight_kg": 9.56,
+    "status": "available",
+    "source": "remnant",
+    "parent_id": 118,
+    "project_id": null,
+    "bom_item_id": null,
+    "job_card_id": null,
+    "cut_by": null,
+    "cut_at": null,
+    "created_at": "2026-10-02 22:18:05",
+    "heat_no": "DEMO-H106",
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": null,
+    "root_id": 118
+   },
+   {
+    "id": 130,
+    "inventory_item_id": 103,
+    "code": "LN-DEMOH106-001-S1",
+    "kind": "linear",
+    "length_mm": null,
+    "width_mm": null,
+    "thickness_mm": null,
+    "kg_per_m": null,
+    "density": null,
+    "weight_kg": 3.54,
+    "status": "scrap",
+    "source": "remnant",
+    "parent_id": 118,
+    "project_id": null,
+    "bom_item_id": null,
+    "job_card_id": null,
+    "cut_by": null,
+    "cut_at": null,
+    "created_at": "2026-10-02 22:18:05",
+    "heat_no": "DEMO-H106",
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": null,
+    "root_id": 118
+   },
+   {
+    "id": 131,
+    "inventory_item_id": 104,
+    "code": "LN-DEMOH107-001-U1",
+    "kind": "linear",
+    "length_mm": 2700,
+    "width_mm": null,
+    "thickness_mm": null,
+    "kg_per_m": 8.64,
+    "density": null,
+    "weight_kg": 23.33,
+    "status": "consumed",
+    "source": "remnant",
+    "parent_id": 119,
+    "project_id": 312,
+    "bom_item_id": 9086,
+    "job_card_id": null,
+    "cut_by": "admin",
+    "cut_at": "2026-10-02 22:18:06",
+    "created_at": "2026-10-02 22:18:06",
+    "heat_no": "DEMO-H107",
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": null,
+    "root_id": 119
+   },
+   {
+    "id": 132,
+    "inventory_item_id": 104,
+    "code": "LN-DEMOH107-001-R1",
+    "kind": "linear",
+    "length_mm": 2400,
+    "width_mm": null,
+    "thickness_mm": null,
+    "kg_per_m": 8.64,
+    "density": null,
+    "weight_kg": 20.74,
+    "status": "available",
+    "source": "remnant",
+    "parent_id": 119,
+    "project_id": null,
+    "bom_item_id": null,
+    "job_card_id": null,
+    "cut_by": null,
+    "cut_at": null,
+    "created_at": "2026-10-02 22:18:06",
+    "heat_no": "DEMO-H107",
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": null,
+    "root_id": 119
+   },
+   {
+    "id": 133,
+    "inventory_item_id": 104,
+    "code": "LN-DEMOH107-001-S1",
+    "kind": "linear",
+    "length_mm": null,
+    "width_mm": null,
+    "thickness_mm": null,
+    "kg_per_m": null,
+    "density": null,
+    "weight_kg": 7.78,
+    "status": "scrap",
+    "source": "remnant",
+    "parent_id": 119,
+    "project_id": null,
+    "bom_item_id": null,
+    "job_card_id": null,
+    "cut_by": null,
+    "cut_at": null,
+    "created_at": "2026-10-02 22:18:06",
+    "heat_no": "DEMO-H107",
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": null,
+    "root_id": 119
+   },
+   {
+    "id": 134,
+    "inventory_item_id": 105,
+    "code": "LN-DEMOH108-001-U1",
+    "kind": "linear",
+    "length_mm": 1350,
+    "width_mm": null,
+    "thickness_mm": null,
+    "kg_per_m": 3.14,
+    "density": null,
+    "weight_kg": 4.24,
+    "status": "consumed",
+    "source": "remnant",
+    "parent_id": 120,
+    "project_id": 312,
+    "bom_item_id": 9081,
+    "job_card_id": null,
+    "cut_by": "admin",
+    "cut_at": "2026-10-02 22:18:07",
+    "created_at": "2026-10-02 22:18:07",
+    "heat_no": "DEMO-H108",
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": null,
+    "root_id": 120
+   },
+   {
+    "id": 135,
+    "inventory_item_id": 105,
+    "code": "LN-DEMOH108-001-R1",
+    "kind": "linear",
+    "length_mm": 1200,
+    "width_mm": null,
+    "thickness_mm": null,
+    "kg_per_m": 3.14,
+    "density": null,
+    "weight_kg": 3.77,
+    "status": "available",
+    "source": "remnant",
+    "parent_id": 120,
+    "project_id": null,
+    "bom_item_id": null,
+    "job_card_id": null,
+    "cut_by": null,
+    "cut_at": null,
+    "created_at": "2026-10-02 22:18:07",
+    "heat_no": "DEMO-H108",
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": null,
+    "root_id": 120
+   },
+   {
+    "id": 136,
+    "inventory_item_id": 105,
+    "code": "LN-DEMOH108-001-S1",
+    "kind": "linear",
+    "length_mm": null,
+    "width_mm": null,
+    "thickness_mm": null,
+    "kg_per_m": null,
+    "density": null,
+    "weight_kg": 1.41,
+    "status": "scrap",
+    "source": "remnant",
+    "parent_id": 120,
+    "project_id": null,
+    "bom_item_id": null,
+    "job_card_id": null,
+    "cut_by": null,
+    "cut_at": null,
+    "created_at": "2026-10-02 22:18:08",
+    "heat_no": "DEMO-H108",
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": null,
+    "root_id": 120
+   },
+   {
+    "id": 137,
+    "inventory_item_id": 106,
+    "code": "LN-DEMOH109-001-U1",
+    "kind": "linear",
+    "length_mm": 900,
+    "width_mm": null,
+    "thickness_mm": null,
+    "kg_per_m": 15.4,
+    "density": null,
+    "weight_kg": 13.86,
+    "status": "consumed",
+    "source": "remnant",
+    "parent_id": 121,
+    "project_id": 312,
+    "bom_item_id": 9198,
+    "job_card_id": null,
+    "cut_by": "admin",
+    "cut_at": "2026-10-02 22:18:08",
+    "created_at": "2026-10-02 22:18:08",
+    "heat_no": "DEMO-H109",
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": null,
+    "root_id": 121
+   },
+   {
+    "id": 138,
+    "inventory_item_id": 106,
+    "code": "LN-DEMOH109-001-R1",
+    "kind": "linear",
+    "length_mm": 800,
+    "width_mm": null,
+    "thickness_mm": null,
+    "kg_per_m": 15.4,
+    "density": null,
+    "weight_kg": 12.32,
+    "status": "available",
+    "source": "remnant",
+    "parent_id": 121,
+    "project_id": null,
+    "bom_item_id": null,
+    "job_card_id": null,
+    "cut_by": null,
+    "cut_at": null,
+    "created_at": "2026-10-02 22:18:08",
+    "heat_no": "DEMO-H109",
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": null,
+    "root_id": 121
+   },
+   {
+    "id": 139,
+    "inventory_item_id": 106,
+    "code": "LN-DEMOH109-001-S1",
+    "kind": "linear",
+    "length_mm": null,
+    "width_mm": null,
+    "thickness_mm": null,
+    "kg_per_m": null,
+    "density": null,
+    "weight_kg": 4.62,
+    "status": "scrap",
+    "source": "remnant",
+    "parent_id": 121,
+    "project_id": null,
+    "bom_item_id": null,
+    "job_card_id": null,
+    "cut_by": null,
+    "cut_at": null,
+    "created_at": "2026-10-02 22:18:08",
+    "heat_no": "DEMO-H109",
+    "test_certificate_id": null,
+    "part_name": null,
+    "receipt_id": null,
+    "indent_item_id": null,
+    "owner_project_id": null,
+    "bom_item_receipt_id": null,
+    "unit_cost": null,
+    "root_id": 121
+   }
+  ],
+  "inventory_batches": [
+   {
+    "id": 1,
+    "inventory_item_id": 10,
+    "receipt_id": 1,
+    "qty": 70,
+    "heat_no": null,
+    "supplier_batch_no": null,
+    "test_certificate_id": null,
+    "status": "available",
+    "project_id": null,
+    "bom_item_id": null,
+    "created_by": "stores_head",
+    "created_at": "2026-08-26 12:43:33"
+   },
+   {
+    "id": 4,
+    "inventory_item_id": 10,
+    "receipt_id": null,
+    "qty": 5,
+    "heat_no": null,
+    "supplier_batch_no": null,
+    "test_certificate_id": null,
+    "status": "available",
+    "project_id": null,
+    "bom_item_id": 6791,
+    "created_by": null,
+    "created_at": "2026-09-22 07:00:51"
+   }
+  ],
+  "inventory_serials": [
+   {
+    "id": 2,
+    "inventory_item_id": 10,
+    "receipt_id": null,
+    "code": null,
+    "serial_no": null,
+    "test_certificate_id": null,
+    "status": "available",
+    "project_id": null,
+    "bom_item_id": 6791,
+    "created_by": null,
+    "created_at": "2026-09-22 07:00:52",
+    "material_issue_id": null
+   },
+   {
+    "id": 3,
+    "inventory_item_id": 92,
+    "receipt_id": 38,
+    "code": "SR-0003",
+    "serial_no": "ABC",
+    "test_certificate_id": null,
+    "status": "available",
+    "project_id": null,
+    "bom_item_id": null,
+    "created_by": "babji",
+    "created_at": "2026-09-30 15:48:25",
+    "material_issue_id": null
+   }
+  ],
+  "tc_item_match_approvals": [],
+  "stock_movements": [
+   {
+    "id": 1,
+    "inventory_item_id": 10,
+    "delta": 70,
+    "balance_after": 70,
+    "kind": "baseline",
+    "at": "2026-09-30 17:22:41"
+   },
+   {
+    "id": 2,
+    "inventory_item_id": 11,
+    "delta": 28,
+    "balance_after": 28,
+    "kind": "baseline",
+    "at": "2026-09-30 17:22:41"
+   },
+   {
+    "id": 3,
+    "inventory_item_id": 12,
+    "delta": 1,
+    "balance_after": 1,
+    "kind": "baseline",
+    "at": "2026-09-30 17:22:41"
+   },
+   {
+    "id": 4,
+    "inventory_item_id": 42,
+    "delta": 22,
+    "balance_after": 22,
+    "kind": "baseline",
+    "at": "2026-09-30 17:22:41"
+   },
+   {
+    "id": 5,
+    "inventory_item_id": 43,
+    "delta": 15,
+    "balance_after": 15,
+    "kind": "baseline",
+    "at": "2026-09-30 17:22:41"
+   },
+   {
+    "id": 6,
+    "inventory_item_id": 69,
+    "delta": 50,
+    "balance_after": 50,
+    "kind": "baseline",
+    "at": "2026-09-30 17:22:41"
+   },
+   {
+    "id": 7,
+    "inventory_item_id": 70,
+    "delta": 50,
+    "balance_after": 50,
+    "kind": "baseline",
+    "at": "2026-09-30 17:22:41"
+   },
+   {
+    "id": 8,
+    "inventory_item_id": 71,
+    "delta": 1,
+    "balance_after": 1,
+    "kind": "baseline",
+    "at": "2026-09-30 17:22:41"
+   },
+   {
+    "id": 9,
+    "inventory_item_id": 72,
+    "delta": 1,
+    "balance_after": 1,
+    "kind": "baseline",
+    "at": "2026-09-30 17:22:41"
+   },
+   {
+    "id": 10,
+    "inventory_item_id": 73,
+    "delta": 1,
+    "balance_after": 1,
+    "kind": "baseline",
+    "at": "2026-09-30 17:22:41"
+   },
+   {
+    "id": 11,
+    "inventory_item_id": 74,
+    "delta": 1,
+    "balance_after": 1,
+    "kind": "baseline",
+    "at": "2026-09-30 17:22:41"
+   },
+   {
+    "id": 12,
+    "inventory_item_id": 91,
+    "delta": 6,
+    "balance_after": 6,
+    "kind": "baseline",
+    "at": "2026-09-30 17:22:41"
+   },
+   {
+    "id": 13,
+    "inventory_item_id": 92,
+    "delta": 1,
+    "balance_after": 1,
+    "kind": "baseline",
+    "at": "2026-09-30 17:22:41"
+   },
+   {
+    "id": 14,
+    "inventory_item_id": 91,
+    "delta": 5,
+    "balance_after": 11,
+    "kind": "change",
+    "at": "2026-09-30 20:26:42"
+   },
+   {
+    "id": 15,
+    "inventory_item_id": 91,
+    "delta": -2,
+    "balance_after": 9,
+    "kind": "change",
+    "at": "2026-09-30 20:26:42"
+   },
+   {
+    "id": 16,
+    "inventory_item_id": 91,
+    "delta": -3,
+    "balance_after": 6,
+    "kind": "change",
+    "at": "2026-09-30 20:27:36"
+   },
+   {
+    "id": 17,
+    "inventory_item_id": 91,
+    "delta": -2,
+    "balance_after": 4,
+    "kind": "change",
+    "at": "2026-09-30 21:45:35"
+   },
+   {
+    "id": 18,
+    "inventory_item_id": 91,
+    "delta": 2,
+    "balance_after": 6,
+    "kind": "change",
+    "at": "2026-09-30 21:45:42"
+   },
+   {
+    "id": 19,
+    "inventory_item_id": 91,
+    "delta": 4,
+    "balance_after": 10,
+    "kind": "change",
+    "at": "2026-09-30 22:14:24"
+   },
+   {
+    "id": 20,
+    "inventory_item_id": 91,
+    "delta": -4,
+    "balance_after": 6,
+    "kind": "change",
+    "at": "2026-09-30 22:14:58"
+   },
+   {
+    "id": 21,
+    "inventory_item_id": 91,
+    "delta": 3,
+    "balance_after": 9,
+    "kind": "change",
+    "at": "2026-09-30 22:15:07"
+   },
+   {
+    "id": 22,
+    "inventory_item_id": 91,
+    "delta": -3,
+    "balance_after": 6,
+    "kind": "change",
+    "at": "2026-09-30 22:15:08"
+   },
+   {
+    "id": 25,
+    "inventory_item_id": 72,
+    "delta": -1,
+    "balance_after": 0,
+    "kind": "change",
+    "at": "2026-10-02 05:59:01"
+   },
+   {
+    "id": 26,
+    "inventory_item_id": 72,
+    "delta": 1,
+    "balance_after": 1,
+    "kind": "change",
+    "at": "2026-10-02 05:59:07"
+   },
+   {
+    "id": 27,
+    "inventory_item_id": 95,
+    "delta": 1,
+    "balance_after": 1,
+    "kind": "change",
+    "at": "2026-10-02 06:31:57"
+   },
+   {
+    "id": 28,
+    "inventory_item_id": 95,
+    "delta": 1,
+    "balance_after": 2,
+    "kind": "change",
+    "at": "2026-10-02 06:31:58"
+   },
+   {
+    "id": 29,
+    "inventory_item_id": 95,
+    "delta": 1,
+    "balance_after": 3,
+    "kind": "change",
+    "at": "2026-10-02 06:31:58"
+   },
+   {
+    "id": 30,
+    "inventory_item_id": 95,
+    "delta": -1,
+    "balance_after": 2,
+    "kind": "change",
+    "at": "2026-10-02 06:32:03"
+   },
+   {
+    "id": 31,
+    "inventory_item_id": 95,
+    "delta": 1,
+    "balance_after": 3,
+    "kind": "change",
+    "at": "2026-10-02 06:32:04"
+   },
+   {
+    "id": 32,
+    "inventory_item_id": 96,
+    "delta": 1,
+    "balance_after": 1,
+    "kind": "change",
+    "at": "2026-10-02 06:32:17"
+   },
+   {
+    "id": 33,
+    "inventory_item_id": 96,
+    "delta": -1,
+    "balance_after": 0,
+    "kind": "change",
+    "at": "2026-10-02 06:32:20"
+   },
+   {
+    "id": 34,
+    "inventory_item_id": 97,
+    "delta": 1,
+    "balance_after": 1,
+    "kind": "change",
+    "at": "2026-10-02 06:34:58"
+   },
+   {
+    "id": 35,
+    "inventory_item_id": 97,
+    "delta": -1,
+    "balance_after": 0,
+    "kind": "change",
+    "at": "2026-10-02 06:36:12"
+   },
+   {
+    "id": 36,
+    "inventory_item_id": 97,
+    "delta": 1,
+    "balance_after": 1,
+    "kind": "change",
+    "at": "2026-10-02 06:36:50"
+   },
+   {
+    "id": 37,
+    "inventory_item_id": 98,
+    "delta": 1,
+    "balance_after": 1,
+    "kind": "change",
+    "at": "2026-10-02 22:14:17"
+   },
+   {
+    "id": 38,
+    "inventory_item_id": 99,
+    "delta": 1,
+    "balance_after": 1,
+    "kind": "change",
+    "at": "2026-10-02 22:14:18"
+   },
+   {
+    "id": 39,
+    "inventory_item_id": 100,
+    "delta": 1,
+    "balance_after": 1,
+    "kind": "change",
+    "at": "2026-10-02 22:14:19"
+   },
+   {
+    "id": 40,
+    "inventory_item_id": 101,
+    "delta": 1,
+    "balance_after": 1,
+    "kind": "change",
+    "at": "2026-10-02 22:14:20"
+   },
+   {
+    "id": 41,
+    "inventory_item_id": 102,
+    "delta": 1,
+    "balance_after": 1,
+    "kind": "change",
+    "at": "2026-10-02 22:14:21"
+   },
+   {
+    "id": 42,
+    "inventory_item_id": 103,
+    "delta": 1,
+    "balance_after": 1,
+    "kind": "change",
+    "at": "2026-10-02 22:14:22"
+   },
+   {
+    "id": 43,
+    "inventory_item_id": 104,
+    "delta": 1,
+    "balance_after": 1,
+    "kind": "change",
+    "at": "2026-10-02 22:15:42"
+   },
+   {
+    "id": 44,
+    "inventory_item_id": 105,
+    "delta": 1,
+    "balance_after": 1,
+    "kind": "change",
+    "at": "2026-10-02 22:15:43"
+   },
+   {
+    "id": 45,
+    "inventory_item_id": 106,
+    "delta": 1,
+    "balance_after": 1,
+    "kind": "change",
+    "at": "2026-10-02 22:15:44"
+   },
+   {
+    "id": 46,
+    "inventory_item_id": 107,
+    "delta": 5,
+    "balance_after": 5,
+    "kind": "new_item",
+    "at": "2026-10-02 22:16:11"
+   },
+   {
+    "id": 47,
+    "inventory_item_id": 108,
+    "delta": 5,
+    "balance_after": 5,
+    "kind": "new_item",
+    "at": "2026-10-02 22:16:13"
+   },
+   {
+    "id": 48,
+    "inventory_item_id": 98,
+    "delta": -1,
+    "balance_after": 0,
+    "kind": "change",
+    "at": "2026-10-02 22:18:03"
+   },
+   {
+    "id": 49,
+    "inventory_item_id": 102,
+    "delta": -1,
+    "balance_after": 0,
+    "kind": "change",
+    "at": "2026-10-02 22:18:04"
+   },
+   {
+    "id": 50,
+    "inventory_item_id": 103,
+    "delta": -1,
+    "balance_after": 0,
+    "kind": "change",
+    "at": "2026-10-02 22:18:05"
+   },
+   {
+    "id": 51,
+    "inventory_item_id": 104,
+    "delta": -1,
+    "balance_after": 0,
+    "kind": "change",
+    "at": "2026-10-02 22:18:06"
+   },
+   {
+    "id": 52,
+    "inventory_item_id": 105,
+    "delta": -1,
+    "balance_after": 0,
+    "kind": "change",
+    "at": "2026-10-02 22:18:08"
+   },
+   {
+    "id": 53,
+    "inventory_item_id": 106,
+    "delta": -1,
+    "balance_after": 0,
+    "kind": "change",
+    "at": "2026-10-02 22:18:09"
+   },
+   {
+    "id": 54,
+    "inventory_item_id": 98,
+    "delta": 1,
+    "balance_after": 1,
+    "kind": "change",
+    "at": "2026-10-02 22:18:17"
+   },
+   {
+    "id": 55,
+    "inventory_item_id": 102,
+    "delta": 1,
+    "balance_after": 1,
+    "kind": "change",
+    "at": "2026-10-02 22:18:18"
+   },
+   {
+    "id": 56,
+    "inventory_item_id": 103,
+    "delta": 1,
+    "balance_after": 1,
+    "kind": "change",
+    "at": "2026-10-02 22:18:18"
+   },
+   {
+    "id": 57,
+    "inventory_item_id": 104,
+    "delta": 1,
+    "balance_after": 1,
+    "kind": "change",
+    "at": "2026-10-02 22:18:18"
+   },
+   {
+    "id": 58,
+    "inventory_item_id": 105,
+    "delta": 1,
+    "balance_after": 1,
+    "kind": "change",
+    "at": "2026-10-02 22:18:19"
+   },
+   {
+    "id": 59,
+    "inventory_item_id": 106,
+    "delta": 1,
+    "balance_after": 1,
+    "kind": "change",
+    "at": "2026-10-02 22:18:19"
+   },
+   {
+    "id": 60,
+    "inventory_item_id": 107,
+    "delta": -1,
+    "balance_after": 4,
+    "kind": "change",
+    "at": "2026-10-02 22:21:30"
+   },
+   {
+    "id": 61,
+    "inventory_item_id": 108,
+    "delta": -1,
+    "balance_after": 4,
+    "kind": "change",
+    "at": "2026-10-02 22:21:31"
+   },
+   {
+    "id": 62,
+    "inventory_item_id": 109,
+    "delta": 5,
+    "balance_after": 5,
+    "kind": "change",
+    "at": "2026-10-04 15:48:37"
+   },
+   {
+    "id": 63,
+    "inventory_item_id": 110,
+    "delta": 5,
+    "balance_after": 5,
+    "kind": "change",
+    "at": "2026-10-04 15:48:44"
+   },
+   {
+    "id": 64,
+    "inventory_item_id": 109,
+    "delta": -5,
+    "balance_after": 0,
+    "kind": "change",
+    "at": "2026-10-04 15:48:50"
+   },
+   {
+    "id": 65,
+    "inventory_item_id": 110,
+    "delta": -5,
+    "balance_after": 0,
+    "kind": "change",
+    "at": "2026-10-04 15:49:00"
+   },
+   {
+    "id": 66,
+    "inventory_item_id": 111,
+    "delta": 5,
+    "balance_after": 5,
+    "kind": "change",
+    "at": "2026-10-04 15:49:26"
+   },
+   {
+    "id": 67,
+    "inventory_item_id": 113,
+    "delta": 5,
+    "balance_after": 5,
+    "kind": "change",
+    "at": "2026-10-05 14:42:57"
+   }
+  ],
+  "inventory_items": [
+   {
+    "id": 10,
+    "description": "MS Angle 50x50x5",
+    "spec": "ISA 50x50x5 x 6000mm long",
+    "on_hand": 70,
+    "location": "hyderabad",
+    "reorder_point": 10,
+    "item_code": "INV-000010",
+    "created_at": "2026-08-18 08:32:18",
+    "item_id": null,
+    "track_pieces": 0,
+    "category": "angle",
+    "moc": "IS 2062 E250",
+    "avg_cost": 0,
+    "tracking_mode": "batch",
+    "category_fields_json": "{\"size\":\"ISA 50x50x5\",\"kg_per_m\":\"3.77\",\"length\":\"6000\"}"
+   },
+   {
+    "id": 11,
+    "description": "MS Plate 10mm",
+    "spec": null,
+    "on_hand": 28,
+    "location": null,
+    "reorder_point": 10,
+    "item_code": "INV-000011",
+    "created_at": "2026-08-18 08:32:53",
+    "item_id": null,
+    "track_pieces": 0,
+    "category": null,
+    "moc": null,
+    "avg_cost": 0,
+    "tracking_mode": "scalar",
+    "category_fields_json": null
+   },
+   {
+    "id": 12,
+    "description": "MS Plate 10mm (Remnant Stock)",
+    "spec": null,
+    "on_hand": 1,
+    "location": null,
+    "reorder_point": null,
+    "item_code": "INV-000012",
+    "created_at": "2026-08-19 06:22:28",
+    "item_id": null,
+    "track_pieces": 1,
+    "category": "plate",
+    "moc": "IS 2062 E250",
+    "avg_cost": 0,
+    "tracking_mode": "piece",
+    "category_fields_json": null
+   },
+   {
+    "id": 42,
+    "description": "TEST Gasket Set - Spiral Wound (safe to ignore)",
+    "spec": null,
+    "on_hand": 22,
+    "location": "Stores Rack B2",
+    "reorder_point": null,
+    "item_code": "INV-TEST-01",
+    "created_at": "2026-09-14 14:57:16",
+    "item_id": null,
+    "track_pieces": 0,
+    "category": null,
+    "moc": "SS 316",
+    "avg_cost": 0,
+    "tracking_mode": "scalar",
+    "category_fields_json": null
+   },
+   {
+    "id": 43,
+    "description": "TEST V-Belt B-Section (safe to ignore)",
+    "spec": null,
+    "on_hand": 15,
+    "location": "Stores Rack B3",
+    "reorder_point": null,
+    "item_code": "INV-TEST-02",
+    "created_at": "2026-09-14 14:57:17",
+    "item_id": null,
+    "track_pieces": 0,
+    "category": null,
+    "moc": "Rubber/Fabric",
+    "avg_cost": 0,
+    "tracking_mode": "scalar",
+    "category_fields_json": null
+   },
+   {
+    "id": 44,
+    "description": "TEST Plate - Heat Traceability Demo (safe to ignore)",
+    "spec": null,
+    "on_hand": 0,
+    "location": null,
+    "reorder_point": null,
+    "item_code": "INV-TEST-03",
+    "created_at": "2026-09-14 14:57:17",
+    "item_id": null,
+    "track_pieces": 1,
+    "category": "plate",
+    "moc": "SA 516 Gr.70",
+    "avg_cost": 0,
+    "tracking_mode": "piece",
+    "category_fields_json": null
+   },
+   {
+    "id": 69,
+    "description": "AD-ON BLOCK 2NO-NC",
+    "spec": null,
+    "on_hand": 50,
+    "location": null,
+    "reorder_point": null,
+    "item_code": "INV-1028",
+    "created_at": "2026-09-17 11:29:10",
+    "item_id": 1,
+    "track_pieces": 0,
+    "category": null,
+    "moc": null,
+    "avg_cost": 0,
+    "tracking_mode": "scalar",
+    "category_fields_json": null
+   },
+   {
+    "id": 70,
+    "description": "AD ON BLOCK 1NO-NC",
+    "spec": null,
+    "on_hand": 50,
+    "location": null,
+    "reorder_point": 10,
+    "item_code": "INV-1029",
+    "created_at": "2026-09-17 11:29:10",
+    "item_id": 2,
+    "track_pieces": 0,
+    "category": null,
+    "moc": null,
+    "avg_cost": 0,
+    "tracking_mode": "scalar",
+    "category_fields_json": null
+   },
+   {
+    "id": 71,
+    "description": "BQ PLATE 8 MM SA 516 GR 70",
+    "spec": null,
+    "on_hand": 1,
+    "location": null,
+    "reorder_point": null,
+    "item_code": "INV-1030",
+    "created_at": "2026-09-17 11:29:10",
+    "item_id": 190,
+    "track_pieces": 1,
+    "category": "plate",
+    "moc": "SA 516 Gr.70",
+    "avg_cost": 0,
+    "tracking_mode": "piece",
+    "category_fields_json": null
+   },
+   {
+    "id": 72,
+    "description": "BQ PLATE 10MM SA 516 GR 70",
+    "spec": null,
+    "on_hand": 1,
+    "location": null,
+    "reorder_point": null,
+    "item_code": "INV-1031",
+    "created_at": "2026-09-17 11:29:46",
+    "item_id": 191,
+    "track_pieces": 1,
+    "category": "plate",
+    "moc": "SA 516 Gr.70",
+    "avg_cost": 0,
+    "tracking_mode": "piece",
+    "category_fields_json": null
+   },
+   {
+    "id": 73,
+    "description": "BQ PLATE 12 MM SA 516 GR 70",
+    "spec": null,
+    "on_hand": 1,
+    "location": null,
+    "reorder_point": null,
+    "item_code": "INV-1032",
+    "created_at": "2026-09-17 11:34:06",
+    "item_id": 192,
+    "track_pieces": 1,
+    "category": "plate",
+    "moc": "SA 516 Gr.70",
+    "avg_cost": 0,
+    "tracking_mode": "piece",
+    "category_fields_json": null
+   },
+   {
+    "id": 74,
+    "description": "BQ PLATE 14 MM SA 516 GR 70",
+    "spec": null,
+    "on_hand": 1,
+    "location": null,
+    "reorder_point": null,
+    "item_code": "INV-1033",
+    "created_at": "2026-09-17 11:41:56",
+    "item_id": 193,
+    "track_pieces": 1,
+    "category": "plate",
+    "moc": "SA 516 Gr.70",
+    "avg_cost": 0,
+    "tracking_mode": "piece",
+    "category_fields_json": null
+   },
+   {
+    "id": 75,
+    "description": "AIR NOZZLE SS, TF SERIES 25 MM",
+    "spec": null,
+    "on_hand": 0,
+    "location": null,
+    "reorder_point": null,
+    "item_code": null,
+    "created_at": "2026-09-17 11:54:35",
+    "item_id": 5,
+    "track_pieces": 0,
+    "category": null,
+    "moc": null,
+    "avg_cost": 0,
+    "tracking_mode": "scalar",
+    "category_fields_json": null
+   },
+   {
+    "id": 76,
+    "description": "AIR NOZZLE SS, 410 TIP SERIES 140 MM LONGTOP",
+    "spec": null,
+    "on_hand": 0,
+    "location": null,
+    "reorder_point": null,
+    "item_code": null,
+    "created_at": "2026-09-17 12:06:41",
+    "item_id": 6,
+    "track_pieces": 0,
+    "category": null,
+    "moc": null,
+    "avg_cost": 0,
+    "tracking_mode": "scalar",
+    "category_fields_json": null
+   },
+   {
+    "id": 91,
+    "description": "ZZ PLAN TEST BOLT",
+    "spec": null,
+    "on_hand": 6,
+    "location": null,
+    "reorder_point": null,
+    "item_code": null,
+    "created_at": "2026-09-30 15:06:14",
+    "item_id": 3042,
+    "track_pieces": 0,
+    "category": null,
+    "moc": null,
+    "avg_cost": 0,
+    "tracking_mode": "scalar",
+    "category_fields_json": null
+   },
+   {
+    "id": 92,
+    "description": "BQ PLATE 20 MM SA 516 GR 70, NORMALIZED, FORM IV TC",
+    "spec": "3000 x 2500 x 20 mm",
+    "on_hand": 1,
+    "location": null,
+    "reorder_point": 5,
+    "item_code": "IM-000196",
+    "created_at": "2026-09-30 15:44:02",
+    "item_id": 196,
+    "track_pieces": 0,
+    "category": "plate",
+    "moc": "SA 516 GR 70",
+    "avg_cost": 0,
+    "tracking_mode": "serial",
+    "category_fields_json": "{\"density\":\"7850\",\"thickness\":20,\"length\":\"3000\",\"width\":\"2500\"}"
+   },
+   {
+    "id": 98,
+    "description": "MS PLATE 10 MM (remnant stock)",
+    "spec": null,
+    "on_hand": 1,
+    "location": "Rack R-1",
+    "reorder_point": null,
+    "item_code": "INV-1043",
+    "created_at": "2026-10-02 22:14:15",
+    "item_id": null,
+    "track_pieces": 1,
+    "category": "plate",
+    "moc": "MS",
+    "avg_cost": 0,
+    "tracking_mode": "piece",
+    "category_fields_json": null
+   },
+   {
+    "id": 99,
+    "description": "MS PLATE 12 MM (remnant stock)",
+    "spec": null,
+    "on_hand": 1,
+    "location": "Rack R-1",
+    "reorder_point": null,
+    "item_code": "INV-1044",
+    "created_at": "2026-10-02 22:14:18",
+    "item_id": null,
+    "track_pieces": 1,
+    "category": "plate",
+    "moc": "MS",
+    "avg_cost": 0,
+    "tracking_mode": "piece",
+    "category_fields_json": null
+   },
+   {
+    "id": 100,
+    "description": "MS PLATE 8 MM (remnant stock)",
+    "spec": null,
+    "on_hand": 1,
+    "location": "Rack R-1",
+    "reorder_point": null,
+    "item_code": "INV-1045",
+    "created_at": "2026-10-02 22:14:19",
+    "item_id": null,
+    "track_pieces": 1,
+    "category": "plate",
+    "moc": "MS",
+    "avg_cost": 0,
+    "tracking_mode": "piece",
+    "category_fields_json": null
+   },
+   {
+    "id": 101,
+    "description": "MS PLATE 6 MM (remnant stock)",
+    "spec": null,
+    "on_hand": 1,
+    "location": "Rack R-1",
+    "reorder_point": null,
+    "item_code": "INV-1046",
+    "created_at": "2026-10-02 22:14:20",
+    "item_id": null,
+    "track_pieces": 1,
+    "category": "plate",
+    "moc": "MS",
+    "avg_cost": 0,
+    "tracking_mode": "piece",
+    "category_fields_json": null
+   },
+   {
+    "id": 102,
+    "description": "MS ANGLE 50x50x5 (remnant stock)",
+    "spec": "ISA 50x50x5",
+    "on_hand": 1,
+    "location": "Rack R-1",
+    "reorder_point": null,
+    "item_code": "INV-1047",
+    "created_at": "2026-10-02 22:14:21",
+    "item_id": null,
+    "track_pieces": 1,
+    "category": "angle",
+    "moc": "MS",
+    "avg_cost": 0,
+    "tracking_mode": "piece",
+    "category_fields_json": null
+   },
+   {
+    "id": 103,
+    "description": "MS CHANNEL 100x50 (remnant stock)",
+    "spec": "ISMC 100x50",
+    "on_hand": 1,
+    "location": "Rack R-1",
+    "reorder_point": null,
+    "item_code": "INV-1048",
+    "created_at": "2026-10-02 22:14:22",
+    "item_id": null,
+    "track_pieces": 1,
+    "category": "channel",
+    "moc": "MS",
+    "avg_cost": 0,
+    "tracking_mode": "piece",
+    "category_fields_json": null
+   },
+   {
+    "id": 104,
+    "description": "MS PIPE 80 NB (remnant stock)",
+    "spec": "MS PIPE 80NB",
+    "on_hand": 1,
+    "location": "Rack R-2",
+    "reorder_point": null,
+    "item_code": "INV-1049",
+    "created_at": "2026-10-02 22:15:41",
+    "item_id": null,
+    "track_pieces": 1,
+    "category": "pipe",
+    "moc": "MS",
+    "avg_cost": 0,
+    "tracking_mode": "piece",
+    "category_fields_json": null
+   },
+   {
+    "id": 105,
+    "description": "MS SQUARE ROD 20x20 (remnant stock)",
+    "spec": "SQ 20x20",
+    "on_hand": 1,
+    "location": "Rack R-2",
+    "reorder_point": null,
+    "item_code": "INV-1050",
+    "created_at": "2026-10-02 22:15:43",
+    "item_id": null,
+    "track_pieces": 1,
+    "category": "square",
+    "moc": "MS",
+    "avg_cost": 0,
+    "tracking_mode": "piece",
+    "category_fields_json": null
+   },
+   {
+    "id": 106,
+    "description": "EN-8 ROUND BAR 50 DIA (remnant stock)",
+    "spec": "RB 50 DIA",
+    "on_hand": 1,
+    "location": "Rack R-2",
+    "reorder_point": null,
+    "item_code": "INV-1051",
+    "created_at": "2026-10-02 22:15:44",
+    "item_id": null,
+    "track_pieces": 1,
+    "category": "round",
+    "moc": "EN-8",
+    "avg_cost": 0,
+    "tracking_mode": "piece",
+    "category_fields_json": null
+   },
+   {
+    "id": 107,
+    "description": "PRESSURE SWITCH (stock)",
+    "spec": null,
+    "on_hand": 4,
+    "location": "Rack S-4",
+    "reorder_point": null,
+    "item_code": "INV-1052",
+    "created_at": "2026-10-02 22:16:11",
+    "item_id": null,
+    "track_pieces": 0,
+    "category": "standard",
+    "moc": null,
+    "avg_cost": 0,
+    "tracking_mode": "scalar",
+    "category_fields_json": null
+   },
+   {
+    "id": 108,
+    "description": "PRESSURE GAUGE STEAM (stock)",
+    "spec": null,
+    "on_hand": 4,
+    "location": "Rack S-4",
+    "reorder_point": null,
+    "item_code": "INV-1053",
+    "created_at": "2026-10-02 22:16:13",
+    "item_id": null,
+    "track_pieces": 0,
+    "category": "standard",
+    "moc": null,
+    "avg_cost": 0,
+    "tracking_mode": "scalar",
+    "category_fields_json": null
+   }
+  ]
+ },
+ "links": [
+  {
+   "table": "bom_items",
+   "column": "inventory_item_id",
+   "id": 5436,
+   "value": 11
+  },
+  {
+   "table": "bom_items",
+   "column": "inventory_item_id",
+   "id": 8679,
+   "value": 42
+  },
+  {
+   "table": "bom_items",
+   "column": "inventory_item_id",
+   "id": 4515,
+   "value": 75
+  },
+  {
+   "table": "bom_items",
+   "column": "inventory_item_id",
+   "id": 4516,
+   "value": 76
+  },
+  {
+   "table": "bom_items",
+   "column": "inventory_item_id",
+   "id": 9090,
+   "value": 107
+  },
+  {
+   "table": "bom_items",
+   "column": "inventory_item_id",
+   "id": 9091,
+   "value": 108
+  },
+  {
+   "table": "inward_approvals",
+   "column": "inventory_item_id",
+   "id": 25,
+   "value": 75
+  },
+  {
+   "table": "inward_approvals",
+   "column": "inventory_item_id",
+   "id": 26,
+   "value": 75
+  },
+  {
+   "table": "inward_approvals",
+   "column": "inventory_item_id",
+   "id": 27,
+   "value": 76
+  },
+  {
+   "table": "inward_approvals",
+   "column": "inventory_item_id",
+   "id": 28,
+   "value": 76
+  }
+ ],
+ "imported_ids": [
+  114,
+  115,
+  116,
+  117,
+  118,
+  119,
+  120,
+  121,
+  122,
+  123,
+  124,
+  125,
+  126,
+  127,
+  128,
+  129,
+  130,
+  131,
+  132,
+  133,
+  134,
+  135,
+  136,
+  137,
+  138,
+  139,
+  140,
+  141,
+  142,
+  143,
+  144,
+  145,
+  146,
+  147,
+  148,
+  149,
+  150,
+  151,
+  152,
+  153,
+  154,
+  155,
+  156,
+  157,
+  158,
+  159,
+  160,
+  161,
+  162,
+  163,
+  164,
+  165,
+  166,
+  167,
+  168,
+  169,
+  170,
+  171,
+  172,
+  173,
+  174,
+  175,
+  176,
+  177,
+  178,
+  179,
+  180,
+  181,
+  182,
+  183,
+  184,
+  185,
+  186,
+  187,
+  188,
+  189,
+  190,
+  191,
+  192,
+  193,
+  194,
+  195,
+  196,
+  197,
+  198,
+  199,
+  200,
+  201,
+  202,
+  203,
+  204,
+  205,
+  206,
+  207,
+  208,
+  209,
+  210,
+  211,
+  212,
+  213,
+  214,
+  215,
+  216,
+  217,
+  218,
+  219,
+  220,
+  221,
+  222,
+  223,
+  224,
+  225,
+  226,
+  227,
+  228,
+  229,
+  230,
+  231,
+  232,
+  233,
+  234,
+  235,
+  236,
+  237,
+  238,
+  239,
+  240,
+  241,
+  242,
+  243,
+  244,
+  245,
+  246,
+  247,
+  248,
+  249,
+  250,
+  251,
+  252,
+  253,
+  254,
+  255,
+  256,
+  257,
+  258,
+  259,
+  260,
+  261,
+  262,
+  263,
+  264,
+  265,
+  266,
+  267,
+  268,
+  269,
+  270,
+  271,
+  272,
+  273,
+  274,
+  275,
+  276,
+  277,
+  278,
+  279,
+  280,
+  281,
+  282,
+  283,
+  284,
+  285,
+  286,
+  287,
+  288,
+  289,
+  290,
+  291,
+  292,
+  293,
+  294,
+  295,
+  296,
+  297,
+  298,
+  299,
+  300,
+  301,
+  302,
+  303,
+  304,
+  305,
+  306,
+  307,
+  308,
+  309,
+  310,
+  311,
+  312,
+  313,
+  314,
+  315,
+  316,
+  317,
+  318,
+  319,
+  320,
+  321,
+  322,
+  323,
+  324,
+  325,
+  326,
+  327,
+  328,
+  329,
+  330,
+  331,
+  332,
+  333,
+  334,
+  335,
+  336,
+  337,
+  338,
+  339,
+  340,
+  341,
+  342,
+  343,
+  344,
+  345,
+  346,
+  347,
+  348,
+  349,
+  350,
+  351,
+  352,
+  353,
+  354,
+  355,
+  356,
+  357,
+  358,
+  359,
+  360,
+  361,
+  362,
+  363,
+  364,
+  365,
+  366,
+  367,
+  368,
+  369,
+  370,
+  371,
+  372,
+  373,
+  374,
+  375,
+  376,
+  377,
+  378,
+  379,
+  380,
+  381,
+  382,
+  383,
+  384,
+  385,
+  386,
+  387,
+  388,
+  389,
+  390,
+  391,
+  392,
+  393,
+  394,
+  395,
+  396,
+  397,
+  398,
+  399,
+  400,
+  401,
+  402,
+  403,
+  404,
+  405,
+  406
+ ],
+ "imported": [
+  {
+   "id": 114,
+   "item_code": "INV-1054",
+   "sheet": "BQ-101|B Q PLATE - 8 MM"
+  },
+  {
+   "id": 115,
+   "item_code": "INV-1055",
+   "sheet": "BQ - 102|B Q PLATE - 10 MM"
+  },
+  {
+   "id": 116,
+   "item_code": "INV-1056",
+   "sheet": "BQ - 103|B Q PLATE - 12 MM"
+  },
+  {
+   "id": 117,
+   "item_code": "INV-1057",
+   "sheet": "BQ - 104|B Q PLATE - 14 MM"
+  },
+  {
+   "id": 118,
+   "item_code": "INV-1058",
+   "sheet": "BQ - 105|B Q PLATE - 16 MM"
+  },
+  {
+   "id": 119,
+   "item_code": "INV-1059",
+   "sheet": "BQ - 106|B Q PLATE - 18 MM"
+  },
+  {
+   "id": 120,
+   "item_code": "INV-1060",
+   "sheet": "BQ - 111|B Q PLATE - 28 MM"
+  },
+  {
+   "id": 121,
+   "item_code": "INV-1061",
+   "sheet": "MSP - 202|MS PLATES - 1.5 MM"
+  },
+  {
+   "id": 122,
+   "item_code": "INV-1062",
+   "sheet": "MSP - 203|MS PLATES - 2 MM"
+  },
+  {
+   "id": 123,
+   "item_code": "INV-1063",
+   "sheet": "MSP - 204|MS PLATES - 3 MM"
+  },
+  {
+   "id": 124,
+   "item_code": "INV-1064",
+   "sheet": "MSP - 205|MS PLATES - 4 MM"
+  },
+  {
+   "id": 125,
+   "item_code": "INV-1065",
+   "sheet": "MSP - 206|MS PLATES - 5 MM"
+  },
+  {
+   "id": 126,
+   "item_code": "INV-1066",
+   "sheet": "MSP - 207|MS PLATES - 6 MM"
+  },
+  {
+   "id": 127,
+   "item_code": "INV-1067",
+   "sheet": "MSP - 208|MS PLSTES- 8MM"
+  },
+  {
+   "id": 128,
+   "item_code": "INV-1068",
+   "sheet": "MSP - 209|MS PLATES - 10 MM"
+  },
+  {
+   "id": 129,
+   "item_code": "INV-1069",
+   "sheet": "MSP - 210|MS PLATES - 12 MM"
+  },
+  {
+   "id": 130,
+   "item_code": "INV-1070",
+   "sheet": "MSP - 212|MS PLATES - 16 MM"
+  },
+  {
+   "id": 131,
+   "item_code": "INV-1071",
+   "sheet": "SSP-003|COLOUR COATED SHEET -0.50MM BLUE"
+  },
+  {
+   "id": 132,
+   "item_code": "INV-1072",
+   "sheet": "MSA- 302|MS ANGLE 40 X 40 X 4 MM"
+  },
+  {
+   "id": 133,
+   "item_code": "INV-1073",
+   "sheet": "MSA- 303|MS ANGLE 50 X 50 X 5 MM"
+  },
+  {
+   "id": 134,
+   "item_code": "INV-1074",
+   "sheet": "MSF- 312|MS FLAT - 25 X 5 MM"
+  },
+  {
+   "id": 135,
+   "item_code": "INV-1075",
+   "sheet": "MSF- 313|MS FLAT - 40 X  5 MM // 6 MM"
+  },
+  {
+   "id": 136,
+   "item_code": "INV-1076",
+   "sheet": "MSF- 314|MS FLAT - 50 X 5 MM"
+  },
+  {
+   "id": 137,
+   "item_code": "INV-1077",
+   "sheet": "MSF- 318|MS FLAT - 32 X 5  MM"
+  },
+  {
+   "id": 138,
+   "item_code": "INV-1078",
+   "sheet": "MSC - 321|MS CHANELS  ISMC 75 X 40"
+  },
+  {
+   "id": 139,
+   "item_code": "INV-1079",
+   "sheet": "MSC - 322|MS CHANELS  ISMC 100 X 50"
+  },
+  {
+   "id": 140,
+   "item_code": "INV-1080",
+   "sheet": "MSC - 323|MS CHANELS  ISMC 125 X 65"
+  },
+  {
+   "id": 141,
+   "item_code": "INV-1081",
+   "sheet": "MSC - 324|MS CHANELS ISMC 150 X 75"
+  },
+  {
+   "id": 142,
+   "item_code": "INV-1082",
+   "sheet": "MSC - 326|MS CHANELS ISMC 200 X 75"
+  },
+  {
+   "id": 143,
+   "item_code": "INV-1083",
+   "sheet": "MSB - 341|MS I. BEAM - 100 X 70"
+  },
+  {
+   "id": 144,
+   "item_code": "INV-1084",
+   "sheet": "MSB - 342|MS I. BEAM - 125 X 70"
+  },
+  {
+   "id": 145,
+   "item_code": "INV-1085",
+   "sheet": "MSB - 345|MS I. BEAM - 200 X 100"
+  },
+  {
+   "id": 146,
+   "item_code": "INV-1086",
+   "sheet": "MS-RR  - 403|MS ROD - 6 MM ( 1 MTR - 0.22 KGS )"
+  },
+  {
+   "id": 147,
+   "item_code": "INV-1087",
+   "sheet": "MS-RR  - 405|MS ROD - 10 MM ( 1 MTR - 0.65 KGS )"
+  },
+  {
+   "id": 148,
+   "item_code": "INV-1088",
+   "sheet": "MS-RR  - 407|MS ROD - 16 MM ( 1 MTR - 1.60 KGS )"
+  },
+  {
+   "id": 149,
+   "item_code": "INV-1089",
+   "sheet": "MS SQ ROD  - 501|MS SQUARE ROD - 6 MM ( 1 MTR - 0.3 KGS )"
+  },
+  {
+   "id": 150,
+   "item_code": "INV-1090",
+   "sheet": "BOILER ERW - 525|BOILER ERW TUBES - 50.80 OD x 3.25 TH X 6.1 MTRS"
+  },
+  {
+   "id": 151,
+   "item_code": "INV-1091",
+   "sheet": "BOILER ERW - 526|BOILER ERW TUBES - 50.80 OD x 3.66 TH X 5 MTRS"
+  },
+  {
+   "id": 152,
+   "item_code": "INV-1092",
+   "sheet": "BOILER ERW - 527|BOILER ERW TUBES - 50.80 OD x 3.66 TH X 6.1 /6.5 MTRS"
+  },
+  {
+   "id": 153,
+   "item_code": "INV-1093",
+   "sheet": "BOILER ERW - 528|BOILER ERW TUBES - 50.80 OD x 3.66 TH X 7 MTRS"
+  },
+  {
+   "id": 154,
+   "item_code": "INV-1094",
+   "sheet": "BOILER ERW - 529|BOILER ERW TUBES - 63.5 OD x 3.66 x 3.5 /3.7/3.285 MTRS"
+  },
+  {
+   "id": 155,
+   "item_code": "INV-1095",
+   "sheet": "BOILER ERW - 530|BOILER ERW TUBES - 63.5 OD x 3.66 x 4 MTRS"
+  },
+  {
+   "id": 156,
+   "item_code": "INV-1096",
+   "sheet": "BOILER ERW - 531|BOILER ERW TUBES - 63.5 OD x 3.66 x 4.5 MTRS"
+  },
+  {
+   "id": 157,
+   "item_code": "INV-1097",
+   "sheet": "BOILER ERW - 532|BOILER ERW TUBES - 63.5 OD x 3.66 x 5 MTRS"
+  },
+  {
+   "id": 158,
+   "item_code": "INV-1098",
+   "sheet": "BOILER ERW - 533|BOILER ERW TUBES - 63.5 OD x 3.66 x 5.5/5.6/5.8MTRS"
+  },
+  {
+   "id": 159,
+   "item_code": "INV-1099",
+   "sheet": "BOILER ERW - 534|BOILER ERW TUBES - 63.5 OD x 3.66 x 6.1 MTRS"
+  },
+  {
+   "id": 160,
+   "item_code": "INV-1100",
+   "sheet": "BOILER ERW - 535|BOILER ERW TUBES - 63.5 OD x 3.66 x 7 MTRS"
+  },
+  {
+   "id": 161,
+   "item_code": "INV-1101",
+   "sheet": "BOILER ERW - 541|BOILER ERW TUBES - 63.50 OD x 3.66x 7.1MTRS"
+  },
+  {
+   "id": 162,
+   "item_code": "INV-1102",
+   "sheet": "BOILER ERW - 546|BOILER ERW TUBES - 50.80 OD x 3.66 TH X 5.5/5.6 MTRS"
+  },
+  {
+   "id": 163,
+   "item_code": "INV-1103",
+   "sheet": "SEAMLESS PIPE - 553|SEAMLESS PIPE SCH 40 IBR 25 MM (1\")"
+  },
+  {
+   "id": 164,
+   "item_code": "INV-1104",
+   "sheet": "SEAMLESS PIPE - 555|SEAMLESS PIPE SCH 40 IBR 40 MM (1 1/2\")"
+  },
+  {
+   "id": 165,
+   "item_code": "INV-1105",
+   "sheet": "SEAMLESS PIPE - 556|SEAMLESS PIPE SCH 40 IBR 50 MM (2\")"
+  },
+  {
+   "id": 166,
+   "item_code": "INV-1106",
+   "sheet": "SEAMLESS PIPE - 557|SEAMLESS PIPE SCH 40 IBR 65 MM (2 1/2\")"
+  },
+  {
+   "id": 167,
+   "item_code": "INV-1107",
+   "sheet": "SEAMLESS PIPE - 558|SEAMLESS PIPE SCH 40 IBR 80 MM (3\")"
+  },
+  {
+   "id": 168,
+   "item_code": "INV-1108",
+   "sheet": "SEAMLESS PIPE - 559|SEAMLESS PIPE SCH 40 IBR 100 MM (4\")"
+  },
+  {
+   "id": 169,
+   "item_code": "INV-1109",
+   "sheet": "SEAMLESS PIPE - 561|SEAMLESS PIPE SCH 40 IBR 150 MM (6\")"
+  },
+  {
+   "id": 170,
+   "item_code": "INV-1110",
+   "sheet": "SEAMLESS PIPE - 562|SEAMLESS PIPE SCH 40 IBR 200 MM (8\")"
+  },
+  {
+   "id": 171,
+   "item_code": "INV-1111",
+   "sheet": "SEAMLESS PIPE - 581|SEAMLESS PIPE SCH 80 IBR 15 MM"
+  },
+  {
+   "id": 172,
+   "item_code": "INV-1112",
+   "sheet": "SEAMLESS PIPE - 582|SEAMLESS PIPE SCH 80 IBR 20 MM"
+  },
+  {
+   "id": 173,
+   "item_code": "INV-1113",
+   "sheet": "SEAMLESS PIPE - 585|SEAMLESS PIPE SCH 80 IBR 40 MM"
+  },
+  {
+   "id": 174,
+   "item_code": "INV-1114",
+   "sheet": "SEAMLESS PIPE - 586|SEAMLESS PIPE SCH 80 IBR 50 MM"
+  },
+  {
+   "id": 175,
+   "item_code": "INV-1115",
+   "sheet": "SEAMLESS PIPE - 588|SEAMLESS PIPE SCH 80 IBR 80 MM"
+  },
+  {
+   "id": 176,
+   "item_code": "INV-1116",
+   "sheet": "SEAMLESS PIPE - 589|SEAMLESS PIPE SCH 80 IBR 100 MM"
+  },
+  {
+   "id": 177,
+   "item_code": "INV-1117",
+   "sheet": "SEAMLESS PIPE - 592|SEAMLESS PIPE SCH 80 IBR 200 MM"
+  },
+  {
+   "id": 178,
+   "item_code": "INV-1118",
+   "sheet": "MS PIPE - 600|MS PIPE C CLASS - 1/2\""
+  },
+  {
+   "id": 179,
+   "item_code": "INV-1119",
+   "sheet": "MS PIPE - 601|MS PIPE C CLASS - 3/4\""
+  },
+  {
+   "id": 180,
+   "item_code": "INV-1120",
+   "sheet": "MS PIPE - 602|MS PIPE C CLASS - 1\""
+  },
+  {
+   "id": 181,
+   "item_code": "INV-1121",
+   "sheet": "MS PIPE - 603|MS PIPE C CLASS - 1 1/2\""
+  },
+  {
+   "id": 182,
+   "item_code": "INV-1122",
+   "sheet": "MS PIPE - 605|MS PIPE C CLASS - 3\""
+  },
+  {
+   "id": 183,
+   "item_code": "INV-1123",
+   "sheet": "MS PIPE - 608|MS PIPE C CLASS - 6\""
+  },
+  {
+   "id": 184,
+   "item_code": "INV-1124",
+   "sheet": "MS PIPE - 609|MS PIPE C CLASS - 8 \""
+  },
+  {
+   "id": 185,
+   "item_code": "INV-1125",
+   "sheet": "MS PIPE - 611|MS PIPE C CLASS - 12\""
+  },
+  {
+   "id": 186,
+   "item_code": "INV-1126",
+   "sheet": "MS PIPE - 701|MS SQUARE PIPE - 20 MM"
+  },
+  {
+   "id": 187,
+   "item_code": "INV-1127",
+   "sheet": "MSP - APH - 662|APH TUBE ; BS6323 PART V - 60.3 OD X 2.34 TH X 6 MTRS"
+  },
+  {
+   "id": 188,
+   "item_code": "INV-1128",
+   "sheet": "BN - 898|BOLTS - 3/4 X 4/6\""
+  },
+  {
+   "id": 189,
+   "item_code": "INV-1129",
+   "sheet": "BN - 899|BOLTS - 5/8 \" X 4\""
+  },
+  {
+   "id": 190,
+   "item_code": "INV-1130",
+   "sheet": "BN - 903|BOLTS - 3/8\" X 1\""
+  },
+  {
+   "id": 191,
+   "item_code": "INV-1131",
+   "sheet": "BN - 907|BOLTS - 1/2\" X 1 1/2\""
+  },
+  {
+   "id": 192,
+   "item_code": "INV-1132",
+   "sheet": "BN - 908|BOLTS - 1/2\" X 2\""
+  },
+  {
+   "id": 193,
+   "item_code": "INV-1133",
+   "sheet": "BN - 910|BOLTS - 5/8\" X 1 1/2\""
+  },
+  {
+   "id": 194,
+   "item_code": "INV-1134",
+   "sheet": "BN - 911|BOLTS - 5/8\" X 2\""
+  },
+  {
+   "id": 195,
+   "item_code": "INV-1135",
+   "sheet": "BN - 912|BOLTS - 5/8\" X 2 1/2'"
+  },
+  {
+   "id": 196,
+   "item_code": "INV-1136",
+   "sheet": "BN - 915|BOLTS - 1\" X 5\""
+  },
+  {
+   "id": 197,
+   "item_code": "INV-1137",
+   "sheet": "BN - 917|BOLTS - 5/8 X 3\""
+  },
+  {
+   "id": 198,
+   "item_code": "INV-1138",
+   "sheet": "BN - 918|BOLTS - FOUNDATION - 1\" X 1250 MM"
+  },
+  {
+   "id": 199,
+   "item_code": "INV-1139",
+   "sheet": "BN - 933|NUTS - 1/2\""
+  },
+  {
+   "id": 200,
+   "item_code": "INV-1140",
+   "sheet": "BN - 934|NUTS - 5/8\""
+  },
+  {
+   "id": 201,
+   "item_code": "INV-1141",
+   "sheet": "BN - 954|WASHERS - 5/8\""
+  },
+  {
+   "id": 202,
+   "item_code": "INV-1142",
+   "sheet": "PACK / 1000|ASBESTOS PACKING SHEET - METALIC - 3 MM"
+  },
+  {
+   "id": 203,
+   "item_code": "INV-1143",
+   "sheet": "PACK / 1004|ASBESTOS ROPE - 6 MM"
+  },
+  {
+   "id": 204,
+   "item_code": "INV-1144",
+   "sheet": "PACK / 1005|ASBESTOS ROPE - 8 MM"
+  },
+  {
+   "id": 205,
+   "item_code": "INV-1145",
+   "sheet": "PACK / 1006|ASBESTOS ROPE - 10 MM"
+  },
+  {
+   "id": 206,
+   "item_code": "INV-1146",
+   "sheet": "PACK / 1007|ASBESTOS ROPE - 12 MM"
+  },
+  {
+   "id": 207,
+   "item_code": "INV-1147",
+   "sheet": "PACK / 1008|ASBESTOS ROPE - 16 MM"
+  },
+  {
+   "id": 208,
+   "item_code": "INV-1148",
+   "sheet": "PACK / 1010|ASBESTOS CUT GASKET - METALIC - 15 MM - 1/2\""
+  },
+  {
+   "id": 209,
+   "item_code": "INV-1149",
+   "sheet": "PACK / 1011|ASBESTOS CUT GASKET - METALIC - 20 MM / 3/4\""
+  },
+  {
+   "id": 210,
+   "item_code": "INV-1150",
+   "sheet": "PACK / 1012|ASBESTOS CUT GASKET - METALIC - 25 MM / 1\""
+  },
+  {
+   "id": 211,
+   "item_code": "INV-1151",
+   "sheet": "PACK / 1013|ASBESTOS GASKET - METALIC - 40 MM / 1 1/2\""
+  },
+  {
+   "id": 212,
+   "item_code": "INV-1152",
+   "sheet": "PACK / 1014|ASBESTOS GASKET - METALIC - 50 MM / 2\""
+  },
+  {
+   "id": 213,
+   "item_code": "INV-1153",
+   "sheet": "PACK / 1015|ASBESTOS GASKET - METALIC - 65 MM / 2 1/2\""
+  },
+  {
+   "id": 214,
+   "item_code": "INV-1154",
+   "sheet": "PACK / 1017|ASBESTOS GASKET - METALIC - 100 MM / 4\""
+  },
+  {
+   "id": 215,
+   "item_code": "INV-1155",
+   "sheet": "PACK / 1029|ASBESTOS GASKET - METALIC - 200 MM"
+  },
+  {
+   "id": 216,
+   "item_code": "INV-1156",
+   "sheet": "REF / 1100|FIRE BRICKS - STANDARD - IS 8"
+  },
+  {
+   "id": 217,
+   "item_code": "INV-1157",
+   "sheet": "REF / 1101|FIRE BRICKS - STANDARD - IS 6"
+  },
+  {
+   "id": 218,
+   "item_code": "INV-1158",
+   "sheet": "REF / 1102|SIDE ARCH BRICKS - 230 X 115 X 75 X 50"
+  },
+  {
+   "id": 219,
+   "item_code": "INV-1159",
+   "sheet": "REF / 1103|SIDE ARCH BRICKS - 230 X 115 X 75 X 70"
+  },
+  {
+   "id": 220,
+   "item_code": "INV-1160",
+   "sheet": "REF / 1104|SIDE ARCH BRICKS - 230 X 115 X 65 X 50"
+  },
+  {
+   "id": 221,
+   "item_code": "INV-1161",
+   "sheet": "REF / 1110|FIRE CRATE CASTABLE SUPER - OTHERS - 50 KGS"
+  },
+  {
+   "id": 222,
+   "item_code": "INV-1162",
+   "sheet": "REF / 1111|FIRE CRATE CASTABLE - NORMAL - 50 KGS BAG"
+  },
+  {
+   "id": 223,
+   "item_code": "INV-1163",
+   "sheet": "REF / 1112|CASTABLE - WHITE HEAT - K - 50 KGS BAG"
+  },
+  {
+   "id": 224,
+   "item_code": "INV-1164",
+   "sheet": "CON / 2002|WELDING ELECTRODES 7018    3.15 MM X 450 MM"
+  },
+  {
+   "id": 225,
+   "item_code": "INV-1165",
+   "sheet": "CON / 2004|WELDING ELECTRODES 7018    2.5 MM X 400 MM"
+  },
+  {
+   "id": 226,
+   "item_code": "INV-1166",
+   "sheet": "CON / 2005|WELDING ELECTRODES 7018    4 MM X 450 MM"
+  },
+  {
+   "id": 227,
+   "item_code": "INV-1167",
+   "sheet": "CON / 2010|WELDING ELECTRODES 6013    4 MM X 450 MM"
+  },
+  {
+   "id": 228,
+   "item_code": "INV-1168",
+   "sheet": "CON / 2012|WELDING ELECTRODES 6013   3.15 MM X 350 MM"
+  },
+  {
+   "id": 229,
+   "item_code": "INV-1169",
+   "sheet": "CON / 2014|WELDING ELECTRODES 6013    2.5 MM X 400 MM"
+  },
+  {
+   "id": 230,
+   "item_code": "INV-1170",
+   "sheet": "CON / 2024|SAW WIRE 3.15 ( EM12K ) - 1 Sproll = 25 Kgs"
+  },
+  {
+   "id": 231,
+   "item_code": "INV-1171",
+   "sheet": "CON / 2025|SAW FLUX 1 Bag = 25 Kgs/30KG"
+  },
+  {
+   "id": 232,
+   "item_code": "INV-1172",
+   "sheet": "CON / 2026|MIG WIRE 1.2 MM ( 15 kGS )"
+  },
+  {
+   "id": 233,
+   "item_code": "INV-1173",
+   "sheet": "CON / 2028|MS FILLER WIRE 2.5MM 70S"
+  },
+  {
+   "id": 234,
+   "item_code": "INV-1174",
+   "sheet": "CON / 2030|GRINDING WHEEL -7\""
+  },
+  {
+   "id": 235,
+   "item_code": "INV-1175",
+   "sheet": "CON / 2030-A|GRINDING WHEEL -5\""
+  },
+  {
+   "id": 236,
+   "item_code": "INV-1176",
+   "sheet": "CON / 2031|CUTTOFF WHEEL-14\""
+  },
+  {
+   "id": 237,
+   "item_code": "INV-1177",
+   "sheet": "CON / 2032|CUTTOFF WHEEL - 4 \""
+  },
+  {
+   "id": 238,
+   "item_code": "INV-1178",
+   "sheet": "CON / 2034|CUTTOFF WHEEL - 7 \""
+  },
+  {
+   "id": 239,
+   "item_code": "INV-1179",
+   "sheet": "CON / 2035|GRINDING WHEEL -4\""
+  },
+  {
+   "id": 240,
+   "item_code": "INV-1180",
+   "sheet": "CON / 2041|BUFFING WHEEL - 4\" - 2608601669"
+  },
+  {
+   "id": 241,
+   "item_code": "INV-1181",
+   "sheet": "CON / 2041-A|BUFFING WHEEL - 5\" - 2608601670"
+  },
+  {
+   "id": 242,
+   "item_code": "INV-1182",
+   "sheet": "CON / 2053|OXYGEN GAS - 17 KGS"
+  },
+  {
+   "id": 243,
+   "item_code": "INV-1183",
+   "sheet": "CON / 2054|LPG GAS  - 19 KG"
+  },
+  {
+   "id": 244,
+   "item_code": "INV-1184",
+   "sheet": "CON / 2056|CO-2 GAS CYLINDER"
+  },
+  {
+   "id": 245,
+   "item_code": "INV-1185",
+   "sheet": "CON / 2059|(CO-2) REGULATORS"
+  },
+  {
+   "id": 246,
+   "item_code": "INV-1186",
+   "sheet": "CON / 2060|HOSE PIPE  - LPG - RED"
+  },
+  {
+   "id": 247,
+   "item_code": "INV-1187",
+   "sheet": "CON / 2061|HOSE PIPE -OXYGEN (O2) - BLUE"
+  },
+  {
+   "id": 248,
+   "item_code": "INV-1188",
+   "sheet": "CON / 2063|HAND GLOVES - WELDING"
+  },
+  {
+   "id": 249,
+   "item_code": "INV-1189",
+   "sheet": "CON / 2064|HAND GLOVES - ORDINARY"
+  },
+  {
+   "id": 250,
+   "item_code": "INV-1190",
+   "sheet": "CON / 2065|WIRE BRUSHES"
+  },
+  {
+   "id": 251,
+   "item_code": "INV-1191",
+   "sheet": "CON / 2067|WHITE WELDING GLASS"
+  },
+  {
+   "id": 252,
+   "item_code": "INV-1192",
+   "sheet": "CON / 2068|BLACK WELDING GLASS"
+  },
+  {
+   "id": 253,
+   "item_code": "INV-1193",
+   "sheet": "CON / 2069|WELDING HOLDERS"
+  },
+  {
+   "id": 254,
+   "item_code": "INV-1194",
+   "sheet": "CON / 2070|WELDING CABLES - COPPER / ALUMINIUM"
+  },
+  {
+   "id": 255,
+   "item_code": "INV-1195",
+   "sheet": "CON / 2072|LUGS - ALUMINIUM - EARTHING"
+  },
+  {
+   "id": 256,
+   "item_code": "INV-1196",
+   "sheet": "CON / 2082|NOZZEL GEL"
+  },
+  {
+   "id": 257,
+   "item_code": "INV-1197",
+   "sheet": "CON / 2086|WELDING GOGGLES"
+  },
+  {
+   "id": 258,
+   "item_code": "INV-1198",
+   "sheet": "CON / 2087|ARGON GAS"
+  },
+  {
+   "id": 259,
+   "item_code": "INV-1199",
+   "sheet": "CON / 2089|MIG LINER 36 KD"
+  },
+  {
+   "id": 260,
+   "item_code": "INV-1200",
+   "sheet": "CON / 2205|TERPANTILE OIL"
+  },
+  {
+   "id": 261,
+   "item_code": "INV-1201",
+   "sheet": "CON / 2207|THINNER - NC"
+  },
+  {
+   "id": 262,
+   "item_code": "INV-1202",
+   "sheet": "CON / 2208|THINNER - PU"
+  },
+  {
+   "id": 263,
+   "item_code": "INV-1203",
+   "sheet": "CON / 2212|PAINT - ENAMAL GREEN // PISTA GREEN"
+  },
+  {
+   "id": 264,
+   "item_code": "INV-1204",
+   "sheet": "CON / 2214|PAINT - ENAMAL YELLOW"
+  },
+  {
+   "id": 265,
+   "item_code": "INV-1205",
+   "sheet": "CON / 2215|PAINT - ENAMAL - BLACK"
+  },
+  {
+   "id": 266,
+   "item_code": "INV-1206",
+   "sheet": "CON / 2216|PAINT - ENAMAL - SMOKE GREY"
+  },
+  {
+   "id": 267,
+   "item_code": "INV-1207",
+   "sheet": "CON / 2217|PAINT - PU - DARK BLUE"
+  },
+  {
+   "id": 268,
+   "item_code": "INV-1208",
+   "sheet": "CON / 2219|PAINT - PU - FEROZE / INDIGO BLUE"
+  },
+  {
+   "id": 269,
+   "item_code": "INV-1209",
+   "sheet": "CON / 2221|PAINT - ORANGE"
+  },
+  {
+   "id": 270,
+   "item_code": "INV-1210",
+   "sheet": "CON / 2222|PAINT - SILVER ( ALUMINIUM) -HR"
+  },
+  {
+   "id": 271,
+   "item_code": "INV-1211",
+   "sheet": "CON / 2224|PRIMER - REDOXIDE"
+  },
+  {
+   "id": 272,
+   "item_code": "INV-1212",
+   "sheet": "CON / 2225|PRIMER - ZINC CHROMATE - GREY"
+  },
+  {
+   "id": 273,
+   "item_code": "INV-1213",
+   "sheet": "CON / 2229|PLASTIC STRETCH FILM"
+  },
+  {
+   "id": 274,
+   "item_code": "INV-1214",
+   "sheet": "CON / 2234|CELLO TAPE BROWN / WHITE"
+  },
+  {
+   "id": 275,
+   "item_code": "INV-1215",
+   "sheet": "CON / 2236|PAINT - BROWN"
+  },
+  {
+   "id": 276,
+   "item_code": "INV-1216",
+   "sheet": "CON / 2250|CLEANER - 420 ML"
+  },
+  {
+   "id": 277,
+   "item_code": "INV-1217",
+   "sheet": "CON / 2251|DEVELOPER - 420 ML"
+  },
+  {
+   "id": 278,
+   "item_code": "INV-1218",
+   "sheet": "CON / 2252|PENETRANT - 420 ML"
+  },
+  {
+   "id": 279,
+   "item_code": "INV-1219",
+   "sheet": "GV / 3013|GLOBE VALVE, CI, F/E , IBR -  40 NB"
+  },
+  {
+   "id": 280,
+   "item_code": "INV-1220",
+   "sheet": "GV / 3022|GLOBE VALVE, CI S/W , IBR -  15 NB"
+  },
+  {
+   "id": 281,
+   "item_code": "INV-1221",
+   "sheet": "GV / 3032|GLOBE VALVE, CAST STEEL, F/E , IBR - 25  NB-T/H ; ND-40"
+  },
+  {
+   "id": 282,
+   "item_code": "INV-1222",
+   "sheet": "GV / 3033|GLOBE VALVE, CAST STEEL, F/E , IBR - 40  NB-T/H ; ND-40"
+  },
+  {
+   "id": 283,
+   "item_code": "INV-1223",
+   "sheet": "GV / 3034|GLOBE VALVE, CAST STEEL, F/E , IBR - 50  NB-T/H ; ND-40"
+  },
+  {
+   "id": 284,
+   "item_code": "INV-1224",
+   "sheet": "GV / 3035|GLOBE VALVE, CAST STEEL, F/E , IBR - 65  NB-T/H ; ND-40"
+  },
+  {
+   "id": 285,
+   "item_code": "INV-1225",
+   "sheet": "GV / 3036|GLOBE VALVE, CAST STEEL, F/E , IBR - 80  NB-T/H ; ND-40"
+  },
+  {
+   "id": 286,
+   "item_code": "INV-1226",
+   "sheet": "GV / 3037|GLOBE VALVE, CAST STEEL, F/E , IBR - 100  NB-T/H ; ND-40"
+  },
+  {
+   "id": 287,
+   "item_code": "INV-1227",
+   "sheet": "GV / 3047|GLOBE VALVE, SGI, F/E , IBR - 25 NB"
+  },
+  {
+   "id": 288,
+   "item_code": "INV-1228",
+   "sheet": "GV / 3048|GLOBE VALVE, SGI, F/E , IBR - 40 NB"
+  },
+  {
+   "id": 289,
+   "item_code": "INV-1229",
+   "sheet": "GV / 3049|GLOBE VALVE, SGI, F/E , IBR - 50 NB"
+  },
+  {
+   "id": 290,
+   "item_code": "INV-1230",
+   "sheet": "GV / 3050|GLOBE VALVE, SGI, F/E , IBR - 65 NB"
+  },
+  {
+   "id": 291,
+   "item_code": "INV-1231",
+   "sheet": "GV / 3051|GLOBE VALVE, SGI, F/E , IBR - 80 NB"
+  },
+  {
+   "id": 292,
+   "item_code": "INV-1232",
+   "sheet": "GV / 3052|GLOBE VALVE, SGI, F/E , IBR - 100 NB"
+  },
+  {
+   "id": 293,
+   "item_code": "INV-1233",
+   "sheet": "GV / 3054|GLOBE VALVE, SGI, F/E , IBR - 150 NB"
+  },
+  {
+   "id": 294,
+   "item_code": "INV-1234",
+   "sheet": "GV / 3063|GLOBE VALVE, CAST STEEL, F/E , IBR - 40 NB- CLASS -150"
+  },
+  {
+   "id": 295,
+   "item_code": "INV-1235",
+   "sheet": "GV / 3067|GLOBE VALVE, CAST STEEL, F/E , IBR - 100 NB- CLASS -150"
+  },
+  {
+   "id": 296,
+   "item_code": "INV-1236",
+   "sheet": "GV / 3086|GLOBE VALVE, CAST STEEL, F/E , IBR - 80 NB-  CLASS-300"
+  },
+  {
+   "id": 297,
+   "item_code": "INV-1237",
+   "sheet": "GV / 3115|GLOBE VALVE, FORGED , S/E , IBR - 15 NB"
+  },
+  {
+   "id": 298,
+   "item_code": "INV-1238",
+   "sheet": "GV / 3150|GATE VALVE, FORGED , S/E , NON-IBR - 15 NB"
+  },
+  {
+   "id": 299,
+   "item_code": "INV-1239",
+   "sheet": "SV / 3170|SAFETY VALVES, CI, F/E , IBR  25 X 25NB(10.54)"
+  },
+  {
+   "id": 300,
+   "item_code": "INV-1240",
+   "sheet": "SV / 3215|SAFETY VALVES , CS, F/E ,  IBR - 25 NB - T/H- 17 / 19 KGS"
+  },
+  {
+   "id": 301,
+   "item_code": "INV-1241",
+   "sheet": "WLG / 3241|WATER LEVEL GAUGE , CAST STEEL , F/E , IBR - 20 MM-400 CC"
+  },
+  {
+   "id": 302,
+   "item_code": "INV-1242",
+   "sheet": "WLG / 3242|WATER LEVEL GAUGE ,  STEEL , F/E , IBR - 20 MM"
+  },
+  {
+   "id": 303,
+   "item_code": "INV-1243",
+   "sheet": "WLG / 3244|WATER LEVEL GAUGE , TRANSPARANT  , F/E , IBR - 20 MM"
+  },
+  {
+   "id": 304,
+   "item_code": "INV-1244",
+   "sheet": "BDV / 3262|BLOW DOWN VALVE, CS, F/E , IBR  25NB"
+  },
+  {
+   "id": 305,
+   "item_code": "INV-1245",
+   "sheet": "BDV / 3263|BLOW DOWN VALVE, CS, F/E , IBR  40NB"
+  },
+  {
+   "id": 306,
+   "item_code": "INV-1246",
+   "sheet": "FP / 3272|FUSIBLE PLUG, BRONZE, S/P , IBR - 25 MM"
+  },
+  {
+   "id": 307,
+   "item_code": "INV-1247",
+   "sheet": "WLC / 3293|MOBRAY CONTROLLER , IBR , 17.50 KGS - CC 300"
+  },
+  {
+   "id": 308,
+   "item_code": "INV-1248",
+   "sheet": "WLC / 3294|MOBRAY CONTROLLER , IBR , 17.50 KGS - CC 400"
+  },
+  {
+   "id": 309,
+   "item_code": "INV-1249",
+   "sheet": "WLC / 3302|LEVEL SWITCH // CONTROLLER , SIDE MOUNTED , NON-IBR , 80 MM"
+  },
+  {
+   "id": 310,
+   "item_code": "INV-1250",
+   "sheet": "PRV / 3356|PRESSURE REGULATING VALVE, CS, F/E , IBR - 40 MM"
+  },
+  {
+   "id": 311,
+   "item_code": "INV-1251",
+   "sheet": "PRV / 3357|PRESSURE REGULATING VALVE, CS, F/E , IBR - 50 MM"
+  },
+  {
+   "id": 312,
+   "item_code": "INV-1252",
+   "sheet": "NRV / 3402|NRV, HORIZONTAL , CI, F/E , IBR - 25 MM"
+  },
+  {
+   "id": 313,
+   "item_code": "INV-1253",
+   "sheet": "NRV / 3452|DISC CHECK VALVE , SS, IBR - 25 MM"
+  },
+  {
+   "id": 314,
+   "item_code": "INV-1254",
+   "sheet": "NRV / 3453|DISC CHECK VALVE , SS, IBR - 40 MM"
+  },
+  {
+   "id": 315,
+   "item_code": "INV-1255",
+   "sheet": "NRV / 3454|DISC CHECK VALVE , SS, IBR - 50 MM"
+  },
+  {
+   "id": 316,
+   "item_code": "INV-1256",
+   "sheet": "YS / 3503|Y STAINER , CI , F/E , IBR - 40 MM"
+  },
+  {
+   "id": 317,
+   "item_code": "INV-1257",
+   "sheet": "BV 3551|BALL VALVE, CI , F/E , NONIBR- 25 MM"
+  },
+  {
+   "id": 318,
+   "item_code": "INV-1258",
+   "sheet": "BV 3552|BALL VALVE, CI , F/E , NONIBR- 40 MM"
+  },
+  {
+   "id": 319,
+   "item_code": "INV-1259",
+   "sheet": "MF / 3861|STEAM TRAP - THERMO DYNAMIC  -TD-3 - CS , IBR 15 MM"
+  },
+  {
+   "id": 320,
+   "item_code": "INV-1260",
+   "sheet": "GTV/3990|GATE VALVE - CS - IBR - #150 50 MM"
+  },
+  {
+   "id": 321,
+   "item_code": "INV-1261",
+   "sheet": "PF / 4001|FLANGES , MS, T/H, IBR - 20 MM (3/4\")"
+  },
+  {
+   "id": 322,
+   "item_code": "INV-1262",
+   "sheet": "PF / 4002|FLANGES , MS, T/H, IBR - 25 MM (1\")"
+  },
+  {
+   "id": 323,
+   "item_code": "INV-1263",
+   "sheet": "PF / 4004|FLANGES , MS, T/H, IBR - 40 MM (11/2\")"
+  },
+  {
+   "id": 324,
+   "item_code": "INV-1264",
+   "sheet": "PF / 4005|FLANGES , MS, T/H, IBR - 50 MM (2\")"
+  },
+  {
+   "id": 325,
+   "item_code": "INV-1265",
+   "sheet": "PF / 4006|FLANGES , MS, T/H, IBR - 65 MM (21/2\")"
+  },
+  {
+   "id": 326,
+   "item_code": "INV-1266",
+   "sheet": "PF / 4007|FLANGES , MS, T/H, IBR - 80 MM (3\")"
+  },
+  {
+   "id": 327,
+   "item_code": "INV-1267",
+   "sheet": "PF / 4008|FLANGES , MS, T/H, IBR - 100 MM (4\")"
+  },
+  {
+   "id": 328,
+   "item_code": "INV-1268",
+   "sheet": "PF / 4009|FLANGES , MS, T/H, IBR - 125 MM (5\")"
+  },
+  {
+   "id": 329,
+   "item_code": "INV-1269",
+   "sheet": "PF / 4021|FLANGES , MS, CLASS-150, IBR - 20 MM (3/4\")"
+  },
+  {
+   "id": 330,
+   "item_code": "INV-1270",
+   "sheet": "PF / 4022|FLANGES , MS, CLASS-150, IBR - 25 MM (1\")"
+  },
+  {
+   "id": 331,
+   "item_code": "INV-1271",
+   "sheet": "PF / 4024|FLANGES , MS, CLASS-150, IBR - 40 MM (11/2\")"
+  },
+  {
+   "id": 332,
+   "item_code": "INV-1272",
+   "sheet": "PF / 4025|FLANGES , MS, CLASS-150, IBR - 50 MM (2\")"
+  },
+  {
+   "id": 333,
+   "item_code": "INV-1273",
+   "sheet": "PF / 4027|FLANGES , MS, CLASS-150, IBR - 80 MM (3\")"
+  },
+  {
+   "id": 334,
+   "item_code": "INV-1274",
+   "sheet": "PF / 4029|FLANGES , MS, CLASS-150, IBR - 125 MM (5\")"
+  },
+  {
+   "id": 335,
+   "item_code": "INV-1275",
+   "sheet": "PF / 4030|FLANGES , MS, CLASS-150, IBR - 150 MM (6\")"
+  },
+  {
+   "id": 336,
+   "item_code": "INV-1276",
+   "sheet": "PF / 4125|BENDS , SEAMLESS , SHORT ( ELBOW) , IBR -SC/40- 50 MM (2\")"
+  },
+  {
+   "id": 337,
+   "item_code": "INV-1277",
+   "sheet": "PF / 4127|BENDS , SEAMLESS , SHORT ( ELBOW) , IBR -SC/40- 80 MM (3\")"
+  },
+  {
+   "id": 338,
+   "item_code": "INV-1278",
+   "sheet": "PF / 4128|BENDS , SEAMLESS , SHORT ( ELBOW) , IBR -SC/40- 100 MM (4\")"
+  },
+  {
+   "id": 339,
+   "item_code": "INV-1279",
+   "sheet": "PF / 4142|BENDS , SEAMLESS , LONG , IBR -SC/40- 25 MM (1\")"
+  },
+  {
+   "id": 340,
+   "item_code": "INV-1280",
+   "sheet": "PF / 4144|BENDS , SEAMLESS , LONG , IBR -SC/40- 40 MM (11/2\")"
+  },
+  {
+   "id": 341,
+   "item_code": "INV-1281",
+   "sheet": "PF / 4284|REDUCER,  IBR -SC/40- 40 MM (11/2\")"
+  },
+  {
+   "id": 342,
+   "item_code": "INV-1282",
+   "sheet": "PF / 4285|REDUCER,  IBR -SC/40- 50 MM (2\")"
+  },
+  {
+   "id": 343,
+   "item_code": "INV-1283",
+   "sheet": "PF / 4286|REDUCER,  IBR -SC/40- 65 MM (21/2\")"
+  },
+  {
+   "id": 344,
+   "item_code": "INV-1284",
+   "sheet": "PF / 4288|REDUCER,  IBR -SC/40- 100 MM (4\")"
+  },
+  {
+   "id": 345,
+   "item_code": "INV-1285",
+   "sheet": "PF-NON-IBR / 4460|DUMMY FLANGES , MS, CLASS-150, NON-IBR- 200 MM (8\")"
+  },
+  {
+   "id": 346,
+   "item_code": "INV-1286",
+   "sheet": "PF-NON-IBR / 4523-B|COUPLING , NON-IBR-SC-40 - 10 MM (3/8\")"
+  },
+  {
+   "id": 347,
+   "item_code": "INV-1287",
+   "sheet": "PF-NON-IBR 4749|HEX NIPPLE MS  NON-IBR- 10MM (3/8\")"
+  },
+  {
+   "id": 348,
+   "item_code": "INV-1288",
+   "sheet": "PF-NON-IBR 4750|HEX NIPPLE MS  NON-IBR- 15 MM (1/2\")"
+  },
+  {
+   "id": 349,
+   "item_code": "INV-1289",
+   "sheet": "PF-NON-IBR 4778|REDUCER HEX NIPPLE   CS   NON-IBR - 15 X 6"
+  },
+  {
+   "id": 350,
+   "item_code": "INV-1290",
+   "sheet": "PF-NONIBR 4822|PRESSURE GAUGE - DIAL :  6\" ; UPT0 21 Kgs ; 1/2\" BSP"
+  },
+  {
+   "id": 351,
+   "item_code": "INV-1291",
+   "sheet": "PF-NONIBR 4824|PRESSURE GAUGE - DIAL : 10\" ; 0 T0 21 Kgs ; 1/2\" BSP"
+  },
+  {
+   "id": 352,
+   "item_code": "INV-1292",
+   "sheet": "PF-NONIBR 4826|PRESSURE GAUGE - DIAL : 4\" ; 0 T0 21 Kgs ; 1/4\" Back Connection"
+  },
+  {
+   "id": 353,
+   "item_code": "INV-1293",
+   "sheet": "PF-NONIBR 4827|Thermometer - Dial : 4\" x 6\" Steam - 0-300 Deg C ; Bottom / Back Connection"
+  },
+  {
+   "id": 354,
+   "item_code": "INV-1294",
+   "sheet": "TOOLS / 5005|DRILL BIT 5 MM"
+  },
+  {
+   "id": 355,
+   "item_code": "INV-1295",
+   "sheet": "TOOLS / 5006|DRILL BIT 6 MM"
+  },
+  {
+   "id": 356,
+   "item_code": "INV-1296",
+   "sheet": "TOOLS / 5008|DRILL BIT 8.5MM"
+  },
+  {
+   "id": 357,
+   "item_code": "INV-1297",
+   "sheet": "TOOLS / 5010|DRILL BIT 10 MM/10.5MM"
+  },
+  {
+   "id": 358,
+   "item_code": "INV-1298",
+   "sheet": "TOOLS / 5012|DRILL BIT 14 MM"
+  },
+  {
+   "id": 359,
+   "item_code": "INV-1299",
+   "sheet": "TOOLS / 5043-1|ARBOUR 19.5 MM FOR BROACH CUTTER"
+  },
+  {
+   "id": 360,
+   "item_code": "INV-1300",
+   "sheet": "TOOLS / 5044-1|BROCH CUTTER 44MM"
+  },
+  {
+   "id": 361,
+   "item_code": "INV-1301",
+   "sheet": "TOOLS / 5045|BROCH CUTTER 52MM"
+  },
+  {
+   "id": 362,
+   "item_code": "INV-1302",
+   "sheet": "TOOLS / 5048|BROCH CUTTER 65 X 50 MM"
+  },
+  {
+   "id": 363,
+   "item_code": "INV-1303",
+   "sheet": "TOOLS / 5085|MEASURIG TAPE 5 MTRS"
+  },
+  {
+   "id": 364,
+   "item_code": "INV-1304",
+   "sheet": "CI /7018|GRATE BARS, CI , SIMPLEX - 1000 MM - G9"
+  },
+  {
+   "id": 365,
+   "item_code": "INV-1305",
+   "sheet": "CI /7031|GRATE BARS, CI , TRIPLEX - 530 MM - T2"
+  },
+  {
+   "id": 366,
+   "item_code": "INV-1306",
+   "sheet": "CI /7032|GRATE BARS, CI , TRIPLEX - 630 MM - T3"
+  },
+  {
+   "id": 367,
+   "item_code": "INV-1307",
+   "sheet": "CI /7053|SUPPORT BAR   - 1132 MM - S4"
+  },
+  {
+   "id": 368,
+   "item_code": "INV-1308",
+   "sheet": "CI /7057|SUPPORT BAR   - 660 MM - S8"
+  },
+  {
+   "id": 369,
+   "item_code": "INV-1309",
+   "sheet": "CI /7063|SUPPORT BAR - \"H\" TYPE S-14 - 630 MM"
+  },
+  {
+   "id": 370,
+   "item_code": "INV-1310",
+   "sheet": "CI /7066|SUPPORT BAR   - 1160 MM - S17"
+  },
+  {
+   "id": 371,
+   "item_code": "INV-1311",
+   "sheet": "CI /7067|SUPPORT BAR   - 955 MM - S18"
+  },
+  {
+   "id": 372,
+   "item_code": "INV-1312",
+   "sheet": "CI /7070|AIR NOZZLE ,CI , TF SERIES - 32 MM TOP"
+  },
+  {
+   "id": 373,
+   "item_code": "INV-1313",
+   "sheet": "CI /7071|AIR NOZZLE ,CI , FBC SERIES - 50 MM TOP"
+  },
+  {
+   "id": 374,
+   "item_code": "INV-1314",
+   "sheet": "CI /7104|FIRE DOOR - D5 CI , FRAME SIZE:550 X 550"
+  },
+  {
+   "id": 375,
+   "item_code": "INV-1315",
+   "sheet": "CI / 7125|RAV - 150 MM ( 6\") -   WITH GEARED MOTOR"
+  },
+  {
+   "id": 376,
+   "item_code": "INV-1316",
+   "sheet": "ELEC-8624|LIGHTENING ARRESTOR COPPER ROD WITH SPICKS"
+  },
+  {
+   "id": 377,
+   "item_code": "INV-1317",
+   "sheet": "ELEC-8625|CERAMIC INSULATORS - RED"
+  },
+  {
+   "id": 378,
+   "item_code": "INV-1318",
+   "sheet": "ELEC-8702|INSULATION TAPE"
+  },
+  {
+   "id": 379,
+   "item_code": "INV-1319",
+   "sheet": "INS - 9001|PRESSURE SWITCH - UT-10"
+  },
+  {
+   "id": 380,
+   "item_code": "INV-1320",
+   "sheet": "INS - 9004|PRESSURE SWITCH - RT - 116"
+  },
+  {
+   "id": 381,
+   "item_code": "INV-1321",
+   "sheet": "INS - 9005|PRESSURE SWITCH - RT- 05"
+  },
+  {
+   "id": 382,
+   "item_code": "INV-1322",
+   "sheet": "INS - 9006|PRESSURE SWITCH - IPSD - 50"
+  },
+  {
+   "id": 383,
+   "item_code": "INV-1323",
+   "sheet": "INS - 9020|SOLONOID VALVES - BAG HOUSE 25 MM"
+  },
+  {
+   "id": 384,
+   "item_code": "INV-1324",
+   "sheet": "INS - 9021|SOLONOID VALVES - BAG HOUSE 40 MM"
+  },
+  {
+   "id": 385,
+   "item_code": "INV-1325",
+   "sheet": "INS - 9030|MANOMETER - U TYPE  0-300"
+  },
+  {
+   "id": 386,
+   "item_code": "INV-1326",
+   "sheet": "10000|BOILER FEED PUMP : 1-17 // 2-11  //  1HP /1.5 HP"
+  },
+  {
+   "id": 387,
+   "item_code": "INV-1327",
+   "sheet": "10002|BOILER FEED PUMP : 1-36 // 3 HP"
+  },
+  {
+   "id": 388,
+   "item_code": "INV-1328",
+   "sheet": "10005|BOILER FEED PUMP : 2-26//3-36 //4-16 // 4 HP"
+  },
+  {
+   "id": 389,
+   "item_code": "INV-1329",
+   "sheet": "10007|BOILER FEED PUMP : 5-29 // 4-22 //10-12// 5/5.5 HP"
+  },
+  {
+   "id": 390,
+   "item_code": "INV-1330",
+   "sheet": "10009|BOILER FEED PUMP : 5-32 // 10-16 // 7.5 HP"
+  },
+  {
+   "id": 391,
+   "item_code": "INV-1331",
+   "sheet": "MIS-18100|ALUMINIUM SHEET 0.46"
+  },
+  {
+   "id": 392,
+   "item_code": "INV-1332",
+   "sheet": "MIS-18150|LRB MATTRESS 100 DENSITY X 100 MM THICK"
+  },
+  {
+   "id": 393,
+   "item_code": "INV-1333",
+   "sheet": "MIS-18151|LRB MATTRESS 100 DENSITY X 75 MM THICK"
+  },
+  {
+   "id": 394,
+   "item_code": "INV-1334",
+   "sheet": "MIS-18152|LRB MATTRESS 100 DENSITY X 50 MM THICK"
+  },
+  {
+   "id": 395,
+   "item_code": "INV-1335",
+   "sheet": "MIS-18170|GI CAGES FOR BAG HOUSE"
+  },
+  {
+   "id": 396,
+   "item_code": "INV-1336",
+   "sheet": "MIS-18201|FIBER  GLASS  BAGS NON WOVEN 150 X 3600 MM"
+  },
+  {
+   "id": 397,
+   "item_code": "INV-1337",
+   "sheet": "MIS-18267|FOUNDATION BOLTS & NUTS 25 MM X 1.2/1.5 - L"
+  },
+  {
+   "id": 398,
+   "item_code": "INV-1338",
+   "sheet": "MIS-18268|FOUNDATION BOLTS & NUTS 32 MM X 1.2/1.5 - L"
+  },
+  {
+   "id": 399,
+   "item_code": "INV-1339",
+   "sheet": "ASSET 15005|WELDING MACHINE MIG \"EW & M \" MODEL  TAURUS 355 WITH 3 MTRS TORCH GAS HOSE ; CABLE WITH CLAMP"
+  },
+  {
+   "id": 400,
+   "item_code": "INV-1340",
+   "sheet": "MM-20001|CNC-ELECTRODE 10-105A-220842"
+  },
+  {
+   "id": 401,
+   "item_code": "INV-1341",
+   "sheet": "MM-20002|CNC NOZZLE 105A - 220990"
+  },
+  {
+   "id": 402,
+   "item_code": "INV-1342",
+   "sheet": "MM-20008|CARBAN BRUSHES - BROACH - TRIDENT 990004"
+  },
+  {
+   "id": 403,
+   "item_code": "INV-1343",
+   "sheet": "BOI-21039|LEVEL LIMIT SWITCH - 250 MM ( FOR BAG FILTER )"
+  },
+  {
+   "id": 404,
+   "item_code": "INV-1344",
+   "sheet": "BOI-21044|EATHING STRIP GI 25W X 3T"
+  },
+  {
+   "id": 405,
+   "item_code": "INV-1345",
+   "sheet": "BOI-21094|BURNER SEQUENCE CONTROLLER-307-CGED"
+  },
+  {
+   "id": 406,
+   "item_code": "INV-1346",
+   "sheet": "BOI-21101|ETNY EG 65-50-200 PUMP SET"
+  }
+ ]
+}

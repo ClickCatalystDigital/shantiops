@@ -181,7 +181,7 @@ function ItemFormDialog({ item, onClose, router }) {
   const [saving, setSaving] = useState(false);
   const [catalogResults, setCatalogResults] = useState([]);
   const [catalogOpen, setCatalogOpen] = useState(false);
-  const [catalogUom, setCatalogUom] = useState(item?.item_id ? item?.catalog_uom : null);
+  const [catalogUom, setCatalogUom] = useState(item?.unit || (item?.item_id ? item?.catalog_uom : null));
 
   // §3.2 catalog wiring — same search endpoint/idiom as PrWorkspace's ItemSearchField, so a
   // picked-from-catalog inventory row and a picked-from-catalog BOM/PR line can share item_id for
@@ -1436,7 +1436,7 @@ function ActiveReservationsCard({ activeReservations, inventoryItems, router, ti
                         <div className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-muted-foreground tnum">
                           <span>Required <span className="font-medium text-foreground">{r.qty_text || '—'}</span></span>
                           <span>Reserved <span className="font-medium text-foreground">{r.qty}</span></span>
-                          {item && <span>On-hand <span className="font-medium text-foreground">{item.on_hand}</span></span>}
+                          {item && <span>On-hand <span className="font-medium text-foreground">{item.on_hand}</span>{(item.unit || item.catalog_uom) && <span> {item.unit || item.catalog_uom}</span>}</span>}
                           {item && <span>Available now <span className="font-medium text-foreground">{item.available}</span></span>}
                         </div>
                         <span className="text-[10px] text-muted-foreground">
@@ -2812,7 +2812,7 @@ function InventoryTab({ inventoryItems, openRequests, certificates, projects }) 
                           side by side, leaving Reserved (the actual gap between them) to be
                           mentally subtracted every time. */}
                       <div className="flex flex-col gap-0.5 text-xs tnum">
-                        <span>On-hand <span className="font-medium text-foreground">{it.on_hand}</span></span>
+                        <span>On-hand <span className="font-medium text-foreground">{it.on_hand}</span>{(it.unit || it.catalog_uom) && <span> {it.unit || it.catalog_uom}</span>}</span>
                         <span>Reserved <span className="font-medium text-foreground">{it.on_hand - it.available}</span></span>
                         <span className="flex items-center gap-1">
                           Available <span className="font-medium text-foreground">{it.available}</span>
