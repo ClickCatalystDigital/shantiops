@@ -14,6 +14,8 @@ const apply = args.includes('--apply');
 const only = args.includes('--only') ? args[args.indexOf('--only') + 1] : null;
 const showUnresolved = args.includes('--unresolved');
 const validate = args.includes('--validate');
+// --projects 349,350 limits the run to those project ids
+const onlyProjects = args.includes('--projects') ? args[args.indexOf('--projects') + 1].split(',').map(Number).filter(Boolean) : null;
 
 const catalog = await q('SELECT id, item_name, bom_category, group_name, uom FROM items');
 const byName = new Map(catalog.map(r => [r.item_name.trim().toUpperCase(), r]));
@@ -26,7 +28,7 @@ const norm = s => String(s ?? '').replace(/\s+/g, ' ').trim();
 const sql = validate
   ? `SELECT b.id, b.project_id, p.project_no, b.material_description d, b.moc, b.size_spec s, b.category, b.item_id FROM bom_items b JOIN projects p ON p.id=b.project_id WHERE b.source='bom' AND b.item_id IS NOT NULL`
   : `SELECT b.id, b.project_id, p.project_no, b.material_description d, b.moc, b.size_spec s, b.category, b.item_id FROM bom_items b JOIN projects p ON p.id=b.project_id WHERE b.source='bom' AND b.item_id IS NULL AND p.status='active'`;
-const rows = await q(sql);
+const rows = (await q(sql)).filter(r => !onlyProjects || onlyProjects.includes(r.project_id));
 const groups = new Map();
 for (const r of rows) {
   const key = `${norm(r.d)}|${norm(r.moc)}|${norm(r.s)}`;

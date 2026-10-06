@@ -18,7 +18,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { PencilIcon, PenLineIcon, TrashIcon, LayoutTemplateIcon } from 'lucide-react';
+import { PencilIcon, TrashIcon, LayoutTemplateIcon } from 'lucide-react';
 import BomStructureWorkspace from './bom-structure/BomStructureWorkspace';
 import DeleteTemplateDialog from './DeleteTemplateDialog';
 import Link from 'next/link';
@@ -113,7 +113,7 @@ export default function BomStructureTemplateManager() {
   const [levelFilter, setLevelFilter] = useState('All');
   const [session, setSession] = useState(null); // {templateId, name, projectId, nodeId}
   const [deleting, setDeleting] = useState(null); // the template whose bin was clicked
-  const [renaming, setRenaming] = useState(null); // the template whose rename icon was clicked
+  const [renaming, setRenaming] = useState(null); // the template whose name was clicked
   const [viewingUsage, setViewingUsage] = useState(null); // the template whose "Used on…" was clicked
   const [openingId, setOpeningId] = useState(null); // guards a rapid double-click leaking a second, untracked sandbox node
 
@@ -219,7 +219,7 @@ export default function BomStructureTemplateManager() {
               <div key={t.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
                 <div className="flex min-w-0 flex-col gap-0.5">
                   <span className="flex items-center gap-1.5 text-sm font-medium">
-                    {t.name}
+                    <button type="button" onClick={() => setRenaming(t)} title="Click to rename" className="min-w-0 truncate rounded text-left hover:underline hover:decoration-dotted focus-visible:underline focus-visible:outline-none">{t.name}</button>
                     <Badge variant="outline" className="text-[10px] font-normal">v{t.version ?? 1}</Badge>
                     <button type="button" onClick={() => toggleDefault(t)} title={t.is_default ? 'Default — click to unset' : 'Set as default'} className={t.is_default ? 'text-warning' : 'text-muted-foreground/40 hover:text-warning'}>★</button>
                   </span>
@@ -238,7 +238,6 @@ export default function BomStructureTemplateManager() {
                   )}
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
-                  <Button size="icon-sm" variant="ghost" className="text-muted-foreground" onClick={() => setRenaming(t)} aria-label="Rename" title="Rename"><PenLineIcon /></Button>
                   {t.root_count > 1 ? (
                     <Tooltip><TooltipTrigger asChild>
                       <span><Button size="icon-sm" variant="ghost" className="text-primary" disabled aria-label="View / edit"><PencilIcon /></Button></span>

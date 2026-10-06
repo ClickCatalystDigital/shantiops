@@ -3,7 +3,7 @@ import { queryOne, queryAll, withTransaction } from '@/lib/db';
 import { getFreshSessionUser } from '@/lib/auth';
 import { requireEngineeringAction } from '@/lib/action-permissions';
 import { findBlockedIds } from '@/lib/bom-item-guard';
-import { splitVariants } from '@/lib/multi-value.mjs';
+import { splitVariants, splitKnownBundles } from '@/lib/multi-value.mjs';
 import { audit } from '@/lib/usb';
 
 // "Split multi-value items" — a BOM item imported before multi-value cells were split, where ONE row holds several
@@ -21,7 +21,7 @@ async function loadCandidates(node) {
     `SELECT status, actual_end FROM milestones WHERE project_id = ? AND milestone_key = 'release_bom'`, [node.project_id]);
   const released = !!(milestone?.actual_end || milestone?.status === 'done');
   const items = await queryAll(`SELECT ${COLS} FROM bom_items WHERE assembly_id = ? ORDER BY sort_order, id`, [node.id]);
-  const parsed = items.map(it => ({ it, variants: splitVariants(it) })).filter(x => x.variants);
+  const parsed = items.map(it => ({ it, variants: splitVariants(it) || splitKnownBundles(it) })).filter(x => x.variants);
   const blocked = await findBlockedIds(parsed.map(x => x.it.id));
   return parsed.map(({ it, variants }) => {
     let reason = null;

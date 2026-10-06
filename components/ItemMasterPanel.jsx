@@ -56,7 +56,6 @@ function ItemMasterForm({ id, facets, onClose, onSaved }) {
   // stored JSON string, merged back in only at save time" shape BomTable/BomTemplateManager already
   // use for the identical bom_items.category_fields_json column.
   const [defaultDimFields, setDefaultDimFields] = useState({});
-  const [mocCustomOpen, setMocCustomOpen] = useState(false);
 
   useEffect(() => {
     if (!isEdit) return;
@@ -66,7 +65,6 @@ function ItemMasterForm({ id, facets, onClose, onSaved }) {
       setUsage(u);
       try { setDefaultDimFields(default_category_fields_json ? JSON.parse(default_category_fields_json) : {}); }
       catch { setDefaultDimFields({}); }
-      setMocCustomOpen(!!rest.default_moc && !MOC_OPTIONS.some(o => o.value === rest.default_moc));
       setLoading(false);
     }).catch(err => { showToast(err.message, 'error'); onClose(); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -244,17 +242,11 @@ function ItemMasterForm({ id, facets, onClose, onSaved }) {
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-1.5">
               <Label>Default MOC</Label>
-              <SearchableSelect value={mocCustomOpen ? '' : (form.default_moc || '')} placeholder="Type to search a material…"
-                options={MOC_OPTIONS}
-                onChange={v => {
-                  if (v === OTHER_MOC) { setMocCustomOpen(true); return; }
-                  setMocCustomOpen(false);
-                  set('default_moc', v);
-                }} />
-              {mocCustomOpen && (
-                <Input className="mt-1" value={form.default_moc || ''} onChange={e => set('default_moc', e.target.value)}
-                  placeholder="e.g. IS 2062 E250" />
-              )}
+              <SearchableSelect value={form.default_moc || ''} displayValue={form.default_moc || ''}
+                placeholder="Pick a material, or type your own…"
+                options={MOC_OPTIONS.filter(o => o.value !== OTHER_MOC)}
+                onChange={v => set('default_moc', v)}
+                onTextChange={v => set('default_moc', v)} />
               <p className="text-xs text-muted-foreground">Seeded onto a BOM line on pick, when set — a blank default leaves the line's own MOC untouched.</p>
             </div>
           </div>

@@ -20,6 +20,42 @@ export function thkOf(text) {
 const numsIn = s => [...String(s).matchAll(/\d+(?:\.\d+)?/g)].map(m => Number(m[0]));
 
 export const RULES = [
+  // ---- reviewed 2026-10-06 (STF-IBR-055 onwards): lines the rules below missed or sent to the wrong row ----
+  { name: 'reviewed-2026-10-06', test: () => true, do: l => {
+    const a = `${l.desc} | ${l.moc} | ${l.size}`.toUpperCase().replace(/\s+/g, ' ');
+    const mk = (name, group, extra = {}) => create({ name, group, bom_category: 'standard', uom: 'Nos', mfg: 0, ...extra });
+    // already in the catalog under another spelling
+    if (/^BEARINGS \| SS \| 22211K$/.test(a)) return linkTo('BEARINGS SPIRAL ROLLER 22211-K');
+    if (/^SLEEVE \(CHECK NUT\) \| - \| H311$/.test(a)) return linkTo('SLEEVES H-311');
+    if (/^COLOR COATED ?-ALUMINIUM \| ALUMINIUM \| 26 GAUGE$/.test(a)) return linkTo('ALUMINIUM SHEET 26 GAUGE');
+    if (/^OUTLET VALVE - F\/E \| SGI \/ CI \| 100MM/.test(a)) return linkTo('GLOBE VALVE, CI, F/E, IBR 100 NB T/H');
+    if (/^SAFETY VALVE - F\/E .*\| C\.S \| 80X100 MM IBR T-H$/.test(a)) return linkTo('SAFETY V/E, CS, F/E, IBR 80NB X 100NB T/H');
+    if (/^METALIC GASKETS \| METALIC \| OD ?228 X ID ?117/.test(a)) return linkTo('ASBESTOS CUT GASKET-METALIC 100 MM / 4"');
+    if (/^METALIC GASKETS \| METALIC \| OD ?184 X ID ?75/.test(a)) return linkTo('ASBESTOS CUT GASKET-METALIC 65 MM / 2 1/2"');
+    if (/^METALIC GASKETS \| METALIC \| OD ?73 X ID ?50/.test(a)) return linkTo('ASBESTOS CUT GASKET-METALIC 40 MM / 1 1/2"');
+    if (/^TRIPLEX FIRE BAR \| CI \| .*X 530 ?LG$/.test(a)) return linkTo('GRATE BARS, CI, TRIPLEX 530 MM T2'); // was landing on the 630 mm row
+    if (/^PRESSURE GAUGE \(FEED LINE\) \| \| D-4'', 1\/2" BSP 0-26KG/.test(a)) return linkTo(`PRESSURE GAUGE D-4'', 1/2" BSP 0-26KG/CM2(G)`); // row a person added 2026-10-05
+    // not in the catalog: new rows
+    if (/^GI COLOR COATED \| GI \| 26 GAUGE$/.test(a)) return mk('GI COLOUR COATED SHEET 26 GAUGE', 'COLOUR COATED SHEET', { moc: 'GI', uom: 'Sqm' }); // GI, not the aluminium sheet
+    if (/^BOLTS \| MS \| M8 X 20 LG$/.test(a)) return mk('BOLTS M8 X 20 MM', 'FASTENERS', { moc: 'MS' });
+    if (/^DISK CHECK VALVE \(NON SLAM CHECK\) \| SS 304 \| 40 MM, 150#$/.test(a)) return mk('DISK CHECK VALVE, SS 304, 40 MM, 150#', 'MOUNTING', { moc: 'SS 304' });
+    if (/^GLOBE VALVE FOR - F\/E \(PR\.GAUGE\/PR\.SWITCH\) \| FORGED \| 15MM #600$/.test(a)) return mk('GLOBE VALVE, FORGED, F/E, IBR 15 NB', 'MOUNTING');
+    if (/^FIRE DOOR BIG \(FABRICATION\) \| MS \/ CI \| STD \( ?600 ?X ?650\)$/.test(a)) return mk('FIRE DOOR (BIG) MS/CI, FABRICATED, 600 X 650', 'FIRE DOOR', { mfg: 1 });
+    if (/^FIRE DOOR \(SMALL\) OVER ALL FRAME SIZE \| CI \/MS \| STD - HT: 435 , W: 540$/.test(a)) return mk('FIRE DOOR (SMALL) CI/MS, FRAME 540 X 435', 'FIRE DOOR');
+    // approved 2026-10-06: catalog row under another name, or a new row where the line has no size yet
+    if (/^C CHANNEL \| \| $/.test(a + ' ') || /^C CHANNEL \|\s*\|\s*$/.test(a)) return linkTo('CHANNEL C');
+    if (/^CHIMNEY SUPPORT RIBS \| MS \| 65 X 65 X 10 ?\/12THK$/.test(a)) return linkTo('MS PLATES 10 MM'); // 10 thk (confirmed)
+    if (/^PULLEY \| C\.I \| B3 ?- ?7"$/.test(a)) return create({ name: 'PULLEY CI 7" X 3G X TYPE B', group: 'PULLEY', bom_category: 'other', uom: 'Nos', mfg: 0, moc: 'CI' });
+    if (/^LUGS \| MS \| STD$/.test(a)) return create({ name: 'LUGS MS, STD (MDC)', group: 'MISSLANIOUS', bom_category: 'other', uom: 'Nos', mfg: 1, moc: 'MS' });
+    if (/^REDUCER \| SA 105 \| .70 - 75LG$/.test(a)) return mk('REDUCER, SA 105, DIA 70 X 75 LG', 'REDUCER', { moc: 'SA 105' });
+    if (/^REDUCER \| MS \| (SUITABLE TO FD FAN OUTLET)?$/.test(a)) return create({ name: 'REDUCER, MS, FAN OUTLET (FABRICATED, SIZE AS PER FAN)', group: 'REDUCER', bom_category: 'other', uom: 'Nos', mfg: 1, moc: 'MS' });
+    if (/^(CAN VAS CLOST \| MS \| SUITABLE TO FD FAN OUTLET|CANVASH CLOTH \| - \| -)$/.test(a)) return create({ name: 'CANVAS CLOTH EXPANSION JOINT (SIZE AS PER FAN OUTLET)', group: 'MISSLANIOUS', bom_category: 'other', uom: 'Nos', mfg: 0 });
+    if (/^END CAP \| CS \| 100NB X SCH-40 OR 80$/.test(a)) return mk('END CAP, CS, 100 NB, SCH-40/80', 'END CAP', { moc: 'CS' });
+    if (/^SUPPLY OF STEAM OPERATED CONDENSATE RECOVERY PUMP .*SB-CRP-50NB/.test(a)) return mk('CONDENSATE RECOVERY PUMP, STEAM OPERATED, SB-CRP-50NB', 'PUMP');
+    // two pulleys in one line, a heading row
+    if (/^PULLEY \| C\.I \| B3 - 8" B3- 7"$/.test(a)) return { leave: 'bundled: one line lists two pulleys (8" and 7") — needs a human split' };
+    if (/^FOR FEED LINE \| \| $/.test(a + ' ') || /^FOR FEED LINE \|\s*\|\s*$/.test(a)) return { leave: 'heading row with no item, size or quantity' };
+  } },
   // ---- reviewed 2026-09-26: fully specified real parts the catalog lacked, and lines whose answer exists in other projects ----
   { name: 'reviewed-extra', test: () => true, do: l => {
     const a = `${l.desc} | ${l.moc} | ${l.size}`.toUpperCase().replace(/\s+/g, ' ');
