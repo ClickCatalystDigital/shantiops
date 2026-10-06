@@ -8,6 +8,7 @@ import { notifyDepartment } from '@/lib/notify';
 import { matchAndReserve } from '@/lib/remnant-match';
 import { DIMENSIONAL_CATEGORIES } from '@/lib/bom-fields.mjs';
 import { categoryDisplaySpec } from '@/lib/section-shapes';
+import { tabLink } from '@/lib/alert-links.mjs';
 
 const TEMPLATE_DEPARTMENTS = ['Engineering', 'Design', 'Stores'];
 function canTouch(user) { return TEMPLATE_DEPARTMENTS.some(d => canAccessDepartment(user, d)); }
@@ -90,14 +91,16 @@ export async function POST(req, { params }) {
       const project = await queryOne('SELECT project_no FROM projects WHERE id = ?', [b.project_id]);
       await notifyDepartment('Stores', {
         kind: 'bom_released', title: `New BOM: ${project?.project_no || b.project_id}`,
-        body: `${inserted} item(s) from a template`, dedupe_key: `bom_template_apply:${params.id}:${b.project_id}`,
+        body: `${inserted} item(s) from a template`, link: tabLink('/stores', 'requests', { q: project?.project_no }),
+        dedupe_key: `bom_template_apply:${params.id}:${b.project_id}`,
       });
       // Engineering owns the BOM definition (same ownership precedent as the project-creation
       // notify block) — a template being applied is a BOM taking shape they should know about,
       // whether or not they're the ones who applied it.
       await notifyDepartment('Engineering', {
         kind: 'bom_template_applied', title: `BOM template applied: ${project?.project_no || b.project_id}`,
-        body: `${inserted} item(s) from a template`, dedupe_key: `bom_template_apply_eng:${params.id}:${b.project_id}`,
+        body: `${inserted} item(s) from a template`, link: `/engineering/structure?project=${b.project_id}`,
+        dedupe_key: `bom_template_apply_eng:${params.id}:${b.project_id}`,
       }, { except: user.id });
     } catch (err) { /* notification is best-effort */ }
   }

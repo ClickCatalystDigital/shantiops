@@ -45,7 +45,7 @@ export async function POST(req) {
   await audit('customer_drawing_uploaded', { actor: user.username, detail: `upload ${id} on project ${pid}: ${label}` });
   try {
     await notifyDepartment('Design', {
-      kind: 'customer_drawing', project_id: pid, dedupe_key: `customer_drawing:${id}`,
+      kind: 'customer_drawing', project_id: pid, link: `/calc-drawings?project=${pid}`, dedupe_key: `customer_drawing:${id}`,
       title: 'Customer uploaded a drawing', body: label,
     });
   } catch { /* best effort — the upload itself is saved */ }

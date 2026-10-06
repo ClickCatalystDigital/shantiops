@@ -5,7 +5,7 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { notifyUser, notifyDepartment } from '@/lib/notify';
-import { selectionForItem } from '@/lib/procurement-links.mjs';
+import { selectionForItem } from '@/lib/alert-links.mjs';
 import { getRfqByToken } from '@/lib/data';
 import { advancePurchaseStatus } from '@/lib/procurement';
 import { audit } from '@/lib/usb';

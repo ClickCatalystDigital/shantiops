@@ -9,6 +9,8 @@ import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { DEFAULT_STAGE, leadStateForStage } from '@/lib/lead-stage.mjs';
 import { resolveProductLines, writeLeadProducts, nextAssignee } from '@/lib/crm';
+import { notifyUsername } from '@/lib/notify';
+import { tabLink } from '@/lib/alert-links.mjs';
 
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 function canAccessCrm(user) {
@@ -107,6 +109,12 @@ export async function POST(req) {
   if (enquiryType !== 'sales' || b.product_type || linkedCustomer) {
     await execute('UPDATE leads SET enquiry_type = ?, product_type = COALESCE(?, product_type), converted_customer_id = COALESCE(?, converted_customer_id) WHERE id = ?',
       [enquiryType, b.product_type || null, linkedCustomer?.id || null, id]);
+  }
+  for (const who of new Set([b.account_manager, assignedTo])) {
+    await notifyUsername(who, {
+      kind: 'lead_assigned', title: `New enquiry for you — ${leadName}`, body: `Added by ${user.display_name || user.username}`,
+      link: tabLink('/sales', 'leads', { highlight: `LD-${id}` }), dedupe_key: `lead_assigned:${id}:${who}`,
+    }, { except: user.username }).catch(() => {});
   }
   await audit('lead_created', { actor: user.username, detail: leadName });
   return NextResponse.json({ id });

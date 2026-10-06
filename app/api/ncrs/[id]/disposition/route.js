@@ -7,6 +7,7 @@ import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { notifyDepartment } from '@/lib/notify';
+import { tabLink } from '@/lib/alert-links.mjs';
 
 const DISPOSITIONS = ['rework', 'repair', 'scrap', 'use_as_is'];
 
@@ -116,12 +117,12 @@ export async function POST(req, { params }) {
   try {
     await notifyDepartment('Production', {
       kind: 'ncr_dispositioned', title: `NCR ${ncr.ncr_no} dispositioned: ${b.disposition}`,
-      project_id: ncr.project_id, dedupe_key: `ncr_dispositioned:${ncr.id}`,
+      project_id: ncr.project_id, link: tabLink('/production/shop', 'jobcards'), dedupe_key: `ncr_dispositioned:${ncr.id}`,
     });
     if (ncr.stock_piece_id && b.disposition === 'scrap') {
       await notifyDepartment('Stores', {
         kind: 'ncr_dispositioned', title: `NCR ${ncr.ncr_no} scrapped a stock piece`,
-        project_id: ncr.project_id, dedupe_key: `ncr_scrap_stores:${ncr.id}`,
+        project_id: ncr.project_id, link: tabLink('/stores', 'inventory'), dedupe_key: `ncr_scrap_stores:${ncr.id}`,
       });
     }
   } catch (err) { /* notification is best-effort */ }

@@ -42,6 +42,7 @@ import { itemRollupQty } from '@/lib/bom-structure.mjs';
 import { missingTraceabilityFields, applyReceivedSideEffects, creditBomItemReceipt, maybeCreatePieceStock, maybeReserveScalarStock, notifyInwardApprovalPending } from '@/lib/bom-receiving';
 import { audit } from '@/lib/usb';
 import { notifyDepartment } from '@/lib/notify';
+import { tabLink } from '@/lib/alert-links.mjs';
 
 // Read-only helper for the dialog's own "remaining outstanding" default and running-total display
 // (Phase 3d) — the same required/received-so-far computation POST already does, exposed so the UI
@@ -348,7 +349,7 @@ export async function POST(req, { params }) {
       await notifyDepartment('Production', {
         kind: 'indent_ready', title: 'Material ready to indent',
         body: `${r.item.material_description || 'Item'} — routed to Production`,
-        project_id: r.item.project_id,
+        project_id: r.item.project_id, link: tabLink('/production/shop', 'indent', { q: r.item.material_description }),
       });
     } catch { /* notification is best-effort */ }
   }

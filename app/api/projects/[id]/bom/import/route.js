@@ -13,6 +13,7 @@ import { normalizeWords } from '@/lib/match-utils';
 import { getCatalogIndex, matchLines, recordItemLink, recordItemRejection } from '@/lib/item-link';
 import { fillUnitFromCatalog } from '@/lib/item-match.mjs';
 import { memoryKeys } from '@/lib/item-attributes.mjs';
+import { tabLink } from '@/lib/alert-links.mjs';
 
 // PMB (.xlsx) or CSV import — Engineering, Design, or PM (Design got the same BOM-entry capability
 // as Engineering, 2026-08-25; CSV unified into this same pipeline the same day — parsePmb's
@@ -424,7 +425,7 @@ export async function POST(req, { params }) {
       const project = await queryOne('SELECT project_no FROM projects WHERE id = ?', [params.id]);
       await notifyDepartment('Stores', {
         kind: 'bom_released', title: `New BOM: ${project?.project_no || params.id}`,
-        body: `${n} item(s)`, dedupe_key: `bom_import:${importId}`,
+        body: `${n} item(s)`, link: tabLink('/stores', 'requests', { q: project?.project_no }), dedupe_key: `bom_import:${importId}`,
       });
     } catch (err) { /* notification is best-effort */ }
   }

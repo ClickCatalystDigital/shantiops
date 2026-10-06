@@ -2316,7 +2316,7 @@ function DrawingCard({ drawing, router, canApprove, designTeam, user }) {
       setFileBusy(null);
     }
   };
-  return <Card>
+  return <Card data-entity-code={drawing.dgNo || undefined}>
     <button className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left" onClick={() => setOpen((v) => !v)}>
       <div className="min-w-0"><div className="truncate text-sm font-medium">{drawing.dgNo && <span className="text-muted-foreground">{drawing.dgNo} · </span>}{drawing.name}</div>{drawing.drawingType && <div className="truncate text-xs text-muted-foreground">{drawing.drawingType}</div>}</div>
       <div className="flex shrink-0 items-center gap-2">

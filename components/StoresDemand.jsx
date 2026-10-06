@@ -15,6 +15,7 @@ import { ChevronDownIcon, ChevronRightIcon, PuzzleIcon, AlertTriangleIcon } from
 import { api, showToast, formatDate } from '@/lib/client';
 import { todayISO } from '@/lib/date';
 import { PLAN_STATUS } from '@/lib/plan-coverage.mjs';
+import { useParamSync } from '@/lib/use-entity-highlight';
 import { possibleMatches, ReserveDialog, MatchSettingsPopover, SearchBox } from '@/components/StoresShared';
 
 const WINDOWS = [
@@ -206,6 +207,8 @@ export default function StoresDemand({ inventoryItems }) {
   const [q, setQ] = useState('');
   const [data, setData] = useState(null);
   const [showNoDate, setShowNoDate] = useState(false);
+  // Alert link (?q=<project no>): find that project whatever its need-by date.
+  useParamSync('q', v => { setQ(v); setWithin(WINDOWS[WINDOWS.length - 1].value); setShowNoDate(true); });
 
   // silent = refresh the card totals after an action without blanking the list.
   function fetchSummaries(silent) {

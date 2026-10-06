@@ -8,6 +8,7 @@ import { requireAction } from '@/lib/action-permissions';
 import { execute, queryOne, queryAll } from '@/lib/db';
 import { notifyDepartmentHeads } from '@/lib/notify';
 import { audit } from '@/lib/usb';
+import { tabLink } from '@/lib/alert-links.mjs';
 
 export async function POST(req, { params }) {
   const user = await getFreshSessionUser();
@@ -55,8 +56,8 @@ export async function POST(req, { params }) {
       kind: 'predispatch_submitted', title: `Packing List ${list.packing_no} ready for review`,
       project_id: list.project_id, dedupe_key: `predispatch_submitted:${id}`,
     };
-    await notifyDepartmentHeads('QC', note);
-    await notifyDepartmentHeads('Production', note);
+    await notifyDepartmentHeads('QC', { ...note, link: tabLink('/qc', 'predispatch-approvals', { highlight: list.packing_no }) });
+    await notifyDepartmentHeads('Production', { ...note, link: tabLink('/production/shop', 'approvals', { highlight: list.packing_no }) });
   } catch (err) { /* notification is best-effort */ }
 
   return NextResponse.json({ ok: true, id });

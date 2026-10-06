@@ -6,6 +6,8 @@ import { getFreshSessionUser, requireDepartment, canAccessDepartment } from '@/l
 import { requireAction } from '@/lib/action-permissions';
 import { getExpenseClaims } from '@/lib/data';
 import { audit } from '@/lib/usb';
+import { notifyDepartmentHeads } from '@/lib/notify';
+import { tabLink } from '@/lib/alert-links.mjs';
 
 export async function GET(req) {
   const user = await getFreshSessionUser();
@@ -52,5 +54,9 @@ export async function POST(req) {
     );
   }
   await audit('expense_claim_submitted', { actor: user.username, detail: `employee #${employeeId}: ${totalAmount}` });
+  notifyDepartmentHeads('HR', {
+    kind: 'expense_claim', title: `Expense claim for ₹${totalAmount.toLocaleString('en-IN')} waiting`,
+    link: tabLink('/hr', 'expenses'), dedupe_key: `expense_claim:${claimId}`,
+  }).catch(() => {});
   return NextResponse.json({ id: claimId, total_amount: totalAmount });
 }

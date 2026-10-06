@@ -7,6 +7,7 @@ import { requireAction } from '@/lib/action-permissions';
 import { getTradeRequests } from '@/lib/data';
 import { audit } from '@/lib/usb';
 import { notifyDepartment } from '@/lib/notify';
+import { tabLink } from '@/lib/alert-links.mjs';
 
 export async function GET() {
   const user = await getFreshSessionUser();
@@ -40,6 +41,6 @@ export async function POST(req) {
   );
   await audit('trade_request_created', { actor: user.username, detail: `${trNo}: ${description}` });
   // Best effort — Sales hears about it without having to open the tab.
-  try { await notifyDepartment('Sales', { kind: 'trade_request', title: `Trade request ${trNo}`, body: `${description} · ${qty}${b.sale_order_no ? ` · ${b.sale_order_no}` : ''}`, dedupe_key: `trade_request:${trNo}` }, { except: user.id }); } catch { /* non-fatal */ }
+  try { await notifyDepartment('Sales', { kind: 'trade_request', title: `Trade request ${trNo}`, body: `${description} · ${qty}${b.sale_order_no ? ` · ${b.sale_order_no}` : ''}`, link: tabLink('/sales', 'trade_requests', { highlight: trNo }), dedupe_key: `trade_request:${trNo}` }, { except: user.id }); } catch { /* non-fatal */ }
   return NextResponse.json({ id: Number(lastId), tr_no: trNo });
 }

@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
+import { useEntityHighlight } from '@/lib/use-entity-highlight';
 import { tabBase, tabSlug } from '@/lib/workspace-routes';
 import {
   SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarGroup, SidebarGroupLabel,
@@ -40,18 +41,25 @@ export default function WorkspaceSidebar({ title, icon: TitleIcon = LayoutPanelT
   // a sidebar nested inside another one.
   const pathname = usePathname();
   const base = nested ? null : tabBase(pathname);
+  // ?highlight=CODE (alerts, entity links): scroll to and flash the row with that data-entity-code.
+  const highlightParam = useSearchParams().get('highlight');
+  useEntityHighlight(base ? highlightParam : null);
   useEffect(() => {
     if (!base) return;
     const named = location.pathname.slice(base.length + 1) || new URLSearchParams(location.search).get('tab');
     const item = named && flatItems.find(i => tabSlug(i.key) === tabSlug(named));
     if (item && item.key !== activeKey) onChange(item.key);
+    // pathname too: a link (e.g. a bell alert) to another tab of the workspace you're already in.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [base]);
+  }, [base, pathname]);
   useEffect(() => {
     if (!base || !activeItem) return;
     const url = new URL(location.href);
     const want = `${base}/${tabSlug(activeItem.key)}`;
     if (url.pathname === want && !url.searchParams.has('tab')) return;
+    // Moving to another tab: drop one-off link params (an alert's search / sub-tab / row) so they
+    // don't follow into the next tab.
+    if (url.pathname !== base && url.pathname !== want) ['q', 'view', 'highlight', 'c'].forEach(k => url.searchParams.delete(k));
     url.pathname = want; url.searchParams.delete('tab');
     history.replaceState(history.state, '', url);
   }, [base, activeItem?.key]);

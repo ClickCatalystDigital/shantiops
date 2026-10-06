@@ -10,6 +10,7 @@ import { postDispatchConsumption } from '@/lib/stock-pieces';
 import { notifyUser, notifyDepartmentHeads } from '@/lib/notify';
 import { dissolveSmallShipments } from '@/lib/shipments';
 import { cleanTrackingUrl } from '@/lib/carrier.mjs';
+import { tabLink } from '@/lib/alert-links.mjs';
 
 const EDITABLE = ['customer_name', 'customer_address', 'invoice_no', 'invoice_date', 'package_type',
   'dc_no', 'dc_date', 'vehicle_no', 'dispatch_through', 'contact_person', 'status',
@@ -151,7 +152,7 @@ export async function PATCH(req, { params }) {
              FROM sale_orders so JOIN projects p ON p.sale_order_id = so.id WHERE p.id = ?`, [pl.project_id]);
         if (so && so.status !== 'cancelled') {
           if (!['Closed', 'Dispatched'].includes(so.track_status)) await execute("UPDATE sale_orders SET track_status = 'Dispatched', stage_dispatched = 1 WHERE id = ?", [so.id]);
-          const note = { kind: 'order_dispatched', title: `Order ${so.so_no} dispatched${so.customer_name ? ` — ${so.customer_name}` : ''}`, body: `Packing list ${pl.packing_no || params.id} was dispatched.`, dedupe_key: `dispatch:${params.id}` };
+          const note = { kind: 'order_dispatched', title: `Order ${so.so_no} dispatched${so.customer_name ? ` — ${so.customer_name}` : ''}`, body: `Packing list ${pl.packing_no || params.id} was dispatched.`, link: tabLink('/sales', 'sale_orders', { highlight: `SO-${so.id}` }), dedupe_key: `dispatch:${params.id}` };
           const owner = so.owner ? await queryOne('SELECT id FROM users WHERE active = 1 AND username = ?', [so.owner]) : null;
           if (owner) await notifyUser(owner.id, note); else await notifyDepartmentHeads('Sales', note);
         }

@@ -6,6 +6,7 @@ import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { notifyDepartment } from '@/lib/notify';
+import { tabLink } from '@/lib/alert-links.mjs';
 
 export async function POST(req, { params }) {
   const user = await getFreshSessionUser();
@@ -31,7 +32,7 @@ export async function POST(req, { params }) {
   try {
     await notifyDepartment('Production', {
       kind: 'qc_hold_released', title: `QC released job card #${params.id}`,
-      project_id: card.project_id, dedupe_key: `qc_hold_released:${params.id}`,
+      project_id: card.project_id, link: tabLink('/production/shop', 'jobcards'), dedupe_key: `qc_hold_released:${params.id}`,
     });
   } catch (err) { /* notification is best-effort */ }
   return NextResponse.json({ ok: true });

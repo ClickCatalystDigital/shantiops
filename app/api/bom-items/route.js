@@ -10,6 +10,7 @@ import { matchAndReserve } from '@/lib/remnant-match';
 import { getAllocationMode, autoReserveFromStock, notifyProcurementIfShortfall } from '@/lib/procurement';
 import { learnCategoryIfConfirmed } from '@/lib/category-learning';
 import { checkAssemblyChange } from '@/lib/bom-line';
+import { tabLink } from '@/lib/alert-links.mjs';
 
 // Add a single BOM item in-app (materials get added mid-project — the BOM definition is
 // Engineering's, so this is Engineering/PM-gated like upload).
@@ -73,6 +74,7 @@ export async function POST(req) {
   try {
     await notifyDepartment('Stores', {
       kind: 'bom_released', title: 'New BOM item', body: values[0],
+      link: tabLink('/stores', 'requests', { q: (await queryOne('SELECT project_no FROM projects WHERE id = ?', [b.project_id]))?.project_no }),
       dedupe_key: `bom_item:${Number(res.lastId)}`,
     });
   } catch (err) { /* notification is best-effort */ }

@@ -10,6 +10,7 @@ import { requireCrmAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { notifyDepartment, notifyPMs } from '@/lib/notify';
 import { COMPANY_NAMES } from '@/lib/qc-doc-pdf.js';
+import { tabLink } from '@/lib/alert-links.mjs';
 
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 function canAccessCrm(user) {
@@ -67,8 +68,8 @@ export async function POST(req, { params }) {
   await audit('quotation_converted', { actor: user.username, detail: `${quotation.quotation_no} -> ${soNo}` });
   try {
     const note = { kind: 'sale_order_created', title: `New Sale Order: ${soNo}`, body: quotation.customer_name || null, dedupe_key: `so_created:${soId}` };
-    await notifyDepartment('Design', note);
-    await notifyPMs(note, { except: user.id });
+    await notifyDepartment('Design', { ...note, link: '/projects' }); // Design makes the project from it
+    await notifyPMs({ ...note, link: tabLink('/sales', 'sale_orders', { highlight: `SO-${Number(soId)}` }) }, { except: user.id });
   } catch (err) { /* notification is best-effort */ }
   return NextResponse.json({ id: soId, so_no: soNo });
 }

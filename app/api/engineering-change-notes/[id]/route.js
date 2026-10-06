@@ -8,10 +8,12 @@ import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser } from '@/lib/auth';
 import { requireEngineeringAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
+import { notifyUsername } from '@/lib/notify';
 import { BOM_FIELD_OWNERS } from '@/lib/bom-fields.mjs';
 import { canDecideChangeNote } from '@/lib/bom-structure.mjs';
 import { CATEGORY_LABEL } from '@/lib/section-shapes.js';
 import { checkAssemblyChange } from '@/lib/bom-line';
+import { tabLink } from '@/lib/alert-links.mjs';
 
 export async function PATCH(req, { params }) {
   const user = await getFreshSessionUser();
@@ -54,5 +56,10 @@ export async function PATCH(req, { params }) {
     [decision, user.username, effectiveRevision, params.id]
   );
   await audit('bom_change_note_decided', { actor: user.username, detail: `ECN ${params.id}: ${decision}` });
+  notifyUsername(row.requested_by, {
+    kind: 'ecn_decided', title: `Your change note was ${decision}`, body: `${row.field_changed}: ${row.old_value ?? '—'} → ${row.new_value ?? '—'}`,
+    project_id: row.project_id, link: tabLink('/engineering', 'ecn', { project: row.project_id }),
+    dedupe_key: `ecn_decided:${row.id}`,
+  }, { except: user.username }).catch(() => {});
   return NextResponse.json({ ok: true });
 }

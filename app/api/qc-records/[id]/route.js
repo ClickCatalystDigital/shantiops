@@ -5,6 +5,7 @@ import { requireAction } from '@/lib/action-permissions';
 import { notifyDepartment } from '@/lib/notify';
 import { audit } from '@/lib/usb';
 import { syncHydroTestMilestone } from '@/lib/milestone-auto';
+import { tabLink } from '@/lib/alert-links.mjs';
 
 const EDITABLE = ['test_type', 'reference_no', 'result', 'inspector', 'tested_on', 'notes', 'dispatch_eligible'];
 
@@ -67,6 +68,7 @@ export async function PATCH(req, { params }) {
         kind: dept === 'Procurement' ? 'material_rejected' : 'qc_fail', title: `QC FAILED: ${testType} — ${pno}`,
         body: record.bom_item_id ? 'Incoming inspection failed — material needs replacement.'
                                  : 'Inspection failed — raise an NCR.',
+        link: dept === 'Procurement' ? tabLink('/procurement', 'orders') : tabLink('/production/shop', 'jobcards'),
         dedupe_key: `qc_fail:${record.id}`,
       });
     } catch (err) { /* notification is best-effort */ }

@@ -6,6 +6,8 @@ import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { getExpenseClaimDetail } from '@/lib/data';
 import { audit } from '@/lib/usb';
+import { notifyEmployee } from '@/lib/notify';
+import { tabLink } from '@/lib/alert-links.mjs';
 
 const STATUSES = ['draft', 'submitted', 'approved', 'rejected', 'paid'];
 
@@ -44,5 +46,9 @@ export async function PATCH(req, { params }) {
     await execute('UPDATE expense_claims SET status = ? WHERE id = ?', [b.status, params.id]);
   }
   await audit(`expense_claim_${b.status}`, { actor: user.username, detail: `#${params.id}` });
+  if (b.status !== claim.status) notifyEmployee(claim.employee_id, {
+    kind: 'expense_claim_decided', title: `Your expense claim is ${b.status}`,
+    link: tabLink('/hr', 'expenses'), dedupe_key: `expense_claim_decided:${params.id}:${b.status}`,
+  }).catch(() => {});
   return NextResponse.json({ ok: true });
 }

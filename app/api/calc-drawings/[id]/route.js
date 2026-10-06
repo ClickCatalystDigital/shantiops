@@ -6,6 +6,7 @@ import { deleteObject } from '@/lib/r2';
 import { audit } from '@/lib/usb';
 import { notifyDepartmentHeads, notifyUser } from '@/lib/notify';
 import { syncReleaseDrawingsMilestone, maybeStartMilestone } from '@/lib/milestone-auto';
+import { drawingLink } from '@/lib/alert-links.mjs';
 
 const PATCHABLE = { status: 'status', assignedTo: 'assigned_to', dueDate: 'due_date', notes: 'notes', name: 'name', description: 'description', drawingType: 'drawing_type', customerVisible: 'customer_visible' };
 
@@ -29,7 +30,7 @@ export async function PATCH(req, { params }) {
   if (!head && !designer) return NextResponse.json({ error: 'Design access required' }, { status: 403 });
 
   const drawing = await queryOne(
-    'SELECT status, name, project_id, assigned_to, customer_visible FROM calc_drawings WHERE id = ?',
+    'SELECT status, name, project_id, assigned_to, customer_visible, dg_no FROM calc_drawings WHERE id = ?',
     [params.id]
   );
   if (!drawing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -111,7 +112,7 @@ export async function PATCH(req, { params }) {
       await notifyDepartmentHeads('Design', {
         kind: 'drawing_submitted', title: `${drawing.name || 'A drawing'} submitted for review`,
         body: `${user.display_name || user.username} submitted this drawing for review.`,
-        project_id: drawing.project_id,
+        project_id: drawing.project_id, link: drawingLink(drawing),
         dedupe_key: `drawing_submitted:${params.id}:${Date.now()}`,
       });
     } else if (head && drawing.assigned_to) {
@@ -121,7 +122,7 @@ export async function PATCH(req, { params }) {
         await notifyUser(assignedUserId, {
           kind: 'drawing_status', title: `${drawing.name || 'A drawing'} — ${notice.title}`,
           body: `${user.display_name || user.username} ${notice.body}`,
-          project_id: drawing.project_id,
+          project_id: drawing.project_id, link: drawingLink(drawing),
           dedupe_key: `drawing_status:${params.id}:${b.status}:${Date.now()}`,
         });
       }
@@ -139,7 +140,7 @@ export async function PATCH(req, { params }) {
       await notifyUser(assignedUserId, {
         kind: 'drawing_status', title: `${fields.name || drawing.name || 'A drawing'} — Updated`,
         body: `${user.display_name || user.username} updated this drawing's details.`,
-        project_id: drawing.project_id,
+        project_id: drawing.project_id, link: drawingLink(drawing),
         dedupe_key: `drawing_updated:${params.id}:${Date.now()}`,
       });
     }

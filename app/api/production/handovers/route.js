@@ -10,6 +10,7 @@ import { audit } from '@/lib/usb';
 import { notifyDepartment } from '@/lib/notify';
 import { autoPackHandedOver } from '@/lib/packing-generate';
 import { getHandoverLines, getHandoverHistory, getWaitingMadeCounts, syncProductionDone, validateHandoverItems, groupHandovers } from '@/lib/production-handover';
+import { tabLink } from '@/lib/alert-links.mjs';
 
 export async function GET() {
   const user = await getFreshSessionUser();
@@ -63,6 +64,8 @@ export async function POST(req) {
     try {
       await notifyDepartment('Dispatch', {
         kind: 'packing_ready', project_id: projectId,
+        link: lists.length === 1 && packing.find(p => p.packing_no === lists[0])?.list_id
+          ? `/packing/${packing.find(p => p.packing_no === lists[0]).list_id}` : tabLink('/dispatch', 'pending', { q: no }),
         title: `Ready to pack - ${no}`,
         body: `Production handed over ${n} item${n === 1 ? '' : 's'}${b.approve ? ' and approved them for dispatch' : ''}.${lists.length ? ` Added to packing list ${lists.join(', ')}.` : ' They are ready for a packing list.'}${reopened.length ? ` ${reopened.join(', ')} was already packed and has been pulled back to draft. Pack it again and resubmit it for review.` : ''}`,
       }, { except: user.id });

@@ -6,6 +6,7 @@ import { getFreshSessionUser, canAccessDepartment, isDepartmentHead } from '@/li
 import { hiddenSalesRecord } from '@/lib/sales-visibility';
 import { notifyUser } from '@/lib/notify';
 import { audit } from '@/lib/usb';
+import { tabLink } from '@/lib/alert-links.mjs';
 
 export async function PATCH(req, { params }) {
   const user = await getFreshSessionUser();
@@ -37,7 +38,8 @@ export async function PATCH(req, { params }) {
   await audit('crm_note_replanned', { actor: user.username, detail: JSON.stringify({ id: Number(params.id), ...b }) }).catch(() => {});
   if (newOwner && newOwner.id !== user.id) {
     const when = b.next_plan_date || note.next_plan_date;
-    await notifyUser(newOwner.id, { kind: 'diary_plan', title: `Follow-up reassigned to you — ${note.org || 'enquiry'} on ${when}`, body: String(note.plan_of_action || '').slice(0, 200) || null, dedupe_key: `diary:${note.id}:reassign:${newOwner.id}:${when}` }).catch(() => {});
+    await notifyUser(newOwner.id, { kind: 'diary_plan', title: `Follow-up reassigned to you — ${note.org || 'enquiry'} on ${when}`, body: String(note.plan_of_action || '').slice(0, 200) || null,
+      link: note.lead_id ? tabLink('/sales', 'leads', { highlight: `LD-${note.lead_id}` }) : tabLink('/sales', 'planner'), dedupe_key: `diary:${note.id}:reassign:${newOwner.id}:${when}` }).catch(() => {});
   }
   return NextResponse.json({ ok: true });
 }

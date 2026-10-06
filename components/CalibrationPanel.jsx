@@ -128,7 +128,7 @@ export default function CalibrationPanel({ items = [], canEdit = false }) {
       <CardContent className="flex flex-col divide-y">
         {items.length === 0 && <p className="text-sm text-muted-foreground">No instruments or jigs/fixtures on the calibration register yet.</p>}
         {items.map(it => (
-          <div key={it.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5 text-sm">
+          <div key={it.id} data-entity-code={`CAL-${it.id}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5 text-sm">
             <span className="font-medium">{it.name}</span>
             <span className="text-xs text-muted-foreground">{TYPE_LABEL[it.type]}</span>
             {it.identifier && <span className="text-muted-foreground">{it.identifier}</span>}

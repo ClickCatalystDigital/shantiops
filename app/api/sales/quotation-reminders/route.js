@@ -11,6 +11,7 @@ import { sweepPlanAlerts } from '@/lib/plan-alerts';
 import { sweepOrderAlerts } from '@/lib/order-alerts';
 import { sweepAlertDigests } from '@/lib/notify';
 import { sweepMorningBrief } from '@/lib/morning-brief';
+import { sweepCalibrationAlerts } from '@/lib/calibration-alerts';
 
 function authorized(req) {
   const key = Buffer.from(String(req.headers.get('x-sync-key') ?? ''));
@@ -29,7 +30,8 @@ export async function POST(req) {
     const plan = await sweepPlanAlerts().catch(() => ({ planAlertsSent: 0, error: true }));
     const digests = await sweepAlertDigests().catch(() => ({ sent: 0, error: true }));
     const brief = await sweepMorningBrief().catch(() => ({ sent: 0, error: true }));
-    return NextResponse.json({ ok: true, ...quotations, payments, retention, orders, plan, digests, brief });
+    const calibration = await sweepCalibrationAlerts().catch(() => ({ sent: 0, error: true }));
+    return NextResponse.json({ ok: true, ...quotations, payments, retention, orders, plan, digests, brief, calibration });
   } catch (err) {
     return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
   }

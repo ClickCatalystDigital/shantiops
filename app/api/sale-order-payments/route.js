@@ -6,6 +6,8 @@ import { execute, queryAll, queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment, isPM, isInternal } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
+import { notifyUsername } from '@/lib/notify';
+import { tabLink } from '@/lib/alert-links.mjs';
 
 // Scoped read — the PO wizard's own embedded Payment Collection section (Phase 2.5) needs this
 // one Sale Order's own log without pulling the whole page-level getSalePayments() list.
@@ -47,5 +49,12 @@ export async function POST(req) {
     [so.id, b.sales_invoice_id || null, b.received_on, b.mode || null, amount, String(b.remark || '').trim() || null, user.username]
   );
   await audit('sale_payment_logged', { actor: user.username, detail: `SO ${so.id}: ${amount}` });
+  // The order's owner hears money came in (best-effort, never blocks the payment).
+  queryOne('SELECT so_no, customer_name, COALESCE(sales_person_override, created_by) AS owner FROM sale_orders WHERE id = ?', [so.id])
+    .then(o => notifyUsername(o?.owner, {
+      kind: 'payment_received', title: `Payment received — ${o.so_no}${o.customer_name ? ` (${o.customer_name})` : ''}`,
+      body: `₹${amount.toLocaleString('en-IN')} on ${b.received_on}`, link: tabLink('/sales', 'payment_orders', { q: o.so_no, highlight: `SO-${so.id}` }),
+      dedupe_key: `payment_received:${Number(lastId)}`,
+    }, { except: user.username })).catch(() => {});
   return NextResponse.json({ ok: true, id: Number(lastId) });
 }

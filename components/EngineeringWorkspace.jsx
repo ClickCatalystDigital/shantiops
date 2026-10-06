@@ -32,6 +32,7 @@ import BomStructureWorkspace from '@/components/bom-structure/BomStructureWorksp
 import BomImport from '@/components/BomImport';
 import { RaisePrTab, ReleaseBomTab, PrHistoryTab } from '@/components/PrWorkspace';
 import ItemMasterPanel from '@/components/ItemMasterPanel';
+import { useParamSync } from '@/lib/use-entity-highlight';
 
 // Round 3 Phase A — which tabs the shared project-selector header (below) applies to, and in which
 // shape. "BOM Templates"/"PR Templates" are deliberately excluded alongside Purchase Requests: both
@@ -495,6 +496,8 @@ export default function EngineeringWorkspace({ projects, canApproveEcn = false, 
   const [globalProjectId, setGlobalProjectId] = useState(
     () => initialProject && projects.some(p => String(p.id) === String(initialProject)) ? String(initialProject) : '');
   const [globalShowReleased, setGlobalShowReleased] = useState(false);
+  // Also when a link (alert) is clicked while Engineering is already open.
+  useParamSync('project', v => { if (projects.some(p => String(p.id) === v)) { setGlobalProjectId(v); setGlobalShowReleased(true); } });
   const [globalProjectIds, setGlobalProjectIds] = useState(new Set());
   // Bumped after a successful BOM upload from the header bar — BomStructureWorkspace owns all its
   // own data fetching internally (keyed only off its projectId prop changing), so a sibling-rendered

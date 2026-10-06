@@ -69,7 +69,7 @@ export async function POST(req, { params }) {
       await notifyDepartment('Dispatch', {
         kind: 'predispatch_decided',
         title: overall === 'approved' ? 'Packing List approved for dispatch' : `Packing List rejected by ${dept}`,
-        body: reason, project_id: approval.project_id, dedupe_key: `predispatch_decided:${approval.id}`,
+        body: reason, project_id: approval.project_id, link: `/packing/${approval.packing_list_id}`, dedupe_key: `predispatch_decided:${approval.id}`,
       });
     }
   } catch (err) { /* notification is best-effort */ }

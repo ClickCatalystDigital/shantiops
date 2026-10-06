@@ -76,7 +76,7 @@ export async function POST(req) {
   try { // best effort — whoever raised each request hears it was accepted
     for (const r of rows) {
       const raiser = await queryOne('SELECT id FROM users WHERE username = ?', [r.raised_by]);
-      if (raiser) await notifyUser(raiser.id, { kind: 'trade_request', title: `${r.tr_no} accepted as ${result.soNo}`, body: r.material_description, dedupe_key: `trade_accept:${r.id}` });
+      if (raiser) await notifyUser(raiser.id, { kind: 'trade_request', title: `${r.tr_no} accepted as ${result.soNo}`, body: r.material_description, link: '/installation-requests', dedupe_key: `trade_accept:${r.id}` });
     }
   } catch { /* non-fatal */ }
   return NextResponse.json({ id: result.orderId, so_no: result.soNo });

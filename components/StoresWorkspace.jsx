@@ -12,7 +12,7 @@ import InboundLink from '@/components/InboundLink';
 import { carrierSummary } from '@/lib/carrier.mjs';
 import { useState, useEffect, useMemo, Fragment } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useEntityHighlight } from '@/lib/use-entity-highlight';
+import { useEntityHighlight, useParamSync } from '@/lib/use-entity-highlight';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -1707,7 +1707,7 @@ function IndentsCard({ router }) {
               const someIn = releasable.some(id => selected.has(id));
               const toggleFold = () => setCollapsed(prev => { const n = new Set(prev); n.has(indent.id) ? n.delete(indent.id) : n.add(indent.id); return n; });
               return (
-                <div key={indent.id} className={`rounded-lg border bg-card shadow-xs ${folded ? '' : 'pb-1'}`}>
+                <div key={indent.id} data-entity-code={indent.indent_no} className={`rounded-lg border bg-card shadow-xs ${folded ? '' : 'pb-1'}`}>
                   <div className="flex cursor-pointer flex-wrap items-center gap-2 px-3 py-2.5 text-sm" onClick={toggleFold}>
                     <ChevronDownIcon className={`size-4 shrink-0 text-muted-foreground transition-transform ${folded ? '-rotate-90' : ''}`} />
                     {releasable.length > 0 && (
@@ -2194,6 +2194,9 @@ function ReceiveDeliveryTab({ bomItems, pendingInwardApprovals = [], router }) {
   const [dateFilter, setDateFilter] = useState('all');
   const [pageSize, setPageSize] = useState(15);
   const [page, setPage] = useState(1);
+  // Alert links: ?view=qc|remnants|bulk opens that sub-tab, ?q= pre-fills the search.
+  useParamSync('view', setMode);
+  useParamSync('q', v => { setMode('search'); setQuery(v); setPage(1); });
   // Was: "All dates" (the select's own default value) permanently read as "nothing chosen yet" —
   // browsing required a search term even though the option's whole point is "no date filter." An
   // explicit engaged flag separates the true untouched landing state from a deliberate pick of any

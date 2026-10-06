@@ -15,6 +15,7 @@ import { getSaleOrders } from '@/lib/data';
 import { audit } from '@/lib/usb';
 import { notifyDepartment, notifyPMs } from '@/lib/notify';
 import { COMPANY_NAMES } from '@/lib/qc-doc-pdf.js';
+import { tabLink } from '@/lib/alert-links.mjs';
 
 const TRACK_STATUSES = ['Pending', 'Ready', 'WIP', 'Dispatched', 'Closed'];
 
@@ -84,8 +85,8 @@ export async function POST(req) {
   await audit('sale_order_created', { actor: user.username, detail: soNo });
   try {
     const note = { kind: 'sale_order_created', title: `New Sale Order: ${soNo}`, body: b.customer_name || null, dedupe_key: `so_created:${lastId}` };
-    await notifyDepartment('Design', note);
-    await notifyPMs(note, { except: user.id });
+    await notifyDepartment('Design', { ...note, link: '/projects' }); // Design makes the project from it
+    await notifyPMs({ ...note, link: tabLink('/sales', 'sale_orders', { highlight: `SO-${Number(lastId)}` }) }, { except: user.id });
   } catch (err) { /* notification is best-effort */ }
   return NextResponse.json({ id: Number(lastId), so_no: soNo });
 }

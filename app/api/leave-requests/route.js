@@ -5,6 +5,8 @@ import { requireAction } from '@/lib/action-permissions';
 import { getLeaveRequests } from '@/lib/data';
 import { daysBetween, getLeaveBalance } from '@/lib/hr';
 import { audit } from '@/lib/usb';
+import { notifyEmployee, notifyDepartmentHeads } from '@/lib/notify';
+import { tabLink } from '@/lib/alert-links.mjs';
 
 export async function GET(req) {
   const user = await getFreshSessionUser();
@@ -48,5 +50,11 @@ export async function POST(req) {
       halfDay, halfDayDate, approverId, balance, user.username]
   );
   await audit('leave_requested', { actor: user.username, detail: `employee #${b.employee_id}, ${days}d` });
+  { // the approver (reports-to) if they have a login, else the HR Heads — best-effort
+    const note = { kind: 'leave_request', title: `Leave request — ${days} day${days === 1 ? '' : 's'} from ${b.from_date}`,
+      body: b.reason || null, link: tabLink('/hr', 'leave'), dedupe_key: `leave_request:${Number(lastId)}` };
+    (approverId ? notifyEmployee(approverId, note) : Promise.resolve(0))
+      .then(n => n || notifyDepartmentHeads('HR', note)).catch(() => {});
+  }
   return NextResponse.json({ id: Number(lastId), days });
 }

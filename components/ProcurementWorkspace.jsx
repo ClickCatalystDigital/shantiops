@@ -2043,7 +2043,7 @@ export default function ProcurementWorkspace({ sourcingItems, suppliers, purchas
   const flatKeys = navItems.flatMap(i => i.group ? i.children : i).map(i => i.key);
   const [tab, setTab] = useState(flatKeys.includes(initialTab) ? initialTab : 'enquiry');
 
-  // Links from alerts (lib/procurement-links.mjs): ?view=pmb|pr|custom, ?q=<search, e.g. PR-74>,
+  // Links from alerts (lib/alert-links.mjs): ?view=pmb|pr|custom, ?q=<search, e.g. PR-74>,
   // ?project=<project_no>, ?highlight=BM-<id>. Applied on load and again whenever the address changes,
   // so clicking an alert while already on /procurement still lands on the right tab, view and row.
   const linkView = searchParams.get('view'), linkQ = searchParams.get('q'), linkProject = searchParams.get('project');

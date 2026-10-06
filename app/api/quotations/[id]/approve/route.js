@@ -7,6 +7,7 @@ import { getFreshSessionUser, isDepartmentHead } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { notifyUser } from '@/lib/notify';
 import { audit } from '@/lib/usb';
+import { tabLink } from '@/lib/alert-links.mjs';
 
 export async function POST(req, { params }) {
   const user = await getFreshSessionUser();
@@ -20,7 +21,7 @@ export async function POST(req, { params }) {
   await audit('quotation_discount_approved', { actor: user.username, detail: `${q.quotation_no}: ${q.max_discount_pct}%` });
   const owner = await queryOne('SELECT id FROM users WHERE active = 1 AND username = ?', [q.created_by]);
   if (owner && owner.id !== user.id) {
-    await notifyUser(owner.id, { kind: 'quotation_approved', title: `Discount approved — ${q.quotation_no}`, body: `Approved by ${user.display_name || user.username}; it can be sent now.`, dedupe_key: `quotation_approved:${q.id}` }).catch(() => {});
+    await notifyUser(owner.id, { kind: 'quotation_approved', title: `Discount approved — ${q.quotation_no}`, body: `Approved by ${user.display_name || user.username}; it can be sent now.`, link: tabLink('/sales', 'quotations', { highlight: `QT-${q.id}` }), dedupe_key: `quotation_approved:${q.id}` }).catch(() => {});
   }
   return NextResponse.json({ ok: true });
 }

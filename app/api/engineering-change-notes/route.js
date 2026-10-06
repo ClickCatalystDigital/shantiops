@@ -8,7 +8,9 @@ import { getFreshSessionUser, isInternal } from '@/lib/auth';
 import { requireEngineeringAction } from '@/lib/action-permissions';
 import { getEngineeringChangeNotes } from '@/lib/data';
 import { audit } from '@/lib/usb';
+import { notifyDepartmentHeads } from '@/lib/notify';
 import { BOM_FIELD_OWNERS } from '@/lib/bom-fields.mjs';
+import { tabLink } from '@/lib/alert-links.mjs';
 
 export async function GET(req) {
   const user = await getFreshSessionUser();
@@ -49,5 +51,10 @@ export async function POST(req) {
     [b.project_id, b.bom_item_id || null, fieldChanged, b.old_value || null, b.new_value || null, reason, user.username]
   );
   await audit('bom_change_note_raised', { actor: user.username, detail: `project ${b.project_id}: ${fieldChanged}` });
+  notifyDepartmentHeads('Engineering', {
+    kind: 'ecn_raised', title: `Change note waiting for approval — ${b.field_changed}`, body: b.reason || null,
+    project_id: Number(b.project_id) || null, link: tabLink('/engineering', 'ecn', { project: b.project_id }),
+    dedupe_key: `ecn_raised:${Number(lastId)}`,
+  }).catch(() => {});
   return NextResponse.json({ id: Number(lastId) });
 }

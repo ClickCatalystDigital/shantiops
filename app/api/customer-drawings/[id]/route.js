@@ -24,7 +24,7 @@ export async function PATCH(req, { params }) {
     await notifyProjectCustomers(row.project_id, {
       kind: 'customer_drawing_review', dedupe_key: `customer_drawing_review:${row.id}:${b.status}:${Date.now()}`,
       title: b.status === 'reviewed' ? 'Design reviewed your drawing' : 'Design needs a change to your drawing',
-      body: row.label,
+      body: row.label, link: `/portal/${row.project_id}`,
     });
   } catch { /* best effort */ }
   return NextResponse.json({ ok: true });

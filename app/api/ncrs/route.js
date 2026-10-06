@@ -7,6 +7,7 @@ import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { notifyDepartment } from '@/lib/notify';
+import { tabLink } from '@/lib/alert-links.mjs';
 
 function canTouch(user) {
   return canAccessDepartment(user, 'QC') || canAccessDepartment(user, 'Production');
@@ -138,6 +139,7 @@ export async function POST(req) {
   try {
     await notifyDepartment(b.bom_item_id ? 'Procurement' : 'Production', {
       kind: 'ncr_raised', title: `NCR raised: ${ncrNo}`, project_id: projectId,
+      link: b.bom_item_id ? tabLink('/procurement', 'orders') : tabLink('/production/shop', 'jobcards'),
       dedupe_key: `ncr_raised:${id}`,
     });
   } catch (err) { /* notification is best-effort */ }

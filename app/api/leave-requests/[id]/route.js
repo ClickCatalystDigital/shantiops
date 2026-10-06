@@ -9,6 +9,8 @@ import { requireAction } from '@/lib/action-permissions';
 import { getLeaveBalance } from '@/lib/hr';
 import { toISODate } from '@/lib/date';
 import { audit } from '@/lib/usb';
+import { notifyEmployee } from '@/lib/notify';
+import { tabLink } from '@/lib/alert-links.mjs';
 
 const STATUSES = ['pending', 'approved', 'rejected', 'cancelled'];
 
@@ -56,5 +58,9 @@ export async function PATCH(req, { params }) {
   }
 
   await audit(`leave_${b.status}`, { actor: user.username, detail: `#${params.id}` });
+  notifyEmployee(request.employee_id, {
+    kind: 'leave_decided', title: `Your leave from ${request.from_date} was ${b.status}`,
+    link: tabLink('/hr', 'leave'), dedupe_key: `leave_decided:${params.id}:${b.status}`,
+  }).catch(() => {});
   return NextResponse.json({ ok: true });
 }

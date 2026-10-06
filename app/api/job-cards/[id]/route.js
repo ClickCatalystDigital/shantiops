@@ -8,6 +8,7 @@ import { getJobCardDetail } from '@/lib/data';
 import { audit } from '@/lib/usb';
 import { syncProductionMilestoneById } from '@/lib/milestone-auto';
 import { notifyDepartment } from '@/lib/notify';
+import { tabLink } from '@/lib/alert-links.mjs';
 
 const STATUSES = ['pending', 'progress', 'done'];
 const EDITABLE = ['workstation_id', 'qty_planned', 'qty_done', 'qty_rejected', 'status', 'is_paused', 'planned_start', 'planned_end', 'notes', 'test_certificate_id'];
@@ -46,7 +47,7 @@ export async function PATCH(req, { params }) {
     try {
       await notifyDepartment('QC', {
         kind: 'qc_hold', title: `Job card #${params.id} ready for QC hold-point release`,
-        project_id: card.project_id, dedupe_key: `qc_hold:${params.id}`,
+        project_id: card.project_id, link: tabLink('/qc', 'holds'), dedupe_key: `qc_hold:${params.id}`,
       });
     } catch (err) { /* notification is best-effort */ }
     return NextResponse.json({ error: 'Held for QC — awaiting QC release' }, { status: 400 });

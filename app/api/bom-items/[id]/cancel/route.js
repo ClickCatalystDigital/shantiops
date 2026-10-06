@@ -11,6 +11,7 @@ import { notifyDepartment } from '@/lib/notify';
 import { removeItemFromDraftPO, releaseReservationsForItem, maybeCloseRfqsForItem } from '@/lib/procurement';
 import { DEFAULT_PURCHASE_STATUS } from '@/lib/bom-fields.mjs';
 import { syncProcurementMilestones } from '@/lib/milestone-auto';
+import { tabLink } from '@/lib/alert-links.mjs';
 
 const CANCEL_DEPARTMENTS = ['Engineering', 'Design'];
 // D10: cancellable at Enquiry/Comparison/Ordered, blocked once Transit (shipped) — distinct from
@@ -51,7 +52,7 @@ export async function POST(req, { params }) {
       title: `Void PO — ${item.material_description}`,
       body: item.po_ref ? `${item.po_ref} needs voiding with the supplier (cancelled by ${user.username})`
         : `Cancelled after a PO was issued (${user.username})`,
-      dedupe_key: `po-void:${item.id}`,
+      link: tabLink('/procurement', 'orders', { q: item.po_ref }), dedupe_key: `po-void:${item.id}`,
     });
   }
 

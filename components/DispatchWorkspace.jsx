@@ -14,7 +14,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { api, showToast, formatDate, formatMoney } from '@/lib/client';
-import { useEntityHighlight } from '@/lib/use-entity-highlight';
+import { useEntityHighlight, useParamSync } from '@/lib/use-entity-highlight';
 import WorkspaceSidebar from './WorkspaceSidebar';
 import DispatchBoard from './DispatchBoard';
 import ShipmentDialog from './ShipmentDialog';
@@ -239,6 +239,7 @@ function PackingListsTab({ lists, flowCounts, pendingReadyCount, awaitingAckCoun
 function PendingItemsTab({ items, lists = [] }) {
   const router = useRouter();
   const [q, setQ] = useState('');
+  useParamSync('q', setQ); // alert link: ?q=<project no>
   const [scope, setScope] = useState('all'); // 'all' | 'trade' | a project id
   const [busyKey, setBusyKey] = useState(null);
   const [picked, setPicked] = useState(new Set());

@@ -4,6 +4,7 @@ import { queryOne } from '@/lib/db';
 import { getDrawingComments, addDrawingComment, requireCalcAccess } from '@/lib/calc';
 import { notifyDepartmentHeads } from '@/lib/notify';
 import { audit } from '@/lib/usb';
+import { drawingLink } from '@/lib/alert-links.mjs';
 
 // Either an internal Design/Engineering user (requireCalcAccess) or the owning project's customer
 // can read/post — a drawing comment thread is the one place those two audiences meet.
@@ -15,7 +16,7 @@ import { audit } from '@/lib/usb';
 // department-wide access, same as before.
 async function authorize(req, drawingId) {
   const user = await getFreshSessionUser();
-  const drawing = await queryOne('SELECT project_id, customer_visible FROM calc_drawings WHERE id = ?', [drawingId]);
+  const drawing = await queryOne('SELECT project_id, customer_visible, dg_no FROM calc_drawings WHERE id = ?', [drawingId]);
   if (!drawing) return { error: NextResponse.json({ error: 'Not found' }, { status: 404 }) };
 
   if (isCustomer(user)) {
@@ -60,6 +61,7 @@ export async function POST(req, { params }) {
   if (authorType === 'customer') {
     await notifyDepartmentHeads('Design', {
       kind: 'comment', title: `Customer commented on a drawing`, body,
+      link: drawingLink({ project_id: drawing.project_id, dg_no: drawing.dg_no }),
     });
   }
 

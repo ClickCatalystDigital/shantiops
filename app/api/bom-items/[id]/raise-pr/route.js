@@ -9,7 +9,7 @@ import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { notifyDepartment } from '@/lib/notify';
-import { enquiryForPr } from '@/lib/procurement-links.mjs';
+import { enquiryForPr } from '@/lib/alert-links.mjs';
 import { isClosedStatus } from '@/lib/bom-fields.mjs';
 
 export async function POST(req, { params }) {

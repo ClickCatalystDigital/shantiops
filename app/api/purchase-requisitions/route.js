@@ -19,7 +19,7 @@ import { getFreshSessionUser, canAccessDepartment, headDepartments, isPM } from 
 import { audit } from '@/lib/usb';
 import { notifyDepartment } from '@/lib/notify';
 import { getAllocationMode, autoReserveFromStock } from '@/lib/procurement';
-import { enquiryForPr } from '@/lib/procurement-links.mjs';
+import { enquiryForPr, tabLink } from '@/lib/alert-links.mjs';
 import { matchAndReserve } from '@/lib/remnant-match';
 import { DIMENSIONAL_CATEGORIES } from '@/lib/bom-fields.mjs';
 import { CATEGORY_LABEL } from '@/lib/section-shapes.js';
@@ -240,7 +240,7 @@ export async function POST(req) {
     try {
       await notifyDepartment('Stores', {
         kind: 'bom_released', title: `New ${prNo} from ${raisedByDept}`,
-        body: `${lines.length} line(s)`, dedupe_key: `pr_raised:${prNo}`,
+        body: `${lines.length} line(s)`, link: tabLink('/stores', 'requests'), dedupe_key: `pr_raised:${prNo}`,
       });
     } catch (err) { /* notification is best-effort */ }
   }

@@ -11,6 +11,8 @@ import { getFreshSessionUser, isInternal, requireDepartment, canAccessDepartment
 import { requireAction } from '@/lib/action-permissions';
 import { getGatePasses } from '@/lib/data';
 import { audit } from '@/lib/usb';
+import { notifyDepartment } from '@/lib/notify';
+import { tabLink } from '@/lib/alert-links.mjs';
 
 export async function GET() {
   const user = await getFreshSessionUser();
@@ -51,5 +53,10 @@ export async function POST(req) {
   });
 
   await audit('gate_pass_created', { actor: user.username, detail: `GP-${gpNo} (${type}): ${b.party || ''}` });
+  // A new pass needs approving before it can be issued: tell Dispatch (who issue gate passes).
+  notifyDepartment('Dispatch', {
+    kind: 'gate_pass_approval', title: `Gate pass GP-${gpNo} waiting for approval`, body: b.party || null,
+    link: tabLink('/dispatch', 'gatepasses', { highlight: `GP-${gpNo}` }), dedupe_key: `gate_pass:${id}`,
+  }, { except: user.id, actionKey: 'stores.gatepass.approve' }).catch(() => {});
   return NextResponse.json({ id, gp_no: gpNo });
 }

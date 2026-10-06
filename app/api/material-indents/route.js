@@ -9,6 +9,7 @@ import { requireAction } from '@/lib/action-permissions';
 import { notifyDepartment } from '@/lib/notify';
 import { getInventoryItemForBomItem } from '@/lib/data';
 import { audit } from '@/lib/usb';
+import { tabLink } from '@/lib/alert-links.mjs';
 
 export async function GET(req) {
   const user = await getFreshSessionUser();
@@ -143,6 +144,7 @@ export async function POST(req) {
   await notifyDepartment('Stores', {
     kind: 'indent_raised', title: `Material Indent ${indentNo}`,
     body: `Raised by ${user.username}`, project_id: b.project_id ? Number(b.project_id) : null,
+    link: tabLink('/stores', 'indents', { highlight: indentNo }),
   }, { actionKey: 'stores.indent.release' });
 
   return NextResponse.json({ id: indentId, indent_no: indentNo });

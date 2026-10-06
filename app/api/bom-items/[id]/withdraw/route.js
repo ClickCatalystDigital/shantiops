@@ -8,6 +8,7 @@ import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { notifyDepartment } from '@/lib/notify';
 import { removeItemFromDraftPO, releaseReservationsForItem, maybeCloseRfqsForItem } from '@/lib/procurement';
+import { tabLink } from '@/lib/alert-links.mjs';
 
 export async function POST(req, { params }) {
   const user = await getFreshSessionUser();
@@ -37,7 +38,7 @@ export async function POST(req, { params }) {
   await audit('bom_item_withdrawn', { actor: user.username, detail: `${item.source} line ${item.id} (${item.material_description}) withdrawn by Stores` });
   if (item.source === 'sas') {
     try {
-      await notifyDepartment('Sales', { kind: 'request', title: 'Trade order withdrawn by Stores', body: item.material_description, dedupe_key: `sas_withdrawn:${item.id}` });
+      await notifyDepartment('Sales', { kind: 'request', title: 'Trade order withdrawn by Stores', body: item.material_description, link: tabLink('/sales', 'sale_orders'), dedupe_key: `sas_withdrawn:${item.id}` });
     } catch { /* best-effort */ }
   }
   return NextResponse.json({ ok: true });

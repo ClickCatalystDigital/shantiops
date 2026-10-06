@@ -11,7 +11,7 @@ import { markMilestoneDone } from '@/lib/milestone-auto';
 import { matchProjectBom } from '@/lib/remnant-match';
 import { getAllocationMode, matchProjectPlainStock } from '@/lib/procurement';
 import { notifyDepartment } from '@/lib/notify';
-import { enquiryForProject } from '@/lib/procurement-links.mjs';
+import { enquiryForProject } from '@/lib/alert-links.mjs';
 import { learnCategoryIfConfirmed } from '@/lib/category-learning';
 import { audit } from '@/lib/usb';
 

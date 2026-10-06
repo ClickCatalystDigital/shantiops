@@ -10,7 +10,7 @@ import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { notifyDepartment } from '@/lib/notify';
-import { enquiryForProject } from '@/lib/procurement-links.mjs';
+import { enquiryForProject } from '@/lib/alert-links.mjs';
 import { todayISO } from '@/lib/date';
 
 export async function POST(req, { params }) {

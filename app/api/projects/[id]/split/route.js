@@ -165,8 +165,8 @@ export async function POST(req, { params }) {
 
   try {
     const note = existingCount > 0
-      ? { kind: 'project_split', title: `${master.project_no} grew by ${childIds.length} units`, body: `Now ${newUnitCount} unit projects total.`, dedupe_key: `project_split_add:${master.id}:${childIds[0]}` }
-      : { kind: 'project_split', title: `${master.project_no} split into ${childIds.length} units`, body: 'Individual unit projects are ready for execution tracking.', dedupe_key: `project_split:${master.id}` };
+      ? { kind: 'project_split', title: `${master.project_no} grew by ${childIds.length} units`, body: `Now ${newUnitCount} unit projects total.`, project_id: master.id, dedupe_key: `project_split_add:${master.id}:${childIds[0]}` }
+      : { kind: 'project_split', title: `${master.project_no} split into ${childIds.length} units`, body: 'Individual unit projects are ready for execution tracking.', project_id: master.id, dedupe_key: `project_split:${master.id}` };
     await notifyDepartment('Production', note);
     await notifyDepartment('QC', note);
     await notifyDepartment('Dispatch', note);

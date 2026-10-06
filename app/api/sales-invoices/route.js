@@ -14,6 +14,7 @@ import { COMPANY_NAMES } from '@/lib/qc-doc-pdf.js';
 import { financialYear } from '@/lib/gst-calc.mjs';
 import { quotationTotals } from '@/lib/sales-lines.mjs';
 import { todayISO } from '@/lib/date';
+import { tabLink } from '@/lib/alert-links.mjs';
 
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 function canAccessCrm(user) {
@@ -87,8 +88,9 @@ export async function POST(req) {
   await audit('sales_invoice_created', { actor: user.username, detail: `${invoiceNo} (manual)` });
   try {
     const note = { kind: 'sales_invoice_created', title: `New Sales Invoice: ${invoiceNo}`, body: customer.name, dedupe_key: `invoice_created:${invoiceId}` };
-    await notifyDepartment('Accounts', note);
-    await notifyPMs(note, { except: user.id });
+    const link = tabLink('/sales', 'invoices', { highlight: `SI-${invoiceId}` });
+    await notifyDepartment('Accounts', { ...note, link });
+    await notifyPMs({ ...note, link }, { except: user.id });
   } catch { /* best-effort */ }
   return NextResponse.json({ id: invoiceId, invoice_no: invoiceNo });
 }

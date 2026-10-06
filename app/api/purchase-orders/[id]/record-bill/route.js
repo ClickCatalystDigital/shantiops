@@ -8,9 +8,11 @@ import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { getPurchaseOrderDetail } from '@/lib/data';
 import { audit } from '@/lib/usb';
+import { notifyDepartment } from '@/lib/notify';
 import { COMPANY_NAMES } from '@/lib/qc-doc-pdf.js';
 import { gstSplit, tdsAmount } from '@/lib/gst-calc.mjs';
 import { todayISO } from '@/lib/date';
+import { tabLink } from '@/lib/alert-links.mjs';
 
 export async function POST(req, { params }) {
   const user = await getFreshSessionUser();
@@ -74,5 +76,9 @@ export async function POST(req, { params }) {
     );
   }
   await audit('vendor_bill_recorded', { actor: user.username, detail: `${b.bill_no} against ${po.po_no}` });
+  notifyDepartment('Accounts', {
+    kind: 'vendor_bill', title: `Vendor bill ${b.bill_no} recorded — ${detail.supplier_name || 'supplier'}`,
+    body: `Against PO ${detail.po_no}`, link: tabLink('/accounts', 'ledger'), dedupe_key: `vendor_bill:${billId}`,
+  }, { except: user.id }).catch(() => {});
   return NextResponse.json({ id: billId, bill_no: b.bill_no });
 }

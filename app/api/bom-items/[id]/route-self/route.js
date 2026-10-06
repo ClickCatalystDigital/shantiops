@@ -19,6 +19,7 @@ import { getClearedReceivedQty } from '@/lib/data';
 import { audit } from '@/lib/usb';
 import { notifyDepartment } from '@/lib/notify';
 import { routingBlockReason } from '@/lib/stores-undo';
+import { tabLink } from '@/lib/alert-links.mjs';
 
 const VALID_ROUTES = new Set(['production', 'dispatch']);
 
@@ -81,7 +82,7 @@ export async function POST(req, { params }) {
       await notifyDepartment('Production', {
         kind: 'indent_ready', title: 'Material ready to indent',
         body: `${item.material_description || 'Item'} — routed to Production${['Received', 'In-Stock'].includes(item.purchase_status) ? '' : ' (part of the order has arrived)'}`,
-        project_id: item.project_id,
+        project_id: item.project_id, link: tabLink('/production/shop', 'indent', { q: item.material_description }),
       });
     } catch { /* notification is best-effort */ }
   }

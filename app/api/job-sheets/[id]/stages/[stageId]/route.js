@@ -14,6 +14,7 @@ import { audit } from '@/lib/usb';
 import { notifyDepartment } from '@/lib/notify';
 import { syncProductionFromJobSheets, maybeStartProductionForProject } from '@/lib/milestone-auto';
 import { isDispatchStage } from '@/lib/job-sheet-stages.mjs';
+import { tabLink } from '@/lib/alert-links.mjs';
 
 const bad = (m, status = 400) => NextResponse.json({ error: m }, { status });
 
@@ -60,7 +61,8 @@ export async function PATCH(req, { params }) {
     await recomputeSheetDates(sheetId);
     await audit('job_sheet_stage_sent_back', { actor: user.username, detail: `sheet ${sheetId} · ${row.name} · ${reason}` });
     try {
-      await notifyDepartment('Production', { kind: 'jobsheet_sent_back', title: `QC sent back "${row.name}": ${reason}`, dedupe_key: `jobsheet_back:${stageId}:${Date.now()}` });
+      const js0 = await queryOne('SELECT jc_no FROM job_sheets WHERE id = ?', [sheetId]);
+      await notifyDepartment('Production', { kind: 'jobsheet_sent_back', title: `QC sent back "${row.name}": ${reason}`, link: tabLink('/production/shop', 'jobcards', { highlight: js0?.jc_no }), dedupe_key: `jobsheet_back:${stageId}:${Date.now()}` });
     } catch { /* best-effort */ }
     return NextResponse.json({ ok: true });
   }
@@ -121,6 +123,7 @@ export async function PATCH(req, { params }) {
       await notifyDepartment('Dispatch', { kind: 'jobsheet_dispatch', project_id: js.project_id,
         title: `Job card ${js.job_number || js.jc_no} is at Dispatch — pack its items`,
         body: 'Open Dispatch > Pending Items to put this project\'s finished items on a packing list.',
+        link: tabLink('/dispatch', 'pending', { q: (await queryOne('SELECT project_no FROM projects WHERE id = ?', [js.project_id]))?.project_no }),
         dedupe_key: `jobsheet_dispatch:${sheetId}` });
     } catch { /* best-effort */ }
   }
@@ -129,7 +132,7 @@ export async function PATCH(req, { params }) {
     try {
       const js = await queryOne('SELECT jc_no, job_number, project_id FROM job_sheets WHERE id = ?', [sheetId]);
       await notifyDepartment('QC', { kind: 'jobsheet_qc', title: `Job card ${js.job_number || js.jc_no}: stage(s) finished, waiting for QC sign`,
-        project_id: js.project_id, dedupe_key: `jobsheet_qc:${sheetId}:${todayISO()}` });
+        project_id: js.project_id, link: tabLink('/qc', 'jobsheet-approvals', { q: js.jc_no }), dedupe_key: `jobsheet_qc:${sheetId}:${todayISO()}` });
     } catch { /* best-effort */ }
   }
   return NextResponse.json({ ok: true });

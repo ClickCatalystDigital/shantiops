@@ -7,6 +7,8 @@ import { salesScope } from '@/lib/sales-visibility';
 import { leadVisible } from '@/lib/sales-visibility.mjs';
 import { checkSalesPerson } from '@/lib/sales-people';
 import { audit } from '@/lib/usb';
+import { notifyUsername } from '@/lib/notify';
+import { tabLink } from '@/lib/alert-links.mjs';
 
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 
@@ -38,6 +40,15 @@ export async function POST(req) {
     `UPDATE leads SET account_manager = ?, updated_at = CURRENT_TIMESTAMP WHERE id IN (${allowedIds.map(() => '?').join(',')})`,
     [chk.value, ...allowedIds]
   );
+  const moved = rows.filter(r => allowedIds.includes(r.id) && r.account_manager !== chk.value);
+  if (moved.length) {
+    await notifyUsername(chk.value, {
+      kind: 'lead_assigned', title: moved.length === 1 ? 'Enquiry assigned to you' : `${moved.length} enquiries assigned to you`,
+      body: `By ${user.display_name || user.username}`,
+      link: moved.length === 1 ? tabLink('/sales', 'leads', { highlight: `LD-${moved[0].id}` }) : tabLink('/sales', 'leads'),
+      dedupe_key: `lead_bulk_assign:${chk.value}:${moved.map(r => r.id).join(',').slice(0, 200)}`,
+    }, { except: user.username }).catch(() => {});
+  }
   await audit('lead_bulk_assign_owner', { actor: user.username, detail: `${allowedIds.length} enquiries -> ${chk.value}` });
   return NextResponse.json({ ok: true, updated: allowedIds.length, skipped: ids.length - allowedIds.length });
 }

@@ -28,6 +28,7 @@ import { api, showToast, formatDate } from '@/lib/client';
 import { todayISO } from '@/lib/date';
 import { Input } from '@/components/ui/input';
 import CertPicker from '@/components/CertPicker';
+import { useParamSync } from '@/lib/use-entity-highlight';
 
 function DecisionButtons({ canDecide, onDecide, busy }) {
   const [reason, setReason] = useState('');
@@ -122,6 +123,8 @@ function InwardDetailDialog({ id, canDecide, onClose }) {
 
 export function InwardApprovalsPanel({ rows = [], canDecide = false }) {
   const [openId, setOpenId] = useState(null);
+  // Alert link ?highlight=IA-<id> opens that review.
+  useParamSync('highlight', c => { const r = rows.find(x => `IA-${x.id}` === c); if (r) setOpenId(r.id); });
   return (
     <Card>
       <CardContent className="py-4">
@@ -235,6 +238,8 @@ function PreDispatchDetailDialog({ id, canDecideQc, canDecideProduction, onClose
 
 export function PreDispatchApprovalsPanel({ rows = [], canDecideQc = false, canDecideProduction = false }) {
   const [openId, setOpenId] = useState(null);
+  // Alert link ?highlight=<packing no> opens that list's review.
+  useParamSync('highlight', c => { const r = rows.find(x => x.packing_no === c); if (r) setOpenId(r.id); });
   return (
     <Card>
       <CardContent className="py-4">
@@ -349,6 +354,7 @@ export function JobSheetApprovalsPanel({ rows }) {
   const router = useRouter();
   const [sel, setSel] = useState(null);
   const [q, setQ] = useState('');
+  useParamSync('q', setQ); // alert link: ?q=<job card no>
   const shown = rows.filter(r => !q.trim() || [r.job_number, r.jc_no, r.project_no, r.name].some(v => v?.toLowerCase().includes(q.trim().toLowerCase())));
   const days = d => Math.max(0, Math.round((Date.now() - new Date(d).getTime()) / 864e5));
   return (

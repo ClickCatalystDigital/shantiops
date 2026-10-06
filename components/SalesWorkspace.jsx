@@ -1107,6 +1107,8 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
   const searchParams = useSearchParams();
   const highlightCode = searchParams.get('highlight');
   const [selected, setSelected] = useState(() => leads.find(l => `LD-${l.id}` === highlightCode) || null);
+  // Also when an alert is clicked while Sales is already open.
+  useEffect(() => { const l = highlightCode && leads.find(x => `LD-${x.id}` === highlightCode); if (l) setSelected(l); }, [highlightCode]); // eslint-disable-line react-hooks/exhaustive-deps
   const [filters, setFilters] = useState(LEAD_FILTER_DEFAULT);
   const [view, setView] = useState(searchParams.get('view') === 'board' ? 'board' : 'list');
   const [lostLead, setLostLead] = useState(null);
@@ -2984,7 +2986,7 @@ function TradeRequestsTab({ tradeRequests, router }) {
           <Table>
             <TableHeader><TableRow><TableHead className="w-8"><Checkbox aria-label="Select all open" checked={openIds.length > 0 && picked.length === openIds.length} onCheckedChange={v => setPicked(v ? openIds : [])} /></TableHead><TableHead>No.</TableHead><TableHead>Date</TableHead><TableHead>Raised by</TableHead><TableHead>Item</TableHead><TableHead>MOC</TableHead><TableHead>Size / spec</TableHead><TableHead>Qty</TableHead><TableHead>Project</TableHead><TableHead>Sale Order</TableHead><TableHead>Notes</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
             <TableBody>{tradeRequests.map(t => (
-              <TableRow key={t.id}>
+              <TableRow key={t.id} data-entity-code={t.tr_no}>
                 <TableCell>{t.status === 'open' ? <Checkbox aria-label={`Select ${t.tr_no}`} checked={picked.includes(t.id)} onCheckedChange={() => toggle(t.id)} /> : null}</TableCell>
                 <TableCell className="font-medium">{t.tr_no}</TableCell>
                 <TableCell>{formatDate(t.created_at)}</TableCell>

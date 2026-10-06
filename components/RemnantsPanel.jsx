@@ -191,7 +191,7 @@ export function RemnantsQueue({ onCount }) {
               </div>
               <div className="flex flex-col divide-y">
                 {rows.map(p => (
-                  <div key={p.id} className="flex flex-wrap items-center gap-4 py-3">
+                  <div key={p.id} data-entity-code={p.code} className="flex flex-wrap items-center gap-4 py-3">
                     <Checkbox checked={picked.has(p.id)} onCheckedChange={() => toggle(p.id)} />
                     <PieceInfo p={p} extra={`cut from ${p.parent_code || '—'} · ${ageLabel(p.created_at)}`} />
                     <Dims p={p} />

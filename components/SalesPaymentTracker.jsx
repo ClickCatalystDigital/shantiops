@@ -26,6 +26,7 @@ import { api, showToast } from '@/lib/client';
 import { formatMoney } from '@/lib/format';
 import { todayISO } from '@/lib/date';
 import { defaultCompany } from '@/lib/company-profiles';
+import { useParamSync } from '@/lib/use-entity-highlight';
 
 // Left → right in the UI. Current Stage = the first UNticked step (what's still to do next);
 // 'Completed' once every box is ticked.
@@ -307,6 +308,7 @@ export function PaymentOrdersTab({ saleOrders, payments, invoices, customers = [
   const [dir, setDir] = useState('desc');
   const [local, setLocal] = useState({}); // optimistic overlay: { [soId]: { stage_x: 0|1, remarks } }
   const [page, setPage] = useState(0);
+  useParamSync('q', v => { setQ(v); setPage(0); }); // alert link: ?q=<order no>
   const [size, setSize] = useState(SIZES[0]);
   const [adding, setAdding] = useState(false);
   const [rowCfg, setRowCfg] = useState(() => normalizeRowSettings(null));
@@ -414,7 +416,7 @@ export function PaymentOrdersTab({ saleOrders, payments, invoices, customers = [
         {rows.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No orders match.</p> : (<>
           <div className="grid gap-2 md:hidden">
             {rows.slice(page * size, (page + 1) * size).map(r => (
-              <div key={r.id} className="rounded-xl border p-3" style={{ backgroundColor: ruleColor(r.rule) || undefined }}>
+              <div key={r.id} data-entity-code={`SO-${r.id}`} className="rounded-xl border p-3" style={{ backgroundColor: ruleColor(r.rule) || undefined }}>
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5 font-semibold"><EditCell value={r.so_no} display={r.so_no} onSave={v => save(r, { so_no: v })} />{!company && <CompanyTag row={r} />}</div>
@@ -451,7 +453,7 @@ export function PaymentOrdersTab({ saleOrders, payments, invoices, customers = [
             </TableHeader>
             <TableBody>
               {rows.slice(page * size, (page + 1) * size).map(r => (
-                <TableRow key={r.id} style={{ backgroundColor: ruleColor(r.rule) || undefined }}>
+                <TableRow key={r.id} data-entity-code={`SO-${r.id}`} style={{ backgroundColor: ruleColor(r.rule) || undefined }}>
                   <TableCell className="whitespace-nowrap"><EditCell type="date" value={r.orderDate} display={fmtDate(r.orderDate)} onSave={v => save(r, { order_date: v })} /></TableCell>
                   <TableCell className="font-medium">
                     <div className="flex items-center gap-1.5">

@@ -7,6 +7,8 @@
 // unchanged, reused exactly as the Calc Sheets workspace's own Drawings sidebar tab already does.
 import { useEffect, useState } from 'react';
 import { api, showToast } from '@/lib/client';
+import { useEntityHighlight, useParamSync } from '@/lib/use-entity-highlight';
+import { useSearchParams } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardDescription, CardAction } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -17,6 +19,10 @@ import CustomerDrawingUploads from '@/components/CustomerDrawingUploads';
 export default function DrawingsWorkspace({ projects, designTeam, user }) {
   const [projectId, setProjectId] = useState('');
   const [drawings, setDrawings] = useState(null);
+  // Alert links: ?project=<id>&highlight=DG-xxxx opens that project and flashes the drawing.
+  useParamSync('project', setProjectId);
+  const highlightParam = useSearchParams().get('highlight');
+  useEntityHighlight(drawings ? highlightParam : null);
 
   function load(pid) {
     return api(`/api/calc-drawings?project_id=${pid}`).then((d) => setDrawings(d.drawings)).catch((err) => showToast(err.message, 'error'));

@@ -12,6 +12,7 @@ import { reservePiece } from '@/lib/stock-pieces';
 import { notifyDepartment, notifyUser } from '@/lib/notify';
 import { rollupIndentStatus } from '@/lib/indent-status.mjs';
 import { audit } from '@/lib/usb';
+import { tabLink } from '@/lib/alert-links.mjs';
 
 export async function POST(req, { params }) {
   const user = await getFreshSessionUser();
@@ -67,6 +68,7 @@ export async function POST(req, { params }) {
     await notifyDepartment('Production', {
       kind: 'indent_released', title: 'Material indent released',
       body: `Piece ${piece?.code || ''} reserved`, project_id: indent.project_id,
+      link: tabLink('/production/shop', 'indent', { view: 'raised', highlight: indent.indent_no }),
     });
     if (indent.requested_by) {
       const raiser = await queryOne('SELECT id FROM users WHERE username = ?', [indent.requested_by]);
@@ -74,6 +76,7 @@ export async function POST(req, { params }) {
         await notifyUser(raiser.id, {
           kind: 'indent_released', title: 'Your material indent was released',
           body: `Piece ${piece?.code || ''} reserved — ready to cut`, project_id: indent.project_id,
+      link: tabLink('/production/shop', 'indent', { view: 'raised', highlight: indent.indent_no }),
         });
       }
     }

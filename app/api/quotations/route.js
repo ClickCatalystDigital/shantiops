@@ -15,6 +15,7 @@ import { audit } from '@/lib/usb';
 import { COMPANY_NAMES, defaultPrefix } from '@/lib/company-profiles.js';
 import { setLeadStage } from '@/lib/crm';
 import { quotationTotals } from '@/lib/sales-lines.mjs';
+import { tabLink } from '@/lib/alert-links.mjs';
 
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 function canAccessCrm(user) {
@@ -131,7 +132,7 @@ export async function POST(req) {
     await notifyDepartmentHeads('Sales', {
       kind: 'quotation_approval', title: `Discount approval needed — ${quotationNo}`,
       body: `${maxDiscount(items)}% discount (limit ${threshold}%), raised by ${user.display_name || user.username}`,
-      dedupe_key: `quotation_approval:${quotationId}`,
+      link: tabLink('/sales', 'quotations', { highlight: `QT-${quotationId}` }), dedupe_key: `quotation_approval:${quotationId}`,
     }).catch(() => {});
   }
 

@@ -8,6 +8,7 @@ import { ArrowLeftIcon, CheckIcon, CheckCheckIcon, AlertCircleIcon, MessageCircl
 import { api, showToast } from '@/lib/client';
 import { cn } from '@/lib/utils';
 import { fillTemplate } from '@/lib/whatsapp.mjs';
+import { useParamSync } from '@/lib/use-entity-highlight';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -186,6 +187,7 @@ export default function WhatsAppInbox({ isSalesHead }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [activeId, setActiveId] = useState(null);
+  useParamSync('c', v => setActiveId(Number(v))); // alert link: ?c=<conversation id>
   const [q, setQ] = useState('');
   const [mineOnly, setMineOnly] = useState(false);
   const [people, setPeople] = useState([]);

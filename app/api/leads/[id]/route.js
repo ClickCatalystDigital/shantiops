@@ -7,6 +7,8 @@ import { getFreshSessionUser, canAccessDepartment, isDepartmentHead } from '@/li
 import { audit } from '@/lib/usb';
 import { setLeadStage, resolveProductLines, writeLeadProducts } from '@/lib/crm';
 import { checkSalesPerson } from '@/lib/sales-people';
+import { notifyUsername } from '@/lib/notify';
+import { tabLink } from '@/lib/alert-links.mjs';
 
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 
@@ -107,6 +109,17 @@ export async function PATCH(req, { params }) {
   }
   let stage = null;
   if (stageChange) stage = await setLeadStage(params.id, b.sales_call_status, user.username);
+  // Enquiry handed to someone new (A/C Manager or assignee): tell them.
+  const after = await queryOne('SELECT id, lead_name, company_name, account_manager, assigned_to FROM leads WHERE id = ?', [params.id]);
+  for (const who of new Set([after.account_manager, after.assigned_to])) {
+    if (who && who !== existing.account_manager && who !== existing.assigned_to) {
+      await notifyUsername(who, {
+        kind: 'lead_assigned', title: `Enquiry assigned to you — ${after.company_name || after.lead_name}`,
+        body: `By ${user.display_name || user.username}`, link: tabLink('/sales', 'leads', { highlight: `LD-${after.id}` }),
+        dedupe_key: `lead_assigned:${after.id}:${who}`,
+      }, { except: user.username }).catch(() => {});
+    }
+  }
   await audit('lead_updated', {
     actor: user.username,
     detail: `#${params.id}${stage?.changed ? ` stage ${stage.from || '—'} -> ${stage.to}` : ''}${productsChange ? ` products ${productLines.length}` : ''}`,

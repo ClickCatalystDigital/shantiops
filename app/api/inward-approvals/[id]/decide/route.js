@@ -12,6 +12,7 @@ import { releasePieceFromInwardHold } from '@/lib/stock-pieces';
 import { releaseScalarFromInwardHold } from '@/lib/bom-receiving';
 import { notifyDepartment } from '@/lib/notify';
 import { audit } from '@/lib/usb';
+import { tabLink } from '@/lib/alert-links.mjs';
 
 export async function POST(req, { params }) {
   const user = await getFreshSessionUser();
@@ -55,13 +56,14 @@ export async function POST(req, { params }) {
     await notifyDepartment('Stores', {
       kind: 'inward_approval_decided',
       title: b.decision === 'approved' ? 'Material approved — now usable stock' : 'Material rejected on inward review',
-      body: reason, project_id: approval.project_id, dedupe_key: `inward_approval_decided:${approval.id}`,
+      body: reason, project_id: approval.project_id, link: tabLink('/stores', b.decision === 'approved' ? 'allocate' : 'receive'),
+      dedupe_key: `inward_approval_decided:${approval.id}`,
     });
     // Rejected material has to be replaced or returned to the supplier: Procurement needs to know too.
     if (b.decision !== 'approved') {
       await notifyDepartment('Procurement', {
         kind: 'material_rejected', title: 'Material rejected on inward review', body: reason,
-        project_id: approval.project_id, dedupe_key: `material_rejected:inward:${approval.id}`,
+        project_id: approval.project_id, link: tabLink('/procurement', 'orders'), dedupe_key: `material_rejected:inward:${approval.id}`,
       });
     }
   } catch (err) { /* notification is best-effort */ }

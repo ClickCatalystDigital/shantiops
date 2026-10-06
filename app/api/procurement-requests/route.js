@@ -39,7 +39,7 @@ export async function POST(req) {
   // Heads if procurement.request.decide (the PATCH .../[id] route that resolves it) is configured
   // Head-only — a Member who can't accept/reject it doesn't need the chime.
   await notifyDepartment('Procurement', {
-    kind: 'request', title: `New procurement request from ${b.from_department}`, body: materialDescription,
+    kind: 'request', title: `New procurement request from ${b.from_department}`, body: materialDescription, link: '/requests',
   }, { except: user.id, actionKey: 'procurement.request.decide' });
   return NextResponse.json({ id });
 }

@@ -124,14 +124,14 @@ export async function POST(req) {
           kind: 'sos_created',
           title: 'New Scope of Supply',
           body: `${project_no} · ${sosTitle} · ${itemCount} item${itemCount === 1 ? '' : 's'}`,
-          dedupe_key: `sos_created:${projectId}`,
+          project_id: projectId, dedupe_key: `sos_created:${projectId}`,
         };
         await notifyDepartment('Design', note);
         await notifyDepartment('Engineering', note);
         // The Sales→PM handoff (STORES-SALES-CHANGES.md §2b): a Design head converting a Sale
         // Order to a Project is the event Sales and PMs actually need to hear about — Design
         // already knows, they did it.
-        const convertNote = { kind: 'project_created', title: `Project created from Sale Order`, body: `${project_no} · ${sosTitle}`, dedupe_key: `so_converted:${projectId}` };
+        const convertNote = { kind: 'project_created', title: `Project created from Sale Order`, body: `${project_no} · ${sosTitle}`, project_id: projectId, dedupe_key: `so_converted:${projectId}` };
         await notifyDepartment('Sales', convertNote);
         await notifyPMs(convertNote, { except: user.id });
       } catch (err) { /* notification is best-effort */ }

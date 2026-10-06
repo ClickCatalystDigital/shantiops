@@ -19,6 +19,7 @@ import ProjectMultiFilter from '@/components/ProjectMultiFilter';
 import StoresSubTabs from '@/components/StoresSubTabs';
 import { formatDate } from '@/lib/client';
 import { ChevronDownIcon, ChevronRightIcon, InfoIcon, PackageCheckIcon, SearchIcon, FileTextIcon } from 'lucide-react';
+import { useParamSync } from '@/lib/use-entity-highlight';
 
 // qty_text is free text like "2 Nos"; this strips the leading number to show just the unit.
 function unitSuffix(qtyText) {
@@ -53,6 +54,9 @@ export default function MaterialIndentWorklist() {
   const [justCreated, setJustCreated] = useState([]);
   const [sub, setSub] = useState('todo');
   const [raised, setRaised] = useState(null);
+  // Alert links: ?view=raised (+ ?highlight=<indent no>), ?q=<material or project>.
+  useParamSync('view', v => setSub(v === 'raised' ? 'raised' : 'todo'));
+  useParamSync('q', setQ);
 
   async function load() {
     const data = await api('/api/production/material-indent-lines');
@@ -315,7 +319,7 @@ function RaisedIndents({ rows, loading }) {
           const items = (i.items || []).filter(it => it.status !== 'cancelled');
           const done = items.filter(it => it.status === 'released').length;
           return (
-            <div key={i.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-sm">
+            <div key={i.id} data-entity-code={i.indent_no} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-sm">
               <span className="font-medium tnum">{i.indent_no}</span>
               <Badge variant="outline" className={`text-[10px] ${INDENT_BADGE[i.status] || ''}`}>{String(i.status).replace('_', ' ')}</Badge>
               <span className="text-xs text-muted-foreground">{formatDate(i.created_at)}{i.requested_by ? ` · ${i.requested_by}` : ''}</span>

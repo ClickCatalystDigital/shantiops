@@ -9,6 +9,7 @@ import { getFreshSessionUser, isInternal, canAccessDepartment, isDepartmentHead,
 import { requireAction } from '@/lib/action-permissions';
 import { getCrmNotes } from '@/lib/data';
 import { ACTION_TYPE_VALUES } from '@/lib/action-types.mjs';
+import { tabLink } from '@/lib/alert-links.mjs';
 
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 // 'diary' isn't its own note_type — a Diary entry's real Action Type is still call/email/meeting/
@@ -112,7 +113,7 @@ async function sendDiaryAlerts({ b, user, noteId, alertUsers }) {
   const send = async (u, note) => {
     if (!u || sent.has(u.id)) return;
     sent.add(u.id);
-    await notifyUser(u.id, { ...note, dedupe_key: `diary:${noteId}` });
+    await notifyUser(u.id, { ...note, link: tabLink('/sales', 'leads', { highlight: `LD-${lead.id}` }), dedupe_key: `diary:${noteId}` });
   };
   const alert = { kind: 'diary_alert', title: `Diary alert — ${org} (${user.display_name || user.username})`, body };
   if (b.alert_mode === 'All seniors') {

@@ -7,6 +7,7 @@ import { sendMessage } from '@/lib/whatsapp';
 import { windowOpen } from '@/lib/whatsapp.mjs';
 import { notifyUser } from '@/lib/notify';
 import { audit } from '@/lib/usb';
+import { tabLink } from '@/lib/alert-links.mjs';
 
 // The conversation if this user may see it; otherwise a 403/404 response.
 async function load(id) {
@@ -49,7 +50,7 @@ export async function PATCH(req, { params }) {
   await execute('UPDATE wa_conversations SET assigned_to = ? WHERE id = ?', [to.username, conv.id]);
   if (to.username !== user.username) {
     await notifyUser(to.id, { kind: 'whatsapp_message', title: `WhatsApp conversation handed to you: ${conv.contact_name || `+${conv.wa_id}`}`,
-      body: conv.last_text, dedupe_key: `wa:assign:${conv.id}:${Date.now()}` });
+      body: conv.last_text, link: tabLink('/sales', 'whatsapp', { c: conv.id }), dedupe_key: `wa:assign:${conv.id}:${Date.now()}` });
   }
   await audit('whatsapp_reassigned', { actor: user.username, detail: `+${conv.wa_id}: ${conv.assigned_to || 'nobody'} → ${to.username}` });
   return NextResponse.json({ ok: true });
