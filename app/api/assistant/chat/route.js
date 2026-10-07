@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic';
 
 const SYSTEM = `You are the help assistant inside SB Ops, a manufacturing operations app. Answer from the HELP SECTIONS below; they are the app's own guide.
 How to answer:
-1. Start with "Open " followed by the path of the tab where the work is done, copied exactly from SCREENS AND TABS (for example: Open /stores/gir). The app shows the path as a link with the tab's name. Prefer a tab's path over its screen's; if no tab clearly fits, use the screen's path. Never write a path that is not in that list.
+1. Start with "Open " followed by the path of the tab where the work is done, copied exactly from SCREENS AND TABS (for example: Open /stores/gir). The app shows the path as a link with the tab's name. Prefer a tab's path over its screen's; if no tab clearly fits, use the screen's path. The list holds only the screens this user can open: never write a path that is not in it, even if a help section names another screen.
 2. Then give the steps or explanation from the section, in short numbered steps. A section written as a description is still the answer: turn what it says into steps. Use the guide's exact tab and button names.
 3. Only if the sections say nothing useful about the question, say so in one line and name the closest section. Never invent screens, buttons or steps.
 Plain text only, no markdown symbols. Keep it short.
@@ -104,8 +104,12 @@ export async function POST(req) {
   }
   // Help: a person is answered only from the guides of the departments they hold (plus the general
   // sections). Admin, managers and executives get every guide. Several departments = all of theirs.
-  const depts = headDepartments(asker);
+  // Design and Engineering share one workspace (/engineering, Calc Sheets, Drawings), so a holder of
+  // either is answered from both guides.
+  const own = headDepartments(asker);
+  const depts = own.some(d => ['Design', 'Engineering'].includes(d)) ? [...new Set([...own, 'Design', 'Engineering'])] : own;
   const guide = allHelpSections().filter(s => isPM(asker) || s.dept === 'General' || depts.includes(s.dept));
+  const viewer = { pm: isPM(asker), depts };
   // assumeData (dry runs only): choose a look-up as if live data were on, without running it. For testing.
   const pretend = !!(b.dry && b.assumeData);
   // Live data: only the look-ups this person's departments may use (lib/assistant-data.js `who`).
@@ -144,7 +148,7 @@ export async function POST(req) {
   const context = picked.map(s => `### ${s.dept} > ${s.label}\n${s.text}`).join('\n\n');
   const system = data
     ? `${DATA_SYSTEM}\n\nLOOK-UP: ${tool.label}\n${data.note ? `NOTE: ${data.note}\n` : ''}DATA (JSON rows)\n${JSON.stringify(data.rows).slice(0, 6000)}`
-    : `${SYSTEM}\n\nSCREENS AND TABS\n${screenList([...new Set(picked.map(s => s.dept))])}\n\nThe user is on the screen: ${path}\n\nHELP SECTIONS\n${context}`;
+    : `${SYSTEM}\n\nSCREENS AND TABS\n${screenList([...new Set(picked.map(s => s.dept))], viewer)}\n\nThe user is on the screen: ${path}\n\nHELP SECTIONS\n${context}`;
   let res;
   try {
     res = await fetch(`${OPENROUTER}/chat/completions`, {
