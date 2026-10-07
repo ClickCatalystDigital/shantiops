@@ -22,6 +22,7 @@ import ResolveCategoriesDialog from './ResolveCategoriesDialog';
 import ResolveUnassignedDialog from './ResolveUnassignedDialog';
 import DeleteNodeDialog from './DeleteNodeDialog';
 import ResolveCatalogDialog from './ResolveCatalogDialog';
+import AddSubsystemDialog from './AddSubsystemDialog';
 import { nodePath } from '@/lib/bom-tree.mjs';
 
 // `projectId`/`onProjectIdChange`/`showReleased`/`onShowReleasedChange` (round 3 Phase A, all
@@ -59,6 +60,7 @@ export default function BomStructureWorkspace({
   const [resolvingCategories, setResolvingCategories] = useState(false);
   const [resolvingUnassigned, setResolvingUnassigned] = useState(false);
   const [resolvingCatalog, setResolvingCatalog] = useState(false);
+  const [addingSubsystem, setAddingSubsystem] = useState(false);
 
   function loadStructure(pid) {
     return api(`/api/bom-assemblies?project_id=${pid}`).then(setAssemblies).catch(err => showToast(err.message, 'error'));
@@ -188,6 +190,23 @@ export default function BomStructureWorkspace({
       showToast(`Built ${res.rootIds.length} node(s) from templates — ${res.nodeCount} total node(s), ${res.itemCount} item(s)`);
       await reloadStructure();
     } catch (err) { showToast(err.message, 'error'); }
+  }
+  // "Add subsystem": one build from the picker, minus the lines the user unticked. Under the selected node, or at the
+  // top level when nothing is selected. The routes check the template version the dialog previewed (409 if it moved).
+  async function addSubsystem({ templateId, version, skip }) {
+    const parent = selectedNode;
+    try {
+      const body = { template_id: templateId, template_ids: [templateId], template_version: version, skip };
+      const res = parent
+        ? await api(`/api/bom-assemblies/${parent.id}/apply-template`, { method: 'POST', body })
+        : await api('/api/bom-assemblies/apply-templates-to-project', { method: 'POST', body: { ...body, project_id: Number(projectId) } });
+      showToast(`Subsystem added — ${res.nodeCount} node(s), ${res.itemCount} item(s)`);
+      await reloadStructure();
+      if (parent) setExpandedIds(prev => new Set([...prev, parent.id]));
+      const newId = res.rootId ?? res.rootIds?.[0];
+      if (newId) setSelectedId(newId);
+      reloadAll();
+    } catch (err) { showToast(err.message, 'error'); throw err; }
   }
   async function saveBomAsTemplate(payload) {
     try {
@@ -362,6 +381,7 @@ export default function BomStructureWorkspace({
               status={releaseStatus}
               rootCount={assemblies.filter(a => a.parent_id == null).length}
               onBuildFromTemplates={buildFromTemplates} onSaveBomAsTemplate={saveBomAsTemplate}
+              onAddSubsystem={() => setAddingSubsystem(true)}
               unitCount={selectedProject?.unit_count} onSaveUnitCount={saveUnitCount}
               projectId={projectId}
               onClearBom={canClearBom && !hideRootActions ? clearBom : undefined}
@@ -434,6 +454,13 @@ export default function BomStructureWorkspace({
           items={uncategorizedItems}
           onClose={closeResolveCategories}
           onOpenInTree={openInTreeFromResolve}
+        />
+      )}
+      {addingSubsystem && (
+        <AddSubsystemDialog
+          onClose={() => setAddingSubsystem(false)} onApply={addSubsystem}
+          parentNode={selectedNode} released={!!releaseStatus?.released} series={selectedProject?.series}
+          siblings={assemblies.filter(a => (selectedNode ? a.parent_id === selectedNode.id : a.parent_id == null))}
         />
       )}
       {resolvingCatalog && (

@@ -30,12 +30,18 @@ export async function POST(req) {
     return NextResponse.json({ error: 'A selected template is no longer available — refresh and pick again.' }, { status: 400 });
   }
 
+  // "Add subsystem" at the top level: one template, the version it previewed and the lines unticked (all optional).
+  if (b.template_version != null && templates.length === 1 && Number(b.template_version) !== Number(templates[0].version)) {
+    return NextResponse.json({ error: 'This template changed since you opened it — close the dialog and open it again.' }, { status: 409 });
+  }
+  const skip = Array.isArray(b.skip) && templates.length === 1 ? new Set(b.skip.map(String)) : null;
+
   let totalNodes = 0, totalItems = 0;
   const rootIds = [];
   for (const template of templates) {
     let tree = [];
     try { tree = JSON.parse(template.tree_json); } catch { /* corrupt data -> skip, not a crash */ }
-    const result = await insertTemplateTree(tree, projectId, null, template.id, user.username);
+    const result = await insertTemplateTree(tree, projectId, null, template.id, user.username, { skip });
     totalNodes += result.nodeCount;
     totalItems += result.itemCount;
     if (result.rootId != null) rootIds.push(result.rootId);

@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
-  LayoutTemplateIcon, BookmarkPlusIcon, Trash2Icon,
+  LayoutTemplateIcon, BookmarkPlusIcon, Trash2Icon, BlocksIcon,
   PackageIcon, FileTextIcon, UnlinkIcon, TagIcon, ClipboardListIcon, LinkIcon,
 } from 'lucide-react';
 import BuildFromTemplatesDialog from './BuildFromTemplatesDialog';
@@ -83,7 +83,7 @@ function Stat({ value, label, tone, onClick, icon: Icon }) {
 export default function ReleaseReadinessPanel({
   status, rootCount, onBuildFromTemplates, onSaveBomAsTemplate,
   unitCount, onSaveUnitCount, projectId, onResolveUncategorized, onResolveUnassigned, unlinkedCount, onResolveCatalog,
-  onClearBom, nodeCount, projectLabel,
+  onClearBom, nodeCount, projectLabel, onAddSubsystem,
 }) {
   const [buildingFromTemplates, setBuildingFromTemplates] = useState(false);
   const [savingBomAsTemplate, setSavingBomAsTemplate] = useState(false);
@@ -105,6 +105,13 @@ export default function ReleaseReadinessPanel({
           {onSaveUnitCount && <UnitCountField unitCount={unitCount} onSaveUnitCount={onSaveUnitCount} />}
           {projectId && <SplitIntoUnitsButton projectId={projectId} />}
           <div className="flex items-center gap-1.5">
+            {onAddSubsystem && (
+              <Tooltip><TooltipTrigger asChild>
+                <Button size="icon" variant="outline" onClick={onAddSubsystem} aria-label="Add subsystem">
+                  <BlocksIcon />
+                </Button>
+              </TooltipTrigger><TooltipContent>Add subsystem (FD Fan, Feed Line…)</TooltipContent></Tooltip>
+            )}
             {onBuildFromTemplates && (
               <Tooltip><TooltipTrigger asChild>
                 <Button size="icon" variant="outline" onClick={() => setBuildingFromTemplates(true)} aria-label="Build from Templates">

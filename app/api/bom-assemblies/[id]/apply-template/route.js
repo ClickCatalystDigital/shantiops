@@ -4,7 +4,7 @@ import { getFreshSessionUser } from '@/lib/auth';
 import { requireEngineeringAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { getAllocationMode } from '@/lib/procurement';
-import { flattenTemplateTree } from '@/lib/bom-structure.mjs';
+import { flattenTemplateTree, itemSkipKey } from '@/lib/bom-structure.mjs';
 import { serializeConfig } from '@/lib/bom-config.mjs';
 import { DIMENSIONAL_CATEGORIES } from '@/lib/bom-fields.mjs';
 import { categoryDisplaySpec } from '@/lib/section-shapes';
@@ -29,7 +29,13 @@ export async function POST(req, { params }) {
   let tree = [];
   try { tree = JSON.parse(template.tree_json); } catch { /* treat corrupt data as empty, not a crash */ }
 
-  const result = await insertTemplateTree(tree, target.project_id, target.id, template.id, user.username);
+  // "Add subsystem" sends the template version it previewed and the lines the user unticked; both optional, so every
+  // other caller behaves exactly as before.
+  if (b.template_version != null && Number(b.template_version) !== Number(template.version)) {
+    return NextResponse.json({ error: 'This template changed since you opened it — close the dialog and open it again.' }, { status: 409 });
+  }
+  const result = await insertTemplateTree(tree, target.project_id, target.id, template.id, user.username,
+    { skip: Array.isArray(b.skip) ? new Set(b.skip.map(String)) : null });
 
   await audit('bom_assembly_apply_template', {
     actor: user.username,
@@ -41,7 +47,7 @@ export async function POST(req, { params }) {
 // Shared with app/api/bom-assemblies/apply-templates-to-project/route.js (project-scoped bootstrap
 // variant, parentId=null) so the idMap insert logic exists in exactly one place regardless of which
 // route calls it.
-export async function insertTemplateTree(tree, projectId, parentId, templateId, username) {
+export async function insertTemplateTree(tree, projectId, parentId, templateId, username, opts = {}) {
   const flat = flattenTemplateTree(tree);
   if (!flat.length) return { rootId: null, nodeCount: 0, itemCount: 0 };
 
@@ -82,8 +88,9 @@ export async function insertTemplateTree(tree, projectId, parentId, templateId, 
   let n = (maxItemSort?.m ?? -1) + 1;
   let itemCount = 0;
   for (const entry of flat) {
-    for (const it of entry.items) {
+    for (const [itemIndex, it] of entry.items.entries()) {
       if (!it.material_description?.trim()) continue;
+      if (opts.skip?.has(itemSkipKey(entry.idxPath, itemIndex))) continue; // unticked in the "Add subsystem" preview
       // A template saved long ago may reference a since-deleted catalog row — re-check rather than
       // insert a dangling FK. Silently drops the link, keeps the free-text spec intact.
       let itemId = null;
