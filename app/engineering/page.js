@@ -4,7 +4,7 @@
 // (Engineering's BomPanel) — this workspace is the cross-project oversight/reporting surface.
 import { redirect } from 'next/navigation';
 import { getFreshSessionUser, canAccessDepartment, roleHome, isPM, headDepartments } from '@/lib/auth';
-import { canPerformAction } from '@/lib/action-permissions';
+import { canPerformAction, canEngineeringAction } from '@/lib/action-permissions';
 import { getActiveProjectsList } from '@/lib/data';
 import EngineeringWorkspace from '@/components/EngineeringWorkspace';
 
@@ -20,10 +20,11 @@ export default async function EngineeringPage({ searchParams }) {
   // Where-Used/Common-Uncommon/Change Notes are all client-fetched now (round 3 Phase A, the shared
   // project-selector filter needs to re-query them live) — no more server-preloaded changeNotes/
   // partUsage props, same precedent WhereUsedTab's own search always followed.
-  const [projects, canApproveEcn, canClearBom] = await Promise.all([
+  const [projects, canApproveEcn, canClearBom, canMarkTemplates] = await Promise.all([
     getActiveProjectsList(),
     canPerformAction(user, 'Engineering', 'engineering.ecn.approve'),
     canPerformAction(user, 'Engineering', 'engineering.bom.clear'),
+    canEngineeringAction(user, 'engineering.structure_template.marks'),
   ]);
 
   // Requests' three tabs (Purchase Requests/Release BOM/PR Templates) are now also reachable from
@@ -40,5 +41,5 @@ export default async function EngineeringPage({ searchParams }) {
     : headDepartments(user).filter(d => ['Engineering', 'Design', 'Stores'].includes(d));
 
   return <EngineeringWorkspace projects={projects}
-    canApproveEcn={canApproveEcn} canClearBom={canClearBom} initialTab={sp?.tab} initialProject={sp?.project} departments={departments} />;
+    canApproveEcn={canApproveEcn} canClearBom={canClearBom} canMarkTemplates={canMarkTemplates} initialTab={sp?.tab} initialProject={sp?.project} departments={departments} />;
 }

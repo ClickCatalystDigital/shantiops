@@ -483,7 +483,7 @@ function ProjectHeaderBar({
 
 // ---------- Shell ----------
 
-export default function EngineeringWorkspace({ projects, canApproveEcn = false, canClearBom = false, initialTab, initialProject, departments = [] }) {
+export default function EngineeringWorkspace({ projects, canApproveEcn = false, canClearBom = false, canMarkTemplates = false, initialTab, initialProject, departments = [] }) {
   const [tab, setTab] = useState(ITEMS.some(i => i.key === initialTab) ? initialTab : 'structure');
   // Same small cross-tab handoff PrWorkspace.jsx owns internally for its own "PR Templates" tab —
   // reusing this workspace's existing setTab instead of a second tab-state.
@@ -533,9 +533,9 @@ export default function EngineeringWorkspace({ projects, canApproveEcn = false, 
         <BomStructureWorkspace key={bomReloadNonce} projects={projects}
           projectId={globalProjectId} onProjectIdChange={setGlobalProjectId}
           showReleased={globalShowReleased} onShowReleasedChange={setGlobalShowReleased}
-          canClearBom={canClearBom} />
+          canClearBom={canClearBom} canMarkTemplates={canMarkTemplates} />
       )}
-      {tab === 'structure_templates' && <BomStructureTemplateManager />}
+      {tab === 'structure_templates' && <BomStructureTemplateManager canMarkTemplates={canMarkTemplates} />}
       {tab === 'subsystems' && <SubsystemReport />}
       {tab === 'item_master' && <ItemMasterPanel />}
       {tab === 'where_used' && <WhereUsedTab projectIds={globalProjectIdsArr} />}

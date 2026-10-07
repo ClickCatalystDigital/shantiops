@@ -10,19 +10,22 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { NODE_TYPE_SUGGESTIONS, effectiveNodeLevel } from '@/lib/bom-tree.mjs';
+import { subsystemFamily } from '@/lib/subsystem-family.mjs';
 
-export default function SaveAsTemplateDialog({ node, byId, onClose, onSave }) {
+export default function SaveAsTemplateDialog({ node, byId, onClose, onSave, canMarkTemplates = false }) {
   const [name, setName] = useState(node.name);
   const [level, setLevel] = useState(effectiveNodeLevel(node, byId));
   const [series, setSeries] = useState('');
   const [description, setDescription] = useState('');
+  // The subsystem this is a build of ("FD Fan Blower"); builds of one family are offered together in Add subsystem.
+  const [family, setFamily] = useState(node.parent_id != null ? subsystemFamily(node.name).label : '');
   const [saving, setSaving] = useState(false);
 
   async function submit() {
     if (!name.trim()) return;
     setSaving(true);
     try {
-      await onSave({ name: name.trim(), level, series: series.trim() || null, description: description.trim() || null });
+      await onSave({ name: name.trim(), level, series: series.trim() || null, description: description.trim() || null, ...(canMarkTemplates ? { family: family.trim() } : {}) });
       onClose();
     } finally { setSaving(false); }
   }
@@ -53,6 +56,13 @@ export default function SaveAsTemplateDialog({ node, byId, onClose, onSave }) {
             <Label>Model / series (optional)</Label>
             <Input value={series} onChange={e => setSeries(e.target.value)} placeholder="e.g. SF" />
           </div>
+          {canMarkTemplates && (
+            <div className="flex flex-col gap-1.5">
+              <Label>Subsystem family (optional)</Label>
+              <Input value={family} onChange={e => setFamily(e.target.value)} placeholder="e.g. FD Fan Blower" />
+              <p className="text-xs text-muted-foreground">Templates with the same family are offered together in “Add subsystem”, so name each one by its build (e.g. “FD Fan Blower — 5 HP”).</p>
+            </div>
+          )}
           <div className="flex flex-col gap-1.5">
             <Label>Description (optional)</Label>
             <Textarea value={description} onChange={e => setDescription(e.target.value)} rows={2} />

@@ -8,7 +8,7 @@ import { execute, queryAll } from '@/lib/db';
 import { getFreshSessionUser, isInternal } from '@/lib/auth';
 import { requireEngineeringAction } from '@/lib/action-permissions';
 import { NODE_TYPE_SUGGESTIONS } from '@/lib/bom-tree.mjs';
-import { computeTemplateCounts } from '@/lib/bom-structure.mjs';
+import { computeTemplateCounts, collectItemIds } from '@/lib/bom-structure.mjs';
 
 export async function GET(req) {
   const user = await getFreshSessionUser();
@@ -35,7 +35,7 @@ export async function GET(req) {
   // which are not "a BOM that used it".
   const templates = await queryAll(
     `SELECT t.id, t.name, t.level, t.series, t.description, t.node_count, t.item_count, t.root_count, t.is_default,
-            t.source_project_no, t.created_by, t.created_at, t.version,
+            t.source_project_no, t.created_by, t.created_at, t.version, t.family, t.tree_json,
             (SELECT COUNT(*) FROM bom_assemblies a JOIN projects p ON p.id = a.project_id
               WHERE a.structure_template_id = t.id AND COALESCE(p.is_system, 0) = 0) AS used_nodes,
             (SELECT COUNT(DISTINCT a.project_id) FROM bom_assemblies a JOIN projects p ON p.id = a.project_id
@@ -45,7 +45,19 @@ export async function GET(req) {
       ORDER BY t.is_default DESC, t.name`,
     args
   );
-  return NextResponse.json(templates);
+  // Lines whose catalog item no longer exists (an Item Master clean-up can leave one): counted here so the list can warn,
+  // without sending every template's full tree to the browser.
+  const allIds = [...new Set(templates.flatMap(t => { try { return collectItemIds(JSON.parse(t.tree_json)); } catch { return []; } }))];
+  const alive = new Set();
+  for (let i = 0; i < allIds.length; i += 400) {
+    const chunk = allIds.slice(i, i + 400);
+    for (const r of await queryAll(`SELECT id FROM items WHERE id IN (${chunk.map(() => '?').join(',')})`, chunk)) alive.add(Number(r.id));
+  }
+  return NextResponse.json(templates.map(({ tree_json, ...t }) => {
+    let broken = 0;
+    try { broken = collectItemIds(JSON.parse(tree_json)).filter(id => !alive.has(id)).length; } catch { /* unreadable tree */ }
+    return { ...t, broken_links: broken };
+  }));
 }
 
 export async function POST(req) {

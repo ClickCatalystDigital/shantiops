@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
 import { execute, queryOne, queryAll } from '@/lib/db';
 import { getFreshSessionUser } from '@/lib/auth';
-import { requireEngineeringAction } from '@/lib/action-permissions';
+import { requireEngineeringAction, canEngineeringAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { NODE_TYPE_SUGGESTIONS, effectiveNodeLevel } from '@/lib/bom-tree.mjs';
-import { buildTemplateTree, computeTemplateCounts } from '@/lib/bom-structure.mjs';
+import { buildTemplateTree, computeTemplateCounts, carryPresence } from '@/lib/bom-structure.mjs';
+import { subsystemFamily } from '@/lib/subsystem-family.mjs';
 import { parseConfig } from '@/lib/bom-config.mjs';
 
 // Captures this NODE ITSELF (its own name/type/qty/items, plus every descendant recursively) as a
@@ -65,7 +66,7 @@ export async function POST(req, { params }) {
     || parseConfig(node.config_json).length > 0;
   if (!hasContent) return NextResponse.json({ error: 'This node has no children, items or configuration to save as a template' }, { status: 400 });
 
-  const tree = buildTemplateTree(rootNodes, childrenByParent, itemsByAssembly);
+  let tree = buildTemplateTree(rootNodes, childrenByParent, itemsByAssembly);
   const { nodeCount, itemCount, rootCount } = computeTemplateCounts(tree);
   const level = NODE_TYPE_SUGGESTIONS.includes(b.level) ? b.level : effectiveNodeLevel(node, byId);
   const project = await queryOne('SELECT project_no FROM projects WHERE id = ?', [node.project_id]);
@@ -81,6 +82,8 @@ export async function POST(req, { params }) {
     if (!existing) return NextResponse.json({ error: 'Template not found' }, { status: 404 });
     // Version +1 only when the content really changed — a no-op re-save must not raise a "newer version
     // available" hint on every node built from this template.
+    // required / usual / optional marks follow their lines onto the re-saved tree (a no-op when nothing was marked)
+    try { tree = carryPresence(JSON.parse(existing.tree_json), tree); } catch { /* unreadable old tree: keep the new one */ }
     const changed = existing.tree_json !== JSON.stringify(tree);
     // level must be re-saved too, not just content — if the sandbox node's own classification was
     // changed (the Overview tab's "Classified as" selector) before clicking Update Template, the
@@ -101,12 +104,17 @@ export async function POST(req, { params }) {
     return NextResponse.json({ id: Number(b.overwrite_template_id), nodeCount, itemCount, version: existing.version + (changed ? 1 : 0), unchanged: !changed });
   }
 
+  // Family (the subsystem this is a build of): a Head can type one; otherwise a subsystem node (not a top-level root)
+  // gets its own family from its name. A top-level System save has no family.
+  const canSetFamily = await canEngineeringAction(user, 'engineering.structure_template.marks');
+  const family = (canSetFamily && typeof b.family === 'string' ? b.family.trim() : '')
+    || (node.parent_id != null ? subsystemFamily(node.name).label : '') || null;
   const { lastId } = await execute(
     `INSERT INTO bom_structure_templates
-       (name, level, series, description, tree_json, node_count, item_count, root_count, source_project_no, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (name, level, series, description, tree_json, node_count, item_count, root_count, source_project_no, created_by, family)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [name, level, b.series?.trim() || null, b.description?.trim() || null, JSON.stringify(tree),
-      nodeCount, itemCount, rootCount, sourceProjectNo, user.username]
+      nodeCount, itemCount, rootCount, sourceProjectNo, user.username, family]
   );
 
   await audit('bom_structure_template_save', {

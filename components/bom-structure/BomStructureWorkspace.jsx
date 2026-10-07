@@ -33,7 +33,7 @@ import { nodePath } from '@/lib/bom-tree.mjs';
 export default function BomStructureWorkspace({
   projects, projectId: controlledProjectId, onProjectIdChange,
   showReleased: controlledShowReleased, onShowReleasedChange,
-  initialSelectedId, hideRelease, banner, hideRootActions, canClearBom = false,
+  initialSelectedId, hideRelease, banner, hideRootActions, canClearBom = false, canMarkTemplates = false,
 }) {
   const router = useRouter();
   const controlled = controlledProjectId !== undefined;
@@ -393,6 +393,7 @@ export default function BomStructureWorkspace({
                 onSaveQty={saveQty} onSaveNodeType={saveNodeType} onRename={renameNode} onMoveTo={setMovingNode}
                 onDuplicate={duplicateNode} onDelete={deleteNode} onSaved={reloadAll} onLinkChange={reloadAll}
                 onApplyTemplate={applyTemplatesToNode} onSaveAsTemplate={saveAsTemplate} onSaveConfig={saveConfig}
+                canMarkTemplates={canMarkTemplates}
               />
             ) : selectedId === 'unassigned' ? (
               <div className="flex h-full flex-col gap-1 overflow-y-auto p-4">

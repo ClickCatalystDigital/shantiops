@@ -3,7 +3,7 @@ import { execute, queryOne, queryAll } from '@/lib/db';
 import { getFreshSessionUser } from '@/lib/auth';
 import { requireEngineeringAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
-import { buildTemplateTree, computeTemplateCounts } from '@/lib/bom-structure.mjs';
+import { buildTemplateTree, computeTemplateCounts, carryPresence } from '@/lib/bom-structure.mjs';
 
 // Captures a project's ENTIRE current top-level tree (every root node + full descendants) as one
 // Structure Template, rather than one node at a time — "save this whole BOM as a reusable package."
@@ -70,7 +70,8 @@ export async function POST(req, { params }) {
     itemsByAssembly.get(it.assembly_id).push(it);
   }
 
-  const tree = buildTemplateTree(rootNodes, childrenByParent, itemsByAssembly);
+  let tree = buildTemplateTree(rootNodes, childrenByParent, itemsByAssembly);
+  if (overwrite) { try { tree = carryPresence(JSON.parse(overwrite.tree_json), tree); } catch { /* keep the new tree */ } }
   const { nodeCount, itemCount, rootCount } = computeTemplateCounts(tree);
 
   if (overwrite) {

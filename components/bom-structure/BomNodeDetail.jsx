@@ -21,7 +21,7 @@ import SaveAsTemplateDialog from './SaveAsTemplateDialog';
 export default function BomNodeDetail({
   node, path, projectId, projectBom, assemblies, unassignedItems, byId,
   onSaveQty, onSaveNodeType, onRename, onMoveTo, onDuplicate, onDelete, onSaved, onLinkChange,
-  onApplyTemplate, onSaveAsTemplate, onSaveConfig,
+  onApplyTemplate, onSaveAsTemplate, onSaveConfig, canMarkTemplates = false,
 }) {
   const [tab, setTab] = useState('overview');
   const TAB_DEFS = [
@@ -131,7 +131,7 @@ export default function BomNodeDetail({
 
       {savingAsTemplate && (
         <SaveAsTemplateDialog
-          node={node} byId={byId}
+          node={node} byId={byId} canMarkTemplates={canMarkTemplates}
           onClose={() => setSavingAsTemplate(false)}
           onSave={payload => onSaveAsTemplate(node, payload)}
         />

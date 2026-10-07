@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import TemplateLinesDialog from '@/components/TemplateLinesDialog';
 import { PencilIcon, TrashIcon, LayoutTemplateIcon } from 'lucide-react';
 import BomStructureWorkspace from './bom-structure/BomStructureWorkspace';
 import DeleteTemplateDialog from './DeleteTemplateDialog';
@@ -108,11 +109,12 @@ function UsageDialog({ template, onClose }) {
   );
 }
 
-export default function BomStructureTemplateManager() {
+export default function BomStructureTemplateManager({ canMarkTemplates = false }) {
   const [templates, setTemplates] = useState(null);
   const [levelFilter, setLevelFilter] = useState('All');
   const [session, setSession] = useState(null); // {templateId, name, projectId, nodeId}
   const [deleting, setDeleting] = useState(null); // the template whose bin was clicked
+  const [editingLines, setEditingLines] = useState(null); // the template whose family / line marks are open
   const [renaming, setRenaming] = useState(null); // the template whose name was clicked
   const [viewingUsage, setViewingUsage] = useState(null); // the template whose "Used on…" was clicked
   const [openingId, setOpeningId] = useState(null); // guards a rapid double-click leaking a second, untracked sandbox node
@@ -221,6 +223,8 @@ export default function BomStructureTemplateManager() {
                   <span className="flex items-center gap-1.5 text-sm font-medium">
                     <button type="button" onClick={() => setRenaming(t)} title="Click to rename" className="min-w-0 truncate rounded text-left hover:underline hover:decoration-dotted focus-visible:underline focus-visible:outline-none">{t.name}</button>
                     <Badge variant="outline" className="text-[10px] font-normal">v{t.version ?? 1}</Badge>
+                    {t.family && <Badge className="text-[10px] font-normal">{t.family}</Badge>}
+                    {t.broken_links > 0 && <Badge variant="outline" className="text-[10px] font-normal text-warning" title="Some lines point at Item Master items that no longer exist; they will be added as plain text without a link">{t.broken_links} broken link{t.broken_links === 1 ? '' : 's'}</Badge>}
                     <button type="button" onClick={() => toggleDefault(t)} title={t.is_default ? 'Default — click to unset' : 'Set as default'} className={t.is_default ? 'text-warning' : 'text-muted-foreground/40 hover:text-warning'}>★</button>
                   </span>
                   <span className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
@@ -238,6 +242,7 @@ export default function BomStructureTemplateManager() {
                   )}
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
+                  {canMarkTemplates && <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={() => setEditingLines(t)}>Family & lines</Button>}
                   {t.root_count > 1 ? (
                     <Tooltip><TooltipTrigger asChild>
                       <span><Button size="icon-sm" variant="ghost" className="text-primary" disabled aria-label="View / edit"><PencilIcon /></Button></span>
@@ -252,6 +257,7 @@ export default function BomStructureTemplateManager() {
           </div>
         )}
       </div>
+      {editingLines && <TemplateLinesDialog template={editingLines} onClose={() => setEditingLines(null)} onSaved={reload} />}
       {renaming && <RenameDialog template={renaming} onClose={() => setRenaming(null)} onRenamed={reload} />}
       {viewingUsage && <UsageDialog template={viewingUsage} onClose={() => setViewingUsage(null)} />}
       {deleting && (

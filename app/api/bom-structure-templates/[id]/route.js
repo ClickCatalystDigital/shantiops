@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser } from '@/lib/auth';
 import { requireEngineeringAction } from '@/lib/action-permissions';
-import { computeTemplateCounts } from '@/lib/bom-structure.mjs';
+import { computeTemplateCounts, applyMarks } from '@/lib/bom-structure.mjs';
 import { audit } from '@/lib/usb';
 
 // GET doubles as the sandbox-edit flow's "load what this template currently holds" — the JSON is
@@ -29,6 +29,20 @@ export async function PATCH(req, { params }) {
   const existing = await queryOne('SELECT id, name, level, series, tree_json FROM bom_structure_templates WHERE id = ? AND archived_at IS NULL', [params.id]);
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   const b = await req.json();
+
+  // Family and line marks decide what every future subsystem contains — Head only (checked before any write).
+  if (b.family !== undefined || b.marks !== undefined) {
+    const headOnly = await requireEngineeringAction(user, 'engineering.structure_template.marks');
+    if (headOnly) return headOnly;
+  }
+  let markedTree = null;
+  if (Array.isArray(b.marks) && b.marks.length) {
+    let current = [];
+    try { current = JSON.parse(existing.tree_json); } catch { /* corrupt tree: every mark then errors below */ }
+    const r = applyMarks(current, b.marks);
+    if (r.error) return NextResponse.json({ error: r.error }, { status: 409 });
+    if (r.changed) markedTree = r.tree;
+  }
 
   // Validate a rename BEFORE any write (the default-flag update below would otherwise already have run).
   // Templates are linked by id everywhere (lineage columns, version stamps), never by name, so a rename
@@ -61,6 +75,12 @@ export async function PATCH(req, { params }) {
   if (b.name != null) { fields.push('name = ?'); args.push(b.name); }
   if (b.series !== undefined) { fields.push('series = ?'); args.push(b.series?.trim() || null); }
   if (b.description !== undefined) { fields.push('description = ?'); args.push(b.description?.trim() || null); }
+  if (b.family !== undefined) { fields.push('family = ?'); args.push(String(b.family ?? '').trim() || null); }
+  if (markedTree && !Array.isArray(b.tree)) {
+    // marks change content, so the version moves (applied nodes then show "newer version available"); counts do not change
+    fields.push('tree_json = ?', 'version = version + 1');
+    args.push(JSON.stringify(markedTree));
+  }
   if (Array.isArray(b.tree)) {
     const { nodeCount, itemCount, rootCount } = computeTemplateCounts(b.tree);
     fields.push('tree_json = ?', 'node_count = ?', 'item_count = ?', 'root_count = ?');
@@ -75,6 +95,7 @@ export async function PATCH(req, { params }) {
   if (b.name != null && b.name !== existing.name) {
     await audit('bom_structure_template_rename', { actor: user.username, detail: `template ${existing.id}: "${existing.name}" -> "${b.name}"` });
   }
+  if (markedTree) await audit('bom_structure_template_marks', { actor: user.username, detail: `template ${existing.id} ("${existing.name}"): ${b.marks.length} line mark(s) set` });
   return NextResponse.json({ ok: true });
 }
 
