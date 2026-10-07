@@ -171,7 +171,7 @@ export default function BomStructureTemplateManager({ canMarkTemplates = false }
     return (
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2">
-          <span className="flex items-center gap-1.5 text-sm font-medium">
+          <span className="flex flex-wrap items-center gap-1.5 text-sm font-medium">
             <LayoutTemplateIcon className="size-4 text-primary" />Editing template: {session.name}
           </span>
           <div className="flex gap-1.5">
@@ -218,10 +218,10 @@ export default function BomStructureTemplateManager({ canMarkTemplates = false }
         ) : (
           <div className="flex flex-col divide-y rounded-md border">
             {visible.map(t => (
-              <div key={t.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
+              <div key={t.id} className="flex flex-col gap-2 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
                 <div className="flex min-w-0 flex-col gap-0.5">
                   <span className="flex items-center gap-1.5 text-sm font-medium">
-                    <button type="button" onClick={() => setRenaming(t)} title="Click to rename" className="min-w-0 truncate rounded text-left hover:underline hover:decoration-dotted focus-visible:underline focus-visible:outline-none">{t.name}</button>
+                    <button type="button" onClick={() => setRenaming(t)} title="Click to rename" className="min-w-0 max-w-full break-words rounded text-left hover:underline hover:decoration-dotted focus-visible:underline focus-visible:outline-none">{t.name}</button>
                     <Badge variant="outline" className="text-[10px] font-normal">v{t.version ?? 1}</Badge>
                     {t.family && <Badge className="text-[10px] font-normal">{t.family}</Badge>}
                     {t.broken_links > 0 && <Badge variant="outline" className="text-[10px] font-normal text-warning" title="Some lines point at Item Master items that no longer exist; they will be added as plain text without a link">{t.broken_links} broken link{t.broken_links === 1 ? '' : 's'}</Badge>}
@@ -241,7 +241,7 @@ export default function BomStructureTemplateManager({ canMarkTemplates = false }
                     </button>
                   )}
                 </div>
-                <div className="flex shrink-0 items-center gap-1">
+                <div className="flex shrink-0 flex-wrap items-center gap-1">
                   {canMarkTemplates && <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={() => setEditingLines(t)}>Family & lines</Button>}
                   {t.root_count > 1 ? (
                     <Tooltip><TooltipTrigger asChild>
