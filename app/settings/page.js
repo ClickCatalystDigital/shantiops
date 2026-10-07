@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { getFreshSessionUser, isCustomer, isPM, isAdmin, isDesignHead, isDepartmentHead, canAccessDepartment, roleHome } from '@/lib/auth';
-import { getFunctionalHeads, getDesignTeamMembers, getAvailableSystemEmployees } from '@/lib/data';
+import { getFunctionalHeads, getManagedUsers, getDesignTeamMembers, getAvailableSystemEmployees } from '@/lib/data';
 import { queryOne, queryAll } from '@/lib/db';
 import { ACTION_CATALOG } from '@/lib/action-permissions';
 import { MILESTONE_TEMPLATE } from '@/lib/milestones';
@@ -30,6 +30,7 @@ export default async function Settings() {
   if (isCustomer(user)) redirect(roleHome(user));
 
   const heads = isPM(user) ? await getFunctionalHeads() : null;
+  const managedUsers = isPM(user) ? await getManagedUsers() : null;
   const designTeam = isDesignHead(user) ? await getDesignTeamMembers() : null;
   // Sales Head (and PMs, who are head of every department): team, email and data retention.
   const salesHead = isDepartmentHead(user, 'Sales');
@@ -82,7 +83,7 @@ export default async function Settings() {
           <ActionPermissionsPanel catalog={ACTION_CATALOG} permissions={actionPermissions} />
           <MilestoneAutomationPanel catalog={MILESTONE_AUTOMATION_CATALOG} current={milestoneAutomation} />
           <DependencyChainPanel template={MILESTONE_TEMPLATE} current={dependencyCurrent} />
-          <UserManagement heads={heads} availableEmployees={availableEmployees} isAdmin={isAdmin(user)} />
+          <UserManagement heads={managedUsers} availableEmployees={availableEmployees} isAdmin={isAdmin(user)} canSetLevel={['admin', 'executive'].includes(user.role)} myId={user.id} />
 
           <Separator />
           <h2 className="text-lg font-semibold">USB Device Approval</h2>

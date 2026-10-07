@@ -63,6 +63,17 @@ export async function PATCH(req, { params }) {
     sets.push('active = ?'); args.push(b.active ? 1 : 0);
     auditActions.push([b.active ? 'user_reactivated' : 'user_deactivated', '']);
   }
+  if ('role' in b) {
+    if (!['operator', 'manager', 'executive'].includes(b.role)) return NextResponse.json({ error: 'Invalid level' }, { status: 400 });
+    if (!['admin', 'executive'].includes(user.role)) return NextResponse.json({ error: 'Only admin or executive can change a level' }, { status: 403 });
+    if (String(user.id) === String(params.id)) return NextResponse.json({ error: "You can't change your own level" }, { status: 400 });
+    const target = await queryOne('SELECT role FROM users WHERE id = ?', [params.id]);
+    if (!target || !['operator', 'manager', 'executive'].includes(target.role)) return NextResponse.json({ error: 'This account’s level cannot be changed here' }, { status: 400 });
+    sets.push('role = ?'); args.push(b.role);
+    // PM tier holds no departments; a demoted user gets departments back via the Access Matrix.
+    if (b.role !== 'operator') { sets.push('departments = NULL', 'department_roles = NULL'); }
+    auditActions.push(['user_role_changed', `${target.role} -> ${b.role}`]);
+  }
   if ('safe_pass' in b) {
     // Stricter than the requirePM check above this route already passed — only admin, not
     // manager/executive, may grant/revoke the onboarding bypass.

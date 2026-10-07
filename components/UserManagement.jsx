@@ -1,6 +1,6 @@
 'use client';
 
-// Create / deactivate functional-head accounts (PM only). Department access is via the matrix above.
+// Create / deactivate accounts and set their level (head / manager / executive; PM only). Department access is via the matrix above.
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, showToast } from '@/lib/client';
@@ -10,9 +10,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
-const BLANK = { employeeId: '', username: '', password: '' };
+const BLANK = { employeeId: '', username: '', password: '', role: 'operator' };
+const LEVELS = [['operator', 'Department head'], ['manager', 'Manager'], ['executive', 'Executive']];
+const levelLabel = role => LEVELS.find(l => l[0] === role)?.[1] || role;
 
-export default function UserManagement({ heads: initialHeads, availableEmployees = [], isAdmin = false }) {
+export default function UserManagement({ heads: initialHeads, availableEmployees = [], isAdmin = false, canSetLevel = false, myId = null }) {
   const router = useRouter();
   const [heads, setHeads] = useState(initialHeads);
   const [f, setF] = useState(BLANK);
@@ -50,6 +52,20 @@ export default function UserManagement({ heads: initialHeads, availableEmployees
     }
   }
 
+  async function changeLevel(head, role) {
+    if (role === head.role) return;
+    const msg = role === 'operator'
+      ? `Make ${head.display_name || head.username} a department head? Grant their departments in the Access Matrix afterwards.`
+      : `Make ${head.display_name || head.username} ${levelLabel(role)}? They get access to every department, and their department grants are cleared.`;
+    if (!window.confirm(msg)) return;
+    try {
+      await api(`/api/users/${head.id}`, { method: 'PATCH', body: { role } });
+      setHeads(hs => hs.map(h => (h.id === head.id ? { ...h, role } : h)));
+      showToast(`Now ${levelLabel(role)}`);
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+  }
+
   async function toggleSafePass(head) {
     const safe_pass = !head.safe_pass;
     setHeads(hs => hs.map(h => (h.id === head.id ? { ...h, safe_pass } : h)));
@@ -70,8 +86,9 @@ export default function UserManagement({ heads: initialHeads, availableEmployees
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Head</TableHead>
+                  <TableHead>Name</TableHead>
                   <TableHead>Username</TableHead>
+                  <TableHead>Level</TableHead>
                   <TableHead>Status</TableHead>
                   {isAdmin && <TableHead>Safe Pass</TableHead>}
                   <TableHead />
@@ -82,6 +99,13 @@ export default function UserManagement({ heads: initialHeads, availableEmployees
                   <TableRow key={h.id}>
                     <TableCell>{h.display_name || '—'}</TableCell>
                     <TableCell className="text-muted-foreground">@{h.username}</TableCell>
+                    <TableCell>
+                      {canSetLevel && String(h.id) !== String(myId) ? (
+                        <select value={h.role} onChange={e => changeLevel(h, e.target.value)} className="h-8 rounded-md border bg-background px-2 text-sm">
+                          {LEVELS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                        </select>
+                      ) : levelLabel(h.role)}
+                    </TableCell>
                     <TableCell>{h.active ? 'Active' : 'Deactivated'}</TableCell>
                     {isAdmin && (
                       <TableCell>
@@ -102,7 +126,7 @@ export default function UserManagement({ heads: initialHeads, availableEmployees
           <button type="button" className="w-fit text-xs text-muted-foreground underline" onClick={() => setNewEmployee(v => !v)}>
             {newEmployee ? 'Select an existing HR employee instead' : "+ Person isn't in HR yet — add them"}
           </button>
-          <div className="grid items-end gap-3 sm:grid-cols-[1.4fr_1fr_1fr_auto]">
+          <div className="grid items-end gap-3 sm:grid-cols-[1.4fr_1fr_1fr_1fr_auto]">
             {newEmployee ? (
               <div className="flex flex-col gap-1.5"><Label>New employee name *</Label>
                 <Input required value={newName} onChange={e => setNewName(e.target.value)} /></div>
@@ -117,6 +141,10 @@ export default function UserManagement({ heads: initialHeads, availableEmployees
               <Input required value={f.username} onChange={e => setF({ ...f, username: e.target.value })} /></div>
             <div className="flex flex-col gap-1.5"><Label>Password *</Label>
               <Input type="password" required minLength={6} value={f.password} onChange={e => setF({ ...f, password: e.target.value })} /></div>
+            <div className="flex flex-col gap-1.5"><Label>Level</Label>
+              <select value={f.role} onChange={e => setF({ ...f, role: e.target.value })} className="h-10 rounded-md border bg-background px-3 text-sm">
+                {LEVELS.filter(([v]) => v === 'operator' || canSetLevel).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select></div>
             <Button disabled={busy || (!newEmployee && availableEmployees.length === 0)}>{busy ? 'Creating…' : 'Create access'}</Button>
           </div>
         </form>
