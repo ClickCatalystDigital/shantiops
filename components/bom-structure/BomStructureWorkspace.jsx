@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, showToast, formatDate } from '@/lib/client';
+import { toast } from 'sonner';
 import { Card, CardHeader, CardTitle, CardDescription, CardAction } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import SearchableSelect from '@/components/SearchableSelect';
@@ -146,14 +147,32 @@ export default function BomStructureWorkspace({
   }
   // Opens the confirmation dialog (it asks where the items go); the delete itself runs in confirmDeleteNode.
   function deleteNode(node) { setDeletingNode(node); }
-  async function confirmDeleteNode(moveToId) {
+  // Checks first (?dry=1), hides the subtree, and only sends the real delete after 5 seconds unless Undo is clicked.
+  // ponytail: a delete still waiting when the tab is closed is lost (nothing deleted); server-side undo if that matters.
+  async function confirmDeleteNode(moveToId, subtreeIds) {
     const node = deletingNode;
+    const qs = moveToId ? `move_to=${moveToId}` : 'delete_items=1';
     try {
-      await api(`/api/bom-assemblies/${node.id}${moveToId ? `?move_to=${moveToId}` : ''}`, { method: 'DELETE' });
-      if (selectedId === node.id) setSelectedId(null);
-      setDeletingNode(null);
+      await api(`/api/bom-assemblies/${node.id}?${qs}&dry=1`, { method: 'DELETE' });
+    } catch (err) { showToast(err.message, 'error'); return; }
+    setDeletingNode(null);
+    if (subtreeIds.includes(selectedId)) setSelectedId(null);
+    const hidden = new Set(subtreeIds);
+    setAssemblies(prev => prev?.filter(a => !hidden.has(a.id)));
+    let settled = false;
+    const commit = async () => {
+      if (settled) return;
+      settled = true;
+      try { await api(`/api/bom-assemblies/${node.id}?${qs}`, { method: 'DELETE' }); }
+      catch (err) { showToast(err.message, 'error'); }
       reloadAll();
-    } catch (err) { showToast(err.message, 'error'); }
+    };
+    toast(`Deleted “${node.name}”`, {
+      duration: 5000,
+      action: { label: 'Undo', onClick: () => { if (settled) return; settled = true; reloadStructure(); } },
+      onAutoClose: commit,
+      onDismiss: commit,
+    });
   }
   async function saveQty(node, qty) {
     try {

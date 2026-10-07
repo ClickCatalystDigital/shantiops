@@ -4,6 +4,7 @@ import { isBomReleased } from '@/lib/bom-line';
 import { getFreshSessionUser } from '@/lib/auth';
 import { requireEngineeringAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
+import { findBlockedIds, findBlockingReferences } from '@/lib/bom-item-guard';
 import { wouldCreateCycle } from '@/lib/bom-structure.mjs';
 import { validateConfigInput, serializeConfig } from '@/lib/bom-config.mjs';
 
@@ -95,10 +96,8 @@ export async function PATCH(req, { params }) {
   return NextResponse.json({ ok: true });
 }
 
-// Deleting an assembly un-links (not deletes) any bom_items under it — a BOM row must stay a
-// packable leaf regardless of assembly membership (§5a invariant, packing_items.bom_item_id joins
-// bom_items.id directly). Child assemblies are blocked, same "resolve the tree first" precedent as
-// bom-items DELETE blocking on packed/reserved rows, rather than silently cascading a whole subtree.
+// Deleting a node takes its whole subtree (see the rules inside). An item is never silently dropped out of the tree:
+// it is deleted with the node only on ?delete_items=1, else moved to ?move_to (default the parent).
 //
 // ?cascade=1 is the one exception, and it's deliberately narrow: it recursively deletes the whole
 // subtree AND its items (real deletes, not un-links) instead of the safe behavior above. Only the
@@ -134,43 +133,73 @@ export async function DELETE(req, { params }) {
     return NextResponse.json({ ok: true, deletedNodes: subtreeIds.length });
   }
 
-  const child = await queryOne('SELECT COUNT(*) AS n FROM bom_assemblies WHERE parent_id = ?', [params.id]);
-  if (child.n > 0) {
-    return NextResponse.json({ error: 'This assembly has sub-assemblies — delete those first' }, { status: 409 });
-  }
-
-  // A node that still holds items never just disappears with them: the items go to an explicit destination
-  // (?move_to=<node id>, same project), defaulting to the parent. A top-level node has no parent, so it needs a destination.
+  // The node and everything under it (sub-nodes and their items) goes, after the person confirms in the UI.
+  // Items are either deleted with it (?delete_items=1) or moved to another node outside the subtree (?move_to=,
+  // default the parent). Refused as a whole, never half-done: released BOM, PR-raised lines, items with downstream
+  // activity (bom-item-guard), QC records / Form III A groups on any node. ?dry=1 runs only these checks
+  // (the UI calls it before showing its 5-second Undo, then sends the real delete).
   if (await isBomReleased(row.project_id)) {
     return NextResponse.json({ error: 'This BOM is released — un-release it before deleting a node' }, { status: 409 });
   }
-  const itemCount = (await queryOne('SELECT COUNT(*) AS n FROM bom_items WHERE assembly_id = ?', [params.id])).n;
+  const url = new URL(req.url);
+  const all = await queryAll('SELECT id, parent_id FROM bom_assemblies WHERE project_id = ?', [row.project_id]);
+  const kids = new Map();
+  for (const a of all) { if (!kids.has(a.parent_id)) kids.set(a.parent_id, []); kids.get(a.parent_id).push(a.id); }
+  const ids = [];
+  (function collect(id) { ids.push(id); for (const c of kids.get(id) || []) collect(c); })(row.id);
+  const marks = ids.map(() => '?').join(',');
+  const items = await queryAll(`SELECT id, material_description, pr_item_id FROM bom_items WHERE assembly_id IN (${marks})`, ids);
+  const deleteItems = url.searchParams.get('delete_items') === '1';
+
   let moveTo = null;
-  if (itemCount > 0) {
-    const asked = new URL(req.url).searchParams.get('move_to');
+  if (items.length && !deleteItems) {
+    const asked = url.searchParams.get('move_to');
     moveTo = asked ? Number(asked) : row.parent_id;
     if (moveTo == null) {
-      return NextResponse.json({ error: `This top-level node still holds ${itemCount} item(s) — choose a node to move them to first` }, { status: 409 });
+      return NextResponse.json({ error: `This node holds ${items.length} item(s) — delete them too, or choose a node to move them to` }, { status: 409 });
     }
     const dest = await queryOne('SELECT id, project_id FROM bom_assemblies WHERE id = ?', [moveTo]);
-    if (!dest || Number(dest.project_id) !== Number(row.project_id) || Number(dest.id) === Number(row.id)) {
-      return NextResponse.json({ error: 'Choose another node of this project to move the items to' }, { status: 400 });
+    if (!dest || Number(dest.project_id) !== Number(row.project_id) || ids.includes(Number(dest.id))) {
+      return NextResponse.json({ error: 'Choose a node outside the one being deleted to move the items to' }, { status: 400 });
     }
   }
+  if (deleteItems && items.length) {
+    const pr = items.filter(i => i.pr_item_id != null);
+    if (pr.length) {
+      return NextResponse.json({ error: `${pr.length} line(s) were raised through Purchase Requests (e.g. "${pr[0].material_description}") — cancel those first, or move the items instead. Nothing was deleted.` }, { status: 409 });
+    }
+    const blocked = await findBlockedIds(items.map(i => i.id));
+    if (blocked.size) {
+      const first = items.find(i => i.id === [...blocked][0]);
+      const { reasons } = await findBlockingReferences(first.id);
+      return NextResponse.json({ error: `${blocked.size} item(s) have downstream activity (e.g. "${first.material_description}" ${reasons[0]?.label}) — move the items instead. Nothing was deleted.` }, { status: 409 });
+    }
+  }
+  const qc = await queryOne(`SELECT (SELECT COUNT(*) FROM qc_records WHERE assembly_id IN (${marks})) + (SELECT COUNT(*) FROM qc_iiia_groups WHERE assembly_id IN (${marks})) AS n`, [...ids, ...ids]);
+  if (qc.n > 0) {
+    return NextResponse.json({ error: 'QC has records or Form III A groups tied to this node or one under it — that history is kept. Nothing was deleted.' }, { status: 409 });
+  }
+  if (url.searchParams.get('dry') === '1') return NextResponse.json({ ok: true, nodes: ids.length, items: items.length });
+
   try {
-    // one transaction: the items are never moved while the node stays behind (or the other way round)
     await withTransaction(async tx => {
-      if (itemCount > 0) await tx.execute({ sql: 'UPDATE bom_items SET assembly_id = ? WHERE assembly_id = ?', args: [moveTo, params.id] });
-      await tx.execute({ sql: 'DELETE FROM bom_assembly_drawings WHERE assembly_id = ?', args: [params.id] });
-      await tx.execute({ sql: 'DELETE FROM bom_assembly_calc_sheets WHERE assembly_id = ?', args: [params.id] });
-      await tx.execute({ sql: 'DELETE FROM bom_assemblies WHERE id = ?', args: [params.id] });
+      if (items.length) {
+        await tx.execute(deleteItems
+          ? { sql: `DELETE FROM bom_items WHERE assembly_id IN (${marks})`, args: ids }
+          : { sql: `UPDATE bom_items SET assembly_id = ? WHERE assembly_id IN (${marks})`, args: [moveTo, ...ids] });
+      }
+      await tx.execute({ sql: `DELETE FROM bom_assembly_drawings WHERE assembly_id IN (${marks})`, args: ids });
+      await tx.execute({ sql: `DELETE FROM bom_assembly_calc_sheets WHERE assembly_id IN (${marks})`, args: ids });
+      // one statement, so the parent_id self-FK is checked once at the end
+      await tx.execute({ sql: `DELETE FROM bom_assemblies WHERE id IN (${marks})`, args: ids });
     });
   } catch (err) {
     if (/FOREIGN KEY|constraint/i.test(String(err?.message))) {
-      return NextResponse.json({ error: 'This node is still referenced (for example by QC records) — nothing was changed' }, { status: 409 });
+      return NextResponse.json({ error: 'Something under this node is still referenced (new activity?) — nothing was changed' }, { status: 409 });
     }
     throw err;
   }
-  await audit('bom_assembly_delete', { actor: user.username, detail: `project ${row.project_id}: ${row.name}${itemCount ? ` — ${itemCount} item(s) moved to node ${moveTo}` : ''}` });
-  return NextResponse.json({ ok: true, moved: itemCount });
+  const itemCount = items.length;
+  await audit('bom_assembly_delete', { actor: user.username, detail: `project ${row.project_id}: ${row.name} + ${ids.length - 1} sub-node(s)${itemCount ? ` — ${itemCount} item(s) ${deleteItems ? 'deleted' : `moved to node ${moveTo}`}` : ''}` });
+  return NextResponse.json({ ok: true, nodes: ids.length, items: itemCount });
 }
