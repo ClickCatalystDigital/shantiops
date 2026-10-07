@@ -942,6 +942,13 @@ export const DEPARTMENT_HELP = {
         'See where it is used: click “Used on N nodes in M projects” on the row. You get a list of projects and nodes, with the version each was built from, and you can click a project to jump to its BOM.',
         'Delete (bin icon): if the template was never used, it is deleted for good. If BOMs were already built from it, it is only removed from the lists (archived), and those BOMs carry on exactly as they are.',
       ]),
+      feature('subsystemBuilds', 'Subsystem builds (Add subsystem)', LayoutTemplateIcon, [
+        'What it is: a standard FD fan, ID fan, feed line and so on, saved once as a “build” and added to any BOM in a few clicks. Each build is a Structure Template with a subsystem family (for example FD Fan Blower); a family can have several builds, such as 5 HP and 10 HP.',
+        'Save a build: open the subsystem node on a real project that is right, click the bookmark icon, name it by its build (“FD Fan Blower — 5 HP”), check the Subsystem family and save. A Design or Engineering Head can later open Structure Templates → Family & lines to rename the family and mark each line Required, Usual or Optional. Required: every build has it. Usual: most do. Optional: only some.',
+        'Add one: on a project’s BOM click the Add subsystem icon next to Build from Templates. It is added under the node you selected, or at the top level if none is selected. Pick the subsystem, pick the build, tick the lines you want (required and usual lines start ticked, optional ones unticked) and click Add. Sizes, quantities and the configuration values are copied as saved — change them on the BOM afterwards.',
+        'Possibly missing: once builds exist, the BOM header shows a “possibly missing” count — lines the saved build always has and this BOM does not. A different size of the same item counts as present. It is a list to read and never blocks release. Use “Not needed here” on a line that is deliberately absent.',
+        'Good to know: changing a template never changes a BOM already built from it; the node shows “newer version available” instead. Saving a build again from a real node keeps its Required / Usual / Optional marks.',
+      ]),
       feature('subsystemsReport', 'Subsystems', SearchIcon, [
         'What it is: a read-only view of what each kind of subsystem (FD Fan Blower, ID Fan Blower, Feed Line, Blow Down Line…) contains across your projects. Nothing here changes any BOM.',
         'Where to find it: Engineering → Subsystems. The first screen lists every subsystem found in the BOM trees with the number of projects that have it. Click one to open it.',

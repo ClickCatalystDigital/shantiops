@@ -23,6 +23,7 @@ import ResolveUnassignedDialog from './ResolveUnassignedDialog';
 import DeleteNodeDialog from './DeleteNodeDialog';
 import ResolveCatalogDialog from './ResolveCatalogDialog';
 import AddSubsystemDialog from './AddSubsystemDialog';
+import SubsystemCheckDialog from './SubsystemCheckDialog';
 import { nodePath } from '@/lib/bom-tree.mjs';
 
 // `projectId`/`onProjectIdChange`/`showReleased`/`onShowReleasedChange` (round 3 Phase A, all
@@ -61,6 +62,8 @@ export default function BomStructureWorkspace({
   const [resolvingUnassigned, setResolvingUnassigned] = useState(false);
   const [resolvingCatalog, setResolvingCatalog] = useState(false);
   const [addingSubsystem, setAddingSubsystem] = useState(false);
+  const [subsystemCheck, setSubsystemCheck] = useState(null); // {hasTemplates, items:[{node_id,node,build,missing[]}]} — informational
+  const [showingCheck, setShowingCheck] = useState(false);
 
   function loadStructure(pid) {
     return api(`/api/bom-assemblies?project_id=${pid}`).then(setAssemblies).catch(err => showToast(err.message, 'error'));
@@ -70,6 +73,9 @@ export default function BomStructureWorkspace({
   }
   function loadReleaseStatus(pid) {
     return api(`/api/projects/${pid}/release-bom`).then(setReleaseStatus).catch(err => showToast(err.message, 'error'));
+  }
+  function loadSubsystemCheck(pid) {
+    return api(`/api/projects/${pid}/subsystem-check`).then(setSubsystemCheck).catch(() => setSubsystemCheck(null));
   }
   function loadPendingEcns(pid) {
     api(`/api/engineering-change-notes?project_id=${pid}`)
@@ -84,6 +90,7 @@ export default function BomStructureWorkspace({
     loadProjectBom(projectId);
     loadReleaseStatus(projectId);
     loadPendingEcns(projectId);
+    loadSubsystemCheck(projectId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
@@ -93,6 +100,7 @@ export default function BomStructureWorkspace({
     loadProjectBom(projectId);
     loadReleaseStatus(projectId);
     loadPendingEcns(projectId);
+    loadSubsystemCheck(projectId);
     router.refresh();
   }
 
@@ -382,6 +390,8 @@ export default function BomStructureWorkspace({
               rootCount={assemblies.filter(a => a.parent_id == null).length}
               onBuildFromTemplates={buildFromTemplates} onSaveBomAsTemplate={saveBomAsTemplate}
               onAddSubsystem={() => setAddingSubsystem(true)}
+              possiblyMissing={subsystemCheck?.hasTemplates ? subsystemCheck.items.reduce((n, g) => n + g.missing.length, 0) : null}
+              onShowPossiblyMissing={subsystemCheck?.hasTemplates ? () => setShowingCheck(true) : undefined}
               unitCount={selectedProject?.unit_count} onSaveUnitCount={saveUnitCount}
               projectId={projectId}
               onClearBom={canClearBom && !hideRootActions ? clearBom : undefined}
@@ -454,6 +464,13 @@ export default function BomStructureWorkspace({
           items={uncategorizedItems}
           onClose={closeResolveCategories}
           onOpenInTree={openInTreeFromResolve}
+        />
+      )}
+      {showingCheck && subsystemCheck && (
+        <SubsystemCheckDialog
+          projectId={projectId} groups={subsystemCheck.items}
+          onClose={() => { setShowingCheck(false); loadSubsystemCheck(projectId); }}
+          onOpenNode={id => { setSelectedId(id); const ids = []; let cur = byId.get(id); while (cur?.parent_id != null) { ids.push(cur.parent_id); cur = byId.get(cur.parent_id); } setExpandedIds(prev => new Set([...prev, ...ids])); }}
         />
       )}
       {addingSubsystem && (
