@@ -21,7 +21,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import {
   LayersIcon, SearchIcon, Repeat2Icon, FileEditIcon, PlusIcon,
   ClipboardListIcon, CheckIcon, FileStackIcon, FilterIcon, GitBranchIcon, BoxIcon, HistoryIcon,
-  BadgeCheckIcon,
+  BadgeCheckIcon, LayoutGridIcon,
 } from 'lucide-react';
 import { api, showToast, formatDate } from '@/lib/client';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
@@ -32,6 +32,7 @@ import BomStructureWorkspace from '@/components/bom-structure/BomStructureWorksp
 import BomImport from '@/components/BomImport';
 import { RaisePrTab, ReleaseBomTab, PrHistoryTab } from '@/components/PrWorkspace';
 import ItemMasterPanel from '@/components/ItemMasterPanel';
+import SubsystemReport from '@/components/SubsystemReport';
 import { useParamSync } from '@/lib/use-entity-highlight';
 
 // Round 3 Phase A — which tabs the shared project-selector header (below) applies to, and in which
@@ -74,6 +75,7 @@ const ITEMS = [
   { key: 'design_signoff', label: 'Design Sign-off', icon: BadgeCheckIcon },
   { key: 'structure', label: 'BOMs', icon: LayersIcon },
   { key: 'structure_templates', label: 'Structure Templates', icon: GitBranchIcon },
+  { key: 'subsystems', label: 'Subsystems', icon: LayoutGridIcon },
   { key: 'where_used', label: 'Where-Used', icon: SearchIcon },
   { key: 'common_uncommon', label: 'Common / Uncommon', icon: Repeat2Icon },
   { key: 'ecn', label: 'Change Notes', icon: FileEditIcon },
@@ -534,6 +536,7 @@ export default function EngineeringWorkspace({ projects, canApproveEcn = false, 
           canClearBom={canClearBom} />
       )}
       {tab === 'structure_templates' && <BomStructureTemplateManager />}
+      {tab === 'subsystems' && <SubsystemReport />}
       {tab === 'item_master' && <ItemMasterPanel />}
       {tab === 'where_used' && <WhereUsedTab projectIds={globalProjectIdsArr} />}
       {tab === 'common_uncommon' && <CommonUncommonTab projectIds={globalProjectIdsArr} />}
