@@ -29,6 +29,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { PlusIcon, PencilIcon, Trash2Icon, PackageCheckIcon, UndoIcon, TruckIcon, PackageIcon, ClipboardListIcon, LayersIcon, ChevronRightIcon, BoxesIcon, HashIcon, PuzzleIcon, HandshakeIcon, FactoryIcon, SplitIcon, NetworkIcon, DoorOpenIcon, ArrowDownToLineIcon, Columns3Icon, ChevronDownIcon, ChevronsUpDownIcon, ChevronsDownUpIcon, BanIcon, FileTextIcon } from 'lucide-react';
 import { api, showToast, formatDate } from '@/lib/client';
+import { useItemCodes, codeHit, ItemCodes } from '@/components/ItemCodes';
 import { formatMoney } from '@/lib/format';
 import StockMovementCard from '@/components/reports/StockMovementCard';
 import { derivePurchaseStage } from '@/lib/bom-fields.mjs';
@@ -1274,6 +1275,7 @@ function MaterialIssuesCard({ projects }) {
     setRecent(await api('/api/material-issues'));
   }
   useEffect(() => { loadRecent().catch(err => showToast(err.message, 'error')); }, []);
+  const codes = useItemCodes((recent || []).map(i => i.bom_item_id));
 
   useEffect(() => {
     if (!projectId) { setBom(null); return; }
@@ -1336,7 +1338,7 @@ function MaterialIssuesCard({ projects }) {
         )}
         {recent !== null && recent.length > 0 && (
           <div className="flex flex-wrap items-end gap-2">
-            <SearchBox className="min-w-[16rem] flex-1" value={q} onChange={setQ} placeholder="Search by material or project…" />
+            <SearchBox className="min-w-[16rem] flex-1" value={q} onChange={setQ} placeholder="Search by material, item no. or project…" />
             <div className="grid gap-1"><Label className="text-xs">From</Label>
               <Input type="date" className="h-8 w-36 text-xs" value={fromDate} onChange={e => setFromDate(e.target.value)} /></div>
             <div className="grid gap-1"><Label className="text-xs">To</Label>
@@ -1353,7 +1355,7 @@ function MaterialIssuesCard({ projects }) {
           const needle = q.trim().toLowerCase();
           const shown = recent.filter(i => {
             if (needle && !(i.material_description || '').toLowerCase().includes(needle)
-              && !(i.project_no || '').toLowerCase().includes(needle)) return false;
+              && !(i.project_no || '').toLowerCase().includes(needle) && !codeHit(codes, i.bom_item_id, needle)) return false;
             const d = String(i.issued_at || '').slice(0, 10);
             if (fromDate && d < fromDate) return false;
             if (toDate && d > toDate) return false;
@@ -1367,6 +1369,7 @@ function MaterialIssuesCard({ projects }) {
                 <div key={i.id} className="flex flex-wrap items-center gap-3 px-3 py-2 text-sm">
                   <div className="min-w-0 flex-1">
                     <span className="font-medium">{i.material_description}</span>
+                    <ItemCodes codes={codes} id={i.bom_item_id} className="ml-2" />
                     <div className="text-xs text-muted-foreground">{i.project_no} · {i.customer_name}</div>
                   </div>
                   <span className="shrink-0 text-xs text-muted-foreground tnum">qty {i.qty} · {i.issued_by} · {formatDate(i.issued_at)}</span>
@@ -1490,7 +1493,7 @@ function IconAction({ label, onClick, href, danger, children, disabled }) {
   );
 }
 
-function IndentItemRow({ indent, item, onDone, selectable, selected, onToggle }) {
+function IndentItemRow({ indent, item, onDone, selectable, selected, onToggle, codes = {} }) {
   const [qty, setQty] = useState(String(item.qty_requested - item.qty_released));
   const isPiece = item.tracking_mode === 'piece';
   const [pieces, setPieces] = useState(isPiece ? null : false);
@@ -1538,6 +1541,7 @@ function IndentItemRow({ indent, item, onDone, selectable, selected, onToggle })
       <div className="min-w-0 flex-1">
         <span className="font-medium">{item.bom_description || item.inventory_description || `Item #${item.inventory_item_id}`}</span>
         {item.unit_project_no && <Badge variant="outline" className="ml-2 text-[10px]">Unit {item.unit_project_no}</Badge>}
+        <ItemCodes codes={codes} id={item.bom_item_id} className="ml-2" />
         <div className="flex flex-wrap gap-x-3 text-xs text-muted-foreground tnum">
           <span>Required <span className="font-medium text-foreground">{item.qty_requested}</span></span>
           <span>Released <span className="font-medium text-foreground">{item.qty_released}</span></span>
@@ -1607,13 +1611,14 @@ function IndentsCard({ router }) {
 
   useEffect(() => { load().catch(err => showToast(err.message, 'error')); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const codes = useItemCodes((indents || []).flatMap(i => i.items.map(it => it.bom_item_id)));
   const needle = q.trim().toLowerCase();
   const isLive = i => ['open', 'partially_released'].includes(i.status);
   const shown = (indents || []).filter(i => showHistory || isLive(i)).filter(indent => !needle
     || indent.indent_no.toLowerCase().includes(needle)
     || (indent.project_no || '').toLowerCase().includes(needle)
     || (indent.requested_by || '').toLowerCase().includes(needle)
-    || indent.items.some(it => (it.bom_description || it.inventory_description || '').toLowerCase().includes(needle)));
+    || indent.items.some(it => (it.bom_description || it.inventory_description || '').toLowerCase().includes(needle) || codeHit(codes, it.bom_item_id, needle)));
 
   // Bulk release only ever covers scalar/batch lines still open — a piece-tracked line always needs
   // a specific physical piece chosen by hand (this row's own Reserve-piece action), so it's excluded
@@ -1681,7 +1686,7 @@ function IndentsCard({ router }) {
         ) : (
           <>
             <div className="flex flex-wrap items-center gap-3 pb-1">
-              <SearchBox className="min-w-[16rem] flex-1" value={q} onChange={setQ} placeholder="Search by indent, project, or item…" />
+              <SearchBox className="min-w-[16rem] flex-1" value={q} onChange={setQ} placeholder="Search by indent, project, item or item no.…" />
               <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
                 <Checkbox checked={showHistory} onCheckedChange={v => setShowHistory(!!v)} /> Show released &amp; cancelled
               </label>
@@ -1752,7 +1757,7 @@ function IndentsCard({ router }) {
                       {indent.notes && <p className="px-4 pb-1 text-xs text-muted-foreground">{indent.notes}</p>}
                       <div className="flex flex-col divide-y border-t px-3">
                         {indent.items.filter(it => showHistory || ['open', 'partially_released'].includes(it.status)).map(item => (
-                          <IndentItemRow key={item.id} indent={indent} item={item}
+                          <IndentItemRow key={item.id} indent={indent} item={item} codes={codes}
                             selectable={item.tracking_mode !== 'piece'}
                             selected={selected.has(item.id)}
                             onToggle={toggleOne}
@@ -2210,6 +2215,7 @@ function ReceiveDeliveryTab({ bomItems, pendingInwardApprovals = [], router }) {
   // other summary view already uses instead of trusting it directly.
   const open = bomItems.filter(it => ['Ordered', 'Transit'].includes(derivePurchaseStage(it)));
   const q = query.trim().toLowerCase();
+  const codes = useItemCodes(bomItems.map(it => it.id));
 
   // Lot-aware date filter (attachDeliveryLotDates, lib/data.js) — a standalone browse mode, not
   // just a narrower search: with a filter picked, results show even with an empty search box, so
@@ -2236,7 +2242,8 @@ function ReceiveDeliveryTab({ bomItems, pendingInwardApprovals = [], router }) {
         (it.material_description || '').toLowerCase().includes(q) ||
         (it.project_no || '').toLowerCase().includes(q) ||
         (it.pr_no || '').toLowerCase().includes(q) ||
-        (it.po_ref || '').toLowerCase().includes(q))
+        (it.po_ref || '').toLowerCase().includes(q) ||
+        codeHit(codes, it.id, q))
     : dateFiltered;
   const pageCount = Math.max(1, Math.ceil(matched.length / pageSize));
   const curPage = Math.min(page, pageCount);
@@ -2258,7 +2265,7 @@ function ReceiveDeliveryTab({ bomItems, pendingInwardApprovals = [], router }) {
           <CardContent className="flex flex-col gap-3 pt-4">
             <div className="flex gap-2">
               <Input value={query} onChange={e => { setQuery(e.target.value); setPage(1); }}
-                placeholder="Search by material, project, PR, or PO number…" autoFocus className="flex-1" />
+                placeholder="Search by material, item no., project, PR, or PO number…" autoFocus className="flex-1" />
               <Select value={dateFilter} onValueChange={v => { setDateFilter(v); setPage(1); }}>
                 <SelectTrigger className="h-9 w-40 shrink-0 text-xs"><SelectValue placeholder="All dates" /></SelectTrigger>
                 <SelectContent>
@@ -2295,6 +2302,7 @@ function ReceiveDeliveryTab({ bomItems, pendingInwardApprovals = [], router }) {
                     <div key={it.id} className="flex flex-wrap items-center gap-3 py-2.5 text-sm">
                       <div className="min-w-0 flex-1">
                         <p className="truncate font-medium">{it.material_description}</p>
+                        <ItemCodes codes={codes} id={it.id} />
                         {procParts.length > 0 && (
                           <p className="truncate text-[11px] text-muted-foreground">{procParts.join(' · ')}</p>
                         )}
@@ -2352,6 +2360,7 @@ function BomGrnTab({ bomItems, router }) {
   const projects = useMemo(() => [...new Set(bomItems.map(it => it.project_no))].sort(), [bomItems]);
   const shown = project === 'all' ? [] : bomItems.filter(it => it.project_no === project);
   const shownIds = shown.map(it => it.id);
+  const codes = useItemCodes(shownIds);
   const allShownSelected = shownIds.length > 0 && shownIds.every(id => selected.has(id));
 
   function toggleOne(id, checked) {
@@ -2427,6 +2436,7 @@ function BomGrnTab({ bomItems, router }) {
             <div className="flex items-center gap-3 pb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
               <Checkbox className="shrink-0" checked={allShownSelected} onCheckedChange={toggleAllShown} aria-label="Select all shown" />
               <span className="flex-1">Part Description</span>
+              <span className="w-40 shrink-0">Item No.</span>
               <span className="w-32 shrink-0">Make</span>
               <span className="w-28 shrink-0">Status</span>
               <span className="w-36 shrink-0">GRN Ref</span>
@@ -2435,6 +2445,7 @@ function BomGrnTab({ bomItems, router }) {
               <div key={it.id} className="flex flex-wrap items-center gap-3 py-2.5 text-sm">
                 <Checkbox className="shrink-0" checked={selected.has(it.id)} onCheckedChange={v => toggleOne(it.id, !!v)} aria-label="Select item" />
                 <span className="min-w-0 flex-1 truncate font-medium">{it.material_description}</span>
+                <span className="w-40 shrink-0"><ItemCodes codes={codes} id={it.id} /></span>
                 <span className="w-32 shrink-0 truncate text-xs text-muted-foreground">{it.make || '—'}</span>
                 <span className="w-28 shrink-0 truncate text-xs text-muted-foreground">{it.purchase_status || 'Enquiry'}</span>
                 <span className="w-36 shrink-0 truncate text-xs text-muted-foreground">{it.grn_ref || '—'}</span>
@@ -2461,6 +2472,7 @@ function AllocateTab({ items: initialItems, router }) {
   // action taken); nothing here is safe to bulk-apply sight-unseen. Empty default, the header
   // checkbox (toggleAll below) is the explicit way to select everything.
   const [selected, setSelected] = useState(() => new Set());
+  const codes = useItemCodes(initialItems.map(it => it.id));
   // Per-row staged values, keyed by bom_item id — routing always has a value (mutually exclusive,
   // pre-filled from this line's own frozen requires_manufacturing, matching the old Receive
   // dialog's pre-fill exactly); defaultValue only means something for a catalog-linked row.
@@ -2590,6 +2602,7 @@ function AllocateTab({ items: initialItems, router }) {
                   <TableRow>
                     <TableHead className="w-8"><Checkbox checked={allSelected} onCheckedChange={toggleAll} aria-label="Select all" /></TableHead>
                     <TableHead>Material</TableHead>
+                    <TableHead className="w-40">Item No.</TableHead>
                     <TableHead className="w-36">Project</TableHead>
                     <TableHead className="w-24">Qty</TableHead>
                     <TableHead className="w-24 text-center">Production</TableHead>
@@ -2604,6 +2617,7 @@ function AllocateTab({ items: initialItems, router }) {
                       <TableRow key={it.id}>
                         <TableCell><Checkbox checked={selected.has(it.id)} onCheckedChange={v => toggleOne(it.id, !!v)} aria-label="Select item" /></TableCell>
                         <TableCell className="max-w-0 truncate">{it.material_description}</TableCell>
+                        <TableCell><ItemCodes codes={codes} id={it.id} /></TableCell>
                         <TableCell className="truncate text-xs text-muted-foreground">{it.project_no}</TableCell>
                         <TableCell className="text-xs text-muted-foreground">
                           {it.qty_breakdown?.label || it.qty_text}

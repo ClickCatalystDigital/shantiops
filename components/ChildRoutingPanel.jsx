@@ -10,6 +10,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { PencilIcon } from 'lucide-react';
 import { showToast } from '@/lib/client';
+import { useItemCodes, ItemCodes } from '@/components/ItemCodes';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -51,6 +52,7 @@ function UnitPicker({ units, selected, onChange, extra }) {
 }
 
 function RouteView({ rows, unitsById, onDone }) {
+  const codes = useItemCodes(rows.map(r => r.line.id));
   const [selected, setSelected] = useState(() => new Set());
   const [state, setState] = useState({});
   const [editing, setEditing] = useState(null); // line being edited
@@ -112,6 +114,7 @@ function RouteView({ rows, unitsById, onDone }) {
                 <TableRow>
                   <TableHead className="w-8"><Checkbox checked={allSelected} onCheckedChange={v => setSelected(new Set(v ? rows.map(r => r.line.id) : []))} aria-label="Select all" /></TableHead>
                   <TableHead>Material</TableHead>
+                  <TableHead className="w-40">Item No.</TableHead>
                   <TableHead className="w-20">Qty / unit</TableHead>
                   <TableHead className="w-36">Units</TableHead>
                   <TableHead className="w-24 text-center">Production</TableHead>
@@ -128,6 +131,7 @@ function RouteView({ rows, unitsById, onDone }) {
                       <TableCell><Checkbox checked={selected.has(r.line.id)} onCheckedChange={v => setSelected(s => { const x = new Set(s); v ? x.add(r.line.id) : x.delete(r.line.id); return x; })} aria-label="Select line" /></TableCell>
                       <TableCell className="max-w-0 truncate">{r.line.material_description}
                         <span className="block truncate text-[11px] text-muted-foreground">{[r.line.moc, r.line.size_spec].filter(Boolean).join(' · ')}</span></TableCell>
+                      <TableCell><ItemCodes codes={codes} id={r.line.id} /></TableCell>
                       <TableCell className="text-xs text-muted-foreground tabular-nums">{r.cells[0]?.per_unit_required}</TableCell>
                       <TableCell className="text-xs tabular-nums">
                         <span className="inline-flex items-center gap-1">
@@ -176,6 +180,7 @@ function RouteView({ rows, unitsById, onDone }) {
 }
 
 function RoutedView({ rows, unitsById, onDone }) {
+  const codes = useItemCodes(rows.map(r => r.line.id));
   const [editing, setEditing] = useState(null);
   const [draft, setDraft] = useState(new Set());
   const [busy, setBusy] = useState(false);
@@ -209,6 +214,7 @@ function RoutedView({ rows, unitsById, onDone }) {
             <TableHeader>
               <TableRow>
                 <TableHead>Material</TableHead>
+                <TableHead className="w-40">Item No.</TableHead>
                 <TableHead className="w-32">To Production</TableHead>
                 <TableHead className="w-32">To Dispatch</TableHead>
                 <TableHead className="w-12" />
@@ -218,6 +224,7 @@ function RoutedView({ rows, unitsById, onDone }) {
               {rows.map(r => (
                 <TableRow key={r.line.id}>
                   <TableCell className="max-w-0 truncate">{r.line.material_description}</TableCell>
+                  <TableCell><ItemCodes codes={codes} id={r.line.id} /></TableCell>
                   <TableCell>{count(r, 'production') > 0 ? <Badge variant="outline">{count(r, 'production')} unit{count(r, 'production') === 1 ? '' : 's'}</Badge> : <span className="text-xs text-muted-foreground">—</span>}</TableCell>
                   <TableCell>{count(r, 'dispatch') > 0 ? <Badge variant="outline">{count(r, 'dispatch')} unit{count(r, 'dispatch') === 1 ? '' : 's'}</Badge> : <span className="text-xs text-muted-foreground">—</span>}</TableCell>
                   <TableCell><Button size="icon-sm" variant="ghost" className="size-7" title="Take routing back" aria-label="Take routing back"

@@ -9,6 +9,7 @@ import { useState, Fragment, useRef } from 'react';
 import { api, showToast } from '@/lib/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { useItemCodes, ItemCodes } from '@/components/ItemCodes';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -78,6 +79,7 @@ function AskDialog({ ask, onClose }) {
 
 export default function PackingCombined({ list, items, setItems, saveItem, removeItem, readOnly }) {
   const locked = readOnly || list.status !== 'draft';
+  const codes = useItemCodes(items.filter(it => it.line_kind !== 'assembly').map(it => it.bom_item_id));
   const [sel, setSel] = useState(new Set());
   const [busy, setBusy] = useState(false);
   const [ask, setAsk] = useState(null);
@@ -215,7 +217,8 @@ export default function PackingCombined({ list, items, setItems, saveItem, remov
                   {asm && <LayersIcon className="ml-1.5 size-3.5 shrink-0 text-muted-foreground" aria-label="Assembly" />}
                   <EditText value={it.material_description} disabled={locked} placeholder="Description" className="font-medium" onSave={v => saveItem(it.id, { material_description: v })} />
                 </div>
-                {asm && <p className="ml-6 text-[11px] leading-none text-muted-foreground">Assembly, shipped as one</p>}
+                {asm ? <p className="ml-6 text-[11px] leading-none text-muted-foreground">Assembly, shipped as one</p>
+                  : <ItemCodes codes={codes} id={it.bom_item_id} className="no-print" />}
               </>)}
             </td>
             <td className="border-b border-border/50 py-1 pr-3">{sub ? null : <EditText value={it.moc} disabled={locked} onSave={v => saveItem(it.id, { moc: v })} />}</td>

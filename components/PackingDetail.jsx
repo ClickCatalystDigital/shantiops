@@ -347,7 +347,28 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
     try { await api(`/api/packing/${list.id}`, { method: 'PATCH', body: { master_section: name } }); setList(l => ({ ...l, master_section: name })); }
     catch (err) { showToast(err.message, 'error'); }
   }
+  // QC + Production sign-off before dispatch. A cycle pulled back to draft ('withdrawn') counts as not asked.
+  const pda = list.preDispatchApproval?.status === 'withdrawn' ? null : list.preDispatchApproval;
+  const canRequestApproval = list.status === 'packed' && (!pda || pda.status === 'rejected');
+  const [requesting, setRequesting] = useState(false);
+  async function requestApproval() {
+    setRequesting(true);
+    try {
+      await api(`/api/packing/${list.id}/submit-for-approval`, { method: 'POST' });
+      setList(l => ({ ...l, preDispatchApproval: { status: 'pending' } }));
+      showToast('Approval requested from QC and Production');
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+    setRequesting(false);
+  }
   async function changeStatus(v) {
+    // Dispatching needs both sign-offs: offer to ask for them here instead of a dead-end error.
+    if (v === 'dispatched' && pda?.status !== 'approved') {
+      if (list.status !== 'packed') return showToast('Mark the list packed, then request approval before dispatching', 'error');
+      if (pda?.status === 'pending') return showToast('Waiting for QC and Production to approve this list', 'error');
+      if (confirm('Dispatch needs QC and Production approval. Request approval now?')) await requestApproval();
+      return;
+    }
     const prev = list.status;
     setList(l => ({ ...l, status: v }));
     try { await api(`/api/packing/${list.id}`, { method: 'PATCH', body: { status: v } }); }
@@ -360,7 +381,7 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
       transport_distance_km: draft.transport_distance_km || '',
       transport_mode: draft.transport_mode || '', vehicle_type: draft.vehicle_type || '',
     };
-    if (draft.company) body.company = draft.company;
+    if (draft.company && !list.project_id) body.company = draft.company;
     HEADER_FIELDS.forEach(([k]) => { body[k] = draft[k] || ''; });
     // Once posted, freight_amount is read-only (disabled input above) — leave it out of the body
     // entirely rather than resending the unchanged figure, which would otherwise trip the server's
@@ -443,6 +464,17 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
               <SelectContent>{STATUSES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
             </Select>
           )}
+          {!readOnly && list.status === 'packed' && pda && (
+            <Badge variant={pda.status === 'approved' ? 'default' : pda.status === 'rejected' ? 'destructive' : 'secondary'}
+              title={pda.qc_decision || pda.production_decision ? `QC: ${pda.qc_decision || 'awaiting'} · Production: ${pda.production_decision || 'awaiting'}` : undefined}>
+              {pda.status === 'approved' ? 'Approved — ready to dispatch' : pda.status === 'rejected' ? 'Approval rejected' : 'Awaiting QC / Production approval'}
+            </Badge>
+          )}
+          {!readOnly && canRequestApproval && (
+            <Button size="sm" disabled={requesting} onClick={requestApproval}>
+              {requesting ? 'Requesting…' : pda ? 'Request approval again' : 'Request approval'}
+            </Button>
+          )}
           {!readOnly && <Button variant="outline" size="sm" onClick={() => { setDraft(list); setEditing(v => !v); }}>{editing ? 'Close' : 'Edit details'}</Button>}
           {!readOnly && ['draft', 'packed'].includes(list.status) && (
             <Button variant="outline" size="sm" className="text-danger hover:text-danger" disabled={deleting} onClick={deleteList}>
@@ -475,13 +507,15 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label>Company</Label>
-                  <Select value={draft.company || ''} onValueChange={v => setDraft({ ...draft, company: v })}>
-                    <SelectTrigger><SelectValue placeholder="Choose" /></SelectTrigger>
-                    <SelectContent>{COMPANY_NAMES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
-                  </Select>
-                </div>
+                {!list.project_id && (
+                  <div className="flex flex-col gap-1.5">
+                    <Label>Company</Label>
+                    <Select value={draft.company || ''} onValueChange={v => setDraft({ ...draft, company: v })}>
+                      <SelectTrigger><SelectValue placeholder="Choose" /></SelectTrigger>
+                      <SelectContent>{COMPANY_NAMES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                )}
                 <div className="flex flex-col gap-1.5">
                   <Label>Freight Amount</Label>
                   <Input type="number" min="0" step="any" disabled={!!list.freightPosted}

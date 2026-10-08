@@ -31,6 +31,7 @@ import { Checkbox } from './ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import SearchableSelect from './SearchableSelect';
 import { COMPANY_NAMES, defaultCompany } from '@/lib/company-profiles';
+import { useItemCodes, codeHit, ItemCodes } from '@/components/ItemCodes';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from './ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import {
@@ -125,13 +126,13 @@ function NewPackingListDialog({ open, onOpenChange }) {
   function pickProject(v) {
     setProjectId(v);
     const p = projects.find(x => String(x.id) === String(v));
-    if (p) { setCustomer(p.customer_name || ''); if (p.company) setCompany(p.company); }
+    if (p) { setCustomer(p.customer_name || ''); setCompany(p.company || defaultCompany()); }
   }
   async function create() {
     if (!customer.trim()) return showToast('Enter the customer name', 'error');
     setBusy(true);
     try {
-      const r = await api('/api/packing', { method: 'POST', body: { project_id: projectId || null, customer_name: customer.trim(), company } });
+      const r = await api('/api/packing', { method: 'POST', body: { project_id: projectId || null, customer_name: customer.trim(), company: projectId ? undefined : company } });
       showToast(`Packing list ${r.packing_no} created`);
       router.push(`/packing/${r.id}`);
     } catch (err) { showToast(err.message, 'error'); setBusy(false); }
@@ -143,21 +144,27 @@ function NewPackingListDialog({ open, onOpenChange }) {
         <DialogHeader><DialogTitle>New packing list</DialogTitle></DialogHeader>
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
-            <Label>Company</Label>
-            <Select value={company} onValueChange={setCompany}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>{COMPANY_NAMES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
-            </Select>
-          </div>
-          <div className="flex flex-col gap-1.5">
             <Label>Project <span className="font-normal text-muted-foreground">(optional)</span></Label>
             <SearchableSelect value={projectId} onChange={pickProject} placeholder="Search a project or leave empty…"
               options={[{ value: '', label: 'No project' }, ...projects.map(p => ({ value: String(p.id), label: `${p.project_no} · ${p.customer_name || ''}` }))]} />
           </div>
-          <div className="flex flex-col gap-1.5">
-            <Label>Customer *</Label>
-            <Input value={customer} onChange={e => setCustomer(e.target.value)} placeholder="Customer name" />
-          </div>
+          {projectId ? (
+            <p className="text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">{customer || '—'}</span> · {company}. Address, contact and invoice are filled from the project.
+            </p>
+          ) : (<>
+            <div className="flex flex-col gap-1.5">
+              <Label>Company</Label>
+              <Select value={company} onValueChange={setCompany}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>{COMPANY_NAMES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>Customer *</Label>
+              <Input value={customer} onChange={e => setCustomer(e.target.value)} placeholder="Customer name" />
+            </div>
+          </>)}
           {!projectId && <p className="text-xs text-muted-foreground">With no project there are no BOM lines to pull in and no e-way bill; add catalogue items or type lines on the list.</p>}
         </div>
         <DialogFooter>
@@ -243,7 +250,7 @@ function PendingItemsTab({ items, lists = [] }) {
   const [scope, setScope] = useState('all'); // 'all' | 'trade' | a project id
   const [busyKey, setBusyKey] = useState(null);
   const [picked, setPicked] = useState(new Set());
-  const [companyFor, setCompanyFor] = useState({}); // group key -> chosen company ('' = the project's own)
+  const codes = useItemCodes(items.map(it => it.id));
   // The project's open draft (newest), so Generate can add to it instead of starting a second list.
   const openDraft = new Map();
   for (const l of lists) {
@@ -270,7 +277,8 @@ function PendingItemsTab({ items, lists = [] }) {
       || it.material_description.toLowerCase().includes(needle)
       || (it.project_no || '').toLowerCase().includes(needle)
       || (it.customer_name || '').toLowerCase().includes(needle)
-      || (it.sale_order_no || '').toLowerCase().includes(needle);
+      || (it.sale_order_no || '').toLowerCase().includes(needle)
+      || codeHit(codes, it.id, needle);
   });
 
   const groups = useMemo(() => {
@@ -281,7 +289,7 @@ function PendingItemsTab({ items, lists = [] }) {
         key: k, project_id: it.project_id, is_trade: it.is_trade, job_at_dispatch: it.job_at_dispatch,
         title: it.is_trade ? `Trade · ${it.sale_order_no || 'no sale order'}` : it.project_no,
         sub: it.is_trade ? (it.trade_customer || '') : it.customer_name,
-        customer: it.is_trade ? it.trade_customer : it.customer_name, items: [] });
+        customer: it.is_trade ? it.trade_customer : it.customer_name, company: it.trade_company, items: [] });
       map.get(k).items.push(it);
     });
     // Projects whose job card has reached Dispatch come first: Production has said "pack this".
@@ -294,7 +302,7 @@ function PendingItemsTab({ items, lists = [] }) {
     const ids = group.items.filter(it => picked.has(it.id)).map(it => it.id);
     const notReady = group.items.filter(it => picked.has(it.id) && !it.readyForPacking).length;
     if (notReady && !confirm(`${notReady} picked item(s) haven't been received/produced yet. Put them on the list anyway?`)) return;
-    const company = companyFor[group.key] || undefined;
+    const company = group.is_trade ? (group.company || undefined) : undefined; // project lists take the project's company on the server
     setBusyKey(group.key);
     try {
       let msg;
@@ -322,7 +330,7 @@ function PendingItemsTab({ items, lists = [] }) {
     <div className="flex flex-col gap-4">
       {items.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
-          <SearchBox value={q} onChange={setQ} placeholder="Search by description, project or sale order…" className="min-w-52 flex-1" />
+          <SearchBox value={q} onChange={setQ} placeholder="Search by description, item no., project or sale order…" className="min-w-52 flex-1" />
           <div className="w-full sm:w-72"><SearchableSelect value={scope} onChange={setScope} options={projectOptions} placeholder="All projects" /></div>
         </div>
       )}
@@ -343,14 +351,6 @@ function PendingItemsTab({ items, lists = [] }) {
               </CardTitle>
               {showAction && (
                 <CardAction className="flex flex-wrap items-center gap-2">
-                  {/* The company only matters once a list is being made, so it sits with the button. */}
-                  <Select value={companyFor[group.key] || 'own'} onValueChange={v => setCompanyFor(c => ({ ...c, [group.key]: v === 'own' ? '' : v }))}>
-                    <SelectTrigger className="h-8 w-56"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="own">{group.is_trade ? `Company: ${defaultCompany()}` : "Company: project's own"}</SelectItem>
-                      {COMPANY_NAMES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
                   {/* Disabled while ANY card's generate is in flight — one request at a time. */}
                   {!group.is_trade && openDraft.get(group.project_id) ? (<>
                     <Button size="sm" disabled={!!busyKey} onClick={() => generate(group)}>
@@ -372,6 +372,7 @@ function PendingItemsTab({ items, lists = [] }) {
                   <Checkbox checked={picked.has(it.id)} onCheckedChange={() => toggle(it.id)} aria-label={`Pick ${it.material_description}`} />
                   <div className="min-w-0 flex-1">
                     <div className="truncate font-medium">{it.material_description}</div>
+                    <ItemCodes codes={codes} id={it.id} />
                     <div className="text-xs text-muted-foreground">
                       {[it.qty_text, it.size_spec].filter(Boolean).join(' · ') || '—'}
                       {it.qty_breakdown && ` (${it.qty_breakdown.label})`}

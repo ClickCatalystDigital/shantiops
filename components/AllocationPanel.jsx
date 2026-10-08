@@ -10,6 +10,7 @@
 // Reserve-from-stock/Trading (SAS) workflows (StoresWorkspace.jsx, §5e) at all.
 import { useEffect, useState } from 'react';
 import { showToast } from '@/lib/client';
+import { useItemCodes, ItemCodes } from '@/components/ItemCodes';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
@@ -165,6 +166,7 @@ export default function AllocationPanel({ projectId }) {
 
   const relevant = data ? data.lines.filter(l => l.received > 0 || l.allocated > 0) : [];
   const children = data?.children ?? [];
+  const codes = useItemCodes(relevant.map(l => l.id));
 
   return (
     <Card>
@@ -186,6 +188,7 @@ export default function AllocationPanel({ projectId }) {
               <TableHeader>
                 <TableRow>
                   <TableHead>Description</TableHead>
+                  <TableHead>Item No.</TableHead>
                   <TableHead>Received</TableHead>
                   <TableHead>Allocated</TableHead>
                   <TableHead>Available</TableHead>
@@ -196,6 +199,7 @@ export default function AllocationPanel({ projectId }) {
                 {relevant.map(l => (
                   <TableRow key={l.id}>
                     <TableCell className="max-w-xs truncate">{l.material_description}</TableCell>
+                    <TableCell><ItemCodes codes={codes} id={l.id} /></TableCell>
                     <TableCell>{l.received}</TableCell>
                     <TableCell>{l.allocated > 0 ? <AllocatedUndo line={l} onDone={reload} /> : 0}</TableCell>
                     <TableCell className="font-medium">{l.available}</TableCell>

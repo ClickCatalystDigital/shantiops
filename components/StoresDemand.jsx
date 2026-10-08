@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ChevronDownIcon, ChevronRightIcon, PuzzleIcon, AlertTriangleIcon } from 'lucide-react';
 import { api, showToast, formatDate } from '@/lib/client';
+import { useItemCodes, ItemCodes } from '@/components/ItemCodes';
 import { todayISO } from '@/lib/date';
 import { PLAN_STATUS } from '@/lib/plan-coverage.mjs';
 import { useParamSync } from '@/lib/use-entity-highlight';
@@ -99,6 +100,7 @@ function ProjectCard({ p, inventoryItems, fromDept, onChanged }) {
   });
 
   const shown = (rows || []).filter(r => r.demand.state !== 'unreleased' && r.source !== 'sas');
+  const codes = useItemCodes(shown.map(r => r.id));
   // Attention first, then the rest, so the open question is at the top of an expanded card.
   const order = { needs_action: 0, on_order: 1, covered: 2 };
   shown.sort((a, b) => order[a.demand.state] - order[b.demand.state] || a.id - b.id);
@@ -132,6 +134,7 @@ function ProjectCard({ p, inventoryItems, fromDept, onChanged }) {
                       <div className="min-w-0 flex-1 basis-56">
                         <div className="font-medium">{r.description}{r.source === 'stock' && <Badge variant="outline" className="ml-2 border-dashed text-[10px]">Build Stock</Badge>}</div>
                         <div className="text-xs text-muted-foreground">{[r.group, r.moc, r.size_spec].filter(Boolean).join(' · ')}</div>
+                        <ItemCodes codes={codes} id={r.id} />
                         {matches.length > 0 && (
                           <div className="mt-1 flex flex-wrap gap-1">
                             {matches.map(({ item, exact }) => (
