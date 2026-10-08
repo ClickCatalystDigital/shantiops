@@ -43,7 +43,7 @@ export async function POST(req, { params }) {
   if (!to) return NextResponse.json({ error: 'No customer email on file' }, { status: 400 });
 
   // Attach the quotation PDF (same generator as GET /api/quotations/[id]/pdf).
-  const detail = await getQuotationDetail(params.id);
+  const detail = await getQuotationDetail(params.id, b.email_template_id ? Number(b.email_template_id) : null);
   const pdf = await renderQuotationPdf(detail, detail.items);
   let sent;
   try {

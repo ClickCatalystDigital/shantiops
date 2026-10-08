@@ -15,7 +15,8 @@ export async function GET(req, { params }) {
   if (!isPM(user) && !CRM_DEPARTMENTS.some(d => canAccessDepartment(user, d))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
-  const detail = await getQuotationDetail(params.id);
+  const tpl = new URL(req.url).searchParams.get('template_id');
+  const detail = await getQuotationDetail(params.id, tpl ? Number(tpl) : null);
   if (!detail) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   const pdf = await renderQuotationPdf(detail, detail.items);

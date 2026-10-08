@@ -10,7 +10,7 @@ function canAccessCrm(user) {
   return isPM(user) || CRM_DEPARTMENTS.some(d => canAccessDepartment(user, d));
 }
 
-const EDITABLE = ['name', 'subject', 'body', 'regards', 'active'];
+const EDITABLE = ['name', 'subject', 'body', 'regards', 'terms', 'active'];
 
 export async function PATCH(req, { params }) {
   const user = await getFreshSessionUser();

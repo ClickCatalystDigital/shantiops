@@ -38,9 +38,9 @@ export async function POST(req) {
   if (!COMPANY_NAMES.includes(b.company)) return NextResponse.json({ error: 'Invalid company' }, { status: 400 });
 
   const { lastId } = await execute(
-    `INSERT INTO email_templates (name, company, subject, body, regards, created_by)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [name, b.company, b.subject || null, body, b.regards || null, user.username]
+    `INSERT INTO email_templates (name, company, subject, body, regards, terms, created_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [name, b.company, b.subject || null, body, b.regards || null, b.terms || null, user.username]
   );
   await audit('email_template_created', { actor: user.username, detail: `${b.company}: ${name}` });
   return NextResponse.json({ id: Number(lastId) });

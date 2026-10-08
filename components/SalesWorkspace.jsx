@@ -43,6 +43,7 @@ import { EmailSetupTab, PortalAccessTab } from '@/components/SalesSetupPanels';
 import WhatsAppInbox from '@/components/WhatsAppInbox';
 import { ACTION_TYPES, actionTypeLabel } from '@/lib/action-types.mjs';
 import ProductSearchField from '@/components/ProductSearchField';
+import ProductPickerDialog from '@/components/ProductPickerDialog';
 import CustomerPicker from '@/components/CustomerPicker';
 import { defaultCompanyClient } from '@/lib/company-filter.mjs';
 import { salesPeopleOptions, personLabel } from '@/lib/sales-people.mjs';
@@ -574,14 +575,12 @@ function LeadDetailSheet({ lead, allLeads = [], onOpenLead, users, customers, sa
   // same Lead -> Customer conversion "Create PO" already runs, before ever opening
   // NewQuotationDialog, so a not-yet-converted lead never forces a manual customer pick instead.
   async function startCommercialOffer() {
-    if (lead.converted_customer_id) { setOfferCustomerId(lead.converted_customer_id); setAction('offer'); return; }
+    if (lead.converted_customer_id) { router.push(`/sales/quotation?lead=${lead.id}&customer=${lead.converted_customer_id}`); return; }
     setResolving(true);
     try {
       const customerId = await convertLead(lead);
       if (!customerId) return;
-      router.refresh();
-      setOfferCustomerId(customerId);
-      setAction('offer');
+      router.push(`/sales/quotation?lead=${lead.id}&customer=${customerId}`);
     } catch (err) { showToast(err.message, 'error'); } finally { setResolving(false); }
   }
 
@@ -695,15 +694,6 @@ function LeadDetailSheet({ lead, allLeads = [], onOpenLead, users, customers, sa
       </SheetContent>
 
       {diaryOpen && <AddToDiaryDialog lead={lead} users={users} salesProducts={salesProducts} router={router} onClose={() => setDiaryOpen(false)} onSaved={() => router.refresh()} />}
-      {action === 'offer' && !newQuotationId && (
-        <NewQuotationDialog customers={customers} initialCustomerId={offerCustomerId || ''} leadId={lead.id} router={router}
-          salesProducts={salesProducts} initialItems={quoteLinesFromLead(lead, salesProducts)}
-          initialCustomerName={lead.company_name || lead.lead_name}
-          onCreated={setNewQuotationId} onClose={() => setAction(null)} />
-      )}
-      {action === 'offer' && newQuotationId && (
-        <SendCommercialOfferDialog quotationId={newQuotationId} router={router} onClose={() => { setAction(null); setNewQuotationId(null); }} />
-      )}
       {convertDialog}
       {action === 'po' && <CreatePoFlow lead={lead} branches={branches} salesProducts={salesProducts} users={users} stages={stages} router={router} onClose={() => setAction(null)} />}
       {action === 'lost' && <OrderLostDialog lead={lead} router={router} onClose={() => setAction(null)} />}
@@ -808,6 +798,11 @@ function productLinesTotal(lines) {
 }
 
 function ProductLinesEditor({ products = [], lines, onChange }) {
+  const [picking, setPicking] = useState(false);
+  const addPicked = ps => onChange([
+    ...lines.filter(l => l.description.trim() || l.product_id),
+    ...ps.map(p => ({ ...blankProductLine(), product_id: p.id, description: p.product_name, unit: p.unit || '', rate: p.price ?? '', gst_pct: p.gst_pct ?? '' })),
+  ]);
   const patch = (i, p) => onChange(lines.map((l, j) => (j === i ? { ...l, ...p } : l)));
   const pick = (i, p) => patch(i, {
     product_id: p.id, description: p.product_name,
@@ -845,8 +840,10 @@ function ProductLinesEditor({ products = [], lines, onChange }) {
         <Button type="button" variant="outline" size="sm" onClick={() => onChange([...lines, blankProductLine()])}>
           <PlusIcon className="size-4" /> Add product
         </Button>
+        <Button type="button" variant="outline" size="sm" onClick={() => setPicking(true)}>Choose from product list</Button>
         {total > 0 && <div className="text-sm"><span className="text-muted-foreground">Total (before GST): </span><span className="font-semibold tnum">{formatMoney(total)}</span></div>}
       </div>
+      {picking && <ProductPickerDialog onClose={() => setPicking(false)} onAdd={addPicked} />}
     </div>
   );
 }
@@ -1700,6 +1697,7 @@ export function NewQuotationDialog({ customers, opportunityId = null, leadId = n
   const [items, setItems] = useState(() => (initialItems?.length ? initialItems : [blankQuoteLine()]));
   const [saving, setSaving] = useState(false);
   const useProducts = Array.isArray(salesProducts);
+  const [picking, setPicking] = useState(false);
   // Customers are searched through the API (CustomerPicker), not passed in as a full list.
   const [customerName, setCustomerName] = useState(initialCustomerName || (customers || []).find(c => String(c.id) === String(initialCustomerId))?.name || '');
   useEffect(() => {
@@ -1722,6 +1720,13 @@ export function NewQuotationDialog({ customers, opportunityId = null, leadId = n
     });
     const pl = await priceListRate(p.id, customerId);
     if (pl) updateItem(i, { rate: pl.rate });
+  }
+  function addPicked(ps) {
+    const start = items.filter(it => it.item_description.trim()).length;
+    setItems(prev => [...prev.filter(it => it.item_description.trim()), ...ps.map(p => ({
+      ...blankQuoteLine(), item_description: p.product_name, product_id: p.id, uom: p.unit || 'Nos',
+      rate: p.price ?? 0, gst_pct: p.gst_pct ?? '', hsn_code: p.hsn_code || '' }))]);
+    ps.forEach((p, k) => priceListRate(p.id, customerId).then(pl => { if (pl) updateItem(start + k, { rate: pl.rate }); }));
   }
   // Customer changed after products were picked → re-check each product line's price list rate.
   useEffect(() => {
@@ -1809,7 +1814,10 @@ export function NewQuotationDialog({ customers, opportunityId = null, leadId = n
               </div>
             ))}
             <div className="flex flex-wrap items-start justify-between gap-3">
-              <Button size="sm" variant="outline" onClick={addRow}><PlusIcon />Add line</Button>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" onClick={addRow}><PlusIcon />Add line</Button>
+                {useProducts && <Button size="sm" variant="outline" onClick={() => setPicking(true)}>Choose from product list</Button>}
+              </div>
               <div className="min-w-56 text-sm">
                 <div className="flex justify-between gap-4"><span className="text-muted-foreground">Sub total</span><span className="tnum">{formatMoney(preview.subtotal)}</span></div>
                 <div className="flex justify-between gap-4"><span className="text-muted-foreground">GST</span><span className="tnum">{formatMoney(preview.taxAmount)}</span></div>
@@ -1820,6 +1828,7 @@ export function NewQuotationDialog({ customers, opportunityId = null, leadId = n
           </div>
         </div>
         <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? 'Saving…' : (revisionOf ? 'Save revision' : 'Create Quotation')}</Button></DialogFooter>
+        {picking && <ProductPickerDialog onClose={() => setPicking(false)} onAdd={addPicked} />}
       </DialogContent>
     </Dialog>
   );
@@ -2007,16 +2016,7 @@ function QuotationsTab({ quotations, customers, salesProducts = [], isSalesHead 
     } catch (err) { showToast(err.message, 'error'); } finally { setBusyId(null); }
   }
 
-  async function revise(q) {
-    setBusyId(q.id);
-    try {
-      const d = await api(`/api/quotations/${q.id}`);
-      setRevising({ q: d, items: d.items.map(it => ({
-        item_description: it.item_description, qty: it.qty ?? 1, uom: it.uom || 'Nos', rate: it.rate ?? 0,
-        discount_pct: it.discount_pct ?? 0, gst_pct: it.gst_pct ?? '', product_id: it.product_id || null, hsn_code: it.hsn_code || '', item_id: null,
-      })) });
-    } catch (err) { showToast(err.message, 'error'); } finally { setBusyId(null); }
-  }
+  const revise = q => router.push(`/sales/quotation?revise=${q.id}`);
   async function approve(q) {
     setBusyId(q.id);
     try {
@@ -2058,7 +2058,7 @@ function QuotationsTab({ quotations, customers, salesProducts = [], isSalesHead 
           <Button size="sm" variant={followupOnly ? 'default' : 'outline'} onClick={() => { setFollowupOnly(v => !v); setPage(0); }}>
             Needs follow-up{followupCount ? ` (${followupCount})` : ''}
           </Button>
-          <Button size="sm" onClick={() => setDialogOpen(true)}><PlusIcon />New Quotation</Button>
+          <Button size="sm" onClick={() => router.push('/sales/quotation')}><PlusIcon />New Quotation</Button>
         </CardAction>
       </CardHeader>
       <CardContent>
@@ -2088,7 +2088,7 @@ function QuotationsTab({ quotations, customers, salesProducts = [], isSalesHead 
                   <TableCell>{q.customer_name}</TableCell>
                   <TableCell className="tnum">{formatMoney(q.total)}</TableCell>
                   <TableCell><QuotationStatusSelect q={q} busy={busyId === q.id} onChange={setStatus} /></TableCell>
-                  <TableCell><QuotationConvertButtons q={q} busy={busyId === q.id} onEmail={q => setEmailQuotationId(q.id)} onSent={() => router.refresh()} onConvert={convert} onInvoice={q => { setIsReverseCharge(false); setRcmQuotation(q); }} onRevise={revise} onApprove={approve} onDelete={deleteQuotation} canApprove={isSalesHead} /></TableCell>
+                  <TableCell><QuotationConvertButtons q={q} busy={busyId === q.id} onEmail={q => router.push(`/sales/quotation?send=${q.id}`)} onSent={() => router.refresh()} onConvert={convert} onInvoice={q => { setIsReverseCharge(false); setRcmQuotation(q); }} onRevise={revise} onApprove={approve} onDelete={deleteQuotation} canApprove={isSalesHead} /></TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -2110,16 +2110,7 @@ function QuotationsTab({ quotations, customers, salesProducts = [], isSalesHead 
         </>        )}
         {filtered.length > 0 && <Pager page={page} setPage={setPage} size={size} setSize={setSize} total={filtered.length} />}
       </CardContent>
-      {dialogOpen && <NewQuotationDialog customers={customers} salesProducts={salesProducts} router={router} onClose={() => setDialogOpen(false)} />}
-      {revising && (
-        <NewQuotationDialog customers={customers} salesProducts={salesProducts} router={router}
-          revisionOf={revising.q.id} initial={revising.q} initialItems={revising.items}
-          initialCustomerId={revising.q.customer_id} initialCustomerName={revising.q.customer_name}
-          leadId={revising.q.lead_id} opportunityId={revising.q.opportunity_id}
-          onClose={() => setRevising(null)} />
-      )}
-      {emailQuotationId && <SendCommercialOfferDialog quotationId={emailQuotationId} router={router} onClose={() => setEmailQuotationId(null)} />}
-      {rcmQuotation && (
+            {rcmQuotation && (
         <Dialog open onOpenChange={o => !o && setRcmQuotation(null)}>
           <DialogContent className="max-w-md">
             <DialogHeader><DialogTitle>Convert {rcmQuotation.quotation_no} to Invoice</DialogTitle></DialogHeader>
@@ -3324,7 +3315,7 @@ function EmailTemplateDialog({ template, onClose, router }) {
   const isEdit = !!template;
   const [f, setF] = useState({
     name: template?.name || '', company: template?.company || COMPANY_NAMES[0],
-    subject: template?.subject || '', body: template?.body || '', regards: template?.regards || '',
+    subject: template?.subject || '', body: template?.body || '', regards: template?.regards || '', terms: template?.terms || '',
   });
   const [saving, setSaving] = useState(false);
   const [previewing, setPreviewing] = useState(false);
@@ -3374,6 +3365,9 @@ function EmailTemplateDialog({ template, onClose, router }) {
               </div>
               <Field2 label="Body" required><Textarea ref={bodyRef} rows={12} className="font-mono text-xs leading-5" value={f.body} onChange={e => set('body')(e.target.value)} /></Field2>
               <Field2 label="Signature"><Textarea rows={4} className="font-mono text-xs leading-5" value={f.regards} onChange={e => set('regards')(e.target.value)} /></Field2>
+            </FormSection>
+            <FormSection title="Terms and Conditions (printed on the Commercial Offer PDF)" cols={1}>
+              <Field2 label="Terms"><Textarea rows={8} className="text-xs leading-5" placeholder="One term per line. Printed under 'Terms and Conditions' on the PDF." value={f.terms} onChange={e => set('terms')(e.target.value)} /></Field2>
             </FormSection>
           </div>
         </div>
