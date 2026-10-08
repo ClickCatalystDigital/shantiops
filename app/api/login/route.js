@@ -24,5 +24,6 @@ export async function POST(req) {
   // parses into the JWT, so it's the same source of truth the nav uses.
   const res = NextResponse.json({ ok: true, role: user.role, home: postLoginHome(user) });
   res.cookies.set(COOKIE_OPTS.name, signToken(user), COOKIE_OPTS);
+  res.cookies.set('view_dept', '', { path: '/', maxAge: 0 }); // a new sign-in always starts in the login's own view
   return res;
 }

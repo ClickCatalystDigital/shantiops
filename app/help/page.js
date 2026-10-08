@@ -66,5 +66,5 @@ export default async function HelpPage() {
     );
   }
 
-  return <DepartmentHelpWorkspace departments={departments} />;
+  return <DepartmentHelpWorkspace departments={departments} canSwitchView={isPM(user)} />;
 }

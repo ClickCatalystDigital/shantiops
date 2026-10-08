@@ -216,7 +216,7 @@ function NumberedSteps({ steps, department, topicLabel }) {
 // Flatten once wherever a page needs to be found or listed by key.
 const flattenFeatures = features => features.flatMap(f => f.group ? f.children : [f]);
 
-export default function DepartmentHelpWorkspace({ departments = [] }) {
+export default function DepartmentHelpWorkspace({ departments = [], canSwitchView = false }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const available = departments.filter(d => DEPARTMENT_HELP[d]);
@@ -422,6 +422,20 @@ export default function DepartmentHelpWorkspace({ departments = [] }) {
                     ))}
                   </div>
                 </section>
+                {canSwitchView && (
+                  <section>
+                    <h2 className="text-base font-semibold">See the app as the {guide.title} head</h2>
+                    <p className="mt-2 text-sm leading-7 text-muted-foreground">
+                      Open the cog at the top right, choose Departments and pick a department. Home, Operations,
+                      Projects, Reports and the department&apos;s own tabs then show exactly what that head sees, and
+                      you can do what that head can do; anything you do is recorded under your own name. The
+                      Executive and Approvals pages are hidden while you are in a department view. A bar at the
+                      top shows which department you are viewing. To return, click Back in that bar, or pick
+                      Admin, Manager or Executive at the top of the same Departments list. The view stays until
+                      you switch back or log out. A Manager login cannot switch to Marketing, Accounts or HR.
+                    </p>
+                  </section>
+                )}
                 <section>
                   <h2 className="text-base font-semibold">Your feature map</h2>
                   <p className="mt-2 text-sm leading-6 text-muted-foreground">Select a feature below for its purpose, practical checklist, and common warning.</p>

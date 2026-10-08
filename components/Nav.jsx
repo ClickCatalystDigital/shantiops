@@ -44,6 +44,16 @@ export default function Nav({ user, reportDepartments = [] }) {
   const tabDepartments = isDeptPM ? departmentsFor(user, DEPARTMENTS) : departments;
   // Departments the user can browse: PM → all; head → their granted list. Packing lives under Dispatch.
   const accessibleDepts = isPMUser ? departmentsFor(user, DEPARTMENTS) : departments;
+  // "View as department head" (lib/auth.js applyDepartmentView): a PM-tier login picks a
+  // department in the cog menu and gets that head's whole app until it switches back.
+  const realRole = user?.real_role || (isPMUser ? user.role : null);
+  const viewDepts = realRole ? departmentsFor({ role: realRole }, DEPARTMENTS) : [];
+  const OWN_VIEW = { admin: 'Admin', manager: 'Manager', executive: 'Executive' }[realRole];
+  // Full page load, not router.push: every server page and the staff-only head script re-read the cookie.
+  const viewAs = dept => {
+    document.cookie = `view_dept=${dept ? encodeURIComponent(dept) : ''}; path=/; max-age=${dept ? 31536000 : 0}; samesite=lax`;
+    window.location.assign(dept ? '/ops' : '/');
+  };
   const activeDept = searchParams.get('dept');
   // Tasks is a shared department-aware workspace; Home remains the common landing tab. Workers
   // stays Production's own shop-floor surface, enforced by the page via inDepartment().
@@ -147,13 +157,12 @@ export default function Nav({ user, reportDepartments = [] }) {
   ];
 
   // Desktop nav density: admin sees every tab as an icon (tooltip = name) so 24 tabs fit; a manager
-  // keeps only the management tabs on the bar and reaches each department workspace from the cog >
-  // Departments menu; everyone else is unchanged. The mobile bottom bar uses the same list.
+  // keeps only the management tabs on the bar and reaches a department's workspace by switching to
+  // that department's head view (cog > Departments); everyone else is unchanged. The mobile bottom bar uses the same list.
   const isAdminUser = user?.role === 'admin';
   const isManagerUser = user?.role === 'manager';
   const MGMT_HREFS = new Set(['/', '/ops', '/projects', '/executive', '/approvals', '/reports']);
   const desktopLinks = isManagerUser ? LINKS.filter(l => MGMT_HREFS.has(l.href.split('?')[0])) : LINKS;
-  const managerDeptLinks = isManagerUser ? LINKS.filter(l => !MGMT_HREFS.has(l.href.split('?')[0])) : [];
 
   // Query-qualified workspace tabs (currently Dispatch) activate only on their own route/filter.
   const isActive = l => {
@@ -245,15 +254,26 @@ export default function Nav({ user, reportDepartments = [] }) {
                   {theme === 'dark' ? <SunIcon data-icon="inline-start" /> : <MoonIcon data-icon="inline-start" />}
                   {theme === 'dark' ? 'Light mode' : 'Dark mode'}
                 </DropdownMenuItem>
-                {(isPMUser || accessibleDepts.length > 1) && (
+                {realRole ? (
                   <DropdownMenuSub>
                     <DropdownMenuSubTrigger><LayoutGridIcon data-icon="inline-start" />Departments</DropdownMenuSubTrigger>
                     <DropdownMenuSubContent>
-                      {isManagerUser ? managerDeptLinks.map(l => (
-                        <DropdownMenuItem key={l.href} onClick={() => router.push(l.href)}>
-                          <l.icon data-icon="inline-start" />{l.label}
+                      <DropdownMenuItem onClick={() => viewAs('')} className={cn(!user.view_dept && 'font-medium')}>
+                        {OWN_VIEW}{!user.view_dept && ' (current)'}
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      {viewDepts.map(d => (
+                        <DropdownMenuItem key={d} onClick={() => viewAs(d)} className={cn(user.view_dept === d && 'font-medium')}>
+                          {d === 'Installation' ? 'Service' : d}{user.view_dept === d && ' (current)'}
                         </DropdownMenuItem>
-                      )) : accessibleDepts.map(d => (
+                      ))}
+                    </DropdownMenuSubContent>
+                  </DropdownMenuSub>
+                ) : accessibleDepts.length > 1 && (
+                  <DropdownMenuSub>
+                    <DropdownMenuSubTrigger><LayoutGridIcon data-icon="inline-start" />Departments</DropdownMenuSubTrigger>
+                    <DropdownMenuSubContent>
+                      {accessibleDepts.map(d => (
                         <DropdownMenuItem key={d} onClick={() => router.push(`/ops?dept=${d}`)}>
                           {d === 'Dispatch' && <PackageIcon data-icon="inline-start" />}{d}
                         </DropdownMenuItem>
@@ -268,6 +288,12 @@ export default function Nav({ user, reportDepartments = [] }) {
             </DropdownMenu>
           </div>
         </div>
+        {user?.view_dept && (
+          <div className="flex items-center justify-center gap-2 border-t bg-warning/15 px-3 py-1 text-xs">
+            <span>Viewing as <b>{user.view_dept === 'Installation' ? 'Service' : user.view_dept}</b> head</span>
+            <button type="button" className="font-medium underline underline-offset-2" onClick={() => viewAs('')}>Back to {OWN_VIEW}</button>
+          </div>
+        )}
       </header>
 
       {/* Mobile bottom tab bar — app-like */}
