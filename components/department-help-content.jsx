@@ -25,9 +25,8 @@ import {
 //   2. A BOM line usually already exists before Procurement ever sees it (bulk PMB import from
 //      Design) — a Purchase Requisition (PR-####) is the minority path, raised by Eng/Design/Stores
 //      to CREATE a new bom_items row, not something every BOM line passes through.
-//   3. A Job Card is not downstream of a Material Issue — it's created independently against a
-//      Production milestone (or generated in bulk from a Work Order route card) and only linked
-//      when a Material Issue optionally stamps job_card_id onto it.
+//   3. A Job Card (job_sheets) is one per project/unit with fixed stages; it is not created by a
+//      Material Issue. Material reaches Production through a Material Indent that Stores releases.
 // PL-#### is also a real prefix collision, left as-is rather than smoothed over: a stock piece
 // (lib/stock-pieces.js) and a Dispatch packing list (nextNumber('packing_no','PL')) both generate
 // "PL-####" from unrelated counters — genuinely ambiguous out of context, not a typo here.
@@ -99,17 +98,19 @@ already a BOM line          raised as a NEW need
                                 ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                          PRODUCTION                           │
-│  JOB CARD  jc_no = JC-####                                    │
-│  created against a Production milestone, or generated in      │
-│  bulk from a Work Order's route card — NOT created by the     │
-│  Material Issue above; the two only link via job_card_id      │
-│               │                                                │
-│      piece-tracked line? ── yes ──► CUT                       │
-│               │                     stock_pieces parent_id     │
-│               │                     lineage: used / remnant    │
-│               │                     (pending_receipt → Stores  │
-│               │                     confirms → available) /    │
-│               │                     scrap                      │
+│  JOB CARD  jc_no = JC-####                                  │
+│  one per project (or unit): the 33-stage boiler card or     │
+│  the 16-stage APH card. Each stage: Start (fitter/welder),  │
+│  Finish (Production sign), then QC sign.                    │
+│  Material arrives through a MATERIAL INDENT that Stores     │
+│  releases (-> Material Issue).                              │
+│                                                             │
+│  piece-tracked line? -- yes --> CUT                         │
+│      stock_pieces parent_id lineage: used / remnant         │
+│      (pending_receipt -> Stores confirms -> available)      │
+│      / scrap                                                │
+│  DISPATCH stage -> hand-over of finished subsystems to      │
+│  Dispatch (they land on the draft packing list)             │
 └───────────────┼────────────────────────────────────────────────┘
                 ▼
 ┌─────────────────────────────────────────────────────────────┐
@@ -125,7 +126,8 @@ already a BOM line          raised as a NEW need
 │                                                                 │
 │  separate shop-floor quality trail:                            │
 │    NCR  ncr_no = NCR-####  — against a Job Card or a piece     │
-│    Hold Points — gate a Job Card's Done status until released  │
+│    QC sign on each Job Card stage; inward review of every   │
+│    receipt; pre-dispatch approval of each packing list      │
 └─────────────────────────────────────────────────────────────┘`;
 
 const DESIGN_ENGINEERING_DIAGRAM =
@@ -251,49 +253,50 @@ batch(es)/serial it drew from (inventory_batch_allocations, or
 inventory_serials.material_issue_id).`;
 
 const PRODUCTION_DIAGRAM =
-`RECEIVES:  a released BOM line with material available/reserved
-           in Stores, plus a Production milestone to work against
+`RECEIVES:  material Stores has received and routed to Production
+               │
+               ▼
+        MATERIAL INDENT  (Shop Floor → Material Indent)
+        Production asks Stores for the routed lines; Stores
+        releases them → MATERIAL ISSUE (stock moves to WIP)
                │
                ▼
         JOB CARD   jc_no = JC-####
-        created against a real Project + Milestone, or generated
-        in bulk from a Work Order's Process Route Card (wo_no,
-        WO-####) — NOT created by a Material Issue
+        one per project or unit: the 33-stage boiler card or the
+        16-stage APH card (Shop Floor → Job Card)
                │
-      ┌────────┴────────┐
-      ▼                 ▼
-  MATERIAL ISSUE      piece-tracked line?
-  (from Stores'          │
-   Reserve→Issue or       ▼
-   a direct FIFO       CUT  (lib/stock-pieces.js)
-   issue) — optionally  stock_pieces parent_id lineage:
-   stamped with this    parent PL-#### → used / remnant / scrap
-   card's job_card_id   remnant starts pending_receipt until
-                        Stores confirms it back to available
+        each stage:  Start (fitter / welder, start date)
+                     → Finish (end date, Production sign)
+                     → QC sign (QC → Job Cards)
                │
-        log hours, consumables, and qty done/rejected
-        on the Job Card as work happens
-               │
-        Job Card reaches Done
-        → its Production milestone auto-completes once every
-          card raised against it is Done
-               │
-        QC Hold Point on this route step? ── yes ──► card
-        cannot reach Done until QC releases the hold
+        piece-tracked plate / section?
                ▼
-HANDS OFF TO QC: the Job Card, its consumed Material Issue(s),
-and any Cut piece lineage — QC's statutory record and heat/MTC
-trace read straight through this chain, nothing re-entered.
+        CUT  (Shop Floor → Remnants → Cut)
+        parent PL-#### → used / remnant / scrap
+        a remnant waits for Stores to confirm it back into stock
+               │
+        HYDRAULIC TEST stage + a Hydro Test record with Pass
+        → Hydro Test milestone completes
+               │
+        every stage of every job card finished and QC-signed
+        → the twelve Production milestones complete together
+               │
+               ▼
+        DISPATCH stage → hand-over (Shop Floor → Dispatch)
+        finished subsystems go onto the project's draft packing
+        list; Production answers "approved for dispatch?"
 
-TRACEABILITY PRESERVED: job_card_id on the Material Issue and
-parent_id on any cut piece both survive into QC's provenance
-lookup — "what was this Job Card actually built from" is always
-answerable from these two links, not from memory.`;
+HANDS OFF TO: Dispatch (packing list), QC (stage signs,
+pre-dispatch approval).
+
+TRACEABILITY PRESERVED: the indent and issue say which material
+went to which project or unit, and parent_id on a cut piece
+keeps its heat number and certificate.`;
 
 const QC_DIAGRAM =
-`RECEIVES:  a Job Card's consumed material (batch/serial/piece,
-           each carrying its heat/MTC/cast/batch/serial identity
-           from Stores) plus the project's frozen drawing revision
+`RECEIVES:  the project's BOM (material lines and bought-out
+           fittings), test certificates from suppliers, and the
+           approved drawings
                │
                ▼
         QC DOCUMENT  doc_id  (e.g. SBH-1037-SF-WB-300-17 —
@@ -303,9 +306,9 @@ const QC_DIAGRAM =
       ┌────────┴────────────────────┐
       ▼                              ▼
   qc_document_parts               qc_iiia_groups
-  one row per statutory part      Form IIIA per-sub-assembly
-  (Form IV A's 54-part            groups (e.g. "Feed pipeline")
-   template, seeded whole)         — row id, no generated code
+  one row per material line       Form IIIA per-sub-assembly
+  (Form IV A, filled by           groups (e.g. "Feed pipeline")
+   Sync from BOM)                  — row id, no generated code
       │                              │
       ▼                              │
   TEST CERTIFICATE                   │
@@ -324,11 +327,13 @@ const QC_DIAGRAM =
           NCR  ncr_no = NCR-####  — raised against a Job Card
           or a stock piece; disposition (Rework/Repair/Scrap/
           Use-as-is) drives the next action
-          Hold Points — release lets a gated Job Card reach Done
+          Job Cards — QC signs each finished stage
+          Approvals — inward review of every receipt, and
+          pre-dispatch approval of each packing list
 
-HANDS OFF TO: Dispatch (a passed Finished Goods Inspection flips
-"Dispatch eligible"); the customer portal (a QC Head can make a
-finished document customer_visible).
+HANDS OFF TO: Dispatch (a packing list can only be dispatched
+after QC and Production approve it); the customer portal (QC can
+share a finished document with the customer).
 
 TRACEABILITY PRESERVED: this is the terminus of the chain — a QC
 document's parts resolve back through test_certificates to the
@@ -365,8 +370,9 @@ function architectureFeature(deptName, deptDiagram) {
 // renders the same table via GuideBody's existing `table` field — no new renderer needed.
 function milestoneTrackerFeature(rows) {
   return feature('milestone-tracker', 'Milestone Tracker', Clock3Icon, [
-    'Most of your milestones no longer need someone to open the status drawer and mark them done by hand — they complete themselves the moment the real underlying work actually finishes, the same way the rest of the app already tracks that work.',
-    'A milestone still shown as "Explicit action" has no reliable signal elsewhere in the app to detect completion from — it needs a real person to say so, but through a dedicated button instead of the generic status editor.',
+    'Milestones are the steps on the project page\'s Milestone Tracker. Most of yours start and complete by themselves when the real work happens; the table says what triggers each one.',
+    '"Explicit action" means a person closes it with a named button. Any milestone can still be started or closed by hand from its card on the project page (late closes ask for a reason), and another department can send a closed milestone back with Raise → Send back.',
+    'When the last milestone of your department closes, the next department is alerted. Milestones never reopen by themselves. A manager can switch automatic start or completion off per milestone in Settings → Milestone Automation.',
   ], {
     table: { columns: ['Milestone', 'Trigger', 'How it completes'], rows },
   });
@@ -386,16 +392,16 @@ const FEATURE_FOUNDATIONS = {
     watchOut: 'A number on screen is not automatically a released calculation. Keep inputs, formula version, warnings, and snapshot history together.',
   },
   drawings: {
-    value: 'The drawing record connects the file on someone’s computer to the project revision that other departments use. It prevents Production from building from an old or unidentified file.',
-    outcome: 'The current drawing number, revision, status, and file agree, and the next team can tell which drawing is approved for use.',
-    checklist: ['Use the project’s drawing number and revision convention.', 'Update status when the file moves through review, approval, or as-built stages.', 'Add a task when another person must review or correct the drawing.'],
-    watchOut: 'Uploading a newer file without changing the revision creates a false sense of control. The revision label and the stored record must match.',
+    value: "The drawing record ties each file to its project, the person responsible for it and its approval. It stops Production building from an old or unapproved file.",
+    outcome: "Every drawing has a type, an assignee and a file, and shows who approved it, so other teams can tell which drawing is approved for use.",
+    checklist: ["Give the drawing a clear title and pick its type.", "Upload the file before Submit for review; submitting with no file is refused.", "The Design Head approves or sends it back. Nobody approves their own work."],
+    watchOut: "Uploading a newer file does not approve it. If an approved drawing changes, the Design Head un-approves it and approves it again.",
   },
   bom: {
-    value: 'The BOM is the material contract between technical design and execution. It tells Procurement what to source and gives Stores, Production, QC, and Dispatch a common item identity.',
-    outcome: 'Every required line has a usable description, specification, quantity, section, and ownership-aware downstream fields.',
-    checklist: ['Preview imports before confirming them.', 'Check description, MOC, size/specification, make, quantity, section, and group.', 'Link a line to its Item Master catalog entry if the import missed it — use the "Not linked to catalog" filter to find them.', 'Leave Procurement, Stores, and Production-owned operational fields to those teams.'],
-    watchOut: 'Do not fix a technical mistake by creating a duplicate line. Correct the source definition and review the impact on quotes, receipts, and packing. A line that already has a receipt or issue against it can\'t be re-linked to a different catalog item — that protection is intentional, not a bug.',
+    value: "The BOM is the material contract between technical design and execution. It tells Procurement what to source and gives Stores, Production, QC, and Dispatch a common item identity.",
+    outcome: "Every required line has a usable description, specification, quantity, category and place in the BOM tree.",
+    checklist: ["Preview imports before confirming them.", "Check description, MOC, size/specification, make, quantity, section, and group.", "Link a line to its Item Master entry if the import missed it: click the not linked to catalog tile at the top of the BOM.", "Leave Procurement, Stores, and Production-owned fields to those teams."],
+    watchOut: "Do not fix a technical mistake by creating a duplicate line. Correct the source line and review the impact on quotes, receipts, and packing. A line that already has a receipt or issue against it can not be re-linked to a different catalog item; that protection is intentional.",
   },
   bomStructure: {
     value: 'The BOM workspace is a two-pane tree-and-detail editor, not just a viewer: build System → Subsystem → Assembly → Sub-assembly → Component structure (any label works — the levels are a naming convention, not a database rule) so a boiler’s "2 ID Fans, each with 1 Drive sub-assembly" is a real structure the system can roll up, then work each node’s Items, Drawings, and History from one place instead of hunting across the project page.',
@@ -456,22 +462,22 @@ const FEATURE_FOUNDATIONS = {
     watchOut: 'Do not use a private note or chat message for a dependency that can delay another team. Raise a task so it remains visible.',
   },
   requests: {
-    value: 'Requests give a new or changed material requirement a traceable path to Procurement. They prevent buyers from receiving incomplete instructions through informal messages.',
-    outcome: 'Procurement can source the requested item without repeatedly asking for the project, quantity, specification, or reason.',
-    checklist: ['Select the correct project or requirement context.', 'Include item description, quantity, size/specification, MOC, and reason.', 'Respond to clarification tasks in the same traceable flow.'],
-    watchOut: 'Do not create a second request because the first one is missing information. Complete the original trail or correct the source BOM line.',
+    value: "A purchase request gives a new material need a traceable path to Procurement, with the project, quantity and specification attached.",
+    outcome: "Procurement can source the item without asking again for the project, quantity, size or material.",
+    checklist: ["Pick the item from the Item Master where it exists.", "Fill the quantity, MOC and size of every line, and pick the project or No project.", "Open PR History afterwards to see the request and its status."],
+    watchOut: "Do not raise a second request because the first one is missing information. Edit the first one from PR History (pencil icon).",
   },
   milestones: {
-    value: 'Milestones show the major handoffs in an order’s lifecycle. They turn project progress into dates and ownership that Management and the customer can rely on.',
-    outcome: 'The milestone has an honest status, actual dates, delay reason when needed, and a visible next action for the receiving team.',
-    checklist: ['Start the milestone when work really begins.', 'Record the actual end date only when the deliverable is complete.', 'Use stages or tasks for remaining follow-up instead of hiding unfinished work.'],
-    watchOut: 'Closing a milestone to remove it from an attention list makes the project look healthier while losing the real blocker.',
+    value: "Milestones show the major handoffs in an order's lifecycle. They turn project progress into dates and ownership that Management and the customer can rely on.",
+    outcome: "The milestone has an honest status, actual dates, a delay reason when needed, and a visible next action for the receiving team.",
+    checklist: ["Most milestones start and finish by themselves from real events; see the Milestone Tracker page for which.", "For the few closed by hand, record the actual end date only when the deliverable is complete.", "Use stages or tasks for remaining follow-up instead of hiding unfinished work."],
+    watchOut: "Closing a milestone to remove it from an attention list makes the project look healthier while losing the real blocker.",
   },
   enquiry: {
-    value: 'The Enquiry queue is Procurement’s controlled entry point for demand. It makes sure every item is understood before supplier conversations begin.',
-    outcome: 'The requirement has a clear source, project context, usable specification, and an owner moving it toward comparison.',
-    checklist: ['Confirm whether the item is project, In-Stock, or Sold-As-Such demand.', 'Check the technical definition before asking suppliers for prices.', 'Raise missing-information tasks back to the requesting department.'],
-    watchOut: 'A cheap quote for the wrong specification is not progress. Resolve the technical identity before comparing prices.',
+    value: "The Enquiry tab is where every material need waits until suppliers have quoted. It makes sure each item is understood before supplier conversations begin.",
+    outcome: "Each line has a clear source, project, usable specification, and at least one supplier quote moving it to Selection.",
+    checklist: ["Check the description, size and quantity before asking suppliers.", "Send one RFQ to several suppliers instead of collecting prices one by one.", "Raise a task to the requesting department when information is missing."],
+    watchOut: "A cheap quote for the wrong specification is not progress. Resolve the technical identity before comparing prices.",
   },
   quotes: {
     value: 'Quote records preserve the commercial evidence behind a supplier decision. They make comparisons fair and allow someone else to understand why a quote won or lost.',
@@ -486,16 +492,16 @@ const FEATURE_FOUNDATIONS = {
     watchOut: 'Changing a supplier after selection without updating the quote or note creates a PO that cannot be explained later.',
   },
   po: {
-    value: 'A Purchase Order is the formal commitment to the supplier. It turns an internal requirement into clear quantities, rates, terms, and delivery expectations.',
-    outcome: 'The issued PO matches the selected quote and BOM requirement, and Stores can later match the delivery to it.',
-    checklist: ['Review supplier, lines, quantities, rates, terms, and delivery details.', 'Check the generated PDF before sending it.', 'Use unissue or void only for a controlled correction with a clear reason.'],
-    watchOut: 'Issuing a PO with the wrong quantity or unit is more expensive than spending another minute on the draft.',
+    value: "A Purchase Order is the formal commitment to the supplier. It turns an internal requirement into clear quantities, rates, terms, and delivery expectations.",
+    outcome: "The issued PO matches the selected quote and BOM requirement, and Stores can later match the delivery to it.",
+    checklist: ["Review supplier, lines, quantities, rates, terms, and delivery details.", "Check the PDF before sending it.", "Use Cancel Issue (back to draft) or Cancel PO only for a real correction."],
+    watchOut: "Issuing a PO with the wrong quantity or unit is more expensive than spending another minute on the draft.",
   },
   status: {
-    value: 'Status gives every department a shared answer to “where is this item now?” The system also uses quote, supplier, and PO signals to expose stale stored statuses.',
-    outcome: 'The visible stage reflects the real sourcing situation and contains enough references for the next team to act.',
-    checklist: ['Read the item history, not just the status label.', 'Keep PR, quote, supplier, and PO references readable.', 'Move to Received only when Stores confirms the physical receipt.'],
-    watchOut: 'Do not use a status change to hide missing paperwork or a delivery problem. Record the evidence that supports the stage.',
+    value: "Status gives every department a shared answer to where an item is now: Enquiry, Comparison, Ordered, Transit, Received, Cancelled or In-Stock.",
+    outcome: "The visible stage reflects the real sourcing situation and carries the PR and PO references the next team needs.",
+    checklist: ["Read the item's quotes and PO, not just the status label.", "Let the app move the status: quotes, selection, PO issue, supplier dispatch and Stores' receipt each move it.", "Change a status by hand only to correct a real mistake."],
+    watchOut: "Received is set when Stores receives the material at Inward. Setting it by hand hides a delivery that has not arrived.",
   },
   purchaseReturns: {
     value: 'Purchase Returns is the record of material sent back to a supplier — wrong spec, damage on receipt, over-supply — the Procurement-side mirror of Sales Returns.',
@@ -516,10 +522,10 @@ const FEATURE_FOUNDATIONS = {
     watchOut: 'A reservation is not an issue. Do not treat reserved material as consumed or physically delivered.',
   },
   receipt: {
-    value: 'Receipt fields record what physically arrived, not what was ordered. They let Stores and Production see the remaining balance and locate the supporting GRN or certificate.',
-    outcome: 'GRN reference, date, received quantity, pending quantity, and certificate reference tell the same story.',
-    checklist: ['Match the delivery to the PO and BOM line.', 'Enter actual received quantity and date.', 'Recheck the pending balance after partial receipts.'],
-    watchOut: 'Do not enter the ordered total in a received field or leave a partial delivery looking complete.',
+    value: "A receipt records what physically arrived, not what was ordered. It lets Stores, QC and Production see the remaining balance and find the supporting GRN or certificate.",
+    outcome: "Quantity received so far, GRN reference, and any heat, batch, serial or certificate details the line requires are recorded.",
+    checklist: ["Match the delivery to the PO line.", "Enter the quantity that actually arrived; a part delivery is fine.", "Fill the traceability fields the line asks for."],
+    watchOut: "Do not enter the ordered total when only part arrived. The line stays open until the full quantity is in.",
   },
   remnant: {
     value: 'Cutting & Remnant Matching turns a leftover plate or section offcut into real, reusable stock instead of scrap. The moment a BOM releases, the system checks it against what is actually sitting in Stores and reserves a fit automatically — nobody has to remember to go looking.',
@@ -538,10 +544,10 @@ const FEATURE_FOUNDATIONS = {
     watchOut: 'Do not attach stock demand to an unrelated customer project just to make a screen accept it.',
   },
   workers: {
-    value: 'The Workers sheet captures shop-floor people who do not need application accounts. It gives Production a reliable daily view of attendance and where work happened.',
-    outcome: 'Attendance and assignment data can support planning, payroll review, and project history without creating unnecessary logins.',
-    checklist: ['Choose the exact date before marking attendance.', 'Record present, half-day, or absent accurately.', 'Add project and work assignment while the day is still known.'],
-    watchOut: 'Do not delete a historical worker. Deactivate the person so earlier attendance remains understandable.',
+    value: "The Workers tab captures shop-floor people who do not need application accounts. It gives Production a reliable daily view of attendance and where work happened.",
+    outcome: "Attendance and assignment data can support planning, payroll review, and project history without creating unnecessary logins.",
+    checklist: ["Choose the exact date before marking attendance.", "Record present, half-day, or absent accurately.", "Add project and work assignment while the day is still known."],
+    watchOut: "Do not delete a historical worker. Deactivate the person so earlier attendance remains understandable.",
   },
   handoff: {
     value: 'Handoffs prevent one department’s completion from becoming another department’s surprise. They connect the action, owner, and evidence across the order lifecycle.',
@@ -550,31 +556,10 @@ const FEATURE_FOUNDATIONS = {
     watchOut: 'A notification is a signal, not proof of completion. Keep the actual result in the relevant record or task.',
   },
   jobcards: {
-    value: 'A Job Card is one real piece of shop-floor work — an operation against an actual project milestone, not a free-typed description. It is where planning becomes an auditable record of who did what, on which machine, for how long, and at what cost.',
-    outcome: 'The card carries a real milestone, a workstation where relevant, logged hours against named workers, any consumables used, and a quantity/status that is true right now — not what was planned three weeks ago.',
-    checklist: ['Create the card against the actual milestone, not a guessed one — the project/milestone picker is the only way in, so the fabrication percentage stays accurate.', 'Log hours in real sessions as they happen, not one lump total at the end of the week.', 'Flag subcontracted or site work with the Outside/Site markers instead of leaving them looking like ordinary shop work.'],
-    watchOut: 'Do not leave a card sitting in Pending once work has actually started, and do not close it out with an invented quantity just to clear the board — a wrong Done count breaks the fabrication percentage every other view relies on.',
-  },
-  workorders: {
-    value: 'A Work Order is the production order itself — the record that says what you are making, how much, by when, and against which project or stock need, before any Job Card exists. Job Cards are still where the actual work gets logged; the Work Order is what authorizes and tracks them as a set.',
-    outcome: 'A released Work Order has a real route (each step tied to a workstation and, where it applies, a milestone), a material list with real quantities, and a full set of generated Job Cards — so its progress bar, delay flag, and costing are all trustworthy, not guesses.',
-    checklist: [
-      'Pick the right mode first: Against a customer order needs a project (and pulls its BOM); Against stock needs neither, just a product description.',
-      'Build the full route before you release — operation, workstation, and planned minutes for every step — because routing locks the moment the Work Order leaves draft.',
-      'Click Generate Job Cards once, right after releasing, instead of creating the cards by hand — it reads the route card so nothing gets missed or duplicated.',
-      'Use a Change Note (not a plain edit) for quantity, dates, or product description once the Work Order is released — that is the only way those changes stay in the record.',
-    ],
-    watchOut: 'A route step with no workstation set will never show up in Forecast\'s workstation load, and a material line with no quantity or BOM link will never show real progress — an empty-looking Work Order is usually one you released before finishing the route or materials, not a sign nothing needs to happen.',
-  },
-  forecast: {
-    value: 'Forecast turns your open Work Orders into a look-ahead: what is coming due, which workstations are getting overloaded, and which materials are still short — all read live off real Work Orders, not typed in separately.',
-    outcome: 'A department head can see the next 30 days of load and shortage at a glance, before it becomes a missed date on the shop floor.',
-    checklist: [
-      'Treat an empty Forecast as a signal to check Work Orders, not proof there is nothing coming — only released/in-progress Work Orders with planned dates, routed steps, and material lines actually appear here.',
-      'Re-route or flag for an extra shift as soon as a workstation shows Overloaded, rather than waiting for the delay to actually happen.',
-      'Chase the specific outstanding material shown here with Stores/Procurement instead of a general "are we on track" check.',
-    ],
-    watchOut: 'Overloaded is a flat single-shift-per-day estimate, not a real shift calendar — treat it as an early warning, not an exact number.',
+    value: "A Job Card is the shop-floor record of one boiler or air pre-heater job: every production stage with its dates, fitter/welder, Production sign and QC sign, laid out like the paper job card.",
+    outcome: "Each stage shows when it started and finished, who did it, and whether QC has signed it, so anyone can see how far the job is.",
+    checklist: ["Create one card per job against the right project (or unit of a split order).", "Pick the fitter/welder, then Start a stage when work begins and Finish it when it ends.", "Do not back-fill a week of stages in one go; dates are stamped when you click."],
+    watchOut: "Finish is Production's sign. QC signs separately; a stage QC sends back has to be redone and finished again.",
   },
   tests: {
     value: 'Test records make quality decisions auditable. They preserve what was tested, when, by whom, against which reference, and with what result.',
@@ -601,10 +586,10 @@ const FEATURE_FOUNDATIONS = {
     watchOut: 'A Ready list is an approval to release, not a suggestion. Do not move it forward before the contents and header are checked.',
   },
   generate: {
-    value: 'Generating from the BOM reduces manual re-entry and preserves the link between what Engineering defined and what Dispatch plans to pack.',
-    outcome: 'Only intended pending lines are carried into a draft, with quantities that can be reconciled back to the BOM.',
-    checklist: ['Review the project and pending-line selection.', 'Check partial quantities and previously packed lines.', 'Inspect the draft before adding package details.'],
-    watchOut: 'Generating twice without reviewing existing lists can create duplicate packing work or confuse the remaining balance.',
+    value: "Building the packing list from the BOM avoids re-typing and keeps the link between what Engineering defined and what Dispatch packs.",
+    outcome: "Every ready line is on a packing list, and the list can be reconciled back to the BOM.",
+    checklist: ["Start from Pending Items; it shows only lines that are ready to pack.", "Add new ready lines to the project's open draft list unless a separate shipment is really needed.", "Check the draft before adding package details."],
+    watchOut: "A packed or dispatched list is never changed by adding lines. New lines go to the open draft or to a new list.",
   },
   packing: {
     value: 'Packing details turn a material requirement into a physical package record. They help the shop and customer identify what is inside each box or package.',
@@ -631,10 +616,10 @@ const FEATURE_FOUNDATIONS = {
     watchOut: 'Do not close a milestone merely to improve the customer view. Honest delay information is more useful than false progress.',
   },
   leads: {
-    value: 'Leads capture early demand before it becomes a committed opportunity. Good lead data tells the team who asked, what they need, where they came from, and who should follow up.',
-    outcome: 'The enquiry has an owner, source, next action, and enough context to qualify without duplicate records.',
-    checklist: ['Capture person/company and contact details.', 'Set source, campaign, territory, and industry accurately.', 'Add a next task and update status after contact.'],
-    watchOut: 'Do not create a second lead because another department also needs to work it. Sales and Marketing share the same funnel.',
+    value: "An enquiry captures demand from first contact to won or lost. Good enquiry data tells the team who asked, what they need, where they came from, and who follows up.",
+    outcome: "The enquiry has an owner, source, products, a stage and a next follow-up date.",
+    checklist: ["Capture the organization and contact details.", "Add the products asked about and the A/C Manager.", "Log each call in the Diary with the next plan date."],
+    watchOut: "Do not create a second enquiry for the same requirement. Open the existing one and move its stage.",
   },
   pipeline: {
     value: 'Pipeline shows the active commercial conversation after qualification. It helps Sales and Marketing focus time on real opportunities and gives Management a forecast grounded in current stages.',
@@ -655,10 +640,10 @@ const FEATURE_FOUNDATIONS = {
     watchOut: 'Do not convert an unreviewed quotation. A wrong quotation becomes a wrong order and a wrong project scope.',
   },
   'sale-orders': {
-    value: 'The Sale Order is the confirmed commercial handoff into execution. It gives Design and Engineering an agreed basis for the Scope of Supply and project creation.',
-    outcome: 'Customer, address, order lines, commercial references, and project link all agree before technical work begins.',
-    checklist: ['Confirm the accepted quotation and customer identity.', 'Check order lines, quantities, terms, and delivery expectations.', 'Link or create the project with useful commercial context.'],
-    watchOut: 'Do not treat a draft or verbal acceptance as a confirmed Sale Order. The downstream team needs a reliable handoff.',
+    value: "The Sale Order is the confirmed commercial handoff into execution. It gives Design an agreed basis for the Scope of Supply and the project.",
+    outcome: "Customer, address, order lines and commercial references agree before technical work begins.",
+    checklist: ["Confirm the accepted quotation and customer identity.", "Check order lines, quantities, terms, and delivery expectations.", "Attach the Order Acknowledgement PDF so Design can carry it onto the project."],
+    watchOut: "Do not treat a draft or verbal acceptance as a confirmed Sale Order. Design creates the project from the order, so the order must be right.",
   },
   reports: {
     value: 'Reports turn the quality of CRM data into decisions about pipeline, sources, departments, and campaigns. They are useful only when the records beneath them are maintained.',
@@ -715,10 +700,10 @@ const FEATURE_FOUNDATIONS = {
     watchOut: 'Do not close an employee record while an advance, loan, expense, or settlement task is unresolved.',
   },
   issues: {
-    value: 'Material issued to WIP is the record of what physically left Stores for the shop floor — separate from the on-hand/purchase-status bookkeeping Reserve and Issue already handle, and separate from Production\'s own issued/received BOM fields. It exists because "Stores handed this over" is a real event worth a timestamp and a name, even when nothing else in the system needs to change because of it.',
-    outcome: 'Anyone looking at a project later can see exactly what left Stores, when, how much, and who logged it — without relying on memory or a side conversation with Production.',
-    checklist: ['Pick the real project and BOM item, not a close-sounding one.', 'Log the quantity that actually physically moved, not the full requirement.', 'Log it close to when it happened — a week-old backfill is much easier to get wrong.'],
-    watchOut: 'This log does not reserve, receive, or issue anything by itself — it has no effect on Inventory\'s on-hand/available numbers or the BOM line\'s purchase status. Use Reserve/Issue for that; use this only as the physical-handoff record.',
+    value: "On Floor is the record of what physically left Stores for the shop floor, with a date and a name.",
+    outcome: "Anyone looking at a project later can see what left Stores, when, how much, and who logged it.",
+    checklist: ["Pick the real project and BOM item, not a close-sounding one.", "Log the quantity that actually moved, not the full requirement.", "Log it close to when it happened."],
+    watchOut: "Material released against a Production indent is recorded by the indent itself. Use Log issue here only for material that leaves outside an indent.",
   },
 };
 
@@ -793,19 +778,32 @@ export const DEPARTMENT_HELP = {
     ],
     features: [
       architectureFeature('Design', DESIGN_ENGINEERING_DIAGRAM),
-      feature('scope', 'Scope of Supply', FileInputIcon, ['Read the work order created from a confirmed Sale Order. Confirm what the boiler, equipment, or package includes before detailed design starts.', 'Keep the scope clear and practical: what is included, what is excluded, and what the customer must provide. Release it only after Design and Engineering agree.', 'New Project: pick the Sale Order first. Model Category, Model Design, Model Capacity and Model Pressure are then filled in from the order\'s main boiler line (for example BOILER-SF-350-WB gives SF, WB, 350) and from what was saved on earlier projects for the same product. They are only defaults: change anything that is wrong and save. What you save is what the system learns from; a pressure or design becomes a default once it has been used the same way twice.']),    feature('calc', 'Calculation Sheets', CalculatorIcon, ['Open Calc Sheets from the Design or Engineering tab and choose the project. Inputs, formulas, validations, snapshots, and review status stay attached to that project.', 'Save a snapshot when a calculation is ready for review. A snapshot is the frozen record of the exact inputs and formula versions used.']),
-      feature('drawings', 'Drawings', RulerIcon, ['Use the Drawings panel to keep drawing files and their status with the calculation work. This is a release tracker, not a CAD editor.', 'Use clear drawing numbers and revision notes so Production can tell which file is current.', 'Use Calc Links (next to Drawings) to record which calculation sheet substantiates which drawing — a calc sheet backs a drawing, not a BOM structural node.']),
+      feature('scope', 'Scope of Supply and new projects', FileInputIcon, [
+        "The Scope of Supply is the list of what the order includes, taken from the Sale Order lines. It shows as a card on the project page with a Generated PDF and, when Sales attached one, the original Order Acknowledgement file.",
+        "Create the project: Projects → New Project, then pick the Sale Order (search by order number or customer). Project No, customer, company, order date, Model Category, Model Design, Model Capacity and Model Pressure are filled in from the order. They are only defaults: change anything that is wrong. Tick SIB for a small industrial boiler. You can also attach a Scope of Supply document in the same form.",
+        "Only a Design Head or a manager can create a project. Creating it starts the Design milestone and tells Design and Engineering.",
+        "Edit Project (on the project page) changes the Sale Order or the details later. Delete Entire Project is on the same page for a manager, the Design Head or the Engineering Head; it first lists the documents the project already has.",
+      ]),
+      feature('calc', 'Calculation Sheets', CalculatorIcon, ["Open Calc Sheets in the top bar, pick the project, then the sheet. The sidebar has Calculation (Worksheet and Analysis), Registry, Methodology, Library, Tables, Audit, Calc Links and Portfolio.", "Save a snapshot when a calculation is ready for review. A snapshot is the frozen record of the exact inputs and formula versions used."]),
+      feature('drawings', 'Drawings', RulerIcon, [
+        "Open Drawings in the top bar and pick the project from the dropdown. This is a release tracker, not a CAD editor.",
+        "Add Drawing: give a title, pick the type (GA, Foundation, SDC, End Box, Saddle, Fire Bars, Chimney, Ducting, IBR, Electrical Control Panel, or type your own) and a due date. A Design Head must choose who it is assigned to; a designer's own drawing is assigned to them.",
+        "Upload the file on the drawing. The assigned person clicks Submit for review (it needs at least one file). The Design Head is notified and clicks Approve or Send back. Un-approve puts an approved drawing back to in progress. The badge then reads Approved by and the name.",
+        "Only the Design Head or the assigned person can change the title, type, description and notes. The Head's changes are saved with Save, which also notifies the assigned person.",
+        "Customer uploads: files the customer uploads from their portal are listed under Customer uploads on the same page. Mark each Reviewed or Needs changes (a note is required); the customer is told.",
+        "Calc Links (in Calc Sheets) records which calculation sheet backs which drawing.",
+      ]),
       {
         key: 'notifications', label: 'Notifications', icon: BellIcon, group: true,
         body: ['There are three notification paths for Design. Customer covers the customer’s comments and approvals. Internal (Design) covers handoffs that stay entirely inside Design. External (Departments) covers every signal that crosses a department or commercial boundary — Sales, Procurement, PM tier.'],
         children: [
           feature('notifications-customer', 'Customer', BellIcon, [
-            'A drawing only reaches the customer because a Design Head chose to share it. The "Share with customer" checkbox on each drawing in the Drawings panel is Head-only. A Designer cannot toggle it, same as approving a drawing.',
+            'A drawing only reaches the customer because a Design Head chose to share it. The "Share with customer" switch on each drawing in the Drawings tab is Head-only. A Designer cannot toggle it, same as approving a drawing.',
             'The effect is immediate once switched on. The customer can open the file, read and reply in the comment thread, and, once the drawing is Under review, approve it right away. There is no waiting period on that side.',
             'Only a drawing that has actually reached Under review, Approved, or As built becomes visible, even with the toggle on. A Not started or In progress drawing stays internal regardless of the toggle, so sharing early does not leak unfinished work.',
             'The customer’s order-progress screen reflects this with no extra words. The Design & Engineering step turns from blue to amber with a clock icon whenever a shared drawing is sitting Under review and waiting on them. Only the color and icon change; the label still just says "In progress."',
             'A notification is not sent instantly. It fires five minutes after the toggle is switched on, and only if it is still on at that point. Flip it off within those five minutes, for an accidental click, and nothing is ever sent. Flip it on again later and the five-minute clock restarts.',
-            'The comment thread is shared, not duplicated. What you write in the Drawings panel and what the customer writes in their portal land in the same thread. Each message is tagged "Customer" when it is theirs, so it is always clear who said what.',
+            'The comment thread is shared, not duplicated. What you write on the drawing in the Drawings tab and what the customer writes in their portal land in the same thread. Each message is tagged "Customer" when it is theirs, so it is always clear who said what.',
             'Today this notification is in-system only. The customer sees it in their own portal bell. WhatsApp delivery is planned as an addition later, not a replacement for this.',
           ], {
             value: 'The customer-visible toggle is a release gate, separate from your own Under review or Approved status. It exists so a drawing can be technically ready in the system before a Design Head has actually decided the customer should see it.',
@@ -813,7 +811,7 @@ export const DEPARTMENT_HELP = {
             checklist: [
               'Turn the toggle on only when the drawing is genuinely ready for the customer to review. Turning it on does not itself change the drawing’s status.',
               'Expect the customer to be able to act immediately. Do not treat the five-minute delay as a window to undo a real share.',
-              'Read the customer’s comments in the same Drawings panel thread. There is no separate customer inbox to check.',
+              'Read the customer’s comments on the drawing itself (Comments, Design Head only). There is no separate customer inbox to check.',
             ],
             watchOut: 'Toggling a drawing visible and then off again within five minutes is genuinely silent: no notification, no trace the customer would see. Do not rely on that window to "test" sharing with a real customer. Use it only to correct a real mistake.',
           }),
@@ -851,36 +849,41 @@ export const DEPARTMENT_HELP = {
           }),
         ],
       },
-      feature('bom', 'Material definition and BOM', ClipboardListIcon, ['Define the material description, MOC, size/specification, make, quantity, section, and group label. Engineering/Design owns the technical definition; downstream teams add purchasing and receipt information.', 'Import the PMB workbook, review detected rows and skipped rows, then confirm. Never replace a live BOM without checking the revision preview.']),
+      feature('bom', 'Material definition and BOM', ClipboardListIcon, ["Open Engineering → BOMs, pick the project, and click Upload PMB (.xlsx) to import the PMB workbook. Review the detected rows, the Configuration rows and the skipped rows in the preview, then confirm. The BOM tree (one node per sheet and heading) is built for you.", "Define the material description, MOC, size/specification, make, quantity and category of each line. Design and Engineering own the technical definition; downstream teams add purchasing and receipt information.", "Never replace a live BOM without reading the preview: it says how many lines will be replaced and how many are kept because they already have orders or receipts."]),
       feature('remnant', 'Cutting & Remnant Matching', ScissorsIcon, [
         'For any plate, MS section, or angle line, Category + numeric dimensions are what let the system automatically check that line against remnants already sitting in Stores the moment you release the BOM.',
         'A match reserves the physical piece and quietly keeps that line out of Procurement — it still looks like a normal BOM line to you, nothing extra to check or click on your side.',
       ], {
         checklist: [
           'When you add a plate/section BOM line, pick its Category and fill in Length/Width/Thickness (and MOC) — a line without these is simply invisible to matching, no error, it just goes to Procurement like before.',
-          'Release the BOM the normal way: Engineering → Release BOM (its own tab in Engineering\'s sidebar, also reachable from the BOMs workspace\'s own Release button, or from Requests if you also hold Stores) → pick the project → Release BOM. Matching runs automatically the instant you release — there is no separate step or button for it.',
+          'Release the BOM the normal way: Engineering → Release BOM (or the Release button on Engineering → BOMs) → pick the project → Release BOM. Matching runs automatically the instant you release — there is no separate step or button for it.',
           'You do not need to check whether a line matched. Stores sees a "Remnant reserved" badge and Production sees a ready-to-cut piece; your BOM view looks the same either way.',
         ],
       }),
       milestoneTrackerFeature([
-        ['Design', 'Explicit action', 'The Design Head clicks "Approve Design" on the project\'s Design tab — an internal sign-off with no other data signal to detect it from.'],
+        ['Design', 'Explicit action', 'The milestone starts by itself when the project is created. The Design Head closes it with Approve Design in Engineering → Design Sign-off.'],
         ['Submit Design Approval', 'Automatic', 'Completes once every customer-visible drawing on the project has been approved by the customer — the same per-drawing approval already tracked in the Drawings panel, just rolled up.'],
-        ['Release BOM / PR', 'Explicit action', 'Design or Engineering clicks "Release BOM" (its own tab in Engineering\'s sidebar, or the same action from the BOMs workspace), once the project actually has BOM items to release — this is also the moment Cutting & Remnant Matching checks every plate/section line against Stores.'],
-        ['Release All Drawings', 'Manual only', 'No automatic or explicit-button trigger yet — close it from the milestone drawer once every drawing is genuinely released.'],
+        ['Release BOM / PR', 'Explicit action', 'Design or Engineering clicks Release BOM (Engineering → Release BOM, or the same button on Engineering → BOMs) once every line has a category and a place in the BOM tree — this is also the moment Cutting & Remnant Matching checks every plate/section line against Stores.'],
+        ['Release All Drawings', 'Automatic', 'Completes when every drawing of the project is approved by the Design Head (Drawings → Approve). Needs at least one drawing.'],
       ]),
-      feature('tasks', 'Tasks and handoffs', ListChecksIcon, ['Use Tasks for small follow-ups that do not deserve a milestone. Raise a cross-department task when another team needs to act.', 'When a milestone closes, check the next team’s notification and task signal. Do not rely only on memory or a private note.']),
-      feature('requests', 'Purchase requests', MessageSquareIcon, ['Use Requests when Design knows a material must be sourced but Procurement needs a formal request. Add the project, item, quantity, and useful specification.', 'The request goes directly to Procurement’s Enquiry flow; it is not a second approval queue.']),
+      feature('tasks', 'Tasks and handoffs', ListChecksIcon, ["Use Tasks for small follow-ups that do not deserve a milestone: Home → Tasks → add a task with a due date. To ask another department for something, open Operations and use Raise on the Incidents card, or Raise on the project page.", "When a milestone closes, the next department is notified by the bell. Do not rely only on memory or a private note."]),
+      feature('requests', 'Purchase requests', MessageSquareIcon, [
+        "Open Engineering → Purchase Requests. Design and Engineering raise purchase requests from the Engineering screen; the separate Requests screen in the top bar is for Stores.",
+        "For each line: search the Item Master and pick the item (or type a description for something not in the catalog), check the category, MOC and size, then pick the project and enter the quantity. Choose No project for a general purchase. One line can be split across several projects. Use template fills the form from a saved PR template.",
+        "Click Raise PR. The request gets a PR number and goes straight to Procurement's Enquiry tab; there is no approval step. Stores is told as well.",
+        "Engineering → PR History lists every request with its status. The pencil edits a line (Head of the department that raised it). Engineering → PR Templates saves a set of lines you raise often.",
+      ]),
       feature('calc-registry', 'Calculation: Worksheet and Registry', CalculatorIcon, ['Calc Sheets → Calculation → Worksheet is where you enter the inputs of a sheet and see every formula recompute at once.', 'Registry lists every variable of the sheet (inputs, constants, computed values) with its unit and current value. Edit an input here or on the Worksheet; both change the same value.', 'Save a snapshot to freeze the inputs and results for the record.'], { outcome: "The sheet's inputs are entered and a snapshot holds the result.", watchOut: "Formulas are shared by all sheets. Change a formula only in Methodology, and it needs the Design Head's approval." }),
     ],
     howTo: [
-      { title: 'Start a new order', body: 'Open Projects, choose the order, read the Scope of Supply, and confirm the project assumptions before creating technical work.' },
-      { title: 'Prepare technical work', body: 'Open Calc Sheets, enter the required inputs, run validations, save a snapshot, and upload or update the related drawing record.' },
-      { title: 'Submit work for approval', body: 'Designers should move a completed calculation or drawing to Under review after checking the inputs, validations, revision, and files. Do not mark your own work Approved. The request is visible to the Design Head for review.' },
-      { title: 'Review and approve Design work', body: 'The Design Head checks the project scope, calculation snapshot, validation result, drawing revision, and attached files. If the work is acceptable, the Design Head changes it to Approved or As built, assigns the next teammate, and sets a due date when needed. Executives, managers, and admins control who is a Design Head; they do not replace the Design Head’s technical review.' },
-      { title: 'Handle corrections and access', body: 'If work needs correction, keep it in a working or Under review state and explain the required change in Notes or a Task before resubmission. A Design Head can grant or remove Designer access for active linked Design employees from Settings; executives, managers, and admins can assign Design Head responsibility.' },
-      { title: 'Release the material definition', body: 'Import or review the BOM, correct descriptions/specifications, and confirm that quantity and section information is understandable to Procurement and Production.' },
-      { title: 'Hand work to another team', body: 'Use a task for a specific action or Requests for material sourcing. Include the project and a useful due date so the receiving team can act without asking for context.' },
-      { title: 'Close the loop', body: 'When work is complete, close the milestone with the actual date. If it was late, record the reason so the project history remains useful.' },
+      { title: 'Start a new order', body: 'Open Projects → New Project and pick the Sale Order. Check the filled-in model, capacity and pressure, then create the project and read its Scope of Supply card.' },
+      { title: 'Prepare technical work', body: 'Open Calc Sheets, pick the project and sheet, enter the inputs, clear the validation warnings and save a snapshot. Open Drawings, pick the project, Add Drawing and upload the file.' },
+      { title: 'Submit work for approval', body: 'On your drawing in Drawings, click Submit for review after uploading the file. The Design Head is notified. You can not approve your own work.' },
+      { title: 'Review and approve Design work', body: 'The Design Head opens Drawings, checks the file against the calculation snapshot, and clicks Approve or Send back. When the calculations and drawings are ready, the Design Head opens Engineering → Design Sign-off, picks the project and clicks Approve Design.' },
+      { title: 'Handle corrections and access', body: 'A drawing that is sent back returns to its assigned person with your note. A Design Head can give or remove Designer access for Design employees from Settings; managers assign the Design Head.' },
+      { title: 'Release the material definition', body: 'Open Engineering → BOMs, upload the PMB or build the tree, fix descriptions and sizes, clear the uncategorized and unassigned counts, then click Release BOM.' },
+      { title: 'Raise a purchase request', body: 'Open Engineering → Purchase Requests, add the lines with project and quantity, and raise it. Check it in Engineering → PR History.' },
+      { title: 'Hand work to another team', body: 'Use Raise on the Operations Incidents card or on the project page for a specific action. Include the project and a due date.' },
     ],
   },
   Engineering: {
@@ -892,30 +895,39 @@ export const DEPARTMENT_HELP = {
     features: [
       architectureFeature('Engineering', DESIGN_ENGINEERING_DIAGRAM),
       feature('scope', 'Scope of Supply', FileInputIcon, ['Review the released scope before starting detailed work. If the scope is unclear, raise the question as a task instead of silently making a commercial assumption.']),
-      feature('calc', 'Calculation workspace', CalculatorIcon, ['Use Methodology for approved formulas, Variables for inputs, Tables for reference data, Validations for guardrails, and Snapshots for frozen calculation results.', 'A snapshot preserves the calculation as it was run. Use Reproduce or the Audit area when someone asks why a result changed.']),
-      feature('drawings', 'Drawings and release', RulerIcon, ['Track drawing numbers, revisions, approvals, and as-built status with the project. Upload the file only after checking that the revision label matches the record.', 'Released calculations and drawings are the handoff signal to the shop; do not leave the project in an ambiguous review state.', 'Use Calc Links (next to Drawings) to record which calculation sheet substantiates which drawing — a calc sheet backs a drawing, not a BOM structural node.']),
+      feature('calc', 'Calculation workspace', CalculatorIcon, ['Open Calc Sheets in the top bar, pick the project and the sheet. Use Calculation for the inputs and results (Worksheet, Analysis), Registry for every variable of the sheet, Methodology for formulas and validations (a formula change needs the Design Head), Library to import published formulas, Tables for reference data, and Audit for snapshots.', 'A snapshot preserves the calculation as it was run. Use Reproduce in Audit when someone asks why a result changed.']),
+      feature('drawings', 'Drawings and release', RulerIcon, ['Open Drawings in the top bar and pick the project. Add Drawing, upload the file, and the assigned person clicks Submit for review; the Design Head clicks Approve or Send back. The full steps are in the Design guide under Drawings.', 'Approved drawings are what a BOM node links to and what QC lists on its forms, so do not leave a drawing waiting in review.', 'Calc Links (in Calc Sheets) records which calculation sheet backs which drawing.']),
       feature('bom', 'Master BOM', ClipboardListIcon, [
-        'Import a PMB workbook and inspect the preview before confirming. Technical columns include description, MOC, size/spec, make, quantity, section, group, and remarks.',
-        'Procurement owns purchase status and references; Stores owns receipt fields; Production owns issued/received fields. Do not overwrite another department’s operational fields.',
-        'Import already tries to auto-link each line to the Item Master catalog on an exact name match — a line that doesn\'t show a catalog code (under the description) missed it, usually a typo, abbreviation, or formatting difference. Search and pick the real catalog entry for it — plain search only, no automatic suggestion, since a wrong guess here would feed Where-Used, Common/Uncommon, Inventory Aging, and Stock Ledger the wrong identity. Use the "Not linked to catalog" filter to find every line still needing this.',
+        'Open Engineering → BOMs, pick the project, and click Upload PMB (.xlsx). Check the preview before confirming: item rows, Configuration rows (datasheet facts), skipped rows, the category of each line and its Item Master link. Confirming also builds the BOM tree from the sheets and headings.',
+        'Procurement owns purchase status and references; Stores owns receipt fields. Do not overwrite another department’s fields.',
+        'Category: a line with no category blocks Release BOM. Click the uncategorized tile at the top of the BOM to go through them one at a time. If the app asks “did you mean…” for a mistyped word and you accept, it remembers the correction for the next import.',
+        'Item Master link: the import links a line when its name, or its size and material, match exactly one catalog item. Click the not linked to catalog tile to review the rest: sure matches are pre-ticked, others show candidates to pick. What you confirm is remembered for the next import.',
+        'A cell that holds several sizes and quantities is split into one line per size when they pair up exactly; otherwise use Split multi-value items on the node’s Items tab.',
       ]),
       feature('notifications', 'Notifications', BellIcon, [
-        'You receive a notification the moment a new order reaches Engineering: converting a confirmed Sale Order into a Project (a Design Head or PM does the converting) notifies Engineering and Design at the same time, since a fresh Scope of Supply now exists for both to work from.',
-        'You receive a notification when a BOM template is applied to a project — a reusable per-boiler-model starting BOM (Engineering → BOM Templates; Stores heads reach the same templates from Requests → PR Templates), applied by Design, Stores, or Engineering itself. If someone else applied it, this is how Engineering learns a BOM has taken shape without opening the project to check. If Engineering applied it, no notification is sent for that own action — same "you don\'t get pinged for your own work" pattern as Sales\' own Sale Order creation.',
-        'Engineering owns no milestones of its own (Design owns the whole Design→BOM→Drawings chain), so unlike most departments there is no milestone-handoff traffic here — these two are genuinely the only notification types Engineering receives.',
-        'This is the same bell every internal department uses, top right of the app. It is automatic for everyone with Engineering access; nothing here is a toggle you turn on or off.',
+        'New order: when a project is created from a Sale Order, Engineering and Design are both told that a new Scope of Supply exists.',
+        'Template applied: when someone else applies a Structure Template to a project’s BOM, Engineering is told. You are not notified for your own action.',
+        'Change notes: a Design or Engineering Head is told when a change note is waiting for approval; the person who raised it is told when it is approved or rejected.',
+        'Engineering owns no milestones (Design owns Design, Design Approval, Release BOM and Release All Drawings), so there are no milestone hand-off alerts for Engineering alone.',
+        'All of these arrive on the bell at the top right. Settings → Alerts lets each person switch an alert off or have it emailed.',
       ], {
-        value: 'Before the BOM-template notification existed, Engineering had exactly one notification type — Scope of Supply creation — and no way to learn that a template had seeded a project\'s BOM unless someone mentioned it directly. This closes that gap without inventing a new milestone Engineering doesn\'t actually own.',
-        outcome: 'Engineering can trust the bell to cover both moments a project\'s BOM meaningfully changes shape from outside its own hands — a brand-new order arriving, and a template being applied to one.',
+        value: 'These alerts tell Engineering when a project’s BOM or its approved definition changes from outside its own hands.',
+        outcome: 'Engineering hears about a new order, a template applied by someone else, and change notes without opening each project to check.',
         checklist: [
-          'Treat a Scope of Supply notification as the cue to open the project and confirm the technical assumptions before detailed work starts, not just evidence the order exists.',
-          'Treat a BOM-template notification as the cue to review what the template actually inserted — a template is a starting point, not a substitute for checking the real requirement.',
-          'Do not expect a notification for routine BOM edits, drawing status changes, or milestone handoffs elsewhere in the project — those stay with the departments that own them.',
+          'Treat a new Scope of Supply alert as the cue to open the project and confirm the technical assumptions.',
+          'After a template alert, review the lines it added; a template is a starting point.',
+          'Do not expect an alert for routine BOM edits or drawing changes.',
         ],
-        watchOut: 'Marking a notification read only proves you saw it. A BOM-template notification still means the inserted lines need the same review as any other BOM content before Procurement starts sourcing against them.',
+        watchOut: 'Marking an alert read only shows you saw it. The lines a template added still need the same review as any other BOM content.',
       }),
-      feature('requests', 'Material requests', FileTextIcon, ['Use Requests for a new item or a quantity that must be sourced. Add enough technical detail for a buyer to obtain comparable quotes.', 'If an existing BOM line is wrong, correct the definition first; do not create a duplicate request to work around bad data.']),
-      feature('milestones', 'Milestones and tasks', ListChecksIcon, ['Use milestones for major Engineering deliverables and Tasks for small follow-ups. Close both with real dates so downstream teams see the handoff clearly.']),
+      feature('requests', 'Purchase Requests', FileTextIcon, [
+        'Open Engineering → Purchase Requests. Design and Engineering raise purchase requests here, inside the Engineering screen. The separate Requests screen in the top bar is for Stores.',
+        'For each line: search the Item Master and pick the item, or type a description for something not in the catalog. Check the category, MOC and size or dimensions. Then pick the project and enter the quantity; choose No project for a general purchase. click Add project to split one line across projects. Tick the traceability needed at receipt (heat number, MTC, supplier batch, serial number).',
+        'Use template (top right) fills the form from a saved PR template. Engineering → PR Templates is where those are saved and edited.',
+        'Click Raise PR. It gets a PR number and appears at once in Procurement’s Enquiry tab under PR Items; there is no approval step. Stores is told too.',
+        'If an existing BOM line is wrong, correct that line instead of raising a new request for the same material.',
+      ]),
+      feature('milestones', 'Tasks and milestones', ListChecksIcon, ['Engineering has no milestones of its own. The Design milestones (Design, Submit Design Approval, Release BOM / PR, Release All Drawings) cover the shared Design and Engineering work; the Design guide’s Milestone Tracker says what completes each.', 'Use Tasks for small follow-ups: Home → Tasks, or Raise on the Operations Incidents card to ask another department.']),
       feature('bomStructure', 'BOMs (assemblies)', LayersIcon, [
         'Open the Engineering tab (top nav) → BOMs, pick a project, then work its tree: search, filter by missing drawing / pending ECN, rename, reorder (Move Up/Down), Move to… a new parent, or Duplicate a node — all from the tree pane.',
         'Select a node to add or assign BOM items, link Drawings, review its Engineering Change Note history, and set its quantity multiplier — right from that node’s own tabs, no need to leave the workspace. Calculation sheets link to a drawing instead — from Calc Sheets → Calc Links.',
@@ -959,14 +971,33 @@ export const DEPARTMENT_HELP = {
       feature('commonUncommon', 'Common / Uncommon', Repeat2Icon, ['Open the Engineering tab → Common/Uncommon to see which parts are reused across 2+ projects versus used on exactly one — a starting point for stocking decisions, not a Stores action in itself.', 'The header\'s project filter genuinely recomputes common/uncommon against just the projects you pick, not a display trick — a part can read differently filtered than it does across everything.']),
       feature('ecn', 'Engineering Change Notes', FileEditIcon, ['Raise an ECN from the Engineering tab (or the project’s BOM table) whenever a released BOM field needs a controlled change — field, old value, new value, and a real reason.', 'A department Head approves or rejects; approval applies the new value and stamps the project’s current release revision.', 'The header\'s project filter narrows this list to one or several projects at a time — clear it to see every project\'s change notes again.']),
       feature('design-signoff', 'Design Sign-off', BadgeCheckIcon, ['Engineering → Design Sign-off: pick the project and Approve Design. Only the Design Head can do this.', 'It closes the Design milestone and starts the next one. The project page then shows Design signed off.'], { outcome: "The project's design is approved with the Design Head's name and date.", watchOut: 'Sign off only after the calculation sheets and drawings are ready; later changes go through a Change Note.' }),
-      feature('pr-history', 'PR History', ClipboardListIcon, ["Engineering → PR History (also in Requests) lists every purchase request ever raised, newest first, with each line's project, quantity, size and current status.", 'Search by PR number, item or project, or filter by status.'], { outcome: 'You can see what was requested, for which project, and where it stands.', watchOut: 'This list is read only. To withdraw a line, use Cancel on the BOM line.' }),
+      feature('pr-history', 'PR History', ClipboardListIcon, ["Engineering → PR History lists every purchase request, newest first, with each line's project, quantity, size and current status.", 'Search by PR number, item or project, or filter by status.', 'The pencil on a row edits that request line: description, MOC, dimensions, and its projects and quantities (change or clear the project, add or remove a split). Only the Head of the department that raised it, or a manager, can edit.'], { outcome: 'You can see what was requested, for which project, and where it stands.', watchOut: 'A split that already has a quote, PO or receipt can not be removed, and a line can not move to another project once it has stock or receipt records.' }),
+      feature('item-master', 'Item Master', BoxesIcon, [
+        'Engineering → Item Master is the catalog of every material and bought-out item. BOM lines, purchase requests and stock all link to it.',
+        'Search across name, code, category, group, HSN and description. Click a column to sort.',
+        'Add item: Item Name and UOM are required. Before saving, the app lists items that look the same; pick Create anyway only if it is really new. The item code (IM-…) is given automatically and can not be changed.',
+        'Edit (pencil): change the name, category, BOM Category, HSN and description, and set defaults that fill in whenever the item is picked on a BOM or purchase request: Default MOC, default dimensions (thickness or section size, never length), Requires manufacturing, and the traceability ticks. The dialog shows how many BOM lines and projects use the item.',
+      ], { outcome: 'Each real item exists once, with the defaults that save typing on every BOM.', watchOut: 'There is no delete. Changing a default affects only lines picked afterwards; existing BOM lines keep their values.' }),
+      feature('release-bom', 'Release BOM', BadgeCheckIcon, [
+        'Engineering → Release BOM (or the Review & Release BOM button on Engineering → BOMs): pick the project. The strip at the top counts items, drawing-linked lines, unassigned lines, uncategorized lines and pending change notes.',
+        'Release is blocked while any line has no category or is not placed on a BOM node. Click the uncategorized or unassigned tile to fix them one at a time, then release.',
+        'Releasing closes the Release BOM milestone, starts Procurement’s Enquiry milestone, freezes each line’s drawing revision, saves a snapshot of the tree (Rev 1, Rev 2…), and checks every line against Stores: stock and matching remnants are reserved, only the shortage goes to Procurement.',
+        'Un-release (send back) reopens the milestone with a reason so the BOM can be corrected and released again as the next revision. The PDF button prints the BOM.',
+      ], { outcome: 'The BOM is released as a numbered revision and Procurement and Stores can act on it.', watchOut: 'Only Design or Engineering can release. Drawings linked and pending change notes are shown for information; they do not block release.' }),
+      feature('bom-tools', 'Unit count, split orders, Delete Entire BOM', LayersIcon, [
+        'Unit count (number box at the top of Engineering → BOMs): for an order of several identical units, enter the number once. Every quantity for Procurement, Stores and Dispatch is multiplied by it, and the screen shows the sum, for example 100 Nos = 2 Nos × 50. A node’s own quantity multiplier still works for repeats inside one unit.',
+        'Split into units (same strip): creates one unit project per boiler under the order, each with its own milestones, job card, QC documents and packing list. The BOM stays on the order. After a split, the +N control adds more units.',
+        'Delete Entire BOM (bin icon, Design or Engineering Head): removes every node and line of a BOM that has not been released. It is refused if any line was raised by a purchase request or already has quotes, orders, receipts or QC records.',
+        'Save Entire BOM as Template, Build from Templates and Add subsystem are on the same strip; see Structure Templates and Subsystem builds.',
+      ], { outcome: 'A multi-unit order is defined once and bought, received and packed for every unit.', watchOut: 'Delete Entire BOM can not be undone. Save the BOM as a template first if you may need it.' }),
+      feature('pr-templates', 'PR Templates', LayoutTemplateIcon, ['Engineering → PR Templates: save a set of request lines you raise often (item, MOC, size, quantity).', 'On Engineering → Purchase Requests click Use template to fill the form from one, then pick the project and adjust.'], { outcome: 'A repeated request is raised without retyping its lines.', watchOut: 'A PR template only fills the request form. To reuse BOM structure, use Structure Templates.' }),
     ],
     howTo: [
-      { title: 'Read the order', body: 'Open the project, review Scope of Supply, and check the project description and Sale Order context before starting calculations.' },
-      { title: 'Run and freeze a calculation', body: 'Enter inputs, resolve validation warnings, run the sheet, and save a snapshot with a meaningful note or revision reference.' },
-      { title: 'Prepare the BOM', body: 'Import the PMB, check skipped rows and mapped columns, then confirm. Correct the technical definition before Procurement starts sourcing.' },
-      { title: 'Request a new material', body: 'Open Engineering → Purchase Requests, select the project, describe the item, include size/MOC/quantity, and submit it to Procurement.' },
-      { title: 'Release responsibly', body: 'Update drawing status, close the Engineering milestone, and add a task for any known follow-up instead of hiding it in a note.' },
+      { title: 'Read the order', body: 'Open the project from Projects, read its Scope of Supply card and the Sale Order details before starting calculations.' },
+      { title: 'Run and freeze a calculation', body: 'Open Calc Sheets, pick the project and sheet, enter inputs, resolve validation warnings, and save a snapshot with a meaningful note.' },
+      { title: 'Prepare the BOM', body: 'Open Engineering → BOMs, pick the project, click Upload PMB, check the preview and confirm. Then clear the uncategorized, unassigned and not linked to catalog tiles.' },
+      { title: 'Request a new material', body: 'Open Engineering → Purchase Requests, pick the item, enter size, MOC and quantity, pick the project, and raise it. It goes to Procurement’s Enquiry tab.' },
+      { title: 'Release the BOM', body: 'Open Engineering → Release BOM, pick the project, check the counts and click Release BOM. Raise a Change Note for any change after release.' },
     ],
   },
   Procurement: {
@@ -977,26 +1008,63 @@ export const DEPARTMENT_HELP = {
     ],
     features: [
       architectureFeature('Procurement', PROCUREMENT_DIAGRAM),
-      feature('enquiry', 'Enquiry queue', SearchIcon, ['Start with Enquiry items and Requests from Engineering, Design, or Stores. Confirm the technical description before contacting suppliers.', 'Use the project and source fields to separate normal project demand from In-Stock or Sold-As-Such demand.', 'A "Reserved from stock" badge means Stores has already committed inventory against that line — check with Stores before spending time sourcing it. The line still shows here because Reserve alone doesn\'t close it out; Stores only marks it In-Stock once they actually Issue the material.', 'A fresh BOM/SAS line does not reach this queue automatically anymore — Stores reviews it first (their Manual review step) and only sends it here by clicking Procure, which notifies you directly the moment it happens. You no longer need to check back speculatively for whether something new has landed.']),
-      feature('quotes', 'Comparison and quotes', GitCompareIcon, ['Record each supplier quote with price, unit, payment terms, validity, and notes. Multiple quotes create a comparison trail rather than one unexplained price.', 'Do not delete a quote just because it lost; the history helps explain the final choice.']),
-      feature('supplier', 'Supplier selection', Building2Icon, ['Select the supplier only after checking price, validity, terms, and technical fit. The selected quote becomes the basis for the draft PO.', 'If the requirement changes, update the BOM or request and leave a note rather than silently changing the supplier decision.']),
-      feature('po', 'Purchase Orders', FileTextIcon, ['Review draft PO lines, issue the PO when the commercial details are correct, and generate the PDF for the supplier.', 'A PO issue moves the item into the next operational stage. Treat unissue/void actions as controlled corrections, not casual edits.']),
-      feature('status', 'Status and delivery', TruckIcon, ['Use the status view to follow Enquiry, Comparison, Ordered, Transit, Received, Cancelled, and In-Stock. The summary also considers quote and supplier signals when the editable status cell is behind.', 'Keep PR/PO references readable because Stores and Production use them downstream.']),
-      feature('inbound', 'Inbound (supplier link)', TruckIcon, [
-        'Every issued PO has one supplier link — the same link the supplier got with the RFQ if there was one, otherwise a link made for the PO. Use the Inbound button on a PO row, on the PO drawer, or on Delivery Lots to open it.',
-        'On that page the supplier (or you, on their behalf) downloads the PO and records the dispatch: lines and quantities, LR / vehicle / tracking details, invoice and e-way bill numbers, and up to 3 photos or PDFs. Recording a dispatch moves those lines to Transit and notifies Stores and Procurement.',
-        'Quotes: if there was no RFQ you enter quotes yourself under Sourcing; the supplier page shows the quote form only before a PO exists.',
+      feature('enquiry', 'Enquiry', SearchIcon, [
+        'Procurement → Enquiry lists every line that needs a supplier. Three views: PMB Items (lines from a released project BOM), PR Items (purchase requests raised by Design, Engineering or Stores) and Custom Items (items you add yourself with Add Item). Filter by project or search.',
+        'What reaches Enquiry: when a BOM is released, Stores’ stock is checked first. A line fully covered by stock never comes here; a line partly covered comes with only the shortage. A purchase request appears immediately, with no approval step. You are notified in both cases.',
+        'A “Stock available” note on a line means Stores still holds free stock of that item; check with Stores before buying. A “Reserved from stock” note means part is already covered and this line is the shortage.',
+        'From a line you either send an RFQ to suppliers or add a quote by hand. Once a line has a quote it also shows in Selection.',
       ]),
-      feature('purchaseReturns', 'Purchase Returns', Undo2Icon, ['Use the Returns tab to raise a return against an issued PO — wrong spec, damage, over-supply — and track it through inspection to a stock action and debit note.']),
-      feature('requests', 'New-item requests', ClipboardListIcon, ['Requests land directly in the Enquiry flow. Accept the requirement by sourcing it, not by creating a second manual record.', 'Ask the requesting team for missing technical information through a task so the request remains traceable.']),
+      feature('quotes', 'RFQs and quotes', GitCompareIcon, [
+        'Create RFQ (Procurement → Enquiry): tick the lines, pick the suppliers, and send each supplier their private link by WhatsApp, Email or Copy link. The supplier opens the link and types price, unit, payment terms and delivery date; you are notified when a quote arrives and it appears on the line.',
+        'Edit / send on an RFQ sends the link again, adds suppliers, or removes a supplier who has not quoted. Cancel RFQ withdraws it. Each supplier shows as Not sent, Sent no reply, or Responded.',
+        'Add quote records a quote yourself (phone or paper quote): supplier, price and unit, payment terms, expected delivery date.',
+        'A quote is never edited or deleted. If a price changes, add a new quote; the history explains the final choice.',
+        'RFQ emails go from the Procurement mailbox set in Settings → Procurement · Email. If no mailbox is set, use WhatsApp or Copy link.',
+      ]),
+      feature('supplier', 'Selection', Building2Icon, [
+        'Procurement → Selection shows every line that has at least one quote, with the quotes side by side. Lowest price and Fastest delivery are marked.',
+        'Click Select on the quote you choose. The line is added to that supplier’s draft purchase order (a draft is created if there is none). Undo selection takes it back off the draft.',
+        'If Selection is empty it says Waiting on supplier quotes; go back to Enquiry and send or chase the RFQ.',
+      ]),
+      feature('po', 'Purchase Orders', FileTextIcon, [
+        'Procurement → Purchase Orders lists draft, issued and cancelled orders; the Active / Fulfilled switch hides orders whose lines have all arrived. One order is for one supplier.',
+        'Open an order to see its PDF. On a draft: Edit changes lines, quantities, rates and terms; pick the company if the lines have no project. Issue sends it out: the lines move to Ordered and the PDF downloads.',
+        'On an issued order: Cancel Issue returns it to draft, Cancel PO cancels it for good, Record Bill enters the supplier’s bill, and Inbound opens the supplier’s page.',
+        'Terms & Conditions (button on this tab) sets an optional second page printed on every PO of a company.',
+      ]),
+      feature('delivery-lots', 'Delivery Lots', TruckIcon, [
+        'Procurement → Delivery Lots: pick an issued PO and group its quantities into lots, each with its own expected delivery date (for example 30 on 20 Sep, 70 on 5 Oct). A lot can hold several lines.',
+        'Quantities not put in a lot keep the delivery date from the supplier’s quote. For an order split into units you can tick which units a lot is meant for.',
+        'Stores sees these dates on Inward, and Overdues uses them.',
+      ], { outcome: 'Stores knows what is expected and when, line by line.', watchOut: 'Only issued POs can be scheduled. Reducing a PO line below what is already in lots is refused.' }),
+      feature('status', 'Status', ListChecksIcon, ['Procurement → Status lists every line with its stage: Enquiry, Comparison, Ordered, Transit, Received, Cancelled or In-Stock. Search or filter by status.', 'The stage moves by itself: a quote moves a line to Comparison, issuing the PO to Ordered, the supplier’s recorded dispatch to Transit, and Stores’ receipt to Received. You can change a status here by hand to correct a mistake.', 'Keep PR and PO references readable because Stores and Production use them downstream.']),
+      feature('vendor-bills', 'Vendor Bills', ReceiptIcon, [
+        'Record a bill: open the issued PO in Purchase Orders and click Record Bill. Enter the supplier’s bill number and date, check the lines, choose a TDS section if tax is deducted, and tick reverse charge if it applies. GST is split into CGST + SGST or IGST from the supplier’s state.',
+        'Procurement → Vendor Bills lists the bills. Set a bill to Approved when it is correct: that posts it to the ledger, updates the stock cost, and tells Accounts. Accounts records the payment.',
+        'Debit Note on a bill records an amount the supplier owes back, for example for returned material.',
+      ], { outcome: 'Every supplier bill is on record against its PO and reaches Accounts for payment.', watchOut: 'An approved bill is in the books. Correct it with a debit note, not by editing.' }),
+      feature('inbound', 'Inbound (supplier link)', TruckIcon, [
+        'Every issued PO has one supplier link: the same link the supplier got with the RFQ if there was one, otherwise a link made for the PO. Use the Inbound button on a PO row, in the PO, or on Delivery Lots to open it.',
+        'On that page the supplier (or you, on their behalf) downloads the PO and records the dispatch: lines and quantities, LR / vehicle / tracking details, invoice and e-way bill numbers, and up to 3 photos or PDFs. Recording a dispatch moves those lines to Transit and notifies Stores and Procurement.',
+        'A dispatch can not be changed once Stores has received goods from it.',
+      ]),
+      feature('purchaseReturns', 'Purchase Returns', Undo2Icon, ['Procurement → Returns: Raise Return against an issued PO (wrong spec, damage, over-supply). Set the inspection result, then the stock action (Remove from stock, or Replaced with no stock change), and type the debit note reference.']),
+      feature('requests', 'Purchase requests from other departments', ClipboardListIcon, ['Design and Engineering raise purchase requests from Engineering → Purchase Requests; Stores from Requests. Each one appears in Procurement → Enquiry under PR Items as soon as it is raised.', 'Source it like any other line. Ask the requesting team for missing technical information through a task so the request stays traceable.']),
+      feature('notifications', 'Notifications', BellIcon, [
+        'Supplier sent a quote: goes to whoever created the RFQ and opens Selection at that line.',
+        'New PR waiting in Enquiry, and BOM released with lines waiting: open Enquiry filtered to that request or project.',
+        'Material rejected: QC failed an incoming inspection or rejected a delivery; replace it or raise a return.',
+        'Purchase order needs voiding: a line on an issued PO was cancelled. Supplier dispatched goods: a supplier recorded a dispatch.',
+        'Settings → Alerts lets each person switch an alert off or have it emailed.',
+      ], { outcome: 'You hear about new demand, quotes and problems without checking each tab.', watchOut: 'An alert opens the right screen; the work still has to be done there.' }),
       {
         key: 'suppliers', label: 'Suppliers', icon: Building2Icon, group: true,
         body: ['Suppliers has two parts. Roster is the plain contact list — add, edit, or deactivate a supplier, and see their quote history one at a time. Analysis is a read-only report over the same quotes and purchase orders, rolled up: a Dashboard overview, By Supplier (spend, win rate, activity), and By Item — the "Purchase Card," a price history across every supplier who has ever quoted a material. Nothing under Suppliers needs separate data entry — it all comes from what Enquiry and Purchase Orders already log.'],
         children: [
           feature('suppliers-roster', 'Roster', Building2Icon, [
-            'Add a supplier with name, GST number, contact person, phone, and email — name is the only required field. Expand a row to edit those details or deactivate the supplier, and to see every quote logged against them, most recent first.',
-            'A bulk import (Add supplier card) replaces the whole roster from the client\'s real party-master file — use it for a full refresh, not for adding one supplier.',
-            'Deactivating a supplier removes them from this list and from the picker when logging a new quote, but does not touch their quote history — it stays visible in Analysis.',
+            'Procurement → Suppliers → Roster. Add supplier (top right) opens a form: name, GST number, contact person, phone, email, address and default payment terms. Only the name is required.',
+            'The pencil edits a supplier. The bin removes one: a supplier with no history is deleted; one with quotes, RFQs, orders or bills is switched off instead and leaves every list, with its history kept.',
+            'The bulk import on this tab replaces the whole roster from the party-master file; use it for a full refresh, not to add one supplier.',
           ], {
             value: 'A clean, deduplicated supplier list is what keeps a quote comparison meaningful — "Kirloskar" and "Kirloskar Bros" logged as two different suppliers would quietly split one supplier\'s track record in half.',
             outcome: 'Every supplier you deal with exists exactly once, with current contact details, and a name a Designer or Head can pick confidently while logging a quote.',
@@ -1036,7 +1104,7 @@ export const DEPARTMENT_HELP = {
         ],
       },
       milestoneTrackerFeature([
-        ['Enquiry', 'Automatic', 'Completes once every BOM item on the project has moved past Enquiry into Comparison or further — "all items must clear the stage," not just the first one.'],
+        ['Enquiry', 'Automatic', 'Starts when the BOM is released, or when any line gets a quote or moves past Enquiry. Each later step starts when the one before it completes. Completes once every BOM item on the project has moved past Enquiry into Comparison or further — "all items must clear the stage," not just the first one.'],
         ['Comparison', 'Automatic', 'Completes once every item has moved past Comparison into Ordered or further.'],
         ['Ordered', 'Automatic', 'Completes once every item has moved past Ordered into Transit or further.'],
         ['Transit', 'Automatic', 'Completes once every item has reached a closed status — Received, Cancelled, or In-Stock.'],
@@ -1045,11 +1113,12 @@ export const DEPARTMENT_HELP = {
       feature('overdues', 'Overdues', AlertTriangleIcon, ['Procurement → Overdues lists ordered material whose expected delivery date has passed and that Stores has not received.', 'The date comes from the Delivery Lot for that line, or from the supplier quote when no lot was made.', 'Use Inbound on the purchase order to see what the supplier has recorded as dispatched, then call the supplier or update the lot date.'], { outcome: 'Every overdue line has either arrived or has a new, agreed date.', watchOut: 'A line stays here until Stores receives it. Changing the status by hand hides the problem without fixing it.' }),
     ],
     howTo: [
-      { title: 'Work a new enquiry', body: 'Open Enquiry, confirm the requirement and project, contact suitable suppliers, and record each quote with comparable units and terms.' },
-      { title: 'Compare and select', body: 'Review quote history, choose the technically and commercially suitable quote, and check the draft PO before issuing it.' },
-      { title: 'Issue the PO', body: 'Confirm supplier, lines, quantities, rates, terms, and delivery information. Issue the PO and send the generated PDF through the approved channel.' },
-      { title: 'Track delivery', body: 'Move the item through Ordered and Transit as the supplier confirms dispatch. Keep PO references current so Stores can match the receipt.' },
-      { title: 'Close or cancel', body: 'When Stores confirms receipt, use Received. If an item must be cancelled, follow the cancellation flow and handle any PO void with the supplier.' },
+      { title: 'Work a new enquiry', body: 'Open Procurement → Enquiry, check the line’s description, size and quantity, tick the lines and Create RFQ. Send each supplier their link by WhatsApp or Email.' },
+      { title: 'Compare and select', body: 'Open Procurement → Selection, compare the quotes on each line, and click Select on the one you choose. The line goes onto that supplier’s draft PO.' },
+      { title: 'Issue the PO', body: 'Open Procurement → Purchase Orders, open the draft, check supplier, lines, quantities, rates and terms, then Issue. Send the PDF to the supplier.' },
+      { title: 'Track delivery', body: 'Use Delivery Lots to record expected dates, Inbound to see what the supplier dispatched, and Overdues for lines past their date.' },
+      { title: 'Record the bill', body: 'When the supplier’s bill arrives, open the issued PO, click Record Bill, then approve it in Vendor Bills so Accounts can pay.' },
+      { title: 'Close or cancel', body: 'A line becomes Received when Stores receives it at Inward. To cancel, use Cancel PO, or change the line’s status in Status and tell the supplier.' },
     ],
   },
   Stores: {
@@ -1064,9 +1133,9 @@ export const DEPARTMENT_HELP = {
       architectureFeature('Stores', STORES_DIAGRAM),
       feature('sidebar', 'The Stores sidebar, top to bottom', LayersIcon, [
         'Receiving — Inward: record what physically arrived against a PO line (a partial delivery is fine; the quantity arrived so far is shown). Anything QC has not cleared shows as "Awaiting QC clearance" and cannot be routed or used yet. Gate Entry: the security log of each vehicle that came in (this was called Gate Inward; Dispatch\'s own "Gate Passes" are for material going OUT).',
-        'Fulfillment — Demand: one card per project whose production starts soon (pick the window), showing for each line whether it is Covered, On order (Late if the delivery is after the start date) or Needs action — with who owns the next step (Stores, Procurement or QC). Reserve from stock, Raise PR for a real shortage, or Ask the owning department. Take back / Withdraw undo your own decision while nothing is built on it. Trade Orders: material Sales asked for against a sale order. Indents: Production\'s written requests — release a line, cancel an indent, or tick "Show released & cancelled" for history. Allocator has two tabs: To route (tick Production or Dispatch, then Apply) and Routed (take a decision back while no Production request or packing list exists; reserved stock is listed there too and leaves Stores by itself). Trade Orders also lists their reserved stock with a Hand over button. Inward has three tabs: Search, Bulk by project and Awaiting QC.',
+        'Fulfillment — Demand: one card per project whose production starts soon (pick the window), showing for each line whether it is Covered, On order (Late if the delivery is after the start date) or Needs action — with who owns the next step (Stores, Procurement or QC). Reserve from stock, Raise PR for a real shortage, or Ask the owning department. Take back / Withdraw undo your own decision while nothing is built on it. Trade Orders: material Sales asked for against a sale order. Indents: Production\'s written requests — release a line, cancel an indent, or tick "Show released & cancelled" for history. Allocator has two tabs: To route (tick Production or Dispatch, then Apply) and Routed (take a decision back while no Production request or packing list exists; reserved stock is listed there too and leaves Stores by itself). Trade Orders also lists their reserved stock with a Hand over button. Inward has four tabs: Search, Bulk by project, Awaiting QC and Remnants (offcuts Production sent back: Confirm puts one into stock, Scrap it writes it off).',
         'Orders — Allocator: anything that has arrived (fully or partly) or been reserved from stock lands here so you can decide Production or Dispatch; tick one, then Apply Allocations. Reserved stock stays reserved until it is issued; under the Allocator you also see the reserved stock waiting to be handed over (Issue) or released (Unreserve). When a packing list containing reserved material is marked Dispatched, that stock is issued automatically. Macro Allocator: for orders split into many units — open an order, then Allocate (hand material to units; click the Allocated number to take some back), To route (tick Production or Dispatch for a line and Apply; the pencil picks only some units) and Routed (what went where; the pencil takes it back).',
-        'Production — On Floor: the record of material issued to the shop floor.',
+        'Production — On Floor: the record of material issued to the shop floor. Reports — Stock Statement: opening, added, removed and closing stock per item for any dates.',
         'Inventory (bottom of the sidebar): the stock list itself. Set a Cost per unit (₹) on each item so the stock value in reports is not zero.',
       ], {
         checklist: [
@@ -1077,7 +1146,7 @@ export const DEPARTMENT_HELP = {
         watchOut: 'Old links and notes that say Open Requests, Ready to Issue, Gate Inward or Issued to WIP now mean Demand, the Allocator (Ready to Issue no longer exists — project stock leaves on indent release or dispatch; trade-order stock uses Hand over), Gate Entry and On Floor.',
       }),
       feature('stockreport', 'Stock Movement & Project Consumption report', ClipboardCheckIcon, [
-        'Reports → Stock Movement & Project Consumption shows, for any date range, each item\'s opening stock, what was added, what was removed and the closing stock, with its value, and below that what each project consumed. Download it as PDF or Excel.',
+        'Stores → Stock Statement (the same report as Reports → Stock Movement & Project Consumption) shows, for any date range, each item\'s opening stock, what was added, what was removed and the closing stock, with its value, and below that what each project consumed. Download it as PDF or Excel.',
         'The history is recorded automatically from 30 Sep 2026; earlier dates cannot be reported and the report says so. If a closing balance ever differs from what is on hand now, the report shows a red warning instead of a wrong number.',
         'Value uses each item\'s Cost per unit, so enter it on the Inventory item (Edit) — otherwise value shows 0.00.',
       ]),
@@ -1125,7 +1194,7 @@ export const DEPARTMENT_HELP = {
         ],
         watchOut: 'Procure cannot be undone by re-clicking it — once a line reaches Procurement, treat any further change (need less, cancel outright) as a normal request to Procurement, not something to fix by reversing this button.',
       }),
-      feature('receipt', 'GRN and receipt fields', PackageCheckIcon, ['On the BOM, record GRN reference, quantity received, pending quantity, and BQ-TC reference. These fields tell the rest of the system what physically arrived.', 'Use clear dates and quantities; do not write a total in a field that means pending balance.']),
+      feature('receipt', 'Receiving material (Inward)', PackageCheckIcon, ['Stores → Inward → Search: find the line by material, project, PR or PO number, or pick a date filter (Overdue, Due today, Due this week). Each line shows its make, supplier, PO and expected date. Click Receive.', 'In the Receive dialog enter the quantity that arrived (it starts at what is still outstanding and shows how much has been received so far), pick or create the receipt (supplier, GRN reference), and fill any heat number, MTC, batch or serial details the line requires. If the same request was split across projects, tick the others and enter their quantities.', 'A line raised with no project asks whether to assign it to a project now or store it in inventory.', 'Bulk by project receives many lines of one project under one receipt. Every receipt waits for QC under Awaiting QC; once QC approves it the material counts as stock and the line appears in the Allocator.']),
       feature('remnant', 'Cutting & Remnant Matching', ScissorsIcon, [
         'A plate or section line in Inventory can hold real physical pieces instead of one plain quantity — each piece has its own dimensions, a computed weight, and a status (available, reserved, consumed, or scrap).',
         'The moment Design releases a matching BOM, a fitting piece reserves itself automatically. You will see it in Demand, not as something you did.',
@@ -1136,30 +1205,30 @@ export const DEPARTMENT_HELP = {
           'Add each physical piece under that line: click the layers icon next to it → Add piece → enter length/width/thickness for a plate (or length + kg per metre for a section) and density.',
           'Watch for the "Remnant reserved" badge in Demand — that line already found its match and needs nothing from you. A plain "Stores Review" line still needs your usual Reserve/Procure decision.',
           'If a matched line\'s requirement changes or gets cancelled, open its piece (layers icon) and click Release to free it back to available stock for the next match.',
-          'Cutting itself is Production\'s action, not Stores\' — from their BOM tab for a matched line, or from their Planning tab\'s Cut for a piece with no BOM match. You will see the result here either way.',
+          'Cutting is Production\'s action (Shop Floor → Remnants → Cut). An offcut they keep comes back to Stores → Inward → Remnants: click Confirm to put it into stock, or Scrap it.',
         ],
       }),
-      feature('sas', 'In-Stock and SAS material', BoxesIcon, ['Stock and Sold-As-Such items can follow the same sourcing and status flow without being attached to a normal project milestone chain.', 'Check the source and project context before issuing stock so the inventory movement remains auditable.', 'SAS is Sales-initiated, not Stores-initiated — Sales raises a trade request against their own Sale Order (from their Sale Orders tab) and it lands directly in your Requests queue. You no longer raise a SAS line yourself; only Build stock requests (source \'stock\') are still something Stores raises through Requests.', 'A SAS request goes through the exact same Allocation Mode as a Project BOM line — in Automatic mode it tries to reserve itself against stock the same way, only a shortfall reaches Procurement.']),
+      feature('sas', 'Trade Orders (SAS) and Build stock', BoxesIcon, ['Stores → Trade Orders lists material Sales asked for against a SAS sale order (Sales uses Request Stores on the order). Reserve it from stock or send it to Procurement, the same as a project line; Hand over when it leaves Stores.', 'A trade request follows the same Allocation Mode as a project line: in Automatic mode it reserves itself from stock and only a shortage reaches Procurement.', 'Build stock is how Stores buys for its own shelves: Requests → Purchase Requests, set Kind to Build stock, pick the inventory item and the quantity to build. When it is received the stock goes up.', 'Stores does not raise trade (SAS) requests; those come from Sales.']),
       feature('notifications', 'Notifications', BellIcon, [
         'You receive a notification the moment new material demand exists, from any of two sources: Engineering/Design importing a BOM workbook or adding a single BOM item, or any department raising a purchase requisition line — including Sales pushing a SAS material request against their own Sale Order.',
-        'A SAS request from Sales reaches you the same way any new demand does: same Requests queue, same notification, no separate inbox to check and no need for Sales to message you separately.',
+        'A trade request from Sales shows under Trade Orders and sends the same notification; there is no separate inbox and no need for Sales to message you.',
         'You also receive a notification the moment Procurement marks a BOM line Received, so you know material has actually arrived for a project (named by project number), landed as stock, or been received against a SAS trade request, without opening the BOM yourself to check.',
         'You receive a notification if a reservation gets released on a line that\'s still in Stores Review (see Manual review) — that line needs a fresh Reserve/Procure decision, and this is how you find out instead of it quietly sitting unresolved in Demand.',
-        'This is the same bell every internal department uses, top right of the app. It is automatic for everyone with Stores access; nothing here is a toggle you turn on or off.',
+        'Other Stores alerts: Production raised an indent, QC approved or rejected an inward review, a remnant came back from Production, a supplier recorded a dispatch, and material shortages for projects starting soon.', 'All of these arrive on the bell at the top right. Settings → Alerts lets each person switch an alert off or have it emailed.',
       ], {
         value: 'Before this, Demand only told you what had already landed if you thought to check it, and a Received line was invisible until you happened to look. The notification exists so both a fresh requirement and material actually arriving reach you the moment either happens.',
         outcome: 'Every new demand — a BOM import, a single item, a purchase requisition line — and every Received line reaches Stores through one bell, with enough context (who raised it, which project, how many lines) to act without opening the BOM to check.',
         checklist: [
-          'Treat the bell as the trigger to open Requests, not a substitute for actually reserving or issuing material.',
+          'Treat the bell as the trigger to open Demand or Inward, not a substitute for actually reserving or issuing material.',
           'A SAS notification from Sales needs the same judgment as any other new requirement — check the description and quantity are specific enough before reserving.',
           'A "Procured" notification is your cue to check whether Stores already reserved something against that same line before — reconcile it rather than treating the arrival as automatically new demand.',
           'Do not wait for a notification for material that\'s clearly already overdue on a project you can see in the BOM — the bell covers new demand and new arrivals, not a daily sweep.',
         ],
         watchOut: 'The notification tells you demand exists or material arrived; it does not tell you whether stock is available or already reserved. Still check Inventory (or the possible-match badge) before promising anything back to the requester.',
       }),
-      feature('issues', 'On Floor (material issued to the shop floor)', PackageCheckIcon, ['Log material leaving Stores for the shop floor — pick the project, the BOM item, and the quantity. This is a separate action from Reserve→Issue: it does not touch on-hand or purchase status, it is purely a record of what physically went to WIP and when.', 'Production can log the same event from their own BOM view — either side recording it is fine, there is no duplicate-entry conflict since each is just an append-only log row, not a status change.']),
+      feature('issues', 'On Floor (material issued to the shop floor)', PackageCheckIcon, ['Stores → On Floor lists what has left Stores for the shop floor, newest first. Material released against a Production indent appears here by itself.', 'Log an issue records material that left outside an indent: pick the project, the BOM item and the quantity.']),
       feature('reorder', 'Reorder suggestions', AlertTriangleIcon, [
-        'Every item at or below its minimum stock level (the same "Low" flag Inventory already shows) appears under Requests → Purchase Requests → Reorder Suggestions (the same "Requests" tab you already use to raise material demand) with a suggested replenishment quantity — minimum minus available, editable before you commit.',
+        'Every item at or below its minimum stock level (the same "Low" flag Inventory already shows) appears under Requests → Reorder Suggestions (Requests is in the top bar) with a suggested replenishment quantity — minimum minus available, editable before you commit.',
         'Create request turns a suggestion into a real Build stock request through the same flow Inventory\'s own stock-request path already uses — it lands in Demand as an ordinary Enquiry line, same as if you\'d raised it by hand.',
         'Nothing is created automatically. A suggestion stays a suggestion — visible, editable, ignorable — until you click Create request; and once you do, that item drops off this list until it needs reordering again.',
       ]),
@@ -1172,6 +1241,13 @@ export const DEPARTMENT_HELP = {
         'This is a standalone security-desk log, not part of the reserve/available inventory model — creating a GIR never touches on-hand stock by itself.',
       ]),
       feature('tasks', 'Tasks and handoffs', ListChecksIcon, ['Use Tasks for a missing document, a receipt question, or a delivery follow-up. Close the task when the physical or documentary action is complete.', 'Operations now shows Outgoing and Incoming Incidents for Stores, split by direction — same pattern Procurement already has. Raising one from either card sends a real notification to the other department immediately; there is nothing extra to do beyond filling in the Raise dialog.']),
+      feature('requests', 'Requests (purchase requests from Stores)', InboxIcon, [
+        'Requests is its own screen in the top bar. Its tabs: Purchase Requests, PR History, PR Templates and Reorder Suggestions.',
+        'Purchase Requests: choose the Kind. Project material is a line for a project (or No project). Build stock is a line to refill an inventory item. Pick the item, quantity, MOC and size, then Raise PR. It goes straight to Procurement’s Enquiry tab.',
+        'PR History lists every request and its status; the pencil edits a line (Head only). PR Templates saves lines you raise often, and for Stores also holds BOM templates that can be applied to a project.',
+        'From Demand you can also Raise PR for a real shortage on a project line; that links the request to the existing line instead of creating a second one.',
+      ], { outcome: 'Stores can buy for a project or for stock without leaving a paper trail outside the app.', watchOut: 'Reserve what is already in stock first. A line with stock reserved can not also be raised as a PR.' }),
+      feature('no-milestones', 'Milestones and Stores', Clock3Icon, ['Stores has no milestones of its own on the Milestone Tracker. Your work moves other departments\' milestones: marking material Received moves Procurement\'s Transit and Procured steps, and releasing material to a project starts Production\'s first milestone.', 'What is waiting on Stores shows on the project as "Currently With: Stores" and in Stores → Demand, not as a milestone.'], { outcome: 'You know which of your actions move a project forward.', watchOut: 'A line left un-received keeps Procurement\'s milestones open for the whole project.' }),
     ],
     howTo: [
       { title: 'Receive material (Inward)', body: 'Open Receiving → Inward, find the line (search, or filter by expected date), click Receive, enter the quantity that actually arrived — a part delivery is fine — plus the supplier/GRN details. The line then waits for QC clearance; once QC approves it, it appears in the Allocator.' },
@@ -1180,7 +1256,7 @@ export const DEPARTMENT_HELP = {
       { title: 'Hand over trade-order stock', body: 'Trade Orders → Reserved — hand over: click Hand over when the material actually leaves Stores for a trade order. It lowers on-hand and marks the line In-Stock. Project material needs no such step: it leaves Stores when Production\'s indent is released or the packing list is dispatched. For material that is physically leaving for the shop floor outside an indent, use On Floor instead — pick the project and BOM item and log the quantity.' },
       { title: 'Handle a mismatch', body: 'Do not force a receipt into the wrong line. Raise a task to Procurement or Engineering with the PO, material description, and actual quantity.' },
       { title: 'Close the loop', body: 'Make sure the BOM receipt fields, inventory quantity, and reservation state agree before closing the Stores task.' },
-      { title: 'Act on a reorder suggestion', body: 'Requests → Purchase Requests → Reorder Suggestions, check the suggested quantity against what you actually want to hold, adjust it if needed, and click Create request. Reserve from stock first if a request in Demand could be filled from what you already have — Reorder Suggestions is for topping up depleted stock, not a substitute for reserving.' },
+      { title: 'Act on a reorder suggestion', body: 'Open Requests → Reorder Suggestions, check the suggested quantity against what you actually want to hold, adjust it if needed, and click Create request. Reserve from stock first if a request in Demand could be filled from what you already have — Reorder Suggestions is for topping up depleted stock, not a substitute for reserving.' },
       { title: 'Log a Gate Entry (GIR)', body: 'The moment a vehicle enters with material, log a GIR: vehicle, supplier, driver, a material reference, and the two security checks. Enter at least a vehicle number or supplier — a blank GIR is not a real record.' },
       { title: 'Close a Gate Entry', body: 'Once the material is actually received (via Procurement\'s GRN or your own confirmation), enter the GRN reference on the GIR row and click Close. Close is disabled until a GRN reference exists — a closed GIR always means the receipt is real, not just that the gate visit is over.' },
       { title: 'Route material in the Allocator', body: 'Open Orders → Allocator. Every line that has arrived (fully or partly) or been reserved from stock is listed. Tick Production (it needs fabrication) or Dispatch (goes straight to packing) — the tick is pre-filled from the line — select the lines and click Apply Allocations. Reserved stock stays reserved until the packing list leaves the gate; dispatching it issues the stock automatically.' },
@@ -1189,261 +1265,137 @@ export const DEPARTMENT_HELP = {
       { title: 'Undo a decision', body: 'Nothing here deletes a BOM line. Take back what you decided while nothing is built on it: Take back (Demand reservation), Withdraw (a Build Stock or Trade Order line nobody has ordered), Un-procure (a PR Procurement has not started), the pencil in Allocator/Macro Allocator "Routed" (routing), and the Allocated number on a unit (allocation). If something downstream already exists you are told what blocks it. To cancel a project line, use Ask Engineering to cancel.' },
       { title: 'Set the cost of an item', body: 'Inventory → Edit an item → Cost per unit (₹). Stock value in reports uses it. Items bought through Procurement get their cost updated automatically when the vendor bill is approved.' },
       { title: 'Delete an inventory item', body: 'Inventory → the bin icon. Only an item with no stock and no history (never received, reserved, issued or returned) can be deleted; otherwise it is kept for the record and you are told why.' },
-      { title: 'Get the stock statement', body: 'Reports → Stock Movement & Project Consumption: choose From/To dates to see opening, added, removed and closing stock per item and what each project consumed; download PDF or Excel.' },
+      { title: 'Get the stock statement', body: 'Stores → Stock Statement (or Reports → Stock Movement & Project Consumption): choose From/To dates to see opening, added, removed and closing stock per item and what each project consumed; download PDF or Excel.' },
+      { title: 'Raise a purchase request', body: 'Open Requests (top bar) → Purchase Requests. Kind Project material buys for a project (pick the project, or No project); Kind Build stock buys for your shelves (pick the inventory item). Add the lines and click Raise PR. It goes to Procurement’s Enquiry tab. PR History shows it afterwards.' },
+      { title: 'Confirm a remnant from Production', body: 'Stores → Inward → Remnants lists offcuts Production kept after cutting. Put the piece on the shelf and click Confirm; it becomes free stock. Use Scrap it if it is not worth keeping.' },
     ],
   },
   Production: {
     title: 'Shop Floor', icon: HardHatIcon,
     intro: [
-      'Production plans and records shop-floor execution against the real milestone chain used on the shop floor — Marking/Cutting through Drilling, Shell Welding, Site Marking, the FURA-B/RC/AR and Box-Up welds, Tubes & Stay Rods, Pad Plates, Smoke Box, Refractory, and Painting — plus Hydro Test, which moved here from QC because Production is who actually runs it day to day.',
-      'Job Card is now your main tab, and it opens on the board by default because that is what gets touched most during the day. Work Orders, BOM, Forecast, Daily Sheet, and Workers Roster sit underneath it as sub-tabs — the old separate Tasks and Home tabs are gone because they showed the same calendar Home already shows everyone.',
-      'The top nav tab for all of this is now called Shop Floor, not Production — it is execution and tracking of what is being built right now. A separate Planning tab sits next to it for look-ahead work: the Material Plan, Schedule, Capacity, and Cut.',
+      'Shop Floor is where Production records the work on each job: the Job Card with its stages, handing finished work to Dispatch, asking Stores for material, cutting plate and section, and the workers’ daily sheet.',
+      'The Shop Floor sidebar has three groups. Shop Floor: Job Card and Dispatch. Resources: Material Indent, Remnants and Workers. Sign-off: Approvals.',
+      'A separate Planning tab in the top bar holds the look-ahead: Material Plan, Schedule, Capacity, Cut and Backlog.',
     ],
     introFlow: {
-      heading: 'How a Work Order (or a one-off card) becomes a completed milestone',
-      subheading: 'Two ways in, one shared execution path.',
+      heading: 'From material to a finished job',
+      subheading: 'What Production does, in order.',
       stages: [
-        {
-          boxes: [
-            { title: 'Work Order', body: 'Against a customer order (linked project + BOM) or against stock — the production order for a whole batch.' },
-            { title: 'Job Card (ad hoc)', body: 'A one-off, created directly from the board — skips straight to Job Card execution below.' },
-          ],
-          arrowNote: 'The Work Order path continues below; an ad hoc card already is a Job Card.',
-        },
-        {
-          boxes: [{ title: 'Process Route Card', body: 'One row per production step — operation, workstation, and (optionally) a real milestone.' }],
-          arrowNote: 'Release the Work Order, then Generate Job Cards.',
-        },
-        {
-          boxes: [{ title: 'Job Cards generated', body: 'One Job Card per route step, created in a single action — already linked to the right milestone.' }],
-          arrowNote: 'Both paths now have real Job Cards to work.',
-        },
-        {
-          boxes: [{ title: 'Job Card execution', body: 'Hours, consumables, and quantity done/rejected are logged here, on every card, from either path.' }],
-          arrowNote: 'Once every card against a milestone is Done —',
-        },
-        {
-          boxes: [{ title: 'Milestone completes automatically', body: 'No manual close needed for these — and Forecast / Work Order Costing read straight off this same data.' }],
-        },
+        { boxes: [{ title: 'Material Indent', body: 'Stores routes material to Production. Shop Floor → Material Indent → To indent: tick the lines and create the indent. Stores releases it.' }], arrowNote: 'Plate and section pieces reserved for you show under Remnants → Cut.' },
+        { boxes: [{ title: 'Job Card', body: 'Shop Floor → Job Card → New Job Card for the project. Start and Finish each stage as the work is done.' }], arrowNote: 'Finish alerts QC.' },
+        { boxes: [{ title: 'QC sign', body: 'QC signs each finished stage from QC → Approvals → Job Card Stages, or sends it back.' }], arrowNote: 'Starting the DISPATCH stage opens the hand-over.' },
+        { boxes: [{ title: 'Hand over to Dispatch', body: 'Tick the finished subsystems and hand over. They go onto the project’s draft packing list.' }], arrowNote: 'Production also approves the packing list before it leaves.' },
+        { boxes: [{ title: 'Milestones', body: 'The Production milestones start with the first stage and close when every stage of every job card is QC-signed.' }] },
       ],
     },
     features: [
       architectureFeature('Production', PRODUCTION_DIAGRAM),
-      feature('jobcards', 'Job Card board', HardHatIcon, ['Create a card against a real project milestone — the picker is Project then Milestone, not a typed description — and it carries an operation, workstation, and planned quantity if you know them yet.', 'Click a card to log hours against a named worker (filtered to their trade), add consumables like rods or gas, update planned/done/rejected quantity, pause and resume, and see the labor cost run as hours are logged.', 'Mark a card Outside for subcontracted work or Site for work done at the customer’s location instead of the shop — both show as a badge on the card so they are never mistaken for ordinary shop-floor work.', 'A failed test or a rejected quantity does not need a new form from scratch — Create rework card on the original card spins up a linked pending card against the same milestone.']),
-      feature('workorders', 'Work Orders', ClipboardIcon, [
-        'A Work Order is the production-control record that sits above Job Cards — either Against a customer order (linked to a Project/Sale Order and its released BOM) or Against stock (a replenishment run with no customer project).',
-        'Build its Process Route Card first — the operation sequence, work centre, planned time, and quality checkpoints, each step optionally mapped to a real Production milestone so the existing milestone automation still fires.',
-        'Add its material requirements — pull straight from the project BOM when the Work Order is against an order (issued quantity then reads live off Stores\' own material-issue log, nothing to keep in sync by hand), or add items directly with a manual issue log for a stock Work Order.',
-        'Release it, then Generate Job Cards to spawn the real execution cards for every route step in one action instead of creating them by hand. Progress, delays, and rework roll up automatically from those linked cards.',
-        'Once released, quantity/dates/product description can only move through a Change Note — a logged reason plus the old and new value — never a silent edit to the baseline.',
-        'Load Costing on a Work Order for planned vs. actual material and labor; outside/subcontracted job cards are listed separately since this app has no vendor cost field for job-work.',
+      feature('jobcards', 'Job Card', HardHatIcon, [
+        'Shop Floor → Job Card shows one tile per job. New Job Card: pick the project (or the unit of a split order), enter the job number, and choose the card: Boiler (33 stages) or APH, the air pre-heater card (16 stages, with the owner/fitter name). A project can have more than one card.',
+        'Open a card to see its stage table, laid out like the paper job card: stage, start date, end date, fitter/welder, test certificate, Production sign, inspection date, QC sign and remarks.',
+        'For each stage: pick the fitter/welder and click Start; today is stamped as the start date. Click Finish when the stage is done: the end date and your name as Production sign are stamped, and QC is alerted. QC then signs the stage or sends it back; a stage sent back is done again and finished again.',
+        'You can link a test certificate to a stage, type remarks, attach a scan of the paper card (Job card scan), and print the card in the paper layout.',
+        'Starting the DISPATCH stage tells Dispatch and opens the hand-over overlay on the card (see Dispatch below).',
       ]),
-      feature('forecast', 'Forecast', TrendingUpIcon, ['Upcoming Work Orders, workstation load, and outstanding material demand for the next 30 days — built from real released/in-progress Work Orders, their route cards, and their material lines, not a prediction model.', 'A workstation shows Overloaded once its open route-card time exceeds a flat single-shift assumption for the horizon — a signal to re-route or add a shift, not a hard limit.']),
-      feature('bom', 'BOM, fabrication progress, and material issue', ClipboardListIcon, ['Pick a project to see its Master BOM, scoped to the fields Production owns (issued/received references) — the same table Engineering, Procurement, and Stores see, just field-scoped to what you are allowed to change.', 'The fabrication progress bars on this tab come directly from Job Card completion per milestone, so they only move when real cards are actually being closed out.', 'Issue material against a BOM line here when it leaves Stores for the shop floor — Production can record this now, the same authority you already had over issued/received references, just structured instead of free text.']),
-      feature('remnant', 'Cutting & Remnant Matching', ScissorsIcon, [
-        'Every plate or section BOM line shows in a "Cutting & remnant" list on the BOM tab. A "Reserved — ready to cut" badge means the system already found a matching piece in Stores for you.',
-        'You only ever declare what you actually cut — how much was used and what usable offcut you kept. Weight, scrap, and the stock update are all computed for you.',
-      ], {
-        checklist: [
-          'Open Job Card → BOM, pick the project, and find the "Cutting & remnant" list — every plate/section line shows here, whether or not it was matched.',
-          'A "Reserved — ready to cut" badge means a piece is already waiting — click Cut and the source piece plus its exact required size are pre-filled for you.',
-          'No badge just means pick a source piece yourself — click Cut, then Find stock, choose the stock line, then the piece.',
-          'Confirm the pre-filled Used dimensions (or adjust to what was actually cut), and add a Remnant row for any usable offcut you are keeping — weight for both updates live as you type.',
-          'Click Cut. The remnant goes straight back into Stores as available, the leftover becomes scrap automatically, and you never calculate a weight by hand.',
-          'A piece with no matching BOM line — no MOC set, or a grade nothing in any project needs right now — has no "Reserved" badge to click through here. Use the Cut tab on Planning instead: pick the item, pick the piece, cut it the same way, just without a project attached.',
-        ],
-      }),
-      feature('planning', 'Planning', ClipboardListIcon, [
-        'Planning is its own top-level tab, for Production. Stores sees the same material plan in its Demand tab. Material Plan answers one question per BOM line: can we cover it? It shows what is needed, what is already received or reserved, what free stock or a matching remnant could cover, what is on order and when it arrives, and what is still short, with the next step as a button.',
-        'Schedule shows every released Work Order as a bar on a date axis with progress, a Delayed flag and a dot for whether its material is covered. Capacity shows each workstation\'s load against its weekly capacity, week by week; click a cell to see which Work Orders fill it, and use Set capacity to enter shifts, hours and working days.',
-        'Cut lets you cut a piece-tracked stock piece that Stores has reserved against a Material Indent. If the piece carries a test certificate you must say which project it is cut for, and you can add a short note on why. Backlog lists things found but not yet built.',
-      ], {
-        checklist: [
-          'Start the day on Material Plan with the Needs attention filter: anything Late, Needs decision or Sourcing for a project starting soon is marked Due soon.',
-          'Buttons never cross a department: if you cannot reserve stock yourself the button reads Ask Stores and sends Stores a task instead.',
-          'Lines marked BOM not released are waiting for Design to release the BOM and are not counted as shortages yet.',
-          'Check Capacity before releasing a Work Order: a red cell means that workstation is over its weekly capacity.',
-        ],
-      }),
-      feature('indent', 'Material Indent', ClipboardListIcon, [
-        'When Stores routes material to Production it shows up in your Material Indent list. Tick the lines you need (they are grouped by project), then Create Material Indent: one indent with all of them. Stores releases each line; a PDF of the live state is always available.',
-        'On an order split into many units, indents are per unit: each line shows its unit, and "already indented" is counted per unit, so indenting unit 1 never hides unit 2.',
-        'A line already fully covered by an indent is not offered again, even if Stores has released only part of it — wait for the release, do not raise a second indent for the same material.',
-      ], {
-        checklist: [
-          'Raise the indent for what you need now; you can raise another later for more.',
-          'Check the status (open, partly released, released, cancelled) before chasing Stores.',
-        ],
-      }),
       feature('dispatchHandover', 'Dispatch (hand over finished subsystems)', TruckIcon, [
-        'Shop Floor → Dispatch is where finished work leaves Production. The project BOM no longer has a "Prod. Done" tick — whether something is done is now worked out from what you hand over here.',
-        'To hand over lists one row per finished subsystem (a first-level BOM group, or an item that stands alone), grouped by project. Search or filter by project, and use Collapse all to tidy the page. Enter the quantity finished and hand over.',
-        'The overlay asks two short questions. If the project already has a packing list that is packed, under review or dispatched, it asks whether the next handover starts a fresh draft or goes onto that same list (the list is then pulled back to draft). It always asks whether Production approves the dispatch now — if you say "Not yet", you can still approve it later from Approvals.',
-        'Handed-over items are placed on the project\'s open packing list automatically (a draft is created if there is none) and Dispatch is notified. Handed over lists what you sent and lets you undo a handover while its packing list is still a draft or ready.',
-        'For a split order, hand over per unit; each unit\'s items go to that unit\'s own packing list.',
+        'Shop Floor → Dispatch is where finished work leaves Production. Nothing is ticked on the project BOM; whether a line is done is worked out from what you hand over here.',
+        'To hand over lists the finished subsystems (first-level BOM groups) of material Stores routed to Production, grouped by project. Search or filter by project. Tick the finished subsystems, add a note if needed, and click Hand over to Dispatch.',
+        'The overlay asks two things. If the project’s last packing list is already packed, choose Start a new draft list or add to that list (it goes back to draft). And always: does Production approve these items for dispatch, Yes or Not yet. If you answer Not yet you can approve later from Approvals.',
+        'Handed-over items are placed on the project’s draft packing list automatically (a draft is created if there is none) and Dispatch is notified. Handed over lists what you sent; Undo works until the packing list is packed.',
+        'For a split order, hand over per unit; each unit’s items go to that unit’s own packing list. The same overlay opens when you start the DISPATCH stage of a job card.',
       ]),
-      feature('milestones', 'Production milestones', RouteIcon, ['Start a milestone when work really begins and close it only when the deliverable is actually complete; closing late asks for a reason so the project history explains the delay.', 'Use Stages under a milestone for repeatable checklist steps instead of inventing a new milestone for every variation.']),
-      feature('tests', 'Hydro Test', FlaskConicalIcon, ['Hydro Test now belongs to Production end to end — you own the milestone and the test record itself (result, reference number, inspector, tested-on date), which you did not before.', 'Every other test type — radiography/NDE, material test certificates, freeform — stays QC’s; this tab only ever shows and creates Hydro Test records.']),
+      feature('indent', 'Material Indent', ClipboardListIcon, [
+        'Shop Floor → Material Indent → To indent lists material Stores has routed to Production, grouped by project. Search, filter by project, tick the lines you need and create the indent; one indent is made per project. Stores releases each line.',
+        'Raised lists every indent with its status (open, partly released, released, cancelled), a progress bar and a PDF of its current state.',
+        'On an order split into many units, indents are per unit: each line shows its unit, and “already indented” is counted per unit.',
+        'A line already fully covered by an indent is not offered again, even if Stores has released only part of it. Wait for the release; do not raise a second indent for the same material.',
+      ], {
+        outcome: 'Stores knows exactly what Production needs for which project, and the release is on record.',
+        checklist: ['Raise the indent for what you need now; you can raise another later for more.', 'Check the status under Raised before chasing Stores.'],
+        watchOut: 'Only material Stores has routed to Production appears. If a line is missing, ask Stores to route it in their Allocator.',
+      }),
+      feature('remnant', 'Remnants (cutting plate and section)', ScissorsIcon, [
+        'Shop Floor → Remnants → Cut lists every plate or section piece reserved for your work. Click Cut on a piece: the size the BOM line needs is filled in for you.',
+        'Enter what was actually used and add a Remnant row for any usable offcut you keep. A plate cut must fit inside the plate (thickness is fixed); a pipe, bar or angle cut must fit its length. Weights and scrap are worked out for you.',
+        'The offcut goes to Returns to Stores and waits for Stores to confirm it on their Inward → Remnants tab; then it is free stock for the next job. Scrap it writes off an offcut not worth keeping.',
+      ], {
+        outcome: 'Each cut is recorded with what was used, what came back and what was scrapped.',
+        checklist: ['Cut from the piece reserved for the line, not a different one.', 'Declare the offcut you really kept; do not type weights.'],
+        watchOut: 'A cut can not be undone. Check the sizes before you confirm.',
+      }),
+      feature('attendance', 'Workers (daily sheet and roster)', CalendarDaysIcon, [
+        'Shop Floor → Workers has three parts. Overview: the day’s headcount and attendance percentage. Sheet: mark each worker present, half-day or absent and the project they worked on. Workers Roster: the list of shop-floor workers.',
+        'A worker is an HR employee record. Add worker searches HR first; if the person exists you add them to the roster instead of creating a second record. Trade is picked from a list (Welder, Fitter, Gas Cutter, Machinist, Grinder, Painter, Rigger, Helper).',
+        'The sheet writes to the same attendance record HR uses. Switch a worker off when they leave; do not delete them.',
+      ]),
+      feature('approvals', 'Approvals (packing lists before dispatch)', ClipboardCheckIcon, [
+        'Shop Floor → Approvals lists packing lists Dispatch has submitted for review. Open one and Approve or Reject; a reason is optional. QC decides separately; the list can be dispatched only when both approve.',
+        'If you already approved the items when handing them over, Production’s part is filled in.',
+      ], { outcome: 'Nothing leaves without Production’s decision on record.', watchOut: 'Only the Production Head can decide.' }),
+      feature('planning', 'Planning', ClipboardListIcon, [
+        'Planning is its own tab in the top bar. Material Plan answers one question per BOM line: can we cover it? It shows what is needed, what is received or reserved, what free stock or a matching remnant could cover, what is on order and when it arrives, and what is short, with the next step as a button. If you can not do that step yourself the button reads Ask Stores or Ask Procurement and sends a task.',
+        'Schedule and Capacity are drawn from Work Orders: bars on a date axis, and each workstation’s load per week (Set capacity enters shifts, hours and working days). Work Orders are not created in the app at present, so both only show Work Orders already in the system.',
+        'Cut cuts a piece-tracked stock piece for a project; Shop Floor → Remnants → Cut is the usual place. Backlog is a list of notes on things not yet built.',
+      ], {
+        outcome: 'You know before production starts which lines are covered and which are short.',
+        checklist: ['Start on Material Plan with the Needs attention filter.', 'Lines marked BOM not released are waiting for Design and are not shortages yet.'],
+        watchOut: 'Quantities assume the BOM line and the stock use the same unit.',
+      }),
+      feature('tests', 'Hydro test', FlaskConicalIcon, ['HYDRAULIC TEST is a stage on the boiler job card: start it, finish it, and QC signs it like any other stage.', 'The Hydro Test record itself (result, reference number, inspector, date) is kept in QC → Test Records, on the Hydro Test card. Adding or editing it needs Production access, and opening that screen needs QC access, so today it is entered by someone who holds both, or by a manager. A Pass there completes the Hydro Test milestone; a Fail has a button to create a rework job card.']),
       milestoneTrackerFeature([
-        ['Marking/Cutting through Painting (11 milestones)', 'Automatic', 'Each one completes once every job card raised against it on the Job Card board reaches Done — no card raised yet means the milestone stays open, not "trivially done."'],
-        ['Hydro Test', 'Automatic', 'Completes once a Hydro Test record for the project is logged with a Pass result.'],
+        ['Marking, Cutting, Rolling Shell', 'Automatic', 'Starts when the first job card stage of the project is started or finished, when Stores releases material to the project, or when a piece is cut for it.'],
+        ['Drilling, Shell Welding, Site Marking, Welding (FURA-B / RC / AR), Box Up, Box Up Welding, Tubes & Stay Rods, Pad Plates / Saddles / Nozzles, Smoke Box / Feed Line / Ladder, Refractory, Painting', 'Automatic', 'All twelve Production milestones (these and Marking/Cutting) complete together once every stage of every job card of the project is finished and QC-signed. Job card stages do not map one-to-one to milestones, so they do not close one by one; close one by hand from the project page if you need it shown earlier.'],
+        ['Hydro Test (HT)', 'Automatic', 'Completes only when a Hydro Test record with result Pass is saved (QC → Test Records → Hydro Test card). A QC sign on the HYDRAULIC TEST job card stage does not close it.'],
       ]),
-      feature('employees', 'Workers Roster', UsersIcon, ['A Production worker is an HR employee record, not a separate roster — Add worker searches HR first, and if the person already exists you activate them onto Production instead of risking a second, slightly-misspelled entry for the same human.', 'Only create a new person when the search genuinely finds nobody. Trade is a controlled list (Welder, Fitter, Gas Cutter, Machinist, Grinder, Painter, Rigger, Helper), not free text, so job cards can filter workers by skill — designation stays HR’s field, not yours.', 'Deactivate rather than delete a worker who has left — their attendance and job-card history has to stay readable.']),
-      feature('attendance', 'Daily Sheet', CalendarDaysIcon, ['Overview and Sheet live under one Daily Sheet tab now. Overview is the day’s headcount and attendance percentage; Sheet is where you actually mark present/half-day/absent and the project/milestone someone worked on.', 'This writes to the same attendance record HR reads from — there is no separate Production attendance system to keep in sync by hand anymore.']),
-      feature('handoff', 'Department handoffs', MessageSquareIcon, ['Use tasks and notifications when Production needs a response from QC, Stores, Dispatch, or another department. A closed milestone should create a visible next action where configured.', 'Do not close a blocked job just to remove it from the screen; record the blocker and delay reason.']),
+      feature('notifications', 'Notifications', BellIcon, [
+        'Material ready to request: Stores routed material to Production; open Material Indent. Material released to you: Stores released your indent.',
+        'Job card stage sent back: QC returned a stage. NCR decided: QC decided how to handle a non-conformance.',
+        'Packing list waiting for sign-off (Production Head): Dispatch submitted a list; open Approvals.',
+        'Settings → Alerts lets each person switch an alert off or have it emailed.',
+      ], { outcome: 'You hear when material is ready, released, or a stage needs redoing.', watchOut: 'An alert opens the right screen; the work still has to be done there.' }),
+      feature('handoff', 'Tasks and requests to other departments', MessageSquareIcon, ['To ask QC, Stores, Dispatch or another department for something, open Operations and use Raise on the Incidents card, or Raise on the project page. They are notified at once.', 'Your own follow-ups go on Home → Tasks.']),
     ],
-    // How To is split into one focused walkthrough per real action (like Notifications' Customer /
-    // Departmental split above) instead of one long generic chain — pick the page for the thing you
-    // are actually trying to do, not the department, and it stays a short, complete answer.
     howToGroups: [
       {
-        key: 'howto-jobcard', label: 'Create a Job Card', icon: HardHatIcon,
+        key: 'howto-jobcard', label: 'Create and work a Job Card', icon: HardHatIcon,
         steps: [
-          {
-            title: 'Open the board', body: 'Open Job Card. It lands on the board by default, grouped Pending / In progress / Done — check what is already moving before creating anything new.',
-            why: 'Starting from the board gives you the real current state of every project before you plan or create anything new.',
-            verify: 'You know what is already Pending, In progress, and Done before deciding what to do next.',
-          },
-          {
-            title: 'Create the card correctly', body: 'New job card, then pick the real Project and Milestone — not a typed guess. Add a workstation, planned quantity, and Outside/Site flags if either applies. Use this for a one-off, or anything a Work Order\'s route card didn\'t cover — for a whole new batch, set up a Work Order instead (see that guide).',
-            why: 'A card tied to the real milestone is what keeps the fabrication percentage and milestone automation correct — a guessed one quietly breaks both.',
-            verify: 'Required fields are complete and the milestone/project genuinely matches the work.',
-          },
+          { title: 'Create the card', body: 'Open Shop Floor → Job Card and click New Job Card. Pick the project (or unit), enter the job number and choose Boiler or APH.', why: 'The card is the record every later step hangs on.', verify: 'The new tile shows the right project and job number.' },
+          { title: 'Start and finish each stage', body: 'Open the card. On the stage being worked, pick the fitter/welder and click Start. When the work is done click Finish.', why: 'Start and Finish stamp the real dates and your sign, and Finish alerts QC.', verify: 'The stage shows its start date, end date and Production sign, and reads Waiting on QC.' },
+          { title: 'Act on a stage QC sent back', body: 'You are notified. Redo the work, then Start and Finish the stage again.', why: 'A sent-back stage is not complete until QC signs it.', verify: 'The stage is finished again and waiting on QC.' },
         ],
       },
       {
-        key: 'howto-workorder', label: 'Set up a Work Order', icon: ClipboardIcon,
+        key: 'howto-indent', label: 'Ask Stores for material', icon: ClipboardListIcon,
         steps: [
-          {
-            title: 'Choose the mode and build the route', body: 'Open Work Orders → New Work Order. Choose Against a customer order (pick the project) or Against stock (type the product), set the planned quantity and dates, then build the Process Route Card — every operation, workstation, and planned time — before you release it.',
-            why: 'The Work Order is what authorizes the batch and carries its route and material plan — building it up front is what makes Generate Job Cards, Forecast, and Costing trustworthy later.',
-            verify: 'Every route step has an operation and workstation, and (for an against-order Work Order) the material lines are pulled in from the BOM, before you release.',
-          },
-          {
-            title: 'Release and generate its Job Cards', body: 'Release the Work Order, then click Generate Job Cards — this creates one card per route step automatically, already linked to the right milestone and workstation, instead of you creating each one by hand.',
-            why: 'Generating from the route card is what keeps every card\'s milestone/workstation link correct and stops the same step from being created twice.',
-            verify: 'One Job Card now exists per route step, each showing on the board under the right project and milestone.',
-          },
+          { title: 'Raise the indent', body: 'Open Shop Floor → Material Indent → To indent. Tick the lines you need and create the indent.', why: 'Stores releases material only against an indent.', verify: 'The indent appears under Raised with status open.' },
+          { title: 'Check the release', body: 'Open Raised. The progress bar shows how much Stores has released; download the PDF if you need a copy.', why: 'A part release is normal; the rest stays open.', verify: 'The lines you received show as released.' },
         ],
       },
       {
-        key: 'howto-log', label: 'Log work on a card', icon: Clock3Icon,
+        key: 'howto-cut', label: 'Cut plate or section', icon: ScissorsIcon,
         steps: [
-          {
-            title: 'Do and record the work', body: 'As work happens, log hours against the actual worker doing it, add any consumables used, and keep planned/done/rejected quantity true to what is physically happening.',
-            why: 'Recording the result as it happens is what the next department, and the Work Order\'s own costing, actually rely on — not a memory of it later.',
-            verify: 'Hours, consumables, and quantity are saved in the record itself, not only remembered or messaged.',
-          },
+          { title: 'Open the reserved piece', body: 'Open Shop Floor → Remnants → Cut and click Cut on the piece reserved for the line.', why: 'The reserved piece already matches the size and grade the line needs.', verify: 'The dialog shows the piece code and the required size.' },
+          { title: 'Record what was used and kept', body: 'Check the Used size, add a Remnant row for any usable offcut, and confirm.', why: 'The app works out weights, scrap and the stock change from these sizes.', verify: 'The offcut shows under Returns to Stores, waiting for Stores to confirm it.' },
         ],
       },
       {
-        key: 'howto-cut', label: 'Cut material for a Job Card', icon: ScissorsIcon,
+        key: 'howto-handover', label: 'Hand finished work to Dispatch', icon: TruckIcon,
         steps: [
-          {
-            title: 'Find the line and check for a reservation', body: 'Open Job Card → BOM, pick the project, and find the "Cutting & remnant" list — every plate/section line shows here. A "Reserved — ready to cut" badge means Stores already has a matching piece waiting for you; no badge just means you\'ll pick a source piece yourself.',
-            why: 'A reserved piece is already the correct size for this line — skipping the check risks cutting from the wrong stock and losing a genuine match.',
-            verify: 'You know whether this line has a reserved piece before you open Cut.',
-          },
-          {
-            title: 'Cut and record what you kept', body: 'Click Cut — a reserved piece pre-fills the source and required size; otherwise use Find stock to choose the stock line and piece yourself. Confirm the Used dimensions (or adjust to what was actually cut), and add a Remnant row for any usable offcut you\'re keeping, then click Cut.',
-            why: 'Declaring only what was used and kept is what lets the system compute weight, scrap, and the stock update for you — a hand-typed weight is exactly what this flow exists to avoid.',
-            verify: 'The remnant shows back in Stores as available and the leftover became scrap automatically — you never calculated a weight by hand.',
-          },
-        ],
-      },
-      {
-        key: 'howto-hydro', label: 'Record a Hydro Test', icon: FlaskConicalIcon,
-        steps: [
-          {
-            title: 'Open the project\'s Production tab and log the result', body: 'On the project page, open the Production tab (filtered to Hydro Test only) and record the result, reference number, inspector, and tested-on date. This is the one test type Production owns end-to-end — every other test type stays QC\'s.',
-            why: 'Hydro Test moved to Production because Production is who actually runs it day to day — logging it here, not asking QC, is what keeps the record honest.',
-            verify: 'Result, reference, inspector, and date are all filled in before you save.',
-          },
-          {
-            title: 'Handle a fail without losing the trail', body: 'A failing result has its own Create rework card button, pre-filled — use it instead of editing the original record. A passing result automatically closes the Hydro Test milestone for you.',
-            why: 'Keeping the failed record as-is, with a linked rework card, is what preserves an honest quality history instead of quietly erasing a failure.',
-            verify: 'A failed test has a linked rework card, and a passed test shows the Hydro Test milestone closed on its own.',
-          },
-        ],
-      },
-      {
-        key: 'howto-milestone', label: 'Start and close a milestone', icon: RouteIcon,
-        steps: [
-          {
-            title: 'Start it when work really begins', body: 'Open the milestone from the project page and mark it started once real work is actually underway — not in advance, and not as a formality.',
-            why: 'An early start date makes the project timeline lie about when work actually began, which breaks every delay/on-time read built on it.',
-            verify: 'The milestone\'s start date matches the day work genuinely began.',
-          },
-          {
-            title: 'Close it honestly, with a reason if late', body: 'Close a milestone only when the deliverable is actually complete. Closing late asks for a reason, which goes into the project history — use Stages under a milestone for repeatable checklist steps instead of inventing a new milestone for every variation.',
-            why: 'A late-close reason is what lets anyone reading the project later understand a real delay instead of guessing.',
-            verify: 'The milestone is genuinely complete, and a late close has a real reason attached, not a placeholder.',
-          },
-        ],
-      },
-      {
-        key: 'howto-exceptions', label: 'Handle exceptions', icon: WrenchIcon,
-        steps: [
-          {
-            title: 'Pause, rework, or change the plan', body: 'Pause a card instead of leaving it looking active when work has genuinely stopped. If QC fails a Hydro Test or a quantity is rejected, use Create rework card rather than editing the original result away. If a Work Order\'s quantity, dates, or product changes mid-flight, use its Change Note instead of editing the field directly.',
-            why: 'Exceptions handled honestly — pause, rework, Change Note — keep the record trustworthy instead of quietly rewriting what actually happened.',
-            verify: 'Any paused card, rework card, or Change Note has a real, findable reason attached to it.',
-          },
-        ],
-      },
-      {
-        key: 'howto-roster', label: 'Add a worker to the roster', icon: UsersIcon,
-        steps: [
-          {
-            title: 'Search HR before creating anyone new', body: 'Add worker searches HR first — if the person already exists as an HR employee record, activate them onto Production instead of creating a second, slightly-misspelled entry for the same human. Only create a new person when the search genuinely finds nobody.',
-            why: 'A Production worker is an HR employee record, not a separate roster — a duplicate entry splits one person\'s attendance and job-card history across two records.',
-            verify: 'You searched HR first, and the person you added or activated has one single record, not a duplicate.',
-          },
-          {
-            title: 'Set trade, and deactivate instead of delete', body: 'Trade is a controlled list (Welder, Fitter, Gas Cutter, Machinist, Grinder, Painter, Rigger, Helper), not free text, so job cards can filter workers by skill — designation stays HR\'s field, not yours. When someone leaves, deactivate rather than delete them.',
-            why: 'Deleting a worker would break every job card and attendance record that already points at them — deactivating keeps that history readable.',
-            verify: 'The worker\'s trade is set from the real list, and a departed worker is deactivated, not deleted.',
-          },
+          { title: 'Hand over', body: 'Open Shop Floor → Dispatch → To hand over (or start the DISPATCH stage on the job card). Tick the finished subsystems and click Hand over to Dispatch.', why: 'Dispatch can only pack what Production has handed over.', verify: 'The subsystems move to Handed over.' },
+          { title: 'Answer the two questions', body: 'Choose a new draft list or the existing packed list if asked, and say whether Production approves the items for dispatch.', why: 'Your approval is needed before the packing list can leave.', verify: 'The items are on the project’s draft packing list.' },
         ],
       },
       {
         key: 'howto-attendance', label: 'Mark attendance', icon: CalendarDaysIcon,
         steps: [
-          {
-            title: 'Check Overview, then mark the Sheet', body: 'Daily Sheet has two views under one tab: Overview is the day\'s headcount and attendance percentage; Sheet is where you actually mark present/half-day/absent and the project/milestone each worker worked on.',
-            why: 'Marking attendance against the real project/milestone is what makes the headcount numbers, and Production\'s own labor cost, mean something.',
-            verify: 'Every worker present today has a status and a project/milestone recorded, not just a checkmark.',
-          },
-          {
-            title: 'Trust it as the one real attendance record', body: 'This writes to the same attendance record HR reads from — there is no separate Production attendance system to keep in sync by hand.',
-            why: 'A second, unsynced attendance record is exactly the kind of drift that makes payroll and HR distrust Production\'s numbers.',
-            verify: 'You marked attendance once, here, and did not also track it anywhere else.',
-          },
+          { title: 'Mark the sheet', body: 'Open Shop Floor → Workers → Sheet, pick the date, and mark each worker present, half-day or absent with the project they worked on.', why: 'HR and payroll read this same record.', verify: 'Overview shows the right headcount for the day.' },
+          { title: 'Add a worker', body: 'Open Workers Roster → Add worker, search for the person in HR first, pick their trade, and add them.', why: 'One record per person keeps attendance history together.', verify: 'The worker appears once in the roster.' },
         ],
       },
       {
-        key: 'howto-handoff', label: 'Raise a department handoff', icon: MessageSquareIcon,
+        key: 'howto-approve', label: 'Approve a packing list', icon: ClipboardCheckIcon,
         steps: [
-          {
-            title: 'Use a task or notification, not a side conversation', body: 'Use tasks and notifications when Production needs a response from QC, Stores, Dispatch, or another department. A closed milestone should create a visible next action where one is configured.',
-            why: 'A handoff that only happened in conversation leaves no record another department, or you later, can point back to.',
-            verify: 'The other department has a real task or notification, not just a message you sent them.',
-          },
-          {
-            title: 'Never close a blocked job to hide it', body: 'Do not close a blocked job just to remove it from the screen — record the actual blocker and delay reason instead.',
-            why: 'A quietly closed blocked job looks finished to everyone downstream, which is worse than an honestly open one.',
-            verify: 'A blocked job stays open with a real blocker and reason recorded, not closed early.',
-          },
-        ],
-      },
-      {
-        key: 'howto-close', label: 'Close the day', icon: BadgeCheckIcon,
-        steps: [
-          {
-            title: 'Close the day', body: 'Mark attendance on the Daily Sheet while it is still fresh, close milestones only when actually complete with a real reason if late, check Forecast for any workstation running Overloaded, and raise a task for anything another department must still act on.',
-            why: 'Closing the day with an honest status is what keeps dashboards, Forecast, and downstream departments aligned with what is actually happening on the shop floor.',
-            verify: 'Attendance is marked, no milestone is closed early, and Forecast has been checked for anything about to go overloaded or late.',
-          },
+          { title: 'Decide', body: 'Open Shop Floor → Approvals, open the packing list, check its items, and Approve or Reject.', why: 'Dispatch can not mark a list Dispatched until QC and Production both approve.', verify: 'The row shows Production’s decision.' },
         ],
       },
     ],
@@ -1452,36 +1404,37 @@ export const DEPARTMENT_HELP = {
     title: 'Quality Control', icon: FlaskConicalIcon,
     intro: [
       'QC records whether the product and its supporting documents meet the required checks. Your records should let a manager answer three questions: what was tested, what was the result, and which document proves it?',
-      'Use project QC for work on a specific order, the Certificate bank for reusable material certificates, and the milestone/task views for daily inspection work.',
+      'Open QC in the top bar. Its tabs: Test Certificates (Certificates, Assign to Units), Test Records, Documents, NCR, Job Cards, Calibration, and Approvals (Inward, Job Card Stages, Pre-Dispatch). The model and project pickers at the top narrow most tabs.',
     ],
     features: [
       architectureFeature('QC', QC_DIAGRAM),
-      feature('tests', 'Test records', ClipboardCheckIcon, ['Create a record for hydro tests, NDE/radiography, MTC checks, and other inspections. Include test type, reference number, result, inspector, date, and notes.', 'Use Pending until the check is actually completed. A clear Fail result should include the reason or next action.']),
-      feature('certificates', 'Test Certificate bank', BadgeCheckIcon, ['Enter a certificate once with its certificate number, maker/cast/plate details, material data, and uploaded PDF when available.', 'Link certificates to the relevant project or part so the same material evidence can be found later without duplicate entry.']),
+      feature('tests', 'Test records', ClipboardCheckIcon, ['QC → Test Records: pick the project at the top. The page has one card per kind: the general test log (NDE / radiography, MTC checks, other), Incoming Inspection, Finished Goods Inspection, Subassembly Inspection, Hydro Test, and Job-Work Inspection.', 'Add a record with test type, reference number, inspector, date and notes, and set the result: Pending, Pass or Fail. Use Pending until the check is really done. A Fail row has a Raise NCR button.']),
+      feature('certificates', 'Test Certificate bank', BadgeCheckIcon, ['QC → Test Certificates → Certificates. Add certificate: upload the mill certificate PDF and the fields are read from it for you to check (certificate number, cast, heat and plate numbers, material spec, maker, chemistry and mechanical values). A certificate is entered once and identified by certificate number + cast number + plate number.', 'Tick the project or projects it is used on, or leave it unallocated. Linking it to a part of a statutory document allocates it to that project automatically.']),
       feature('statutory', 'Statutory documents', FileTextIcon, [
-        'Use the statutory document editor for the supported form workflows — Form IV A for the standard CF/MF/OF/SF/GF/DF/SIB/PRS boiler folder, or Form III + Form III-H for a standalone Header/Desuperheater/Tank component shipped without a complete boiler (model HEADERS). Header data and part rows are kept together so the PDF reflects the saved record.',
-        'Do not advance a document with missing required fields; the PDF gate is there to prevent incomplete evidence being treated as final.',
-        'Linking a part to its BOM line (the small "Link to BOM item"/"Suggested" control under the part\'s size, or the dropdown when unlinked) unlocks certificate suggestions above the search box in the Link Certificate dialog — a ✓✓ badge means this material/maker pairing has been approved 3+ times before, ✓ means the material spec matches exactly, ≈ means only a partial text match. All three are one-click nudges, never automatic — a part with no BOM link, or one whose BOM line has no real material spec to compare against, shows no suggestion at all rather than a guess.',
+        'QC → Documents: pick the project and create the document. Its parts (Form IV A material) and its mountings and fittings are filled from the project BOM; Sync from BOM adds lines added to the BOM later. The form set follows the project’s model: Form II(1), III, III A and IV A for CF / MF / OF / SF / GF / DF / AF boilers, Form XVII for a project ticked SIB, and Form III with III-H or IV A for headers, PRS and other standalone components. Use the Extra docs dropdown for a header, PRS, FAB or FCB document on a boiler project.',
+        'Open the document to work on it: Boiler Details holds the header facts printed on the forms (pressures, dimensions, maker’s number, seams, drawing numbers; the drawing dropdown opens the approved drawing beside the form). Each part is linked to a test certificate with Link certificate; several parts can be ticked and linked at once, and mountings are linked the same way. Form III A groups are created by you with New Group and an assembly of the BOM.',
+        'Preview PDF is disabled until the document has parts and every part has a certificate. Share with customer (same rule) puts the finished folder on the customer portal.',
+        'Linking a part to its BOM line unlocks certificate suggestions in the Link certificate dialog: ✓✓ means this material and maker pairing was approved 3 or more times before, ✓ means the material spec matches exactly, ≈ means a partial text match. They are suggestions, never automatic. For a split order, a certificate assigned in Assign to Units is filled in by itself.',
+        'The pencil on a part edits its number, name, size and quantity.',
       ]),
-      feature('milestones', 'QC milestones', RouteIcon, ['Start and close QC milestones with actual dates. When work is late or failed, record the reason and create the follow-up task.', 'A QC result and a milestone are related but not identical: use the test record for the evidence and the milestone for project progress.']),
+      feature('stage-sign', 'Job Cards: signing production stages', RouteIcon, ['QC → Job Cards shows the same job cards Production works on. Open a card and click Sign as QC on a stage Production has finished.', 'QC → Approvals → Job Card Stages lists every finished stage waiting for QC across all jobs: sign it, or send it back with a remark so Production redoes it.', 'QC has no project milestones of its own. The Production milestones close when every stage of every job card of the project is QC-signed, so unsigned stages hold the project.'], { value: 'The QC sign on each stage is the inspection record of the job card.', outcome: 'Every finished stage is either signed or sent back with a reason.', checklist: ['Work the Job Card Stages list daily.', 'Inspect before signing; the sign carries your name and the date.'], watchOut: 'A stage sent back must be finished again by Production before it returns to your list.' }),
       feature('notifications', 'Notifications', BellIcon, [
-        'You receive a notification once every BOM item on a project has cleared Procurement — the "Procured" milestone completing, the same automatic signal Procurement\'s own status queue relies on. The notification tells you the project is ready for QC to start preparing inspection records, before Production even starts fabricating.',
-        'This is currently QC\'s only notification type. QC owns no milestones that another department hands off into or out of (Hydro Test, the one milestone that used to sit with QC, now belongs entirely to Production — see the Test records section), so there is no cross-department handoff traffic reaching QC the way there is for most other departments.',
-        'This is the same bell every internal department uses, top right of the app. It is automatic for everyone with QC access; nothing here is a toggle you turn on or off.',
+        'Inward review waiting (QC Head): Stores received a delivery; open Approvals → Inward. Material arriving: the first receipt on a project, so incoming inspection can start.',
+        'Job card stage ready to sign: Production finished a stage. Packing list waiting for sign-off (QC Head): Dispatch submitted a list; open Approvals → Pre-Dispatch.',
+        'Test failed, NCR raised, All items procured (the project is fully bought), and Calibration due or expired (an instrument or jig is due within 7 days or overdue).',
+        'All of these arrive on the bell at the top right and open the right tab. Settings → Alerts lets each person switch an alert off or have it emailed.',
       ], {
-        value: 'Before this existed, QC had no cross-department signal at all — the only way to know a project had reached a stage worth preparing for was to keep checking projects by hand. This gives QC the same early warning every other manufacturing department already had.',
-        outcome: 'QC learns a project is materially ready to be worked the moment Procurement finishes clearing it, instead of discovering that only when Production or Dispatch is already asking for QC\'s sign-off.',
-        checklist: [
-          'Treat the notification as a planning signal, not a request for an immediate test — use it to line up references, certificates, and inspection records ahead of the actual fabrication work.',
-          'Open the named project to confirm what was actually procured before assuming every line QC expects has arrived.',
-        ],
-        watchOut: 'This notification tracks Procurement clearing every BOM line — it does not mean material has physically arrived at Stores or that fabrication has started. Check the project\'s actual status before treating it as a cue to test anything.',
+        value: 'QC’s work is triggered by other departments: a delivery, a finished stage, a packing list. The alerts bring each one to you when it happens.',
+        outcome: 'Nothing waits for QC without QC knowing.',
+        checklist: ['Clear the Approvals tabs daily; they hold up Stores, Production and Dispatch.', 'Open the alert to land on the exact review.'],
+        watchOut: 'Marking an alert read does not decide anything. The review still has to be approved or rejected.',
       }),
       feature('handoff', 'Release and sign-off', ShieldCheckIcon, ['Make the result and supporting references clear for Production, Dispatch, Management, and the customer-facing record. Keep rework visible instead of silently editing a passed record.']),
       feature('stageInspections', 'Incoming / Finished Goods / Subassembly Inspection', ClipboardCheckIcon, [
-        'Incoming Inspection is auto-suggested (Pending) the moment a BOM item you\'re buying reaches Received — you don\'t have to notice the receipt yourself, just fill in the result. You can still add one by hand for anything the auto-suggestion misses.',
-        'Finished Goods Inspection is tied to a Work Order. Pass it and flip "Dispatch eligible" once you\'re satisfied the completed goods are fit to ship — Dispatch\'s packing flow reads that flag.',
-        'Subassembly Inspection is tied to a BOM assembly (Engineering tab → BOMs) — use it for an intermediate stage check before the sub-assembly moves on, not the finished product.',
+        'All three are cards on QC → Test Records for the chosen project.',
+        'Incoming Inspection: a Pending record is created for you when a bought line is received; fill in the result. Add one by hand for anything missed. A Fail tells Procurement to replace the material.',
+        'Finished Goods Inspection: the final check of the finished product. It has a Dispatch eligible switch that QC sets when satisfied; it is shown to the reviewers of the pre-dispatch approval.',
+        'Subassembly Inspection: linked to a node of the BOM tree (Engineering → BOMs), for a check before the sub-assembly moves on.',
       ]),
       feature('jobWork', 'Job-Work Inspection', TruckIcon, [
         'Log material sent to an outside job worker: who, quantity sent, expected return date. Fill in received quantity and date once it comes back — variance (sent minus received) is calculated for you.',
@@ -1492,13 +1445,9 @@ export const DEPARTMENT_HELP = {
         'Block an item to take it out of service before its due date — Blocked always overrides the date-based status.',
       ]),
       feature('ncr', 'NCR & Disposition', AlertTriangleIcon, [
-        'Raise an NCR (Non-Conformance Report) for any defect — a failed test result, or a field-found problem with no test behind it yet. Both QC and Production can raise one; only the QC Head can disposition it.',
-        'Disposition is one of four choices: Rework (only available when the NCR is against a job card — creates a new rework job card automatically), Repair (same, a lighter fix than a full rework), Scrap (only if the NCR is against a tracked stock piece — flips it to Scrap and rolls the inventory count down), or Use as-is (accept the non-conformance, no material action). Scrap and Use as-is both require written notes explaining the decision — the form will not submit without them.',
-        'Close the NCR once its disposition is actually carried out — if it produced a rework job card, that card has to reach Done first; the Close action refuses otherwise.',
-      ]),
-      feature('holds', 'Hold Points', LockIcon, [
-        'A Process Route Card step that names a QC checkpoint automatically becomes a hold point on every job card generated from it — Production cannot mark that card Done until QC releases it here.',
-        'Release requires that any NCR raised against the card is already closed — an open NCR blocks the release, by design.',
+        'QC → NCR lists non-conformance reports. Raise one from a failed row in Test Records (Raise NCR) or directly on the NCR tab; Production can raise one too.',
+        'Only the QC Head decides the disposition: Rework, Repair, Scrap (for a tracked stock piece: it is written off) or Use as-is. Scrap and Use as-is need written notes.',
+        'After the disposition is carried out, QC clicks Verify, then Close. An NCR can not be closed before it is verified.',
       ]),
       feature('heatlot', 'Heat/Lot Traceability', BadgeCheckIcon, [
         'Stores captures a piece\'s heat number and, optionally, a linked test certificate once, at receipt — every piece cut from it afterward inherits both automatically, with no re-entry at cut time.',
@@ -1511,16 +1460,17 @@ export const DEPARTMENT_HELP = {
       ]),
       feature('assign-to-units', 'Assign certificates to units', BadgeCheckIcon, ['For an order split into units: QC → Test Certificates → Assign to Units. Pick the split order, tick the material lines and units a certificate covers, then Assign certificate.', 'One certificate can cover many lines and units; one line of one unit can carry more than one certificate.', "When exactly one certificate is assigned to a line of a unit, it is filled into that unit's Form IV A automatically the next time the document is created or synced."], { outcome: "Each unit's material shows the certificate it was made from.", watchOut: 'Only material Stores has allocated to a unit appears here. Nothing to tick means Stores has not allocated it yet.' }),
       feature('approvals', 'Approvals: inward, job card stages, pre-dispatch', ClipboardCheckIcon, ['QC → Approvals → Inward: every delivery Stores receives waits here. Approve to release the material into stock; Reject keeps it held, and it can be resubmitted after the problem is fixed.', "QC → Approvals → Job Card Stages: stages Production has finished and that need QC's sign before the next stage.", 'QC → Approvals → Pre-Dispatch: packing lists Dispatch has submitted. QC and Production each approve or reject; the list can be dispatched only when both approve.', 'A reason is optional on every decision.'], { outcome: "Nothing is used, moved on or shipped without QC's decision on record.", watchOut: 'Until an inward review is approved, the material does not count as stock and cannot be packed.' }),
+      feature('no-milestones', 'Milestones and QC', Clock3Icon, ['QC has no milestones of its own on the Milestone Tracker. Hydro Test (HT) belongs to Production and completes when a Hydro Test record with result Pass is saved on the Hydro Test card in QC → Test Records (adding it needs Production access).', 'Your QC signs on job card stages are what complete Production\'s milestones: they close together when every stage of every job card of the project is finished and QC-signed.', 'Statutory documents, inward reviews and pre-dispatch approvals are not milestones; they show as "Currently With: QC" on the project.'], { outcome: 'You know which QC actions move a project forward.', watchOut: 'An unsigned job card stage keeps all of Production\'s milestones open.' }),
     ],
     howTo: [
-      { title: 'Create the inspection record', body: 'Open the project QC area, choose the test type, enter reference and inspector details, and leave the result Pending until the check is complete.' },
-      { title: 'Record a result', body: 'Enter the tested date and result, then add notes that explain any failure, limitation, re-test, or acceptance condition.' },
-      { title: 'Store evidence', body: 'Add or find the relevant Test Certificate or statutory document and check that the PDF uses the saved data.' },
-      { title: 'Raise an NCR', body: 'On a failed test row (or directly from Production\'s job card), raise an NCR instead of silently reworking — it keeps the non-conformance on record until it\'s actually dispositioned and closed.' },
-      { title: 'Close the QC handoff', body: 'Close the QC milestone only when the inspection and evidence are complete, then confirm the next department can find the references.' },
-      { title: 'Clear a Work Order for dispatch', body: 'Once a Finished Goods Inspection passes, flip its "Dispatch eligible" flag so Dispatch can see the Work Order is cleared to pack.' },
-      { title: 'Release a hold point', body: 'Once the checkpoint is actually verified and any NCR against the card is closed, release it from the Hold Points tab so Production can mark the card Done.' },
-      { title: 'Keep calibration current', body: 'Check the Calibration tab regularly for items going Due soon or Expired, and Block anything pulled out of service.' },
+      { title: 'Approve a delivery', body: 'Open QC → Approvals → Inward, open the review, inspect the material, and Approve or Reject. Approved material becomes stock; rejected material stays held.' },
+      { title: 'Sign job card stages', body: 'Open QC → Approvals → Job Card Stages, inspect each finished stage, and sign it or send it back with a remark.' },
+      { title: 'Record a test', body: 'Open QC → Test Records, pick the project, add the record under the right card, and set Pass or Fail when the check is done.' },
+      { title: 'Raise an NCR', body: 'On a failed row in Test Records click Raise NCR. The QC Head sets the disposition; after the fix, Verify and Close it in QC → NCR.' },
+      { title: 'Add a certificate', body: 'Open QC → Test Certificates → Certificates, Add certificate, upload the PDF, check the fields read from it, and save.' },
+      { title: 'Build the statutory folder', body: 'Open QC → Documents, pick the project, create the document, fill Boiler Details, link a certificate to every part, then Preview PDF.' },
+      { title: 'Approve a packing list', body: 'Open QC → Approvals → Pre-Dispatch, open the list, and Approve or Reject. Production decides separately.' },
+      { title: 'Keep calibration current', body: 'Open QC → Calibration regularly for items Due soon or Expired, and Block anything pulled out of service.' },
     ],
   },
   Dispatch: {
@@ -1530,10 +1480,10 @@ export const DEPARTMENT_HELP = {
       'Use the Dispatch tab to see the board — Operations → Dispatch now shows a summary (flow, incidents, and current projects) instead. Use Projects when you need the order context and the BOM source lines.',
     ],
     features: [
-      feature('board', 'Packing board', PackageCheckIcon, ['The board groups packing lists by Draft, Ready, and Dispatched. Use the status to tell the team whether a list is still being prepared, approved for delivery, or already sent.', 'Keep one person responsible for the final status so two people do not dispatch the same list.']),
-      feature('generate', 'Generate from BOM', ClipboardListIcon, ['Create a draft from BOM lines that have not already been carried into a non-draft packing list. Partial dispatches are supported.', 'Review quantities and descriptions before editing box numbers and package details.']),
-      feature('packing', 'Packing details', BoxesIcon, ['Add box number, quantity, unit, MOC, size/spec, item code, ibr number, make, and scanned quantity as applicable.', 'Scanned quantity is a physical check; it should not silently exceed the BOM quantity without an explanation.']),
-      feature('pdf', 'Packing PDFs', FileTextIcon, ['Generate the customer-facing PDF when the list is Ready. Use the pending-list PDF when you need a list of lines still waiting to be packed.', 'Check customer name, address, invoice/DC details, vehicle, and dispatch method before issuing the document.']),
+      feature('board', 'Packing Lists', PackageCheckIcon, ['Dispatch → Packing Lists is the board: Draft, Ready and Dispatched. Click a list to open it. New packing list starts an empty list (company, optional project, customer). Combine lists groups lists that leave in one vehicle into a shipment.', 'The sidebar: Packing (Packing Lists, Pending Items, Shipments), After dispatch (Deliveries, Documents), Gate (Gate Passes) and Sign-off (Approvals).', 'A list shows “List 1 of 2” when its project has more than one.']),
+      feature('generate', 'Creating a packing list', ClipboardListIcon, ['Most lists make themselves: when Production hands over finished subsystems they are placed on the project’s draft list.', 'For anything else open Dispatch → Pending Items: tick the ready lines and click Add to the open draft (or Create list from selected; New separate list makes a second list for a part shipment).', 'On an open list, Add items adds a pending BOM line of the project, an Item Master item, or a hand-typed line.']),
+      feature('packing', 'Packing details', BoxesIcon, ['Open a draft list. Lines are grouped the way they are packed: loose, package / box, mounted, or bag. Click a value to change it (package label, quantity, IBR number, item code, make). Tick lines to move them to another group, make them one assembly line, expand an assembly, or show an item as sizes; rename a group or change its type from its header.', 'The checklist at the bottom (Fill from valves) lists the valves and mountings to tick off.', 'Set the status to Ready when the contents and header are checked. Only a draft can be edited; a Ready or Dispatched list is never changed by adding lines.']),
+      feature('pdf', 'Packing PDFs', FileTextIcon, ['Open the packing list and use the PDF button for the customer copy. The pending-list PDF shows lines still waiting to be packed.', 'Check customer name, address, invoice / DC details, vehicle and dispatch method on the list first. The company printed is the project’s company.']),
       feature('reconcile', 'BOM reconciliation', ClipboardCheckIcon, ['A packing item keeps a link to its BOM line. Use that link to explain what was carried, what remains pending, and why a partial list was created.']),
       feature('handover', 'Handed over from Production', PackageCheckIcon, [
         'When Production hands over a finished subsystem it appears on the project\'s open packing list by itself (a draft is created if none exists) and you get a notification. Check the list, add anything missing, then move it on as usual.',
@@ -1558,19 +1508,27 @@ export const DEPARTMENT_HELP = {
         'Every report reads live off the same packing list data — there is nothing to enter separately for reporting.',
       ]),
       milestoneTrackerFeature([
-        ['Packing', 'Automatic', 'Completes once a packing list for the project reaches Packed or Dispatched status — a Draft list doesn\'t count yet.'],
+        ['Packing & Labeling', 'Automatic', 'Completes when no draft list is left open and every BOM line of the project is on a Ready or Dispatched list. A part shipment keeps it in progress.'],
       ]),
       feature('pending-items', 'Pending Items', ClipboardListIcon, ['Dispatch → Pending Items lists everything ready to pack that is not yet on a packing list, grouped by project. A badge marks a project whose job card has reached the Dispatch stage.', 'Tick lines and use Create list from selected, or Add to the open draft list. Trade (SAS) lines show under their sale order.', 'A line appears once Stores has routed it to Dispatch, or Production has handed it over.'], { outcome: 'Every ready item is on a packing list.', watchOut: "A line that has arrived but is still waiting for QC's inward review does not show here." }),
       feature('predispatch-approval', 'Approval before dispatch', ClipboardCheckIcon, ['When a packing list is Ready (packed), open Dispatch → Approvals and Submit it for review.', 'QC and Production each approve or reject. The row shows who has decided. If Production approved the items when handing them over, its part is already filled in.', 'Once both approve, set the list to Dispatched. If either rejects, fix the problem and Resubmit; the earlier decision stays on record.'], { outcome: 'The list is dispatched with both approvals on record.', watchOut: 'A list cannot be set to Dispatched without an approved review. Pulling a list back to draft cancels the review; submit it again after repacking.' }),
+      feature('eway-freight', 'Invoice, e-way bill and freight', ReceiptIcon, [
+        'Open the packing list. Linked Invoice: pick the issued sales invoice for this shipment. Freight: enter Freight Amount and Freight Paid By; when the company pays it, Post Freight Expense records it in the books (the amount can not be changed afterwards).',
+        'E-way bill card: it lists what is needed before one can be generated (distance in km, transport mode, vehicle type, a linked issued invoice with HSN codes, the customer’s GSTIN, state, pincode and address, and the company’s place and pincode). Generate E-Way Bill sends it to the government system; the number, date and Valid Until are then shown. Cancel is possible within 24 hours with a reason.',
+        'Generating needs the company’s e-way bill API credentials in Accounts → Company Entities. Until they are set up, type the e-way bill number and date by hand.',
+        'Dispatch → Documents lists packed and dispatched lists with a Missing Invoice or Missing E-Way Bill.',
+      ], { outcome: 'Every shipment has its invoice and e-way bill on record.', watchOut: 'An e-way bill is a legal document. Check distance, vehicle and invoice before generating.' }),
+      feature('deliveries', 'Deliveries', TruckIcon, ['Dispatch → Deliveries lists dispatched packing lists. Awaiting Confirmation are the ones the customer has not acknowledged yet.', 'Carrier details opens the transport record (mode, LR / RR / BL / AWB number, vehicle, tracking link, expected delivery). Open the packing list to record the Delivery acknowledgment when the customer confirms receipt.'], { outcome: 'Every dispatched list ends with a confirmed delivery.', watchOut: 'There is no live tracking; the tracking link opens the carrier’s own page.' }),
     ],
     howTo: [
-      { title: 'Create the list', body: 'Open Dispatch, generate a draft from the project BOM, and confirm that only the intended pending lines were included.' },
-      { title: 'Pack physically', body: 'Fill box/package details, enter actual packed or scanned quantities, and check the physical count against the list.' },
-      { title: 'Complete the header', body: 'Enter customer/address, invoice or DC, vehicle, contact, and dispatch-through details before changing the status.' },
-      { title: 'Release the document', body: 'Move the list to Ready only after the contents and header are checked, then generate the PDF.' },
-      { title: 'Close dispatch', body: 'After the vehicle leaves, move the list to Dispatched and keep the PDF with the customer/order record.' },
-      { title: 'Check aging', body: 'Use Pending vs Dispatched Aging to spot lists sitting in Draft or Ready too long before they actually ship.' },
-      { title: 'Issue and close out a Gate Pass', body: 'Raise the pass (Returnable or Non-returnable), get it Approved, then Issue it the moment material actually leaves. For a returnable pass, tick each item off as it comes back — the pass flips to Returned on its own once every item is ticked. An overdue returnable pass shows a badge automatically; there is nothing else to check for it.' },
+      { title: 'Create the list', body: 'Open Dispatch → Pending Items, tick the ready lines of the project, and add them to the open draft (or create a list). Lines Production handed over are already on the draft.' },
+      { title: 'Pack physically', body: 'Open the draft in Packing Lists, arrange lines into loose, package and mounted groups, enter package labels and quantities, and check the physical count.' },
+      { title: 'Complete the header', body: 'On the list enter customer and address, vehicle and carrier details, link the sales invoice, and enter the freight.' },
+      { title: 'Get it approved', body: 'Set the list to Ready, then open Dispatch → Approvals and Submit it. QC and Production each approve.' },
+      { title: 'Dispatch', body: 'When both have approved, generate or type the e-way bill, print the PDF, and set the list to Dispatched. Reserved stock on it is issued automatically.' },
+      { title: 'Confirm delivery', body: 'Open Dispatch → Deliveries and record the delivery acknowledgment on the list when the customer confirms.' },
+      { title: 'Combine lists in one vehicle', body: 'Dispatch → Packing Lists → Combine lists: tick the lists going to the same address, then manage them under Shipments.' },
+      { title: 'Issue and close out a Gate Pass', body: 'Dispatch → Gate Passes → New gate pass (Returnable or Non-returnable), get it Approved, then Issue it when the material leaves. For a returnable pass, tick each item as it comes back; the pass becomes Returned when all are ticked. An overdue pass shows a badge.' },
     ],
   },
   Installation: {
@@ -1580,7 +1538,7 @@ export const DEPARTMENT_HELP = {
       'Use Operations for your open site work, Projects for the order record, Tasks for site-specific follow-ups, and the Service tab (Visits, Documentation) for site visits and commissioning / service reports. The Expenses tab holds your Cash Requests and Travel Allowance claims — they go to your Manager, then the Executive, then Accounts.',
     ],
     features: [
-      feature('milestones', 'Site milestones', RouteIcon, ['Start and close installation, commissioning, and site milestones with actual dates. Use planned dates to make the expected visit visible early.', 'If a date moves, record the reason so the customer-facing progress story remains honest.']),
+      feature('milestones', 'Site milestones', RouteIcon, ['Site Installation and Commissioning & Handover move by themselves from visits and the Commissioning report (see Milestone Tracker). To set a date or close one by hand, open the project → Service section, click the milestone and use Start or Close.', 'Closing late asks for a delay reason; the customer portal shows the same progress.']),
       feature('tasks', 'Site tasks', ListChecksIcon, ['Use tasks for access arrangements, foundation readiness, customer documents, travel, tools, and punch-list items.', 'Assign each task to a person or receiving department and include the project in the task.']),
       feature('handoff', 'Handoffs', MessageSquareIcon, ['Use cross-department tasks when Installation needs Dispatch, QC, Production, or Management to act. Close the task only after the receiving action is confirmed.', 'Keep customer commitments in the project record, not only in a private message.', 'Marking Commissioning & Handover complete is different from every other milestone close: there is no next department in the chain for it to hand off to, so it notifies Sales and every PM-tier account directly instead — the project is now fully done, not just past Installation.']),
       feature('progress', 'Customer progress', FolderKanbanIcon, ['The customer portal reads project progress from milestones. Accurate actual dates and delay reasons improve the customer view without extra reporting work.']),
@@ -1590,28 +1548,42 @@ export const DEPARTMENT_HELP = {
         'With no project selected you see every project with its planned, done and remaining visits — click one to open it.',
       ]),
       feature('documentation', 'Documentation', FileTextIcon, [
-        'Pick a project and a call type. Commissioning opens the full commissioning report; Breakdown, ASC and Other open the Field Service Report.',
-        'Customer, site address, contact, model, capacity, pressures, maker\'s number and boiler type fill in from the project, Sales and QC records — check them and edit anything that differs on site.',
-        'Checklist tables come with every standard row pre-listed; enter the observed value and OK / NG, remove rows that don\'t apply, or add your own. Sign on screen with a finger, then download the PDF.',
-        'Earlier customer remarks for the same project (from any report) are shown at the top of a new report so you can see the history of interactions.',
+        'Service → Documentation: pick a project and a call type. Commissioning opens the full commissioning report; Breakdown, ASC and Other open the Field Service Report.',
+        'Customer, site address, contact, model, capacity, pressures, maker\'s number and boiler type fill in from the project, Sales and QC records. Check them and edit anything that differs on site.',
+        'Checklist tables come with every standard row listed; enter the observed value and OK / NG, remove rows that do not apply, or add your own. Total hours and days are worked out from the from and to times. Sign on screen with a finger (full screen on a phone).',
+        'Finalize locks the report and gives a commissioning report its number (SB-COM-001…); Reopen unlocks it and the next finalize raises its revision. Download the PDF from the report.',
+        'Share with customer puts a finalized report on the customer portal; the switch above the list shares every finalized report of that project. View as customer opens the portal as the customer sees it.',
+        'Earlier customer remarks for the same project are shown at the top of a new report.',
       ]),
       feature('progress-photos', 'Progress Photos', CameraIcon, [
         'On a phone, tap the round camera button, take the photo, and a details sheet opens straight away: pick the project (it remembers your last one), a stage chip (Foundation, Erection, Piping, Electrical, Pre-commissioning, Commissioning, Issue / defect, Other), optionally the visit, and add remarks. The date, time and your name are stamped automatically.',
         'Photos are shrunk on the phone before upload, so they save quickly on site mobile data. Open a photo to change its stage, visit or remarks, or delete it. On a computer use Upload to add photos from a folder.',
       ]),
       milestoneTrackerFeature([
-        ['Site Installation', 'Explicit action', 'Click "Mark complete" on the project\'s Installation panel — visits and reports are records, they don\'t complete a milestone by themselves.'],
-        ['Commissioning & Handover', 'Explicit action', 'Same "Mark complete" action, once site installation is done.'],
+        ['Site Installation', 'Automatic', 'Starts with the first visit marked Done and completes when the done visits reach the planned number (Service → Visits). “Mark complete” on the project page still closes it by hand.'],
+        ['Commissioning & Handover', 'Automatic', 'Starts when Site Installation completes and completes when a Commissioning report is finalized (Service → Documentation). Sales and managers are notified that the project is complete.'],
       ]),
+      feature('expenses', 'Expenses: Cash Requests and Travel Allowance', ReceiptIcon, [
+        'Open Expenses in the top bar. Cash Requests asks for an advance: purpose, amount and the customers it is for (pick a customer or type another name). It gets a CR number.',
+        'Travel Allowance is the claim after a trip: place of visit (the customer), dates, travel, lodging, food and other entries, each with photos or PDFs of the receipts. It gets an EXP number. In Advance taken, click Link CR to set a cash request against the claim; an advance can be used in parts across claims.',
+        'Approval: your Manager, then the Executive (both under Approvals → Service Expenses), then Accounts settles it (Accounts → Service Expenses). You are notified at each step. A rejected request needs a reason and is final; submit a new one.',
+        'Open a request to see its status and download its PDF with the receipts attached.',
+      ], { outcome: 'Every advance and claim is approved, settled and traceable to a customer visit.', watchOut: 'A request can not be edited after it is submitted. Check amounts and receipts first.' }),
+      feature('requests', 'Requests: material for a site (PR and Trade Request)', InboxIcon, [
+        'Open Requests in the top bar (the Service team’s own Requests screen). Purchase Requests raises a request for material: pick the item, quantity and project, and click Raise PR; it goes to Procurement.',
+        'Switch the form to Trade Request to ask Sales to supply an item to a customer as a trade (SAS) order: pick the sale order or customer, add the items, and Send to Sales. Sales accepts it onto a SAS order.',
+        'History has two tabs: PR for purchase requests and TR for trade requests, each with its status.',
+      ], { outcome: 'Site material is requested through Procurement or Sales with a record.', watchOut: 'A trade request has no price; Sales prices the SAS order.' }),
     ],
     howTo: [
-      { title: 'Prepare the visit', body: 'Open the project, review the next site milestone, and create tasks for access, material, travel, tools, and customer readiness.' },
-      { title: 'Start site work', body: 'Start the milestone when the team begins. Add a note or task for anything discovered on site that needs follow-up.' },
-      { title: 'Manage a blocker', body: 'Record the delay reason and raise the task to the right department. Do not close the milestone while the blocker is unresolved.' },
-      { title: 'Complete commissioning', body: 'Enter actual end date, close the milestone, and ensure any punch-list task is either completed or clearly assigned.' },
-      { title: 'Confirm the customer view', body: 'Check that the project progress and estimated dates now tell the same story as the site record.' },
+      { title: 'Plan the visits', body: 'Open Service → Visits, pick the project, and check its planned visits (four to start: foundation marking, customer needs, pre-commissioning, commissioning). Add or rename as needed.' },
+      { title: 'Ask for an advance', body: 'Open Expenses → Cash Requests, enter purpose, amount and customer, and submit. It goes to your Manager, then the Executive, then Accounts.' },
       { title: 'Log a site visit', body: 'Open Service → Visits, pick the project, edit the visit that took place (date, time, who went) and mark it Done. Add a visit if an extra one was needed.' },
-      { title: 'Write a report', body: 'Open Service → Documentation, pick the project and call type, fill the form, sign, and save. Use the PDF button to share it.' },
+      { title: 'Take progress photos', body: 'Open Service → Progress Photos on the phone, tap the camera button, pick the project and stage, and save.' },
+      { title: 'Write a report', body: 'Open Service → Documentation, pick the project and call type, fill the form, sign, and Finalize. Use the PDF button to share it.' },
+      { title: 'Complete commissioning', body: 'Finalize the Commissioning report. That completes the Commissioning milestone and tells Sales and managers the project is complete.' },
+      { title: 'Claim travel expenses', body: 'Open Expenses → Travel Allowance, enter the trip and attach receipts, link the cash request you took, and submit.' },
+      { title: 'Manage a blocker', body: 'Raise a task to the right department from Operations (Raise on the Incidents card) or the project page, with the project and what is needed.' },
     ],
   },
   Sales: {
@@ -1630,11 +1602,11 @@ export const DEPARTMENT_HELP = {
       ],
     },
     features: [
-      feature('leads', 'Enquiries', UserPlusIcon, ['Capture the person/company, contact details, source, territory, and industry.', 'The funnel stage is the enquiry\'s only status. Open the enquiry and change its Stage as the conversation moves (Lead - Cold → Lead - Hot → Proposals → Hot Offers …). Order Received comes from Create PO and Order Lost from the Order Lost action, which also record the order or the reason.', 'Converting links the enquiry to a Customer record so quotations and orders can use it. It does not end the enquiry — it keeps its stage and keeps moving through the funnel.', 'Add every product the customer asked about under Products (on the New Enquiry form, or Products → Edit on the enquiry). Pick from the Product Master to fill the unit, price and GST %, or type a product that is not in the master yet. Saving products with rates sets the enquiry\'s Expected value to their total; you can still change the value by hand.', 'A/C Manager and Initiated by are picked from the Sales team. In Add to Diary, Plan Action Type records how the next follow-up will happen (call, email, meeting, other). Alert "All seniors" notifies the Sales Heads; "Selected seniors" notifies the people you tick; the "Plan of Action for" person gets a follow-up notice. SMS alerts are not available yet.', 'A Sales Executive sees only their own enquiries, quotations and orders (where they are A/C manager, assignee or creator); a Sales Head sees everything. Set this in Settings → Access Matrix → Responsibility.', 'Home calendar: Diary follow-ups (the Next plan date on a Diary entry) show as blue pills, and the Follow-ups panel beside the calendar lists today\'s and the next 7 days\' follow-ups with an Update button. Clicking a day shows its follow-ups as a table; Update Now opens the Diary right there; New Enquiry opens the enquiry form without leaving Home.', 'Create PO books the order and moves the enquiry to Order Received (the won stage) unless you pick another stage; the new customer keeps the enquiry\'s address, pin code, district, website and A/C manager.', 'Historical enquiries: 598 sales calls carried over from earlier records are in the Leads list. The 15 from the last 12 months are open on the Enquiry tab; older ones are closed sales calls (badge "Closed") — history on the customer, not on the board or in the funnel. None has an A/C manager or value yet, so only the Sales Head sees them until one is assigned. Some product text was cut short in the original printout, so fix it under Products before quoting. 139 could not be matched to one customer by name — open them and use Convert to link the right customer (docs/enquiry-import-review.csv lists suggestions).']),
+      feature('leads', 'Enquiries', UserPlusIcon, ['Capture the person/company, contact details, source, territory, and industry.', 'The funnel stage is the enquiry\'s only status. Open the enquiry and change its Stage as the conversation moves (Lead - Cold → Lead - Hot → Proposals → Hot Offers …). Order Received comes from Create PO and Order Lost from the Order Lost action, which also record the order or the reason.', 'Converting links the enquiry to a Customer record so quotations and orders can use it. It does not end the enquiry — it keeps its stage and keeps moving through the funnel.', 'Add every product the customer asked about under Products (on the New Enquiry form, or Products → Edit on the enquiry). Pick from the Product Master to fill the unit, price and GST %, or type a product that is not in the master yet. Saving products with rates sets the enquiry\'s Expected value to their total; you can still change the value by hand.', 'A/C Manager and Initiated by are picked from the Sales team. In Add to Diary, Plan Action Type records how the next follow-up will happen (call, email, meeting, other). Alert "All seniors" notifies the Sales Heads; "Selected seniors" notifies the people you tick; the "Plan of Action for" person gets a follow-up notice. SMS alerts are not available yet.', 'A Sales Executive sees only their own enquiries, quotations and orders (where they are A/C manager, assignee or creator); a Sales Head sees everything. Set this in Settings → Access Matrix → Responsibility.', 'Home calendar: Diary follow-ups (the Next plan date on a Diary entry) show as blue pills, and the Follow-ups panel beside the calendar lists today\'s and the next 7 days\' follow-ups with an Update button. Clicking a day shows its follow-ups as a table; Update Now opens the Diary right there; New Enquiry opens the enquiry form without leaving Home.', 'Create PO books the order and moves the enquiry to Order Received (the won stage) unless you pick another stage; the new customer keeps the enquiry\'s address, pin code, district, website and A/C manager.', 'Older enquiries carried over from earlier records show a Closed badge and stay as history on the customer; they are not on the board or in the funnel. Only the Sales Head sees an enquiry with no A/C manager until one is assigned.']),
       feature('pipeline', 'Board', TrendingUpIcon, ['The enquiry is the deal — there is no separate opportunity record in Sales. Open Leads and switch to Board to see every enquiry as a card in its funnel stage, with the stage\'s count and value.', 'Drag a card to move it. Dropping on Order Received asks you to use Create PO (which records the order); dropping on Order Lost asks for the reason.', 'Keep each enquiry\'s Expected value current — it drives the Board totals, the funnel report and the Executive pipeline.', 'Creating a Commercial Offer from an enquiry that is still before Hot Offers moves it to Hot Offers automatically. It never pulls a won or lost enquiry back.']),
       feature('customers', 'Customers and contacts', Building2Icon, ['Keep the commercial party, people, and addresses in one place. Reuse these records in quotations and orders instead of creating near-duplicates.', 'When you type a new customer or enquiry organization, the app lists existing customers that look the same (similar name, same GST No or phone). When an enquiry is linked to a customer and such a match exists, you choose: use the existing customer, or create a new one.', 'Some customers show an Account Summary block: organization code, A/C manager, district, products asked about, sales calls by stage, and quoted / ordered / collected totals. Search the list by name, code, GST, phone, district or A/C manager.', 'Use the company dropdown in the top bar (All / Shanti Boilers / Shanti Techno Fab) to see one company\'s orders, quotations, invoices and payments. It also narrows returns, Scope of Supply, Customer 360 and the Sales reports, and a report\'s company buttons offer only the chosen company. Other departments always show both companies. A spinner shows while the page reloads. With All companies, each order and payment has a small SB / STF tag. New orders and quotations start in the selected company. Customers, products, suppliers and stock are shared by both companies.', 'A Sales team member sees their own enquiries (as A/C manager, assignee or creator) and the quotations, orders and payments that belong to them. The Sales Head sees everything, including the imported historical orders.', 'Open a customer to see Customer 360: its enquiries, quotations, orders with payments received and outstanding, invoices, projects, service calls and contracts, Diary, and the installed base with each item\'s warranty (counted from delivery or installation on its project). "Open in Reports" opens a Sales report filtered to that customer.', 'Competitors: add who else quoted (and at what price) on the customer, or record "Lost to competitor" when marking an enquiry Order Lost. Reports → Competitor Analysis totals them.']),
       feature('quotations', 'Quotations', FileTextIcon, ['Build the proposal with real line items, rates, taxes/terms as applicable, then generate the PDF. Convert an accepted quotation to a Sale Order.', 'Lines come from the Product Master: search while typing and pick a product to fill its unit, rate, HSN and GST %. Everything stays editable, and a line can be typed free-text. Create Commercial Offer on an enquiry starts with that enquiry\'s products already filled in.', 'Each line has its own GST %; a line left blank uses the Default GST %. On save the tax is split into CGST + SGST when the customer is in the same state as the company, otherwise IGST — the PDF shows the split. An order or invoice made from the quotation keeps each line\'s GST % and discount.', 'Revise a quotation (not yet accepted) to change prices or lines: it opens pre-filled and saves as R1, R2 … of the same number; the old one is marked Revised.', 'A line discount above the Sales Head\'s limit (shown on the Quotations tab, 10% unless changed) needs the Head\'s approval before the quotation can be sent or accepted. The Head is notified and approves from the Quotations tab.', 'Needs follow-up lists sent quotations that expire within 3 days, have expired with no order, or were sent 7+ days ago with no Diary activity. The enquiry\'s A/C manager gets a reminder notification for each (once per reason). Marking a quotation Sent records the date the 7-day count starts from.']),
-      feature('sale-orders', 'Sale Orders', ShoppingCartIcon, ['Create PO from an enquiry opens the order form. Items On Order is a table (Product Code, Description, Warranty Std / Accepted, From Date Of D/I, Inst Req, Preventive Maintenance, Qty, Unit Price, Disc %, Tax %, Total Price) filled in from the quotation, or from the enquiry\'s products when there is no quotation — check it and Save. The order discount can be a % or an amount. Totals update as you type.', 'Our GST No, Entity Code and PAN, the customer\'s Customer Code, PAN and GST No, and the SOS No are shown read-only on the order and its PDF. Change them in Company Settings or the customer record. The SOS No appears once Design converts the order to a Project.', 'Order Stage is a funnel stage and A/C Manager is picked from the Sales team. Imported orders keep their old Sales Person name, shown as "(not a user)".', 'The Sale Order is the confirmed commercial order. Linking it to a Project creates the Design/Engineering Scope of Supply handoff.', 'Convert to Project on a Sale Order creates the Project directly — no need to ask a PM out of band. Once a Project exists for that order, the button is gone; you\'re looking at the right one if it isn\'t there.', 'Request Stores (shown only on SAS trade orders) raises a trade request straight to Stores\' queue — describe the item and quantity, and Stores sees it immediately.', 'Projects → New Project → Sale Order: search by order number or customer. Picking an order fills the customer, company, order date and a description from its lines; the order\'s lines become the Scope of Supply (with HSN/GST). An existing project\'s order is changed from Edit Project. Orders already on a project show "on SB-xxxx".', 'Give a product a BOM structure template (Masters → Products) and every project made from an order with that product starts its BOM tree from it — Engineering then adjusts sizes and quantities.', 'Techno Fab orders and payments (85 orders, 257 payments, 2024-26) are loaded; pick Shanti Techno Fab in the company selector to see only them. Existing Shanti Boilers and Techno Fab projects are linked to their orders (the 50 SB-1109 units each to their own order).']),
+      feature('sale-orders', 'Sale Orders', ShoppingCartIcon, ['Create PO from an enquiry opens the order form. Items On Order is a table (Product Code, Description, Warranty Std / Accepted, From Date Of D/I, Inst Req, Preventive Maintenance, Qty, Unit Price, Disc %, Tax %, Total Price) filled in from the quotation, or from the enquiry\'s products when there is no quotation — check it and Save. The order discount can be a % or an amount. Totals update as you type.', 'Our GST No, Entity Code and PAN, the customer\'s Customer Code, PAN and GST No, and the SOS No are shown read-only on the order and its PDF. Change them in Company Settings or the customer record. The SOS No appears once Design converts the order to a Project.', 'Order Stage is a funnel stage and A/C Manager is picked from the Sales team. Imported orders keep their old Sales Person name, shown as "(not a user)".', 'The Sale Order is the confirmed commercial order. Linking it to a Project creates the Design/Engineering Scope of Supply handoff.', 'Sales does not create the project. Design is notified of every new order and creates the project from Projects → New Project by picking the order; you are notified when that happens.', 'Request Stores (shown only on SAS trade orders) raises a trade request straight to Stores\' queue — describe the item and quantity, and Stores sees it immediately.', 'Projects → New Project → Sale Order: search by order number or customer. Picking an order fills the customer, company, order date and a description from its lines; the order\'s lines become the Scope of Supply (with HSN/GST). An existing project\'s order is changed from Edit Project. Orders already on a project show "on SB-xxxx".', 'Give a product a BOM structure template (Masters → Products) and every project made from an order with that product starts its BOM tree from it — Engineering then adjusts sizes and quantities.', 'Techno Fab orders and payments (85 orders, 257 payments, 2024-26) are loaded; pick Shanti Techno Fab in the company selector to see only them. Existing Shanti Boilers and Techno Fab projects are linked to their orders (the 50 SB-1109 units each to their own order).']),
       feature('costing', 'Costing', IndianRupeeIcon, [
         'A "Costing" button appears on a Sale Order once it has a linked Project — before that there is no real BOM, PO, or labor data to cost against, so nothing shows.',
         'Shows the quoted value against real actual cost: issued-PO spend (draft/cancelled POs don\'t count) plus logged job-card labor time. It updates live as Procurement issues POs and Production logs hours — check back rather than treating one look as final.',
@@ -1647,13 +1619,13 @@ export const DEPARTMENT_HELP = {
       }),
       feature('weekly-planner', 'Weekly Planner', ListChecksIcon, ['Enquiries → Weekly Planner shows one week of planned follow-ups (the "next plan" dates from the Diary), day by day. Change a date to move a follow-up. The Sales Head can also pick another person to hand it over; they get a notification.', 'The red Overdue box lists follow-ups whose date has passed and where nothing has been logged since. Log a Diary entry on the enquiry and it leaves the list.']),
       feature('amc', 'AMC and preventive maintenance', WrenchIcon, ['Deals → AMC lists service contracts with days committed and left, visits done, value, amount received, cost booked and profit. Open a contract to choose its service engineer, log each payment received (date, amount, who took it), add cost entries (spares, travel), renew or cancel it. The AMC Due, AMC Received and Service Engineer wise reports are built from these.', 'Preventive maintenance due lists the next visit for each active contract (from its "every" setting) and for items still under warranty that have a maintenance schedule. Schedule visit puts it on the Home calendar for the Service team.', 'Customer 360 also shows an Offer an AMC button when a customer bought equipment but has no active AMC, and the Enquiries list has an AMC enquiries filter.']),
-      feature('team-settings', 'Settings and Team', UsersIcon, ['The Settings page (cog icon, Sales Head only) has a Sales section with Team, Email and Data retention. Portal Access stays under Sales → Setup for everyone in Sales.', 'Team: Add member picks someone HR has already put in the Sales department and gives them a username and password. Change a person between Member and Head, Reset password (a new password is shown once — share it with them), or Switch off. You can not change your own role, and people who also have another department are managed by a PM.']),
+      feature('team-settings', 'Settings and Team', UsersIcon, ['The Settings page (cog icon, Sales Head or a manager) has a Sales section with Team, Email, WhatsApp, Lead sources and Data retention. Portal Access stays under Sales → Setup for everyone in Sales.', 'Team: Add member picks someone HR has already put in the Sales department and gives them a username and password. Change a person between Member and Head, Reset password (a new password is shown once — share it with them), or Switch off. You can not change your own role, and people who also have another department are managed by a PM.']),
       feature('library', 'Library', FileTextIcon, ['Setup → Library keeps mailers, presentations and price lists in one place for the whole team. Upload a file with a title and category; anyone in Sales can download it. The uploader or the Sales Head can delete it.']),
       feature('mis-reports', 'MIS reports', BarChart3Icon, ['Reports → Sales is grouped by what you want to know (Overview, Sales Order / AMC Order, Funnel & Enquiries, Order Analysis, Sales Calls & Follow-up, Quotations & Pricing, Team Performance, Customers & Feedback). The management reports include: Employee, Source, Reference and Branch Wise Order, Order Win/Loss, Funnel Ageing, Order Time Cycle, Lead Generation, Call Log, Last Contact, Employee Daily Work, Employee Movement, New Customer Added, Selling vs Cost Price, Employee Usage and AMC Profitability. Each has a date range and downloads as CSV or Excel. Sales Order vs Collection (formerly Order Book & Collections), the Dispatch Sales Order Report and the three AMC reports (Customer Wise Monthly AMC Due, Customer Wise Monthly AMC Received, Service Engineer wise AMC Received) are under Sales Order / AMC Order.', 'Employee Movement is the Diary visit log (place, in and out times), not GPS. Selling vs Cost Price, Employee Usage and AMC Profitability are for the Sales Head only.']),
-      feature('payment-tracker', 'Payment Tracker', IndianRupeeIcon, ['Order Tracker lists every order with its value, what has been billed and what has been received. Pick the Current Stage from the dropdown (Advance → Dispatched → Site Work Completed → Commissioning → Pending Site Issue → Cleared Issue → Completed); the stage shown is the next step still to do, as in the old Excel tracker.', 'Bill Value is the total of the order\'s issued or paid Sales Invoices. Until an order has one, you can type the billed amount into Bill Value yourself.', 'A row turns light green when Payment Received equals the Order Value (within ₹1 for rounding), light yellow when the amount short looks like TDS kept back by the customer (0.1%, 1% or 2% of the order value, or of the value before GST), and light red otherwise — for example nothing paid yet, a part payment, or more paid than ordered. Bill Value is for information only and does not change the colour. A row has no colour until it has an order value.', 'Click a remark (or "Add remark") to write it in a larger box. Payment Log is the log of every payment received.']),
+      feature('payment-tracker', 'Order Tracker and Payment Log', IndianRupeeIcon, ['Sales → Payments → Order Tracker lists every order with its value, what has been billed and what has been received. Pick the Current Stage from the dropdown (Advance → Dispatched → Site Work Completed → Commissioning → Pending Site Issue → Cleared Issue → Completed); the stage shown is the next step still to do, as in the old Excel tracker.', 'Bill Value is the total of the order\'s issued or paid Sales Invoices. Until an order has one, you can type the billed amount into Bill Value yourself.', 'A row turns light green when Payment Received equals the Order Value (within ₹1 for rounding), light yellow when the amount short looks like TDS kept back by the customer (0.1%, 1% or 2% of the order value, or of the value before GST), and light red otherwise — for example nothing paid yet, a part payment, or more paid than ordered. Bill Value is for information only and does not change the colour. A row has no colour until it has an order value.', 'Click a remark (or "Add remark") to write it in a larger box. The cog on the Orders card sets your own row colour rules. Sales → Payments → Payment Log is the log of every payment received: Add payment records one against an order, and the order\'s owner is notified.']),
       feature('email-setup', 'Email and Portal Access', MailIcon, [
         'Settings → Sales → Email (Sales Head; everyone else sees "My Email" under Setup) holds the sending mailbox for each company (Zoho address + app password), your own optional mailbox, a Test / Live switch and the list of recent emails. Keep it on Test until a test email has arrived; in Test mode nothing reaches a customer.',
-        'Setup → Portal Access (everyone in Sales) lists customers with a project. Enable creates their login; the customer gets a link to set their own password (passwords are never emailed). If email is not ready, or the customer has no email, use Copy link and send it yourself.',
+        'Setup → Portal Access (everyone in Sales) lists customers with a project. Enable creates their login. The username is the first word of the organization name; the first password is the customer\'s phone number, which they must change at first sign-in, or a set-password link when no phone is on record. Each row has Reveal, Copy and Reset for the password, Copy link, and Open portal, a read-only preview of what the customer sees.',
         'A quotation sent by email carries its PDF and is marked Sent only when the email really went out.',
         'Payment reminders: an order from the last year that is still unpaid after 30 days sends its salesperson a notification once a week.',
       ]),
@@ -1684,30 +1656,46 @@ export const DEPARTMENT_HELP = {
         ],
         watchOut: 'Marking a notification read only proves you saw it. A "converted to Project" notice still means the commercial note or task you owe Design/Engineering needs to actually be added to the new Project.',
       }),
-      feature('tasks', 'Diary and follow-ups', PhoneIcon, ['Log the outcome and next step of every call or visit in the enquiry\'s Diary, with the next follow-up date. Follow-ups show on your Home calendar, so there is no separate Tasks list in Sales.', 'The sidebar follows the day: Enquiries (Enquiries, Customers), Deals (Quotations, Sale Orders), Payments (Order Tracker, Payment Log, Invoices, Returns), then Setup.']),
+      feature('tasks', 'Diary and follow-ups', PhoneIcon, ['Log the outcome and next step of every call or visit in the enquiry\'s Diary, with the next follow-up date. Follow-ups show on your Home calendar, so there is no separate Tasks list in Sales.', 'The sidebar follows the day: Enquiries (Enquiries, Weekly Planner, WhatsApp, Trade Requests, Customers), Deals (Quotations, Sale Orders, AMC), Payments (Order Tracker, Payment Log, Invoices, Returns), then Setup (Library, Portal Access, Masters: Products, Funnel Stages, Targets, Branches, Email Templates).']),
       feature('reports', 'Reports', BarChart3Icon, ['Sales Pipeline shows every funnel stage in order with the number of open enquiries and their expected value (closed sales calls are left out); Agent Performance and Lead Funnel show the same enquiries by person and by stage.', 'Sales Order vs Collection is the Sales Head\'s money view of every order (both trackers plus new orders): orders booked, order value, received, outstanding and collected % for a financial year; booked (by company) and collected per month; outstanding by age; top customers still owing; value by sales person and by order status; and a details table by customer, sales person, status or company. Pick the company at the top of the app to see one company only.', 'Sales Overview shows this month\'s orders against target, the open funnel value and its weighted forecast, quotations waiting on a follow-up, and a six-month trend.', 'Employee Performance 360 shows one A/C manager or the whole team for chosen months: enquiries, sales calls, planned vs actual follow-ups, quotations, orders, win rate, target achievement, average days per stage, expenses and cost per order. Click a team row to open that person.', 'Sales Call Funnel: Value is the total Expected value of the enquiries at each stage; Probability (Value) weights it by the stage\'s win % (set by a Sales Head in Masters → Funnel Stages). Click a count to list the enquiries, with their latest quotation; hover a row to see the last Diary entry.', 'Every Sales report downloads as CSV or Excel (exactly the rows on screen, with full amounts) or prints to PDF. A Sales Executive\'s reports cover only their own records.', 'Data retention (Sales Head): under Settings → Sales → Data retention, choose how long follow-up notes and enquiry stage history are kept (1 month to 5 years) and switch it on. Nothing is deleted by switching it on or changing the window; you are shown what is past it, download a backup workbook, then confirm. Each enquiry\'s latest follow-up and stage, planned follow-ups, and all quotations, orders, invoices and payments always stay, and deleted history does not come back if you later extend the window.']),
       feature('agent-performance', 'Agent Performance', UserRoundIcon, [
-        'Reports → Agent Performance groups every lead, task, and opportunity by who it\'s assigned to (or, for opportunities, who created it — see the watch-out below) — no separate data entry, it reads what Leads/Tasks/Pipeline already record.',
-        'Leads assigned, conversion rate, and follow-up completion are real per-agent numbers straight off `assigned_to`. Won value and top lost reason are not — Opportunities has no per-agent owner field yet, so these are attributed by whoever created the opportunity record instead, labeled with an asterisk in the table.',
-        'Average response time is a proxy too: the gap between a lead being created and the first note logged against it, not a real tracked first-contact timestamp. Treat it as a rough signal, not an SLA measurement.',
+        'Reports → Sales → Agent Performance shows, per person, the enquiries they own, how many became orders, follow-ups planned and done, and the value won.',
+        'An enquiry belongs to its A/C Manager, else its assignee, else whoever created it. Won value follows the same person. Closed historical sales calls are left out.',
+        'Average response time is the gap between an enquiry being created and its first Diary entry; treat it as a rough signal.',
       ], {
-        value: 'Every other report here looks at the funnel as a whole. This is the one that answers "who is actually doing the work" — without it, a slow or overloaded agent is invisible until someone happens to notice.',
-        outcome: 'You can see, per agent, how much is on their plate and how it\'s converting — enough to rebalance assignment or follow up on a stalled patch, without pulling each agent\'s leads one at a time.',
-        checklist: ['Read Won value and Top lost reason as "who logged this," not "whose deal this really was," until Opportunities gets a real owner field.', 'Use response time to spot a pattern across many leads, not to judge one.'],
-        watchOut: 'An agent with zero leads/tasks/opportunities assigned to their username simply doesn\'t appear in the table — this is not a filtered-out or hidden row, there is nothing to show yet.',
+        value: 'Other reports look at the funnel as a whole. This one shows who is carrying the work.',
+        outcome: 'You can see, per person, how much is on their plate and how it converts.',
+        checklist: ['Set the A/C Manager on every enquiry so it counts for the right person.', 'Use Employee Performance 360 for the fuller picture of one person.'],
+        watchOut: 'A person with no enquiries does not appear in the table.',
       }),
-      feature('trade-requests', 'Trade Requests', InboxIcon, ['Sales → Deals → Trade Requests lists items the Service team has asked Sales to supply to a customer as a trade (SAS) order.', 'Tick the requests that belong together and Accept. The app creates the next SAS sale order with one line per request, at rate 0, and tells the people who raised them. If a request does not name a sale order, pick the customer first.', 'Open the new SAS order in Sale Orders to enter rates, then use Request Stores so Stores can reserve or buy the material.'], { outcome: 'Each accepted request sits on a SAS order with a customer.', watchOut: 'Rates start at 0. Enter them before sending the order to the customer.' }),
+      feature('trade-requests', 'Trade Requests', InboxIcon, ['Sales → Enquiries → Trade Requests lists items the Service team has asked Sales to supply to a customer as a trade (SAS) order.', 'Tick the requests that belong together and Accept. The app creates the next SAS sale order with one line per request, at rate 0, and tells the people who raised them. If a request does not name a sale order, pick the customer first.', 'Open the new SAS order in Sale Orders to enter rates, then use Request Stores so Stores can reserve or buy the material.'], { outcome: 'Each accepted request sits on a SAS order with a customer.', watchOut: 'Rates start at 0. Enter them before sending the order to the customer.' }),
       feature('masters-targets', 'Targets and Branches', TagIcon, ['Sales → Setup → Masters → Branches is the list of offices or locations offered on enquiries and sale orders.', 'Masters → Targets holds the monthly sales target for a branch or an account manager. Reports compare booked orders with these targets.', 'Only a Sales Head or a manager can change them.'], { outcome: 'Enquiries and orders carry the right branch, and reports have a target to compare with.', watchOut: 'A target set for the wrong month or person makes the report misleading. Check the month before saving.' }),
       feature('email-templates', 'Email Templates', MailIcon, ['Sales → Setup → Masters → Email Templates holds the wording of the Commercial Offer email, one per company: terms, commercial and bank details, signature.', 'Use the token buttons to insert the customer name, quotation number and amount; the preview shows the result.', 'The template is used whenever a quotation is emailed. The sender can still edit the message before sending.'], { outcome: 'Every offer email from a company starts from the same approved wording.', watchOut: 'A change applies to every future email of that company, not to ones already sent.' }),
       feature('order-lost', 'Order Lost and competitors', AlertTriangleIcon, ['To record a lost order: open the enquiry, choose Order Lost, pick the reason and, if you know it, the competitor it was lost to, their product and price.', 'The enquiry moves to the Order Lost stage and leaves the open funnel. On the Board, dropping a card on Order Lost opens the same dialog.', 'Reports → Competitor Analysis and Order Win/Loss read these entries.'], { outcome: 'The enquiry is closed as lost with a reason, and the loss shows in the reports.', watchOut: 'A lost enquiry cannot be quoted again. Create a new enquiry if the customer comes back.' }),
       feature('whatsapp', 'WhatsApp inbox and connection', MessageSquareIcon, ["To connect WhatsApp: Settings → Sales → WhatsApp (Sales Head or a manager). Follow the numbered steps and paste the phone number ID, access token and app secret from the company's Meta business account. One number per company.", "Sales → Enquiries → WhatsApp is the inbox. A new conversation goes to the enquiry's account manager when the phone number matches, otherwise to the next person in the rota.", "You can type freely within 24 hours of the customer's last message. After that, send one of the approved templates.", 'Quotations and RFQs have a WhatsApp button; if the company number is not connected it opens WhatsApp on your own phone or computer instead.'], { outcome: 'Customer messages reach the right salesperson and replies go from the company number.', watchOut: "Meta bills the company's card for messages; there is no prepaid balance to top up here." }),
+      feature('invoices', 'Invoices and Credit Notes', ReceiptIcon, [
+        'Sales → Payments → Invoices lists Sales Invoices and Credit Notes. Create one with Convert to Invoice on an accepted quotation (its lines, discounts and GST carry over) or Add Sales Invoice.',
+        'An invoice starts as a draft. Setting it to Issued gives it the company’s invoice number, posts it to the books and tells managers; the customer sees it on their portal. Paid is set when the money is in: Sales, or Accounts recording the receipt.',
+        'Credit Note on an invoice records an amount given back, for example for a return. The PDF button prints the invoice with the CGST + SGST or IGST split.',
+      ], { outcome: 'Every billed amount is an issued invoice with its GST split and payment status.', watchOut: 'An issued invoice is in the books. Correct it with a credit note, not by editing.' }),
+      feature('products', 'Products (Product Master)', TagIcon, [
+        'Sales → Setup → Masters → Products is the list of what you sell. Each product has a code, name, category, unit, price, cost price, HSN code, GST %, warranty days and whether it is serviceable.',
+        'Search and page through the list. Open a product to edit it; the dialog also shows its price history, added to each time the price or cost changes.',
+        'Products fill in the lines of enquiries, quotations and sale orders. A product can be linked to a BOM Structure Template.',
+      ], { outcome: 'Quotation lines start with the right unit, price, HSN and GST.', watchOut: 'A product with no HSN code or GST % gives an invoice line that has to be completed by hand.' }),
+      feature('lead-sources', 'Lead sources (IndiaMART, TradeIndia, JustDial, website)', InboxIcon, [
+        'Settings → Sales → Lead sources (Sales Head, Marketing Head or a manager): connect IndiaMART (CRM key), TradeIndia (user id, profile id and key), JustDial or a website form (they push to the address shown).',
+        'Each lead becomes an enquiry at the first stage with its source set, assigned by the team rota; the assignee is notified. A lead from a phone number that already has an open enquiry is added to that enquiry’s Diary instead.',
+        'Leads are collected while anyone has the app open; Sync now pulls at once and shows the provider’s error if a key is wrong.',
+      ], { outcome: 'Portal leads arrive as enquiries without retyping.', watchOut: 'A lead with neither phone nor email is skipped.' }),
     ],
     howTo: [
-      { section: 'Sale Order', title: 'Capture an enquiry', body: 'Create a Lead with the best contact details and source you have. Add a follow-up task immediately.' },
+      { section: 'Sale Order', title: 'Capture an enquiry', body: 'Open Sales → Enquiries → New Enquiry. Enter the organization, contact, source and the products asked about, and pick the A/C Manager. Log the first call in the Diary with the next plan date.' },
       { section: 'Sale Order', title: 'Qualify it', body: 'Log calls/notes in the Diary, confirm requirement and timing, and move the Stage forward (Lead - Hot, then Proposals) when it is a real opportunity.' },
       { section: 'Sale Order', title: 'Create the commercial record', body: 'From the enquiry, use Create Commercial Offer: it links the customer, builds the Quotation with real line items, and generates the PDF.' },
-      { section: 'Sale Order', title: 'Confirm the order', body: 'Convert the accepted quotation to a Sale Order and check customer/address details before linking it to a Project.' },
-      { section: 'Sale Order', title: 'Hand off cleanly', body: 'Open Sale Orders and use Convert to Project on the order, or link it to a Project already created, then add any commercial note or task that Design/Engineering must know.' },
+      { section: 'Sale Order', title: 'Confirm the order', body: 'Set the quotation to Accepted and click Convert to SO, or click Create PO on the enquiry. Check the items, discount, GST and customer details in the order and save.' },
+      { section: 'Sale Order', title: 'Hand off cleanly', body: 'Attach the Order Acknowledgement PDF to the Sale Order. Design is notified and creates the project from Projects → New Project. Add any commercial note Design must know as a task.' },
+      { section: 'Sale Order', title: 'Invoice and collect', body: 'On the accepted quotation click Convert to Invoice, or use Sales → Invoices → Add Sales Invoice. Set it to Issued. Log each payment in Sales → Payment Log.' },
       {
         section: 'SAS material request', title: 'Request material for a SO', body: 'Open Sale Orders, use Request Stores on the SAS order, and describe the item and quantity. This goes to Stores as a trade (SAS) request against that Sale Order.',
         why: 'Material sometimes needs to move before a Project exists — a SAS request lets Stores act on it without waiting for the full handoff.',
@@ -1717,27 +1705,26 @@ export const DEPARTMENT_HELP = {
   },
   Marketing: {
     title: 'Marketing', icon: MegaphoneIcon,
-    intro: ['Marketing creates demand, captures enquiries, and helps the team understand which campaigns produce useful opportunities. Your main workspace is the shared CRM funnel, not the Sales-only order paperwork.', 'Sales shares Leads, Pipeline, Tasks, and Reports. Marketing owns Campaigns and can work the shared upstream funnel; Customers, Quotations, and Sale Orders remain Sales-owned.'],
+    intro: ['Marketing creates demand and tracks which campaigns and sources produce useful enquiries.', 'Marketing has three screens in the top bar: Marketing (Campaigns), Pipeline (Marketing’s own opportunities) and Reports. Enquiries, customers, quotations and orders belong to Sales and are worked in the Sales screen.'],
     features: [
-      feature('campaigns', 'Campaigns', MegaphoneIcon, ['Create a campaign for a trade show, referral drive, website push, paid campaign, or other source of enquiries.', 'Attach the campaign to Leads and Opportunities so Reports can show what it produced.']),
-      feature('leads', 'Leads', UserPlusIcon, ['Capture every useful enquiry with source, company, contact details, industry, and territory. Keep the source accurate because it powers campaign reporting.', 'Marketing can qualify and hand a lead into the shared pipeline; do not create a second Lead because Sales also needs to see it.']),
-      feature('pipeline', 'Shared Pipeline', TrendingUpIcon, ['Follow opportunities after a lead becomes a real deal. Keep next contact, expected close, value, and stage current so Sales and Marketing see the same truth.', 'Use a real lost reason when an opportunity ends.']),
-      feature('tasks', 'Tasks and follow-up', ListChecksIcon, ['Create follow-ups for campaign responses, callbacks, event contacts, and content actions. Assign the task and set a due date.', 'Close completed tasks rather than deleting them; the history shows what happened.']),
-      feature('reports', 'Marketing reports', BarChart3Icon, ['Use Lead Funnel, Leads by Source, and Campaign Performance to compare campaign activity with lead volume and opportunity value.', 'Reports are a decision aid, not a substitute for accurate source and campaign fields.']),
-      feature('team', 'Team and assignment rules', UsersIcon, ['Set the Marketing assignment rota if your team uses round-robin lead assignment. Leave it blank when a person should assign leads manually.', 'You manage Marketing’s assignment list, not Sales’ list.']),
+      feature('campaigns', 'Campaigns', MegaphoneIcon, ['Open Marketing in the top bar. New Campaign adds a campaign for a trade show, referral drive, website push or other source of enquiries. The list shows each campaign’s status and owner.', 'Use the same campaign name on the enquiries and opportunities it produced so Reports can show its results.']),
+      feature('pipeline', 'Pipeline (opportunities)', TrendingUpIcon, ['Open Pipeline in the top bar. New Opportunity records a prospect Marketing is developing: title, customer (optional), source, value, next contact date and notes.', 'Drag a card between stages as the conversation moves. Give a lost reason when an opportunity ends.', 'When a prospect is ready to be quoted, hand it to Sales, who work it as an enquiry.']),
+      feature('lead-sources', 'Lead sources', InboxIcon, ['Settings → Marketing · Lead sources (Marketing Head): connect IndiaMART, TradeIndia, JustDial or a website form. Each lead becomes a Sales enquiry with its source set, so Leads by Source can count it.', 'Sync now pulls leads at once and shows the provider’s error if a key is wrong.'], { outcome: 'Portal leads reach Sales with the right source.', watchOut: 'A lead with neither phone nor email is skipped.' }),
+      feature('reports', 'Marketing reports', BarChart3Icon, ['Open Reports in the top bar: Lead Funnel, Leads by Source and Campaign Performance compare campaign activity with enquiry volume and value.', 'Each report downloads as CSV or Excel. Reports are only as good as the source and campaign set on each enquiry.']),
+      feature('tasks', 'Tasks and follow-up', ListChecksIcon, ['Add follow-ups for campaign responses, callbacks and event contacts on Home → Tasks, with a due date.', 'To ask another department for something, use Raise on the Operations Incidents card.']),
     ],
     howTo: [
-      { title: 'Plan a campaign', body: 'Create the Campaign with a clear name and purpose before importing or entering leads. Use the same campaign name everywhere.' },
-      { title: 'Capture responses', body: 'Create or update Leads with a source and campaign, then add a follow-up task so every response has an owner.' },
-      { title: 'Qualify and share', body: 'Move real requirements to qualified and let the shared Pipeline carry the deal forward. Do not duplicate the record for Sales.' },
-      { title: 'Review results', body: 'Open Reports and compare leads, sources, campaigns, and opportunity value. Fix missing attribution before drawing conclusions.' },
-      { title: 'Hand off a ready deal', body: 'Add a useful note and next step, assign the opportunity if needed, and let Sales handle customer, quotation, and Sale Order paperwork.' },
+      { title: 'Plan a campaign', body: 'Open Marketing → New Campaign and give it a clear name before the enquiries arrive. Use the same name everywhere.' },
+      { title: 'Connect a lead source', body: 'Open Settings → Marketing · Lead sources, paste the key for IndiaMART or TradeIndia, and click Sync now to test it.' },
+      { title: 'Track a prospect', body: 'Open Pipeline → New Opportunity. Keep the stage, value and next contact date current.' },
+      { title: 'Review results', body: 'Open Reports and compare Lead Funnel, Leads by Source and Campaign Performance. Fix missing sources before drawing conclusions.' },
+      { title: 'Hand off a ready deal', body: 'Tell Sales with a task (Operations → Raise) naming the customer and requirement; Sales creates the enquiry and the quotation.' },
     ],
   },
   Accounts: {
     title: 'Accounts', icon: LandmarkIcon,
     intro: [
-      'Accounts owns the full books for both legal entities (Shanti Boilers & Pressure Vessels (P) Ltd and Shanti Techno Fab) — chart of accounts, journal entries, GST compliance, and the derived Trial Balance/P&L/Balance Sheet. SB Ops is the system of record here, not a document trail feeding an external accounting package; Tally, if ever connected, would be an optional sync target reading from this ledger, not the other way round.',
+      'Accounts owns the full books of each company — chart of accounts, journal entries, GST compliance, and the derived Trial Balance/P&L/Balance Sheet. SB Ops is the system of record here, not a document trail feeding an external accounting package; Tally, if ever connected, would be an optional sync target reading from this ledger, not the other way round.',
       'Most of the ledger fills itself in: issuing a Sales Invoice, approving a Vendor Bill, raising a Credit/Debit Note, or marking a Salary Slip paid each post their own journal entry automatically. Your day-to-day work is mostly settlement (receipts/payments), GST compliance (returns and reconciliation), and the exceptions nothing else already covers (Manual Journal Entry, bank reconciliation).',
       'Operations has a glance view now (the same kind of pipeline diagram Procurement, Sales, Design, and Stores already have) — but Accounts isn\'t one pipeline, so it shows three independent spines instead: Purchase → Pay (Bill Draft → Approved → Paid, with Debit notes off to the side), Order → Cash (Invoice Draft → Issued → Paid, with Credit notes off to the side), and Period Close (JE Draft → Posted → Reconciled, with GST returns filed off to the side). All three read live off the ledger; there is nothing to enter here.',
     ],
@@ -1760,9 +1747,9 @@ export const DEPARTMENT_HELP = {
         watchOut: 'A change here affects every document printed afterwards, including reprints of old ones. Documents already downloaded or sent are not changed.',
       }),
       feature('rates', 'GST & TDS Rates', PercentIcon, ['HSN → GST rate and TDS section → rate/threshold masters, effective-dated like Payroll’s own statutory rates. A rate with no row here falls back to whatever flat percentage the originating document typed by hand — add the real rate before trusting an automatic split.']),
-      feature('ledger', 'Chart of Accounts & General Ledger', LayersIcon, ['Each company’s chart is seeded with the accounts every auto-posting trigger needs (AR, AP, GST Input/Output, Raw Material Inventory, Salary Expense, and the rest) — add an account only when a real new use needs one, not speculatively.', 'Trial Balance, Profit & Loss, and Balance Sheet are read-only rollups off the ledger, not separate records — if they look wrong, the fix is always in what posted to the ledger, never in the report itself.']),
+      feature('ledger', 'Chart of Accounts & General Ledger', LayersIcon, ['Accounts → General Ledger holds the Chart of Accounts, the Books lock date (no posting on or before it), Manual Journal Entries, AR / AP settlement, and the Trial Balance, Profit & Loss and Balance Sheet. Each company’s chart is seeded with the accounts every auto-posting trigger needs (AR, AP, GST Input/Output, Raw Material Inventory, Salary Expense, and the rest) — add an account only when a real new use needs one, not speculatively.', 'Trial Balance, Profit & Loss, and Balance Sheet are read-only rollups off the ledger, not separate records — if they look wrong, the fix is always in what posted to the ledger, never in the report itself.']),
       feature('journal', 'Manual Journal Entry', FileEditIcon, [
-        'Use this only for what no document already covers — every Sales Invoice, Vendor Bill, Credit/Debit Note, Salary Slip, receipt, payment, and Material Issue posts itself. A Manual Journal Entry is for a real adjustment nothing else models.',
+        'Accounts → General Ledger → Manual Journal Entries. Use this only for what no document already covers — every Sales Invoice, Vendor Bill, Credit/Debit Note, Salary Slip, receipt, payment, and Material Issue posts itself. A Manual Journal Entry is for a real adjustment nothing else models.',
         'A new entry saves as a draft and does not touch the Trial Balance until you Post it — debits and credits must match before it can be posted at all. Once posted it is immutable; a mistake is corrected with Reverse, which posts a new offsetting entry, never an edit to the original.',
       ], {
         outcome: 'The adjustment is posted, the Trial Balance still balances, and anyone reading the ledger later can see exactly what was entered and why — never a silent edit to history.',
@@ -1773,7 +1760,7 @@ export const DEPARTMENT_HELP = {
         ],
         watchOut: 'A posted entry cannot be edited or deleted, on purpose — that immutability is what makes the ledger trustworthy. If a posted entry is wrong, reverse it and post the correct one; do not go looking for a way around the lock.',
       }),
-      feature('settlement', 'AR / AP settlement', ReceiptIcon, ['Record a customer receipt against an issued Sales Invoice or a vendor payment against an approved Vendor Bill — pick the real document from the list, not a free-text reference. Each one posts Bank & Cash against Accounts Receivable/Payable and moves the parent document to Paid once it is genuinely fully settled.', 'A receipt or payment cannot exceed the real balance still due — the amount is checked against everything already recorded against that document, not just typed and trusted.'], {
+      feature('settlement', 'AR / AP settlement', ReceiptIcon, ['Accounts → General Ledger → AR / AP settlement: record a customer receipt against an issued Sales Invoice or a vendor payment against an approved Vendor Bill — pick the real document from the list, not a free-text reference. Each one posts Bank & Cash against Accounts Receivable/Payable and moves the parent document to Paid once it is genuinely fully settled.', 'A receipt or payment cannot exceed the real balance still due — the amount is checked against everything already recorded against that document, not just typed and trusted.'], {
         outcome: 'Accounts Receivable/Payable reflects real cash movement, not just document status — the invoice or bill shows Paid only once it genuinely is.',
         checklist: [
           'Pick the real invoice or bill from the list — not a typed reference — so the receipt/payment links to the document it actually settles.',
@@ -1794,22 +1781,24 @@ export const DEPARTMENT_HELP = {
         ],
         watchOut: 'GSTR-2B is evidence to reconcile against, not a replacement purchase register — SB Ops’ own Vendor Bills stay the real accounting record even after a GSTR-2B line is matched and accepted.',
       }),
-      feature('bank-rec', 'Bank Reconciliation', GitCompareIcon, ['Every posting against the Bank & Cash account — salary payouts, receipts, payments, any manual entry that touched it — shows here for you to tick off against the real bank statement, one line at a time.'], {
-        outcome: 'The reconciled balance genuinely matches what has cleared on the real bank statement, and the unreconciled list is a true, current exception queue — not a guess.',
+      feature('bank-rec', 'Bank Reconciliation', GitCompareIcon, ['Accounts → Bank Reconciliation lists every posting against the Bank & Cash account. Tick a line when it has cleared on the bank statement.', 'Import Statement: upload the bank’s CSV or Excel statement. Lines that match one ledger entry exactly (same amount, within a few days) are ticked for you after you confirm; unclear matches are listed for you to tick; a statement line with no entry (a bank charge, interest) can be posted on the spot by choosing its account.'], {
+        outcome: 'The reconciled balance matches what has cleared on the bank statement, and the unreconciled list is a true exception queue.',
         checklist: [
-          'Pull up the real bank statement for the period alongside this list before ticking anything off.',
-          'Match each ledger line to the statement one at a time; leave anything that hasn’t actually cleared unticked.',
-          'Treat a persistently unreconciled line as a real exception to chase, not something to tick off anyway to clear the list.',
+          'Check the preview before confirming an import.',
+          'Leave anything that has not cleared unticked.',
+          'Chase a line that stays unreconciled; do not tick it to clear the list.',
         ],
-        watchOut: 'This is a manual tick-off against the ledger, not a bank-statement import — there is no file upload here and no separate bank-account master yet. Match each line by hand against the real statement.',
+        watchOut: 'The statement itself is not stored; importing again simply matches what is still unreconciled. Check the first import from each bank carefully, as column layouts differ.',
       }),
       feature('service-expenses', 'Service Expenses', ReceiptIcon, ['Accounts → Service Expenses shows cash requests and travel claims from the Service team that the manager and the executive have already approved.', 'Open one to check the amounts and receipts, then settle it: settled-on date, accounted by and checked.', 'A cash request shows how much of the advance has been used on travel claims and what remains.'], { outcome: 'Every approved request is settled, with the date and the person recorded.', watchOut: 'Settling does not post to the ledger. Record the payment as a journal entry as well.' }),
       feature('fixed-assets', 'Fixed Assets', BoxesIcon, ['Accounts → Fixed Assets: add an asset with its cost, salvage value, useful life and method (straight line or written down value). Adding it posts the purchase.', "Run depreciation for a month to post that month's depreciation for every active asset.", 'Dispose sells or writes off an asset and posts the gain or loss. A wrongly entered asset is corrected by disposing of it at 0.'], { outcome: 'The asset register, accumulated depreciation and the ledger agree.', watchOut: 'Depreciation is by whole months. A locked period refuses the posting.' }),
       feature('audit-log', 'Audit Log', LockIcon, ['Accounts → Audit Log lists who did what and when across the app: approvals, edits, deletions, settings changes.', 'Search by action, person or detail. The newest 200 entries show first.'], { outcome: 'You can answer who changed a record and when.', watchOut: 'The log cannot be edited or cleared.' }),
       feature('assistant', 'Help assistant and AI credit', MessageSquareIcon, ["Settings → Assistant (admin and the Accounts Head): the OpenRouter key, the writing model, and the AI credit left, used and bought. Add credit opens OpenRouter's credit page.", 'When credit runs out the assistant tells users to contact Accounts.', "Answers about live data (orders, stock, payments) stay off until the customer's approval is recorded there by admin."], { outcome: 'The assistant has credit and the right model.', watchOut: 'The key is shown only once, when pasted. Keep a copy somewhere safe.' }),
+      feature('reports', 'Accounts reports', BarChart3Icon, ['Reports → Accounts: Trial Balance, Profit & Loss, Balance Sheet, Cash Flow Statement, Customer Ledger, Vendor Ledger, Receivables Aging, Payables Aging, Cash / Bank Book, Journal Register, Bank Reconciliation Statement, GSTR-1, GSTR-3B, ITC Reconciliation, TDS Deduction Register, Fixed Asset Register and Depreciation Schedule.', 'Pick the company in the top bar and the dates on the report. Each one downloads as PDF, Excel or CSV.'], { outcome: 'The figures handed to the auditor or CA come straight from the ledger.', watchOut: 'A report that looks wrong is fixed in what was posted, never in the report.' }),
+      feature('invoices-bills', 'Invoices, vendor bills and e-way bill set-up', ReceiptIcon, ['Sales raises and issues Sales Invoices; Procurement records and approves Vendor Bills. Both post to the ledger by themselves. Accounts marks an invoice Paid or records receipts and payments under General Ledger → AR / AP settlement.', 'Accounts can open any packing list from Reports → Dispatch Register to see its freight and e-way bill.', 'E-way bill set-up: Accounts → Company Entities holds the company’s e-way bill API credentials (from the government e-way bill portal: Registration → For API) and a Test Connection button, plus the company’s place and pincode. New Company adds another company where the plan allows it.'], { outcome: 'Billing documents reach the books without retyping.', watchOut: 'E-way bill credentials are stored encrypted and never shown again; re-enter them to change them.' }),
     ],
     howTo: [
-      { title: 'Confirm the company and period first', body: 'Pick the legal entity (Shanti Boilers or Shanti Techno Fab) and the period before doing anything else — invoice numbering, GST return periods, and every report are scoped to that pair, and picking the wrong one is the easiest way to post or read the wrong company’s books.' },
+      { title: 'Confirm the company and period first', body: 'Pick the company in the top bar and the period before doing anything else — invoice numbering, GST return periods, and every report are scoped to that pair, and picking the wrong one is the easiest way to post or read the wrong company’s books.' },
       { title: 'Let documents post themselves; use Manual Journal Entry only for the rest', body: 'Issuing a Sales Invoice, approving a Vendor Bill, raising a Credit/Debit Note, and marking a Salary Slip paid all post their own journal entry automatically. Reach for a Manual Journal Entry only for a real adjustment none of those cover.' },
       { title: 'Settle what has actually been paid', body: 'Record a customer receipt or vendor payment against the real invoice or bill so Accounts Receivable/Payable reflects real cash movement, not just document status.' },
       { title: 'Reconcile GST and the bank statement', body: 'Upload the period’s GSTR-2B and action every IMS line (accept/reject) instead of leaving it Pending; tick off Bank & Cash postings against the real bank statement.' },
@@ -1820,20 +1809,21 @@ export const DEPARTMENT_HELP = {
     title: 'Human Resources', icon: UsersIcon,
     intro: ['HR keeps the people record accurate from joining to leaving: employee details, onboarding, attendance, leave, payroll inputs, expenses, advances, and separation.', 'HR data is sensitive. Check the employee and date before saving changes, and use the workflow status instead of deleting history.'],
     features: [
-      feature('employees', 'Employees', UserRoundIcon, ['The employee master is the central people record. Keep department, designation, contact, joining, manager, and employment status current.', 'Use deactivate/separation workflows rather than deleting a historical employee.']),
-      feature('onboarding', 'Onboarding', UserCheckIcon, ['Create onboarding tasks for documents, induction, equipment, and approvals. Mark each task complete as evidence arrives.', 'The employee should be visible to the right department before access or work is assigned.']),
-      feature('attendance', 'Attendance and shifts', Clock3Icon, ['Use shifts and attendance to record the working day. Check the date and assigned shift before correcting an entry.', 'Attendance is date-specific; do not treat today’s status as a permanent employee property.']),
-      feature('leave', 'Leave and holidays', CalendarDaysIcon, ['Maintain leave types, allocations, holidays, and requests. Approve only after checking balance, dates, and reporting responsibility.', 'A rejected or cancelled request remains part of the record.']),
-      feature('payroll', 'Payroll', IndianRupeeIcon, ['Salary structures, assignments, additional salary, advances, loans, and statutory slabs feed payroll runs and salary slips.', 'Review the run before generating slips; payroll is a controlled calculation, not a free-form edit.']),
-      feature('expenses', 'Expenses and separation', ReceiptIcon, ['Review expense claims and advances with supporting details. For separation, complete tasks and settlement steps before closing the employee record.']),
+      feature('employees', 'Employees', UserRoundIcon, ['HR → Employees lists staff and workers. New Employee adds one: name, code, department, designation, type (Staff or Worker), contact and joining date. Open an employee to edit details or see history.', 'Every app login belongs to an HR employee, so add the employee here before a manager gives them access. Use separation rather than deleting a past employee.']),
+      feature('onboarding', 'Onboarding and separation', UserCheckIcon, ['Open the employee in HR → Employees. Onboarding lists the joining tasks (documents, induction, equipment, approvals); tick each as it is done.', 'Start Separation opens the exit: exit details, tasks, leave encashed and the settlement, with View Settlement PDF. Finish it before switching the employee off.']),
+      feature('attendance', 'Attendance and shifts', Clock3Icon, ['HR → Attendance shows each day’s record per employee (present, half-day, absent, late, early exit); shop-floor workers are marked by Production on their daily sheet and appear here.', 'HR → Shifts holds Shift Types and Shift assignments. Check the date and assigned shift before correcting an entry.']),
+      feature('leave', 'Leave and holidays', CalendarDaysIcon, ['HR → Leave: New Leave Request for an employee (leave type, dates, half-day, reason). The person they report to, or the HR Head, is notified and approves or rejects under Leave Requests; the employee is told the decision.', 'HR → Holidays is the Holiday Calendar. A rejected or cancelled request stays on record.']),
+      feature('payroll', 'Payroll', IndianRupeeIcon, ['HR → Payroll has Payroll Runs, Salary Slips, Additional Salary, Structures and Statutory Settings (PF, ESI, professional tax and income tax slabs).', 'Assign a salary structure to each employee, add one-off amounts under Additional Salary, create the run for the month, review it, then generate the slips. Marking a slip Paid posts it to the books; the slip PDF is the payslip.']),
+      feature('expenses', 'Expenses and advances', ReceiptIcon, ['HR → Expenses holds employee expense claims and advances. A new claim notifies the HR Head, who approves, rejects or marks it paid; the employee is told.', 'Service team travel claims and cash requests are separate: they are under the Service team’s Expenses screen and Approvals → Service Expenses.']),
       feature('recruitment', 'Recruitment', UserPlusIcon, ['HR → Recruitment: create a job opening, add applicants to it, and move each applicant through the stages to offered and hired.', 'Hiring an applicant creates the employee record, so details are not typed twice.'], { outcome: 'Every opening shows its applicants and where each one stands.', watchOut: 'Close an opening once it is filled so it stops showing as open.' }),
     ],
     howTo: [
-      { title: 'Onboard someone', body: 'Create or open the employee, confirm department/designation, add onboarding tasks, and track documents until every required task is complete.' },
-      { title: 'Correct attendance', body: 'Choose the employee and exact date, check the shift assignment, then correct the attendance record with a clear reason.' },
-      { title: 'Process leave', body: 'Review the request dates and balance, check holidays/overlap, then approve or reject with the correct workflow action.' },
-      { title: 'Run payroll', body: 'Check salary assignments, additions, loans, advances, and statutory settings; generate the run, review totals, then generate slips.' },
-      { title: 'Complete separation', body: 'Open the separation record, finish tasks, calculate settlement, review the result, and only then deactivate/close the employee.' },
+      { title: 'Onboard someone', body: 'Open HR → Employees → New Employee, set department and designation, then open the employee and work through Onboarding. Ask a manager to give them a login from Settings if they need one.' },
+      { title: 'Correct attendance', body: 'Open HR → Attendance, choose the employee and exact date, check the shift, and correct the record.' },
+      { title: 'Process leave', body: 'Open HR → Leave → Leave Requests, check the dates, balance and holidays, then approve or reject.' },
+      { title: 'Run payroll', body: 'Open HR → Payroll. Check Structures and Additional Salary, create the run under Payroll Runs, review the totals, then generate Salary Slips.' },
+      { title: 'Hire from an opening', body: 'Open HR → Recruitment, create the opening, add applicants and move them through the stages; hiring one creates the employee.' },
+      { title: 'Complete separation', body: 'Open the employee, Start Separation, finish the tasks and the settlement, then switch the employee off.' },
     ],
   },
 };
