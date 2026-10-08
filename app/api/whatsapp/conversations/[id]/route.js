@@ -45,7 +45,7 @@ export async function PATCH(req, { params }) {
   if (!isDepartmentHead(user, 'Sales')) return NextResponse.json({ error: 'Only the Sales Head can reassign a conversation' }, { status: 403 });
   const b = await req.json();
   const to = await queryOne(
-    `SELECT id, username FROM users WHERE username = ? AND active = 1 AND (',' || COALESCE(departments,'') || ',') LIKE '%,Sales,%'`, [b.assigned_to]);
+    `SELECT id, username FROM users WHERE username = ? AND active = 1 AND ((',' || COALESCE(departments,'') || ',') LIKE '%,Sales,%' OR role IN ('admin', 'manager', 'executive'))`, [b.assigned_to]);
   if (!to) return NextResponse.json({ error: 'Pick an active Sales person' }, { status: 400 });
   await execute('UPDATE wa_conversations SET assigned_to = ? WHERE id = ?', [to.username, conv.id]);
   if (to.username !== user.username) {

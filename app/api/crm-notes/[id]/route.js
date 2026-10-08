@@ -29,7 +29,7 @@ export async function PATCH(req, { params }) {
   let newOwner = null;
   if (b.plan_for !== undefined && (b.plan_for || null) !== (note.plan_for || null)) {
     if (!isDepartmentHead(user, 'Sales')) return NextResponse.json({ error: 'Only the Sales Head can reassign a follow-up' }, { status: 403 });
-    newOwner = b.plan_for ? await queryOne("SELECT id, username FROM users WHERE active = 1 AND username = ? AND (',' || COALESCE(departments,'') || ',') LIKE '%,Sales,%'", [b.plan_for]) : null;
+    newOwner = b.plan_for ? await queryOne("SELECT id, username FROM users WHERE active = 1 AND username = ? AND ((',' || COALESCE(departments,'') || ',') LIKE '%,Sales,%' OR role IN ('admin', 'manager', 'executive'))", [b.plan_for]) : null;
     if (b.plan_for && !newOwner) return NextResponse.json({ error: 'That person is not an active Sales user' }, { status: 400 });
     sets.push('plan_for = ?'); vals.push(b.plan_for || null);
   }
