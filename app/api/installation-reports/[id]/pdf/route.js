@@ -8,11 +8,12 @@ export const runtime = 'nodejs';
 export async function GET(req, { params }) {
   const user = await getFreshSessionUser();
   const { id } = await params;
-  const row = await queryOne('SELECT r.*, p.project_no, p.company, p.master_project_id, p.service_reports_customer_visible AS project_visible FROM installation_reports r JOIN projects p ON p.id = r.project_id WHERE r.id = ?', [id]);
+  const row = await queryOne(`SELECT r.*, COALESCE(p.project_no, sc.name) AS project_no, p.company, p.master_project_id, p.service_reports_customer_visible AS project_visible
+    FROM installation_reports r LEFT JOIN projects p ON p.id = r.project_id LEFT JOIN service_third_party_customers sc ON sc.id = r.service_customer_id WHERE r.id = ?`, [id]);
   if (isCustomer(user)) {
     // A customer sees only a finalized report that was shared with them, on their own order (for a split
     // order the customer's project is the master, the report sits on a unit).
-    const own = row && (canAccessProject(user, row.project_id) || (row.master_project_id && canAccessProject(user, row.master_project_id)));
+    const own = row && row.project_id && (canAccessProject(user, row.project_id) || (row.master_project_id && canAccessProject(user, row.master_project_id)));
     if (!row || !own || !(row.customer_visible || row.project_visible) || !row.finalized_at) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   } else if (!user || !canAccessDepartment(user, 'Installation')) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });

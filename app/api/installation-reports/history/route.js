@@ -8,11 +8,11 @@ export async function GET(req) {
   const user = await getFreshSessionUser();
   if (!user || !canAccessDepartment(user, 'Installation')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const sp = new URL(req.url).searchParams;
-  const pid = Number(sp.get('project_id'));
-  if (!pid) return NextResponse.json({ error: 'project_id is required' }, { status: 400 });
+  const pid = Number(sp.get('project_id')), cid = Number(sp.get('service_customer_id'));
+  if (!pid && !cid) return NextResponse.json({ error: 'project_id or service_customer_id is required' }, { status: 400 });
   const rows = await queryAll(
-    'SELECT id, report_no, call_type, report_date, updated_at, data_json FROM installation_reports WHERE project_id = ? AND id != ? ORDER BY updated_at DESC, id DESC',
-    [pid, Number(sp.get('exclude')) || 0]);
+    `SELECT id, report_no, call_type, report_date, updated_at, data_json FROM installation_reports WHERE ${pid ? 'project_id' : 'service_customer_id'} = ? AND id != ? ORDER BY updated_at DESC, id DESC`,
+    [pid || cid, Number(sp.get('exclude')) || 0]);
   const out = [];
   for (const r of rows) {
     let remark = '';

@@ -18,7 +18,8 @@ export async function GET(req, { params }) {
   const { res } = await load(false);
   if (res) return res;
   const { id } = await params;
-  const row = await queryOne('SELECT r.*, p.project_no, p.customer_name FROM installation_reports r JOIN projects p ON p.id = r.project_id WHERE r.id = ?', [id]);
+  const row = await queryOne(`SELECT r.*, p.project_no, COALESCE(p.customer_name, sc.name) AS customer_name FROM installation_reports r
+    LEFT JOIN projects p ON p.id = r.project_id LEFT JOIN service_third_party_customers sc ON sc.id = r.service_customer_id WHERE r.id = ?`, [id]);
   if (!row) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   return NextResponse.json({ ...row, data: JSON.parse(row.data_json || '{}') });
 }
@@ -42,12 +43,13 @@ export async function PATCH(req, { params }) {
       await execute('UPDATE installation_reports SET finalized_at = CURRENT_TIMESTAMP, finalized_by = ?, doc_no = COALESCE(?, doc_no), revision = COALESCE(?, revision) WHERE id = ?',
         [user.username, doc.doc_no ?? null, doc.revision ?? null, id]);
       // A finalized Commissioning report is the real sign-off: it completes the Commissioning milestone.
-      if (row.call_type === 'Commissioning') try { await syncCommissioningMilestone(row.project_id, user.username); } catch { /* best-effort */ }
+      if (row.call_type === 'Commissioning' && row.project_id) try { await syncCommissioningMilestone(row.project_id, user.username); } catch { /* best-effort */ }
     } else if (b.action === 'reopen') {
       // Reopening also withdraws it from the customer — an editable report must not stay published.
       await execute('UPDATE installation_reports SET finalized_at = NULL, finalized_by = NULL, customer_visible = 0, customer_visible_at = NULL WHERE id = ?', [id]);
     } else if (b.action === 'share') {
       if (!row.finalized_at) return NextResponse.json({ error: 'Finalize the report before sharing it' }, { status: 409 });
+      if (!row.project_id) return NextResponse.json({ error: 'This customer has no portal — download the PDF instead' }, { status: 409 });
       if (!row.customer_visible) {
         await execute('UPDATE installation_reports SET customer_visible = 1, customer_visible_at = CURRENT_TIMESTAMP WHERE id = ?', [id]);
         // Best effort; only on the real 0 -> 1 flip.

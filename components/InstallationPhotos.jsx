@@ -191,8 +191,8 @@ export default function InstallationPhotos({ projects, team = [] }) {
           )}
         </CardContent>
       </Card>
-      {/* Phone: floating camera button, above the bottom tab bar. */}
-      <div className="fixed bottom-20 right-4 z-30 flex items-center gap-3 md:hidden">
+      {/* Phone: floating camera buttons, centred above the bottom tab bar (the OPS AI button sits bottom-right). */}
+      <div className="fixed bottom-20 left-1/2 z-30 -translate-x-1/2 flex items-center gap-3 md:hidden">
         <Button size="icon" variant="secondary" className="size-12 rounded-full border shadow-lg" onClick={() => galRef.current.click()} aria-label="Choose from gallery"><ImagePlusIcon className="size-5" /></Button>
         <Button size="icon" className="size-14 rounded-full shadow-lg" onClick={() => camRef.current.click()} aria-label="Take photo"><CameraIcon className="size-6" /></Button>
       </div>
