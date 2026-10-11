@@ -12475,7 +12475,7 @@ hierarchy + audit trail was judged sufficient; revisit if that proves too light.
 
 ## 18. Tech stack
 
-- **Next.js 14** (App Router) + **React 18**. Server components read data directly; API routes
+- **Next.js 15** (App Router) + **React 19** (upgraded 2026-10-12, §5fc). Server components read data directly; API routes
   handle writes, auth, and PDF generation. PDFs via `@react-pdf/renderer` (pure Node, externalized
   in `next.config.js`).
 - **UI: Tailwind CSS v4 + shadcn/ui** (radix primitives in `components/ui/`). Theme tokens (premium
@@ -13109,3 +13109,12 @@ Plan: standard subsystems (FD fan, ID fan, Feed Line…) are **variants of a tem
 - **Phone fields** (`type: 'phone'`, cleaned by `cleanPhone`): Field Service Report's "Contact" dropdown (`contact_with`) is replaced by **Service team contact number**; Commissioning sign-off gained **Service person contact number** and **Third party phone number**. Old `contact_with` values stay in saved data but are no longer shown/printed.
 - **Added table rows are fully editable**: "Add row" rows carry `_custom: true`, so their check point / spec / unit columns are inputs too (preset rows keep them read-only). Rows saved before this with blank fixed columns are treated as custom on open.
 - UI: sections are cards, OK/NG segmented toggle, call type as segmented buttons, draft/final/shared status column. Progress Photos (phone only): camera buttons centred so they no longer sit under the OPS AI button.
+
+
+## 5fc. One codebase for the client (Render) and the public demo (Cloudflare Workers) (2026-10-12)
+- **Next 15.5 + React 19.** The `demo` branch was merged into main: `cookies()`, `headers()` and route/page `params` are awaited everywhere; `serverExternalPackages` replaces the old experimental key. Render runs it exactly as before (`next build`, `next start`).
+- **Database client per target.** `lib/db.js` calls `makeClient()` from `lib/db-client.js` (Node: `@libsql/client` with the short undici keep-alive, or `file:./sb-ops-local.db` when `TURSO_URL` is unset). `npm run cf:build` sets `SB_TARGET=workers`, and `next.config.js` then swaps in `lib/db-client.workers.js` (`@libsql/client/web`, Turso only) and traces libsql's files. Nothing Workers-specific runs on Render.
+- **Demo-only code is inert without `DEMO_MODE=1`** (never set on Render): `/demo` 404s, `middleware.js` demo guard, `sendMail` log-only, layout banner/noindex. `SKIP_MIGRATE=1` (demo only) skips `migrate()` on boot. Demo files: `app/demo`, `app/api/demo/*`, `lib/demo-*.js`, `scripts/demo/*`, `wrangler.jsonc`, `open-next.config.ts`, `workers/demo-reset-cron/`. Deploy the demo with `npm run cf:deploy` (worker `sb-ops-boiler-erp-demo`, `boiler-erp.ahromlabs.com`).
+- **PDF fonts** for the QC folder are embedded as data URIs (`lib/pt-serif-fonts.js`), so no file reads; same output on both targets.
+- **New-database fixes found by comparing a fresh DB with the live one**: `migrate()` never created `qc_document_parts.bom_item_id` / `stock_piece_id`, `named_parts_json` (bom_items, bom_template_items, pr_items), `stock_pieces.part_name`, the `tc_item_match_approvals` table or four indexes (one is the unique index "Sync from BOM" relies on). They had been added to the live DB by one-off scripts, so a new customer's QC document creation failed. Now in `migrate()`; no-ops on the live DB. Also `migrateCalcProjectHierarchy` no longer skips the `calc_sheet_id` columns on a DB without the sample project SB-1018.
+- **Verified**: Node build on a fresh SQLite DB (login, all workspaces, packing/BOM/sticker/report PDFs, a full QC folder PDF with embedded PT Serif); Node build against the live Turso DB on localhost (33 pages, sheet/dropdown/chart interactions, no console errors); Workers build (`cf:build`, local preview: demo entry, pages, PDF).
