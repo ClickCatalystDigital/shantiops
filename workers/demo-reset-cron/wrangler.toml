@@ -1,0 +1,14 @@
+name = "sb-ops-boiler-erp-demo-reset"
+main = "src/index.js"
+compatibility_date = "2026-08-27"
+
+# 21:30 UTC = 03:00 IST: quietest hour for Indian visitors.
+[triggers]
+crons = ["30 21 * * *"]
+
+# Not secret. TURSO_API_TOKEN (Turso platform token) and TRIGGER_KEY are Worker secrets.
+[vars]
+TURSO_ORG = "pujan"
+GROUP = "sbdemo"
+DEMO_DB = "sb-demo"
+GOLDEN_DB = "sb-demo-golden"

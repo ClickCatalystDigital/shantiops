@@ -9,10 +9,14 @@ import { getMyMachine } from '@/lib/data';
 import { REPORT_DEPARTMENTS } from '@/lib/reports/catalog';
 import { clientCompanies } from '@/lib/company-profiles';
 
-export const metadata = {
-  title: `${process.env.BRAND_PREFIX || 'SB'} Ops`,
-  description: 'Project SLA tracking & dispatch',
-};
+export function generateMetadata() {
+  return {
+    title: `${process.env.BRAND_PREFIX || 'SB'} Ops`,
+    description: 'Project SLA tracking & dispatch',
+    // Public demo: only /demo (which sets its own robots) should be indexed.
+    ...(process.env.DEMO_MODE === '1' ? { robots: { index: false, follow: false } } : {}),
+  };
+}
 
 // Set the theme before first paint so there's no light→dark flash.
 const themeInit = `(function(){try{var t=localStorage.getItem('theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}})();`;
@@ -42,6 +46,12 @@ export default async function RootLayout({ children }) {
       <body className="min-h-screen bg-background text-foreground">
         <TooltipProvider delayDuration={200}>
           {isInternal(user) && !needsDeviceSetup && <Nav user={user} reportDepartments={REPORT_DEPARTMENTS} />}
+          {process.env.DEMO_MODE === '1' && isInternal(user) && (
+            <div className="fixed bottom-20 left-1/2 z-50 -translate-x-1/2 rounded-full border bg-background/95 px-3 py-1.5 text-xs text-muted-foreground shadow-md backdrop-blur md:bottom-4 print:hidden">
+              Demo · sample data, resets nightly ·{' '}
+              <a href="/demo" className="font-medium text-foreground underline-offset-2 hover:underline">Switch role</a>
+            </div>
+          )}
           {/* Extra bottom padding on mobile so content clears the fixed bottom tab bar (internal only). */}
           <div className={isInternal(user) ? 'pb-20 md:pb-0' : ''}>
             {needsDeviceSetup ? <DeviceSetupGate machine={machine} /> : children}

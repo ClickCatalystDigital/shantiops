@@ -20,3 +20,4 @@ agent/config.json
 /.open-next/
 .wrangler/
 .dev.vars
+.demo-secrets

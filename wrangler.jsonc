@@ -5,7 +5,7 @@
   "compatibility_date": "2026-08-27",
   "compatibility_flags": ["nodejs_compat"],
   "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
-  // Custom domain is added at first deploy: boiler-erp.ahromlabs.com.
+  "routes": [{ "pattern": "boiler-erp.ahromlabs.com", "custom_domain": true }],
   // Secrets (wrangler secret put): TURSO_URL, TURSO_AUTH_TOKEN, SESSION_SECRET, SECRETS_KEY,
   // LEADS_TURSO_URL, LEADS_TURSO_AUTH_TOKEN, CUSTOMER_SEED. Never the live deployment's values.
   "vars": { "DEMO_MODE": "1", "APP_URL": "https://boiler-erp.ahromlabs.com" },

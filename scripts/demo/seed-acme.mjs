@@ -134,6 +134,19 @@ async function seedMasters() {
   }
 }
 
+async function seedStock() {
+  // [item, on_hand, reorder_point, location, avg_cost]; one line below its reorder point on purpose.
+  const STOCK = [['MS PLATE 8 MM IS 2062', 1200, 500, 'Yard A', 62], ['MS ANGLE 50 X 50 X 6 MM', 340, 400, 'Rack S1', 58],
+    ['MS CHANNEL 100 X 50 MM', 650, 300, 'Rack S1', 60], ['MS PIPE 50 NB CLASS B', 90, 40, 'Rack P2', 410],
+    ['GASKET SPIRAL WOUND 80 NB', 40, 20, 'Bin G3', 350], ['STUD BOLT M16 X 90', 600, 200, 'Bin F1', 28],
+    ['FIRE BRICK IS 8', 2500, 1000, 'Shed 2', 45], ['PRESSURE GAUGE 0-21 KG/CM2', 6, 4, 'Cabinet I1', 1850]];
+  for (const [name, on_hand, reorder_point, location, avg_cost] of STOCK) {
+    await api('POST', '/api/inventory-items', {
+      description: name, item_id: ids.items[name], on_hand, reorder_point, location, avg_cost, category: CAT[name],
+    });
+  }
+}
+
 // --- 3. Enquiries and quotations -----------------------------------------------------------------
 async function seedSales() {
   const enquiries = [
@@ -242,6 +255,7 @@ async function receiveAll(project, routeTo) {
 await login();
 await seedPeople();
 await seedMasters();
+await seedStock();
 await seedSales();
 
 const p1 = await createProject('AB-1001', 'Greenfield Foods Pvt Ltd', 'AB-CF-1000', 'CF', '1000');       // design / BOM
