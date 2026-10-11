@@ -27,8 +27,7 @@ import {
 } from '@/components/BomLineFields';
 import { categoryDisplaySpec, fieldsFromSizeSpec } from '@/lib/section-shapes';
 import { QTY_UNITS as SHARED_QTY_UNITS, normalizeUnit, splitQtyUnit } from '@/lib/qty-units.mjs';
-import { PencilIcon, TrashIcon } from '@heroicons/react/24/solid';
-import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, XCircleIcon } from 'lucide-react';
+import { ChevronLeftIcon, ChevronRightIcon, PencilIcon, PlusIcon, TrashIcon, XCircleIcon } from 'lucide-react';
 
 // Real PMB data runs long (a hand-typed cell can be 400+ characters — see the CHIMNEY sheet's
 // multi-size plate rows). table-fixed locks each column's width from the header, so overflowing
