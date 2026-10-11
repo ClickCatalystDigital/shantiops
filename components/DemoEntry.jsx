@@ -54,6 +54,10 @@ export default function DemoEntry({ roles, hasLead }) {
             </li>
           ))}
         </ul>
+        <p className="mt-6 text-sm text-muted-foreground">
+          How it was built for a real boiler maker:{' '}
+          <a href="https://ahromlabs.com/industries/boiler-pressure-vessel-manufacturing" className="font-medium text-foreground underline-offset-2 hover:underline">ERP for boiler and pressure-vessel manufacturers</a>
+        </p>
       </section>
 
       <Card>
