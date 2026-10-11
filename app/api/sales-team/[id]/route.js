@@ -7,7 +7,8 @@ import { getFreshSessionUser, isDepartmentHead, parseDepartmentRoles } from '@/l
 import { salesTarget, salesDeptsOnly } from '@/lib/sales-team';
 import { audit } from '@/lib/usb';
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!user || !isDepartmentHead(user, 'Sales')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const { target, error, status } = await salesTarget(params.id);
@@ -15,7 +16,7 @@ export async function PATCH(req, { params }) {
   if (target.id === user.id) return NextResponse.json({ error: 'You can not change your own role or access here' }, { status: 400 });
 
   const b = await req.json().catch(() => ({}));
-  const sets = []; const args = []; const done = [];
+  const sets = [];const args = [];const done = [];
   if (b.role !== undefined) {
     if (!['head', 'member'].includes(b.role)) return NextResponse.json({ error: 'Role must be head or member' }, { status: 400 });
     const roles = { ...parseDepartmentRoles(target.department_roles), Sales: b.role === 'head' ? 'head' : 'designer' };

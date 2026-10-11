@@ -3,7 +3,8 @@ import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const task = await queryOne('SELECT id, department, from_department FROM tasks WHERE id = ?', [params.id]);
   if (!task) return NextResponse.json({ error: 'Not found' }, { status: 404 });

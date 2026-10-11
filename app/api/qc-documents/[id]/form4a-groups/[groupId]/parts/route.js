@@ -5,7 +5,8 @@ import { requireAction } from '@/lib/action-permissions';
 
 // Bulk assign/unassign — the editor's own multi-select bar picks a group for however many parts
 // are currently checked, in one request, rather than one call per part.
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;
@@ -33,7 +34,8 @@ export async function POST(req, { params }) {
 }
 
 // Move parts back to the flat/no-section list without deleting them.
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;

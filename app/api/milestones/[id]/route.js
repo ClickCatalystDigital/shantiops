@@ -14,7 +14,8 @@ const EDITABLE = ['assignee', 'department', 'planned_start', 'planned_end', 'act
 // Functional heads own execution, not schedule: they may only stamp actuals/status/why-late.
 const HEAD_EDITABLE = ['actual_start', 'actual_end', 'status', 'delay_reason', 'delay_category'];
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const b = await req.json();

@@ -5,7 +5,8 @@ import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
 import { getOrCreateSupplierLink } from '@/lib/supplier-link';
 import { appUrl } from '@/lib/app-url';
 
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!user || !(canAccessDepartment(user, 'Procurement') || canAccessDepartment(user, 'Stores'))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });

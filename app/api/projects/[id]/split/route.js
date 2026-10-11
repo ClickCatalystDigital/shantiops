@@ -29,7 +29,8 @@ function canSplit(user) {
 // every batch-children panel (Production/QC/Dispatch/Stores) fetches THIS route to learn its own
 // project's children — canSplit-gating the GET silently 403'd every one of those panels for any
 // non-Design/Engineering/PM head, so they never rendered at all. isInternal is the real requirement.
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const project = await queryOne(
@@ -85,7 +86,8 @@ async function createChildUnits(tx, master, startUnitNo, count, totalUnitCount, 
   return ids;
 }
 
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!canSplit(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 

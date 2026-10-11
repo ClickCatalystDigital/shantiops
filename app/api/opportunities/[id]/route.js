@@ -19,7 +19,8 @@ async function isValidStage(name) {
   return rows.length > 0;
 }
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!canAccessPipeline(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
@@ -36,7 +37,7 @@ export async function PATCH(req, { params }) {
   const fields = [];
   const args = [];
   if (b.stage !== undefined) {
-    if (!await isValidStage(b.stage)) return NextResponse.json({ error: 'Invalid stage' }, { status: 400 });
+    if (!(await isValidStage(b.stage))) return NextResponse.json({ error: 'Invalid stage' }, { status: 400 });
     fields.push('stage = ?'); args.push(b.stage);
   }
   if (b.title !== undefined) { fields.push('title = ?'); args.push(String(b.title).trim()); }

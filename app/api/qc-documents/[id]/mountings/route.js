@@ -9,7 +9,8 @@ import { audit } from '@/lib/usb';
 // button; every field here is optional (qc_mountings has no required columns), so a fresh row
 // starts blank and is filled in via PATCH .../mountings/[mountingId] as the user edits it — each
 // edit persists on its own, no separate Save step needed.
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;

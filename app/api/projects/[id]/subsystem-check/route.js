@@ -6,7 +6,8 @@ import { getSubsystemCheck } from '@/lib/subsystem-check';
 import { audit } from '@/lib/usb';
 
 // "Possibly missing" lines for a project's subsystems (informational — never blocks Release).
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = await requireEngineeringAction(user, 'engineering.assembly.add');
   if (denied) return denied;
@@ -14,7 +15,8 @@ export async function GET(req, { params }) {
 }
 
 // "Not needed here": remember, on that node, that a build line is deliberately absent so it stops being listed.
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = await requireEngineeringAction(user, 'engineering.assembly.add');
   if (denied) return denied;

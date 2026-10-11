@@ -7,7 +7,8 @@ import { execute, queryAll, queryOne } from '@/lib/db';
 import { getFreshSessionUser, isInternal, isHead, canAccessDepartment } from '@/lib/auth';
 import { audit } from '@/lib/usb';
 
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 

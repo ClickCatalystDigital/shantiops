@@ -14,7 +14,8 @@ const MAX_PASTE_ROWS = 500; // a human pasting rows has a much lower realistic c
 // (BomPanel.jsx) — CSV file uploads moved to bom/import/route.js's shared preview/replace-
 // confirmation pipeline the same day. Rows: material_description, moc, size_spec (Make and IBR No.
 // are NOT on the BOM — the Dispatch head fills those on the packing list, §8).
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!canAccessDepartment(user, 'Engineering') && !canAccessDepartment(user, 'Design')) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -79,7 +80,8 @@ export async function POST(req, { params }) {
 // second query shape — the only new thing here is the query-param branch, not new data-fetching
 // logic. Gated (the narrow default below has no auth check today, a pre-existing gap out of scope
 // here — not widening it further, just not leaving the new richer branch open too).
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const all = new URL(req.url).searchParams.get('all');
   if (all) {
     const user = await getFreshSessionUser();

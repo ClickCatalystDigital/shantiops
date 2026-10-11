@@ -6,7 +6,8 @@ import { NextResponse } from 'next/server';
 import { getFreshSessionUser, isInternal } from '@/lib/auth';
 import { getChildDerivedBom } from '@/lib/data';
 
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const derived = await getChildDerivedBom(params.id);

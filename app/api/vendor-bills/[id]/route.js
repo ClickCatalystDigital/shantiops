@@ -13,7 +13,8 @@ import { costUncostedPieces } from '@/lib/stock-pieces';
 
 const STATUSES = ['draft', 'approved', 'paid', 'cancelled'];
 
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!isPM(user) && !canAccessDepartment(user, 'Procurement') && !canAccessDepartment(user, 'Accounts')) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -23,7 +24,8 @@ export async function GET(req, { params }) {
   return NextResponse.json(detail);
 }
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Procurement');
   if (denied) return denied;

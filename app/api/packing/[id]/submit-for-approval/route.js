@@ -10,7 +10,8 @@ import { notifyDepartmentHeads } from '@/lib/notify';
 import { audit } from '@/lib/usb';
 import { tabLink } from '@/lib/alert-links.mjs';
 
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Dispatch');
   if (denied) return denied;

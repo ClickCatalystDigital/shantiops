@@ -3,7 +3,8 @@ import { getFreshSessionUser } from '@/lib/auth';
 import { requireCalcAccess, updateVariableValue, updateVariableArrayRows, deleteVariable } from '@/lib/calc';
 import { audit } from '@/lib/usb';
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireCalcAccess(user);
   if (denied) return denied;
@@ -21,7 +22,8 @@ export async function PATCH(req, { params }) {
   return NextResponse.json({ ok: true });
 }
 
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireCalcAccess(user);
   if (denied) return denied;

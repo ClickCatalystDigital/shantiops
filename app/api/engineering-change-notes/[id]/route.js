@@ -15,7 +15,8 @@ import { CATEGORY_LABEL } from '@/lib/section-shapes.js';
 import { checkAssemblyChange } from '@/lib/bom-line';
 import { tabLink } from '@/lib/alert-links.mjs';
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const actionDenied = await requireEngineeringAction(user, 'engineering.ecn.approve');
   if (actionDenied) return actionDenied;

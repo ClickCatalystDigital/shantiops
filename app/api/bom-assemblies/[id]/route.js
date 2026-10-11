@@ -17,7 +17,8 @@ import { validateConfigInput, serializeConfig } from '@/lib/bom-config.mjs';
 // Two mutually exclusive request shapes: { move: 'up'|'down' } does an atomic sibling swap (Move
 // Up/Down button); any of { name, qty, parent_id, node_type, sort_order } does a plain field
 // update. A body is never expected to mix the two — the UI only ever fires one or the other.
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const actionDenied = await requireEngineeringAction(user, 'engineering.assembly.add');
   if (actionDenied) return actionDenied;
@@ -106,7 +107,8 @@ export async function PATCH(req, { params }) {
 // row's own project is that sentinel project (is_system=1), checked server-side regardless of what
 // the caller passes — this makes the flag structurally impossible to point at a real project's real
 // BOM data, even by a future caller's mistake.
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const actionDenied = await requireEngineeringAction(user, 'engineering.assembly.delete');
   if (actionDenied) return actionDenied;

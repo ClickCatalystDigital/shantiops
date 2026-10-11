@@ -5,7 +5,8 @@ import { getFreshSessionUser, canAccessDepartment, isDepartmentHead } from '@/li
 import { getObjectBuffer, deleteObject } from '@/lib/r2';
 import { audit } from '@/lib/usb';
 
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!user || !canAccessDepartment(user, 'Sales')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const f = await queryOne('SELECT file_key, file_name FROM sales_library_files WHERE id = ?', [params.id]);
@@ -17,7 +18,8 @@ export async function GET(req, { params }) {
 }
 
 // The Sales Head / PM can delete anything; anyone else only their own uploads.
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!user || !canAccessDepartment(user, 'Sales')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const f = await queryOne('SELECT file_key, uploaded_by, title FROM sales_library_files WHERE id = ?', [params.id]);

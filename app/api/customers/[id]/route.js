@@ -10,7 +10,8 @@ function canAccessCrm(user) {
   return isPM(user) || CRM_DEPARTMENTS.some(d => canAccessDepartment(user, d));
 }
 
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const detail = await getCustomerDetail(params.id);
@@ -18,7 +19,8 @@ export async function GET(req, { params }) {
   return NextResponse.json(detail);
 }
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!canAccessCrm(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   // Sibling POST /api/customers already gates on this key — the edit/deactivate path (2026-09-23
@@ -58,7 +60,8 @@ export async function PATCH(req, { params }) {
 // zero history is what this is actually for; a real customer with history should be deactivated via
 // PATCH {active:0} instead, which also disables their portal login). crm_notes/contacts/addresses/
 // customer_competitors cascade on their own; every other real link blocks the delete outright.
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!isDepartmentHead(user, 'Sales') && !isDepartmentHead(user, 'Marketing')) {
     return NextResponse.json({ error: 'Only a Sales or Marketing head can delete a customer' }, { status: 403 });

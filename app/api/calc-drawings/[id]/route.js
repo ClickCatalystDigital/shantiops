@@ -19,7 +19,8 @@ const HEAD_STATUS_NOTICE = {
   as_built: { title: 'Marked as built', body: 'marked this drawing as built.' },
 };
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireCalcAccess(user);
   if (denied) return denied;
@@ -150,7 +151,8 @@ export async function PATCH(req, { params }) {
 
 // Cascade: delete every file row + its R2 object (best-effort — R2 env isn't set in dev, same
 // try/catch precedent as test-certificates' PDF routes) before dropping the drawing itself.
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireCalcAccess(user);
   if (denied) return denied;

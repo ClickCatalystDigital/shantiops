@@ -11,7 +11,8 @@ import { requireAction } from '@/lib/action-permissions';
 import { getPoDeliveryLots } from '@/lib/data';
 import { audit } from '@/lib/usb';
 
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Procurement');
   if (denied) return denied;
@@ -20,7 +21,8 @@ export async function GET(req, { params }) {
   return NextResponse.json(await getPoDeliveryLots(po.id));
 }
 
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Procurement');
   if (denied) return denied;

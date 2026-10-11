@@ -12,7 +12,8 @@ function canEditScope(user) {
   return canAccessDepartment(user, 'Design') || canAccessDepartment(user, 'Engineering');
 }
 
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!canEditScope(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
@@ -48,7 +49,8 @@ export async function POST(req, { params }) {
   return NextResponse.json({ ok: true, pdf_key: key, pdf_url: url });
 }
 
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!canEditScope(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
@@ -66,7 +68,8 @@ export async function DELETE(req, { params }) {
 
 // Proxied read — works whether or not R2_PUBLIC_DOMAIN_URL is set (same reasoning as the sibling
 // test-certificates route).
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!canEditScope(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 

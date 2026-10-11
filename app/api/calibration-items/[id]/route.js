@@ -6,7 +6,8 @@ import { audit } from '@/lib/usb';
 
 const EDITABLE = ['name', 'identifier', 'schedule_months', 'certificate_ref', 'last_calibrated_on', 'due_date', 'blocked'];
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;
@@ -38,7 +39,8 @@ export async function PATCH(req, { params }) {
   return NextResponse.json({ ok: true });
 }
 
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;

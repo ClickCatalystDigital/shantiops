@@ -22,7 +22,9 @@ module.exports = {
   reactStrictMode: true,
   ...(devPort ? { distDir: `.next-${devPort}` } : {}),
   // @react-pdf/renderer must run as a real Node module (fontkit/native deps), not be bundled.
-  experimental: { serverComponentsExternalPackages: ['@react-pdf/renderer'] },
+  serverExternalPackages: ['@react-pdf/renderer'],
+  // demo branch: Workers needs libsql's web build, which Next's file tracing skips (it only follows the node entry).
+  outputFileTracingIncludes: { '/**': ['./node_modules/@libsql/**/*'] },
   // /stores/inventory is served by the /stores page with tab=inventory. Real sub-pages such as
   // /accounts/documents win, because these rewrites only apply when no page matches.
   async rewrites() {

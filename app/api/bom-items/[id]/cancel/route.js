@@ -18,7 +18,8 @@ const CANCEL_DEPARTMENTS = ['Engineering', 'Design'];
 // OPEN_STATUSES (which still counts Transit as open).
 const CANCELLABLE = new Set(['Enquiry', 'Comparison', 'Ordered']);
 
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!CANCEL_DEPARTMENTS.some(d => canAccessDepartment(user, d))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });

@@ -7,7 +7,8 @@ import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Stores');
   if (denied) return denied;
@@ -56,7 +57,8 @@ export async function PATCH(req, { params }) {
 
 // Delete a gate entry that was logged by mistake. A closed entry (GRN attached) is a record of a real
 // receipt and stays; a receipt record that points at it keeps it too.
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Stores');
   if (denied) return denied;

@@ -10,7 +10,8 @@ import { modelCodeOf } from '@/lib/packing-forms.mjs';
 
 export const runtime = 'nodejs';
 
-export async function GET(_req, { params }) {
+export async function GET(_req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Dispatch');
   if (denied) return denied;

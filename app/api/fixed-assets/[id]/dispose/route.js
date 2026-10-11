@@ -4,7 +4,8 @@ import { requireAction } from '@/lib/action-permissions';
 import { disposeFixedAsset } from '@/lib/fixed-assets';
 import { audit } from '@/lib/usb';
 
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Accounts');
   if (denied) return denied;

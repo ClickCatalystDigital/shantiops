@@ -7,7 +7,8 @@ import { syncQcPartsFromBom } from '@/lib/qc-bom-sync';
 // Manual re-sync — BOM lines can be added/edited after a document is created, so this lets QC pull
 // in whatever's newly qualifying without retyping it. Only ever adds; never touches or removes an
 // existing part (see lib/qc-bom-sync.js).
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;

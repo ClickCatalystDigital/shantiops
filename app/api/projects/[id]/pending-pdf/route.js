@@ -8,7 +8,8 @@ import { renderPendingPdf } from '@/lib/packing-pdf';
 
 export const runtime = 'nodejs';
 
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const denied = requireDepartment(await getFreshSessionUser(), 'Dispatch');
   if (denied) return denied;
 

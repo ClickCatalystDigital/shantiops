@@ -7,7 +7,8 @@ import { audit } from '@/lib/usb';
 
 const FIELDS = { shifts_per_day: [0.5, 3], hours_per_shift: [1, 12], working_days_per_week: [1, 7] };
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Production');
   if (denied) return denied;

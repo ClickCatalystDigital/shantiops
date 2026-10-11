@@ -17,7 +17,8 @@ function canAccessCrm(user) {
   return isPM(user) || CRM_DEPARTMENTS.some(d => canAccessDepartment(user, d));
 }
 
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const hidden = await hiddenSalesRecord(user, 'quotation', params.id); // plan 2a: own records only
   if (hidden) return hidden;

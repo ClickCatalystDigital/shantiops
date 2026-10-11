@@ -7,7 +7,8 @@ import { cutPiece } from '@/lib/stock-pieces';
 import { audit } from '@/lib/usb';
 import { queryOne } from '@/lib/db';
 
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Production');
   if (denied) return denied;

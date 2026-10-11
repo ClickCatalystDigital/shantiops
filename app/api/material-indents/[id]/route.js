@@ -10,7 +10,8 @@ import { rollupIndentStatus } from '@/lib/indent-status.mjs';
 import { audit } from '@/lib/usb';
 import { requireAction } from '@/lib/action-permissions';
 
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const detail = await getMaterialIndentDetail(params.id);
@@ -18,7 +19,8 @@ export async function GET(req, { params }) {
   return NextResponse.json({ ...detail.indent, items: detail.items });
 }
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const b = await req.json();
   if (b.status !== 'cancelled') return NextResponse.json({ error: 'Only cancellation is supported here' }, { status: 400 });
@@ -48,7 +50,8 @@ export async function PATCH(req, { params }) {
 
 // Delete an indent outright — only while nothing has been handed over against it (no quantity
 // released, no piece reserved, no issue recorded). Otherwise it stays as a record and can be cancelled.
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!canAccessDepartment(user, 'Production') && !canAccessDepartment(user, 'Stores')) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });

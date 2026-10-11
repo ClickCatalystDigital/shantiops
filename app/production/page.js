@@ -12,7 +12,8 @@ export const dynamic = 'force-dynamic';
 
 const VIEWS = ['month', 'week', 'year'];
 
-export default async function ProductionTodayPage({ searchParams }) {
+export default async function ProductionTodayPage(props) {
+  const searchParams = await props.searchParams;
   const user = await getFreshSessionUser();
   const manager = isManager(user);
   const allowedDepartments = manager ? DEPARTMENTS : headDepartments(user);

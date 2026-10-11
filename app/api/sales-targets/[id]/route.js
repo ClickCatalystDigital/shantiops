@@ -6,7 +6,8 @@ import { getFreshSessionUser } from '@/lib/auth';
 import { requireCrmAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = await requireCrmAction(user, 'sales.target.write');
   if (denied) return denied;
@@ -22,7 +23,8 @@ export async function PATCH(req, { params }) {
   return NextResponse.json({ ok: true });
 }
 
-export async function DELETE(_req, { params }) {
+export async function DELETE(_req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = await requireCrmAction(user, 'sales.target.write');
   if (denied) return denied;

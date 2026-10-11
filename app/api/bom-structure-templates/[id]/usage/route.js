@@ -7,7 +7,8 @@ import { requireEngineeringAction } from '@/lib/action-permissions';
 // template built (lineage is stamped on root nodes only), real projects only — the hidden
 // template-sandbox project (is_system) holds throwaway nodes that aren't a BOM using the template.
 // `version` is the template version that node was built from (NULL = applied before versioning).
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = await requireEngineeringAction(user, 'engineering.assembly.add');
   if (denied) return denied;

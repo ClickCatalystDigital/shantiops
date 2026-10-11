@@ -9,7 +9,8 @@ import { audit } from '@/lib/usb';
 // app/api/bom-assemblies/[id]/calc-sheets/route.js, keyed by drawing_id instead of assembly_id, and
 // gated requireCalcAccess (Design OR Engineering — Calc is jointly owned) rather than
 // requireDepartment('Engineering').
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireCalcAccess(user);
   if (denied) return denied;
@@ -20,7 +21,8 @@ export async function GET(req, { params }) {
   return NextResponse.json(rows);
 }
 
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireCalcAccess(user);
   if (denied) return denied;
@@ -47,7 +49,8 @@ export async function POST(req, { params }) {
   return NextResponse.json({ ok: true });
 }
 
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireCalcAccess(user);
   if (denied) return denied;

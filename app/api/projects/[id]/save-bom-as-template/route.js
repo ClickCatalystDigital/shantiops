@@ -15,7 +15,8 @@ import { buildTemplateTree, computeTemplateCounts, carryPresence } from '@/lib/b
 // only ever makes sense applied at the project root, the same bucket single-System templates use, so
 // it shows up in the exact same "Build from Templates" picker (client distinguishes it there by its
 // own >1 root count, no new column needed).
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = await requireEngineeringAction(user, 'engineering.assembly.add');
   if (denied) return denied;

@@ -9,7 +9,8 @@ import { audit } from '@/lib/usb';
 // app/api/test-certificates/[id]/pdf/route.js's GET. A drawing under review or beyond is also
 // downloadable by the owning project's customer — same visibility rule as the portal's drawings
 // list (getCustomerView), since approving a drawing you can't view is hollow.
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const drawing = await queryOne('SELECT project_id, status, customer_visible FROM calc_drawings WHERE id = ?', [params.id]);
   if (!drawing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -42,7 +43,8 @@ export async function GET(req, { params }) {
 
 // The assigned Designer owns their own drawing's files, same as they own the submit/withdraw
 // action — not restricted to the Head alone anymore.
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireCalcAccess(user);
   if (denied) return denied;

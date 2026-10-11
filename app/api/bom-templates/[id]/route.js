@@ -6,7 +6,8 @@ import { audit } from '@/lib/usb';
 const TEMPLATE_DEPARTMENTS = ['Engineering', 'Design', 'Stores'];
 function canTouch(user) { return TEMPLATE_DEPARTMENTS.some(d => canAccessDepartment(user, d)); }
 
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!canTouch(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const template = await queryOne('SELECT * FROM bom_templates WHERE id = ? AND archived_at IS NULL', [params.id]);
@@ -23,7 +24,8 @@ export async function GET(req, { params }) {
 // and nothing else references an individual bom_template_items.id. Wrapped in one transaction so a
 // failure partway through an item re-insert can't leave the template with its old items gone and
 // none of the new ones in.
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!canTouch(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const existing = await queryOne('SELECT id FROM bom_templates WHERE id = ? AND archived_at IS NULL', [params.id]);
@@ -62,7 +64,8 @@ export async function PATCH(req, { params }) {
 // left the template emptied but not deleted. The usage count decides (local SQLite dev doesn't enforce
 // FKs); the catch is only the race fallback (applied between the count and the delete → the whole
 // transaction rolls back, then archive).
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!canTouch(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const row = await queryOne('SELECT id, name FROM bom_templates WHERE id = ? AND archived_at IS NULL', [params.id]);

@@ -19,7 +19,8 @@ function canTouch(user, testType) {
 
 // Edits a record — most commonly flipping result from pending to pass/fail once the test's back,
 // or filling in reference_no once the cert number is issued.
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const record = await queryOne('SELECT * FROM qc_records WHERE id = ?', [params.id]);
   if (!record) return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -81,7 +82,8 @@ export async function PATCH(req, { params }) {
   return NextResponse.json({ ok: true });
 }
 
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const record = await queryOne('SELECT * FROM qc_records WHERE id = ?', [params.id]);
   if (!record) return NextResponse.json({ error: 'Not found' }, { status: 404 });

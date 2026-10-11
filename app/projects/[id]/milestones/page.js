@@ -13,7 +13,8 @@ import { ArrowLeftIcon } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 
-export default async function ProjectMilestonesPage({ params }) {
+export default async function ProjectMilestonesPage(props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!isPM(user)) redirect(roleHome(user));
 

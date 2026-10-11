@@ -6,7 +6,8 @@ import { requireAction } from '@/lib/action-permissions';
 // Create a Form IV A manual lettered-section group — purely a QC-typed label sitting on top of the
 // existing parts list (no BOM-assembly matching, no auto-sync, unlike qc_iiia_groups). See
 // lib/qc-form4a-sections.mjs for why this replaced the old BOM-tree auto-derivation.
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;

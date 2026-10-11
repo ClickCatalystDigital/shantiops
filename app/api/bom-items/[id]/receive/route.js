@@ -47,7 +47,8 @@ import { tabLink } from '@/lib/alert-links.mjs';
 // Read-only helper for the dialog's own "remaining outstanding" default and running-total display
 // (Phase 3d) — the same required/received-so-far computation POST already does, exposed so the UI
 // doesn't have to guess or duplicate it.
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Stores');
   if (denied) return denied;
@@ -87,7 +88,8 @@ async function resolveRequirement(item, cache) {
   return itemRollupQty(item.qty_text, item.assembly_id, rollupById, unitCount, !!item.qty_resolved) ?? 0;
 }
 
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Stores');
   if (denied) return denied;

@@ -7,7 +7,8 @@ import { audit } from '@/lib/usb';
 import { getRequest, canView, notifyRole, notifyRequester } from '@/lib/service-expenses';
 import { notifyDepartment } from '@/lib/notify';
 
-export async function GET(_req, { params }) {
+export async function GET(_req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const r = await getRequest(Number(params.id));
@@ -24,7 +25,8 @@ const STEPS = {
   executive_reject: { from: 'pending_executive', roles: ['executive', 'admin'], to: 'rejected', who: 'executive' },
 };
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const id = Number(params.id);

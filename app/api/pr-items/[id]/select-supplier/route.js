@@ -17,7 +17,8 @@ import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { selectQuoteForItem, deselectQuoteForItem } from '@/lib/procurement';
 
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Procurement');
   if (denied) return denied;
@@ -52,7 +53,8 @@ export async function POST(req, { params }) {
   return NextResponse.json({ ok: true, awarded });
 }
 
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Procurement');
   if (denied) return denied;

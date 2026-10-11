@@ -15,7 +15,8 @@ function denyUnlessSales(user) {
   return requireDepartment(user, 'Sales');
 }
 
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const hidden = await hiddenSalesRecord(user, 'sale_order', params.id); // plan 2a: own records only
   if (hidden) return hidden;
@@ -47,7 +48,8 @@ export async function POST(req, { params }) {
   return NextResponse.json({ ok: true, pdf_url: url });
 }
 
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const hidden = await hiddenSalesRecord(user, 'sale_order', params.id); // plan 2a: own records only
   if (hidden) return hidden;
@@ -70,7 +72,8 @@ export async function DELETE(req, { params }) {
 
 // Proxied read — works whether or not R2_PUBLIC_DOMAIN_URL is set. Any internal user can view (same
 // read-visibility precedent as Costing — commercial documents aren't Sales-only to look at).
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const hidden = await hiddenSalesRecord(user, 'sale_order', params.id); // plan 2a: own records only
   if (hidden) return hidden;

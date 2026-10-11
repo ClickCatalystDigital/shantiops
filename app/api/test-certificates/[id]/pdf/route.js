@@ -12,7 +12,8 @@ import { putObject, getObjectBuffer, deleteObject } from '@/lib/r2';
 // POST/PATCH /api/test-certificates succeeds, if a PDF was picked. Best-effort: if R2 isn't
 // configured yet, the certificate row itself is already saved (this route failing doesn't undo
 // that) — the caller just shows "couldn't upload the PDF yet" instead of blocking the save.
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;
@@ -46,7 +47,8 @@ export async function POST(req, { params }) {
 // R2 delete, not just clearing the DB pointer, so storage doesn't quietly accumulate orphaned
 // objects (the same cost concern app/api/test-certificates/[id]/route.js's DELETE already guards
 // against for a whole-certificate delete).
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;
@@ -67,7 +69,8 @@ export async function DELETE(req, { params }) {
 
 // Proxied read — PdfPreview.jsx does a plain fetch(url), so this route just needs to return the
 // bytes with the right content type; works whether or not R2_PUBLIC_DOMAIN_URL is set.
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;

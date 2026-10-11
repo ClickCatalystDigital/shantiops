@@ -8,7 +8,8 @@ import SupplierOrders from '@/components/SupplierOrders';
 
 export const dynamic = 'force-dynamic';
 
-export default async function RfqPortalPage({ params }) {
+export default async function RfqPortalPage(props) {
+  const params = await props.params;
   const rs = await getRfqByToken(params.token);
 
   if (!rs) {

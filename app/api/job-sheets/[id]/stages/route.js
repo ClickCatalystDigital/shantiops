@@ -4,9 +4,10 @@ import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
-  const denied = requireDepartment(user, 'Production') || await requireAction(user, 'Production', 'production.jobsheet.write');
+  const denied = requireDepartment(user, 'Production') || (await requireAction(user, 'Production', 'production.jobsheet.write'));
   if (denied) return denied;
   const id = Number(params.id);
   const b = await req.json();

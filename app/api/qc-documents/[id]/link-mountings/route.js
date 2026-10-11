@@ -10,7 +10,8 @@ import { audit } from '@/lib/usb';
 // scoring (lib/tc-match.js's suggestCertificates is a material-spec/steel-maker comparison built for
 // raw pressure-part material, not meaningful for a bought-out valve/gauge) and no stock_piece_id
 // (mountings are procured whole, never cut from stock_pieces).
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;
@@ -81,7 +82,8 @@ export async function POST(req, { params }) {
   return NextResponse.json({ ok: true, linked: ownIds.length, siblings_linked: siblingsLinked });
 }
 
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;

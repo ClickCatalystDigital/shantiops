@@ -10,7 +10,8 @@ import { getRfqByToken } from '@/lib/data';
 import { advancePurchaseStatus } from '@/lib/procurement';
 import { audit } from '@/lib/usb';
 
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const rs = await getRfqByToken(params.token);
   if (!rs) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   if (rs.token_expires && rs.token_expires < Date.now()) {
@@ -20,7 +21,8 @@ export async function GET(req, { params }) {
 }
 
 // Body: { lines: [{ rfq_item_id, unit_price, uom, payment_terms, expected_delivery_date, remarks }] }
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const rs = await getRfqByToken(params.token);
   if (!rs) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   if (rs.token_expires && rs.token_expires < Date.now()) {

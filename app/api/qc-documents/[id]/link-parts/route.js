@@ -9,7 +9,8 @@ import { normalizeMaterial } from '@/lib/remnant-match';
 // the multi-select bulk action both call this (part_ids is always an array). The linked fields
 // (chemistry/physical) are never sent here or stored on the part row — they're read live from the
 // certificate at render time, which is what makes them display-only everywhere in the editor.
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;
@@ -132,7 +133,8 @@ export async function POST(req, { params }) {
 
 // Clear a part's certificate link without deleting the part — the trash-can button deletes the
 // whole row (a real removal), this only reverts a part back to "unlinked" so it can be re-linked.
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;

@@ -5,7 +5,8 @@ import PackingDetail from '@/components/PackingDetail';
 
 export const dynamic = 'force-dynamic';
 
-export default async function PackingPage({ params }) {
+export default async function PackingPage(props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const data = await getPackingDetail(params.id);
   if (!data) notFound();

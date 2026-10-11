@@ -52,7 +52,8 @@ const TYPES = {
   },
 };
 
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const spec = TYPES[params.type];
   if (!spec) return NextResponse.json({ error: `Unknown master type "${params.type}"` }, { status: 404 });

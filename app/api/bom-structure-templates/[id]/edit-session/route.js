@@ -12,7 +12,8 @@ import { insertTemplateTree } from '../../../bom-assemblies/[id]/apply-template/
 // full-featured tree editor, no new nested-editing UI. "Update Template" (save-as-template with
 // overwrite_template_id) and "Discard" (plain DELETE on the sandbox node) both reuse existing
 // routes — this is the only new endpoint the whole sandbox flow needed.
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = await requireEngineeringAction(user, 'engineering.assembly.add');
   if (denied) return denied;

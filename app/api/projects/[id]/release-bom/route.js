@@ -23,7 +23,8 @@ function canRelease(user) {
 // /api/projects/[id]/bom now returns for Production/Stores) plus whether release_bom is already
 // marked done. drawingLinked/nextRevision feed the pre-release readiness summary — informational
 // only, never a hard gate (not every line needs a drawing — a bought valve doesn't).
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!canRelease(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const bomCount = await queryOne('SELECT COUNT(*) AS n FROM bom_items WHERE project_id = ?', [params.id]);
@@ -62,7 +63,8 @@ export async function GET(req, { params }) {
   });
 }
 
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!canRelease(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 

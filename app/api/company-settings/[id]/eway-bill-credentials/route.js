@@ -14,7 +14,8 @@ import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { encryptSecret } from '@/lib/crypto';
 
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Accounts');
   if (denied) return denied;
@@ -27,7 +28,8 @@ export async function GET(req, { params }) {
 
 // Reuses accounts.company_settings.write — this is a field on the same company-entity object
 // Accounts already owns, not a new authority tier (unlike creating a whole new company).
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Accounts');
   if (denied) return denied;

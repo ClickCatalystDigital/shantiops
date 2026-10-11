@@ -21,7 +21,8 @@ import { execute, queryOne } from '@/lib/db';
 import { audit } from '@/lib/usb';
 import { getChildRoutingBoard } from '@/lib/data';
 
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;
@@ -71,7 +72,8 @@ export async function POST(req, { params }) {
   return NextResponse.json({ ok: true, assigned, skipped });
 }
 
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;

@@ -9,7 +9,8 @@ const LOCATIONS = ['belt', 'furnace_ring'];
 // app/api/qc-documents/[id]/iiia-groups/route.js's shape exactly. `sequence` auto-increments per
 // location (Belt 1, Belt 2, ... independent from Ring 1, Ring 2, ...) so the editor's "+ Add belt"/
 // "+ Add furnace ring" buttons need no input beyond which list to append to.
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;

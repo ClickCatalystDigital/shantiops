@@ -8,7 +8,8 @@ import { audit } from '@/lib/usb';
 // CALC-CHANGES2.md §B — same shape as test-certificates' PDF upload: formData -> arrayBuffer ->
 // Buffer -> putObject, then store the R2 key. Best-effort: an unconfigured bucket (missing env
 // vars) 502s this route without touching anything already saved.
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireCalcAccess(user);
   if (denied) return denied;

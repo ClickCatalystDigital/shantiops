@@ -10,7 +10,8 @@ import { audit } from '@/lib/usb';
 
 const EDITABLE = ['name', 'trade', 'active'];
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Production');
   if (denied) return denied;

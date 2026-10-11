@@ -11,7 +11,8 @@ const IMS_STATUSES = ['pending', 'accepted', 'rejected', 'deemed_accepted'];
 const EDITABLE_FIELDS = ['supplier_gstin', 'supplier_name', 'invoice_no', 'invoice_date', 'invoice_value',
   'taxable_value', 'igst', 'cgst', 'sgst', 'cess', 'itc_availability', 'itc_reason'];
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Accounts');
   if (denied) return denied;
@@ -40,7 +41,8 @@ export async function PATCH(req, { params }) {
 
 // Manual rows only — an upload-sourced line is replaced wholesale by the next upload for its
 // period (app/api/gstr2b/upload), not deleted line-by-line.
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Accounts');
   if (denied) return denied;

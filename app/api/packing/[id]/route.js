@@ -22,7 +22,8 @@ const PACKING_STATUSES = ['draft', 'packed', 'dispatched'];
 const TRANSPORT_MODES = ['road', 'rail', 'air', 'ship'];
 const VEHICLE_TYPES = ['regular', 'odc'];
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Dispatch');
   if (denied) return denied;
@@ -166,7 +167,8 @@ export async function PATCH(req, { params }) {
 // record (stock consumed, order marked dispatched) and stays locked. Its lines go back to Pending
 // automatically — Pending is just "BOM lines not on any list". Reuses the per-item route's own
 // `dispatch.packing.edit` action: same authority level, not a new key.
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Dispatch');
   if (denied) return denied;

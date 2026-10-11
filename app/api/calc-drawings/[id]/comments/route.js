@@ -31,14 +31,16 @@ async function authorize(req, drawingId) {
   return { user, drawing, authorType: 'internal' };
 }
 
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const { error } = await authorize(req, params.id);
   if (error) return error;
   const comments = await getDrawingComments(params.id);
   return NextResponse.json(comments);
 }
 
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const { error, user, drawing, authorType } = await authorize(req, params.id);
   if (error) return error;
 

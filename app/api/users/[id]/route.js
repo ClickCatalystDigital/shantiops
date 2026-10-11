@@ -8,7 +8,8 @@ import { audit } from '@/lib/usb';
 // PM-only: toggle a functional head's department access (access matrix), active status, and/or
 // approve a pending self-registration. Approval additionally requires the hierarchy check —
 // requirePM alone isn't enough (a manager can't approve another manager, see canApproveUser).
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requirePM(user);
   const designSelfManage = (await hasActiveDesignResponsibility(user, 'head')) && !isPM(user);
@@ -38,7 +39,7 @@ export async function PATCH(req, { params }) {
       if (!DEPARTMENTS.includes(dept) || !RESPONSIBILITY_VALUES.includes(requested)) return NextResponse.json({ error: 'Invalid department responsibility' }, { status: 400 });
       if (requested === 'head' && !['admin', 'manager', 'executive'].includes(user.role)) return NextResponse.json({ error: 'Only admin, manager, or executive can assign a department head' }, { status: 403 });
     }
-    const employee = managedEmployee || await queryOne('SELECT id, department, active FROM employees WHERE user_id = ?', [params.id]);
+    const employee = managedEmployee || (await queryOne('SELECT id, department, active FROM employees WHERE user_id = ?', [params.id]));
     if (!employee || !employee.active) return NextResponse.json({ error: 'User must be an active HR employee' }, { status: 400 });
     if (designSelfManage && roles.Design !== 'designer') return NextResponse.json({ error: 'Only admin, manager, or executive can assign a Design Head' }, { status: 403 });
     if (!designSelfManage) {
@@ -106,7 +107,8 @@ export async function PATCH(req, { params }) {
 
 // Reject a pending registration — only ever deletes rows that are still pending, and only when
 // the approval hierarchy allows it (a manager can never delete an established/admin account).
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requirePM(user);
   if (denied) return denied;

@@ -29,7 +29,8 @@ const PROJECT_AGNOSTIC = new Set(['po_items', 'supplier_quotes', 'rfq_items', 'd
 const CLOSED = new Set(['Received', 'In-Stock', 'Cancelled']);
 const json = v => (v ? JSON.stringify(v) : null);
 
-export async function PUT(req, { params }) {
+export async function PUT(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const prItem = await queryOne(
     `SELECT pi.*, pr.raised_by_dept, pr.pr_no FROM pr_items pi JOIN purchase_requisitions pr ON pr.id = pi.pr_id WHERE pi.id = ?`,

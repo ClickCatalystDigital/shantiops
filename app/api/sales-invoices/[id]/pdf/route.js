@@ -8,7 +8,8 @@ import { renderSalesInvoicePdf } from '@/lib/sales-invoice-pdf';
 
 export const runtime = 'nodejs';
 
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const hidden = await hiddenSalesRecord(user, 'invoice', params.id); // plan 2a — a member sees only their own
   if (hidden) return hidden;

@@ -15,7 +15,8 @@ import { parseConfig } from '@/lib/bom-config.mjs';
 // children as parent-less orphans. `name` in the request body is the TEMPLATE's own title (e.g.
 // "Standard 500kg/hr Boiler") — independent of `node.name` (e.g. "BOILER"), which travels inside
 // tree_json and is what a future apply actually recreates.
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = await requireEngineeringAction(user, 'engineering.assembly.add');
   if (denied) return denied;

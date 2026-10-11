@@ -6,7 +6,8 @@ import { requireAction } from '@/lib/action-permissions';
 // The one editable field per row — sequence/location are set at creation and not re-scoped here,
 // same "content vs. identity" split app/api/qc-documents/[id]/iiia-groups/[groupId]/route.js already
 // draws (name/assembly_id/group_label stay fixed there too, only certificate content is PATCHable).
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;
@@ -25,7 +26,8 @@ export async function PATCH(req, { params }) {
   return NextResponse.json({ ok: true });
 }
 
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;

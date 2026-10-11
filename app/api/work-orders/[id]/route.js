@@ -18,7 +18,8 @@ const TRANSITIONS = {
   in_progress: ['completed', 'cancelled'],
 };
 
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Production');
   if (denied) return denied;
@@ -27,7 +28,8 @@ export async function GET(req, { params }) {
   return NextResponse.json(detail);
 }
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Production');
   if (denied) return denied;

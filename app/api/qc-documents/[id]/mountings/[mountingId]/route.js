@@ -11,7 +11,8 @@ import { audit } from '@/lib/usb';
 // optional — qc_mountings has no required columns — so a partial edit is always valid.
 const EDITABLE = ['description', 'size', 'moc', 'serial_numbers', 'make', 'qty', 'bom_item_id'];
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;
@@ -58,7 +59,8 @@ export async function PATCH(req, { params }) {
 
 // Removing an item that's an exception (wrong pick, not applicable to this boiler) only affects this
 // one document's own list — same "no linkage guard needed" reasoning as parts/[partId]'s own DELETE.
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;

@@ -4,7 +4,8 @@ import { queryOne, queryAll, execute } from '@/lib/db';
 import { getFreshSessionUser, requirePM } from '@/lib/auth';
 import { verifyTotp, audit, effectiveStatus, APPROVAL_MINUTES_DEFAULT } from '@/lib/usb';
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const guard = requirePM(user);
   if (guard) return guard;

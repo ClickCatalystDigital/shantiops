@@ -9,7 +9,8 @@ import { ensureEnrollCode } from '@/lib/enroll';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const machine = await queryOne('SELECT id, name, user_id FROM machines WHERE id = ?', [Number(params.id)]);
   if (!machine) return NextResponse.json({ error: 'Not found' }, { status: 404 });

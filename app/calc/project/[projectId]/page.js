@@ -12,7 +12,8 @@ import { Card, CardContent } from '@/components/ui/card';
 
 export const dynamic = 'force-dynamic';
 
-export default async function CalcSheetSelector({ params }) {
+export default async function CalcSheetSelector(props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!canAccessDepartment(user, 'Design') && !canAccessDepartment(user, 'Engineering')) redirect(roleHome(user));
 

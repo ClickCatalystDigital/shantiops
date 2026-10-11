@@ -9,7 +9,8 @@ import { cleanTrackingUrl, TRANSPORT_MODES } from '@/lib/carrier.mjs';
 
 const LIST_COLS = 'id, packing_no, customer_name, customer_address, status, shipment_id, company';
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Dispatch');
   if (denied) return denied;

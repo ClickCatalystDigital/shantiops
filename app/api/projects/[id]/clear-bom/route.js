@@ -18,7 +18,8 @@ import { audit } from '@/lib/usb';
 // Deliberately left alone: bom_imports (import history), bom_release_snapshots, unit_count,
 // structure templates. Junction tables (assembly drawings / calc sheets) ARE cleaned here — the
 // single-node DELETE never did, which orphans them (Turso enforces FKs, so it must be explicit).
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = await requireEngineeringAction(user, 'engineering.bom.clear');
   if (denied) return denied;

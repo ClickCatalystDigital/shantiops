@@ -18,7 +18,8 @@ import { tabLink } from '@/lib/alert-links.mjs';
 
 const bad = (m, status = 400) => NextResponse.json({ error: m }, { status });
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const sheetId = Number(params.id), stageId = Number(params.stageId);
   const row = await queryOne('SELECT * FROM job_sheet_stages WHERE id = ? AND sheet_id = ?', [stageId, sheetId]);
@@ -28,7 +29,7 @@ export async function PATCH(req, { params }) {
   if (!isISODate(date)) return bad('Invalid date');
 
   if (b.action === 'qc') {
-    const denied = requireDepartment(user, 'QC') || await requireAction(user, 'QC', 'qc.jobsheet.sign');
+    const denied = requireDepartment(user, 'QC') || (await requireAction(user, 'QC', 'qc.jobsheet.sign'));
     if (denied) return denied;
     if (!row.end_date) return bad('Production has not finished this stage yet');
     const insp = b.inspection_date || date;
@@ -51,7 +52,7 @@ export async function PATCH(req, { params }) {
   // QC may reopen a stage it signed; everything else here is Production's.
   const qcReopen = b.action === 'reopen' && canAccessDepartment(user, 'QC');
   if (b.action === 'send_back') {
-    const d0 = requireDepartment(user, 'QC') || await requireAction(user, 'QC', 'qc.jobsheet.sign');
+    const d0 = requireDepartment(user, 'QC') || (await requireAction(user, 'QC', 'qc.jobsheet.sign'));
     if (d0) return d0;
     const reason = String(b.reason || '').trim();
     if (!reason) return bad('Give a reason for sending it back');
@@ -66,7 +67,7 @@ export async function PATCH(req, { params }) {
     } catch { /* best-effort */ }
     return NextResponse.json({ ok: true });
   }
-  const denied = qcReopen ? null : (requireDepartment(user, 'Production') || await requireAction(user, 'Production', 'production.jobsheet.write'));
+  const denied = qcReopen ? null : (requireDepartment(user, 'Production') || (await requireAction(user, 'Production', 'production.jobsheet.write')));
   if (denied) return denied;
   const locked = row.qc_sign_by && !canAccessDepartment(user, 'QC') && !isPM(user);
   if (locked && b.action !== 'reopen') return bad('QC has signed this stage — QC must reopen it first', 403);
@@ -138,9 +139,10 @@ export async function PATCH(req, { params }) {
   return NextResponse.json({ ok: true });
 }
 
-export async function DELETE(_req, { params }) {
+export async function DELETE(_req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
-  const denied = requireDepartment(user, 'Production') || await requireAction(user, 'Production', 'production.jobsheet.write');
+  const denied = requireDepartment(user, 'Production') || (await requireAction(user, 'Production', 'production.jobsheet.write'));
   if (denied) return denied;
   const sheetId = Number(params.id), stageId = Number(params.stageId);
   const row = await queryOne('SELECT qc_sign_by FROM job_sheet_stages WHERE id = ? AND sheet_id = ?', [stageId, sheetId]);

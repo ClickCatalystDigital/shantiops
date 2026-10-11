@@ -3,7 +3,8 @@ import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;
@@ -23,7 +24,8 @@ export async function PATCH(req, { params }) {
 
 // Deleting a group reverts its parts to a flat/no-section row (form4a_group_id -> NULL) rather than
 // deleting them — same convention as qc_iiia_groups' own DELETE route.
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;

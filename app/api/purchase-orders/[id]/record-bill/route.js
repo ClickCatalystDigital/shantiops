@@ -14,7 +14,8 @@ import { gstSplit, tdsAmount } from '@/lib/gst-calc.mjs';
 import { todayISO } from '@/lib/date';
 import { tabLink } from '@/lib/alert-links.mjs';
 
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Procurement');
   if (denied) return denied;

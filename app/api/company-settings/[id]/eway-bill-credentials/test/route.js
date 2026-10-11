@@ -6,7 +6,8 @@ import { queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { generateEwayBill, loadCredentials } from '@/lib/eway-bill';
 
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Accounts');
   if (denied) return denied;

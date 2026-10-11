@@ -7,7 +7,8 @@ import { audit } from '@/lib/usb';
 const BASELINE_FIELDS = ['operation_id', 'workstation_id', 'milestone_id', 'department', 'planned_minutes', 'inputs', 'outputs'];
 const ALWAYS_EDITABLE = ['status', 'quality_checkpoint'];
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Production');
   if (denied) return denied;
@@ -41,7 +42,8 @@ export async function PATCH(req, { params }) {
   return NextResponse.json({ ok: true });
 }
 
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Production');
   if (denied) return denied;

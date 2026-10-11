@@ -17,7 +17,8 @@ const PAGE_SIZE = 10;
 // with more projects later doesn't need a different flow — one place to see everything they have.
 // Sorted newest-first by project id (monotonic and always set, unlike order_date which can be
 // null) and paginated once a customer has enough history to need it.
-export default async function MyOrders({ searchParams }) {
+export default async function MyOrders(props) {
+  const searchParams = await props.searchParams;
   const user = await getFreshSessionUser();
   // "Open portal" from Sales → Setup → Portal Access: the Sales Head / a PM sees exactly what this
   // customer sees, read-only, without signing them in (which would sign the head out of the app).

@@ -13,7 +13,8 @@ import { tabLink } from '@/lib/alert-links.mjs';
 const STATUSES = ['pending', 'progress', 'done'];
 const EDITABLE = ['workstation_id', 'qty_planned', 'qty_done', 'qty_rejected', 'status', 'is_paused', 'planned_start', 'planned_end', 'notes', 'test_certificate_id'];
 
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Production');
   if (denied) return denied;
@@ -22,7 +23,8 @@ export async function GET(req, { params }) {
   return NextResponse.json(detail);
 }
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Production');
   if (denied) return denied;

@@ -3,7 +3,8 @@ import { getFreshSessionUser } from '@/lib/auth';
 import { requireCalcAccess, deleteTableRow } from '@/lib/calc';
 import { audit } from '@/lib/usb';
 
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireCalcAccess(user);
   if (denied) return denied;

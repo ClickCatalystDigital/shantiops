@@ -7,7 +7,8 @@ import { isISODate } from '@/lib/job-sheets';
 import { audit } from '@/lib/usb';
 import { deleteObject } from '@/lib/r2';
 
-export async function GET(_req, { params }) {
+export async function GET(_req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!canAccessDepartment(user, 'Production') && !canAccessDepartment(user, 'QC')) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -19,7 +20,8 @@ export async function GET(_req, { params }) {
 const TEXT = ['job_number', 'ibr_bvi', 'drg_nos', 'boiler_plate_nos', 'notes', 'owner_name'];
 
 // Header edits + the two sheet-level signatures (Production I/C, QC).
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const id = Number(params.id);
   const b = await req.json();
@@ -27,13 +29,13 @@ export async function PATCH(req, { params }) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
   if (b.sign === 'qc') {
-    const denied = requireDepartment(user, 'QC') || await requireAction(user, 'QC', 'qc.jobsheet.sign');
+    const denied = requireDepartment(user, 'QC') || (await requireAction(user, 'QC', 'qc.jobsheet.sign'));
     if (denied) return denied;
     await execute('UPDATE job_sheets SET qc_sign_by = ?, qc_sign_at = CURRENT_TIMESTAMP WHERE id = ?', [user.username, id]);
     await audit('job_sheet_qc_signed', { actor: user.username, detail: `sheet ${id}` });
     return NextResponse.json({ ok: true });
   }
-  const denied = requireDepartment(user, 'Production') || await requireAction(user, 'Production', 'production.jobsheet.write');
+  const denied = requireDepartment(user, 'Production') || (await requireAction(user, 'Production', 'production.jobsheet.write'));
   if (denied) return denied;
   if (b.sign === 'production') {
     await execute('UPDATE job_sheets SET production_sign_by = ?, production_sign_at = CURRENT_TIMESTAMP WHERE id = ?', [user.username, id]);
@@ -52,9 +54,10 @@ export async function PATCH(req, { params }) {
   return NextResponse.json({ ok: true });
 }
 
-export async function DELETE(_req, { params }) {
+export async function DELETE(_req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
-  const denied = requireDepartment(user, 'Production') || await requireAction(user, 'Production', 'production.jobsheet.write');
+  const denied = requireDepartment(user, 'Production') || (await requireAction(user, 'Production', 'production.jobsheet.write'));
   if (denied) return denied;
   const id = Number(params.id);
   const sheet = await queryOne('SELECT jc_no, scan_key FROM job_sheets WHERE id = ?', [id]);

@@ -6,7 +6,8 @@ import { queryOne, execute } from '@/lib/db';
 import { getFreshSessionUser, isPM, isHead } from '@/lib/auth';
 import { effectiveStatus, verifyTotp, audit, APPROVAL_MINUTES_DEFAULT } from '@/lib/usb';
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!isPM(user) && !isHead(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const b = await req.json();

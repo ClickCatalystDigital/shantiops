@@ -5,7 +5,8 @@ import { getFreshSessionUser, canAccessDepartment, isPM } from '@/lib/auth';
 import { salesScope } from '@/lib/sales-visibility';
 import { audit } from '@/lib/usb';
 
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!(isPM(user) || canAccessDepartment(user, 'Sales'))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const row = await queryOne('SELECT id, competitor, created_by FROM customer_competitors WHERE id = ?', [params.id]);

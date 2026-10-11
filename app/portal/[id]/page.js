@@ -14,7 +14,8 @@ import { defaultCompany } from '@/lib/company-profiles';
 
 export const dynamic = 'force-dynamic';
 
-export default async function Portal({ params }) {
+export default async function Portal(props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (isCustomer(user) && user.must_change_password) redirect('/change-password');
   if (isCustomer(user) && !canAccessProject(user, params.id)) redirect(roleHome(user));

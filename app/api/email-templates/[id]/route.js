@@ -12,7 +12,8 @@ function canAccessCrm(user) {
 
 const EDITABLE = ['name', 'subject', 'body', 'regards', 'terms', 'active'];
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!canAccessCrm(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 

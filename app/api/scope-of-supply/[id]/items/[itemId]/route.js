@@ -12,7 +12,8 @@ function canEditMoney(user) {
   return canAccessDepartment(user, 'Sales') || canAccessDepartment(user, 'Marketing');
 }
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!canEdit(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const item = await queryOne('SELECT * FROM scope_of_supply_items WHERE id = ? AND scope_of_supply_id = ?', [params.itemId, params.id]);
@@ -41,7 +42,8 @@ export async function PATCH(req, { params }) {
   return NextResponse.json({ ok: true });
 }
 
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!canEdit(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const item = await queryOne('SELECT id FROM scope_of_supply_items WHERE id = ? AND scope_of_supply_id = ?', [params.itemId, params.id]);

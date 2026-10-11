@@ -13,7 +13,8 @@ import { audit } from '@/lib/usb';
 const STATUSES = ['open', 'fulfilled', 'cancelled'];
 const TRACK_STATUSES = ['Pending', 'Ready', 'WIP', 'Dispatched', 'Closed'];
 
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const hidden = await hiddenSalesRecord(user, 'sale_order', params.id); // plan 2a: own records only
   if (hidden) return hidden;
@@ -43,7 +44,8 @@ export async function GET(req, { params }) {
   return NextResponse.json({ ...detail, prefill_items });
 }
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const hidden = await hiddenSalesRecord(user, 'sale_order', params.id); // plan 2a: own records only
   if (hidden) return hidden;
@@ -161,7 +163,8 @@ export async function PATCH(req, { params }) {
 // against it is the one that matters most; most real orders will have at least one, which is
 // correct — this is for a genuinely wrong/duplicate/test order, not an undo button). sale_order_items
 // and sale_order_files cascade on their own.
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const hidden = await hiddenSalesRecord(user, 'sale_order', params.id);
   if (hidden) return hidden;

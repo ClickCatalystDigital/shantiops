@@ -4,7 +4,8 @@ import { queryOne } from '@/lib/db';
 import { getFreshSessionUser, isInternal } from '@/lib/auth';
 import { getObjectBuffer } from '@/lib/r2';
 
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!user || !isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const row = await queryOne('SELECT avatar_key FROM users WHERE id = ?', [Number(params.id)]);

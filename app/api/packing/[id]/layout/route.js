@@ -11,7 +11,8 @@ import * as L from '@/lib/packing-layout.mjs';
 import { recordChoice } from '@/lib/packing-memory';
 import { loadModel, applyDiff, normalizeList } from '@/lib/packing-layout';
 
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Dispatch');
   if (denied) return denied;

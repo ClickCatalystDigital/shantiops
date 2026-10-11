@@ -14,7 +14,8 @@ import { phonePassword } from '@/lib/portal-invite';
 const ALPHABET = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const newPassword = () => Array.from(randomBytes(10), b => ALPHABET[b % ALPHABET.length]).join('');
 
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!user || !canAccessDepartment(user, 'Sales')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const { action } = await req.json();

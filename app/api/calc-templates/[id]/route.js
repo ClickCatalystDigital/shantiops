@@ -4,7 +4,8 @@ import { requireCalcAccess, applyTemplate, deleteTemplate } from '@/lib/calc';
 import { audit } from '@/lib/usb';
 
 // One route, two verbs: PATCH applies the template to the live registry (writes), DELETE removes it.
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireCalcAccess(user);
   if (denied) return denied;
@@ -16,7 +17,8 @@ export async function PATCH(req, { params }) {
   return NextResponse.json({ applied });
 }
 
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireCalcAccess(user);
   if (denied) return denied;

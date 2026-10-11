@@ -14,13 +14,15 @@ function canView(user) {
   return isPM(user) || canAccessDepartment(user, 'Procurement') || canAccessDepartment(user, 'Accounts');
 }
 
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!canView(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   return NextResponse.json(await queryAll('SELECT * FROM vendor_payments WHERE vendor_bill_id = ? ORDER BY payment_date, id', [params.id]));
 }
 
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const canProcurement = isPM(user) || canAccessDepartment(user, 'Procurement');
   const isAccountsOnly = !canProcurement && canAccessDepartment(user, 'Accounts');

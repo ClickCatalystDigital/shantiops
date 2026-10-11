@@ -16,7 +16,8 @@ import { tabLink } from '@/lib/alert-links.mjs';
 
 const VALID_ROUTES = new Set(['production', 'dispatch']);
 
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Stores');
   if (denied) return denied;
@@ -109,7 +110,8 @@ export async function POST(req, { params }) {
 // Clear Stores' routing for some units of a split order (body: { child_project_ids }), putting them back
 // to "ready, not routed". All-or-nothing: if any picked unit already has a Production request or packing
 // list built on it, nothing is cleared and the reason names that unit.
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Stores');
   if (denied) return denied;

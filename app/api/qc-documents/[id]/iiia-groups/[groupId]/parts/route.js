@@ -7,7 +7,8 @@ import { requireAction } from '@/lib/action-permissions';
 // manual path — sync-bom auto-routes by assembly_id/group_label, this covers everything else). POST
 // assigns; DELETE (../parts/[partId]) clears back to Form IV A. Scoped to this document+group so a
 // stray part id from elsewhere can't be reassigned through this route.
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;
@@ -27,7 +28,8 @@ export async function POST(req, { params }) {
 
 // Move a part back to Form IV A (iiia_group_id -> NULL) without deleting the row itself — same
 // distinction as the group DELETE route.
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;

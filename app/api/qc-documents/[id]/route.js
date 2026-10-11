@@ -14,7 +14,8 @@ const FIELD_LABEL = Object.fromEntries(QC_HEADER_FIELDS.map(f => [f.key, f.label
 
 // Editing the boiler-level header fields (the "edit" link on the Boiler details card) — the part
 // table and its certificate links have their own endpoint (link-parts), not this one.
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;
@@ -81,7 +82,8 @@ export async function PATCH(req, { params }) {
 // Deletes the document and its part rows explicitly rather than relying on the schema's
 // ON DELETE CASCADE — this app never turns SQLite foreign-key enforcement on for plain
 // execute() calls, so the constraint alone wouldn't actually remove the child rows.
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;

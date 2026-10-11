@@ -5,7 +5,8 @@ import { queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { getPendingPackingItems } from '@/lib/data';
 
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const denied = requireDepartment(await getFreshSessionUser(), 'Dispatch');
   if (denied) return denied;
   const pl = await queryOne('SELECT project_id FROM packing_lists WHERE id = ?', [params.id]);

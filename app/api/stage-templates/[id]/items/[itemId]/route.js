@@ -6,11 +6,12 @@ import { audit } from '@/lib/usb';
 
 async function load(templateId, itemId) {
   const tpl = await queryOne('SELECT * FROM stage_templates WHERE id = ?', [templateId]);
-  const item = tpl && await queryOne('SELECT * FROM stage_template_items WHERE id = ? AND template_id = ?', [itemId, templateId]);
+  const item = tpl && (await queryOne('SELECT * FROM stage_template_items WHERE id = ? AND template_id = ?', [itemId, templateId]));
   return { tpl, item };
 }
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const { tpl, item } = await load(params.id, params.itemId);
@@ -42,7 +43,8 @@ export async function PATCH(req, { params }) {
   return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
 }
 
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const { tpl, item } = await load(params.id, params.itemId);

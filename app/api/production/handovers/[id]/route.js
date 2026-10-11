@@ -6,7 +6,8 @@ import { audit } from '@/lib/usb';
 import { removeBomItemFromDraftLists } from '@/lib/packing-generate';
 import { getHandoverLines, syncProductionDone } from '@/lib/production-handover';
 
-export async function DELETE(_req, { params }) {
+export async function DELETE(_req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Production');
   if (denied) return denied;

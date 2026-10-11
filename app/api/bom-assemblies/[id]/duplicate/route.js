@@ -14,7 +14,8 @@ import { getAllocationMode } from '@/lib/procurement';
 // state resets too (fresh 'Enquiry', no pr_ref/po_ref/receipt fields) since a clone's items have no
 // purchasing history of their own. Deliberately does not run remnant-match auto-matching on the
 // cloned items — out of scope for "duplicate the structure," not a stated requirement.
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const actionDenied = await requireEngineeringAction(user, 'engineering.assembly.add');
   if (actionDenied) return actionDenied;

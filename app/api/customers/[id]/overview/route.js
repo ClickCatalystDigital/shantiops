@@ -14,7 +14,8 @@ import { filterByCompany } from '@/lib/company-filter.mjs';
 
 const inList = ids => (ids.length ? ids.map(() => '?').join(',') : 'NULL');
 
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!(isPM(user) || ['Sales', 'Marketing', 'Accounts'].some(d => canAccessDepartment(user, d)))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });

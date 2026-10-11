@@ -8,7 +8,8 @@ import QcDocumentEditor from '@/components/QcDocumentEditor';
 
 export const dynamic = 'force-dynamic';
 
-export default async function QcDocumentPage({ params }) {
+export default async function QcDocumentPage(props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!canAccessDepartment(user, 'QC')) redirect(roleHome(user));
 

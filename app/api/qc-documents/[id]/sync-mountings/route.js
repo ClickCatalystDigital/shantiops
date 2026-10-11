@@ -6,7 +6,8 @@ import { syncMountingsFromBom } from '@/lib/qc-bom-sync';
 
 // Manual re-sync for the Bought-out Items table — same "additive only" contract as
 // sync-bom/route.js's Form IV A sync (see lib/qc-bom-sync.js).
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;

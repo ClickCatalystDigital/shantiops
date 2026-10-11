@@ -13,7 +13,8 @@ import { reconcileIiiaGroups } from '@/lib/qc-bom-sync';
 // bom_item_id (optional) — the editor's AddPartDialog now offers picking an existing BOM line instead
 // of a purely free-text add, so a manually-added part can benefit from the same architecture a synced
 // one gets: lib/tc-match.js's certificate suggestions, and (below) Form III A group routing.
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;

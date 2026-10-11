@@ -20,14 +20,16 @@ async function load(token, fileId) {
   return { rs, f, order };
 }
 
-export async function GET(_req, { params }) {
+export async function GET(_req, props) {
+  const params = await props.params;
   const { f, res } = await load(params.token, Number(params.fileId));
   if (res) return res;
   const body = await getObjectBuffer(f.r2_key);
   return new NextResponse(body, { headers: { 'Content-Type': f.content_type, 'Content-Disposition': `inline; filename="${f.filename.replace(/"/g, '')}"` } });
 }
 
-export async function DELETE(_req, { params }) {
+export async function DELETE(_req, props) {
+  const params = await props.params;
   const { rs, f, order, res } = await load(params.token, Number(params.fileId));
   if (res) return res;
   if (await isDispatchLocked(order.id, f.dispatch_id)) return NextResponse.json({ error: DISPATCH_LOCKED }, { status: 409 });

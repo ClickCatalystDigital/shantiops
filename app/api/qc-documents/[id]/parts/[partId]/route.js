@@ -11,7 +11,8 @@ import { audit } from '@/lib/usb';
 // matching, sibling fan-out) this route has no business re-implementing.
 const EDITABLE = ['part_no', 'part_name', 'size_t', 'size_w', 'size_l', 'qty'];
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;
@@ -43,7 +44,8 @@ export async function PATCH(req, { params }) {
 // in error, etc.). No linkage guard needed here — unlike deleting a certificate (which could break
 // other documents), removing a part only affects this one document's own list, and removing an
 // unlinked part can only ever shrink what Preview PDF's hard gate requires, never break it.
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;

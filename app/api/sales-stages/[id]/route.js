@@ -5,7 +5,8 @@ import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, isDepartmentHead } from '@/lib/auth';
 import { audit } from '@/lib/usb';
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!isDepartmentHead(user, 'Sales')) return NextResponse.json({ error: 'Only a Sales Head can change stage probabilities' }, { status: 403 });
   const stage = await queryOne('SELECT id, name, probability_pct FROM sales_stages WHERE id = ?', [params.id]);

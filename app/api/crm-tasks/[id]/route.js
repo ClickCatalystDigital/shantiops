@@ -10,7 +10,8 @@ import { requireAction } from '@/lib/action-permissions';
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 const STATUSES = ['open', 'done'];
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!CRM_DEPARTMENTS.some(d => canAccessDepartment(user, d))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });

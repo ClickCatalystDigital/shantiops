@@ -5,7 +5,8 @@ import { NextResponse } from 'next/server';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { getItemQuotes } from '@/lib/data';
 
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Procurement');
   if (denied) return denied;

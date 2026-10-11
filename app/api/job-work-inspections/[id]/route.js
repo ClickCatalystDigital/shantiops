@@ -12,7 +12,8 @@ const EDITABLE = [
 // Edits a job-work inspection — most commonly filling in received_qty/received_date/result once
 // the material comes back. Variance (sent_qty - received_qty) is computed live at read time
 // (lib/data.js), never stored.
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;
@@ -49,7 +50,8 @@ export async function PATCH(req, { params }) {
   return NextResponse.json({ ok: true });
 }
 
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;

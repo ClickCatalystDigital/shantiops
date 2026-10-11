@@ -9,7 +9,8 @@ import { audit } from '@/lib/usb';
 const FIELDS = ['customer_name', 'start_date', 'end_date', 'visit_frequency', 'entitlement', 'contract_value', 'received_value', 'service_engineer'];
 const num = v => (v === '' || v == null ? null : Number(v));
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!user || !canAccessDepartment(user, 'Sales')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const c = await queryOne('SELECT * FROM service_contracts WHERE id = ?', [params.id]);

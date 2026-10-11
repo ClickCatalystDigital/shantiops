@@ -12,7 +12,8 @@ function canTouch(user) {
   return canAccessDepartment(user, 'QC') || canAccessDepartment(user, 'Production');
 }
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!canTouch(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const actionDenied = await requireAction(user, canAccessDepartment(user, 'QC') ? 'QC' : 'Production', 'qc.ncr.write');
@@ -39,7 +40,8 @@ export async function PATCH(req, { params }) {
   return NextResponse.json({ ok: true });
 }
 
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!canTouch(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const actionDenied = await requireAction(user, canAccessDepartment(user, 'QC') ? 'QC' : 'Production', 'qc.ncr.write');

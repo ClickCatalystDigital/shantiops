@@ -23,7 +23,8 @@ async function actorFor(rs) {
 const poFor = (rs, order) => ({ id: order.id, po_no: order.po_no, supplier_name: rs.supplier_name });
 
 // Body: { po_id, dispatched_on, items: [{ po_item_id, qty }], carrier + invoice fields }
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const b = await req.json();
   const { rs, order, res } = await load(params.token, b.po_id);
   if (res) return res;
@@ -32,7 +33,8 @@ export async function POST(req, { params }) {
 }
 
 // Body: { po_id, dispatch_id, ...same fields (items optional) }
-export async function PUT(req, { params }) {
+export async function PUT(req, props) {
+  const params = await props.params;
   const b = await req.json();
   const { rs, order, res } = await load(params.token, b.po_id);
   if (res) return res;

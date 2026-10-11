@@ -9,7 +9,8 @@ import { drawingLink } from '@/lib/alert-links.mjs';
 
 // Customer-only — approving your own drawing has no internal-user analogue (Design's own sign-off
 // is the existing `status` field, PATCHed via app/api/calc-drawings/[id]/route.js).
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!isCustomer(user)) return NextResponse.json({ error: 'Customer access required' }, { status: 403 });
 

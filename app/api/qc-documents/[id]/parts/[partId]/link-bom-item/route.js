@@ -7,7 +7,8 @@ import { reconcileIiiaGroups } from '@/lib/qc-bom-sync';
 
 // Links a QC part to a BOM line so lib/tc-match.js has a real material spec to suggest certificates
 // against — see the plan's Step 1. Purely a lookup link, doesn't touch test_certificate_id.
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;

@@ -19,7 +19,8 @@ const EDITABLE_FIELDS = [
   'default_moc', 'default_category_fields_json', 'default_requires_manufacturing', 'procurement_class',
 ];
 
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = await requireEngineeringAction(user, 'engineering.item_master.write');
   if (denied) return denied;
@@ -38,7 +39,8 @@ export async function GET(req, { params }) {
   });
 }
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
 
   const existing = await queryOne('SELECT id, item_name FROM items WHERE id = ?', [params.id]);

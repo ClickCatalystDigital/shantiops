@@ -18,7 +18,8 @@ const TRANSITIONS = {
   cancel: { from: ['draft', 'approved', 'issued'], to: 'cancelled', actionKey: 'stores.gatepass.write' },
 };
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const deniedStores = requireDepartment(user, 'Stores');
   const deniedDispatch = requireDepartment(user, 'Dispatch');

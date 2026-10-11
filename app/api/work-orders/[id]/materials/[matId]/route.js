@@ -6,7 +6,8 @@ import { audit } from '@/lib/usb';
 
 // Manual "Log issue" — only meaningful for a line with no bom_item_id (against_stock materials,
 // which have no material_issues row to read a real qty from, unlike a BOM-linked line).
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Production');
   if (denied) return denied;
@@ -32,7 +33,8 @@ export async function PATCH(req, { params }) {
   return NextResponse.json({ ok: true });
 }
 
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Production');
   if (denied) return denied;

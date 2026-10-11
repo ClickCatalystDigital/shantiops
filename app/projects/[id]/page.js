@@ -43,7 +43,8 @@ import DispatchBatchPackingPanel from '@/components/DispatchBatchPackingPanel';
 
 export const dynamic = 'force-dynamic';
 
-export default async function ProjectDetail({ params }) {
+export default async function ProjectDetail(props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (isCustomer(user)) redirect(roleHome(user)); // customers use the portal, not the ops view
 

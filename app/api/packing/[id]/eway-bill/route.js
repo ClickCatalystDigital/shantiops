@@ -26,7 +26,8 @@ const TRANS_MODE_CODES = { road: '1', rail: '2', air: '3', ship: '4' };
 const VEHICLE_TYPE_CODES = { regular: 'R', odc: 'O' };
 
 // Checklist for the Generate card: what is ready, what is missing and who fixes it. Read-only.
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Dispatch');
   if (denied) return denied;
@@ -35,7 +36,8 @@ export async function GET(req, { params }) {
   return NextResponse.json({ checks: ctx.checks });
 }
 
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Dispatch');
   if (denied) return denied;

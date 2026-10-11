@@ -15,7 +15,8 @@ const EDITABLE = [
   'steel_making_process', 'heat_treatment',
 ];
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;
@@ -78,7 +79,8 @@ export async function PATCH(req, { params }) {
 // unboundedly (the client's own cost concern: storage will pass 10 GB with other things using it
 // too). Blocked if any statutory-document part still cites this cert — deleting it would silently
 // break that document's hard PDF gate (SYSTEM.md §5d), so it's a 409 naming the count, not a cascade.
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;

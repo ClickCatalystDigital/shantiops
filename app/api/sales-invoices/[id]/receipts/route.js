@@ -22,7 +22,8 @@ function canView(user) {
   return canAccessCrm(user) || canAccessDepartment(user, 'Accounts');
 }
 
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const hidden = await hiddenSalesRecord(user, 'invoice', params.id); // plan 2a — a member sees only their own
   if (hidden) return hidden;
@@ -30,7 +31,8 @@ export async function GET(req, { params }) {
   return NextResponse.json(await queryAll('SELECT * FROM customer_receipts WHERE sales_invoice_id = ? ORDER BY receipt_date, id', [params.id]));
 }
 
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const hidden = await hiddenSalesRecord(user, 'invoice', params.id); // plan 2a — a member sees only their own
   if (hidden) return hidden;

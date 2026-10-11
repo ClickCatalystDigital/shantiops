@@ -4,7 +4,8 @@ import { getFreshSessionUser, isInternal } from '@/lib/auth';
 
 // Download the original .xlsx exactly as it was imported — the revision record for audits and
 // "the spreadsheet said X" disputes. Internal roles only (customers never see the BOM).
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 

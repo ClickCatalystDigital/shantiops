@@ -12,7 +12,8 @@ import { resolveLeadToCustomer } from '@/lib/crm';
 
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const hidden = await hiddenSalesRecord(user, 'lead', params.id); // plan 2a: own records only
   if (hidden) return hidden;

@@ -13,7 +13,8 @@ function canAccessCrm(user) {
   return isPM(user) || CRM_DEPARTMENTS.some(d => canAccessDepartment(user, d));
 }
 
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const hidden = await hiddenSalesRecord(user, 'quotation', params.id); // plan 2a: own records only
   if (hidden) return hidden;
@@ -23,7 +24,8 @@ export async function GET(req, { params }) {
   return NextResponse.json(detail);
 }
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const hidden = await hiddenSalesRecord(user, 'quotation', params.id); // plan 2a: own records only
   if (hidden) return hidden;
@@ -56,7 +58,8 @@ export async function PATCH(req, { params }) {
 // Head-only, hard delete — refuses if a Sale Order or Sales Invoice was ever raised off this
 // quotation (the two real NO-ACTION links). quotation_items cascade on their own; a revision
 // pointing at this as its parent just loses that link (parent_quotation_id ON DELETE SET NULL).
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const hidden = await hiddenSalesRecord(user, 'quotation', params.id);
   if (hidden) return hidden;

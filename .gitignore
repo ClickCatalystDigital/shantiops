@@ -16,3 +16,7 @@ agent/build
 agent/Output
 agent/agent.log
 agent/config.json
+
+/.open-next/
+.wrangler/
+.dev.vars

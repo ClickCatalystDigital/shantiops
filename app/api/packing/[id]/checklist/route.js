@@ -7,7 +7,8 @@ import { requireAction } from '@/lib/action-permissions';
 
 const TICKS = ['prod_ok', 'qc_ok', 'stores_ok'];
 
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Dispatch');
   if (denied) return denied;
@@ -28,7 +29,8 @@ export async function POST(req, { params }) {
 }
 
 // Tick/untick one box, or rename. Ticks are open to Dispatch, QC, Production and Stores (own column).
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!user || !['Dispatch', 'QC', 'Production', 'Stores'].some(d => canAccessDepartment(user, d))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const b = await req.json();
@@ -41,7 +43,8 @@ export async function PATCH(req, { params }) {
   return NextResponse.json({ ok: true });
 }
 
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Dispatch');
   if (denied) return denied;

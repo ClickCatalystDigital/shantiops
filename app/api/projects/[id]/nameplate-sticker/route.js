@@ -13,7 +13,8 @@ export const runtime = 'nodejs';
 const COLS = 'id, project_no, customer_name, company, series, model_design, model_capacity, model_pressure, master_project_id';
 const modelOf = p => [p.series, p.model_design, p.model_capacity && `${p.model_capacity} kg/hr`, p.model_pressure && `${p.model_pressure} kg/cm²`].filter(Boolean).join(' · ');
 
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const project = await queryOne(`SELECT ${COLS} FROM projects WHERE id = ?`, [params.id]);

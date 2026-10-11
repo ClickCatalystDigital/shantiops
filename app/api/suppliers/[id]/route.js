@@ -6,7 +6,8 @@ import { audit } from '@/lib/usb';
 
 const FIELDS = ['name', 'gst_no', 'contact_person', 'phone', 'email', 'address', 'default_payment_terms', 'active'];
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Procurement');
   if (denied) return denied;
@@ -44,9 +45,10 @@ export async function PATCH(req, { params }) {
 // Delete a supplier. Never used anywhere (no quote, RFQ, PO, bill…) = removed for good. Used = kept
 // for history and deactivated instead (it leaves the roster and every picker). The tables that point
 // at suppliers are read from the live schema, so a new one is covered without touching this file.
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
-  const denied = requireDepartment(user, 'Procurement') || await requireAction(user, 'Procurement', 'procurement.supplier.deactivate');
+  const denied = requireDepartment(user, 'Procurement') || (await requireAction(user, 'Procurement', 'procurement.supplier.deactivate'));
   if (denied) return denied;
   const supplier = await queryOne('SELECT * FROM suppliers WHERE id = ?', [params.id]);
   if (!supplier) return NextResponse.json({ error: 'Not found' }, { status: 404 });

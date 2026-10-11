@@ -10,7 +10,8 @@ import { reconcileIiiaGroups } from '@/lib/qc-bom-sync';
 // BOM assembly_id or group_label (the editor's picker) so a later "Sync from BOM" can auto-pull that
 // grouping's material lines (lib/qc-bom-sync.js's matchIiiaGroup) — both optional, a group can also
 // be built by hand-moving already-synced Form IV A parts into it via the parts sub-route.
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;

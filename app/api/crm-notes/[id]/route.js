@@ -8,7 +8,8 @@ import { notifyUser } from '@/lib/notify';
 import { audit } from '@/lib/usb';
 import { tabLink } from '@/lib/alert-links.mjs';
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!user || !canAccessDepartment(user, 'Sales')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const hidden = await hiddenSalesRecord(user, 'note', params.id);

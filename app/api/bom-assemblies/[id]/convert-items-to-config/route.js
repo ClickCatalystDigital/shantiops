@@ -53,7 +53,8 @@ async function loadNode(id) {
   return queryOne('SELECT id, project_id, name, config_json FROM bom_assemblies WHERE id = ?', [id]);
 }
 
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = await gate(user);
   if (denied) return denied;
@@ -62,7 +63,8 @@ export async function GET(req, { params }) {
   return NextResponse.json({ candidates: await loadCandidates(node) });
 }
 
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = await gate(user);
   if (denied) return denied;

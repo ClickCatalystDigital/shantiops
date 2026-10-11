@@ -14,7 +14,8 @@ import { notifyDepartment } from '@/lib/notify';
 import { audit } from '@/lib/usb';
 import { tabLink } from '@/lib/alert-links.mjs';
 
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const actionDenied = await requireAction(user, 'QC', 'qc.inward.decide');
   if (actionDenied) return actionDenied;

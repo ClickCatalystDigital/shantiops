@@ -10,7 +10,8 @@ import { todayISO } from '@/lib/date';
 import { postJournalEntry } from '@/lib/ledger-post';
 import { purchaseDebitNoteLines } from '@/lib/ledger.mjs';
 
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Procurement');
   if (denied) return denied;

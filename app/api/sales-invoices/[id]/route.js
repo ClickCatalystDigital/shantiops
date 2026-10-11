@@ -20,7 +20,8 @@ function canView(user) {
   return canAccessCrm(user) || canAccessDepartment(user, 'Accounts');
 }
 
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const hidden = await hiddenSalesRecord(user, 'invoice', params.id); // plan 2a — a member sees only their own
   if (hidden) return hidden;
@@ -36,7 +37,8 @@ export async function GET(req, { params }) {
 // passes canAccessCrm) always takes the full path below, never this narrower one.
 const ACCOUNTS_PAYMENT_FIELDS = ['status', 'payment_ref'];
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const hidden = await hiddenSalesRecord(user, 'invoice', params.id); // plan 2a — a member sees only their own
   if (hidden) return hidden;

@@ -6,7 +6,8 @@ import { renderPoPdf } from '@/lib/po-pdf';
 
 export const runtime = 'nodejs';
 
-export async function GET(_req, { params }) {
+export async function GET(_req, props) {
+  const params = await props.params;
   const rs = await getRfqByToken(params.token);
   if (!rs) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   if (rs.token_expires && rs.token_expires < Date.now()) return NextResponse.json({ error: 'This link has expired' }, { status: 410 });

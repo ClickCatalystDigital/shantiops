@@ -23,7 +23,8 @@ import { tabLink } from '@/lib/alert-links.mjs';
 
 const VALID_ROUTES = new Set(['production', 'dispatch']);
 
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Stores');
   if (denied) return denied;
@@ -93,7 +94,8 @@ export async function POST(req, { params }) {
 // Reads the item's own current routing decision, if any — used by the receive dialog to know
 // whether this line still needs a routing confirmation, and by getProjectBom-adjacent reads that
 // want the self-referential routing state without duplicating the query.
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Stores');
   if (denied) return denied;
@@ -108,7 +110,8 @@ export async function GET(req, { params }) {
 // Take back Stores' routing decision for this line (it returns to the Allocator queue). Refused once a
 // Production request or packing list has been built on it. The "ready for Production" notification that
 // already went out can't be recalled.
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Stores');
   if (denied) return denied;

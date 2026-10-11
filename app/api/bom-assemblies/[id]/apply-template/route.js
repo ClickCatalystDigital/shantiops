@@ -15,7 +15,8 @@ import { categoryDisplaySpec } from '@/lib/section-shapes';
 // the node's existing children, never blocks on the node already having some (unlike
 // stage_templates' apply-only-if-empty rule — a BOM node legitimately gets built up from more than
 // one template).
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = await requireEngineeringAction(user, 'engineering.assembly.add');
   if (denied) return denied;

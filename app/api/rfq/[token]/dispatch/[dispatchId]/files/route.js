@@ -11,7 +11,8 @@ import { DISPATCH_FILE_TYPES, DISPATCH_FILE_MAX, DISPATCH_FILE_BYTES } from '@/l
 
 export const runtime = 'nodejs';
 
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const rs = await getRfqByToken(params.token);
   if (!rs) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   if (rs.token_expires && rs.token_expires < Date.now()) return NextResponse.json({ error: 'This link has expired' }, { status: 410 });

@@ -17,7 +17,8 @@ import { audit } from '@/lib/usb';
 import { computeSaleOrderTotals } from '@/lib/sale-order-calc.mjs';
 import { lineAmount } from '@/lib/sales-lines.mjs';
 
-export async function PUT(req, { params }) {
+export async function PUT(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const hidden = await hiddenSalesRecord(user, 'sale_order', params.id); // plan 2a: own records only
   if (hidden) return hidden;

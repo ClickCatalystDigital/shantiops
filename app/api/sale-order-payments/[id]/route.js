@@ -20,7 +20,8 @@ async function guard() {
 const load = id => queryOne(
   `SELECT p.*, so.so_no FROM sale_order_payments p JOIN sale_orders so ON so.id = p.sale_order_id WHERE p.id = ?`, [id]);
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const { user, denied } = await guard();
   if (denied) return denied;
   const hidden = await hiddenSalesRecord(user, 'payment', params.id); // plan 2a: own records only
@@ -50,7 +51,8 @@ export async function PATCH(req, { params }) {
   return NextResponse.json({ ok: true });
 }
 
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const { user, denied } = await guard();
   if (denied) return denied;
   const hidden = await hiddenSalesRecord(user, 'payment', params.id); // plan 2a: own records only

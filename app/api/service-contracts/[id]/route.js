@@ -10,7 +10,8 @@ import { audit } from '@/lib/usb';
 
 const EDITABLE_FIELDS = ['customer_name', 'start_date', 'end_date', 'visit_frequency', 'entitlement'];
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Installation');
   if (denied) return denied;

@@ -8,7 +8,8 @@ import { linkBomItem } from '@/lib/item-link';
 // FK check, which would silently write a string into this INTEGER FK and skip the history guard.
 // The guard, the write, the audit and the "remember this link" learning all live in lib/item-link.js
 // (linkBomItem), shared with the review queue, so a human link is handled identically everywhere.
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const actionDenied = await requireEngineeringAction(user, 'engineering.bom.link_item');
   if (actionDenied) return actionDenied;

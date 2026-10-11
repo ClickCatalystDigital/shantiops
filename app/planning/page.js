@@ -7,7 +7,8 @@ import PlanningWorkspace from '@/components/PlanningWorkspace';
 
 export const dynamic = 'force-dynamic';
 
-export default async function PlanningPage({ searchParams }) {
+export default async function PlanningPage(props) {
+  const searchParams = await props.searchParams;
   const user = await getFreshSessionUser();
   const isProduction = canAccessDepartment(user, 'Production');
   if (!isProduction) redirect(roleHome(user));

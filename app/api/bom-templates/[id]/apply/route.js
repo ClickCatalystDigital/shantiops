@@ -13,7 +13,8 @@ import { tabLink } from '@/lib/alert-links.mjs';
 const TEMPLATE_DEPARTMENTS = ['Engineering', 'Design', 'Stores'];
 function canTouch(user) { return TEMPLATE_DEPARTMENTS.some(d => canAccessDepartment(user, d)); }
 
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!canTouch(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const b = await req.json();

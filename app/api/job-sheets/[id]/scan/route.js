@@ -10,9 +10,10 @@ import { putObject, getObjectBuffer, deleteObject } from '@/lib/r2';
 const TYPES = { 'application/pdf': 'pdf', 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' };
 const MAX = 15 * 1024 * 1024;
 
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
-  const denied = requireDepartment(user, 'Production') || await requireAction(user, 'Production', 'production.jobsheet.write');
+  const denied = requireDepartment(user, 'Production') || (await requireAction(user, 'Production', 'production.jobsheet.write'));
   if (denied) return denied;
   const sheet = await queryOne('SELECT id, scan_key FROM job_sheets WHERE id = ?', [params.id]);
   if (!sheet) return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -31,9 +32,10 @@ export async function POST(req, { params }) {
   return NextResponse.json({ ok: true, scan_type: file.type });
 }
 
-export async function DELETE(_req, { params }) {
+export async function DELETE(_req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
-  const denied = requireDepartment(user, 'Production') || await requireAction(user, 'Production', 'production.jobsheet.write');
+  const denied = requireDepartment(user, 'Production') || (await requireAction(user, 'Production', 'production.jobsheet.write'));
   if (denied) return denied;
   const sheet = await queryOne('SELECT id, scan_key FROM job_sheets WHERE id = ?', [params.id]);
   if (!sheet?.scan_key) return NextResponse.json({ error: 'No scan on file' }, { status: 404 });
@@ -43,7 +45,8 @@ export async function DELETE(_req, { params }) {
   return NextResponse.json({ ok: true });
 }
 
-export async function GET(_req, { params }) {
+export async function GET(_req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!canAccessDepartment(user, 'Production') && !canAccessDepartment(user, 'QC')) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });

@@ -9,13 +9,15 @@ import { requireAction } from '@/lib/action-permissions';
 
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   return NextResponse.json(await queryAll('SELECT * FROM opportunity_items WHERE opportunity_id = ? ORDER BY sort_order, id', [params.id]));
 }
 
-export async function PUT(req, { params }) {
+export async function PUT(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!CRM_DEPARTMENTS.some(d => canAccessDepartment(user, d))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });

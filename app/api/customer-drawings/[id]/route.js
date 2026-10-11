@@ -7,7 +7,8 @@ import { notifyProjectCustomers } from '@/lib/notify';
 import { audit } from '@/lib/usb';
 
 // PATCH {status: reviewed|needs_changes, note} — Design/Engineering review of an upload.
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireCalcAccess(user);
   if (denied) return denied;
@@ -31,7 +32,8 @@ export async function PATCH(req, { params }) {
 }
 
 // DELETE — the uploader while it is still open for changes; the Design Head any time.
-export async function DELETE(_req, { params }) {
+export async function DELETE(_req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const row = await queryOne('SELECT id, project_id, file_key, status, uploaded_by FROM customer_drawing_uploads WHERE id = ?', [params.id]);
   if (!row) return NextResponse.json({ ok: true });

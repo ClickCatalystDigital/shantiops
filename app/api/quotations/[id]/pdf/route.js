@@ -8,7 +8,8 @@ export const runtime = 'nodejs';
 
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const hidden = await hiddenSalesRecord(user, 'quotation', params.id); // plan 2a: own records only
   if (hidden) return hidden;

@@ -12,14 +12,16 @@ const EDITABLE = ['product_code', 'product_name', 'product_type', 'description',
 const NUMERIC = new Set(['price', 'gst_pct', 'cost_price', 'warranty_days', 'bom_structure_template_id']);
 
 // Full product (the list sent to /sales leaves out description/attributes to stay light).
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const row = await queryOne('SELECT * FROM sales_products WHERE id = ?', [params.id]);
   return row ? NextResponse.json(row) : NextResponse.json({ error: 'Not found' }, { status: 404 });
 }
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = await requireCrmAction(user, 'sales.product.write');
   if (denied) return denied;

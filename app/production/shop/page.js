@@ -9,7 +9,8 @@ import WorkersPanel from '@/components/WorkersPanel';
 
 export const dynamic = 'force-dynamic';
 
-export default async function ProductionWorkersPage({ searchParams }) {
+export default async function ProductionWorkersPage(props) {
+  const searchParams = await props.searchParams;
   const user = await getFreshSessionUser();
   if (!canAccessDepartment(user, 'Production')) redirect(roleHome(user));
 

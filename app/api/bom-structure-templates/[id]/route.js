@@ -7,7 +7,8 @@ import { audit } from '@/lib/usb';
 
 // GET doubles as the sandbox-edit flow's "load what this template currently holds" — the JSON is
 // parsed here once so no caller has to know it's stored as a string.
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = await requireEngineeringAction(user, 'engineering.assembly.add');
   if (denied) return denied;
@@ -22,7 +23,8 @@ export async function GET(req, { params }) {
 // optional and, when present, replaces the whole blob — this is what the sandbox-edit flow's
 // "Update Template" button calls after re-walking a real node's current children. Never diffed,
 // same replace-wholesale philosophy bom_templates' own PATCH already uses.
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = await requireEngineeringAction(user, 'engineering.assembly.add');
   if (denied) return denied;
@@ -106,7 +108,8 @@ export async function PATCH(req, { params }) {
 // between the count and the delete, archive instead of a raw FK 500.
 // Archiving also renames: UNIQUE(level, series, name) would otherwise let a hidden row block re-creating
 // a template with the same name, and nothing reads the name through the lineage link.
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = await requireEngineeringAction(user, 'engineering.assembly.add');
   if (denied) return denied;

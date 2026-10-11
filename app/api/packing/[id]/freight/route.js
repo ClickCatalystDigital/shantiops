@@ -13,7 +13,8 @@ import { postJournalEntry } from '@/lib/ledger-post';
 import { dispatchFreightLines } from '@/lib/ledger.mjs';
 import { todayISO } from '@/lib/date';
 
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Dispatch');
   if (denied) return denied;

@@ -13,7 +13,8 @@ import { tabLink } from '@/lib/alert-links.mjs';
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 
 // One enquiry with its product lines — used by the Home calendar's in-place Diary update.
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!CRM_DEPARTMENTS.some(d => canAccessDepartment(user, d))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const hidden = await hiddenSalesRecord(user, 'lead', params.id); // plan 2a: own records only
@@ -24,7 +25,8 @@ export async function GET(req, { params }) {
   return NextResponse.json({ ...lead, products });
 }
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const hidden = await hiddenSalesRecord(user, 'lead', params.id); // plan 2a: own records only
   if (hidden) return hidden;
@@ -132,7 +134,8 @@ export async function PATCH(req, { params }) {
 // downstream activity rather than silently detaching it (quotations/sale_orders would otherwise
 // just lose their lead_id via ON DELETE SET NULL, and a linked task has no ON DELETE clause at all
 // and would throw a raw FK error) — crm_notes/lead_products/lead_stage_history cascade on their own.
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const hidden = await hiddenSalesRecord(user, 'lead', params.id);
   if (hidden) return hidden;

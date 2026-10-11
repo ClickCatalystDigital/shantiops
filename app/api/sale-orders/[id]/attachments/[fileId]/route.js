@@ -7,7 +7,8 @@ import { getFreshSessionUser, isInternal, requireDepartment, isPM } from '@/lib/
 import { getObjectBuffer, deleteObject } from '@/lib/r2';
 import { audit } from '@/lib/usb';
 
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const hidden = await hiddenSalesRecord(user, 'sale_order', params.id); // plan 2a: own records only
   if (hidden) return hidden;
@@ -26,7 +27,8 @@ export async function GET(req, { params }) {
   }
 }
 
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const hidden = await hiddenSalesRecord(user, 'sale_order', params.id); // plan 2a: own records only
   if (hidden) return hidden;

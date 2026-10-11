@@ -9,7 +9,8 @@ import { shouldAdjustStock } from '@/lib/bom-structure.mjs';
 
 const FIELDS = ['inspection_outcome', 'stock_action', 'inventory_item_id', 'debit_note_ref', 'reason'];
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Procurement');
   if (denied) return denied;

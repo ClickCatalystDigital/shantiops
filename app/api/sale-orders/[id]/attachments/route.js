@@ -9,7 +9,8 @@ import { getFreshSessionUser, requireDepartment, isPM } from '@/lib/auth';
 import { putObject } from '@/lib/r2';
 import { audit } from '@/lib/usb';
 
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const hidden = await hiddenSalesRecord(user, 'sale_order', params.id); // plan 2a: own records only
   if (hidden) return hidden;

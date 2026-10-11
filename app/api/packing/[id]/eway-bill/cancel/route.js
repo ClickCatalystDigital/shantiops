@@ -15,7 +15,8 @@ import { cancelEwayBill, loadCredentials } from '@/lib/eway-bill';
 
 const CANCEL_REASON_CODES = [1, 2, 3, 4]; // Duplicate / Order Cancelled / Data Entry Mistake / Others
 
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Dispatch');
   if (denied) return denied;

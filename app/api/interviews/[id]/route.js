@@ -5,7 +5,8 @@ import { requireAction } from '@/lib/action-permissions';
 
 const STATUSES = ['scheduled', 'completed', 'cancelled'];
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'HR');
   if (denied) return denied;

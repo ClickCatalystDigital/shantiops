@@ -12,7 +12,8 @@ import { getJournalEntry } from '@/lib/data';
 import { updateDraftJournalEntry, postDraftJournalEntry } from '@/lib/ledger-post';
 import { audit } from '@/lib/usb';
 
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Accounts');
   if (denied) return denied;
@@ -21,7 +22,8 @@ export async function GET(req, { params }) {
   return NextResponse.json(entry);
 }
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Accounts');
   if (denied) return denied;
@@ -65,7 +67,8 @@ export async function PATCH(req, { params }) {
   return NextResponse.json({ ok: true });
 }
 
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Accounts');
   if (denied) return denied;

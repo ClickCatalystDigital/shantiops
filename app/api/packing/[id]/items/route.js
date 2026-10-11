@@ -16,7 +16,8 @@ async function openList(listId) {
 }
 const itemsOf = listId => queryAll('SELECT * FROM packing_items WHERE packing_list_id = ? ORDER BY sort_order, id', [listId]);
 
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Dispatch');
   if (denied) return denied;
@@ -79,7 +80,8 @@ export async function POST(req, { params }) {
 
 // Inline edit of a line (Dispatch types IBR no, item code, box/package, section, etc.).
 const ITEM_EDITABLE = ['material_description', 'moc', 'size_spec', 'ibr_no', 'item_code', 'box_no', 'section', 'make', 'unit', 'qty'];
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Dispatch');
   if (denied) return denied;
@@ -97,7 +99,8 @@ export async function PATCH(req, { params }) {
   return NextResponse.json({ ok: true });
 }
 
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Dispatch');
   if (denied) return denied;

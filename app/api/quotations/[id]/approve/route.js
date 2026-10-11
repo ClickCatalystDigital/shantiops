@@ -9,7 +9,8 @@ import { notifyUser } from '@/lib/notify';
 import { audit } from '@/lib/usb';
 import { tabLink } from '@/lib/alert-links.mjs';
 
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!isDepartmentHead(user, 'Sales')) return NextResponse.json({ error: 'Only a Sales Head can approve a discount' }, { status: 403 });
   const denied = await requireAction(user, 'Sales', 'sales.quotation.approve_discount');

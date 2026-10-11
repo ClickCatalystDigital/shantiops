@@ -9,7 +9,8 @@ import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { getCompanyApplicabilityInputs } from '@/lib/data';
 import { computeApplicability } from '@/lib/company-entity.mjs';
 
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Accounts');
   if (denied) return denied;

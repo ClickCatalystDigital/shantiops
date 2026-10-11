@@ -8,7 +8,8 @@ function canAccessCrm(user) {
   return isPM(user) || CRM_DEPARTMENTS.some(d => canAccessDepartment(user, d));
 }
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!canAccessCrm(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   // Sibling POST /api/addresses already gates on this key — the edit path (2026-09-23 isolation

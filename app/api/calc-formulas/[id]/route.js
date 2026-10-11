@@ -7,7 +7,8 @@ const STATUSES = ['draft', 'pending', 'approved', 'deprecated'];
 
 // Two distinct edits share this endpoint, same as the prototype: a status transition
 // (Submit/Approve — { status }) or a new expression version, which resets status to draft ({ expr }).
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireCalcAccess(user);
   if (denied) return denied;

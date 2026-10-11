@@ -10,7 +10,8 @@ import { notifyDepartment } from '@/lib/notify';
 import { removeItemFromDraftPO, releaseReservationsForItem, maybeCloseRfqsForItem } from '@/lib/procurement';
 import { tabLink } from '@/lib/alert-links.mjs';
 
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Stores');
   if (denied) return denied;

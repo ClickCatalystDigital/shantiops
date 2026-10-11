@@ -1,0 +1,22 @@
+{
+  "companies": [
+    {
+      "company": "Acme Boilers", "legal_name": "Acme Boilers Pvt Ltd",
+      "gstin": "27AAACA1234A1Z5", "pan": "AAACA1234A",
+      "registered_address": "Plot 42, MIDC Industrial Area, Chakan, Pune - 410501",
+      "state": "Maharashtra", "state_code": "27", "invoice_prefix": "AB",
+      "print_name": "ACME BOILERS PVT LTD", "phone": "+91 20 0000 0000",
+      "contact_emails": "sales@acmeboilers.example", "website": "www.acmeboilers.example",
+      "stores_email": "stores@acmeboilers.example", "tagline": "STEAM SOLUTIONS",
+      "maker_prefix": "AB", "qc_doc_prefix": "ABH", "qc_ref_prefix": "AB/QC/OW",
+      "qc_address": "Plot 42, MIDC Chakan, Pune - 410501, Maharashtra, India."
+    }
+  ],
+  "emailTemplates": {},
+  "qcAuthority": {
+    "name": "The Director of Boilers",
+    "designation": "DIRECTORATE OF STEAM BOILERS, MAHARASHTRA, MUMBAI",
+    "address": ["Directorate of Steam Boilers,", "Mumbai,", "Maharashtra."]
+  },
+  "poCounterStart": 100
+}

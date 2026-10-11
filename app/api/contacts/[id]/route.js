@@ -9,7 +9,8 @@ function canAccessCrm(user) {
   return isPM(user) || CRM_DEPARTMENTS.some(d => canAccessDepartment(user, d));
 }
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!canAccessCrm(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   // Sibling POST /api/contacts already gates on this key — the edit path (2026-09-23 isolation
@@ -37,7 +38,8 @@ export async function PATCH(req, { params }) {
 }
 
 // Contacts hang off notes (crm_notes.contact_id) and orders, so removing one only deactivates it.
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!canAccessCrm(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const actionDenied = await requireCrmAction(user, 'sales.customer.write');

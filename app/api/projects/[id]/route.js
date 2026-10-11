@@ -12,7 +12,8 @@ import { recordProjectSpec } from '@/lib/order-spec-server';
 // is repurposed into a real one instead of creating a duplicate. Gated the same as the rest of
 // Calc Sheets (Design/Engineering/PM) rather than requirePM's stricter manager-tier-only check —
 // renaming a project's number/customer here is a Calc-workspace action, not a PM project-creation one.
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireCalcAccess(user);
   if (denied) return denied;
@@ -110,7 +111,8 @@ export async function PATCH(req, { params }) {
 // caller passes `confirmOverride: true` — meaning they've seen lib/project-delete.js's own review
 // list and chose to proceed anyway. Always re-derives that list server-side, never trusts the
 // client's own copy of it.
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!(isPM(user) || isDepartmentHead(user, 'Design') || isDepartmentHead(user, 'Engineering'))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });

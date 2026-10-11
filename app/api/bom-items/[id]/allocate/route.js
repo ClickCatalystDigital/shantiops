@@ -21,7 +21,8 @@ const AVAILABLE_BASIS_SQL = `SELECT MAX(
     COALESCE((SELECT SUM(qty_received) FROM bom_item_receipts WHERE bom_item_id = ?), 0),
     COALESCE((SELECT SUM(qty) FROM inventory_reservations WHERE bom_item_id = ? AND status IN ('active','issued')), 0)) AS total`;
 
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Stores');
   if (denied) return denied;
@@ -34,7 +35,8 @@ export async function GET(req, { params }) {
   return NextResponse.json({ allocations });
 }
 
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Stores');
   if (denied) return denied;
@@ -145,7 +147,8 @@ export async function POST(req, { params }) {
 
 // Take back one allocation row (?allocation_id=). Refused while the unit is already routed or has a
 // test certificate assigned — undo those first. Allocations are bookkeeping only (no stock moves).
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Stores');
   if (denied) return denied;

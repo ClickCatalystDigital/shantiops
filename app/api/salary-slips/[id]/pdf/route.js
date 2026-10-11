@@ -5,7 +5,8 @@ import { renderPayslipPdf } from '@/lib/payslip-pdf';
 
 export const runtime = 'nodejs';
 
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'HR');
   if (denied) return denied;

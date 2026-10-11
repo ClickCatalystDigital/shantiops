@@ -11,12 +11,13 @@ const STATUSES = ['open', 'current', 'closed'];
 async function load(milestoneId, stageId) {
   const m = await queryOne(
     'SELECT id, department, status, actual_start, actual_end FROM milestones WHERE id = ?', [milestoneId]);
-  const stage = m && await queryOne(
-    'SELECT * FROM milestone_stages WHERE id = ? AND milestone_id = ?', [stageId, milestoneId]);
+  const stage = m && (await queryOne(
+    'SELECT * FROM milestone_stages WHERE id = ? AND milestone_id = ?', [stageId, milestoneId]));
   return { m, stage };
 }
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const { m, stage } = await load(params.id, params.stageId);
@@ -65,7 +66,8 @@ export async function PATCH(req, { params }) {
   return NextResponse.json({ ok: true });
 }
 
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const { m, stage } = await load(params.id, params.stageId);

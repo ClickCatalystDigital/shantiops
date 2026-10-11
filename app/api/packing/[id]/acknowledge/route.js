@@ -11,7 +11,8 @@ import { audit } from '@/lib/usb';
 
 const STATUSES = ['accepted', 'damaged', 'discrepancy'];
 
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Dispatch');
   if (denied) return denied;

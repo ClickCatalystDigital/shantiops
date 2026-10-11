@@ -19,7 +19,8 @@ async function load(id) {
   return { user, conv };
 }
 
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const { res, user, conv } = await load(params.id);
   if (res) return res;
   const messages = await queryAll(
@@ -30,7 +31,8 @@ export async function GET(req, { params }) {
   return NextResponse.json({ messages: messages.reverse(), windowOpen: windowOpen(conv.last_inbound_at) });
 }
 
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const { res, user, conv } = await load(params.id);
   if (res) return res;
   const b = await req.json();
@@ -39,7 +41,8 @@ export async function POST(req, { params }) {
 }
 
 // { assigned_to } — Sales Head / PM only.
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const { res, user, conv } = await load(params.id);
   if (res) return res;
   if (!isDepartmentHead(user, 'Sales')) return NextResponse.json({ error: 'Only the Sales Head can reassign a conversation' }, { status: 403 });

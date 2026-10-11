@@ -13,7 +13,8 @@ import { getSelectedCompanyFor } from '@/lib/company-filter-server';
 
 export const runtime = 'nodejs';
 
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const report = getReport(params.key);
   if (!report) return NextResponse.json({ error: 'Unknown report' }, { status: 404 });
 

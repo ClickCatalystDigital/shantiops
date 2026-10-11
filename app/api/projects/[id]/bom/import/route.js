@@ -57,7 +57,8 @@ function settleConfigs(parsed, overrides = {}) {
   parsed.totalConfigs = parsed.sheets.reduce((a, sh) => a + (sh.configs?.length || 0), 0);
 }
 
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!canAccessDepartment(user, 'Engineering') && !canAccessDepartment(user, 'Design')) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });

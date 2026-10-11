@@ -5,7 +5,8 @@ import { getFreshSessionUser } from '@/lib/auth';
 import { hiddenSalesRecord } from '@/lib/sales-visibility';
 import { getOrderSpecDefaults } from '@/lib/order-spec-server';
 
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const hidden = await hiddenSalesRecord(user, 'sale_order', params.id);
   if (hidden) return hidden;

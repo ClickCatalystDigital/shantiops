@@ -13,7 +13,8 @@ const FIELDS = ['description', 'spec', 'on_hand', 'location', 'reorder_point', '
 const NUMERIC = new Set(['on_hand', 'reorder_point', 'item_id', 'avg_cost']);
 const TRACKING_MODES = new Set(['scalar', 'piece', 'batch', 'serial']);
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Stores');
   if (denied) return denied;
@@ -67,7 +68,8 @@ const REFERENCING = [
   ['purchase_returns', 'inventory_item_id', 'purchase returns'], ['tc_item_match_approvals', 'inventory_item_id', 'certificate matches'],
 ];
 
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Stores');
   if (denied) return denied;

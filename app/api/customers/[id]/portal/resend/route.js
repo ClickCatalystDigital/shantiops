@@ -6,7 +6,8 @@ import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
 import { issueSetupLink, emailPortalInvite } from '@/lib/portal-invite';
 import { audit } from '@/lib/usb';
 
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!user || !canAccessDepartment(user, 'Sales')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const customer = await queryOne('SELECT * FROM customers WHERE id = ?', [params.id]);

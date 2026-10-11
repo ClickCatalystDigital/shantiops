@@ -5,7 +5,8 @@ import { queryOne, execute } from '@/lib/db';
 import { audit } from '@/lib/usb';
 
 // Sheets are independently deletable; projects are intentionally not deleted here.
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireCalcAccess(user);
   if (denied) return denied;

@@ -13,10 +13,11 @@ const MAX_BYTES = 1024 * 1024;
 
 async function gate() {
   const user = await getFreshSessionUser();
-  return { user, denied: requireDepartment(user, 'Accounts') || await requireAction(user, 'Accounts', 'accounts.company_settings.write') };
+  return { user, denied: requireDepartment(user, 'Accounts') || (await requireAction(user, 'Accounts', 'accounts.company_settings.write')) };
 }
 
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!user || !isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const row = await queryOne('SELECT logo_key FROM company_settings WHERE id = ?', [params.id]);
@@ -26,7 +27,8 @@ export async function GET(req, { params }) {
   } catch (e) { return NextResponse.json({ error: e.message }, { status: 502 }); }
 }
 
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const { user, denied } = await gate();
   if (denied) return denied;
   const row = await queryOne('SELECT id, company, logo_key FROM company_settings WHERE id = ?', [params.id]);
@@ -49,7 +51,8 @@ export async function POST(req, { params }) {
   return NextResponse.json({ ok: true, width: w, height: h });
 }
 
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const { user, denied } = await gate();
   if (denied) return denied;
   const row = await queryOne('SELECT id, company, logo_key FROM company_settings WHERE id = ?', [params.id]);

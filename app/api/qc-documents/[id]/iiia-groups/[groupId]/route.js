@@ -11,7 +11,8 @@ const FIELDS = ['design_pressure', 'design_temp', 'hydro_test_pressure', 'hydro_
   'process_of_manufacture', 'mode_of_flange_attachment', 'flange_particulars', 'size_of_branch',
   'heat_treatment', 'identification_marks', 'drawing_no', 'calc_drawing_id'];
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;
@@ -34,7 +35,8 @@ export async function PATCH(req, { params }) {
 
 // Deleting a group reverts its parts to Form IV A (iiia_group_id -> NULL) rather than deleting them —
 // a III A group is a certificate scoping, not the parts' only home.
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'QC');
   if (denied) return denied;

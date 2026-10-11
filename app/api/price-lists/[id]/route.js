@@ -9,7 +9,8 @@ import { audit } from '@/lib/usb';
 
 const FIELDS = ['customer_id', 'item_id', 'rate', 'uom', 'valid_from', 'valid_until', 'notes'];
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Sales');
   if (denied) return denied;
@@ -36,7 +37,8 @@ export async function PATCH(req, { params }) {
   return NextResponse.json({ ok: true });
 }
 
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Sales');
   if (denied) return denied;

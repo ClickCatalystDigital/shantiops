@@ -8,7 +8,8 @@ import { renderBomTreePdf } from '@/lib/bom-tree-pdf';
 
 export const runtime = 'nodejs';
 
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 

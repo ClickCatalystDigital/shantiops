@@ -13,7 +13,8 @@ function canAccessCrm(user) {
   return isPM(user) || ['Sales', 'Marketing'].some(d => canAccessDepartment(user, d));
 }
 
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!canAccessCrm(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   // Creates a real login and sends a real email to an external customer — had no action-key gate

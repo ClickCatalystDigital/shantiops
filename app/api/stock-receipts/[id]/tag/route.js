@@ -6,7 +6,8 @@ import { getFreshSessionUser, isInternal } from '@/lib/auth';
 import { getReceipt, getReceiptLines, getReceiptCompany } from '@/lib/stock-receipts';
 import { renderStockReceiptTagPdf } from '@/lib/stock-receipt-tag-pdf';
 
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 

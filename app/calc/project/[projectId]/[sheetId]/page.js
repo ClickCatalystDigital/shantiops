@@ -8,7 +8,8 @@ import CalcWorkspace from '@/components/CalcWorkspace';
 
 export const dynamic = 'force-dynamic';
 
-export default async function CalcSheetWorkspace({ params }) {
+export default async function CalcSheetWorkspace(props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!canAccessDepartment(user, 'Design') && !canAccessDepartment(user, 'Engineering')) redirect(roleHome(user));
 

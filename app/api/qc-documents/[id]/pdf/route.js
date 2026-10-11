@@ -11,7 +11,8 @@ export const runtime = 'nodejs';
 // data only. Failing which it should not move forward" (QC-CHANGES.md §1) means the document cannot
 // produce its PDF while any part is unlinked, and that has to hold even if this route is hit
 // directly.
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const detail = await getQcDocumentDetail(params.id);
   if (!detail) return NextResponse.json({ error: 'Not found' }, { status: 404 });

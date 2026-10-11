@@ -7,7 +7,8 @@ import { modelCodeOf } from '@/lib/packing-forms.mjs';
 
 export const runtime = 'nodejs';
 
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const data = await getPackingDetail(params.id);
   if (!data) return NextResponse.json({ error: 'Not found' }, { status: 404 });

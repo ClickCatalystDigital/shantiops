@@ -4,7 +4,8 @@ import { getFreshSessionUser, isCustomer, isInternal, canAccessProject } from '@
 import { getObjectBuffer } from '@/lib/r2';
 
 // Proxied read-back (no public bucket needed). Images/PDFs open inline; ?download=1 forces a save.
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const row = await queryOne('SELECT project_id, file_key, file_name, mime FROM customer_drawing_uploads WHERE id = ?', [params.id]);
   if (!row) return NextResponse.json({ error: 'Not found' }, { status: 404 });

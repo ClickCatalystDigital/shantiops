@@ -13,7 +13,8 @@ function canEditMoney(user) {
   return canAccessDepartment(user, 'Sales') || canAccessDepartment(user, 'Marketing');
 }
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const canEdit = canAccessDepartment(user, 'Design') || canAccessDepartment(user, 'Engineering')
     || canEditMoney(user);

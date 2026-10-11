@@ -5,7 +5,8 @@ import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 const STATUSES = ['planned', 'active', 'completed'];
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!CRM_DEPARTMENTS.some(d => canAccessDepartment(user, d))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });

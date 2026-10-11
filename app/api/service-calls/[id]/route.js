@@ -11,7 +11,8 @@ const STATUSES = ['open', 'assigned', 'in_progress', 'resolved', 'closed'];
 const EDITABLE_FIELDS = ['customer_name', 'contact_person', 'contact_phone', 'subject', 'description',
   'priority', 'sla_hours', 'assigned_to', 'diagnosis', 'resolution', 'closure_evidence'];
 
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Installation');
   if (denied) return denied;

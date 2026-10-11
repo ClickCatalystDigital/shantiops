@@ -10,7 +10,8 @@ import { audit } from '@/lib/usb';
 
 const TOKEN_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Procurement');
   if (denied) return denied;
@@ -21,7 +22,8 @@ export async function GET(req, { params }) {
 
 // { supplier_id, action: 'sent' } — fire-and-forget stamp from the WhatsApp/Email button click.
 // { supplier_id, action: 'resend' } — D12: re-send issues a fresh token, doesn't reuse/extend the old one.
-export async function PATCH(req, { params }) {
+export async function PATCH(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const denied = requireDepartment(user, 'Procurement');
   if (denied) return denied;
@@ -66,7 +68,7 @@ export async function PATCH(req, { params }) {
       let added = 0;
       for (const sid of ids) {
         if (await queryOne('SELECT 1 FROM rfq_suppliers WHERE rfq_id = ? AND supplier_id = ?', [params.id, sid])) continue;
-        if (!await queryOne('SELECT 1 FROM suppliers WHERE id = ?', [sid])) continue;
+        if (!(await queryOne('SELECT 1 FROM suppliers WHERE id = ?', [sid]))) continue;
         await execute('INSERT INTO rfq_suppliers (rfq_id, supplier_id, token, token_expires) VALUES (?, ?, ?, ?)',
           [params.id, sid, crypto.randomBytes(24).toString('hex'), Date.now() + TOKEN_TTL_MS]);
         added++;

@@ -6,7 +6,8 @@ import { audit } from '@/lib/usb';
 
 // BOM workspace Phase 2 — junction CRUD for bom_assembly_calc_sheets, same shape as the sibling
 // drawings route (see its own comment for the reasoning behind the auth choices).
-export async function GET(req, { params }) {
+export async function GET(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   if (!isInternal(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const rows = await queryAll(
@@ -16,7 +17,8 @@ export async function GET(req, { params }) {
   return NextResponse.json(rows);
 }
 
-export async function POST(req, { params }) {
+export async function POST(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const actionDenied = await requireEngineeringAction(user, 'engineering.assembly.add');
   if (actionDenied) return actionDenied;
@@ -43,7 +45,8 @@ export async function POST(req, { params }) {
   return NextResponse.json({ ok: true });
 }
 
-export async function DELETE(req, { params }) {
+export async function DELETE(req, props) {
+  const params = await props.params;
   const user = await getFreshSessionUser();
   const actionDenied = await requireEngineeringAction(user, 'engineering.assembly.add');
   if (actionDenied) return actionDenied;
