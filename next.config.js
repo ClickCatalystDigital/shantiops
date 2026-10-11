@@ -14,6 +14,7 @@
 // port (3002): the old check also only ever worked by accident in whichever process order made its
 // `argv.includes('3001')` true, not reliably — this replaces it outright.
 const { TAB_BASES } = require('./lib/workspace-routes');
+const WORKERS = process.env.SB_TARGET === 'workers';
 
 const devPort = process.env.PORT && process.env.PORT !== '3000' ? process.env.PORT : null;
 
@@ -23,8 +24,15 @@ module.exports = {
   ...(devPort ? { distDir: `.next-${devPort}` } : {}),
   // @react-pdf/renderer must run as a real Node module (fontkit/native deps), not be bundled.
   serverExternalPackages: ['@react-pdf/renderer'],
-  // demo branch: Workers needs libsql's web build, which Next's file tracing skips (it only follows the node entry).
-  outputFileTracingIncludes: { '/**': ['./node_modules/@libsql/**/*'] },
+  // Cloudflare Workers build (npm run cf:build sets SB_TARGET=workers): libsql's web client instead
+  // of the Node one, and its files traced in (Next's tracing only follows the Node entry).
+  ...(WORKERS ? {
+    outputFileTracingIncludes: { '/**': ['./node_modules/@libsql/**/*'] },
+    webpack(config, { webpack }) {
+      config.plugins.push(new webpack.NormalModuleReplacementPlugin(/[\\/]db-client\.js$/, (r) => { r.request = r.request.replace(/db-client\.js$/, 'db-client.workers.js'); }));
+      return config;
+    },
+  } : {}),
   // /stores/inventory is served by the /stores page with tab=inventory. Real sub-pages such as
   // /accounts/documents win, because these rewrites only apply when no page matches.
   async rewrites() {
