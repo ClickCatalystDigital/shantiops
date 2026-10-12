@@ -12532,6 +12532,8 @@ hierarchy + audit trail was judged sufficient; revisit if that proves too light.
 
 ## 19. Repo layout
 
+**API handlers are in `server/api/`, not `app/api/` (§5fd).** Older sections below and above still name `app/api/<path>/route.js`; read that as `server/api/<path>/route.js`.
+
 `lib/` — db, auth, sla/delay engine, milestone taxonomy, data helpers, formatters, packing-pdf,
 `pmb.mjs` (PMB Excel parser + its `pmb-selfcheck.mjs`), `bom-fields.mjs` (BOM field ownership —
 pure data, importable client-side), `usb.js` (device approval domain logic, shared primitives),
@@ -13114,7 +13116,28 @@ Plan: standard subsystems (FD fan, ID fan, Feed Line…) are **variants of a tem
 ## 5fc. One codebase for the client (Render) and the public demo (Cloudflare Workers) (2026-10-12)
 - **Next 15.5 + React 19.** The `demo` branch was merged into main: `cookies()`, `headers()` and route/page `params` are awaited everywhere; `serverExternalPackages` replaces the old experimental key. Render runs it exactly as before (`next build`, `next start`).
 - **Database client per target.** `lib/db.js` calls `makeClient()` from `lib/db-client.js` (Node: `@libsql/client` with the short undici keep-alive, or `file:./sb-ops-local.db` when `TURSO_URL` is unset). `npm run cf:build` sets `SB_TARGET=workers`, and `next.config.js` then swaps in `lib/db-client.workers.js` (`@libsql/client/web`, Turso only) and traces libsql's files. Nothing Workers-specific runs on Render.
-- **Demo-only code is inert without `DEMO_MODE=1`** (never set on Render): `/demo` 404s, `middleware.js` demo guard, `sendMail` log-only, layout banner/noindex. `SKIP_MIGRATE=1` (demo only) skips `migrate()` on boot. Demo files: `app/demo`, `app/api/demo/*`, `lib/demo-*.js`, `scripts/demo/*`, `wrangler.jsonc`, `open-next.config.ts`, `workers/demo-reset-cron/`. Deploy the demo with `npm run cf:deploy` (worker `sb-ops-boiler-erp-demo`, `boiler-erp.ahromlabs.com`).
+- **Demo-only code is inert without `DEMO_MODE=1`** (never set on Render): `/demo` 404s, `middleware.js` demo guard, `sendMail` log-only, layout banner/noindex. `SKIP_MIGRATE=1` (demo only) skips `migrate()` on boot. Demo files: `app/demo`, `server/api/demo/*`, `lib/demo-*.js`, `scripts/demo/*`, `wrangler.jsonc`, `open-next.config.ts`, `workers/demo-reset-cron/`. Deploy the demo with `npm run cf:deploy` (worker `sb-ops-boiler-erp-demo`, `boiler-erp.ahromlabs.com`).
 - **PDF fonts** for the QC folder are embedded as data URIs (`lib/pt-serif-fonts.js`), so no file reads; same output on both targets.
 - **New-database fixes found by comparing a fresh DB with the live one**: `migrate()` never created `qc_document_parts.bom_item_id` / `stock_piece_id`, `named_parts_json` (bom_items, bom_template_items, pr_items), `stock_pieces.part_name`, the `tc_item_match_approvals` table or four indexes (one is the unique index "Sync from BOM" relies on). They had been added to the live DB by one-off scripts, so a new customer's QC document creation failed. Now in `migrate()`; no-ops on the live DB. Also `migrateCalcProjectHierarchy` no longer skips the `calc_sheet_id` columns on a DB without the sample project SB-1018.
 - **Verified**: Node build on a fresh SQLite DB (login, all workspaces, packing/BOM/sticker/report PDFs, a full QC folder PDF with embedded PT Serif); Node build against the live Turso DB on localhost (33 pages, sheet/dropdown/chart interactions, no console errors); Workers build (`cf:build`, local preview: demo entry, pages, PDF).
+
+## 5fd. API router: one entry for all API routes, half the memory (2026-10-12)
+**Why.** After the Next 15 upgrade the client's Render instance (free plan: 512 MB RAM, so Node's heap is ~256 MB) crashed with "JavaScript heap out of memory". Two causes, both measured with heap snapshots:
+1. Next 15 loads every page and route at start (`experimental.preloadEntriesOnStart`, default on). Turned off in `next.config.js`; routes now load on first use, as in Next 14.
+2. Next builds each `route.js` as its own entry, and an entry once used keeps its own copy of the shared modules in memory (~400 KB per route, 585 routes). After every route had been called once: 74 MB → 280 MB, over the 256 MB limit.
+
+**How it works now.**
+- API handlers live in `server/api/<path>/route.js` (the old `app/api/<path>/route.js`, same files, same exports). **Every `app/api/...` path mentioned elsewhere in this file is now `server/api/...`.**
+- The only API entry Next builds is `app/api/[...path]/route.js`. It finds the handler with `lib/api-match.mjs` and loads it with a lazy `import()`, so all handlers share one copy of `lib/*`. URLs are unchanged.
+- Matching (`lib/api-match.mjs`, selfcheck `node lib/api-match.mjs`): a segment tree; at each level a fixed segment wins over `[param]`, with backtracking (Next's precedence). Lookup cost depends on path depth, not on how many routes exist. Only fixed and single `[param]` segments are supported (no `[...catchAll]`; none exist).
+- The table `server/api-routes.generated.js` is written by `scripts/gen-api-routes.mjs` before every `npm run build`, `npm run dev` and `npm run cf:build` (also committed, so a plain `next build` works). It fails the build if one path exists in both `app/api/` and `server/api/`, or if two `[param]` names clash at the same level.
+- Copied from Next: `params` is a Promise that also carries the values (`await params` and the older `params.token` both work; `lead-hooks` uses the latter); a method the route doesn't export → 405; HEAD answered by GET; OPTIONS → 204 with a sorted `Allow`. Every handler runs as `runtime = 'nodejs'`, `dynamic = 'force-dynamic'` (set on the entry; per-file `runtime`/`dynamic`/`maxDuration` exports are no longer read, and none mattered on Render).
+- Not covered by the router: pages (51) and the root `app/api/` folder itself, which holds only the entry.
+
+**Adding an API route:** create `server/api/<path>/route.js` exactly as a Next route handler (export `GET`/`POST`/…, read `await params`). Never add files under `app/api/`. Importing between route files uses `@/server/api/...`.
+
+**Measured** (production build, local SQLite test DB, every one of the 964 method/route calls, 512 MB cap): memory after all calls **280 MB → 136 MB**. Responses compared with the build before the change: identical status and content type for every call except one (bank-statement import sent `{}` instead of a file: 500 both times, body was Next's HTML error page, now empty); body checksums identical except PDF/TOTP/audit outputs that embed a timestamp or random value. Browser pass over 12 workspaces: every API call 200, no console errors. Unknown `/api/...` paths now get a JSON 404 instead of Next's HTML 404 page.
+
+**Cloudflare (demo):** `cf:build` works; in local `wrangler` preview the router serves routes, but database calls failed with "Network connection lost" for routes and pages alike (local preview to Turso), so the demo still needs a check after its next deploy.
+
+**Still open (planned, not built):** versioned migrations instead of running all of `migrate()` on the first request (~90 s against Turso, 2 s on local SQLite); PDF/Excel generation in a short-lived child process (the PDF layout engine alone holds 17 MB once loaded); SQL paging for the large lists (Sales, Projects, Executive, Reports pages take 10–40 s on the free plan).

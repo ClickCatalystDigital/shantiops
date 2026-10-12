@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { nextNumber, createProjectMilestones, withTransaction, queryOne, queryAll, execute } from '@/lib/db';
-import { insertTemplateTree } from '@/app/api/bom-assemblies/[id]/apply-template/route';
+import { insertTemplateTree } from '@/server/api/bom-assemblies/[id]/apply-template/route';
 import { getFreshSessionUser, isDesignHead, isCustomer, canAccessProject, parseProjectIds } from '@/lib/auth';
 import { getActiveProjectsList } from '@/lib/data';
 import { isValidSeries } from '@/lib/qc-series';
