@@ -5,6 +5,8 @@
 // Customer detail (contacts/addresses/notes) opens in a right-side Sheet, same drawer pattern
 // HrWorkspace.jsx's employee detail uses.
 import { Fragment, useState, useEffect, useMemo, useRef } from 'react';
+import { SALES_TAB_DATA } from '@/lib/sales-tab-data.mjs';
+import { tabSlug } from '@/lib/workspace-routes';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEntityHighlight } from '@/lib/use-entity-highlight';
 import { Card, CardContent, CardHeader, CardTitle, CardAction, CardDescription } from '@/components/ui/card';
@@ -3615,7 +3617,7 @@ function FunnelStagesTab({ stages, canEdit, router }) {
   );
 }
 
-export default function SalesWorkspace({ saleOrders, leads, customers, quotations, priceLists = [], returns = [], tradeRequests = [], inventoryItems = [], invoices = [], creditNotes = [], departments = ['Sales'], users = [], savedViews = [], initialTab, salePayments = [], branches = [], salesProducts = [], salesTargets = [], stages = [], isSalesHead = false, company = null, whatsappConnected = false, }) {
+export default function SalesWorkspace({ saleOrders, leads, customers, quotations, priceLists = [], returns = [], tradeRequests = [], inventoryItems = [], invoices = [], creditNotes = [], departments = ['Sales'], users = [], savedViews = [], initialTab, salePayments = [], branches = [], salesProducts = [], salesTargets = [], stages = [], isSalesHead = false, company = null, whatsappConnected = false, loadedKeys = null, }) {
   const router = useRouter();
   // Sales-only now — Marketing has its own tab/URL (/market, MarketingWorkspace.jsx). No more
   // per-viewer group filtering; every group in PANEL_GROUPS always renders here.
@@ -3627,6 +3629,16 @@ export default function SalesWorkspace({ saleOrders, leads, customers, quotation
   const flat = groups.flatMap(g => g.items.flatMap(p => (p.group ? p.children : [p])));
   const [panel, setPanel] = useState(flat.some(p => p.key === initialTab) ? initialTab : 'leads');
   const activePanel = flat.find(p => p.key === panel) || flat[0];
+  // The server sends only the open tab's large lists (lib/sales-tab-data.mjs). Opening a tab whose
+  // lists aren't here asks the server for that tab; until they arrive the tab shows "Loading".
+  const missing = loadedKeys && (SALES_TAB_DATA[activePanel.key] || []).some(k => !loadedKeys.includes(k));
+  const requested = useRef(null);
+  useEffect(() => {
+    if (!missing || requested.current === activePanel.key) return;
+    requested.current = activePanel.key;
+    router.replace(`/sales/${tabSlug(activePanel.key)}${window.location.search}`, { scroll: false });
+  }, [missing, activePanel.key, router]);
+  useEffect(() => { if (!missing) requested.current = null; }, [missing]);
 
   return (
     <WorkspaceSidebar title="Sales" icon={TagIcon} groups={groups}
@@ -3643,6 +3655,8 @@ export default function SalesWorkspace({ saleOrders, leads, customers, quotation
           {/* Keyed by the global company selection: switching company remounts the tab, so its page,
               search and optimistic edits start fresh instead of pointing past the new, shorter list. */}
           <Fragment key={company || 'all'}>
+          {missing && <div className="py-16 text-center text-sm text-muted-foreground">Loading…</div>}
+          {!missing && <>
           {activePanel.key === 'leads' && <LeadsTab leads={leads} users={users} customers={customers} salesProducts={salesProducts} branches={branches} stages={stages} savedViews={savedViews} isSalesHead={isSalesHead} router={router} />}
           {activePanel.key === 'customers' && <CustomersTab customers={customers} isSalesHead={isSalesHead} router={router} />}
           {activePanel.key === 'quotations' && <QuotationsTab quotations={quotations} customers={customers} salesProducts={salesProducts} isSalesHead={isSalesHead} router={router} />}
@@ -3665,6 +3679,7 @@ export default function SalesWorkspace({ saleOrders, leads, customers, quotation
           {activePanel.key === 'targets' && <TargetsTab salesTargets={salesTargets} branches={branches} router={router} />}
           {activePanel.key === 'email_templates' && <EmailTemplatesTab router={router} />}
                     {activePanel.key === 'funnel_stages' && <FunnelStagesTab stages={stages} canEdit={isSalesHead} router={router} />}
+          </>}
           </Fragment>
     </WorkspaceSidebar>
   );
