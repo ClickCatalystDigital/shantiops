@@ -11,6 +11,7 @@
 // kept rather than dropped. One shared search input lives above the active section, same position
 // regardless of active section, filtering whichever section is open.
 import { useState, useEffect, useMemo } from 'react';
+import { unpackRows } from '@/lib/row-pack.mjs';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEntityHighlight } from '@/lib/use-entity-highlight';
 import { api, showToast, formatDate, formatMoney } from '@/lib/client';
@@ -1951,7 +1952,8 @@ const SEARCH_PLACEHOLDER = {
   overdues: 'Search supplier or item…',
 };
 
-export default function ProcurementWorkspace({ sourcingItems, suppliers, purchaseOrders, quotes, rfqSummaryByItem = {}, purchaseReturns = [], inventoryItems = [], vendorBills = [], debitNotes = [], tdsRates = [], activeProjects = [], overdueDeliveries = [], initialTab, initialProject }) {
+export default function ProcurementWorkspace({ sourcingItems: sourcingItemsPacked, suppliers, purchaseOrders, quotes, rfqSummaryByItem = {}, purchaseReturns = [], inventoryItems = [], vendorBills = [], debitNotes = [], tdsRates = [], activeProjects = [], overdueDeliveries = [], initialTab, initialProject }) {
+  const sourcingItems = useMemo(() => unpackRows(sourcingItemsPacked), [sourcingItemsPacked]); // packed by app/procurement/page.js
   const router = useRouter();
   const searchParams = useSearchParams();
   const [search, setSearch] = useState('');

@@ -10,7 +10,9 @@
 // request's bom_item goes terminal In-Stock). Release undoes an unissued Reserve.
 import InboundLink from '@/components/InboundLink';
 import { carrierSummary } from '@/lib/carrier.mjs';
-import { useState, useEffect, useMemo, Fragment } from 'react';
+import { useState, useEffect, useMemo, useRef, Fragment } from 'react';
+import { tabSlug } from '@/lib/workspace-routes';
+import { unpackRows } from '@/lib/row-pack.mjs';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEntityHighlight, useParamSync } from '@/lib/use-entity-highlight';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
@@ -2892,11 +2894,12 @@ function InventoryTab({ inventoryItems, openRequests, certificates, projects }) 
 
 export default function StoresWorkspace({
   inventoryItems, openRequests = [], activeReservations = [], projects = [],
-  gateInwardReceipts = [], certificates = [], bomItems = [],
+  gateInwardReceipts = [], certificates = [], bomItems: bomItemsPacked = [],
   splitOrders = [], pendingInwardApprovals = [], unroutedItems = [],
-  initialTab,
+  initialTab, loaded = null,
 }) {
   const router = useRouter();
+  const bomItems = useMemo(() => unpackRows(bomItemsPacked), [bomItemsPacked]); // packed by app/stores/page.js
   // Trade requests Sales pushes (source 'sas') get their own tab; everything else stays in Demand.
   const tradeRequests = openRequests.filter(r => r.source === 'sas');
   const navItems = NAV_ITEMS({
@@ -2916,10 +2919,21 @@ export default function StoresWorkspace({
   // the stock/trade sentinel project have no such path, so Trade Orders offers the hand-over.
   const projectReservations = activeReservations.filter(r => !r.project_is_system);
   const tradeReservations = activeReservations.filter(r => r.project_is_system);
+  // The server sends Inward's list and the Inventory tab's request matches only with that tab
+  // (app/stores/page.js). Opening it asks the server for that tab; "Loading" until it arrives.
+  const missing = !!loaded && ((tab === 'receive' && !loaded.inward) || (tab === 'inventory' && !loaded.openRequests));
+  const requested = useRef(null);
+  useEffect(() => {
+    if (!missing || requested.current === tab) return;
+    requested.current = tab;
+    router.replace(`/stores/${tabSlug(tab)}${window.location.search}`, { scroll: false });
+  }, [missing, tab, router]);
+  useEffect(() => { if (!missing) requested.current = null; }, [missing]);
 
   return (
     <WorkspaceSidebar title="Stores" icon={PackageIcon} items={navItems} activeKey={tab} onChange={setTab}>
-      {tab === 'inventory' && (
+      {missing && <div className="py-16 text-center text-sm text-muted-foreground">Loading…</div>}
+      {tab === 'inventory' && !missing && (
         <InventoryTab inventoryItems={inventoryItems} openRequests={openRequests} certificates={certificates} projects={projects} />
       )}
       {tab === 'requests' && <StoresDemand inventoryItems={inventoryItems} />}
@@ -2936,7 +2950,7 @@ export default function StoresWorkspace({
       {tab === 'indents' && <IndentsCard router={router} />}
       {tab === 'issued' && <MaterialIssuesCard projects={projects} />}
       {tab === 'gir' && <GateInwardReceiptsCard gateInwardReceipts={gateInwardReceipts} router={router} />}
-      {tab === 'receive' && <ReceiveDeliveryTab bomItems={bomItems} pendingInwardApprovals={pendingInwardApprovals} router={router} />}
+      {tab === 'receive' && !missing && <ReceiveDeliveryTab bomItems={bomItems} pendingInwardApprovals={pendingInwardApprovals} router={router} />}
       {tab === 'allocate' && (
         <div className="flex flex-col gap-3">
           <StoresSubTabs value={allocView} onChange={setAllocView} tabs={[

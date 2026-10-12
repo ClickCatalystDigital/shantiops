@@ -10,7 +10,9 @@
 // imported here — it pulls in server-only DB code via each report's compute() route module — so the
 // server page (app/reports/page.js) passes down only serializable {key, title} metadata, and this
 // file owns the client-safe screen-component mapping.
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
+import { unpackRows } from '@/lib/row-pack.mjs';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 import {
@@ -249,8 +251,11 @@ const ICON = {
 // `hasOwnControls: true` (currently only the Management reports folded into this view) to mean "my
 // own Screen component renders its own company switcher and PDF button" — the parent then renders
 // neither and passes `companies` (the full list) instead of a single controlled `company` string.
-export default function ReportsWorkspace({ department, reports, groups, companies, crmData, title, initialReport, customerFilter }) {
+export default function ReportsWorkspace({ department, reports, groups, companies, crmData: crmPacked, title, initialReport, customerFilter }) {
   const allReports = groups ? groups.flatMap(g => g.reports) : reports;
+  // app/reports/page.js sends the CRM row lists packed (lib/row-pack.mjs).
+  const crmData = useMemo(() => crmPacked && Object.fromEntries(Object.entries(crmPacked)
+    .map(([k, v]) => [k, v && Array.isArray(v.cols) && Array.isArray(v.rows) ? unpackRows(v) : v])), [crmPacked]);
   const [key, setKey] = useState(allReports.some(r => r.key === initialReport) ? initialReport : allReports[0]?.key);
   const [company, setCompany] = useCompanyDefault(companies);
   const active = allReports.find(r => r.key === key) || allReports[0];
@@ -258,6 +263,18 @@ export default function ReportsWorkspace({ department, reports, groups, companie
   const showCompanySwitcher = !active?.hasOwnControls && active?.needsCompany !== false;
   const [pickedCompany, setPickedCompany] = useState(null);
   useEffect(() => { setPickedCompany(selectedCompanyClient()); }, []);
+  // The page sends the CRM data only with a report that reads it (app/reports/page.js). Opening one
+  // without it asks the server for it (?report=); "Loading" until it arrives.
+  const router = useRouter();
+  const missing = !!active?.needsCrm && !crmData;
+  const requested = useRef(null);
+  useEffect(() => {
+    if (!missing || requested.current === active.key) return;
+    requested.current = active.key;
+    const q = new URLSearchParams(window.location.search);
+    q.set('report', active.key);
+    router.replace(`${window.location.pathname}?${q}`, { scroll: false });
+  }, [missing, active?.key, router]);
 
   // A report may carry `subgroup` (e.g. Sales 'MIS'); same-subgroup reports fold into one nested sidebar item.
   // Reports with no subgroup stay flat, so every other department renders exactly as before.
@@ -326,7 +343,7 @@ export default function ReportsWorkspace({ department, reports, groups, companie
             Enquiries, calls and follow-ups are shared by all companies, so this report shows everyone's — it is not narrowed to {pickedCompany}.
           </p>
         )}
-        {Screen ? (active?.hasOwnControls ? <Screen companies={companies} {...crmData} /> : <Screen company={company} />) : <p className="text-sm text-muted-foreground">No report selected.</p>}
+        {missing ? <p className="py-16 text-center text-sm text-muted-foreground">Loading…</p> : Screen ? (active?.hasOwnControls ? <Screen companies={companies} {...crmData} /> : <Screen company={company} />) : <p className="text-sm text-muted-foreground">No report selected.</p>}
       </div>
     </WorkspaceSidebar>
   );

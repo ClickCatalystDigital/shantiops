@@ -5,6 +5,7 @@
 import { redirect } from 'next/navigation';
 import { getFreshSessionUser, canAccessDepartment, roleHome } from '@/lib/auth';
 import { getSourcingItems, getSuppliers, getPurchaseOrders, getAllQuotes, getRfqSummaryByItem, getPurchaseReturns, getInventoryItems, getVendorBills, getPurchaseDebitNotes, getVendorTdsRates, getActiveProjectsList, getOverdueDeliveries } from '@/lib/data';
+import { packRows } from '@/lib/row-pack.mjs';
 import ProcurementWorkspace from '@/components/ProcurementWorkspace';
 
 export const dynamic = 'force-dynamic';
@@ -32,7 +33,7 @@ export default async function ProcurementPage({ searchParams }) {
   return (
     <main className="min-h-[calc(100svh-3.5rem)]">
       <ProcurementWorkspace
-        sourcingItems={sourcingItems}
+        sourcingItems={packRows(sourcingItems)}
         suppliers={suppliers}
         purchaseOrders={purchaseOrders}
         quotes={quotes}

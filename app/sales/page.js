@@ -14,6 +14,7 @@ import { salesScope } from '@/lib/sales-visibility';
 import { scopeSalesLists } from '@/lib/sales-visibility.mjs';
 import { getSaleOrders, getLeads, getQuotations, getFunctionalHeads, getPriceLists, getSalesReturns, getTradeRequests, getInventoryItems, getSalesInvoices, getSalesCreditNotes, getSalePayments, getBranches, getSalesProducts, getSalesTargets, getSalesStages } from '@/lib/data';
 import { queryAll } from '@/lib/db';
+import { packRows } from '@/lib/row-pack.mjs';
 import SalesWorkspace from '@/components/SalesWorkspace';
 import { SALES_TAB_DATA, salesTabKey, keysToLoad } from '@/lib/sales-tab-data.mjs';
 
@@ -71,6 +72,6 @@ export default async function SalesPage({ searchParams }) {
   if (unsent('invoices')) invoices = [];
 
   return (
-    <SalesWorkspace saleOrders={saleOrders} leads={leads} customers={customers} quotations={quotations} priceLists={priceLists} returns={returns} tradeRequests={tradeRequests} inventoryItems={inventoryItems} invoices={invoices} creditNotes={creditNotes} departments={['Sales']} users={crmUsers} savedViews={savedViews} initialTab={sp?.tab} salePayments={salePayments} branches={branches} salesProducts={salesProducts} salesTargets={salesTargets} stages={stages} isSalesHead={isDepartmentHead(user, 'Sales')} company={company} whatsappConnected={whatsappConnected} loadedKeys={sendKeys} />
+    <SalesWorkspace saleOrders={packRows(saleOrders)} leads={packRows(leads)} customers={customers} quotations={packRows(quotations)} priceLists={priceLists} returns={returns} tradeRequests={tradeRequests} inventoryItems={inventoryItems} invoices={invoices} creditNotes={creditNotes} departments={['Sales']} users={crmUsers} savedViews={savedViews} initialTab={sp?.tab} salePayments={salePayments} branches={branches} salesProducts={salesProducts} salesTargets={salesTargets} stages={stages} isSalesHead={isDepartmentHead(user, 'Sales')} company={company} whatsappConnected={whatsappConnected} loadedKeys={sendKeys} />
   );
 }

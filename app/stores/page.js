@@ -14,6 +14,7 @@ import {
   getUnroutedReceivedItems,
 } from '@/lib/data';
 import { attachCombinablePlateHints } from '@/lib/remnant-match';
+import { packRows } from '@/lib/row-pack.mjs';
 import StoresWorkspace from '@/components/StoresWorkspace';
 
 export const dynamic = 'force-dynamic';
@@ -22,21 +23,31 @@ export default async function StoresPage({ searchParams }) {
   const user = await getFreshSessionUser();
   if (!canAccessDepartment(user, 'Stores')) redirect(roleHome(user));
 
-  const [inventoryItems, openRequests, activeReservations, projects, gateInwardReceipts, certificates, bomItems, splitOrders, pendingInwardApprovals, unroutedItems] = await Promise.all([
+  // Only the open tab's large lists are sent (live: Inward's list 6 MB, open requests 4.4 MB). A tab
+  // switch asks the server again (StoresWorkspace), so router.refresh() after a save reloads that tab.
+  const sp = await searchParams;
+  const tab = sp?.tab === 'reservations' ? 'allocate' : (sp?.tab || 'inventory');
+  const needInward = tab === 'receive';
+  const [inventoryItems, allOpen, activeReservations, projects, gateInwardReceipts, certificates, bomItems, splitOrders, pendingInwardApprovals, unroutedItems] = await Promise.all([
     getInventoryItems(), getOpenBomItems(), getActiveReservations(), getActiveProjectsList(),
-    getGateInwardReceipts(), getTestCertificates(), getSourcingItems(),
+    getGateInwardReceipts(), getTestCertificates(), needInward ? getSourcingItems() : [],
     getSplitOrdersNeedingStoresAction(), getPendingInwardApprovals(), getUnroutedReceivedItems(),
   ]);
 
   // Lot-aware expected-delivery dates for Receive a Delivery only — merged in after the shared
   // Promise.all so /procurement's own getSourcingItems() calls stay untouched (see attachDeliveryLotDates).
-  await attachDeliveryLotDates(bomItems);
-  // Manual-only "could these be combined?" hint for unmatched plate lines on Material Demand.
-  await attachCombinablePlateHints(openRequests);
-
-  const sp = await searchParams;
+  if (needInward) await attachDeliveryLotDates(bomItems);
+  // Trade Orders (source 'sas') need full rows; the Inventory tab only matches requests to an
+  // item (AddPieceDialog), so it gets the few fields that needs.
+  const tradeRequests = allOpen.filter(r => r.source === 'sas');
+  // Manual-only "could these be combined?" hint for unmatched plate lines (OpenRequestsCard).
+  await attachCombinablePlateHints(tradeRequests);
+  const openRequests = tab === 'inventory'
+    ? [...tradeRequests, ...allOpen.filter(r => r.source !== 'sas').map(r => ({ id: r.id, item_id: r.item_id, material_description: r.material_description, source: r.source, sale_order_no: r.sale_order_no, project_no: r.project_no }))]
+    : tradeRequests;
   return <StoresWorkspace inventoryItems={inventoryItems} openRequests={openRequests} activeReservations={activeReservations}
     projects={projects} gateInwardReceipts={gateInwardReceipts}
-    certificates={certificates} bomItems={bomItems} splitOrders={splitOrders}
-    pendingInwardApprovals={pendingInwardApprovals} unroutedItems={unroutedItems} initialTab={sp?.tab} />;
+    certificates={certificates} bomItems={packRows(bomItems)} splitOrders={splitOrders}
+    pendingInwardApprovals={pendingInwardApprovals} unroutedItems={unroutedItems} initialTab={sp?.tab}
+    loaded={{ inward: needInward, openRequests: tab === 'inventory' }} />;
 }

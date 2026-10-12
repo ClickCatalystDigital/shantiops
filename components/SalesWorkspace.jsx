@@ -6,6 +6,7 @@
 // HrWorkspace.jsx's employee detail uses.
 import { Fragment, useState, useEffect, useMemo, useRef } from 'react';
 import { SALES_TAB_DATA } from '@/lib/sales-tab-data.mjs';
+import { unpackRows } from '@/lib/row-pack.mjs';
 import { tabSlug } from '@/lib/workspace-routes';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEntityHighlight } from '@/lib/use-entity-highlight';
@@ -3617,8 +3618,12 @@ function FunnelStagesTab({ stages, canEdit, router }) {
   );
 }
 
-export default function SalesWorkspace({ saleOrders, leads, customers, quotations, priceLists = [], returns = [], tradeRequests = [], inventoryItems = [], invoices = [], creditNotes = [], departments = ['Sales'], users = [], savedViews = [], initialTab, salePayments = [], branches = [], salesProducts = [], salesTargets = [], stages = [], isSalesHead = false, company = null, whatsappConnected = false, loadedKeys = null, }) {
+export default function SalesWorkspace({ saleOrders: saleOrdersPacked, leads: leadsPacked, customers, quotations: quotationsPacked, priceLists = [], returns = [], tradeRequests = [], inventoryItems = [], invoices = [], creditNotes = [], departments = ['Sales'], users = [], savedViews = [], initialTab, salePayments = [], branches = [], salesProducts = [], salesTargets = [], stages = [], isSalesHead = false, company = null, whatsappConnected = false, loadedKeys = null, }) {
   const router = useRouter();
+  // The page sends these three lists packed (lib/row-pack.mjs); same rows once unpacked.
+  const saleOrders = useMemo(() => unpackRows(saleOrdersPacked), [saleOrdersPacked]);
+  const leads = useMemo(() => unpackRows(leadsPacked), [leadsPacked]);
+  const quotations = useMemo(() => unpackRows(quotationsPacked), [quotationsPacked]);
   // Sales-only now — Marketing has its own tab/URL (/market, MarketingWorkspace.jsx). No more
   // per-viewer group filtering; every group in PANEL_GROUPS always renders here.
   // The WhatsApp inbox only shows once a business number has been connected (Settings → Sales → WhatsApp).

@@ -22,6 +22,7 @@ import {
 } from '@/lib/data';
 import { departmentsFor } from '@/lib/manager-scope.mjs';
 import { reportsForDepartment, REPORT_DEPARTMENTS } from '@/lib/reports/catalog';
+import { packRows } from '@/lib/row-pack.mjs';
 import ReportsWorkspace from '@/components/ReportsWorkspace';
 
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
@@ -37,6 +38,10 @@ const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 // leads_by_source, campaign_performance in components/CrmReportPanels.jsx) read either field.
 // Every other field here stays unconditional — branches/products are genuinely shared masters,
 // diary is shared owner_dept-gated activity data, expenseClaims/salesTargets aren't part of this fix.
+// Lists of rows go to the browser packed (lib/row-pack.mjs); ReportsWorkspace unpacks them.
+const packCrm = (d) => Object.fromEntries(Object.entries(d).map(([k, v]) =>
+  [k, Array.isArray(v) && v.length && v.every(r => r && typeof r === 'object' && !Array.isArray(r)) ? packRows(v) : v]));
+
 async function getCrmData(includeSales, user, customerId = null) {
   const [leads, opportunities, campaigns, stages, tasks, notes, heads, branches, salesTargets, diaryNotes, expenseClaims, quotations, saleOrders, salesProducts] = await Promise.all([
     getLeads(), getOpportunities(), getCampaigns(), getSalesStages(), getCrmTasks(), getLeadNotes(), getFunctionalHeads(),
@@ -69,14 +74,21 @@ async function getCrmData(includeSales, user, customerId = null) {
   }
   const visibleOrderIds = new Set(scoped.saleOrders.map(so => Number(so.id)));
   const visibleLeadIds = new Set(scoped.leads.map(l => l.id));
-  return { opportunities, campaigns, stages, tasks, notes, users, branches, salesTargets, expenseClaims, salesProducts,
+  return packCrm({ opportunities, campaigns, stages, tasks, notes, users, branches, salesTargets, expenseClaims, salesProducts,
     stageHistory: stageHistory.filter(h => visibleLeadIds.has(h.lead_id)),
     competitors: competitors.filter(c => (c.lead_id ? visibleLeadIds.has(c.lead_id) : (!me || c.created_by === me) && (!customerId || Number(c.customer_id) === Number(customerId)))),
     leads: scoped.leads, quotations: scoped.quotations, saleOrders: scoped.saleOrders, diaryNotes: scoped.diaryNotes,
-    salePayments: (scoped.salePayments || []).filter(p => visibleOrderIds.has(Number(p.sale_order_id))) };
+    salePayments: (scoped.salePayments || []).filter(p => visibleOrderIds.has(Number(p.sale_order_id))) });
 }
 
 export const dynamic = 'force-dynamic';
+
+// The CRM data (leads, Diary, quotations, orders, payments: 18 MB on live data) is loaded only when
+// the open report reads it: the Sales/Marketing reports that draw their own screen. Picking one
+// later asks the server again with ?report= (ReportsWorkspace).
+const needsCrm = (r, dept) => CRM_DEPARTMENTS.includes(dept) && !!r.hasOwnControls;
+// Same pick as ReportsWorkspace: ?report= if it is in the list, else the first report.
+const openReport = (list, key) => list.find(r => r.key === key) || list[0];
 
 async function customerName(id) {
   const rows = await queryAll('SELECT name FROM customers WHERE id = ?', [Number(id)]);
@@ -125,13 +137,14 @@ export default async function ReportsPage({ searchParams }) {
           needsCompany: r.needsCompany !== false,
           hasOwnPdfControl: !!r.hasOwnPdfControl,
           hasOwnControls: !!r.hasOwnControls,
+          needsCrm: needsCrm(r, dept),
         })),
       })),
     ];
     // Only fetch CRM data when Sales/Marketing is actually in view — same guard the
     // single-department branch below already uses, not assumed just because this is the
     // multi-department branch.
-    const crmData = myReportDepts.some(d => CRM_DEPARTMENTS.includes(d)) ? await getCrmData(myReportDepts.includes('Sales'), user, sp?.customer) : undefined;
+    const crmData = openReport(groups.flatMap(g => g.reports), sp?.report)?.needsCrm ? await getCrmData(myReportDepts.includes('Sales'), user, sp?.customer) : undefined;
     // Title reflects what's actually shown — "All Reports" only when it truly is all of them.
     const title = isPmView ? 'All Reports' : `${myReportDepts.join(' & ')} Reports`;
     return (
@@ -148,10 +161,11 @@ export default async function ReportsPage({ searchParams }) {
     needsCompany: r.needsCompany !== false,
     hasOwnPdfControl: !!r.hasOwnPdfControl,
     hasOwnControls: !!r.hasOwnControls,
+    needsCrm: needsCrm(r, department),
   }));
   if (!reports.length) redirect(roleHome(user));
 
-  const crmData = CRM_DEPARTMENTS.includes(department) ? await getCrmData(department === 'Sales', user, sp?.customer) : undefined;
+  const crmData = openReport(reports, sp?.report)?.needsCrm ? await getCrmData(department === 'Sales', user, sp?.customer) : undefined;
 
   return (
     <main className="min-h-[calc(100svh-3.5rem)]">
