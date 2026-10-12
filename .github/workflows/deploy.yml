@@ -26,8 +26,8 @@ jobs:
   checks:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with: { node-version: 22, cache: npm }
       - run: npm ci
       - run: npm run check
@@ -37,8 +37,8 @@ jobs:
     runs-on: ubuntu-latest
     environment: demo
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with: { node-version: 22, cache: npm }
       - run: npm ci
       - name: Update demo database schema (golden first, then live)
@@ -64,7 +64,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: client
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Trigger the Render deploy
         env:
           HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
