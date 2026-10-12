@@ -27,6 +27,9 @@ module.exports = {
   // Next 15 loads every page/route (~600 here) into memory at start; that alone overflows Render's
   // 512 MB instance. Load each one on its first request instead, as Next 14 did.
   experimental: { preloadEntriesOnStart: false },
+  // Commit this build came from (GET /api/version): Render sets RENDER_GIT_COMMIT, the GitHub deploy
+  // workflow sets GITHUB_SHA. The deploy workflow waits until each server reports the pushed commit.
+  env: { BUILD_COMMIT: process.env.RENDER_GIT_COMMIT || process.env.GITHUB_SHA || '' },
   // Cloudflare Workers build (npm run cf:build sets SB_TARGET=workers): libsql's web client instead
   // of the Node one, and its files traced in (Next's tracing only follows the Node entry).
   ...(WORKERS ? {

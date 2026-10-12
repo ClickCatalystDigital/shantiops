@@ -562,6 +562,7 @@ export const ROUTES = {
   "vendor-bills/[id]": () => import("./api/vendor-bills/[id]/route.js"),
   "vendor-bills": () => import("./api/vendor-bills/route.js"),
   "vendor-tds-rates": () => import("./api/vendor-tds-rates/route.js"),
+  "version": () => import("./api/version/route.js"),
   "whatsapp/account": () => import("./api/whatsapp/account/route.js"),
   "whatsapp/conversations/[id]": () => import("./api/whatsapp/conversations/[id]/route.js"),
   "whatsapp/conversations": () => import("./api/whatsapp/conversations/route.js"),

@@ -4,7 +4,7 @@
 // in the root layout via lib/auth.js's getSessionUser().
 import { NextResponse } from 'next/server';
 
-const PUBLIC_PATHS = ['/login', '/d-login', '/api/login', '/api/config/brand', '/api/register', '/set-password', '/api/set-password', '/acc-bpmn'];
+const PUBLIC_PATHS = ['/login', '/d-login', '/api/login', '/api/config/brand', '/api/register', '/set-password', '/api/set-password', '/acc-bpmn', '/api/version'];
 
 // Public demo (DEMO_MODE=1, never set on a customer deployment): visitors enter through /demo, and
 // changes to logins, mailboxes, connections, company and device security are refused. Anything that

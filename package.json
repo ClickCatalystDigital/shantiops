@@ -12,7 +12,8 @@
     "cf:preview": "npm run cf:build && opennextjs-cloudflare preview",
     "cf:deploy": "npm run cf:build && opennextjs-cloudflare deploy",
     "prebuild": "node scripts/gen-api-routes.mjs && node scripts/gen-migrate-fingerprint.mjs",
-    "predev": "node scripts/gen-api-routes.mjs && node scripts/gen-migrate-fingerprint.mjs"
+    "predev": "node scripts/gen-api-routes.mjs && node scripts/gen-migrate-fingerprint.mjs",
+    "check": "npm run lint && node scripts/check-all.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1102.0",
