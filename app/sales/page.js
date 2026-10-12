@@ -16,7 +16,7 @@ import { getSaleOrders, getLeads, getQuotations, getFunctionalHeads, getPriceLis
 import { queryAll } from '@/lib/db';
 import { packRows } from '@/lib/row-pack.mjs';
 import SalesWorkspace from '@/components/SalesWorkspace';
-import { SALES_TAB_DATA, salesTabKey, keysToLoad } from '@/lib/sales-tab-data.mjs';
+import { SALES_TAB_DATA, salesTabKey, keysToLoad, slimLead } from '@/lib/sales-tab-data.mjs';
 
 export const dynamic = 'force-dynamic';
 
@@ -72,6 +72,6 @@ export default async function SalesPage({ searchParams }) {
   if (unsent('invoices')) invoices = [];
 
   return (
-    <SalesWorkspace saleOrders={packRows(saleOrders)} leads={packRows(leads)} customers={customers} quotations={packRows(quotations)} priceLists={priceLists} returns={returns} tradeRequests={tradeRequests} inventoryItems={inventoryItems} invoices={invoices} creditNotes={creditNotes} departments={['Sales']} users={crmUsers} savedViews={savedViews} initialTab={sp?.tab} salePayments={salePayments} branches={branches} salesProducts={salesProducts} salesTargets={salesTargets} stages={stages} isSalesHead={isDepartmentHead(user, 'Sales')} company={company} whatsappConnected={whatsappConnected} loadedKeys={sendKeys} />
+    <SalesWorkspace saleOrders={packRows(saleOrders)} leads={packRows(leads.map(slimLead))} customers={customers} quotations={packRows(quotations)} priceLists={priceLists} returns={returns} tradeRequests={tradeRequests} inventoryItems={inventoryItems} invoices={invoices} creditNotes={creditNotes} departments={['Sales']} users={crmUsers} savedViews={savedViews} initialTab={sp?.tab} salePayments={salePayments} branches={branches} salesProducts={salesProducts} salesTargets={salesTargets} stages={stages} isSalesHead={isDepartmentHead(user, 'Sales')} company={company} whatsappConnected={whatsappConnected} loadedKeys={sendKeys} />
   );
 }

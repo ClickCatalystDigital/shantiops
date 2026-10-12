@@ -1109,6 +1109,16 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
   const [selected, setSelected] = useState(() => leads.find(l => `LD-${l.id}` === highlightCode) || null);
   // Also when an alert is clicked while Sales is already open.
   useEffect(() => { const l = highlightCode && leads.find(x => `LD-${x.id}` === highlightCode); if (l) setSelected(l); }, [highlightCode]); // eslint-disable-line react-hooks/exhaustive-deps
+  // The list carries only a few fields per enquiry (lib/sales-tab-data.mjs LEAD_LIST_FIELDS); the
+  // sheet gets the full enquiry, fetched on open and again after a save refreshes the list.
+  const [fullLead, setFullLead] = useState(null);
+  useEffect(() => {
+    if (!selected) { setFullLead(null); return; }
+    let live = true;
+    api(`/api/leads/${selected.id}`).then(l => { if (live) setFullLead(l); })
+      .catch(err => { if (live) { showToast(err.message, 'error'); setSelected(null); } });
+    return () => { live = false; };
+  }, [selected?.id, leads]); // eslint-disable-line react-hooks/exhaustive-deps
   const [filters, setFilters] = useState(LEAD_FILTER_DEFAULT);
   const [view, setView] = useState(searchParams.get('view') === 'board' ? 'board' : 'list');
   const [lostLead, setLostLead] = useState(null);
@@ -1345,7 +1355,7 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
       {dialogOpen && <AddEnquiryDialog leads={leads} users={users} salesProducts={salesProducts} stages={stages} router={router} onClose={() => setDialogOpen(false)} />}
       {lostLead && <OrderLostDialog lead={lostLead} router={router} onClose={() => setLostLead(null)} />}
       {convertRowDialog}
-      {selected && <LeadDetailSheet lead={leads.find(l => l.id === selected.id) || selected} allLeads={leads} onOpenLead={setSelected} users={users} customers={customers} salesProducts={salesProducts} branches={branches} stages={stages} isSalesHead={isSalesHead} router={router} onClose={() => setSelected(null)} />}
+      {selected && fullLead?.id === selected.id && <LeadDetailSheet lead={fullLead} allLeads={leads} onOpenLead={setSelected} users={users} customers={customers} salesProducts={salesProducts} branches={branches} stages={stages} isSalesHead={isSalesHead} router={router} onClose={() => setSelected(null)} />}
     </Card>
   );
 }
