@@ -24,6 +24,9 @@ module.exports = {
   ...(devPort ? { distDir: `.next-${devPort}` } : {}),
   // @react-pdf/renderer must run as a real Node module (fontkit/native deps), not be bundled.
   serverExternalPackages: ['@react-pdf/renderer'],
+  // Next 15 loads every page/route (~600 here) into memory at start; that alone overflows Render's
+  // 512 MB instance. Load each one on its first request instead, as Next 14 did.
+  experimental: { preloadEntriesOnStart: false },
   // Cloudflare Workers build (npm run cf:build sets SB_TARGET=workers): libsql's web client instead
   // of the Node one, and its files traced in (Next's tracing only follows the Node entry).
   ...(WORKERS ? {
