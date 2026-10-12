@@ -48,6 +48,7 @@ jobs:
           LIVE: ${{ secrets.DEMO_DB_URL }}
         run: |
           export CUSTOMER_SEED="$(cat scripts/demo/acme-seed.json)"
+          node scripts/gen-migrate-fingerprint.mjs
           TURSO_URL="$GOLDEN" node scripts/migrate-db.mjs
           TURSO_URL="$LIVE" node scripts/migrate-db.mjs
           DB_URL="$GOLDEN" DB_TOKEN="$TURSO_AUTH_TOKEN" node scripts/demo/scrub-check.mjs
