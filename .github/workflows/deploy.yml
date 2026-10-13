@@ -1,7 +1,8 @@
 # One push to main deploys every server, one after another, stopping at the first failure:
 #   1. checks  - syntax check + every self-check that needs no database (npm run check)
 #   2. demo    - update the demo databases' schema, deploy the Cloudflare demo, check it serves this commit
-#   3. client  - trigger the client's Render deploy, wait until it serves this commit
+#   3. client  - wait until the client site serves this commit (Render deploys it by itself on every
+#                push: Auto-Deploy "On Commit"; a red step here means that deploy didn't happen or failed)
 # A new customer server = one more job like `client`, needing the one before it.
 #
 # Repository secrets (Settings > Secrets and variables > Actions):
@@ -9,8 +10,6 @@
 #   DEMO_DB_TOKEN         Turso group token for the sbdemo group (golden + live demo databases)
 #   DEMO_GOLDEN_URL       libsql:// URL of sb-demo-golden (the copy restored every night)
 #   DEMO_DB_URL           libsql:// URL of sb-demo (what visitors use)
-#   RENDER_DEPLOY_HOOK    the client service's Deploy Hook URL (Render > Settings). With Render's
-#                         Auto-Deploy turned off, the client is only deployed after the demo passed.
 name: Deploy
 
 on:
@@ -71,11 +70,5 @@ jobs:
     environment: client
     steps:
       - uses: actions/checkout@v5
-      - name: Trigger the Render deploy
-        env:
-          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
-        run: |
-          if [ -n "$HOOK" ]; then curl -fsS -X POST "$HOOK" > /dev/null && echo "deploy triggered"
-          else echo "No RENDER_DEPLOY_HOOK: relying on Render's own auto-deploy"; fi
       - name: Wait until the client site serves this commit
         run: node scripts/wait-for-commit.mjs https://shantiops.onrender.com "$GITHUB_SHA" /login
