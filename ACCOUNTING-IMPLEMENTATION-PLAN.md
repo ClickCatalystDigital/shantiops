@@ -5,16 +5,16 @@ How to actually build the Accounts department, phase by phase. Read
 document's "what's missing." Each phase below is sized to be a real, coherent chunk of work (not
 a single table), ordered by dependency and payoff, not by STERP's original numbering.
 
-**Architecture, settled going in (revised 2026-08-20):** Shanti Ops is the system of record for
+**Architecture, settled going in (revised 2026-08-20):** SB Ops is the system of record for
 the full Accounts workflow — ledger, chart of accounts, journal postings, trial balance, P&L,
 balance sheet, and GST return generation all live here. Tally is an **optional** downstream/
 upstream sync target, not the owner of the books — an entity that can exchange updates with
-Shanti Ops, the same way `erp_snapshot` (`lib/db.js`) already receives numbers from outside. This
+SB Ops, the same way `erp_snapshot` (`lib/db.js`) already receives numbers from outside. This
 reverses the original "don't cross the ledger line" assumption below Phase 4; Phases 0–4 are
-unaffected (they were always groundwork Shanti Ops needed regardless), but everything downstream
+unaffected (they were always groundwork SB Ops needed regardless), but everything downstream
 of Phase 4 — General Ledger, Trial Balance, P&L, Balance Sheet, Depreciation, GST compliance
 (GSTR-1/1A/IFF outward, GSTR-2B/IMS-based ITC reconciliation, GSTR-3B) — is now
-in-scope Shanti Ops work, not "pure ERPNext/Tally output" as originally scoped. Phase 5 is
+in-scope SB Ops work, not "pure ERPNext/Tally output" as originally scoped. Phase 5 is
 retitled and rescoped below to match. e-invoicing (IRN/QR) confirmed not required for the current
 turnover bracket — deferred, no speculative fields. Both entities' real GSTIN/PAN/registered
 address were found already in the codebase (`lib/qc-doc-pdf.js`'s `COMPANY_PROFILES`, already
@@ -47,7 +47,7 @@ used on QC document PDFs) and backfilled into `company_settings` — see Phase 0
   Trivial CRUD needs no test.
 - **Ledger line moved, not removed.** Phases 0–4 still don't post journal entries or compute
   balances — those phases are about correct documents and correct tax, and stay exactly as
-  scoped. Ledger posting, trial balance, P&L, and balance sheet are now genuinely Shanti Ops'
+  scoped. Ledger posting, trial balance, P&L, and balance sheet are now genuinely SB Ops'
   job, but they're Phase 6+ work (see the rescoped Phase 5/6 below) — don't pull ledger logic
   forward into Phases 0–4 just because it's now in-scope eventually.
 - **Live-verify each phase** the same way the QC round did: direct API GET/POST checks against
@@ -61,7 +61,7 @@ used on QC document PDFs) and backfilled into `company_settings` — see Phase 0
 **Priority: must go first.** Nothing downstream can be built correctly without these settled.
 
 **Decisions — answered 2026-08-20:**
-1. ~~Tally or ERPNext~~ **Neither owns the books.** Shanti Ops is the system of record for the
+1. ~~Tally or ERPNext~~ **Neither owns the books.** SB Ops is the system of record for the
    full Accounts workflow (ledger, GL, journals, trial balance, P&L, balance sheet, GST). Tally is
    an optional sync target, not the owner — see the revised architecture note above and the
    rescoped Phase 5/6 below.
@@ -215,10 +215,10 @@ POINT for a future sync to read." This phase is mostly wiring, not new data.
 
 ---
 
-## Phase 5 — General Ledger & Financial Statements (Shanti Ops owns this now)
+## Phase 5 — General Ledger & Financial Statements (SB Ops owns this now)
 
 **Priority: sixth.** This phase did not exist in the original plan — it's the direct consequence
-of the 2026-08-20 architecture decision that Shanti Ops, not Tally/ERPNext, owns the books. It
+of the 2026-08-20 architecture decision that SB Ops, not Tally/ERPNext, owns the books. It
 consumes Phases 0–4's documents (Sales Invoice, Vendor Bill, Credit/Debit Notes, Payroll) and is
 the first phase where "post a journal entry" and "compute a balance" are actually in scope.
 
@@ -259,10 +259,10 @@ the first phase where "post a journal entry" and "compute a balance" are actuall
     government's own recipient-side workflow today is GSTR-2B (a static monthly ITC statement
     auto-drafted from suppliers' filings) plus IMS (Invoice Management System, where each inward
     invoice is accepted / rejected / left pending — pending lines are deemed accepted before the
-    GSTR-3B due date if untouched). Shanti Ops' job here is **ITC reconciliation**: match its own
+    GSTR-3B due date if untouched). SB Ops' job here is **ITC reconciliation**: match its own
     Vendor Bills against GSTR-2B/IMS data (however that data gets in — manual entry, a future
     portal API, or a file import; not decided yet, don't build a speculative import format) and
-    surface the eligible ITC and any ITC reversals that then feed GSTR-3B. Shanti Ops' own
+    surface the eligible ITC and any ITC reversals that then feed GSTR-3B. SB Ops' own
     Vendor Bill ledger stays the accounting source of truth throughout — GSTR-2B/IMS is an
     external compliance/reconciliation input, never a replacement purchase register to import
     and trust blindly.
@@ -283,7 +283,7 @@ only once real month-end use surfaces the need.
 ## Phase 6 — Optional Tally Sync
 
 **Priority: seventh — genuinely optional, build only if/when Tally interop is actually needed**
-day to day (e.g. an external accountant who works in Tally). Shanti Ops' books are complete and
+day to day (e.g. an external accountant who works in Tally). SB Ops' books are complete and
 correct without this phase; it exists purely for interoperability.
 
 **Build (outbound, do this half first if built at all):**
@@ -294,7 +294,7 @@ correct without this phase; it exists purely for interoperability.
 
 **Build (inbound, only once outbound is proven and only for what's actually needed):**
 - A minimal **Import Center** for *master data only* — Customer, Supplier, GST/HSN reference —
-  not transactional data. Shanti Ops owns the ledger now, so importing Tally's own journal data
+  not transactional data. SB Ops owns the ledger now, so importing Tally's own journal data
   back in is explicitly out of scope.
 - **Do not** design the exact import file format speculatively. Get one real Tally export sample
   and build the parser against that real file.
@@ -435,12 +435,12 @@ phase comes up rather than assuming last check's answer still holds.
   confirmed via direct research (§5aa). **Correction (2026-08-22, second research pass)**: at least
   one IRP (IRIS) publishes onboarding APIs specifically for solution providers/ERP vendors — GSTIN
   OTP verification, setting IRP credentials, granting API access per client GSTIN — so a future
-  Shanti Ops connector could plausibly drive customer onboarding itself rather than only wrapping a
+  SB Ops connector could plausibly drive customer onboarding itself rather than only wrapping a
   GSP's own UI. Doesn't change the trigger condition (still gated on turnover), only the
   practicality once that trigger fires. Architecture readiness (§5z, not yet acted on): keep the
   Sales Invoice model extendable with an IRN/signed-QR slot later, don't build something that has
   to be redesigned if e-invoicing ever gets switched on. Credentials/connection state, if ever
-  built, belong per-company in Shanti Ops (`company_settings`-adjacent) — never in
+  built, belong per-company in SB Ops (`company_settings`-adjacent) — never in
   statutory-rates-hub, which only distributes identical-for-everyone rate data and holds no
   per-company secrets or transactional state.
   **Correction (2026-09-04)** — direct research against the real government e-invoice sandbox
@@ -449,9 +449,9 @@ phase comes up rather than assuming last check's answer still holds.
   than the **₹500 crore** (table) / **₹100 crore** (prose) Direct API Access threshold — NIC's own
   site disagrees with itself on that second number. A real, self-service, free "ERP" registration
   category exists (same portal, no GSP) requiring only the registering entity's own PAN + a
-  GST-registered mobile/email — but **Ahrom Labs (the software vendor building Shanti Ops) has no
+  GST-registered mobile/email — but **Ahrom Labs (the software vendor building SB Ops) has no
   GST registration of its own yet, blocking that path today.** The one path that would still let
-  this be built exactly like e-way bill (each client holds direct credentials, Shanti Ops a pure
+  this be built exactly like e-way bill (each client holds direct credentials, SB Ops a pure
   wrapper) is real, per NIC's own onboarding table: a taxpayer who already has direct **E-Way Bill**
   API access carries that straight into e-invoice Direct API Access too, regardless of turnover —
   but that depends on e-way bill actually being production-live for a real client first, which
@@ -472,7 +472,7 @@ phase comes up rather than assuming last check's answer still holds.
   statutory-rates-hub. **Update (SYSTEM.md §5ax)**: a full research pass into the real, official
   NIC EWB-API spec (not summaries of it) confirmed the auth/payload/error shape above and found the
   2018 sandbox is now deprecated — e-way-bill sandbox testing runs through the e-invoice sandbox
-  instead (`einv-apisandbox.nic.in`). That research also surfaced real Shanti-Ops-side gaps (no
+  instead (`einv-apisandbox.nic.in`). That research also surfaced real SB Ops-side gaps (no
   transport-distance field anywhere, no HSN code on `bom_items` at all, no validation that a
   project's linked customer actually has structured GSTIN/state/pincode data) — all four now built
   and enforced server-side before the stub is ever reached, plus credentials now encrypted at rest.
@@ -529,7 +529,7 @@ Phase 2  Sales Invoice + Credit Note      ──┐             │
 Phase 3  Vendor Bill + Debit Note         ──┤  each depends on Phases 0–1
 Phase 4  Payroll export wiring            ──┘
 
-Phase 5  General Ledger & Financial Statements  ← Shanti Ops owns the books;
+Phase 5  General Ledger & Financial Statements  ← SB Ops owns the books;
                                                     needs Phases 2–4's documents to exist first
 
 Phase 6  Optional Tally Sync                    ← genuinely optional, build only if/when needed
@@ -584,7 +584,7 @@ salary_slips.payroll_export_status). Don't re-derive any of that — read it, th
 
 Now build Phase 5 (General Ledger & Financial Statements) — the plan's own scope for it. This is
 the first phase where "post a journal entry" and "compute a balance" are actually in scope, per
-the 2026-08-20 architecture decision that Shanti Ops (not Tally/ERPNext) owns the full ledger.
+the 2026-08-20 architecture decision that SB Ops (not Tally/ERPNext) owns the full ledger.
 
 Before writing code, resolve these with me directly — they need real accounting judgment, not an
 assumption:

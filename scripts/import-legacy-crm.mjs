@@ -103,7 +103,7 @@ ${pIssues.sharedCodes.map(s => `  - ${s}`).join('\n')}
 
 ## Customers — ${rows.length} summary rows -> ${groups.length} organizations
 - ${rows.length - groups.length} rows were merged into another row of the same organization (same code, or the same name ignoring Pvt/Ltd/M/s where the codes don't conflict).
-- ${updates.length} matched existing customers already in Shanti Ops (only blank fields filled). ${inserts.length} new customers.
+- ${updates.length} matched existing customers already in SB Ops (only blank fields filled). ${inserts.length} new customers.
 - ${renamed.length} organizations share an exact name with a different organization (usually people's first names such as "Anil"); they were kept separate and named "Name (code)" / "Name (district)".
 - ${possibleDups.length} organizations share a name but were NOT merged because their codes differ, or the name is a single word. Listed in \`docs/legacy-crm-possible-duplicates.csv\` for review.
 - ${broken.length} rows could not be read even after rejoining broken lines, and were skipped:

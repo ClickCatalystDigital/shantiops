@@ -1,4 +1,4 @@
-I audited the STERP list against the current Shanti Ops codebase and counted equivalent functionality even when the names differ.
+I audited the STERP list against the current SB Ops codebase and counted equivalent functionality even when the names differ.
 
 Strict count: 101 named capabilities.
 
@@ -96,7 +96,7 @@ These can reuse the current CRM, procurement, inventory, and reporting models.
    Shipped as Procurement's Suppliers → Analysis (Dashboard + By Supplier views): spend, quote
    count, quotes won, and win rate per supplier, derived from existing quotes and issued POs.
    Called "Analysis" in the app, not "Vendor Analysis" — Suppliers is the one name for this entity
-   throughout Shanti Ops.
+   throughout SB Ops.
 
 5. Vendor Rating — STILL MISSING, on purpose
 

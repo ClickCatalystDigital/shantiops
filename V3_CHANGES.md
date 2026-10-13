@@ -12,12 +12,12 @@ the **invariants in §2**; violating one is the only way this project fails badl
 
 ## 0. Goal & the one decision already made
 
-Make Shanti Ops present a **360° business view** and mature the back-office (Finance/GST, HR,
+Make SB Ops present a **360° business view** and mature the back-office (Finance/GST, HR,
 Payroll, CRM, Sales & Marketing) — **without merging databases and without rebuilding ERPNext's UI
 in Next.js.**
 
 Decision (final): **ERPNext runs as a SEPARATE system** — its own MariaDB, its own native UI, used
-by a **small back-office group** directly. Shanti Ops stays the operational product and primary UI.
+by a **small back-office group** directly. SB Ops stays the operational product and primary UI.
 The two meet at a **thin API seam** plus a **snapshot table the 360 dashboard reads**. No shared DB,
 no two-way sync engine, no replicated ERP DB, no SSO (yet).
 
@@ -43,9 +43,9 @@ speculation.
 
 ## 2. Invariants — do NOT violate these in any V3 work
 
-1. **System-of-record (SoR):** operational/physical = Shanti Ops; commercial/financial = ERPNext
+1. **System-of-record (SoR):** operational/physical = SB Ops; commercial/financial = ERPNext
    (once live). Full table in §7. Every object has exactly one owner.
-2. **ERPNext Stock module stays OFF.** Inventory is Shanti Ops's (`inventory_items` +
+2. **ERPNext Stock module stays OFF.** Inventory is SB Ops's (`inventory_items` +
    `inventory_reservations`, SYSTEM.md §5e). Never track stock in both — that's double-truth /
    overselling.
 3. **Item master is SPLIT.** Only traded/finished/stocked goods become ERPNext Items (they need
@@ -53,11 +53,11 @@ speculation.
    thousands of one-off boiler-BOM lines in ERPNext. We already have an `items` catalog (2,773 STERP
    rows, `lib/db.js` ~852, HSN present) — that's the seed for the *traded/stocked* subset, not for
    BOM lines.
-4. **Finance rule: CONSUME, never RECOMPUTE.** Shanti Ops stores ERPNext's computed values
+4. **Finance rule: CONSUME, never RECOMPUTE.** SB Ops stores ERPNext's computed values
    (outstanding, paid, invoice totals) verbatim. Zero financial arithmetic in Ops. The moment Ops
    sums line items itself, its dashboard disagrees with the books and executives lose trust.
    **Amended §12 (2026-08-10): this rule now covers Finance and statutory Payroll only.** HR
-   (employees/attendance/leave/shifts/recruitment) went native in §12 and is real Shanti Ops data,
+   (employees/attendance/leave/shifts/recruitment) went native in §12 and is real SB Ops data,
    not `erp_snapshot`-sourced — the original wording covering "Finance/HR" was written before that
    decision existed.
 5. **360 dashboard reads a snapshot, never queries ERPNext live per page load** — for the
@@ -113,7 +113,7 @@ speculation.
   - **Not yet provisioned** — this is the verified plan, not a deployed instance. Next real step
     (when ready) is producing the actual Dockerfile/supervisord.conf/entrypoint/`render.yaml`, then
     provisioning via the Render dashboard — a separate, explicit go-ahead from just planning it.
-- **Sales Order direction (default assumption, changeable — see §9):** for now Shanti Ops keeps
+- **Sales Order direction (default assumption, changeable — see §9):** for now SB Ops keeps
   owning `sale_orders`. When ERPNext CRM goes live, the SO may be born there instead and Ops
   references it. Track A does not depend on which way this resolves.
 - **Executive 360 = extend the EXISTING Executive view** (`app/executive/page.js` +
@@ -207,7 +207,7 @@ Gated on an ERPNext (Frappe Cloud) instance + service account. Then, in order:
    module OFF. Back-office uses it directly. Zero integration day one.
 2. **`erp_snapshot` writer:** scheduled pull (15–60 min) of ERPNext's *computed* AR/cash/HR/payroll
    summaries → `erp_snapshot`, `source='erpnext'`. Flip A2's tiles from demo to live by data alone.
-3. **Seam #1 (SO in):** on ERPNext SO submit → create/attach the Shanti Ops project. (Only if SO
+3. **Seam #1 (SO in):** on ERPNext SO submit → create/attach the SB Ops project. (Only if SO
    direction resolves to ERPNext-owns — §9.)
 4. **Seam #2 (dispatch → invoice out):** Ops dispatch confirmed → create ERPNext Delivery Note +
    Sales Invoice, via a **transactional outbox** (`integration_outbox` written in the same Turso txn
@@ -233,19 +233,19 @@ Poll + outbox is enough at this volume.
 |---|---|---|
 | Customer / Contact / Lead / Opportunity | **ERPNext** (once CRM live); **Ops now** (A4/`customers`) | migrate decision §9 |
 | Sales Order | **ERPNext** (target) / **Ops now** (`sale_orders`) | direction decision §9 |
-| Project / Boiler order | **Shanti Ops** | ERPNext references as cost dimension |
-| BOM / BOM item | **Shanti Ops** (exclusive) | never in ERPNext |
+| Project / Boiler order | **SB Ops** | ERPNext references as cost dimension |
+| BOM / BOM item | **SB Ops** (exclusive) | never in ERPNext |
 | Item master | **SPLIT** | traded/stocked→ERPNext (HSN); BOM lines→Ops free-text |
 | Supplier | **ERPNext** (once AP live), Ops caches | migrate `suppliers` at Track B |
-| Supplier quotation | **Shanti Ops** | sourcing IP |
-| Purchase Order | **Shanti Ops** (operational), ref to ERPNext | |
+| Supplier quotation | **SB Ops** | sourcing IP |
+| Purchase Order | **SB Ops** (operational), ref to ERPNext | |
 | Purchase/Sales Invoice, Payment | **ERPNext** | Ops reads status only (consume, §2.4) |
-| Inventory / stock | **Shanti Ops** | ERPNext Stock OFF |
-| Production / QC / Certificate / Dispatch | **Shanti Ops** | Ops IP; dispatch triggers invoice |
+| Inventory / stock | **SB Ops** | ERPNext Stock OFF |
+| Production / QC / Certificate / Dispatch | **SB Ops** | Ops IP; dispatch triggers invoice |
 | Employee / Leave / Attendance / Payroll | **ERPNext HR** | Ops links by `erp_employee_id` |
 | User / login | **each system owns its own** | linked for offboarding only |
 | Department | **each owns its own taxonomy** | ops-workflow depts ≠ HR/accounting depts — do NOT sync |
-| Vendor rating | **Shanti Ops** (derived) | |
+| Vendor rating | **SB Ops** (derived) | |
 
 ---
 
@@ -357,7 +357,7 @@ the build — implementation record below is the permanent home once done.
 
 ### The decision
 
-Shanti Ops will **not** build a regulated accounting/compliance engine. Deferred, permanently,
+SB Ops will **not** build a regulated accounting/compliance engine. Deferred, permanently,
 ERPNext-integration territory, an **option not a dependency**:
 
 General Ledger · double-entry accounting engine · Chart of Accounts · Journal Entries ·
@@ -399,28 +399,28 @@ Training/Skills, Grievance case management — each is its own standalone subsys
 explicit choice during scoping, not an oversight.
 
 Also **not built**: `docstatus`/submit-immutable-cancel-amend (ERPNext's largest remaining
-structural mechanism vs. Shanti Ops — deliberately not generalized, a "generic ERP abstraction
+structural mechanism vs. SB Ops — deliberately not generalized, a "generic ERP abstraction
 layer" the product decision explicitly bans); Territory/Customer Group/Sales Partner/Product
-Bundle/Installation Note (Installation is already a Shanti Ops department/milestone — likely
+Bundle/Installation Note (Installation is already a SB Ops department/milestone — likely
 redundant, not a real gap); Warranty/AMC (unrelated next phase, already agreed separately).
 
 ### Capability matrix
 
 | Capability | Owner | Status | Future |
 |---|---|---|---|
-| CRM (Lead/Opportunity/Campaign) | Shanti Ops | Native | — |
-| Selling (Quotation/Sale Order) | Shanti Ops | Native | — |
-| HR — Employee Master | Shanti Ops | Native | — |
-| HR — Attendance/Leave | Shanti Ops | Native | — |
-| HR — Shifts | Shanti Ops | Native | — |
-| HR — Onboarding/Separation | Shanti Ops | Native | — |
-| Recruitment (ATS) | Shanti Ops | Native | — |
-| Master BOM | Shanti Ops | Native (ahead of ERPNext) | — |
-| Procurement (RFQ→quote→PO) | Shanti Ops | Native (ahead of ERPNext) | — |
-| QC / Statutory Certificates | Shanti Ops | Native (ahead of ERPNext) | — |
-| Dispatch / Packing | Shanti Ops | Native (ahead of ERPNext) | — |
-| Stores / Inventory | Shanti Ops | Native | — |
-| Device security (Part B) | Shanti Ops | Native (unrelated to ERP) | — |
+| CRM (Lead/Opportunity/Campaign) | SB Ops | Native | — |
+| Selling (Quotation/Sale Order) | SB Ops | Native | — |
+| HR — Employee Master | SB Ops | Native | — |
+| HR — Attendance/Leave | SB Ops | Native | — |
+| HR — Shifts | SB Ops | Native | — |
+| HR — Onboarding/Separation | SB Ops | Native | — |
+| Recruitment (ATS) | SB Ops | Native | — |
+| Master BOM | SB Ops | Native (ahead of ERPNext) | — |
+| Procurement (RFQ→quote→PO) | SB Ops | Native (ahead of ERPNext) | — |
+| QC / Statutory Certificates | SB Ops | Native (ahead of ERPNext) | — |
+| Dispatch / Packing | SB Ops | Native (ahead of ERPNext) | — |
+| Stores / Inventory | SB Ops | Native | — |
+| Device security (Part B) | SB Ops | Native (unrelated to ERP) | — |
 | Accounting (GL, CoA, journals) | Deferred | Not building | ERPNext / future |
 | GST (calc, returns, e-invoice, e-way bill) | Deferred | Not building | ERPNext / future |
 | TDS | Deferred | Not building | ERPNext / future |
@@ -690,7 +690,7 @@ items it named as excluded (statutory PF/ESI/PT/TDS calculations; Expense Claim/
 Overtime, which "post to GL" in ERPNext) — **not because the reasoning behind that boundary was
 wrong, but because the user now has a separate integration path**: a future "Tally agent" (and
 other means) will read the numbers this bundle computes and sync them into real accounting
-software. Shanti Ops therefore still builds **zero ledger/chart-of-accounts/journal-entry
+software. SB Ops therefore still builds **zero ledger/chart-of-accounts/journal-entry
 infrastructure** — every figure here is computed once and stored as a plain fact, the exact
 precedent `quotations.total`/`employees.ctc` already set. Every column a future accounting sync
 will need is marked `-- ACCOUNTING INTEGRATION POINT` in `lib/db.js`: `salary_slips`'s REAL

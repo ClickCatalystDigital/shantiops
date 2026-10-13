@@ -5,7 +5,7 @@ Everything is built and waiting. Until these are supplied, sending an email show
 ## For each company (Shanti Boilers, Shanti Techno Fab)
 1. **A sending mailbox** in Zoho Mail, e.g. `sales@…` (or `noreply@…`). This is the address customers see.
 2. **Two-step verification turned on** for that mailbox (Zoho only allows app passwords once it is on).
-3. **An app password** for it: Zoho Accounts → Security → App Passwords → generate one named "Shanti Ops".
+3. **An app password** for it: Zoho Accounts → Security → App Passwords → generate one named "SB Ops".
 4. **SMTP access enabled** for the mailbox (Zoho Mail → Settings → Mail Accounts → SMTP; on some plans an admin must allow it).
 5. **Which Zoho region** the account is on: `smtp.zoho.in` (India) or `smtp.zoho.com`. Default is `.in`.
 

@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Shanti Ops Browser Control",
+  "name": "SB Ops Browser Control",
   "version": "1.1.1",
   "description": "Enforces the organization's website access policy via the local Shanti agent.",
   "permissions": ["declarativeNetRequest", "alarms"],

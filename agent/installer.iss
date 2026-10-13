@@ -48,7 +48,7 @@ begin
   if HasSidecar then exit;   // zero-typing path — no questions asked
 
   ConfigPage := CreateInputQueryPage(wpSelectDir,
-    'Agent Setup', 'Connect this machine to your Shanti Ops server',
+    'Agent Setup', 'Connect this machine to your SB Ops server',
     'Enter the enrollment code from your manager. (Advanced: change the server URL only if told to.)');
   ConfigPage.Add('Enrollment code:', False);
   ConfigPage.Add('Server URL:', False);

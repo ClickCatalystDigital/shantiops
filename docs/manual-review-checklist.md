@@ -228,7 +228,7 @@ document).
 
 ## 8. Data still to bring over from the current CRM
 
-| Data | Now in Shanti Ops | What's needed | How it will be loaded |
+| Data | Now in SB Ops | What's needed | How it will be loaded |
 |---|---|---|---|
 | **Diary / follow-up history** | **Done (2026-09-28)** — 1,939 notes + 186 contacts imported from the old CRM's Quick Planner export, linked to customers (not enquiries — see §6a) | — | — |
 | **Contact persons** | 0 (customers have one phone/email only) | Contact list per customer (name, designation, phone, email) | Import into `contacts`, matched to customers by code/name |

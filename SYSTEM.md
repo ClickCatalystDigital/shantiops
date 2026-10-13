@@ -16,7 +16,7 @@ set of user accounts:
 
 **Product decision, superseded — do not act on this paragraph, see §5q:** `V3_CHANGES.md` §12
 originally deferred regulated accounting/GST/TDS/statutory payroll as ERPNext-integration
-territory. That decision was reversed 2026-08-20 (§5q): Shanti Ops is now the system of record for
+territory. That decision was reversed 2026-08-20 (§5q): SB Ops is now the system of record for
 the full Accounts workflow (ledger, GST, TDS, fixed assets, payroll export, Dispatch freight/e-way
 capture), built out through §5z and §5aj — not a stub, not an ERPNext dependency. Left here only so
 a reader who finds the old `V3_CHANGES.md` §12 text elsewhere knows it's stale. CRM, Selling, and HR
@@ -248,7 +248,7 @@ department guide, not a new route or page.
   Watch out section. Each department Introduction welcomes the user, explains the Home → Operations
   → Projects → department framework, and shows icon-led feature summaries that open the detailed
   feature guide. The detailed feature framework is consistent across all 40+ feature entries:
-  **Why this matters**, **How it works in Shanti Ops**, **Work through it**, **Avoid this**, and
+  **Why this matters**, **How it works in SB Ops**, **Work through it**, **Avoid this**, and
   **Done when**. The first and last sections explain the business value and the handoff outcome,
   while the middle sections explain the real workflow and the control points built into the app.
 - The How To page uses the same learning pattern for every department: a responsive step map, large
@@ -3443,7 +3443,7 @@ Closes out QC's remaining STERP list. All six build on `qc_records`/`QcPanel.jsx
 
 New department, added the same way Sales/Marketing/HR were: `DEPARTMENTS` (`lib/milestones.js`), `HEAD_USERS`/guarded one-off `accounts_head` insert (`lib/db.js`), a Nav tab (`/accounts`, `LandmarkIcon`), and a `d-login` demo entry — no milestones (same "works through its own module, not the milestone tracker" precedent as Sales/Marketing/HR).
 
-**Architecture decision (supersedes the plan's original framing):** Shanti Ops is the system of record for the full Accounts workflow — ledger, chart of accounts, journal postings, trial balance, P&L, balance sheet, GST returns — not just the document trail. Tally is an optional sync target, not the book of record; ERPNext is out. Both readiness/plan docs were rewritten to match (ACCOUNTING-READINESS.md §7/§8, ACCOUNTING-IMPLEMENTATION-PLAN.md's architecture note + a new Phase 5 "General Ledger & Financial Statements" replacing the old Tally/ERPNext export phase, which becomes Phase 6 "Optional Tally Sync"). e-invoicing confirmed not required now, deferred. Both entities' real GSTIN/PAN/address not available — `company_settings` seeded with placeholder values, flagged in its own UI until filled in.
+**Architecture decision (supersedes the plan's original framing):** SB Ops is the system of record for the full Accounts workflow — ledger, chart of accounts, journal postings, trial balance, P&L, balance sheet, GST returns — not just the document trail. Tally is an optional sync target, not the book of record; ERPNext is out. Both readiness/plan docs were rewritten to match (ACCOUNTING-READINESS.md §7/§8, ACCOUNTING-IMPLEMENTATION-PLAN.md's architecture note + a new Phase 5 "General Ledger & Financial Statements" replacing the old Tally/ERPNext export phase, which becomes Phase 6 "Optional Tally Sync"). e-invoicing confirmed not required now, deferred. Both entities' real GSTIN/PAN/address not available — `company_settings` seeded with placeholder values, flagged in its own UI until filled in.
 
 - **`company_settings`** — one row per legal entity (`company`, `legal_name`, `gstin`, `pan`, `registered_address`, `state`, `state_code`, `invoice_prefix`), seeded for Shanti Boilers & Pressure Vessels (P) Ltd and Shanti Techno Fab with placeholder GSTIN/PAN/address.
 - **`company` column backfilled** onto `quotations`, `purchase_orders`, `po_items` (nullable, `addColumn`) — closes the readiness register's §3 gap ("even a perfectly GST-accurate PO is useless to Accounting if it can't say which company issued it"). Not yet populated per-row or exposed in those documents' own UI — that's a Phase 1+ retrofit, not Phase 0's job.
@@ -3588,7 +3588,7 @@ rather than fixing it, since it means redesigning UI outside this plan's scope.
 ## 5v. Accounts — Phase 5: General Ledger & GST Compliance (2026-08-20, ACCOUNTING-IMPLEMENTATION-PLAN.md)
 
 The first phase where "post a journal entry" and "compute a balance" are actually in scope, per
-the 2026-08-20 architecture decision that Shanti Ops (not Tally/ERPNext) owns the full ledger. Two
+the 2026-08-20 architecture decision that SB Ops (not Tally/ERPNext) owns the full ledger. Two
 sub-steps, both built and live-verified this session.
 
 **Sub-step 1 — Chart of Accounts + posting engine + financial statements:**
@@ -3657,7 +3657,7 @@ the full outward/inward flow and the source note on where the terminology comes 
   queue). Eligible ITC = lines where the portal marked `itc_availability='Yes'` **and** IMS status
   is accepted/deemed-accepted; everything else (portal says "No", or rejected in IMS) is an
   excluded amount — **not** run through a Rule 42/43 proportional-reversal calculation, a real
-  additional complexity out of scope for this pass. Shanti Ops' own Vendor Bill ledger stays the
+  additional complexity out of scope for this pass. SB Ops' own Vendor Bill ledger stays the
   accounting source of truth throughout — GSTR-2B/IMS is external reconciliation evidence, never a
   purchase-register replacement.
 - **GSTR-3B** (`lib/gst-return.mjs`'s `gstr3bSummary()`) — the actual operative monthly return
@@ -3953,7 +3953,7 @@ insert/patch functions the admin routes already used — `insertGstRate`/`insert
 route so a rate entered by hand and one pulled from the hub go through identical validation.
 `STATUTORY_RATES_HUB_URL`/`STATUTORY_RATES_HUB_API_KEY`/`RATE_SYNC_KEY` env vars. **Update
 (2026-08-22, same day):** hub repo pushed to `github.com/clickcatalyst-digital/statutory-rates-hub`,
-wired to its own real Turso DB (migrated clean, confirmed empty), a "Shanti Ops" tenant row created
+wired to its own real Turso DB (migrated clean, confirmed empty), a "SB Ops" tenant row created
 there and its API key set as `STATUTORY_RATES_HUB_API_KEY` in this repo's `.env.local`.
 **Update (2026-08-22, later same day):** hub deployed to Render
 (`statutory-rates-hub.onrender.com`), `STATUTORY_RATES_HUB_URL` set for real. Full pipeline now
@@ -3974,7 +3974,7 @@ threshold ₹2,40,000/yr — added through the actual `accounts_head` login + `A
 `vendor_tds_rates` previously only had 194C ×2 and 194J). This went through the real Turso prod DB,
 confirmed in the UI list afterward. The `/api/statutory-rates/sync` HTTP path itself was later
 fully verified too, against the real deployed hub (see §5z) — `{pulled:0, applied:0, cursor:0}`,
-correct since nothing was approved in the hub yet. (Separately: a genuinely fresh local shanti-ops
+correct since nothing was approved in the hub yet. (Separately: a genuinely fresh local SB Ops
 DB throws `no such table: crm_notes` on boot — `migrate()` has apparently never been exercised
 against a truly empty DB, everyone always points at the shared Turso instance. Orthogonal
 pre-existing bug, not chased down, not this feature's fault.)
@@ -4184,7 +4184,7 @@ staying a dead-end list item.
   GSTIN), not industry-restricted as previously assumed. Neither changes the phase's deferred
   status — no real trigger (turnover/volume threshold) has fired — and neither belongs in
   `statutory-rates-hub`: any future connector's credentials/state are inherently per-company
-  transactional data, which is Shanti Ops' job, not the hub's (the hub only ever distributes
+  transactional data, which is SB Ops' job, not the hub's (the hub only ever distributes
   identical-for-everyone rate data, no per-tenant secrets).
 
 **Verified**: `npm run build` succeeds clean, including the two new routes.
@@ -4419,7 +4419,7 @@ New Accounts tab (additive — the plain "Company Settings" tab from Phase 0 is 
 `company_settings` into the ERP's real company-applicability layer, per the confirmed architecture
 rule: `statutory-rates-hub` stays a national-statutory-rate source only; every company-specific
 fact (a GSTIN's own registration status, whether PF/ESI/PT actually applies to *this* company) is
-Shanti Ops' job, computed or stored here, never delegated to the hub.
+SB Ops' job, computed or stored here, never delegated to the hub.
 
 **Research finding, before building anything**: a Sandbox (Quicko) GSTIN-verification client
 (`lib/sandbox.js`) and a tenant-authed passthrough route (`app/api/gstin/verify`) already exist —
@@ -4479,14 +4479,14 @@ helper called `res.json()` unconditionally and crashed with `"Unexpected token '
 response instead of surfacing a clean error. Fixed to catch the parse failure and return an actionable
 message instead — a real defensive-coding gap in this repo's own new code, not the finding below.
 
-**External finding, not a Shanti Ops defect — flagged, not worked around**: the hub's
+**External finding, not a SB Ops defect — flagged, not worked around**: the hub's
 `app/api/gstin/verify` route and `lib/sandbox.js` are **untracked in the hub's git repo** (`git
 status` shows `??`) — never committed, never pushed, therefore never deployed to the live Render
-instance (`statutory-rates-hub.onrender.com`) Shanti Ops actually talks to. Confirmed directly: a
+instance (`statutory-rates-hub.onrender.com`) SB Ops actually talks to. Confirmed directly: a
 real `curl` against the deployed hub's `/api/gstin/verify` returns a genuine Next.js 404 page, not
 JSON. Per instruction, the hub was not modified, committed, or deployed by this work — that's the
 separate "hub lifecycle hardening" effort's job. Once that lands, the GSTIN refresh flow needs no
-further Shanti Ops changes to start working end-to-end; everything on this side is already built
+further SB Ops changes to start working end-to-end; everything on this side is already built
 and correct up to that boundary.
 
 **Update (2026-08-23)**: this external blocker is resolved — a direct `curl` against the deployed
@@ -4514,7 +4514,7 @@ and defensively correct (confirmed via the clean-error path above) but **not** e
 against a real Sandbox response — blocked entirely on the external hub-deployment gap above, not on
 anything still to do here.
 
-## 5af. Hub → Shanti Ops statutory-rate pipeline — production-readiness pass (2026-08-23)
+## 5af. Hub → SB Ops statutory-rate pipeline — production-readiness pass (2026-08-23)
 
 `lib/rate-sync.js`'s `syncRatesFromHub()` (built §5y) had existed since 2026-08-20 but was only
 ever live-verified once, against an empty hub (`{pulled:0, applied:0, cursor:0}`). The hub now
@@ -4560,7 +4560,7 @@ earlier, unlogged partial sync attempt — `hub_sync_state.cursor` was still `0`
 presence, the exact failure signature defect (2) describes. The dedup guard correctly treated both
 as already-applied during the real run below, rather than duplicating them.
 
-**Live-verified, end to end, against the real deployed hub and the real Shanti Ops Turso DB** (no
+**Live-verified, end to end, against the real deployed hub and the real SB Ops Turso DB** (no
 mocked hub rows in the production data path — the one exception, isolated and cleaned up, is
 noted below):
 - **Controlled failure-path proof** (a genuine gap in the "how do we prove no-partial-corruption"
@@ -6146,8 +6146,8 @@ intermediary, no per-transaction fee) — the only gate is eligibility (NIC "not
 eligible, roughly turnover/volume-based) — but **NIC's own registration is portal-based and cannot
 be automated by any third-party software**: the taxpayer logs into the E-Way Bill portal themselves
 (Registration → For API) and NIC issues Client ID / Client Secret / API Username / API Password.
-Shanti Ops' job is only to store those credentials once obtained and call the transactional API
-with them — building anything that implies "click here and Shanti Ops registers you" would be
+SB Ops' job is only to store those credentials once obtained and call the transactional API
+with them — building anything that implies "click here and SB Ops registers you" would be
 dishonest about what the government process actually allows. E-invoicing (IRN via NIC's own IRP) is
 a separate system with a separate threshold — **explicitly out of scope this round**, per the
 user's own choice; `ACCOUNTING-IMPLEMENTATION-PLAN.md` Phase 10 already tracks it as a distinct,
@@ -6239,7 +6239,7 @@ is now deprecated — e-way-bill API testing has been consolidated into the e-in
 (`einv-apisandbox.nic.in`). Confirmed there is no way to test against production without creating a
 real, legally-binding e-way bill (no dry-run flag exists anywhere in the spec), and confirmed NIC's
 own registration (Registration → For API on the portal) is portal-based and cannot be automated by
-any third-party software — Shanti Ops can only ever store the resulting credentials and call the
+any third-party software — SB Ops can only ever store the resulting credentials and call the
 transactional API with them.
 
 **Prerequisite validation, built this round** (all four gates enforced server-side in
@@ -6296,9 +6296,9 @@ build` both clean.
 **Correction (2026-09-03, same day, research-only follow-up — no code changed)**: the finding above
 ("e-way-bill sandbox testing moved into the e-invoice sandbox") was checked directly and is
 narrower than stated. That sandbox's own E-Way Bill section is **"Generate e-Way Bill by IRN"**
-(`api/einvewb/ewaybill`) — its request payload requires an existing e-invoice IRN. Since Shanti Ops
+(`api/einvewb/ewaybill`) — its request payload requires an existing e-invoice IRN. Since SB Ops
 doesn't do e-invoicing (not mandated by turnover), this specific sandbox endpoint isn't usable for
-Shanti Ops' actual need. The **standalone** (IRN-less) e-way-bill API — the one Shanti Ops needs —
+SB Ops' actual need. The **standalone** (IRN-less) e-way-bill API — the one SB Ops needs —
 still lives on the separate `docs.ewaybillgst.gov.in` developer portal, same v1.03-era shape as
 always (RSA+AES, 360-minute token, same ~1,000/day-or-10,000/month eligibility gate). Whether that
 standalone system has its own self-service sandbox, or whether sandbox access there is *also*
@@ -6321,7 +6321,7 @@ research:
   round's secondary-source finding about a mandatory Ship-to GSTIN field doesn't appear here.
   Bill-To/Ship-To already has a home in the existing schema: `toGstin`/`toStateCode` carry the
   billed party, `toAddr*`/`actToStateCode` carry the actual ship-to location (mirrored on the From
-  side with `actFromStateCode`). For Shanti Ops' normal case these equal `fromStateCode`/
+  side with `actFromStateCode`). For SB Ops' normal case these equal `fromStateCode`/
   `toStateCode` already on file — no new field needed unless a shipment genuinely dispatches from
   or delivers to a location distinct from the billed party's own state.
 - **The current v1.03 schema requires three fields the 2018-doc-based plan didn't know about**:
@@ -6329,12 +6329,12 @@ research:
   tax — already on the linked Sales Invoice), and `actFromStateCode`/`actToStateCode` (above).
 - **A real forward-looking dependency, not relevant today**: standalone `GENEWAYBILL` generation is
   blocked for B2B Tax-Invoice shipments once the *supplier* is e-invoicing-enabled — such e-way
-  bills must go through e-invoice/IRN generation instead. Shanti Ops isn't e-invoicing-enabled, so
+  bills must go through e-invoice/IRN generation instead. SB Ops isn't e-invoicing-enabled, so
   this doesn't block anything now, but the day that changes, this is no longer just an independent
   feature add — it changes which e-way-bill API is even valid to call.
 - **Distance has a real failure mode not previously known**: passing `0` tells NIC to use its own
   PIN-to-PIN distance database; a real non-zero value differing by more than ±10% from that
-  database gets **rejected** — Shanti Ops has no way to pre-check against NIC's own database, so
+  database gets **rejected** — SB Ops has no way to pre-check against NIC's own database, so
   this is a real risk the built Gap 1 validation (require ≤4000km) doesn't catch, flagged for a
   product decision once wiring happens for real (surface NIC's own rejection vs. default to `0`).
 - **A live `GetErrorList` API exists** (`GET <URL>/Master/GetErrorList`) — better to fetch/cache
@@ -6342,7 +6342,7 @@ research:
 - Also confirmed: NIC has its own duplicate-e-way-bill detection per document number (real defense
   in depth under the already-built `eway_bill_no IS NOT NULL` guard, not a reason to drop it); a
   180-day document-to-generation window; a 250-item cap (unchanged); HSN validated against NIC's own
-  GST master (stricter than Shanti Ops' own non-null check, which stays as the first-line gate).
+  GST master (stricter than SB Ops' own non-null check, which stays as the first-line gate).
 
 Full detail in the session's plan file. Still no live API call made, still no code touched by this
 research pass — see the next entry for the actual implementation that followed it the same day.
@@ -6406,7 +6406,7 @@ gaps — nothing else was touched:
   the implementation pass but had no route and no UI anywhere calling it (confirmed by grep: zero
   callers outside its own definition). The one message a user *could* hit
   (`"already set on this packing list"`) told them to "edit the field directly," an unsafe
-  workaround that risks desyncing Shanti Ops' record from NIC's real one. Built properly: new
+  workaround that risks desyncing SB Ops' record from NIC's real one. Built properly: new
   `POST /api/packing/[id]/eway-bill/cancel` (new `dispatch.packing.eway_bill.cancel` action key,
   same fail-closed discipline as generation — checks NIC's real 24-hour cancellation window and
   requires a reason code + remark before ever calling NIC), and a real Cancel dialog in
@@ -7038,7 +7038,7 @@ deployment-team step; missing-field errors on the customer/company completeness 
 column names (`gst_no`, `pin_code`) — replaced with plain labels (GSTIN, Pincode); **Cancellation
 was completely unbuilt** — `lib/eway-bill.js`'s `cancelEwayBill()` existed with zero route or UI
 ever calling it, and the only path a user had (editing `eway_bill_no` directly) risked desyncing
-Shanti Ops' record from NIC's real one — closed with a real `POST /api/packing/[id]/eway-bill/
+SB Ops' record from NIC's real one — closed with a real `POST /api/packing/[id]/eway-bill/
 cancel` route (new `dispatch.packing.eway_bill.cancel` action key, same fail-closed discipline as
 generation: checks NIC's real 24-hour cancellation window and requires a reason code + remark
 before ever calling NIC) and a Cancel dialog in `PackingDetail.jsx` (NIC's 4 real reason codes, an
@@ -7073,20 +7073,20 @@ portal). Findings, each independently sourced:
   checked even below ₹500 Cr. A taxpayer with real, production e-way-bill Direct API Access (§5aw's
   own volume-gated, much-lower bar) carries that straight into e-invoice Direct API Access too,
   regardless of turnover — the one path that would let e-invoicing be built exactly like e-way bill
-  (each client holds its own credentials directly, Shanti Ops a pure wrapper, no GSP/ERP layer).
+  (each client holds its own credentials directly, SB Ops a pure wrapper, no GSP/ERP layer).
   **Not available in practice yet**: it's earned by e-way bill actually going production-live for a
   real client, which hasn't happened.
 - **The "Through ERP" path** — a real, free, self-service registration category on the same
   sandbox (`Tax Payer`/`GSP`/`e-Com Op.`/`ERP` radio buttons on the registration form), requiring
   only the registering entity's own PAN, an "ERP Name," and a GST-registered mobile/email.
-  **Blocked today**: the registering entity would be Ahrom Labs (the software company; Shanti Ops
+  **Blocked today**: the registering entity would be Ahrom Labs (the software company; SB Ops
   is one of its client projects, for Shanti Boilers) — which has no GST registration of its own.
   Registering Ahrom Labs for GST, or having the client register as the ERP category itself (an odd
   fit — they're the taxpayer, not the vendor), were both considered and set aside rather than
   pursued to force a path open.
 - Credential model, if this path is ever used: **two-tier**, not one-tier like e-way bill — one
-  shared Shanti Ops-level `Client Id`/`Client Secret` (platform credential), plus a per-company
-  `Username`/`Password` each client creates after "opting for" Shanti Ops as their ERP. Would need
+  shared SB Ops-level `Client Id`/`Client Secret` (platform credential), plus a per-company
+  `Username`/`Password` each client creates after "opting for" SB Ops as their ERP. Would need
   a new platform-level credential slot plus a per-company table, not a reuse of
   `eway_bill_credentials`'s single-tier shape.
 - Other real findings for whenever this is picked back up: the auth flow is the identical RSA→AES
@@ -7097,7 +7097,7 @@ portal). Findings, each independently sourced:
   management side, not the machine-to-machine calls.
 
 **Decision: defer, as before — not reversed by this research.** The one non-GSP path that matches
-Shanti Ops' architecture depends on e-way bill being proven live in production first, which is the
+SB Ops' architecture depends on e-way bill being proven live in production first, which is the
 already-planned next step (testing e-way bills with a real customer via the accounts head). Full
 research trail kept in the session's own plan-file record for whoever picks this up next.
 
@@ -12772,7 +12772,7 @@ the client's plan.
   Techno Fab:
   - the sending address (e.g. `sales@…`);
   - two-step verification turned on for it;
-  - a Zoho app password named "Shanti Ops";
+  - a Zoho app password named "SB Ops";
   - SMTP access allowed for the mailbox (an admin setting on some plans);
   - which region the account is on: `smtp.zoho.in` or `.com`.
 

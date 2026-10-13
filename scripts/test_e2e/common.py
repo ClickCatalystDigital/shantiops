@@ -1,4 +1,4 @@
-"""Shared helpers for the shanti-ops E2E test scripts (phaseN_*.py).
+"""Shared helpers for the SB Ops E2E test scripts (phaseN_*.py).
 
 Talks to the real running dev server (http://localhost:3000) over the real API,
 and to the real Turso DB directly (HTTP pipeline API) only for test-data reset/

@@ -35,7 +35,7 @@ Source: the old CRM's Product Master (`31704ece-ProductData.csv`) and Customer s
 
 ## Customers — 8971 summary rows -> 8847 organizations
 - 124 rows were merged into another row of the same organization (same code, or the same name ignoring Pvt/Ltd/M/s where the codes don't conflict).
-- 119 matched existing customers already in Shanti Ops (only blank fields filled). 8728 new customers.
+- 119 matched existing customers already in SB Ops (only blank fields filled). 8728 new customers.
 - 604 organizations share an exact name with a different organization (usually people's first names such as "Anil"); they were kept separate and named "Name (code)" / "Name (district)".
 - 1315 organizations share a name but were NOT merged because their codes differ, or the name is a single word. Listed in `docs/legacy-crm-possible-duplicates.csv` for review.
 - 1 rows could not be read even after rejoining broken lines, and were skipped:

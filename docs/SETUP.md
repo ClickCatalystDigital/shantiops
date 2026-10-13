@@ -1,6 +1,6 @@
 # Go-live setup
 
-The order to take Shanti Ops device/browser control from "built" to "running on employee
+The order to take SB Ops device/browser control from "built" to "running on employee
 machines." Do these once; step 4 repeats per employee.
 
 ## 0. Deploy the app

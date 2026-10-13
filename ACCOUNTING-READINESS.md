@@ -1,6 +1,6 @@
 # Accounting Readiness Register
 
-Internal reference — Shanti Ops accounts scoping. Discovery only; nothing in this document is
+Internal reference — SB Ops accounts scoping. Discovery only; nothing in this document is
 built. Scope: STERP Priority 5 (items 39–64), against both legal entities (Shanti Boilers &
 Pressure Vessels (P) Ltd, Shanti Techno Fab).
 
@@ -25,7 +25,7 @@ document shape *and* a correct live GST rate — but building one doesn't solve 
 
 ## 2. The existing boundary
 
-Every tax-bearing document already in Shanti Ops was built against one deliberate, explicit
+Every tax-bearing document already in SB Ops was built against one deliberate, explicit
 limit — not an oversight.
 
 Quotations, Purchase Orders, and Scope of Supply each store a flat `tax_pct` / `gst_pct` typed
@@ -112,7 +112,7 @@ STERP's own Priority 5 list runs 26 items (39–64) — invoicing through GST re
 depreciation. Sections 4–5 grouped by function instead of walking that list item by item; this
 traces every one of the 26 back, so nothing on the original list is unaccounted for by omission.
 
-| # | STERP item | Shanti Ops dependency | Where |
+| # | STERP item | SB Ops dependency | Where |
 |---|---|---|---|
 | 39 | Sales Invoicing | closed 2026-08-20 | §4 — `sales_invoices` built, see Phase 2 |
 | 40 | Accounts Receivable | closed 2026-08-20 | §4 + Phase 5 completion — `customer_receipts` settles it against Sales Invoices, posted to the ledger. Balance due is computed live from receipts summed against the invoice total, not a stored running balance; there's still no dedicated **AR aging** report (30/60/90-day buckets) — that's a real report on top of this, not built |
@@ -129,12 +129,12 @@ traces every one of the 26 back, so nothing on the original list is unaccounted 
 | 51 | Credit Notes and Debit Notes | half closed 2026-08-20 | §4 — Credit Notes built (`sales_credit_notes`); Debit Notes still `debit_note_ref` free text only, Phase 3 |
 | 52 | Sales Returns linked to accounting | closed 2026-08-20 | §4 — `sales_returns.credit_note_ref` now points at a real `sales_credit_notes` row by number |
 | 53 | Purchase Returns linked to accounting | closed 2026-08-20 | §4 — `purchase_returns.debit_note_ref` now points at a real `purchase_debit_notes` row by number |
-| 54 | Cheque Printing | gap | Unlike GL/Balance Sheet this is arguably a Shanti Ops document (a payment voucher) — no bank-account master or voucher table exists anywhere |
+| 54 | Cheque Printing | gap | Unlike GL/Balance Sheet this is arguably a SB Ops document (a payment voucher) — no bank-account master or voucher table exists anywhere |
 | 55 | Fixed Assets | adjacent only | `workstations`/`calibration_items` are physical-asset-adjacent; no financial fixed-asset register exists |
-| 56 | Depreciation & journal generation | gap — Phase 7 | Shanti Ops now owns this once a Fixed Assets register exists (§Phase 7); not required for Phase 5's core ledger |
+| 56 | Depreciation & journal generation | gap — Phase 7 | SB Ops now owns this once a Fixed Assets register exists (§Phase 7); not required for Phase 5's core ledger |
 | 57 | Forex Gain/Loss | gap | §5 — no forex-rate input anywhere |
-| 58 | GSTR-1 (+ GSTR-1A / IFF where applicable) | closed 2026-08-20 | Generated live from Sales Invoice line data at the correct GST rate (B2B + HSN summaries). **No live GST-portal/API connection** — this is a report Shanti Ops generates for someone to file on the portal by hand, not an e-filing integration; that was never in scope (Phase 0's e-invoicing/IRP decision) |
-| 59 | GSTR-2 *(STERP's original item name — legacy terminology; GSTR-2 was never notified as a filable return and the GST Council formally dropped it from the compliance cycle)* | closed 2026-08-20 | Not a return Shanti Ops generates. The current recipient-side workflow is GSTR-2B (the GST portal's static monthly ITC statement) + IMS (Invoice Management System, where the recipient accepts/rejects/leaves pending each vendor invoice — un-actioned lines are deemed accepted). Shanti Ops' job is **ITC reconciliation**: match its own Vendor Bills against GSTR-2B/IMS data (intake is Excel/CSV upload of the portal's own download, plus manual entry for exceptions — **no live GST-portal/API connection**, confirmed decision) and feed the resulting eligible ITC into GSTR-3B. Excluded/rejected ITC is a flat amount, **not run through Rule 42/43 proportional reversal** — that real additional complexity remains unimplemented, out of scope unless a real need for exempt-supply proportioning surfaces. Shanti Ops' Vendor Bill ledger stays the accounting source of truth — GSTR-2B/IMS is an external compliance input to reconcile against, not a purchase register to import and treat as authoritative |
+| 58 | GSTR-1 (+ GSTR-1A / IFF where applicable) | closed 2026-08-20 | Generated live from Sales Invoice line data at the correct GST rate (B2B + HSN summaries). **No live GST-portal/API connection** — this is a report SB Ops generates for someone to file on the portal by hand, not an e-filing integration; that was never in scope (Phase 0's e-invoicing/IRP decision) |
+| 59 | GSTR-2 *(STERP's original item name — legacy terminology; GSTR-2 was never notified as a filable return and the GST Council formally dropped it from the compliance cycle)* | closed 2026-08-20 | Not a return SB Ops generates. The current recipient-side workflow is GSTR-2B (the GST portal's static monthly ITC statement) + IMS (Invoice Management System, where the recipient accepts/rejects/leaves pending each vendor invoice — un-actioned lines are deemed accepted). SB Ops' job is **ITC reconciliation**: match its own Vendor Bills against GSTR-2B/IMS data (intake is Excel/CSV upload of the portal's own download, plus manual entry for exceptions — **no live GST-portal/API connection**, confirmed decision) and feed the resulting eligible ITC into GSTR-3B. Excluded/rejected ITC is a flat amount, **not run through Rule 42/43 proportional reversal** — that real additional complexity remains unimplemented, out of scope unless a real need for exempt-supply proportioning surfaces. SB Ops' Vendor Bill ledger stays the accounting source of truth — GSTR-2B/IMS is an external compliance input to reconcile against, not a purchase register to import and treat as authoritative |
 | 60 | GSTR-3B monthly return | closed 2026-08-20 | Nets GSTR-1's outward tax against ITC reconciliation's eligible ITC (row 59). (GSTR-3, the original full return GSTR-3B was meant to replace, was also suspended and never revived — GSTR-3B is the actual current monthly summary return.) Same no-live-API caveat as row 58 |
 | 61 | GSTR7 / TDS return | gap | §5 — vendor TDS has a table and is deducted on `vendor_bills` (Phase 3), and the ledger/reporting infrastructure it would need now exists (Phase 5) — but a GSTR-7 generator itself (the TDS return document) was never built. Still open |
 | 62 | PF Registers | depends on §4 | Generated from `salary_slips`, already the best-prepared table — `company` routes via `employees.company` (Phase 0), no new data needed. Register generation itself is still Phase 5's job |
@@ -144,7 +144,7 @@ traces every one of the 26 back, so nothing on the original list is unaccounted 
 ## 8. Where this leaves you
 
 **Decided 2026-08-20** (see [ACCOUNTING-IMPLEMENTATION-PLAN.md](ACCOUNTING-IMPLEMENTATION-PLAN.md)):
-Shanti Ops is the system of record for the full Accounts workflow, including ledger/GL/GST/
+SB Ops is the system of record for the full Accounts workflow, including ledger/GL/GST/
 financial statements — not just the document trail. Tally is an optional sync target, not the
 book of record. That resolves the first open question below; the second is still open:
 
@@ -175,14 +175,14 @@ bank reconciliation, and GST compliance — is fully built (§7 rows 39–43, 47
   master with actual account numbers — that heavier version is still Phase 6/7 territory (STERP
   item 54, Cheque Printing's own prerequisite), unchanged by this pass.
 - **GST has no live portal integration.** Every GST report (GSTR-1/1A/IFF, GSTR-2B/IMS reconciliation,
-  GSTR-3B) is generated by Shanti Ops for a human to act on via the actual GST portal — no e-filing
+  GSTR-3B) is generated by SB Ops for a human to act on via the actual GST portal — no e-filing
   API, no live GSTR-2B pull (Excel/CSV upload only). E-invoicing/IRN/QR/IRP integration remains the
   Phase 0 decision it always was: not required at the current turnover bracket, not built.
 - **Rule 42/43 proportional ITC reversal is unimplemented.** ITC reconciliation excludes
   not-available/rejected lines as a flat amount; it does not compute a proportional reversal for
   exempt-supply use. Real additional complexity, out of scope unless a genuine need surfaces.
 - **Tally interoperability remains future work.** Unchanged since the 2026-08-20 architecture
-  decision: Shanti Ops owns the full ledger, Tally is an optional sync target (Phase 6, genuinely
+  decision: SB Ops owns the full ledger, Tally is an optional sync target (Phase 6, genuinely
   optional, untouched by Phase 5).
 
 ---
@@ -198,7 +198,7 @@ GST Portal's current outward-supply and ITC workflows (GSTR-1 / GSTR-1A / IFF fo
 supplies; GSTR-2B + IMS for recipient-side ITC; GSTR-3B as the operative monthly return) — not
 off the original STERP checklist's older GSTR-1/2/3 model or any legacy ERP-implementation
 checklist. STERP's own item 59 label ("GSTR2") is left in row 59's first column only because
-that's STERP's item name, not a description of what Shanti Ops actually builds — see that row's
+that's STERP's item name, not a description of what SB Ops actually builds — see that row's
 own note.
 
 ## 8. Real-world finding — a real order where the source document disagrees with the app's own

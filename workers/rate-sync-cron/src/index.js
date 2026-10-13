@@ -1,5 +1,5 @@
 // workers/rate-sync-cron/src/index.js — Cloudflare Worker, daily Cron Trigger.
-// Calls the shanti-ops production sync endpoint (POST /api/statutory-rates/sync, SYSTEM.md §5ag)
+// Calls the SB Ops production sync endpoint (POST /api/statutory-rates/sync, SYSTEM.md §5ag)
 // and reports success/failure to a healthchecks.io dead-man's-switch: it pings on success/failure,
 // and healthchecks.io itself emails if no ping arrives at all — the only way to catch "the cron
 // stopped firing", since this Worker's own code can't detect its own non-invocation.

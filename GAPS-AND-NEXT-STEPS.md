@@ -1,4 +1,4 @@
-# Shanti Ops — Gaps & Next Steps (audited 2026-08-17)
+# SB Ops — Gaps & Next Steps (audited 2026-08-17)
 
 Handoff doc for picking up where this session left off, without re-running the audit. Every item
 below was independently verified against the live code (file:line), not just read off a doc.

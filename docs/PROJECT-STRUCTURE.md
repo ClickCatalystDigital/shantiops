@@ -1,6 +1,6 @@
 # Project structure and naming
 
-Shanti Ops is intentionally a single Next.js application, but its boundaries are domain-based.
+SB Ops is intentionally a single Next.js application, but its boundaries are domain-based.
 Keep new work within the existing shape unless a change clearly improves a whole domain.
 
 ## Where code belongs

@@ -1,6 +1,6 @@
 # Report / Document Engine — Plan
 
-Scope: a reusable reporting layer that turns the data Shanti Ops already manages into professional,
+Scope: a reusable reporting layer that turns the data SB Ops already manages into professional,
 printable, audit-friendly business documents — PDF, Excel, and on-screen — instead of one more
 accounting or workflow module.
 
@@ -128,12 +128,12 @@ and Excel.
 
 A mature ERP isn't perceived as mature because it has hundreds of screens. It's perceived as
 mature because it can produce authoritative business documents and reports from the data it
-already manages. Shanti Ops has spent five phases building the data (BOM, POs, Vendor Bills, the
+already manages. SB Ops has spent five phases building the data (BOM, POs, Vendor Bills, the
 GL, GST compliance, Work Orders, QC records) — the highest-ROI next investment is making that data
 *visible and exportable*, not adding more capability nobody can see in one document.
 
 ```
-                 SHANTI OPS
+                 SB OPS
                      │
        ┌─────────────┼─────────────┐
        │             │             │
@@ -164,23 +164,23 @@ count.
 
 ## 2. Explicitly separate: file uploads / Cloudflare R2
 
-Shanti Ops already has a working file-storage system — `lib/r2.js`, Cloudflare R2 (S3-compatible),
+SB Ops already has a working file-storage system — `lib/r2.js`, Cloudflare R2 (S3-compatible),
 used today for **uploaded** artifacts: Test Certificate PDFs and AutoCAD/calc-drawing files
 (`app/api/test-certificates/[id]/pdf`, `app/api/calc-drawings/[id]/upload`, and siblings). That
-system exists because those files are created *outside* Shanti Ops (a scanned certificate, a CAD
+system exists because those files are created *outside* SB Ops (a scanned certificate, a CAD
 export) and need somewhere durable to live.
 
-The Report Engine is the opposite case: every document below is generated *from data Shanti Ops
+The Report Engine is the opposite case: every document below is generated *from data SB Ops
 already has*, on demand, at request time. It needs no storage — the PDF/Excel is a rendering of a
 live query, not a file someone uploaded. **Do not route generated reports through R2** just because
 R2 already exists; that would be storing something that's cheaper and more correct to regenerate
 than to keep in sync. The two systems solve different problems and should stay architecturally
-separate: R2 for what someone hands you, the Report Engine for what Shanti Ops itself can prove
+separate: R2 for what someone hands you, the Report Engine for what SB Ops itself can prove
 from its own data.
 
 ## 3. What already exists (don't rebuild this)
 
-Shanti Ops already generates real PDFs today, one bespoke module per document — this is the proof
+SB Ops already generates real PDFs today, one bespoke module per document — this is the proof
 the pattern works, and the seed the engine should generalize from, not throw away:
 
 | File | Document | Shared frame (§0)? |
@@ -223,7 +223,7 @@ folding into the same engine rather than treating as separate:
   screen-only, no PDF yet.
 
 This is exactly the "GST summaries," "GSTR-1 working report" pattern below, one department earlier
-— a statutory document assembled from records Shanti Ops already holds. Once the Report Engine
+— a statutory document assembled from records SB Ops already holds. Once the Report Engine
 exists, finishing QC's folder is "add the II(1)/III/IIIA templates as report definitions," not a
 separate PDF subsystem.
 
@@ -280,7 +280,7 @@ internal reporting layer for two known legal entities, not a general BI product.
 
 ## 7. Report catalog
 
-Marked **exists (screen)** where Shanti Ops already computes/shows this live but has no PDF/Excel
+Marked **exists (screen)** where SB Ops already computes/shows this live but has no PDF/Excel
 output yet — those are the cheapest wins, since the query already exists. Marked **new** where the
 underlying data exists but nothing currently surfaces it as a report at all.
 
@@ -414,7 +414,7 @@ the other way round).
 
 Not every report in §7 gets built before the engine is proven (ground rule 3). The first 10 are
 pinned deliberately, not left as "candidates": three genuinely new queries to prove the engine
-handles data it doesn't already compute, then seven wraps of numbers Shanti Ops already computes on
+handles data it doesn't already compute, then seven wraps of numbers SB Ops already computes on
 screen today, to prove the same engine handles "just render what already exists" just as cheaply.
 
 **Phase 1 — prove the engine (new queries): ✅ shipped 2026-08-22**

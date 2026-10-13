@@ -1,4 +1,4 @@
-# Shanti Ops
+# SB Ops
 
 Manufacturing operations platform for Shanti Boilers (SLA/milestone tracking, Master BOM Excel
 import with department-scoped editing, dispatch/packing), plus a device/browser security platform

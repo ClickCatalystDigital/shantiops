@@ -1,4 +1,4 @@
-# shanti-ops E2E test suite — Stores/Procurement/Production/Dispatch lifecycle
+# SB Ops E2E test suite — Stores/Procurement/Production/Dispatch lifecycle
 
 Real Python tests against the actual running dev server and the real shared Turso dev DB, scoped
 to project **TEST-PROJ** (id 242) so they never touch real customer data. Each phase creates real
