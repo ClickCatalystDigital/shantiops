@@ -4,14 +4,23 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, showToast } from '@/lib/client';
+import { responsibilityLabel } from '@/lib/department-roles';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
+// ponytail: Head vs member is per department (Access Matrix → Responsibility), so staff just show it here.
+function staffRoles(h) {
+  let roles = {};
+  try { roles = JSON.parse(h.department_roles || '{}') || {}; } catch {}
+  const depts = (h.departments || '').split(',').map(d => d.trim()).filter(Boolean);
+  return depts.map(d => responsibilityLabel(d, roles[d] || 'designer')).join(' · ');
+}
+
 const BLANK = { employeeId: '', username: '', password: '', role: 'operator' };
-const LEVELS = [['operator', 'Department head'], ['manager', 'Manager'], ['executive', 'Executive']];
+const LEVELS = [['operator', 'Department staff'], ['manager', 'Manager'], ['executive', 'Executive']];
 const levelLabel = role => LEVELS.find(l => l[0] === role)?.[1] || role;
 
 export default function UserManagement({ heads: initialHeads, availableEmployees = [], isAdmin = false, canSetLevel = false, myId = null }) {
@@ -55,7 +64,7 @@ export default function UserManagement({ heads: initialHeads, availableEmployees
   async function changeLevel(head, role) {
     if (role === head.role) return;
     const msg = role === 'operator'
-      ? `Make ${head.display_name || head.username} a department head? Grant their departments in the Access Matrix afterwards.`
+      ? `Make ${head.display_name || head.username} department staff? Grant departments and Head/Member in the Access Matrix afterwards.`
       : `Make ${head.display_name || head.username} ${levelLabel(role)}? They get access to every department, and their department grants are cleared.`;
     if (!window.confirm(msg)) return;
     try {
@@ -105,6 +114,9 @@ export default function UserManagement({ heads: initialHeads, availableEmployees
                           {LEVELS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                         </select>
                       ) : levelLabel(h.role)}
+                      {h.role === 'operator' && (
+                        <div className="mt-1 text-xs text-muted-foreground">{staffRoles(h) || 'No departments yet'}</div>
+                      )}
                     </TableCell>
                     <TableCell>{h.active ? 'Active' : 'Deactivated'}</TableCell>
                     {isAdmin && (
