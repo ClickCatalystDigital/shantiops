@@ -6,7 +6,7 @@ import { DEMO_ROLES } from '@/lib/demo-roles';
 // Public demo: sign in as one of the sample department heads (only after the entry form).
 export async function POST(req) {
   if (process.env.DEMO_MODE !== '1') return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  if (req.cookies.get('demo_lead')?.value !== '1') return NextResponse.json({ error: 'Fill in the form first' }, { status: 403 });
+  if (!req.cookies.get('demo_lead')?.value) return NextResponse.json({ error: 'Fill in the form first' }, { status: 403 });
   const { username } = await req.json().catch(() => ({}));
   if (!DEMO_ROLES.some(r => r.username === username)) return NextResponse.json({ error: 'Unknown role' }, { status: 400 });
   const user = await queryOne('SELECT * FROM users WHERE username = ? AND active = 1 AND pending = 0', [username]);

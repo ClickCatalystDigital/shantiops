@@ -12,6 +12,6 @@ export const metadata = {
 
 export default async function DemoPage() {
   if (process.env.DEMO_MODE !== '1') notFound();
-  const hasLead = (await cookies()).get('demo_lead')?.value === '1';
+  const hasLead = !!(await cookies()).get('demo_lead')?.value;
   return <DemoEntry roles={DEMO_ROLES} hasLead={hasLead} />;
 }

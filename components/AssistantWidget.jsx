@@ -8,15 +8,24 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { linkify } from '@/lib/assistant-help.mjs';
-import { MessageCircleQuestionIcon, XIcon, SendIcon, RotateCcwIcon } from 'lucide-react';
+import { MessageCircleQuestionIcon, XIcon, SendIcon, RotateCcwIcon, LockIcon } from 'lucide-react';
+import DemoAiLimit from '@/components/DemoAiLimit';
 
-export default function AssistantWidget() {
+// demo: the public demo (app/layout.js passes DEMO_MODE): two questions per visitor, then a lock and an overlay.
+export default function AssistantWidget({ demo = false }) {
   const path = usePathname();
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState([]); // { role, content, sources?, error? }
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [left, setLeft] = useState(null); // questions left today, once known
+  const [demoAi, setDemoAi] = useState(null); // { enabled, left, limit } in the demo, once known
+  const [limitOpen, setLimitOpen] = useState(false);
+  const locked = demo && demoAi?.left === 0;
+  useEffect(() => {
+    if (!demo) return;
+    fetch('/api/demo/ai').then(r => (r.ok ? r.json() : null)).then(d => d && setDemoAi(d)).catch(() => {});
+  }, [demo]);
   const endRef = useRef(null);
   useEffect(() => { endRef.current?.scrollIntoView({ block: 'end' }); }, [messages, open]);
   // On a phone the panel covers the screen: stop the page behind it from scrolling.
@@ -30,6 +39,7 @@ export default function AssistantWidget() {
   async function send(preset) {
     const q = (typeof preset === 'string' ? preset : text).trim();
     if (!q || busy) return;
+    if (locked) { setLimitOpen(true); return; }
     const history = [...messages.filter(m => !m.error), { role: 'user', content: q }];
     setMessages([...history, { role: 'assistant', content: '' }]);
     setText(''); setBusy(true);
@@ -38,8 +48,10 @@ export default function AssistantWidget() {
       const res = await fetch('/api/assistant/chat', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ messages: history.map(({ role, content }) => ({ role, content })), path }) });
       if (!res.ok) {
         const e = await res.json().catch(() => null);
+        if (demo && res.status === 429 && e?.demoLimit) { setDemoAi(d => (d ? { ...d, left: 0 } : d)); setLimitOpen(true); }
         throw Object.assign(new Error(e?.error || `Request failed (${res.status})`), { link: e?.link, linkLabel: e?.linkLabel });
       }
+      if (demo) setDemoAi(d => (d ? { ...d, left: Math.max(0, d.left - 1) } : d));
       let sources = [];
       try { sources = JSON.parse(decodeURIComponent(res.headers.get('x-sources') || '%5B%5D')); } catch { /* no sources */ }
       if (res.headers.get('x-left') !== null) setLeft(Number(res.headers.get('x-left')));
@@ -56,20 +68,31 @@ export default function AssistantWidget() {
     } finally { setBusy(false); }
   }
 
+  // The demo shows OPS AI only when it has its own AI key (and once the visitor's count is known).
+  if (demo && !demoAi?.enabled) return null;
+  const limitOverlay = limitOpen && demoAi ? <DemoAiLimit limit={demoAi.limit} onClose={() => setLimitOpen(false)} /> : null;
+
   if (!open) {
     return (
-      <Button onClick={() => setOpen(true)} size="icon" aria-label="Open OPS AI"
-        className="fixed bottom-24 right-4 z-40 size-12 rounded-full shadow-lg md:bottom-6 md:right-6 print:hidden">
-        <MessageCircleQuestionIcon className="size-5" />
-      </Button>
+      <>
+        {limitOverlay}
+        <Button onClick={() => (locked ? setLimitOpen(true) : setOpen(true))} size="icon" aria-label={locked ? 'OPS AI: free questions used' : 'Open OPS AI'}
+          className="fixed bottom-24 right-4 z-40 size-12 rounded-full shadow-lg md:bottom-6 md:right-6 print:hidden">
+          <MessageCircleQuestionIcon className="size-5" />
+          {locked && <span className="absolute -right-0.5 -top-0.5 grid size-5 place-items-center rounded-full border-2 border-background bg-foreground text-background"><LockIcon className="size-2.5" /></span>}
+        </Button>
+      </>
     );
   }
   return (
+    <>
+    {limitOverlay}
     <div className="fixed inset-x-0 top-0 z-50 flex h-dvh flex-col bg-background md:inset-x-auto md:top-auto md:bottom-6 md:right-6 md:h-[min(36rem,calc(100vh-3rem))] md:w-[24rem] md:rounded-xl md:border md:shadow-2xl print:hidden">
       <div className="flex items-center justify-between border-b px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
         <div>
           <p className="text-sm font-semibold">OPS AI</p>
-          {left !== null && <p className="text-[11px] text-muted-foreground">{left} question{left === 1 ? '' : 's'} left today</p>}
+          {demo && demoAi ? <p className="text-[11px] text-muted-foreground">{demoAi.left} of {demoAi.limit} free questions left</p>
+            : left !== null && <p className="text-[11px] text-muted-foreground">{left} question{left === 1 ? '' : 's'} left today</p>}
         </div>
         <div className="flex gap-1">
           <Button size="icon" variant="ghost" className="size-10 md:size-8" aria-label="Clear conversation" disabled={busy || !messages.length} onClick={() => setMessages([])}><RotateCcwIcon className="size-4" /></Button>
@@ -115,5 +138,6 @@ export default function AssistantWidget() {
         <Button type="submit" size="icon" className="size-11 rounded-full md:size-9 md:rounded-md" disabled={busy || !text.trim()} aria-label="Send"><SendIcon className="size-4" /></Button>
       </form>
     </div>
+    </>
   );
 }

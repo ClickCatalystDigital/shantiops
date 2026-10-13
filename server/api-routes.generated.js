@@ -129,6 +129,7 @@ export const ROUTES = {
   "customers/[id]": () => import("./api/customers/[id]/route.js"),
   "customers": () => import("./api/customers/route.js"),
   "customers/similar": () => import("./api/customers/similar/route.js"),
+  "demo/ai": () => import("./api/demo/ai/route.js"),
   "demo/enter": () => import("./api/demo/enter/route.js"),
   "demo/lead": () => import("./api/demo/lead/route.js"),
   "dependency-chain": () => import("./api/dependency-chain/route.js"),

@@ -65,7 +65,7 @@ export default async function RootLayout({ children }) {
             </footer>
           </div>
         </TooltipProvider>
-        {isInternal(user) && !needsDeviceSetup && <AssistantWidget />}
+        {isInternal(user) && !needsDeviceSetup && <AssistantWidget demo={process.env.DEMO_MODE === '1'} />}
         <Toaster position="top-center" richColors />
         {process.env.DEMO_MODE === '1' && <DemoAnalytics />}
       </body>

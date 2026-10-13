@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getFreshSessionUser, isAdmin, isInternal, isPM, headDepartments } from '@/lib/auth';
 import { queryOne } from '@/lib/db';
 import { getAssistantSettings, getAssistantKey, allHelpSections, jevDecide, openRouterError, canManageAssistant, useQuestion, OPENROUTER } from '@/lib/assistant';
+import { takeDemoAiQuestion, returnDemoAiQuestion, DEMO_AI_QUESTIONS } from '@/lib/demo-leads';
 import { pickSections, deptOfPath, kindQuestion, sectionQuestion, asIsQuestion, toolQuestion, ranked, guideAnswer, CANNED, screenList } from '@/lib/assistant-help.mjs';
 import { toolsFor } from '@/lib/assistant-data';
 
@@ -91,8 +92,22 @@ export async function POST(req) {
   try { key = await getAssistantKey(); } catch { key = null; }
   if (!key) return NextResponse.json({ error: canManageAssistant(user) ? 'No OpenRouter key yet. Add one in Settings → Assistant.' : 'The assistant is not set up yet. Contact Accounts.' }, { status: 400 });
   const { model, mode, dataAccess } = await getAssistantSettings();
+  // Public demo: two questions per visitor (lib/demo-leads.js) instead of the per-person daily limit; a
+  // question is given back if the answer fails (see the end of this handler).
+  const demoToken = process.env.DEMO_MODE === '1' ? req.cookies.get('demo_lead')?.value : null;
+  if (process.env.DEMO_MODE === '1') {
+    if (b.dry || b.as) return NextResponse.json({ error: 'Not available in the demo' }, { status: 403 });
+    if (!(await takeDemoAiQuestion(demoToken))) return NextResponse.json({ error: `That was your ${DEMO_AI_QUESTIONS} free questions.`, demoLimit: true }, { status: 429 });
+    let out;
+    try { out = await answer(); } catch (e) { await returnDemoAiQuestion(demoToken).catch(() => {}); throw e; }
+    if (!out.ok) await returnDemoAiQuestion(demoToken).catch(() => {}); // an error answer doesn't use up a question
+    return out;
+  }
+  return answer();
+
+  async function answer() {
   // Daily limit per person (set per department in Settings → Assistant). Test runs are not counted.
-  const quota = b.dry ? { left: null } : await useQuestion(user);
+  const quota = b.dry || process.env.DEMO_MODE === '1' ? { left: null } : await useQuestion(user);
   if (quota.ok === false) return NextResponse.json({ error: `You have used today's ${quota.limit} questions. You can ask again tomorrow.` }, { status: 429 });
 
   // Whose question is it. Normally the signed-in user; in a dry run admin may test as someone else
@@ -181,4 +196,5 @@ export async function POST(req) {
     },
   }));
   return new Response(stream, { headers: headers(picked, data?.link, quota.left) });
+  }
 }

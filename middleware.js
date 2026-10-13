@@ -20,7 +20,9 @@ function demoGuard(req, pathname) {
   if (DEMO_PUBLIC.includes(pathname)) return NextResponse.next();
   const write = !['GET', 'HEAD', 'OPTIONS'].includes(req.method);
   const sends = /\/send-(email|whatsapp)$/.test(pathname);
-  if ((write && DEMO_BLOCKED.some(p => pathname === p || pathname.startsWith(p + '/'))) || sends) {
+  // OPS AI chat stays open: two questions per visitor, counted in server/api/assistant/chat.
+  const aiChat = pathname === '/api/assistant/chat';
+  if ((write && !aiChat && DEMO_BLOCKED.some(p => pathname === p || pathname.startsWith(p + '/'))) || sends) {
     return NextResponse.json({ error: 'Not available in the demo' }, { status: 403 });
   }
   return null;
