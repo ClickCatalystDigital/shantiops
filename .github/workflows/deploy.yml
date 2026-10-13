@@ -72,4 +72,6 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Wait until the client site serves this commit
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: node scripts/wait-for-commit.mjs https://shantiops.onrender.com "$GITHUB_SHA" /login
