@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Loader2Icon, ArrowRightIcon } from 'lucide-react';
-import { FEATURES } from '@/lib/product-features';
+import { FEATURES, INTEGRATIONS } from '@/lib/product-features';
 
 const FIELDS = [
   ['name', 'Your name', 'text', true], ['company', 'Company', 'text', true], ['email', 'Work email', 'email', true],
@@ -37,7 +37,7 @@ export default function DemoEntry({ roles, hasLead }) {
 
   return (
     <main className="container grid min-h-screen gap-10 py-10 lg:grid-cols-[1fr_1.1fr] lg:items-center">
-      <section className="space-y-6">
+      <section className="order-2 space-y-6 lg:order-none">
         <div>
           <p className="text-sm font-medium text-muted-foreground">SB Ops · live demo</p>
           <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">The ERP built for boiler manufacturers</h1>
@@ -45,15 +45,25 @@ export default function DemoEntry({ roles, hasLead }) {
             Walk through a working copy with sample data for Acme Boilers, a made-up company: four orders at design,
             procurement, production and dispatch. Click anything; changes reset every night.
           </p>
+          <p className="mt-3 max-w-xl text-sm text-muted-foreground">
+            One system, from enquiry to commissioning: CRM, Design, Procurement, Stores, Production, QC, Dispatch,
+            Service, Accounts and HR on one set of records.
+          </p>
         </div>
         <ul className="grid gap-3 sm:grid-cols-2">
-          {FEATURES.slice(0, 6).map(([Icon, title, text]) => (
+          {FEATURES.map(([Icon, title, text]) => (
             <li key={title} className="flex gap-3">
               <Icon className="mt-0.5 size-5 shrink-0 text-primary" />
               <div><p className="text-sm font-medium">{title}</p><p className="text-xs text-muted-foreground">{text}</p></div>
             </li>
           ))}
         </ul>
+        <div>
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Connects with</p>
+          <ul className="mt-2 flex flex-wrap gap-1.5">
+            {INTEGRATIONS.map(name => <li key={name} className="rounded-full border px-2.5 py-1 text-xs text-muted-foreground">{name}</li>)}
+          </ul>
+        </div>
         <p className="mt-6 text-sm text-muted-foreground">
           How it was built for a real boiler maker:{' '}
           <a href="https://ahromlabs.com/industries/boiler-pressure-vessel-manufacturing" className="font-medium text-foreground underline-offset-2 hover:underline">ERP for boiler and pressure-vessel manufacturers</a>
