@@ -4692,7 +4692,7 @@ Next.js app):
   catches "the cron stopped firing entirely," which no amount of code inside the Worker itself could
   ever detect). A `fetch()` handler, gated by the same shared secret, allows a manual test trigger
   without waiting for the schedule.
-- `wrangler.toml` — `crons = ["0 21 * * *"]` (21:00 UTC = 02:30 IST daily, off-hours for the
+- `wrangler.jsonc` — `crons: ["0 21 * * *"]` (21:00 UTC = 02:30 IST daily, off-hours for the
   Hyderabad-based business), `SYNC_URL` as a plain var (not sensitive — it's the already-public
   endpoint address).
 - Config validated locally (`wrangler deploy --dry-run`) before any Cloudflare account was touched.

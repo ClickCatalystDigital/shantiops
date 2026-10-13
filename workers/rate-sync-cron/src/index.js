@@ -68,7 +68,7 @@ async function pingHealthcheck(env, kind, detail) {
 }
 
 // Sales CRM plan 2d — daily quotation follow-up reminders. Optional: only runs once REMINDERS_URL is
-// set (wrangler.toml [vars]); the app also sweeps hourly on its own, so this is the punctual path.
+// set (wrangler.jsonc vars); the app also sweeps hourly on its own, so this is the punctual path.
 async function runReminders(env) {
   if (!env.REMINDERS_URL) return;
   try {

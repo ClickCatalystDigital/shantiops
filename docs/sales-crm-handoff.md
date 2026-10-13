@@ -26,7 +26,7 @@ built, with verification notes). Branch: `claude/exciting-mccarthy-cj760h`, cont
 ## Left for the client / next chat
 
 - **Cron Worker**: `workers/rate-sync-cron` now also calls the daily quotation-reminder endpoint
-  (`REMINDERS_URL` in `wrangler.toml`). It only takes effect after `wrangler deploy` — until then the
+  (`REMINDERS_URL` in `workers/rate-sync-cron/wrangler.jsonc`). It only takes effect after `wrangler deploy` — until then the
   app sends reminders itself, at most hourly, when anyone's notification bell loads.
 - **Settings to fill in**: funnel stage probabilities (Sales → Masters → Funnel Stages; blank = a
   default), the discount-approval limit (Quotations tab, default 10%), price lists per product.
