@@ -26,7 +26,7 @@ export default function DemoEntry({ roles, hasLead }) {
     setBusy('form'); setError('');
     try {
       await api('/api/demo/lead', { method: 'POST', body: form });
-      track('generate_lead', { form: 'demo' });
+      track('boiler_demo_form_sent');
       setStep('roles');
     }
     catch (err) { setError(err.message); }
@@ -36,14 +36,24 @@ export default function DemoEntry({ roles, hasLead }) {
     setBusy(username); setError('');
     try {
       const r = await api('/api/demo/enter', { method: 'POST', body: { username } });
-      track('demo_role_selected', { role: username });
+      track('boiler_demo_login', { role: username });
       window.location.assign(r.home || '/');
     } catch (err) { setError(err.message); setBusy(null); }
   }
 
   return (
     <>
-    <main id="top" className="container grid min-h-screen gap-10 py-10 lg:grid-cols-[1fr_1.1fr] lg:items-center">
+    {/* Slim header: who made this and where to read more (not the full ahromlabs.com navbar, so the form stays the focus). */}
+    <header className="border-b">
+      <div className="container flex h-14 items-center justify-between gap-4 text-sm">
+        <a href="https://ahromlabs.com" className="font-semibold tracking-tight">Ahrom Labs</a>
+        <nav className="flex items-center gap-4 text-muted-foreground sm:gap-6">
+          <a href="https://ahromlabs.com/industries/boiler-pressure-vessel-manufacturing" className="hover:text-foreground">How it was built</a>
+          <a href="https://ahromlabs.com/#contact" className="hover:text-foreground">Contact</a>
+        </nav>
+      </div>
+    </header>
+    <main id="top" className="container grid min-h-[calc(100vh-3.5rem)] gap-10 py-10 lg:grid-cols-[1fr_1.1fr] lg:items-center">
       {/* min-w-0: a grid column otherwise grows to its widest content, here the logo strip's long track. */}
       <section className="order-2 min-w-0 space-y-6 lg:order-none">
         <div>

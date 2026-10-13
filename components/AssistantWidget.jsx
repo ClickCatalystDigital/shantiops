@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { linkify } from '@/lib/assistant-help.mjs';
 import { MessageCircleQuestionIcon, XIcon, SendIcon, RotateCcwIcon, LockIcon } from 'lucide-react';
 import DemoAiLimit from '@/components/DemoAiLimit';
+import { track } from '@/components/DemoAnalytics';
 
 // demo: the public demo (app/layout.js passes DEMO_MODE): two questions per visitor, then a lock and an overlay.
 export default function AssistantWidget({ demo = false }) {
@@ -39,7 +40,7 @@ export default function AssistantWidget({ demo = false }) {
   async function send(preset) {
     const q = (typeof preset === 'string' ? preset : text).trim();
     if (!q || busy) return;
-    if (locked) { setLimitOpen(true); return; }
+    if (locked) { setLimitOpen(true); track('boiler_demo_ai_limit'); return; }
     const history = [...messages.filter(m => !m.error), { role: 'user', content: q }];
     setMessages([...history, { role: 'assistant', content: '' }]);
     setText(''); setBusy(true);
@@ -48,10 +49,10 @@ export default function AssistantWidget({ demo = false }) {
       const res = await fetch('/api/assistant/chat', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ messages: history.map(({ role, content }) => ({ role, content })), path }) });
       if (!res.ok) {
         const e = await res.json().catch(() => null);
-        if (demo && res.status === 429 && e?.demoLimit) { setDemoAi(d => (d ? { ...d, left: 0 } : d)); setLimitOpen(true); }
+        if (demo && res.status === 429 && e?.demoLimit) { setDemoAi(d => (d ? { ...d, left: 0 } : d)); setLimitOpen(true); track('boiler_demo_ai_limit'); }
         throw Object.assign(new Error(e?.error || `Request failed (${res.status})`), { link: e?.link, linkLabel: e?.linkLabel });
       }
-      if (demo) setDemoAi(d => (d ? { ...d, left: Math.max(0, d.left - 1) } : d));
+      if (demo) { setDemoAi(d => (d ? { ...d, left: Math.max(0, d.left - 1) } : d)); track('boiler_demo_ai_question'); }
       let sources = [];
       try { sources = JSON.parse(decodeURIComponent(res.headers.get('x-sources') || '%5B%5D')); } catch { /* no sources */ }
       if (res.headers.get('x-left') !== null) setLeft(Number(res.headers.get('x-left')));
@@ -76,7 +77,7 @@ export default function AssistantWidget({ demo = false }) {
     return (
       <>
         {limitOverlay}
-        <Button onClick={() => (locked ? setLimitOpen(true) : setOpen(true))} size="icon" aria-label={locked ? 'OPS AI: free questions used' : 'Open OPS AI'}
+        <Button onClick={() => (locked ? (setLimitOpen(true), track('boiler_demo_ai_limit')) : setOpen(true))} size="icon" aria-label={locked ? 'OPS AI: free questions used' : 'Open OPS AI'}
           className="fixed bottom-24 right-4 z-40 size-12 rounded-full shadow-lg md:bottom-6 md:right-6 print:hidden">
           <MessageCircleQuestionIcon className="size-5" />
           {locked && <span className="absolute -right-0.5 -top-0.5 grid size-5 place-items-center rounded-full border-2 border-background bg-foreground text-background"><LockIcon className="size-2.5" /></span>}
