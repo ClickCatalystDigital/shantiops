@@ -43,7 +43,8 @@ export default function DemoEntry({ roles, hasLead }) {
 
   return (
     <main className="container grid min-h-screen gap-10 py-10 lg:grid-cols-[1fr_1.1fr] lg:items-center">
-      <section className="order-2 space-y-6 lg:order-none">
+      {/* min-w-0: a grid column otherwise grows to its widest content, here the logo strip's long track. */}
+      <section className="order-2 min-w-0 space-y-6 lg:order-none">
         <div>
           <p className="text-sm font-medium text-muted-foreground">SB Ops · live demo</p>
           <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">The ERP built for boiler manufacturers</h1>
