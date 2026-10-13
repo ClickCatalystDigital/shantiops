@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Loader2Icon, ArrowRightIcon } from 'lucide-react';
 import { FEATURES, INTEGRATIONS } from '@/lib/product-features';
+import { track } from '@/components/DemoAnalytics';
 
 const FIELDS = [
   ['name', 'Your name', 'text', true], ['company', 'Company', 'text', true], ['email', 'Work email', 'email', true],
@@ -23,7 +24,11 @@ export default function DemoEntry({ roles, hasLead }) {
   async function submit(e) {
     e.preventDefault();
     setBusy('form'); setError('');
-    try { await api('/api/demo/lead', { method: 'POST', body: form }); setStep('roles'); }
+    try {
+      await api('/api/demo/lead', { method: 'POST', body: form });
+      track('generate_lead', { form: 'demo' });
+      setStep('roles');
+    }
     catch (err) { setError(err.message); }
     finally { setBusy(null); }
   }
@@ -31,6 +36,7 @@ export default function DemoEntry({ roles, hasLead }) {
     setBusy(username); setError('');
     try {
       const r = await api('/api/demo/enter', { method: 'POST', body: { username } });
+      track('demo_role_selected', { role: username });
       window.location.assign(r.home || '/');
     } catch (err) { setError(err.message); setBusy(null); }
   }

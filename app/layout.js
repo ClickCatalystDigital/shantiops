@@ -2,6 +2,7 @@ import './globals.css';
 import Nav from '@/components/Nav';
 import AssistantWidget from '@/components/AssistantWidget';
 import DeviceSetupGate from '@/components/DeviceSetupGate';
+import DemoAnalytics from '@/components/DemoAnalytics';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { getFreshSessionUser, isInternal, needsDeviceEnrollment, isDemoUser, hasSafePass } from '@/lib/auth';
@@ -66,6 +67,7 @@ export default async function RootLayout({ children }) {
         </TooltipProvider>
         {isInternal(user) && !needsDeviceSetup && <AssistantWidget />}
         <Toaster position="top-center" richColors />
+        {process.env.DEMO_MODE === '1' && <DemoAnalytics />}
       </body>
     </html>
   );
