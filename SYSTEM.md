@@ -13168,4 +13168,4 @@ Plan: standard subsystems (FD fan, ID fan, Feed Line…) are **variants of a tem
 - `lib/db.js` must stay loadable by plain Node (CI runs `migrate()` outside Next): imports need file extensions.
 - `wrangler.jsonc` pins the demo's Cloudflare account. Demo data is unchanged: no schema change since the golden copy was built; the first CI run adds the one missing table/fingerprint row (tested on a throwaway copy, scan clean).
 - First green run 2026-10-13 (checks 45 s, demo 2.5 min, client trigger). Every deploy is visible under the repo's Actions tab.
-- The old `../sb-ops-demo` checkout (branch `demo`) is no longer used for code; it only holds the demo secrets files.
+- Demo secrets for local work live in this repo's root, git-ignored: `.demo-secrets` (demo database URLs/tokens, admin password, reset trigger key) and `.dev.vars` (the demo Worker's local env, used by `npm run cf:preview`). The old `../sb-ops-demo` checkout and the `demo` branch were removed 2026-10-13.
