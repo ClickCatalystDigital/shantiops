@@ -240,6 +240,7 @@ export const ROUTES = {
   "leads/[id]/convert": () => import("./api/leads/[id]/convert/route.js"),
   "leads/[id]": () => import("./api/leads/[id]/route.js"),
   "leads/bulk-assign-owner": () => import("./api/leads/bulk-assign-owner/route.js"),
+  "leads/list": () => import("./api/leads/list/route.js"),
   "leads": () => import("./api/leads/route.js"),
   "leave-allocations": () => import("./api/leave-allocations/route.js"),
   "leave-requests/[id]": () => import("./api/leave-requests/[id]/route.js"),

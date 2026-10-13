@@ -506,23 +506,28 @@ function ExpectedValueField({ lead, router }) {
 // with Pvt/Ltd/etc. ignored — this is how repeat enquiries (and likely duplicates) are spotted.
 const enquiryGroupKey = l => (l.converted_customer_id ? `c${l.converted_customer_id}` : `n${customerKey(l.company_name || l.lead_name || '')}`);
 
-function RelatedEnquiries({ lead, allLeads, stages, onOpen }) {
-  const key = enquiryGroupKey(lead);
-  const others = allLeads.filter(l => l.id !== lead.id && key !== 'n' && enquiryGroupKey(l) === key)
-    .sort((a, b) => String(b.enquiry_date || b.created_at).localeCompare(String(a.enquiry_date || a.created_at)));
+function RelatedEnquiries({ lead, stages, onOpen }) {
+  // Asked from the server (GET /api/leads/list?mode=related); the page doesn't carry every enquiry.
+  const [rel, setRel] = useState({ rows: [], total: 0 });
+  useEffect(() => {
+    let live = true;
+    api(`/api/leads/list?mode=related&id=${lead.id}`).then(r => { if (live) setRel(r); }).catch(() => {});
+    return () => { live = false; };
+  }, [lead.id, lead.updated_at]);
+  const others = rel.rows;
   if (!others.length) return null;
   return (
     <div className="rounded-lg border border-amber-300/60 bg-amber-50/50 p-2.5 dark:bg-amber-950/20">
-      <div className="mb-1 text-sm font-semibold">Other enquiries from this customer ({others.length})</div>
+      <div className="mb-1 text-sm font-semibold">Other enquiries from this customer ({rel.total})</div>
       <p className="mb-1.5 text-xs text-muted-foreground">Check these before adding more — the same enquiry may already be here.</p>
       <div className="flex flex-col gap-1">
-        {others.slice(0, 10).map(o => (
+        {others.map(o => (
           <button key={o.id} type="button" onClick={() => onOpen(o)} className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 rounded border bg-background px-2 py-1.5 text-left text-xs hover:bg-muted">
             <span className="min-w-0">{formatDate(o.enquiry_date || o.created_at)} · {o.product || o.lead_name}</span>
             <span className="flex shrink-0 items-center gap-1.5"><StageBadge lead={o} stages={stages} />{o.expected_value ? <span className="tnum text-muted-foreground">{formatMoney(o.expected_value)}</span> : null}</span>
           </button>
         ))}
-        {others.length > 10 && <span className="text-xs text-muted-foreground">+{others.length - 10} more</span>}
+        {rel.total > others.length && <span className="text-xs text-muted-foreground">+{rel.total - others.length} more</span>}
       </div>
     </div>
   );
@@ -547,7 +552,7 @@ function InlineField({ label, value, field, lead, router, type = 'text' }) {
   );
 }
 
-function LeadDetailSheet({ lead, allLeads = [], onOpenLead, users, customers, salesProducts = [], branches = [], stages = [], isSalesHead = false, onClose, router }) {
+function LeadDetailSheet({ lead, sources = [], onOpenLead, users, customers, salesProducts = [], branches = [], stages = [], isSalesHead = false, onClose, router }) {
   const extra = ENQUIRY_DETAIL_FIELDS.filter(([k]) => lead[k] && !['address', 'website', 'reference', 'initiated_by'].includes(k));
   // Home calendar's ?diary=now|advanced deep-link (Phase 4) — opens straight into the diary form
   // instead of the plain detail sheet.
@@ -560,7 +565,7 @@ function LeadDetailSheet({ lead, allLeads = [], onOpenLead, users, customers, sa
   const [deleting, setDeleting] = useState(false);
   const [diaryOpen, setDiaryOpen] = useState(false);
   const { convert: convertLead, dialog: convertDialog } = useLeadConvert();
-  const sourceOptions = useMemo(() => distinctOptions(allLeads, 'source', SOURCE_SEED), [allLeads]);
+  const sourceOptions = useMemo(() => [...new Set([...SOURCE_SEED, ...sources])].sort().map(v => ({ value: v, label: v })), [sources]);
   const primaryProduct = (lead.products || []).find(p => p.is_primary) || (lead.products || [])[0];
 
   async function deleteLead() {
@@ -665,7 +670,7 @@ function LeadDetailSheet({ lead, allLeads = [], onOpenLead, users, customers, sa
             </div>
           </div>
 
-          <RelatedEnquiries lead={lead} allLeads={allLeads} stages={stages} onOpen={onOpenLead} />
+          <RelatedEnquiries lead={lead} stages={stages} onOpen={onOpenLead} />
 
           {/* Row 2 — actions */}
           <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/30 p-2.5">
@@ -926,7 +931,7 @@ function Field2({ label, required, wide, children }) {
   );
 }
 
-export function AddEnquiryDialog({ leads = [], users, salesProducts, stages = [], onClose, router, initial = null }) {
+export function AddEnquiryDialog({ users, salesProducts, stages = [], onClose, router, initial = null }) {
   const [f, setF] = useState({
     enquiry_date: todayISO(), organization: '', address: '', website: '', email: '',
     assigned_to: '', reference: '', short_name: '', territory: '', district: '', sub_location: '',
@@ -936,8 +941,16 @@ export function AddEnquiryDialog({ leads = [], users, salesProducts, stages = []
     ...(initial ? Object.fromEntries(Object.entries(initial).filter(([k]) => k !== 'product')) : {}),
   });
   const similarOrgs = useSimilarCustomers({ name: f.organization, phone: f.phone });
-  const key = customerKey(f.organization);
-  const sameOrgEnquiries = key ? leads.filter(l => customerKey(l.company_name || l.lead_name || '') === key) : [];
+  // Existing enquiries under this name and the values already in use (GET /api/leads/list?mode=hints).
+  const [hints, setHints] = useState({ sameOrg: [], districts: [], subLocations: [], sources: [] });
+  useEffect(() => {
+    let live = true;
+    const t = setTimeout(() => {
+      api(`/api/leads/list?mode=hints&org=${encodeURIComponent(f.organization || '')}`).then(h => { if (live) setHints(h); }).catch(() => {});
+    }, 300);
+    return () => { live = false; clearTimeout(t); };
+  }, [f.organization]);
+  const sameOrgEnquiries = hints.sameOrg;
   const [products, setProducts] = useState([initial?.product ? { ...blankProductLine(), description: initial.product } : blankProductLine()]);
   const [saving, setSaving] = useState(false);
   const [customSource, setCustomSource] = useState(false);
@@ -945,9 +958,10 @@ export function AddEnquiryDialog({ leads = [], users, salesProducts, stages = []
   const setText = (k) => (e) => setF(prev => ({ ...prev, [k]: e.target.value }));
   const productsTotal = productLinesTotal(products);
 
-  const districtOpts = distinctOptions(leads, 'district');
-  const subLocationOpts = distinctOptions(leads, 'sub_location');
-  const sourceOpts = distinctOptions(leads, 'source', SOURCE_SEED);
+  const opts = (values, seed = []) => [...new Set([...seed, ...values])].sort().map(v => ({ value: v, label: v }));
+  const districtOpts = opts(hints.districts);
+  const subLocationOpts = opts(hints.subLocations);
+  const sourceOpts = opts(hints.sources, SOURCE_SEED);
   const teamOpts = users.map(u => ({ value: u.username, label: u.display_name || u.username }));
 
   async function save() {
@@ -1020,18 +1034,17 @@ export function AddEnquiryDialog({ leads = [], users, salesProducts, stages = []
 // lives here now, over enquiries instead of opportunities. Same native HTML5 drag pattern as
 // PipelineWorkspace.jsx. Dropping on a won stage points to Create PO (which records the order);
 // dropping on Order Lost opens the reason dialog; every other stage changes directly.
-function LeadBoard({ leads: allLeads, stages, users = [], onOpen, onLost, router }) {
+function LeadBoard({ data, stages, users = [], onOpen, onLost, onMore, router }) {
+  // Columns come from the server (GET /api/leads/list?mode=board): count, value and the first 40
+  // cards per stage; "Show more" asks for the next 40. Closed sales calls aren't pipeline.
   const [busyId, setBusyId] = useState(null);
-  const [shownBy, setShownBy] = useState({}); // cards shown per stage — thousands of enquiries would freeze the page
-  const leads = allLeads.filter(l => !isClosedCall(l, stages)); // closed sales calls aren't pipeline
-  const ordered = [...stages].sort((a, b) => a.sort_order - b.sort_order);
+  const meta = new Map(stages.map(s => [s.name, s]));
   const wonNames = new Set(stages.filter(s => s.is_won).map(s => s.name));
   const lostNames = new Set(stages.filter(s => s.is_lost).map(s => s.name));
   const stageOf = l => l.sales_call_status || DEFAULT_STAGE;
-  const openValue = leads.filter(l => !wonNames.has(stageOf(l)) && !lostNames.has(stageOf(l))).reduce((a, l) => a + (l.expected_value || 0), 0);
-  const wonCount = leads.filter(l => wonNames.has(stageOf(l))).length;
-  const lostCount = leads.filter(l => lostNames.has(stageOf(l))).length;
+  const { openValue = 0, wonCount = 0, lostCount = 0, columns = [] } = data;
   const winRate = (wonCount + lostCount) > 0 ? Math.round((wonCount / (wonCount + lostCount)) * 100) : null;
+  const findLead = id => columns.flatMap(c => c.cards).find(l => l.id === id);
 
   async function move(lead, stage) {
     if (stageOf(lead) === stage) return;
@@ -1051,24 +1064,23 @@ function LeadBoard({ leads: allLeads, stages, users = [], onOpen, onLost, router
         <div><span className="text-muted-foreground">Win rate: </span><span className="font-semibold tnum">{winRate == null ? '—' : `${winRate}%`}</span><span className="text-muted-foreground"> ({wonCount} won / {lostCount} lost)</span></div>
       </div>
       <div className="flex gap-3 overflow-x-auto pb-2">
-        {ordered.map(stage => {
-          const cards = leads.filter(l => stageOf(l) === stage.name).sort((a, b) => String(b.enquiry_date || '').localeCompare(String(a.enquiry_date || '')));
-          const limit = shownBy[stage.name] || 40;
-          const total = cards.reduce((a, l) => a + (l.expected_value || 0), 0);
+        {columns.map(col => {
+          const stage = meta.get(col.name) || { name: col.name };
+          const cards = col.cards;
           return (
             <div key={stage.name}
               onDragOver={e => e.preventDefault()}
               onDrop={e => {
                 const id = Number(e.dataTransfer.getData('text/plain'));
-                const lead = leads.find(l => l.id === id);
+                const lead = findLead(id);
                 if (lead) move(lead, stage.name);
               }}
               className={`flex min-h-[12rem] w-60 shrink-0 flex-col gap-2 rounded-lg border p-2 ${stage.is_won ? 'bg-success/5' : stage.is_lost ? 'bg-destructive/5' : 'bg-muted/30'}`}>
               <div className="flex items-baseline justify-between gap-2">
                 <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{stage.name}</div>
-                <div className="text-xs text-muted-foreground tnum">{cards.length}{total > 0 ? ` · ${formatMoney(total)}` : ''}</div>
+                <div className="text-xs text-muted-foreground tnum">{col.count}{col.total > 0 ? ` · ${formatMoney(col.total)}` : ''}</div>
               </div>
-              {cards.slice(0, limit).map(l => (
+              {cards.map(l => (
                 <div key={l.id}
                   draggable={busyId !== l.id}
                   onDragStart={e => e.dataTransfer.setData('text/plain', String(l.id))}
@@ -1087,7 +1099,7 @@ function LeadBoard({ leads: allLeads, stages, users = [], onOpen, onLost, router
                   {isSlaBreached(l) && <Badge variant="destructive" className="mt-1">SLA overdue</Badge>}
                 </div>
               ))}
-              {cards.length > limit && <Button size="sm" variant="outline" onClick={() => setShownBy(m => ({ ...m, [stage.name]: limit + 40 }))}>Show more ({cards.length - limit} left)</Button>}
+              {col.count > cards.length && <Button size="sm" variant="outline" onClick={() => onMore(stage.name, cards.length)}>Show more ({col.count - cards.length} left)</Button>}
             </div>
           );
         })}
@@ -1098,19 +1110,19 @@ function LeadBoard({ leads: allLeads, stages, users = [], onOpen, onLost, router
 
 // The one Enquiries list (2026-09-29: the separate "New Enquiries" tab, which was this same table
 // narrowed to pre-Proposals stages, is gone — the Stage filter below covers that view).
-function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], stages = [], savedViews, isSalesHead = false, router }) {
+function LeadsTab({ users, customers = [], salesProducts, branches = [], stages = [], savedViews, isSalesHead = false, router, refreshKey }) {
   const { convert: convertLeadRow, dialog: convertRowDialog } = useLeadConvert();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [busyId, setBusyId] = useState(null);
-  // Home calendar's "Update Now"/"Advanced Update" deep-link (Phase 4) — same click-to-open
-  // pattern JobCardBoard.jsx already uses for ?highlight=, not just scroll-and-flash.
+  // Home calendar's "Update Now"/"Advanced Update" deep-link (Phase 4) and alert links open the
+  // enquiry named by ?highlight=LD-<id>, whether or not it is on the current page.
   const searchParams = useSearchParams();
   const highlightCode = searchParams.get('highlight');
-  const [selected, setSelected] = useState(() => leads.find(l => `LD-${l.id}` === highlightCode) || null);
-  // Also when an alert is clicked while Sales is already open.
-  useEffect(() => { const l = highlightCode && leads.find(x => `LD-${x.id}` === highlightCode); if (l) setSelected(l); }, [highlightCode]); // eslint-disable-line react-hooks/exhaustive-deps
+  const highlightId = Number((/^LD-(\d+)$/.exec(highlightCode || '') || [])[1]) || null;
+  const [selected, setSelected] = useState(() => (highlightId ? { id: highlightId } : null));
+  useEffect(() => { if (highlightId) setSelected({ id: highlightId }); }, [highlightId]);
   // The list carries only a few fields per enquiry (lib/sales-tab-data.mjs LEAD_LIST_FIELDS); the
-  // sheet gets the full enquiry, fetched on open and again after a save refreshes the list.
+  // sheet gets the full enquiry, fetched on open and again after a save refreshes the page.
   const [fullLead, setFullLead] = useState(null);
   useEffect(() => {
     if (!selected) { setFullLead(null); return; }
@@ -1118,7 +1130,7 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
     api(`/api/leads/${selected.id}`).then(l => { if (live) setFullLead(l); })
       .catch(err => { if (live) { showToast(err.message, 'error'); setSelected(null); } });
     return () => { live = false; };
-  }, [selected?.id, leads]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selected?.id, refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const [filters, setFilters] = useState(LEAD_FILTER_DEFAULT);
   const [view, setView] = useState(searchParams.get('view') === 'board' ? 'board' : 'list');
   const [lostLead, setLostLead] = useState(null);
@@ -1131,39 +1143,48 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
   const [size, setSize] = useState(25);
   const [bulkAssignee, setBulkAssignee] = useState('');
   const [bulkBusy, setBulkBusy] = useState(false);
-
-  const sources = [...new Set(leads.map(l => l.source).filter(Boolean))];
-  const unassignedCount = leads.filter(l => !l.account_manager).length;
   const [groupBy, setGroupBy] = useState(false);
-  const groupCounts = useMemo(() => {
-    const m = new Map();
-    for (const l of leads) { const k = enquiryGroupKey(l); if (k !== 'n') m.set(k, (m.get(k) || 0) + 1); }
-    return m;
-  }, [leads]);
-  const filteredRaw = leads.filter(l =>
-    (filters.stage === 'all' || (l.sales_call_status || DEFAULT_STAGE) === filters.stage) &&
-    (filters.source === 'all' || l.source === filters.source) &&
-    (filters.branch === 'all' || String(l.branch_id) === filters.branch) &&
-    (!unassignedOnly || !l.account_manager) &&
-    (!amcOnly || l.enquiry_type === 'amc') &&
-    (!filters.search || l.lead_name.toLowerCase().includes(filters.search.toLowerCase()) || (l.company_name || '').toLowerCase().includes(filters.search.toLowerCase()))
-  );
-  // "Group by customer": same-customer enquiries sit together, in the order their first one appears.
-  const filtered = useMemo(() => {
-    if (!groupBy) return filteredRaw;
-    const order = new Map();
-    filteredRaw.forEach(l => { const k = enquiryGroupKey(l); if (!order.has(k)) order.set(k, order.size); });
-    return [...filteredRaw].sort((a, b) => order.get(enquiryGroupKey(a)) - order.get(enquiryGroupKey(b)));
-  }, [filteredRaw, groupBy]);
-  useEffect(() => { setPage(0); }, [filters, unassignedOnly, groupBy, amcOnly]);
-  const shown = filtered.slice(page * size, (page + 1) * size); // 5,000+ enquiries: never render them all
+
+  // The server filters and pages (GET /api/leads/list, lib/lead-list.mjs); the page never holds all
+  // 5,000+ enquiries. Typing in search waits 300 ms before asking.
+  const [search, setSearch] = useState(filters.search);
+  useEffect(() => { const t = setTimeout(() => setSearch(filters.search), 300); return () => clearTimeout(t); }, [filters.search]);
+  const query = new URLSearchParams({
+    stage: filters.stage, source: filters.source, branch: filters.branch, search,
+    unassigned: unassignedOnly ? '1' : '', amc: amcOnly ? '1' : '', group: groupBy ? '1' : '',
+  }).toString();
+  useEffect(() => { setPage(0); }, [query]);
+  const [data, setData] = useState(null); // { rows, total, sources, unassignedCount, amcCount }
+  const [board, setBoard] = useState(null);
+  const [loadError, setLoadError] = useState(null);
+  useEffect(() => {
+    let live = true;
+    const url = view === 'board' ? `/api/leads/list?mode=board&${query}` : `/api/leads/list?mode=list&${query}&offset=${page * size}&limit=${size}`;
+    api(url).then(r => { if (!live) return; setLoadError(null); if (view === 'board') setBoard(r); else setData(r); })
+      .catch(err => { if (live) setLoadError(err.message); });
+    return () => { live = false; };
+  }, [view, query, page, size, refreshKey]);
+  async function loadMore(stageName, offset) {
+    try {
+      const r = await api(`/api/leads/list?mode=board&${query}&stage_more=${encodeURIComponent(stageName)}&offset=${offset}`);
+      setBoard(b => b && { ...b, columns: b.columns.map(c => (c.name === stageName ? { ...c, cards: [...c.cards, ...r.cards] } : c)) });
+    } catch (err) { showToast(err.message, 'error'); }
+  }
+  const facts = (view === 'board' ? board : data) || data || board || {};
+  const sources = facts.sources || [];
+  const unassignedCount = facts.unassignedCount || 0;
+  const amcCount = facts.amcCount || 0;
+  const total = data?.total ?? 0;
+  const shown = data?.rows || [];
   const teamOpts = users.map(u => ({ value: u.username, label: u.display_name || u.username }));
 
   function toggleSelected(id) {
     setSelectedIds(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
   }
-  function toggleSelectAll() {
-    setSelectedIds(prev => prev.size === filtered.length ? new Set() : new Set(filtered.map(l => l.id)));
+  async function toggleSelectAll() {
+    if (selectedIds.size > 0 && selectedIds.size === total) return setSelectedIds(new Set());
+    try { const { ids } = await api(`/api/leads/list?mode=ids&${query}`); setSelectedIds(new Set(ids)); }
+    catch (err) { showToast(err.message, 'error'); }
   }
   async function bulkAssign() {
     if (!bulkAssignee || !selectedIds.size) return;
@@ -1268,8 +1289,8 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
               {unassignedOnly ? 'Showing unassigned' : `No A/C Manager (${unassignedCount})`}
             </Button>
           )}
-          {leads.some(l => l.enquiry_type === 'amc') && (
-            <Button size="sm" variant={amcOnly ? 'default' : 'outline'} onClick={() => setAmcOnly(v => !v)}>AMC enquiries ({leads.filter(l => l.enquiry_type === 'amc').length})</Button>
+          {amcCount > 0 && (
+            <Button size="sm" variant={amcOnly ? 'default' : 'outline'} onClick={() => setAmcOnly(v => !v)}>AMC enquiries ({amcCount})</Button>
           )}
           <div className="col-span-2 ml-auto hidden items-center gap-1.5 sm:flex">
             <Input placeholder="Name this view…" value={viewName} onChange={e => setViewName(e.target.value)} className="w-44" />
@@ -1286,8 +1307,10 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
           </div>
         )}
         {view === 'board' ? (
-          <LeadBoard leads={filtered} stages={stages} users={users} onOpen={setSelected} onLost={setLostLead} router={router} />
-        ) : filtered.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No leads match.</p> : (<>
+          board ? <LeadBoard data={board} stages={stages} users={users} onOpen={setSelected} onLost={setLostLead} onMore={loadMore} router={router} />
+            : <p className="py-6 text-center text-sm text-muted-foreground">{loadError || 'Loading…'}</p>
+        ) : !data ? <p className="py-6 text-center text-sm text-muted-foreground">{loadError || 'Loading…'}</p>
+        : total === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No leads match.</p> : (<>
           <div className="grid gap-2 md:hidden">
             {shown.map(l => (
               <div key={l.id} data-entity-code={`LD-${l.id}`} onClick={() => setSelected(l)} className="cursor-pointer rounded-xl border p-3 active:bg-muted">
@@ -1299,7 +1322,7 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
                   <StageBadge lead={l} stages={stages} />
                   {isSlaBreached(l) && <Badge variant="destructive">SLA overdue</Badge>}
                   {l.sales_call_closed_at && <Badge variant="secondary">Closed</Badge>}
-                  {groupCounts.get(enquiryGroupKey(l)) > 1 && <Badge variant="outline" className="text-[10px]">{groupCounts.get(enquiryGroupKey(l))} enquiries</Badge>}
+                  {l.group_count > 1 && <Badge variant="outline" className="text-[10px]">{l.group_count} enquiries</Badge>}
                 </div>
                 <div className="mt-1.5 flex items-center justify-between gap-2 text-xs text-muted-foreground">
                   <span>{l.account_manager ? l.account_manager : 'Unassigned'}{l.source ? ` · ${l.source}` : ''}</span>
@@ -1310,7 +1333,7 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
           </div>
           <Table className="hidden md:table">
             <TableHeader><TableRow>
-              <TableHead className="w-8"><Checkbox checked={selectedIds.size > 0 && selectedIds.size === filtered.length} onCheckedChange={toggleSelectAll} aria-label="Select all" /></TableHead>
+              <TableHead className="w-8"><Checkbox checked={selectedIds.size > 0 && selectedIds.size === total} onCheckedChange={toggleSelectAll} aria-label="Select all" /></TableHead>
               <TableHead>Enquiry</TableHead><TableHead className="hidden lg:table-cell">Source</TableHead><TableHead>Stage</TableHead><TableHead className="text-right">Value</TableHead>
               <TableHead>A/C Manager</TableHead><TableHead className="hidden xl:table-cell">Assigned</TableHead><TableHead /></TableRow></TableHeader>
             <TableBody>
@@ -1323,7 +1346,7 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
                     <div className="flex flex-wrap items-center gap-1.5">
                       {l.company_name || l.lead_name}
                       {!!l.is_vip && <StarIcon className="size-3.5 fill-amber-400 text-amber-400" aria-label="VIP" />}
-                      {groupCounts.get(enquiryGroupKey(l)) > 1 && <Badge variant="outline" className="text-[10px]" title="Enquiries from the same customer">{groupCounts.get(enquiryGroupKey(l))} enquiries</Badge>}
+                      {l.group_count > 1 && <Badge variant="outline" className="text-[10px]" title="Enquiries from the same customer">{l.group_count} enquiries</Badge>}
                     </div>
                     {l.company_name && l.lead_name && l.lead_name.trim().toLowerCase() !== l.company_name.trim().toLowerCase() && (
                       <div className="text-xs font-normal text-muted-foreground">{l.lead_name}</div>
@@ -1349,13 +1372,13 @@ function LeadsTab({ leads, users, customers = [], salesProducts, branches = [], 
               ))}
             </TableBody>
           </Table>
-          <Pager page={page} setPage={setPage} size={size} setSize={setSize} total={filtered.length} />
+          <Pager page={page} setPage={setPage} size={size} setSize={setSize} total={total} />
         </>)}
       </CardContent>
-      {dialogOpen && <AddEnquiryDialog leads={leads} users={users} salesProducts={salesProducts} stages={stages} router={router} onClose={() => setDialogOpen(false)} />}
+      {dialogOpen && <AddEnquiryDialog users={users} salesProducts={salesProducts} stages={stages} router={router} onClose={() => setDialogOpen(false)} />}
       {lostLead && <OrderLostDialog lead={lostLead} router={router} onClose={() => setLostLead(null)} />}
       {convertRowDialog}
-      {selected && fullLead?.id === selected.id && <LeadDetailSheet lead={fullLead} allLeads={leads} onOpenLead={setSelected} users={users} customers={customers} salesProducts={salesProducts} branches={branches} stages={stages} isSalesHead={isSalesHead} router={router} onClose={() => setSelected(null)} />}
+      {selected && fullLead?.id === selected.id && <LeadDetailSheet lead={fullLead} sources={sources} onOpenLead={setSelected} users={users} customers={customers} salesProducts={salesProducts} branches={branches} stages={stages} isSalesHead={isSalesHead} router={router} onClose={() => setSelected(null)} />}
     </Card>
   );
 }
@@ -3628,7 +3651,7 @@ function FunnelStagesTab({ stages, canEdit, router }) {
   );
 }
 
-export default function SalesWorkspace({ saleOrders: saleOrdersPacked, leads: leadsPacked, customers, quotations: quotationsPacked, priceLists = [], returns = [], tradeRequests = [], inventoryItems = [], invoices = [], creditNotes = [], departments = ['Sales'], users = [], savedViews = [], initialTab, salePayments = [], branches = [], salesProducts = [], salesTargets = [], stages = [], isSalesHead = false, company = null, whatsappConnected = false, loadedKeys = null, }) {
+export default function SalesWorkspace({ saleOrders: saleOrdersPacked, leads: leadsPacked, customers, quotations: quotationsPacked, priceLists = [], returns = [], tradeRequests = [], inventoryItems = [], invoices = [], creditNotes = [], departments = ['Sales'], users = [], savedViews = [], initialTab, salePayments = [], branches = [], salesProducts = [], salesTargets = [], stages = [], isSalesHead = false, company = null, whatsappConnected = false, loadedKeys = null, renderKey = null, }) {
   const router = useRouter();
   // The page sends these three lists packed (lib/row-pack.mjs); same rows once unpacked.
   const saleOrders = useMemo(() => unpackRows(saleOrdersPacked), [saleOrdersPacked]);
@@ -3672,7 +3695,7 @@ export default function SalesWorkspace({ saleOrders: saleOrdersPacked, leads: le
           <Fragment key={company || 'all'}>
           {missing && <div className="py-16 text-center text-sm text-muted-foreground">Loading…</div>}
           {!missing && <>
-          {activePanel.key === 'leads' && <LeadsTab leads={leads} users={users} customers={customers} salesProducts={salesProducts} branches={branches} stages={stages} savedViews={savedViews} isSalesHead={isSalesHead} router={router} />}
+          {activePanel.key === 'leads' && <LeadsTab refreshKey={renderKey} users={users} customers={customers} salesProducts={salesProducts} branches={branches} stages={stages} savedViews={savedViews} isSalesHead={isSalesHead} router={router} />}
           {activePanel.key === 'customers' && <CustomersTab customers={customers} isSalesHead={isSalesHead} router={router} />}
           {activePanel.key === 'quotations' && <QuotationsTab quotations={quotations} customers={customers} salesProducts={salesProducts} isSalesHead={isSalesHead} router={router} />}
           {activePanel.key === 'price_lists' && <PriceListsTab priceLists={priceLists} customers={customers} salesProducts={salesProducts} router={router} />}
