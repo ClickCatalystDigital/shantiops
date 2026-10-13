@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { Loader2Icon, ArrowRightIcon } from 'lucide-react';
+import { Loader2Icon, ArrowRightIcon, GlobeIcon } from 'lucide-react';
 import { FEATURES, INTEGRATIONS } from '@/lib/product-features';
 import { track } from '@/components/DemoAnalytics';
 
@@ -66,9 +66,20 @@ export default function DemoEntry({ roles, hasLead }) {
         </ul>
         <div>
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Connects with</p>
-          <ul className="mt-2 flex flex-wrap gap-1.5">
-            {INTEGRATIONS.map(name => <li key={name} className="rounded-full border px-2.5 py-1 text-xs text-muted-foreground">{name}</li>)}
-          </ul>
+          {/* Two copies side by side scroll left by half their width, so the loop is seamless. The copy is
+              hidden from screen readers. Pauses on hover; reduced-motion users get a static wrapped row. */}
+          <div className="logo-marquee mt-2">
+            {[0, 1].map(copy => (
+              <ul key={copy} aria-hidden={copy === 1 || undefined} className="logo-marquee-track">
+                {INTEGRATIONS.map(([name, logo]) => (
+                  <li key={name} className="flex shrink-0 items-center gap-2 rounded-full border bg-background px-3 py-1.5 text-xs text-muted-foreground">
+                    {logo ? <img src={logo} alt="" className="h-4 w-auto" loading="lazy" /> : <GlobeIcon className="size-4" />}
+                    {name}
+                  </li>
+                ))}
+              </ul>
+            ))}
+          </div>
         </div>
         <p className="mt-6 text-sm text-muted-foreground">
           How it was built for a real boiler maker:{' '}

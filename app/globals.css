@@ -266,3 +266,23 @@
     border: none;
   }
 }
+/* Demo page "Connects with" logo strip (components/DemoEntry.jsx). */
+.logo-marquee {
+  display: flex;
+  overflow: hidden;
+  mask-image: linear-gradient(to right, transparent, #000 2rem, #000 calc(100% - 2rem), transparent);
+}
+.logo-marquee-track {
+  display: flex;
+  flex-shrink: 0;
+  gap: 0.5rem;
+  padding-right: 0.5rem;
+  animation: logoMarquee 40s linear infinite;
+}
+.logo-marquee:hover .logo-marquee-track { animation-play-state: paused; }
+@keyframes logoMarquee { to { transform: translateX(-100%); } }
+@media (prefers-reduced-motion: reduce) {
+  .logo-marquee { mask-image: none; }
+  .logo-marquee-track { flex-wrap: wrap; flex-shrink: 1; animation: none; }
+  .logo-marquee-track[aria-hidden] { display: none; }
+}
