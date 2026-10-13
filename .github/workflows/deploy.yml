@@ -60,7 +60,8 @@ jobs:
       - name: Build and deploy the demo Worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: npm run cf:deploy
+        # One retry: the build downloads Google fonts (next/font) and Google occasionally answers badly.
+        run: npm run cf:deploy || (echo "retrying once" && sleep 20 && npm run cf:deploy)
       - name: Check the demo serves this commit
         run: node scripts/wait-for-commit.mjs https://boiler-erp.ahromlabs.com "$GITHUB_SHA" /demo
 
