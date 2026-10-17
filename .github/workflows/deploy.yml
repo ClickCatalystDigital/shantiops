@@ -53,6 +53,8 @@ jobs:
           TURSO_URL="$LIVE" GITHUB_OUTPUT=/dev/null node scripts/migrate-db.mjs
       - name: Scan the demo data for the real client's details (only when it changed)
         if: steps.golden.outputs.changed == 'true'
+        # Normally ~10 min; a hung network call once blocked every later deploy for an hour.
+        timeout-minutes: 25
         env:
           DB_URL: ${{ secrets.DEMO_GOLDEN_URL }}
           DB_TOKEN: ${{ secrets.DEMO_DB_TOKEN }}
