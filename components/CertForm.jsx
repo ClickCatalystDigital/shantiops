@@ -27,14 +27,14 @@ import SearchableSelect from './SearchableSelect';
 // Only fields the form actually has — guards against the AI returning an unexpected key.
 const EXTRACTABLE_FIELDS = ['certificate_no', 'cast_no', 'heat_no', 'plate_no', 'material_spec', 'steel_maker',
   'size_t', 'size_w', 'size_l', 'chem_c', 'chem_mn', 'chem_p', 'chem_s', 'chem_si',
-  'ys', 'uts', 'elongation', 'bend_test'];
+  'ys', 'uts', 'elongation', 'bend_test', 'certificate_date'];
 
 const EMPTY = {
   certificate_no: '', cast_no: '', heat_no: '', plate_no: '', material_spec: '', steel_maker: '',
   size_t: '', size_w: '', size_l: '',
   chem_c: '', chem_mn: '', chem_p: '', chem_s: '', chem_si: '',
   ys: '', uts: '', elongation: '', bend_test: 'OK',
-  steel_making_process: '', heat_treatment: '',
+  steel_making_process: '', heat_treatment: '', certificate_date: '', inspecting_authority: '',
 };
 
 // certificate.project_ids comes back from getTestCertificates as a "2,6" concatenation.
@@ -352,10 +352,12 @@ export default function CertForm({ open, onOpenChange, certificate = null, certi
                     </SelectContent>
                   </Select>
                 </div>
-                {/* Form III A extras (only that form uses them; blank is fine for IV A-only certs). */}
+                {/* Printed on Form III A, and on IBR 2026 Form V(Part-B) / IV(Part-B); blank is fine otherwise. */}
                 <div className="grid grid-cols-2 gap-2">
                   <LabeledInput label="Steel Making Process" value={form.steel_making_process} onChange={set('steel_making_process')} placeholder="e.g. BASIC OXYGEN" />
                   <LabeledInput label="Heat Treatment" value={form.heat_treatment} onChange={set('heat_treatment')} placeholder="e.g. NORMALISED" />
+                  <LabeledInput label="Certificate Date" type="date" value={form.certificate_date} onChange={set('certificate_date')} />
+                  <LabeledInput label="Inspecting Authority" value={form.inspecting_authority} onChange={set('inspecting_authority')} placeholder="who witnessed the tests" />
                 </div>
               </Section>
             </div>

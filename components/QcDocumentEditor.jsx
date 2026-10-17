@@ -825,6 +825,9 @@ function IiiaGroupsCard({ documentId, drawings, groups, parts, assemblies, bomIt
 // Mountings & fittings list editor (QC-FOLDER-DESIGN.md §4.2) — a small editable list, saved whole
 // via the bulk-replace endpoint. serial_numbers is free text (one description can have several).
 const EMPTY_MOUNT = { description: '', size: '', moc: '', serial_numbers: '', make: '', qty: '' };
+// Form IV(Part-A) §7 rows (IBR 2026), in the gazette's order.
+const IVA_ROW_OPTIONS = [['auto', '§7: by name'], ['main_stop', '§7: Main stop valve'], ['aux_stop', '§7: Auxiliary stop'],
+  ['safety', '§7: Safety valve'], ['blow_down', '§7: Blow down'], ['feed_check', '§7: Feed check'], ['none', '§7: not listed']];
 
 function MountingsCard({ documentId, mountings, bomItems, certificates, canEdit, router }) {
   // No Save button, no local-only buffer — every row is a real, already-persisted qc_mountings row
@@ -847,7 +850,7 @@ function MountingsCard({ documentId, mountings, bomItems, certificates, canEdit,
         method: 'PATCH',
         body: {
           description: row.description, size: row.size, moc: row.moc,
-          serial_numbers: row.serial_numbers, make: row.make, qty: row.qty, bom_item_id: row.bom_item_id,
+          serial_numbers: row.serial_numbers, make: row.make, qty: row.qty, bom_item_id: row.bom_item_id, iva_row: row.iva_row || null,
         },
       });
     } catch (err) { showToast(err.message, 'error'); }
@@ -1109,6 +1112,13 @@ function MountingsCard({ documentId, mountings, bomItems, certificates, canEdit,
                 placeholder="Qty" type="number" inputMode="decimal" className="h-8 w-16 text-right text-xs font-medium" />
               <span className="truncate text-xs text-muted-foreground" title={qtyUnit}>{qtyUnit}</span>
             </div>
+            {/* IBR 2026 Form IV(Part-A) §7 row this mounting fills; "By name" matches on the description. */}
+            <Select value={r.iva_row || 'auto'} onValueChange={v => updateRow(r.id, { iva_row: v === 'auto' ? null : v }, { immediate: true })} disabled={!canEdit}>
+              <SelectTrigger size="sm" className="h-8 w-36 shrink-0 text-xs" title="Row on Form IV(Part-A) section 7"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {IVA_ROW_OPTIONS.map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
+              </SelectContent>
+            </Select>
             {/* Cert data is read live from the `mountings` prop (never the local `rows` edit buffer)
                 — router.refresh() alone surfaces a fresh link with no remount needed. Blank right
                 after "Add row" until that refresh lands, since the new row isn't in the prop yet. */}
@@ -1217,7 +1227,9 @@ export default function QcDocumentEditor({ project, document, parts, certificate
   const incomplete = parts.length === 0 || unlinked.length > 0;
   const ivaParts = parts.filter(p => !p.iiia_group_id);
   const ivaUnlinked = unlinked.filter(p => !p.iiia_group_id);
-  const showIiia = modelConfig(docSeries(document, project), docVersion).forms.includes('IIIA');
+  const docModel = modelConfig(docSeries(document, project), docVersion);
+  const showIiia = docModel.forms.includes('IIIA');
+  const iiiaOptional = (docModel.optionalForms || []).includes('IIIA');
   async function setCustomerVisible(v) {
     setVisBusy(true);
     try {
@@ -1433,7 +1445,7 @@ export default function QcDocumentEditor({ project, document, parts, certificate
               the PDF silently omits the page rather than dumping every part onto it (that would just
               reproduce the III A == IV A bug), so this is the only place that surfaces the gap before
               a folder goes out missing a required statutory form. */}
-          {showIiia && groups.length === 0 && (
+          {showIiia && !iiiaOptional && groups.length === 0 && (
             <span className="flex items-center gap-1 text-xs text-warning">
               <AlertTriangleIcon className="size-3.5" />{L('IIIA')} required — no groups defined yet
             </span>

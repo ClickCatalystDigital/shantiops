@@ -31,7 +31,7 @@ Nothing below comes from a client sample or an inspector's sign-off: there is no
 |---|---|
 | CF, MF, OF, SF, GF, DF, AF (shell/fire-tube boilers) | Form I(Part-B) + Form IV(Part-A) + Form IV(Part-B) (one per pipe group) + Form V(Part-B) |
 | SIB (small industrial boiler) | Form XXII + Form IV(Part-B) + Form V(Part-B) |
-| PRS (pressure reducing station) | Form IV(Part-D) + Form V(Part-B) |
+| PRS (pressure reducing station) | Form IV(Part-D) + Form IV(Part-B) (only when a pipe group exists) + Form V(Part-B) |
 | HEADERS (standalone steam header) | Form IV(Part-G) + Form V(Part-B) |
 
 Under 1950 these were: boilers II(1)+III+III A+IV A; SIB XVII+III A+IV A; PRS III+IV A; headers III+III-H.
@@ -55,7 +55,7 @@ parts list and their linked test certificates (cast/heat/plate no., specificatio
 process, heat treatment, C/Mn/P/S/Si, YS, UTS, elongation, bend test), pipe groups (name, design pressure/temp,
 process, heat treatment, identification marks, drawing, hydro test), mountings list (description, size, MOC, make,
 serial numbers, qty).
-**Not stored anywhere:** certificate date, inspecting authority per certificate, contract no., certificate no. of the
+**Not stored anywhere:** contract no., certificate no. of the
 inspection certificate, stamp location on shell plate, reheater data, safety valve test details, tolerances,
 flattening test, "fully killed/rimmed".
 
@@ -103,8 +103,8 @@ Open: Certificate No. and stamped plate are always blank.
 - §9: "parts in sections 2 to 8", drawing nos., "regulations under the Boilers Act, 2025, for a Design pressure of
   …", water test with date; signatures Maker's Representative / Maker, Competent Person / Inspecting Authority;
   "Dated …… the day of …… 20……".
-Open: §7 name matching is a keyword guess (e.g. "steam stop" → main stop valve); Type column never filled; §8 never
-filled from the safety-valve certificate.
+§7 rows: each mounting has a "§7" picker in the editor; unset rows are matched by name (e.g. "steam stop" → main stop valve).
+Open: Type column never filled; §8 never filled from the safety-valve certificate.
 
 ### Form IV (Part-B) — Certificate of manufacture and test for pipes (reg 10), one per pipe group
 - Certificate No. = `{document id}/{group id}`; Date = submission date.
@@ -131,8 +131,9 @@ each line. The page runs to two pages because of the notes. Hydro = 1.5 × desig
   Indian Boiler Regulations, 2026."; Maker's Rep/Maker and Competent Person/Inspecting Authority signatures.
 - Parts in a pipe group appear on Form IV(Part-B), not here — except for PRS and headers (no pipes form), where every
   part is listed here.
-Open: certificate date and inspecting authority columns are always blank (not stored); "other alloying elements"
-not captured; YS/UTS printed as stored (some certificates are in MPa, the column says Kg/mm²).
+Certificate date and inspecting authority come from the certificate (fields in the certificate form). YS/UTS above 100
+are MPa and are converted to kg/mm² (÷ 9.80665).
+Open: "other alloying elements" not captured.
 
 ### Form IV (Part-G) — Headers, desuperheaters, blowdown/feed tanks, accumulator, deaerator (reg 15)
 T.C. NO. = document id; date; part name (boiler type field), maker, customer, drawing; the three-cell block (left:
@@ -160,7 +161,9 @@ drawing, design pressure, size L/W/H/Dia (length overall and internal diameter; 
 Shell/Furnace/Tube plates/Flange/Tube/Pipes/Pads (blank — data is on the enclosed Form V(Part-B)), volumetric
 capacity (blank), heating surface, nozzle connections (a)–(e) (blank), shop hydro test + date; certification
 "Indian Boiler Regulations, 2026"; signatures.
-Open: material table is not filled from the parts; no real SIB project or filled sample exists to compare.
+Item 8 is filled from the parts (first part matching each row's name with a linked certificate); items 4, 5 and 7
+follow the gazette layout (Competent Person's stamp, Alteration No., size in metres).
+Open: no real SIB project or filled sample exists to compare; W/H of the boiler not stored.
 
 ### Covering letter and list of mountings
 Covering letter lists every form with its 2026 name and page range. The list of mountings and fittings is our own
@@ -178,3 +181,22 @@ valve makers; it is not a gazette form.
 
 ## 6. How to reproduce
 In the app: QC → Documents → open a document → Edit details → IBR regulations = 2026 → Preview / Download.
+
+## 7. Outside review, checked against the gazette (2026-10-17)
+
+An outside AI reviewed this brief. Every claim was checked against the official gazette PDF (same file as
+egazette.gov.in, byte-identical) and the IBR 1950 forms index; nothing was taken on its word.
+
+| Claim | Gazette says | Result |
+|---|---|---|
+| Form V(Part-A) is missing | Reg 8(d)(i): V(Part-A) is issued **by the steel maker**; (iii)–(iv): the maker files the extract V(Part-B) along with IV(Part-A). | We don't issue V(Part-A); the steel makers' certificates are the TC PDFs appended to the folder. Under 2026 the covering letter now names them "Steel makers' test certificates (Form-V(Part-A))". |
+| Add IV(Part-C/E/F/H) | Regs 11, 13, 14, 16: each is "signed by the maker [of the tube/casting/forging/dished end] and the Inspecting Authority". | These are suppliers' certificates, enclosed like any bought-in certificate (upload as a test certificate PDF). The boiler maker does not generate them. Not built. |
+| PRS with fabricated piping also needs IV(Part-B) | Reg 10 (pipes), reg 12 (mountings and steam-pipe fittings). | Agreed. PRS 2026 = IV(Part-D) + IV(Part-B) (printed only when a pipe group exists) + V(Part-B). |
+| Form XXII material table must be filled | Reg 555(2) only says XXII is the certificate; the form has the table. | Filled from the parts now (first part matching Shell / Furnace / Tube plates / Flange / Tube / Pipes / Pads with a linked certificate). Also added the gazette's "Competent Person's stamp", "Alteration No.", size table in metres and the tubes/pipes/pads block with diameter and thickness. |
+| Reg 308 requires certificate date and inspecting authority on V(Part-B) | Reg 308 is the inspecting authority's **record keeping**; it says nothing about V(Part-B) columns. Reg 8(d)(i) does require "the date of tests", and V(Part-B) has the columns. | Citation wrong, outcome right: certificates now store a date and inspecting authority (entered in the certificate form; date also read by AI extraction), printed on V(Part-B) and IV(Part-B). |
+| Form I(Part-C) is for field-erected boilers | Gazette title: "Certificate of inspection for site assembled boilers **at maker's works**"; field erection is Form I(Part-E) "after completion of boiler erection". All forms are issued by the Inspecting Authority. | Claim wrong. Our boilers are shop assembled → Form I(Part-B). |
+| Convert MPa to kg/mm² | Reg 8(d)(i): tensile strength "in kilograms per square millimetre". V(Part-B) columns say Kg/mm². | Done on 2026 forms: values above 100 are MPa and are divided by 9.80665 (394 → 40.2). 1950 pages unchanged. |
+| §7 mountings by keyword is risky | Reg 8(d)(vii): boilers under 20 t/h carry all mountings certificates with details in IV(Part-A). | Done: each mounting row in the editor has a "§7" picker (main stop / auxiliary stop / safety / blow down / feed check / not listed); unset rows fall back to name matching. |
+| Transition: boilers certified on/after 1 Oct 2026 must use 2026 forms | The gazette has only the saving clause ("except as respects things done or omitted to be done before such supersession"); no specific transition rule. | Not proven by the gazette. QC keeps choosing per document. |
+| Enforce "TG" prefix | Reg 301: the **registry number** engraved after registration uses state letters; Telangana = TG. | Correct fact, but the registry number is issued by the Chief Inspector after registration and does not appear in the maker's folder. Nothing to change. |
+| Form XI must be filed | Form XI is the Memorandum of Inspection Book kept by the Inspector (regs 300, 306). | Not a maker's form. Nothing to change. |

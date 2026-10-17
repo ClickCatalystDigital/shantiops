@@ -9,7 +9,8 @@ import { audit } from '@/lib/usb';
 // row's id on every save (breaking the certificate badge lookup, which is keyed on id), and meant a
 // deleted-but-never-Saved row silently came back on the next page load. Every field here is
 // optional — qc_mountings has no required columns — so a partial edit is always valid.
-const EDITABLE = ['description', 'size', 'moc', 'serial_numbers', 'make', 'qty', 'bom_item_id'];
+const EDITABLE = ['description', 'size', 'moc', 'serial_numbers', 'make', 'qty', 'bom_item_id', 'iva_row'];
+const IVA_ROWS = ['main_stop', 'aux_stop', 'safety', 'blow_down', 'feed_check', 'none'];
 
 export async function PATCH(req, props) {
   const params = await props.params;
@@ -31,6 +32,10 @@ export async function PATCH(req, props) {
   if (!fields.length) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
 
   const vals = { ...b };
+  if (fields.includes('iva_row')) {
+    if (vals.iva_row === '' || vals.iva_row === 'auto') vals.iva_row = null;
+    if (vals.iva_row != null && !IVA_ROWS.includes(vals.iva_row)) return NextResponse.json({ error: 'Unknown Form IV(Part-A) row' }, { status: 400 });
+  }
   if (fields.includes('bom_item_id') && vals.bom_item_id != null) {
     // A split child's own BOM items live only on the master (§5k/§5bj) — same ownership check
     // link-bom-item already uses, so a forged/cross-project id can't be linked here either.

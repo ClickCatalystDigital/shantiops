@@ -15,6 +15,7 @@ Extract exactly these fields as a flat JSON object (use null for anything not pr
   "certificate_no": string,   // the certificate/report number
   "cast_no": string,          // cast/heat number
   "plate_no": string|null,    // plate number, if this cert covers a specific plate
+  "certificate_date": string|null, // date of the certificate / tests, as YYYY-MM-DD
   "material_spec": string,    // material/grade specification, e.g. "SA 516 Gr.70"
   "steel_maker": string,      // the steel mill/maker name
   "size_t": string|null,      // thickness in mm, numeric text only

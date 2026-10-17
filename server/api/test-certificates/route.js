@@ -26,7 +26,7 @@ const FIELDS = [
   'certificate_no', 'cast_no', 'heat_no', 'plate_no', 'material_spec', 'steel_maker',
   'size_t', 'size_w', 'size_l', 'chem_c', 'chem_mn', 'chem_p', 'chem_s', 'chem_si',
   'ys', 'uts', 'elongation', 'bend_test',
-  'steel_making_process', 'heat_treatment',   // Form III A extras (QC-FOLDER-DESIGN.md)
+  'steel_making_process', 'heat_treatment', 'certificate_date', 'inspecting_authority',   // Form III A extras (QC-FOLDER-DESIGN.md)
 ];
 
 // QC enters a Test Certificate — one physical cert (cert + cast + plate), globally unique in the bank
