@@ -23,7 +23,7 @@ import { EXTRA_DOC_SERIES } from '@/lib/qc-extra-series.mjs';
 import { InwardApprovalsPanel, PreDispatchApprovalsPanel, JobSheetApprovalsPanel } from './MaterialApprovalPanels';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { QC_SERIES } from '@/lib/qc-series';
-import { IBR_VERSIONS, DEFAULT_NEW_IBR, ibrVersion } from '@/lib/qc-ibr.mjs';
+import { IBR_VERSIONS, DEFAULT_NEW_IBR, ibrVersion, ibrLabel } from '@/lib/qc-ibr.mjs';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { FlaskConicalIcon, FileTextIcon, GaugeIcon, AlertTriangleIcon, LockIcon, LinkIcon, ClipboardCheckIcon, InboxIcon, TruckIcon, ListChecksIcon } from 'lucide-react';
 
@@ -168,8 +168,7 @@ export default function QcWorkspace({ projects = [], certificates = [], document
           <SelectTrigger className="w-48" title="Filter documents by IBR version; new documents use it"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All IBR versions</SelectItem>
-            <SelectItem value="2026">IBR 2026 (new forms)</SelectItem>
-            <SelectItem value="1950">IBR 1950 (old forms)</SelectItem>
+            {IBR_VERSIONS.map(v => <SelectItem key={v} value={v}>{ibrLabel(v)}</SelectItem>)}
           </SelectContent>
         </Select>
       )}

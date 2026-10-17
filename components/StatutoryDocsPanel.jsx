@@ -14,7 +14,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/com
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { PlusIcon, ChevronRightIcon, Trash2Icon } from 'lucide-react';
 import { docIdAbbr, modelConfig } from '@/lib/qc-models.js';
-import { formLabel, ibrVersion, DEFAULT_NEW_IBR } from '@/lib/qc-ibr.mjs';
+import { formLabel, ibrVersion, ibrLabel, IBR_VERSIONS, DEFAULT_NEW_IBR } from '@/lib/qc-ibr.mjs';
 import QcHeaderField from './QcHeaderField';
 import { CORE_FIELDS, QC_HEADER_FIELDS } from '@/lib/qc-document-fields';
 import { COMPANY_NAMES, companyProfile, defaultCompany } from '@/lib/company-profiles';
@@ -157,10 +157,10 @@ export default function StatutoryDocsPanel({ projectId = null, projectSeries = n
   // Switch an existing document between IBR 1950 and 2026 (changes only the printed form set/wording).
   async function setVersion(d, v) {
     if (ibrVersion(d, d.series) === v) return;
-    if (!window.confirm(`Print "${d.doc_id}" on the IBR ${v} forms?`)) return;
+    if (!window.confirm(`Print "${d.doc_id}" on the ${ibrLabel(v)} forms?`)) return;
     try {
       await api(`/api/qc-documents/${d.id}`, { method: 'PATCH', body: { ibr_version: v } });
-      showToast(`Now on IBR ${v}`);
+      showToast(`Now on ${ibrLabel(v)}`);
       router.refresh();
     } catch (err) { showToast(err.message, 'error'); }
   }
@@ -212,7 +212,7 @@ export default function StatutoryDocsPanel({ projectId = null, projectSeries = n
                 <span className="font-medium">{d.doc_id}</span>
                 <span className="text-xs text-muted-foreground">
                   {showProject && d.project_no && <>{d.project_no} · </>}
-                  {d.series} series · IBR {ibrVersion(d, d.series)} · {[...modelConfig(d.series, ibrVersion(d, d.series)).forms.map(f => formLabel(f, ibrVersion(d, d.series))), 'BOI'].join(' + ')} · {d.company} · {d.linked_parts} of {d.total_parts} parts linked
+                  {d.series} series · {ibrLabel(ibrVersion(d, d.series))} · {[...modelConfig(d.series, ibrVersion(d, d.series)).forms.map(f => formLabel(f, ibrVersion(d, d.series))), 'BOI'].join(' + ')} · {d.company} · {d.linked_parts} of {d.total_parts} parts linked
                 </span>
               </div>
               <ChevronRightIcon className="ml-auto size-4 text-muted-foreground" />
@@ -221,8 +221,7 @@ export default function StatutoryDocsPanel({ projectId = null, projectSeries = n
               <Select value={ibrVersion(d, d.series)} onValueChange={v => setVersion(d, v)}>
                 <SelectTrigger size="sm" className="h-7 w-28 text-xs" aria-label="IBR version of this document"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="2026">IBR 2026</SelectItem>
-                  <SelectItem value="1950">IBR 1950</SelectItem>
+                  {IBR_VERSIONS.map(v => <SelectItem key={v} value={v}>{ibrLabel(v)}</SelectItem>)}
                 </SelectContent>
               </Select>
             )}

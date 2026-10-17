@@ -7,6 +7,7 @@ import { notifyProjectCustomers } from '@/lib/notify';
 import { COMPANY_NAMES } from '@/lib/qc-doc-pdf.js';
 import { QC_HEADER_FIELDS } from '@/lib/qc-document-fields';
 import { getQcDocumentCheckpointSummary } from '@/lib/data';
+import { IBR_VERSIONS } from '@/lib/qc-ibr.mjs';
 
 const EDITABLE = [...QC_HEADER_FIELDS.map(f => f.key), 'manifest_extra'];
 const REQUIRED_KEYS = new Set(QC_HEADER_FIELDS.filter(f => f.required).map(f => f.key));
@@ -54,8 +55,8 @@ export async function PATCH(req, props) {
   if (keys.includes('company') && !COMPANY_NAMES.includes(b.company)) {
     return NextResponse.json({ error: 'Unknown company' }, { status: 400 });
   }
-  if (keys.includes('ibr_version') && !['1950', '2026'].includes(b.ibr_version)) {
-    return NextResponse.json({ error: 'IBR version must be 1950 or 2026' }, { status: 400 });
+  if (keys.includes('ibr_version') && !IBR_VERSIONS.includes(b.ibr_version)) {
+    return NextResponse.json({ error: 'IBR version must be 2026, 1950v1 or 1950' }, { status: 400 });
   }
 
   const changed = {};

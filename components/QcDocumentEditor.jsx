@@ -165,7 +165,7 @@ function BoilerDetailsSheet({ open, onOpenChange, document, project, seams = [],
   const series = docSeries(document, project);
   const [form, setForm] = useState(() => {
     const init = Object.fromEntries(QC_HEADER_FIELDS.map(f => [f.key, document[f.key] || '']));
-    init.ibr_version = document.ibr_version === '2026' ? '2026' : '1950';
+    init.ibr_version = ibrVersion(document);
     // "signer = QC user", "date defaults to today" (QC-FOLDER-DESIGN.md §4.3) — pre-filled on first
     // open for a document that has neither set yet, stays a normal editable field afterward.
     if (!init.submission_date) init.submission_date = todayIso();
@@ -1112,7 +1112,7 @@ function MountingsCard({ documentId, mountings, bomItems, certificates, canEdit,
                 placeholder="Qty" type="number" inputMode="decimal" className="h-8 w-16 text-right text-xs font-medium" />
               <span className="truncate text-xs text-muted-foreground" title={qtyUnit}>{qtyUnit}</span>
             </div>
-            {/* IBR 2026 Form IV(Part-A) §7 row this mounting fills; "By name" matches on the description. */}
+            {/* §7 row this mounting fills (Form IV(Part-A) under 2026, Form III under 1950 v1); "By name" matches on the description. */}
             <Select value={r.iva_row || 'auto'} onValueChange={v => updateRow(r.id, { iva_row: v === 'auto' ? null : v }, { immediate: true })} disabled={!canEdit}>
               <SelectTrigger size="sm" className="h-8 w-36 shrink-0 text-xs" title="Row on Form IV(Part-A) section 7"><SelectValue /></SelectTrigger>
               <SelectContent>

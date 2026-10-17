@@ -1,7 +1,9 @@
 # IBR 1950 folder — proposed changes (for approval)
 
-Status: **proposal only, nothing changed.** Approve or reject each item; approved items will be made to the 1950
-pages only, and every other 1950 line will stay exactly as it prints today.
+Status (2026-10-17): **done as two versions.** The typos (items 4, 5, 12, 24, 25, 34) are fixed in IBR 1950 v0
+(the client's filed wording, otherwise unchanged). Every other item is in **IBR 1950 v1** (official forms), chosen per
+document. Two v0 issues are kept on purpose: item 26 (§9 prints the design pressure as the working pressure) and
+item 37 (long certificate numbers overflow on Form IV A) — use v1 to avoid them.
 
 Compared on 2026-10-17: our current 1950 folder output vs the official forms in "INDEX for FORMS under the Indian
 Boiler Regulations, 1950" (Maharashtra Directorate copy, 84 pages,

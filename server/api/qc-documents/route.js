@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { DEFAULT_NEW_IBR } from '@/lib/qc-ibr.mjs';
+import { DEFAULT_NEW_IBR, IBR_VERSIONS } from '@/lib/qc-ibr.mjs';
 import { queryOne, withTransaction } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
@@ -64,7 +64,7 @@ export async function POST(req) {
     const res = await tx.execute({
       sql: `INSERT INTO qc_documents (project_id, series, ${HEADER_FIELDS.join(', ')}, created_by, ibr_version)
             VALUES (?, ?, ${HEADER_FIELDS.map(() => '?').join(', ')}, ?, ?)`,
-      args: [b.project_id, series, ...values, user.username, b.ibr_version === '1950' ? '1950' : DEFAULT_NEW_IBR],
+      args: [b.project_id, series, ...values, user.username, IBR_VERSIONS.includes(b.ibr_version) ? b.ibr_version : DEFAULT_NEW_IBR],
     });
     const documentId = Number(res.lastInsertRowid);
     // Bought-out Items (Mountings & Fittings) deliberately stay manual-sync-only for now (the

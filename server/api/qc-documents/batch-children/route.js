@@ -19,7 +19,7 @@ import { audit } from '@/lib/usb';
 import { COMPANY_NAMES } from '@/lib/qc-doc-pdf.js';
 import { syncQcPartsFromBom } from '@/lib/qc-bom-sync';
 import { CORE_FIELDS } from '@/lib/qc-document-fields';
-import { DEFAULT_NEW_IBR } from '@/lib/qc-ibr.mjs';
+import { DEFAULT_NEW_IBR, IBR_VERSIONS } from '@/lib/qc-ibr.mjs';
 
 const HEADER_FIELDS = CORE_FIELDS.map(f => f.key);
 // Shared across every child in the batch — everything except the two per-unit identity fields.
@@ -73,7 +73,7 @@ export async function POST(req) {
         args: [child.id, series, ...HEADER_FIELDS.map(f => {
           const v = values[f];
           return typeof v === 'string' ? (v.trim() || null) : (v ?? null);
-        }), user.username, master.bom_release_revision ?? null, b.ibr_version === '1950' ? '1950' : DEFAULT_NEW_IBR],
+        }), user.username, master.bom_release_revision ?? null, IBR_VERSIONS.includes(b.ibr_version) ? b.ibr_version : DEFAULT_NEW_IBR],
       });
       const documentId = Number(res.lastInsertRowid);
       // Read the master's own BOM (per-unit qty_text, correct as-is — see file header), write parts

@@ -9,10 +9,13 @@ page numbers: `docs/ibr-2026-forms.md`. Status as of 2026-10-17.
 1. **The gazette is the only authority for 2026 pages.** Gazette of India Extraordinary No. 596, 1 Oct 2026
    (link below). Copy wording, section numbers, column order and units from its blank forms. Don't add, drop or
    re-word anything the gazette doesn't print; if the app has no value for a line, print the dotted blank.
-2. **Never change a 1950 page.** Documents filed before IBR 2026 must reprint word for word. 2026 pages are separate
-   components (section "IBR 2026 pages" in `lib/qc-folder-pdf.js`). After any change, render a folder for every
-   model in both versions and compare the 1950 text with the previous output; it must be identical.
-3. **Version lives on the document** (`qc_documents.ibr_version`, NULL = 1950). Printed names come from
+2. **Never change a 1950 v0 page.** There are three versions: `'2026'`, `'1950v1'` (the official 1950 blank
+   forms) and `'1950'` = v0 (the client's filed wording; only six typos were fixed on 2026-10-17). v0 documents must
+   reprint word for word. 2026 and 1950 v1 share the "IBR 2026 pages" components in `lib/qc-folder-pdf.js`, with the
+   wording from the `GW` table per version; v0 uses the older components. After any change, render every model in
+   all three versions and compare with the previous output; v0 must be identical, and 2026 identical unless the
+   change was meant for it.
+3. **Version lives on the document** (`qc_documents.ibr_version`, NULL = 1950 v0). Printed names come from
    `formLabel(key, version)`; form sets from `modelConfig(series, version)`. Internal form keys stay the old ones
    (II1, III, IIIA, IVA, IIIH, XVII, plus IVD) — don't rename them.
 4. **Units:** strength on 2026 forms is kg/mm² (reg 8(d)(i)); values above 100 are MPa and are converted.
@@ -26,9 +29,14 @@ page numbers: `docs/ibr-2026-forms.md`. Status as of 2026-10-17.
 - **2026 pages:** every form's sections, wording, column order and units follow the gazette blank (checked line by
   line). What is not filled automatically: lines the app has no data for (section 3 below), which print as blanks
   to complete by hand. Not yet signed off by an Inspecting Authority, and no real 2026 folder has been filed.
-- **1950 pages:** built against the client's real filed samples (CF/MF/SF/headers) and their stated corrections;
-  audited against the official 1950 forms on 2026-10-17: differences and proposed fixes, awaiting approval, in
-  `docs/ibr-1950-proposed-changes.md`. Unchanged until approved.
+- **1950 v0 pages:** built against the client's real filed samples (CF/MF/SF/headers) and their stated corrections;
+  six typos fixed 2026-10-17 (items 4, 5, 12, 24, 25, 34 of `docs/ibr-1950-proposed-changes.md`), nothing else.
+- **1950 v1 pages:** the official 1950 blank forms ("INDEX for FORMS under the Indian Boiler Regulations, 1950",
+  Maharashtra Directorate) — every other item of that doc: Form II(1), III (incl. "in manuscript", sections 2 to 9,
+  working pressure in §9, least-pressure line), III-A with the temperature table and 1950 notes, IV-A with the 15
+  official columns and certification, III-H, XVII with item 5A. Same form numbers and form sets as v0. A PRS or
+  steam header keeps the v0 component Form III (1950 has no component form). Misprints in the index corrected:
+  "Components(s)", "Manufacturer and Test", "lbs./sp.in", "Maganese/Sulpher", the doubled XVII sub-title phrase.
 
 ## 1. Sources
 
