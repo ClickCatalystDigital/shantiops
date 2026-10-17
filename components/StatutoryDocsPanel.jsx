@@ -14,12 +14,13 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/com
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { PlusIcon, ChevronRightIcon, Trash2Icon } from 'lucide-react';
 import { docIdAbbr, modelConfig } from '@/lib/qc-models.js';
-import { formLabel, ibrVersion, DEFAULT_NEW_IBR } from '@/lib/qc-ibr.mjs';
+import { formLabel, ibrVersion, DEFAULT_NEW_IBR, prsVersionNote } from '@/lib/qc-ibr.mjs';
 import QcHeaderField from './QcHeaderField';
-import { CORE_FIELDS } from '@/lib/qc-document-fields';
+import { CORE_FIELDS, QC_HEADER_FIELDS } from '@/lib/qc-document-fields';
 import { COMPANY_NAMES, companyProfile, defaultCompany } from '@/lib/company-profiles';
 
-const EMPTY = Object.fromEntries(CORE_FIELDS.map(f => [f.key, '']));
+const EMPTY = { ...Object.fromEntries(CORE_FIELDS.map(f => [f.key, ''])), ibr_version: DEFAULT_NEW_IBR };
+const IBR_FIELD = QC_HEADER_FIELDS.find(f => f.key === 'ibr_version');
 
 // Fields rendered with their own custom handling below (doc_id derivation, company prefix lookup)
 // rather than the shared QcHeaderField — everything else in CORE_FIELDS renders off the shared list.
@@ -107,6 +108,16 @@ function NewDocumentSheet({ open, onOpenChange, projectId, projectSeries, extra 
                 {COMPANIES.map(c => <SelectItem key={c.value} value={c.value}>{c.value}</SelectItem>)}
               </SelectContent>
             </Select>
+          </div>
+          <div className="col-span-2 flex flex-col gap-1.5">
+            <Label>{IBR_FIELD.label}</Label>
+            <Select value={form.ibr_version} onValueChange={v => setForm(f => ({ ...f, ibr_version: v }))}>
+              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {IBR_FIELD.options.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            {prsVersionNote(projectSeries) && <p className="text-xs text-warning">{prsVersionNote(projectSeries)}</p>}
           </div>
           <div className="col-span-2 flex flex-col gap-1.5">
             <Label>Maker's No.<span className="text-danger"> *</span></Label>

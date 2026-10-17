@@ -29,7 +29,9 @@ import QcHeaderField from './QcHeaderField';
 import { suggestCertificates, suggestBomItem } from '@/lib/tc-match';
 import { normalizeMaterial } from '@/lib/match-utils';
 import { QC_HEADER_FIELDS } from '@/lib/qc-document-fields';
-import { prsVersionNote, suggestedBeltCount } from '@/lib/qc-ibr.mjs';
+import { prsVersionNote, suggestedBeltCount, formLabel, ibrVersion } from '@/lib/qc-ibr.mjs';
+// Printed form names follow the document's IBR version (1950 vs 2026), same as the folder PDF.
+const labelsFor = (document, project) => { const v = ibrVersion(document, docSeries(document, project)); return k => formLabel(k, v); };
 import { modelConfig } from '@/lib/qc-models';
 import { docSeries } from '@/lib/qc-extra-series.mjs';
 import { STANDARD_MOC } from '@/lib/section-shapes';
@@ -110,7 +112,7 @@ function SeamRow({ documentId, seam, label, router, busyId, setBusyId }) {
   );
 }
 
-function SeamsSection({ documentId, seams, router, beltSuggestion = 1 }) {
+function SeamsSection({ documentId, seams, router, beltSuggestion = 1, L = formLabel }) {
   const [busyId, setBusyId] = useState(null);
   const belts = seams.filter(s => s.location === 'belt');
   const rings = seams.filter(s => s.location === 'furnace_ring');
@@ -140,7 +142,7 @@ function SeamsSection({ documentId, seams, router, beltSuggestion = 1 }) {
 
   return (
     <div className="col-span-2 flex flex-col gap-3 rounded-md border p-3">
-      <p className="text-sm font-medium">Form III §4 — Longitudinal Seams</p>
+      <p className="text-sm font-medium">{L('III')} §4 — Longitudinal Seams</p>
       <div className="flex flex-col gap-1.5">
         <Label className="text-xs text-muted-foreground">Belts</Label>
         {belts.map(s => <SeamRow key={s.id} documentId={documentId} seam={s} label="Belt" router={router} busyId={busyId} setBusyId={setBusyId} />)}
@@ -256,7 +258,7 @@ function BoilerDetailsSheet({ open, onOpenChange, document, project, seams = [],
                   onChange={v => setForm(fm => ({ ...fm, [f.key]: v }))} />
               )
             ))}
-            <SeamsSection documentId={document.id} seams={seams} router={router} beltSuggestion={suggestedBeltCount(project?.model_capacity)} />
+            <SeamsSection documentId={document.id} seams={seams} router={router} beltSuggestion={suggestedBeltCount(project?.model_capacity)} L={labelsFor(document, project)} />
           </div>
           <SheetFooter>
             <Button disabled={busy} onClick={submit}>{busy ? 'Saving…' : 'Save changes'}</Button>
@@ -624,7 +626,7 @@ const IIIA_HEADER_FIELDS = [
   ['hydro_test_pressure', 'Hydro Test Pressure (Kgf/cm²)'], ['hydro_test_date', 'Hydro Test Date'],
 ];
 
-function NewIiiaGroupDialog({ open, onOpenChange, documentId, assemblies, groupLabels, router }) {
+function NewIiiaGroupDialog({ open, onOpenChange, documentId, assemblies, groupLabels, router, L = formLabel }) {
   const EMPTY = { name: '', assembly_id: '', group_label: '' };
   const [form, setForm] = useState(EMPTY);
   const [busy, setBusy] = useState(false);
@@ -637,7 +639,7 @@ function NewIiiaGroupDialog({ open, onOpenChange, documentId, assemblies, groupL
       const res = await api(`/api/qc-documents/${documentId}/iiia-groups`, {
         method: 'POST', body: { name: form.name.trim(), assembly_id: form.assembly_id || null, group_label: form.group_label || null },
       });
-      showToast(res.moved > 0 ? `Group added — pulled in ${res.moved} existing part${res.moved === 1 ? '' : 's'}` : 'Form III A group added');
+      showToast(res.moved > 0 ? `Group added — pulled in ${res.moved} existing part${res.moved === 1 ? '' : 's'}` : `${L('IIIA')} group added`);
       setForm(EMPTY);
       onOpenChange(false);
       router.refresh();
@@ -648,7 +650,7 @@ function NewIiiaGroupDialog({ open, onOpenChange, documentId, assemblies, groupL
   return (
     <Dialog open={open} onOpenChange={o => { onOpenChange(o); if (!o) setForm(EMPTY); }}>
       <DialogContent className="max-w-md">
-        <DialogHeader><DialogTitle>New Form III A group</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>New {L('IIIA')} group</DialogTitle></DialogHeader>
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-1.5">
             <Label>Name</Label>
@@ -675,7 +677,7 @@ function NewIiiaGroupDialog({ open, onOpenChange, documentId, assemblies, groupL
 }
 
 function IiiaGroupCard({ group: g, parts, bomItems, onLinkBomItem, canEdit, documentId, drawings, router,
-  selected, onToggle, onOpenPicker, onEdit, onRemove, onUnlink, onAddPart }) {
+  selected, onToggle, onOpenPicker, onEdit, onRemove, onUnlink, onAddPart, L = formLabel }) {
   const [form, setForm] = useState(() => Object.fromEntries(IIIA_HEADER_FIELDS.map(([k]) => [k, g[k] || ''])));
   const [drawingId, setDrawingId] = useState(g.calc_drawing_id ? String(g.calc_drawing_id) : '');
   const [busy, setBusy] = useState(false);
@@ -699,7 +701,7 @@ function IiiaGroupCard({ group: g, parts, bomItems, onLinkBomItem, canEdit, docu
   }
 
   async function removeGroup() {
-    if (!window.confirm(`Delete "${g.name}"? Its parts move back to Form IV A.`)) return;
+    if (!window.confirm(`Delete "${g.name}"? Its parts move back to ${L('IVA')}.`)) return;
     try {
       await api(`/api/qc-documents/${documentId}/iiia-groups/${g.id}`, { method: 'DELETE' });
       showToast('Group deleted');
@@ -758,7 +760,7 @@ function IiiaGroupCard({ group: g, parts, bomItems, onLinkBomItem, canEdit, docu
 }
 
 function IiiaGroupsCard({ documentId, drawings, groups, parts, assemblies, bomItems, onLinkBomItem, canEdit, router,
-  selected, onToggle, onOpenPicker, onEdit, onRemove, onUnlink, onAddPart }) {
+  selected, onToggle, onOpenPicker, onEdit, onRemove, onUnlink, onAddPart, L = formLabel }) {
   const [newOpen, setNewOpen] = useState(false);
   const [syncBusy, setSyncBusy] = useState(false);
   const [open, setOpen] = useState(true);
@@ -779,7 +781,7 @@ function IiiaGroupsCard({ documentId, drawings, groups, parts, assemblies, bomIt
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Form III A — Certificate of Manufacture and Test</CardTitle>
+        <CardTitle>{L('IIIA')} — Certificate of Manufacture and Test</CardTitle>
         <CardAction>
           <div className="flex items-center gap-1">
             {canEdit && (
@@ -792,7 +794,7 @@ function IiiaGroupsCard({ documentId, drawings, groups, parts, assemblies, bomIt
                 </Button>
               </>
             )}
-            <CollapseButton open={open} onToggle={() => setOpen(o => !o)} label="Form III A groups" />
+            <CollapseButton open={open} onToggle={() => setOpen(o => !o)} label={`${L('IIIA')} groups`} />
           </div>
         </CardAction>
       </CardHeader>
@@ -806,17 +808,17 @@ function IiiaGroupsCard({ documentId, drawings, groups, parts, assemblies, bomIt
       )}
       {open && (
         <CardContent className="flex flex-col gap-3">
-          {groups.length === 0 && <p className="py-2 text-sm text-muted-foreground">No Form III A groups yet — this boiler files only Form IV A until one is added.</p>}
+          {groups.length === 0 && <p className="py-2 text-sm text-muted-foreground">No {L('IIIA')} groups yet — this boiler files only {L('IVA')} until one is added.</p>}
           {groups.map(g => (
             <IiiaGroupCard key={g.id} group={g} parts={parts.filter(p => p.iiia_group_id === g.id)}
               bomItems={bomItems} onLinkBomItem={onLinkBomItem}
               canEdit={canEdit} documentId={documentId} drawings={drawings} router={router}
               selected={selected} onToggle={onToggle} onOpenPicker={onOpenPicker}
-              onEdit={onEdit} onRemove={onRemove} onUnlink={onUnlink} onAddPart={onAddPart} />
+              onEdit={onEdit} onRemove={onRemove} onUnlink={onUnlink} onAddPart={onAddPart} L={L} />
           ))}
         </CardContent>
       )}
-      <NewIiiaGroupDialog open={newOpen} onOpenChange={setNewOpen} documentId={documentId} assemblies={assemblies} groupLabels={groupLabels} router={router} />
+      <NewIiiaGroupDialog open={newOpen} onOpenChange={setNewOpen} documentId={documentId} assemblies={assemblies} groupLabels={groupLabels} router={router} L={L} />
     </Card>
   );
 }
@@ -1174,6 +1176,8 @@ function MountingsCard({ documentId, mountings, bomItems, certificates, canEdit,
 
 export default function QcDocumentEditor({ project, document, parts, certificates, mountings = [], groups = [], form4aGroups = [], seams = [], bomItems = [], approvals = [], assemblies = [], unitCertsByItem = {}, canEdit, currentUserName }) {
   const router = useRouter();
+  const L = labelsFor(document, project);
+  const headerForms = modelConfig(docSeries(document, project)).forms.filter(k => ['II1', 'XVII', 'III', 'IIIH'].includes(k));
   // parts comes straight from the server prop, no local copy — router.refresh() after linking
   // re-fetches it server-side and flows the new value straight back in, same as QcPanel does for
   // qc_records. A local useState(initialParts) would freeze at mount and never see the update.
@@ -1431,7 +1435,7 @@ export default function QcDocumentEditor({ project, document, parts, certificate
               a folder goes out missing a required statutory form. */}
           {showIiia && groups.length === 0 && (
             <span className="flex items-center gap-1 text-xs text-warning">
-              <AlertTriangleIcon className="size-3.5" />Form III A required — no groups defined yet
+              <AlertTriangleIcon className="size-3.5" />{L('IIIA')} required — no groups defined yet
             </span>
           )}
           <Button disabled={incomplete} onClick={() => setPdfOpen(true)}>Preview</Button>
@@ -1455,7 +1459,7 @@ export default function QcDocumentEditor({ project, document, parts, certificate
       <Card>
         <CardHeader>
           <CardTitle>
-            Form II(1) &amp; III{' '}
+            {headerForms.map(L).join(' & ')}{' '}
             <span className="text-sm font-normal text-muted-foreground">
               (Maker's No. {document.makers_no || '—'} · Year {document.year_of_make || '—'} ·
               {' '}Design {document.design_pressure || '—'} · Hydro {document.hydro_test_pressure || '—'})
@@ -1472,19 +1476,19 @@ export default function QcDocumentEditor({ project, document, parts, certificate
           bomItems={bomItems} onLinkBomItem={linkBomItem} canEdit={canEdit} router={router}
           selected={selected} onToggle={toggle} onOpenPicker={openPicker}
           onEdit={setEditingPart} onRemove={removePart} onUnlink={unlinkPart}
-          onAddPart={groupId => { setAddPartGroupId(groupId); setAddPartOpen(true); }} />
+          onAddPart={groupId => { setAddPartGroupId(groupId); setAddPartOpen(true); }} L={L} />
       )}
 
       <Card>
         <CardHeader>
-          <CardTitle>Form IV A — Material Test Certificates</CardTitle>
+          <CardTitle>{L('IVA')} — Material Test Certificates</CardTitle>
           <CardAction>
             <div className="flex items-center gap-1">
               <Button size="xs" variant={filter === 'all' ? 'secondary' : 'ghost'} onClick={() => setFilter('all')}>All ({ivaParts.length})</Button>
               <Button size="xs" variant={filter === 'unlinked' ? 'secondary' : 'ghost'} onClick={() => setFilter('unlinked')}>
                 Unlinked ({ivaUnlinked.length})
               </Button>
-              <CollapseButton open={ivaOpen} onToggle={() => setIvaOpen(o => !o)} label="Form IV A" />
+              <CollapseButton open={ivaOpen} onToggle={() => setIvaOpen(o => !o)} label={L('IVA')} />
             </div>
           </CardAction>
         </CardHeader>
