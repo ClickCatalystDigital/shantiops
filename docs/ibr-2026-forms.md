@@ -50,17 +50,15 @@ design pressure, size L/W/H/Dia, material specification table for shell/furnace/
 chemistry and mechanical properties, volumetric capacity, heating surface, nozzle connections a–e, shop hydro test pressure + date);
 certification "as per Indian Boiler Regulations, 2026".
 
-## What the app does (decided 2026-10-17)
-- Each QC document has an **IBR version** (1950 or 2026), chosen by QC. New documents start on 2026; documents made before this
-  stay 1950 and reprint exactly as before.
-- Under 2026 the folder changes only what the gazette text proves: form numbers and titles, revision lines, regulation numbers, Act
-  name/year, "Working" → "Design" pressure, cited form numbers. Table layouts keep the client's real sample layout (reg 8(b) Note:
-  the Inspecting Authority may approve a modified form omitting items that don't apply).
+## What the app does (updated 2026-10-17)
+- Each QC document has an **IBR version** (1950 or 2026), chosen by QC on New document and in Edit details. New documents start on
+  2026; documents made before this stay 1950 and reprint exactly as before.
+- Under 2026 the folder prints separate pages built line by line from the gazette's blank forms: Form I(Part-B), IV(Part-A),
+  IV(Part-B), V(Part-B), IV(Part-G), IV(Part-D), XXII. The 1950 pages are untouched.
+- 2026 form sets: boilers I(B) + IV(A) + IV(B) + V(B); SIB XXII + IV(B) + V(B); PRS IV(D) + V(B); headers IV(G) + V(B).
+- Section-by-section detail, data sources and open points for an outside review: `docs/ibr-2026-folder-review.md`.
 
-## Open questions for the client / Inspecting Authority
+## Open questions (decided from the gazette where it is clear; the rest listed for review)
 1. Transition: a boiler whose manufacture started before 1 Oct 2026 — 1950 or 2026 forms? (QC can pick per document.)
-2. PRS (pressure reducing station): 2026 form set — likely IV(Part-D) + IV(Part-B), not confirmed. The app keeps PRS on its current
-   form set and prints a note on the document.
-3. Pipes certificate: our III A page is the client's table layout for a named sub-assembly; the gazette IV(Part-B) is one pipe per
-   form (≤5 pipes for stock). Confirm the Inspecting Authority accepts the table layout under the new number.
-4. Telangana registry code changed TS → TG (IBR amendment Feb 2025); check any printed registry numbers.
+2. Telangana registry code changed TS → TG (IBR amendment Feb 2025); check any printed registry numbers.
+3. See `docs/ibr-2026-folder-review.md` §5 for the reviewer's question list.
