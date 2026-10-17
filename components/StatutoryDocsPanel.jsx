@@ -145,13 +145,14 @@ function NewDocumentSheet({ open, onOpenChange, projectId, projectSeries, extra 
 // each doc's own `d.project_id` so this also works as the /qc workspace's cross-project Docs list —
 // pass projectId=null there to keep New disabled until a project is picked. `showProject` labels the
 // owning project per row (only useful in the cross-project list).
-export default function StatutoryDocsPanel({ projectId = null, projectSeries = null, extraSeries = [], documents = [], canEdit = false, showProject = false, ibrDefault = DEFAULT_NEW_IBR }) {
+export default function StatutoryDocsPanel({ projectId = null, projectSeries = null, extraSeries = [], documents = [], canEdit = false, showProject = false, ibrDefault = DEFAULT_NEW_IBR, allDocuments = null }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   // null = the project's main set; otherwise one of the ticked extras (HEADERS/PRS/FAB/FCB).
   const [extraOpen, setExtraOpen] = useState(null);
   // Ticked extras with no document of that series on this project yet.
-  const pending = projectId ? extraSeries.filter(s => !documents.some(d => d.series === s && d.project_id === projectId)) : [];
+  // "Not started" checks every document of the project, not just the ones the IBR filter shows.
+  const pending = projectId ? extraSeries.filter(s => !(allDocuments || documents).some(d => d.series === s && d.project_id === projectId)) : [];
 
   // Switch an existing document between IBR 1950 and 2026 (changes only the printed form set/wording).
   async function setVersion(d, v) {
@@ -201,7 +202,7 @@ export default function StatutoryDocsPanel({ projectId = null, projectSeries = n
           </div>
         ))}
         {documents.length === 0 && pending.length === 0 && (
-          <p className="text-sm text-muted-foreground">No statutory documents filed yet.</p>
+          <p className="text-sm text-muted-foreground">{(allDocuments || documents).length ? 'No documents filed under this IBR version.' : 'No statutory documents filed yet.'}</p>
         )}
         {documents.map(d => (
           <div key={d.id} className="flex w-full items-center gap-1 py-2.5 text-sm hover:bg-muted/50">

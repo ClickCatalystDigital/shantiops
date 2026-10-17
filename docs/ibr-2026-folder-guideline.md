@@ -43,7 +43,8 @@ Nothing below comes from a client sample or an inspector's sign-off: there is no
 ## 2. How the folder is built
 
 - Each QC document has an **IBR version**: `1950` or `2026`. Where it is chosen: the IBR selector next to "All
-  projects" on QC → Documents (version for new documents, remembered per browser), the selector on each document
+  projects" on QC → Documents (All / 2026 / 1950: filters the list and is the version new documents start on, 2026
+  when "All"; remembered per browser), the selector on each document
   row (switch an existing document), the New document form and Edit details. Documents made before IBR 2026 are
   1950.
 - 1950 pages are unchanged; their printed text is checked identical before/after every change.
@@ -111,7 +112,8 @@ Open: Certificate No. and stamped plate are always blank.
   Applicable"**; maker number; year; total heating surface (Sq. m); evaporation capacity "(for calculation of
   relieving capacity of safety valves)"; final steam temperature superheater outlet (°C); **Reheater Outlet = "Not
   Applicable"**; brief description (= boiler type).
-- §2 Parts at constructor's works: component names (all part names on the document), drawing no., manufactured by
+- §2 Parts at constructor's works: component names (MF, CF and SF with capacity above 100 print the fixed big-boiler
+  component list, same rule as the 1950 Form III; other models list the document's part names), drawing no., manufactured by
   (company), identification marks (maker's no.); inspected-by and hydro-tested-by lines blank.
 - §3 Parts outside: four blank fields + note, "NOT APPLICABLE" unless QC typed something; the gazette Note line.
 - §4 Construction: Chapter 3/4/10/12/14/16/17 sentence; "Number of longitudinal seams in shell/drum in each belt"

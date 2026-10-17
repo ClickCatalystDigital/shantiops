@@ -23,7 +23,7 @@ import { EXTRA_DOC_SERIES } from '@/lib/qc-extra-series.mjs';
 import { InwardApprovalsPanel, PreDispatchApprovalsPanel, JobSheetApprovalsPanel } from './MaterialApprovalPanels';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { QC_SERIES } from '@/lib/qc-series';
-import { IBR_VERSIONS, DEFAULT_NEW_IBR } from '@/lib/qc-ibr.mjs';
+import { IBR_VERSIONS, DEFAULT_NEW_IBR, ibrVersion } from '@/lib/qc-ibr.mjs';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { FlaskConicalIcon, FileTextIcon, GaugeIcon, AlertTriangleIcon, LockIcon, LinkIcon, ClipboardCheckIcon, InboxIcon, TruckIcon, ListChecksIcon } from 'lucide-react';
 
@@ -103,11 +103,13 @@ export default function QcWorkspace({ projects = [], certificates = [], document
   const [series, setSeries] = useState(initProject ? (projects.find(p => p.id === initProject)?.series || null) : null);
   const [projectId, setProjectId] = useState(initProject);
   const [extras, setExtras] = useState(initProject ? extraDocs[initProject] || [] : []);
-  // IBR version for NEW documents (Documents tab). Each existing document keeps its own version,
-  // switchable on its row. Remembered per browser.
-  const [ibr, setIbr] = useState(DEFAULT_NEW_IBR);
-  useEffect(() => { try { const v = localStorage.getItem('qcIbrVersion'); if (IBR_VERSIONS.includes(v)) setIbr(v); } catch {} }, []);
+  // IBR filter on the Documents tab: 'all' | '2026' | '1950'. Narrows the list to documents filed
+  // under that version and is the version new documents start on ('all' -> 2026). Each document's
+  // own version is switchable on its row. Remembered per browser.
+  const [ibr, setIbr] = useState('all');
+  useEffect(() => { try { const v = localStorage.getItem('qcIbrVersion'); if (v === 'all' || IBR_VERSIONS.includes(v)) setIbr(v); } catch {} }, []);
   function pickIbr(v) { setIbr(v); try { localStorage.setItem('qcIbrVersion', v); } catch {} }
+  const newDocIbr = ibr === 'all' ? DEFAULT_NEW_IBR : ibr;
 
   // Newest order first (created_at DESC), optionally narrowed to the selected series.
   const projectsSorted = useMemo(
@@ -144,6 +146,7 @@ export default function QcWorkspace({ projects = [], certificates = [], document
     : series
       ? documents.filter(d => seriesProjectIds.has(d.project_id))
       : documents;
+  const versionDocs = ibr === 'all' ? shownDocs : shownDocs.filter(d => ibrVersion(d, d.series) === ibr);
   const shownNcrs = projectId != null
     ? ncrs.filter(n => n.project_id === projectId)
     : series
@@ -162,8 +165,9 @@ export default function QcWorkspace({ projects = [], certificates = [], document
         value={projectId} onChange={pickProject} placeholder="Search projects…" className="w-64" />
       {tab === 'docs' && (
         <Select value={ibr} onValueChange={pickIbr}>
-          <SelectTrigger className="w-48" title="IBR regulations used for new documents"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-48" title="Filter documents by IBR version; new documents use it"><SelectValue /></SelectTrigger>
           <SelectContent>
+            <SelectItem value="all">All IBR versions</SelectItem>
             <SelectItem value="2026">IBR 2026 (new forms)</SelectItem>
             <SelectItem value="1950">IBR 1950 (old forms)</SelectItem>
           </SelectContent>
@@ -231,9 +235,9 @@ export default function QcWorkspace({ projects = [], certificates = [], document
           </Card>
         )
       ) : tab === 'docs' ? (
-        <StatutoryDocsPanel projectId={projectId} documents={shownDocs} canEdit showProject
+        <StatutoryDocsPanel projectId={projectId} documents={versionDocs} allDocuments={shownDocs} canEdit showProject
           projectSeries={(p => (p?.is_sib ? 'SIB' : p?.series))(projects.find(p => p.id === projectId))}
-          extraSeries={extras} ibrDefault={ibr} />
+          extraSeries={extras} ibrDefault={newDocIbr} />
       ) : tab === 'ncr' ? (
         <NcrPanel ncrs={shownNcrs} canDisposition={canDisposition} canVerify={canVerify} canClose={canClose} />
       ) : tab === 'holds' ? (
