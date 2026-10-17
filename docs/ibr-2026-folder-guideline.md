@@ -27,7 +27,8 @@ page numbers: `docs/ibr-2026-forms.md`. Status as of 2026-10-17.
   line). What is not filled automatically: lines the app has no data for (section 3 below), which print as blanks
   to complete by hand. Not yet signed off by an Inspecting Authority, and no real 2026 folder has been filed.
 - **1950 pages:** built against the client's real filed samples (CF/MF/SF/headers) and their stated corrections;
-  not re-audited against the 1950 forms index line by line. Unchanged since IBR 2026 work started.
+  audited against the official 1950 forms on 2026-10-17: differences and proposed fixes, awaiting approval, in
+  `docs/ibr-1950-proposed-changes.md`. Unchanged until approved.
 
 ## 1. Sources
 
