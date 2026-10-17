@@ -13,7 +13,8 @@ import { Label } from '@/components/ui/label';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { PlusIcon, ChevronRightIcon, Trash2Icon } from 'lucide-react';
-import { docIdAbbr, modelConfig, FORM_LABELS } from '@/lib/qc-models.js';
+import { docIdAbbr, modelConfig } from '@/lib/qc-models.js';
+import { formLabel, ibrVersion, DEFAULT_NEW_IBR } from '@/lib/qc-ibr.mjs';
 import QcHeaderField from './QcHeaderField';
 import { CORE_FIELDS } from '@/lib/qc-document-fields';
 import { COMPANY_NAMES, companyProfile, defaultCompany } from '@/lib/company-profiles';
@@ -168,7 +169,7 @@ export default function StatutoryDocsPanel({ projectId = null, projectSeries = n
             <div className="flex flex-col">
               <span className="font-medium">{s} documentation</span>
               <span className="text-xs text-muted-foreground">
-                {[...modelConfig(s).forms.map(f => FORM_LABELS[f] || f), 'BOI'].join(' + ')} · not started
+                {[...modelConfig(s).forms.map(f => formLabel(f, ibrVersion({ ibr_version: DEFAULT_NEW_IBR }, s))), 'BOI'].join(' + ')} · not started
               </span>
             </div>
             <Button size="sm" variant="outline" className="ml-auto" onClick={() => setExtraOpen(s)}>
@@ -187,7 +188,7 @@ export default function StatutoryDocsPanel({ projectId = null, projectSeries = n
                 <span className="font-medium">{d.doc_id}</span>
                 <span className="text-xs text-muted-foreground">
                   {showProject && d.project_no && <>{d.project_no} · </>}
-                  {d.series} series · {[...modelConfig(d.series).forms.map(f => FORM_LABELS[f] || f), 'BOI'].join(' + ')} · {d.company} · {d.linked_parts} of {d.total_parts} parts linked
+                  {d.series} series · IBR {ibrVersion(d, d.series)} · {[...modelConfig(d.series).forms.map(f => formLabel(f, ibrVersion(d, d.series))), 'BOI'].join(' + ')} · {d.company} · {d.linked_parts} of {d.total_parts} parts linked
                 </span>
               </div>
               <ChevronRightIcon className="ml-auto size-4 text-muted-foreground" />

@@ -13,7 +13,7 @@ export default async function QcDocumentPage(props) {
   const user = await getFreshSessionUser();
   if (!canAccessDepartment(user, 'QC')) redirect(roleHome(user));
 
-  const project = await queryOne('SELECT id, project_no, customer_name, series, master_project_id FROM projects WHERE id = ?', [params.id]);
+  const project = await queryOne('SELECT id, project_no, customer_name, series, is_sib, model_capacity, master_project_id FROM projects WHERE id = ?', [params.id]);
   if (!project) notFound();
 
   const detail = await getQcDocumentDetail(params.docId);

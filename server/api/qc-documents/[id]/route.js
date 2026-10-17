@@ -54,6 +54,9 @@ export async function PATCH(req, props) {
   if (keys.includes('company') && !COMPANY_NAMES.includes(b.company)) {
     return NextResponse.json({ error: 'Unknown company' }, { status: 400 });
   }
+  if (keys.includes('ibr_version') && !['1950', '2026'].includes(b.ibr_version)) {
+    return NextResponse.json({ error: 'IBR version must be 1950 or 2026' }, { status: 400 });
+  }
 
   const changed = {};
   for (const k of keys) {

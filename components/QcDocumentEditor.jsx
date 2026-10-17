@@ -29,6 +29,7 @@ import QcHeaderField from './QcHeaderField';
 import { suggestCertificates, suggestBomItem } from '@/lib/tc-match';
 import { normalizeMaterial } from '@/lib/match-utils';
 import { QC_HEADER_FIELDS } from '@/lib/qc-document-fields';
+import { prsVersionNote, suggestedBeltCount } from '@/lib/qc-ibr.mjs';
 import { modelConfig } from '@/lib/qc-models';
 import { docSeries } from '@/lib/qc-extra-series.mjs';
 import { STANDARD_MOC } from '@/lib/section-shapes';
@@ -109,7 +110,7 @@ function SeamRow({ documentId, seam, label, router, busyId, setBusyId }) {
   );
 }
 
-function SeamsSection({ documentId, seams, router }) {
+function SeamsSection({ documentId, seams, router, beltSuggestion = 1 }) {
   const [busyId, setBusyId] = useState(null);
   const belts = seams.filter(s => s.location === 'belt');
   const rings = seams.filter(s => s.location === 'furnace_ring');
@@ -130,7 +131,9 @@ function SeamsSection({ documentId, seams, router }) {
   // re-fire on a later router.refresh() (same mounted instance, no remount) — so deliberately
   // deleting every belt later doesn't get silently re-seeded on the next edit within this session.
   useEffect(() => {
-    if (belts.length === 0) addSeam('belt');
+    // Belt count is a suggestion from capacity (2 at 1 TPH and above, lib/qc-ibr.mjs) — the real
+    // count comes from the shell drawing; QC adds/removes rows freely.
+    if (belts.length === 0) for (let i = 0; i < beltSuggestion; i++) addSeam('belt');
     if (rings.length === 0) addSeam('furnace_ring');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -156,9 +159,11 @@ function SeamsSection({ documentId, seams, router }) {
   );
 }
 
-function BoilerDetailsSheet({ open, onOpenChange, document, seams = [], currentUserName, router }) {
+function BoilerDetailsSheet({ open, onOpenChange, document, project, seams = [], currentUserName, router }) {
+  const series = docSeries(document, project);
   const [form, setForm] = useState(() => {
     const init = Object.fromEntries(QC_HEADER_FIELDS.map(f => [f.key, document[f.key] || '']));
+    init.ibr_version = document.ibr_version === '2026' ? '2026' : '1950';
     // "signer = QC user", "date defaults to today" (QC-FOLDER-DESIGN.md §4.3) — pre-filled on first
     // open for a document that has neither set yet, stays a normal editable field afterward.
     if (!init.submission_date) init.submission_date = todayIso();
@@ -237,20 +242,21 @@ function BoilerDetailsSheet({ open, onOpenChange, document, seams = [], currentU
             {QC_HEADER_FIELDS.map(f => (
               f.kind === 'select' ? (
                 <div key={f.key} className="flex flex-col gap-1.5">
-                  <Label>{f.label}<span className="text-danger"> *</span></Label>
-                  <Select value={form.company} onValueChange={v => setForm(fm => ({ ...fm, company: v }))}>
+                  <Label>{f.label}{f.required && <span className="text-danger"> *</span>}</Label>
+                  <Select value={form[f.key]} onValueChange={v => setForm(fm => ({ ...fm, [f.key]: v }))}>
                     <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {COMPANIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                      {(f.options || COMPANIES.map(c => ({ value: c, label: c }))).map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
                     </SelectContent>
                   </Select>
+                  {f.key === 'ibr_version' && prsVersionNote(series) && <p className="text-xs text-warning">{prsVersionNote(series)}</p>}
                 </div>
               ) : (
                 <QcHeaderField key={f.key} field={f} value={form[f.key]}
                   onChange={v => setForm(fm => ({ ...fm, [f.key]: v }))} />
               )
             ))}
-            <SeamsSection documentId={document.id} seams={seams} router={router} />
+            <SeamsSection documentId={document.id} seams={seams} router={router} beltSuggestion={suggestedBeltCount(project?.model_capacity)} />
           </div>
           <SheetFooter>
             <Button disabled={busy} onClick={submit}>{busy ? 'Saving…' : 'Save changes'}</Button>
@@ -1576,7 +1582,7 @@ export default function QcDocumentEditor({ project, document, parts, certificate
           </label>
         )}
       />
-      <BoilerDetailsSheet open={boilerOpen} onOpenChange={setBoilerOpen} document={document} seams={seams} currentUserName={currentUserName} router={router} />
+      <BoilerDetailsSheet open={boilerOpen} onOpenChange={setBoilerOpen} document={document} project={project} seams={seams} currentUserName={currentUserName} router={router} />
       <AddPartDialog open={addPartOpen} onOpenChange={setAddPartOpen} documentId={document.id} bomItems={bomItems}
         defaultIiiaGroupId={addPartGroupId} router={router} />
       <EditPartDialog open={!!editingPart} onOpenChange={o => { if (!o) setEditingPart(null); }} documentId={document.id} part={editingPart} router={router} />

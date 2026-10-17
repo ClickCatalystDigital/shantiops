@@ -19,6 +19,7 @@ import { audit } from '@/lib/usb';
 import { COMPANY_NAMES } from '@/lib/qc-doc-pdf.js';
 import { syncQcPartsFromBom } from '@/lib/qc-bom-sync';
 import { CORE_FIELDS } from '@/lib/qc-document-fields';
+import { DEFAULT_NEW_IBR } from '@/lib/qc-ibr.mjs';
 
 const HEADER_FIELDS = CORE_FIELDS.map(f => f.key);
 // Shared across every child in the batch — everything except the two per-unit identity fields.
@@ -67,12 +68,12 @@ export async function POST(req) {
       const values = { ...b, company, makers_no: `${makersNoPrefix}-${suffix}`, doc_id: `${docIdPrefix}-${suffix}` };
       const series = child.is_sib || master.is_sib ? 'SIB' : (child.series || master.series || 'SF');
       const res = await tx.execute({
-        sql: `INSERT INTO qc_documents (project_id, series, ${HEADER_FIELDS.join(', ')}, created_by, bom_release_revision_at_creation)
-              VALUES (?, ?, ${HEADER_FIELDS.map(() => '?').join(', ')}, ?, ?)`,
+        sql: `INSERT INTO qc_documents (project_id, series, ${HEADER_FIELDS.join(', ')}, created_by, bom_release_revision_at_creation, ibr_version)
+              VALUES (?, ?, ${HEADER_FIELDS.map(() => '?').join(', ')}, ?, ?, ?)`,
         args: [child.id, series, ...HEADER_FIELDS.map(f => {
           const v = values[f];
           return typeof v === 'string' ? (v.trim() || null) : (v ?? null);
-        }), user.username, master.bom_release_revision ?? null],
+        }), user.username, master.bom_release_revision ?? null, b.ibr_version === '1950' ? '1950' : DEFAULT_NEW_IBR],
       });
       const documentId = Number(res.lastInsertRowid);
       // Read the master's own BOM (per-unit qty_text, correct as-is — see file header), write parts
