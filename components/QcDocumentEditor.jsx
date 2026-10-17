@@ -29,7 +29,7 @@ import QcHeaderField from './QcHeaderField';
 import { suggestCertificates, suggestBomItem } from '@/lib/tc-match';
 import { normalizeMaterial } from '@/lib/match-utils';
 import { QC_HEADER_FIELDS } from '@/lib/qc-document-fields';
-import { prsVersionNote, suggestedBeltCount, formLabel, ibrVersion } from '@/lib/qc-ibr.mjs';
+import { suggestedBeltCount, formLabel, ibrVersion } from '@/lib/qc-ibr.mjs';
 // Printed form names follow the document's IBR version (1950 vs 2026), same as the folder PDF.
 const labelsFor = (document, project) => { const v = ibrVersion(document, docSeries(document, project)); return k => formLabel(k, v); };
 import { modelConfig } from '@/lib/qc-models';
@@ -251,7 +251,6 @@ function BoilerDetailsSheet({ open, onOpenChange, document, project, seams = [],
                       {(f.options || COMPANIES.map(c => ({ value: c, label: c }))).map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
                     </SelectContent>
                   </Select>
-                  {f.key === 'ibr_version' && prsVersionNote(series) && <p className="text-xs text-warning">{prsVersionNote(series)}</p>}
                 </div>
               ) : (
                 <QcHeaderField key={f.key} field={f} value={form[f.key]}
@@ -1177,7 +1176,8 @@ function MountingsCard({ documentId, mountings, bomItems, certificates, canEdit,
 export default function QcDocumentEditor({ project, document, parts, certificates, mountings = [], groups = [], form4aGroups = [], seams = [], bomItems = [], approvals = [], assemblies = [], unitCertsByItem = {}, canEdit, currentUserName }) {
   const router = useRouter();
   const L = labelsFor(document, project);
-  const headerForms = modelConfig(docSeries(document, project)).forms.filter(k => ['II1', 'XVII', 'III', 'IIIH'].includes(k));
+  const docVersion = ibrVersion(document, docSeries(document, project));
+  const headerForms = modelConfig(docSeries(document, project), docVersion).forms.filter(k => ['II1', 'XVII', 'III', 'IIIH', 'IVD'].includes(k));
   // parts comes straight from the server prop, no local copy — router.refresh() after linking
   // re-fetches it server-side and flows the new value straight back in, same as QcPanel does for
   // qc_records. A local useState(initialParts) would freeze at mount and never see the update.
@@ -1217,7 +1217,7 @@ export default function QcDocumentEditor({ project, document, parts, certificate
   const incomplete = parts.length === 0 || unlinked.length > 0;
   const ivaParts = parts.filter(p => !p.iiia_group_id);
   const ivaUnlinked = unlinked.filter(p => !p.iiia_group_id);
-  const showIiia = modelConfig(docSeries(document, project)).forms.includes('IIIA');
+  const showIiia = modelConfig(docSeries(document, project), docVersion).forms.includes('IIIA');
   async function setCustomerVisible(v) {
     setVisBusy(true);
     try {

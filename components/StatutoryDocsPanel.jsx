@@ -14,7 +14,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/com
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { PlusIcon, ChevronRightIcon, Trash2Icon } from 'lucide-react';
 import { docIdAbbr, modelConfig } from '@/lib/qc-models.js';
-import { formLabel, ibrVersion, DEFAULT_NEW_IBR, prsVersionNote } from '@/lib/qc-ibr.mjs';
+import { formLabel, ibrVersion, DEFAULT_NEW_IBR } from '@/lib/qc-ibr.mjs';
 import QcHeaderField from './QcHeaderField';
 import { CORE_FIELDS, QC_HEADER_FIELDS } from '@/lib/qc-document-fields';
 import { COMPANY_NAMES, companyProfile, defaultCompany } from '@/lib/company-profiles';
@@ -117,7 +117,6 @@ function NewDocumentSheet({ open, onOpenChange, projectId, projectSeries, extra 
                 {IBR_FIELD.options.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
               </SelectContent>
             </Select>
-            {prsVersionNote(projectSeries) && <p className="text-xs text-warning">{prsVersionNote(projectSeries)}</p>}
           </div>
           <div className="col-span-2 flex flex-col gap-1.5">
             <Label>Maker's No.<span className="text-danger"> *</span></Label>
@@ -180,7 +179,7 @@ export default function StatutoryDocsPanel({ projectId = null, projectSeries = n
             <div className="flex flex-col">
               <span className="font-medium">{s} documentation</span>
               <span className="text-xs text-muted-foreground">
-                {[...modelConfig(s).forms.map(f => formLabel(f, ibrVersion({ ibr_version: DEFAULT_NEW_IBR }, s))), 'BOI'].join(' + ')} · not started
+                {[...modelConfig(s, DEFAULT_NEW_IBR).forms.map(f => formLabel(f, DEFAULT_NEW_IBR)), 'BOI'].join(' + ')} · not started
               </span>
             </div>
             <Button size="sm" variant="outline" className="ml-auto" onClick={() => setExtraOpen(s)}>
@@ -199,7 +198,7 @@ export default function StatutoryDocsPanel({ projectId = null, projectSeries = n
                 <span className="font-medium">{d.doc_id}</span>
                 <span className="text-xs text-muted-foreground">
                   {showProject && d.project_no && <>{d.project_no} · </>}
-                  {d.series} series · IBR {ibrVersion(d, d.series)} · {[...modelConfig(d.series).forms.map(f => formLabel(f, ibrVersion(d, d.series))), 'BOI'].join(' + ')} · {d.company} · {d.linked_parts} of {d.total_parts} parts linked
+                  {d.series} series · IBR {ibrVersion(d, d.series)} · {[...modelConfig(d.series, ibrVersion(d, d.series)).forms.map(f => formLabel(f, ibrVersion(d, d.series))), 'BOI'].join(' + ')} · {d.company} · {d.linked_parts} of {d.total_parts} parts linked
                 </span>
               </div>
               <ChevronRightIcon className="ml-auto size-4 text-muted-foreground" />
