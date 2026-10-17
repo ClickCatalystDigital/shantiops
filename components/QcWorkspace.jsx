@@ -4,7 +4,7 @@
 // searchable filters in the header: Series (left) narrows the Project list; Project scopes both tabs.
 // Picking a project auto-selects its series. Neither set → everything. Deep-linked from a project's
 // QC summary card via ?tab= and ?project=.
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import WorkspaceSidebar from './WorkspaceSidebar';
 import TcBank from './TcBank';
@@ -23,6 +23,8 @@ import { EXTRA_DOC_SERIES } from '@/lib/qc-extra-series.mjs';
 import { InwardApprovalsPanel, PreDispatchApprovalsPanel, JobSheetApprovalsPanel } from './MaterialApprovalPanels';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { QC_SERIES } from '@/lib/qc-series';
+import { IBR_VERSIONS, DEFAULT_NEW_IBR } from '@/lib/qc-ibr.mjs';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { FlaskConicalIcon, FileTextIcon, GaugeIcon, AlertTriangleIcon, LockIcon, LinkIcon, ClipboardCheckIcon, InboxIcon, TruckIcon, ListChecksIcon } from 'lucide-react';
 
 // "Assign to Units" is a sub-tab of Test Certificates, not a new top-level tab — same group/children
@@ -101,6 +103,11 @@ export default function QcWorkspace({ projects = [], certificates = [], document
   const [series, setSeries] = useState(initProject ? (projects.find(p => p.id === initProject)?.series || null) : null);
   const [projectId, setProjectId] = useState(initProject);
   const [extras, setExtras] = useState(initProject ? extraDocs[initProject] || [] : []);
+  // IBR version for NEW documents (Documents tab). Each existing document keeps its own version,
+  // switchable on its row. Remembered per browser.
+  const [ibr, setIbr] = useState(DEFAULT_NEW_IBR);
+  useEffect(() => { try { const v = localStorage.getItem('qcIbrVersion'); if (IBR_VERSIONS.includes(v)) setIbr(v); } catch {} }, []);
+  function pickIbr(v) { setIbr(v); try { localStorage.setItem('qcIbrVersion', v); } catch {} }
 
   // Newest order first (created_at DESC), optionally narrowed to the selected series.
   const projectsSorted = useMemo(
@@ -153,6 +160,15 @@ export default function QcWorkspace({ projects = [], certificates = [], document
           value: p.id, label: p.customer_name ? `${p.project_no} — ${p.customer_name}` : p.project_no,
         }))]}
         value={projectId} onChange={pickProject} placeholder="Search projects…" className="w-64" />
+      {tab === 'docs' && (
+        <Select value={ibr} onValueChange={pickIbr}>
+          <SelectTrigger className="w-48" title="IBR regulations used for new documents"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="2026">IBR 2026 (new forms)</SelectItem>
+            <SelectItem value="1950">IBR 1950 (old forms)</SelectItem>
+          </SelectContent>
+        </Select>
+      )}
     </div>
   );
 
@@ -217,7 +233,7 @@ export default function QcWorkspace({ projects = [], certificates = [], document
       ) : tab === 'docs' ? (
         <StatutoryDocsPanel projectId={projectId} documents={shownDocs} canEdit showProject
           projectSeries={(p => (p?.is_sib ? 'SIB' : p?.series))(projects.find(p => p.id === projectId))}
-          extraSeries={extras} />
+          extraSeries={extras} ibrDefault={ibr} />
       ) : tab === 'ncr' ? (
         <NcrPanel ncrs={shownNcrs} canDisposition={canDisposition} canVerify={canVerify} canClose={canClose} />
       ) : tab === 'holds' ? (

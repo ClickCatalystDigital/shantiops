@@ -1,7 +1,33 @@
-# IBR 2026 statutory folder — per-form review brief
+# IBR 2026 statutory folder — guideline
 
-Purpose: give an outside reviewer everything needed to check our generated IBR 2026 folder against the official
-forms and find gaps. Read with `docs/ibr-2026-forms.md` (mapping, gazette page numbers).
+The reference for anyone (person or AI) changing the QC statutory folder. Read this before editing
+`lib/qc-folder-pdf.js`, `lib/qc-ibr.mjs`, `lib/qc-models.js` or the QC document editor. Form mapping and gazette
+page numbers: `docs/ibr-2026-forms.md`. Status as of 2026-10-17.
+
+## 0. Rules for changing the folder
+
+1. **The gazette is the only authority for 2026 pages.** Gazette of India Extraordinary No. 596, 1 Oct 2026
+   (link below). Copy wording, section numbers, column order and units from its blank forms. Don't add, drop or
+   re-word anything the gazette doesn't print; if the app has no value for a line, print the dotted blank.
+2. **Never change a 1950 page.** Documents filed before IBR 2026 must reprint word for word. 2026 pages are separate
+   components (section "IBR 2026 pages" in `lib/qc-folder-pdf.js`). After any change, render a folder for every
+   model in both versions and compare the 1950 text with the previous output; it must be identical.
+3. **Version lives on the document** (`qc_documents.ibr_version`, NULL = 1950). Printed names come from
+   `formLabel(key, version)`; form sets from `modelConfig(series, version)`. Internal form keys stay the old ones
+   (II1, III, IIIA, IVA, IIIH, XVII, plus IVD) — don't rename them.
+4. **Units:** strength on 2026 forms is kg/mm² (reg 8(d)(i)); values above 100 are MPa and are converted.
+5. **Don't invent facts.** Fixed text such as "Not Applicable" only where this guideline lists it. Anything that
+   needs a human decision (stamp location, safety-valve test results) stays a blank to fill by hand.
+6. **Check claims against the PDF.** An outside review got several regulations wrong (section 7). Quote the
+   regulation text before acting on any suggestion.
+7. **Update this guideline** in the same change whenever a form, rule or open point changes.
+
+## Status (2026-10-17)
+- **2026 pages:** every form's sections, wording, column order and units follow the gazette blank (checked line by
+  line). What is not filled automatically: lines the app has no data for (section 3 below), which print as blanks
+  to complete by hand. Not yet signed off by an Inspecting Authority, and no real 2026 folder has been filed.
+- **1950 pages:** built against the client's real filed samples (CF/MF/SF/headers) and their stated corrections;
+  not re-audited against the 1950 forms index line by line. Unchanged since IBR 2026 work started.
 
 ## 1. Sources
 
@@ -16,8 +42,10 @@ Nothing below comes from a client sample or an inspector's sign-off: there is no
 
 ## 2. How the folder is built
 
-- Each QC document has an **IBR version**: `1950` or `2026` (dropdown on New document and in Edit details; new
-  documents default to 2026). Old documents stay 1950.
+- Each QC document has an **IBR version**: `1950` or `2026`. Where it is chosen: the IBR selector next to "All
+  projects" on QC → Documents (version for new documents, remembered per browser), the selector on each document
+  row (switch an existing document), the New document form and Edit details. Documents made before IBR 2026 are
+  1950.
 - 1950 pages are unchanged; their printed text is checked identical before/after every change.
 - 2026 pages are separate components in `lib/qc-folder-pdf.js` (section "IBR 2026 pages").
 - Folder order: covering letter → statutory forms (per model, below) → list of mountings and fittings → the
@@ -170,7 +198,7 @@ Covering letter lists every form with its 2026 name and page range. The list of 
 index page (description, size, MOC, serial nos., make, qty) placed before the Form IV(Part-D) certificates from the
 valve makers; it is not a gazette form.
 
-## 5. Questions for the reviewer
+## 5. Open questions
 1. Is any form missing from the boiler set, e.g. Form V(Part-A) (steel maker's certificate) copies or Form IV(Part-C)
    (tubes) / IV(Part-E/F/H) (castings, forgings, dished ends) when such bought-in parts exist?
 2. PRS on Form IV(Part-D) + V(Part-B), and headers on Form IV(Part-G) + V(Part-B): correct under the 2026 regulations?

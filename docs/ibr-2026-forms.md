@@ -56,9 +56,9 @@ certification "as per Indian Boiler Regulations, 2026".
 - Under 2026 the folder prints separate pages built line by line from the gazette's blank forms: Form I(Part-B), IV(Part-A),
   IV(Part-B), V(Part-B), IV(Part-G), IV(Part-D), XXII. The 1950 pages are untouched.
 - 2026 form sets: boilers I(B) + IV(A) + IV(B) + V(B); SIB XXII + IV(B) + V(B); PRS IV(D) + V(B); headers IV(G) + V(B).
-- Section-by-section detail, data sources and open points for an outside review: `docs/ibr-2026-folder-review.md`.
+- Section-by-section detail, data sources and open points for an outside review: `docs/ibr-2026-folder-guideline.md`.
 
 ## Open questions (decided from the gazette where it is clear; the rest listed for review)
 1. Transition: a boiler whose manufacture started before 1 Oct 2026 — 1950 or 2026 forms? (QC can pick per document.)
 2. Telangana registry code changed TS → TG (IBR amendment Feb 2025); check any printed registry numbers.
-3. See `docs/ibr-2026-folder-review.md` §5 for the reviewer's question list.
+3. See `docs/ibr-2026-folder-guideline.md` §5 for the reviewer's question list.

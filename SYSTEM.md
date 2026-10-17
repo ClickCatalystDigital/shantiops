@@ -13171,7 +13171,7 @@ Plan: standard subsystems (FD fan, ID fan, Feed Line…) are **variants of a tem
 - Demo secrets for local work live in this repo's root, git-ignored: `.demo-secrets` (demo database URLs/tokens, admin password, reset trigger key) and `.dev.vars` (the demo Worker's local env, used by `npm run cf:preview`). The old `../sb-ops-demo` checkout and the `demo` branch were removed 2026-10-13.
 
 ## 5ff. QC statutory folder: IBR 2026 forms (2026-10-17)
-The Indian Boiler Regulations, 2026 (Gazette No. 596, 1 Oct 2026, under the Boilers Act, 2025) renumbered every form the folder prints. Mapping and gazette pages: `docs/ibr-2026-forms.md`; per-form detail for review: `docs/ibr-2026-folder-review.md`.
+The Indian Boiler Regulations, 2026 (Gazette No. 596, 1 Oct 2026, under the Boilers Act, 2025) renumbered every form the folder prints. Mapping and gazette pages: `docs/ibr-2026-forms.md`; per-form detail for review: `docs/ibr-2026-folder-guideline.md`.
 - `qc_documents.ibr_version` ('1950' | '2026'; NULL = 1950). Picked on New document (default 2026) and in Edit details. Existing documents stay 1950 and print exactly as before (text compared before/after every change).
 - `lib/qc-ibr.mjs`: version, printed form names (`formLabel`), 1950/2026 strings. `modelConfig(series, version)` (`lib/qc-models.js`): 2026 form sets — boilers I(B)+IV(A)+IV(B)+V(B), SIB XXII+IV(B)+V(B), PRS IV(D)+V(B), headers IV(G)+V(B). Form keys stay the old ones internally (II1, III, IIIA, IVA, IIIH, XVII, plus IVD).
 - `lib/qc-folder-pdf.js`: 2026 documents use the "IBR 2026 pages" components, written from the gazette blanks; 1950 components are unchanged. Values the app doesn't store print as dotted blanks. Editor card titles, the Documents list and QC checkpoints follow the version.

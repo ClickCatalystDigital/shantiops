@@ -3,7 +3,7 @@
 // Statutory Documents (QC-CHANGES.md) — sits below the existing QcPanel on the project's QC tab.
 // qc_records is a pass/fail test log; this is the per-boiler statutory paperwork, a different job
 // (see QC-CHANGES.md §4), so it's a second card rather than folded into the first.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, showToast } from '@/lib/client';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
@@ -31,9 +31,11 @@ const companyList = () => COMPANY_NAMES.map(c => ({ value: c, prefix: companyPro
 
 // Series/model is resolved server-side from the project's own `projects.series` (app/api/qc-documents
 // POST) — no picker here, this sheet just needs to suggest a doc_id abbreviation that matches it.
-function NewDocumentSheet({ open, onOpenChange, projectId, projectSeries, extra = false, router }) {
+function NewDocumentSheet({ open, onOpenChange, projectId, projectSeries, extra = false, ibrDefault = DEFAULT_NEW_IBR, router }) {
   const COMPANIES = companyList();
-  const [form, setForm] = useState({ ...EMPTY, company: defaultCompany() });
+  const [form, setForm] = useState({ ...EMPTY, company: defaultCompany(), ibr_version: ibrDefault });
+  // The workspace's IBR selector changed while the sheet was closed -> start from it next time.
+  useEffect(() => { if (open) setForm(f => ({ ...f, ibr_version: ibrDefault })); }, [open, ibrDefault]);
   const [docIdTouched, setDocIdTouched] = useState(false);
   const [busy, setBusy] = useState(false);
   // The internal series value doesn't always match the real filed abbreviation (HEADERS -> "SH") —
@@ -86,7 +88,7 @@ function NewDocumentSheet({ open, onOpenChange, projectId, projectSeries, extra 
         ? `Document created — ${res.partsSeeded} Form IV A part${res.partsSeeded === 1 ? '' : 's'} auto-populated from the project's BOM`
         : 'Document created — add parts from the document page');
       onOpenChange(false);
-      setForm({ ...EMPTY, company: defaultCompany() });
+      setForm({ ...EMPTY, company: defaultCompany(), ibr_version: ibrDefault });
       setDocIdTouched(false);
       router.push(`/projects/${projectId}/qc/${res.id}`);
     } catch (err) { showToast(err.message, 'error'); }
@@ -143,13 +145,24 @@ function NewDocumentSheet({ open, onOpenChange, projectId, projectSeries, extra 
 // each doc's own `d.project_id` so this also works as the /qc workspace's cross-project Docs list —
 // pass projectId=null there to keep New disabled until a project is picked. `showProject` labels the
 // owning project per row (only useful in the cross-project list).
-export default function StatutoryDocsPanel({ projectId = null, projectSeries = null, extraSeries = [], documents = [], canEdit = false, showProject = false }) {
+export default function StatutoryDocsPanel({ projectId = null, projectSeries = null, extraSeries = [], documents = [], canEdit = false, showProject = false, ibrDefault = DEFAULT_NEW_IBR }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   // null = the project's main set; otherwise one of the ticked extras (HEADERS/PRS/FAB/FCB).
   const [extraOpen, setExtraOpen] = useState(null);
   // Ticked extras with no document of that series on this project yet.
   const pending = projectId ? extraSeries.filter(s => !documents.some(d => d.series === s && d.project_id === projectId)) : [];
+
+  // Switch an existing document between IBR 1950 and 2026 (changes only the printed form set/wording).
+  async function setVersion(d, v) {
+    if (ibrVersion(d, d.series) === v) return;
+    if (!window.confirm(`Print "${d.doc_id}" on the IBR ${v} forms?`)) return;
+    try {
+      await api(`/api/qc-documents/${d.id}`, { method: 'PATCH', body: { ibr_version: v } });
+      showToast(`Now on IBR ${v}`);
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+  }
 
   async function remove(d) {
     if (!window.confirm(`Delete "${d.doc_id}"? This removes the document and all its certificate links — can't be undone.`)) return;
@@ -179,7 +192,7 @@ export default function StatutoryDocsPanel({ projectId = null, projectSeries = n
             <div className="flex flex-col">
               <span className="font-medium">{s} documentation</span>
               <span className="text-xs text-muted-foreground">
-                {[...modelConfig(s, DEFAULT_NEW_IBR).forms.map(f => formLabel(f, DEFAULT_NEW_IBR)), 'BOI'].join(' + ')} · not started
+                IBR {ibrDefault} · {[...modelConfig(s, ibrDefault).forms.map(f => formLabel(f, ibrDefault)), 'BOI'].join(' + ')} · not started
               </span>
             </div>
             <Button size="sm" variant="outline" className="ml-auto" onClick={() => setExtraOpen(s)}>
@@ -204,6 +217,15 @@ export default function StatutoryDocsPanel({ projectId = null, projectSeries = n
               <ChevronRightIcon className="ml-auto size-4 text-muted-foreground" />
             </button>
             {canEdit && (
+              <Select value={ibrVersion(d, d.series)} onValueChange={v => setVersion(d, v)}>
+                <SelectTrigger size="sm" className="h-7 w-28 text-xs" aria-label="IBR version of this document"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="2026">IBR 2026</SelectItem>
+                  <SelectItem value="1950">IBR 1950</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
+            {canEdit && (
               <Button size="icon-sm" variant="ghost" aria-label="Delete document" onClick={() => remove(d)}>
                 <Trash2Icon className="size-3.5" />
               </Button>
@@ -211,8 +233,8 @@ export default function StatutoryDocsPanel({ projectId = null, projectSeries = n
           </div>
         ))}
       </CardContent>
-      {canEdit && projectId && <NewDocumentSheet open={open} onOpenChange={setOpen} projectId={projectId} projectSeries={projectSeries} router={router} />}
-      {canEdit && projectId && <NewDocumentSheet key={extraOpen} open={!!extraOpen} onOpenChange={v => !v && setExtraOpen(null)} projectId={projectId} projectSeries={extraOpen || projectSeries} extra router={router} />}
+      {canEdit && projectId && <NewDocumentSheet open={open} onOpenChange={setOpen} projectId={projectId} projectSeries={projectSeries} ibrDefault={ibrDefault} router={router} />}
+      {canEdit && projectId && <NewDocumentSheet key={extraOpen} open={!!extraOpen} onOpenChange={v => !v && setExtraOpen(null)} projectId={projectId} projectSeries={extraOpen || projectSeries} extra ibrDefault={ibrDefault} router={router} />}
     </Card>
   );
 }
