@@ -20,15 +20,23 @@ export default function DemoEntry({ roles, hasLead }) {
 
   // Owner pass (lib/demo-leads.js): /demo#pass=… goes straight to the roles. The secret is wiped from the address bar
   // and is only ever sent in a POST body.
+  const [form, setForm] = useState({});
+  const [busy, setBusy] = useState(null);
+  const [error, setError] = useState('');
+  const [passOpen, setPassOpen] = useState(false);
+  const [pin, setPin] = useState('');
+  async function usePass(pass) {
+    setBusy('pass'); setError('');
+    try { await api('/api/demo/pass', { method: 'POST', body: { pass } }); setStep('roles'); }
+    catch (e) { setError(e.message); setPin(''); }
+    finally { setBusy(null); }
+  }
   useEffect(() => {
     const pass = new URLSearchParams(window.location.hash.slice(1)).get('pass');
     if (!pass) return;
     history.replaceState(null, '', window.location.pathname);
-    api('/api/demo/pass', { method: 'POST', body: { pass } }).then(() => setStep('roles')).catch(() => {});
+    usePass(pass);
   }, []);
-  const [form, setForm] = useState({});
-  const [busy, setBusy] = useState(null);
-  const [error, setError] = useState('');
 
   async function submit(e) {
     e.preventDefault();
@@ -139,6 +147,18 @@ export default function DemoEntry({ roles, hasLead }) {
                 {busy === 'form' ? <Loader2Icon className="animate-spin" /> : <ArrowRightIcon />} Continue
               </Button>
               <p className="text-xs text-muted-foreground">We use these details only to follow up about SB Ops.</p>
+              {/* Owner pass (lib/demo-leads.js): a PIN skips the form and lifts OPS AI's limit for this browser. */}
+              {passOpen ? (
+                <div className="flex items-center gap-2 border-t pt-3">
+                  <Input type="password" inputMode="numeric" autoComplete="off" aria-label="Demo pass" placeholder="Demo pass" maxLength={12} value={pin}
+                    onChange={e => setPin(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); if (pin) usePass(pin); } }} className="h-9 w-36" autoFocus />
+                  <Button type="button" variant="outline" size="sm" disabled={!pin || busy === 'pass'} onClick={() => usePass(pin)}>
+                    {busy === 'pass' ? <Loader2Icon className="animate-spin" /> : 'Enter'}
+                  </Button>
+                </div>
+              ) : (
+                <button type="button" onClick={() => setPassOpen(true)} className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">Have a demo pass?</button>
+              )}
             </form>
           ) : (
             <div className="grid gap-2 sm:grid-cols-2">

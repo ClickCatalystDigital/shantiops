@@ -40,7 +40,7 @@ balances, one approved and one pending leave request.
 
 Visitors pick a role on `/demo` (`lib/demo-roles.js`); no password.
 
-**Owner pass.** `https://boiler-erp.ahromlabs.com/demo#pass=<DEMO_PASS>` (Worker secret, 24+ characters: `npx wrangler secret put DEMO_PASS`). The page posts it once to `/api/demo/pass`, which sets `demo_lead` to an HMAC of the secret: that browser skips the form, is never saved or emailed as a lead, and asks OPS AI without a limit. The part after `#` never reaches a server or analytics; change the secret to cancel every pass (`lib/demo-leads.js`).
+**Owner pass.** A short PIN, the Worker secret `DEMO_PASS` (4+ characters; `npx wrangler secret put DEMO_PASS`). Type it under **Have a demo pass?** on `/demo`, or open `/demo#pass=<PIN>`. `/api/demo/pass` sets `demo_lead` to an HMAC of the PIN: that browser skips the form, is never saved or emailed as a lead, and asks OPS AI without a limit. Wrong tries are capped at 5 per visitor IP and 200 in all per day (`demo_pass_tries` in the leads DB). Change the secret to cancel every pass (`lib/demo-leads.js`).
 
 | Login | Start here |
 |---|---|
