@@ -41,8 +41,9 @@ overdue Lead-Hot call (Harvest Rice Mills); one lost and one dropped enquiry wit
 enquiry; an opportunity (Sunrise Dairy's second boiler); two campaigns; sales-side payment tracker entries (advances on
 all five orders); one task per department due in the next few days, and every follow-up planned for Rohan Mehta
 (Sales head) in the Weekly Planner; a week of worker and staff attendance; leave balances, one approved and one pending
-leave request; a salary structure for all staff and last month's payroll run (submitted, 13 slips). Accounts: a spares
-invoice to Sunrise Dairy issued today (GST Returns has the current month, Management Report shows Revenue (MTD)), one
+leave request; a salary structure for all staff and last month's payroll run (submitted, 13 slips). Accounts: a service
+contract invoice to Riverside Textiles this week and a spares invoice to Sunrise Dairy today (GST Returns has the current
+month; Management Report shows Revenue and Net Profit (MTD) above zero), one
 manual journal entry (bank charges), and payables from the unpaid supplier bills.
 
 ## Which login shows what

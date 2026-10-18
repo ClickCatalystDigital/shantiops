@@ -420,6 +420,8 @@ async function workOrder(project, cards, status) {
   }
   for (const s of ['released', 'in_progress', ...(status === 'completed' ? ['completed'] : [])]) await api('PATCH', `/api/work-orders/${wo.id}`, { status: s });
   await q(`UPDATE job_cards SET work_order_id = ? WHERE id IN (${cards.map(() => '?').join(',')})`, [wo.id, ...cards]);
+  // Planned = what its job cards plan (rework included, since its output counts as done), not 1 per order.
+  await q('UPDATE work_orders SET qty_planned = (SELECT SUM(qty_planned) FROM job_cards WHERE work_order_id = ?) WHERE id = ?', [wo.id, wo.id]);
   await q('UPDATE work_orders SET created_at = ? WHERE id = ?', [stamp(-project.orderAgo + 38), wo.id]);
 
   const workers = (await q("SELECT id, trade FROM employees WHERE employee_type = 'worker' ORDER BY id"));
@@ -647,15 +649,22 @@ async function seedHrAndPayables(done, inProduction) {
   await api('PATCH', `/api/payroll-runs/${run.id}`, { status: 'submitted' });
 }
 
-// Accounts: a spares invoice issued today (GST Returns has a current period, Revenue (MTD) is not empty)
+// Accounts: a spares invoice issued today, a service contract this week (GST Returns has a current period, Revenue (MTD) is not empty)
 // and one manual journal entry.
-async function seedAccounts(p1) {
+async function seedAccounts(p1, p2) {
   const inv = await api('POST', '/api/sales-invoices', {
     customer_id: ids.customers[p1.customer], company: COMPANY, invoice_date: iso(0), due_date: iso(30), notes: `Spares for ${p1.no} after the service visit`,
     items: [{ item_description: 'Feed pump mechanical seal kit', hsn_code: '84139190', qty: 2, uom: 'Nos', rate: 6800, gst_rate_pct: 18 },
       { item_description: 'Pump coupling with rubber spider', hsn_code: '84836090', qty: 1, uom: 'Nos', rate: 4200, gst_rate_pct: 18 }],
   });
   await api('PATCH', `/api/sales-invoices/${inv.id}`, { status: 'issued' });
+  // A service contract this week too, so MTD sales outweigh the material AB-1005 drew (Net Profit (MTD) > 0).
+  const amc = await api('POST', '/api/sales-invoices', {
+    customer_id: ids.customers[p2.customer], company: COMPANY, invoice_date: iso(-4), due_date: iso(26), notes: `Annual service contract for ${p2.no}, first quarter`,
+    items: [{ item_description: 'Annual maintenance contract, quarterly visit and water treatment check', hsn_code: '998719', qty: 1, uom: 'Lot', rate: 48000, gst_rate_pct: 18 },
+      { item_description: 'IBR annual inspection assistance and hydro test', hsn_code: '998719', qty: 1, uom: 'Lot', rate: 36000, gst_rate_pct: 18 }],
+  });
+  await api('PATCH', `/api/sales-invoices/${amc.id}`, { status: 'issued' });
   await api('POST', '/api/journal-entries', { company: COMPANY, entry_date: iso(-1), description: 'Bank charges for RTGS and LC handling',
     lines: [{ accountCode: '5400', debit: 1180 }, { accountCode: '1001', credit: 1180 }] });
 }
@@ -757,7 +766,7 @@ await q("UPDATE projects SET owner = 'manager' WHERE project_no LIKE 'AB-%'");
 await seedTasks(projects);
 await seedAttendance();
 await seedHrAndPayables([p1, p2, p3], p5);
-await seedAccounts(p1);
+await seedAccounts(p1, p2);
 
 // The nightly reset shifts every date by (today − seeded_on): workers/demo-reset-cron.
 await db.batch(['CREATE TABLE IF NOT EXISTS demo_meta (seeded_on TEXT NOT NULL)', 'DELETE FROM demo_meta', { sql: 'INSERT INTO demo_meta VALUES (?)', args: [iso(0)] }], 'write');
