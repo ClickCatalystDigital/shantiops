@@ -4,6 +4,8 @@
   "name": "sb-ops-boiler-erp-demo-reset",
   "main": "src/index.js",
   "compatibility_date": "2026-08-27",
+  // Pinned: a stale wrangler account cache otherwise sends the deploy to another account.
+  "account_id": "5d8cf246f656006b81d99d734e8c0f40",
   // 21:30 UTC = 03:00 IST: quietest hour for Indian visitors.
   "triggers": { "crons": ["30 21 * * *"] },
   // Not secret. TURSO_API_TOKEN (Turso platform token) and TRIGGER_KEY are Worker secrets.
