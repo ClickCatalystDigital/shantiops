@@ -37,11 +37,12 @@ const DEMO_GROUPS = [
       'accounts_head',
     ],
   },
-  {
+  // Real customer logins: left out of the public demo's build (process.env.DEMO_BUILD, next.config.js).
+  ...(process.env.DEMO_BUILD ? [] : [{
     label: 'Customers',
     icon: UserCircle,
     accounts: ['asian_brown', 'hkm_charitable', 'virchow_biotech'],
-  },
+  }]),
 ];
 
 function labelize(username) {

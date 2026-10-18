@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "node scripts/check-syntax.mjs",
     "postinstall": "node scripts/copy-pdf-worker.js",
-    "cf:build": "node scripts/gen-api-routes.mjs && node scripts/gen-migrate-fingerprint.mjs && SB_TARGET=workers NEXT_PRIVATE_STANDALONE=true next build && node scripts/demo/strip-route-manifests.mjs && node scripts/demo/patch-yoga.mjs && opennextjs-cloudflare build --skipNextBuild && node scripts/demo/relative-wasm-imports.mjs && rm -rf .next",
+    "cf:build": "node scripts/gen-api-routes.mjs && node scripts/gen-migrate-fingerprint.mjs && SB_TARGET=workers NEXT_PRIVATE_STANDALONE=true next build && node scripts/demo/strip-route-manifests.mjs && node scripts/demo/patch-yoga.mjs && opennextjs-cloudflare build --skipNextBuild && node scripts/demo/relative-wasm-imports.mjs && node scripts/demo/strip-client-traces.mjs && rm -rf .next",
     "cf:preview": "npm run cf:build && opennextjs-cloudflare preview",
     "cf:deploy": "npm run cf:build && opennextjs-cloudflare deploy",
     "prebuild": "node scripts/gen-api-routes.mjs && node scripts/gen-migrate-fingerprint.mjs",

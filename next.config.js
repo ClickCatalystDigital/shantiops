@@ -29,7 +29,9 @@ module.exports = {
   experimental: { preloadEntriesOnStart: false },
   // Commit this build came from (GET /api/version): Render sets RENDER_GIT_COMMIT, the GitHub deploy
   // workflow sets GITHUB_SHA. The deploy workflow waits until each server reports the pushed commit.
-  env: { BUILD_COMMIT: process.env.RENDER_GIT_COMMIT || process.env.GITHUB_SHA || '' },
+  // DEMO_BUILD: '1' only in the public demo's Workers build. Client code tests it to leave the real
+  // customer's names out of the demo bundle (the dead branch is dropped at build); Render builds get ''.
+  env: { BUILD_COMMIT: process.env.RENDER_GIT_COMMIT || process.env.GITHUB_SHA || '', DEMO_BUILD: WORKERS ? '1' : '' },
   // Cloudflare Workers build (npm run cf:build sets SB_TARGET=workers): libsql's web client instead
   // of the Node one, and its files traced in (Next's tracing only follows the Node entry).
   ...(WORKERS ? {
