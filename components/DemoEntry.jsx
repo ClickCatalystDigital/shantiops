@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '@/lib/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -17,6 +17,15 @@ const FIELDS = [
 
 export default function DemoEntry({ roles, hasLead }) {
   const [step, setStep] = useState(hasLead ? 'roles' : 'form');
+
+  // Owner pass (lib/demo-leads.js): /demo#pass=… goes straight to the roles. The secret is wiped from the address bar
+  // and is only ever sent in a POST body.
+  useEffect(() => {
+    const pass = new URLSearchParams(window.location.hash.slice(1)).get('pass');
+    if (!pass) return;
+    history.replaceState(null, '', window.location.pathname);
+    api('/api/demo/pass', { method: 'POST', body: { pass } }).then(() => setStep('roles')).catch(() => {});
+  }, []);
   const [form, setForm] = useState({});
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState('');

@@ -9,7 +9,7 @@ const PUBLIC_PATHS = ['/login', '/d-login', '/api/login', '/api/config/brand', '
 // Public demo (DEMO_MODE=1, never set on a customer deployment): visitors enter through /demo, and
 // changes to logins, mailboxes, connections, company and device security are refused. Anything that
 // would message the outside world (email, WhatsApp, AI) is refused too.
-const DEMO_PUBLIC = ['/demo', '/api/demo/lead', '/api/demo/enter'];
+const DEMO_PUBLIC = ['/demo', '/api/demo/lead', '/api/demo/enter', '/api/demo/pass'];
 const DEMO_BLOCKED = ['/api/users', '/api/account/password', '/api/account/avatar', '/api/change-password', '/api/set-password',
   '/api/register', '/api/mail-accounts', '/api/whatsapp', '/api/assistant', '/api/lead-sources', '/api/statutory-rates',
   '/api/sales-team', '/api/portal-access', '/api/settings', '/api/company-settings', '/api/email-templates', '/api/agent',

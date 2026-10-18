@@ -52,7 +52,7 @@ export default function AssistantWidget({ demo = false }) {
         if (demo && res.status === 429 && e?.demoLimit) { setDemoAi(d => (d ? { ...d, left: 0 } : d)); setLimitOpen(true); track('boiler_demo_ai_limit'); }
         throw Object.assign(new Error(e?.error || `Request failed (${res.status})`), { link: e?.link, linkLabel: e?.linkLabel });
       }
-      if (demo) { setDemoAi(d => (d ? { ...d, left: Math.max(0, d.left - 1) } : d)); track('boiler_demo_ai_question'); }
+      if (demo) { setDemoAi(d => (d && !d.pass ? { ...d, left: Math.max(0, d.left - 1) } : d)); track('boiler_demo_ai_question'); }
       let sources = [];
       try { sources = JSON.parse(decodeURIComponent(res.headers.get('x-sources') || '%5B%5D')); } catch { /* no sources */ }
       if (res.headers.get('x-left') !== null) setLeft(Number(res.headers.get('x-left')));
@@ -92,7 +92,7 @@ export default function AssistantWidget({ demo = false }) {
       <div className="flex items-center justify-between border-b px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
         <div>
           <p className="text-sm font-semibold">OPS AI</p>
-          {demo && demoAi ? <p className="text-[11px] text-muted-foreground">{demoAi.left} of {demoAi.limit} free questions left</p>
+          {demo && demoAi ? <p className="text-[11px] text-muted-foreground">{demoAi.pass ? 'Owner pass · no limit' : `${demoAi.left} of ${demoAi.limit} free questions left`}</p>
             : left !== null && <p className="text-[11px] text-muted-foreground">{left} question{left === 1 ? '' : 's'} left today</p>}
         </div>
         <div className="flex gap-1">

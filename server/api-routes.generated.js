@@ -132,6 +132,7 @@ export const ROUTES = {
   "demo/ai": () => import("./api/demo/ai/route.js"),
   "demo/enter": () => import("./api/demo/enter/route.js"),
   "demo/lead": () => import("./api/demo/lead/route.js"),
+  "demo/pass": () => import("./api/demo/pass/route.js"),
   "dependency-chain": () => import("./api/dependency-chain/route.js"),
   "designations": () => import("./api/designations/route.js"),
   "email-templates/[id]": () => import("./api/email-templates/[id]/route.js"),

@@ -40,6 +40,8 @@ balances, one approved and one pending leave request.
 
 Visitors pick a role on `/demo` (`lib/demo-roles.js`); no password.
 
+**Owner pass.** `https://boiler-erp.ahromlabs.com/demo#pass=<DEMO_PASS>` (Worker secret, 24+ characters: `npx wrangler secret put DEMO_PASS`). The page posts it once to `/api/demo/pass`, which sets `demo_lead` to an HMAC of the secret: that browser skips the form, is never saved or emailed as a lead, and asks OPS AI without a limit. The part after `#` never reaches a server or analytics; change the secret to cancel every pass (`lib/demo-leads.js`).
+
 | Login | Start here |
 |---|---|
 | Owner / Manager | Executive: 2 active projects, value in progress, collected 44%, outstanding by customer, AB-1005 needs attention. Projects → AB-1001 for the full chain on one page. |
