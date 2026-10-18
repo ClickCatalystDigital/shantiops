@@ -90,6 +90,10 @@ async function seedPeople() {
              VALUES (?, ?, 'worker', 'Production', ?, ?, ?)`,
       [`AB-W${String(n++).padStart(3, '0')}`, name, trade, iso(-700 + n * 21), COMPANY]);
   }
+  // Hourly cost per trade: Labour Utilization and the work orders' actual labour read it.
+  for (const [trade, rate] of [['Welder', 240], ['Fitter', 200], ['Gas Cutter', 180], ['Machinist', 220], ['Grinder', 160], ['Helper', 120]]) {
+    await q("UPDATE employees SET cost_rate_per_hour = ? WHERE employee_type = 'worker' AND trade = ?", [rate, trade]);
+  }
 }
 
 // --- 2. Masters through the API -------------------------------------------------------------------
@@ -103,7 +107,7 @@ const SUPPLIERS = ['Prime Steel Traders', 'National Tube Co', 'Shield Valves Pvt
 // [item_name, uom, bom_category, unit price ₹ per uom]
 const ITEMS = [
   ['BQ PLATE 12 MM SA 516 GR 70', 'Kgs', 'plate', 74], ['BQ PLATE 16 MM SA 516 GR 70', 'Kgs', 'plate', 76],
-  ['MS PLATE 8 MM IS 2062', 'Kgs', 'plate', 62], ['BOILER TUBE 63.5 OD X 3.25 THK SA 210', 'Mtr', 'pipe', 520],
+  ['MS PLATE 8 MM IS 2062', 'Kgs', 'plate', 62], ['MS PLATE 10 MM IS 2062', 'Kgs', 'plate', 63], ['BOILER TUBE 63.5 OD X 3.25 THK SA 210', 'Mtr', 'pipe', 520],
   ['STAY TUBE 63.5 OD X 6.35 THK SA 210', 'Mtr', 'pipe', 980], ['MS ANGLE 50 X 50 X 6 MM', 'Kgs', 'angle', 62],
   ['MS CHANNEL 100 X 50 MM', 'Kgs', 'channel', 60], ['MS PIPE 50 NB CLASS B', 'Mtr', 'pipe', 410],
   ['SAFETY VALVE 40 NB SPRING LOADED', 'Nos', 'standard', 18500], ['MAIN STEAM STOP VALVE 80 NB', 'Nos', 'standard', 24000],
@@ -155,7 +159,8 @@ async function seedStock() {
   const STOCK = [['MS PLATE 8 MM IS 2062', 1200, 500, 'Yard A'], ['MS ANGLE 50 X 50 X 6 MM', 900, 400, 'Rack S1'],
     ['MS CHANNEL 100 X 50 MM', 650, 300, 'Rack S1'], ['MS PIPE 50 NB CLASS B', 90, 40, 'Rack P2'],
     ['GASKET SPIRAL WOUND 80 NB', 40, 20, 'Bin G3'], ['STUD BOLT M16 X 90', 600, 200, 'Bin F1'],
-    ['FIRE BRICK IS 8', 2500, 1000, 'Shed 2'], ['PRESSURE GAUGE 0-21 KG/CM2', 6, 4, 'Cabinet I1']];
+    ['FIRE BRICK IS 8', 2500, 1000, 'Shed 2'], ['PRESSURE GAUGE 0-21 KG/CM2', 6, 4, 'Cabinet I1'],
+    ['MS PLATE 10 MM IS 2062', 0, 0, 'Yard A']]; // tracked as plate pieces (the cut below); pieces own its on-hand
   for (const [name, on_hand, reorder_point, location] of STOCK) {
     await api('POST', '/api/inventory-items', {
       description: name, item_id: ids.items[name], on_hand, reorder_point, location, avg_cost: PRICE[name], category: CAT[name],
@@ -175,7 +180,8 @@ async function newLead(org, code, source, daysAgo, extra = {}) {
   return r.id;
 }
 async function note(lead_id, content, daysAgo, next) {
-  await api('POST', '/api/crm-notes', { lead_id, note_type: 'call', content, visit_date: iso(-daysAgo), next_plan_date: next != null ? iso(next) : undefined });
+  // plan_for: the Weekly Planner's owner (else it shows the admin login that ran the seed).
+  await api('POST', '/api/crm-notes', { lead_id, note_type: 'call', content, visit_date: iso(-daysAgo), next_plan_date: next != null ? iso(next) : undefined, plan_for: 'sales_head' });
 }
 
 // One accepted quotation → sale order (with its items) for a project's customer.
@@ -250,7 +256,8 @@ async function createProject(no, customer, code, orderAgo, leadSource) {
 
   // Design: calculation sheet + three drawings, approved by the Design Head. The demo has no file storage,
   // so the drawings carry no file; their status is set directly.
-  await api('POST', '/api/calc-sheets', { name: `Pressure parts calculation (${name})`, projectId: p.id });
+  const cs = await api('POST', '/api/calc-sheets', { name: `Pressure parts calculation (${name})`, projectId: p.id });
+  await api('POST', '/api/calc-snapshots', { sheetId: cs.id, label: 'Issued for drawing approval' }); // else "No snapshot yet"
   for (const dwg of ['General arrangement', 'Shell and furnace', 'Tube layout']) {
     const d = await api('POST', '/api/calc-drawings', { name: dwg, projectId: p.id, assignedTo: 'Vikram Rao', description: `${no} ${dwg.toLowerCase()} drawing` });
     await q("UPDATE calc_drawings SET status = 'approved' WHERE id = ?", [d.id ?? d.drawing?.id]);
@@ -334,7 +341,7 @@ async function incomingQc(project, result = () => 'pass') {
   const recs = await q(`SELECT r.id, r.bom_item_id FROM qc_records r WHERE r.project_id = ? AND r.result = 'pending'`, [project.id]);
   for (const r of recs) {
     const res = result(r);
-    if (res !== 'pending') await api('PATCH', `/api/qc-records/${r.id}`, { result: res });
+    if (res !== 'pending') await api('PATCH', `/api/qc-records/${r.id}`, { result: res, tested_on: iso(-project.orderAgo + 35) });
   }
   return recs;
 }
@@ -363,6 +370,69 @@ async function produce(project, { done = JOBS.length, running = 0 } = {}) {
     if (i < done) await api('PATCH', `/api/job-cards/${jc.id}`, { status: 'done', qty_done: 1, qty_rejected: 0 });
   }
   return cards;
+}
+
+// The 33-stage paper Job Card (Shop Floor → Job Card board, QC → Job Cards). Stages are spread over the
+// production window. signed: stages Production finished and QC signed; then one finished stage waiting
+// for QC and one started (AB-1005). A finished project passes signed = all.
+async function jobSheet(project, { signed = Infinity } = {}) {
+  const fitters = (await q("SELECT id FROM employees WHERE employee_type = 'worker' AND trade IN ('Welder', 'Fitter') ORDER BY id")).map(r => r.id);
+  const sheet = await api('POST', '/api/job-sheets', {
+    job_number: project.no, project_id: project.id, card_type: 'boiler', drawing_approved_on: iso(-project.orderAgo + 20),
+    ibr_bvi: `BVI/${project.no}`, drg_nos: `${project.no}-GA-01, ${project.no}-SH-02, ${project.no}-TL-03`, boiler_plate_nos: `P${project.id}01, P${project.id}02`, owner_name: 'Karan Joshi',
+  });
+  const { stages } = await api('GET', `/api/job-sheets/${sheet.id}`);
+  for (const [i, s] of stages.entries()) {
+    const day = workday(Math.min(0, -project.orderAgo + 40 + Math.floor(i * 40 / stages.length)));
+    const fitter_employee_id = fitters[i % fitters.length];
+    const path = `/api/job-sheets/${sheet.id}/stages/${s.id}`;
+    if (i < signed + 1) {
+      await api('PATCH', path, { action: 'finish', date: iso(day), fitter_employee_id });
+      if (i < signed) await api('PATCH', path, { action: 'qc', date: iso(day), inspection_date: iso(day) });
+    } else if (i === signed + 1) await api('PATCH', path, { action: 'start', date: iso(0), fitter_employee_id });
+    else break;
+  }
+  // Sign times are stamped "now"; put them on the stage's own dates.
+  await q(`UPDATE job_sheet_stages SET production_sign_at = end_date || ' 17:30:00', qc_sign_at = CASE WHEN qc_sign_by IS NOT NULL THEN inspection_date || ' 11:00:00' END
+           WHERE sheet_id = ?`, [sheet.id]);
+  await q('UPDATE job_sheets SET created_at = ? WHERE id = ?', [stamp(-project.orderAgo + 38), sheet.id]);
+  // Signing a finished project's stages alerts QC and Dispatch today; those weeks-old alerts would be noise.
+  if (signed === Infinity) await q("DELETE FROM notifications WHERE project_id = ? AND kind LIKE 'jobsheet%'", [project.id]);
+}
+
+// A work order over the project's job cards (Work Order Register, Production Cost Variance, Manufacturing
+// Performance): planned materials and route steps, the job cards linked to it, and a day's time logs per card.
+const WORKSTATIONS = [['Plate rolling machine', 950], ['Welding bay', 700], ['Tube expander', 550]];
+async function workOrder(project, cards, status) {
+  const ws = await q('SELECT id FROM workstations WHERE machine_hour_rate IS NOT NULL ORDER BY id'); // ours, not migrate()'s unrated ones
+  const wo = await api('POST', '/api/work-orders', {
+    mode: 'against_order', project_id: project.id, qty_planned: 1, product_description: `${project.series}-${project.capacity} boiler pressure parts`,
+    planned_start: iso(-project.orderAgo + 40), planned_end: iso(-project.orderAgo + 76), notes: 'Shell, furnace, tubes and body',
+  });
+  for (const l of project.lines.filter(l => l.mfg)) {
+    await api('POST', `/api/work-orders/${wo.id}/materials`, { bom_item_id: l.id, description: l.name, qty_required: l.qty, unit_cost: PRICE[l.name] });
+  }
+  for (const [i, [key]] of JOBS.entries()) {
+    await api('POST', `/api/work-orders/${wo.id}/operations`, {
+      workstation_id: ws[i % ws.length].id, milestone_id: await milestoneId(project, key), department: 'Production',
+      planned_minutes: 960 + i * 240, outputs: key.replace(/_/g, ' '), quality_checkpoint: key === 'shell_welding' ? 'RT of longitudinal seams' : undefined,
+    });
+  }
+  for (const s of ['released', 'in_progress', ...(status === 'completed' ? ['completed'] : [])]) await api('PATCH', `/api/work-orders/${wo.id}`, { status: s });
+  await q(`UPDATE job_cards SET work_order_id = ? WHERE id IN (${cards.map(() => '?').join(',')})`, [wo.id, ...cards]);
+  await q('UPDATE work_orders SET created_at = ? WHERE id = ?', [stamp(-project.orderAgo + 38), wo.id]);
+
+  const workers = (await q("SELECT id, trade FROM employees WHERE employee_type = 'worker' ORDER BY id"));
+  const states = await q(`SELECT id, status FROM job_cards WHERE id IN (${cards.map(() => '?').join(',')}) ORDER BY id`, cards);
+  for (const [i, jc] of states.entries()) {
+    if (jc.status === 'pending') continue;
+    const day = workday(Math.min(0, -project.orderAgo + 41 + i * 6));
+    for (const [k, w] of [workers[i % 4], workers[4 + (i % 4)]].entries()) {
+      const t = await api('POST', `/api/job-cards/${jc.id}/time-logs`, { employee_id: w.id, minutes: 420 + k * 60 + i * 15, qty_completed: jc.status === 'done' && k === 0 ? 1 : 0 });
+      await q('UPDATE job_card_time_logs SET created_at = ? WHERE id = ?', [`${iso(day)} 18:00:00`, t.id]);
+    }
+  }
+  return wo.id;
 }
 
 // Shop floor hands the finished subsystems to Dispatch (sets production_done on the made lines).
@@ -416,8 +486,11 @@ async function dispatch(project, { split = false } = {}) {
   await api('POST', '/api/packing/from-bom', { project_id: project.id, company: COMPANY, mode: split ? 'new' : undefined })
     .catch(e => { if (!/already on an existing/.test(e.message)) throw e; });
   const lists = (await q("SELECT id FROM packing_lists WHERE project_id = ? AND status = 'draft' ORDER BY id", [project.id])).map(r => r.id);
-  for (const id of lists) {
-    await api('PATCH', `/api/packing/${id}`, { status: 'packed', transport_mode: 'road' });
+  for (const [i, id] of lists.entries()) {
+    // E-way bill and freight (E-Way Bill Register, Freight Cost Summary); one trailer's cost split over a shipment's lists.
+    await api('PATCH', `/api/packing/${id}`, { status: 'packed', transport_mode: 'road', vehicle_no: `MH14 GT ${2200 + project.id}`, dispatch_through: 'Sahyadri Roadways',
+      eway_bill_no: String(271000000000 + project.id * 1000 + i), eway_bill_date: iso(-project.orderAgo + 92), transport_distance_km: 420,
+      freight_amount: Math.round((24000 + project.capacity * 8) / lists.length), freight_paid_by: 'us' });
     await api('POST', `/api/packing/${id}/submit-for-approval`, {});
     // Production's sign-off usually came with the handover; QC signs here.
     const [a] = await q('SELECT id, qc_decision, production_decision FROM pre_dispatch_approvals WHERE packing_list_id = ? ORDER BY id DESC LIMIT 1', [id]);
@@ -543,19 +616,48 @@ async function seedAttendance() {
 }
 
 // Leave balances and requests (HR), supplier bills against the finished orders' POs (Accounts payables).
-async function seedHrAndPayables(done) {
+async function seedHrAndPayables(done, inProduction) {
   const types = await q("SELECT id, name FROM leave_types WHERE name NOT LIKE 'Unpaid%' ORDER BY id");
   const staff = await q("SELECT id FROM employees WHERE employee_code LIKE 'AB-E%' ORDER BY id");
   for (const s of staff) for (const t of types) await api('POST', '/api/leave-allocations', { employee_id: s.id, leave_type_id: t.id, year: Number(iso(0).slice(0, 4)), allocated: /earned/i.test(t.name) ? 15 : 12 });
   const past = await api('POST', '/api/leave-requests', { employee_id: staff[5].id, leave_type_id: types[0].id, from_date: iso(workday(-12)), to_date: iso(workday(-12)), reason: 'Family function' });
   await api('PATCH', `/api/leave-requests/${past.id}`, { status: 'approved' });
   await api('POST', '/api/leave-requests', { employee_id: staff[8].id, leave_type_id: types[0].id, from_date: iso(6), to_date: iso(7), reason: 'Travelling home' }); // waits for HR
-  for (const p of done) {
-    const pos = await q('SELECT DISTINCT po_id FROM po_items WHERE project_id = ?', [p.id]);
+  // Bills are approved (Purchase Register, Procurement Spend and payables count approved/paid only);
+  // AB-1001's are paid. AB-1005's bills are dated this week, so the current month has purchases.
+  for (const p of [...done, inProduction]) {
+    const pos = await q("SELECT DISTINCT pi.po_id FROM po_items pi JOIN purchase_orders po ON po.id = pi.po_id WHERE pi.project_id = ? AND po.status = 'issued'", [p.id]);
     for (const [i, { po_id }] of pos.entries()) {
-      await api('POST', `/api/purchase-orders/${po_id}/record-bill`, { bill_no: `SB/${p.id}${String(i + 1).padStart(3, '0')}`, bill_date: iso(-p.orderAgo + 33), due_date: iso(-p.orderAgo + 63), gst_rate_pct: 18, company: COMPANY });
+      const day = p === inProduction ? -Math.min(i, 4) : -p.orderAgo + 33;
+      const bill = await api('POST', `/api/purchase-orders/${po_id}/record-bill`, { bill_no: `SB/${p.id}${String(i + 1).padStart(3, '0')}`, bill_date: iso(day), due_date: iso(day + 30), gst_rate_pct: 18, company: COMPANY });
+      await api('PATCH', `/api/vendor-bills/${bill.id}`, { status: 'approved' });
+      if (p === done[0]) await api('PATCH', `/api/vendor-bills/${bill.id}`, { status: 'paid', payment_ref: `NEFT${p.id}${i + 1}` });
     }
   }
+
+  // Payroll for last month: one salary structure, every staff login on it, the run submitted.
+  const st = await api('POST', '/api/salary-structures', { name: 'Staff (monthly)' });
+  for (const c of [{ name: 'HRA', component_type: 'earning', calc_type: 'percent_of_basic', percent: 40 }, { name: 'Conveyance', component_type: 'earning', amount: 1600 },
+    { name: 'Special allowance', component_type: 'earning', amount: 3500 }]) await api('POST', `/api/salary-structures/${st.id}/components`, c);
+  for (const [i, s] of staff.entries()) {
+    await api('POST', '/api/salary-structure-assignments', { employee_id: s.id, salary_structure_id: st.id, base: i === 0 ? 65000 : 28000 + (i % 5) * 4000, from_date: iso(-400) });
+  }
+  const last = new Date(Date.now() - (Number(iso(0).slice(8, 10)) + 1) * DAY);
+  const run = await api('POST', '/api/payroll-runs', { period_month: last.getUTCMonth() + 1, period_year: last.getUTCFullYear() });
+  await api('PATCH', `/api/payroll-runs/${run.id}`, { status: 'submitted' });
+}
+
+// Accounts: a spares invoice issued today (GST Returns has a current period, Revenue (MTD) is not empty)
+// and one manual journal entry.
+async function seedAccounts(p1) {
+  const inv = await api('POST', '/api/sales-invoices', {
+    customer_id: ids.customers[p1.customer], company: COMPANY, invoice_date: iso(0), due_date: iso(30), notes: `Spares for ${p1.no} after the service visit`,
+    items: [{ item_description: 'Feed pump mechanical seal kit', hsn_code: '84139190', qty: 2, uom: 'Nos', rate: 6800, gst_rate_pct: 18 },
+      { item_description: 'Pump coupling with rubber spider', hsn_code: '84836090', qty: 1, uom: 'Nos', rate: 4200, gst_rate_pct: 18 }],
+  });
+  await api('PATCH', `/api/sales-invoices/${inv.id}`, { status: 'issued' });
+  await api('POST', '/api/journal-entries', { company: COMPANY, entry_date: iso(-1), description: 'Bank charges for RTGS and LC handling',
+    lines: [{ accountCode: '5400', debit: 1180 }, { accountCode: '1001', credit: 1180 }] });
 }
 
 // --- main ----------------------------------------------------------------------------------------
@@ -571,13 +673,17 @@ const p3 = await createProject('AB-1003', 'Bluewave Chemicals Ltd', 'AB-MF-2000'
 const p4 = await createProject('AB-1004', 'Northstar Paper Mills', 'AB-OF-1500', 26, 'Exhibition');
 const p5 = await createProject('AB-1005', 'Greenfield Foods Pvt Ltd', 'AB-CF-1000', 49, 'Website');
 
+for (const [name, machine_hour_rate] of WORKSTATIONS) await api('POST', '/api/workstations', { name, machine_hour_rate });
+
 // Three complete orders, end to end.
 for (const [p, paid] of [[p1, 1], [p2, 0.6], [p3, 0.3]]) {
   await procure(p);
   await receive(p, p.buy);
   for (const l of p.stock) await api('POST', `/api/bom-items/${l.id}/route-self`, { routed_to: l.mfg ? 'production' : 'dispatch' }).catch(() => {});
   await incomingQc(p);
-  await produce(p);
+  const cards = await produce(p);
+  await jobSheet(p);
+  await workOrder(p, cards, 'completed');
   await handOver(p);
   await qcDocs(p);
   await dispatch(p, { split: p === p3 });
@@ -597,10 +703,32 @@ const pendingRecs = new Set(recs5.slice(-2).map(r => r.id));
 await incomingQc(p5, r => r.bom_item_id === stay.id ? 'fail' : pendingRecs.has(r.id) ? 'pending' : 'pass');
 const failed = recs5.find(r => r.bom_item_id === stay.id);
 if (failed) await api('POST', '/api/ncrs', { project_id: p5.id, bom_item_id: stay.id, qc_record_id: failed.id, severity: 'major', description: 'Stay tube lot: wall thickness 5.9 mm against 6.35 mm specified on 4 of 12 lengths. Return to supplier.' });
-await produce(p5, { done: 2, running: 1 });
+const cards5 = await produce(p5, { done: 2, running: 1 });
+// Rework / Rejection: one tube plate drilled off-pitch on the drilling card, re-done on a rework card.
+const [drill] = await q('SELECT id, milestone_id, bom_item_id FROM job_cards WHERE id = ?', [cards5[1]]);
+await api('PATCH', `/api/job-cards/${drill.id}`, { qty_planned: 2, qty_done: 2, qty_rejected: 1, notes: `${p5.no} drilling: 1 tube plate off-pitch, re-drilled on a rework card` });
+const rework = await api('POST', '/api/job-cards', { milestone_id: drill.milestone_id, bom_item_id: drill.bom_item_id, qty_planned: 1, rework_of_job_card_id: drill.id,
+  planned_start: iso(-6), planned_end: iso(-5), notes: `${p5.no} rework: re-drill tube plate` });
+await api('PATCH', `/api/job-cards/${rework.id}`, { status: 'progress' });
+await api('PATCH', `/api/job-cards/${rework.id}`, { status: 'done', qty_done: 1, qty_rejected: 0 });
+await q("UPDATE job_cards SET updated_at = ? WHERE id IN (?, ?)", [stamp(-5), drill.id, rework.id]);
+await jobSheet(p5, { signed: 10 }); // rolling and fit-up signed, RC tubesheet fit-up waiting for QC, shell welding started
+await workOrder(p5, [...cards5, rework.id], 'in_progress');
+// Material Utilization: a 10 mm plate cut for AB-1005's saddles, the off-cut kept as a remnant.
+const [plate10] = await q("SELECT id FROM inventory_items WHERE description = 'MS PLATE 10 MM IS 2062'");
+const piece = await api('POST', '/api/stock-pieces', { inventory_item_id: plate10.id, kind: 'plate', length_mm: 6000, width_mm: 1500, thickness_mm: 10, heat_no: 'H10M2201' });
+await api('POST', `/api/stock-pieces/${piece.id}/reserve`, { project_id: p5.id });
+await api('POST', `/api/stock-pieces/${piece.id}/cut`, { project_id: p5.id, job_card_id: cards5[2], note: 'Saddles and end-box plates',
+  used: [{ length_mm: 3200, width_mm: 1500 }], remnants: [{ length_mm: 2400, width_mm: 1500 }] });
+for (const r of await q("SELECT id FROM stock_pieces WHERE parent_id = ? AND status = 'pending_receipt'", [piece.id])) {
+  await api('POST', `/api/stock-pieces/${r.id}/confirm-receipt`, {}); // Stores takes the remnant back into stock
+}
 const plate8 = p5.lines.find(l => l.name.startsWith('BQ PLATE 16'));
 await api('POST', '/api/material-indents', { project_id: p5.id, items: [{ bom_item_id: plate8.id, qty_requested: 420 }], notes: 'Furnace and tube plates for box-up' }).catch(e => console.warn('indent:', e.message));
 await setMilestones(p5, 'shell_welding');
+// Shell welding is three days late (the stay-tube lot was rejected): Executive "Needs your attention".
+await q(`UPDATE milestones SET planned_end = ?, delay_category = 'Material', delay_reason = 'Stay tube lot rejected at incoming inspection; replacement due from supplier'
+         WHERE project_id = ? AND milestone_key = 'shell_welding'`, [iso(-3), p5.id]);
 // AB-1004: in Procurement (after AB-1005: a supplier's open draft PO is shared across projects, so AB-1005's
 // orders would otherwise pick up and issue AB-1004's draft). Lines spread over every buying stage; two received lines wait for Stores' inward approval.
 // By item, so each supplier's PO has one state: plates received (awaiting inward approval), tubes in transit,
@@ -628,7 +756,8 @@ for (const p of [p4, p5]) {
 await q("UPDATE projects SET owner = 'manager' WHERE project_no LIKE 'AB-%'");
 await seedTasks(projects);
 await seedAttendance();
-await seedHrAndPayables([p1, p2, p3]);
+await seedHrAndPayables([p1, p2, p3], p5);
+await seedAccounts(p1);
 
 // The nightly reset shifts every date by (today − seeded_on): workers/demo-reset-cron.
 await db.batch(['CREATE TABLE IF NOT EXISTS demo_meta (seeded_on TEXT NOT NULL)', 'DELETE FROM demo_meta', { sql: 'INSERT INTO demo_meta VALUES (?)', args: [iso(0)] }], 'write');
@@ -638,7 +767,8 @@ const MUST = ['users', 'employees', 'customers', 'suppliers', 'leads', 'crm_note
   'sale_orders', 'sale_order_items', 'projects', 'scope_of_supply_items', 'milestones', 'calc_sheets', 'calc_drawings', 'bom_items', 'supplier_quotes',
   'purchase_orders', 'rfqs', 'gate_inward_receipts', 'stock_receipts', 'inward_approvals', 'material_issues', 'material_indents', 'qc_records', 'ncr_records',
   'job_cards', 'production_handovers', 'test_certificates', 'qc_documents', 'qc_document_parts', 'packing_lists', 'pre_dispatch_approvals', 'shipments',
-  'installation_visits', 'installation_reports', 'service_calls', 'sales_invoices', 'customer_receipts', 'sale_order_payments', 'tasks', 'attendance_days', 'leave_requests', 'vendor_bills', 'journal_entries'];
+  'installation_visits', 'installation_reports', 'service_calls', 'sales_invoices', 'customer_receipts', 'sale_order_payments', 'tasks', 'attendance_days', 'leave_requests', 'vendor_bills', 'journal_entries',
+  'job_sheets', 'job_sheet_stages', 'work_orders', 'work_order_operations', 'job_card_time_logs', 'stock_pieces', 'calc_snapshots', 'payroll_runs', 'salary_slips'];
 const counts = {};
 for (const t of MUST) counts[t] = (await q(`SELECT COUNT(*) n FROM ${t}`))[0].n;
 console.table(counts);

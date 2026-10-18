@@ -20,21 +20,30 @@ Production/Dispatch → incoming inspection passed → material issued, 6 job ca
 test certificates, QC folder (ABH-AB-100n, IBR 2026, every part and bought-out item linked, shared with the customer) →
 packing list packed, pre-dispatch approval (QC + Production), dispatched, delivery acknowledged → 2 site visits,
 commissioning report (FSR-100n, finalised), a later service call → sales invoice (AB/n/2026-27) with receipts, supplier
-bills against every PO. Small catalog items (gauges, gaskets, studs) come from opening stock, not new POs.
+bills against every PO (approved; AB-1001's paid). Small catalog items (gauges, gaskets, studs) come from opening stock, not new POs.
+Each complete project also has its 33-stage paper Job Card (every stage finished and QC-signed), a completed work order
+(WO-100n) with planned materials, route steps and the job cards linked, time logs on every job card, and a calc-sheet
+snapshot. SHP-1001 and the single lists carry an e-way bill number and freight.
 
 **AB-1004 (Procurement)**: plates and angle received and waiting in Stores' inward approval queue; tubes and pipe in
 transit; water-level gauge ordered; safety valve on a **draft PO**; other valves and the pump at quote comparison;
 blow-down valve and pressure gauge on an **RFQ** (RFQ-1). Current milestone: Ordered.
 
-**AB-1005 (Production / QC)**: two job cards done, one running, three pending; the stay-tube lot **failed** incoming
-inspection with an **NCR**; two inspections still pending; material indent IND-1001 for the furnace plates. Current
-milestone: Shell Welding (due today, so it shows on Today and Executive "Needs your attention").
+**AB-1005 (Production / QC)**: two job cards done, one running, three pending; the drilling card rejected one tube plate
+and a rework card re-did it; the stay-tube lot **failed** incoming inspection with an **NCR**; two inspections still
+pending; material indent IND-1001 for the furnace plates. Paper Job Card: rolling and fit-up stages QC-signed, RC
+tubesheet fit-up finished and **waiting for QC**, shell belt welding started. Work order in progress. A 10 mm plate was
+cut for it with a 2.4 m remnant taken back into stock. Supplier bills for its POs are dated this week. Current
+milestone: Shell Welding, **3 days late** (delay category Material), so it shows on Executive "Needs your attention".
 
 Also seeded: open enquiries at Hot Offers (Metro Hospital Trust, quotation sent), Follow-up (Kaveri Pharma) and an
 overdue Lead-Hot call (Harvest Rice Mills); one lost and one dropped enquiry with reasons; call notes on every
 enquiry; an opportunity (Sunrise Dairy's second boiler); two campaigns; sales-side payment tracker entries (advances on
-all five orders); one task per department due in the next few days; a week of worker and staff attendance; leave
-balances, one approved and one pending leave request.
+all five orders); one task per department due in the next few days, and every follow-up planned for Rohan Mehta
+(Sales head) in the Weekly Planner; a week of worker and staff attendance; leave balances, one approved and one pending
+leave request; a salary structure for all staff and last month's payroll run (submitted, 13 slips). Accounts: a spares
+invoice to Sunrise Dairy issued today (GST Returns has the current month, Management Report shows Revenue (MTD)), one
+manual journal entry (bank charges), and payables from the unpaid supplier bills.
 
 ## Which login shows what
 
@@ -50,18 +59,18 @@ Visitors pick a role on `/demo` (`lib/demo-roles.js`); no password.
 | Engineering | BOM tree of any project; release history. |
 | Procurement | AB-1004: comparison, draft PO, RFQ-1, orders in transit. |
 | Stores | Inward approvals waiting for AB-1004; inventory (MS angle below its reorder point). |
-| Production | AB-1005 job cards, material indent, worker attendance; hand-overs for the complete projects. |
-| Quality (QC) | AB-1005's failed inspection and NCR, pending inspections; QC folders of AB-1001..1003 (open the PDF). |
-| Dispatch | Dispatched packing lists, SHP-1001, pre-dispatch approvals. |
+| Production | AB-1005 job cards and paper Job Card, material indent, worker attendance; hand-overs for the complete projects; Reports (work orders, cost variance, labour, material utilization, rework). |
+| Quality (QC) | AB-1005's failed inspection and NCR, pending inspections, a Job Card stage waiting for sign-off; QC folders of AB-1001..1003 (open the PDF). |
+| Dispatch | Dispatched packing lists, SHP-1001, pre-dispatch approvals; E-Way Bill Register and Freight Cost Summary. |
 | Service | Site visits and commissioning reports (FSR-1001..1003), service calls. |
-| Accounts | Sales invoices and receipts (paid / part-paid / advance), supplier bills, journal entries. |
-| HR | Employees, attendance, leave requests. |
+| Accounts | Sales invoices and receipts (paid / part-paid / advance), supplier bills, journal entries (one manual), GST Returns for this month. |
+| HR | Employees, attendance, leave requests, last month's payroll run and salary slips. |
 
 ## Not in the demo
 
 - Customer Portal (blocked in demo mode).
 - Uploaded files: drawings carry no file (approved by status only), no test-certificate scans, no photos. The demo has no file storage.
-- Payroll, work orders, service contracts, GST filings, fixed assets: no data.
+- Service contracts, GST filings (marked filed), fixed assets: no data.
 
 ## Nightly reset and dates
 
@@ -72,6 +81,10 @@ forward by *today − `demo_meta.seeded_on`* (the seed writes that row). Every t
 - Financial-year codes don't move: invoice and PO numbers such as `AB/1/2026-27`, `101/AB/2026-27`. After 31 March the
   dates are in the next financial year but the numbers keep the old one. Re-seed the golden copy once a year (April).
 - Holiday dates and joining dates move too.
+- The payroll run's month and year are numbers and don't move: "last month" is the month before seed day. Its from/to
+  dates do move. Re-seed when the run looks old.
+- "This month" data (AB-1005's supplier bills, today's spares invoice, the manual journal) is dated relative to seed day,
+  so in the first days of a month some of it falls in the previous month.
 
 ## Rebuilding the golden database
 
