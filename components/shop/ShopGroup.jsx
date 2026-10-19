@@ -124,7 +124,7 @@ export default function ShopGroup({ group, section, items, siblings, addOns, ini
             <div className="flex flex-1 flex-col gap-2">
               <h1 className="text-3xl font-semibold tracking-tight">{group.label}</h1>
               <p className="max-w-2xl text-muted-foreground">{group.blurb}</p>
-              <p className="text-sm text-muted-foreground">{main.length} {group.kind === 'services' ? 'services' : main.length === 1 ? 'model' : 'models'}{parts.length ? ` · ${parts.length} parts & accessories` : ''}</p>
+              <p className="text-sm text-muted-foreground">{main.length} {group.kind === 'services' ? 'services' : main.length === 1 ? 'model' : 'models'}{parts.length ? ` · ${parts.length} ${parts.length === 1 ? 'part or accessory' : 'parts & accessories'}` : ''}</p>
               {canEdit && <div className="pt-1"><PhotoEdit groupKey={group.key} hasImage={!!groupImage} onChanged={k => setImages(m => ({ ...m, group: k }))} /></div>}
             </div>
           </div>
@@ -153,7 +153,7 @@ export default function ShopGroup({ group, section, items, siblings, addOns, ini
             <div className="flex gap-2">
               {fs.length > 0 && <Button variant="outline" className="h-10 lg:hidden" onClick={() => setFiltersOpen(true)}><SlidersHorizontal className="size-4" />Filters{chips.length ? ` (${chips.length})` : ''}</Button>}
               <Select value={sort} onValueChange={setSort}>
-                <SelectTrigger className="h-10 w-full bg-background sm:w-52"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="h-10 w-full bg-background sm:w-52"><SelectValue>{SORTS[sort][0]}</SelectValue></SelectTrigger>
                 <SelectContent>{Object.entries(SORTS).filter(([k]) => group.kind === 'equipment' || k === 'name').map(([k, [l]]) => <SelectItem key={k} value={k}>{l}</SelectItem>)}</SelectContent>
               </Select>
             </div>
