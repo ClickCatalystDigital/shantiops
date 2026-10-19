@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
 import LogoutButton from '@/components/LogoutButton';
+import CustomerNavLinks from '@/components/CustomerNavLinks';
 import { compressImage } from '@/lib/image-compress';
 import { showToast } from '@/lib/client';
 
@@ -110,14 +111,12 @@ export default function ShopShell({ isCustomer, canEdit, children }) {
         )}
         <header className="sticky top-0 z-30 border-b bg-background/80 backdrop-blur-md">
           <div className="container flex h-14 items-center justify-between gap-2">
-            <Link href="/shop" className="flex items-baseline gap-2 text-base font-bold tracking-tight">
-              <span><span className="text-muted-foreground">SB</span><span className="text-primary">OPS</span></span>
-              <span className="font-medium text-muted-foreground">Shop</span>
-            </Link>
+            {isCustomer
+              ? <CustomerNavLinks active="shop" />
+              : <Link href="/shop" className="flex items-baseline gap-2 text-base font-bold tracking-tight"><span><span className="text-muted-foreground">SB</span><span className="text-primary">OPS</span></span><span className="font-medium text-muted-foreground">Shop</span></Link>}
             <div className="flex items-center gap-1">
               {isCustomer
-                ? <><Button asChild variant="ghost" size="sm" className="hidden sm:inline-flex"><Link href="/portal">My orders</Link></Button>
-                    <Button asChild variant="ghost" size="sm" className="hidden sm:inline-flex"><Link href="/help">Help</Link></Button></>
+                ? <Button asChild variant="ghost" size="sm" className="hidden sm:inline-flex"><Link href="/help">Help</Link></Button>
                 : <Button asChild variant="ghost" size="sm"><Link href="/"><ArrowLeft className="size-4" />Back to app</Link></Button>}
               <Button variant={basket.length ? 'default' : 'outline'} size="sm" onClick={() => setOpen(true)} className="relative">
                 <ShoppingCart className="size-4" /><span className="hidden sm:inline">Quote request</span>

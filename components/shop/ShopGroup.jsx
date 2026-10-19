@@ -251,25 +251,30 @@ function Spec({ label, value }) {
   return <div className="min-w-0"><dt className="text-muted-foreground">{label}</dt><dd className="truncate font-medium">{value}</dd></div>;
 }
 
+// Only the columns that have a value in at least one row (parts under equipment rarely carry the
+// spare facts read from valve/fitting names).
+const SPARE_COLS = [
+  ['Model', i => i.model], ['Size', i => i.spare.size], ['Material', i => i.spare.material],
+  ['IBR', i => i.spare.ibr], ['Rating', i => i.spare.rating], ['Make', i => i.spare.make],
+];
 function SpareTable({ rows, onOpen }) {
   if (!rows.length) return null;
+  const cols = SPARE_COLS.filter(([, get]) => rows.some(get));
   return (
     <>
       <div className="hidden overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10 md:block">
         <Table>
           <TableHeader><TableRow>
-            <TableHead>Item</TableHead><TableHead>Size</TableHead><TableHead>Material</TableHead>
-            <TableHead>IBR</TableHead><TableHead>Rating</TableHead><TableHead>Make</TableHead><TableHead className="w-36" />
+            <TableHead>Item</TableHead>{cols.map(([l]) => <TableHead key={l}>{l}</TableHead>)}<TableHead className="w-36" />
           </TableRow></TableHeader>
           <TableBody>
             {rows.map(i => (
               <TableRow key={i.id} className="cursor-pointer" onClick={() => onOpen(i.id)}>
-                <TableCell className="max-w-sm"><div className="truncate font-medium">{i.name}</div></TableCell>
-                <TableCell>{i.spare.size || '—'}</TableCell>
-                <TableCell>{i.spare.material || '—'}</TableCell>
-                <TableCell>{i.spare.ibr || '—'}</TableCell>
-                <TableCell>{i.spare.rating || '—'}</TableCell>
-                <TableCell className="max-w-40 truncate">{i.spare.make || '—'}</TableCell>
+                <TableCell className="max-w-md whitespace-normal">
+                  <div className="font-medium">{i.name}</div>
+                  {i.intro && <div className="line-clamp-1 text-xs text-muted-foreground">{i.intro}</div>}
+                </TableCell>
+                {cols.map(([l, get]) => <TableCell key={l} className={`max-w-40 truncate ${l === 'Model' ? 'font-mono text-xs' : ''}`}>{get(i) || '—'}</TableCell>)}
                 <TableCell className="text-right"><AddButton item={i} /></TableCell>
               </TableRow>
             ))}
@@ -281,7 +286,7 @@ function SpareTable({ rows, onOpen }) {
           <li key={i.id} onClick={() => onOpen(i.id)} className="flex items-center gap-3 rounded-xl bg-card p-3 ring-1 ring-foreground/10">
             <div className="min-w-0 flex-1">
               <div className="text-sm font-medium">{i.name}</div>
-              <div className="text-xs text-muted-foreground">{[i.spare.size, i.spare.material, i.spare.ibr, i.spare.rating].filter(Boolean).join(' · ')}</div>
+              <div className="text-xs text-muted-foreground">{cols.map(([, get]) => get(i)).filter(Boolean).join(' · ') || i.intro}</div>
             </div>
             <AddButton item={i} />
           </li>
