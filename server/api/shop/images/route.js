@@ -47,7 +47,7 @@ async function save(t, key, username) {
   else if (key) await execute(`INSERT INTO shop_group_images (group_key, image_key, updated_by, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)
     ON CONFLICT(group_key) DO UPDATE SET image_key = excluded.image_key, updated_by = excluded.updated_by, updated_at = CURRENT_TIMESTAMP`, [t.id, key, username]);
   else await execute('DELETE FROM shop_group_images WHERE group_key = ?', [t.id]);
-  if (t.old && t.old !== key) deleteObject(t.old).catch(() => {});
+  if (t.old?.startsWith('shop-images/') && t.old !== key) deleteObject(t.old).catch(() => {});
   clearShopCache();
 }
 

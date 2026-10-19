@@ -20,7 +20,8 @@ const KEY = 'sbShopBasket';
 const Ctx = createContext(null);
 export const useShop = () => useContext(Ctx);
 
-export const imageUrl = key => (key ? `/api/shop/images?k=${encodeURIComponent(key)}` : null);
+// A key starting with '/' is a static file under public/ (the demo's stock photos); else an R2 key.
+export const imageUrl = key => (!key ? null : key.startsWith('/') ? key : `/api/shop/images?k=${encodeURIComponent(key)}`);
 
 export function GroupIcon({ name, className = 'size-6' }) {
   const I = Icons[name] || Icons.Package;

@@ -99,7 +99,9 @@ forward by *today − `demo_meta.seeded_on`* (the seed writes that row). Every t
 2. Boot the app against it once with `CUSTOMER_SEED="$(cat scripts/demo/acme-seed.json)"` and `ADMIN_PASSWORD`, so `migrate()` builds the schema.
 3. `DB_URL=… DB_TOKEN=… BASE=<that app> ADMIN_PASSWORD=… node scripts/demo/seed-acme.mjs` (a few minutes). It prints row counts and fails if any listed table is empty.
 4. `SRC_URL=<client db> SRC_TOKEN=… DB_TOKEN=… node scripts/demo/add-shop-demo.mjs <golden url> --apply` — copies the client's
-   product list (names cleaned against `deny-list.mjs`, no prices) and creates the Customer login.
+   product list (names cleaned against `deny-list.mjs`, no prices), creates the Customer login and gives every Shop
+   family its stock photo (`public/shop-demo/<family>.webp`, AI-generated, no real product; image key `/shop-demo/…`
+   is served as a static file). Without `SRC_URL` it only sets the photos.
 5. `DB_URL=… DB_TOKEN=… BASE=… ADMIN_PASSWORD=… node scripts/demo/scrub-check.mjs` — database, browser bundle (after `npm run cf:build`), PDF templates, AI prompts, pages, and every PDF the demo prints; must report 0 hits.
 6. Trigger the reset Worker (POST with `x-trigger-key`) and walk the demo.
 

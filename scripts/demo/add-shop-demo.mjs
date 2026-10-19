@@ -6,15 +6,17 @@
 //
 // Not copied: price, cost price (the client's price list must not be public), old-CRM attributes,
 // photos, BOM template links. Without --apply it only reports.
+// Every Shop family also gets a stock photo (public/shop-demo/<group>.webp, AI-generated
+// for the demo; no real product). Without SRC_URL only the photos are set.
 import { createClient } from '@libsql/client';
 import bcrypt from 'bcryptjs';
 import { randomBytes } from 'node:crypto';
 import { DENY, DENY_WORDS } from './deny-list.mjs';
-import { shopGroupOf, HIDDEN } from '../../lib/shop-catalog.mjs';
+import { shopGroupOf, HIDDEN, SHOP_GROUPS } from '../../lib/shop-catalog.mjs';
 
 const apply = process.argv.includes('--apply');
 const targets = process.argv.slice(2).filter(a => !a.startsWith('--'));
-if (!process.env.SRC_URL || !targets.length) { console.error('SRC_URL, SRC_TOKEN, DB_TOKEN and at least one target URL are required'); process.exit(1); }
+if (!targets.length) { console.error('DB_TOKEN and at least one target URL are required (SRC_URL/SRC_TOKEN to copy products)'); process.exit(1); }
 
 export const CUSTOMER_LOGIN = { username: 'greenfield_foods', project_no: 'AB-1005', customer: 'Greenfield Foods Pvt Ltd' };
 
@@ -43,9 +45,8 @@ export function clean(s) {
 }
 const cleanType = t => (t == null ? t : TYPES[String(t).trim().toUpperCase()] || clean(t));
 
-const src = createClient({ url: process.env.SRC_URL, authToken: process.env.SRC_TOKEN });
-const { rows } = await src.execute(`SELECT product_code, product_name, product_type, description, unit, hsn_code, gst_pct,
-  category, warranty_days, serviceable FROM sales_products WHERE active = 1 ORDER BY id`);
+const rows = !process.env.SRC_URL ? [] : (await createClient({ url: process.env.SRC_URL, authToken: process.env.SRC_TOKEN }).execute(`SELECT product_code, product_name, product_type, description, unit, hsn_code, gst_pct,
+  category, warranty_days, serviceable FROM sales_products WHERE active = 1 ORDER BY id`)).rows;
 const products = rows.map(r => ({
   product_code: clean(r.product_code), product_name: clean(r.product_name), product_type: cleanType(r.product_type),
   description: clean(r.description), unit: r.unit, hsn_code: r.hsn_code, gst_pct: r.gst_pct, category: clean(r.category),
@@ -86,5 +87,8 @@ for (const url of targets) {
       VALUES (?, ?, 'customer', ?, ?, 1, 0, 1, 0)`, [CUSTOMER_LOGIN.username, hash, CUSTOMER_LOGIN.customer, String(proj.id)]);
     await db.execute('UPDATE customers SET portal_user_id = ? WHERE id = ?', [Number(r.lastInsertRowid), proj.customer_id]);
   }
-  console.log('  done');
+  await db.batch(SHOP_GROUPS.map(g => ({
+    sql: `INSERT INTO shop_group_images (group_key, image_key, updated_by, updated_at) VALUES (?, ?, 'demo:shop-photos', CURRENT_TIMESTAMP)
+          ON CONFLICT(group_key) DO UPDATE SET image_key = excluded.image_key`, args: [g.key, `/shop-demo/${g.key}.webp`] })), 'write');
+  console.log(`  done (${SHOP_GROUPS.length} family photos)`);
 }
