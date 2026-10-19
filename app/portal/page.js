@@ -3,7 +3,7 @@ import CustomerNavLinks from '@/components/CustomerNavLinks';
 import { redirect } from 'next/navigation';
 import { getCustomerView } from '@/lib/data';
 import { getFreshSessionUser, isCustomer, isDepartmentHead, parseProjectIds, roleHome } from '@/lib/auth';
-import { queryOne } from '@/lib/db';
+import { queryOne, queryAll } from '@/lib/db';
 import { formatDate } from '@/lib/format';
 import LogoutButton from '@/components/LogoutButton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -29,6 +29,15 @@ export default async function MyOrders(props) {
   if (!isCustomer(user)) {
     if (searchParams?.as && isDepartmentHead(user, 'Sales')) {
       viewAs = await queryOne("SELECT id, username, display_name, project_ids FROM users WHERE id = ? AND role = 'customer'", [searchParams.as]);
+    } else if (searchParams?.customer && isDepartmentHead(user, 'Sales')) {
+      // "Customer portal" on the customer sheet: works before the customer has a login (their own
+      // projects, split units folded into the master as the portal does).
+      const c = await queryOne('SELECT id, name, portal_user_id FROM customers WHERE id = ?', [searchParams.customer]);
+      if (c?.portal_user_id) viewAs = await queryOne("SELECT id, username, display_name, project_ids FROM users WHERE id = ? AND role = 'customer'", [c.portal_user_id]);
+      else if (c) {
+        const ps = await queryAll('SELECT id FROM projects WHERE customer_id = ? AND master_project_id IS NULL', [c.id]);
+        viewAs = { id: null, username: null, display_name: c.name, project_ids: ps.map(p => p.id).join(',') };
+      }
     }
     if (!viewAs) redirect(roleHome(user));
     viewing = viewAs;
@@ -38,6 +47,8 @@ export default async function MyOrders(props) {
   const all = (await Promise.all(ids.map(id => getCustomerView(id)))).filter(Boolean);
   all.sort((a, b) => b.project.id - a.project.id);
 
+  // keep the preview (?as= / ?customer=) when paging
+  const keep = searchParams?.as ? `as=${encodeURIComponent(searchParams.as)}&` : searchParams?.customer ? `customer=${encodeURIComponent(searchParams.customer)}&` : '';
   const totalPages = Math.max(1, Math.ceil(all.length / PAGE_SIZE));
   const page = Math.min(Math.max(1, Number(searchParams?.page) || 1), totalPages);
   const orders = all.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -97,11 +108,11 @@ export default async function MyOrders(props) {
         {totalPages > 1 && (
           <div className="flex items-center justify-between pt-2 text-sm">
             {page > 1
-              ? <Button asChild variant="outline" size="sm"><Link href={`/portal?page=${page - 1}`}>← Newer</Link></Button>
+              ? <Button asChild variant="outline" size="sm"><Link href={`/portal?${keep}page=${page - 1}`}>← Newer</Link></Button>
               : <Button variant="outline" size="sm" disabled>← Newer</Button>}
             <span className="text-muted-foreground">Page {page} of {totalPages}</span>
             {page < totalPages
-              ? <Button asChild variant="outline" size="sm"><Link href={`/portal?page=${page + 1}`}>Older →</Link></Button>
+              ? <Button asChild variant="outline" size="sm"><Link href={`/portal?${keep}page=${page + 1}`}>Older →</Link></Button>
               : <Button variant="outline" size="sm" disabled>Older →</Button>}
           </div>
         )}

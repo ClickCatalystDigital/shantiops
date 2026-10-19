@@ -1504,6 +1504,11 @@ function CustomerDetailSheet({ customerId, isSalesHead = false, onClose, onDelet
                 {detail.active ? 'Deactivate' : 'Reactivate'}
               </Button>
               {isSalesHead && (
+                <Button asChild size="sm" variant="outline">
+                  <a href={`/portal?customer=${detail.id}`} target="_blank" rel="noreferrer">Customer portal ↗</a>
+                </Button>
+              )}
+              {isSalesHead && (
                 <Button size="sm" variant="ghost" className="text-destructive" disabled={deleting} onClick={deleteCustomer}>
                   <TrashIcon className="size-3.5" />{deleting ? 'Deleting…' : 'Delete'}
                 </Button>
