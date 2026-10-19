@@ -2,7 +2,7 @@
 import { notFound } from 'next/navigation';
 import ShopShell from '@/components/shop/ShopShell';
 import ShopGroup from '@/components/shop/ShopGroup';
-import { GROUP_BY_KEY, SHOP_SECTIONS, addOnsFor } from '@/lib/shop-catalog.mjs';
+import { GROUP_BY_KEY, SHOP_SECTIONS, SHOP_GROUPS, addOnsFor } from '@/lib/shop-catalog.mjs';
 import { loadShop } from '../shop-page-data';
 
 export default async function ShopGroupPage(props) {
@@ -18,10 +18,13 @@ export default async function ShopGroupPage(props) {
     if (a.length) addOns[i.id] = a.map(x => ({ id: x.id, title: x.title, model: x.model, isSet: x.isSet, unit: x.unit,
       groupLabel: GROUP_BY_KEY.get(x.group).label, icon: GROUP_BY_KEY.get(x.group).icon }));
   }
+  const counts = new Map();
+  for (const i of items) counts.set(i.group, (counts.get(i.group) || 0) + 1);
+  const siblings = SHOP_GROUPS.filter(g => g.section === group.section && counts.has(g.key)).map(g => ({ key: g.key, label: g.label, icon: g.icon, count: counts.get(g.key) }));
   return (
     <ShopShell isCustomer={customer} canEdit={canEdit}>
       <ShopGroup group={{ ...group, image: groupImages[key] || null }} section={SHOP_SECTIONS.find(s => s.key === group.section)}
-        items={mine} addOns={addOns} initialItem={Number(sp?.item) || null} />
+        items={mine} siblings={siblings} addOns={addOns} initialItem={Number(sp?.item) || null} />
     </ShopShell>
   );
 }

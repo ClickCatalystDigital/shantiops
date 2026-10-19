@@ -7,82 +7,114 @@ import { Search, Sparkles, ChevronRight, ArrowLeft } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Card } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Visual, PhotoEdit, useShop } from './ShopShell';
 
-export default function ShopHome({ sections, index, finderPool }) {
+export default function ShopHome({ sections, index, finderPool, initialSection }) {
   const { canEdit } = useShop();
   const [q, setQ] = useState('');
   const [finder, setFinder] = useState(false);
+  const [section, setSection] = useState(sections.some(s => s.key === initialSection) ? initialSection : 'all');
   const [images, setImages] = useState({}); // group photo changes made on this page
   const hits = useMemo(() => {
     const words = q.toLowerCase().split(/\s+/).filter(Boolean);
     if (!words.length) return [];
     return index.filter(i => words.every(w => i.s.includes(w))).slice(0, 40);
   }, [q, index]);
+  const pickSection = k => {
+    setSection(k);
+    const u = new URL(window.location.href);
+    if (k === 'all') u.searchParams.delete('section'); else u.searchParams.set('section', k);
+    window.history.replaceState(null, '', u);
+  };
+  const shownSections = section === 'all' ? sections : sections.filter(s => s.key === section);
+  const total = sections.reduce((n, s) => n + s.groups.length, 0);
 
   return (
-    <main className="container flex flex-col gap-10 py-8">
-      <section className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-primary/15 via-background to-background p-6 sm:p-10">
-        <h1 className="max-w-2xl text-3xl font-bold tracking-tight sm:text-4xl">Boilers, heaters and everything around them</h1>
-        <p className="mt-2 max-w-2xl text-muted-foreground">Browse steam boilers, thermic fluid heaters, heat recovery, emission control, spares and services. Add what you need and we will send a quotation.</p>
-        <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-          <div className="relative flex-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input className="h-11 pl-9" placeholder="Search: 2 TPH, safety valve 40 NB, chimney…" value={q} onChange={e => setQ(e.target.value)} aria-label="Search products" />
+    <main className="flex flex-col">
+      <section className="relative z-[25] border-b bg-gradient-to-br from-primary/[0.12] via-background to-background">
+        <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden"><div className="absolute -right-24 -top-24 size-96 rounded-full bg-primary/10 blur-3xl" /></div>
+        <div className="container relative flex flex-col gap-6 py-10 sm:py-14">
+          <Badge variant="outline" className="w-fit bg-background/60 font-normal">Steam · Thermal · Heat recovery · Spares · Service</Badge>
+          <div className="flex max-w-3xl flex-col gap-3">
+            <h1 className="text-3xl font-semibold tracking-tight text-balance sm:text-5xl">Boilers, heaters and everything around them</h1>
+            <p className="text-base text-muted-foreground sm:text-lg">Pick a family, compare models and add them to one quote request. Our sales team replies with prices, delivery and the technical offer.</p>
           </div>
-          <Button size="lg" className="h-11" onClick={() => setFinder(true)}><Sparkles className="size-4" />Find the right boiler</Button>
+          <div className="flex max-w-3xl flex-col gap-3 sm:flex-row">
+            <div className="relative flex-1">
+              <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input className="h-12 rounded-xl bg-background pl-10 text-base shadow-sm" placeholder="Search: 2 TPH, safety valve 40 NB, chimney…" value={q} onChange={e => setQ(e.target.value)} aria-label="Search products" />
+              {q.trim() && (
+                <div className="absolute inset-x-0 top-full z-20 mt-2 max-h-96 overflow-y-auto rounded-xl border bg-popover shadow-xl">
+                  {hits.length === 0
+                    ? <p className="p-4 text-sm text-muted-foreground">Nothing matches. Try fewer words, or describe it in a quote request.</p>
+                    : <ul className="divide-y">{hits.map(h => (
+                      <li key={h.id}><Link href={`/shop/${h.g}?item=${h.id}`} className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/60">
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-medium">{h.t}</div>
+                          <div className="truncate text-xs text-muted-foreground">{[h.m, h.gl].filter(Boolean).join(' · ')}</div>
+                        </div>
+                        <ChevronRight className="size-4 text-muted-foreground" />
+                      </Link></li>))}
+                    </ul>}
+                </div>
+              )}
+            </div>
+            <Button size="lg" className="h-12 rounded-xl" onClick={() => setFinder(true)}><Sparkles className="size-4" />Find the right boiler</Button>
+          </div>
         </div>
-        {q.trim() && (
-          <div className="mt-4 rounded-xl border bg-background">
-            {hits.length === 0
-              ? <p className="p-4 text-sm text-muted-foreground">Nothing matches. Try fewer words, or describe it in a quote request.</p>
-              : <ul className="divide-y">{hits.map(h => (
-                <li key={h.id}><Link href={`/shop/${h.g}?item=${h.id}`} className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/50">
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium">{h.t}</div>
-                    <div className="truncate text-xs text-muted-foreground">{[h.m, h.gl].filter(Boolean).join(' · ')}</div>
-                  </div>
-                  <ChevronRight className="size-4 text-muted-foreground" />
-                </Link></li>))}
-              </ul>}
-          </div>
-        )}
       </section>
 
-      {sections.map(s => (
-        <section key={s.key} className="flex flex-col gap-4">
-          <div>
-            <h2 className="text-xl font-semibold tracking-tight">{s.label}</h2>
-            <p className="text-sm text-muted-foreground">{s.blurb}</p>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {s.groups.map(g => {
-              const image = g.key in images ? images[g.key] : g.image;
-              return (
-                <div key={g.key} className="group flex flex-col overflow-hidden rounded-xl border bg-card transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md">
-                  <Link href={`/shop/${g.key}`} className="flex flex-1 flex-col">
-                  <Visual image={image} icon={g.icon} className="aspect-[16/9]" iconClass="size-12 transition group-hover:scale-110" />
-                  <div className="flex flex-1 flex-col gap-2 p-4">
-                    <div className="font-semibold">{g.label}</div>
-                    <p className="line-clamp-2 text-sm text-muted-foreground">{g.blurb}</p>
-                    <div className="mt-auto flex flex-wrap items-center gap-1.5 pt-1 text-xs text-muted-foreground">
-                      <span>{g.count} {g.kind === 'services' ? 'services' : g.count === 1 ? 'item' : 'items'}</span>
-                      {g.range && <span>· {g.range}</span>}
-                    </div>
-                    {g.fuels.length > 0 && (
-                      <div className="flex flex-wrap gap-1">{g.fuels.slice(0, 4).map(f => <Badge key={f} variant="secondary" className="font-normal">{f}</Badge>)}</div>
-                    )}
-                  </div>
-                  </Link>
-                  {/* outside the link: a file picker opened inside an <a> would also follow it */}
-                  {canEdit && <div className="px-4 pb-4"><PhotoEdit groupKey={g.key} hasImage={!!image} onChanged={k => setImages(m => ({ ...m, [g.key]: k }))} /></div>}
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      ))}
+      <div className="sticky top-14 z-20 border-b bg-background/85 backdrop-blur-md">
+        <div className="container flex gap-2 overflow-x-auto py-3 [scrollbar-width:none]">
+          {[{ key: 'all', label: 'All families', n: total }, ...sections.map(s => ({ key: s.key, label: s.label, n: s.groups.length }))].map(t => (
+            <button key={t.key} type="button" onClick={() => pickSection(t.key)} aria-pressed={section === t.key}
+              className={`flex shrink-0 items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm transition ${section === t.key ? 'border-primary bg-primary text-primary-foreground shadow-sm' : 'bg-background hover:border-primary/40 hover:bg-muted/50'}`}>
+              {t.label}<span className={`text-xs tabular-nums ${section === t.key ? 'opacity-80' : 'text-muted-foreground'}`}>{t.n}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="container flex flex-col gap-12 py-10">
+        {shownSections.map(s => (
+          <section key={s.key} className="flex flex-col gap-5">
+            <div className="flex items-end justify-between gap-4">
+              <div>
+                <h2 className="text-2xl font-semibold tracking-tight">{s.label}</h2>
+                <p className="mt-1 text-sm text-muted-foreground">{s.blurb}</p>
+              </div>
+              <span className="hidden shrink-0 text-sm text-muted-foreground sm:block">{s.groups.length} famil{s.groups.length === 1 ? 'y' : 'ies'}</span>
+            </div>
+            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {s.groups.map(g => {
+                const image = g.key in images ? images[g.key] : g.image;
+                return (
+                  <Card key={g.key} className="group gap-0 overflow-hidden p-0 transition hover:-translate-y-0.5 hover:shadow-lg hover:ring-primary/30">
+                    <Link href={`/shop/${g.key}`} className="flex flex-1 flex-col">
+                      <Visual image={image} icon={g.icon} className="aspect-[16/10]" iconClass="size-12 transition duration-300 group-hover:scale-110" />
+                      <div className="flex flex-1 flex-col gap-2 p-5">
+                        <div className="text-base font-semibold leading-snug">{g.label}</div>
+                        <p className="line-clamp-2 text-sm text-muted-foreground">{g.blurb}</p>
+                        {g.fuels.length > 0 && (
+                          <div className="flex flex-wrap gap-1 pt-1">{g.fuels.slice(0, 3).map(f => <Badge key={f} variant="secondary" className="font-normal">{f}</Badge>)}{g.fuels.length > 3 && <Badge variant="outline" className="font-normal">+{g.fuels.length - 3}</Badge>}</div>
+                        )}
+                        <div className="mt-auto flex items-center justify-between border-t pt-3 text-sm">
+                          <span className="text-muted-foreground">{g.count} {g.kind === 'services' ? 'services' : g.count === 1 ? 'model' : 'models'}{g.range ? ` · ${g.range}` : ''}</span>
+                          <ChevronRight className="size-4 text-primary transition group-hover:translate-x-0.5" />
+                        </div>
+                      </div>
+                    </Link>
+                    {/* outside the link: a file picker opened inside an <a> would also follow it */}
+                    {canEdit && <div className="px-5 pb-4"><PhotoEdit groupKey={g.key} hasImage={!!image} onChanged={k => setImages(m => ({ ...m, [g.key]: k }))} /></div>}
+                  </Card>
+                );
+              })}
+            </div>
+          </section>
+        ))}
+      </div>
       <NeedFinder open={finder} onOpenChange={setFinder} pool={finderPool} />
     </main>
   );

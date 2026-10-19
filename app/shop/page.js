@@ -6,7 +6,8 @@ import { loadShop } from './shop-page-data';
 
 export const metadata = { title: 'Shop' };
 
-export default async function ShopPage() {
+export default async function ShopPage(props) {
+  const sp = await props.searchParams;
   const { customer, canEdit, items, groupImages } = await loadShop('/shop');
   const byGroup = new Map();
   for (const i of items) byGroup.set(i.group, [...(byGroup.get(i.group) || []), i]);
@@ -31,7 +32,7 @@ export default async function ShopPage() {
   }));
   return (
     <ShopShell isCustomer={customer} canEdit={canEdit}>
-      <ShopHome sections={sections} index={index} finderPool={finderPool} />
+      <ShopHome initialSection={sp?.section || null} sections={sections} index={index} finderPool={finderPool} />
     </ShopShell>
   );
 }
