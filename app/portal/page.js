@@ -47,6 +47,7 @@ export default async function MyOrders(props) {
         <div className="container flex h-14 items-center justify-between">
           <div className="text-base font-bold tracking-tight"><span className="text-muted-foreground">SB</span><span className="text-primary">OPS</span></div>
           <div className="flex items-center gap-2">
+            <Button asChild variant="ghost" size="sm"><Link href="/shop">Shop</Link></Button>
             <Button asChild variant="ghost" size="sm"><Link href="/help">Help</Link></Button>
             <LogoutButton />
           </div>

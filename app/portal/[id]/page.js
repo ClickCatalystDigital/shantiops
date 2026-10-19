@@ -35,6 +35,7 @@ export default async function Portal(props) {
           <div className="flex items-center gap-2">
             <PortalInfoButton phases={phases} isSplitOrder={isSplitOrder} unitCount={unitCount} />
             {isCustomer(user) && <PortalNotificationBell />}
+            <Button asChild variant="ghost" size="sm"><Link href="/shop">Shop</Link></Button>
             <Button asChild variant="ghost" size="sm"><Link href="/help">Help</Link></Button>
             <LogoutButton />
           </div>
