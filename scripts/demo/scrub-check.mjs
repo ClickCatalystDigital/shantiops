@@ -12,10 +12,7 @@ import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 // Short or common tokens are matched as whole words so minified code doesn't trip them.
-const DENY = ['shanti', 'srivaari', '36AAECS7382N1ZN', '36AAVCS1802J1Z1', 'AAECS7382N', 'AAVCS1802J', 'nacharam', 'kucharam',
-  'kuncharam', 'toopran', 'asian brown', 'asian_brown', 'virchow', 'jaganmohan', 'shantiboilers', 'hkm_charitable', 'STF-IBR',
-  'telangana, hyderabad', 'SOLID-FLAME', 'COMBI-FLAME', 'MULTI-FLAME', 'OIL-FLAME', 'GAS-FLAME', 'AGRO-FLAME'];
-const DENY_WORDS = ['HKM', 'SB-1'];
+import { DENY, DENY_WORDS } from './deny-list.mjs';
 const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const denyRe = new RegExp([...DENY.map(esc), ...DENY_WORDS.map(w => `\\b${esc(w)}\\b`)].join('|'), 'i');
 

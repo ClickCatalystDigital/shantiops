@@ -67,9 +67,15 @@ Visitors pick a role on `/demo` (`lib/demo-roles.js`); no password.
 | Accounts | Sales invoices and receipts (paid / part-paid / advance), supplier bills, journal entries (one manual), GST Returns for this month. |
 | HR | Employees, attendance, leave requests, last month's payroll run and salary slips. |
 
+## Customer portal and Shop
+
+Role **Customer** on /demo signs in as `greenfield_foods` (Greenfield Foods, AB-1005): My orders shows the order's live
+progress, Shop lists the client's full product range (1,826 lines, client names replaced, **no prices**) and "Request a
+quote" creates a real Sales enquiry (source Shop). Staff can open any customer's portal from the customer sheet
+(**Customer portal ↗**). Products and the login come from `scripts/demo/add-shop-demo.mjs`, not seed-acme.
+
 ## Not in the demo
 
-- Customer Portal (blocked in demo mode).
 - Uploaded files: drawings carry no file (approved by status only), no test-certificate scans, no photos. The demo has no file storage.
 - Service contracts, GST filings (marked filed), fixed assets: no data.
 
@@ -92,7 +98,9 @@ forward by *today − `demo_meta.seeded_on`* (the seed writes that row). Every t
 1. Recreate an empty `sb-demo-golden` (ask Pujan first: the live demo copies it every night).
 2. Boot the app against it once with `CUSTOMER_SEED="$(cat scripts/demo/acme-seed.json)"` and `ADMIN_PASSWORD`, so `migrate()` builds the schema.
 3. `DB_URL=… DB_TOKEN=… BASE=<that app> ADMIN_PASSWORD=… node scripts/demo/seed-acme.mjs` (a few minutes). It prints row counts and fails if any listed table is empty.
-4. `DB_URL=… DB_TOKEN=… BASE=… ADMIN_PASSWORD=… node scripts/demo/scrub-check.mjs` — database, browser bundle (after `npm run cf:build`), PDF templates, AI prompts, pages, and every PDF the demo prints; must report 0 hits.
-5. Trigger the reset Worker (POST with `x-trigger-key`) and walk the demo.
+4. `SRC_URL=<client db> SRC_TOKEN=… DB_TOKEN=… node scripts/demo/add-shop-demo.mjs <golden url> --apply` — copies the client's
+   product list (names cleaned against `deny-list.mjs`, no prices) and creates the Customer login.
+5. `DB_URL=… DB_TOKEN=… BASE=… ADMIN_PASSWORD=… node scripts/demo/scrub-check.mjs` — database, browser bundle (after `npm run cf:build`), PDF templates, AI prompts, pages, and every PDF the demo prints; must report 0 hits.
+6. Trigger the reset Worker (POST with `x-trigger-key`) and walk the demo.
 
 For a local run use a scratch SQLite file (`TURSO_URL=file:/tmp/x.db`, and blank `TURSO_AUTH_TOKEN`): `.env.local` points at the client's live database.
