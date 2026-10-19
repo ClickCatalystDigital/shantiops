@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import CustomerNavLinks from '@/components/CustomerNavLinks';
 import { notFound, redirect } from 'next/navigation';
 import { getCustomerView } from '@/lib/data';
 import { getFreshSessionUser, isCustomer, canAccessProject, roleHome } from '@/lib/auth';
@@ -30,12 +31,11 @@ export default async function Portal(props) {
   return (
     <div className="min-h-screen bg-gradient-to-b from-muted/40 to-background">
       <header className="border-b bg-background/80 backdrop-blur">
-        <div className="container flex h-14 items-center justify-between">
-          <div className="text-base font-bold tracking-tight"><span className="text-muted-foreground">SB</span><span className="text-primary">OPS</span></div>
+        <div className="container flex h-14 items-center justify-between gap-2">
+          <CustomerNavLinks active="orders" />
           <div className="flex items-center gap-2">
             <PortalInfoButton phases={phases} isSplitOrder={isSplitOrder} unitCount={unitCount} />
             {isCustomer(user) && <PortalNotificationBell />}
-            <Button asChild variant="ghost" size="sm"><Link href="/shop">Shop</Link></Button>
             <Button asChild variant="ghost" size="sm"><Link href="/help">Help</Link></Button>
             <LogoutButton />
           </div>
