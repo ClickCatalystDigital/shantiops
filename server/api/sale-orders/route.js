@@ -16,6 +16,7 @@ import { audit } from '@/lib/usb';
 import { notifyDepartment, notifyPMs } from '@/lib/notify';
 import { COMPANY_NAMES } from '@/lib/qc-doc-pdf.js';
 import { tabLink } from '@/lib/alert-links.mjs';
+import { autoEnablePortal, isTradeOrder } from '@/lib/portal-invite';
 
 const TRACK_STATUSES = ['Pending', 'Ready', 'WIP', 'Dispatched', 'Closed'];
 
@@ -88,5 +89,9 @@ export async function POST(req) {
     await notifyDepartment('Design', { ...note, link: '/projects' }); // Design makes the project from it
     await notifyPMs({ ...note, link: tabLink('/sales', 'sale_orders', { highlight: `SO-${Number(lastId)}` }) }, { except: user.id });
   } catch (err) { /* notification is best-effort */ }
+  // The customer gets their portal with their first project order (trade orders never do).
+  if (!isTradeOrder(soNo)) {
+    try { await autoEnablePortal(b.customer_id, req.headers.get('origin') || new URL(req.url).origin, user); } catch (err) { /* best-effort */ }
+  }
   return NextResponse.json({ id: Number(lastId), so_no: soNo });
 }

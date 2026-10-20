@@ -1,5 +1,5 @@
-// GET — customers that have (or could have) a Customer Portal login: those with a project or an
-// existing login. Sales Head / PM only. Status: not_enabled | invited (setup link not used yet) | active.
+// GET — customers that have (or could have) a Customer Portal login: those with a project, a
+// non-trade Sale Order or an existing login. Sales Head / PM only. Status: not_enabled | invited (setup link not used yet) | active.
 import { NextResponse } from 'next/server';
 import { queryAll } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
@@ -13,7 +13,8 @@ export async function GET(req) {
             u.username, u.last_login, u.password_setup_token IS NOT NULL AS setup_pending, u.portal_password_enc IS NOT NULL AS has_password,
             (SELECT COUNT(*) FROM projects p WHERE p.customer_id = c.id) AS project_count
        FROM customers c LEFT JOIN users u ON u.id = c.portal_user_id
-      WHERE c.active = 1 AND (c.portal_user_id IS NOT NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.customer_id = c.id))
+      WHERE c.active = 1 AND (c.portal_user_id IS NOT NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.customer_id = c.id)
+             OR EXISTS (SELECT 1 FROM sale_orders so WHERE so.customer_id = c.id AND so.so_no NOT LIKE 'SAS%'))
       ORDER BY c.name`);
   const list = rows
     .filter(r => !q || r.name.toLowerCase().includes(q) || (r.username || '').includes(q))

@@ -8,6 +8,7 @@ import { audit } from '@/lib/usb';
 import { notifyDepartment, notifyPMs } from '@/lib/notify';
 import { COMPANY_NAMES } from '@/lib/qc-doc-pdf.js';
 import { recordProjectSpec } from '@/lib/order-spec-server';
+import { autoEnablePortal } from '@/lib/portal-invite';
 import { defaultPrefix } from '@/lib/company-profiles';
 import { putObject, getObjectBuffer } from '@/lib/r2';
 
@@ -153,6 +154,9 @@ export async function POST(req) {
           const ids = new Set(parseProjectIds(portalUser?.project_ids));
           ids.add(String(projectId));
           await execute('UPDATE users SET project_ids = ? WHERE id = ?', [[...ids].join(','), cust.portal_user_id]);
+        } else {
+          // A project made without a Sale Order still opens the portal (with this project in it).
+          await autoEnablePortal(b.customer_id, req.headers.get('origin') || new URL(req.url).origin, user);
         }
       } catch (err) { /* best-effort, same as the notifications above */ }
     }

@@ -220,8 +220,8 @@ export function PortalAccessTab() {
     } catch (e) { showToast(e.message, 'error'); } finally { setBusyId(null); }
   }
   async function copy(url) {
-    try { await navigator.clipboard.writeText(url); showToast('Setup link copied — valid for 7 days'); }
-    catch { window.prompt('Copy this setup link (valid for 7 days):', url); }
+    try { await navigator.clipboard.writeText(url); showToast('Setup link copied — valid for 30 days'); }
+    catch { window.prompt('Copy this setup link (valid for 30 days):', url); }
   }
 
   const shown = (rows || []).filter(r => filter === 'all' || r.status === filter);
@@ -229,7 +229,7 @@ export function PortalAccessTab() {
     <Card>
       <CardHeader>
         <CardTitle>Portal Access</CardTitle>
-        <CardDescription>Customers with a project. Enabling creates their login; they get a link to set their own password (passwords are never emailed).</CardDescription>
+        <CardDescription>Customers with a Sale Order or a project (not trade orders). Their login is created automatically with their first order; Enable creates it by hand. They get a link to set their own password (passwords are never emailed).</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         <div className="flex flex-wrap gap-2">
