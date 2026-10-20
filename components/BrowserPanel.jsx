@@ -45,7 +45,7 @@ export default function BrowserPanel({ user, initial }) {
   const isPM = ['admin', 'manager', 'executive'].includes(user.role);
 
   useEffect(() => {
-    const t = setInterval(() => router.refresh(), 5000);
+    const t = setInterval(() => { if (!document.hidden) router.refresh(); }, 5000);
     return () => clearInterval(t);
   }, [router]);
 

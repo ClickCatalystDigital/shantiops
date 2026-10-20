@@ -16,7 +16,7 @@ export default async function QcPage({ searchParams }) {
   const [allProjects, certificates, documents, calibrationItems, receivedIds, releasedBomIds, allocatedChildIds, ncrs, holdPoints, canDisposition, canVerify, canClose, inwardApprovals, preDispatchApprovals, jobSheetStages] = await Promise.all([
     // QC is the one deliberate exception to getActiveProjectsList()'s master-only default — real QC
     // documents are created per split-child unit, so QC's own picker needs children visible.
-    getActiveProjectsList({ includeChildren: true }),
+    getActiveProjectsList({ includeChildren: true, includeClosed: true }),
     getTestCertificates(),
     getAllQcDocuments(),
     getCalibrationItems(), // STERP items 34/35, §5p — not project-scoped, so not filtered below

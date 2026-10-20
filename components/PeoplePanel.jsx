@@ -30,7 +30,7 @@ const STATUS_DOT = {
 export default function PeoplePanel({ user, initial }) {
   const router = useRouter();
   useEffect(() => {
-    const t = setInterval(() => router.refresh(), 5000);
+    const t = setInterval(() => { if (!document.hidden) router.refresh(); }, 5000);
     return () => clearInterval(t);
   }, [router]);
 

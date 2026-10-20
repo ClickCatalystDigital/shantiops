@@ -1546,6 +1546,7 @@ export const DEPARTMENT_HELP = {
         'Pick a project to see its site visits. Every project starts with four planned visits: foundation marking, customer needs / issue solving, pre-commissioning, and commissioning. Rename them, add more, or delete any.',
         'Each visit has a description, a date, a time, who from the team went, and a planned / done status. The header shows how many visits are done and how many remain of the planned number, which you can change per project.',
         'With no project selected you see every project with its planned, done and remaining visits — click one to open it.',
+        'When every planned visit is done (at least two), the project closes by itself: it leaves the Stores, Procurement, Production and Dispatch work lists and shows "Closed" on Projects. Service, QC, Projects and the customer portal still show it. Planning another visit or marking one not done reopens it. A split order closes once all its units are closed.',
       ]),
       feature('documentation', 'Documentation', FileTextIcon, [
         'Service → Documentation: pick a project and a call type. Commissioning opens the full commissioning report; Breakdown, ASC and Other open the Field Service Report.',

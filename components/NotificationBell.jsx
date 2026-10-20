@@ -30,11 +30,12 @@ export default function NotificationBell() {
     let alive = true;
     const tick = () => api('/api/notifications').then(d => {
       if (!alive) return;
-      // Chime only on an INCREASE, and never on the page's first load holding pre-existing
-      // unread — otherwise every navigation would chime.
-      if (prevUnread.current !== null && d.unread > prevUnread.current
+      // Chime when a newer unread alert appears (the count is capped at 10, so it can't show new
+      // ones), and never on the page's first load holding pre-existing unread.
+      const newest = d.items.find(i => !i.read_at)?.id ?? 0;
+      if (prevUnread.current !== null && newest > prevUnread.current
         && localStorage.getItem('notifySound') !== 'off') beep();
-      prevUnread.current = d.unread;
+      prevUnread.current = Math.max(prevUnread.current ?? 0, newest);
       setData(d);
     }).catch(() => {});
     tick();

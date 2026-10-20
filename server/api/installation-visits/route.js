@@ -24,7 +24,7 @@ export async function GET(req) {
       `SELECT p.id AS project_id, p.project_no, p.customer_name, p.installation_planned_visits AS planned,
               COALESCE(SUM(v.status = 'done'), 0) AS done, COUNT(v.id) AS total
          FROM projects p LEFT JOIN installation_visits v ON v.project_id = p.id
-        WHERE p.status = 'active' AND p.id NOT IN (SELECT master_project_id FROM projects WHERE master_project_id IS NOT NULL)
+        WHERE p.status IN ('active', 'closed') AND p.id NOT IN (SELECT master_project_id FROM projects WHERE master_project_id IS NOT NULL)
         GROUP BY p.id ORDER BY p.id DESC`));
   }
   const projectId = Number(sp.get('project_id'));

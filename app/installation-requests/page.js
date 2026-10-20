@@ -10,6 +10,6 @@ export const dynamic = 'force-dynamic';
 export default async function InstallationRequestsPage() {
   const user = await getFreshSessionUser();
   if (!canAccessDepartment(user, 'Installation')) redirect(roleHome(user));
-  const projects = await getActiveProjectsList();
+  const projects = await getActiveProjectsList({ includeClosed: true });
   return <PrWorkspace mode="installation" departments={['Installation']} projects={projects} />;
 }

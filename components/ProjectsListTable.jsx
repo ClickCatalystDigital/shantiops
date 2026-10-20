@@ -16,13 +16,16 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
+// Closed = every planned service visit done (lib/milestone-auto.js syncProjectClosed).
+const Closed = ({ p }) => p.status === 'closed' ? <Badge variant="outline" className="ml-1.5 align-middle font-normal">Closed</Badge> : null;
+
 function ProjectCard({ p, indent }) {
   return (
     <Link href={`/projects/${p.id}`}>
       <Card className={`transition-colors hover:border-primary/40 ${indent ? 'ml-4' : ''}`}>
         <CardContent className="flex flex-col gap-1 py-4">
           <div className="flex items-center justify-between gap-2">
-            <span className="font-semibold text-primary">{p.project_no}</span>
+            <span className="font-semibold text-primary">{p.project_no}<Closed p={p} /></span>
             <StatusBadge status={p.roll} />
           </div>
           <div className="text-sm">{p.customer_name}</div>
@@ -45,6 +48,7 @@ function ProjectRow({ p, indent }) {
         <Link href={`/projects/${p.id}`} className={`font-medium text-primary hover:underline ${indent ? 'ml-6 inline-block' : ''}`}>
           {p.project_no}
         </Link>
+        <Closed p={p} />
       </TableCell>
       <TableCell>{p.customer_name}</TableCell>
       <TableCell className="text-muted-foreground">{p.description || '—'}</TableCell>
@@ -101,7 +105,7 @@ export default function ProjectsListTable({ projects: all, action }) {
                     <div className="flex items-center justify-between gap-2">
                       <span className="flex items-center gap-1 font-semibold text-primary">
                         {expanded.has(p.id) ? <ChevronDownIcon className="size-4" /> : <ChevronRightIcon className="size-4" />}
-                        {p.project_no}
+                        {p.project_no}<Closed p={p} />
                       </span>
                       <Badge variant="outline">{p.childSummary.done} of {p.childSummary.total} units done</Badge>
                     </div>
@@ -143,7 +147,7 @@ export default function ProjectsListTable({ projects: all, action }) {
                       <TableCell>
                         <span className="flex items-center gap-1 font-medium text-primary">
                           {expanded.has(p.id) ? <ChevronDownIcon className="size-4" /> : <ChevronRightIcon className="size-4" />}
-                          {p.project_no}
+                          {p.project_no}<Closed p={p} />
                         </span>
                       </TableCell>
                       <TableCell>{p.customer_name}</TableCell>
