@@ -112,11 +112,13 @@ export default async function MyOrders(props) {
                     <Button asChild variant="outline" size="sm"><a href={`/api/quotations/${so.quotation_id}/pdf`} target="_blank" rel="noreferrer">View</a></Button>
                   </div>
                 )}
+                {total === 0 ? <p className="text-sm text-muted-foreground">Order details are being finalised.</p> : (
                 <div className="grid grid-cols-3 gap-2 text-sm">
                   <div><p className="text-xs text-muted-foreground">Order value</p><p className="font-medium">{rupees(total)}</p></div>
                   <div><p className="text-xs text-muted-foreground">Paid</p><p className="font-medium">{rupees(paid)}</p></div>
                   {!cancelled && <div><p className="text-xs text-muted-foreground">Balance</p><p className="font-medium">{rupees(Math.max(0, total - paid))}</p></div>}
                 </div>
+                )}
                 {!cancelled && total > 0 && (
                   <div className="h-1.5 overflow-hidden rounded-full bg-muted">
                     <div className="h-full rounded-full bg-primary" style={{ width: `${paidPct}%` }} />
