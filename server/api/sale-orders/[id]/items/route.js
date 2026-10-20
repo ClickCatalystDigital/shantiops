@@ -16,6 +16,7 @@ import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { computeSaleOrderTotals } from '@/lib/sale-order-calc.mjs';
 import { lineAmount } from '@/lib/sales-lines.mjs';
+import { matchProducts } from '@/lib/data';
 
 export async function PUT(req, props) {
   const params = await props.params;
@@ -72,6 +73,13 @@ export async function PUT(req, props) {
   if (rows.some(r => !r.item_description)) {
     return NextResponse.json({ error: 'Every line needs a description' }, { status: 400 });
   }
+  // A product code typed without picking it from the suggestions still links the line to that
+  // product (exact code only, so a free-text description is never linked by guesswork).
+  const typedCodes = await matchProducts(items.map((it, i) => (rows[i].product_id ? '' : it.product_code)));
+  rows.forEach((r, i) => {
+    const hit = !r.product_id && typedCodes.get(String(items[i].product_code || '').trim().toUpperCase());
+    if (hit && String(hit.product_code || '').trim().toUpperCase() === String(items[i].product_code).trim().toUpperCase()) r.product_id = hit.id;
+  });
 
   // Phase 2.6 — the PO wizard's own order-level charges/discount, GST split by state (customer vs
   // issuing company), per-line tax rate. Opt-in via any of these keys being present, so the plain
