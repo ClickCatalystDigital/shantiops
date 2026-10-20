@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import PortalPoUpload from '@/components/PortalPoUpload';
+import { Visual } from '@/components/shop/ShopShell';
 import { defaultCompany } from '@/lib/company-profiles';
 
 export const dynamic = 'force-dynamic';
@@ -106,6 +107,19 @@ export default async function MyOrders(props) {
                   {cancelled ? 'This order was cancelled. The Shop is still open to you.'
                     : `Confirmed${so.order_date || so.created_at ? ` on ${formatDate(so.order_date || so.created_at)}` : ''}. Design starts next; progress shows here once it does.`}
                 </p>
+                {so.lines.length > 0 && (
+                  <ul className="flex flex-col gap-2">
+                    {so.lines.map((l, i) => (
+                      <li key={i} className="flex items-center gap-3">
+                        <Visual image={l.image} icon={l.icon} className="size-16 shrink-0 rounded-lg ring-1 ring-foreground/10" iconClass="size-6" />
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium">{l.title}</p>
+                          <p className="text-xs text-muted-foreground">Qty {Number(l.qty) || 1}{l.uom ? ` ${l.uom}` : ''}</p>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
                 {so.quotation_no && (
                   <div className="flex items-center justify-between gap-2 rounded-lg border p-3 text-sm">
                     <span>Final offer <span className="font-medium">{so.quotation_no}</span>{so.revision_no > 0 ? ' (revised)' : ''}</span>
