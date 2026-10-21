@@ -9,7 +9,9 @@
   "routes": [{ "pattern": "boiler-erp.ahromlabs.com", "custom_domain": true }],
   // Secrets (wrangler secret put): TURSO_URL, TURSO_AUTH_TOKEN, SESSION_SECRET, SECRETS_KEY,
   // LEADS_TURSO_URL, LEADS_TURSO_AUTH_TOKEN, CUSTOMER_SEED. Never the live deployment's values.
-  "vars": { "DEMO_MODE": "1", "SKIP_MIGRATE": "1", "APP_URL": "https://boiler-erp.ahromlabs.com" },
+  "vars": { "DEMO_MODE": "1", "SKIP_MIGRATE": "1", "APP_URL": "https://boiler-erp.ahromlabs.com",
+    // The owner pass reads and writes golden instead, so its changes survive the nightly reset (lib/db.js).
+    "GOLDEN_TURSO_URL": "libsql://sb-demo-golden-pujan.aws-ap-south-1.turso.io" },
   // Run next to the database (Turso, Mumbai): a page makes many sequential queries.
   "placement": { "mode": "smart" },
   "observability": { "enabled": true }
