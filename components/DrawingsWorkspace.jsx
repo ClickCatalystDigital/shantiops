@@ -16,7 +16,7 @@ import SearchableSelect from '@/components/SearchableSelect';
 import { DrawingsPanel } from '@/components/CalcWorkspace';
 import CustomerDrawingUploads from '@/components/CustomerDrawingUploads';
 
-export default function DrawingsWorkspace({ projects, designTeam, user }) {
+export default function DrawingsWorkspace({ projects, designTeam, user, drawingCounts = {} }) {
   const [projectId, setProjectId] = useState('');
   const [drawings, setDrawings] = useState(null);
   // Alert links: ?project=<id>&highlight=DG-xxxx opens that project and flashes the drawing.
@@ -42,7 +42,8 @@ export default function DrawingsWorkspace({ projects, designTeam, user }) {
   const selectedProject = projects.find((p) => String(p.id) === projectId);
 
   return (
-    <Card>
+    // overflow-visible: the project dropdown must hang below the card, not be clipped by it.
+    <Card className="overflow-visible">
       <CardHeader>
         <CardTitle>Project</CardTitle>
         <CardDescription>
@@ -52,7 +53,7 @@ export default function DrawingsWorkspace({ projects, designTeam, user }) {
               {selectedProject.series && <Badge variant="outline" className="text-[10px] font-normal">{selectedProject.series}</Badge>}
             </span>
           ) : (
-            'Search for a project to view its drawing checklist.'
+            'Pick a project below, or search for one.'
           )}
         </CardDescription>
         <CardAction>
@@ -67,7 +68,30 @@ export default function DrawingsWorkspace({ projects, designTeam, user }) {
       </CardHeader>
 
       {!projectId ? (
-        <p className="px-6 pb-6 text-center text-xs text-muted-foreground">Pick a project above to see its drawings.</p>
+        projects.length === 0 ? (
+          <p className="px-6 pb-6 text-center text-xs text-muted-foreground">No active projects.</p>
+        ) : (
+          <ul className="mx-4 mb-2 divide-y rounded-lg border">
+            {projects.map((p) => {
+              const c = drawingCounts[p.id];
+              return (
+                <li key={p.id}>
+                  <button type="button" onClick={() => setProjectId(String(p.id))}
+                    className="flex w-full flex-wrap items-center justify-between gap-x-4 gap-y-1 px-3 py-2.5 text-left transition-colors hover:bg-muted/50">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className="font-medium">{p.project_no}</span>
+                      <span className="truncate text-muted-foreground">{p.customer_name}</span>
+                      {p.series && <Badge variant="outline" className="text-[10px] font-normal">{p.series}</Badge>}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {c ? `${c.total} drawing${c.total === 1 ? '' : 's'} · ${c.approved} approved · ${c.shared} shared with customer` : 'No drawings yet'}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )
       ) : !drawings ? (
         <div className="px-6 pb-6"><Skeleton className="h-40 w-full rounded-md" /></div>
       ) : (
