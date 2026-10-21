@@ -9,6 +9,8 @@ import { getFreshSessionUser, isInternal, needsDeviceEnrollment, isDemoUser, has
 import { getMyMachine } from '@/lib/data';
 import { REPORT_DEPARTMENTS } from '@/lib/reports/catalog';
 import { clientCompanies } from '@/lib/company-profiles';
+import { cookies } from 'next/headers';
+import { isOwnerPass } from '@/lib/demo-leads';
 
 export function generateMetadata() {
   return {
@@ -30,6 +32,8 @@ function companiesInit() {
 
 export default async function RootLayout({ children }) {
   const user = await getFreshSessionUser();
+  // Public demo: the owner-pass browser edits the saved copy (kept); every other browser's changes go at the nightly reset.
+  const demoOwner = process.env.DEMO_MODE === '1' && isOwnerPass((await cookies()).get('demo_lead')?.value);
   // Functional heads, plus any self-registered "Project Manager" account (see
   // needsDeviceEnrollment) — the bootstrap admin/manager/executive seed accounts stay
   // unblocked so someone can always register machines / approve people.
@@ -49,7 +53,7 @@ export default async function RootLayout({ children }) {
           {isInternal(user) && !needsDeviceSetup && <Nav user={user} reportDepartments={REPORT_DEPARTMENTS} />}
           {process.env.DEMO_MODE === '1' && isInternal(user) && (
             <div className="fixed bottom-20 left-1/2 z-50 -translate-x-1/2 rounded-full border bg-background/95 px-3 py-1.5 text-xs text-muted-foreground shadow-md backdrop-blur md:bottom-4 print:hidden">
-              Demo · sample data, resets nightly ·{' '}
+              {demoOwner ? <span className="font-medium text-primary">Owner mode · your changes are saved</span> : 'Demo · sample data, resets nightly'} ·{' '}
               <a href="/demo" className="font-medium text-foreground underline-offset-2 hover:underline">Switch role</a>
             </div>
           )}
