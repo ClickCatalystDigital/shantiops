@@ -4,7 +4,8 @@
 // CustomerLedgerCard.jsx, against suppliers. /api/suppliers has no search param (small table at
 // this company's scale, per its own schema comment) — filters the full list client-side instead of
 // CustomerLedgerCard's debounced server search.
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import FloatingList from '@/components/FloatingList';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,6 +16,7 @@ import { fmt } from './TrialBalanceCard';
 export default function VendorLedgerCard({ company }) {
   const [suppliers, setSuppliers] = useState([]);
   const [query, setQuery] = useState('');
+  const anchorRef = useRef(null);
   const [supplier, setSupplier] = useState(null);
   const [data, setData] = useState(null);
 
@@ -56,15 +58,15 @@ export default function VendorLedgerCard({ company }) {
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         <div className="relative">
-          <Input placeholder="Search supplier…" value={query} onChange={e => { setQuery(e.target.value); if (supplier) clear(); }} />
+          <Input ref={anchorRef} placeholder="Search supplier…" value={query} onChange={e => { setQuery(e.target.value); if (supplier) clear(); }} />
           {options.length > 0 && (
-            <div className="absolute z-10 mt-1 w-full rounded-md border bg-popover shadow-md">
+            <FloatingList anchorRef={anchorRef}>
               {options.map(s => (
                 <button key={s.id} type="button" className="block w-full px-3 py-1.5 text-left text-sm hover:bg-muted" onClick={() => pick(s)}>
                   {s.name}
                 </button>
               ))}
-            </div>
+            </FloatingList>
           )}
         </div>
 

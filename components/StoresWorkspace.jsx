@@ -11,6 +11,7 @@
 import InboundLink from '@/components/InboundLink';
 import { carrierSummary } from '@/lib/carrier.mjs';
 import { useState, useEffect, useMemo, useRef, Fragment } from 'react';
+import FloatingList from '@/components/FloatingList';
 import { tabSlug } from '@/lib/workspace-routes';
 import { unpackRows } from '@/lib/row-pack.mjs';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -184,6 +185,7 @@ function ItemFormDialog({ item, onClose, router }) {
   const [saving, setSaving] = useState(false);
   const [catalogResults, setCatalogResults] = useState([]);
   const [catalogOpen, setCatalogOpen] = useState(false);
+  const catalogAnchor = useRef(null);
   const [catalogUom, setCatalogUom] = useState(item?.unit || (item?.item_id ? item?.catalog_uom : null));
 
   // §3.2 catalog wiring — same search endpoint/idiom as PrWorkspace's ItemSearchField, so a
@@ -271,12 +273,12 @@ function ItemFormDialog({ item, onClose, router }) {
         <div className="grid grid-cols-2 gap-3">
           <div className="relative col-span-2 grid gap-1.5">
             <Label>Description<span className="text-danger"> *</span></Label>
-            <Input value={description} onChange={e => onDescriptionChange(e.target.value)}
+            <Input ref={catalogAnchor} value={description} onChange={e => onDescriptionChange(e.target.value)}
               onFocus={() => setCatalogOpen(catalogResults.length > 0)} onBlur={() => setTimeout(() => setCatalogOpen(false), 150)}
               placeholder="Search the item catalog, or just type a description" required autoFocus />
             {itemId && <p className="text-xs text-success">✓ Linked to catalog — real matching against BOM/PR lines now possible for this item.</p>}
             {catalogOpen && (
-              <div className="absolute top-full z-10 mt-1 w-full rounded-md border bg-popover shadow-md">
+              <FloatingList anchorRef={catalogAnchor} onClose={() => setCatalogOpen(false)}>
                 {catalogResults.map(it => (
                   <button key={it.id} type="button" className="flex w-full flex-col items-start gap-0.5 border-b px-3 py-1.5 text-left text-sm last:border-b-0 hover:bg-muted/40"
                     title={it.hsn_code ? `HSN ${it.hsn_code}` : undefined} onMouseDown={() => pickCatalogItem(it)}>
@@ -287,7 +289,7 @@ function ItemFormDialog({ item, onClose, router }) {
                     </span>
                   </button>
                 ))}
-              </div>
+              </FloatingList>
             )}
           </div>
           <div className="grid gap-1.5">

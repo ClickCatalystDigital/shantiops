@@ -7,6 +7,7 @@
 // Everything else edits through a small dialog showing only the viewer's editable columns.
 // Enforcement lives in the PATCH route — this UI is convenience.
 import { useMemo, useRef, useState } from 'react';
+import FloatingList from '@/components/FloatingList';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api, showToast, formatDate } from '@/lib/client';
 import { useEntityHighlight } from '@/lib/use-entity-highlight';
@@ -116,6 +117,7 @@ function LinkItemControl({ bomItemId, router }) {
     setBusy(false);
   }
 
+  const anchorRef = useRef(null);
   if (!open) {
     return (
       <button type="button" onClick={() => setOpen(true)} className="text-xs text-info hover:underline">
@@ -125,10 +127,10 @@ function LinkItemControl({ bomItemId, router }) {
   }
   return (
     <div className="relative">
-      <Input value={q} onChange={e => onType(e.target.value)} placeholder="Search catalog…" autoFocus
+      <Input ref={anchorRef} value={q} onChange={e => onType(e.target.value)} placeholder="Search catalog…" autoFocus
         className="h-7 w-56 text-xs" onBlur={() => setTimeout(() => setOpen(false), 150)} />
       {results.length > 0 && (
-        <div className="absolute z-20 mt-1 max-h-48 w-64 overflow-y-auto rounded-md border bg-popover p-1 shadow-md">
+        <FloatingList anchorRef={anchorRef} onClose={() => setOpen(false)} matchWidth={false} className="w-64 p-1">
           {results.map(it => (
             // onMouseDown (not onClick) so the pick fires before the input's onBlur closes the dropdown.
             <button key={it.id} type="button" disabled={busy} onMouseDown={() => pick(it)}
@@ -141,7 +143,7 @@ function LinkItemControl({ bomItemId, router }) {
               </span>
             </button>
           ))}
-        </div>
+        </FloatingList>
       )}
     </div>
   );

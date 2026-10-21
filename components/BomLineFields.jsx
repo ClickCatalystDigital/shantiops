@@ -4,7 +4,8 @@
 // verbatim. These were already shared module-scope functions between Raise PR's LineCard and the
 // Templates editor in that one file; this just makes that sharing importable so BomTemplateManager
 // (used from both Engineering and Requests) doesn't need a second implementation.
-import { useState } from 'react';
+import { useState, useRef } from 'react';
+import FloatingList from '@/components/FloatingList';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
@@ -201,15 +202,16 @@ export function ItemSearchField({ line, onChange }) {
     setOpen(false);
   }
 
+  const anchorRef = useRef(null);
   return (
     <div className="relative flex flex-col gap-1.5">
       <Label>Item description {line.uomHint && <span className="font-normal text-muted-foreground">(UoM: {line.uomHint})</span>}</Label>
-      <Input value={line.material_description} onChange={e => onType(e.target.value)}
+      <Input ref={anchorRef} value={line.material_description} onChange={e => onType(e.target.value)}
         onFocus={() => setOpen(results.length > 0)} onBlur={() => setTimeout(() => setOpen(false), 150)}
         placeholder="Search the item catalog, or just type a description" />
       {line.item_id && <p className="text-xs text-success">✓ Linked to catalog — real matching against Inventory now possible for this line.</p>}
       {open && (
-        <div className="absolute top-full z-10 mt-1 w-full rounded-md border bg-popover shadow-md">
+        <FloatingList anchorRef={anchorRef} onClose={() => setOpen(false)}>
           {results.map(it => (
             <button key={it.id} type="button" className="flex w-full flex-col items-start gap-0.5 border-b px-3 py-1.5 text-left text-sm last:border-b-0 hover:bg-muted/40"
               title={it.hsn_code ? `HSN ${it.hsn_code}` : undefined} onMouseDown={() => pick(it)}>
@@ -220,7 +222,7 @@ export function ItemSearchField({ line, onChange }) {
               </span>
             </button>
           ))}
-        </div>
+        </FloatingList>
       )}
     </div>
   );

@@ -7,7 +7,8 @@
 // type-then-pick-from-a-list-below interaction this codebase already uses for the item catalog
 // (ItemSearchField in this file, StoresWorkspace/SalesWorkspace's own copies) — reused here for a
 // local `options` array instead of a server search, not a second interaction pattern to learn.
-import { useState } from 'react';
+import { useState, useRef } from 'react';
+import FloatingList from '@/components/FloatingList';
 import { Input } from './ui/input';
 import { cn } from '@/lib/utils';
 
@@ -37,6 +38,7 @@ export default function SearchableSelect({ value, onChange, options, placeholder
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const [remote, setRemote] = useState([]);
+  const anchorRef = useRef(null);
   const selected = options.find(o => o.value === value);
   const currentText = displayValue ?? selected?.label ?? '';
   const localFiltered = query.trim()
@@ -65,7 +67,7 @@ export default function SearchableSelect({ value, onChange, options, placeholder
 
   return (
     <div className={cn('relative', className)}>
-      <Input
+      <Input ref={anchorRef}
         autoFocus={autoFocus}
         className={inputClassName}
         value={open ? query : currentText}
@@ -76,7 +78,7 @@ export default function SearchableSelect({ value, onChange, options, placeholder
         placeholder={currentText || placeholder}
       />
       {open && (
-        <div className="absolute top-full z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-md border bg-popover shadow-md">
+        <FloatingList anchorRef={anchorRef} onClose={() => setOpen(false)}>
           {filtered.length === 0 ? (
             <div className="px-2.5 py-1.5 text-sm text-muted-foreground">No match</div>
           ) : filtered.map(o => (
@@ -88,7 +90,7 @@ export default function SearchableSelect({ value, onChange, options, placeholder
               {o.label}
             </button>
           ))}
-        </div>
+        </FloatingList>
       )}
     </div>
   );

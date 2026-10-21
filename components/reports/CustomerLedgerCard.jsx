@@ -4,7 +4,8 @@
 // Balance, this report needs an extra selection (which customer) before it has anything to show —
 // a debounced type-ahead against the existing /api/customers?search= endpoint (app/api/customers/
 // route.js), same search shape PeoplePanel-style pickers elsewhere in the app already use.
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import FloatingList from '@/components/FloatingList';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,6 +15,7 @@ import { fmt } from './TrialBalanceCard';
 
 export default function CustomerLedgerCard({ company }) {
   const [query, setQuery] = useState('');
+  const anchorRef = useRef(null);
   const [options, setOptions] = useState([]);
   const [customer, setCustomer] = useState(null);
   const [data, setData] = useState(null);
@@ -65,13 +67,13 @@ export default function CustomerLedgerCard({ company }) {
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         <div className="relative">
-          <Input
+          <Input ref={anchorRef}
             placeholder="Search customer…"
             value={query}
             onChange={e => { setQuery(e.target.value); if (customer) clear(); }}
           />
           {options.length > 0 && !customer && (
-            <div className="absolute z-10 mt-1 w-full rounded-md border bg-popover shadow-md">
+            <FloatingList anchorRef={anchorRef}>
               {options.map(c => (
                 <button key={c.id} type="button"
                   className="block w-full px-3 py-1.5 text-left text-sm hover:bg-muted"
@@ -79,7 +81,7 @@ export default function CustomerLedgerCard({ company }) {
                   {c.name}
                 </button>
               ))}
-            </div>
+            </FloatingList>
           )}
         </div>
 

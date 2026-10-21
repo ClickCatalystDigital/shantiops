@@ -5,6 +5,7 @@
 // Customer detail (contacts/addresses/notes) opens in a right-side Sheet, same drawer pattern
 // HrWorkspace.jsx's employee detail uses.
 import { Fragment, useState, useEffect, useMemo, useRef } from 'react';
+import FloatingList from '@/components/FloatingList';
 import { SALES_TAB_DATA } from '@/lib/sales-tab-data.mjs';
 import { unpackRows } from '@/lib/row-pack.mjs';
 import { tabSlug } from '@/lib/workspace-routes';
@@ -1683,14 +1684,15 @@ function QuotationItemField({ item, customerId, onChange }) {
 
   useEffect(() => { if (item.item_id) lookupPrice(item.item_id, customerId); }, [customerId]);
 
+  const anchorRef = useRef(null);
   return (
     <div className="relative flex-1">
-      <Input placeholder="Description" value={item.item_description}
+      <Input ref={anchorRef} placeholder="Description" value={item.item_description}
         onChange={e => onType(e.target.value)}
         onFocus={() => setOpen(results.length > 0)} onBlur={() => setTimeout(() => setOpen(false), 150)} />
       {priceHint && <p className="mt-1 text-xs text-success">Rate from {priceHint}</p>}
       {open && (
-        <div className="absolute top-full z-10 mt-1 w-full rounded-md border bg-popover shadow-md">
+        <FloatingList anchorRef={anchorRef} onClose={() => setOpen(false)}>
           {results.map(it => (
             <button key={it.id} type="button" className="flex w-full flex-col items-start gap-0.5 border-b px-3 py-1.5 text-left text-sm last:border-b-0 hover:bg-muted/40"
               title={it.hsn_code ? `HSN ${it.hsn_code}` : undefined} onMouseDown={() => pick(it)}>
@@ -1701,7 +1703,7 @@ function QuotationItemField({ item, customerId, onChange }) {
               </span>
             </button>
           ))}
-        </div>
+        </FloatingList>
       )}
     </div>
   );

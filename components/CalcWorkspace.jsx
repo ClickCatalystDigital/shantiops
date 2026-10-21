@@ -6,6 +6,7 @@
 // equivalence is what makes "Reproduce" in the Audit panel trustworthy. See SYSTEM.md §5f for the
 // module overview and what's deliberately deferred (real material data, project hierarchy, drawings).
 import { useEffect, useMemo, useRef, useState } from 'react';
+import FloatingList from '@/components/FloatingList';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -1757,6 +1758,7 @@ function InlineSwitcher({ trigger, triggerClassName, placeholder, loadItems, get
   const [items, setItems] = useState(null);
   const [loading, setLoading] = useState(false);
 
+  const anchorRef = useRef(null);
   async function toggle() {
     if (!open && items === null) {
       setLoading(true);
@@ -1771,11 +1773,11 @@ function InlineSwitcher({ trigger, triggerClassName, placeholder, loadItems, get
 
   return (
     <div className="relative min-w-0">
-      <button type="button" onClick={toggle} className={triggerClassName}>
+      <button ref={anchorRef} type="button" onClick={toggle} className={triggerClassName}>
         {trigger}
       </button>
       {open && (
-        <div className="absolute left-0 top-full z-20 mt-1 w-56 rounded-md border bg-popover text-popover-foreground shadow-md">
+        <FloatingList anchorRef={anchorRef} onClose={() => setOpen(false)} matchWidth={false} className="w-56 max-h-none overflow-visible">
           <Input autoFocus value={q} onChange={(e) => setQ(e.target.value)}
             onBlur={() => setTimeout(() => setOpen(false), 150)}
             placeholder={placeholder} className="m-1 h-7 w-[calc(100%-0.5rem)] text-xs" />
@@ -1791,7 +1793,7 @@ function InlineSwitcher({ trigger, triggerClassName, placeholder, loadItems, get
             ))}
             {!loading && filtered.length === 0 && <div className="px-3 py-1.5 text-xs text-muted-foreground">No matches</div>}
           </div>
-        </div>
+        </FloatingList>
       )}
     </div>
   );

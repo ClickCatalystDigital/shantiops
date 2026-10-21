@@ -12,6 +12,7 @@
 // <textarea> is a lot of complexity for near-zero payoff on a 2-row box, where "below the box" and
 // "at the caret" land in nearly the same place.
 import { useEffect, useRef, useState } from 'react';
+import FloatingList from '@/components/FloatingList';
 import { Textarea } from '@/components/ui/textarea';
 import { api } from '@/lib/client';
 // Shared with lib/entity-refs.js's search-route guard — this used to be a second, hand-maintained
@@ -93,7 +94,7 @@ export default function MentionTextarea({ value, onChange, placeholder, rows = 2
         onChange={handleChange} onKeyDown={handleKeyDown}
         onBlur={() => setTimeout(() => setMention(null), 150)} />
       {dropdownOpen && (
-        <div className="absolute left-0 top-full z-50 mt-1 max-h-56 w-full overflow-y-auto rounded-md border bg-popover p-1 shadow-md">
+        <FloatingList anchorRef={ref} onClose={() => setMention(null)} className="p-1">
           {!mention.type ? (
             ENTITY_TYPES.map((t, i) => (
               <button key={t.type} type="button"
@@ -116,7 +117,7 @@ export default function MentionTextarea({ value, onChange, placeholder, rows = 2
               </button>
             ))
           )}
-        </div>
+        </FloatingList>
       )}
     </div>
   );

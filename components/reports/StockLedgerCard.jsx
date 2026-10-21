@@ -3,7 +3,8 @@
 // components/reports/StockLedgerCard.jsx — REPORT-ENGINE-PLAN.md §10. Mirror of
 // VendorLedgerCard.jsx, against inventory items instead of suppliers. /api/inventory-items has no
 // search param either — filters client-side.
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import FloatingList from '@/components/FloatingList';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,6 +15,7 @@ import ReportInfo from '@/components/ReportInfo';
 export default function StockLedgerCard() {
   const [items, setItems] = useState([]);
   const [query, setQuery] = useState('');
+  const anchorRef = useRef(null);
   const [item, setItem] = useState(null);
   const [data, setData] = useState(null);
 
@@ -54,15 +56,15 @@ export default function StockLedgerCard() {
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         <div className="relative">
-          <Input placeholder="Search item…" value={query} onChange={e => { setQuery(e.target.value); if (item) clear(); }} />
+          <Input ref={anchorRef} placeholder="Search item…" value={query} onChange={e => { setQuery(e.target.value); if (item) clear(); }} />
           {options.length > 0 && (
-            <div className="absolute z-10 mt-1 w-full rounded-md border bg-popover shadow-md">
+            <FloatingList anchorRef={anchorRef}>
               {options.map(i => (
                 <button key={i.id} type="button" className="block w-full px-3 py-1.5 text-left text-sm hover:bg-muted" onClick={() => pick(i)}>
                   {i.item_code ? `${i.item_code} — ` : ''}{i.description}
                 </button>
               ))}
-            </div>
+            </FloatingList>
           )}
         </div>
 
