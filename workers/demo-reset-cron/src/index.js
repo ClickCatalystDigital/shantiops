@@ -71,6 +71,8 @@ export async function shiftDates(url, token, today = new Date(Date.now() + 5.5 *
     // ~300 tables × their columns: big batches keep the run under the Worker's 50-subrequest limit.
     for (let i = 0; i < all.length; i += 1500) await run(url, token, all.slice(i, i + 1500));
   }
+  // The demo now reads as of today: say so, so scripts/demo-promote.sh in ahrom-labs can copy it to golden as is.
+  await run(url, token, [`UPDATE demo_meta SET seeded_on = '${today}'`]);
   return { shifted: n, columns: cols.rows.length };
 }
 
