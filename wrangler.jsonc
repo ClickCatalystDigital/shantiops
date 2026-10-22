@@ -14,5 +14,7 @@
     "GOLDEN_TURSO_URL": "libsql://sb-demo-golden-pujan.aws-ap-south-1.turso.io" },
   // Run next to the database (Turso, Mumbai): a page makes many sequential queries.
   "placement": { "mode": "smart" },
+  // Demo file uploads (owner pass only, lib/r2.js); the client deployment uses its own R2 keys instead.
+  "r2_buckets": [{ "binding": "DEMO_FILES", "bucket_name": "sb-demo-files" }],
   "observability": { "enabled": true }
 }
