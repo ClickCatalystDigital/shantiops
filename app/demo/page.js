@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { DEMO_ROLES } from '@/lib/demo-roles';
 import DemoEntry from '@/components/DemoEntry';
+import { isOwnerPass } from '@/lib/demo-leads';
 import { FEATURES, FEATURE_DETAILS } from '@/lib/product-features';
 
 export const metadata = {
@@ -13,7 +14,8 @@ export const metadata = {
 
 export default async function DemoPage() {
   if (process.env.DEMO_MODE !== '1') notFound();
-  const hasLead = !!(await cookies()).get('demo_lead')?.value;
+  const lead = (await cookies()).get('demo_lead')?.value;
+  const hasLead = !!lead;
   // Structured data for search engines: what the product is and what it does (the same text as the page).
   const jsonLd = {
     '@context': 'https://schema.org',
@@ -31,7 +33,7 @@ export default async function DemoPage() {
   return (
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, '\\u003c') }} />
-      <DemoEntry roles={DEMO_ROLES} hasLead={hasLead} />
+      <DemoEntry roles={DEMO_ROLES} hasLead={hasLead} isOwner={isOwnerPass(lead)} />
     </>
   );
 }

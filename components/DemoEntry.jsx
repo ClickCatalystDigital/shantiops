@@ -15,8 +15,9 @@ const FIELDS = [
   ['phone', 'Phone (optional)', 'tel', false], ['manufactures', 'What do you manufacture? (optional)', 'text', false],
 ];
 
-export default function DemoEntry({ roles, hasLead }) {
+export default function DemoEntry({ roles, hasLead, isOwner = false }) {
   const [step, setStep] = useState(hasLead ? 'roles' : 'form');
+  const [owner, setOwner] = useState(isOwner);
 
   // Owner pass (lib/demo-leads.js): /demo#pass=… goes straight to the roles. The secret is wiped from the address bar
   // and is only ever sent in a POST body.
@@ -27,7 +28,7 @@ export default function DemoEntry({ roles, hasLead }) {
   const [pin, setPin] = useState('');
   async function usePass(pass) {
     setBusy('pass'); setError('');
-    try { await api('/api/demo/pass', { method: 'POST', body: { pass } }); setStep('roles'); }
+    try { await api('/api/demo/pass', { method: 'POST', body: { pass } }); setOwner(true); setStep('roles'); }
     catch (e) { setError(e.message); setPin(''); }
     finally { setBusy(null); }
   }
@@ -57,6 +58,22 @@ export default function DemoEntry({ roles, hasLead }) {
       window.location.assign(r.home || '/');
     } catch (err) { setError(err.message); setBusy(null); }
   }
+
+  // Owner pass, offered on the department list too: a browser that once filled in the visitor form
+  // goes straight there, and before this it had no way to switch to owner mode (its edits were wiped).
+  const passBox = owner ? null : (
+    passOpen ? (
+      <div className="flex items-center gap-2 border-t pt-3">
+        <Input type="password" inputMode="numeric" autoComplete="off" aria-label="Demo pass" placeholder="Demo pass" maxLength={12} value={pin}
+          onChange={e => setPin(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); if (pin) usePass(pin); } }} className="h-9 w-36" autoFocus />
+        <Button type="button" variant="outline" size="sm" disabled={!pin || busy === 'pass'} onClick={() => usePass(pin)}>
+          {busy === 'pass' ? <Loader2Icon className="animate-spin" /> : 'Enter'}
+        </Button>
+      </div>
+    ) : (
+      <button type="button" onClick={() => setPassOpen(true)} className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">Have a demo pass?</button>
+    )
+  );
 
   return (
     <>
@@ -148,20 +165,13 @@ export default function DemoEntry({ roles, hasLead }) {
               </Button>
               <p className="text-xs text-muted-foreground">We use these details only to follow up about SB Ops.</p>
               {/* Owner pass (lib/demo-leads.js): a PIN skips the form and lifts OPS AI's limit for this browser. */}
-              {passOpen ? (
-                <div className="flex items-center gap-2 border-t pt-3">
-                  <Input type="password" inputMode="numeric" autoComplete="off" aria-label="Demo pass" placeholder="Demo pass" maxLength={12} value={pin}
-                    onChange={e => setPin(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); if (pin) usePass(pin); } }} className="h-9 w-36" autoFocus />
-                  <Button type="button" variant="outline" size="sm" disabled={!pin || busy === 'pass'} onClick={() => usePass(pin)}>
-                    {busy === 'pass' ? <Loader2Icon className="animate-spin" /> : 'Enter'}
-                  </Button>
-                </div>
-              ) : (
-                <button type="button" onClick={() => setPassOpen(true)} className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">Have a demo pass?</button>
-              )}
+              {passBox}
             </form>
           ) : (
             <div className="grid gap-2 sm:grid-cols-2">
+              <p className={`text-xs sm:col-span-2 ${owner ? 'font-medium text-primary' : 'text-muted-foreground'}`}>
+                {owner ? 'Owner mode: your changes in this browser are saved.' : 'Visitor mode: changes are wiped every night.'}
+              </p>
               {roles.map(r => (
                 <button key={r.username} type="button" disabled={!!busy} onClick={() => enter(r.username)}
                   className="rounded-lg border p-3 text-left transition-colors hover:border-primary hover:bg-muted/50 disabled:opacity-60">
@@ -172,6 +182,7 @@ export default function DemoEntry({ roles, hasLead }) {
                 </button>
               ))}
               {error && <p className="text-sm text-danger sm:col-span-2">{error}</p>}
+              {passBox && <div className="sm:col-span-2">{passBox}</div>}
             </div>
           )}
         </CardContent>

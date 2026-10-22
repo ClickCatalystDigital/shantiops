@@ -3,7 +3,7 @@
 // Order Progress stepper + the Drawings needing customer action, merged into one journey: the
 // Design & Engineering row expands in place when clicked, rather than sending the customer to a
 // separate card further down the page to find what the yellow icon is about.
-import { Fragment, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { api, showToast, formatDate } from '@/lib/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -218,6 +218,8 @@ function VisitsPanel({ summary, units, visits }) {
 
 export default function PortalOrderProgress({ readOnly = false, projectId, customerDrawings = [], phases, drawings, qcCertificates = [], pendingCount = 0, packingLists = [], installationVisits = [], installationSummary = null, installationUnits = [], installationReports = [], pct }) {
   const [items, setItems] = useState(drawings);
+  // Fresh server data (a refresh, a link to this same page) replaces the list; it was copied only once before.
+  useEffect(() => { setItems(drawings); }, [drawings]);
   // One open section at a time, tracked by phase key — 'design' keeps its old default-collapsed
   // behavior, just generalized to any phase that has documents to show.
   const [openPhase, setOpenPhase] = useState(null);
