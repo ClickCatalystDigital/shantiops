@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Loader2Icon, ArrowRightIcon, ArrowUpIcon, ChevronRightIcon, GlobeIcon } from 'lucide-react';
 import { FEATURES, FEATURE_DETAILS, INTEGRATIONS } from '@/lib/product-features';
 import { track } from '@/components/DemoAnalytics';
+import DemoWhatsApp from '@/components/DemoWhatsApp';
 
 const FIELDS = [
   ['name', 'Your name', 'text', true], ['company', 'Company', 'text', true], ['email', 'Work email', 'email', true],
@@ -187,6 +188,7 @@ export default function DemoEntry({ roles, hasLead, isOwner = false }) {
           )}
         </CardContent>
       </Card>
+      <p className="mt-4 text-center text-sm text-muted-foreground">Questions? <DemoWhatsApp>WhatsApp Pujan</DemoWhatsApp></p>
     </main>
 
     <section id="in-detail" aria-labelledby="in-detail-heading" className="container border-t py-14">

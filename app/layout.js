@@ -53,9 +53,12 @@ export default async function RootLayout({ children }) {
         <TooltipProvider delayDuration={200}>
           {isInternal(user) && !needsDeviceSetup && <Nav user={user} reportDepartments={REPORT_DEPARTMENTS} />}
           {process.env.DEMO_MODE === '1' && isInternal(user) && (
-            <div className="fixed bottom-20 left-1/2 z-50 -translate-x-1/2 rounded-full border bg-background/95 px-3 py-1.5 text-xs text-muted-foreground shadow-md backdrop-blur md:bottom-4 print:hidden">
-              {demoOwner ? <span className="font-medium text-primary">Owner mode · your changes are saved</span> : 'Demo · sample data, resets nightly'} ·{' '}
-              <a href="/demo" className="font-medium text-foreground underline-offset-2 hover:underline">Switch role</a>
+            <div className="fixed bottom-20 left-1/2 z-50 -translate-x-1/2 whitespace-nowrap rounded-full border bg-background/95 px-3 py-1.5 text-xs text-muted-foreground shadow-md backdrop-blur md:bottom-4 print:hidden">
+              {demoOwner
+                ? <span className="font-medium text-primary">Owner mode<span className="hidden sm:inline"> · changes saved</span></span>
+                : <>Demo<span className="hidden sm:inline"> · resets nightly</span></>} ·{' '}
+              <a href="/demo" className="font-medium text-foreground underline-offset-2 hover:underline">Switch role</a> ·{' '}
+              <DemoWhatsApp />
             </div>
           )}
           {/* Extra bottom padding on mobile so content clears the fixed bottom tab bar (internal only). */}
@@ -73,7 +76,6 @@ export default async function RootLayout({ children }) {
         {isInternal(user) && !needsDeviceSetup && <AssistantWidget demo={process.env.DEMO_MODE === '1'} />}
         <Toaster position="top-center" richColors />
         {process.env.DEMO_MODE === '1' && <DemoAnalytics />}
-        {process.env.DEMO_MODE === '1' && <DemoWhatsApp />}
       </body>
     </html>
   );
