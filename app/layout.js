@@ -3,6 +3,7 @@ import Nav from '@/components/Nav';
 import AssistantWidget from '@/components/AssistantWidget';
 import DeviceSetupGate from '@/components/DeviceSetupGate';
 import DemoAnalytics from '@/components/DemoAnalytics';
+import DemoWhatsApp from '@/components/DemoWhatsApp';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { getFreshSessionUser, isInternal, needsDeviceEnrollment, isDemoUser, hasSafePass } from '@/lib/auth';
@@ -72,6 +73,7 @@ export default async function RootLayout({ children }) {
         {isInternal(user) && !needsDeviceSetup && <AssistantWidget demo={process.env.DEMO_MODE === '1'} />}
         <Toaster position="top-center" richColors />
         {process.env.DEMO_MODE === '1' && <DemoAnalytics />}
+        {process.env.DEMO_MODE === '1' && <DemoWhatsApp />}
       </body>
     </html>
   );
