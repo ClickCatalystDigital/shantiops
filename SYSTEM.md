@@ -13231,3 +13231,4 @@ Walkthrough and limits: `DEMO.md`.
 
 ## Assistant renamed to Ember (2026-10-25)
 - The help assistant shown as **OPS AI** is now **Ember** on every screen, in the demo overlay and in the help sections (`lib/assistant.js` general "Ember, the help assistant", Accounts help "Ember (help assistant) and AI credit"). Display name only: routes, tables, settings keys and event names (`boiler_demo_ai_limit`) are unchanged. Older notes above still say OPS AI. The name matches ahromlabs.com/ai-assistant, which lists Atelier AI (Savistar), Ember (SB Ops) and Ohm (LS Inventory).
+- **Renamed Ember AI (2026-10-25):** shown as **Ember AI** everywhere it was Ember, to match Atelier AI and Ohm AI on ahromlabs.com/ai-assistant. Display name only.

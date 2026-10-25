@@ -1,6 +1,6 @@
 'use client';
 
-// Ember, the help assistant: a button at the bottom right that opens a chat panel, for every staff
+// Ember AI, the help assistant: a button at the bottom right that opens a chat panel, for every staff
 // login (app/layout.js; not customers). The conversation lives in this component's state, so it
 // lasts until the page is reloaded and is never stored.
 import { useEffect, useRef, useState } from 'react';
@@ -69,7 +69,7 @@ export default function AssistantWidget({ demo = false }) {
     } finally { setBusy(false); }
   }
 
-  // The demo shows Ember only when it has its own AI key (and once the visitor's count is known).
+  // The demo shows Ember AI only when it has its own AI key (and once the visitor's count is known).
   if (demo && !demoAi?.enabled) return null;
   const limitOverlay = limitOpen && demoAi ? <DemoAiLimit limit={demoAi.limit} onClose={() => setLimitOpen(false)} /> : null;
 
@@ -77,7 +77,7 @@ export default function AssistantWidget({ demo = false }) {
     return (
       <>
         {limitOverlay}
-        <Button onClick={() => (locked ? (setLimitOpen(true), track('boiler_demo_ai_limit')) : setOpen(true))} size="icon" aria-label={locked ? 'Ember: free questions used' : 'Open Ember'}
+        <Button onClick={() => (locked ? (setLimitOpen(true), track('boiler_demo_ai_limit')) : setOpen(true))} size="icon" aria-label={locked ? 'Ember AI: free questions used' : 'Open Ember AI'}
           className="fixed bottom-24 right-4 z-40 size-12 rounded-full shadow-lg md:bottom-6 md:right-6 print:hidden">
           <MessageCircleQuestionIcon className="size-5" />
           {locked && <span className="absolute -right-0.5 -top-0.5 grid size-5 place-items-center rounded-full border-2 border-background bg-foreground text-background"><LockIcon className="size-2.5" /></span>}
@@ -91,7 +91,7 @@ export default function AssistantWidget({ demo = false }) {
     <div className="fixed inset-x-0 top-0 z-50 flex h-dvh flex-col bg-background md:inset-x-auto md:top-auto md:bottom-6 md:right-6 md:h-[min(36rem,calc(100vh-3rem))] md:w-[24rem] md:rounded-xl md:border md:shadow-2xl print:hidden">
       <div className="flex items-center justify-between border-b px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
         <div>
-          <p className="text-sm font-semibold">Ember</p>
+          <p className="text-sm font-semibold">Ember AI</p>
           {demo && demoAi ? <p className="text-[11px] text-muted-foreground">{demoAi.pass ? 'Owner pass · no limit' : `${demoAi.left} of ${demoAi.limit} free questions left`}</p>
             : left !== null && <p className="text-[11px] text-muted-foreground">{left} question{left === 1 ? '' : 's'} left today</p>}
         </div>

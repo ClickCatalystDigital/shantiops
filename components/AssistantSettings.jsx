@@ -130,7 +130,7 @@ export default function AssistantSettings() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Ember</CardTitle>
+        <CardTitle>Ember AI</CardTitle>
         <CardDescription>A chat button at the bottom right that answers from the help guide. Every staff login has it; each person is answered only about their own departments. Admin and the Accounts Head manage the key and the AI credit here.</CardDescription>
         <CardAction><Button size="sm" onClick={save} disabled={saving || (!key && model === settings.model && mode === settings.mode)}>{saving ? 'Saving…' : 'Save'}</Button></CardAction>
       </CardHeader>

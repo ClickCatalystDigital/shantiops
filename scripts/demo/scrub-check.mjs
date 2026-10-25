@@ -3,7 +3,7 @@
 // Checks, in order:
 //   1. every text column of the demo database;
 //   2. the browser bundle the demo serves (.open-next/assets after `npm run cf:build`, else .next/static; skipped if neither);
-//   3. the source of the PDF templates and the Ember prompts (comments ignored); pages and components are listed as
+//   3. the source of the PDF templates and the Ember AI prompts (comments ignored); pages and components are listed as
 //      warnings only (they are the client's live app code);
 //   4. with BASE + ADMIN_PASSWORD (a running app on this database): every kind of PDF the demo produces is downloaded and
 //      its text must name the demo company and nothing from the deny list.
