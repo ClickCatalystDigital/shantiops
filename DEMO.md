@@ -50,7 +50,7 @@ manual journal entry (bank charges), and payables from the unpaid supplier bills
 
 Visitors pick a role on `/demo` (`lib/demo-roles.js`); no password.
 
-**Owner pass.** A short PIN, the Worker secret `DEMO_PASS` (4+ characters; `npx wrangler secret put DEMO_PASS`). Type it under **Have a demo pass?** on `/demo`, or open `/demo#pass=<PIN>`. `/api/demo/pass` sets `demo_lead` to an HMAC of the PIN: that browser skips the form, is never saved or emailed as a lead, and asks OPS AI without a limit. Wrong tries are capped at 5 per visitor IP and 200 in all per day (`demo_pass_tries` in the leads DB). Change the secret to cancel every pass (`lib/demo-leads.js`). **Its changes are kept:** that browser reads and writes the golden database (`GOLDEN_TURSO_URL`), and the nightly reset backs golden up to `<golden>-prev`, moves its dates to today and copies it over the demo, so everyone else's changes are wiped.
+**Owner pass.** A short PIN, the Worker secret `DEMO_PASS` (4+ characters; `npx wrangler secret put DEMO_PASS`). Type it under **Have a demo pass?** on `/demo`, or open `/demo#pass=<PIN>`. `/api/demo/pass` sets `demo_lead` to an HMAC of the PIN: that browser skips the form, is never saved or emailed as a lead, and asks Ember without a limit. Wrong tries are capped at 5 per visitor IP and 200 in all per day (`demo_pass_tries` in the leads DB). Change the secret to cancel every pass (`lib/demo-leads.js`). **Its changes are kept:** that browser reads and writes the golden database (`GOLDEN_TURSO_URL`), and the nightly reset backs golden up to `<golden>-prev`, moves its dates to today and copies it over the demo, so everyone else's changes are wiped.
 
 | Login | Start here |
 |---|---|

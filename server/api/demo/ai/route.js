@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { demoAiLeft, DEMO_AI_QUESTIONS, isOwnerPass } from '@/lib/demo-leads';
 
-// Public demo: the OPS AI widget asks this on load. Hidden when the demo has no AI key; locked when left is 0.
+// Public demo: the Ember widget asks this on load. Hidden when the demo has no AI key; locked when left is 0.
 export async function GET(req) {
   if (process.env.DEMO_MODE !== '1') return NextResponse.json({ error: 'Not found' }, { status: 404 });
   const enabled = !!process.env.DEMO_OPENROUTER_KEY;

@@ -165,7 +165,7 @@ export default function DemoEntry({ roles, hasLead, isOwner = false }) {
                 {busy === 'form' ? <Loader2Icon className="animate-spin" /> : <ArrowRightIcon />} Continue
               </Button>
               <p className="text-xs text-muted-foreground">We use these details only to follow up about SB Ops.</p>
-              {/* Owner pass (lib/demo-leads.js): a PIN skips the form and lifts OPS AI's limit for this browser. */}
+              {/* Owner pass (lib/demo-leads.js): a PIN skips the form and lifts Ember's limit for this browser. */}
               {passBox}
             </form>
           ) : (

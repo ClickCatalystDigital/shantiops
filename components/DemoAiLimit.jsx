@@ -1,6 +1,6 @@
 'use client';
 
-// Public demo only: shown when a visitor has used their free OPS AI questions (lib/demo-leads.js), and again
+// Public demo only: shown when a visitor has used their free Ember questions (lib/demo-leads.js), and again
 // every time they click the locked assistant button. Mirrors ls-inventory's AiLimitOverlay.
 import { useEffect } from 'react';
 import { ArrowUpRightIcon, LockIcon, XIcon } from 'lucide-react';
@@ -21,7 +21,7 @@ export default function DemoAiLimit({ limit, onClose }) {
         <span className="grid size-10 place-items-center rounded-xl bg-muted"><LockIcon className="size-5" /></span>
         <h2 id="ai-limit-title" className="mt-4 text-lg font-semibold tracking-tight">That was your {limit} free questions</h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          OPS AI answers from live orders, stock, purchase orders and payments, and explains how to do things in the app.
+          Ember answers from live orders, stock, purchase orders and payments, and explains how to do things in the app.
           To set it up on your own data, or to ask more here, get in touch with Ahrom Labs.
         </p>
         <a href="https://ahromlabs.com/#contact" target="_blank" rel="noreferrer"
