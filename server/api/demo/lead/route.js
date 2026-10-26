@@ -10,6 +10,7 @@ export async function POST(req) {
   const lead = {
     name: clip(b.name, 120), company: clip(b.company, 160), email: clip(b.email, 160).toLowerCase(),
     phone: clip(b.phone, 40), manufactures: clip(b.manufactures, 200),
+    whatsapp_ok: b.whatsapp_ok === true && /\d/.test(String(b.phone ?? '')),
   };
   if (!lead.name || !lead.company) return NextResponse.json({ error: 'Name and company are required' }, { status: 400 });
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(lead.email)) return NextResponse.json({ error: 'Enter a valid email' }, { status: 400 });

@@ -158,6 +158,14 @@ export default function DemoEntry({ roles, hasLead, isOwner = false }) {
                   <Label htmlFor={key}>{label}</Label>
                   <Input id={key} type={type} required={required} value={form[key] || ''}
                     onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))} />
+                  {/* Consent must be the visitor's own click: never pre-ticked, and only offered once there's a number. */}
+                  {key === 'phone' && /\d/.test(form.phone || '') && (
+                    <label className="flex items-center gap-2 pt-1 text-sm text-muted-foreground">
+                      <input type="checkbox" className="size-4 accent-primary" checked={form.whatsapp_ok === true}
+                        onChange={e => setForm(f => ({ ...f, whatsapp_ok: e.target.checked }))} />
+                      WhatsApp me about this demo on this number
+                    </label>
+                  )}
                 </div>
               ))}
               {error && <p className="text-sm text-danger">{error}</p>}
