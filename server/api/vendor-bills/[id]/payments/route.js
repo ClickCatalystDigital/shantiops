@@ -5,7 +5,7 @@ import { execute, queryOne, queryAll, nextCounterValue } from '@/lib/db';
 import { getFreshSessionUser, isPM, canAccessDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
-import { financialYear } from '@/lib/gst-calc.mjs';
+import { financialYear, docNo } from '@/lib/gst-calc.mjs';
 import { vendorPaymentLines } from '@/lib/ledger.mjs';
 import { postJournalEntry } from '@/lib/ledger-post';
 import { todayISO } from '@/lib/date';
@@ -52,7 +52,7 @@ export async function POST(req, props) {
   const fy = financialYear(paymentDate);
   const seq = await nextCounterValue(`payment_no:${bill.company}:${fy}`, 0);
   const companyRow = await queryOne('SELECT invoice_prefix FROM company_settings WHERE company = ?', [bill.company]);
-  const paymentNo = `${companyRow?.invoice_prefix || bill.company}/PAY/${seq}/${fy}`;
+  const paymentNo = docNo(companyRow?.invoice_prefix || bill.company, 'PAY', seq, fy);
 
   const { lastId } = await execute(
     `INSERT INTO vendor_payments (payment_no, vendor_bill_id, company, payment_date, amount, payment_mode, reference, created_by)

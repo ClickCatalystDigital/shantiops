@@ -9,7 +9,7 @@ import { execute, queryOne, queryAll, nextCounterValue } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment, isPM } from '@/lib/auth';
 import { requireCrmAction, requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
-import { financialYear } from '@/lib/gst-calc.mjs';
+import { financialYear, docNo } from '@/lib/gst-calc.mjs';
 import { customerReceiptLines } from '@/lib/ledger.mjs';
 import { postJournalEntry } from '@/lib/ledger-post';
 import { todayISO } from '@/lib/date';
@@ -63,7 +63,7 @@ export async function POST(req, props) {
   const fy = financialYear(receiptDate);
   const seq = await nextCounterValue(`receipt_no:${invoice.company}:${fy}`, 0);
   const companyRow = await queryOne('SELECT invoice_prefix FROM company_settings WHERE company = ?', [invoice.company]);
-  const receiptNo = `${companyRow?.invoice_prefix || invoice.company}/RCT/${seq}/${fy}`;
+  const receiptNo = docNo(companyRow?.invoice_prefix || invoice.company, 'RCT', seq, fy);
 
   const { lastId } = await execute(
     `INSERT INTO customer_receipts (receipt_no, sales_invoice_id, company, receipt_date, amount, payment_mode, reference, created_by)

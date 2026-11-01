@@ -10,7 +10,7 @@ import { requireCrmAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { notifyDepartment, notifyPMs } from '@/lib/notify';
 import { COMPANY_NAMES } from '@/lib/qc-doc-pdf.js';
-import { financialYear } from '@/lib/gst-calc.mjs';
+import { financialYear, docNo } from '@/lib/gst-calc.mjs';
 import { quotationTotals } from '@/lib/sales-lines.mjs';
 import { todayISO } from '@/lib/date';
 import { tabLink } from '@/lib/alert-links.mjs';
@@ -54,7 +54,7 @@ export async function POST(req, props) {
   const invoiceDate = b.invoice_date || todayISO();
   const fy = financialYear(invoiceDate);
   const seq = await nextCounterValue(`invoice_no:${company}:${fy}`, 0);
-  const invoiceNo = `${companyRow?.invoice_prefix || 'INV'}/${seq}/${fy}`;
+  const invoiceNo = docNo(companyRow?.invoice_prefix || 'INV', seq, fy);
 
   // Plan 1g — tax per line at the line's own GST % (a quotation made before per-line GST falls back
   // to its single document rate), recomputed here against the issuing company's state.

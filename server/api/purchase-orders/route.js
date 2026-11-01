@@ -6,6 +6,8 @@
 // PO coherent. po_no follows the real business's own numbering: NNN/SB/YYYY-YY (Indian financial
 // year, April-March), continuing the sequence the sample POs are already on (counters.po_no seeded
 // at 578 in lib/db.js).
+import { IS_US, todayInZone } from '@/lib/market';
+import { docNo } from '@/lib/gst-calc.mjs';
 import { NextResponse } from 'next/server';
 import { execute, queryAll, nextCounterValue } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment, canAccessDepartment } from '@/lib/auth';
@@ -61,7 +63,8 @@ export async function POST(req) {
   const now = new Date();
   const fyStart = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1; // FY = Apr-Mar
   const seq = await nextCounterValue('po_no', 578);
-  const poNo = `${seq}/${defaultPrefix()}/${fyStart}-${String((fyStart + 1) % 100).padStart(2, '0')}`;
+  const poNo = IS_US ? docNo(defaultPrefix(), 'PO', seq, todayInZone().slice(0, 4)) // US: AB-PO-101-2026
+      : `${seq}/${defaultPrefix()}/${fyStart}-${String((fyStart + 1) % 100).padStart(2, '0')}`;
 
   const { lastId } = await execute(
     `INSERT INTO purchase_orders

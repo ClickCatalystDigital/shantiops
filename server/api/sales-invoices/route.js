@@ -11,7 +11,7 @@ import { requireCrmAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { notifyDepartment, notifyPMs } from '@/lib/notify';
 import { COMPANY_NAMES } from '@/lib/qc-doc-pdf.js';
-import { financialYear } from '@/lib/gst-calc.mjs';
+import { financialYear, docNo } from '@/lib/gst-calc.mjs';
 import { quotationTotals } from '@/lib/sales-lines.mjs';
 import { todayISO } from '@/lib/date';
 import { tabLink } from '@/lib/alert-links.mjs';
@@ -69,7 +69,7 @@ export async function POST(req) {
 
   const fy = financialYear(invoiceDate);
   const seq = await nextCounterValue(`invoice_no:${company}:${fy}`, 0);
-  const invoiceNo = `${companyRow?.invoice_prefix || 'INV'}/${seq}/${fy}`;
+  const invoiceNo = docNo(companyRow?.invoice_prefix || 'INV', seq, fy);
   const { lastId } = await execute(
     `INSERT INTO sales_invoices
        (invoice_no, company, customer_id, sale_order_id, project_id, invoice_date, due_date, notes,

@@ -5,7 +5,7 @@ import { execute, queryOne, nextCounterValue } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
-import { financialYear } from '@/lib/gst-calc.mjs';
+import { financialYear, docNo } from '@/lib/gst-calc.mjs';
 import { todayISO } from '@/lib/date';
 import { postJournalEntry } from '@/lib/ledger-post';
 import { purchaseDebitNoteLines } from '@/lib/ledger.mjs';
@@ -34,7 +34,7 @@ export async function POST(req, props) {
   // debit note of the year both come out "DN/1/2026-27" and the second INSERT throws a UNIQUE
   // violation.
   const companyRow = await queryOne('SELECT invoice_prefix FROM company_settings WHERE company = ?', [bill.company]);
-  const debitNoteNo = `${companyRow?.invoice_prefix || bill.company}/DN/${seq}/${fy}`;
+  const debitNoteNo = docNo(companyRow?.invoice_prefix || bill.company, 'DN', seq, fy);
 
   const { lastId } = await execute(
     `INSERT INTO purchase_debit_notes (debit_note_no, vendor_bill_id, company, debit_note_date, reason, amount, status, created_by)

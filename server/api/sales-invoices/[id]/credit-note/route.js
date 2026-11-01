@@ -7,7 +7,7 @@ import { execute, queryOne, nextCounterValue } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment, isPM } from '@/lib/auth';
 import { requireCrmAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
-import { financialYear } from '@/lib/gst-calc.mjs';
+import { financialYear, docNo } from '@/lib/gst-calc.mjs';
 import { todayISO } from '@/lib/date';
 import { postJournalEntry } from '@/lib/ledger-post';
 import { salesCreditNoteLines } from '@/lib/ledger.mjs';
@@ -41,7 +41,7 @@ export async function POST(req, props) {
   // invoice_prefix has to be part of the number itself, or two companies' first credit note of
   // the year both come out "CN/1/2026-27" and the second INSERT throws a UNIQUE violation.
   const companyRow = await queryOne('SELECT invoice_prefix FROM company_settings WHERE company = ?', [invoice.company]);
-  const creditNoteNo = `${companyRow?.invoice_prefix || invoice.company}/CN/${seq}/${fy}`;
+  const creditNoteNo = docNo(companyRow?.invoice_prefix || invoice.company, 'CN', seq, fy);
 
   const { lastId } = await execute(
     `INSERT INTO sales_credit_notes (credit_note_no, sales_invoice_id, company, credit_note_date, reason, amount, status, created_by)

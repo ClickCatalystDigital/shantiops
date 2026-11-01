@@ -1,0 +1,21 @@
+{
+  "companies": [
+    {
+      "company": "Acme Boilers", "legal_name": "Acme Boilers Inc.",
+      "registered_address": "4200 Industrial Parkway, Cleveland, OH 44135",
+      "state": "Ohio", "state_code": "OH", "invoice_prefix": "AB",
+      "print_name": "ACME BOILERS INC.", "phone": "+1 (216) 555-0142",
+      "contact_emails": "sales@acmeboilers.example", "website": "www.acmeboilers.example",
+      "stores_email": "receiving@acmeboilers.example", "tagline": "STEAM SOLUTIONS",
+      "maker_prefix": "AB", "qc_doc_prefix": "ABH", "qc_ref_prefix": "AB-QC",
+      "qc_address": "4200 Industrial Parkway, Cleveland, OH 44135, USA"
+    }
+  ],
+  "emailTemplates": {},
+  "qcAuthority": {
+    "name": "Chief Boiler Inspector",
+    "designation": "AUTHORIZED INSPECTION AGENCY",
+    "address": ["Lakeshore Inspection Services,", "Authorized Inspection Agency,", "Columbus, OH 43215"]
+  },
+  "poCounterStart": 100
+}
