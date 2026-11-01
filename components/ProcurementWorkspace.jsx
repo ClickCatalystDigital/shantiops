@@ -10,6 +10,7 @@
 // redesign spec, but it's a real, working feature (add/edit/deactivate) with no other home, so it's
 // kept rather than dropped. One shared search input lives above the active section, same position
 // regardless of active section, filtering whichever section is open.
+import { DEFAULT_GST_PCT } from '@/lib/sales-lines.mjs';
 import { useState, useEffect, useMemo } from 'react';
 import { unpackRows } from '@/lib/row-pack.mjs';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -1218,7 +1219,7 @@ function PODrawer({ po, suppliers, router, onClose, onIssue, onUnissue, onCancel
 function RecordBillDialog({ po, tdsRates, onClose, router }) {
   const [billNo, setBillNo] = useState('');
   const [billDate, setBillDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [gstRatePct, setGstRatePct] = useState('18');
+  const [gstRatePct, setGstRatePct] = useState(String(DEFAULT_GST_PCT));
   const [tdsRateId, setTdsRateId] = useState('none');
   const [isReverseCharge, setIsReverseCharge] = useState(false);
   const [saving, setSaving] = useState(false);

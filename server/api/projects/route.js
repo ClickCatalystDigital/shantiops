@@ -1,3 +1,4 @@
+import { taxPctOr } from '@/lib/sales-lines.mjs';
 import { NextResponse } from 'next/server';
 import { nextNumber, createProjectMilestones, withTransaction, queryOne, queryAll, execute } from '@/lib/db';
 import { insertTemplateTree } from '@/server/api/bom-assemblies/[id]/apply-template/route';
@@ -100,7 +101,7 @@ export async function POST(req) {
         const header = await tx.execute({
           sql: `INSERT INTO scope_of_supply (project_id, title, payment_terms, tax_pct, created_by)
                 VALUES (?, ?, ?, ?, ?)`,
-          args: [id, sosTitle, paymentTerms, soRow?.tax_pct || 18, user?.username || null],
+          args: [id, sosTitle, paymentTerms, taxPctOr(soRow?.tax_pct), user?.username || null],
         });
         headerId = Number(header.lastInsertRowid);
         const items = await tx.execute({

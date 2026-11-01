@@ -4,6 +4,7 @@
 // Sale Orders | Campaigns, same multi-tab-in-one-file precedent as ProcurementWorkspace.jsx.
 // Customer detail (contacts/addresses/notes) opens in a right-side Sheet, same drawer pattern
 // HrWorkspace.jsx's employee detail uses.
+import { DEFAULT_GST_PCT } from '@/lib/sales-lines.mjs';
 import { Fragment, useState, useEffect, useMemo, useRef } from 'react';
 import FloatingList from '@/components/FloatingList';
 import { SALES_TAB_DATA } from '@/lib/sales-tab-data.mjs';
@@ -1736,7 +1737,7 @@ export function NewQuotationDialog({ customers, opportunityId = null, leadId = n
   const [quotationDate, setQuotationDate] = useState(todayISO());
   const [offerNo, setOfferNo] = useState('');
   const [validUntil, setValidUntil] = useState(() => { const d = new Date(); d.setDate(d.getDate() + 15); return d.toISOString().slice(0, 10); });
-  const [taxPct, setTaxPct] = useState('18');
+  const [taxPct, setTaxPct] = useState(String(DEFAULT_GST_PCT));
   const [items, setItems] = useState(() => (initialItems?.length ? initialItems : [blankQuoteLine()]));
   const [saving, setSaving] = useState(false);
   const useProducts = Array.isArray(salesProducts);
@@ -1851,7 +1852,7 @@ export function NewQuotationDialog({ customers, opportunityId = null, leadId = n
                 <SearchableSelect value={it.uom} onChange={v => updateItem(i, { uom: v })} options={UNIT_OPTIONS} displayValue={it.uom} onTextChange={v => updateItem(i, { uom: v })} placeholder="Unit" />
                 <Input aria-label="Rate" placeholder="Rate" type="number" min="0" value={it.rate} onChange={e => updateItem(i, { rate: e.target.value })} />
                 <Input aria-label="Discount %" placeholder="Disc %" type="number" min="0" max="100" value={it.discount_pct} onChange={e => updateItem(i, { discount_pct: e.target.value })} />
-                <Input aria-label="GST %" placeholder={taxPct || '18'} type="number" min="0" max="100" value={it.gst_pct} onChange={e => updateItem(i, { gst_pct: e.target.value })} />
+                <Input aria-label="GST %" placeholder={taxPct || String(DEFAULT_GST_PCT)} type="number" min="0" max="100" value={it.gst_pct} onChange={e => updateItem(i, { gst_pct: e.target.value })} />
                 <div className="self-center text-right text-sm tnum">{formatMoney(lineAmount(it))}</div>
                 <Button size="icon" variant="ghost" aria-label="Remove line" onClick={() => removeRow(i)}><TrashIcon className="size-4" /></Button>
               </div>
@@ -2234,7 +2235,7 @@ function CreditNoteDialog({ invoice: fixedInvoice, invoices = [], onClose, route
 }
 
 function AddInvoiceDialog({ onClose, router }) {
-  const blank = () => ({ item_description: '', hsn_code: '', qty: '1', uom: '', rate: '', gst_pct: '18' });
+  const blank = () => ({ item_description: '', hsn_code: '', qty: '1', uom: '', rate: '', gst_pct: String(DEFAULT_GST_PCT) });
   const [f, setF] = useState({ customer_id: null, customer_name: '', company: defaultCompanyClient(), invoice_date: todayISO(), due_date: '', sale_order_id: '', is_reverse_charge: false, notes: '' });
   const [items, setItems] = useState([blank()]);
   const [orderLabel, setOrderLabel] = useState('');

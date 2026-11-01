@@ -2,6 +2,7 @@
 // Sales Invoice: for a sale that never had a quotation, e.g. spares or an imported order). The
 // quotation route (app/api/quotations/[id]/convert-to-invoice) stays the main path; both use the same
 // numbering, per-line GST split and reverse-charge rule.
+import { DEFAULT_GST_PCT } from '@/lib/sales-lines.mjs';
 import { NextResponse } from 'next/server';
 import { getFreshSessionUser, canAccessDepartment, isPM } from '@/lib/auth';
 import { getSalesInvoices } from '@/lib/data';
@@ -63,7 +64,7 @@ export async function POST(req) {
     item_description: String(it.item_description).trim(), hsn_code: it.hsn_code ? String(it.hsn_code).trim() : null,
     qty: it.qty === '' || it.qty == null ? 1 : Number(it.qty), uom: it.uom || null, rate: Number(it.rate) || 0,
     gst_pct: it.gst_pct === '' ? null : it.gst_pct, discount_pct: it.discount_pct || 0,
-  })), { companyStateCode: companyRow?.state_code || null, customerStateCode: customer.state_code || null, fallbackGstPct: 18 });
+  })), { companyStateCode: companyRow?.state_code || null, customerStateCode: customer.state_code || null, fallbackGstPct: DEFAULT_GST_PCT });
   const isReverseCharge = !!b.is_reverse_charge;
   const total = isReverseCharge ? t.subtotal : t.subtotal + t.taxAmount;
 

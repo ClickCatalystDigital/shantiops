@@ -5,6 +5,7 @@
 // (New Quotation + Send Commercial Offer) for Sales; Marketing's Pipeline still uses the overlays.
 // Modes (from the address): ?lead=<enquiry id> starts from the enquiry's products, ?revise=<quotation id>
 // saves a revision, ?send=<quotation id> only sends an existing quotation, ?customer=<id> pre-picks one.
+import { DEFAULT_GST_PCT } from '@/lib/sales-lines.mjs';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeftIcon, PlusIcon, TrashIcon } from 'lucide-react';
@@ -51,7 +52,7 @@ export default function QuotationComposer({ salesProducts = [], leadId = null, r
   const [date, setDate] = useState(todayISO());
   const [validUntil, setValidUntil] = useState(() => { const d = new Date(); d.setDate(d.getDate() + 15); return d.toISOString().slice(0, 10); });
   const [offerNo, setOfferNo] = useState('');
-  const [taxPct, setTaxPct] = useState('18');
+  const [taxPct, setTaxPct] = useState(String(DEFAULT_GST_PCT));
   const [items, setItems] = useState([blankLine()]);
   const [picking, setPicking] = useState(false);
   const [parent, setParent] = useState(null); // quotation being revised
@@ -229,7 +230,7 @@ export default function QuotationComposer({ salesProducts = [], leadId = null, r
                   <SearchableSelect value={it.uom} onChange={v => patch(i, { uom: v })} options={UNIT_OPTIONS} displayValue={it.uom} onTextChange={v => patch(i, { uom: v })} placeholder="Unit" />
                   <Input aria-label="Rate" type="number" min="0" value={it.rate} onChange={e => patch(i, { rate: e.target.value })} />
                   <Input aria-label="Discount %" type="number" min="0" max="100" value={it.discount_pct} onChange={e => patch(i, { discount_pct: e.target.value })} />
-                  <Input aria-label="GST %" placeholder={taxPct || '18'} type="number" min="0" max="100" value={it.gst_pct} onChange={e => patch(i, { gst_pct: e.target.value })} />
+                  <Input aria-label="GST %" placeholder={taxPct || String(DEFAULT_GST_PCT)} type="number" min="0" max="100" value={it.gst_pct} onChange={e => patch(i, { gst_pct: e.target.value })} />
                   <div className="self-center text-right text-sm tnum">{formatMoney(lineAmount(it))}</div>
                   <Button size="icon" variant="ghost" aria-label="Remove line" onClick={() => setItems(prev => prev.filter((_, k) => k !== i))}><TrashIcon className="size-4" /></Button>
                 </div>
