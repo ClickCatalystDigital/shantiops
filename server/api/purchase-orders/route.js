@@ -6,6 +6,7 @@
 // PO coherent. po_no follows the real business's own numbering: NNN/SB/YYYY-YY (Indian financial
 // year, April-March), continuing the sequence the sample POs are already on (counters.po_no seeded
 // at 578 in lib/db.js).
+import { DEFAULT_GST_PCT } from '@/lib/sales-lines.mjs';
 import { IS_US, todayInZone } from '@/lib/market';
 import { docNo } from '@/lib/gst-calc.mjs';
 import { NextResponse } from 'next/server';
@@ -73,7 +74,7 @@ export async function POST(req) {
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [poNo, rows[0].supplier_id, b.is_split ? 1 : 0, b.quote_source || null, b.quote_date || null,
       b.indent_ref || null, b.delivery_address || null, b.payment_terms || null,
-      Number(b.discount_pct) || 0, b.gst_pct != null ? Number(b.gst_pct) : 18, b.special_instructions || null,
+      Number(b.discount_pct) || 0, b.gst_pct != null ? Number(b.gst_pct) : DEFAULT_GST_PCT, b.special_instructions || null,
       user.username]
   );
   const poId = Number(lastId);

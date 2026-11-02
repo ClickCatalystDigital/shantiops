@@ -1,5 +1,6 @@
 'use client';
 
+import { IS_US } from '@/lib/market';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -39,7 +40,7 @@ const HEADER_FIELDS = [
   ['invoice_no', 'Invoice No', 'text'], ['invoice_date', 'Invoice Date', 'date'],
   ['dc_no', 'D.C. No', 'text'], ['dc_date', 'D.C. Date', 'date'],
   ['dispatch_through', 'Dispatch Through', 'text'], ['vehicle_no', 'Vehicle No', 'text'],
-  ['eway_bill_no', 'E-Way Bill No', 'text'], ['eway_bill_date', 'E-Way Bill Date', 'date'],
+  ...(IS_US ? [] : [['eway_bill_no', 'E-Way Bill No', 'text'], ['eway_bill_date', 'E-Way Bill Date', 'date']]),
 ];
 const FREIGHT_PAID_BY = [['us', 'We pay'], ['customer', 'Customer pays']];
 // NIC's own cancellation reason codes (docs.ewaybillgst.gov.in, confirmed live).
@@ -530,10 +531,10 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
                   </Select>
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <Label>Transport Distance (km)</Label>
+                  <Label>{IS_US ? 'Transport Distance (km)' : 'Transport Distance (km)'}</Label>
                   <Input type="number" min="0" max="4000" step="1"
                     value={draft.transport_distance_km || ''} onChange={e => setDraft({ ...draft, transport_distance_km: e.target.value })} />
-                  <p className="text-xs text-muted-foreground">Required to generate an e-way bill. NIC's own max is 4000 km.</p>
+                  {!IS_US && <p className="text-xs text-muted-foreground">Required to generate an e-way bill. NIC's own max is 4000 km.</p>}
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <Label>Transport Mode</Label>
@@ -568,11 +569,11 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
         </Card>
       )}
 
-      {!readOnly && !list.eway_bill_no && (
+      {!IS_US && !readOnly && !list.eway_bill_no && (
         <EwayChecklistCard list={list} setList={setList} invoices={invoices} onGenerate={generateEwayBill} generating={generatingEwayBill} />
       )}
 
-      {list.eway_bill_no && (
+      {!IS_US && list.eway_bill_no && (
         <Card className="no-print">
           <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
             <div className="flex flex-wrap gap-x-8 gap-y-1">
@@ -663,8 +664,8 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
             <Meta label="D.C. Date" value={list.dc_date && formatDate(list.dc_date)} />
             <Meta label="Dispatch Through" value={list.dispatch_through} />
             <Meta label="Vehicle No" value={list.vehicle_no} />
-            <Meta label="E-Way Bill No" value={list.eway_bill_no} />
-            <Meta label="E-Way Bill Date" value={list.eway_bill_date && formatDate(list.eway_bill_date)} />
+            {!IS_US && <Meta label="E-Way Bill No" value={list.eway_bill_no} />}
+            {!IS_US && <Meta label="E-Way Bill Date" value={list.eway_bill_date && formatDate(list.eway_bill_date)} />}
           </dl>
 
           {list.layout === 'combined' ? (

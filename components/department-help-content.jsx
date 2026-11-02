@@ -1,5 +1,6 @@
 // Department help content for /help. This is intentionally plain data: the renderer owns layout,
 // while each department owns its vocabulary, feature order, and practical how-to guidance.
+import { usDeep } from '@/lib/market';
 import { CURRENCY_SYMBOL } from '@/lib/market';
 import {
   BookOpenIcon, MailIcon, ClipboardListIcon, CalculatorIcon, FolderKanbanIcon, FileInputIcon,
@@ -761,7 +762,7 @@ function enrichSteps(steps, guide) {
 }
 
 function enrichHowTo() {
-  for (const guide of Object.values(DEPARTMENT_HELP)) {
+  for (const guide of Object.values(ALL_HELP)) {
     if (guide.howToGroups) {
       guide.howToGroups = guide.howToGroups.map(topic => ({ ...topic, steps: enrichSteps(topic.steps, guide) }));
     } else {
@@ -770,7 +771,7 @@ function enrichHowTo() {
   }
 }
 
-export const DEPARTMENT_HELP = {
+const ALL_HELP = {
   Design: {
     title: 'Design', icon: DraftingCompassIcon,
     intro: [
@@ -1833,4 +1834,7 @@ export const DEPARTMENT_HELP = {
 enrichHowTo();
 
 // Keep the department list in one place for the Help renderer and simple future additions.
+// US build: India-only sections (GST & TDS rates, GST returns) dropped and India-only sentences removed (lib/market.js usDeep).
+export const DEPARTMENT_HELP = usDeep(ALL_HELP, new Set(['rates', 'gst-returns']));
+
 export const DEPARTMENT_HELP_ORDER = ['Design', 'Engineering', 'Procurement', 'Stores', 'Production', 'QC', 'Dispatch', 'Installation', 'Sales', 'Marketing', 'HR', 'Accounts'];

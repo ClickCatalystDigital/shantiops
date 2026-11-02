@@ -7,6 +7,7 @@
 // Reports sidebar search. DispatchRegisterCard closes a pre-existing gap (that report shipped
 // earlier this session, before this bug pattern was known); the other 3 are this session's own new
 // reports, so this closes it on day one instead of leaving it to be found again later.
+import { IS_US } from '@/lib/market';
 import Link from 'next/link';
 import { fmt } from './TrialBalanceCard';
 import { ListReportCard } from './ListReportCard';
@@ -29,7 +30,7 @@ export function DispatchRegisterCard({ company }) {
         { label: 'Invoice No', key: 'invoice_no', render: s => s.linked_invoice_no || s.invoice_no || '—' },
         { label: 'Freight', key: 'freight_amount', align: 'right', render: s => s.freight_amount ? fmt(s.freight_amount) : '—' },
         { label: 'Paid By', key: 'freight_paid_by', render: s => s.freight_paid_by || '—' },
-        { label: 'E-Way Bill', key: 'eway_bill_no', render: s => s.eway_bill_no || '—' },
+        ...(IS_US ? [] : [{ label: 'E-Way Bill', key: 'eway_bill_no', render: s => s.eway_bill_no || '—' }]),
       ]}
     />
   );

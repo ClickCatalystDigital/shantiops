@@ -3,6 +3,7 @@
 // Dispatch > Shipments: packing lists that leave together. One card per shipment (SHP-xxxx) with its
 // lists, the vehicle (optionally applied to every list), one combined printout, "Dispatch all", and
 // Split up to undo it. The lists themselves are still dispatched, approved and invoiced one by one.
+import { IS_US } from '@/lib/market';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -65,7 +66,7 @@ function ShipmentCard({ sh, allLists }) {
             <Badge variant="outline" className="text-[10px]">{STAGE[l.status] || l.status}</Badge>
             {l.status !== 'dispatched' && l.approval_status && <Badge variant="outline" className="text-[10px]">Review: {l.approval_status}</Badge>}
             <span className="text-xs text-muted-foreground tnum">{l.item_count} line{l.item_count === 1 ? '' : 's'}</span>
-            <span className="text-xs text-muted-foreground tnum">{l.eway_bill_no ? `E-way bill ${l.eway_bill_no}` : 'No e-way bill'}</span>
+            {!IS_US && <span className="text-xs text-muted-foreground tnum">{l.eway_bill_no ? `E-way bill ${l.eway_bill_no}` : 'No e-way bill'}</span>}
             {l.status !== 'dispatched' && <Button variant="ghost" size="sm" className="ml-auto h-7 gap-1 text-xs" disabled={busy}
               onClick={() => run(() => patch({ action: 'remove', list_id: l.id }), `${l.packing_no} taken out of ${sh.shipment_no}`)}><XIcon className="size-3" /> Take out</Button>}
           </div>

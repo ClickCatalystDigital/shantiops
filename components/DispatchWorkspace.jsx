@@ -10,6 +10,7 @@
 // Terminology, kept strictly separate throughout this file: the packing-list lifecycle is always
 // Draft -> Ready -> Dispatched (a list's own status). BOM-item eligibility is always Ready to Pack /
 // Waiting (whether a line qualifies to be pulled into a list). Never mixed.
+import { IS_US } from '@/lib/market';
 import { useState, useMemo, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -77,8 +78,8 @@ function DocsStatus({ list }) {
   const hasEway = !!list.eway_bill_no;
   return (
     <span>
-      Invoice {hasInvoice ? '✓' : <span className="font-medium text-danger">✗</span>} · E-Way Bill{' '}
-      {hasEway ? '✓' : <span className="font-medium text-danger">✗</span>}
+      Invoice {hasInvoice ? '✓' : <span className="font-medium text-danger">✗</span>}{IS_US ? null : <> · E-Way Bill{' '}
+      {hasEway ? '✓' : <span className="font-medium text-danger">✗</span>}</>}
     </span>
   );
 }
@@ -212,7 +213,7 @@ function PackingListsTab({ lists, flowCounts, pendingReadyCount, awaitingAckCoun
         <StatPill dot="bg-success" value={flowCounts.dispatched} label="Dispatched" onClick={() => toggleStatus('dispatched')} />
         <StatPill dot="bg-success" value={pendingReadyCount} label="Ready to Pack" onClick={() => onNavigate('pending')} />
         <StatPill dot="bg-warning" value={awaitingAckCount} label="Delivery Follow-up" onClick={() => onNavigate('deliveries')} />
-        <StatPill dot="bg-danger" value={missingEwayCount} label="Missing E-Way Bills" onClick={() => onNavigate('documents', { missingEway: true })} />
+        {!IS_US && <StatPill dot="bg-danger" value={missingEwayCount} label="Missing E-Way Bills" onClick={() => onNavigate('documents', { missingEway: true })} />}
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <SearchBox value={projectQ} onChange={setProjectQ} placeholder="Search by project no. or customer…" className="min-w-52 flex-1" />
@@ -493,14 +494,14 @@ function DocumentsTab({ lists, initialMissingEway = false }) {
     || (l.customer_name || '').toLowerCase().includes(needle)
     || (l.packing_no || '').toLowerCase().includes(needle));
   if (missingInvoice) shown = shown.filter(l => !l.sales_invoice_id && !l.invoice_no);
-  if (missingEway) shown = shown.filter(l => !l.eway_bill_no);
+  if (missingEway && !IS_US) shown = shown.filter(l => !l.eway_bill_no);
   const anyFilterActive = missingInvoice || missingEway;
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap gap-2">
         <ChipToggle active={missingInvoice} onClick={() => setMissingInvoice(v => !v)}>Missing Invoice</ChipToggle>
-        <ChipToggle active={missingEway} onClick={() => setMissingEway(v => !v)}>Missing E-Way Bill</ChipToggle>
+        {!IS_US && <ChipToggle active={missingEway} onClick={() => setMissingEway(v => !v)}>Missing E-Way Bill</ChipToggle>}
       </div>
       {relevant.length > 0 && <SearchBox value={q} onChange={setQ} placeholder="Search by packing no. or customer…" />}
       {relevant.length === 0 ? (
@@ -531,12 +532,12 @@ function DocumentsTab({ lists, initialMissingEway = false }) {
                     {l.linked_invoice_no || l.invoice_no || 'Missing'}
                   </div>
                 </div>
-                <div>
+                {!IS_US && <div>
                   <div className="text-xs text-muted-foreground">E-Way Bill</div>
                   <div className={l.eway_bill_no ? '' : 'font-medium text-danger'}>
                     {l.eway_bill_no ? `${l.eway_bill_no}${l.eway_bill_date ? ' · ' + formatDate(l.eway_bill_date) : ''}` : 'Missing'}
                   </div>
-                </div>
+                </div>}
               </div>
             </Link>
           ))}
@@ -811,7 +812,7 @@ export default function DispatchWorkspace({ lists, pendingItems, flowCounts, app
     { key: 'shipments', label: 'Shipments', icon: LayersIcon, badge: shipments.filter(sh => sh.lists.some(l => l.status !== 'dispatched')).length || null },
     { key: 'divider-after', divider: true, label: 'After dispatch' },
     { key: 'deliveries', label: 'Deliveries', icon: TruckIcon, badge: awaitingAckCount || null },
-    { key: 'documents', label: 'Documents', icon: FileTextIcon, badge: missingEwayCount || null },
+    { key: 'documents', label: 'Documents', icon: FileTextIcon, badge: (!IS_US && missingEwayCount) || null },
     { key: 'divider-gate', divider: true, label: 'Gate' },
     // Stores IA redesign — Gate Passes moved here from Stores (a returnable/non-returnable material
     // pass is a real Dispatch-owned gate activity, not an inventory concern).

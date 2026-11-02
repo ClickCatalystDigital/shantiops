@@ -1,5 +1,6 @@
 // One printout for a whole shipment: a cover page (shipment id, customer, address, vehicle, the lists)
 // followed by each packing list's own PDF.
+import { PAPER } from '@/lib/market';
 import { NextResponse } from 'next/server';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
@@ -21,7 +22,7 @@ export async function GET(_req, props) {
   const out = await PDFDocument.create();
   const font = await out.embedFont(StandardFonts.Helvetica);
   const bold = await out.embedFont(StandardFonts.HelveticaBold);
-  const cover = out.addPage([595, 842]);
+  const cover = out.addPage(PAPER === 'LETTER' ? [612, 792] : [595, 842]);
   let y = 790;
   const line = (text, o = {}) => { cover.drawText(String(text ?? ''), { x: 50, y, size: o.size || 11, font: o.bold ? bold : font, color: rgb(0.1, 0.1, 0.1) }); y -= (o.gap || 18); };
   line(`SHIPMENT ${sh.shipment_no}`, { size: 20, bold: true, gap: 32 });

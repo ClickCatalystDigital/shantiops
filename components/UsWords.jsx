@@ -1,14 +1,19 @@
 'use client';
 
 // US build only (app/layout.js renders it when IS_US): puts the screen's Indian vocabulary into US English as it
-// renders (Enquiry → Inquiry, Quotation → Estimate, Dispatch → Shipping, GST → Sales tax…), using the one word map in
+// renders (Enquiry → Inquiry, Quotation → Estimate, Dispatch → Shipping, GST → Sales tax…) and, under Imperial units,
+// mm / kg / kg/cm² / °C in the text as in / lb / psi / °F (lib/units.mjs imperialText), using the one word map in
 // lib/market.js. Text nodes, placeholders, titles and the tab title; it watches for new content. Values typed into
 // inputs are never touched.
 import { useEffect } from 'react';
-import { usWords } from '@/lib/market';
+import { usWords as words } from '@/lib/market';
+import { imperialText } from '@/lib/units.mjs';
+import { readUnits } from './useUnits';
 
 export default function UsWords() {
   useEffect(() => {
+    // Imperial (the Units setting): measurements in screen text are shown in US units too.
+    const usWords = readUnits() === 'imperial' ? t => imperialText(words(t)) : words;
     const fixNode = n => {
       if (n.nodeType === 3) { const t = usWords(n.nodeValue); if (t !== n.nodeValue) n.nodeValue = t; return; }
       if (n.nodeType !== 1 || n.closest?.('script,style,textarea,[contenteditable=true]')) return;

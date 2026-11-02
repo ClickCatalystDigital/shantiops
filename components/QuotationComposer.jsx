@@ -5,6 +5,7 @@
 // (New Quotation + Send Commercial Offer) for Sales; Marketing's Pipeline still uses the overlays.
 // Modes (from the address): ?lead=<enquiry id> starts from the enquiry's products, ?revise=<quotation id>
 // saves a revision, ?send=<quotation id> only sends an existing quotation, ?customer=<id> pre-picks one.
+import { IS_US } from '@/lib/market';
 import { CURRENCY_SYMBOL } from '@/lib/market';
 import { DEFAULT_GST_PCT } from '@/lib/sales-lines.mjs';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -245,7 +246,7 @@ export default function QuotationComposer({ salesProducts = [], leadId = null, r
                   <div className="flex justify-between gap-4"><span className="text-muted-foreground">Sub total</span><span className="tnum">{formatMoney(preview.subtotal)}</span></div>
                   <div className="flex justify-between gap-4"><span className="text-muted-foreground">GST</span><span className="tnum">{formatMoney(preview.taxAmount)}</span></div>
                   <div className="flex justify-between gap-4 border-t pt-1 font-semibold"><span>Total</span><span className="tnum">{formatMoney(preview.total)}</span></div>
-                  <p className="mt-1 text-xs text-muted-foreground">Split into CGST + SGST or IGST from the customer's state on save.</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{IS_US ? 'Sales tax at the rate on each line.' : "Split into CGST + SGST or IGST from the customer's state on save."}</p>
                 </div>
               </div>
             </div>

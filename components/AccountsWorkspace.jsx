@@ -3,6 +3,7 @@
 // components/AccountsWorkspace.jsx — Accounts' own workspace, same shared-sidebar shape as
 // HrWorkspace/PayrollWorkspace. Phase 0 (ACCOUNTING-IMPLEMENTATION-PLAN.md) only needs Company
 // Settings; later phases add tabs here (GST/TDS masters in Phase 1, Sales Invoice in Phase 2, ...).
+import { IS_US } from '@/lib/market';
 import { CURRENCY_SYMBOL, LOCALE } from '@/lib/market';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -1677,7 +1678,7 @@ export default function AccountsWorkspace({ companies, companyCount = companies.
     { key: 'gst-returns', label: 'GST Returns', icon: FileTextIcon },
     { key: 'bank-reconciliation', label: 'Bank Reconciliation', icon: LandmarkIcon },
     { key: 'audit-log', label: 'Audit Log', icon: HistoryIcon },
-  ];
+  ].filter(i => !(IS_US && ['rates', 'gst-returns'].includes(i.key))); // India-only (GST/TDS) hidden in the US build
   // Deep-link tab selection (Part B) — same server-prop pattern as QcWorkspace.jsx.
   const [tab, setTab] = useState(navItems.some(i => i.key === initialTab) ? initialTab : 'company-entities');
 

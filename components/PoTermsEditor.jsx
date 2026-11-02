@@ -3,6 +3,7 @@
 // /procurement/terms — the optional Terms and Conditions page printed after every Purchase Order of a
 // company. Heading text, its font and size, body font and size, the text itself, and an on/off switch.
 // Fonts are the same three as Accounts' document headers (lib/doc-headers.mjs DOC_FONTS).
+import { IS_US } from '@/lib/market';
 import { useState } from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle, CardAction, CardDescription } from '@/components/ui/card';
@@ -49,7 +50,7 @@ function Preview({ t, company }) {
         <div className="mt-2 h-px bg-black" />
         {t.heading && <div className="py-[3px] text-center tracking-[1px]" style={{ fontFamily: DOC_FONTS[t.headingFont].css, fontWeight: 700, fontSize: Number(t.headingSize) || 12 }}>{t.heading}</div>}
         <div className="h-px bg-black" />
-        <div className="mt-2 mb-2 text-[7px] text-[#555]">Forms part of Purchase Order 000/XX/2026-27</div>
+        <div className="mt-2 mb-2 text-[7px] text-[#555]">Forms part of Purchase Order {IS_US ? 'XX-PO-000-2026' : '000/XX/2026-27'}</div>
         {(t.body || 'Your terms will appear here.').split('\n\n').map((p, i) => (
           <p key={i} className={`whitespace-pre-wrap ${t.body ? '' : 'text-[#999]'}`}
             style={{ fontFamily: DOC_FONTS[t.bodyFont].css, fontSize: Number(t.bodySize) || 8, lineHeight: 1.4, marginBottom: 6 }}>{p}</p>

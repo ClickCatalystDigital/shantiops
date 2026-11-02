@@ -3,12 +3,15 @@
 // product decision, not an oversight: reachable without a login, same as /d-login.
 import { Fraunces, IBM_Plex_Sans, IBM_Plex_Mono } from 'next/font/google';
 import AccBpmnAtlas from '@/components/AccBpmnAtlas';
+import { notFound } from 'next/navigation';
+import { IS_US } from '@/lib/market';
 
 const fraunces = Fraunces({ subsets: ['latin'], weight: ['400', '500', '600', '700'], variable: '--font-fraunces' });
 const plexSans = IBM_Plex_Sans({ subsets: ['latin'], weight: ['400', '500', '600', '700'], variable: '--font-plex-sans' });
 const plexMono = IBM_Plex_Mono({ subsets: ['latin'], weight: ['400', '500', '600'], variable: '--font-plex-mono' });
 
 export default function AccBpmnPage() {
+  if (IS_US) notFound(); // an audit of the Indian (GST/TDS) accounts flow: not part of the US build
   return (
     <div className={`${fraunces.variable} ${plexSans.variable} ${plexMono.variable}`}>
       <AccBpmnAtlas />

@@ -4,6 +4,7 @@
 // Sale Orders | Campaigns, same multi-tab-in-one-file precedent as ProcurementWorkspace.jsx.
 // Customer detail (contacts/addresses/notes) opens in a right-side Sheet, same drawer pattern
 // HrWorkspace.jsx's employee detail uses.
+import { IS_US } from '@/lib/market';
 import { CURRENCY_SYMBOL, LOCALE } from '@/lib/market';
 import { DEFAULT_GST_PCT } from '@/lib/sales-lines.mjs';
 import { Fragment, useState, useEffect, useMemo, useRef } from 'react';
@@ -1867,7 +1868,7 @@ export function NewQuotationDialog({ customers, opportunityId = null, leadId = n
                 <div className="flex justify-between gap-4"><span className="text-muted-foreground">Sub total</span><span className="tnum">{formatMoney(preview.subtotal)}</span></div>
                 <div className="flex justify-between gap-4"><span className="text-muted-foreground">GST</span><span className="tnum">{formatMoney(preview.taxAmount)}</span></div>
                 <div className="flex justify-between gap-4 border-t pt-1 font-semibold"><span>Total</span><span className="tnum">{formatMoney(preview.total)}</span></div>
-                <p className="mt-1 text-xs text-muted-foreground">Split into CGST + SGST or IGST from the customer's state on save.</p>
+                <p className="mt-1 text-xs text-muted-foreground">{IS_US ? 'Sales tax at the rate on each line.' : "Split into CGST + SGST or IGST from the customer's state on save."}</p>
               </div>
             </div>
           </div>
@@ -2304,7 +2305,7 @@ function AddInvoiceDialog({ onClose, router }) {
               ))}
               <div className="flex items-center justify-between gap-2">
                 <Button type="button" variant="outline" size="sm" onClick={() => setItems(rows => [...rows, blank()])}><PlusIcon className="size-4" />Add line</Button>
-                <span className="text-sm text-muted-foreground">Subtotal {formatMoney(subtotal)} · GST ~{formatMoney(tax)} (exact CGST/SGST/IGST split is set when saved)</span>
+                <span className="text-sm text-muted-foreground">Subtotal {formatMoney(subtotal)} · {IS_US ? `Sales tax ~${formatMoney(tax)}` : <>GST ~{formatMoney(tax)} (exact CGST/SGST/IGST split is set when saved)</>}</span>
               </div>
             </div>
           </FormSection>

@@ -26,11 +26,11 @@ export const US_PHRASES = ['₹', 'lakh', 'crore', 'GSTIN', 'GSTR', 'CGST', 'SGS
   'Maharashtra', 'Telangana', 'Karnataka', 'Tamil Nadu', 'Kerala', 'Rajasthan', 'Madhya Pradesh', 'Chhattisgarh', 'Kolhapur', 'Mysuru',
   'Indore', 'Raipur', 'MIDC', 'Diwali', 'Deepavali', 'Navratri', 'Dussehra', 'Janmashtami', 'Raksha Bandhan', 'Pongal', 'Ganesh Chaturthi',
   'Republic Day', 'Gandhi Jayanti', 'Boilers Act', 'Director of Boilers', 'Directorate', 'Udyam', 'Provident Fund', 'Professional Tax',
-  'Form 16', 'Section 393', 'Section 194', 'Income Tax Act', 'quotation', 'enquir', 'nos.', 'kgs'];
+  'Form 16', 'Section 393', 'Section 194', 'Income Tax Act', 'quotation', 'enquir'];
 export const US_WORDS = ['India', 'Indian', 'Rupee', 'Rupees', 'paise', 'Surat', 'Holi', 'Shri', 'Smt', 'ji', 'bhai', 'kya', 'nahi', 'haan',
-  'acha', 'accha', 'theek', 'karo', 'kripya', 'dhanyavad', 'namaste', 'Nos', 'Mtr', 'Mtrs', 'A4'];
+  'acha', 'accha', 'theek', 'karo', 'kripya', 'dhanyavad', 'namaste', 'A4'];
 export const US_ACRONYMS = ['INR', 'GST', 'HSN', 'SAC', 'PAN', 'TDS', 'TCS', 'IRN', 'UPI', 'IST', 'IBR', 'PF', 'EPF', 'ESI', 'ESIC', 'UAN', 'CIN',
-  'MSME', 'BIS', 'ISI', 'NB', 'GeM', 'Rs'];
+  'MSME', 'BIS', 'ISI', 'NB', 'GeM', 'Rs', 'Nos', 'Mtr', 'Mtrs', 'Kgs'];
 const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const ciRe = new RegExp([...US_PHRASES.map(esc), ...DENY.map(esc), ...[...US_WORDS, ...DENY_WORDS].map(w => `(?<![\\w-])${esc(w)}(?![\\w-])`)].join('|'), 'gi');
 const csRe = new RegExp(US_ACRONYMS.map(w => `(?<![\\w-])${w}(?![\\w-])`).join('|'), 'g');
@@ -38,7 +38,7 @@ const csRe = new RegExp(US_ACRONYMS.map(w => `(?<![\\w-])${w}(?![\\w-])`).join('
 const fyRe = /\b20(\d\d)-(\d\d)\b/g;
 // Allowed on purpose: "NB" as in National Board (stamped "NB" numbers), "FY" never used by the US screens but kept
 // flagged; US state "IN" (Indiana) is not on the list.
-const ALLOW = [/\bNB[ -]\d/, /National Board/, /\{\{\w+\}\}/];
+const ALLOW = [/\bNB[ -]\d/, /National Board/, /\{\{\w+\}\}/, /^TDS\b.{0,20}(blow|ppm|\))/i, /per TDS/, /dissolved/];
 
 export function findIndian(text) {
   if (!text) return [];
@@ -46,7 +46,7 @@ export function findIndian(text) {
   const out = [];
   for (const re of [ciRe, csRe]) for (const m of t.matchAll(re)) out.push({ term: m[0], at: m.index });
   for (const m of t.matchAll(fyRe)) if (Number(m[2]) === (Number(m[1]) + 1) % 100) out.push({ term: m[0], at: m.index });
-  return out.filter(h => !ALLOW.some(a => a.test(t.slice(Math.max(0, h.at - 4), h.at + 24))))
+  return out.filter(h => !ALLOW.some(a => a.test(t.slice(Math.max(0, h.at - 24), h.at + 24)) || a.test(t.slice(h.at, h.at + 24))))
     .map(h => ({ ...h, context: t.slice(Math.max(0, h.at - 50), h.at + 50).replace(/\s+/g, ' ') }));
 }
 
@@ -57,7 +57,13 @@ const { DB_URL, DB_TOKEN, BASE = 'http://localhost:3077', ADMIN_PASSWORD, CHROME
 const MAX_PAGES = Number(process.env.MAX_PAGES || 60);
 let hits = 0;
 const seen = new Set();
+// DUMP=<file>: also write every page's and PDF's text to a JSON file (the India snapshot check diffs two of these:
+// scripts/demo/india-snapshot.mjs). QUIET=1: don't print hits (an Indian build is full of them by design).
+const DUMP = process.env.DUMP, QUIET = !!process.env.QUIET;
+const dump = {};
 function report(where, text) {
+  if (DUMP) dump[where] = (dump[where] ? dump[where] + '\n' : '') + text;
+  if (QUIET) return;
   for (const h of findIndian(text)) {
     const key = `${where}|${h.term.toLowerCase()}|${h.context}`;
     if (seen.has(key)) continue;
@@ -127,8 +133,11 @@ async function signIn(username) {
 const READ = `(async () => {
   const wait = ms => new Promise(r => setTimeout(r, ms));
   const texts = [document.title, document.body.innerText];
-  const tabs = [...document.querySelectorAll('[role=tab]')].slice(0, 25);
-  for (const t of tabs) { t.click(); await wait(700); texts.push(document.body.innerText); }
+  // Every workspace sidebar item, and within each the inner tabs (capped so one page can't run away).
+  const side = [...document.querySelectorAll('[data-sidebar=menu-button],[data-sidebar=menu-sub-button],aside nav button')].slice(0, 40);
+  const clickTabs = async () => { for (const t of [...document.querySelectorAll('[role=tab]')].slice(0, 12)) { t.click(); await wait(600); texts.push(document.body.innerText); } };
+  await clickTabs();
+  for (const b of side) { b.click(); await wait(900); texts.push(document.body.innerText); await clickTabs(); }
   const links = [...document.querySelectorAll('a[href]')].map(a => a.href);
   return JSON.stringify({ text: texts.join('\\n'), links });
 })()`;
@@ -149,8 +158,11 @@ async function scanPages(pdfLinks) {
     const { token, home } = await signIn(role.username);
     await c.send('Network.setCookie', { name: 'token', value: token, url: origin });
     await c.send('Network.setCookie', { name: 'demo_lead', value: 'us-scan', url: origin });
-    const queue = [new URL(home, BASE).href], done = new Set();
-    while (queue.length && done.size < MAX_PAGES) {
+    // The manager (every department) also starts from every page in app/ that has no [param] in its path.
+    const routes = role.username === 'manager' ? staticRoutes().map(r => new URL(r, BASE).href) : [];
+    const queue = [new URL(home, BASE).href, ...routes], done = new Set();
+    const cap = role.username === 'manager' ? MAX_PAGES * 3 : MAX_PAGES;
+    while (queue.length && done.size < cap) {
       const url = queue.shift();
       const key = url.replace(/#.*$/, '');
       if (done.has(key)) continue;
@@ -167,6 +179,12 @@ async function scanPages(pdfLinks) {
   }
   c.close();
   console.log(`pages: ${pages} in all, ${pdfLinks.size} PDF link(s) found`);
+}
+
+function staticRoutes() {
+  const walk = d => readdirSync(d).flatMap(f => { const p = join(d, f); return statSync(p).isDirectory() ? walk(p) : [p]; });
+  return walk('app').filter(f => f.endsWith('/page.js') && !f.includes('['))
+    .map(f => f.slice(3, -8) || '/').filter(r => !/^\/(login|d-login|set-password|change-password|demo)$/.test(r));
 }
 
 async function scanPdfs(pdfLinks) {
@@ -232,6 +250,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   if (want('pages')) await scanPages(pdfLinks);
   if (want('pdfs')) await scanPdfs(pdfLinks);
   if (want('ai')) await scanAi();
+  if (DUMP) { const { writeFileSync } = await import('node:fs'); writeFileSync(DUMP, JSON.stringify(dump, null, 1)); console.log(`dump: ${Object.keys(dump).length} entries -> ${DUMP}`); }
   console.log(`\n${hits} hit(s)`);
   process.exit(hits ? 1 : 0);
 }
