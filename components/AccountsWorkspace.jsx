@@ -18,6 +18,7 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import ServiceExpenseInbox from '@/components/ServiceExpenseInbox';
+import QuickBooksCard from '@/components/QuickBooksCard';
 import { LandmarkIcon, Building2Icon, PlusIcon, PercentIcon, ReceiptIcon, BookIcon, FileTextIcon, CheckIcon, XIcon, LockIcon, HistoryIcon, BoxIcon, RefreshCwIcon, IdCardIcon } from 'lucide-react';
 import { api, showToast } from '@/lib/client';
 import { toLogoPng } from '@/lib/image-compress';
@@ -522,6 +523,7 @@ function CompanyEntitiesTab({ companies, router, maxCompanies = 3, companyCount 
       <DocumentsCard entity={entity} onSaved={refresh} />
       {!IS_US && <ApplicabilityCard entity={entity} refreshKey={refreshKey} />}
       {!IS_US && <EwayBillCredentialsCard entity={entity} />}
+      <QuickBooksCard key={entity.id} entity={entity} />
     </div>
   );
 }
