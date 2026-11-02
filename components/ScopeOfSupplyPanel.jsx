@@ -13,6 +13,7 @@
 // routes 403 on unit_price/amount/tax_pct from anyone without it), not just hidden here. When a
 // money field is hidden, this component must never send its key in a request body at all — a
 // present-but-empty key would still trip the server's own guard for an otherwise-unrelated edit.
+import { LOCALE } from '@/lib/market';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, showToast } from '@/lib/client';
@@ -25,7 +26,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { DownloadIcon, PlusIcon, TrashIcon, PencilIcon } from 'lucide-react';
 
 function fmt(n) {
-  return n == null ? '—' : Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return n == null ? '—' : Number(n).toLocaleString(LOCALE, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function HeaderField({ label, value, onSave, canEdit, type = 'text' }) {

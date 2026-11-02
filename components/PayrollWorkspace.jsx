@@ -5,6 +5,7 @@
 // HrWorkspace.jsx (same multi-tab-in-one-file precedent as ProcurementWorkspace.jsx). Every number
 // here is computed by lib/payroll.js and rendered as a stored fact — no arithmetic happens client
 // side beyond simple display formatting.
+import { LOCALE } from '@/lib/market';
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -20,7 +21,7 @@ import { api, showToast } from '@/lib/client';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 
 function fmt(n) {
-  return Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return Number(n || 0).toLocaleString(LOCALE, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 const MONTHS = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 

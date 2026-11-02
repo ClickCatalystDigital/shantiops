@@ -4,6 +4,7 @@
 // workspace component mounted inside HrWorkspace.jsx with compact nested sidebar navigation. Workflow only — no GL posting
 // happens anywhere in this file (HARD BOUNDARY); approving a claim just flips its status and, if
 // it references an advance, bumps that advance's settled_amount (a running total, not a ledger).
+import { LOCALE } from '@/lib/market';
 import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -17,7 +18,7 @@ import { api, showToast } from '@/lib/client';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
 
 function fmt(n) {
-  return Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return Number(n || 0).toLocaleString(LOCALE, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 // ---------------------------------------------------------------------------------------------

@@ -27,7 +27,7 @@ async function reset(env) {
     const tok = await fetch(`${base}/${env.GOLDEN_DB}/auth/tokens?expiration=1h&authorization=full-access`, { method: 'POST', headers });
     if (!tok.ok) throw new Error(`token: ${tok.status} ${await tok.text()}`);
     const { jwt } = await tok.json();
-    shifted = await shiftDates(`https://${database.Hostname}`, jwt);
+    shifted = await shiftDates(`https://${database.Hostname}`, jwt, todayIn(env.TIME_ZONE));
   } catch (e) {
     shiftError = e.message;
     try { await copy(env.GOLDEN_DB, backup); } catch (r) { return { ok: false, step: 'restore golden', error: `${shiftError}; ${r.message}` }; }
@@ -59,8 +59,10 @@ const MONTH = "'[0-9][0-9][0-9][0-9]-[0-9][0-9]'";
 // Only values that are real dates: a financial year such as '2026-27' matches the month pattern but is left alone.
 // Two passes (+100 years, then back) so UNIQUE(…, date) columns never collide mid-update.
 // ponytail: dates inside free text / JSON and FY-coded numbers don't move; fine for a nightly demo.
-// today is the IST date: the cron runs at 21:30 UTC, when the UTC date is still the day before.
-export async function shiftDates(url, token, today = new Date(Date.now() + 5.5 * 36e5).toISOString().slice(0, 10)) {
+// today is the date in the demo's zone: TIME_ZONE (the US demo's wrangler.us.jsonc), else IST. The Indian cron runs at
+// 21:30 UTC, when the UTC date is still the day before.
+export const todayIn = (tz = 'Asia/Kolkata') => new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date());
+export async function shiftDates(url, token, today = todayIn()) {
   const [meta] = await run(url, token, [`SELECT seeded_on FROM demo_meta LIMIT 1`]);
   const seededOn = meta.rows[0]?.[0]?.value;
   const n = Math.round((Date.parse(today) - Date.parse(seededOn)) / 864e5);

@@ -1,5 +1,6 @@
 // app/api/sale-order-payments/route.js — Sales Payment Tracker log (lib/db.js sale_order_payments).
 // Append-only by design (no PATCH/DELETE): it's a log; a wrong entry is corrected by Accounts.
+import { CURRENCY_SYMBOL, LOCALE } from '@/lib/market';
 import { hiddenSalesRecord } from '@/lib/sales-visibility';
 import { NextResponse } from 'next/server';
 import { execute, queryAll, queryOne } from '@/lib/db';
@@ -53,7 +54,7 @@ export async function POST(req) {
   queryOne('SELECT so_no, customer_name, COALESCE(sales_person_override, created_by) AS owner FROM sale_orders WHERE id = ?', [so.id])
     .then(o => notifyUsername(o?.owner, {
       kind: 'payment_received', title: `Payment received — ${o.so_no}${o.customer_name ? ` (${o.customer_name})` : ''}`,
-      body: `₹${amount.toLocaleString('en-IN')} on ${b.received_on}`, link: tabLink('/sales', 'payment_orders', { q: o.so_no, highlight: `SO-${so.id}` }),
+      body: `${CURRENCY_SYMBOL}${amount.toLocaleString(LOCALE)} on ${b.received_on}`, link: tabLink('/sales', 'payment_orders', { q: o.so_no, highlight: `SO-${so.id}` }),
       dedupe_key: `payment_received:${Number(lastId)}`,
     }, { except: user.username })).catch(() => {});
   return NextResponse.json({ ok: true, id: Number(lastId) });

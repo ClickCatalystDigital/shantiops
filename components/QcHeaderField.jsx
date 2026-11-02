@@ -10,6 +10,8 @@
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import DimensionInput from './DimensionInput';
+import { useUnits } from './useUnits';
+import { convertible, toImperial, fromImperial, unitLabel, trim } from '@/lib/units.mjs';
 
 // Same "canonical display string in, decomposed UI, composed string out" idiom QtyInput.jsx uses
 // for qty_text — unit here is fixed (not user-picked), so only the leading number is decomposed.
@@ -20,6 +22,10 @@ function parseNumber(value) {
 
 export default function QcHeaderField({ field, value, onChange }) {
   const { label, required, kind, unit } = field;
+  // Imperial (Units setting): show and type psi / sq ft / °F, store the metric value with its metric unit.
+  const imperial = useUnits() === 'imperial' && unit && convertible(unit);
+  const shownNumber = imperial ? (parseNumber(value) === '' ? '' : trim(toImperial(parseNumber(value), unit), 3)) : parseNumber(value);
+  const toStored = v => (imperial && v !== '' ? trim(fromImperial(v, unit), 4) : v);
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -29,9 +35,9 @@ export default function QcHeaderField({ field, value, onChange }) {
       </Label>
       {kind === 'number' ? (
         <div className="flex items-center gap-1.5">
-          <Input type="number" step="any" className="flex-1" value={parseNumber(value)}
-            onChange={e => onChange(unit ? `${e.target.value} ${unit}`.trim() : e.target.value)} />
-          {unit && <span className="shrink-0 text-sm text-muted-foreground">{unit}</span>}
+          <Input type="number" step="any" className="flex-1" value={shownNumber}
+            onChange={e => onChange(unit ? `${toStored(e.target.value)} ${unit}`.trim() : e.target.value)} />
+          {unit && <span className="shrink-0 text-sm text-muted-foreground">{imperial ? unitLabel(unit) : unit}</span>}
         </div>
       ) : kind === 'dimension' ? (
         <DimensionInput valueMm={parseNumber(value)} onChangeMm={mm => onChange(mm ? `${mm} mm` : '')} />

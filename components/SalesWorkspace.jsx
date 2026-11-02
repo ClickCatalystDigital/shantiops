@@ -4,6 +4,7 @@
 // Sale Orders | Campaigns, same multi-tab-in-one-file precedent as ProcurementWorkspace.jsx.
 // Customer detail (contacts/addresses/notes) opens in a right-side Sheet, same drawer pattern
 // HrWorkspace.jsx's employee detail uses.
+import { CURRENCY_SYMBOL, LOCALE } from '@/lib/market';
 import { DEFAULT_GST_PCT } from '@/lib/sales-lines.mjs';
 import { Fragment, useState, useEffect, useMemo, useRef } from 'react';
 import FloatingList from '@/components/FloatingList';
@@ -498,7 +499,7 @@ function ExpectedValueField({ lead, router }) {
   }
   return (
     <div className="flex items-center gap-2">
-      <Label className="shrink-0 whitespace-nowrap text-sm text-muted-foreground">Expected value (₹)</Label>
+      <Label className="shrink-0 whitespace-nowrap text-sm text-muted-foreground">Expected value ({CURRENCY_SYMBOL})</Label>
       <Input type="number" min="0" className="w-40" value={value} onChange={e => setValue(e.target.value)} onBlur={save} />
     </div>
   );
@@ -755,7 +756,7 @@ function OrderLostDialog({ lead, onClose, router }) {
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div className="grid gap-1.5"><Label>Lost to competitor (optional)</Label><Input value={competitor.competitor} onChange={e => setCompetitor(c => ({ ...c, competitor: e.target.value }))} /></div>
           <div className="grid gap-1.5"><Label>Their product</Label><Input value={competitor.product} onChange={e => setCompetitor(c => ({ ...c, product: e.target.value }))} /></div>
-          <div className="grid gap-1.5"><Label>Their price (₹)</Label><Input type="number" min={0} value={competitor.price} onChange={e => setCompetitor(c => ({ ...c, price: e.target.value }))} /></div>
+          <div className="grid gap-1.5"><Label>Their price ({CURRENCY_SYMBOL})</Label><Input type="number" min={0} value={competitor.price} onChange={e => setCompetitor(c => ({ ...c, price: e.target.value }))} /></div>
         </div>
         <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button variant="destructive" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Mark as Order Lost'}</Button></DialogFooter>
       </DialogContent>
@@ -823,7 +824,7 @@ function ProductLinesEditor({ products = [], lines, onChange }) {
     <div className="flex flex-col gap-2">
       {lines.length > 0 && (
         <div className="hidden gap-2 text-xs text-muted-foreground md:grid md:grid-cols-[minmax(0,1fr)_5rem_6rem_7rem_5rem_6rem_2rem]">
-          <span>Product</span><span>Qty</span><span>Unit</span><span>Rate (₹)</span><span>GST %</span><span className="text-right">Amount</span><span />
+          <span>Product</span><span>Qty</span><span>Unit</span><span>Rate ({CURRENCY_SYMBOL})</span><span>GST %</span><span className="text-right">Amount</span><span />
         </div>
       )}
       {lines.map((l, i) => {
@@ -1004,7 +1005,7 @@ export function AddEnquiryDialog({ users, salesProducts, stages = [], onClose, r
           <FormSection title="Enquiry">
             <Field2 label="Enquiry date"><Input type="date" value={f.enquiry_date} onChange={setText('enquiry_date')} /></Field2>
             <Field2 label="Stage"><SearchableSelect value={f.sales_call_status} onChange={set('sales_call_status')} options={stages.filter(s => !s.is_won && !s.is_lost).map(s => ({ value: s.name, label: s.name }))} placeholder="Select…" /></Field2>
-            <Field2 label="Expected value (₹)"><Input type="number" min="0" value={f.expected_value} onChange={setText('expected_value')} placeholder={productsTotal > 0 ? `${productsTotal} (from products)` : ''} /></Field2>
+            <Field2 label={`Expected value (${CURRENCY_SYMBOL})`}><Input type="number" min="0" value={f.expected_value} onChange={setText('expected_value')} placeholder={productsTotal > 0 ? `${productsTotal} (from products)` : ''} /></Field2>
             <Field2 label="Order expected in"><Input value={f.order_expected_in} onChange={setText('order_expected_in')} placeholder="e.g. Q2 2027" /></Field2>
             <Field2 label="Week number"><Input value={f.week_number} onChange={setText('week_number')} /></Field2>
             <Field2 label="Source">
@@ -1833,7 +1834,7 @@ export function NewQuotationDialog({ customers, opportunityId = null, leadId = n
           <div className="flex flex-col gap-2">
             <Label>Line items</Label>
             <div className={`hidden gap-2 text-xs text-muted-foreground md:grid ${GRID}`}>
-              <span>{useProducts ? 'Product' : 'Description'}</span><span>Qty</span><span>Unit</span><span>Rate (₹)</span><span>Disc %</span><span>GST %</span><span className="text-right">Amount</span><span />
+              <span>{useProducts ? 'Product' : 'Description'}</span><span>Qty</span><span>Unit</span><span>Rate ({CURRENCY_SYMBOL})</span><span>Disc %</span><span>GST %</span><span className="text-right">Amount</span><span />
             </div>
             {items.map((it, i) => (
               <div key={i} className={`grid grid-cols-2 gap-2 rounded-md border p-2 md:items-start md:border-0 md:p-0 ${GRID}`}>
@@ -1967,7 +1968,7 @@ function QuotationStatusSelect({ q, busy, onChange }) {
 // WhatsApp click-send for a quotation (same wa.me approach as the RFQ dialog): opens WhatsApp with
 // the message typed and the customer's number filled in. The PDF is not attached — wa.me can't.
 const waDigits = phone => { const d = String(phone || '').split(/[,/;]/)[0].replace(/\D/g, ''); return d.length === 10 ? `91${d}` : d.length >= 11 ? d : ''; };
-const quotationWaText = q => `Dear ${q.customer_name},\n\nOur quotation ${q.quotation_no} for Rs ${Math.round(Number(q.total) || 0).toLocaleString('en-IN')} is ready. We are sending the PDF separately. Please reply here for any clarification.\n\nThank you.`;
+const quotationWaText = q => `Dear ${q.customer_name},\n\nOur quotation ${q.quotation_no} for Rs ${Math.round(Number(q.total) || 0).toLocaleString(LOCALE)} is ready. We are sending the PDF separately. Please reply here for any clarification.\n\nThank you.`;
 
 function QuotationConvertButtons({ q, busy, onEmail, onSent, onConvert, onInvoice, onRevise, onApprove, onDelete, canApprove }) {
   return (
@@ -2557,7 +2558,7 @@ function AddSaleOrderDialog({ users = [], branches = [], saleOrders = [], onClos
                 placeholder="Search customer, or type a new name…" />
             </Field2>
             <Field2 label="Order date"><Input type="date" value={f.order_date} onChange={setText('order_date')} /></Field2>
-            <Field2 label="Order value (₹)"><Input type="number" min="0" step="any" value={f.total} onChange={setText('total')} /></Field2>
+            <Field2 label={`Order value (${CURRENCY_SYMBOL})`}><Input type="number" min="0" step="any" value={f.total} onChange={setText('total')} /></Field2>
             <Field2 label="Status">
               <Select value={f.track_status} onValueChange={v => set({ track_status: v })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
@@ -3276,7 +3277,7 @@ function PriceHistory({ productId }) {
         <thead><tr className="text-left text-muted-foreground"><th className="py-0.5">Month</th><th>Price</th><th>Cost</th><th>By</th></tr></thead>
         <tbody>{rows.map((r, i) => (
           <tr key={i} className="border-t"><td className="py-0.5">{String(r.changed_at).slice(5, 7)}-{String(r.changed_at).slice(0, 4)}</td>
-            <td className="tnum">{r.price != null ? `₹${Number(r.price).toLocaleString('en-IN')}` : '—'}</td><td className="tnum">{r.cost_price != null ? `₹${Number(r.cost_price).toLocaleString('en-IN')}` : '—'}</td><td>{r.changed_by || ''}</td></tr>
+            <td className="tnum">{r.price != null ? `${CURRENCY_SYMBOL}${Number(r.price).toLocaleString(LOCALE)}` : '—'}</td><td className="tnum">{r.cost_price != null ? `${CURRENCY_SYMBOL}${Number(r.cost_price).toLocaleString(LOCALE)}` : '—'}</td><td>{r.changed_by || ''}</td></tr>
         ))}</tbody>
       </table>
     </div>
@@ -3353,7 +3354,7 @@ function ProductsTab({ salesProducts, router }) {
 // --- Email Templates (Phase 3.2) — one per company, feeds Commercial Offer's own picker. ---------
 
 const TEMPLATE_TOKENS = ['customer_name', 'quotation_no', 'total', 'valid_until'];
-const SAMPLE_VARS = { customer_name: 'Demo Foods Pvt Ltd', quotation_no: 'SB/QTN/0001/26-27', total: '₹12,50,000', valid_until: '30 Oct 2026' };
+const SAMPLE_VARS = { customer_name: 'Demo Foods Pvt Ltd', quotation_no: 'SB/QTN/0001/26-27', total: `${CURRENCY_SYMBOL}12,50,000`, valid_until: '30 Oct 2026' };
 
 function EmailTemplateDialog({ template, onClose, router }) {
   const isEdit = !!template;

@@ -8,6 +8,7 @@
 // one request (reduces `available`, on_hand untouched) so no other request — bom, stock, or sas —
 // can be promised the same units; Issue is the actual hand-out moment (on_hand decrements, the
 // request's bom_item goes terminal In-Stock). Release undoes an unissued Reserve.
+import { CURRENCY_SYMBOL } from '@/lib/market';
 import InboundLink from '@/components/InboundLink';
 import { carrierSummary } from '@/lib/carrier.mjs';
 import { useState, useEffect, useMemo, useRef, Fragment } from 'react';
@@ -339,7 +340,7 @@ function ItemFormDialog({ item, onClose, router }) {
             <Input type="number" min="0" step="any" value={reorderPoint} onChange={e => setReorderPoint(e.target.value)} />
           </div>
           <div className="grid gap-1.5">
-            <Label>Cost per unit, ₹ (optional)</Label>
+            <Label>Cost per unit, {CURRENCY_SYMBOL} (optional)</Label>
             <Input type="number" min="0" step="any" value={avgCost} onChange={e => setAvgCost(e.target.value)} placeholder="Used for stock value" />
           </div>
           <div className="col-span-2 grid gap-1.5">

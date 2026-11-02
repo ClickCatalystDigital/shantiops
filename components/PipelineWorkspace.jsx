@@ -5,6 +5,7 @@
 // hardcoded array — decision 5), and a detail Sheet for line items + the shared CRM notes
 // timeline (decision 4). Kanban drag-and-drop unchanged from A4 — same native-HTML5 pattern as
 // StagesPanel.jsx's Kanban.
+import { CURRENCY_SYMBOL } from '@/lib/market';
 import CustomerPicker from '@/components/CustomerPicker';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
@@ -69,7 +70,7 @@ function AddOpportunityDialog({ departments, customers, onClose, router }) {
             <CustomerPicker value={customerId} name={customerName} onChange={(id, n) => { setCustomerId(id); setCustomerName(n); }} placeholder="Choose customer" />
           </div>
           <div className="grid gap-1.5">
-            <Label>Value ₹ (optional)</Label>
+            <Label>Value {CURRENCY_SYMBOL} (optional)</Label>
             <Input type="number" value={valueNum} onChange={e => setValueNum(e.target.value)} />
           </div>
           <div className="grid gap-1.5">

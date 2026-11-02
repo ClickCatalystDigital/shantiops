@@ -3,6 +3,7 @@
 // Order Progress stepper + the Drawings needing customer action, merged into one journey: the
 // Design & Engineering row expands in place when clicked, rather than sending the customer to a
 // separate card further down the page to find what the yellow icon is about.
+import { LOCALE, TIME_ZONE } from '@/lib/market';
 import { Fragment, useEffect, useState } from 'react';
 import { api, showToast, formatDate } from '@/lib/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -169,7 +170,7 @@ function PhaseRow({ ph, index, expandable, expanded, onToggle }) {
 }
 
 // "02 Oct 2026, 3:45 PM" — DB timestamps are UTC (no zone suffix), shown in IST.
-const stamp = s => (s ? new Date(String(s).replace(' ', 'T') + 'Z').toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '');
+const stamp = s => (s ? new Date(String(s).replace(' ', 'T') + 'Z').toLocaleString(LOCALE, { timeZone: TIME_ZONE, day: '2-digit', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '');
 
 const VisitRow = ({ v }) => (
   <div className="flex items-center justify-between gap-3 rounded-lg border p-3">

@@ -3,6 +3,7 @@
 // Installation → Progress Photos. On a phone: tap the camera button, take the photo, and a details
 // sheet opens straight away (project, stage, visit, remarks). Photos are compressed in the browser
 // before upload. Gallery per project with stage filter; tap a photo to view / edit / delete.
+import { LOCALE } from '@/lib/market';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { CameraIcon, ImagePlusIcon, TrashIcon } from 'lucide-react';
 import { api, showToast } from '@/lib/client';
@@ -74,7 +75,7 @@ function CaptureSheet({ file, takenAt, projects, defaultProject, onClose, onSave
         <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-4">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={preview} alt="New site photo" className="max-h-56 w-full rounded-xl border object-contain bg-muted" />
-          <p className="text-xs text-muted-foreground">Taken {new Date(takenAt).toLocaleString('en-IN')} · stamped automatically</p>
+          <p className="text-xs text-muted-foreground">Taken {new Date(takenAt).toLocaleString(LOCALE)} · stamped automatically</p>
           <div className="grid gap-1.5"><Label>Project</Label>
             <SearchableSelect value={f.project_id} onChange={v => setF(x => ({ ...x, project_id: v, visit_id: '' }))} placeholder="Search a project…" options={projectOptions(projects)} />
           </div>
@@ -108,7 +109,7 @@ function ViewSheet({ photo, onClose, onChanged }) {
     <Sheet open onOpenChange={o => !o && onClose()}>
       <SheetContent className="w-full data-[side=right]:sm:max-w-lg">
         <SheetHeader><SheetTitle>{photo.project_no}</SheetTitle>
-          <p className="text-xs text-muted-foreground">{new Date(photo.taken_at || photo.created_at).toLocaleString('en-IN')} · {photo.taken_by}</p></SheetHeader>
+          <p className="text-xs text-muted-foreground">{new Date(photo.taken_at || photo.created_at).toLocaleString(LOCALE)} · {photo.taken_by}</p></SheetHeader>
         <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-4">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={`/api/installation-photos/${photo.id}/image`} alt="" className="w-full rounded-xl border bg-muted object-contain" />
@@ -183,7 +184,7 @@ export default function InstallationPhotos({ projects, team = [] }) {
                   <div className="p-2 text-xs">
                     <div className="truncate font-medium">{p.project_no}{p.visit_seq ? ` · Visit ${p.visit_seq}` : ''}</div>
                     <div className="truncate text-muted-foreground">{p.remarks || '—'}</div>
-                    <div className="text-muted-foreground">{new Date(p.taken_at || p.created_at).toLocaleDateString('en-IN')} · {names[p.taken_by] || p.taken_by}</div>
+                    <div className="text-muted-foreground">{new Date(p.taken_at || p.created_at).toLocaleDateString(LOCALE)} · {names[p.taken_by] || p.taken_by}</div>
                   </div>
                 </button>
               ))}

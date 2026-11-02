@@ -5,6 +5,7 @@
 // (New Quotation + Send Commercial Offer) for Sales; Marketing's Pipeline still uses the overlays.
 // Modes (from the address): ?lead=<enquiry id> starts from the enquiry's products, ?revise=<quotation id>
 // saves a revision, ?send=<quotation id> only sends an existing quotation, ?customer=<id> pre-picks one.
+import { CURRENCY_SYMBOL } from '@/lib/market';
 import { DEFAULT_GST_PCT } from '@/lib/sales-lines.mjs';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -218,7 +219,7 @@ export default function QuotationComposer({ salesProducts = [], leadId = null, r
             <div className="flex flex-col gap-2">
               <Label>Line items</Label>
               <div className={`hidden gap-2 text-xs text-muted-foreground md:grid ${GRID}`}>
-                <span>Product</span><span>Qty</span><span>Unit</span><span>Rate (₹)</span><span>Disc %</span><span>GST %</span><span className="text-right">Amount</span><span />
+                <span>Product</span><span>Qty</span><span>Unit</span><span>Rate ({CURRENCY_SYMBOL})</span><span>Disc %</span><span>GST %</span><span className="text-right">Amount</span><span />
               </div>
               {items.map((it, i) => (
                 <div key={i} className={`grid grid-cols-2 gap-2 rounded-md border p-2 md:items-start md:border-0 md:p-0 ${GRID}`}>

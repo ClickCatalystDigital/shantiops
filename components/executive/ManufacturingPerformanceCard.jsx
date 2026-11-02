@@ -2,6 +2,7 @@
 
 // components/executive/ManufacturingPerformanceCard.jsx — Management report: the director-altitude
 // headline for the shop floor. Same tile-grid look as ManagementReportCard.
+import { LOCALE } from '@/lib/market';
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -27,7 +28,7 @@ export default function ManufacturingPerformanceCard({ companies }) {
     { label: 'QC Failures', value: String(data.qcFailures), danger: data.qcFailures > 0 },
     { label: 'Material Yield', value: data.overallYieldPct == null ? '—' : `${data.overallYieldPct}%` },
     { label: 'Labour Hours / Cost', value: `${data.totalLabourHours}h / ${formatMoney(data.totalLabourCost)}` },
-    { label: 'Cost Variance', value: `${data.totalCostVariance >= 0 ? '+' : ''}${Math.round(data.totalCostVariance).toLocaleString('en-IN')}`, danger: data.totalCostVariance > 0 },
+    { label: 'Cost Variance', value: `${data.totalCostVariance >= 0 ? '+' : ''}${Math.round(data.totalCostVariance).toLocaleString(LOCALE)}`, danger: data.totalCostVariance > 0 },
     { label: 'Material Lines Blocking Production (30d)', value: String(data.outstandingMaterialLines), danger: data.outstandingMaterialLines > 0 },
   ] : [];
 

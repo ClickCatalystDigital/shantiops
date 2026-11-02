@@ -1,3 +1,4 @@
+import { CURRENCY_SYMBOL, LOCALE } from '@/lib/market';
 import Link from 'next/link';
 import CustomerNavLinks from '@/components/CustomerNavLinks';
 import { redirect } from 'next/navigation';
@@ -17,7 +18,7 @@ export const dynamic = 'force-dynamic';
 
 const PAGE_SIZE = 10;
 const SO_STATUS = { open: 'Confirmed', fulfilled: 'Completed', cancelled: 'Cancelled' };
-const rupees = n => `₹${Math.round(Number(n) || 0).toLocaleString('en-IN')}`;
+const rupees = n => `${CURRENCY_SYMBOL}${Math.round(Number(n) || 0).toLocaleString(LOCALE)}`;
 
 // "My Orders" — a customer's landing page. Always shown, even for a single order, so a company
 // with more projects later doesn't need a different flow — one place to see everything they have.

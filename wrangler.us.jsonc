@@ -1,0 +1,23 @@
+// North American demo (boiler-erp-us.ahromlabs.com): wrangler.jsonc with the US Worker name, route, market and databases.
+// Built with NEXT_PUBLIC_MARKET=NA (npm run cf:deploy:us). Fictional Acme Boilers Inc. (Ohio): scripts/demo/seed-acme-us.mjs.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sb-ops-boiler-erp-demo-us",
+  "account_id": "5d8cf246f656006b81d99d734e8c0f40",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-08-27",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"], // public fetch: lib/demo-leads.js calls ahromlabs.com (same zone)
+  "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
+  "routes": [{ "pattern": "boiler-erp-us.ahromlabs.com", "custom_domain": true }],
+  // Secrets (wrangler secret put -c wrangler.us.jsonc): TURSO_AUTH_TOKEN (sbdemo group token), SESSION_SECRET (its own),
+  // SECRETS_KEY, LEADS_TURSO_URL, LEADS_TURSO_AUTH_TOKEN (shared with the Indian demo), CUSTOMER_SEED (acme-us-seed.json),
+  // DEMO_PASS, DEMO_OPENROUTER_KEY. Never the live deployment's values.
+  "vars": { "DEMO_MODE": "1", "SKIP_MIGRATE": "1", "MARKET": "NA", "APP_URL": "https://boiler-erp-us.ahromlabs.com",
+    "TURSO_URL": "libsql://sb-us-demo-pujan.aws-ap-south-1.turso.io",
+    // The owner pass reads and writes golden instead, so its changes survive the nightly reset (lib/db.js).
+    "GOLDEN_TURSO_URL": "libsql://sb-us-demo-golden-pujan.aws-ap-south-1.turso.io" },
+  // Run next to the database (Turso, Mumbai, same group as the Indian demo): a page makes many sequential queries.
+  "placement": { "mode": "smart" },
+  "r2_buckets": [{ "binding": "DEMO_FILES", "bucket_name": "sb-demo-files" }],
+  "observability": { "enabled": true }
+}

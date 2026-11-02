@@ -2,6 +2,9 @@
 // FY-format sequence po_no uses (app/api/purchase-orders/route.js), a distinct counter/prefix.
 // POST accepts the full item list at once (small form, not a separate line-item endpoint like
 // opportunities' bulk-PUT — a quotation is created whole, not built up incrementally in the UI).
+import { IS_US, todayInZone } from '@/lib/market';
+import { docNo } from '@/lib/gst-calc.mjs';
+import { DEFAULT_GST_PCT } from '@/lib/sales-lines.mjs';
 import { scopeRows } from '@/lib/sales-visibility';
 import { NextResponse } from 'next/server';
 import { execute, queryOne, nextCounterValue, getAppSetting } from '@/lib/db';
@@ -90,12 +93,14 @@ export async function POST(req) {
   const companyRow = await queryOne('SELECT invoice_prefix, state_code FROM company_settings WHERE company = ?', [company]);
   const customNo = !revision && b.quotation_no ? String(b.quotation_no).trim() : '';
   if (customNo && await queryOne('SELECT 1 FROM quotations WHERE quotation_no = ?', [customNo])) return NextResponse.json({ error: `Offer Number ${customNo} already exists` }, { status: 409 });
-  const quotationNo = revision ? revision.no : customNo || `QTN-${seq}/${companyRow?.invoice_prefix || defaultPrefix()}/${fyStart}-${String((fyStart + 1) % 100).padStart(2, '0')}`;
+  const quotationNo = revision ? revision.no : customNo || (IS_US
+    ? docNo(companyRow?.invoice_prefix || defaultPrefix(), 'EST', seq, todayInZone().slice(0, 4)) // US: AB-EST-1-2026
+    : `QTN-${seq}/${companyRow?.invoice_prefix || defaultPrefix()}/${fyStart}-${String((fyStart + 1) % 100).padStart(2, '0')}`);
 
   const t = quotationTotals(items, {
     companyStateCode: companyRow?.state_code || null,
     customerStateCode: customer.state_code || null,
-    fallbackGstPct: b.tax_pct === '' || b.tax_pct == null ? 18 : Number(b.tax_pct),
+    fallbackGstPct: b.tax_pct === '' || b.tax_pct == null ? DEFAULT_GST_PCT : Number(b.tax_pct),
   });
 
   // Plan 4 — a discount above the Head's threshold needs approval before it can be sent.

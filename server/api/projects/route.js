@@ -1,3 +1,4 @@
+import { IS_US } from '@/lib/market';
 import { taxPctOr } from '@/lib/sales-lines.mjs';
 import { NextResponse } from 'next/server';
 import { nextNumber, createProjectMilestones, withTransaction, queryOne, queryAll, execute } from '@/lib/db';
@@ -113,7 +114,7 @@ export async function POST(req) {
             sql: `INSERT INTO scope_of_supply_items (scope_of_supply_id, description, spec, qty, uom, unit_price, amount, sale_order_item_id, sort_order)
                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             args: [headerId, it.item_description,
-              [it.hsn_code ? `HSN ${it.hsn_code}` : null, it.item_tax_pct != null ? `GST ${it.item_tax_pct}%` : null].filter(Boolean).join(' · ') || null,
+              [it.hsn_code ? `HSN ${it.hsn_code}` : null, it.item_tax_pct != null ? `${IS_US ? 'Sales tax' : 'GST'} ${it.item_tax_pct}%` : null].filter(Boolean).join(' · ') || null,
               it.qty ?? null, it.uom || null, it.rate ?? null, it.amount ?? null, it.id, it.sort_order],
           });
         }

@@ -2,6 +2,7 @@
 // not connected, template "quotation_offer" not approved, Meta refused — it answers { sent: false,
 // reason } and the screen opens the wa.me click-send instead (backup).
 // Template body values, in order: customer name, quotation number, total (Rs). Optional PDF header.
+import { LOCALE } from '@/lib/market';
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment, isPM } from '@/lib/auth';
@@ -25,7 +26,7 @@ export async function POST(req, props) {
   if (!q) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   if (q.approval_status === 'pending') return NextResponse.json({ error: "This quotation's discount needs a Sales Head's approval before it can be sent" }, { status: 409 });
   const b = await req.json().catch(() => ({}));
-  const total = `Rs ${Math.round(Number(q.total) || 0).toLocaleString('en-IN')}`;
+  const total = `Rs ${Math.round(Number(q.total) || 0).toLocaleString(LOCALE)}`;
   const detail = await getQuotationDetail(params.id);
   const pdf = await renderQuotationPdf(detail, detail.items);
   const r = await sendBusiness({

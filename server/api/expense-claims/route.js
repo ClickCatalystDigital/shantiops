@@ -1,5 +1,6 @@
 // app/api/expense-claims/route.js — workflow only, no GL (ACCOUNTING INTEGRATION POINT on the
 // table itself, lib/db.js). total_amount is the sum of the submitted line items.
+import { CURRENCY_SYMBOL, LOCALE } from '@/lib/market';
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment, canAccessDepartment } from '@/lib/auth';
@@ -55,7 +56,7 @@ export async function POST(req) {
   }
   await audit('expense_claim_submitted', { actor: user.username, detail: `employee #${employeeId}: ${totalAmount}` });
   notifyDepartmentHeads('HR', {
-    kind: 'expense_claim', title: `Expense claim for ₹${totalAmount.toLocaleString('en-IN')} waiting`,
+    kind: 'expense_claim', title: `Expense claim for ${CURRENCY_SYMBOL}${totalAmount.toLocaleString(LOCALE)} waiting`,
     link: tabLink('/hr', 'expenses'), dedupe_key: `expense_claim:${claimId}`,
   }).catch(() => {});
   return NextResponse.json({ id: claimId, total_amount: totalAmount });

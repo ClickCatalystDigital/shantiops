@@ -1,0 +1,12 @@
+{
+  // Second instance for the North American demo (boiler-erp-us): same code, the US database pair and US Central "today".
+  // Deploy from this folder: npx wrangler deploy -c wrangler.us.jsonc
+  "name": "sb-ops-boiler-erp-demo-us-reset",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-27",
+  "account_id": "5d8cf246f656006b81d99d734e8c0f40",
+  // 09:00 UTC = 03:00 CST / 04:00 CDT: quietest hour for North American visitors.
+  "triggers": { "crons": ["0 9 * * *"] },
+  // Not secret. TURSO_API_TOKEN (Turso platform token) and TRIGGER_KEY are Worker secrets.
+  "vars": { "TURSO_ORG": "pujan", "GROUP": "sbdemo", "DEMO_DB": "sb-us-demo", "GOLDEN_DB": "sb-us-demo-golden", "TIME_ZONE": "America/Chicago" }
+}

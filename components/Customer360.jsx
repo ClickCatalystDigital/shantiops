@@ -4,6 +4,7 @@
 // customer's enquiries, Diary, quotations, orders, payments, projects, invoices, service, installed
 // base (with warranty) and competitors, from GET /api/customers/[id]/overview. "Open in Reports"
 // links open a Sales report pre-filtered to this customer (?customer=).
+import { CURRENCY_SYMBOL } from '@/lib/market';
 import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
@@ -146,14 +147,14 @@ export default function Customer360({ customerId }) {
       <Section title="Orders & payments" count={d.orders.length}>
         <Rows items={d.orders} empty="No orders." render={o => (
           <Row key={o.id}><span>{o.so_no}<span className="ml-1.5 rounded border px-1 text-[10px] font-medium text-muted-foreground" title={o.company || defaultCompany()}>{companyShort(o)}</span>{o.order_date ? ` · ${formatDate(o.order_date)}` : ''}</span>
-            <span className="text-xs text-muted-foreground tnum">{formatMoney(o.total)} · received {formatMoney(o.received) || '₹0'}{o.status === 'cancelled' ? ' · cancelled' : ''}</span></Row>
+            <span className="text-xs text-muted-foreground tnum">{formatMoney(o.total)} · received {formatMoney(o.received) || `${CURRENCY_SYMBOL}0`}{o.status === 'cancelled' ? ' · cancelled' : ''}</span></Row>
         )} />
       </Section>
 
       <Section title="Invoices" count={d.invoices.length}>
         <Rows items={d.invoices} empty="No invoices." render={i => (
           <Row key={i.id}><a className="text-primary hover:underline" href={`/api/sales-invoices/${i.id}/pdf`} target="_blank" rel="noreferrer">{i.invoice_no}</a><span className="ml-1.5 rounded border px-1 text-[10px] font-medium text-muted-foreground" title={i.company || defaultCompany()}>{companyShort(i)}</span>
-            <span className="text-xs text-muted-foreground tnum">{i.status} · {formatMoney(i.total)} · received {formatMoney(i.received) || '₹0'}</span></Row>
+            <span className="text-xs text-muted-foreground tnum">{i.status} · {formatMoney(i.total)} · received {formatMoney(i.received) || `${CURRENCY_SYMBOL}0`}</span></Row>
         )} />
       </Section>
 
@@ -190,7 +191,7 @@ export default function Customer360({ customerId }) {
         <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_7rem_auto]">
           <Input placeholder="Competitor" value={comp.competitor} onChange={e => setComp(c => ({ ...c, competitor: e.target.value }))} />
           <Input placeholder="Their product" value={comp.product} onChange={e => setComp(c => ({ ...c, product: e.target.value }))} />
-          <Input placeholder="Price ₹" type="number" min={0} value={comp.price} onChange={e => setComp(c => ({ ...c, price: e.target.value }))} />
+          <Input placeholder={`Price ${CURRENCY_SYMBOL}`} type="number" min={0} value={comp.price} onChange={e => setComp(c => ({ ...c, price: e.target.value }))} />
           <Button size="sm" variant="outline" onClick={addCompetitor}>Add</Button>
         </div>
       </Section>

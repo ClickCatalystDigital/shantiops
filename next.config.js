@@ -38,8 +38,12 @@ module.exports = {
     outputFileTracingIncludes: { '/**': ['./node_modules/@libsql/**/*'] },
     webpack(config, { webpack }) {
       config.plugins.push(new webpack.NormalModuleReplacementPlugin(/[\\/]db-client\.js$/, (r) => { r.request = r.request.replace(/db-client\.js$/, 'db-client.workers.js'); }));
+      if (process.env.NO_BUILD_CACHE) config.cache = false;
       return config;
     },
+  } : process.env.NO_BUILD_CACHE ? {
+    // NO_BUILD_CACHE=1: skip webpack's on-disk cache (~1 GB) for a one-off build on a full disk.
+    webpack(config) { config.cache = false; return config; },
   } : {}),
   // /stores/inventory is served by the /stores page with tab=inventory. Real sub-pages such as
   // /accounts/documents win, because these rewrites only apply when no page matches.

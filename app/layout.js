@@ -1,5 +1,7 @@
 import './globals.css';
 import Nav from '@/components/Nav';
+import UsWords from '@/components/UsWords';
+import { IS_US } from '@/lib/market';
 import AssistantWidget from '@/components/AssistantWidget';
 import DeviceSetupGate from '@/components/DeviceSetupGate';
 import DemoAnalytics from '@/components/DemoAnalytics';
@@ -50,6 +52,7 @@ export default async function RootLayout({ children }) {
         {isInternal(user) && <script dangerouslySetInnerHTML={{ __html: companiesInit() }} />}
       </head>
       <body className="min-h-screen bg-background text-foreground">
+        {IS_US && <UsWords />}
         <TooltipProvider delayDuration={200}>
           {isInternal(user) && !needsDeviceSetup && <Nav user={user} reportDepartments={REPORT_DEPARTMENTS} />}
           {process.env.DEMO_MODE === '1' && isInternal(user) && (

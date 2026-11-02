@@ -7,6 +7,7 @@
 // lib/reports/catalog.js's `hasOwnControls` entries) render the exact same components — one
 // implementation, not two copies to keep in sync. Charts follow the app's own existing bar idiom
 // (BomProgress.jsx: thin rounded rows on bg-muted, semantic tokens), not a new chart kit.
+import { CURRENCY_SYMBOL } from '@/lib/market';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { formatMoney } from '@/lib/format';
 import { BarList, StatRow, ReportShell } from '@/components/ReportKit';
@@ -100,8 +101,8 @@ export function SalesPipelineReport({ leads = [], stages = [] }) {
     <ReportShell title="Sales Pipeline" description="Open enquiries and expected value at every funnel stage. Closed sales calls are left out.">
       <StatRow stats={[
         { label: 'Open enquiries', value: sum(open, 'count') },
-        { label: 'Open value', value: formatMoney(sum(open, 'value')) || '₹0' },
-        { label: 'Won value', value: formatMoney(sum(won, 'value')) || '₹0' },
+        { label: 'Open value', value: formatMoney(sum(open, 'value')) || `${CURRENCY_SYMBOL}0` },
+        { label: 'Won value', value: formatMoney(sum(won, 'value')) || `${CURRENCY_SYMBOL}0` },
         { label: 'Win rate', value: winRate == null ? '—' : `${winRate}% (${wonN} won / ${lostN} lost)` },
       ]} />
       <BarList items={rows.map(r => ({ label: r.stage, value: r.count }))} valueFmt={n => `${n} enquir${n === 1 ? 'y' : 'ies'}`} colorFor={colorFor} />

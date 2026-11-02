@@ -3,6 +3,7 @@
 // components/SalesAmc.jsx — Sales → AMC tab (Sales Mantra parity, SYSTEM.md §5dr): AMC contracts with value,
 // received, days committed / left, visits and profit, plus the "Preventive maintenance due" list.
 // Built on the existing service_contracts table (Service department still sees the same contracts); all maths in lib/amc.mjs.
+import { CURRENCY_SYMBOL } from '@/lib/market';
 import { useEffect, useState, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -56,9 +57,9 @@ function ContractDialog({ renewing, onClose, onSaved }) {
           </>}
           <div className="grid gap-1.5"><Label>Start date *</Label><Input type="date" value={f.start_date} onChange={e => set('start_date', e.target.value)} /></div>
           <div className="grid gap-1.5"><Label>End date *</Label><Input type="date" value={f.end_date} onChange={e => set('end_date', e.target.value)} /></div>
-          <div className="grid gap-1.5"><Label>Contract value (₹)</Label><Input type="number" min="0" value={f.contract_value} onChange={e => set('contract_value', e.target.value)} /></div>
+          <div className="grid gap-1.5"><Label>Contract value ({CURRENCY_SYMBOL})</Label><Input type="number" min="0" value={f.contract_value} onChange={e => set('contract_value', e.target.value)} /></div>
           {!renewing && <>
-            <div className="grid gap-1.5"><Label>Received so far (₹)</Label><Input type="number" min="0" value={f.received_value} onChange={e => set('received_value', e.target.value)} /></div>
+            <div className="grid gap-1.5"><Label>Received so far ({CURRENCY_SYMBOL})</Label><Input type="number" min="0" value={f.received_value} onChange={e => set('received_value', e.target.value)} /></div>
             <div className="grid gap-1.5"><Label>Preventive maintenance every</Label>
               <Select value={f.visit_frequency || '_none'} onValueChange={v => set('visit_frequency', v === '_none' ? '' : v)}>
                 <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>

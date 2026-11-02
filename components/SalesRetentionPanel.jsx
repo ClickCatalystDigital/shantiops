@@ -4,6 +4,7 @@
 // A retention window for Sales history (follow-up notes + enquiry stage history), OFF by default.
 // Turning it on or changing it deletes nothing: it only decides what the Sales Head is offered to
 // clean up, and a cleanup needs a backup download + an explicit confirm (lib/sales-retention.js).
+import { LOCALE } from '@/lib/market';
 import { useEffect, useState } from 'react';
 import { api, showToast } from '@/lib/client';
 import { formatDate } from '@/lib/format';
@@ -44,7 +45,7 @@ export default function SalesRetentionPanel() {
     try {
       const r = await api('/api/sales-retention/run', { method: 'POST', body: { confirm: true } });
       setConfirm(false);
-      showToast(`Deleted ${Object.values(r.deleted).reduce((a, b) => a + b, 0).toLocaleString('en-IN')} records`);
+      showToast(`Deleted ${Object.values(r.deleted).reduce((a, b) => a + b, 0).toLocaleString(LOCALE)} records`);
       await load();
     } catch (err) { showToast(err.message, 'error'); } finally { setBusy(null); }
   }
@@ -86,7 +87,7 @@ export default function SalesRetentionPanel() {
             {p.sources.map(s => (
               <div key={s.key} className="rounded-xl border p-4">
                 <div className="text-xs text-muted-foreground">{s.label}</div>
-                <div className="mt-1 text-2xl font-semibold tnum">{s.count.toLocaleString('en-IN')}</div>
+                <div className="mt-1 text-2xl font-semibold tnum">{s.count.toLocaleString(LOCALE)}</div>
                 <div className="text-xs text-muted-foreground">{s.count ? `past the window, oldest ${formatDate(s.oldest)}` : 'nothing past the window'}</div>
               </div>
             ))}
@@ -101,20 +102,20 @@ export default function SalesRetentionPanel() {
         {p.enabled && (
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="outline" disabled={!n || busy} onClick={backup}>{busy === 'backup' ? <LoaderIcon className="animate-spin" /> : <DownloadIcon />} Download backup</Button>
-            <Button variant="destructive" disabled={!n || !p.backupReady || busy} onClick={() => setConfirm(true)}><Trash2Icon /> Delete {n.toLocaleString('en-IN')} records</Button>
+            <Button variant="destructive" disabled={!n || !p.backupReady || busy} onClick={() => setConfirm(true)}><Trash2Icon /> Delete {n.toLocaleString(LOCALE)} records</Button>
             <span className="text-xs text-muted-foreground">{!n ? 'Nothing to clean up.' : p.backupReady ? 'Backup ready — valid for one hour.' : 'Download the backup first; it unlocks the delete.'}</span>
           </div>
         )}
-        {p.last && <p className="text-xs text-muted-foreground">Last cleanup {formatDate(p.last.at)} by {p.last.by}: {Object.values(p.last.deleted).reduce((a, b) => a + b, 0).toLocaleString('en-IN')} records ({retentionLabel(p.last.months)} window).</p>}
+        {p.last && <p className="text-xs text-muted-foreground">Last cleanup {formatDate(p.last.at)} by {p.last.by}: {Object.values(p.last.deleted).reduce((a, b) => a + b, 0).toLocaleString(LOCALE)} records ({retentionLabel(p.last.months)} window).</p>}
       </CardContent>
 
       <Dialog open={confirm} onOpenChange={o => !busy && setConfirm(o)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete {n.toLocaleString('en-IN')} records?</DialogTitle>
+            <DialogTitle>Delete {n.toLocaleString(LOCALE)} records?</DialogTitle>
             <DialogDescription>These are older than {retentionLabel(p.months || 0)}. The backup you downloaded is the only copy afterwards — deleted records do not come back, even if you extend the window later.</DialogDescription>
           </DialogHeader>
-          <ul className="text-sm">{p.sources.map(s => <li key={s.key} className="flex justify-between border-b py-1"><span>{s.label}</span><span className="tnum font-medium">{s.count.toLocaleString('en-IN')}</span></li>)}</ul>
+          <ul className="text-sm">{p.sources.map(s => <li key={s.key} className="flex justify-between border-b py-1"><span>{s.label}</span><span className="tnum font-medium">{s.count.toLocaleString(LOCALE)}</span></li>)}</ul>
           <DialogFooter className="m-0">
             <Button variant="outline" disabled={busy === 'run'} onClick={() => setConfirm(false)}>Cancel</Button>
             <Button variant="destructive" disabled={busy === 'run'} onClick={run}>{busy === 'run' ? <LoaderIcon className="animate-spin" /> : <Trash2Icon />} Delete now</Button>

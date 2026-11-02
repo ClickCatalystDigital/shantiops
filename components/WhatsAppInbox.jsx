@@ -3,6 +3,7 @@
 // Sales → WhatsApp. Left: conversations (a member's own; the Sales Head sees everyone's and can hand
 // one over). Right: the thread. Inside 24 hours of the customer's last message you type freely; after
 // that WhatsApp only accepts an approved template, so the box switches to a template picker.
+import { LOCALE, TIME_ZONE } from '@/lib/market';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeftIcon, CheckIcon, CheckCheckIcon, AlertCircleIcon, MessageCircleIcon, PlusIcon, SendIcon, SearchIcon } from 'lucide-react';
 import { api, showToast } from '@/lib/client';
@@ -18,13 +19,13 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogD
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const utc = s => new Date(String(s).includes('T') ? s : `${String(s).replace(' ', 'T')}Z`);
-const IST = 'Asia/Kolkata';
+const IST = TIME_ZONE;
 const dayKey = d => d.toLocaleDateString('en-CA', { timeZone: IST });
-const timeOf = s => utc(s).toLocaleTimeString('en-IN', { timeZone: IST, hour: 'numeric', minute: '2-digit' });
+const timeOf = s => utc(s).toLocaleTimeString(LOCALE, { timeZone: IST, hour: 'numeric', minute: '2-digit' });
 function when(s) {
   if (!s) return '';
   const d = utc(s);
-  return dayKey(d) === dayKey(new Date()) ? timeOf(s) : d.toLocaleDateString('en-IN', { timeZone: IST, day: 'numeric', month: 'short' });
+  return dayKey(d) === dayKey(new Date()) ? timeOf(s) : d.toLocaleDateString(LOCALE, { timeZone: IST, day: 'numeric', month: 'short' });
 }
 const nameOf = c => c.lead_name || c.customer_name || c.contact_name || `+${c.wa_id}`;
 
@@ -165,7 +166,7 @@ function Thread({ conv, seesAll, people, onBack, onChanged }) {
             const out = m.direction === 'out';
             return (
               <div key={m.id} className="flex flex-col">
-                {showDay && <p className="my-2 self-center rounded-full bg-background px-2.5 py-0.5 text-[11px] text-muted-foreground ring-1 ring-border">{utc(m.created_at).toLocaleDateString('en-IN', { timeZone: IST, day: 'numeric', month: 'short', year: 'numeric' })}</p>}
+                {showDay && <p className="my-2 self-center rounded-full bg-background px-2.5 py-0.5 text-[11px] text-muted-foreground ring-1 ring-border">{utc(m.created_at).toLocaleDateString(LOCALE, { timeZone: IST, day: 'numeric', month: 'short', year: 'numeric' })}</p>}
                 <div className={cn('max-w-[78%] rounded-2xl px-3 py-1.5 text-sm shadow-xs', out ? 'self-end rounded-br-sm bg-primary/10' : 'self-start rounded-bl-sm bg-background ring-1 ring-border')}>
                   <p className="whitespace-pre-wrap break-words">{m.body}</p>
                   <p className="mt-0.5 flex items-center justify-end gap-1 text-[10px] text-muted-foreground">

@@ -3,6 +3,7 @@
 // Settings → Sales → WhatsApp. Connect one WhatsApp Business number per company, straight to Meta
 // (no reseller, no monthly fee). Shows what to copy from Meta, the address Meta must call, and this
 // month's spend. Secrets are write-only: they are saved encrypted and never shown again.
+import { CURRENCY_SYMBOL, LOCALE } from '@/lib/market';
 import { useEffect, useState } from 'react';
 import { CopyIcon, RefreshCwIcon, PauseIcon, PlayIcon, UnplugIcon, ExternalLinkIcon } from 'lucide-react';
 import { api, showToast } from '@/lib/client';
@@ -14,7 +15,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const CATEGORY = { MARKETING: 'Marketing', UTILITY: 'Utility (order updates)', AUTHENTICATION: 'Authentication', SERVICE: 'Replies to customers', AUTHENTICATION_INTERNATIONAL: 'Authentication (international)' };
-const money = (n, currency) => new Intl.NumberFormat('en-IN', { style: 'currency', currency, maximumFractionDigits: 2 }).format(n);
+const money = (n, currency) => new Intl.NumberFormat(LOCALE, { style: 'currency', currency, maximumFractionDigits: 2 }).format(n);
 
 function Step({ n, title, children }) {
   return (
@@ -145,7 +146,7 @@ function CompanySetup({ company, account, webhookUrl, reload }) {
       {account ? <Spend company={company} /> : (
         <div className="rounded-xl border p-4 text-sm text-muted-foreground">
           <p className="font-medium text-foreground">What it costs</p>
-          <p className="mt-1">No monthly fee. Replying to a customer within 24 hours of their message is free. A message you start (a template) is charged per message by Meta, roughly ₹0.12 for an order update and ₹0.80 to ₹0.90 for marketing in India.</p>
+          <p className="mt-1">No monthly fee. Replying to a customer within 24 hours of their message is free. A message you start (a template) is charged per message by Meta, roughly {CURRENCY_SYMBOL}0.12 for an order update and {CURRENCY_SYMBOL}0.80 to {CURRENCY_SYMBOL}0.90 for marketing in India.</p>
         </div>
       )}
     </div>

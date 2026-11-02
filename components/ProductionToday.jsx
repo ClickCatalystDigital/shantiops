@@ -1,5 +1,6 @@
 'use client';
 
+import { LOCALE } from '@/lib/market';
 import { actionTypeLabel } from '@/lib/action-types.mjs';
 import { useMemo, useState, useEffect } from 'react';
 import Link from 'next/link';
@@ -208,12 +209,12 @@ export default function ProductionToday({
   const cursorLabel = useMemo(() => {
     if (view === 'week') {
       const days = weekDays(date);
-      const start = days[0].toLocaleDateString('en-IN', { month: 'short', day: 'numeric' });
-      const end = days[6].toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' });
+      const start = days[0].toLocaleDateString(LOCALE, { month: 'short', day: 'numeric' });
+      const end = days[6].toLocaleDateString(LOCALE, { month: 'short', day: 'numeric', year: 'numeric' });
       return `${start} – ${end}`;
     }
     if (view === 'year') return String(year);
-    return new Date(`${month}-01T00:00:00`).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+    return new Date(`${month}-01T00:00:00`).toLocaleDateString(LOCALE, { month: 'long', year: 'numeric' });
   }, [view, date, month, year]);
 
   async function addTask() {
@@ -281,7 +282,7 @@ export default function ProductionToday({
               {yearMonths(year).map(m => {
                 const mDays = monthGridDays(m);
                 const mNum = Number(m.split('-')[1]) - 1;
-                const mLabel = new Date(`${m}-01T00:00:00`).toLocaleDateString('en-IN', { month: 'short' });
+                const mLabel = new Date(`${m}-01T00:00:00`).toLocaleDateString(LOCALE, { month: 'short' });
                 return (
                   <button key={m} onClick={() => router.push(`/production?view=month&month=${m}${deptQS}`)}
                     className="flex flex-col gap-1.5 rounded-lg border p-2 text-left hover:bg-muted">

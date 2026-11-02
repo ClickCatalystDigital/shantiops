@@ -4,6 +4,7 @@
 // Orders: Orders (one row per order, milestone checkboxes + remarks, editable inline) and
 // Payments (an append-only log, added through a right-side Sheet). Data comes from server props;
 // mutations go through PATCH /api/sale-orders/[id] and POST /api/sale-order-payments.
+import { CURRENCY_SYMBOL, LOCALE } from '@/lib/market';
 import { salesPeopleOptions } from '@/lib/sales-people.mjs';
 import CustomerPicker from '@/components/CustomerPicker';
 import { defaultCompanyClient, companyShort } from '@/lib/company-filter.mjs';
@@ -36,7 +37,7 @@ const MODES = ['NEFT/IMPS', 'Cash', 'Cheque', 'Paytm', 'Credit note', 'Debit Not
 // already on an order. ponytail: move to a settings table if non-developers need to add names.
 const TRACK_STATUSES = ['Pending', 'Ready', 'WIP', 'Dispatched', 'Closed'];
 // Tables show exact rupees (payment data must be checkable to the paisa); the KPI cards keep the short L/Cr form.
-const exact = n => '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+const exact = n => `${CURRENCY_SYMBOL}` + Number(n || 0).toLocaleString(LOCALE, { maximumFractionDigits: 2 });
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 // DD-Mon-YYYY from an ISO date/datetime string, sliced (no Date object → no timezone drift).

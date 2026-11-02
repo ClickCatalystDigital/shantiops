@@ -2,6 +2,7 @@
 
 // components/SalesExtras.jsx — Sales Mantra parity tabs (SYSTEM.md §5dr): Weekly Planner and Library.
 // (AMC lives in components/SalesAmc.jsx.) Each tab fetches its own data, so app/sales/page.js is untouched.
+import { LOCALE } from '@/lib/market';
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -17,7 +18,7 @@ import { personLabel } from '@/lib/sales-people.mjs';
 import { actionTypeLabel } from '@/lib/action-types.mjs';
 
 const addDays = (iso, n) => { const d = new Date(`${iso}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
-const DAY = new Intl.DateTimeFormat('en-IN', { weekday: 'short', day: '2-digit', month: 'short', timeZone: 'UTC' });
+const DAY = new Intl.DateTimeFormat(LOCALE, { weekday: 'short', day: '2-digit', month: 'short', timeZone: 'UTC' });
 
 // ── Weekly Planner ────────────────────────────────────────────────────────────────────────────────
 // One week of planned follow-ups (Diary "next plan" dates) plus the overdue ones. Move a follow-up to

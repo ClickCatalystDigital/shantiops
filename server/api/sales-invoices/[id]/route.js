@@ -1,5 +1,6 @@
 // app/api/sales-invoices/[id]/route.js — status/payment_ref updates. Same shape as
 // app/api/quotations/[id]/route.js's PATCH.
+import { CURRENCY_SYMBOL, LOCALE } from '@/lib/market';
 import { hiddenSalesRecord } from '@/lib/sales-visibility';
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
@@ -105,7 +106,7 @@ export async function PATCH(req, props) {
     await notifyProjectCustomers(invoice.project_id, {
       kind: 'invoice_issued',
       title: 'A new invoice is available',
-      body: `Invoice ${invoice.invoice_no} — ₹${invoice.total.toLocaleString('en-IN')}`,
+      body: `Invoice ${invoice.invoice_no} — ${CURRENCY_SYMBOL}${invoice.total.toLocaleString(LOCALE)}`,
       dedupe_key: `invoice_issued:${invoice.id}`,
     });
   }

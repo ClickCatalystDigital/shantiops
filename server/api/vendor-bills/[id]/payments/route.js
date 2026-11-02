@@ -1,5 +1,6 @@
 // app/api/vendor-bills/[id]/payments/route.js — ACCOUNTING-IMPLEMENTATION-PLAN.md Phase 5
 // completion (AP settlement). Mirrors app/api/sales-invoices/[id]/receipts, purchase direction.
+import { CURRENCY_SYMBOL } from '@/lib/market';
 import { NextResponse } from 'next/server';
 import { execute, queryOne, queryAll, nextCounterValue } from '@/lib/db';
 import { getFreshSessionUser, isPM, canAccessDepartment } from '@/lib/auth';
@@ -45,7 +46,7 @@ export async function POST(req, props) {
   const alreadyPaid = await queryOne('SELECT COALESCE(SUM(amount), 0) AS n FROM vendor_payments WHERE vendor_bill_id = ?', [bill.id]);
   const balanceDue = Math.round((bill.payable_amount - alreadyPaid.n) * 100) / 100;
   if (amount > balanceDue + 0.01) {
-    return NextResponse.json({ error: `Amount exceeds the balance due (₹${balanceDue})` }, { status: 400 });
+    return NextResponse.json({ error: `Amount exceeds the balance due (${CURRENCY_SYMBOL}${balanceDue})` }, { status: 400 });
   }
 
   const paymentDate = b.payment_date || todayISO();

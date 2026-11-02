@@ -1,4 +1,5 @@
 // One service expense request — read, and the approval chain actions.
+import { CURRENCY_SYMBOL } from '@/lib/market';
 import { NextResponse } from 'next/server';
 import { execute } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment, isPM } from '@/lib/auth';
@@ -67,9 +68,9 @@ export async function PATCH(req, props) {
   await audit(`service_expense_${b.action}`, { actor: user.username, detail: `${r.req_no}${note ? `: ${note}` : ''}` });
   try {
     if (rejecting) await notifyRequester(r, { kind: 'service_expense', title: `${r.req_no} rejected by ${by}`, body: note, dedupe_key: `svcexp:${id}:rej` });
-    else if (step.to === 'pending_executive') await notifyRole(['executive'], { kind: 'service_expense', title: `${r.req_no} approved by PM ${by}`, body: `${r.requester_name} · ₹${r.amount}`, dedupe_key: `svcexp:${id}:exec` });
+    else if (step.to === 'pending_executive') await notifyRole(['executive'], { kind: 'service_expense', title: `${r.req_no} approved by PM ${by}`, body: `${r.requester_name} · ${CURRENCY_SYMBOL}${r.amount}`, dedupe_key: `svcexp:${id}:exec` });
     else {
-      await notifyDepartment('Accounts', { kind: 'service_expense', link: '/accounts/service-expenses', title: `${r.req_no} approved — ready for Accounts`, body: `${r.requester_name} · ₹${r.amount}`, dedupe_key: `svcexp:${id}:acct` });
+      await notifyDepartment('Accounts', { kind: 'service_expense', link: '/accounts/service-expenses', title: `${r.req_no} approved — ready for Accounts`, body: `${r.requester_name} · ${CURRENCY_SYMBOL}${r.amount}`, dedupe_key: `svcexp:${id}:acct` });
       await notifyRequester(r, { kind: 'service_expense', title: `${r.req_no} approved`, dedupe_key: `svcexp:${id}:ok` });
     }
   } catch { /* best effort */ }

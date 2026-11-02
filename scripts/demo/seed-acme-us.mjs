@@ -198,7 +198,7 @@ async function seedStock() {
 async function newLead(org, code, source, daysAgo, extra = {}) {
   const r = await api('POST', '/api/leads', {
     organization: org, company_name: org, lead_name: 'Purchasing Manager', phone: usPhone(org, '614'),
-    email: `enquiry@${org.split(' ')[0].toLowerCase()}.example`, source, owner_dept: 'Sales', assigned_to: 'sales_head',
+    email: `inquiries@${org.split(' ')[0].toLowerCase()}.example`, source, owner_dept: 'Sales', assigned_to: 'sales_head',
     account_manager: 'sales_head', enquiry_date: iso(-daysAgo), address: CUSTOMERS.find(c => c[0] === org)?.[1] || 'Cleveland',
     products: [{ product_id: ids.products[code], qty: 1 }],
   });
@@ -559,10 +559,6 @@ async function qcDocs(project) {
   await q('UPDATE qc_documents SET asme_data = ? WHERE id = ?', [JSON.stringify(asmeData(project, htDate)), doc.id]);
   const parts = (await q('SELECT id FROM qc_document_parts WHERE document_id = ?', [doc.id])).map(r => r.id);
   if (parts.length && certs.length) await api('POST', `/api/qc-documents/${doc.id}/link-parts`, { part_ids: parts, test_certificate_id: certs[0] });
-  // Form III A (2026 Form IV(Part-B)): the feed pipeline group, holding the boiler tube part.
-  const g = await api('POST', `/api/qc-documents/${doc.id}/iiia-groups`, { name: 'Feed pipeline' });
-  const [tubePart] = await q("SELECT id FROM qc_document_parts WHERE document_id = ? AND part_name LIKE '%TUBE%' ORDER BY id LIMIT 1", [doc.id]);
-  if (tubePart) await api('POST', `/api/qc-documents/${doc.id}/iiia-groups/${g.id ?? g.group?.id}/parts`, { part_id: tubePart.id });
   // Bought-out items (valves, gauges): pulled from the BOM and covered by the makers' certificate.
   await api('POST', `/api/qc-documents/${doc.id}/sync-mountings`, {});
   const mountings = (await q('SELECT id FROM qc_mountings WHERE document_id = ?', [doc.id])).map(r => r.id);
@@ -863,6 +859,18 @@ await seedTasks(projects);
 await seedAttendance();
 await seedHrAndPayables([p1, p2, p3], p5);
 await seedAccounts(p1, p2);
+
+// India-only masters that migrate() seeds in every deployment: the US build never reads them. US federal holidays
+// replace the Indian ones; staff are paid in dollars with no Indian professional-tax state.
+await q('DELETE FROM income_tax_slabs'); await q('DELETE FROM professional_tax_slabs'); await q('DELETE FROM holidays');
+const holCols = (await q('PRAGMA table_info(holidays)')).map(c => c.name);
+for (const [date, name] of [['2026-01-01', "New Year's Day"], ['2026-05-25', 'Memorial Day'], ['2026-07-03', 'Independence Day (observed)'],
+  ['2026-09-07', 'Labor Day'], ['2026-11-26', 'Thanksgiving Day'], ['2026-11-27', 'Day after Thanksgiving'], ['2026-12-25', 'Christmas Day'],
+  ['2027-01-01', "New Year's Day"], ['2027-05-31', 'Memorial Day'], ['2027-07-05', 'Independence Day (observed)'], ['2027-09-06', 'Labor Day'],
+  ['2027-11-25', 'Thanksgiving Day'], ['2027-11-26', 'Day after Thanksgiving'], ['2027-12-24', 'Christmas Day (observed)']]) {
+  await q(`INSERT INTO holidays (${holCols.includes('holiday_date') ? 'holiday_date' : 'date'}, name) VALUES (?, ?)`, [date, name]);
+}
+await q("UPDATE employees SET salary_currency = 'USD', pt_state = ''");
 
 // The nightly reset shifts every date by (today − seeded_on): workers/demo-reset-cron.
 await db.batch(['CREATE TABLE IF NOT EXISTS demo_meta (seeded_on TEXT NOT NULL)', 'DELETE FROM demo_meta', { sql: 'INSERT INTO demo_meta VALUES (?)', args: [iso(0)] }], 'write');

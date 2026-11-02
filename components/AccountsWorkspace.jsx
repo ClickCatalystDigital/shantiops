@@ -3,6 +3,7 @@
 // components/AccountsWorkspace.jsx — Accounts' own workspace, same shared-sidebar shape as
 // HrWorkspace/PayrollWorkspace. Phase 0 (ACCOUNTING-IMPLEMENTATION-PLAN.md) only needs Company
 // Settings; later phases add tabs here (GST/TDS masters in Phase 1, Sales Invoice in Phase 2, ...).
+import { CURRENCY_SYMBOL, LOCALE } from '@/lib/market';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEntityHighlight } from '@/lib/use-entity-highlight';
@@ -91,7 +92,7 @@ function EditRegistrationDialog({ entity, onSaved }) {
 function ProvenanceTag({ source, updatedAt }) {
   if (!source) return <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">Not set</span>;
   const label = source === 'sandbox' ? 'Sandbox' : 'Manual';
-  const date = updatedAt ? new Date(updatedAt).toLocaleDateString('en-IN') : null;
+  const date = updatedAt ? new Date(updatedAt).toLocaleDateString(LOCALE) : null;
   return (
     <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${source === 'sandbox' ? 'bg-info/10 text-info' : 'bg-warning/10 text-warning'}`}>
       {label}{date ? ` · ${date}` : ''}
@@ -209,7 +210,7 @@ function GstDetailCard({ entity, onApplied }) {
         {entity.gst_extra_fetched_at && (
           <div className="col-span-full mt-2 grid gap-2 border-t pt-3 sm:grid-cols-2">
             <p className="col-span-full text-xs font-medium text-muted-foreground">
-              GST detail snapshot — Sandbox · {new Date(entity.gst_extra_fetched_at).toLocaleDateString('en-IN')}
+              GST detail snapshot — Sandbox · {new Date(entity.gst_extra_fetched_at).toLocaleDateString(LOCALE)}
             </p>
             <div><span className="text-xs text-muted-foreground">Jurisdiction (State / Central)</span><p className="text-sm">{entity.gst_jurisdiction_state || '—'} / {entity.gst_jurisdiction_central || '—'}</p></div>
             <div><span className="text-xs text-muted-foreground">Cancellation Date</span><p className="text-sm">{entity.gst_cancellation_date || 'Not cancelled'}</p></div>
@@ -339,7 +340,7 @@ function EwayBillCredentialsCard({ entity }) {
           <li>3. Test Connection to confirm.</li>
         </ol>
         <p className="text-xs">
-          {status?.configured ? `Configured — last saved ${status.updated_at ? new Date(status.updated_at).toLocaleDateString('en-IN') : ''}.` : 'Not configured yet.'}
+          {status?.configured ? `Configured — last saved ${status.updated_at ? new Date(status.updated_at).toLocaleDateString(LOCALE) : ''}.` : 'Not configured yet.'}
         </p>
         <div className="grid gap-3 sm:grid-cols-2">
           {EWAY_BILL_FIELDS.map(([key, label]) => (
@@ -844,7 +845,7 @@ function ReceiptsPaymentsCard({ company }) {
     setSaving(true);
     try {
       const res = await api(`/api/sales-invoices/${invoiceId}/receipts`, { method: 'POST', body: { amount: Number(receiptAmount) } });
-      showToast(`Receipt recorded — balance due ₹${fmt(res.balance_due)}`);
+      showToast(`Receipt recorded — balance due ${CURRENCY_SYMBOL}${fmt(res.balance_due)}`);
       setInvoiceId(''); setReceiptAmount(''); load();
     } catch (err) { showToast(err.message, 'error'); } finally { setSaving(false); }
   }
@@ -853,7 +854,7 @@ function ReceiptsPaymentsCard({ company }) {
     setSaving(true);
     try {
       const res = await api(`/api/vendor-bills/${billId}/payments`, { method: 'POST', body: { amount: Number(paymentAmount) } });
-      showToast(`Payment recorded — balance due ₹${fmt(res.balance_due)}`);
+      showToast(`Payment recorded — balance due ${CURRENCY_SYMBOL}${fmt(res.balance_due)}`);
       setBillId(''); setPaymentAmount(''); load();
     } catch (err) { showToast(err.message, 'error'); } finally { setSaving(false); }
   }

@@ -1,3 +1,4 @@
+import { IS_US } from '@/lib/market';
 import { NextResponse } from 'next/server';
 import { getFreshSessionUser, isAdmin, isInternal, isPM, headDepartments } from '@/lib/auth';
 import { queryOne } from '@/lib/db';
@@ -18,7 +19,7 @@ You cannot see the company's data (orders, stock, payments). If asked for it, sa
 
 const DATA_SYSTEM = `You are the assistant inside SB Ops, a manufacturing operations app. Answer the question from the DATA below, which was just read from the company's own records.
 - Use only the DATA. Copy numbers and names exactly; never estimate, add up beyond what is shown, or fill gaps.
-- Only the fields order_value, received, pending and outstanding are money, in Indian rupees: write those with the rupee sign and Indian digit grouping. Every other number is a count or a quantity: write it plain, with no currency sign.
+- Only the fields order_value, received, pending and outstanding are money, in ${IS_US ? 'US dollars: write those with the dollar sign and US digit grouping (1,234,567)' : 'Indian rupees: write those with the rupee sign and Indian digit grouping'}. Every other number is a count or a quantity: write it plain, with no currency sign.
 - Be short: one line of answer, then a brief list if there are several rows. Plain text only, no markdown symbols.
 - If the DATA does not answer the question, say what it does show.`;
 

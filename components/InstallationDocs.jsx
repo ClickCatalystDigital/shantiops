@@ -3,6 +3,7 @@
 // Installation → Documentation. Pick a project (or a service-only customer) + call type → fill the
 // Commissioning report or the Field Service report (Breakdown / ASC / Other). Field layout comes from
 // lib/installation-report-template.mjs (shared with the PDF). Tables on desktop, cards on phones.
+import { LOCALE } from '@/lib/market';
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { PlusIcon, PencilIcon, TrashIcon, DownloadIcon, XIcon, UserPlusIcon, FileTextIcon, LockIcon, FolderKanbanIcon, UsersIcon, RotateCcwIcon } from 'lucide-react';
 import { api, showToast } from '@/lib/client';
@@ -186,7 +187,7 @@ function ReportSheet({ init, onClose, onSaved }) {
               <div className="mt-3 flex flex-col gap-2">
                 {history.map(h => (
                   <div key={h.id} className="rounded-lg bg-muted/50 p-2.5">
-                    <div className="text-xs text-muted-foreground">{h.report_no} · {h.call_type} · {new Date(String(h.at).replace(' ', 'T') + 'Z').toLocaleString('en-IN')}</div>
+                    <div className="text-xs text-muted-foreground">{h.report_no} · {h.call_type} · {new Date(String(h.at).replace(' ', 'T') + 'Z').toLocaleString(LOCALE)}</div>
                     <div className="mt-1 whitespace-pre-wrap">{h.remark}</div>
                   </div>
                 ))}

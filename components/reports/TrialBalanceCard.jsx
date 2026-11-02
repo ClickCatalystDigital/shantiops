@@ -6,11 +6,12 @@
 // views (TrialBalanceCard, ProfitLossCard, ...) were module-private, non-exported functions — this
 // is the first one pulled out; AccountRow/fmt come with it since it depends on them, and
 // AccountsWorkspace imports them back for its own ProfitLossCard/BalanceSheetCard.
+import { LOCALE } from '@/lib/market';
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { api, showToast } from '@/lib/client';
 
-export function fmt(n) { return (n ?? 0).toLocaleString('en-IN'); }
+export function fmt(n) { return (n ?? 0).toLocaleString(LOCALE); }
 
 export function AccountRow({ a }) {
   return (

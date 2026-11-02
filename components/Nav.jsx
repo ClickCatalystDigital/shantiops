@@ -1,4 +1,6 @@
 'use client';
+import { IS_US } from '@/lib/market';
+import { useUnits, saveUnits } from './useUnits';
 import { tabBase } from '@/lib/workspace-routes';
 
 import { useEffect, useState } from 'react';
@@ -10,6 +12,7 @@ import {
   CalendarDaysIcon, HardHatIcon, ShoppingCartIcon, InboxIcon, FlaskConicalIcon,
   TagIcon, WarehouseIcon, TrendingUpIcon, UsersIcon, CalculatorIcon, MapPinIcon, NetworkIcon, MegaphoneIcon,
   LandmarkIcon, ClipboardListIcon, PencilRulerIcon, ReceiptIcon,
+  RulerIcon,
 } from 'lucide-react';
 import { DEPARTMENTS } from '@/lib/milestones';
 import { departmentsFor } from '@/lib/manager-scope.mjs';
@@ -186,6 +189,7 @@ export default function Nav({ user, reportDepartments = [] }) {
     localStorage.setItem('theme', next);
   }
 
+  const units = useUnits();
   async function logout() {
     await fetch('/api/logout', { method: 'POST' });
     router.push('/login');
@@ -282,6 +286,12 @@ export default function Nav({ user, reportDepartments = [] }) {
                   </DropdownMenuSub>
                 )}
                 <DropdownMenuSeparator />
+                {/* Units setting (US build only for now; India keeps its menu unchanged): display only, values stay metric. */}
+                {IS_US && (
+                  <DropdownMenuItem onClick={() => saveUnits(units === 'imperial' ? 'metric' : 'imperial')}>
+                    <RulerIcon data-icon="inline-start" />Units: {units === 'imperial' ? 'Imperial (in, lb, psi, °F)' : 'Metric (mm, kg, bar, °C)'}
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem onClick={() => router.push('/settings')}><SettingsIcon data-icon="inline-start" />Settings</DropdownMenuItem>
                 <DropdownMenuItem onClick={logout} variant="destructive"><LogOutIcon data-icon="inline-start" />Logout</DropdownMenuItem>
               </DropdownMenuContent>

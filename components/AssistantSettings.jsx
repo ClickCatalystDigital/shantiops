@@ -1,6 +1,7 @@
 'use client';
 
 // Settings → Assistant (admin only): the OpenRouter key and which model answers.
+import { LOCALE } from '@/lib/market';
 import { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardAction, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -66,7 +67,7 @@ function DataAccess({ settings, onChange }) {
       <div className="min-w-0 flex-1 text-xs text-muted-foreground">
         <p className="font-medium text-foreground">Answers about live data (orders, stock, payments)</p>
         {d.on
-          ? <p>Approved by {d.approver_name}{d.approver_role ? `, ${d.approver_role}` : ''}. Recorded by {d.recorded_by} on {new Date(d.at).toLocaleString('en-IN')}. For these questions the rows looked up are sent to OpenRouter to be worded. Each person only gets look-ups their department may see.</p>
+          ? <p>Approved by {d.approver_name}{d.approver_role ? `, ${d.approver_role}` : ''}. Recorded by {d.recorded_by} on {new Date(d.at).toLocaleString(LOCALE)}. For these questions the rows looked up are sent to OpenRouter to be worded. Each person only gets look-ups their department may see.</p>
           : <p>Off. The assistant sends only help text and the question to OpenRouter, never company data. Switching this on sends the rows needed for an answer, so it needs the customer's approval of OpenRouter's terms, recorded here.</p>}
       </div>
       {d.on
@@ -163,7 +164,7 @@ export default function AssistantSettings() {
           <Label>Writing model</Label>
           <SearchableSelect value={model} onChange={setModel} options={options} displayValue={picked ? picked.name : model} placeholder="Search models…" />
           <p className="text-xs text-muted-foreground">
-            {picked ? `${picked.id} · input ${price(picked.in)}, output ${price(picked.out)} per million tokens · reads up to ${Number(picked.context).toLocaleString('en-IN')} tokens` : model}
+            {picked ? `${picked.id} · input ${price(picked.in)}, output ${price(picked.out)} per million tokens · reads up to ${Number(picked.context).toLocaleString(LOCALE)} tokens` : model}
           </p>
         </div>
         <div className="grid gap-2 lg:col-span-2">

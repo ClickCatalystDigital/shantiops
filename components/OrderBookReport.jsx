@@ -4,6 +4,7 @@
 // of the real order book (imported trackers + new orders) and the payment log: what was booked,
 // collected, still owed, how old it is, and who/which customers it sits with. Math in
 // lib/order-book.mjs; data already scoped by company selector + member visibility (app/reports/page.js).
+import { LOCALE } from '@/lib/market';
 import { useMemo, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Legend } from 'recharts';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
@@ -22,7 +23,7 @@ import { COMPANY_NAMES } from '@/lib/company-profiles';
 const companyColor = (name) => { const i = COMPANY_NAMES.indexOf(name); return `var(--color-chart-${i >= 0 ? (i % 5) + 1 : 3})`; };
 // chart config keys become CSS variables (--color-<key>), so they must not contain spaces
 const safeKey = c => `co_${c.replace(/[^A-Za-z0-9]/g, '_')}`;
-const monthLabel = ym => new Date(`${ym}-01T00:00:00`).toLocaleDateString('en-IN', { month: 'short', year: '2-digit' });
+const monthLabel = ym => new Date(`${ym}-01T00:00:00`).toLocaleDateString(LOCALE, { month: 'short', year: '2-digit' });
 
 function Tile({ label, value, hint, warn }) {
   return (

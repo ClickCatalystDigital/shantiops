@@ -5,6 +5,7 @@
 // CUSTOMER record, so the two overlays show exactly the same data. An enquiry with no customer yet
 // shows one "Save to customer" button (the normal duplicate-aware conversion) before anything is
 // editable. Products and Follow-up are enquiry-only.
+import { CURRENCY_SYMBOL } from '@/lib/market';
 import { useEffect, useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -288,7 +289,7 @@ function CompetitorsTab({ customerId, leadId }) {
       <div className="grid items-end gap-2 sm:grid-cols-[1fr_1fr_8rem_auto_auto]">
         <div className="grid gap-1.5"><Label>Competitor</Label><Input value={f.competitor} onChange={e => setF({ ...f, competitor: e.target.value })} /></div>
         <div className="grid gap-1.5"><Label>Their product</Label><Input value={f.product} onChange={e => setF({ ...f, product: e.target.value })} /></div>
-        <div className="grid gap-1.5"><Label>Price (₹)</Label><Input type="number" min="0" value={f.price} onChange={e => setF({ ...f, price: e.target.value })} /></div>
+        <div className="grid gap-1.5"><Label>Price ({CURRENCY_SYMBOL})</Label><Input type="number" min="0" value={f.price} onChange={e => setF({ ...f, price: e.target.value })} /></div>
         <label className="flex h-9 items-center gap-2 text-sm"><Checkbox checked={f.lost_to} onCheckedChange={v => setF({ ...f, lost_to: !!v })} />We lost to them</label>
         <Button size="sm" onClick={add}><PlusIcon className="size-3.5" />Add</Button>
       </div>

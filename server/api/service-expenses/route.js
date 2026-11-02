@@ -1,4 +1,5 @@
 // Service expense requests — list (mine / approvals / accounts) and create.
+import { CURRENCY_SYMBOL } from '@/lib/market';
 import { NextResponse } from 'next/server';
 import { execute, nextCounterValue, withTransaction } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment, isPM } from '@/lib/auth';
@@ -71,7 +72,7 @@ export async function POST(req) {
   }
   await audit('service_expense_submitted', { actor: user.username, detail: `${reqNo} ${kind} ${n.amount}` });
   try {
-    await notifyRole(['manager'], { kind: 'service_expense', title: `${reqNo} awaiting your approval`, body: `${user.display_name || user.username} · ${kind === 'cash' ? 'Cash request' : 'Travel allowance'} · ₹${n.amount}`, dedupe_key: `svcexp:${id}:manager` });
+    await notifyRole(['manager'], { kind: 'service_expense', title: `${reqNo} awaiting your approval`, body: `${user.display_name || user.username} · ${kind === 'cash' ? 'Cash request' : 'Travel allowance'} · ${CURRENCY_SYMBOL}${n.amount}`, dedupe_key: `svcexp:${id}:manager` });
   } catch { /* best effort */ }
   return NextResponse.json({ id, req_no: reqNo });
 }

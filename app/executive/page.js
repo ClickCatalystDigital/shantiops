@@ -1,3 +1,4 @@
+import { CURRENCY_SYMBOL, LOCALE } from '@/lib/market';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getExecutiveSummary, getProjectsWithStatus, getDependencyHealthSummary, getExecutiveBusiness, getRemnantSavings } from '@/lib/data';
@@ -61,7 +62,7 @@ function Bar({ label, value, max, right, tone = 'bg-primary' }) {
 }
 
 const DEPT_LABEL = { Installation: 'Service' };
-const money = v => (v ? formatMoney(v) : '₹0'); // formatMoney shows "—" for zero; these tiles want a number
+const money = v => (v ? formatMoney(v) : `${CURRENCY_SYMBOL}0`); // formatMoney shows "—" for zero; these tiles want a number
 const DEPT_ORDER = ['Design', 'Procurement', 'Stores', 'Production', 'QC', 'Dispatch', 'Installation'];
 
 export default async function Executive() {
@@ -171,12 +172,12 @@ export default async function Executive() {
         <Card>
           <CardHeader>
             <CardTitle>This Month</CardTitle>
-            <CardAction><span className="text-xs text-muted-foreground">{new Date(`${month}-01`).toLocaleString('en-IN', { month: 'long', year: 'numeric' })}</span></CardAction>
+            <CardAction><span className="text-xs text-muted-foreground">{new Date(`${month}-01`).toLocaleString(LOCALE, { month: 'long', year: 'numeric' })}</span></CardAction>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             {steel.pieces > 0 && (
               <p className="rounded-md bg-success/10 px-3 py-2 text-sm text-success">
-                Steel reused from remnants: <span className="font-semibold tnum">{steel.kg.toLocaleString('en-IN')} kg</span>
+                Steel reused from remnants: <span className="font-semibold tnum">{steel.kg.toLocaleString(LOCALE)} kg</span>
                 {steel.rupees > 0 && <> · <span className="font-semibold tnum">{formatMoney(steel.rupees)}</span> not bought again</>}
                 <span className="text-xs opacity-80"> ({steel.pieces} piece{steel.pieces === 1 ? '' : 's'}, all companies, to date)</span>
               </p>

@@ -11,6 +11,7 @@
 //
 // SaleOrderDetailsSheet is also what the Sale Orders row's document icon opens (the old plain
 // SaleOrderItemsSheet was removed 2026-09-29).
+import { CURRENCY_SYMBOL } from '@/lib/market';
 import { useState, useEffect } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -493,7 +494,7 @@ export function SaleOrderDetailsSheet({ saleOrderId, branches, salesProducts = [
                   <div className="flex gap-1">
                     <Select value={discountMode} onValueChange={setDiscountMode}>
                       <SelectTrigger className="w-16"><SelectValue /></SelectTrigger>
-                      <SelectContent><SelectItem value="pct">%</SelectItem><SelectItem value="amount">₹</SelectItem></SelectContent>
+                      <SelectContent><SelectItem value="pct">%</SelectItem><SelectItem value="amount">{CURRENCY_SYMBOL}</SelectItem></SelectContent>
                     </Select>
                     {discountMode === 'pct'
                       ? <Input value={so.discount_pct ?? 0} onChange={e => set('discount_pct')(e.target.value)} />

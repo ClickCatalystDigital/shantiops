@@ -3,6 +3,7 @@
 // app/api/sales-invoices/[id]/credit-note (real per-company per-FY series via `counters`).
 // Recording a receipt posts Bank & Cash / Accounts Receivable directly — it does not touch the
 // invoice's own Sales Invoice journal entry (Revenue/GST were already posted at issue).
+import { CURRENCY_SYMBOL } from '@/lib/market';
 import { hiddenSalesRecord } from '@/lib/sales-visibility';
 import { NextResponse } from 'next/server';
 import { execute, queryOne, queryAll, nextCounterValue } from '@/lib/db';
@@ -56,7 +57,7 @@ export async function POST(req, props) {
   const alreadyReceived = await queryOne('SELECT COALESCE(SUM(amount), 0) AS n FROM customer_receipts WHERE sales_invoice_id = ?', [invoice.id]);
   const balanceDue = Math.round((invoice.total - alreadyReceived.n) * 100) / 100;
   if (amount > balanceDue + 0.01) {
-    return NextResponse.json({ error: `Amount exceeds the balance due (₹${balanceDue})` }, { status: 400 });
+    return NextResponse.json({ error: `Amount exceeds the balance due (${CURRENCY_SYMBOL}${balanceDue})` }, { status: 400 });
   }
 
   const receiptDate = b.receipt_date || todayISO();

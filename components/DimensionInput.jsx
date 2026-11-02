@@ -8,12 +8,16 @@ import { useState } from 'react';
 import { Input } from './ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { cn } from '@/lib/utils';
+import { useUnits } from './useUnits';
 
-const UNIT_TO_MM = { mm: 1, m: 1000 };
+// Imperial (the Units setting, components/useUnits.js) offers in / ft instead; the value stays in mm either way.
+const UNIT_TO_MM = { mm: 1, m: 1000, in: 25.4, ft: 304.8 };
 
 export default function DimensionInput({ valueMm, onChangeMm, placeholder, className, required, autoFocus }) {
-  const [unit, setUnit] = useState('mm');
-  const shown = valueMm === '' || valueMm == null ? '' : String(Number(valueMm) / UNIT_TO_MM[unit]);
+  const imperial = useUnits() === 'imperial';
+  const [picked, setUnit] = useState(null);
+  const unit = picked || (imperial ? 'in' : 'mm');
+  const shown = valueMm === '' || valueMm == null ? '' : String(Number((Number(valueMm) / UNIT_TO_MM[unit]).toFixed(4)));
 
   function handleChange(v) {
     onChangeMm(v === '' ? '' : String(Number(v) * UNIT_TO_MM[unit]));
@@ -26,8 +30,7 @@ export default function DimensionInput({ valueMm, onChangeMm, placeholder, class
       <Select value={unit} onValueChange={setUnit}>
         <SelectTrigger className="w-[4.5rem] shrink-0"><SelectValue /></SelectTrigger>
         <SelectContent>
-          <SelectItem value="mm">mm</SelectItem>
-          <SelectItem value="m">m</SelectItem>
+          {(imperial ? ['in', 'ft'] : ['mm', 'm']).map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
         </SelectContent>
       </Select>
     </div>

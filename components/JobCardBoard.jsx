@@ -1,5 +1,6 @@
 'use client';
 
+import { CURRENCY_SYMBOL, LOCALE } from '@/lib/market';
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api, showToast } from '@/lib/client';
@@ -457,7 +458,7 @@ function JobCardDetailSheet({ id, onClose, router, workers }) {
                 <p className="text-sm font-medium">Time logged</p>
                 {detail.laborCost > 0 && (
                   <span className="text-xs text-muted-foreground tnum" title="Labor only — consumables below aren't priced">
-                    ₹{detail.laborCost.toLocaleString('en-IN')} labor only
+                    {CURRENCY_SYMBOL}{detail.laborCost.toLocaleString(LOCALE)} labor only
                   </span>
                 )}
               </div>
@@ -466,7 +467,7 @@ function JobCardDetailSheet({ id, onClose, router, workers }) {
                 <div key={l.id} className="flex items-center justify-between text-xs">
                   <span>{l.employee_name}</span>
                   <span className="text-muted-foreground tnum">
-                    {(l.minutes / 60).toFixed(1)}h{l.cost ? ` · ₹${l.cost.toLocaleString('en-IN')}` : ''}
+                    {(l.minutes / 60).toFixed(1)}h{l.cost ? ` · ${CURRENCY_SYMBOL}${l.cost.toLocaleString(LOCALE)}` : ''}
                   </span>
                 </div>
               ))}

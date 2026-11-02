@@ -7,6 +7,7 @@
 //   RemnantsQueue (Stores → Inward → Remnants): one click to Confirm a remnant into common stock, or
 //   Scrap it. Both read GET /api/stock-pieces?status=…; every rule (CAS, ownership, cost) lives in
 //   lib/stock-pieces.js, not here.
+import { CURRENCY_SYMBOL, LOCALE } from '@/lib/market';
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, showToast } from '@/lib/client';
@@ -93,8 +94,8 @@ export function RemnantsProduction({ projects = [] }) {
     <div className="flex flex-col gap-4">
       {steel?.pieces > 0 && (
         <p className="text-sm text-muted-foreground">
-          Steel reused from remnants so far: <span className="font-medium text-foreground">{steel.kg.toLocaleString('en-IN')} kg</span> across {steel.pieces} piece{steel.pieces === 1 ? '' : 's'}
-          {steel.rupees > 0 && <> · <span className="font-medium text-foreground">₹{Math.round(steel.rupees).toLocaleString('en-IN')}</span> not bought again</>}
+          Steel reused from remnants so far: <span className="font-medium text-foreground">{steel.kg.toLocaleString(LOCALE)} kg</span> across {steel.pieces} piece{steel.pieces === 1 ? '' : 's'}
+          {steel.rupees > 0 && <> · <span className="font-medium text-foreground">{CURRENCY_SYMBOL}{Math.round(steel.rupees).toLocaleString(LOCALE)}</span> not bought again</>}
         </p>
       )}
       <div className="flex flex-wrap items-center justify-between gap-2">

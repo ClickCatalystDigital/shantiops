@@ -1,3 +1,4 @@
+import { CURRENCY_SYMBOL, LOCALE } from '@/lib/market';
 import Link from 'next/link';
 import CustomerNavLinks from '@/components/CustomerNavLinks';
 import { notFound, redirect } from 'next/navigation';
@@ -71,7 +72,7 @@ export default async function Portal(props) {
                   <FileTextIcon className="size-4 shrink-0 text-muted-foreground" />
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium">Invoice — {inv.invoice_no}</p>
-                    <p className="text-xs text-muted-foreground">{formatDate(inv.invoice_date)} · ₹{inv.total.toLocaleString('en-IN')}</p>
+                    <p className="text-xs text-muted-foreground">{formatDate(inv.invoice_date)} · {CURRENCY_SYMBOL}{inv.total.toLocaleString(LOCALE)}</p>
                   </div>
                 </div>
                 <Button asChild variant="outline" size="sm" className="shrink-0">

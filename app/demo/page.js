@@ -1,4 +1,5 @@
 // Public demo entry (DEMO_MODE=1 only): a short form, then the visitor picks a department to enter as.
+import { IS_US } from '@/lib/market';
 import { cookies } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { DEMO_ROLES } from '@/lib/demo-roles';
@@ -8,7 +9,9 @@ import { FEATURES, FEATURE_DETAILS } from '@/lib/product-features';
 
 export const metadata = {
   title: 'Boiler Manufacturing ERP: Live Demo | SB Ops by Ahrom Labs',
-  description: 'Try SB Ops, the ERP built for boiler and pressure-vessel manufacturers: enquiry to dispatch, BOM, procurement, stores, production job cards, IBR documents, GST accounts and service.',
+  description: IS_US
+    ? 'Try SB Ops, the ERP built for boiler and pressure-vessel manufacturers: inquiry to shipping, BOM, procurement, receiving, production job cards, ASME data reports, accounts and service.'
+    : 'Try SB Ops, the ERP built for boiler and pressure-vessel manufacturers: enquiry to dispatch, BOM, procurement, stores, production job cards, IBR documents, GST accounts and service.',
   robots: { index: true, follow: true },
 };
 

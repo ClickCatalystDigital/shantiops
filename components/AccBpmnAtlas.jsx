@@ -1,6 +1,7 @@
 // components/AccBpmnAtlas.jsx — the Accounts workflow audit + BPMN drawing guide, rendered at
 // /acc-bpmn. Every workflow/gap here was traced against the live codebase in one audit pass — no
 // live data, so this is a plain server component (native <details> needs no client JS at all).
+import { CURRENCY_SYMBOL } from '@/lib/market';
 import styles from '@/app/acc-bpmn/acc-bpmn.module.css';
 
 function Chip({ dept, children }) {
@@ -141,7 +142,7 @@ const WORKFLOWS = [
     ],
     documents: ['fixed_assets', 'depreciation_runs / depreciation_run_lines'],
     ledger: 'Purchase: Dr Fixed Assets. Depreciation: Dr Depreciation Expense / Cr Accumulated Depreciation, one entry per company per period. Disposal: clears cost + accumulated depreciation, plugs the difference to Gain/Loss on Disposal.',
-    ends: '“active” → “disposed” (permanent — a mis-entered asset is corrected by disposing it at ₹0, never edited in place).',
+    ends: `“active” → “disposed” (permanent — a mis-entered asset is corrected by disposing it at ${CURRENCY_SYMBOL}0, never edited in place).`,
     gaps: [
       { tag: 'Confirmed bug', brick: true, text: 'Both Purchase and Depreciation Run write their rows before posting the ledger entry. Depreciation is the worse case: its idempotency guard is a plain “does a run for this period already exist” check — if a run’s ledger post fails, the run row already exists, so a retry silently reports “already ran” and the entry can never be posted.' },
       { tag: 'Correct', text: 'Disposal is the one fixed-asset action that posts before updating status — the pattern the other two should follow.' },

@@ -2,6 +2,7 @@
 
 // Read-only view of one Service expense request (cash or travel) + the Manager → Executive →
 // Accounts progress strip. Shared by the Service page, Approvals and Accounts.
+import { CURRENCY_SYMBOL, LOCALE } from '@/lib/market';
 import { CheckIcon, XIcon, CircleDotIcon, DownloadIcon, PaperclipIcon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -10,7 +11,7 @@ import { formatDate } from '@/lib/format';
 import { STATUS_LABEL, amountInWords, sumRows, tourSummary } from '@/lib/service-expense.mjs';
 import { cn } from '@/lib/utils';
 
-export const inr = n => `₹${Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+export const inr = n => `${CURRENCY_SYMBOL}${Number(n || 0).toLocaleString(LOCALE, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 const TONE = {
   pending_manager: 'bg-warning/10 text-warning ring-warning/20',
