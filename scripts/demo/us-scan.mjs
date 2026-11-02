@@ -46,7 +46,8 @@ export function findIndian(text) {
   const out = [];
   for (const re of [ciRe, csRe]) for (const m of t.matchAll(re)) out.push({ term: m[0], at: m.index });
   for (const m of t.matchAll(fyRe)) if (Number(m[2]) === (Number(m[1]) + 1) % 100) out.push({ term: m[0], at: m.index });
-  return out.filter(h => !ALLOW.some(a => a.test(t.slice(Math.max(0, h.at - 24), h.at + 24)) || a.test(t.slice(h.at, h.at + 24))))
+  // A URL path segment (/sales/quotations) is an address, not wording: the app links it under the tab's US name.
+  return out.filter(h => t[h.at - 1] !== '/').filter(h => !ALLOW.some(a => a.test(t.slice(Math.max(0, h.at - 24), h.at + 24)) || a.test(t.slice(h.at, h.at + 24))))
     .map(h => ({ ...h, context: t.slice(Math.max(0, h.at - 50), h.at + 50).replace(/\s+/g, ' ') }));
 }
 
@@ -230,10 +231,19 @@ async function scanPdfs(pdfLinks) {
 }
 
 async function scanAi() {
-  // The prompt the server sends with every question (source text, US build).
-  for (const f of ['server/api/assistant/chat/route.js', 'lib/assistant.js', 'lib/assistant-help.mjs', 'lib/assistant-tabs.mjs']) {
-    if (existsSync(f)) report(`ai prompt ${f}`, readFileSync(f, 'utf8').replace(/^\s*\/\/.*$/gm, '').replace(/IS_US\s*\?[^:]*:/g, ''));
+  // What Ember receives in this build (run with MARKET=NA): the two system prompts, evaluated; the general help and
+  // the screen/tab list after the US filter. The department guide is the /help page, which the page crawl reads.
+  const { usDeep, IS_US } = await import('../../lib/market.js');
+  const route = readFileSync('server/api/assistant/chat/route.js', 'utf8');
+  for (const name of ['SYSTEM', 'DATA_SYSTEM']) {
+    const tpl = route.match(new RegExp(`const ${name} = (\`[\\s\\S]*?\`);`))?.[1];
+    if (tpl) report(`ai prompt ${name}`, new Function('IS_US', `return ${tpl}`)(IS_US));
   }
+  const lib = readFileSync('lib/assistant.js', 'utf8');
+  const general = lib.match(/const GENERAL = usDeep\((\{[\s\S]*?\n\})\);/)?.[1];
+  if (general) report('ai prompt general help', JSON.stringify(new Function('usDeep', `return usDeep(${general})`)(usDeep)));
+  const help = await import('../../lib/assistant-help.mjs');
+  report('ai prompt screens and tabs', help.screenList(['Design', 'Engineering', 'Procurement', 'Stores', 'Production', 'QC', 'Dispatch', 'Installation', 'Sales', 'Marketing', 'HR', 'Accounts'], null) + JSON.stringify(help.CANNED));
   const starters = (process.env.AI_STARTERS || 'What is overdue today?|Which projects need my attention?|How much is outstanding by customer?|What is the status of AB-1005?').split('|');
   const { token } = await signIn('manager');
   for (const q of starters) {
