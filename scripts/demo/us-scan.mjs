@@ -148,9 +148,11 @@ async function scanPages(pdfLinks) {
   const origin = new URL(BASE).origin;
   const visit = async url => {
     await c.send('Page.navigate', { url });
-    await sleep(2500);
+    await sleep(Number(process.env.WAIT_MS || 2500)); // a deployed site needs longer (WAIT_MS=6000)
     const r = await c.send('Runtime.evaluate', { expression: READ, awaitPromise: true, returnByValue: true });
-    return JSON.parse(r.result?.result?.value || '{"text":"","links":[]}');
+    const v = r.result?.result?.value;
+    if (typeof v !== 'string') { hits++; console.log(`HIT page ${url}: could not read the page (${r.result?.exceptionDetails?.text || 'not loaded'})`); return { text: '', links: [] }; }
+    return JSON.parse(v);
   };
   // The public entry page, before signing in.
   report('page /demo (visitor)', (await visit(`${BASE}/demo`)).text);

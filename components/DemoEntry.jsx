@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Loader2Icon, ArrowRightIcon, ArrowUpIcon, ChevronRightIcon, GlobeIcon } from 'lucide-react';
 import { FEATURES, FEATURE_DETAILS, INTEGRATIONS } from '@/lib/product-features';
 import { track } from '@/components/DemoAnalytics';
+import { usWords } from '@/lib/market';
 import DemoWhatsApp from '@/components/DemoWhatsApp';
 
 const FIELDS = [
@@ -102,8 +103,7 @@ export default function DemoEntry({ roles, hasLead, isOwner = false }) {
             procurement, production and dispatch. Click anything; changes reset every night.
           </p>
           <p className="mt-3 max-w-xl text-sm text-muted-foreground">
-            One system, from enquiry to commissioning: CRM, Design, Procurement, Stores, Production, QC, Dispatch,
-            Service, Accounts and HR on one set of records.
+            {usWords('One system, from enquiry to commissioning: CRM, Design, Procurement, Stores, Production, QC, Dispatch, Service, Accounts and HR on one set of records.')}
           </p>
         </div>
         <ul className="grid gap-3 sm:grid-cols-2">
@@ -202,8 +202,7 @@ export default function DemoEntry({ roles, hasLead, isOwner = false }) {
     <section id="in-detail" aria-labelledby="in-detail-heading" className="container border-t py-14">
       <h2 id="in-detail-heading" className="text-2xl font-semibold tracking-tight sm:text-3xl">What SB Ops does, in detail</h2>
       <p className="mt-3 max-w-3xl text-muted-foreground">
-        SB Ops is an ERP built for boiler and pressure-vessel manufacturers: one set of records from the first enquiry to
-        commissioning and service. Every feature below runs in the live demo above with sample data.
+        {usWords('SB Ops is an ERP built for boiler and pressure-vessel manufacturers: one set of records from the first enquiry to commissioning and service. Every feature below runs in the live demo above with sample data.')}
       </p>
       <div className="mt-10 grid gap-x-12 gap-y-12 lg:grid-cols-2">
         {FEATURES.map(([Icon, title]) => {
