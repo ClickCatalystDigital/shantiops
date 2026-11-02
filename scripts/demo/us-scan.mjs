@@ -154,8 +154,10 @@ async function scanPages(pdfLinks) {
   // The public entry page, before signing in.
   report('page /demo (visitor)', (await visit(`${BASE}/demo`)).text);
   let pages = 1;
-  for (const role of DEMO_ROLES) {
-    const { token, home } = await signIn(role.username);
+  // ROLES=a,b: only those demo logins (a quick re-check); default every role.
+  for (const role of DEMO_ROLES.filter(r => !process.env.ROLES || process.env.ROLES.split(',').includes(r.username))) {
+    let token, home;
+    try { ({ token, home } = await signIn(role.username)); } catch (e) { hits++; console.log(`HIT sign-in ${role.username}: ${e.message}`); continue; }
     await c.send('Network.setCookie', { name: 'token', value: token, url: origin });
     await c.send('Network.setCookie', { name: 'demo_lead', value: 'us-scan', url: origin });
     // The manager (every department) also starts from every page in app/ that has no [param] in its path.

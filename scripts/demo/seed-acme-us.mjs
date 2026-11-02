@@ -150,7 +150,7 @@ async function seedMasters() {
   for (const [name, city, state, code, zip] of CUSTOMERS) {
     const r = await api('POST', '/api/customers', {
       name, city, state, state_code: code, phone: usPhone(name, '419'),
-      email: `purchasing@${name.split(' ')[0].toLowerCase()}.example`, address: `${100 + name.length * 37} Industrial Drive, ${city}, ${code} ${zip}`, account_manager: 'sales_head',
+      email: `purchasing@${name.split(' ')[0].toLowerCase()}.example`, address: `${100 + name.length * 37} Industrial Drive`, pin_code: zip, account_manager: 'sales_head',
     });
     ids.customers[name] = r.id;
   }
@@ -499,7 +499,7 @@ function asmeData(project, htDate) {
   ];
   const lastWeld = d(70);
   return {
-    form: v ? 'U-1A' : 'P-2', edition: '2025', nb_no: String(51000 + project.id), stamp: v ? 'U' : 'S', coa_no: v ? '61842' : '61841', coa_expires: iso(600),
+    form: v ? 'U-1A' : 'P-2', edition: '2025', drawing_no: `${project.no}-GA-01`, nb_no: String(51000 + project.id), stamp: v ? 'U' : 'S', coa_no: v ? '61842' : '61841', coa_expires: iso(600),
     location: `${project.customer}, ${CUSTOMERS.find(c => c[0] === project.customer)?.[1]}`,
     inspector: { name: 'J. Peterson', agency: 'Lakeshore Inspection Services', commission: 'NB 14792 A' },
     mawp_temp_f: v ? 250 : 366, mdmt_f: v ? -20 : null, corrosion_in: v ? 0.0625 : 0.0625, supports: v ? 'Two saddles, welded wear plates' : null,
@@ -859,6 +859,14 @@ await seedTasks(projects);
 await seedAttendance();
 await seedHrAndPayables([p1, p2, p3], p5);
 await seedAccounts(p1, p2);
+
+// The Customer role on /demo: Greenfield Foods' portal login for AB-1005 (the Indian demo makes it in add-shop-demo.mjs).
+{
+  const hash = bcrypt.hashSync(Math.random().toString(36) + Date.now(), 10); // never used: /demo signs in without a password
+  const r = await db.execute({ sql: `INSERT INTO users (username, password, role, display_name, project_ids, active, pending, safe_pass, must_change_password)
+    VALUES ('greenfield_foods', ?, 'customer', 'Greenfield Foods Inc.', ?, 1, 0, 1, 0)`, args: [hash, String(p5.id)] });
+  await q('UPDATE customers SET portal_user_id = ? WHERE id = ?', [Number(r.lastInsertRowid), ids.customers['Greenfield Foods Inc.']]);
+}
 
 // India-only masters that migrate() seeds in every deployment: the US build never reads them. US federal holidays
 // replace the Indian ones; staff are paid in dollars with no Indian professional-tax state.

@@ -33,7 +33,7 @@ const FIELDS = [
   // Real-NIC-API payload requires a discrete Place/Pincode distinct from the free-text address
   // above (fromPlace/fromPincode on GENEWAYBILL) — no other source for these anywhere in this app.
   ['place', 'Place (for E-Way Bill)'], ['pincode', 'Pincode (for E-Way Bill)'],
-];
+].filter(([key]) => !IS_US || !['gstin', 'pan', 'place', 'pincode'].includes(key));
 
 // Hand-edit the registration fields (the GST refresh fills most of them; this is for corrections and
 // for a company with no GSTIN yet). Only the fields actually changed are sent, so an untouched field
@@ -170,6 +170,8 @@ function GstinRefreshDialog({ entity, onApplied }) {
   );
 }
 
+// US build: the registration rows that mean something there (no GSTIN, PAN, GST status or e-way pincode).
+const US_REGISTRATION_ROWS = ['Legal Name', 'Trade Name', 'State', 'Registered Address', 'State Code', 'Invoice Series Prefix'];
 function GstDetailCard({ entity, onApplied }) {
   const nba = entity.nature_of_business ? JSON.parse(entity.nature_of_business) : [];
   const adadr = entity.additional_business_premises ? JSON.parse(entity.additional_business_premises) : [];
@@ -177,10 +179,10 @@ function GstDetailCard({ entity, onApplied }) {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2"><IdCardIcon className="size-4" />Registration</CardTitle>
-        <CardAction className="flex gap-2"><EditRegistrationDialog entity={entity} onSaved={onApplied} /><GstinRefreshDialog entity={entity} onApplied={onApplied} /></CardAction>
+        <CardAction className="flex gap-2"><EditRegistrationDialog entity={entity} onSaved={onApplied} />{!IS_US && <GstinRefreshDialog entity={entity} onApplied={onApplied} />}</CardAction>
       </CardHeader>
       <CardContent className="grid gap-3 sm:grid-cols-2">
-        {!entity.gstin && !entity.pan && (
+        {!IS_US && !entity.gstin && !entity.pan && (
           <p className="col-span-full rounded-md border border-warning/20 bg-warning/10 px-3 py-2 text-xs text-warning">
             GSTIN and PAN are not filled in yet. Add them with Edit before this company's documents are used for filing.
           </p>
@@ -199,7 +201,7 @@ function GstDetailCard({ entity, onApplied }) {
           ['State Code', entity.state_code],
           ['Invoice Series Prefix', entity.invoice_prefix],
           ['Place / Pincode (E-Way Bill)', [entity.place, entity.pincode].filter(Boolean).join(' - ')],
-        ].map(([label, value, source, updatedAt]) => (
+        ].filter(([label]) => !IS_US || US_REGISTRATION_ROWS.includes(label)).map(([label, value, source, updatedAt]) => (
           <div key={label} className="grid gap-1">
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted-foreground">{label}</span>
@@ -518,8 +520,8 @@ function CompanyEntitiesTab({ companies, router, maxCompanies = 3, companyCount 
       </div>
       <GstDetailCard entity={entity} onApplied={refresh} />
       <DocumentsCard entity={entity} onSaved={refresh} />
-      <ApplicabilityCard entity={entity} refreshKey={refreshKey} />
-      <EwayBillCredentialsCard entity={entity} />
+      {!IS_US && <ApplicabilityCard entity={entity} refreshKey={refreshKey} />}
+      {!IS_US && <EwayBillCredentialsCard entity={entity} />}
     </div>
   );
 }

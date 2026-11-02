@@ -106,3 +106,40 @@ forward by *today − `demo_meta.seeded_on`* (the seed writes that row). Every t
 6. Trigger the reset Worker (POST with `x-trigger-key`) and walk the demo.
 
 For a local run use a scratch SQLite file (`TURSO_URL=file:/tmp/x.db`, and blank `TURSO_AUTH_TOKEN`): `.env.local` points at the client's live database.
+
+## North American demo (boiler-erp-us.ahromlabs.com)
+
+A second deployment of the same code for North American visitors: **Acme Boilers Inc.**, Cleveland, Ohio
+(`scripts/demo/acme-us-seed.json`), built and run with `MARKET=NA` / `NEXT_PUBLIC_MARKET=NA` (`lib/market.js`). Unset
+market = India, so the Indian demo and the client's live app are unchanged.
+
+What changes in the US build: dollars and US number/date formats (MM/DD/YYYY, US Central time); calendar-year books and
+document numbers like `AB-1-2026`, `AB-EST-1-2026`, `AB-PO-101-2026`; one sales-tax amount per line (Ohio customers taxed,
+out-of-state 0%) instead of CGST/SGST/IGST; a US chart of accounts and payroll withholding (federal estimate + FICA) instead
+of GST/TDS/PF/ESI/PT; GST & TDS rates, GST returns, e-way bills, TDS/ITC reports and the accounts BPMN atlas hidden;
+Letter-size PDFs; US wording on screen (inquiry, estimate, shipping, mill test report: `usWords` in `lib/market.js`, applied by
+`components/UsWords.jsx` and to notifications); a **Units** setting in the account menu (Imperial by default; values stay
+metric, only display and entry change); the QC folder prints the **ASME record package** (`lib/qc-asme-pdf.js`): Form P-2
+(Section I firetube boiler) or Form U-1A (Section VIII vessel), weld map with welder stamps, WPS/PQR, welder continuity
+(QW-322, six months per process), MTRs by heat number, NDE, PWHT and hydro test.
+
+Jobs (`scripts/demo/seed-acme-us.mjs`, same flow as the Indian seed): AB-1001 Great Lakes Dairy (150 HP, complete, paid),
+AB-1002 Riverside Paperboard (250 HP, complete, 60% paid), AB-1003 Bluewater Chemical (1,500 gal deaerator tank, Section
+VIII "U" stamp, deposit only), AB-1004 Northstar Paper Mills (350 HP, procurement), AB-1005 Greenfield Foods (250 HP,
+production/QC, failed stay-tube lot + NCR). Item master: the cleaned US catalogue (`scripts/demo/us-items.json`, rebuilt by
+`us-items.mjs` from `~/Developer/items/ahrom_usd/us_boiler_master_catalog.json`: standard pipe ODs, no synthetic aliases).
+
+Infrastructure: Worker `sb-ops-boiler-erp-demo-us` (`wrangler.us.jsonc`, `npm run deploy:demo:us`), Turso `sb-us-demo` /
+`sb-us-demo-golden` in the `sbdemo` group, leads database shared with the Indian demo, reset Worker
+`sb-ops-boiler-erp-demo-us-reset` (`workers/demo-reset-cron/wrangler.us.jsonc`, 03:00 US Central, `TIME_ZONE`).
+
+Checks before any deploy:
+- `scripts/demo/us-scan.mjs` against a local US build (DEMO_MODE=1): every text value in the database, every page as every
+  demo role (headless Chrome, every sidebar item and tab), every PDF (text and Letter size) and Ember's prompt; 0 hits.
+- India snapshot: `scripts/demo/india-snapshot.mjs` diffs a crawl of `main` and of the branch, both built without MARKET and
+  seeded with `seed-acme.mjs`.
+- `npm run check`.
+
+Rebuilding the US golden database: as for India, with `MARKET=NA`, `CUSTOMER_SEED="$(cat scripts/demo/acme-us-seed.json)"`
+and `node scripts/demo/seed-acme-us.mjs`; or seed a local file and create golden from it
+(`turso db create sb-us-demo-golden --group sbdemo --from-file <file>`).
