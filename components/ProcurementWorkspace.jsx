@@ -46,6 +46,7 @@ import TraceabilityBadges from '@/components/TraceabilityBadges';
 import { SearchIcon, GitCompareIcon, FileTextIcon, ListChecksIcon, Building2Icon, ShoppingCartIcon, BarChart3Icon, LayoutDashboardIcon, Undo2Icon, PlusIcon, ReceiptIcon, TrashIcon, DownloadIcon, CalendarClockIcon, AlertTriangleIcon, ScrollTextIcon, PencilIcon, HourglassIcon } from 'lucide-react';
 import AddCustomItemDialog from './AddCustomItemDialog';
 import OverdueDeliveryList from './OverdueDeliveryList';
+import QuickBooksStatus from '@/components/QuickBooksStatus';
 
 // Enquiry/Selection are for items still working toward a PO — once one's issued (Ordered, Phase
 // 5.1 — was Transit pre-5.1) or closed out, it's Status's job to show it, not theirs.
@@ -1341,7 +1342,7 @@ function VendorBillsTab({ vendorBills, debitNotes, router }) {
               <TableBody>
                 {vendorBills.map(vb => (
                   <TableRow key={vb.id} data-entity-code={`VB-${vb.id}`}>
-                    <TableCell className="font-medium">{vb.bill_no}</TableCell>
+                    <TableCell className="font-medium">{vb.bill_no}<div className="mt-0.5 font-normal"><QuickBooksStatus billId={vb.id} /></div></TableCell>
                     <TableCell>{vb.po_no}</TableCell>
                     <TableCell>{vb.supplier_name}</TableCell>
                     <TableCell className="tnum">{formatMoney(vb.payable_amount)}{vb.tds_amount > 0 && <span className="ml-1 text-xs text-muted-foreground">(TDS {formatMoney(vb.tds_amount)})</span>}</TableCell>

@@ -10,6 +10,7 @@ import { financialYear, docNo } from '@/lib/gst-calc.mjs';
 import { vendorPaymentLines } from '@/lib/ledger.mjs';
 import { postJournalEntry } from '@/lib/ledger-post';
 import { todayISO } from '@/lib/date';
+import { autoSend } from '@/lib/quickbooks-sync';
 
 function canView(user) {
   return isPM(user) || canAccessDepartment(user, 'Procurement') || canAccessDepartment(user, 'Accounts');
@@ -77,6 +78,7 @@ export async function POST(req, props) {
     await execute("UPDATE vendor_bills SET status = 'paid', updated_at = CURRENT_TIMESTAMP WHERE id = ?", [bill.id]);
   }
 
+  autoSend('vendor_payment', paymentId); // QuickBooks, in the background when connected (lib/quickbooks-sync.js)
   await audit('vendor_payment_recorded', { actor: user.username, detail: `${paymentNo} against ${bill.bill_no}: ${amount}` });
   return NextResponse.json({ id: paymentId, payment_no: paymentNo, balance_due: Math.max(nowBalance, 0) });
 }

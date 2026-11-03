@@ -1,5 +1,5 @@
 'use client';
-// QuickBooks status on an invoice row (US build, when connected): "In QuickBooks #1042", "Failed · Retry" with the
+// QuickBooks status on an invoice or bill row (US build, when connected): "In QuickBooks #1042", "Failed · Retry" with the
 // reason on hover, or "Send". Renders nothing when QuickBooks is off. One shared /api/quickbooks/sync load per
 // page, refreshed after a send. lib/quickbooks-sync.js.
 import { useEffect, useState } from 'react';
@@ -24,17 +24,19 @@ export function useQuickBooksSync() {
 export async function sendToQuickBooks(kind, id) {
   try {
     const r = await api('/api/quickbooks/send', { method: 'POST', body: { kind, id } });
-    showToast(r.qbo_doc ? `Sent to QuickBooks as invoice ${r.qbo_doc}` : 'Sent to QuickBooks');
+    showToast('Sent to QuickBooks');
   } catch (err) { showToast(err.message, 'error'); }
   load(true);
 }
 
-export default function QuickBooksStatus({ invoiceId }) {
+export default function QuickBooksStatus({ invoiceId, billId }) {
+  const kind = billId ? 'bill' : 'invoice';
+  const id = billId || invoiceId;
   const [s] = useQuickBooksSync();
   const [busy, setBusy] = useState(false);
-  const e = s?.enabled && s.invoices?.[invoiceId];
+  const e = s?.enabled && s[kind === 'bill' ? 'bills' : 'invoices']?.[id];
   if (!e) return null;
-  const send = async () => { setBusy(true); await sendToQuickBooks('invoice', invoiceId); setBusy(false); };
+  const send = async () => { setBusy(true); await sendToQuickBooks(kind, id); setBusy(false); };
   if (e.status === 'sent') {
     const taxNote = e.theirs != null && Math.abs(e.theirs - e.ours) > 0.01
       ? `QuickBooks total ${formatMoney(e.theirs)} (it works out the sales tax) vs ${formatMoney(e.ours)} here` : 'Totals match';

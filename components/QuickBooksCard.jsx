@@ -146,12 +146,12 @@ export default function QuickBooksCard({ entity }) {
               <div className="flex flex-col gap-2">
                 <h3 className="text-sm font-medium">Sending</h3>
                 <p className="text-xs text-muted-foreground">
-                  Issued invoices and recorded payments go to QuickBooks automatically. {sync.sentToday} sent today
+                  Issued invoices, approved bills and recorded payments go to QuickBooks automatically. {sync.sentToday} sent today
                   {sync.failures.length ? `, ${sync.failures.length} need attention.` : ', nothing needs attention.'}
                 </p>
                 {sync.failures.map(f => (
                   <div key={`${f.kind}-${f.id}`} className="flex flex-wrap items-center gap-2 rounded-md border border-destructive/30 px-3 py-2 text-xs">
-                    <span className="font-medium">{f.kind === 'invoice' ? 'Invoice' : 'Payment'} {f.no}</span>
+                    <span className="font-medium">{{ invoice: 'Invoice', receipt: 'Payment', bill: 'Bill', vendor_payment: 'Bill payment' }[f.kind]} {f.no}</span>
                     <span className="flex-1 text-destructive">{f.error}</span>
                     <Button size="sm" variant="outline" onClick={async () => { await sendToQuickBooks(f.kind, f.id); load(); }}>Retry</Button>
                   </div>

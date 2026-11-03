@@ -10,6 +10,7 @@ import { postJournalEntry } from '@/lib/ledger-post';
 import { vendorBillLines } from '@/lib/ledger.mjs';
 import { weightedAverageCost } from '@/lib/inventory-costing.mjs';
 import { costUncostedPieces } from '@/lib/stock-pieces';
+import { autoSend } from '@/lib/quickbooks-sync';
 
 const STATUSES = ['draft', 'approved', 'paid', 'cancelled'];
 
@@ -104,6 +105,7 @@ export async function PATCH(req, props) {
   fields.push('updated_at = CURRENT_TIMESTAMP');
   args.push(params.id);
   await execute(`UPDATE vendor_bills SET ${fields.join(', ')} WHERE id = ?`, args);
+  if (firstTimeSettled) autoSend('bill', bill.id); // QuickBooks, in the background when connected (lib/quickbooks-sync.js)
   await audit('vendor_bill_updated', { actor: user.username, detail: `#${params.id}${b.status ? `: ${b.status}` : ''}` });
   return NextResponse.json({ ok: true });
 }
