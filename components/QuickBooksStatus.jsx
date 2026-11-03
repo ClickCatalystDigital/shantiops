@@ -38,7 +38,7 @@ export default function QuickBooksStatus({ invoiceId }) {
   if (e.status === 'sent') {
     const taxNote = e.theirs != null && Math.abs(e.theirs - e.ours) > 0.01
       ? `QuickBooks total ${formatMoney(e.theirs)} (it works out the sales tax) vs ${formatMoney(e.ours)} here` : 'Totals match';
-    return <span className="whitespace-nowrap text-[11px] text-emerald-700 dark:text-emerald-400" title={taxNote}>In QuickBooks · #{e.qbo_doc}</span>;
+    return <span className="whitespace-nowrap text-[11px] text-emerald-700 dark:text-emerald-400" title={taxNote}>In QuickBooks{e.qbo_doc && e.qbo_doc !== e.no ? ` · #${e.qbo_doc}` : ''}</span>;
   }
   return (
     <span className="flex items-center gap-1 whitespace-nowrap text-[11px]">
