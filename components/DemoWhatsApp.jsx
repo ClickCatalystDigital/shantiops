@@ -7,8 +7,10 @@
 
 import { track } from '@/components/DemoAnalytics';
 import { cn } from '@/lib/utils';
+import { IS_US } from '@/lib/market';
 
-const HREF = `https://wa.me/919426519798?text=${encodeURIComponent("Hi Pujan, I'm trying the boiler demo and have a question (ref: demo-boiler)")}`;
+// US builds: Pujan's US WhatsApp number, +1 732 306 5127.
+const HREF = `https://wa.me/${IS_US ? '17323065127' : '919426519798'}?text=${encodeURIComponent("Hi Pujan, I'm trying the boiler demo and have a question (ref: demo-boiler)")}`;
 
 export default function DemoWhatsApp({ children = 'WhatsApp', className }) {
   return (
