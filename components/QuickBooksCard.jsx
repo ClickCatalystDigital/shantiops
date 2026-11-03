@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { LinkIcon } from 'lucide-react';
 import { api, showToast } from '@/lib/client';
-import { accountFits } from '@/lib/quickbooks.mjs';
+import { accountFits, suggestAccountMap } from '@/lib/quickbooks.mjs';
 
 const when = v => (v ? new Date(v).toLocaleString() : '—');
 
@@ -25,7 +25,11 @@ export default function QuickBooksCard({ entity }) {
       setMap(r.connection?.account_map || {});
       if (r.connection?.status === 'connected') {
         setQbError(null);
-        api(`/api/quickbooks/accounts?company_id=${entity.id}`).then(a => setQbAccounts(a.accounts)).catch(err => setQbError(err.message));
+        api(`/api/quickbooks/accounts?company_id=${entity.id}`).then(a => {
+          setQbAccounts(a.accounts);
+          // Nothing mapped yet: start from suggested matches; the Head reviews and saves.
+          if (!Object.keys(r.connection.account_map || {}).length) setMap(suggestAccountMap(r.localAccounts, a.accounts));
+        }).catch(err => setQbError(err.message));
       }
     }).catch(err => showToast(err.message, 'error'));
   }, [entity.id]);
@@ -101,7 +105,8 @@ export default function QuickBooksCard({ entity }) {
 
             <div className="flex flex-col gap-2">
               <h3 className="text-sm font-medium">Account mapping</h3>
-              <p className="text-xs text-muted-foreground">Pick the QuickBooks account each SB Ops account posts to. Unmapped accounts are not sent.</p>
+              <p className="text-xs text-muted-foreground">Pick the QuickBooks account each SB Ops account posts to. Unmapped accounts are not sent. Sales tax is worked out by QuickBooks, so leave Sales Tax Payable unmapped.</p>
+              {dirty && !Object.keys(saved).length && <p className="text-xs text-primary">Suggested matches are filled in. Review them and save.</p>}
               {qbError && <p className="text-xs text-destructive">{qbError}</p>}
               {!qbAccounts && !qbError && <p className="text-xs text-muted-foreground">Loading QuickBooks accounts…</p>}
               {qbAccounts && (
