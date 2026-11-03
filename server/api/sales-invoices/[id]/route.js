@@ -11,6 +11,7 @@ import { audit } from '@/lib/usb';
 import { notifyProjectCustomers } from '@/lib/notify';
 import { postJournalEntry } from '@/lib/ledger-post';
 import { salesInvoiceLines } from '@/lib/ledger.mjs';
+import { autoSend } from '@/lib/quickbooks-sync';
 
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 const STATUSES = ['draft', 'issued', 'paid', 'cancelled'];
@@ -102,6 +103,8 @@ export async function PATCH(req, props) {
   // Real draft->issued/paid flip only — the moment this invoice first becomes a real document a
   // customer can see in their portal (§6). No project_id (an invoice not tied to a project) has no
   // one to notify.
+  // QuickBooks (US build, when connected): an issued invoice goes over in the background (lib/quickbooks-sync.js).
+  if (invoice.status === 'draft' && ['issued', 'paid'].includes(b.status)) autoSend('invoice', invoice.id);
   if (invoice.status === 'draft' && ['issued', 'paid'].includes(b.status) && invoice.project_id) {
     await notifyProjectCustomers(invoice.project_id, {
       kind: 'invoice_issued',

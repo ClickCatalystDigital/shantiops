@@ -61,6 +61,7 @@ import { DEFAULT_STAGE, isClosedCall, isSlaBreached, stageProbability } from '@/
 import { QTY_UNITS } from '@/lib/qty-units.mjs';
 import { EnquiryTabs, CustomerTabs, CustomerHeaderForm } from '@/components/EnquiryTabs';
 import { lineAmount, quotationTotals } from '@/lib/sales-lines.mjs';
+import QuickBooksStatus from '@/components/QuickBooksStatus';
 
 // First-response SLA (24h, untouched since creation) lives in lib/lead-stage.mjs with the rest of
 // the stage rules, so this list and the reports can never disagree. ponytail: fixed 24h, not a
@@ -2346,7 +2347,7 @@ function InvoicesTab({ invoices, creditNotes, router }) {
               <TableBody>
                 {invoices.map(inv => (
                   <TableRow key={inv.id} data-entity-code={`SI-${inv.id}`}>
-                    <TableCell className="font-medium">{inv.invoice_no}</TableCell>
+                    <TableCell className="font-medium">{inv.invoice_no}<div className="mt-0.5 font-normal"><QuickBooksStatus invoiceId={inv.id} /></div></TableCell>
                     <TableCell>{inv.customer_name}</TableCell>
                     <TableCell>{inv.company}</TableCell>
                     <TableCell className="tnum">{formatMoney(inv.total)}</TableCell>

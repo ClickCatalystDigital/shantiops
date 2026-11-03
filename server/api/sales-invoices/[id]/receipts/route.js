@@ -14,6 +14,7 @@ import { financialYear, docNo } from '@/lib/gst-calc.mjs';
 import { customerReceiptLines } from '@/lib/ledger.mjs';
 import { postJournalEntry } from '@/lib/ledger-post';
 import { todayISO } from '@/lib/date';
+import { autoSend } from '@/lib/quickbooks-sync';
 
 const CRM_DEPARTMENTS = ['Sales', 'Marketing'];
 function canAccessCrm(user) {
@@ -88,6 +89,7 @@ export async function POST(req, props) {
     await execute("UPDATE sales_invoices SET status = 'paid', updated_at = CURRENT_TIMESTAMP WHERE id = ?", [invoice.id]);
   }
 
+  autoSend('receipt', receiptId); // QuickBooks, in the background when connected (lib/quickbooks-sync.js)
   await audit('customer_receipt_recorded', { actor: user.username, detail: `${receiptNo} against ${invoice.invoice_no}: ${amount}` });
   return NextResponse.json({ id: receiptId, receipt_no: receiptNo, balance_due: Math.max(nowBalance, 0) });
 }
