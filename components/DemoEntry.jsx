@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Loader2Icon, ArrowRightIcon, ArrowUpIcon, ChevronRightIcon, GlobeIcon } from 'lucide-react';
 import { FEATURES, FEATURE_DETAILS, INTEGRATIONS } from '@/lib/product-features';
+import { DEMO_VIDEO } from '@/lib/demo-video';
 import { track } from '@/components/DemoAnalytics';
 import DemoWhatsApp from '@/components/DemoWhatsApp';
 
@@ -91,7 +92,7 @@ export default function DemoEntry({ roles, hasLead, isOwner = false }) {
         </nav>
       </div>
     </header>
-    <main id="top" className="container grid min-h-[calc(100vh-3.5rem)] gap-10 py-10 lg:grid-cols-[1fr_1.1fr] lg:items-center">
+    <main id="top" className="container grid min-h-[calc(100vh-3.5rem)] gap-10 py-10 lg:grid-cols-[1fr_1.1fr] lg:items-start">
       {/* min-w-0: a grid column otherwise grows to its widest content, here the logo strip's long track. */}
       <section className="order-2 min-w-0 space-y-6 lg:order-none">
         <div>
@@ -106,6 +107,11 @@ export default function DemoEntry({ roles, hasLead, isOwner = false }) {
             Service, Accounts and HR on one set of records.
           </p>
         </div>
+        {/* The narrated tour (lib/demo-video.js), above the features. */}
+        {DEMO_VIDEO && (
+          <iframe src={`https://www.youtube-nocookie.com/embed/${DEMO_VIDEO.id}`} title={DEMO_VIDEO.name}
+            allow="encrypted-media; picture-in-picture; fullscreen" allowFullScreen className="aspect-video w-full rounded-lg border" />
+        )}
         <ul className="grid gap-3 sm:grid-cols-2">
           {/* Each feature links to its own section below (#in-detail), for visitors and search engines. */}
           {FEATURES.map(([Icon, title, text]) => (
@@ -143,6 +149,8 @@ export default function DemoEntry({ roles, hasLead, isOwner = false }) {
         </p>
       </section>
 
+      {/* The form stays in view beside the tour and the features on wide screens. */}
+      <div className="min-w-0 lg:sticky lg:top-8">
       <Card>
         <CardHeader>
           <h2 className="text-lg font-semibold">{step === 'form' ? 'Open the demo' : 'Choose a department'}</h2>
@@ -197,6 +205,7 @@ export default function DemoEntry({ roles, hasLead, isOwner = false }) {
         </CardContent>
       </Card>
       <p className="mt-4 text-center text-sm text-muted-foreground">Questions? <DemoWhatsApp>WhatsApp Pujan</DemoWhatsApp></p>
+      </div>
     </main>
 
     <section id="in-detail" aria-labelledby="in-detail-heading" className="container border-t py-14">
