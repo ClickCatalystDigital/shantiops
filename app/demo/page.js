@@ -7,12 +7,22 @@ import DemoEntry from '@/components/DemoEntry';
 import { isOwnerPass } from '@/lib/demo-leads';
 import { FEATURES, FEATURE_DETAILS } from '@/lib/product-features';
 
+// The demo's public address (wrangler.jsonc / wrangler.us.jsonc routes).
+const DEMO_ORIGIN = IS_US ? 'https://boiler-erp-us.ahromlabs.com' : 'https://boiler-erp.ahromlabs.com';
+
 export const metadata = {
-  title: 'Boiler Manufacturing ERP: Live Demo | SB Ops by Ahrom Labs',
+  title: IS_US
+    ? 'Boiler and Pressure Vessel ERP for US Fabricators: Live Demo | SB Ops by Ahrom Labs'
+    : 'Boiler Manufacturing ERP: Live Demo | SB Ops by Ahrom Labs',
   description: IS_US
     ? 'Try SB Ops, the ERP built for boiler and pressure-vessel manufacturers: inquiry to shipping, BOM, procurement, receiving, production job cards, ASME data reports, accounts and service.'
     : 'Try SB Ops, the ERP built for boiler and pressure-vessel manufacturers: enquiry to dispatch, BOM, procurement, stores, production job cards, IBR documents, GST accounts and service.',
   robots: { index: true, follow: true },
+  // One URL per demo (/ only redirects here), and the India and US builds named as each other's regional versions.
+  alternates: {
+    canonical: `${DEMO_ORIGIN}/demo`,
+    languages: { 'en-IN': 'https://boiler-erp.ahromlabs.com/demo', 'en-US': 'https://boiler-erp-us.ahromlabs.com/demo', 'x-default': 'https://boiler-erp.ahromlabs.com/demo' },
+  },
 };
 
 export default async function DemoPage() {
@@ -27,11 +37,11 @@ export default async function DemoPage() {
     applicationCategory: 'BusinessApplication',
     applicationSubCategory: 'ERP for boiler and pressure-vessel manufacturers',
     operatingSystem: 'Web browser',
-    url: 'https://boiler-erp.ahromlabs.com/demo',
+    url: `${DEMO_ORIGIN}/demo`,
     description: metadata.description,
     featureList: FEATURES.map(([, title, text]) => `${title}: ${text}`),
     publisher: { '@type': 'Organization', name: 'Ahrom Labs', url: 'https://ahromlabs.com' },
-    hasPart: FEATURES.map(([, title]) => ({ '@type': 'WebPageElement', name: FEATURE_DETAILS[title].heading, url: `https://boiler-erp.ahromlabs.com/demo#${FEATURE_DETAILS[title].id}` })),
+    hasPart: FEATURES.map(([, title]) => ({ '@type': 'WebPageElement', name: FEATURE_DETAILS[title].heading, url: `${DEMO_ORIGIN}/demo#${FEATURE_DETAILS[title].id}`})),
   };
   return (
     <>
