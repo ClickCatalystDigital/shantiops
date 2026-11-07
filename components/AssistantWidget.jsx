@@ -29,12 +29,17 @@ export default function AssistantWidget({ demo = false }) {
   }, [demo]);
   const endRef = useRef(null);
   useEffect(() => { endRef.current?.scrollIntoView({ block: 'end' }); }, [messages, open]);
-  // On a phone the panel covers the screen: stop the page behind it from scrolling.
+  // On a phone the panel covers the screen: stop the page behind it from scrolling, and keep the panel to the visible
+  // area so the keyboard never covers the text box.
+  const panelRef = useRef(null);
   useEffect(() => {
     if (!open || !window.matchMedia('(max-width: 767px)').matches) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = prev; };
+    const vv = window.visualViewport;
+    const fit = () => { const el = panelRef.current; if (el && vv) { el.style.top = `${vv.offsetTop}px`; el.style.height = `${vv.height}px`; } };
+    if (vv) { fit(); vv.addEventListener('resize', fit); vv.addEventListener('scroll', fit); }
+    return () => { vv?.removeEventListener('resize', fit); vv?.removeEventListener('scroll', fit); document.body.style.overflow = prev; };
   }, [open]);
 
   async function send(preset) {
@@ -88,7 +93,7 @@ export default function AssistantWidget({ demo = false }) {
   return (
     <>
     {limitOverlay}
-    <div className="fixed inset-x-0 top-0 z-50 flex h-dvh flex-col bg-background md:inset-x-auto md:top-auto md:bottom-6 md:right-6 md:h-[min(36rem,calc(100vh-3rem))] md:w-[24rem] md:rounded-xl md:border md:shadow-2xl print:hidden">
+    <div ref={panelRef} data-ai-panel className="fixed inset-x-0 top-0 z-50 flex h-dvh flex-col bg-background md:inset-x-auto md:top-auto md:bottom-6 md:right-6 md:h-[min(36rem,calc(100vh-3rem))] md:w-[24rem] md:rounded-xl md:border md:shadow-2xl print:hidden">
       <div className="flex items-center justify-between border-b px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
         <div>
           <p className="text-sm font-semibold">Ember AI</p>

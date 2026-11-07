@@ -56,7 +56,7 @@ export default async function RootLayout({ children }) {
         <TooltipProvider delayDuration={200}>
           {isInternal(user) && !needsDeviceSetup && <Nav user={user} reportDepartments={REPORT_DEPARTMENTS} />}
           {process.env.DEMO_MODE === '1' && isInternal(user) && (
-            <div className="fixed bottom-20 left-1/2 z-50 -translate-x-1/2 whitespace-nowrap rounded-full border bg-background/95 px-3 py-1.5 text-xs text-muted-foreground shadow-md backdrop-blur md:bottom-4 print:hidden">
+            <div data-demo-pill className="fixed bottom-20 left-1/2 z-50 -translate-x-1/2 whitespace-nowrap rounded-full border bg-background/95 px-3 py-1.5 text-xs text-muted-foreground shadow-md backdrop-blur md:bottom-4 print:hidden">
               {demoOwner
                 ? <span className="font-medium text-primary">Owner mode<span className="hidden sm:inline"> · changes saved</span></span>
                 : <>Demo<span className="hidden sm:inline"> · resets nightly</span></>} ·{' '}
