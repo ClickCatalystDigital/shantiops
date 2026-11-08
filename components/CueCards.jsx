@@ -3,7 +3,8 @@
 // Cue Cards: what you can say to Ember AI, by area, with the capability ladder on top (lib/cue-cards.js).
 // "Ask" opens Ember AI with that prompt (the 'assistant:ask' event, components/AssistantWidget.jsx).
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowUpRightIcon, SearchIcon, WandSparklesIcon } from 'lucide-react';
+import { ArrowUpRightIcon, SearchIcon } from 'lucide-react';
+import { EmberMark } from '@/components/EmberMark';
 import PageHeader from '@/components/PageHeader';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
@@ -78,7 +79,7 @@ export default function CueCards() {
                       <div className="flex items-center justify-between gap-2">
                         <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground"><span className={cn('size-2 rounded-full', TONE[c.level])} />L{lv?.n} {lv?.label}{doing ? ' · confirms first' : ''}</span>
                         <button type="button" onClick={() => ask(c.q)} className="inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium text-primary transition-colors hover:bg-muted">
-                          {doing ? <WandSparklesIcon className="size-3.5" /> : <ArrowUpRightIcon className="size-3.5" />} Ask
+                          {doing ? <EmberMark className="size-3.5" /> : <ArrowUpRightIcon className="size-3.5" />} Ask
                         </button>
                       </div>
                     </div>

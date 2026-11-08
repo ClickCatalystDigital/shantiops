@@ -31,6 +31,7 @@
   /* Status palette — StatusBadge, delay chain, swimlane. */
   --success: hsl(142 65% 38%);
   --warning: hsl(32 95% 44%);
+  --ember: hsl(22 55% 50%);
   --danger: hsl(0 72% 51%);
   --blocked: var(--danger); /* blocked is visually a danger-family red now, not purple — single source of truth */
   --info: hsl(221 70% 47%);
@@ -88,6 +89,7 @@
 
   --success: hsl(142 58% 46%);
   --warning: hsl(32 90% 56%);
+  --ember: hsl(28 60% 64%);
   --danger: hsl(0 63% 55%); /* aligned to --destructive's dark value — light mode already matches it exactly */
   --blocked: var(--danger);
   --info: hsl(217 85% 62%);
@@ -142,6 +144,7 @@
 
   --color-success: var(--success);
   --color-warning: var(--warning);
+  --color-ember: var(--ember);
   --color-danger: var(--danger);
   --color-blocked: var(--blocked);
   --color-info: var(--info);
@@ -293,3 +296,20 @@ html:has(#in-detail) { scroll-behavior: smooth; }
 
 /* Phones: the demo pill hides while the AI chat is open (the chat fills the screen). */
 @media (max-width: 767px) { body:has([data-ai-panel]) [data-demo-pill] { display: none; } }
+
+/* Ember AI's flame (components/EmberMark.jsx): same timing as ahromlabs.com/ai-assistant. */
+.ai-ember .flame { transform-box: view-box; transform-origin: 12px 20px; animation: ai-em-flicker 2.8s ease-in-out infinite; }
+.ai-ember .core { transform-box: view-box; transform-origin: 12px 19px; animation: ai-em-core 1.9s ease-in-out infinite; }
+.ai-ember .spark { opacity: 0; animation: ai-em-spark 4.5s ease-out infinite; }
+@keyframes ai-em-flicker {
+  0%, 100% { transform: scale(1, 1) skewX(0); }
+  30% { transform: scale(0.97, 1.04) skewX(-2deg); }
+  55% { transform: scale(1.02, 0.97) skewX(1.5deg); }
+  80% { transform: scale(0.99, 1.02) skewX(-1deg); }
+}
+@keyframes ai-em-core { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(0.86); } }
+@keyframes ai-em-spark { 0%, 62% { opacity: 0; transform: translate(0, 0); } 68% { opacity: 0.9; } 100% { opacity: 0; transform: translate(1.6px, -5.5px); } }
+@media (prefers-reduced-motion: reduce) {
+  .ai-ember .flame, .ai-ember .core { animation: none; }
+  .ai-ember .spark { animation: none; opacity: 0; }
+}
