@@ -22,7 +22,7 @@ function demoGuard(req, pathname) {
   const write = !['GET', 'HEAD', 'OPTIONS'].includes(req.method);
   const sends = /\/send-(email|whatsapp)$/.test(pathname);
   // Ember AI chat stays open: two questions per visitor, counted in server/api/assistant/chat.
-  const aiChat = pathname === '/api/assistant/chat';
+  const aiChat = pathname === '/api/assistant/chat' || pathname === '/api/assistant/act'; // act runs routes in-process; each route's own checks apply
   if ((write && !aiChat && DEMO_BLOCKED.some(p => pathname === p || pathname.startsWith(p + '/'))) || sends) {
     return NextResponse.json({ error: 'Not available in the demo' }, { status: 403 });
   }

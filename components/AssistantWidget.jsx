@@ -11,6 +11,7 @@ import { linkify } from '@/lib/assistant-help.mjs';
 import { MessageCircleQuestionIcon, XIcon, SendIcon, RotateCcwIcon, LockIcon } from 'lucide-react';
 import DemoAiLimit from '@/components/DemoAiLimit';
 import { track } from '@/components/DemoAnalytics';
+import AssistantActionCard from '@/components/AssistantActionCard';
 
 // demo: the public demo (app/layout.js passes DEMO_MODE): two questions per visitor, then a lock and an overlay.
 export default function AssistantWidget({ demo = false }) {
@@ -58,6 +59,13 @@ export default function AssistantWidget({ demo = false }) {
         throw Object.assign(new Error(e?.error || `Request failed (${res.status})`), { link: e?.link, linkLabel: e?.linkLabel });
       }
       if (demo) { setDemoAi(d => (d && !d.pass ? { ...d, left: Math.max(0, d.left - 1) } : d)); track('boiler_demo_ai_question'); }
+      if (res.headers.get('x-left') !== null) setLeft(Number(res.headers.get('x-left')));
+      // An action: a card to check and save (components/AssistantActionCard.jsx), not a text answer.
+      if ((res.headers.get('content-type') || '').includes('application/json')) {
+        const d = await res.json();
+        patch({ content: d.text || '', card: d.card || null });
+        return;
+      }
       let sources = [];
       try { sources = JSON.parse(decodeURIComponent(res.headers.get('x-sources') || '%5B%5D')); } catch { /* no sources */ }
       if (res.headers.get('x-left') !== null) setLeft(Number(res.headers.get('x-left')));
@@ -126,6 +134,7 @@ export default function AssistantWidget({ demo = false }) {
                     ? <Link key={j} href={part.href} className="font-medium text-primary underline underline-offset-2" onClick={() => { if (window.matchMedia('(max-width: 767px)').matches) setOpen(false); }}>{part.text}</Link>
                     : part.text)}
               </div>
+              {m.card && <div className="mt-2"><AssistantActionCard card={m.card} onNavigate={() => { if (window.matchMedia('(max-width: 767px)').matches) setOpen(false); }} /></div>}
               {m.link && <a href={m.link} target="_blank" rel="noreferrer" className="mt-1 inline-block text-xs font-medium text-primary underline underline-offset-2">{m.linkLabel || m.link}</a>}
               {!!m.sources?.length && (
                 <div className="mt-1 flex flex-wrap gap-1.5">

@@ -117,14 +117,58 @@ const HAND = [
   ['it', '/', 'unclear'], ['aaa bbb ccc', '/', 'unclear'],
 ];
 
+// ---- actions: [sentence, screen, the action the card must be for]. EVAL_ONLY=actions runs only these.
+const ACT = [
+  ['add an enquiry from Lotus Breweries, phone 9845011223', '/sales', 'add_enquiry'], ['new lead: Coastal Fisheries wants a 2 TPH boiler', '/', 'add_enquiry'],
+  ['spoke to Metro Hospital Trust, they want the revised offer by Friday', '/sales', 'log_followup'], ['met Kaveri Pharma today, they are comparing two offers', '/', 'log_followup'],
+  ['move the Harvest Rice Mills enquiry to proposals', '/sales', 'set_enquiry_stage'], ['Kaveri Pharma enquiry is now a hot offer', '/sales', 'set_enquiry_stage'],
+  ['assign the Kaveri Pharma enquiry to Rohan', '/sales', 'assign_enquiry'], ['give the Metro Hospital lead to Rohan to follow up', '/', 'assign_enquiry'],
+  ['Metro Hospital Trust enquiry is worth 42 lakh', '/sales', 'set_enquiry_value'], ['set the expected value of the Harvest Rice Mills enquiry to 15 lakh', '/', 'set_enquiry_value'],
+  ['add customer Deccan Agro Foods, email accounts@deccanagro.example', '/sales', 'add_customer'], ['create a new customer called Pioneer Spinning Mills', '/', 'add_customer'],
+  ['mark QTN-7 as sent', '/sales', 'quotation_sent'], ['I emailed the Greenfield offer QTN-7 to the customer', '/', 'quotation_sent'],
+  ['Greenfield accepted QTN-7', '/sales', 'quotation_accepted'], ['we won the Metro Hospital offer QTN-1', '/', 'quotation_accepted'],
+  ['Metro Hospital said no to QTN-1', '/sales', 'quotation_rejected'], ['QTN-7 is lost, the customer went with another supplier', '/', 'quotation_rejected'],
+  ['received 2.5 lakh from Northstar against SO-4 by NEFT', '/sales', 'record_order_payment'], ['Greenfield paid an advance of 5 lakh on SO-5', '/', 'record_order_payment'],
+  ['site marking started on AB-1005', '/projects', 'start_milestone'], ['we have begun box up on AB-1005', '/', 'start_milestone'],
+  ['box up welding is done on AB-1005', '/projects', 'close_milestone'], ['close the box up milestone on AB-1005', '/', 'close_milestone'],
+  ['send Release All Drawings on AB-1004 back for rework', '/projects', 'send_back_milestone'], ['reopen the design milestone on AB-1004, the customer changed the nozzles', '/', 'send_back_milestone'],
+  ['add a task to check the hydro pump calibration by Friday', '/', 'add_task'], ['remind the team to clean the paint booth tomorrow', '/', 'add_task'],
+  ['ask Stores to keep two BQ plates for AB-1005 by tomorrow', '/', 'raise_request'], ['tell Procurement we need gaskets for AB-1003 urgently', '/', 'raise_request'],
+  ['the Boiler Expo lead list has been sent to Sales, close that task', '/', 'complete_task'], ['mark the task revise tube layout for AB-1005 done', '/', 'complete_task'],
+  ['add supplier Shree Valves, phone 9822001122', '/procurement', 'add_supplier'], ['new vendor: Bharat Refractories, Hosur', '/', 'add_supplier'],
+  ['Prime Steel Traders quoted 68 per kg for the BQ plate 16 mm on AB-1004', '/procurement', 'record_supplier_quote'], ['National Tube Co gave a price of 410 per metre for boiler tube on AB-1004', '/', 'record_supplier_quote'],
+  ['issue purchase order 123/AB/2026-27', '/procurement', 'issue_po'], ['send the draft PO to Shield Valves, it is final', '/', 'issue_po'],
+  ['cancel purchase order 123/AB/2026-27, not needed', '/procurement', 'cancel_po'], ['the Shield Valves PO is no longer required, cancel it', '/', 'cancel_po'],
+  ['truck KA 01 AB 4321 arrived from Prime Steel Traders with plates', '/stores', 'log_gate_entry'], ['a vehicle from National Tube Co is at the gate with tubes', '/', 'log_gate_entry'],
+  ['issue 2 nos of MS angle 50 x 50 to production for AB-1004', '/stores', 'issue_material'], ['give the shop floor 4 boiler tubes for AB-1004', '/', 'issue_material'],
+  ['approve the 12 mm BQ plate on inward inspection', '/qc', 'approve_inward'], ['the BQ plate that came in for AB-1004 is fine, clear it for use', '/', 'approve_inward'],
+  ['reject the MS angle that came in, it is bent', '/qc', 'reject_inward'], ['the boiler tubes received for AB-1004 failed inspection', '/', 'reject_inward'],
+  ['hydro test passed on AB-1003', '/qc', 'add_qc_record'], ['radiography on AB-1005 shell seam is pending', '/', 'add_qc_record'],
+  ['change the incoming inspection on AB-1001 to fail', '/qc', 'set_qc_result'], ['the hydro test on AB-1003 actually failed, update the result', '/', 'set_qc_result'],
+  ['raise a major NCR on AB-1005: weld porosity on shell seam', '/qc', 'raise_ncr'], ['found a dent in the AB-1003 shell, log a non-conformance', '/', 'raise_ncr'],
+  ['approve PL-1005 for dispatch', '/qc', 'decide_predispatch'], ['reject the packing list PL-1005 in pre-dispatch review, nameplate missing', '/', 'decide_predispatch'],
+  ['delete the hydro test record on AB-1003, it was entered twice', '/qc', 'delete_qc_record'], ['remove the wrong QC test entry on AB-1001', '/', 'delete_qc_record'],
+  ['start marking on shell for JC-1029, fitter Vikram Rao', '/production/shop', 'start_jobcard_stage'], ['Vikram has started the radiographic testing stage on JC-1029', '/', 'start_jobcard_stage'],
+  ['shell belt welding is finished on JC-1029', '/production/shop', 'finish_jobcard_stage'], ['furnace alignment is complete on job card JC-1029', '/', 'finish_jobcard_stage'],
+  ['mark packing list PL-1005 packed', '/dispatch', 'set_packing_status'], ['PL-1005 has been dispatched', '/', 'set_packing_status'],
+  ['submit PL-1005 for dispatch approval', '/dispatch', 'submit_packing_approval'], ['send packing list PL-1005 to QC and production for sign-off', '/', 'submit_packing_approval'],
+  ['delete draft packing list PL-1006', '/dispatch', 'delete_packing_list'], ['remove the packing list PL-1006, made by mistake', '/', 'delete_packing_list'],
+  ['Priya Nair is absent today', '/hr', 'mark_attendance'], ['mark Vikram Rao half day yesterday', '/', 'mark_attendance'],
+  ['casual leave for Ananya Iyer from 12 Nov to 13 Nov', '/hr', 'apply_leave'], ['Rohan needs sick leave tomorrow', '/', 'apply_leave'],
+  ['plan a commissioning visit to AB-1001 on 20 Nov', '/installation', 'log_service_visit'], ['our engineer visited AB-1002 today for a breakdown', '/', 'log_service_visit'],
+  ['delete the Lotus Breweries enquiry, it was a duplicate', '/sales', 'delete_enquiry'], ['remove the duplicate Harvest Rice Mills lead', '/', 'delete_enquiry'],
+];
+
 const login = await fetch(`${BASE}/api/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: process.env.ADMIN_USER || 'admin', password: process.env.ADMIN_PASS || 'admin123' }) });
 const cookie = login.headers.get('set-cookie')?.split(';')[0];
 if (!login.ok || !cookie) { console.error('Login failed'); process.exit(1); }
 const post = body => fetch(`${BASE}/api/assistant/chat`, { method: 'POST', headers: { 'content-type': 'application/json', cookie }, body: JSON.stringify(body) }).then(async r => ({ ok: r.ok, body: await r.json() }));
 
 // One generated question per guide section: "How do I use <section>?" must come back to that section.
-let cases = HAND.map(c => ({ q: c[0], path: c[1], kind: c[2], want: c[3], group: c[2] === 'howto' ? 'how-to (written by hand)' : c[2] }));
-if (!QUICK) {
+const ONLY = process.env.EVAL_ONLY;
+let cases = ONLY === 'actions' ? [] : HAND.map(c => ({ q: c[0], path: c[1], kind: c[2], want: c[3], group: c[2] === 'howto' ? 'how-to (written by hand)' : c[2] }));
+cases.push(...ACT.map(([q, path, want]) => ({ q, path, kind: 'action', want, group: 'actions' })));
+if (!QUICK && !ONLY) {
   const { body } = await post({ list: true });
   for (const s of body.sections.filter(s => s.key !== 'intro' && s.key !== 'how-to')) {
     cases.push({ q: `How do I use ${s.label}?`, path: DEPT_PATH[s.dept] || '/', kind: 'howto', want: [s.label.toLowerCase()], group: 'how-to (one per guide section)' });
@@ -138,12 +182,13 @@ async function run(c) {
   const { ok, body: r } = await post({ dry: true, assumeData: true, path: c.path, messages: [{ role: 'user', content: c.q }] });
   if (!ok) { console.error(`STOP: ${r.error}`); process.exit(1); }
   // Every section Jev chose is sent to the writing model, so a match in any of them counts.
-  const chosen = r.sections.join(' | ').toLowerCase();
+  const chosen = (r.sections || []).join(' | ').toLowerCase();
   const good = r.kind === c.kind && (
     c.kind === 'howto' ? (!c.want.length || c.want.some(n => chosen.includes(n)))
     : c.kind === 'data' ? (r.tool || 'none') === c.want
+    : c.kind === 'action' ? r.action === c.want
     : true);
-  const t = (tally[c.group] ??= { n: 0, ok: 0 }); t.n++; t.ok += good;
+  if (r.kind === 'action' && c.kind !== 'action') r.trace.push('ACTION CARD where none was asked'); const t = (tally[c.group] ??= { n: 0, ok: 0 }); t.n++; t.ok += good;
   // A question that should get a fixed reply must never be passed to the writing model.
   if (['smalltalk', 'other', 'unclear'].includes(c.kind) && r.answer === null) reachedModel++;
   if (!good) misses.push(`${c.q}\n       wanted ${c.kind}${c.want?.length ? ` / ${[].concat(c.want).join(' | ')}` : ''}; got ${r.trace.join(' · ')}`);
