@@ -16,6 +16,7 @@ export const ROUTES = {
   "amc/[id]": () => import("./api/amc/[id]/route.js"),
   "amc": () => import("./api/amc/route.js"),
   "assignment-rules": () => import("./api/assignment-rules/route.js"),
+  "assistant/act": () => import("./api/assistant/act/route.js"),
   "assistant/chat": () => import("./api/assistant/chat/route.js"),
   "assistant/models": () => import("./api/assistant/models/route.js"),
   "assistant/settings": () => import("./api/assistant/settings/route.js"),

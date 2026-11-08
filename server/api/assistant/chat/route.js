@@ -6,8 +6,42 @@ import { getAssistantSettings, getAssistantKey, allHelpSections, jevDecide, open
 import { takeDemoAiQuestion, returnDemoAiQuestion, DEMO_AI_QUESTIONS } from '@/lib/demo-leads';
 import { pickSections, deptOfPath, kindQuestion, sectionQuestion, asIsQuestion, toolQuestion, ranked, guideAnswer, CANNED, screenList } from '@/lib/assistant-help.mjs';
 import { toolsFor } from '@/lib/assistant-data';
+import { actionsFor, fill } from '@/lib/assistant-actions';
 
 export const dynamic = 'force-dynamic';
+
+const ACTION_KIND = "Asks the app to create, change, mark, record, assign, issue, approve, reject, start, close, cancel or delete a business record, or reports something that happened that the app keeps a record of (for example 'add an enquiry from Mehta Dairy', 'mark QTN-3 accepted', 'hydro test passed on AB-1003', 'Ramesh is absent today', 'spoke to Sunrise Dairy, they want the offer by Friday', 'cutting is done on AB-1005'). Not a question about how to do it.";
+
+// The action Jev chose, made safe: when Jev is unsure (<0.7) or its pick names no real record, prefer the close choice whose
+// required records the message actually names (same look-ups as the card, no extra model call); take a plausible runner-up
+// (≥0.25) over "none" when its records resolve. Returns { pick, card } or {}.
+async function pickAction(rank, question, user, trace) {
+  if (!rank.length) return {};
+  const cards = {};
+  const cardOf = async k => (cards[k] ??= await fill(k, question, user));
+  const named = async k => (await cardOf(k)).fields.filter(f => f.type === 'ref' && f.required && f.value != null).length;
+  const unresolved = async k => (await cardOf(k)).fields.filter(f => f.type === 'ref' && f.required && f.value == null).length;
+  const t = rank[0];
+  let pick = t.key !== 'none' && t.p >= 0.5 ? t.key : null;
+  const lost = !!(pick && (await unresolved(pick)));
+  if (!pick) {
+    // "none" (or an unsure pick under 50%): take the likeliest task over 25% whose records the message names.
+    for (const alt of rank.filter(x => x.key !== 'none' && x.p >= 0.25)) {
+      if (!(await unresolved(alt.key))) { pick = alt.key; trace.push(`runner-up taken: ${alt.key}`); break; }
+    }
+  }
+  // A pick Jev is 90%+ sure of stays even if its record isn't found (the card then asks); a less certain one is weighed.
+  if (t.p < 0.7 || (lost && t.p < 0.9)) {
+    const close = rank.filter(x => x.key !== 'none' && x.p >= (lost ? 0.01 : 0.15)).slice(0, lost ? 5 : 3);
+    if (close.length > 1) {
+      const scored = [];
+      for (const x of close) scored.push({ key: x.key, n: await named(x.key), p: x.p });
+      scored.sort((a, b) => b.n - a.n || b.p - a.p);
+      if (scored[0].n > 0 && scored[0].key !== pick) { trace.push(`action tie-break: ${scored.map(x => `${x.key}=${x.n}`).join(' ')}`); pick = scored[0].key; }
+    }
+  }
+  return pick ? { pick, card: await cardOf(pick) } : {};
+}
 
 const SYSTEM = `You are the help assistant inside SB Ops, a manufacturing operations app. Answer from the HELP SECTIONS below; they are the app's own guide.
 How to answer:
@@ -25,7 +59,7 @@ const DATA_SYSTEM = `You are the assistant inside SB Ops, a manufacturing operat
 
 // Decide what the question is and which guide section answers it: a word-match shortlist, then one
 // Jev call. Returns { kind, sections, trace, sure }. Throws if Jev can't be reached; the caller falls back.
-async function decide(key, messages, path, tools, all) {
+async function decide(key, messages, path, tools, all, actions = []) {
   const users = messages.filter(m => m.role === 'user');
   const question = users.slice(-2).map(m => m.content).join(' ');
   const pageDept = deptOfPath(path);
@@ -36,8 +70,21 @@ async function decide(key, messages, path, tools, all) {
     previous_question: users.at(-2)?.content || null, // so "and how do I undo it?" keeps its subject
     screen_the_user_is_on: path,
   };
-  const a = await jevDecide(key, state, { ...kindQuestion, ...asIsQuestion, ...(pool.length ? sectionQuestion(pool) : null), ...(tools.length ? toolQuestion(tools) : null) });
+  // Actions (lib/assistant-actions.js) are asked in the same call, under neutral ids (a0, a1…) so Jev judges by the
+  // descriptions, not by a key's words.
+  const kinds = actions.length ? { kind: { ...kindQuestion.kind, criteria: { ...kindQuestion.kind.criteria, action: ACTION_KIND } } } : kindQuestion;
+  const actionQ = actions.length ? { action: { type: 'choice', instructions: 'If the latest message asks the app to create, change or record something, which task is it?',
+    criteria: { ...Object.fromEntries(actions.map((x, i) => [`a${i}`, x.about])), none: 'None of these: some other change, or not a request to change anything' } } } : null;
+  const a = await jevDecide(key, state, { ...kinds, ...asIsQuestion, ...(pool.length ? sectionQuestion(pool) : null), ...(tools.length ? toolQuestion(tools) : null), ...actionQ });
   const k = ranked(a.kind)[0];
+  const actionRank = ranked(a.action).map(x => ({ key: x.key === 'none' ? 'none' : actions[Number(x.key.slice(1))]?.key || 'none', p: x.p }));
+  const toolTop = ranked(a.tool)[0];
+  // A plain command ("mark…", "add…") that an action clearly fits is an action even if Jev read it as a how-to.
+  const command = /^\s*(please\s+)?(add|create|mark|log|record|issue|approve|reject|assign|move|close|start|finish|cancel|delete|raise|set)\b/i.test(users.at(-1).content);
+  // Jev unsure it is a question (data / how-to under 60%) while an action clearly fits (60%+): it is a request.
+  const weakQuestion = ['data', 'howto'].includes(k?.key) && k.p < 0.6 && actionRank[0]?.key !== 'none' && (actionRank[0]?.p || 0) >= 0.6;
+  if (k?.key === 'action' || weakQuestion || (command && actionRank[0]?.key !== 'none' && (actionRank[0]?.p || 0) >= 0.5)) return { kind: 'action', sections: [], trace: [`kind: action (${k?.key} ${Math.round((k?.p || 0) * 100)}%)`], actionRank, kindP: k?.key === 'action' ? k.p : 0,
+    tool: tools.find(x => x.key === toolTop?.key) || null, toolP: toolTop?.p || 0 };
   const s = ranked(a.section);
   // "Unrelated" is only trusted at 90%+. Below that, if Jev is confident a guide section matches
   // (60%+), it is an awkwardly worded question about the app, e.g. "where is hydro test".
@@ -130,15 +177,28 @@ export async function POST(req) {
   const pretend = !!(b.dry && b.assumeData);
   // Live data: only the look-ups this person's departments may use (lib/assistant-data.js `who`).
   const tools = dataAccess.on || pretend ? toolsFor(asker) : [];
+  // Actions this person's departments could do (each route still decides on Save).
+  const actions = actionsFor(asker);
 
   // 1 + 2: decide. If Jev is unavailable, fall back to plain word matching over the whole guide.
-  let kind = 'howto', picked, trace, sure = false, tool = null, unsure = false;
+  let kind = 'howto', picked, trace, sure = false, tool = null, unsure = false, actionRank = [], kindP = 0, toolP = 0;
   try {
-    ({ kind, sections: picked, trace, sure, tool, unsure } = await decide(key, messages, path, tools, guide));
+    ({ kind, sections: picked, trace, sure, tool, unsure, actionRank = [], kindP = 0, toolP = 0 } = await decide(key, messages, path, tools, guide, actions));
   } catch (err) {
     const question = messages.filter(m => m.role === 'user').slice(-2).map(m => m.content).join(' ');
     picked = pickSections(guide, question, { pageDept: deptOfPath(path) });
     trace = [`Jev unavailable (${err.message}); matched by words`];
+  }
+
+  // Action: a card the person checks and saves (POST /api/assistant/act); nothing changes until they press Save.
+  if (kind === 'action') {
+    trace.push(`action: ${actionRank.slice(0, 3).map(x => `${x.key} ${Math.round(x.p * 100)}%`).join(', ') || '-'}`);
+    const { pick, card } = await pickAction(actionRank, messages.at(-1).content, asker, trace);
+    if (b.dry) return NextResponse.json({ kind, action: pick || null, card: card || null, trace });
+    if (pick) return NextResponse.json({ type: 'action', text: card.ready ? "Here's what I'll do. Check it and press Save; nothing changes until you do." : "Fill in what's missing, check it and press Save.", card }, { headers: { 'cache-control': 'no-store', ...(quota.left == null ? null : { 'x-left': String(quota.left) }) } });
+    // No task fits, Jev wasn't sure it was a request, and a look-up clearly fits: it was a question.
+    if (tool && toolP >= 0.8 && kindP < 0.9) { kind = 'data'; trace.push(`no action fits; answering with the look-up ${tool.label}`); }
+    else return new Response("I can't do that one from here yet. Ask me how to do it and I'll point you to the screen.", { headers: headers([], null, quota.left) });
   }
 
   // 3: answer. No writing model for greetings, unrelated or live-data questions, or in guide-only mode.
