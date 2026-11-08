@@ -8,7 +8,8 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { linkify } from '@/lib/assistant-help.mjs';
-import { MessageCircleQuestionIcon, XIcon, SendIcon, RotateCcwIcon, LockIcon } from 'lucide-react';
+import { EmberMark } from '@/components/EmberMark';
+import { XIcon, SendIcon, RotateCcwIcon, LockIcon } from 'lucide-react';
 import DemoAiLimit from '@/components/DemoAiLimit';
 import { track } from '@/components/DemoAnalytics';
 import AssistantActionCard from '@/components/AssistantActionCard';
@@ -99,9 +100,9 @@ export default function AssistantWidget({ demo = false }) {
     return (
       <>
         {limitOverlay}
-        <Button onClick={() => (locked ? (setLimitOpen(true), track('boiler_demo_ai_limit')) : setOpen(true))} size="icon" aria-label={locked ? 'Ember AI: free questions used' : 'Open Ember AI'}
+        <Button onClick={() => (locked ? (setLimitOpen(true), track('boiler_demo_ai_limit')) : setOpen(true))} size="icon" variant="outline" aria-label={locked ? 'Ember AI: free questions used' : 'Open Ember AI'}
           className="fixed bottom-24 right-4 z-40 size-12 rounded-full shadow-lg md:bottom-6 md:right-6 print:hidden">
-          <MessageCircleQuestionIcon className="size-5" />
+          <EmberMark className="size-6 text-ember" />
           {locked && <span className="absolute -right-0.5 -top-0.5 grid size-5 place-items-center rounded-full border-2 border-background bg-foreground text-background"><LockIcon className="size-2.5" /></span>}
         </Button>
       </>
@@ -112,10 +113,13 @@ export default function AssistantWidget({ demo = false }) {
     {limitOverlay}
     <div ref={panelRef} data-ai-panel className="fixed inset-x-0 top-0 z-50 flex h-dvh flex-col bg-background md:inset-x-auto md:top-auto md:bottom-6 md:right-6 md:h-[min(36rem,calc(100vh-3rem))] md:w-[24rem] md:rounded-xl md:border md:shadow-2xl print:hidden">
       <div className="flex items-center justify-between border-b px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
+        <div className="flex items-center gap-2">
+        <EmberMark className="size-6 text-ember" />
         <div>
           <p className="text-sm font-semibold">Ember AI</p>
           {demo && demoAi ? <p className="text-[11px] text-muted-foreground">{demoAi.pass ? 'Owner pass · no limit' : `${demoAi.left} of ${demoAi.limit} free questions left`}</p>
             : left !== null && <p className="text-[11px] text-muted-foreground">{left} question{left === 1 ? '' : 's'} left today</p>}
+        </div>
         </div>
         <div className="flex gap-1">
           <Button size="icon" variant="ghost" className="size-10 md:size-8" aria-label="Clear conversation" disabled={busy || !messages.length} onClick={() => setMessages([])}><RotateCcwIcon className="size-4" /></Button>

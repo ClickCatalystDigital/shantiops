@@ -4,7 +4,8 @@
 // Save sends the fields to /api/assistant/act, which checks them again and runs the app's own route as this person.
 import { useState } from 'react';
 import Link from 'next/link';
-import { ArrowUpRightIcon, Trash2Icon, WandSparklesIcon } from 'lucide-react';
+import { ArrowUpRightIcon, Trash2Icon } from 'lucide-react';
+import { EmberMark } from '@/components/EmberMark';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -41,7 +42,7 @@ export default function AssistantActionCard({ card, onNavigate }) {
   return (
     <div className={cn('rounded-2xl border bg-card p-3 text-sm shadow-sm', del && 'border-destructive/60')}>
       <p className={cn('mb-2 flex items-center gap-1.5 font-medium', del && 'text-destructive')}>
-        {del ? <Trash2Icon className="size-4 shrink-0" /> : <WandSparklesIcon className="size-4 shrink-0 text-primary" />} {card.summary}
+        {del ? <Trash2Icon className="size-4 shrink-0" /> : <EmberMark className="size-4 text-ember" />} {card.summary}
       </p>
       {del && <p className="mb-2 text-xs text-destructive">This deletes or cancels it. Check it is the right one.</p>}
       <div className="flex flex-col gap-2">
