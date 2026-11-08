@@ -165,9 +165,14 @@ if (!login.ok || !cookie) { console.error('Login failed'); process.exit(1); }
 const post = body => fetch(`${BASE}/api/assistant/chat`, { method: 'POST', headers: { 'content-type': 'application/json', cookie }, body: JSON.stringify(body) }).then(async r => ({ ok: r.ok, body: await r.json() }));
 
 // One generated question per guide section: "How do I use <section>?" must come back to that section.
-const ONLY = process.env.EVAL_ONLY;
-let cases = ONLY === 'actions' ? [] : HAND.map(c => ({ q: c[0], path: c[1], kind: c[2], want: c[3], group: c[2] === 'howto' ? 'how-to (written by hand)' : c[2] }));
-cases.push(...ACT.map(([q, path, want]) => ({ q, path, kind: 'action', want, group: 'actions' })));
+const ONLY = process.env.EVAL_ONLY; // 'actions' | 'cards' | unset (everything)
+let cases = ONLY ? [] : HAND.map(c => ({ q: c[0], path: c[1], kind: c[2], want: c[3], group: c[2] === 'howto' ? 'how-to (written by hand)' : c[2] }));
+if (ONLY !== 'cards') cases.push(...ACT.map(([q, path, want]) => ({ q, path, kind: 'action', want, group: 'actions' })));
+// Every Cue Card on the page (lib/cue-cards.js), as the admin sees them: it must trigger what the card says.
+if (ONLY !== 'actions') {
+  const cc = await fetch(`${BASE}/api/assistant/cue-cards`, { headers: { cookie } }).then(r => r.json());
+  for (const c of cc.cards) cases.push({ q: c.q, path: '/', kind: c.expect.type, want: c.expect.type === 'action' ? c.expect.action : c.expect.type === 'data' ? c.expect.tool : [], group: 'cue cards' });
+}
 if (!QUICK && !ONLY) {
   const { body } = await post({ list: true });
   for (const s of body.sections.filter(s => s.key !== 'intro' && s.key !== 'how-to')) {

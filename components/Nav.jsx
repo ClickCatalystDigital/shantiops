@@ -11,7 +11,7 @@ import {
   LayoutDashboardIcon, FolderKanbanIcon, PackageIcon, ShieldCheckIcon, InfoIcon,
   CalendarDaysIcon, HardHatIcon, ShoppingCartIcon, InboxIcon, FlaskConicalIcon,
   TagIcon, WarehouseIcon, TrendingUpIcon, UsersIcon, CalculatorIcon, MapPinIcon, NetworkIcon, MegaphoneIcon,
-  LandmarkIcon, ClipboardListIcon, PencilRulerIcon, ReceiptIcon,
+  LandmarkIcon, ClipboardListIcon, PencilRulerIcon, ReceiptIcon, MessageSquareQuoteIcon,
   RulerIcon,
 } from 'lucide-react';
 import { DEPARTMENTS } from '@/lib/milestones';

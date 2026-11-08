@@ -4,7 +4,9 @@
 // in the root layout via lib/auth.js's getSessionUser().
 import { NextResponse } from 'next/server';
 
-const PUBLIC_PATHS = ['/login', '/d-login', '/api/login', '/api/config/brand', '/api/register', '/set-password', '/api/set-password', '/acc-bpmn', '/api/version'];
+const PUBLIC_PATHS = ['/login', '/d-login', '/api/login', '/api/config/brand', '/api/register', '/set-password', '/api/set-password', '/acc-bpmn', '/api/version',
+  // MCP sign-in (lib/oauth.js): an AI app reaches these with no cookie; /mcp checks its own token.
+  '/mcp', '/oauth/register', '/oauth/token'];
 
 // Public demo (DEMO_MODE=1, never set on a customer deployment): visitors enter through /demo, and
 // changes to logins, mailboxes, connections, company and device security are refused. Anything that
@@ -39,6 +41,7 @@ export function middleware(req) {
     pathname.startsWith('/api/agent') || // USB agents send Bearer, no cookie; handler verifies the JWT
     pathname === '/api/statutory-rates/sync' || // cron-triggered; handler checks x-sync-key itself
     pathname === '/api/sales/quotation-reminders' || // cron-triggered (plan 2d); handler checks x-sync-key itself
+    pathname.startsWith('/.well-known/') || // MCP sign-in discovery (lib/oauth.js)
     pathname.startsWith('/rfq/') ||      // supplier portal page (V2-CHANGES.md Phase 5.1, D12) — token is the auth, no login
     pathname === '/api/whatsapp/webhook' || // Meta's WhatsApp webhook — verify token + signed body are the auth
     pathname.startsWith('/api/lead-hooks/') || // JustDial / website lead push — the secret token in the path is the auth
@@ -58,7 +61,7 @@ export function middleware(req) {
     }
     const loginUrl = new URL(process.env.DEMO_MODE === '1' ? '/demo' : '/login', req.url);
     // Come back here after signing in (e.g. a scanned nameplate QR that opens /portal/<id>).
-    if (pathname !== '/') loginUrl.searchParams.set('next', pathname);
+    if (pathname !== '/') loginUrl.searchParams.set('next', pathname + req.nextUrl.search); // the MCP sign-in needs its query
     return NextResponse.redirect(loginUrl);
   }
 

@@ -17,6 +17,7 @@ import TotpSetup from '@/components/TotpSetup';
 import DesignAccessPanel from '@/components/DesignAccessPanel';
 import SalesSettings from '@/components/SalesSettings';
 import AssistantSettings from '@/components/AssistantSettings';
+import AiConnections from '@/components/AiConnections';
 import { canManageAssistant } from '@/lib/assistant';
 import { EmailSetupTab } from '@/components/SalesSetupPanels';
 import LeadSourcesPanel from '@/components/LeadSourcesPanel';
@@ -117,6 +118,13 @@ export default async function Settings() {
           <Separator />
           <h2 className="text-lg font-semibold">Assistant</h2>
           <AssistantSettings />
+        </>
+      )}
+      {isPM(user) && process.env.DEMO_MODE !== '1' && (
+        <>
+          <Separator />
+          <h2 className="text-lg font-semibold">Connect Claude or ChatGPT</h2>
+          <AiConnections />
         </>
       )}
     </main>

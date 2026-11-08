@@ -43,6 +43,14 @@ export default function AssistantWidget({ demo = false }) {
     return () => { vv?.removeEventListener('resize', fit); vv?.removeEventListener('scroll', fit); document.body.style.overflow = prev; };
   }, [open]);
 
+  // Cue Cards (/cue-cards): "Ask" opens the panel and sends that prompt, as if typed.
+  const sendRef = useRef(null);
+  useEffect(() => {
+    const onAsk = e => { if (!e.detail?.q) return; setOpen(true); setTimeout(() => sendRef.current?.(e.detail.q), 0); };
+    window.addEventListener('assistant:ask', onAsk);
+    return () => window.removeEventListener('assistant:ask', onAsk);
+  }, []);
+
   async function send(preset) {
     const q = (typeof preset === 'string' ? preset : text).trim();
     if (!q || busy) return;
@@ -82,6 +90,7 @@ export default function AssistantWidget({ demo = false }) {
     } finally { setBusy(false); }
   }
 
+  sendRef.current = send;
   // The demo shows Ember AI only when it has its own AI key (and once the visitor's count is known).
   if (demo && !demoAi?.enabled) return null;
   const limitOverlay = limitOpen && demoAi ? <DemoAiLimit limit={demoAi.limit} onClose={() => setLimitOpen(false)} /> : null;
@@ -116,7 +125,8 @@ export default function AssistantWidget({ demo = false }) {
       <div className="flex-1 overflow-y-auto overscroll-contain px-4 py-3">
         {!messages.length && (
           <div className="mt-8 flex flex-col items-center gap-3 text-center">
-            <p className="text-sm text-muted-foreground">Ask how to do something in the app.</p>
+            <p className="text-sm text-muted-foreground">Ask how to do something, ask about your data, or tell me what to record.</p>
+            <Link href="/cue-cards" onClick={() => { if (window.matchMedia('(max-width: 767px)').matches) setOpen(false); }} className="text-xs font-medium text-primary underline underline-offset-2">See what I can do (Cue Cards)</Link>
             <div className="flex flex-col gap-2">
               {['How do I raise a purchase request?', 'Where do I see my open tasks?', 'How do I change my alerts?'].map(q => (
                 <button key={q} type="button" onClick={() => send(q)} className="rounded-full border px-3.5 py-2 text-sm text-foreground/80 transition-colors hover:bg-muted active:bg-muted">{q}</button>
@@ -147,7 +157,7 @@ export default function AssistantWidget({ demo = false }) {
         </div>
       </div>
       <form className="flex items-end gap-2 border-t p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]" onSubmit={e => { e.preventDefault(); send(); }}>
-        <textarea value={text} onChange={e => setText(e.target.value)} rows={1} maxLength={2000} placeholder="Ask a question"
+        <textarea value={text} onChange={e => setText(e.target.value)} rows={1} maxLength={2000} placeholder="Ask, or tell me what to do"
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
           className="max-h-32 min-h-11 flex-1 resize-none rounded-2xl border bg-background px-3.5 py-2.5 text-base outline-none focus-visible:ring-2 focus-visible:ring-ring md:min-h-9 md:rounded-md md:px-3 md:py-2 md:text-sm" />
         <Button type="submit" size="icon" className="size-11 rounded-full md:size-9 md:rounded-md" disabled={busy || !text.trim()} aria-label="Send"><SendIcon className="size-4" /></Button>
