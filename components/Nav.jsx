@@ -9,7 +9,7 @@ import {
   LayoutDashboardIcon, FolderKanbanIcon, PackageIcon, ShieldCheckIcon, InfoIcon,
   CalendarDaysIcon, HardHatIcon, ShoppingCartIcon, InboxIcon, FlaskConicalIcon,
   TagIcon, WarehouseIcon, TrendingUpIcon, UsersIcon, CalculatorIcon, MapPinIcon, NetworkIcon, MegaphoneIcon,
-  LandmarkIcon, ClipboardListIcon, PencilRulerIcon, ReceiptIcon,
+  LandmarkIcon, ClipboardListIcon, PencilRulerIcon, ReceiptIcon, MessageSquareQuoteIcon,
 } from 'lucide-react';
 import { DEPARTMENTS } from '@/lib/milestones';
 import { departmentsFor } from '@/lib/manager-scope.mjs';
@@ -282,6 +282,7 @@ export default function Nav({ user, reportDepartments = [] }) {
                   </DropdownMenuSub>
                 )}
                 <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => router.push('/cue-cards')}><MessageSquareQuoteIcon data-icon="inline-start" />Cue Cards</DropdownMenuItem>
                 <DropdownMenuItem onClick={() => router.push('/settings')}><SettingsIcon data-icon="inline-start" />Settings</DropdownMenuItem>
                 <DropdownMenuItem onClick={logout} variant="destructive"><LogOutIcon data-icon="inline-start" />Logout</DropdownMenuItem>
               </DropdownMenuContent>

@@ -40,6 +40,9 @@ module.exports = {
       config.plugins.push(new webpack.NormalModuleReplacementPlugin(/[\\/]db-client\.js$/, (r) => { r.request = r.request.replace(/db-client\.js$/, 'db-client.workers.js'); }));
       return config;
     },
+  } : process.env.NEXT_DEV_NO_CACHE ? {
+    // A dev server on a nearly full disk: no webpack disk cache (it grows to GBs). Opt-in, local only.
+    webpack(config) { config.cache = false; return config; },
   } : {}),
   // /stores/inventory is served by the /stores page with tab=inventory. Real sub-pages such as
   // /accounts/documents win, because these rewrites only apply when no page matches.
