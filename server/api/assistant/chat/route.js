@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getFreshSessionUser, isAdmin, isInternal, isPM, headDepartments } from '@/lib/auth';
 import { queryOne } from '@/lib/db';
-import { getAssistantSettings, getAssistantKey, allHelpSections, jevDecide, openRouterError, canManageAssistant, useQuestion, OPENROUTER } from '@/lib/assistant';
+import { getActionSettings, getAssistantSettings, getAssistantKey, allHelpSections, jevDecide, openRouterError, canManageAssistant, useQuestion, OPENROUTER } from '@/lib/assistant';
 import { takeDemoAiQuestion, returnDemoAiQuestion, DEMO_AI_QUESTIONS } from '@/lib/demo-leads';
 import { pickSections, deptOfPath, kindQuestion, sectionQuestion, asIsQuestion, toolQuestion, ranked, guideAnswer, CANNED, screenList } from '@/lib/assistant-help.mjs';
 import { toolsFor } from '@/lib/assistant-data';
@@ -177,7 +177,8 @@ export async function POST(req) {
   // Live data: only the look-ups this person's departments may use (lib/assistant-data.js `who`).
   const tools = dataAccess.on || pretend ? toolsFor(asker) : [];
   // Actions this person's departments could do (each route still decides on Save).
-  const actions = await actionsFor(asker);
+  // Changes from the assistant switched off in Settings → no action cards at all.
+  const actions = (await getActionSettings()).on ? await actionsFor(asker) : [];
 
   // 1 + 2: decide. If Jev is unavailable, fall back to plain word matching over the whole guide.
   let kind = 'howto', picked, trace, sure = false, tool = null, unsure = false, actionRank = [], kindP = 0, toolP = 0;

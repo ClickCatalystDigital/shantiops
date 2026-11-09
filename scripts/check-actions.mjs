@@ -24,6 +24,8 @@ INSERT INTO stock_pieces (inventory_item_id, code, kind, length_mm, width_mm, th
   SELECT inventory_item_id, 'PL-H10M2201-001-R9', 'plate', 500, 400, 10, 15.7, 'pending_receipt', 'remnant' FROM stock_pieces WHERE code = 'PL-H10M2201-001-R1';
 INSERT INTO stock_pieces (inventory_item_id, code, kind, length_mm, width_mm, thickness_mm, weight_kg, status, source)
   SELECT inventory_item_id, 'PL-H10M2201-001-R8', 'plate', 600, 400, 12, 22.6, 'available', 'remnant' FROM stock_pieces WHERE code = 'PL-H10M2201-001-R1';
+INSERT INTO stock_pieces (inventory_item_id, code, kind, length_mm, width_mm, thickness_mm, weight_kg, status, source)
+  SELECT inventory_item_id, 'PL-H10M2201-001-R7', 'plate', 300, 300, 10, 7.1, 'pending_receipt', 'remnant' FROM stock_pieces WHERE code = 'PL-H10M2201-001-R1';
 UPDATE packing_lists SET delivery_ack_status = NULL, delivery_ack_at = NULL WHERE packing_no = 'PL-1004';
 INSERT INTO installation_reports (report_no, project_id, call_type, report_date, data_json, created_by)
   SELECT 'FSR-9001', project_id, 'Breakdown', '2026-11-05', '{}', 'service_head' FROM installation_reports LIMIT 1;
@@ -149,6 +151,12 @@ const CASES = [
   { action: 'settle_service_expense', text: 'settle CR-9003', expect: { expense_id: /CR-9003/ }, as: 'accounts_head' },
   { action: 'finalize_service_report', text: 'finalize report FSR-9001', expect: { report_id: /FSR-9001/ }, as: 'service_head' },
   { action: 'share_service_report', text: 'share FSR-1001 with the customer', expect: { report_id: /FSR-1001/ }, as: 'service_head' },
+  { action: 'reserve_stock', text: 'reserve 5 MS pipe 50 NB from stock for AB-1004', expect: { inventory_item_id: /MS PIPE 50 NB/, qty: 5 }, fix: { bom_item_id: 'MS PIPE 50 NB CLASS B AB-1004' }, as: 'stores_head' },
+  { action: 'submit_expense_claim', text: 'Vikram Rao spent 400 on lunch for the site team today', expect: { employee_id: /Vikram/, amount: 400 }, fix: { description: 'Site team lunch' }, as: 'hr_head' },
+  { action: 'reject_expense_claim', text: "reject Vikram Rao's expense claim, no bill", expect: { claim_id: /Vikram/ }, as: 'hr_head' },
+  { action: 'add_contact', text: 'add Ravi Shah as a contact at Greenfield Foods, mobile 98200 11223', expect: { customer_id: /Greenfield/, mobile: '9820011223' }, fix: { first_name: 'Ravi Shah' } },
+  { action: 'mark_visit_done', text: 'the commissioning visit to AB-1001 is done', expect: { visit_id: /AB-1001/ }, as: 'service_head' },
+  { action: 'confirm_remnant', text: 'remnant PL-H10M2201-001-R7 is back in stores', expect: { piece_id: /R7/ }, as: 'stores_head' },
   // Roles: the route would refuse, so the action is not even offered (same rules as the screen).
   { action: 'disposition_ncr', text: 'NCR-1001: use as is', as: 'qc_member', refuse: /unknown action/i },
   { action: 'approve_leave', text: "approve Divya Menon's leave", as: 'stores_head', refuse: /unknown action/i },
@@ -184,6 +192,46 @@ for (const c of CASES) {
   console.log(`${problems.length ? 'FAIL' : 'ok  '} ${c.action}${c.as ? ` (${c.as})` : ''}: ${out.summary || card.summary || ''}${problems.length ? `\n      ${problems.join('\n      ')}` : ''}`);
   if (problems.length) fails++;
 }
+
+// Manual / Auto (Settings → Assistant): the server decides; deletes, payments and approvals always need the card.
+const act = (u, body) => post(u, body);
+const autoCases = [];
+const expectAuto = (name, cond, got) => autoCases.push({ name, ok: !!cond, got });
+if (!only.length) {
+  const setActions = actions => call('admin', 'PUT', '/api/assistant/settings', { actions });
+  const lead = name => fetch(`${BASE}/api/leads/list?mode=list&q=${encodeURIComponent(name)}`, { headers: { cookie: jars.admin } }).then(r => r.json());
+  await setActions({ on: true, autoRoles: [] });
+  let r = await act('sales_head', { action: 'add_enquiry', fields: { lead_name: 'Ember Auto Ltd' }, auto: true });
+  expectAuto('no Auto role ticked → card', r.needsCard && !r.ok, r.error);
+  await setActions({ on: true, autoRoles: ['head', 'admin'] });
+  r = await act('sales_head', { action: 'add_enquiry', fields: { lead_name: 'Ember Auto Ltd' }, auto: true });
+  expectAuto('head Auto: add saves at once with Undo', r.ok && r.undo, r.error);
+  const u = await act('sales_head', { undo: r.undo });
+  expectAuto('Undo deletes what was added', u.ok, u.error);
+  r = await act('sales_head', { action: 'set_enquiry_value', fields: { lead_id: 2, expected_value: 999999 }, auto: true });
+  const back = r.undo ? await act('sales_head', { undo: r.undo }) : {};
+  const after = await call('admin', 'GET', '/api/leads/2');
+  expectAuto('edit in Auto, Undo puts the old value back', r.ok && back.ok && Number(after.expected_value) !== 999999, `${r.error || ''} ${back.error || ''} now ${after.expected_value}`);
+  r = await act('admin', { action: 'add_customer', fields: { name: 'Ember Undo Co' }, auto: true });
+  const other = r.undo ? await act('sales_head', { undo: r.undo }) : {};
+  expectAuto('someone else cannot use your Undo', !other.ok && other.status === 403, other.error);
+  r = await act('sales_head', { action: 'delete_enquiry', fields: { lead_id: 2 }, auto: true });
+  expectAuto('delete in Auto → card', r.needsCard, r.error);
+  r = await act('sales_head', { action: 'record_order_payment', fields: { sale_order_id: 4, amount: 100 }, auto: true });
+  expectAuto('payment in Auto → card', r.needsCard, r.error);
+  r = await act('qc_head', { action: 'approve_inward', fields: { approval_id: 1 }, auto: true });
+  expectAuto('approval in Auto → card', r.needsCard || /no matching/i.test(r.error || ''), r.error);
+  r = await act('qc_member', { action: 'add_qc_record', fields: { project_id: 'AB-1005', test_type: 'Visual inspection', result: 'pass' }, auto: true });
+  expectAuto('member role not ticked → card', r.needsCard, r.error);
+  r = await act('sales_head', { action: 'issue_po', fields: { po_id: 1 }, auto: true });
+  expectAuto('Auto never widens departments (Sales → PO refused)', !r.ok && /unknown action/i.test(r.error || ''), r.error);
+  await setActions({ on: false });
+  r = await act('admin', { action: 'add_customer', fields: { name: 'Ember Off Co' } });
+  expectAuto('switched off → no changes at all', !r.ok && r.status === 403, r.error);
+  await setActions({ on: true, autoRoles: [] });
+  for (const c of autoCases) { console.log(`${c.ok ? 'ok  ' : 'FAIL'} auto: ${c.name}${c.ok ? '' : ` (got ${c.got})`}`); if (!c.ok) fails++; }
+}
+
 // Who is offered what: department staff only their department's actions, Head-only actions only to heads, admin all.
 const offered = async as => (await post('admin', { list: true, as })).actions || [];
 const all = await offered('admin');
