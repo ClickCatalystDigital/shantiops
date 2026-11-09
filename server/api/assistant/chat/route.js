@@ -178,7 +178,7 @@ export async function POST(req) {
   // Live data: only the look-ups this person's departments may use (lib/assistant-data.js `who`).
   const tools = dataAccess.on || pretend ? toolsFor(asker) : [];
   // Actions this person's departments could do (each route still decides on Save).
-  const actions = actionsFor(asker);
+  const actions = await actionsFor(asker);
 
   // 1 + 2: decide. If Jev is unavailable, fall back to plain word matching over the whole guide.
   let kind = 'howto', picked, trace, sure = false, tool = null, unsure = false, actionRank = [], kindP = 0, toolP = 0;
