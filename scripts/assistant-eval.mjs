@@ -159,17 +159,80 @@ const ACT = [
   ['delete the Lotus Breweries enquiry, it was a duplicate', '/sales', 'delete_enquiry'], ['remove the duplicate Harvest Rice Mills lead', '/', 'delete_enquiry'],
 ];
 
+// Added 2026-11-08 (the second set of actions). EVAL_ONLY=new runs only these.
+const ACT_NEW = [
+  ['Metro Hospital Trust enquiry: the phone number is 98450 22334', '/sales', 'edit_enquiry_contact'], ['correct the email on the Kaveri Pharma enquiry to buy@kaveri.example', '/', 'edit_enquiry_contact'],
+  ['make the Harvest Rice Mills enquiry a customer', '/sales', 'convert_enquiry'], ['convert the Metro Hospital lead into a customer', '/', 'convert_enquiry'],
+  ['close the sales call on Harvest Rice Mills, nothing more to follow up', '/sales', 'close_sales_call'], ['stop following up the Kaveri Pharma enquiry for now', '/', 'close_sales_call'],
+  ['add a follow-up to send the Kaveri Pharma brochure by Friday', '/sales', 'add_crm_task'], ['remind me to call Metro Hospital back on Monday', '/', 'add_crm_task'],
+  ['the Kaveri Pharma brochure follow-up is done', '/sales', 'complete_crm_task'], ['I called Metro Hospital back, mark that follow-up done', '/', 'complete_crm_task'],
+  ['move the second boiler for the new plant opportunity to hot offers', '/pipeline', 'set_opportunity_stage'], ['the Sunrise Dairy second boiler deal is now at proposals', '/', 'set_opportunity_stage'],
+  ['approve the discount on QTN-8', '/sales', 'approve_quotation_discount'], ['the extra discount on the Greenfield offer QTN-8 is fine, approve it', '/', 'approve_quotation_discount'],
+  ['make a sale order from QTN-8', '/sales', 'convert_quotation_to_order'], ['convert the accepted quotation QTN-8 into a sale order', '/', 'convert_quotation_to_order'],
+  ['mark SO-4 as ready', '/sales', 'set_order_status'], ['SO-3 has been dispatched, update the order tracker', '/', 'set_order_status'],
+  ['received 50,000 against invoice AB/2/2026-27 by NEFT', '/accounts', 'record_invoice_receipt'], ['Bluewave paid 1 lakh on invoice AB/3/2026-27', '/', 'record_invoice_receipt'],
+  ['create a project for Lotus Breweries', '/projects', 'create_project'], ['open a new boiler project for Coastal Fisheries', '/', 'create_project'],
+  ['release the BOM of SO-5', '/engineering', 'release_bom'], ['the bill of materials for SO-5 is ready, release it to procurement', '/', 'release_bom'],
+  ['approve the change note on the feed pump for AB-1004', '/engineering', 'set_ecn_status'], ['reject the ECN to change the feed pump make on AB-1004', '/', 'set_ecn_status'],
+  ['cancel the blow down valve line on AB-1004, not needed', '/engineering', 'cancel_bom_line'], ['we no longer need the pressure gauge on AB-1004, cancel that BOM line', '/', 'cancel_bom_line'],
+  ['send the pressure gauge on AB-1004 to procurement', '/stores', 'raise_pr_for_line'], ['raise a purchase request for the blow down valve on AB-1004', '/', 'raise_pr_for_line'],
+  ['spoke to the supplier about the water level gauge on AB-1004, it ships Monday', '/procurement', 'add_delivery_followup'], ['Shield Valves says the stop valve for AB-1004 is delayed by a week', '/', 'add_delivery_followup'],
+  ['schedule 1 of the stay tube on PO 101 for 25 Nov', '/procurement', 'add_delivery_lot'], ['the supplier will deliver 10 boiler tubes of the AB-1004 order on 2 Dec, add a delivery lot', '/', 'add_delivery_lot'],
+  ['record the supplier bill against purchase order 101', '/procurement', 'record_vendor_bill'], ['Prime Steel sent their invoice for the plates PO, record the bill', '/', 'record_vendor_bill'],
+  ['approve the bill EMB-501', '/procurement', 'approve_vendor_bill'], ['the Prime Steel bill is checked, approve it for payment', '/', 'approve_vendor_bill'],
+  ['paid 1000 on bill EMB-501 by RTGS', '/accounts', 'pay_vendor_bill'], ['we paid Prime Steel 2 lakh against their bill', '/', 'pay_vendor_bill'],
+  ['received 2 nos of the stay tube for AB-1004', '/stores', 'receive_bom_line'], ['the boiler tubes for AB-1004 arrived today, receive them', '/', 'receive_bom_line'],
+  ['open a stock receipt from Prime Steel Traders', '/stores', 'add_stock_receipt'], ['start an inward batch for the National Tube Co delivery', '/', 'add_stock_receipt'],
+  ['reserve 2 MS channel from stock for the AB-1004 support line', '/stores', 'reserve_stock'], ['keep 20 kg of MS plate in stock aside for AB-1005', '/', 'reserve_stock'],
+  ['reserve piece PL-H10M2201-001-R8 for the feed check valve on AB-1004', '/stores', 'reserve_piece'], ['hold the plate remnant PL-H10M2201-001-R8 for AB-1005', '/', 'reserve_piece'],
+  ['issue the reserved gasket spiral wound for AB-1005 to production', '/stores', 'issue_reservation'], ['hand over the reserved stud bolts for AB-1005 to the shop floor', '/', 'issue_reservation'],
+  ['release the stud bolt reservation on AB-1005', '/stores', 'release_reservation'], ['un-reserve the safety valve kept for AB-1005, it is free again', '/', 'release_reservation'],
+  ['scrap the returned piece PL-H10M2201-001-R9', '/stores', 'scrap_piece'], ['the offcut that came back from the shop floor is useless, scrap it', '/', 'scrap_piece'],
+  ['close gate entry 1001', '/stores', 'close_gate_entry'], ['the material from gate entry 1002 is received, close it', '/', 'close_gate_entry'],
+  ['gate pass for the old pump going to Shree Motors for repair, returnable by 30 Nov', '/stores', 'create_gate_pass'], ['make a gate pass for scrap going to Metro Scrap Dealers', '/', 'create_gate_pass'],
+  ['approve gate pass GP-1', '/dispatch', 'approve_gate_pass'], ['the Shree Motors gate pass is fine, approve it', '/', 'approve_gate_pass'],
+  ['issue gate pass GP-1', '/dispatch', 'issue_gate_pass'], ['the pump left the gate on gate pass GP-1', '/', 'issue_gate_pass'],
+  ['cancel gate pass GP-1', '/dispatch', 'cancel_gate_pass'], ['the Shree Motors gate pass is not needed any more, cancel it', '/', 'cancel_gate_pass'],
+  ['NCR-1001: use as is', '/qc', 'disposition_ncr'], ['the porosity NCR on AB-1005 needs rework', '/', 'disposition_ncr'],
+  ['verify NCR-1001', '/qc', 'verify_ncr'], ['QC checked the rework on NCR-1001, it is fine now', '/', 'verify_ncr'],
+  ['close NCR-1001', '/qc', 'close_ncr'], ['NCR-1001 is verified, close it', '/', 'close_ncr'],
+  ['release JC-1025 from QC hold', '/qc', 'qc_release_job_card'], ['QC has checked job card JC-1025, let production continue', '/', 'qc_release_job_card'],
+  ['Ramesh Kumar worked 2 hours on JC-1024', '/production/shop', 'log_job_card_time'], ['log 45 minutes by Suresh Yadav on job card JC-1026', '/', 'log_job_card_time'],
+  ['Suresh Yadav is present today on the shop floor', '/production/shop', 'mark_worker_day'], ['mark welder Mahesh Pawar half day on the daily sheet', '/', 'mark_worker_day'],
+  ['make a packing list for AB-1005', '/dispatch', 'create_packing_from_bom'], ['generate the packing list from the BOM for AB-1004', '/', 'create_packing_from_bom'],
+  ['Bluewave received PL-1004 fine', '/dispatch', 'acknowledge_delivery'], ['the customer says two boxes on PL-1004 arrived damaged', '/', 'acknowledge_delivery'],
+  ['ship PL-1008 and PL-1009 together on truck MH 12 AB 1234', '/dispatch', 'create_shipment'], ['combine packing lists PL-1008 and PL-1009 into one shipment', '/', 'create_shipment'],
+  ["approve Divya Menon's leave", '/hr', 'approve_leave'], ['Divya Menon can take her leave, approve it', '/', 'approve_leave'],
+  ["reject Ananya Iyer's casual leave", '/hr', 'reject_leave'], ['we cannot spare Divya Menon next week, reject her leave', '/', 'reject_leave'],
+  ['give Priya Nair 12 days of earned leave for 2026', '/hr', 'allocate_leave'], ['allocate 6 sick leave days to Rohan Mehta this year', '/', 'allocate_leave'],
+  ['Vikram Rao spent 850 on a taxi to the site today', '/hr', 'submit_expense_claim'], ['claim 1200 for the hotel stay during the commissioning visit', '/', 'submit_expense_claim'],
+  ["approve Vikram Rao's expense claim", '/hr', 'approve_expense_claim'], ['the taxi claim from Vikram is fine, approve it', '/', 'approve_expense_claim'],
+  ["reject Vikram Rao's expense claim, no bill", '/hr', 'reject_expense_claim'], ['turn down the hotel expense claim, it was not approved beforehand', '/', 'reject_expense_claim'],
+  ['gave Karan Joshi an advance of 5000 today', '/hr', 'record_advance'], ['Neha Gupta took a salary advance of 3000', '/', 'record_advance'],
+  ['loan of 60000 to Sanjay Patil over 12 months', '/hr', 'record_loan'], ['Amit Shah is taking a 1 lakh loan, to be repaid in 10 months', '/', 'record_loan'],
+  ['move Ravi Kulkarni to interview', '/hr', 'set_applicant_status'], ['we are hiring Ravi Kulkarni, mark him hired', '/', 'set_applicant_status'],
+  ['Sunrise Dairy called, the boiler on AB-1001 has a steam leak, urgent', '/installation', 'log_service_call'], ['log a complaint from Riverside Textiles on AB-1002: the burner trips', '/', 'log_service_call'],
+  ['the steam leak service call on AB-1001 is resolved', '/installation', 'set_service_call_status'], ['service call 1001 for the feed pump noise is now in progress', '/', 'set_service_call_status'],
+  ['visited the steam leak call on AB-1001 today, replaced the gasket', '/installation', 'add_service_call_visit'], ['our technician went for service call 1002 and changed the pump seal', '/', 'add_service_call_visit'],
+  ['approve CR-9001', '/approvals', 'approve_service_expense'], ['the service engineer cash request CR-9001 is fine, approve it', '/', 'approve_service_expense'],
+  ['reject CR-9002, no bills attached', '/approvals', 'reject_service_expense'], ['turn down the service travel claim CR-9002, too high', '/', 'reject_service_expense'],
+  ['settle CR-9003', '/accounts', 'settle_service_expense'], ['pay out the approved service expense CR-9003', '/', 'settle_service_expense'],
+  ['finalize report FSR-9001', '/installation', 'finalize_service_report'], ['the breakdown report FSR-9001 is complete, lock it', '/', 'finalize_service_report'],
+  ['share FSR-1001 with the customer', '/installation', 'share_service_report'], ['put the commissioning report FSR-1001 on the customer portal', '/', 'share_service_report'],
+];
+
 const login = await fetch(`${BASE}/api/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: process.env.ADMIN_USER || 'admin', password: process.env.ADMIN_PASS || 'admin123' }) });
 const cookie = login.headers.get('set-cookie')?.split(';')[0];
 if (!login.ok || !cookie) { console.error('Login failed'); process.exit(1); }
 const post = body => fetch(`${BASE}/api/assistant/chat`, { method: 'POST', headers: { 'content-type': 'application/json', cookie }, body: JSON.stringify(body) }).then(async r => ({ ok: r.ok, body: await r.json() }));
 
 // One generated question per guide section: "How do I use <section>?" must come back to that section.
-const ONLY = process.env.EVAL_ONLY; // 'actions' | 'cards' | unset (everything)
+const ONLY = process.env.EVAL_ONLY; // 'actions' | 'new' | 'cards' | unset (everything)
 let cases = ONLY ? [] : HAND.map(c => ({ q: c[0], path: c[1], kind: c[2], want: c[3], group: c[2] === 'howto' ? 'how-to (written by hand)' : c[2] }));
-if (ONLY !== 'cards') cases.push(...ACT.map(([q, path, want]) => ({ q, path, kind: 'action', want, group: 'actions' })));
+if (ONLY === 'new') cases.push(...ACT_NEW.map(([q, path, want]) => ({ q, path, kind: 'action', want, group: 'actions (second set)' })));
+else if (ONLY !== 'cards') cases.push(...[...ACT, ...ACT_NEW].map(([q, path, want]) => ({ q, path, kind: 'action', want, group: 'actions' })));
 // Every Cue Card on the page (lib/cue-cards.js), as the admin sees them: it must trigger what the card says.
-if (ONLY !== 'actions') {
+if (ONLY !== 'actions' && ONLY !== 'new') {
   const cc = await fetch(`${BASE}/api/assistant/cue-cards`, { headers: { cookie } }).then(r => r.json());
   for (const c of cc.cards) cases.push({ q: c.q, path: '/', kind: c.expect.type, want: c.expect.type === 'action' ? c.expect.action : c.expect.type === 'data' ? c.expect.tool : [], group: 'cue cards' });
 }

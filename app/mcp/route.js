@@ -30,7 +30,7 @@ export async function POST(req) {
   if (!req.headers.get('content-type')?.includes('application/json')) return new Response('Expected application/json', { status: 415 });
   let msg;
   try { msg = await req.json(); } catch { return Response.json({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } }, { status: 400 }); }
-  const res = await handle(msg, { name: 'sb-ops', tools: toolsFor(user), instructions: INSTRUCTIONS }, user);
+  const res = await handle(msg, { name: 'sb-ops', tools: await toolsFor(user), instructions: INSTRUCTIONS }, user);
   return res ? Response.json(res) : new Response(null, { status: 202 });
 }
 
