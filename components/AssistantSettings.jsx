@@ -49,6 +49,40 @@ function Limits({ settings, onChange }) {
 }
 
 // Live-data answers: off until the customer's approval is recorded (name, role, who recorded it, when).
+// Changes from the assistant (admin): on/off, and which roles may use Auto in chat. Department rules apply either way.
+function ActionChanges({ settings, onChange }) {
+  const a = settings.actions || { on: true, autoRoles: [] };
+  const [busy, setBusy] = useState(false);
+  async function put(actions, msg) {
+    setBusy(true);
+    try { onChange(await api('/api/assistant/settings', { method: 'PUT', body: { actions } })); showToast(msg); }
+    catch (err) { showToast(err.message, 'error'); } finally { setBusy(false); }
+  }
+  const toggleRole = r => put({ autoRoles: a.autoRoles.includes(r) ? a.autoRoles.filter(x => x !== r) : [...a.autoRoles, r] }, 'Auto roles saved');
+  return (
+    <div className="flex flex-wrap items-start gap-3 rounded-lg border bg-muted/30 p-3 lg:col-span-2">
+      <Badge variant={a.on ? 'default' : 'outline'}>{a.on ? 'On' : 'Off'}</Badge>
+      <div className="min-w-0 flex-1 text-xs text-muted-foreground">
+        <p className="font-medium text-foreground">Changes from the assistant</p>
+        <p>{a.on ? 'People can ask Ember AI to add or change records (an enquiry, a task, a stage…). Each one runs the screen\'s own checks for that person.' : 'Off. Ember AI only answers questions; it never offers to change a record.'}</p>
+        {a.on && (
+          <div className="mt-2">
+            <p className="text-foreground">Roles that may use Auto in chat</p>
+            <p className="mb-1.5">Auto saves adds and edits at once, with Undo. Deletes, payments and approvals always show the card. Everyone else stays on Manual.</p>
+            <div className="flex flex-wrap gap-1.5">
+              {(settings.autoRoles || []).map(([k, label]) => (
+                <button key={k} type="button" disabled={busy} onClick={() => toggleRole(k)} aria-pressed={a.autoRoles.includes(k)}
+                  className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${a.autoRoles.includes(k) ? 'border-primary bg-primary text-primary-foreground' : 'hover:bg-muted'}`}>{label}</button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+      <Button size="sm" variant="outline" disabled={busy} onClick={() => put({ on: !a.on }, a.on ? 'Changes from the assistant switched off' : 'Changes from the assistant switched on')}>{a.on ? 'Switch off' : 'Switch on'}</Button>
+    </div>
+  );
+}
+
 function DataAccess({ settings, onChange }) {
   const d = settings.dataAccess || { on: false };
   const [open, setOpen] = useState(false);
@@ -185,6 +219,7 @@ export default function AssistantSettings() {
         </div>
         {settings.isAdmin && <Limits settings={settings} onChange={setSettings} />}
         <DataAccess settings={settings} onChange={setSettings} />
+        {settings.isAdmin && <ActionChanges settings={settings} onChange={setSettings} />}
       </CardContent>
     </Card>
   );

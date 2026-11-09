@@ -9,7 +9,7 @@ import { usePathname } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { linkify } from '@/lib/assistant-help.mjs';
 import { EmberMark } from '@/components/EmberMark';
-import { XIcon, SendIcon, RotateCcwIcon, LockIcon } from 'lucide-react';
+import { XIcon, SendIcon, RotateCcwIcon, LockIcon, ZapIcon } from 'lucide-react';
 import DemoAiLimit from '@/components/DemoAiLimit';
 import { track } from '@/components/DemoAnalytics';
 import AssistantActionCard from '@/components/AssistantActionCard';
@@ -24,6 +24,17 @@ export default function AssistantWidget({ demo = false }) {
   const [left, setLeft] = useState(null); // questions left today, once known
   const [demoAi, setDemoAi] = useState(null); // { enabled, left, limit } in the demo, once known
   const [limitOpen, setLimitOpen] = useState(false);
+  // Manual (the card) or Auto (adds and edits save at once, with Undo). Shown only when the server says this role may.
+  const [mayAuto, setMayAuto] = useState(false);
+  const [auto, setAuto] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    fetch('/api/assistant/act').then(r => (r.ok ? r.json() : null)).then(d => { if (d) { setMayAuto(!!d.mayAuto); setAuto(!!d.auto); } }).catch(() => {});
+  }, [open]);
+  const flipAuto = () => {
+    const next = !auto; setAuto(next);
+    fetch('/api/assistant/act', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ auto: next }) }).catch(() => {});
+  };
   const locked = demo && demoAi?.left === 0;
   useEffect(() => {
     if (!demo) return;
@@ -72,7 +83,9 @@ export default function AssistantWidget({ demo = false }) {
       // An action: a card to check and save (components/AssistantActionCard.jsx), not a text answer.
       if ((res.headers.get('content-type') || '').includes('application/json')) {
         const d = await res.json();
-        patch({ content: d.text || '', card: d.card || null });
+        // In Auto a card that saves itself needs no "check it and press Save" line.
+        const saving = mayAuto && auto && d.card?.auto && d.card?.ready;
+        patch({ content: saving ? '' : d.text || '', card: d.card || null, auto: mayAuto && auto });
         return;
       }
       let sources = [];
@@ -141,14 +154,14 @@ export default function AssistantWidget({ demo = false }) {
         <div className="flex flex-col gap-3">
           {messages.map((m, i) => (
             <div key={i} className={m.role === 'user' ? 'self-end' : 'self-start'} style={{ maxWidth: '90%' }}>
-              <div className={`whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2.5 text-[15px] leading-relaxed md:px-3 md:py-2 md:text-sm ${m.role === 'user' ? 'bg-primary text-primary-foreground' : m.error ? 'bg-destructive/10 text-destructive' : 'bg-muted'}`}>
+              {!(m.card && !m.content) && <div className={`whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2.5 text-[15px] leading-relaxed md:px-3 md:py-2 md:text-sm ${m.role === 'user' ? 'bg-primary text-primary-foreground' : m.error ? 'bg-destructive/10 text-destructive' : 'bg-muted'}`}>
                 {m.role === 'user' ? m.content
                   : !m.content ? (busy && i === messages.length - 1 ? 'Thinking…' : '')
                   : linkify(m.content.replace(/\*\*/g, '')).map((part, j) => part.href
                     ? <Link key={j} href={part.href} className="font-medium text-primary underline underline-offset-2" onClick={() => { if (window.matchMedia('(max-width: 767px)').matches) setOpen(false); }}>{part.text}</Link>
                     : part.text)}
-              </div>
-              {m.card && <div className="mt-2"><AssistantActionCard card={m.card} onNavigate={() => { if (window.matchMedia('(max-width: 767px)').matches) setOpen(false); }} /></div>}
+              </div>}
+              {m.card && <div className="mt-2"><AssistantActionCard card={m.card} auto={m.auto} onNavigate={() => { if (window.matchMedia('(max-width: 767px)').matches) setOpen(false); }} /></div>}
               {m.link && <a href={m.link} target="_blank" rel="noreferrer" className="mt-1 inline-block text-xs font-medium text-primary underline underline-offset-2">{m.linkLabel || m.link}</a>}
               {!!m.sources?.length && (
                 <div className="mt-1 flex flex-wrap gap-1.5">
@@ -164,6 +177,13 @@ export default function AssistantWidget({ demo = false }) {
         <textarea value={text} onChange={e => setText(e.target.value)} rows={1} maxLength={2000} placeholder="Ask, or tell me what to do"
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
           className="max-h-32 min-h-11 flex-1 resize-none rounded-2xl border bg-background px-3.5 py-2.5 text-base outline-none focus-visible:ring-2 focus-visible:ring-ring md:min-h-9 md:rounded-md md:px-3 md:py-2 md:text-sm" />
+        {mayAuto && (
+          <button type="button" onClick={flipAuto} aria-pressed={auto} aria-label={auto ? 'Auto mode (tap for Manual)' : 'Manual mode (tap for Auto)'}
+            title={auto ? 'Auto: adds and edits save at once, with Undo. Deletes, payments and approvals still ask.' : 'Manual: every change shows a card to check and Save.'}
+            className={`mb-2.5 inline-flex h-6 shrink-0 items-center gap-1 rounded-full border px-2 text-[11px] transition-colors md:mb-1.5 ${auto ? 'border-ember/50 bg-ember/10 text-ember' : 'text-muted-foreground hover:text-foreground'}`}>
+            <ZapIcon className={`size-3 ${auto ? '' : 'opacity-50'}`} />{auto ? 'Auto' : 'Manual'}
+          </button>
+        )}
         <Button type="submit" size="icon" className="size-11 rounded-full md:size-9 md:rounded-md" disabled={busy || !text.trim()} aria-label="Send"><SendIcon className="size-4" /></Button>
       </form>
     </div>

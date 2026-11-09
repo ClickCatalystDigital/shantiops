@@ -2,41 +2,61 @@
 
 // A task Ember AI prepared (lib/assistant-actions.js): every field shown and editable, nothing saved until Save.
 // Save sends the fields to /api/assistant/act, which checks them again and runs the app's own route as this person.
-import { useState } from 'react';
+// auto (chat's Auto mode): an add or edit the server agrees may skip the card saves at once and shows "Done · Undo";
+// if the server says no (a delete, a payment, an approval, a role without Auto) the card shows as usual.
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { ArrowUpRightIcon, Trash2Icon } from 'lucide-react';
+import { ArrowUpRightIcon, Trash2Icon, Undo2Icon } from 'lucide-react';
 import { EmberMark } from '@/components/EmberMark';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 
-export default function AssistantActionCard({ card, onNavigate }) {
+export default function AssistantActionCard({ card, auto = false, onNavigate }) {
+  const tried = useRef(false);
   const [values, setValues] = useState(card.values);
   const [display, setDisplay] = useState(Object.fromEntries(card.fields.filter(f => f.type === 'ref').map(f => [f.name, f.display || ''])));
-  const [state, setState] = useState('draft'); // draft | saving | saved | cancelled
+  const [state, setState] = useState(auto && card.auto && card.ready ? 'saving' : 'draft'); // draft | saving | saved | undoing | undone | cancelled
   const [error, setError] = useState(card.errors?.join('. ') || null);
   const [done, setDone] = useState(null);
   const del = card.risk === 'delete';
   const missing = card.fields.filter(f => f.required && (values[f.name] == null || values[f.name] === ''));
 
-  async function save() {
+  const post = async body => (await fetch('/api/assistant/act', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })).json().catch(() => ({}));
+
+  async function save(isAuto = false) {
     setState('saving'); setError(null);
     try {
-      const res = await fetch('/api/assistant/act', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: card.action, fields: values }) });
-      const out = await res.json().catch(() => ({}));
+      const out = await post({ action: card.action, fields: values, auto: isAuto });
+      if (out.needsCard) { setState('draft'); return; }
       if (!out.ok) throw new Error(out.error || 'Could not save');
       setDone(out); setState('saved');
     } catch (e) { setError(e.message); setState('draft'); }
   }
+  async function undo() {
+    setState('undoing');
+    const out = await post({ undo: done.undo });
+    if (out.ok) setState('undone'); else { setDone({ ...done, undo: null, undoError: out.error || 'Could not undo' }); setState('saved'); }
+  }
 
-  if (state === 'saved') {
+  // Once, on arrival (the ref survives React's double effect in development).
+  useEffect(() => {
+    if (tried.current || !(auto && card.auto && card.ready)) return;
+    tried.current = true; save(true);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (state === 'saved' || state === 'undoing') {
     return (
       <p className="flex flex-wrap items-center gap-x-2 rounded-2xl bg-muted px-3 py-2 text-sm">
         Done: {done.summary}.
         {done.link && <Link href={done.link} onClick={onNavigate} className="inline-flex items-center gap-0.5 font-medium text-primary">Open <ArrowUpRightIcon className="size-3" /></Link>}
+        {done.undo && <button type="button" disabled={state === 'undoing'} onClick={undo} className="inline-flex items-center gap-0.5 font-medium text-primary disabled:opacity-50"><Undo2Icon className="size-3" /> {state === 'undoing' ? 'Undoing…' : 'Undo'}</button>}
+        {done.undoError && <span className="text-xs text-destructive">{done.undoError}</span>}
       </p>
     );
   }
+  if (state === 'undone') return <p className="text-xs text-muted-foreground">Undone: {done.summary}.</p>;
+  if (state === 'saving' && auto && card.auto && !done && !error && tried.current) return <p className="text-xs text-muted-foreground">Saving: {card.summary}…</p>;
   if (state === 'cancelled') return <p className="text-xs text-muted-foreground">Not saved.</p>;
 
   return (
@@ -57,7 +77,7 @@ export default function AssistantActionCard({ card, onNavigate }) {
       {error && <p className="mt-2 text-xs text-destructive">{error}</p>}
       <div className="mt-3 flex items-center justify-end gap-2">
         <button type="button" onClick={() => setState('cancelled')} className="rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground">Cancel</button>
-        <button type="button" onClick={save} disabled={state === 'saving' || missing.length > 0}
+        <button type="button" onClick={() => save()} disabled={state === 'saving' || missing.length > 0}
           className={cn('rounded-md px-3 py-1.5 text-sm transition-opacity hover:opacity-90 disabled:opacity-50', del ? 'bg-destructive text-white' : 'bg-primary text-primary-foreground')}>
           {state === 'saving' ? 'Saving…' : missing.length ? `Add ${missing[0].label.toLowerCase()}` : del ? 'Confirm' : 'Save'}
         </button>

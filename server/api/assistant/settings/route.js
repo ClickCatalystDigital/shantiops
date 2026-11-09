@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getFreshSessionUser, isAdmin } from '@/lib/auth';
-import { getAssistantSettings, saveAssistantSettings, getAssistantKey, getBalance, canManageAssistant, getDataAccess, setDataAccess, getLimits, saveLimits, LIMIT_KEYS, CREDITS_URL } from '@/lib/assistant';
+import { getAssistantSettings, saveAssistantSettings, getAssistantKey, getBalance, canManageAssistant, getDataAccess, setDataAccess, getLimits, saveLimits, LIMIT_KEYS, CREDITS_URL, getActionSettings, setActionSettings, AUTO_ROLES } from '@/lib/assistant';
 import { audit } from '@/lib/usb';
 
 export const dynamic = 'force-dynamic';
@@ -10,7 +10,7 @@ async function withBalance() {
   const s = await getAssistantSettings();
   let balance = null;
   if (s.hasKey) { try { balance = await getBalance(await getAssistantKey()); } catch { /* key unreadable */ } }
-  return { ...s, balance, creditsUrl: CREDITS_URL, limits: await getLimits(), limitKeys: LIMIT_KEYS };
+  return { ...s, balance, creditsUrl: CREDITS_URL, limits: await getLimits(), limitKeys: LIMIT_KEYS, actions: await getActionSettings(), autoRoles: AUTO_ROLES };
 }
 
 export async function GET() {
@@ -29,6 +29,13 @@ export async function PUT(req) {
     if (!isAdmin(user)) return NextResponse.json({ error: 'Only admin can change the daily limits' }, { status: 403 });
     await saveLimits(b.limits);
     await audit('assistant_limits', { actor: user.username, detail: JSON.stringify(b.limits) });
+    return NextResponse.json({ ...(await withBalance()), isAdmin: true });
+  }
+  // { actions: { on, autoRoles } } — changes from the assistant, and which roles may use Auto in chat. Admin only.
+  if (b.actions !== undefined) {
+    if (!isAdmin(user)) return NextResponse.json({ error: 'Only admin can change this' }, { status: 403 });
+    const next = await setActionSettings(b.actions || {});
+    await audit('assistant_actions', { actor: user.username, detail: JSON.stringify(next) });
     return NextResponse.json({ ...(await withBalance()), isAdmin: true });
   }
   // { dataAccess: { on, approver_name, approver_role, confirmed } } — admin only.
