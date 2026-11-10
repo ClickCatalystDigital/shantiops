@@ -69,6 +69,8 @@ jobs:
 
   client:
     needs: demo
+    # Skipped while SB Ops runs only as the two boiler-erp demos (10 Nov 2026); set the CLIENT_URL variable to bring it back.
+    if: vars.CLIENT_URL != ''
     runs-on: ubuntu-latest
     environment: client
     steps:
@@ -76,4 +78,4 @@ jobs:
       - name: Wait until the client site serves this commit
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: node scripts/wait-for-commit.mjs https://shantiops.onrender.com "$GITHUB_SHA" /login
+        run: node scripts/wait-for-commit.mjs "${{ vars.CLIENT_URL }}" "$GITHUB_SHA" /login
