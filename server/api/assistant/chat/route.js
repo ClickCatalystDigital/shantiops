@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
-import { getFreshSessionUser, isAdmin, isInternal, isPM, headDepartments } from '@/lib/auth';
+import { getFreshSessionUser, isAdmin, isInternal, isPM, headDepartments, canAccessDepartment } from '@/lib/auth';
 import { queryOne } from '@/lib/db';
 import { getActionSettings, getAssistantSettings, getAssistantKey, allHelpSections, jevDecide, openRouterError, canManageAssistant, useQuestion, OPENROUTER } from '@/lib/assistant';
 import { takeDemoAiQuestion, returnDemoAiQuestion, DEMO_AI_QUESTIONS } from '@/lib/demo-leads';
-import { pickSections, deptOfPath, kindQuestion, sectionQuestion, asIsQuestion, toolQuestion, ranked, guideAnswer, CANNED, screenList } from '@/lib/assistant-help.mjs';
+import { pickSections, deptOfPath, kindQuestion, sectionQuestion, asIsQuestion, toolQuestion, ranked, guideAnswer, CANNED, screenList, whatIfPointer } from '@/lib/assistant-help.mjs';
 import { toolsFor } from '@/lib/assistant-data';
 import { actionsFor, fill } from '@/lib/assistant-actions';
 
@@ -134,6 +134,11 @@ export async function POST(req) {
     .slice(-8).map(m => ({ role: m.role, content: m.content.slice(0, 2000) }));
   if (messages.at(-1)?.role !== 'user') return NextResponse.json({ error: 'Ask a question first' }, { status: 400 });
   const path = String(b.path || '/').slice(0, 100);
+
+  // Steel purchase timing what-if (market-intel plan D7): answered here, before the AI key, the quota or any model call, so the
+  // question and any figures in it stay in the app. The assistant only points to the deterministic card; it never calculates.
+  const pointer = b.dry ? null : whatIfPointer(messages.at(-1).content, { canSeeMoney: isPM(user) || canAccessDepartment(user, 'Sales') || canAccessDepartment(user, 'Marketing') });
+  if (pointer) return new Response(pointer.text, { headers: headers([], pointer.link, null) });
 
   let key;
   try { key = await getAssistantKey(); } catch { key = null; }
