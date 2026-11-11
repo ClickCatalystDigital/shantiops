@@ -1,0 +1,113 @@
+{
+ "comparison": {
+  "extra_financing_cost_of_buying_now_instead_of_waiting": {
+   "own rate": 56400.0,
+   "own rate + 2 points": 65800.0
+  },
+  "steel_cost_of_waiting_instead_of_buying_now": {
+   "base": 0.0,
+   "high": 320000.0,
+   "low": -240000.0
+  }
+ },
+ "currency": "INR",
+ "header": "Amounts in INR. Shown separately; not added together. No percentage of margin is computed. Inputs are hypothetical. Deterministic arithmetic: no model, no market data.",
+ "input_sources": {
+  "annual_rate_pct": "hypothetical",
+  "order_value": "hypothetical",
+  "steel.now_rate": "hypothetical",
+  "steel.open_qty": "hypothetical",
+  "steel.quote_rate": "hypothetical",
+  "steel.recovered": "hypothetical",
+  "steel.scenarios": "hypothetical",
+  "timeline": "hypothetical"
+ },
+ "inputs": {
+  "annual_rate_pct": {
+   "own rate": 12.0,
+   "own rate + 2 points": 14.0
+  },
+  "order_value": 12000000.0,
+  "steel": {
+   "now_rate": 66000,
+   "open_qty": 40.0,
+   "quote_rate": 62000,
+   "scenarios": {
+    "base": 66000,
+    "high": 74000,
+    "low": 60000
+   },
+   "unit": "t"
+  },
+  "steel_fraction_of_order_at_quote": 0.206667,
+  "timeline": {
+   "advance": 0.05,
+   "collection_delay": 1,
+   "fabrication_months": 4,
+   "materials": 0.6,
+   "now_month": 0,
+   "other_costs": 0.25,
+   "planned_purchase_month": 3,
+   "retention": 0.05,
+   "retention_delay": 6
+  }
+ },
+ "label": "hypothetical",
+ "lines": {
+  "financing_cost": {
+   "mechanism": "cash_gap_financing@1",
+   "posts_to": "financing cost",
+   "rows": {
+    "own rate": {
+     "steel paid at planned purchase": {
+      "financing_cost": 435000.0,
+      "months_negative": 5,
+      "peak_cash_need": 9600000.0
+     },
+     "steel paid now": {
+      "financing_cost": 491400.0,
+      "months_negative": 8,
+      "peak_cash_need": 9600000.0
+     }
+    },
+    "own rate + 2 points": {
+     "steel paid at planned purchase": {
+      "financing_cost": 507500.0,
+      "months_negative": 5,
+      "peak_cash_need": 9600000.0
+     },
+     "steel paid now": {
+      "financing_cost": 573300.0,
+      "months_negative": 8,
+      "peak_cash_need": 9600000.0
+     }
+    }
+   },
+   "vectors_sha256": "c6d3073785840191c1c6a8fe9ec3bc99de8da86f659b3fd7902748f6ca0e6573"
+  },
+  "steel_cost": {
+   "mechanism": "steel_timing@1",
+   "posts_to": "material cost",
+   "rows": {
+    "buy now": {
+     "extra_material_cost": 160000.0,
+     "rate": 66000.0
+    },
+    "wait (base)": {
+     "extra_material_cost": 160000.0,
+     "rate": 66000.0
+    },
+    "wait (high)": {
+     "extra_material_cost": 480000.0,
+     "rate": 74000.0
+    },
+    "wait (low)": {
+     "extra_material_cost": -80000.0,
+     "rate": 60000.0
+    }
+   },
+   "vectors_sha256": "ca008a7531dcd502f9441f080959a85e02bc86387ec4fc12f9f4801cc6f2e98a"
+  }
+ },
+ "note": "Illustration for a conversation; not any company's result. Round, invented numbers."
+}

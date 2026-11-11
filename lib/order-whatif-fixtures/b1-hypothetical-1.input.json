@@ -1,0 +1,17 @@
+{
+  "label": "hypothetical",
+  "note": "Illustration for a conversation; not any company's result. Round, invented numbers.",
+  "currency": "INR",
+  "market": "in-boilers",
+  "order_value": 12000000,
+  "steel": {
+    "open_qty": 40, "unit": "t",
+    "quote_rate": 62000, "now_rate": 66000,
+    "scenarios": {"low": 60000, "base": 66000, "high": 74000}
+  },
+  "timeline": {
+    "advance": 0.05, "materials": 0.60, "other_costs": 0.25, "retention": 0.05,
+    "now_month": 0, "planned_purchase_month": 3, "fabrication_months": 4, "collection_delay": 1, "retention_delay": 6
+  },
+  "annual_rate_pct": {"own rate": 12, "own rate + 2 points": 14}
+}
