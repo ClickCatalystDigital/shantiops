@@ -1,0 +1,157 @@
+{
+ "mechanism": "steel_timing",
+ "version": 1,
+ "note": "hand and golden cases are written first and never regenerated; `python -m harness.mechanisms vectors --write` replaces only origin=generated",
+ "cases": [
+  {
+   "id": "hand-rise",
+   "origin": "hand",
+   "arithmetic": "12 t x (62,000 - 55,000) INR/t = 84,000",
+   "inputs": {
+    "open_qty": 12,
+    "unit": "t",
+    "currency": "INR",
+    "quote_rate": 55000,
+    "purchase_rate": 62000,
+    "recovered": 0
+   },
+   "expected": {
+    "extra_material_cost": 84000.0
+   }
+  },
+  {
+   "id": "hand-fall",
+   "origin": "hand",
+   "arithmetic": "12 t x (50,000 - 55,000) = -60,000: a saving",
+   "inputs": {
+    "open_qty": 12,
+    "unit": "t",
+    "currency": "INR",
+    "quote_rate": 55000,
+    "purchase_rate": 50000
+   },
+   "expected": {
+    "extra_material_cost": -60000.0
+   }
+  },
+  {
+   "id": "hand-all-bought",
+   "origin": "hand",
+   "arithmetic": "nothing open: 0 x anything = 0",
+   "inputs": {
+    "open_qty": 0,
+    "unit": "t",
+    "currency": "INR",
+    "quote_rate": 55000,
+    "purchase_rate": 62000
+   },
+   "expected": {
+    "extra_material_cost": 0.0
+   }
+  },
+  {
+   "id": "hand-recovered",
+   "origin": "hand",
+   "arithmetic": "10 t x (60,000 - 55,000) = 50,000; less 20,000 reimbursed = 30,000",
+   "inputs": {
+    "open_qty": 10,
+    "unit": "t",
+    "currency": "INR",
+    "quote_rate": 55000,
+    "purchase_rate": 60000,
+    "recovered": 20000
+   },
+   "expected": {
+    "extra_material_cost": 30000.0
+   }
+  },
+  {
+   "id": "hand-per-kg",
+   "origin": "hand",
+   "arithmetic": "12,000 kg x (62 - 55) INR/kg = 84,000 (same answer as the per-tonne case: units are consistent, not converted)",
+   "inputs": {
+    "open_qty": 12000,
+    "unit": "kg",
+    "currency": "INR",
+    "quote_rate": 55,
+    "purchase_rate": 62
+   },
+   "expected": {
+    "extra_material_cost": 84000.0
+   }
+  },
+  {
+   "id": "gen-1",
+   "origin": "generated",
+   "inputs": {
+    "open_qty": 0.001,
+    "unit": "t",
+    "currency": "XAU",
+    "quote_rate": 1,
+    "purchase_rate": 1000000,
+    "recovered": 0
+   },
+   "expected": {
+    "extra_material_cost": 1000.0
+   }
+  },
+  {
+   "id": "gen-2",
+   "origin": "generated",
+   "inputs": {
+    "open_qty": 1000,
+    "unit": "kg",
+    "currency": "INR",
+    "quote_rate": 60,
+    "purchase_rate": 60
+   },
+   "expected": {
+    "extra_material_cost": 0
+   }
+  },
+  {
+   "id": "gen-3",
+   "origin": "generated",
+   "inputs": {
+    "open_qty": 5,
+    "unit": "t",
+    "currency": "INR",
+    "quote_rate": 50000,
+    "purchase_rate": 40000,
+    "recovered": 10000
+   },
+   "expected": {
+    "extra_material_cost": -60000
+   }
+  },
+  {
+   "id": "gen-4",
+   "origin": "generated",
+   "inputs": {
+    "open_qty": 100,
+    "unit": "t",
+    "currency": "XBU",
+    "quote_rate": 0,
+    "purchase_rate": 10
+   },
+   "expected": {
+    "extra_material_cost": 1000
+   }
+  },
+  {
+   "id": "gen-5",
+   "origin": "generated",
+   "inputs": {
+    "open_qty": 7.5,
+    "unit": "lb",
+    "currency": "XBU",
+    "quote_rate": 0.25,
+    "purchase_rate": 0.31,
+    "recovered": 0.1
+   },
+   "expected": {
+    "extra_material_cost": 0.35
+   }
+  }
+ ]
+}
