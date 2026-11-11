@@ -234,7 +234,8 @@ else if (ONLY !== 'cards') cases.push(...[...ACT, ...ACT_NEW].map(([q, path, wan
 // Every Cue Card on the page (lib/cue-cards.js), as the admin sees them: it must trigger what the card says.
 if (ONLY !== 'actions' && ONLY !== 'new') {
   const cc = await fetch(`${BASE}/api/assistant/cue-cards`, { headers: { cookie } }).then(r => r.json());
-  for (const c of cc.cards) cases.push({ q: c.q, path: '/', kind: c.expect.type, want: c.expect.type === 'action' ? c.expect.action : c.expect.type === 'data' ? c.expect.tool : [], group: 'cue cards' });
+  // A card shown as switched off (live data off here) can't be asked; it is not evaluated.
+  for (const c of cc.cards.filter(c => !c.off)) cases.push({ q: c.q, path: '/', kind: c.expect.type, want: c.expect.type === 'action' ? c.expect.action : c.expect.type === 'data' ? c.expect.tool : [], group: 'cue cards' });
 }
 if (!QUICK && !ONLY) {
   const { body } = await post({ list: true });

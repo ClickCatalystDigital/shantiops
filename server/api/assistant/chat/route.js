@@ -137,7 +137,9 @@ export async function POST(req) {
 
   // Steel purchase timing what-if (market-intel plan D7): answered here, before the AI key, the quota or any model call, so the
   // question and any figures in it stay in the app. The assistant only points to the deterministic card; it never calculates.
-  const pointer = b.dry ? null : whatIfPointer(messages.at(-1).content, { canSeeMoney: isPM(user) || canAccessDepartment(user, 'Sales') || canAccessDepartment(user, 'Marketing') });
+  const pointer = whatIfPointer(messages.at(-1).content, { canSeeMoney: isPM(user) || canAccessDepartment(user, 'Sales') || canAccessDepartment(user, 'Marketing') });
+  // A dry run (admin's eval, scripts/assistant-eval.mjs) reports the pointer as its own kind, so Cue Cards that expect it can be checked.
+  if (pointer && b.dry) return NextResponse.json({ kind: 'pointer', tool: null, action: null, sections: [], trace: ['steel what-if pointer: fixed reply, no model'], answer: pointer.text });
   if (pointer) return new Response(pointer.text, { headers: headers([], pointer.link, null) });
 
   let key;
