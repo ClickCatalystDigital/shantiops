@@ -12,6 +12,23 @@ import { Button } from './ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import { DEFAULT_FORM, FIELDS, runForm } from '@/lib/order-whatif-form.mjs';
 
+// One result line: the label, then the amount. On a narrow screen the amount wraps below the label (still right-aligned) instead of
+// being pushed off-screen, so every amount is visible without scrolling sideways.
+const Line = ({ label, value, testid }) => (
+  <div data-testid={testid} className="flex flex-wrap items-baseline gap-x-4 border-b py-1.5 last:border-0">
+    <span className="min-w-0 flex-1">{label}</span>
+    <span className="ml-auto whitespace-nowrap font-medium tabular-nums">{value}</span>
+  </div>
+);
+
+// What version 1 leaves out (market-intel docs/sbops-merge-readiness.md §4). Shown with every result, not hidden in a document.
+export const LIMITS = [
+  'Cash in hand earns nothing here. If you borrow elsewhere, using the advance to buy steel early costs more than shown.',
+  'The cash timeline values the steel at the quoted rate, so the interest on a price difference is not included.',
+  'Supplier credit, storage and handling costs, and the value of securing supply early are not included.',
+  'The later rates are the ones you typed, not a forecast. Use these amounts to compare options, not as a recommendation.',
+];
+
 const money = (x, cur) => `${Number(x).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${cur}`;
 
 export default function OrderWhatIfPanel({ projectNo }) {
@@ -61,6 +78,10 @@ export default function OrderWhatIfPanel({ projectNo }) {
         {r && (
           <div className="space-y-4">
             <p className="font-medium">{r.header}</p>
+            <div data-testid="whatif-limits" className="rounded border border-amber-200 bg-amber-50 p-2 text-amber-900">
+              <p className="font-medium">Limits of this calculation (version {r.lines.financing_cost.mechanism})</p>
+              <ul className="ml-4 list-disc">{LIMITS.map((l) => <li key={l}>{l}</li>)}</ul>
+            </div>
             <div>
               <h4 className="font-medium">1. Steel cost above the quoted rate ({r.lines.steel_cost.posts_to}; {r.lines.steel_cost.mechanism})</h4>
               <Table>
@@ -74,28 +95,30 @@ export default function OrderWhatIfPanel({ projectNo }) {
             </div>
             <div>
               <h4 className="font-medium">2. Financing cost of the cash gap ({r.lines.financing_cost.posts_to}; {r.lines.financing_cost.mechanism})</h4>
-              <Table>
-                <TableHeader><TableRow><TableHead>Rate</TableHead><TableHead>Steel paid</TableHead><TableHead className="text-right">Financing cost</TableHead><TableHead className="text-right">Peak cash need</TableHead><TableHead className="text-right">Months negative</TableHead></TableRow></TableHeader>
-                <TableBody>
-                  {Object.entries(r.lines.financing_cost.rows).flatMap(([rate, rows]) => Object.entries(rows).map(([when, v]) => (
-                    <TableRow key={rate + when}><TableCell>{rate}</TableCell><TableCell>{when}</TableCell><TableCell className="text-right">{money(v.financing_cost, cur)}</TableCell><TableCell className="text-right">{money(v.peak_cash_need, cur)}</TableCell><TableCell className="text-right">{v.months_negative}</TableCell></TableRow>
-                  )))}
-                </TableBody>
-              </Table>
+              {Object.entries(r.lines.financing_cost.rows).map(([rate, rows]) => (
+                <div key={rate} className="mt-2">
+                  <p className="text-muted-foreground">At {rate}</p>
+                  {Object.entries(rows).map(([when, v]) => (
+                    <div key={when} className="mt-1 rounded border p-2">
+                      <p className="font-medium">{when === 'steel paid now' ? 'Steel paid now' : 'Steel paid when fabrication starts'}</p>
+                      <Line testid="whatif-amount" label="Financing cost" value={money(v.financing_cost, cur)} />
+                      <Line label="Peak cash need (not a cost)" value={money(v.peak_cash_need, cur)} />
+                      <Line label="Months with a negative balance" value={v.months_negative} />
+                    </div>
+                  ))}
+                </div>
+              ))}
             </div>
             <div>
               <h4 className="font-medium">3. Comparison (each amount stands alone; they are not added together)</h4>
-              <Table>
-                <TableHeader><TableRow><TableHead>What changes</TableHead><TableHead>Case</TableHead><TableHead className="text-right">Amount</TableHead></TableRow></TableHeader>
-                <TableBody>
-                  {Object.entries(r.comparison.steel_cost_of_waiting_instead_of_buying_now).map(([k, v]) => (
-                    <TableRow key={'s' + k}><TableCell>Steel cost of waiting instead of buying now</TableCell><TableCell>{k} rate</TableCell><TableCell className="text-right">{money(v, cur)}</TableCell></TableRow>
-                  ))}
-                  {Object.entries(r.comparison.extra_financing_cost_of_buying_now_instead_of_waiting).map(([k, v]) => (
-                    <TableRow key={'f' + k}><TableCell>Extra financing cost of buying now instead of waiting</TableCell><TableCell>{k}</TableCell><TableCell className="text-right">{money(v, cur)}</TableCell></TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+              <p className="mt-2 text-muted-foreground">Steel cost of waiting instead of buying now (positive = waiting costs more)</p>
+              {Object.entries(r.comparison.steel_cost_of_waiting_instead_of_buying_now).map(([k, v]) => (
+                <Line key={'s' + k} testid="whatif-amount" label={`If the later rate is ${k}`} value={money(v, cur)} />
+              ))}
+              <p className="mt-2 text-muted-foreground">Extra financing cost of buying now instead of waiting (positive = buying now costs more interest)</p>
+              {Object.entries(r.comparison.extra_financing_cost_of_buying_now_instead_of_waiting).map(([k, v]) => (
+                <Line key={'f' + k} testid="whatif-amount" label={`At ${k}`} value={money(v, cur)} />
+              ))}
             </div>
             <div>
               <h4 className="font-medium">Where every input came from</h4>
