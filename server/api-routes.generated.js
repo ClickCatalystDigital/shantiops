@@ -378,6 +378,7 @@ export const ROUTES = {
   "qc-documents/[id]/parts/[partId]/link-bom-item": () => import("./api/qc-documents/[id]/parts/[partId]/link-bom-item/route.js"),
   "qc-documents/[id]/parts/[partId]": () => import("./api/qc-documents/[id]/parts/[partId]/route.js"),
   "qc-documents/[id]/parts": () => import("./api/qc-documents/[id]/parts/route.js"),
+  "qc-documents/[id]/paste": () => import("./api/qc-documents/[id]/paste/route.js"),
   "qc-documents/[id]/pdf": () => import("./api/qc-documents/[id]/pdf/route.js"),
   "qc-documents/[id]": () => import("./api/qc-documents/[id]/route.js"),
   "qc-documents/[id]/seams/[seamId]": () => import("./api/qc-documents/[id]/seams/[seamId]/route.js"),
