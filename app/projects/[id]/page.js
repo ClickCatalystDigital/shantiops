@@ -164,7 +164,7 @@ export default async function ProjectDetail(props) {
       {showProcurement && <ProcurementQueue bom={bom} />}
       {/* Steel purchase timing what-if (market-intel plan D6): money viewers only, the same gate as the scope-of-supply amounts.
           Local arithmetic on figures typed in the browser; no project data is read or written by it. */}
-      {canSeeMoney && isDepartmentEnabled('Sales') && !project.master_project_id && <OrderWhatIfPanel projectNo={project.project_no} />}
+      {canSeeMoney && !project.master_project_id && isDepartmentEnabled('Sales') && <OrderWhatIfPanel projectNo={project.project_no} />}
       {showStores && <StoresSummaryCard projectId={project.id} inventoryCount={inventoryItems.length} deliveryLotsCount={deliveryLotsCount} />}
       {showProduction && <ProductionSummaryCard jobCards={jobCards} materialIndents={materialIndents} />}
       {showQc && <QcProjectSummary projectId={project.id} summary={qcSummary} canManage={canAccessDepartment(user, 'QC')} />}
