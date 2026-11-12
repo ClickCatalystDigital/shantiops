@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, showToast, INSTALLER_URL } from '@/lib/client';
 import { DEPARTMENTS } from '@/lib/milestones';
+import { isDepartmentEnabled } from '@/lib/manager-scope.mjs';
 import { PM_GUIDE } from '@/components/help-content';
 import InfoPopover from '@/components/InfoPopover';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
@@ -111,7 +112,7 @@ function PendingCard({ p, router }) {
       </div>
       {isHead && (
         <div className="flex flex-wrap gap-3">
-          {DEPARTMENTS.map(d => (
+          {DEPARTMENTS.filter(isDepartmentEnabled).map(d => (
             <label key={d} className="flex items-center gap-1.5 text-sm">
               <Checkbox checked={depts.has(d)} onCheckedChange={() => toggle(d)} />
               {d}

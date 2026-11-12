@@ -22,6 +22,7 @@ import {
 } from '@/lib/data';
 import { BOM_FIELD_OWNERS } from '@/lib/bom-fields.mjs';
 import { getFreshSessionUser, isCustomer, isPM, isHead, headDepartments, canAccessDepartment, isDepartmentHead, roleHome } from '@/lib/auth';
+import { isDepartmentEnabled } from '@/lib/manager-scope.mjs';
 import { canPerformAction } from '@/lib/action-permissions';
 import ProjectHeader from '@/components/ProjectHeader';
 import TodayBand from '@/components/TodayBand';
@@ -117,13 +118,13 @@ export default async function ProjectDetail(props) {
   // the card's own content, using signals that are realistically forward-only in normal operation
   // (purchase_status advancement, job cards/packing lists that are never deleted) so a card doesn't
   // flicker away once the underlying work finishes — see the plan's own Part 6/J note on this.
-  const showProcurement = bom.length > 0;
-  const showStores = bom.some(b => ['Transit', 'Received', 'In-Stock'].includes(b.purchase_status));
-  const showProduction = jobCards.length > 0 || materialIndents.length > 0;
+  const showProcurement = isDepartmentEnabled('Procurement') && bom.length > 0;
+  const showStores = isDepartmentEnabled('Stores') && bom.some(b => ['Transit', 'Received', 'In-Stock'].includes(b.purchase_status));
+  const showProduction = isDepartmentEnabled('Production') && jobCards.length > 0 || materialIndents.length > 0;
   // QC always sees it ("None filed yet" + Manage documents) so there is a way in before the first document exists.
   const showQc = qcSummary.docs_total > 0 || qcSummary.ncrs_total > 0 || canAccessDepartment(user, 'QC');
   // Always there once packing lists can exist — a split master keeps them on its units instead.
-  const showDispatch = packingLists.length > 0 || !hasChildren;
+  const showDispatch = isDepartmentEnabled('Dispatch') && (packingLists.length > 0 || !hasChildren);
 
   const canMarkInstallation = await canPerformAction(user, 'Installation', 'installation.milestone.complete');
   const installationSummary = canAccessDepartment(user, 'Installation') ? await getInstallationProjectSummary(project.id) : null;
@@ -156,14 +157,14 @@ export default async function ProjectDetail(props) {
       {hasChildren && canAccessDepartment(user, 'Dispatch') && <DispatchBatchPackingPanel projectId={project.id} />}
 
       {/* Lower rows — accumulate, never swap. */}
-      {!project.master_project_id && <ScopeOfSupplyCard scopeOfSupply={scopeOfSupply} canSeeMoney={canSeeMoney} canOpenFile={pm || canAccessDepartment(user, 'Design') || canAccessDepartment(user, 'Engineering')} />}
-      <ProjectDesignRow projectId={project.id}
-        calcSheets={designSummary?.calcSheets} drawings={designSummary?.drawings} />
+      {!project.master_project_id && (isDepartmentEnabled('Sales') || isDepartmentEnabled('Design')) && <ScopeOfSupplyCard scopeOfSupply={scopeOfSupply} canSeeMoney={canSeeMoney} canOpenFile={pm || canAccessDepartment(user, 'Design') || canAccessDepartment(user, 'Engineering')} />}
+      {(isDepartmentEnabled('Design') || isDepartmentEnabled('Engineering')) && <ProjectDesignRow projectId={project.id}
+        calcSheets={designSummary?.calcSheets} drawings={designSummary?.drawings} />}
 
       {showProcurement && <ProcurementQueue bom={bom} />}
       {/* Steel purchase timing what-if (market-intel plan D6): money viewers only, the same gate as the scope-of-supply amounts.
           Local arithmetic on figures typed in the browser; no project data is read or written by it. */}
-      {canSeeMoney && !project.master_project_id && <OrderWhatIfPanel projectNo={project.project_no} />}
+      {canSeeMoney && isDepartmentEnabled('Sales') && !project.master_project_id && <OrderWhatIfPanel projectNo={project.project_no} />}
       {showStores && <StoresSummaryCard projectId={project.id} inventoryCount={inventoryItems.length} deliveryLotsCount={deliveryLotsCount} />}
       {showProduction && <ProductionSummaryCard jobCards={jobCards} materialIndents={materialIndents} />}
       {showQc && <QcProjectSummary projectId={project.id} summary={qcSummary} canManage={canAccessDepartment(user, 'QC')} />}
@@ -174,9 +175,9 @@ export default async function ProjectDetail(props) {
         <InstallationMilestoneActions projectId={project.id} milestones={milestones.filter(m => m.department === 'Installation')} canMark={canMarkInstallation} summary={installationSummary} />
       )}
 
-      <CommonBomCard projectId={project.id} bom={bom} pendingIds={pending.map(p => p.id)}
+      {isDepartmentEnabled('Engineering') && <CommonBomCard projectId={project.id} bom={bom} pendingIds={pending.map(p => p.id)}
         editableFields={bomEditableFields} department={bomTableDepartment} canCancel={canCancelBom}
-        assemblies={assemblies} imports={imports} />
+        assemblies={assemblies} imports={imports} />}
     </main>
   );
 }

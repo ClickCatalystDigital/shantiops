@@ -5,6 +5,7 @@ import { getFreshSessionUser, canAccessDepartment, isDepartmentHead, roleHome } 
 import { canPerformAction } from '@/lib/action-permissions';
 import { getTestCertificates, getAllQcDocuments, getActiveProjectsList, getCalibrationItems, getReceivedProjectIds, getReleasedBomProjectIds, getAllocatedChildProjectIds, getNcrs, getQcHoldPoints, getPendingInwardApprovals, getPendingPreDispatchApprovals, getPendingJobSheetStages, getQcRecords, getJobWorkInspections, getWorkOrders, getBomAssembliesFlat, getMilestoneIdByKey, getExtraDocSeriesByProject } from '@/lib/data';
 import QcWorkspace from '@/components/QcWorkspace';
+import { isDepartmentEnabled } from '@/lib/manager-scope.mjs';
 
 export const dynamic = 'force-dynamic';
 
@@ -57,7 +58,9 @@ export default async function QcPage({ searchParams }) {
   // parent/child links, not a fixed list), it's excluded from the pickable set; only its children
   // (already unioned in above, exactly the ones Stores has allocated to so far) are selectable.
   const mastersWithChildren = new Set(allProjects.filter(p => p.master_project_id).map(p => p.master_project_id));
-  const projects = allProjects.filter(p => relevant.has(p.id) && !mastersWithChildren.has(p.id));
+  // No Stores in this deployment (lib/manager-scope.mjs): nothing is ever received, so every project is QC's.
+  const stores = isDepartmentEnabled('Stores');
+  const projects = allProjects.filter(p => (!stores || relevant.has(p.id)) && !mastersWithChildren.has(p.id));
   // "Assign to Units" (§ multi-unit split) operates on the whole ORDER, not one unit — picking a
   // unit to reach it was confusing (real user feedback), so it gets its own picker listing actual
   // split orders directly. allProjects already includes masters (includeChildren:true removes the

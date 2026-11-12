@@ -48,6 +48,8 @@ export default async function RootLayout({ children }) {
         <script dangerouslySetInnerHTML={{ __html: themeInit }} />
         {/* The company list for client components (lib/company-profiles.js reads this global). Staff only. */}
         {isInternal(user) && <script dangerouslySetInnerHTML={{ __html: companiesInit() }} />}
+        {/* Departments this deployment offers (lib/manager-scope.mjs reads this in the browser). */}
+        {process.env.ENABLED_DEPARTMENTS && <script dangerouslySetInnerHTML={{ __html: `globalThis.__sbEnabledDepts=${JSON.stringify(process.env.ENABLED_DEPARTMENTS).replace(/</g, '\\u003c')};` }} />}
       </head>
       <body className="min-h-screen bg-background text-foreground">
         <TooltipProvider delayDuration={200}>

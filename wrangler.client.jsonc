@@ -1,0 +1,25 @@
+{
+  // The client's live app (docs/qc-only-deployment-plan.md): same code as the demo, on the same Cloudflare
+  // account and paid plan, at sbops.ahromlabs.com. Deploy with `npm run cf:deploy:client`.
+  // Secrets (wrangler secret put --config wrangler.client.jsonc): TURSO_URL, TURSO_AUTH_TOKEN, SESSION_SECRET,
+  // SECRETS_KEY, EWAY_BILL_CREDENTIALS_KEY, R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME,
+  // R2_PUBLIC_DOMAIN_URL — the client's own values (their database and their storage).
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sb-ops-client",
+  "account_id": "5d8cf246f656006b81d99d734e8c0f40",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-08-27",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
+  "routes": [{ "pattern": "sbops.ahromlabs.com", "custom_domain": true }],
+  "vars": {
+    // Migrations run from CI (scripts/migrate-db.mjs) before each deploy, not on a request.
+    "SKIP_MIGRATE": "1",
+    "APP_URL": "https://sbops.ahromlabs.com",
+    // Departments this client bought (lib/manager-scope.mjs). Add one to switch it on.
+    "ENABLED_DEPARTMENTS": "QC"
+  },
+  // Run next to the database (Turso, Mumbai): a page makes many sequential queries.
+  "placement": { "mode": "smart" },
+  "observability": { "enabled": true }
+}

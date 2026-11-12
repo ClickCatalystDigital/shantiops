@@ -23,6 +23,7 @@ import { EXTRA_DOC_SERIES } from '@/lib/qc-extra-series.mjs';
 import { InwardApprovalsPanel, PreDispatchApprovalsPanel, JobSheetApprovalsPanel } from './MaterialApprovalPanels';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { QC_SERIES } from '@/lib/qc-series';
+import { isDepartmentEnabled } from '@/lib/manager-scope.mjs';
 import { IBR_VERSIONS, DEFAULT_NEW_IBR, ibrVersion, ibrLabel } from '@/lib/qc-ibr.mjs';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { FlaskConicalIcon, FileTextIcon, GaugeIcon, AlertTriangleIcon, LockIcon, LinkIcon, ClipboardCheckIcon, InboxIcon, TruckIcon, ListChecksIcon } from 'lucide-react';
@@ -59,7 +60,13 @@ const ITEMS = [
     ],
   },
 ];
-const FLAT_TAB_KEYS = ITEMS.flatMap(i => (i.group ? i.children : i)).map(i => i.key);
+// A deployment without Stores / Production / Dispatch (lib/manager-scope.mjs) drops the tabs fed by them.
+const NEEDS = { 'tc-assign': 'Stores', holds: 'Production', 'inward-approvals': 'Stores', 'jobsheet-approvals': 'Production', 'predispatch-approvals': 'Dispatch' };
+const tabOn = i => !NEEDS[i.key] || isDepartmentEnabled(NEEDS[i.key]);
+function qcItems() {
+  return ITEMS.map(i => (i.group ? { ...i, children: i.children.filter(tabOn) } : i))
+    .filter(i => (i.group ? i.children.length : tabOn(i)));
+}
 
 const SERIES_OPTIONS = [{ value: null, label: 'All models' }, ...QC_SERIES.map(s => ({ value: s, label: s }))];
 
@@ -89,7 +96,9 @@ function ExtraDocsPicker({ value, onChange, disabled }) {
 const certProjectIds = c => (c.project_ids ? String(c.project_ids).split(',').map(Number) : []);
 
 export default function QcWorkspace({ projects = [], certificates = [], documents = [], calibrationItems = [], ncrs = [], holdPoints = [], splitOrders = [], extraDocs = {}, canDisposition = false, canVerify = false, canClose = false, inwardApprovals = [], jobSheetStages = [], preDispatchApprovals = [], canDecideInward = false, canDecideQcPreDispatch = false, testRecords = [], jobWorkInspections = [], workOrders = [], bomAssemblies = [], hydroMilestoneId = null, canEditQc = false, canEditProductionQc = false, initialTab, initialProject }) {
-  const [tab, setTab] = useState(FLAT_TAB_KEYS.includes(initialTab) ? initialTab : 'tc-bank');
+  const items = useMemo(qcItems, []);
+  const flatTabKeys = items.flatMap(i => (i.group ? i.children : i)).map(i => i.key);
+  const [tab, setTab] = useState(flatTabKeys.includes(initialTab) ? initialTab : 'tc-bank');
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -184,7 +193,7 @@ export default function QcWorkspace({ projects = [], certificates = [], document
   );
 
   return (
-    <WorkspaceSidebar title="Quality Control" icon={FlaskConicalIcon} items={ITEMS}
+    <WorkspaceSidebar title="Quality Control" icon={FlaskConicalIcon} items={items}
       activeKey={tab} onChange={setTab}
       header={tab === 'tc-assign' ? assignHeader : ['calibration', 'holds', 'inward-approvals', 'jobsheet-approvals', 'predispatch-approvals'].includes(tab) ? null : header}>
       {tab === 'tc-bank' ? (
@@ -205,16 +214,16 @@ export default function QcWorkspace({ projects = [], certificates = [], document
               records={testRecords.filter(r => !/hydro/i.test(r.test_type) && !['Incoming Inspection', 'Finished Goods Inspection', 'Subassembly Inspection'].includes(r.test_type))} />
             <QcPanel projectId={projectId} canEdit={canEditQc} title="Incoming Inspection" defaultTestType="Incoming Inspection"
               records={testRecords.filter(r => r.test_type === 'Incoming Inspection')} />
-            <QcPanel projectId={projectId} canEdit={canEditQc} title="Finished Goods Inspection" defaultTestType="Finished Goods Inspection"
+            {isDepartmentEnabled('Production') && <QcPanel projectId={projectId} canEdit={canEditQc} title="Finished Goods Inspection" defaultTestType="Finished Goods Inspection"
               records={testRecords.filter(r => r.test_type === 'Finished Goods Inspection')}
-              linkField="work_order_id" linkOptions={workOrders.map(w => ({ id: w.id, label: w.wo_no }))} showDispatchToggle />
-            <QcPanel projectId={projectId} canEdit={canEditQc} title="Subassembly Inspection" defaultTestType="Subassembly Inspection"
+              linkField="work_order_id" linkOptions={workOrders.map(w => ({ id: w.id, label: w.wo_no }))} showDispatchToggle />}
+            {isDepartmentEnabled('Engineering') && <QcPanel projectId={projectId} canEdit={canEditQc} title="Subassembly Inspection" defaultTestType="Subassembly Inspection"
               records={testRecords.filter(r => r.test_type === 'Subassembly Inspection')}
-              linkField="assembly_id" linkOptions={bomAssemblies.map(a => ({ id: a.id, label: a.name }))} />
+              linkField="assembly_id" linkOptions={bomAssemblies.map(a => ({ id: a.id, label: a.name }))} />}
             {/* Hydro Test — Production-owned, not QC-owned (moved off QC in an earlier round), same
                 canEditProductionQc gate and reworkMilestoneId the project page's Production tab uses. */}
-            <QcPanel projectId={projectId} canEdit={canEditProductionQc} title="Hydro Test" defaultTestType="Hydro Test"
-              records={testRecords.filter(r => /hydro/i.test(r.test_type))} reworkMilestoneId={hydroMilestoneId} />
+            {isDepartmentEnabled('Production') && <QcPanel projectId={projectId} canEdit={canEditProductionQc} title="Hydro Test" defaultTestType="Hydro Test"
+              records={testRecords.filter(r => /hydro/i.test(r.test_type))} reworkMilestoneId={hydroMilestoneId} />}
             <JobWorkPanel projectId={projectId} canEdit={canEditQc} records={jobWorkInspections} />
           </div>
         )

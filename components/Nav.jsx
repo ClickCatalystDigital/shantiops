@@ -12,7 +12,7 @@ import {
   LandmarkIcon, ClipboardListIcon, PencilRulerIcon, ReceiptIcon, MessageSquareQuoteIcon,
 } from 'lucide-react';
 import { DEPARTMENTS } from '@/lib/milestones';
-import { departmentsFor } from '@/lib/manager-scope.mjs';
+import { departmentsFor, isDepartmentEnabled } from '@/lib/manager-scope.mjs';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -38,7 +38,7 @@ export default function Nav({ user, reportDepartments = [] }) {
   // operational workspace tabs (Procurement, Stores, Sales, ...) — those stay admin/manager only.
   // Help (`isPM()`-gated, unchanged) still shows executive every department's guide.
   const isDeptPM = user && ['admin', 'manager'].includes(user.role);
-  const departments = user?.departments || [];
+  const departments = (user?.departments || []).filter(isDepartmentEnabled);
   // Global company filter — same rule the server uses (lib/company-filter.mjs).
   const showCompany = canUseCompanySelector(user);
   const tabDepartments = isDeptPM ? departmentsFor(user, DEPARTMENTS) : departments;
@@ -65,7 +65,7 @@ export default function Nav({ user, reportDepartments = [] }) {
   // it in every combination (Stores alone, Stores+Engineering, Stores+Design+Engineering) — fully
   // unaffected. A PM still sees it, matching their existing all-department oversight tab set (same
   // dual-visibility precedent Release BOM's own button already established).
-  const canSeeRequests = isDeptPM || (!departments.includes('Procurement') && departments.includes('Stores'));
+  const canSeeRequests = ['Stores', 'Design', 'Engineering'].some(isDepartmentEnabled) && (isDeptPM || (!departments.includes('Procurement') && departments.includes('Stores')));
   // Workspace tabs are derived from current department grants. Shared Sales/Marketing and
   // Design/Engineering workspaces appear once, so adding access in Settings immediately changes
   // the user's tab set on the next render without hard-coded per-user roles.

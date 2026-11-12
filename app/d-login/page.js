@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Loader2Icon, Users, Factory, UserCircle, KeyRound, CheckIcon, UserPlusIcon, Cloud, Workflow } from 'lucide-react';
 import { DEPARTMENTS } from '@/lib/milestones';
+import { isDepartmentEnabled } from '@/lib/manager-scope.mjs';
 
 const DEMO_GROUPS = [
   {
@@ -298,7 +299,7 @@ function RequestAccess() {
         <div className="flex flex-col gap-1.5">
           <Label>Department(s)</Label>
           <div className="flex flex-wrap gap-3">
-            {DEPARTMENTS.map(d => (
+            {DEPARTMENTS.filter(isDepartmentEnabled).map(d => (
               <label key={d} className="flex items-center gap-1.5 text-sm">
                 <Checkbox checked={f.departments.includes(d)} onCheckedChange={() => toggleDept(d)} />
                 {d}

@@ -1,3 +1,4 @@
+import { isDepartmentEnabled } from '@/lib/manager-scope.mjs';
 import Link from 'next/link';
 import { getFreshSessionUser, isPM, isHead, isCustomer, headDepartments } from '@/lib/auth';
 import { CUSTOMER_GUIDE } from '@/components/help-content';
@@ -54,7 +55,7 @@ export default async function HelpPage() {
   // Design and Engineering share one workspace, so a holder of either reads both guides.
   const own = isHead(user) ? headDepartments(user) : [];
   const shared = own.some(d => ['Design', 'Engineering'].includes(d)) ? ['Design', 'Engineering'] : [];
-  const departments = isPM(user) ? DEPARTMENT_HELP_ORDER : DEPARTMENT_HELP_ORDER.filter(d => own.includes(d) || shared.includes(d));
+  const departments = isPM(user) ? DEPARTMENT_HELP_ORDER.filter(isDepartmentEnabled) : DEPARTMENT_HELP_ORDER.filter(isDepartmentEnabled).filter(d => own.includes(d) || shared.includes(d));
   if (!departments.length) {
     return (
       <main className="container flex flex-col gap-6 py-8">

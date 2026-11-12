@@ -1,8 +1,8 @@
 # One push to main deploys every server, one after another, stopping at the first failure:
 #   1. checks  - syntax check + every self-check that needs no database (npm run check)
 #   2. demo    - update the demo databases' schema, deploy the Cloudflare demo, check it serves this commit
-#   3. client  - wait until the client site serves this commit (Render deploys it by itself on every
-#                push: Auto-Deploy "On Commit"; a red step here means that deploy didn't happen or failed)
+#   3. client  - update the client database schema, deploy the client Worker (sbops.ahromlabs.com),
+#                check it serves this commit. Needs CLIENT_DB_URL / CLIENT_DB_TOKEN in the "client" environment.
 # A new customer server = one more job like `client`, needing the one before it.
 #
 # Repository secrets (Settings > Secrets and variables > Actions):
@@ -69,13 +69,33 @@ jobs:
 
   client:
     needs: demo
-    # Skipped while SB Ops runs only as the two boiler-erp demos (10 Nov 2026); set the CLIENT_URL variable to bring it back.
-    if: vars.CLIENT_URL != ''
+    # The client's QC-only app on Cloudflare (sbops.ahromlabs.com, wrangler.client.jsonc). Skipped until the
+    # CLIENT_DB_URL secret is set in the "client" environment.
     runs-on: ubuntu-latest
     environment: client
+    env:
+      HAS_CLIENT: ${{ secrets.CLIENT_DB_URL != '' }}
     steps:
       - uses: actions/checkout@v5
-      - name: Wait until the client site serves this commit
+        if: env.HAS_CLIENT == 'true'
+      - uses: actions/setup-node@v5
+        if: env.HAS_CLIENT == 'true'
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+        if: env.HAS_CLIENT == 'true'
+      - name: Update the client database schema
+        if: env.HAS_CLIENT == 'true'
         env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: node scripts/wait-for-commit.mjs "${{ vars.CLIENT_URL }}" "$GITHUB_SHA" /login
+          TURSO_URL: ${{ secrets.CLIENT_DB_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.CLIENT_DB_TOKEN }}
+        run: |
+          node scripts/gen-migrate-fingerprint.mjs
+          GITHUB_OUTPUT=/dev/null node scripts/migrate-db.mjs
+      - name: Build and deploy the client Worker
+        if: env.HAS_CLIENT == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npm run cf:deploy:client || (echo "retrying once" && sleep 20 && npm run cf:deploy:client)
+      - name: Check the client site serves this commit
+        if: env.HAS_CLIENT == 'true'
+        run: node scripts/wait-for-commit.mjs https://sbops.ahromlabs.com "$GITHUB_SHA" /login

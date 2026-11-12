@@ -4,6 +4,7 @@
 import { useState } from 'react';
 import { api, showToast } from '@/lib/client';
 import { DEPARTMENTS } from '@/lib/milestones';
+import { isDepartmentEnabled } from '@/lib/manager-scope.mjs';
 import { RESPONSIBILITY_VALUES, responsibilityLabel } from '@/lib/department-roles';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -43,7 +44,7 @@ export default function AccessMatrix({ heads: initialHeads, canAssignHead = fals
               <TableHeader>
                 <TableRow>
                   <TableHead>Head</TableHead>
-                  {DEPARTMENTS.map(d => <TableHead key={d} className="text-center">{d}</TableHead>)}
+                  {DEPARTMENTS.filter(isDepartmentEnabled).map(d => <TableHead key={d} className="text-center">{d}</TableHead>)}
                   <TableHead>Responsibility</TableHead>
                 </TableRow>
               </TableHeader>
@@ -54,14 +55,14 @@ export default function AccessMatrix({ heads: initialHeads, canAssignHead = fals
                       <div className="font-medium">{h.display_name || h.username}</div>
                       <div className="text-xs text-muted-foreground">@{h.username}</div>
                     </TableCell>
-                    {DEPARTMENTS.map(d => (
+                    {DEPARTMENTS.filter(isDepartmentEnabled).map(d => (
                       <TableCell key={d} className="text-center">
                         <Checkbox checked={h.departments.includes(d)} onCheckedChange={() => toggle(h, d)} />
                       </TableCell>
                     ))}
                     <TableCell>
                       <div className="flex flex-col gap-1">
-                        {DEPARTMENTS.filter(d => h.departments.includes(d)).map(d => (
+                        {DEPARTMENTS.filter(isDepartmentEnabled).filter(d => h.departments.includes(d)).map(d => (
                           <div key={d} className="flex items-center gap-1.5">
                             <span className="w-20 shrink-0 truncate text-xs text-muted-foreground">{d}</span>
                             <select

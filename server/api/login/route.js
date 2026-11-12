@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { queryOne, execute } from '@/lib/db';
 import { signToken, COOKIE_OPTS, postLoginHome } from '@/lib/auth';
+import { isDepartmentEnabled } from '@/lib/manager-scope.mjs';
 
 export async function POST(req) {
   const { username, password } = await req.json();
@@ -17,6 +18,10 @@ export async function POST(req) {
   }
   if (user.pending) {
     return NextResponse.json({ error: 'Your account is awaiting approval' }, { status: 403 });
+  }
+  // A department head whose departments are all switched off in this deployment (lib/manager-scope.mjs).
+  if (user.role === 'operator' && !String(user.departments || '').split(',').map(d => d.trim()).some(d => d && isDepartmentEnabled(d))) {
+    return NextResponse.json({ error: 'You don\'t have access here. Contact your admin for access.' }, { status: 403 });
   }
   await execute('UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?', [user.id]).catch(() => {});
   // `home` so the client lands on the right tab directly — Production runs its day off the

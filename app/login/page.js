@@ -14,6 +14,7 @@ import { Loader2Icon, UserPlusIcon } from 'lucide-react';
 import { FEATURES } from '@/lib/product-features';
 
 import { DEPARTMENTS } from '@/lib/milestones';
+import { isDepartmentEnabled } from '@/lib/manager-scope.mjs';
 
 export default function Login() {
   const [form, setForm] = useState({ username: '', password: '' });
@@ -161,7 +162,7 @@ function RequestAccess() {
         <div className="flex flex-col gap-1.5">
           <Label>Department(s)</Label>
           <div className="flex flex-wrap gap-3">
-            {DEPARTMENTS.map(d => (
+            {DEPARTMENTS.filter(isDepartmentEnabled).map(d => (
               <label key={d} className="flex items-center gap-1.5 text-sm">
                 <Checkbox checked={f.departments.includes(d)} onCheckedChange={() => toggleDept(d)} />
                 {d}

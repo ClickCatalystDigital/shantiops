@@ -126,7 +126,7 @@ export function RaiseNcrDialog({ open, onOpenChange, projectId, qcRecordId, jobC
 }
 
 function DispositionDialog({ ncr, onClose, router }) {
-  const [disposition, setDisposition] = useState('rework');
+  const [disposition, setDisposition] = useState(ncr.job_card_id ? 'rework' : 'scrap'); // rework/repair need a job card
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
   const notesRequired = ['scrap', 'use_as_is'].includes(disposition);
