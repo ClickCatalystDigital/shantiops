@@ -1,5 +1,7 @@
 # QC-only deployment for the client — plan (2026-11-12)
 
+**Status 2026-11-12: phase 1 (sections 1–4) built and live at sbops.ahromlabs.com; see SYSTEM.md §5fl. Logins: heads of switched-off departments can't sign in, so nothing was deactivated.**
+
 The client's paid scope: milestone tracker (PM, manual), QC / IBR folder, customer dashboard,
 security system. BOM, Stores, Procurement, Production, Sales, Dispatch etc. stay switched off.
 Phase 1 = QC + projects/milestones, on prod. Portal and security follow.
