@@ -23,6 +23,8 @@ import {
 import { BOM_FIELD_OWNERS } from '@/lib/bom-fields.mjs';
 import { getFreshSessionUser, isCustomer, isPM, isHead, headDepartments, canAccessDepartment, isDepartmentHead, roleHome } from '@/lib/auth';
 import { isDepartmentEnabled } from '@/lib/manager-scope.mjs';
+import ProjectPortalCard from '@/components/ProjectPortalCard';
+import { queryOne } from '@/lib/db';
 import { canPerformAction } from '@/lib/action-permissions';
 import ProjectHeader from '@/components/ProjectHeader';
 import TodayBand from '@/components/TodayBand';
@@ -56,7 +58,7 @@ export default async function ProjectDetail(props) {
 
   // Edit Project (2026-09-18) — same gate PATCH /api/projects/[id] itself enforces
   // (requireCalcAccess): PM + Design/Engineering heads.
-  const canEditProject = canAccessDepartment(user, 'Design') || canAccessDepartment(user, 'Engineering');
+  const canEditProject = isPM(user) || canAccessDepartment(user, 'Design') || canAccessDepartment(user, 'Engineering');
   // Delete Entire Project (2026-09-22) — stricter than Edit on purpose: PM + Design/Engineering
   // HEAD, not any member, matching DELETE /api/projects/[id]'s own gate.
   const canDeleteProject = isPM(user) || isDepartmentHead(user, 'Design') || isDepartmentHead(user, 'Engineering');
@@ -126,6 +128,10 @@ export default async function ProjectDetail(props) {
   // Always there once packing lists can exist — a split master keeps them on its units instead.
   const showDispatch = isDepartmentEnabled('Dispatch') && (packingLists.length > 0 || !hasChildren);
 
+  // Customer portal card (PM): the project's customer, or its master's for a split unit.
+  const portalCustomer = pm && !project.master_project_id && project.customer_id
+    ? await queryOne(`SELECT c.id, c.name, c.portal_enabled, u.username FROM customers c LEFT JOIN users u ON u.id = c.portal_user_id WHERE c.id = ?`, [project.customer_id])
+    : null;
   const canMarkInstallation = await canPerformAction(user, 'Installation', 'installation.milestone.complete');
   const installationSummary = canAccessDepartment(user, 'Installation') ? await getInstallationProjectSummary(project.id) : null;
 
@@ -169,6 +175,8 @@ export default async function ProjectDetail(props) {
       {showProduction && <ProductionSummaryCard jobCards={jobCards} materialIndents={materialIndents} />}
       {showQc && <QcProjectSummary projectId={project.id} summary={qcSummary} canManage={canAccessDepartment(user, 'QC')} />}
       {showDispatch && <DispatchSummaryCard projectId={project.id} packingLists={packingLists} canOpenDrafts={canAccessDepartment(user, 'Dispatch')} />}
+
+      {pm && !project.master_project_id && <ProjectPortalCard customer={portalCustomer} />}
 
       {/* Installation sits below every other department card, just above the Bill of Materials. */}
       {canAccessDepartment(user, 'Installation') && (milestones.some(m => m.department === 'Installation')) && (

@@ -15,7 +15,7 @@ import { recordProjectSpec } from '@/lib/order-spec-server';
 export async function PATCH(req, props) {
   const params = await props.params;
   const user = await getFreshSessionUser();
-  const denied = requireCalcAccess(user);
+  const denied = isPM(user) ? null : requireCalcAccess(user); // PM: also when Design/Engineering are switched off
   if (denied) return denied;
 
   const b = await req.json();
