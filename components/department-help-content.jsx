@@ -1472,6 +1472,7 @@ const ALL_HELP = {
       ], { outcome: 'A stack of MTRs becomes reviewed certificates in minutes, and any heat can be followed to the welds it ended up in.', watchOut: 'If the automatic reading is not set up or fails, the file is kept: open Review and type the heats from the PDF.' }),
       feature('databook', 'Data Book', BookOpenIcon, [
         'QC → Data Book: pick a project and start its book from the template (your table of contents). Each line shows where its pages come from: records the app already holds (data report package, weld map, welder stamp map, BOM, certificates, trace map, inspection records of a type, the ITP release summary) or files you upload.',
+        'QC → Inspection Plan → Data Book Templates: add or change a table of contents (sections, contents, where each line comes from). Copy one to start a variant; mark one as the default. A book already started keeps its own lines.',
         'A line is Included when it has content, Missing when it has none, or N/A with a written reason. Upload a PDF to any line, including next to automatic content (for example the signed data report).',
         'Preview builds the whole book now: cover, contents with page numbers, every section in order, a page number and PRELIMINARY on every page, one bookmark per section.',
         'Release (QC Head) is refused while a line is missing, an ITP point is open or an NCR is open. A released book is stored with a record of every file and its fingerprint, and never changes; a later change needs a new revision.',

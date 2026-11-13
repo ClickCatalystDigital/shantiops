@@ -136,6 +136,7 @@ export const ROUTES = {
   "customers": () => import("./api/customers/route.js"),
   "customers/similar": () => import("./api/customers/similar/route.js"),
   "databook-releases/[id]/pdf": () => import("./api/databook-releases/[id]/pdf/route.js"),
+  "databook-templates/[id]": () => import("./api/databook-templates/[id]/route.js"),
   "databook-templates": () => import("./api/databook-templates/route.js"),
   "demo/ai": () => import("./api/demo/ai/route.js"),
   "demo/enter": () => import("./api/demo/enter/route.js"),

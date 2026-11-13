@@ -16,6 +16,7 @@ import JobSheetBoard from './JobSheetBoard';
 import QcPanel from './QcPanel';
 import JobWorkPanel from './JobWorkPanel';
 import ItpTemplates from './ItpTemplates';
+import DatabookTemplates from './DatabookTemplates';
 import WeldingRegisters from './WeldingRegisters';
 import AcceptanceRules from './AcceptanceRules';
 import MtrIntake from './MtrIntake';
@@ -62,6 +63,7 @@ const ITEMS = [
       { key: 'itp-templates', label: 'ITP Templates', icon: ClipboardListIcon },
       { key: 'welding', label: 'Welding', icon: FlameIcon },
       { key: 'rules', label: 'Acceptance Rules', icon: ScaleIcon },
+      { key: 'databook-templates', label: 'Data Book Templates', icon: BookOpenIcon },
     ],
   },
   { key: 'calibration', label: 'Calibration', icon: GaugeIcon },
@@ -107,7 +109,7 @@ function ExtraDocsPicker({ value, onChange, disabled }) {
 
 const certProjectIds = c => (c.project_ids ? String(c.project_ids).split(',').map(Number) : []);
 
-export default function QcWorkspace({ projects = [], certificates = [], documents = [], calibrationItems = [], ncrs = [], splitOrders = [], extraDocs = {}, canDisposition = false, canVerify = false, canClose = false, inwardApprovals = [], jobSheetStages = [], preDispatchApprovals = [], canDecideInward = false, canDecideQcPreDispatch = false, testRecords = [], jobWorkInspections = [], workOrders = [], bomAssemblies = [], hydroMilestoneId = null, canEditQc = false, canEditProductionQc = false, canItp = false, canWeld = false, canWpsApprove = false, canRules = false, canDatabook = false, canDatabookRelease = false, initialTab, initialProject }) {
+export default function QcWorkspace({ projects = [], certificates = [], documents = [], calibrationItems = [], ncrs = [], splitOrders = [], extraDocs = {}, canDisposition = false, canVerify = false, canClose = false, inwardApprovals = [], jobSheetStages = [], preDispatchApprovals = [], canDecideInward = false, canDecideQcPreDispatch = false, testRecords = [], jobWorkInspections = [], workOrders = [], bomAssemblies = [], hydroMilestoneId = null, canEditQc = false, canEditProductionQc = false, canItp = false, canWeld = false, canWpsApprove = false, canRules = false, canDatabook = false, canDatabookRelease = false, canDbTemplate = false, initialTab, initialProject }) {
   const [tab, setTab] = useState(FLAT_TAB_KEYS.includes(initialTab) ? initialTab : 'tc-bank');
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -205,7 +207,7 @@ export default function QcWorkspace({ projects = [], certificates = [], document
   return (
     <WorkspaceSidebar title="Quality Control" icon={FlaskConicalIcon} items={ITEMS}
       activeKey={tab} onChange={setTab}
-      header={tab === 'tc-assign' ? assignHeader : ['calibration', 'holds', 'inward-approvals', 'jobsheet-approvals', 'predispatch-approvals', 'itp-templates', 'rules'].includes(tab) ? null : header}>
+      header={tab === 'tc-assign' ? assignHeader : ['calibration', 'holds', 'inward-approvals', 'jobsheet-approvals', 'predispatch-approvals', 'itp-templates', 'rules', 'databook-templates'].includes(tab) ? null : header}>
       {tab === 'tc-intake' ? (
         <MtrIntake projects={projectsSorted} defaultProjectId={projectId} />
       ) : tab === 'databook' ? (
@@ -268,6 +270,8 @@ export default function QcWorkspace({ projects = [], certificates = [], document
         <JobSheetBoard projects={projects} canQc />
       ) : tab === 'itp-templates' ? (
         <ItpTemplates canEdit={canItp} />
+      ) : tab === 'databook-templates' ? (
+        <DatabookTemplates canEdit={canDbTemplate} />
       ) : tab === 'welding' ? (
         <WeldingRegisters projectId={projectId} canEdit={canWeld} canApprove={canWpsApprove} />
       ) : tab === 'rules' ? (

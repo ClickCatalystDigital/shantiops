@@ -208,5 +208,28 @@ await upload('qc_head', `/api/projects/${p1.id}/databook/files`, await pdf('Late
 expect('A later upload leaves the released file unchanged', createHash('sha256').update(await get(rel.id)).digest('hex'), before);
 r = await call('qc_head', 'POST', `/api/projects/${p1.id}/databook/release`, {});
 expect('Next release → revision 2', r.data.revision, 2, r.data);
+
+// 10. Data Book templates: create, refuse bad input, rename follows into books, only QC.
+const tplLines = [{ key: 'a', section: '1', label: 'Contents', source: 'upload' }, { key: 'rt', section: '6', label: 'RT', source: 'inspection:RT' }];
+r = await call('production_head', 'POST', '/api/databook-templates', { name: 'Check book', lines: tplLines });
+expect('Production creates a Data Book template → 403', r.status, 403, r.data);
+r = await call('qc_head', 'POST', '/api/databook-templates', { name: 'Check book', lines: [{ key: 'a', label: 'X', source: 'nope' }] });
+expect('Template with an unknown source → 400', r.status, 400, r.data);
+r = await call('qc_head', 'POST', '/api/databook-templates', { name: 'Check book', lines: [...tplLines, { key: 'a', label: 'Dup', source: 'upload' }] });
+expect('Template with a repeated key → 400', r.status, 400, r.data);
+r = await call('qc_head', 'POST', '/api/databook-templates', { name: 'Check book', lines: tplLines });
+expect('Create a Data Book template → 201', r.status, 201, r.data);
+const tplId = r.data.id;
+r = await call('qc_head', 'POST', '/api/databook-templates', { name: 'Check book', lines: tplLines });
+expect('Same name again → 409', r.status, 409, r.data);
+const [bk] = rows(`SELECT template_name FROM databooks WHERE project_id = ${p1.id}`);
+const [orig] = rows(`SELECT id, name FROM databook_templates WHERE name = '${bk.template_name.replace(/'/g, "''")}'`);
+const origFull = (await call('qc_head', 'GET', '/api/databook-templates')).data.find(x => x.id === orig.id);
+r = await call('qc_head', 'PUT', `/api/databook-templates/${orig.id}`, { name: `${orig.name} (renamed)`, form_no: origFull.form_no, lines: origFull.lines });
+expect('Rename the template AB-1001 uses → 200', r.status, 200, r.data);
+expect('The book follows the new name', rows(`SELECT template_name FROM databooks WHERE project_id = ${p1.id}`)[0].template_name, `${orig.name} (renamed)`);
+r = await call('qc_head', 'PUT', `/api/databook-templates/${tplId}`, { name: 'Check book', lines: tplLines, is_default: true });
+expect('Make the new template the default → 200', r.status, 200, r.data);
+expect('Only one default', rows('SELECT COUNT(*) AS n FROM databook_templates WHERE is_default = 1')[0].n, 1);
 console.log(failed ? `\n${failed} check(s) failed` : '\nall quality checks passed');
 process.exit(failed ? 1 : 0);
