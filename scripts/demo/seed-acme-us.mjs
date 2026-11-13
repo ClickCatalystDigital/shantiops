@@ -516,16 +516,26 @@ async function seedInspectionPlan() {
       processes: { SAW: { qualified_on: iso(-900), last_weld: iso(-90) }, SMAW: { qualified_on: iso(-1100), last_weld: iso(-90) } } });
   }
   welding.template = (await api('POST', '/api/itp-templates', { name: 'Firetube boiler ITP (example)', revision: '0', items: ITP_EXAMPLE })).id;
+  // Three heat-exchanger ITPs (full exchanger, bundle only, parts only), so the template list reads like a real shop's.
+  for (const t of JSON.parse(readFileSync(new URL('./us-itp-templates.json', import.meta.url), 'utf8')).templates) await api('POST', '/api/itp-templates', t);
+  // The Data Book table of contents every job's book starts from (lib/databook.mjs has the line sources).
+  const dbt = JSON.parse(readFileSync(new URL('./us-databook-template.json', import.meta.url), 'utf8'));
+  await q('INSERT INTO databook_templates (name, form_no, lines_json, is_default) VALUES (?, ?, ?, 1)', [dbt.name, dbt.form_no, JSON.stringify(dbt.lines)]);
   await api('POST', '/api/acceptance-rules', { characteristic: 'Hardness', unit: 'HBW', max: 200, max_inclusive: true,
     source: 'Example purchaser specification (demo data, not a code limit)' });
 }
 // The project's weld register, from the same welds its record package lists. Each weld also needs a visual.
 async function seedWelds(project, data, daysAgo) {
   const ids = {};
+  // The parts each weld joins, so a heat traces to its welds: shell plate on every seam, the thicker plate
+  // (tubesheet / head) on the circumferential joints to it.
+  const plates = await q("SELECT id FROM bom_items WHERE project_id = ? AND material_description LIKE 'PLATE%' ORDER BY id", [project.id]);
+  const [shell, head] = [plates[0]?.id ?? null, plates[1]?.id ?? null];
   for (const w of data.welds) {
     const nde = [w.nde.split(' ')[0], 'VT'].join(',');
+    const parts = w.id.startsWith('N') ? { part_a_bom_item_id: shell } : { part_a_bom_item_id: shell, part_b_bom_item_id: /tubesheet|head/i.test(w.joint) ? head : shell };
     const r = await api('POST', '/api/welds', { project_id: project.id, weld_no: w.id, joint: w.joint, category: w.category, type: w.type,
-      wps_id: welding[w.wps], welder_stamps: w.welders.join(','), nde, welded_on: iso(-daysAgo) });
+      wps_id: welding[w.wps], welder_stamps: w.welders.join(','), nde, welded_on: iso(-daysAgo), ...parts });
     ids[w.id] = r.id;
   }
   return ids;
@@ -972,6 +982,14 @@ for (const [date, name] of [['2026-01-01', "New Year's Day"], ['2026-05-25', 'Me
 }
 await q("UPDATE employees SET salary_currency = 'USD', pt_state = ''");
 
+// AB-1001's Data Book, started from the template: lines the records already fill show as included, the rest wait
+// for uploads; painting is marked not applicable. Not released, so the demo can show the checks and a release.
+{
+  const [tpl] = await q('SELECT id FROM databook_templates WHERE is_default = 1');
+  await api('PUT', `/api/projects/${p1.id}/databook`, { template_id: tpl.id });
+  await api('PUT', `/api/projects/${p1.id}/databook`, { line_key: 'paint', state: 'na', note: 'Shipped in primer only per PO' });
+}
+
 // The nightly reset shifts every date by (today − seeded_on): workers/demo-reset-cron.
 await db.batch(['CREATE TABLE IF NOT EXISTS demo_meta (seeded_on TEXT NOT NULL)', 'DELETE FROM demo_meta', { sql: 'INSERT INTO demo_meta VALUES (?)', args: [iso(0)] }], 'write');
 
@@ -981,7 +999,7 @@ const MUST = ['users', 'employees', 'customers', 'suppliers', 'leads', 'crm_note
   'purchase_orders', 'rfqs', 'gate_inward_receipts', 'stock_receipts', 'inward_approvals', 'material_issues', 'material_indents', 'qc_records', 'ncr_records',
   'job_cards', 'production_handovers', 'test_certificates', 'qc_documents', 'qc_document_parts', 'packing_lists', 'pre_dispatch_approvals', 'shipments',
   'installation_visits', 'installation_reports', 'service_calls', 'sales_invoices', 'customer_receipts', 'sale_order_payments', 'tasks', 'attendance_days', 'leave_requests', 'vendor_bills', 'journal_entries',
-  'job_sheets', 'job_sheet_stages', 'work_orders', 'work_order_operations', 'job_card_time_logs', 'stock_pieces', 'calc_snapshots', 'payroll_runs', 'salary_slips'];
+  'job_sheets', 'job_sheet_stages', 'itp_templates', 'welds', 'wps', 'welders', 'acceptance_rules', 'databook_templates', 'databooks', 'work_orders', 'work_order_operations', 'job_card_time_logs', 'stock_pieces', 'calc_snapshots', 'payroll_runs', 'salary_slips'];
 const counts = {};
 for (const t of MUST) counts[t] = (await q(`SELECT COUNT(*) n FROM ${t}`))[0].n;
 console.table(counts);

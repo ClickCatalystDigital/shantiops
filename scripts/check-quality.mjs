@@ -124,5 +124,82 @@ expect('Boiler card still requires a fitter → 400', r.status, 400, r.data);
 r = await call('production_head', 'PATCH', `/api/job-sheets/${boiler.sheet_id}/stages/${boiler.id}`, { action: 'start', date: today, fitter_employee_id: boiler.emp });
 expect('Boiler job card stage starts as before → 200', r.status, 200, r.data);
 
-console.log(failed ? `\n${failed} check(s) failed` : '\nall ITP checks passed');
+
+// 8. Phase 1b: batch MTR intake, duplicates, review, trace.
+const { PDFDocument, StandardFonts } = await import('pdf-lib');
+async function pdf(text) {
+  const d = await PDFDocument.create(); const pg = d.addPage([400, 300]);
+  pg.drawText(text, { x: 40, y: 200, size: 12, font: await d.embedFont(StandardFonts.Helvetica) });
+  return Buffer.from(await d.save());
+}
+async function upload(u, path, bytes, name, extra = {}) {
+  const fd = new FormData(); fd.append('file', new Blob([bytes], { type: 'application/pdf' }), name);
+  for (const [k, v] of Object.entries(extra)) fd.append(k, v);
+  const r = await fetch(`${BASE}${path}`, { method: 'POST', headers: { cookie: await login(u) }, body: fd });
+  return { status: r.status, data: await r.json().catch(() => ({})) };
+}
+const mtrA = await pdf('Mill test report MT-9001 heats K1 K2'), mtrB = await pdf('Mill test report MT-9001 again, other scan');
+r = await upload('qc_head', '/api/mtr-intake', Buffer.from('not a pdf'), 'x.pdf');
+expect('Upload a non-PDF → 400', r.status, 400, r.data);
+const a = await upload('qc_head', '/api/mtr-intake', mtrA, 'MT-9001.pdf');
+expect('Upload an MTR → uploaded', a.data.status, 'uploaded', a.data);
+r = await upload('qc_head', '/api/mtr-intake', mtrA, 'MT-9001 copy.pdf');
+expect('Upload the same bytes again → duplicate', r.data.status, 'duplicate', r.data);
+r = await call('qc_head', 'POST', `/api/mtr-intake/${a.data.id}/extract`, {});
+expect('Read with no AI key set → failed, kept for manual entry', r.data.status, 'failed', r.data);
+const header = { certificate_no: 'MT-9001', steel_maker: 'Example Mill', material_spec: 'SA-516 Gr.70', certificate_date: today };
+r = await call('qc_head', 'POST', `/api/mtr-intake/${a.data.id}/accept`, { header: { ...header, steel_maker: '' }, lines: [{ heat_no: 'K1' }] });
+expect('Accept without the mill → 400', r.status, 400, r.data);
+r = await call('qc_head', 'POST', `/api/mtr-intake/${a.data.id}/accept`, { header, lines: [{ heat_no: 'K1', ys: '262', uts: '485', strength_unit: 'MPa' }, { heat_no: 'K2', ys: '38', uts: '70', strength_unit: 'ksi' }], project_ids: [sheet.project_id] });
+expect('Accept two heats → 200', r.status, 200, r.data);
+const k = rows(`SELECT cast_no, ys, pdf_key, pdf_sha256, intake_id FROM test_certificates WHERE certificate_no = 'MT-9001' ORDER BY cast_no`);
+expect('Two certificates share one PDF and its hash', k.length === 2 && k[0].pdf_key === k[1].pdf_key && !!k[0].pdf_sha256, true, k);
+expect('Strength kept with the printed unit', k[1]?.ys, '38 ksi', k);
+const b = await upload('qc_head', '/api/mtr-intake', mtrB, 'MT-9001 rescan.pdf');
+r = await call('qc_head', 'POST', `/api/mtr-intake/${b.data.id}/accept`, { header, lines: [{ heat_no: 'K1' }] });
+expect('Accept a heat already in the bank → 409', r.status, 409, r.data);
+expect('Nothing half-saved after the refusal', rows(`SELECT COUNT(*) AS n FROM test_certificates WHERE certificate_no = 'MT-9001'`)[0].n, 2);
+r = await call('qc_head', 'GET', '/api/trace?heat=K2');
+expect('Trace heat K2 → its certificate and project', r.data[0]?.certificates?.length === 1 && r.data[0].projects.some(p => p.project_no), true, r.data);
+const [p1] = rows("SELECT id, project_no FROM projects WHERE project_no = 'AB-1001'");
+const [shellHeat] = rows(`SELECT received_heat_no AS h FROM bom_items WHERE project_id = ${p1.id} AND material_description LIKE 'PLATE%' ORDER BY id LIMIT 1`);
+r = await call('qc_head', 'GET', `/api/trace?heat=${shellHeat.h}`);
+expect(`Trace AB-1001 shell plate heat ${shellHeat.h} → certificate, BOM line and welds`, (r.data[0]?.certificates.length > 0) && r.data[0].bom.length > 0 && r.data[0].welds.length > 0, true, r.data[0] && { c: r.data[0].certificates.length, b: r.data[0].bom.length, w: r.data[0].welds.length });
+r = await call('qc_head', 'GET', `/api/trace?project=${p1.id}`);
+expect('Trace AB-1001 backwards → every heat it used', r.data.length > 1, true, r.data.length);
+let res = await fetch(`${BASE}/api/projects/${p1.id}/trace-map/pdf`, { headers: { cookie: await login('qc_head') } });
+expect('Material Trace Map PDF', `${res.status} ${res.headers.get('content-type')}`, '200 application/pdf');
+
+// 9. Phase 1c: Data Book.
+r = await call('qc_head', 'GET', `/api/projects/${p1.id}/databook`);
+expect('AB-1001 Data Book has missing lines', r.data.missing > 0, true, r.data);
+const missing = r.data.rows.filter(x => x.status === 'missing');
+r = await call('qc_head', 'POST', `/api/projects/${p1.id}/databook/release`, {});
+expect('Release with lines missing → 409', r.status, 409, r.data);
+r = await call('production_head', 'PUT', `/api/projects/${p1.id}/databook`, { line_key: missing[0].key, state: 'na', note: 'x' });
+expect('Production marks a line N/A → 403', r.status, 403, r.data);
+r = await call('qc_head', 'PUT', `/api/projects/${p1.id}/databook`, { line_key: missing[0].key, state: 'na' });
+expect('N/A without a reason → 400', r.status, 400, r.data);
+const upKey = missing.find(x => x.source === 'upload')?.key || missing[0].key;
+r = await upload('qc_head', `/api/projects/${p1.id}/databook/files`, await pdf('Signed nameplate facsimile'), 'nameplate.pdf', { line_key: upKey });
+expect('Upload a file to a line → 201', r.status, 201, r.data);
+for (const x of missing.filter(x => x.key !== upKey)) await call('qc_head', 'PUT', `/api/projects/${p1.id}/databook`, { line_key: x.key, state: 'na', note: 'Not required for this job (check script)' });
+r = await call('qc_head', 'GET', `/api/projects/${p1.id}/databook`);
+expect('Nothing missing now', r.data.missing, 0, r.data.problems);
+res = await fetch(`${BASE}/api/projects/${p1.id}/databook/pdf`, { headers: { cookie: await login('qc_head') } });
+const prelim = Buffer.from(await res.arrayBuffer());
+const prelimDoc = res.ok ? await PDFDocument.load(prelim) : null;
+expect('Preliminary PDF builds (cover, contents, sections)', res.ok && prelimDoc.getPageCount() >= 4, true, `${res.status} ${prelimDoc?.getPageCount()}`);
+r = await call('qc_head', 'POST', `/api/projects/${p1.id}/databook/release`, {});
+expect('Release → revision 1', `${r.status} ${r.data.revision}`, '200 1', r.data);
+const rel = r.data;
+const get = async id => Buffer.from(await (await fetch(`${BASE}/api/databook-releases/${id}/pdf`, { headers: { cookie: await login('qc_head') } })).arrayBuffer());
+const { createHash } = await import('node:crypto');
+const before = createHash('sha256').update(await get(rel.id)).digest('hex');
+expect('Stored file matches its recorded hash', before, rel.sha256);
+await upload('qc_head', `/api/projects/${p1.id}/databook/files`, await pdf('Later addition'), 'later.pdf', { line_key: upKey });
+expect('A later upload leaves the released file unchanged', createHash('sha256').update(await get(rel.id)).digest('hex'), before);
+r = await call('qc_head', 'POST', `/api/projects/${p1.id}/databook/release`, {});
+expect('Next release → revision 2', r.data.revision, 2, r.data);
+console.log(failed ? `\n${failed} check(s) failed` : '\nall quality checks passed');
 process.exit(failed ? 1 : 0);

@@ -6,7 +6,7 @@ import {
   BookOpenIcon, MailIcon, ClipboardListIcon, CalculatorIcon, FolderKanbanIcon, FileInputIcon,
   RulerIcon, DraftingCompassIcon, SearchIcon, GitCompareIcon, FileTextIcon, TruckIcon,
   WarehouseIcon, PackageCheckIcon, BoxesIcon, UsersIcon, CalendarDaysIcon, HardHatIcon,
-  FlaskConicalIcon, BadgeCheckIcon, ClipboardCheckIcon, FlameIcon, MapPinIcon, RouteIcon, ShoppingCartIcon,
+  FlaskConicalIcon, BadgeCheckIcon, ClipboardCheckIcon, FlameIcon, UploadIcon, MapPinIcon, RouteIcon, ShoppingCartIcon,
   UserPlusIcon, Building2Icon, MegaphoneIcon, TrendingUpIcon, PhoneIcon, BarChart3Icon,
   UserRoundIcon, UserCheckIcon, Clock3Icon, IndianRupeeIcon, ReceiptIcon, ShieldCheckIcon,
   ListChecksIcon, MessageSquareIcon, WrenchIcon, BellIcon, TagIcon, InboxIcon, UndoIcon,
@@ -1464,6 +1464,18 @@ const ALL_HELP = {
         'Saving a weld updates each welder\'s last weld date, which keeps their continuity current. The register flags a welder not qualified for the WPS process.',
         'The ASME record package prints welds, WPS, welders and NDE from these registers.',
       ]),
+      feature('mtr-intake', 'Batch MTR upload and heat trace', UploadIcon, [
+        'QC → Test Certificates → Batch upload: drop many mill test report PDFs at once. Each file is checked (real PDF, size) and fingerprinted; the same file uploaded twice is marked Duplicate and not stored again.',
+        'Each file is read automatically into one line per heat, then waits for a person: Review shows the PDF beside the lines, you correct what is wrong and Accept. Each heat becomes a certificate in the bank, all sharing the one PDF. Nothing is saved without a reviewer.',
+        'Strength is kept with the unit printed on the report (MPa, ksi); nothing is converted. A heat already in the bank is refused, and the whole file is left as it was.',
+        'QC → Test Certificates → Trace: type a heat number to follow it to its certificate, the stock pieces cut from it (with supplier and PO), the BOM lines and projects it went into, the welds that join those parts and the QC documents that cite it. Pick a project to see every heat it used and print its Material Trace Map.',
+      ], { outcome: 'A stack of MTRs becomes reviewed certificates in minutes, and any heat can be followed to the welds it ended up in.', watchOut: 'If the automatic reading is not set up or fails, the file is kept: open Review and type the heats from the PDF.' }),
+      feature('databook', 'Data Book', BookOpenIcon, [
+        'QC → Data Book: pick a project and start its book from the template (your table of contents). Each line shows where its pages come from: records the app already holds (data report package, weld map, welder stamp map, BOM, certificates, trace map, inspection records of a type, the ITP release summary) or files you upload.',
+        'A line is Included when it has content, Missing when it has none, or N/A with a written reason. Upload a PDF to any line, including next to automatic content (for example the signed data report).',
+        'Preview builds the whole book now: cover, contents with page numbers, every section in order, a page number and PRELIMINARY on every page, one bookmark per section.',
+        'Release (QC Head) is refused while a line is missing, an ITP point is open or an NCR is open. A released book is stored with a record of every file and its fingerprint, and never changes; a later change needs a new revision.',
+      ], { outcome: 'The Data Book fills itself as the job runs, and the released copy is exactly what was sent.', watchOut: 'The app prepares the book for review; certification stays with the manufacturer and the Authorized Inspector.' }),
       feature('heatlot', 'Heat/Lot Traceability', BadgeCheckIcon, [
         'Stores captures a piece\'s heat number and, optionally, a linked test certificate once, at receipt — every piece cut from it afterward inherits both automatically, with no re-entry at cut time.',
         'Linking a certificate through Stores\' picker allocates it to the project the same way linking one in a statutory document does — it shows up as "used on this project" either way.',

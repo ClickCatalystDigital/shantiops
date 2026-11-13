@@ -1,5 +1,5 @@
 // Load ITP templates from a JSON file through the real API (so every check in the template route runs).
-//   BASE=http://localhost:3077 USER=qc_head PASS=... node scripts/seed-itp-templates.mjs scripts/data/gulf-coast-itp.json [--apply]
+//   BASE=http://localhost:3077 USER=qc_head PASS=... node scripts/seed-itp-templates.mjs scripts/demo/us-itp-templates.json [--apply]
 // Without --apply it only validates the file (point numbers, earlier-only prerequisites) and prints the counts.
 // An existing template with the same name is replaced (PUT), otherwise created.
 import { readFileSync } from 'node:fs';

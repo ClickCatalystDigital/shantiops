@@ -2,10 +2,8 @@
 // not suitable for CI or a free-tier deploy, so this validates every plain JS/MJS/JSX file without
 // changing the project's existing runtime or requiring a network install.
 //
-// .jsx can't go through `node --check` (it doesn't transform JSX), so those files are parsed with
-// @babel/parser instead — already present transitively via Next's own @babel/core, not a new
-// dependency.
-import { execFileSync } from 'node:child_process';
+// Files are parsed with @babel/parser (already present transitively via Next's own @babel/core, not a
+// new dependency).
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parse } from '@babel/parser';
@@ -25,14 +23,11 @@ function walk(path) {
 
 for (const root of roots) walk(resolve(root));
 let failed = 0;
+// Every file goes through @babel/parser. `node --check` was used for .js/.mjs, but Node 23 silently passes
+// any file that contains an import (its ES-module detection skips the check), which is nearly every file here.
 for (const file of files) {
-  if (file.endsWith('.jsx')) {
-    try { parse(readFileSync(file, 'utf8'), { sourceType: 'module', plugins: ['jsx'] }); }
-    catch (error) { failed++; process.stderr.write(`syntax error: ${file}\n${error.message}\n`); }
-    continue;
-  }
-  try { execFileSync(process.execPath, ['--check', file], { stdio: 'pipe' }); }
-  catch (error) { failed++; process.stderr.write(`syntax error: ${file}\n${error.stderr || ''}`); }
+  try { parse(readFileSync(file, 'utf8'), { sourceType: 'module', plugins: ['jsx', 'topLevelAwait'], errorRecovery: false }); }
+  catch (error) { failed++; process.stderr.write(`syntax error: ${file}\n${error.message}\n`); }
 }
 if (failed) process.exit(1);
 console.log(`syntax check passed: ${files.length} JavaScript files`);

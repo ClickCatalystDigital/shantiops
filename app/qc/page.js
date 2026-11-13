@@ -13,7 +13,7 @@ export default async function QcPage({ searchParams }) {
   if (!canAccessDepartment(user, 'QC')) redirect(roleHome(user));
 
   const sp = await searchParams;
-  const [allProjects, certificates, documents, calibrationItems, receivedIds, releasedBomIds, allocatedChildIds, ncrs, canDisposition, canVerify, canClose, canItp, canWeld, canWpsApprove, canRules, inwardApprovals, preDispatchApprovals, jobSheetStages] = await Promise.all([
+  const [allProjects, certificates, documents, calibrationItems, receivedIds, releasedBomIds, allocatedChildIds, ncrs, canDisposition, canVerify, canClose, canItp, canWeld, canWpsApprove, canRules, canDatabook, canDatabookRelease, inwardApprovals, preDispatchApprovals, jobSheetStages] = await Promise.all([
     // QC is the one deliberate exception to getActiveProjectsList()'s master-only default — real QC
     // documents are created per split-child unit, so QC's own picker needs children visible.
     getActiveProjectsList({ includeChildren: true, includeClosed: true }),
@@ -31,6 +31,8 @@ export default async function QcPage({ searchParams }) {
     canPerformAction(user, 'QC', 'qc.weld.write'),
     canPerformAction(user, 'QC', 'qc.wps.approve'),
     canPerformAction(user, 'QC', 'qc.rule.write'),
+    canPerformAction(user, 'QC', 'qc.databook.write'),
+    canPerformAction(user, 'QC', 'qc.databook.release'),
     // Inward + Pre-Dispatch QC/Production Approval Workflow — QC's own department-local Approvals
     // tab (superseded the shared /material-review route). Both queues are unfiltered reads; every
     // write route re-enforces the real decide authority server-side via requireAction.
@@ -89,7 +91,7 @@ export default async function QcPage({ searchParams }) {
 
   return <QcWorkspace projects={projects} certificates={certificates} documents={documents}
     calibrationItems={calibrationItems} ncrs={ncrs} splitOrders={splitOrders} extraDocs={extraDocs}
-    canDisposition={canDisposition} canVerify={canVerify} canClose={canClose} canItp={canItp} canWeld={canWeld} canWpsApprove={canWpsApprove} canRules={canRules}
+    canDisposition={canDisposition} canVerify={canVerify} canClose={canClose} canItp={canItp} canWeld={canWeld} canWpsApprove={canWpsApprove} canRules={canRules} canDatabook={canDatabook} canDatabookRelease={canDatabookRelease}
     inwardApprovals={inwardApprovals} preDispatchApprovals={preDispatchApprovals}
     canDecideInward={isDepartmentHead(user, 'QC')} canDecideQcPreDispatch={isDepartmentHead(user, 'QC')}
     testRecords={testRecords} jobWorkInspections={jobWorkInspections} workOrders={workOrders}
